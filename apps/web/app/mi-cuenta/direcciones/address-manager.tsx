@@ -233,7 +233,18 @@ function AddressForm({
   // editar una dirección vieja no abra en blanco ni bloquee el guardado (rev. #2/#5/#10).
   const [addr, setAddr] = useState<StructuredAddressValue>(() => {
     if (address?.structured) {
-      return { ...EMPTY_STRUCTURED_ADDRESS, ...address.structured } as StructuredAddressValue;
+      const merged = {
+        ...EMPTY_STRUCTURED_ADDRESS,
+        ...address.structured,
+      } as StructuredAddressValue;
+      // Migración visual suave (2026-10): el `detail` libre legacy se muestra
+      // como punto de referencia si la dirección no tiene tipo de destino —
+      // mismo criterio que el checkout (referencePointFromStructured).
+      const legacyDetail = (address.structured as Record<string, unknown>).detail;
+      if (!merged.destinationType && !merged.referencePoint && typeof legacyDetail === "string") {
+        merged.referencePoint = legacyDetail;
+      }
+      return merged;
     }
     if (address) {
       const dept = getDepartmentByName(address.department);

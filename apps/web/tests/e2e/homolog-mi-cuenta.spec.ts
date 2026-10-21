@@ -166,6 +166,8 @@ test("mi-cuenta · direcciones: crear urbana → lista+DB → default única →
         await form.locator("#cityCode").selectOption({ index: 1 });
         await form.locator('input[name="viaNumber"]').fill(opts.via);
         await form.locator('input[name="cruceNumber"]').fill(opts.cruce);
+        // Tipo de destino (requerido desde 2026-10): Casa — sin campos extra.
+        await form.getByRole("radio", { name: /Casa/ }).first().click();
         await form.locator("#phone").fill(`300${run.replace(/\D/g, "").slice(-7)}`);
         await expect(form.locator('input[name="name"]')).toHaveValue(opts.label, {
           timeout: 1_500,

@@ -302,6 +302,8 @@ test("checkout transaccional E2E sandbox: datos → envío Aveonline → pago Wo
   await page.getByText("Urbana", { exact: false }).first().click();
   await page.locator('input[name="viaNumber"]').fill("10");
   await page.locator('input[name="cruceNumber"]').fill("15-20");
+  // Tipo de destino (requerido desde 2026-10): Casa — sin campos extra.
+  await page.getByRole("radio", { name: /Casa/ }).first().click();
   const zip = page.locator("#zip");
   if (await zip.isVisible().catch(() => false)) await zip.fill("050001");
   await page.locator('input[name="dataConsent"]').check();

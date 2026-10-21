@@ -31,7 +31,8 @@ vi.mock("@/features/addresses/service", async (importActual) => {
 
 import { saveAddressAction } from "./actions";
 
-/** FormData válida: Bogotá urbana (en el catálogo de zonas → exige localidad). */
+/** FormData válida: Bogotá urbana (en el catálogo de zonas → exige localidad).
+ *  Incluye destinationType (obligatorio en capturas urbanas desde 2026-10). */
 function addressForm(over: Record<string, string> = {}): FormData {
   const fd = new FormData();
   fd.set("name", "Casa");
@@ -42,6 +43,7 @@ function addressForm(over: Record<string, string> = {}): FormData {
   fd.set("viaType", "Calle");
   fd.set("viaNumber", "100");
   fd.set("cruceNumber", "15-20");
+  fd.set("destinationType", "casa");
   fd.set("localityId", "chapinero");
   for (const [k, v] of Object.entries(over)) fd.set(k, v);
   return fd;

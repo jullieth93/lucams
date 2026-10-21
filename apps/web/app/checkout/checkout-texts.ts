@@ -7,6 +7,19 @@
  * La resolución server-side vive en checkout-texts.server.ts (getCheckoutTexts).
  */
 
+import {
+  ALT_PHONE_HINT,
+  ALT_PHONE_LABEL,
+  DESTINATION_FIELD_LABELS,
+  DESTINATION_GROUPS,
+  DESTINATION_SUBTOGGLE,
+  DESTINATION_TYPE_ERROR,
+  DESTINATION_TYPE_LABEL,
+  FINCA_LABEL,
+  RURAL_REF_MIN_LENGTH,
+  RURAL_REF_PLACEHOLDER,
+} from "@/features/checkout/destination-types";
+
 export type CheckoutTexts = {
   layout: {
     backHome: string;
@@ -87,6 +100,29 @@ export type CheckoutTexts = {
     cruceCardinalAria: string;
     detailLabel: string;
     detailPlaceholder: string;
+    /** Selector «Tipo de destino» + campos estructurados por tipo (2026-10,
+     *  anti-devoluciones). Los placeholders de estos campos son constantes
+     *  compartidas de features/checkout/destination-types.ts (no CMS). */
+    destTypeLabel: string;
+    destTypeError: string;
+    destCasa: string;
+    destEdificio: string;
+    destConjunto: string;
+    destOficina: string;
+    destConjuntoTorres: string;
+    destConjuntoCasas: string;
+    apartmentLabel: string;
+    towerLabel: string;
+    houseNumberLabel: string;
+    blockLabel: string;
+    complexNameLabel: string;
+    floorLabel: string;
+    buildingNameLabel: string;
+    officeNumberLabel: string;
+    companyNameLabel: string;
+    refPointLabel: string;
+    altPhoneLabel: string;
+    altPhoneHint: string;
     veredaLabel: string;
     veredaPlaceholder: string;
     fincaLabel: string;
@@ -116,6 +152,9 @@ export type CheckoutTexts = {
     /** Encabezado del resumen de campos inválidos que aparece sobre el botón
      *  de submit tras un envío fallido (fix QA: errores fuera de pantalla). */
     errorSummary: string;
+    /** Mensaje por campo obligatorio VACÍO (2026-10-20: la validación nativa del
+     *  navegador ya no corre — el form usa noValidate y esta capa lo reemplaza). */
+    requiredField: string;
   };
   quote: {
     title: string;
@@ -302,14 +341,36 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     cruceCardinalAria: "Cuadrante del cruce",
     detailLabel: "Complemento (opcional)",
     detailPlaceholder: "Apto 401, Conjunto Lucams, casa color rosa...",
+    // Tipo de destino + campos por tipo (2026-10): los defaults referencian las
+    // constantes compartidas de destination-types.ts (misma fuente que usa el
+    // form de /mi-cuenta/direcciones, que no lee CMS).
+    destTypeLabel: DESTINATION_TYPE_LABEL,
+    destTypeError: DESTINATION_TYPE_ERROR,
+    destCasa: DESTINATION_GROUPS[0].label,
+    destEdificio: DESTINATION_GROUPS[1].label,
+    destConjunto: DESTINATION_GROUPS[2].label,
+    destOficina: DESTINATION_GROUPS[3].label,
+    destConjuntoTorres: DESTINATION_SUBTOGGLE.torres,
+    destConjuntoCasas: DESTINATION_SUBTOGGLE.casas,
+    apartmentLabel: DESTINATION_FIELD_LABELS.apartment,
+    towerLabel: DESTINATION_FIELD_LABELS.tower,
+    houseNumberLabel: DESTINATION_FIELD_LABELS.houseNumber,
+    blockLabel: DESTINATION_FIELD_LABELS.blockCode,
+    complexNameLabel: DESTINATION_FIELD_LABELS.complexName,
+    floorLabel: DESTINATION_FIELD_LABELS.floor,
+    buildingNameLabel: DESTINATION_FIELD_LABELS.buildingName,
+    officeNumberLabel: DESTINATION_FIELD_LABELS.officeNumber,
+    companyNameLabel: DESTINATION_FIELD_LABELS.companyName,
+    refPointLabel: DESTINATION_FIELD_LABELS.referencePoint,
+    altPhoneLabel: ALT_PHONE_LABEL,
+    altPhoneHint: ALT_PHONE_HINT,
     veredaLabel: "Vereda / Corregimiento / Sector",
     veredaPlaceholder: "Ej. Vereda El Roble",
-    fincaLabel: "Finca / Lugar (opcional)",
+    fincaLabel: FINCA_LABEL,
     fincaPlaceholder: "Ej. Finca Las Flores",
     refLabel: "Indicaciones para llegar",
-    refPlaceholder:
-      "Ej. A 200m del puente sobre el río, casa de dos pisos color azul, portón de madera. Llamar al llegar.",
-    refError: "Mínimo 10 caracteres — el courier necesita referencias claras",
+    refPlaceholder: RURAL_REF_PLACEHOLDER,
+    refError: `Mínimo ${RURAL_REF_MIN_LENGTH} caracteres — el courier necesita referencias claras`,
     refHint: "Cuanto más detallada la referencia, más fácil para el courier",
     previewLabel: "📦 Así verá tu dirección el courier",
     notesLabel: "Notas para el courier (opcional)",
@@ -332,6 +393,7 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     submit: "Continuar al envío →",
     pending: "Guardando…",
     errorSummary: "Revisa estos campos antes de continuar:",
+    requiredField: "Este campo es obligatorio",
   },
   quote: {
     title: "Productos de tu cotización",
@@ -507,6 +569,26 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "datos.cruceCardinalAria": "checkout.datos.cruce-cardinal-aria",
   "datos.detailLabel": "checkout.datos.detail-label",
   "datos.detailPlaceholder": "checkout.datos.detail-placeholder",
+  "datos.destTypeLabel": "checkout.datos.dest-type-label",
+  "datos.destTypeError": "checkout.datos.dest-type-error",
+  "datos.destCasa": "checkout.datos.dest-casa",
+  "datos.destEdificio": "checkout.datos.dest-edificio",
+  "datos.destConjunto": "checkout.datos.dest-conjunto",
+  "datos.destOficina": "checkout.datos.dest-oficina",
+  "datos.destConjuntoTorres": "checkout.datos.dest-conjunto-torres",
+  "datos.destConjuntoCasas": "checkout.datos.dest-conjunto-casas",
+  "datos.apartmentLabel": "checkout.datos.apartment-label",
+  "datos.towerLabel": "checkout.datos.tower-label",
+  "datos.houseNumberLabel": "checkout.datos.house-number-label",
+  "datos.blockLabel": "checkout.datos.block-label",
+  "datos.complexNameLabel": "checkout.datos.complex-name-label",
+  "datos.floorLabel": "checkout.datos.floor-label",
+  "datos.buildingNameLabel": "checkout.datos.building-name-label",
+  "datos.officeNumberLabel": "checkout.datos.office-number-label",
+  "datos.companyNameLabel": "checkout.datos.company-name-label",
+  "datos.refPointLabel": "checkout.datos.ref-point-label",
+  "datos.altPhoneLabel": "checkout.datos.alt-phone-label",
+  "datos.altPhoneHint": "checkout.datos.alt-phone-hint",
   "datos.veredaLabel": "checkout.datos.vereda-label",
   "datos.veredaPlaceholder": "checkout.datos.vereda-placeholder",
   "datos.fincaLabel": "checkout.datos.finca-label",
@@ -534,6 +616,7 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "datos.submit": "checkout.datos.submit",
   "datos.pending": "checkout.datos.pending",
   "datos.errorSummary": "checkout.datos.error-summary",
+  "datos.requiredField": "checkout.datos.required-field",
   "quote.title": "checkout.quote.title",
   "quote.heading": "checkout.quote.heading",
   "quote.subtext": "checkout.quote.subtext",

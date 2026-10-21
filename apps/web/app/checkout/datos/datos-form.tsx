@@ -14,7 +14,11 @@
  *   - Localidad (zona del catálogo lib/lucams-zones.ts): obligatoria si la
  *     ciudad está en el catálogo — dato de dirección, no filtro de oferta
  *   - Barrio: texto libre opcional (todas las ciudades)
- *   - Dirección: 4 campos estructurados (Vía + Número + #Cruce + Detalle)
+ *   - Dirección urbana: vía + número + cruce + TIPO DE DESTINO (2026-10,
+ *     anti-devoluciones) con campos obligatorios por tipo (apto, torre, casa,
+ *     oficina…) — el «Detalle» libre se reemplazó por campos estructurados
+ *   - Dirección rural: vereda + finca/negocio/lugar + referencia (mín 20) +
+ *     teléfono alternativo en la zona (opcional)
  */
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
@@ -49,7 +53,18 @@ import {
   type DocumentType,
 } from "@/lib/colombia-validators";
 import { detectEmailTypo, isValidEmail, suggestEmails } from "@/lib/email-domains";
-import { VIA_TYPES } from "@/features/checkout/schemas";
+import { VIA_TYPES, composeDestinationSuffix } from "@/features/checkout/schemas";
+import {
+  DESTINATION_CONFIG,
+  DESTINATION_FIELD_MAX,
+  DESTINATION_FIELD_PLACEHOLDERS,
+  DESTINATION_GROUPS,
+  DESTINATION_REQUIRED_ERRORS,
+  RURAL_REF_MIN_LENGTH,
+  missingDestinationFields,
+  type DestinationField,
+  type DestinationType,
+} from "@/features/checkout/destination-types";
 import { BILLING_DOCUMENT_ENABLED } from "@/features/checkout/billing-document";
 import type { CheckoutPrefillAddress } from "@/features/addresses/service";
 import type { CheckoutTexts } from "../checkout-texts";
@@ -70,8 +85,14 @@ const ERROR_FIELD_ORDER = [
   "localityId",
   "viaNumber",
   "cruceNumber",
+  "destinationType",
+  "apartment",
+  "tower",
+  "houseNumber",
+  "officeNumber",
   "vereda",
   "referencia",
+  "altPhone",
   "recipientName",
   "recipientPhone",
   "giftMessage",
@@ -94,8 +115,14 @@ const ERROR_FIELD_IDS: Record<ErrorFieldKey, string> = {
   localityId: "localityId",
   viaNumber: "viaNumber",
   cruceNumber: "cruceNumber",
+  destinationType: "destinationType",
+  apartment: "apartment",
+  tower: "tower",
+  houseNumber: "houseNumber",
+  officeNumber: "officeNumber",
   vereda: "vereda",
   referencia: "referencia",
+  altPhone: "altPhone-display",
   recipientName: "recipientName",
   recipientPhone: "recipientPhone-display",
   giftMessage: "giftMessage",
@@ -125,11 +152,32 @@ type SavedAddressSnapshot = {
   viaCardinal: string;
   cruceNumber: string;
   cruceCardinal: string;
-  detail: string;
+  destinationType: string;
+  apartment: string;
+  tower: string;
+  houseNumber: string;
+  blockCode: string;
+  complexName: string;
+  floor: string;
+  buildingName: string;
+  officeNumber: string;
+  companyName: string;
+  referencePoint: string;
   vereda: string;
   finca: string;
   referencia: string;
+  altPhone: string;
 };
+
+/** Migración visual suave (2026-10): el `detail` libre legacy se muestra como
+ *  `referencePoint` cuando la dirección no tiene tipo de destino. La usa tanto
+ *  applySavedAddress como el snapshot para que la comparación sea exacta. */
+function referencePointFromStructured(s: Record<string, unknown>): string {
+  const ref = String(s.referencePoint ?? "");
+  if (ref) return ref;
+  if (!s.destinationType) return String(s.detail ?? "");
+  return "";
+}
 
 // Replica EXACTA de la secuencia resetAddressFields()+set* de applySavedAddress.
 function snapshotFromSavedAddress(a: CheckoutPrefillAddress): SavedAddressSnapshot {
@@ -146,10 +194,21 @@ function snapshotFromSavedAddress(a: CheckoutPrefillAddress): SavedAddressSnapsh
     viaCardinal: "",
     cruceNumber: "",
     cruceCardinal: "",
-    detail: "",
+    destinationType: "",
+    apartment: "",
+    tower: "",
+    houseNumber: "",
+    blockCode: "",
+    complexName: "",
+    floor: "",
+    buildingName: "",
+    officeNumber: "",
+    companyName: "",
+    referencePoint: "",
     vereda: "",
     finca: "",
     referencia: "",
+    altPhone: "",
   };
   const s = a.structured;
   if (s) {
@@ -166,11 +225,22 @@ function snapshotFromSavedAddress(a: CheckoutPrefillAddress): SavedAddressSnapsh
       snap.viaCardinal = String(s.viaCardinal ?? "");
       snap.cruceNumber = String(s.cruceNumber ?? "");
       snap.cruceCardinal = String(s.cruceCardinal ?? "");
-      snap.detail = String(s.detail ?? "");
+      snap.destinationType = String(s.destinationType ?? "");
+      snap.apartment = String(s.apartment ?? "");
+      snap.tower = String(s.tower ?? "");
+      snap.houseNumber = String(s.houseNumber ?? "");
+      snap.blockCode = String(s.blockCode ?? "");
+      snap.complexName = String(s.complexName ?? "");
+      snap.floor = String(s.floor ?? "");
+      snap.buildingName = String(s.buildingName ?? "");
+      snap.officeNumber = String(s.officeNumber ?? "");
+      snap.companyName = String(s.companyName ?? "");
+      snap.referencePoint = referencePointFromStructured(s);
     } else {
       snap.vereda = String(s.vereda ?? "");
       snap.finca = String(s.finca ?? "");
       snap.referencia = String(s.referencia ?? "");
+      snap.altPhone = String(s.altPhone ?? "");
     }
   } else {
     // Legacy (sin structured): solo se aplican depto/ciudad/CP.
@@ -253,9 +323,53 @@ export function DatosForm({
   const [cruceCardinal, setCruceCardinal] = useState<string>(
     initial.address?.kind === "urban" ? (initial.address.cruceCardinal ?? "") : "",
   );
-  const [detail, setDetail] = useState(
-    initial.address?.kind === "urban" ? (initial.address.detail ?? "") : "",
+  // Tipo de destino + campos estructurados por tipo (2026-10, anti-devoluciones).
+  // Sin default: el cliente elige siempre (obligatorio en el form). El `detail`
+  // libre legacy se migra visualmente a `referencePoint` cuando no hay tipo.
+  const [destinationType, setDestinationType] = useState<DestinationType | "">(
+    initial.address?.kind === "urban" ? (initial.address.destinationType ?? "") : "",
   );
+  // Sub-toggle del conjunto residencial (Torres | Casas) — resuelve al enum
+  // conjunto_torres / conjunto_casas del hidden destinationType.
+  const [conjuntoSubtype, setConjuntoSubtype] = useState<"torres" | "casas">(
+    initial.address?.kind === "urban" && initial.address.destinationType === "conjunto_casas"
+      ? "casas"
+      : "torres",
+  );
+  const [apartment, setApartment] = useState(
+    initial.address?.kind === "urban" ? (initial.address.apartment ?? "") : "",
+  );
+  const [tower, setTower] = useState(
+    initial.address?.kind === "urban" ? (initial.address.tower ?? "") : "",
+  );
+  const [houseNumber, setHouseNumber] = useState(
+    initial.address?.kind === "urban" ? (initial.address.houseNumber ?? "") : "",
+  );
+  const [blockCode, setBlockCode] = useState(
+    initial.address?.kind === "urban" ? (initial.address.blockCode ?? "") : "",
+  );
+  const [complexName, setComplexName] = useState(
+    initial.address?.kind === "urban" ? (initial.address.complexName ?? "") : "",
+  );
+  const [floor, setFloor] = useState(
+    initial.address?.kind === "urban" ? (initial.address.floor ?? "") : "",
+  );
+  const [buildingName, setBuildingName] = useState(
+    initial.address?.kind === "urban" ? (initial.address.buildingName ?? "") : "",
+  );
+  const [officeNumber, setOfficeNumber] = useState(
+    initial.address?.kind === "urban" ? (initial.address.officeNumber ?? "") : "",
+  );
+  const [companyName, setCompanyName] = useState(
+    initial.address?.kind === "urban" ? (initial.address.companyName ?? "") : "",
+  );
+  const [referencePoint, setReferencePoint] = useState(() => {
+    if (initial.address?.kind !== "urban") return "";
+    if (initial.address.referencePoint) return initial.address.referencePoint;
+    // Migración visual: detail legacy → punto de referencia (solo si no hay tipo).
+    if (!initial.address.destinationType) return initial.address.detail ?? "";
+    return "";
+  });
   // Rural fields
   const [vereda, setVereda] = useState(
     initial.address?.kind === "rural" ? initial.address.vereda : "",
@@ -266,9 +380,18 @@ export function DatosForm({
   const [referencia, setReferencia] = useState(
     initial.address?.kind === "rural" ? initial.address.referencia : "",
   );
+  // Teléfono alternativo en la zona (rural, 2026-10) — display con formato,
+  // el hidden lleva los 10 dígitos (mismo patrón del teléfono de contacto).
+  const [altPhoneDisplay, setAltPhoneDisplay] = useState(
+    initial.address?.kind === "rural" && initial.address.altPhone
+      ? formatPhone(initial.address.altPhone)
+      : "",
+  );
   const [notes, setNotes] = useState(initial.address?.notes ?? "");
 
-  // Preview live de cómo se verá la dirección en la guía del courier
+  // Preview live de cómo se verá la dirección en la guía del courier — usa el
+  // MISMO compositor del server (composeDestinationSuffix) para que la línea
+  // sea idéntica a la que recibe Aveonline.
   const addressPreview = useMemo(() => {
     if (addressKind === "urban") {
       if (!viaNumber || !cruceNumber) return "";
@@ -278,12 +401,26 @@ export function DatosForm({
       const cruceParts = ["#", cruceNumber.toUpperCase()];
       if (cruceCardinal) cruceParts.push(cruceCardinal);
       const base = `${viaParts.join(" ")} ${cruceParts.join(" ")}`;
-      return detail.trim() ? `${base} (${detail.trim()})` : base;
+      const suffix = composeDestinationSuffix({
+        apartment,
+        tower,
+        houseNumber,
+        blockCode,
+        complexName,
+        floor,
+        buildingName,
+        officeNumber,
+        companyName,
+        referencePoint,
+      });
+      return suffix ? `${base} (${suffix})` : base;
     }
     if (!vereda) return "";
     const parts: string[] = [`Vereda ${vereda}`];
     if (finca.trim()) parts.push(`Finca ${finca.trim()}`);
     if (referencia.trim()) parts.push(`Ref: ${referencia.trim()}`);
+    const altPhone = stripPhone(altPhoneDisplay);
+    if (altPhone) parts.push(`Tel. zona: ${altPhone}`);
     return parts.join(" · ");
   }, [
     addressKind,
@@ -293,10 +430,20 @@ export function DatosForm({
     viaCardinal,
     cruceNumber,
     cruceCardinal,
-    detail,
+    apartment,
+    tower,
+    houseNumber,
+    blockCode,
+    complexName,
+    floor,
+    buildingName,
+    officeNumber,
+    companyName,
+    referencePoint,
     vereda,
     finca,
     referencia,
+    altPhoneDisplay,
   ]);
 
   // Billing
@@ -327,6 +474,11 @@ export function DatosForm({
   const [isGift, setIsGift] = useState<boolean>(initial.gift?.isGift ?? false);
   const [giftMessage, setGiftMessage] = useState(initial.gift?.giftMessage ?? "");
 
+  // Contador de intentos de submit: los errores de campos OBLIGATORIOS vacíos
+  // (tipo de destino, campos por tipo) se muestran solo tras el primer intento
+  // ("punish late" — declarado acá porque los errores derivados lo leen).
+  const [submitCount, setSubmitCount] = useState(0);
+
   // Cities filtradas por depto elegido
   const cities = useMemo<DaneCity[]>(
     () => (deptCode ? getCitiesByDeptCode(deptCode) : []),
@@ -354,10 +506,22 @@ export function DatosForm({
     setViaCardinal("");
     setCruceNumber("");
     setCruceCardinal("");
-    setDetail("");
+    setDestinationType("");
+    setConjuntoSubtype("torres");
+    setApartment("");
+    setTower("");
+    setHouseNumber("");
+    setBlockCode("");
+    setComplexName("");
+    setFloor("");
+    setBuildingName("");
+    setOfficeNumber("");
+    setCompanyName("");
+    setReferencePoint("");
     setVereda("");
     setFinca("");
     setReferencia("");
+    setAltPhoneDisplay("");
   }
 
   // Rellena la dirección desde una guardada. Reset primero (estado limpio), luego:
@@ -382,11 +546,24 @@ export function DatosForm({
         setViaCardinal(String(s.viaCardinal ?? ""));
         setCruceNumber(String(s.cruceNumber ?? ""));
         setCruceCardinal(String(s.cruceCardinal ?? ""));
-        setDetail(String(s.detail ?? ""));
+        const destType = String(s.destinationType ?? "") as DestinationType | "";
+        setDestinationType(destType);
+        setConjuntoSubtype(destType === "conjunto_casas" ? "casas" : "torres");
+        setApartment(String(s.apartment ?? ""));
+        setTower(String(s.tower ?? ""));
+        setHouseNumber(String(s.houseNumber ?? ""));
+        setBlockCode(String(s.blockCode ?? ""));
+        setComplexName(String(s.complexName ?? ""));
+        setFloor(String(s.floor ?? ""));
+        setBuildingName(String(s.buildingName ?? ""));
+        setOfficeNumber(String(s.officeNumber ?? ""));
+        setCompanyName(String(s.companyName ?? ""));
+        setReferencePoint(referencePointFromStructured(s));
       } else {
         setVereda(String(s.vereda ?? ""));
         setFinca(String(s.finca ?? ""));
         setReferencia(String(s.referencia ?? ""));
+        setAltPhoneDisplay(s.altPhone ? formatPhone(String(s.altPhone)) : "");
       }
     } else {
       if (a.deptCode) setDeptCode(a.deptCode);
@@ -427,10 +604,25 @@ export function DatosForm({
         viaCardinal === snap.viaCardinal &&
         cruceNumber === snap.cruceNumber &&
         cruceCardinal === snap.cruceCardinal &&
-        detail === snap.detail
+        destinationType === snap.destinationType &&
+        apartment === snap.apartment &&
+        tower === snap.tower &&
+        houseNumber === snap.houseNumber &&
+        blockCode === snap.blockCode &&
+        complexName === snap.complexName &&
+        floor === snap.floor &&
+        buildingName === snap.buildingName &&
+        officeNumber === snap.officeNumber &&
+        companyName === snap.companyName &&
+        referencePoint === snap.referencePoint
       );
     }
-    return vereda === snap.vereda && finca === snap.finca && referencia === snap.referencia;
+    return (
+      vereda === snap.vereda &&
+      finca === snap.finca &&
+      referencia === snap.referencia &&
+      stripPhone(altPhoneDisplay) === snap.altPhone
+    );
   }, [
     appliedSavedId,
     savedAddresses,
@@ -446,10 +638,21 @@ export function DatosForm({
     viaCardinal,
     cruceNumber,
     cruceCardinal,
-    detail,
+    destinationType,
+    apartment,
+    tower,
+    houseNumber,
+    blockCode,
+    complexName,
+    floor,
+    buildingName,
+    officeNumber,
+    companyName,
+    referencePoint,
     vereda,
     finca,
     referencia,
+    altPhoneDisplay,
   ]);
 
   function handleNameBlur() {
@@ -544,58 +747,177 @@ export function DatosForm({
   // Mismo criterio de prioridad que FieldHint: el error cliente (si ya es
   // visible por touched/submit) tapa al del server. Se usan para pintar el
   // borde del campo (aria-invalid), el resumen sobre el botón y el scroll.
-  const fullNameErr =
-    (fullName.length > 0 && !isNameValid && touched.fullName ? texts.nameError : null) ??
-    err("fullName");
-  const emailErr =
-    (email.length > 0 && !isEmailValid && touched.email ? texts.emailError : null) ?? err("email");
-  const phoneErr =
-    (phoneDisplay.length > 0 && !isPhoneValid && touched.phone ? texts.phoneError : null) ??
-    err("phone");
-  const docErr =
-    (docType && docNumber.length > 0 && !isDocValid && touched.documentNumber
-      ? `Formato inválido. ${getDocumentHelp(docType as DocumentType)}`
-      : null) ?? err("documentNumber");
-  const deptErr = err("deptCode");
-  const cityErr = err("cityCode");
-  const zipErr = err("zip");
-  const neighborhoodErr = err("neighborhood");
-  const localityErr = err("localityId");
-  // Dirección urbana: mensaje ESPECÍFICO de qué falta (fix QA STG 2026-10 —
-  // "Calle 3 sur #" incompleta). Los validadores son los mismos del schema
-  // del server, así el mensaje es idéntico en cliente y servidor.
-  const viaClientErr = viaNumber.length > 0 && touched.viaNumber ? viaNumberError(viaNumber) : null;
-  const cruceClientErr =
-    cruceNumber.length > 0 && touched.cruceNumber ? cruceNumberError(cruceNumber) : null;
-  const viaErr = viaClientErr ?? err("viaNumber");
-  const cruceErr = cruceClientErr ?? err("cruceNumber");
-  const veredaErr = err("vereda");
-  const referenciaErr =
-    (referencia.length > 0 && referencia.length < 10 ? texts.refError : null) ?? err("referencia");
-  const recipientNameErr =
-    (recipientName.length > 0 && !validateName(recipientName) && touched.recipientName
-      ? "Solo letras, espacios y acentos (sin números)"
-      : null) ?? err("recipientName");
-  const recipientPhoneErr =
-    (recipientPhoneDisplay.length > 0 &&
-    !validatePhone(recipientPhoneDisplay) &&
-    touched.recipientPhone
-      ? "Debe ser un móvil colombiano de 10 dígitos (300...)"
-      : null) ?? err("recipientPhone");
-  const giftMessageErr = err("giftMessage");
-  // El server reporta la facturación incompleta bajo la key "wantsInvoice":
-  // se reparte a los campos de facturación que quedaron VACÍOS (los que el
-  // cliente debe llenar), no a todos, para no pintar rojo lo que ya está bien.
-  const billingMissing = wantsInvoice ? err("wantsInvoice") : null;
-  const billingNumberErr =
-    err("billingDocumentNumber") ?? (!billingDocNumber.trim() ? billingMissing : null);
-  const billingNameErr = err("billingName") ?? (!billingName.trim() ? billingMissing : null);
-  const consentErr = err("dataConsent");
+  // (2026-10-20) `req(empty)`: capa «obligatorio VACÍO» que reemplaza la
+  // validación nativa (form con noValidate — ver handleSubmitAttempt).
+  //
+  // TODA la derivación vive en computeErrors(sc, tch) — función de
+  // (submitCount, touched): el render la llama con los valores reales y
+  // handleSubmitAttempt con (submitCount+1, todo touched) para saber qué
+  // errores QUEDARÍAN visibles tras el intento y frenar el submit con
+  // preventDefault TAMBIÉN en el primero (leer el render vigente era stale:
+  // el primer submit viajaba al server con campos vacíos).
+  // Mapas para renderizar los campos del tipo de destino elegido (labels CMS,
+  // setters de estado). Los placeholders salen de las constantes compartidas.
+  const destValues: Record<DestinationField, string> = {
+    apartment,
+    tower,
+    houseNumber,
+    blockCode,
+    complexName,
+    floor,
+    buildingName,
+    officeNumber,
+    companyName,
+    referencePoint,
+  };
+  const destFieldLabels: Record<DestinationField, string> = {
+    apartment: texts.apartmentLabel,
+    tower: texts.towerLabel,
+    houseNumber: texts.houseNumberLabel,
+    blockCode: texts.blockLabel,
+    complexName: texts.complexNameLabel,
+    floor: texts.floorLabel,
+    buildingName: texts.buildingNameLabel,
+    officeNumber: texts.officeNumberLabel,
+    companyName: texts.companyNameLabel,
+    referencePoint: texts.refPointLabel,
+  };
+  const destSetters: Record<DestinationField, (v: string) => void> = {
+    apartment: setApartment,
+    tower: setTower,
+    houseNumber: setHouseNumber,
+    blockCode: setBlockCode,
+    complexName: setComplexName,
+    floor: setFloor,
+    buildingName: setBuildingName,
+    officeNumber: setOfficeNumber,
+    companyName: setCompanyName,
+    referencePoint: setReferencePoint,
+  };
+  const destFieldErrFor =
+    (sc: number, tch: Record<string, boolean>) =>
+    (field: DestinationField): string | null => {
+      if (!destinationType) return null;
+      const cfg = DESTINATION_CONFIG[destinationType];
+      // El campo no aplica al tipo elegido (no se renderiza) → sin error.
+      if (!cfg.required.includes(field) && !cfg.optional.includes(field)) return null;
+      const clientErr =
+        missingDestinationFields(destinationType, destValues).includes(field) &&
+        (tch[field] || sc > 0)
+          ? DESTINATION_REQUIRED_ERRORS[field]
+          : null;
+      return clientErr ?? err(field);
+    };
+  const destFieldErr = destFieldErrFor(submitCount, touched);
 
-  // Mapa key → error activo. Los campos ocultos por toggles (destinatario,
-  // facturación, rural/urbano, zona fuera de catálogo) quedan en null para
-  // que no salgan en el resumen ni reciban scroll.
-  const errorByField: Record<ErrorFieldKey, string | null> = {
+  const computeErrors = (
+    sc: number,
+    tch: Record<string, boolean>,
+  ): Record<ErrorFieldKey, string | null> => {
+    const req = (empty: boolean) => (sc > 0 && empty ? texts.requiredField : null);
+    const fullNameErr =
+      req(!fullName.trim()) ??
+      (fullName.length > 0 && !isNameValid && tch.fullName ? texts.nameError : null) ??
+      err("fullName");
+    const emailErr =
+      req(!email.trim()) ??
+      (email.length > 0 && !isEmailValid && tch.email ? texts.emailError : null) ??
+      err("email");
+    const phoneErr =
+      req(!phoneDisplay.replace(/\D/g, "")) ??
+      (phoneDisplay.length > 0 && !isPhoneValid && tch.phone ? texts.phoneError : null) ??
+      err("phone");
+    const docErr =
+      (docType && docNumber.length > 0 && !isDocValid && tch.documentNumber
+        ? `Formato inválido. ${getDocumentHelp(docType as DocumentType)}`
+        : null) ?? err("documentNumber");
+    const deptErr = req(!deptCode) ?? err("deptCode");
+    const cityErr = req(!cityCode) ?? err("cityCode");
+    const zipErr = err("zip");
+    const neighborhoodErr = err("neighborhood");
+    const localityErr = req(showZoneSelect && !localityId) ?? err("localityId");
+    // Dirección urbana: mensaje ESPECÍFICO de qué falta (fix QA STG 2026-10 —
+    // "Calle 3 sur #" incompleta). Los validadores son los mismos del schema
+    // del server, así el mensaje es idéntico en cliente y servidor.
+    const viaClientErr = viaNumber.length > 0 && tch.viaNumber ? viaNumberError(viaNumber) : null;
+    const cruceClientErr =
+      cruceNumber.length > 0 && tch.cruceNumber ? cruceNumberError(cruceNumber) : null;
+    const viaErr = req(!viaNumber.trim()) ?? viaClientErr ?? err("viaNumber");
+    const cruceErr = req(!cruceNumber.trim()) ?? cruceClientErr ?? err("cruceNumber");
+    // Tipo de destino (2026-10): obligatorio en el form; los campos requeridos
+    // por tipo espejan el superRefine del schema (mismos mensajes, misma fuente).
+    const destTypeErr =
+      (!destinationType && (tch.destinationType || sc > 0) ? texts.destTypeError : null) ??
+      err("destinationType");
+    const veredaErr = req(!vereda.trim()) ?? err("vereda");
+    const referenciaErr =
+      req(!referencia.trim()) ??
+      (referencia.length > 0 && referencia.length < RURAL_REF_MIN_LENGTH ? texts.refError : null) ??
+      err("referencia");
+    const altPhoneErr =
+      (altPhoneDisplay.length > 0 && !validatePhone(altPhoneDisplay) && (tch.altPhone || sc > 0)
+        ? texts.phoneError
+        : null) ?? err("altPhone");
+    const recipientNameErr =
+      req(!recipientName.trim()) ??
+      (recipientName.length > 0 && !validateName(recipientName) && tch.recipientName
+        ? "Solo letras, espacios y acentos (sin números)"
+        : null) ??
+      err("recipientName");
+    const recipientPhoneErr =
+      req(!recipientPhoneDisplay.replace(/\D/g, "")) ??
+      (recipientPhoneDisplay.length > 0 &&
+      !validatePhone(recipientPhoneDisplay) &&
+      tch.recipientPhone
+        ? "Debe ser un móvil colombiano de 10 dígitos (300...)"
+        : null) ??
+      err("recipientPhone");
+    const giftMessageErr = err("giftMessage");
+    // El server reporta la facturación incompleta bajo la key "wantsInvoice":
+    // se reparte a los campos de facturación que quedaron VACÍOS (los que el
+    // cliente debe llenar), no a todos, para no pintar rojo lo que ya está bien.
+    const billingMissing = wantsInvoice ? err("wantsInvoice") : null;
+    const billingNumberErr =
+      err("billingDocumentNumber") ?? (!billingDocNumber.trim() ? billingMissing : null);
+    const billingNameErr = err("billingName") ?? (!billingName.trim() ? billingMissing : null);
+    const consentErr = req(!dataConsent) ?? err("dataConsent");
+
+    // Mapa key → error activo. Los campos ocultos por toggles (destinatario,
+    // facturación, rural/urbano, zona fuera de catálogo) quedan en null para
+    // que no salgan en el resumen ni reciban scroll.
+    return {
+      fullName: fullNameErr,
+      email: emailErr,
+      phone: phoneErr,
+      documentNumber: docErr,
+      deptCode: deptErr,
+      cityCode: cityErr,
+      zip: zipErr,
+      neighborhood: neighborhoodErr,
+      localityId: showZoneSelect ? localityErr : null,
+      viaNumber: addressKind === "urban" ? viaErr : null,
+      cruceNumber: addressKind === "urban" ? cruceErr : null,
+      destinationType: addressKind === "urban" ? destTypeErr : null,
+      apartment: addressKind === "urban" ? destFieldErrFor(sc, tch)("apartment") : null,
+      tower: addressKind === "urban" ? destFieldErrFor(sc, tch)("tower") : null,
+      houseNumber: addressKind === "urban" ? destFieldErrFor(sc, tch)("houseNumber") : null,
+      officeNumber: addressKind === "urban" ? destFieldErrFor(sc, tch)("officeNumber") : null,
+      vereda: addressKind === "rural" ? veredaErr : null,
+      referencia: addressKind === "rural" ? referenciaErr : null,
+      altPhone: addressKind === "rural" ? altPhoneErr : null,
+      recipientName: hasRecipient ? recipientNameErr : null,
+      recipientPhone: hasRecipient ? recipientPhoneErr : null,
+      giftMessage: hasRecipient && isGift ? giftMessageErr : null,
+      billingDocumentNumber: wantsInvoice ? billingNumberErr : null,
+      billingName: wantsInvoice ? billingNameErr : null,
+      dataConsent: consentErr,
+    };
+  };
+  const errorByField = computeErrors(submitCount, touched);
+  // Alias por campo para el JSX (aria-invalid, aria-describedby, FieldHint):
+  // el gating por toggles de computeErrors es compatible (los campos ocultos
+  // no se renderizan, así que su alias nunca se lee en ese estado).
+  const {
     fullName: fullNameErr,
     email: emailErr,
     phone: phoneErr,
@@ -604,18 +926,24 @@ export function DatosForm({
     cityCode: cityErr,
     zip: zipErr,
     neighborhood: neighborhoodErr,
-    localityId: showZoneSelect ? localityErr : null,
-    viaNumber: addressKind === "urban" ? viaErr : null,
-    cruceNumber: addressKind === "urban" ? cruceErr : null,
-    vereda: addressKind === "rural" ? veredaErr : null,
-    referencia: addressKind === "rural" ? referenciaErr : null,
-    recipientName: hasRecipient ? recipientNameErr : null,
-    recipientPhone: hasRecipient ? recipientPhoneErr : null,
-    giftMessage: hasRecipient && isGift ? giftMessageErr : null,
-    billingDocumentNumber: wantsInvoice ? billingNumberErr : null,
-    billingName: wantsInvoice ? billingNameErr : null,
+    localityId: localityErr,
+    viaNumber: viaErr,
+    cruceNumber: cruceErr,
+    destinationType: destTypeErr,
+    vereda: veredaErr,
+    referencia: referenciaErr,
+    altPhone: altPhoneErr,
+    recipientName: recipientNameErr,
+    recipientPhone: recipientPhoneErr,
+    giftMessage: giftMessageErr,
+    billingDocumentNumber: billingNumberErr,
+    billingName: billingNameErr,
     dataConsent: consentErr,
-  };
+  } = errorByField;
+  // Error agregado de facturación incompleta (key "wantsInvoice" del server) —
+  // el checkbox lo usa para aria-invalid (la sección está tras el flag
+  // BILLING_DOCUMENT_ENABLED, pero el alias debe existir siempre).
+  const billingMissing = wantsInvoice ? err("wantsInvoice") : null;
 
   const errorLabels: Record<ErrorFieldKey, string> = {
     fullName: texts.nameLabel,
@@ -629,8 +957,14 @@ export function DatosForm({
     localityId: zoneCity?.zoneLabel ?? "Zona de entrega",
     viaNumber: texts.viaLabel,
     cruceNumber: texts.cruceLabel,
+    destinationType: texts.destTypeLabel,
+    apartment: texts.apartmentLabel,
+    tower: texts.towerLabel,
+    houseNumber: texts.houseNumberLabel,
+    officeNumber: texts.officeNumberLabel,
     vereda: texts.veredaLabel,
     referencia: texts.refLabel,
+    altPhone: texts.altPhoneLabel,
     recipientName: "Nombre de quien recibe",
     recipientPhone: "Teléfono de quien recibe",
     giftMessage: "Mensaje para la tarjeta",
@@ -649,7 +983,6 @@ export function DatosForm({
   // Scroll + foco al primer campo inválido tras un submit fallido. El efecto
   // corre cuando (a) se intenta enviar (errores cliente visibles al marcar
   // todo touched) y (b) cuando llega la respuesta del server (state nuevo).
-  const [submitCount, setSubmitCount] = useState(0);
   const invalidRef = useRef(invalidFields);
   useEffect(() => {
     invalidRef.current = invalidFields;
@@ -670,13 +1003,17 @@ export function DatosForm({
     // invalidRef siempre tiene la lista fresca sin re-dispararlo al tipear.
   }, [submitCount, state]);
 
-  // onSubmit del <form>: solo corre si la validación nativa (required) pasó.
-  // Marca todos los campos como touched para que los errores de FORMATO
-  // cliente se vean de una vez (regla "punish after submit") y dispara el
-  // scroll incluso antes de que responda el server.
-  function handleSubmitAttempt() {
-    setTouched((t) => ({
-      ...t,
+  // (2026-10-20, feedback owner — «Continuar al envío no avisa qué falta»): el
+  // form va con noValidate — la validación nativa del navegador bloqueaba el
+  // submit ANTES de este handler, así que un campo obligatorio VACÍO solo
+  // mostraba la burbuja nativa (casi invisible en móvil) y nuestro resumen de
+  // «qué falta» nunca aparecía. Ahora TODA la validación es nuestra: la capa
+  // «campo obligatorio vacío» (texts.requiredField) alimenta el resumen, el
+  // borde rojo y el scroll+foco al primer campo — mismo patrón del «Ver diseño»
+  // del estudio.
+  function handleSubmitAttempt(e: React.FormEvent) {
+    const nextTouched = {
+      ...touched,
       fullName: true,
       email: true,
       phone: true,
@@ -685,12 +1022,26 @@ export function DatosForm({
       recipientPhone: true,
       viaNumber: true,
       cruceNumber: true,
-    }));
+      destinationType: true,
+      apartment: true,
+      tower: true,
+      houseNumber: true,
+      officeNumber: true,
+      altPhone: true,
+    };
+    setTouched(nextTouched);
     setSubmitCount((c) => c + 1);
+    // Con noValidate el submit ya no lo frena el navegador: si hay errores
+    // cliente QUE QUEDARÍAN visibles tras este intento (todo touched +
+    // submitCount+1), el form no viaja al server — ni siquiera en el primer
+    // intento (ahorro del round-trip — el server igual re-valida como defensa
+    // cuando el form sí sale).
+    const nextErrors = computeErrors(submitCount + 1, nextTouched);
+    if (ERROR_FIELD_ORDER.some((k) => nextErrors[k])) e.preventDefault();
   }
 
   return (
-    <form action={formAction} onSubmit={handleSubmitAttempt} className="space-y-6">
+    <form action={formAction} onSubmit={handleSubmitAttempt} noValidate className="space-y-6">
       {/* CONTACTO */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">
@@ -722,9 +1073,7 @@ export function DatosForm({
             />
             <FieldHint
               id="fullName-error"
-              clientError={
-                fullName.length > 0 && !isNameValid && touched.fullName ? texts.nameError : null
-              }
+              clientError={fullNameErr}
               serverError={err("fullName")}
             />
           </div>
@@ -773,9 +1122,7 @@ export function DatosForm({
             )}
             <FieldHint
               id="email-error"
-              clientError={
-                email.length > 0 && !isEmailValid && touched.email ? texts.emailError : null
-              }
+              clientError={emailErr}
               serverError={err("email")}
               hint={texts.emailHint}
             />
@@ -825,9 +1172,7 @@ export function DatosForm({
             <input type="hidden" name="phone" value={stripPhone(phoneDisplay)} />
             <FieldHint
               id="phone-error"
-              clientError={
-                phoneDisplay.length > 0 && !isPhoneValid && touched.phone ? texts.phoneError : null
-              }
+              clientError={phoneErr}
               serverError={err("phone")}
               hint={texts.phoneHint}
             />
@@ -945,7 +1290,7 @@ export function DatosForm({
                 </option>
               ))}
             </select>
-            <FieldHint id="deptCode-error" clientError={null} serverError={err("deptCode")} />
+            <FieldHint id="deptCode-error" clientError={deptErr} serverError={err("deptCode")} />
             {/* Hidden snapshot human-readable */}
             <input type="hidden" name="department" value={selectedDept?.name ?? ""} />
           </div>
@@ -981,7 +1326,7 @@ export function DatosForm({
             </select>
             <FieldHint
               id="cityCode-error"
-              clientError={deptCode && cities.length > 0 && !cityCode ? null : null}
+              clientError={cityErr}
               serverError={err("cityCode")}
               hint={deptCode && cities.length === 0 ? texts.cityMissing : undefined}
             />
@@ -1080,7 +1425,7 @@ export function DatosForm({
             </select>
             <FieldHint
               id="localityId-error"
-              clientError={null}
+              clientError={localityErr}
               serverError={err("localityId")}
               hint={texts.zoneHint.replace("{zona}", zoneCity.zoneLabel.toLowerCase())}
             />
@@ -1198,7 +1543,7 @@ export function DatosForm({
                 </div>
                 <FieldHint
                   id="viaNumber-error"
-                  clientError={viaClientErr}
+                  clientError={viaErr}
                   serverError={err("viaNumber")}
                   hint={texts.viaHint.replace("{ejemplo}", viaExample(viaType))}
                 />
@@ -1246,29 +1591,148 @@ export function DatosForm({
                 </div>
                 <FieldHint
                   id="cruceNumber-error"
-                  clientError={cruceClientErr}
+                  clientError={cruceErr}
                   serverError={err("cruceNumber")}
                   hint={texts.cruceHint}
                 />
               </div>
             </div>
 
+            {/* Tipo de destino + campos estructurados por tipo (2026-10,
+                anti-devoluciones). Reemplaza al «Complemento» libre: el detail
+                legacy se migra visualmente a referencePoint al cargar. */}
             <div className="mt-4">
-              <Label
-                htmlFor="detail"
-                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-              >
-                {texts.detailLabel}
+              <Label className="text-brand-purple-dark mb-2 block text-xs font-semibold">
+                {texts.destTypeLabel} <span className="text-rose-600">*</span>
               </Label>
-              <Input
-                id="detail"
-                name="detail"
-                value={detail}
-                onChange={(e) => setDetail(e.target.value)}
-                placeholder={texts.detailPlaceholder}
-                maxLength={200}
-                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+              <input type="hidden" name="destinationType" value={destinationType} />
+              <div
+                role="radiogroup"
+                aria-label={texts.destTypeLabel}
+                id="destinationType"
+                tabIndex={-1}
+                className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+              >
+                {DESTINATION_GROUPS.map((g) => {
+                  const checked =
+                    g.id === "conjunto"
+                      ? destinationType === "conjunto_torres" ||
+                        destinationType === "conjunto_casas"
+                      : destinationType === g.id;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={checked}
+                      onClick={() => {
+                        markTouched("destinationType");
+                        if (g.id === "conjunto") {
+                          setDestinationType(
+                            conjuntoSubtype === "torres" ? "conjunto_torres" : "conjunto_casas",
+                          );
+                        } else {
+                          setDestinationType(g.id);
+                        }
+                      }}
+                      className={
+                        "rounded-lg border-2 p-2.5 text-center text-sm font-semibold transition-all " +
+                        (checked
+                          ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/20 text-brand-purple-dark ring-2"
+                          : "border-brand-purple/15 text-brand-purple-dark hover:border-brand-purple/30")
+                      }
+                    >
+                      {g.id === "casa"
+                        ? texts.destCasa
+                        : g.id === "edificio"
+                          ? texts.destEdificio
+                          : g.id === "conjunto"
+                            ? texts.destConjunto
+                            : texts.destOficina}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Sub-toggle del conjunto residencial: Torres | Casas */}
+              {(destinationType === "conjunto_torres" || destinationType === "conjunto_casas") && (
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:max-w-xs">
+                  {(["torres", "casas"] as const).map((sub) => (
+                    <button
+                      key={sub}
+                      type="button"
+                      role="radio"
+                      aria-checked={
+                        destinationType ===
+                        (sub === "torres" ? "conjunto_torres" : "conjunto_casas")
+                      }
+                      onClick={() => {
+                        setConjuntoSubtype(sub);
+                        setDestinationType(sub === "torres" ? "conjunto_torres" : "conjunto_casas");
+                      }}
+                      className={
+                        "rounded-md border px-2 py-1.5 text-xs font-semibold transition-all " +
+                        (destinationType ===
+                        (sub === "torres" ? "conjunto_torres" : "conjunto_casas")
+                          ? "border-brand-purple bg-brand-purple/10 text-brand-purple-dark"
+                          : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/30")
+                      }
+                    >
+                      {sub === "torres" ? texts.destConjuntoTorres : texts.destConjuntoCasas}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <FieldHint
+                id="destinationType-error"
+                clientError={destTypeErr}
+                serverError={err("destinationType")}
               />
+
+              {/* Campos del tipo elegido: requeridos primero (con asterisco),
+                  opcionales después — misma fuente DESTINATION_CONFIG que el
+                  superRefine del server. */}
+              {destinationType && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {[
+                    ...DESTINATION_CONFIG[destinationType].required,
+                    ...DESTINATION_CONFIG[destinationType].optional,
+                  ].map((field) => {
+                    const isRequired = DESTINATION_CONFIG[destinationType].required.includes(field);
+                    const fieldErr = destFieldErr(field);
+                    return (
+                      <div key={field}>
+                        <Label
+                          htmlFor={field}
+                          className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                        >
+                          {destFieldLabels[field]}
+                          {isRequired && <span className="text-rose-600"> *</span>}
+                        </Label>
+                        <Input
+                          id={field}
+                          name={field}
+                          value={destValues[field]}
+                          onChange={(e) => {
+                            destSetters[field](e.target.value);
+                            clearTouched(field);
+                          }}
+                          onBlur={() => markTouched(field)}
+                          placeholder={DESTINATION_FIELD_PLACEHOLDERS[field]}
+                          maxLength={DESTINATION_FIELD_MAX[field]}
+                          aria-invalid={Boolean(fieldErr)}
+                          aria-describedby={fieldErr ? `${field}-error` : undefined}
+                          className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                        />
+                        <FieldHint
+                          id={`${field}-error`}
+                          clientError={fieldErr}
+                          serverError={err(field)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -1294,7 +1758,7 @@ export function DatosForm({
                   aria-describedby={veredaErr ? "vereda-error" : undefined}
                   className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
                 />
-                <FieldHint id="vereda-error" clientError={null} serverError={err("vereda")} />
+                <FieldHint id="vereda-error" clientError={veredaErr} serverError={err("vereda")} />
               </div>
               <div>
                 <Label
@@ -1340,11 +1804,50 @@ export function DatosForm({
               />
               <FieldHint
                 id="referencia-error"
-                clientError={
-                  referencia.length > 0 && referencia.length < 10 ? texts.refError : null
-                }
+                clientError={referenciaErr}
                 serverError={err("referencia")}
                 hint={texts.refHint}
+              />
+            </div>
+            {/* Teléfono alternativo en la zona (2026-10): la causa #1 de
+                devolución rural es que el mensajero no localiza a nadie; este
+                número se compone al final de la línea rural como «Tel. zona: X». */}
+            <div className="mt-4">
+              <Label
+                htmlFor="altPhone-display"
+                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+              >
+                {texts.altPhoneLabel}
+              </Label>
+              <Input
+                id="altPhone-display"
+                type="tel"
+                value={altPhoneDisplay}
+                onChange={(e) => {
+                  setAltPhoneDisplay(formatPhone(e.target.value));
+                  clearTouched("altPhone");
+                }}
+                onBlur={() => markTouched("altPhone")}
+                placeholder="300 887 3826"
+                maxLength={12}
+                aria-invalid={Boolean(altPhoneErr)}
+                aria-describedby={altPhoneErr ? "altPhone-error" : undefined}
+                className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:max-w-xs"
+                inputMode="numeric"
+              />
+              {/* Valor sin formato (lo que se envía al server) */}
+              <input type="hidden" name="altPhone" value={stripPhone(altPhoneDisplay)} />
+              <FieldHint
+                id="altPhone-error"
+                clientError={
+                  altPhoneDisplay.length > 0 &&
+                  !validatePhone(altPhoneDisplay) &&
+                  (touched.altPhone || submitCount > 0)
+                    ? texts.phoneError
+                    : null
+                }
+                serverError={err("altPhone")}
+                hint={texts.altPhoneHint}
               />
             </div>
           </>
@@ -1484,13 +1987,7 @@ export function DatosForm({
                 />
                 <FieldHint
                   id="recipientName-error"
-                  clientError={
-                    recipientName.length > 0 &&
-                    !validateName(recipientName) &&
-                    touched.recipientName
-                      ? "Solo letras, espacios y acentos (sin números)"
-                      : null
-                  }
+                  clientError={recipientNameErr}
                   serverError={err("recipientName")}
                 />
               </div>
@@ -1527,13 +2024,7 @@ export function DatosForm({
                 />
                 <FieldHint
                   id="recipientPhone-error"
-                  clientError={
-                    recipientPhoneDisplay.length > 0 &&
-                    !validatePhone(recipientPhoneDisplay) &&
-                    touched.recipientPhone
-                      ? "Debe ser un móvil colombiano de 10 dígitos (300...)"
-                      : null
-                  }
+                  clientError={recipientPhoneErr}
                   serverError={err("recipientPhone")}
                   hint="La transportadora lo llama a este número al entregar."
                 />
@@ -1718,9 +2209,9 @@ export function DatosForm({
             </ReactMarkdown>
           </span>
         </label>
-        {err("dataConsent") && (
+        {consentErr && (
           <p id="dataConsent-error" className="mt-2 text-xs text-rose-600">
-            {err("dataConsent")}
+            {consentErr}
           </p>
         )}
       </section>
