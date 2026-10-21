@@ -45,9 +45,7 @@ const {
     },
     personalizationService: { getOwnedDesign: vi.fn() },
     authLib: {
-      getCurrentCustomer: vi.fn(
-        async (): Promise<{ customer: { id: string } } | null> => null,
-      ),
+      getCurrentCustomer: vi.fn(async (): Promise<{ customer: { id: string } } | null> => null),
     },
     cartSessionLib: {
       getOrCreateCartSession: vi.fn(async () => "sess_old"),

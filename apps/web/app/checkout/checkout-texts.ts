@@ -426,7 +426,8 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     listTitle: "Opciones de envío",
     free: "Gratis",
     lucamsToday: "Te llega hoy · pedido antes de las {{cutoff}}:00",
-    lucamsDays: "Te llega en {{daysLabel}} · fabricación incluida, entrega el mismo día del despacho",
+    lucamsDays:
+      "Te llega en {{daysLabel}} · fabricación incluida, entrega el mismo día del despacho",
     lucamsBadge: "LUCAMS",
     lucamsBadgeToday: "LUCAMS · mismo día",
     note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**.",
