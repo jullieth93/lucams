@@ -120,3 +120,57 @@ describe("StructuredAddressFields — hints con ejemplo por tipo de vía", () =>
     expect(container.querySelector('[placeholder="110111"]')).toBeNull();
   });
 });
+
+/*
+ * Tipo de destino (2026-10, anti-devoluciones) — espejo del checkout: mismo
+ * selector (4 opciones + sub-toggle de conjunto), mismos campos condicionales
+ * y misma obligatoriedad por tipo (fuente única: destination-types.ts).
+ */
+describe("StructuredAddressFields — tipo de destino (anti-devoluciones 2026-10)", () => {
+  it("propaga la elección del tipo (oficina) vía onChange", () => {
+    const { onChange, getByRole } = renderFields();
+    fireEvent.click(getByRole("radio", { name: /Oficina \/ Empresa/ }));
+    expect(onChange).toHaveBeenCalledWith({ destinationType: "oficina" });
+  });
+
+  it("«Conjunto residencial» resuelve a torres por defecto y el sub-toggle cambia a casas", () => {
+    const { onChange, getByRole } = renderFields({
+      ...EMPTY_STRUCTURED_ADDRESS,
+      destinationType: "conjunto_torres",
+    });
+    fireEvent.click(getByRole("radio", { name: /^Casas$/ }));
+    expect(onChange).toHaveBeenCalledWith({ destinationType: "conjunto_casas" });
+  });
+
+  it("conjunto_torres renderiza torre + apartamento y el hidden lleva el tipo", () => {
+    const { container } = renderFields({
+      ...EMPTY_STRUCTURED_ADDRESS,
+      destinationType: "conjunto_torres",
+    });
+    expect(container.querySelector<HTMLInputElement>('input[name="destinationType"]')!.value).toBe(
+      "conjunto_torres",
+    );
+    expect(container.querySelector("#tower")).toBeInTheDocument();
+    expect(container.querySelector("#apartment")).toBeInTheDocument();
+    expect(container.querySelector("#houseNumber")).toBeNull();
+  });
+
+  it("casa solo ofrece el punto de referencia (sin campos requeridos)", () => {
+    const { container } = renderFields({ ...EMPTY_STRUCTURED_ADDRESS, destinationType: "casa" });
+    expect(container.querySelector("#referencePoint")).toBeInTheDocument();
+    expect(container.querySelector("#apartment")).toBeNull();
+    expect(container.querySelector("#officeNumber")).toBeNull();
+  });
+
+  it("sin tipo elegido no renderiza campos de destino (ni el viejo Complemento)", () => {
+    const { container } = renderFields();
+    expect(container.querySelector("#apartment")).toBeNull();
+    expect(container.querySelector("#detail")).toBeNull();
+  });
+
+  it("rural: finca re-etiquetada y teléfono alternativo en la zona", () => {
+    const { container, getByText } = renderFields({ ...EMPTY_STRUCTURED_ADDRESS, kind: "rural" });
+    expect(getByText(/Finca \/ negocio \/ lugar/)).toBeInTheDocument();
+    expect(container.querySelector("#altPhone")).toBeInTheDocument();
+  });
+});

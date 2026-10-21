@@ -14,6 +14,12 @@
 import { z } from "zod";
 import { BILLING_DOCUMENT_ENABLED } from "./billing-document";
 import {
+  DESTINATION_CONFIG,
+  DESTINATION_REQUIRED_ERRORS,
+  DESTINATION_TYPES,
+  type DestinationField,
+} from "./destination-types";
+import {
   NAME_REGEX,
   PHONE_REGEX,
   cruceNumberError,
@@ -55,6 +61,15 @@ export type ContactInput = z.infer<typeof ContactSchema>;
  * Discriminated union por `kind`:
  *   - "urban": Vía + Número + Cruce (#N-N) + Detalle (opcional)
  *   - "rural": Vereda + Finca/Lugar (opcional) + Referencia (descriptiva)
+ *
+ * 2026-10 (anti-devoluciones): la urbana gana `destinationType` (casa /
+ * edificio / conjunto_torres / conjunto_casas / oficina) con campos
+ * estructurados por tipo (apto, torre, casa, oficina…) y obligatoriedad por
+ * tipo vía superRefine. `destinationType` es OPCIONAL en el schema para que
+ * las direcciones/órdenes viejas sigan parseando; el FORM lo exige (y el
+ * parser FormData lo re-valida en server). La rural gana `altPhone`
+ * (teléfono alternativo en la zona — la causa #1 de devolución rural es que
+ * el mensajero no localiza a nadie).
  *
  * `composeAddressLine` junta los campos en un string que Aveonline acepta.
  */
@@ -130,16 +145,52 @@ const UrbanAddressSchema = BaseAddressFields.extend({
       if (msg) ctx.addIssue({ code: "custom", message: msg });
     }),
   cruceCardinal: z.enum(CARDINAL_POINTS).optional(),
+  // Tipo de destino + campos estructurados (2026-10, anti-devoluciones).
+  // Opcionales en el schema (backward-compat con direcciones guardadas y
+  // órdenes viejas); la obligatoriedad por tipo va en el superRefine de abajo
+  // y la presencia del tipo la exige el parser FormData (capturas nuevas).
+  destinationType: z.enum(DESTINATION_TYPES, { message: "Tipo de destino inválido" }).optional(),
+  apartment: z.string().max(20).trim().optional(),
+  tower: z.string().max(20).trim().optional(),
+  houseNumber: z.string().max(20).trim().optional(),
+  blockCode: z.string().max(20).trim().optional(),
+  complexName: z.string().max(100).trim().optional(),
+  floor: z.string().max(10).trim().optional(),
+  buildingName: z.string().max(100).trim().optional(),
+  officeNumber: z.string().max(20).trim().optional(),
+  companyName: z.string().max(120).trim().optional(),
+  referencePoint: z.string().max(200).trim().optional(),
+  // Texto libre LEGACY: direcciones viejas siguen parseando; si hay campos
+  // estructurados, composeAddressLine los prefiere sobre `detail`.
   detail: z.string().max(200).trim().optional(),
+}).superRefine((val, ctx) => {
+  // Obligatoriedad por tipo de destino (DESTINATION_CONFIG.required). Sin
+  // destinationType (legacy) no se exige nada — el form lo pide siempre.
+  if (!val.destinationType) return;
+  for (const field of DESTINATION_CONFIG[val.destinationType].required) {
+    if (!val[field]?.trim()) {
+      ctx.addIssue({ code: "custom", message: DESTINATION_REQUIRED_ERRORS[field], path: [field] });
+    }
+  }
 });
 
 const RuralAddressSchema = BaseAddressFields.extend({
   kind: z.literal("rural"),
   vereda: z.string().min(2, "Vereda / corregimiento / sector requerido").max(120).trim(),
   finca: z.string().max(120).trim().optional(),
+  // Teléfono alternativo EN LA ZONA (2026-10): si el mensajero no localiza al
+  // destinatario, llama a este número. Móvil colombiano (misma PHONE_REGEX del
+  // teléfono de contacto); se compone al final de la línea como "Tel. zona: X".
+  altPhone: z
+    .string()
+    .regex(PHONE_REGEX, "Debe ser un móvil colombiano de 10 dígitos (300...)")
+    .optional(),
   referencia: z
     .string()
-    .min(10, "Indicaciones para llegar: mínimo 10 caracteres (ej. 'a 200m del puente, casa azul')")
+    .min(
+      20,
+      "Indicaciones para llegar: mínimo 20 caracteres (ej. 'a 200 m del puente, casa azul portón negro')",
+    )
     .max(300)
     .trim(),
 });
@@ -155,11 +206,48 @@ export type UrbanAddressInput = z.infer<typeof UrbanAddressSchema>;
 export type RuralAddressInput = z.infer<typeof RuralAddressSchema>;
 
 /**
+ * Sufijo entre paréntesis de la dirección urbana (2026-10, anti-devoluciones):
+ * los campos estructurados del tipo de destino en el orden pensado para el
+ * mensajero — identificador de unidad primero (apto/casa/oficina), contenedores
+ * después (torre, manzana, edificio, conjunto, empresa) y la referencia al final:
+ *
+ *   "Apto 401, Torre B, Conjunto Lucams · Ref: portería norte"
+ *
+ * Fallback: si no hay nada estructurado se conserva el `detail` legacy.
+ * Devuelve null cuando no hay sufijo (ni estructurado ni detail).
+ * Lo reusa la vista previa del checkout para que el cliente vea EXACTAMENTE
+ * lo que va a la guía (por eso acepta un Partial: el form pasa solo los
+ * campos del destino que tiene en estado).
+ */
+export function composeDestinationSuffix(
+  input: Partial<Pick<UrbanAddressInput, DestinationField | "detail">>,
+): string | null {
+  const parts: string[] = [];
+  if (input.apartment?.trim()) parts.push(`Apto ${input.apartment.trim()}`);
+  if (input.officeNumber?.trim()) parts.push(`Oficina ${input.officeNumber.trim()}`);
+  if (input.houseNumber?.trim()) parts.push(`Casa ${input.houseNumber.trim()}`);
+  if (input.floor?.trim()) parts.push(`Piso ${input.floor.trim()}`);
+  if (input.tower?.trim()) parts.push(`Torre ${input.tower.trim()}`);
+  if (input.blockCode?.trim()) parts.push(`Mz ${input.blockCode.trim()}`);
+  if (input.buildingName?.trim()) parts.push(input.buildingName.trim());
+  if (input.complexName?.trim()) parts.push(input.complexName.trim());
+  if (input.companyName?.trim()) parts.push(input.companyName.trim());
+  if (parts.length === 0 && !input.referencePoint?.trim()) {
+    const legacy = input.detail?.trim();
+    return legacy || null;
+  }
+  let suffix = parts.join(", ");
+  const ref = input.referencePoint?.trim();
+  if (ref) suffix = suffix ? `${suffix} · Ref: ${ref}` : `Ref: ${ref}`;
+  return suffix || null;
+}
+
+/**
  * Junta la dirección en un string que el courier (Aveonline) recibe.
  *
- *   Urbana: "Calle 100 # 15-20 (Apto 401, Conjunto Lucams)"
- *   Rural:  "Vereda El Roble — Finca Las Flores · Ref: a 200m del puente,
- *           casa color azul"
+ *   Urbana: "Calle 100 # 15-20 (Apto 401, Torre B, Conjunto Lucams · Ref: portería norte)"
+ *   Rural:  "Vereda El Roble · Finca Las Flores · Ref: a 200 m del puente,
+ *           casa azul portón negro · Tel. zona: 3001234567"
  */
 export function composeAddressLine(input: AddressInput): string {
   if (input.kind === "urban") {
@@ -170,12 +258,14 @@ export function composeAddressLine(input: AddressInput): string {
     const cruceParts = ["#", input.cruceNumber.toUpperCase()];
     if (input.cruceCardinal) cruceParts.push(input.cruceCardinal);
     const base = `${viaParts.join(" ")} ${cruceParts.join(" ")}`;
-    return input.detail?.trim() ? `${base} (${input.detail.trim()})` : base;
+    const suffix = composeDestinationSuffix(input);
+    return suffix ? `${base} (${suffix})` : base;
   }
   // Rural
   const parts: string[] = [`Vereda ${input.vereda}`];
   if (input.finca?.trim()) parts.push(`Finca ${input.finca.trim()}`);
   parts.push(`Ref: ${input.referencia}`);
+  if (input.altPhone?.trim()) parts.push(`Tel. zona: ${input.altPhone.trim()}`);
   return parts.join(" · ");
 }
 

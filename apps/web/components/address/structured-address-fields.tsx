@@ -21,6 +21,21 @@ import {
 } from "@/lib/dane-divipola";
 import { getZoneCityByCode } from "@/lib/lucams-zones";
 import { VIA_TYPES } from "@/features/checkout/schemas";
+import {
+  ALT_PHONE_HINT,
+  ALT_PHONE_LABEL,
+  DESTINATION_CONFIG,
+  DESTINATION_FIELD_LABELS,
+  DESTINATION_FIELD_MAX,
+  DESTINATION_FIELD_PLACEHOLDERS,
+  DESTINATION_GROUPS,
+  DESTINATION_SUBTOGGLE,
+  DESTINATION_TYPE_LABEL,
+  FINCA_LABEL,
+  RURAL_REF_PLACEHOLDER,
+  type DestinationField,
+  type DestinationType,
+} from "@/features/checkout/destination-types";
 import { CRUCE_HINT, viaHintText } from "@/lib/colombia-validators";
 
 export type StructuredAddressValue = {
@@ -38,10 +53,25 @@ export type StructuredAddressValue = {
   viaCardinal: string;
   cruceNumber: string;
   cruceCardinal: string;
-  detail: string;
+  // Tipo de destino + campos estructurados por tipo (2026-10, anti-devoluciones).
+  // "" = sin elegir (direcciones viejas): el server lo exige al guardar.
+  destinationType: DestinationType | "";
+  apartment: string;
+  tower: string;
+  houseNumber: string;
+  blockCode: string;
+  complexName: string;
+  floor: string;
+  buildingName: string;
+  officeNumber: string;
+  companyName: string;
+  referencePoint: string;
   vereda: string;
   finca: string;
   referencia: string;
+  // Teléfono alternativo en la zona (rural, opcional) — va a la guía como
+  // «Tel. zona: …» (anti-devoluciones: el mensajero no localiza a nadie).
+  altPhone: string;
 };
 
 export const EMPTY_STRUCTURED_ADDRESS: StructuredAddressValue = {
@@ -57,10 +87,21 @@ export const EMPTY_STRUCTURED_ADDRESS: StructuredAddressValue = {
   viaCardinal: "",
   cruceNumber: "",
   cruceCardinal: "",
-  detail: "",
+  destinationType: "",
+  apartment: "",
+  tower: "",
+  houseNumber: "",
+  blockCode: "",
+  complexName: "",
+  floor: "",
+  buildingName: "",
+  officeNumber: "",
+  companyName: "",
+  referencePoint: "",
   vereda: "",
   finca: "",
   referencia: "",
+  altPhone: "",
 };
 
 const CARDINALS = ["", "Norte", "Sur", "Este", "Oeste"] as const;
@@ -326,18 +367,110 @@ export function StructuredAddressFields({
             <p className="text-brand-muted text-xs">{CRUCE_HINT}</p>
           </div>
 
+          {/* Tipo de destino + campos estructurados por tipo (2026-10,
+              anti-devoluciones) — mismo selector y misma obligatoriedad que el
+              checkout (fuente única: features/checkout/destination-types.ts).
+              Reemplaza al «Complemento» libre. */}
           <div className="space-y-1.5">
-            <Label htmlFor="detail">Complemento (opcional)</Label>
-            <Input
-              id="detail"
-              name="detail"
-              value={value.detail}
-              disabled={disabled}
-              onChange={(e) => onChange({ detail: e.target.value })}
-              placeholder="Apto 401, Torre 3, casa color rosa…"
-              maxLength={200}
-            />
+            <Label className="mb-2 block">{DESTINATION_TYPE_LABEL} *</Label>
+            <input type="hidden" name="destinationType" value={value.destinationType} />
+            <div
+              role="radiogroup"
+              aria-label={DESTINATION_TYPE_LABEL}
+              className="grid grid-cols-2 gap-2"
+            >
+              {DESTINATION_GROUPS.map((g) => {
+                const checked =
+                  g.id === "conjunto"
+                    ? value.destinationType === "conjunto_torres" ||
+                      value.destinationType === "conjunto_casas"
+                    : value.destinationType === g.id;
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={checked}
+                    disabled={disabled}
+                    onClick={() =>
+                      onChange({
+                        destinationType:
+                          g.id === "conjunto" ? "conjunto_torres" : (g.id as DestinationType),
+                      })
+                    }
+                    className={`rounded-lg border-2 p-2.5 text-center text-sm font-semibold transition-all ${
+                      checked
+                        ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/20 text-brand-purple-dark ring-2"
+                        : "border-brand-purple/15 text-brand-purple-dark hover:border-brand-purple/30"
+                    }`}
+                  >
+                    {g.label}
+                  </button>
+                );
+              })}
+            </div>
+            {(value.destinationType === "conjunto_torres" ||
+              value.destinationType === "conjunto_casas") && (
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:max-w-xs">
+                {(["torres", "casas"] as const).map((sub) => {
+                  const t = sub === "torres" ? "conjunto_torres" : "conjunto_casas";
+                  return (
+                    <button
+                      key={sub}
+                      type="button"
+                      role="radio"
+                      aria-checked={value.destinationType === t}
+                      disabled={disabled}
+                      onClick={() => onChange({ destinationType: t })}
+                      className={`rounded-md border px-2 py-1.5 text-xs font-semibold transition-all ${
+                        value.destinationType === t
+                          ? "border-brand-purple bg-brand-purple/10 text-brand-purple-dark"
+                          : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/30"
+                      }`}
+                    >
+                      {DESTINATION_SUBTOGGLE[sub]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {err("destinationType") && (
+              <p className="text-destructive text-sm">{err("destinationType")}</p>
+            )}
           </div>
+
+          {value.destinationType && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                ...DESTINATION_CONFIG[value.destinationType].required,
+                ...DESTINATION_CONFIG[value.destinationType].optional,
+              ].map((field: DestinationField) => {
+                const isRequired =
+                  DESTINATION_CONFIG[value.destinationType as DestinationType].required.includes(
+                    field,
+                  );
+                return (
+                  <div key={field} className="space-y-1.5">
+                    <Label htmlFor={field}>
+                      {DESTINATION_FIELD_LABELS[field]}
+                      {isRequired ? " *" : ""}
+                    </Label>
+                    <Input
+                      id={field}
+                      name={field}
+                      value={value[field]}
+                      disabled={disabled}
+                      onChange={(e) => onChange({ [field]: e.target.value })}
+                      placeholder={DESTINATION_FIELD_PLACEHOLDERS[field]}
+                      maxLength={DESTINATION_FIELD_MAX[field]}
+                      aria-invalid={Boolean(err(field))}
+                    />
+                    {err(field) && <p className="text-destructive text-sm">{err(field)}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -357,7 +490,7 @@ export function StructuredAddressFields({
               {err("vereda") && <p className="text-destructive text-sm">{err("vereda")}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="finca">Finca / Lugar (opcional)</Label>
+              <Label htmlFor="finca">{FINCA_LABEL}</Label>
               <Input
                 id="finca"
                 name="finca"
@@ -380,10 +513,30 @@ export function StructuredAddressFields({
               onChange={(e) => onChange({ referencia: e.target.value })}
               rows={3}
               maxLength={300}
-              placeholder="Ej. A 200m del puente, casa de dos pisos color azul, portón de madera."
+              placeholder={RURAL_REF_PLACEHOLDER}
               className="border-brand-purple/25 focus:border-brand-purple w-full rounded-md border bg-white px-3 py-2 text-sm focus:outline-none"
             />
             {err("referencia") && <p className="text-destructive text-sm">{err("referencia")}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="altPhone">{ALT_PHONE_LABEL}</Label>
+            <Input
+              id="altPhone"
+              name="altPhone"
+              type="tel"
+              value={value.altPhone}
+              disabled={disabled}
+              onChange={(e) => onChange({ altPhone: e.target.value })}
+              placeholder="300 887 3826"
+              maxLength={12}
+              inputMode="numeric"
+              aria-invalid={Boolean(err("altPhone"))}
+            />
+            {err("altPhone") ? (
+              <p className="text-destructive text-sm">{err("altPhone")}</p>
+            ) : (
+              <p className="text-brand-muted text-xs">{ALT_PHONE_HINT}</p>
+            )}
           </div>
         </>
       )}

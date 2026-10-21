@@ -8,6 +8,8 @@
 import { z } from "zod";
 import { getCityByCode, getDepartmentByCode } from "@/lib/dane-divipola";
 import { isValidZone } from "@/lib/lucams-zones";
+import { stripPhone } from "@/lib/colombia-validators";
+import { DESTINATION_TYPE_ERROR } from "./destination-types";
 import { AddressSchema, type AddressInput } from "./schemas";
 
 export type ParsedStructuredAddress =
@@ -30,6 +32,17 @@ export function parseStructuredAddress(formData: FormData): ParsedStructuredAddr
   }
 
   const addressKind = String(formData.get("addressKind") ?? "") === "rural" ? "rural" : "urban";
+  // Tipo de destino (2026-10, anti-devoluciones): OPCIONAL en el schema para
+  // que las direcciones viejas sigan parseando, pero OBLIGATORIO en toda
+  // captura urbana nueva (el form lo pide; acá se re-valida anti-tamper).
+  const destinationTypeRaw = String(formData.get("destinationType") ?? "").trim();
+  if (addressKind === "urban" && !destinationTypeRaw) {
+    return {
+      ok: false,
+      error: "Revisa la dirección de envío.",
+      fieldErrors: { destinationType: [DESTINATION_TYPE_ERROR] },
+    };
+  }
   // Zona de entrega: solo se conserva si la ciudad está en el catálogo de zonas
   // y el id es válido para ESA ciudad (anti-tamper; fuera del catálogo se
   // descarta en silencio). Es dato de dirección — su obligatoriedad la aplica
@@ -61,6 +74,19 @@ export function parseStructuredAddress(formData: FormData): ParsedStructuredAddr
             .trim()
             .toUpperCase(),
           cruceCardinal: (formData.get("cruceCardinal") as string) || "",
+          // Campos estructurados por tipo de destino (2026-10). La
+          // obligatoriedad por tipo la aplica el superRefine del schema.
+          destinationType: destinationTypeRaw || undefined,
+          apartment: (formData.get("apartment") as string)?.trim() || undefined,
+          tower: (formData.get("tower") as string)?.trim() || undefined,
+          houseNumber: (formData.get("houseNumber") as string)?.trim() || undefined,
+          blockCode: (formData.get("blockCode") as string)?.trim() || undefined,
+          complexName: (formData.get("complexName") as string)?.trim() || undefined,
+          floor: (formData.get("floor") as string)?.trim() || undefined,
+          buildingName: (formData.get("buildingName") as string)?.trim() || undefined,
+          officeNumber: (formData.get("officeNumber") as string)?.trim() || undefined,
+          companyName: (formData.get("companyName") as string)?.trim() || undefined,
+          referencePoint: (formData.get("referencePoint") as string)?.trim() || undefined,
           detail: (formData.get("detail") as string)?.trim() || undefined,
         }
       : {
@@ -68,6 +94,9 @@ export function parseStructuredAddress(formData: FormData): ParsedStructuredAddr
           kind: "rural" as const,
           vereda: String(formData.get("vereda") ?? "").trim(),
           finca: (formData.get("finca") as string)?.trim() || undefined,
+          // stripPhone normaliza (quita espacios y un eventual indicativo 57);
+          // la PHONE_REGEX del schema es la validación final.
+          altPhone: stripPhone(String(formData.get("altPhone") ?? "")) || undefined,
           referencia: String(formData.get("referencia") ?? "").trim(),
         };
 

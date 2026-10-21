@@ -129,12 +129,189 @@ describe("AddressSchema — flujo rural intacto", () => {
     referencia: "a 200m del puente, casa azul",
   };
 
-  it("vereda + referencia ≥10 chars sigue pasando", () => {
+  it("vereda + referencia ≥20 chars sigue pasando", () => {
     expect(AddressSchema.safeParse(rural).success).toBe(true);
   });
 
   it("referencia corta sigue rechazada", () => {
     expect(AddressSchema.safeParse({ ...rural, referencia: "corta" }).success).toBe(false);
+  });
+
+  it("referencia de 10-19 caracteres ahora se rechaza (mín 20, 2026-10)", () => {
+    expect(AddressSchema.safeParse({ ...rural, referencia: "casa azul portón" }).success).toBe(
+      false,
+    );
+  });
+});
+
+/*
+ * Tipo de destino (2026-10, anti-devoluciones): destinationType es OPCIONAL en
+ * el schema (backward-compat con direcciones/órdenes viejas) pero cuando viene,
+ * el superRefine exige los campos del tipo (DESTINATION_CONFIG.required).
+ */
+describe("AddressSchema urbano — obligatoriedad por tipo de destino", () => {
+  it("sin destinationType (legacy) sigue parseando", () => {
+    expect(AddressSchema.safeParse(urban()).success).toBe(true);
+  });
+
+  it("destinationType inválido (anti-tamper) se rechaza", () => {
+    expect(AddressSchema.safeParse(urban({ destinationType: "mordor" })).success).toBe(false);
+  });
+
+  it("casa: sin campos extra pasa", () => {
+    expect(AddressSchema.safeParse(urban({ destinationType: "casa" })).success).toBe(true);
+  });
+
+  it("edificio: sin apartamento → error específico; con apartamento pasa", () => {
+    expect(firstError(urban({ destinationType: "edificio" }), "apartment")).toContain(
+      "Falta el número de apartamento",
+    );
+    expect(
+      AddressSchema.safeParse(urban({ destinationType: "edificio", apartment: "401" })).success,
+    ).toBe(true);
+  });
+
+  it("conjunto_torres: exige torre Y apartamento", () => {
+    const faltaTodo = AddressSchema.safeParse(urban({ destinationType: "conjunto_torres" }));
+    expect(faltaTodo.success).toBe(false);
+    expect(firstError(urban({ destinationType: "conjunto_torres" }), "tower")).toContain(
+      "Falta la torre",
+    );
+    expect(
+      firstError(urban({ destinationType: "conjunto_torres", tower: "2" }), "apartment"),
+    ).toContain("Falta el número de apartamento");
+    expect(
+      AddressSchema.safeParse(
+        urban({ destinationType: "conjunto_torres", tower: "2", apartment: "401" }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it("conjunto_casas: exige número de casa; manzana opcional", () => {
+    expect(firstError(urban({ destinationType: "conjunto_casas" }), "houseNumber")).toContain(
+      "Falta el número de casa",
+    );
+    expect(
+      AddressSchema.safeParse(urban({ destinationType: "conjunto_casas", houseNumber: "15" }))
+        .success,
+    ).toBe(true);
+  });
+
+  it("oficina: exige número de oficina; empresa opcional", () => {
+    expect(firstError(urban({ destinationType: "oficina" }), "officeNumber")).toContain(
+      "Falta el número de oficina",
+    );
+    expect(
+      AddressSchema.safeParse(
+        urban({ destinationType: "oficina", officeNumber: "302", companyName: "Lucams" }),
+      ).success,
+    ).toBe(true);
+  });
+});
+
+describe("composeAddressLine — estructurado por tipo de destino (2026-10)", () => {
+  it("conjunto_torres: unidad primero, contenedores después, referencia al final", () => {
+    const res = AddressSchema.safeParse(
+      urban({
+        viaNumber: "100",
+        cruceNumber: "15-20",
+        destinationType: "conjunto_torres",
+        apartment: "401",
+        tower: "B",
+        complexName: "Conjunto Lucams",
+        referencePoint: "portería norte",
+      }),
+    );
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(composeAddressLine(res.data)).toBe(
+        "Calle 100 # 15-20 (Apto 401, Torre B, Conjunto Lucams · Ref: portería norte)",
+      );
+    }
+  });
+
+  it("oficina: oficina + piso + empresa", () => {
+    const res = AddressSchema.safeParse(
+      urban({
+        destinationType: "oficina",
+        officeNumber: "302",
+        floor: "3",
+        companyName: "Lucams",
+      }),
+    );
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(composeAddressLine(res.data)).toBe("Calle 3 # 15-20 (Oficina 302, Piso 3, Lucams)");
+    }
+  });
+
+  it("casa con solo punto de referencia", () => {
+    const res = AddressSchema.safeParse(
+      urban({ destinationType: "casa", referencePoint: "frente al parque" }),
+    );
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(composeAddressLine(res.data)).toBe("Calle 3 # 15-20 (Ref: frente al parque)");
+    }
+  });
+
+  it("los campos estructurados se prefieren sobre el detail legacy", () => {
+    const res = AddressSchema.safeParse(
+      urban({ destinationType: "edificio", apartment: "401", detail: "texto viejo" }),
+    );
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(composeAddressLine(res.data)).toBe("Calle 3 # 15-20 (Apto 401)");
+    }
+  });
+
+  it("sin campos estructurados, el detail legacy sigue intacto", () => {
+    const res = AddressSchema.safeParse(urban({ detail: "apto 402" }));
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(composeAddressLine(res.data)).toBe("Calle 3 # 15-20 (apto 402)");
+    }
+  });
+});
+
+describe("AddressSchema rural — teléfono alternativo en la zona (2026-10)", () => {
+  const rural = {
+    kind: "rural" as const,
+    deptCode: "11",
+    cityCode: "11001",
+    department: "Bogotá, D.C.",
+    city: "Bogotá, D.C.",
+    vereda: "El Roble",
+    referencia: "a 200m del puente, casa azul portón negro",
+  };
+
+  it("altPhone válido se compone al final como «Tel. zona: X»", () => {
+    const res = AddressSchema.safeParse({ ...rural, altPhone: "3001234567" });
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(composeAddressLine(res.data)).toBe(
+        "Vereda El Roble · Ref: a 200m del puente, casa azul portón negro · Tel. zona: 3001234567",
+      );
+    }
+  });
+
+  it("altPhone inválido (no es móvil CO) se rechaza", () => {
+    const res = AddressSchema.safeParse({ ...rural, altPhone: "12345" });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      const fields = res.error.flatten().fieldErrors as Record<string, string[] | undefined>;
+      expect(fields.altPhone?.[0]).toContain("móvil colombiano");
+    }
+  });
+
+  it("sin altPhone la línea rural no cambia", () => {
+    const res = AddressSchema.safeParse(rural);
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(composeAddressLine(res.data)).toBe(
+        "Vereda El Roble · Ref: a 200m del puente, casa azul portón negro",
+      );
+    }
   });
 });
 

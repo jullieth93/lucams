@@ -74,6 +74,23 @@ type UrbanAddress = BaseAddress & {
   viaCardinal?: "" | "Norte" | "Sur" | "Este" | "Oeste";
   cruceNumber: string;
   cruceCardinal?: "" | "Norte" | "Sur" | "Este" | "Oeste";
+  /** Tipo de destino + campos estructurados por tipo (2026-10,
+   *  anti-devoluciones) — mismos campos del AddressSchema (fuente de verdad:
+   *  features/checkout/schemas.ts + destination-types.ts). Opcionales: las
+   *  capturas nuevas los exige el form; las cookies/órdenes viejas no los tienen. */
+  destinationType?: "casa" | "edificio" | "conjunto_torres" | "conjunto_casas" | "oficina";
+  apartment?: string;
+  tower?: string;
+  houseNumber?: string;
+  blockCode?: string;
+  complexName?: string;
+  floor?: string;
+  buildingName?: string;
+  officeNumber?: string;
+  companyName?: string;
+  referencePoint?: string;
+  /** Texto libre LEGACY — las direcciones viejas lo traen; el form ya no lo
+   *  captura (se muestra como referencePoint al cargar). */
   detail?: string;
 };
 
@@ -81,6 +98,9 @@ type RuralAddress = BaseAddress & {
   kind: "rural";
   vereda: string;
   finca?: string;
+  /** Teléfono alternativo en la zona (2026-10) — va a la guía como
+   *  «Tel. zona: …» para que el mensajero localice a alguien. */
+  altPhone?: string;
   referencia: string;
 };
 
