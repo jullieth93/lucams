@@ -497,6 +497,53 @@ describe.skipIf(!hasDb)(
       });
     });
 
+    // ─────────── visibleFilters / featuredProductSlug (storefront 2026-10-20) ───────────
+
+    describe("visibleFilters / featuredProductSlug", () => {
+      it("createCategory persiste ambos campos tal cual", async () => {
+        const created = await createCategory(
+          {
+            name: "Con storefront config",
+            slug: nextSlug("vfs"),
+            isActive: true,
+            visibleFilters: ["precio", "ocasion"],
+            featuredProductSlug: "iman-destacado",
+          },
+          null,
+        );
+        expect(created.visibleFilters).toEqual(["precio", "ocasion"]);
+        expect(created.featuredProductSlug).toBe("iman-destacado");
+      });
+
+      it("createCategory sin los campos → defaults del modelo ([] y null)", async () => {
+        const created = await createCategory(
+          { name: "Sin storefront config", slug: nextSlug("vfs"), isActive: true },
+          null,
+        );
+        expect(created.visibleFilters).toEqual([]);
+        expect(created.featuredProductSlug).toBeNull();
+      });
+
+      it("updateCategory actualiza y LIMPIA ambos campos ([] = todos, null = sin destacado)", async () => {
+        const cat = await seedCat();
+        const updated = await updateCategory(
+          cat.id,
+          { visibleFilters: ["buscar", "precio"], featuredProductSlug: "prod-estrella" },
+          null,
+        );
+        expect(updated.visibleFilters).toEqual(["buscar", "precio"]);
+        expect(updated.featuredProductSlug).toBe("prod-estrella");
+
+        const cleared = await updateCategory(
+          cat.id,
+          { visibleFilters: [], featuredProductSlug: null },
+          null,
+        );
+        expect(cleared.visibleFilters).toEqual([]);
+        expect(cleared.featuredProductSlug).toBeNull();
+      });
+    });
+
     // ───────────────────────── listCategories ─────────────────────────
 
     describe("listCategories — búsqueda y filtros", () => {

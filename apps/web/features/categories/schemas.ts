@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { STOREFRONT_FILTER_KEYS } from "@/lib/visible-filters";
 
 const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 // Roadmap B3 — visual de catálogo (dato de Category, NO CMS):
@@ -20,17 +21,28 @@ const gradientRegex = /^[A-Za-z0-9][A-Za-z0-9\-/%.[\](),#:]*( [A-Za-z0-9\-/%.[\]
 export const CATEGORY_SORT_OPTIONS = ["recent", "price_asc", "price_desc", "featured"] as const;
 export type CategorySortOption = (typeof CATEGORY_SORT_OPTIONS)[number];
 
-// `visibleFilters` y `featuredProductSlug` YA tienen consumidor en el
-// storefront (2026-10-20): /productos?categoria=X limita/ordena sus filtros
-// con visibleFilters (lib/visible-filters.ts) y fija el destacado con
+// `visibleFilters` y `featuredProductSlug` tienen consumidor en el storefront
+// (2026-10-20): /productos?categoria=X limita/ordena sus filtros con
+// visibleFilters (lib/visible-filters.ts) y fija el destacado con
 // featuredProductSlug (public-service.getCategoryFeaturedProductCard);
-// /productos/[cat]/[subcat] fija el suyo. Pendiente vigente: NO se exponen en
-// el admin — se editan solo vía seed/SQL (ver docs/STATE.md § Pendientes).
+// /productos/[cat]/[subcat] fija el suyo. Editables desde /admin/categorias
+// (mismo día): la action filtra/ordena visibleFilters al vocabulario canónico
+// antes de validar acá, así que el enum solo ve keys conocidas.
 
 export const CategoryCreateSchema = z.object({
   name: z.string().min(2).max(80),
   slug: z.string().min(2).max(80).regex(slugRegex, "Solo minúsculas, números y guiones"),
   description: z.string().max(500).optional().nullable(),
+  // Filtros que la página de la categoría muestra en la tienda (vacío = todos).
+  visibleFilters: z.array(z.enum(STOREFRONT_FILTER_KEYS)).optional(),
+  // Slug del producto destacado de la categoría (null = sin destacado). El
+  // storefront lo ignora en silencio si no resuelve a un producto visible.
+  featuredProductSlug: z
+    .string()
+    .max(80)
+    .regex(slugRegex, "Solo minúsculas, números y guiones")
+    .nullable()
+    .optional(),
   // B-6 — texto largo SEO/bot: se renderiza en /productos/[cat]/[subcat]
   // (whitespace-pre-line, no HTML) y en la metadata de la página.
   richDescription: z.string().max(5000).optional().nullable(),

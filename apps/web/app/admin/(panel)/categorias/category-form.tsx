@@ -24,6 +24,7 @@ import {
   DEFAULT_CATEGORY_GRADIENT,
   resolveCategoryIcon,
 } from "@/lib/category-visuals";
+import { STOREFRONT_FILTER_KEYS, STOREFRONT_FILTER_LABELS } from "@/lib/visible-filters";
 import { createCategoryAction, updateCategoryAction, type CategoryActionState } from "./actions";
 
 type CategoryInput = {
@@ -39,15 +40,21 @@ type CategoryInput = {
   richDescription?: string | null;
   useCase?: string | null;
   defaultSort?: string | null;
+  visibleFilters?: string[];
+  featuredProductSlug?: string | null;
 };
 
 export function CategoryForm({
   initialCategory,
   parentOptions = [],
+  featuredProductOptions,
 }: {
   initialCategory?: CategoryInput;
   /** Categorías de primer nivel para elegir como "madre" (sub-categorías). */
   parentOptions?: { id: string; name: string }[];
+  /** Productos de la categoría (y sus sub-categorías) para el datalist del
+   *  destacado. Solo en edición; en creación el campo es texto plano. */
+  featuredProductOptions?: { slug: string; name: string }[];
 }) {
   const isEdit = !!initialCategory?.id;
   const [state, formAction, pending] = useActionState<CategoryActionState | null, FormData>(
@@ -190,6 +197,72 @@ export function CategoryForm({
             sub-categorías (página propia); las principales usan el orden de la tienda.
           </p>
         </div>
+      </div>
+
+      {/* Storefront (2026-10-20) — qué filtros muestra la página de la
+          categoría en la tienda y qué producto va destacado al frente. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="featuredProductSlug"
+            className="text-brand-purple-dark text-sm font-semibold"
+          >
+            Producto destacado
+          </Label>
+          <Input
+            id="featuredProductSlug"
+            name="featuredProductSlug"
+            defaultValue={initialCategory?.featuredProductSlug ?? ""}
+            placeholder="iman-corazon-personalizado"
+            pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+            disabled={pending}
+            {...(featuredProductOptions ? { list: "featured-product-options" } : {})}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono text-sm"
+          />
+          {featuredProductOptions && (
+            <datalist id="featured-product-options">
+              {featuredProductOptions.map((p) => (
+                <option key={p.slug} value={p.slug} label={p.name} />
+              ))}
+            </datalist>
+          )}
+          {state?.fieldErrors?.featuredProductSlug && (
+            <p className="text-xs text-rose-600">{state.fieldErrors.featuredProductSlug[0]}</p>
+          )}
+          <p className="text-brand-muted text-[11px]">
+            Slug del producto que aparece primero con el sello “Destacado” en la página de la
+            categoría. Vacío = sin destacado. Si el producto no existe o está pausado, la tienda lo
+            ignora.
+          </p>
+        </div>
+
+        <fieldset className="space-y-1.5">
+          <legend className="text-brand-purple-dark text-sm font-semibold">
+            Filtros visibles en la tienda
+          </legend>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-1">
+            {STOREFRONT_FILTER_KEYS.map((key) => (
+              <label key={key} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="visibleFilters"
+                  value={key}
+                  defaultChecked={initialCategory?.visibleFilters?.includes(key) ?? false}
+                  disabled={pending}
+                  className="accent-brand-purple h-4 w-4"
+                />
+                <span className="text-brand-purple-dark">{STOREFRONT_FILTER_LABELS[key]}</span>
+              </label>
+            ))}
+          </div>
+          {state?.fieldErrors?.visibleFilters && (
+            <p className="text-xs text-rose-600">{state.fieldErrors.visibleFilters[0]}</p>
+          )}
+          <p className="text-brand-muted text-[11px]">
+            Si no marcas ninguno, la categoría muestra TODOS los filtros. Si marcas algunos, la
+            tienda muestra solo esos, en el orden de esta lista.
+          </p>
+        </fieldset>
       </div>
 
       <div className="space-y-1.5">

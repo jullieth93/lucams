@@ -60,6 +60,19 @@ export default async function EditCategoryPage({
   const parentOptions =
     category._count.children > 0 ? [] : await listParentCategoryOptions(category.id);
 
+  // Opciones para el destacado: productos de la categoría y de sus hijas (el
+  // storefront acepta ambos, ver getCategoryFeaturedProductCard). Incluye
+  // pausados — el storefront los ignora en silencio y el hint del form lo dice.
+  const featuredProductOptions = await prisma.product.findMany({
+    where: {
+      deletedAt: null,
+      OR: [{ categoryId: category.id }, { category: { parentId: category.id } }],
+    },
+    orderBy: { name: "asc" },
+    take: 200,
+    select: { slug: true, name: true },
+  });
+
   return (
     <AdminPage>
       <AdminPageHeader
@@ -110,6 +123,7 @@ export default async function EditCategoryPage({
         <AdminCard className="p-5">
           <CategoryForm
             parentOptions={parentOptions}
+            featuredProductOptions={featuredProductOptions}
             initialCategory={{
               id: category.id,
               name: category.name,
@@ -123,6 +137,8 @@ export default async function EditCategoryPage({
               richDescription: category.richDescription,
               useCase: category.useCase,
               defaultSort: category.defaultSort,
+              visibleFilters: category.visibleFilters,
+              featuredProductSlug: category.featuredProductSlug,
             }}
           />
           {category._count.children > 0 && (
