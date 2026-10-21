@@ -1,5 +1,6 @@
 import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
+import { test as authTest } from "./fixtures/auth";
 
 /*
  * DIAGNÓSTICO VISUAL (ronda 2 QA owner, 2026-10-08) — evidencia Playwright contra STG
@@ -8,11 +9,14 @@ import { test, expect, type Page } from "@playwright/test";
  *  1. Calendario: 3D Nevera sale VACÍA (Mural sí carga) + tarjetas del Mural "muy gruesas".
  *  2. Separadores Largos: en el libro 3D no se puede ver la Cara B.
  *  3. "Continuar donde quedaste": en algunos productos el lienzo vuelve VACÍO (calendario OK).
+ *     2026-10-21 — el retomador pasó a ser SOLO para clientes autenticados (decisión owner;
+ *     la cadena para invitados era la causa raíz de este hallazgo): el test corre con clientPage.
  *  4. Carrito «Editar» en DESKTOP carga el lienzo vacío (en móvil sí carga).
  *
  * Cada test deja screenshots en /tmp/diag-*.png y aserciones de estado del lienzo.
  *
- * Correr:  E2E_ENV=stg pnpm --filter web exec playwright test diag-ronda2 --project=desktop-chrome
+ * Correr:  E2E_ENV=stg E2E_AUTH=1 pnpm --filter web exec playwright test diag-ronda2 --project=desktop-chrome
+ *          (E2E_AUTH=1 genera el storageState del cliente que usa el test 3)
  */
 
 const MASCOT = path.resolve(__dirname, "../../public/brand/lucams-mascot.png");
@@ -134,23 +138,24 @@ test("2. Separadores Largos — libro 3D (¿se ve la Cara B?)", async ({ page })
   await page.screenshot({ caret: "initial", path: "/tmp/diag-sep-libro-2.png" });
 });
 
-test("3. Resume — «Sí, continuar» debe devolver el lienzo CON fotos (polaroid)", async ({
-  page,
-}) => {
-  await openStudioAndFill(page, "set-fotoimanes-polaroid", 6);
-  const before = await photosCounter(page);
-  // Recarga INMEDIATA (sin esperar el debounce de 2 s): valida el flush del
-  // auto-save al ocultar la página (fix ronda 2 — antes volvía 0/6).
-  await page.reload({ waitUntil: "domcontentloaded" });
-  const continuar = page.getByRole("button", { name: /Sí, continuar/i });
-  await continuar.waitFor({ state: "visible", timeout: 20_000 });
-  await continuar.click();
-  await page.waitForURL(/designId=/, { timeout: 20_000 });
-  await dismissOverlays(page);
-  // El lienzo debe hidratar con las fotos del draft (no vacío).
-  await expect.poll(async () => photosCounter(page), { timeout: 60_000 }).toBe(before);
-  await page.screenshot({ caret: "initial", path: "/tmp/diag-resume-polaroid.png" });
-});
+authTest(
+  "3. Resume (cliente autenticado) — «Sí, continuar» debe devolver el lienzo CON fotos (polaroid)",
+  async ({ clientPage: page }) => {
+    await openStudioAndFill(page, "set-fotoimanes-polaroid", 6);
+    const before = await photosCounter(page);
+    // Recarga INMEDIATA (sin esperar el debounce de 2 s): valida el flush del
+    // auto-save al ocultar la página (fix ronda 2 — antes volvía 0/6).
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const continuar = page.getByRole("button", { name: /Sí, continuar/i });
+    await continuar.waitFor({ state: "visible", timeout: 20_000 });
+    await continuar.click();
+    await page.waitForURL(/designId=/, { timeout: 20_000 });
+    await dismissOverlays(page);
+    // El lienzo debe hidratar con las fotos del draft (no vacío).
+    await expect.poll(async () => photosCounter(page), { timeout: 60_000 }).toBe(before);
+    await page.screenshot({ caret: "initial", path: "/tmp/diag-resume-polaroid.png" });
+  },
+);
 
 test("4. Carrito «Editar» en DESKTOP devuelve el lienzo CON fotos (polaroid)", async ({ page }) => {
   await openStudioAndFill(page, "set-fotoimanes-polaroid", 6);

@@ -205,7 +205,14 @@ export type StudioEditorProps = {
   initialDesignId: string | null;
   initialDesignCanvas: CanvasData | null;
   initialDesignAssets: StudioAsset[];
-  draftMarkerMaxAgeMs?: number;
+  /**
+   * 2026-10-21 — «Continuar donde quedaste» SOLO para clientes autenticados
+   * (decisión del owner; ver lib/draft-marker.ts): page.tsx lo activa cuando hay
+   * Customer en sesión. Apagado, el editor no lee ni escribe el marcador local
+   * del draft y nunca muestra el interstitial; el invitado queda protegido por
+   * los auto-saves, el flush sendBeacon y el recover explícito por ?designId=.
+   */
+  draftResumeEnabled?: boolean;
   photoSlots: number;
   /**
    * Lucy 2026-09-05 — packs de fotoimanes: catálogo elegible {photoSlots, price}
@@ -301,7 +308,7 @@ export function StudioEditor({
   initialDesignId,
   initialDesignCanvas,
   initialDesignAssets,
-  draftMarkerMaxAgeMs,
+  draftResumeEnabled = false,
   photoSlots,
   packVariants = [],
   variantId,
@@ -359,9 +366,12 @@ export function StudioEditor({
   // un draft con avance — nunca al montar un draft vacío), vigentes (≤30 d) y
   // bien formados; los huérfanos/legacy se auto-limpian al leer. El marcador
   // trae savedAt para que el interstitial diga QUÉ se va a retomar.
+  // 2026-10-21 — SOLO con `draftResumeEnabled` (cliente autenticado; decisión
+  // del owner): el invitado no lee marcador ni ve el interstitial.
   const [resumeOffer, setResumeOffer] = useState<{ designId: string; savedAt: number } | null>(
     () => {
-      const marker = readStudioDraftMarker(initialDraftScope, { maxAgeMs: draftMarkerMaxAgeMs });
+      if (!draftResumeEnabled) return null;
+      const marker = readStudioDraftMarker(initialDraftScope);
       const urlHasDesignId =
         typeof window !== "undefined" &&
         new URLSearchParams(window.location.search).has("designId");
@@ -1084,10 +1094,15 @@ export function StudioEditor({
         //    entonces se limpia; no se pisa con el id del draft vacío (eso
         //    rearmaba la mentira).
         if (initialDesignId) {
-          if (studioDraftHasRealProgress(canvasData)) {
-            writeStudioDraftId(initialDraftScope, initialDesignId);
-          } else {
-            clearStudioDraftId(initialDraftScope);
+          // 2026-10-21 — el marcador solo se toca con el retomador habilitado
+          // (cliente autenticado); el invitado recupera por ?designId= sin
+          // rearmar nada en localStorage.
+          if (draftResumeEnabled) {
+            if (studioDraftHasRealProgress(canvasData)) {
+              writeStudioDraftId(initialDraftScope, initialDesignId);
+            } else {
+              clearStudioDraftId(initialDraftScope);
+            }
           }
         } else if (typeof window !== "undefined") {
           const bootParams = new URLSearchParams(window.location.search);
@@ -1145,6 +1160,7 @@ export function StudioEditor({
     isCalendarMonth,
     facesPerUnit,
     resumeOffer,
+    draftResumeEnabled,
   ]);
 
   // ──────────── Auto-save 2s debounce ────────────
@@ -1222,18 +1238,22 @@ export function StudioEditor({
           lastChangeRev === savedRev;
 
         if (result.ok) {
-          const savedScope = studioDraftScope(product.slug, saveVariantId);
-          if (savedScope !== initialDraftScope) clearStudioDraftId(initialDraftScope);
-          // 2026-10-19 — el marcador del retomador solo vive con CONTENIDO REAL:
-          // si el canvas guardado quedó vacío (cambio deshecho: asignar y quitar
-          // la única foto, o solo cambiar la plantilla), el marcador se RETIRA en
-          // vez de quedar apuntando a un borrador vacío (el interstitial ya no lo
-          // ofrece — studioDraftHasRealProgress ignora el atajo clientRev>0 de
-          // designHasMeaningfulProgress, que cuenta "se guardó algo alguna vez").
-          if (studioDraftHasRealProgress(canvasData)) {
-            writeStudioDraftId(savedScope, designId);
-          } else {
-            clearStudioDraftId(savedScope);
+          // 2026-10-21 — marcador del retomador SOLO con `draftResumeEnabled`
+          // (cliente autenticado): el invitado no rearma ni limpia marcadores.
+          if (draftResumeEnabled) {
+            const savedScope = studioDraftScope(product.slug, saveVariantId);
+            if (savedScope !== initialDraftScope) clearStudioDraftId(initialDraftScope);
+            // 2026-10-19 — el marcador del retomador solo vive con CONTENIDO REAL:
+            // si el canvas guardado quedó vacío (cambio deshecho: asignar y quitar
+            // la única foto, o solo cambiar la plantilla), el marcador se RETIRA en
+            // vez de quedar apuntando a un borrador vacío (el interstitial ya no lo
+            // ofrece — studioDraftHasRealProgress ignora el atajo clientRev>0 de
+            // designHasMeaningfulProgress, que cuenta "se guardó algo alguna vez").
+            if (studioDraftHasRealProgress(canvasData)) {
+              writeStudioDraftId(savedScope, designId);
+            } else {
+              clearStudioDraftId(savedScope);
+            }
           }
           const snapshot = readStudioCanvasSnapshot(designId);
           if (snapshot && snapshot.rev <= savedRev) clearStudioCanvasSnapshot(designId);
@@ -1358,6 +1378,7 @@ export function StudioEditor({
     product.slug,
     productConfig.shape,
     variantId,
+    draftResumeEnabled,
     texts.exportar.errorGuardar,
   ]);
 

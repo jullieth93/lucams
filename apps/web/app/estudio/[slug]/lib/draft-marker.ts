@@ -35,6 +35,21 @@
  * Helpers tolerantes: localStorage puede no existir (SSR, modo incógnito) —
  * leer/escribir nunca revienta el boot.
  *
+ * 2026-10-21 — el retomador es SOLO para clientes AUTENTICADOS (decisión del
+ * owner): para invitados la cadena marcador-local + snapshot-local + cookie
+ * cart_session + fila DRAFT era estructuralmente frágil (la rotación de
+ * cart_session del self-heal de CART_IDENTITY_MISMATCH dejaba los drafts
+ * anónimos inalcanzables: «dices que sí y no carga»; incógnito, cookies
+ * borradas y purgas hacían lo mismo) y el interstitial prometía algo que no
+ * siempre podía cumplir. El editor recibe `draftResumeEnabled` de page.tsx
+ * (hay Customer en sesión) y SOLO entonces lee/escribe el marcador. El
+ * invitado conserva sus protecciones reales: auto-saves continuos, flush
+ * sendBeacon (ADR-129), snapshot local para el recover por ?designId=
+ * explícito (ADR-133, p.ej. «Editar» del carrito) y la retención que purga
+ * sus DRAFT idle a los 7 días. Un marcador escrito como invitado NO se
+ * desperdicia: al hacer login los DRAFT anónimos se adoptan a la cuenta
+ * (adoptAnonDraftDesigns, ADR-155) y el marcador vuelve a ser válido.
+ *
  * 2026-10-19 — gate de UNIDADES (cobro correcto): el scope del marcador es
  * producto:variante y NO incluía las unidades del diseño, así que un borrador
  * viejo de 2 unidades de la MISMA variante se ofrecía aunque la ficha (PDP)
@@ -60,9 +75,7 @@ export function studioDraftStorageKey(productSlug: string): string {
   return `lucams_studio_draft_${productSlug}`;
 }
 
-export const DRAFT_MARKER_GUEST_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-export const DRAFT_MARKER_ACCOUNT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-export const DRAFT_MARKER_MAX_AGE_MS = DRAFT_MARKER_ACCOUNT_MAX_AGE_MS;
+export const DRAFT_MARKER_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface StudioDraftMarker {
   designId: string;

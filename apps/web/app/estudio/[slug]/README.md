@@ -268,9 +268,10 @@ apps/web/app/estudio/[slug]/
     ├── canvas-migrate.ts              # migrateCanvasV1ToV2
     ├── remap-canvas-assets.ts         # Rehidratación por assetId: signed URLs frescas en
     │                                  #   el boot del recover; asset ausente → slot vacío + toast
-    ├── draft-marker.ts                # Marcador «Continuar donde quedaste» honesto:
-    │                                  #   {designId, savedAt} solo tras el 1er auto-save real,
-    │                                  #   auto-limpieza de huérfanos/legacy
+    ├── draft-marker.ts                # Marcador «Continuar donde quedaste» honesto (SOLO
+    │                                  #   clientes autenticados, 2026-10-21): {designId, savedAt}
+    │                                  #   solo tras el 1er auto-save real, auto-limpieza de
+    │                                  #   huérfanos/legacy
     ├── slot-photo-readiness.ts        # Espera de decodificación de fotos antes del bake 3D
     ├── use-debounced-commit.ts        # Commit con debounce 350 ms (campos IG)
     ├── recover-variant.ts             # resolveRecoverVariantId: variante del recover
@@ -987,10 +988,17 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
 - **Color picker propio multiplataforma** (`apps/web/components/color-picker.tsx` +
   `apps/web/lib/color.ts`, SIN dependencias nuevas): reemplaza el `<input type="color">`
   nativo, cuya UI varía por SO/navegador.
-- **«Continuar donde quedaste» honesto** (`lib/draft-marker.ts`): el marcador JSON
-  `{designId, savedAt}` solo se escribe tras el PRIMER auto-save real confirmado (nunca
-  promete un borrador que el servidor no recibió); auto-limpieza de marcadores huérfanos y
-  legacy; el interstitial muestra producto y fecha del borrador.
+- **«Continuar donde quedaste» honesto — SOLO clientes autenticados** (`lib/draft-marker.ts`,
+  decisión owner 2026-10-21): el editor solo lee/escribe el marcador y muestra el interstitial
+  con `draftResumeEnabled` (page.tsx lo activa cuando hay Customer en sesión). Para el invitado
+  la cadena marcador-local + cookie `cart_session` + DRAFT server-side era estructuralmente
+  frágil (la rotación de `cart_session` del self-heal de identidad dejaba sus drafts
+  inalcanzables: «dices que sí y no carga»; incógnito/cookies borradas/purgas, igual) — el
+  invitado queda protegido por los auto-saves, el flush sendBeacon y el recover explícito por
+  `?designId=` («Editar» del carrito), y sus DRAFT idle los purga la retención a los 7 días.
+  El marcador JSON `{designId, savedAt}` solo se escribe tras el PRIMER auto-save real
+  confirmado (nunca promete un borrador que el servidor no recibió); auto-limpieza de
+  marcadores huérfanos y legacy; el interstitial muestra producto y fecha del borrador.
 - **Paginación de «Ver diseño»**: la prop `generation` invalida las páginas obsoletas del
   preview paginado al editar una unidad (nunca se ve la página vieja de una unidad recién
   cambiada).
