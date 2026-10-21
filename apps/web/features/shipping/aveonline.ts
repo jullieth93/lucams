@@ -994,6 +994,13 @@ export class AveonlineProvider implements ShippingProvider {
       },
     ];
 
+    // Doble gate de facturación, computado una vez (lo usa bloquegenerarguia y
+    // la decisión de crear la relación de envíos — solo tiene sentido para una
+    // guía REAL que entra a la red logística).
+    const isRealGuide =
+      process.env.AVEONLINE_GENERATE_REAL === "true" &&
+      (process.env.NODE_ENV === "production" || process.env.AVEONLINE_FORCE_BILLING === "true");
+
     const body = {
       tipo: "generarGuia2",
       token,
@@ -1053,21 +1060,14 @@ export class AveonlineProvider implements ShippingProvider {
       idasumecosto: 0,
       contraentrega: 0,
       valorrecaudo: valorRecaudo,
-      // Aveonline `bloquegenerarguia` (semántica contraintuitiva):
-      //   "1" = BLOQUEA generación facturable → SEGURO (igual devuelve numguia + PDF para staging)
-      //   "0" = genera guía REAL facturable → cartera pendiente en cuenta Aveonline
-      //
-      // Doble gate (Lucy 2026-06-26): solo facturamos si AMBAS condiciones se cumplen:
-      //   1. AVEONLINE_GENERATE_REAL === "true" (env explícita)
-      //   2. NODE_ENV === "production" O AVEONLINE_FORCE_BILLING === "true" (escape hatch dev)
-      // Default seguro: "1" (NO factura). Bug histórico: default "0" con cuenta real
-      // genera cartera pendiente (vs cuenta demo donde "0" simulaba sin facturar).
-      bloquegenerarguia:
-        process.env.AVEONLINE_GENERATE_REAL === "true" &&
-        (process.env.NODE_ENV === "production" || process.env.AVEONLINE_FORCE_BILLING === "true")
-          ? "0"
-          : "1",
-      relacion_envios: "0", // no creamos la relación de envíos (doc: 1=sí, 0=no)
+      bloquegenerarguia: isRealGuide ? "0" : "1",
+      // relacion_envios (doc oficial generacionGuia, verificada 2026-10-20):
+      // «Todas las transportadoras a excepción de Envia (29) deben tener este
+      // campo en 1 para funcionar». Envía queda en "0"; el resto declara la
+      // relación SOLO cuando la guía es real (en simulación la guía no entra a
+      // la red logística y no hay nada que manifestar) y la relación se crea
+      // por API inmediatamente después (createShippingRelation, best-effort).
+      relacion_envios: isRealGuide && !isEnviaCarrier(params.carrier, idtransportador) ? "1" : "0",
       enviarcorreos: "1",
       cartaporte: "0",
       // valorMinimo=0: usar la SUMA de valores declarados reales (no la valoración fija
@@ -1168,6 +1168,31 @@ export class AveonlineProvider implements ShippingProvider {
       carrier: guia.transportadora,
     });
 
+    // Relación de envíos (manifiesto de recogida) para carriers ≠ Envía: la
+    // declaramos en la guía (relacion_envios:"1") y la creamos de inmediato
+    // por API. Best-effort: la guía YA existe y es lo crítico; un fallo acá
+    // queda en ErrorLog para crear la relación a mano en el panel (el flujo
+    // de recogida es manual hoy) — nunca tira la saga con la guía ya creada.
+    if (body.relacion_envios === "1") {
+      try {
+        const relacionId = await this.createShippingRelation(idtransportador, trackingNumber);
+        logger.info({
+          event: "shipping.aveonline.relation_created",
+          orderId: params.orderId,
+          trackingNumber,
+          relacionId,
+        });
+      } catch (err) {
+        logger.error({
+          event: "shipping.aveonline.relation_fail",
+          orderId: params.orderId,
+          trackingNumber,
+          idtransportador,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     return {
       trackingNumber,
       trackingUrl,
@@ -1178,6 +1203,41 @@ export class AveonlineProvider implements ShippingProvider {
       // del quote previo y guardarlo en Order si lo necesita.
       estimatedDeliveryAt: null,
     };
+  }
+
+  /**
+   * Crea la relación de envíos (manifiesto de recogida) de una guía recién
+   * generada — requerida por la doc oficial para todas las transportadoras
+   * excepto Envía (29). Sin retry: no es idempotente documentado (una relación
+   * duplicada generaría ruido operativo); el caller la llama best-effort y un
+   * fallo queda en ErrorLog para crearla a mano en el panel.
+   */
+  private async createShippingRelation(
+    idtransportador: string,
+    numguia: string,
+  ): Promise<string | null> {
+    const { token, idempresa } = await getAuthToken();
+    const res = await aveonlineFetch(`${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "relacionEnvios",
+        token,
+        idempresa,
+        transportadora: String(idtransportador),
+        guias: String(numguia),
+      }),
+      timeoutMs: 10_000,
+    });
+    const data = (await res.json()) as {
+      status?: string;
+      message?: string;
+      relacionenvio?: string | number;
+    };
+    if (!res.ok || data.status !== "ok") {
+      throw new Error(`Aveonline relacionEnvios: ${data.message ?? `HTTP ${res.status}`}`);
+    }
+    return data.relacionenvio != null ? String(data.relacionenvio) : null;
   }
 
   async getTracking(trackingNumber: string): Promise<TrackingStatus> {
@@ -1276,6 +1336,17 @@ export class AveonlineProvider implements ShippingProvider {
       hasCarrierTimestamp: tsRaw != null,
     };
   }
+}
+
+/**
+ * ¿El carrier de la guía es Envía? La doc oficial de generación de guía exime a
+ * Envía (codTransportadora 29) de la relación de envíos — el resto la requiere.
+ * Se acepta el código de transportadora o el slug/nombre ("envia", "ENVIA").
+ */
+function isEnviaCarrier(carrier: string, idtransportador: string | number): boolean {
+  if (String(idtransportador) === "29") return true;
+  const c = carrier.toLowerCase().trim();
+  return c === "envia" || c === "envía";
 }
 
 /**
