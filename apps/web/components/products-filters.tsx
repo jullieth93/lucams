@@ -18,7 +18,8 @@
  * Slider de precio debouncea más (500ms) porque dispara muchos events.
  */
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, Fragment } from "react";
+import type { ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Filter, X, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { formatCOP } from "@/lib/format";
+import type { StorefrontFilterKey } from "@/lib/visible-filters";
 
 type Category = {
   id: string;
@@ -36,15 +38,23 @@ type Category = {
   _count: { products: number };
 };
 
+/**
+ * Category.visibleFilters ya resuelto (lib/visible-filters.ts): lista ordenada
+ * de secciones a mostrar; null/undefined = todas (default PLAN_CATALOG_V2 7.6).
+ */
+type VisibleFilters = StorefrontFilterKey[] | null;
+
 export function ProductsFilters({
   categories,
   priceRange,
   total,
+  visibleFilters,
 }: {
   categories: Category[];
   priceRange: { min: number; max: number };
   /** #9 — total de resultados actuales, para el botón "Ver N productos" del drawer móvil. */
   total?: number;
+  visibleFilters?: VisibleFilters;
 }) {
   // #9 — Sheet CONTROLADO para poder cerrarlo al aplicar (antes el drawer quedaba abierto tapando
   // los resultados y no había feedback del conteo).
@@ -53,7 +63,11 @@ export function ProductsFilters({
     <>
       {/* Sidebar desktop */}
       <aside className="border-brand-purple/10 hidden h-fit w-72 flex-shrink-0 rounded-xl border bg-white p-5 lg:block">
-        <FiltersForm categories={categories} priceRange={priceRange} />
+        <FiltersForm
+          categories={categories}
+          priceRange={priceRange}
+          visibleFilters={visibleFilters}
+        />
       </aside>
 
       {/* Drawer móvil */}
@@ -78,6 +92,7 @@ export function ProductsFilters({
                 priceRange={priceRange}
                 total={total}
                 onApplied={() => setOpen(false)}
+                visibleFilters={visibleFilters}
               />
             </div>
           </SheetContent>
@@ -92,6 +107,7 @@ function FiltersForm({
   priceRange,
   total,
   onApplied,
+  visibleFilters,
 }: {
   categories: Category[];
   priceRange: { min: number; max: number };
@@ -99,6 +115,7 @@ function FiltersForm({
   total?: number;
   /** #9 — se llama al aplicar en el drawer móvil para cerrarlo. undefined = sidebar desktop. */
   onApplied?: () => void;
+  visibleFilters?: VisibleFilters;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -225,47 +242,65 @@ function FiltersForm({
     destacados ||
     orden !== "recent";
 
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-brand-purple-dark flex items-center gap-2 text-sm font-semibold tracking-wider uppercase">
-          <Filter className="h-3.5 w-3.5" />
-          Filtros
-        </h2>
-      </div>
+  // Category.visibleFilters (PLAN_CATALOG_V2 7.6): si la categoría activa define
+  // la lista, solo se muestran esas secciones y EN ESE ORDEN. null = todas en el
+  // orden canónico. "categoria" y "sub_categoria" gatean el mismo control (el
+  // árbol incluye las hijas).
+  const showSection = (key: StorefrontFilterKey) => !visibleFilters || visibleFilters.includes(key);
 
-      {/* Search */}
-      <div className="space-y-1.5">
-        <Label htmlFor="filter-q" className="text-brand-purple-dark/80 text-xs">
-          Buscar
-        </Label>
-        <Input
-          id="filter-q"
-          type="search"
-          value={q}
-          onChange={(e) => {
-            const v = e.target.value;
-            setQ(v);
-            apply(300, { q: v });
+  const sections: { orderKey: StorefrontFilterKey; node: ReactNode }[] = [];
+
+  if (showSection("buscar")) {
+    sections.push({
+      orderKey: "buscar",
+      node: (
+        <div className="space-y-1.5">
+          <Label htmlFor="filter-q" className="text-brand-purple-dark/80 text-xs">
+            Buscar
+          </Label>
+          <Input
+            id="filter-q"
+            type="search"
+            value={q}
+            onChange={(e) => {
+              const v = e.target.value;
+              setQ(v);
+              apply(300, { q: v });
+            }}
+            placeholder="Ej. fotoimán"
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+          />
+        </div>
+      ),
+    });
+  }
+
+  if (showSection("categoria") || showSection("sub_categoria")) {
+    const categoryOrderKey =
+      visibleFilters?.includes("categoria") || !visibleFilters?.includes("sub_categoria")
+        ? "categoria"
+        : "sub_categoria";
+    sections.push({
+      orderKey: categoryOrderKey,
+      // Categoría — lista jerárquica con scroll interno (no captura scroll de
+      // la página como hacía el <select> nativo de 57 opciones).
+      node: (
+        <CategoryFilter
+          categories={categories}
+          value={categoria}
+          onChange={(v) => {
+            setCategoria(v);
+            apply(0, { categoria: v });
           }}
-          placeholder="Ej. fotoimán"
-          className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
         />
-      </div>
+      ),
+    });
+  }
 
-      {/* Categoría — lista jerárquica con scroll interno (no captura scroll de
-          la página como hacía el <select> nativo de 57 opciones). */}
-      <CategoryFilter
-        categories={categories}
-        value={categoria}
-        onChange={(v) => {
-          setCategoria(v);
-          apply(0, { categoria: v });
-        }}
-      />
-
-      {/* Precio */}
-      {maxBound > minBound && (
+  if (showSection("precio") && maxBound > minBound) {
+    sections.push({
+      orderKey: "precio",
+      node: (
         <div className="space-y-2">
           <Label className="text-brand-purple-dark/80 text-xs">Precio</Label>
           <div className="text-brand-purple-dark/70 flex justify-between text-xs tabular-nums">
@@ -285,59 +320,106 @@ function FiltersForm({
             className="py-1"
           />
         </div>
-      )}
+      ),
+    });
+  }
 
-      {/* Checkboxes */}
-      <fieldset className="space-y-2">
-        <legend className="text-brand-purple-dark/80 mb-1.5 text-xs">Características</legend>
-        <FilterCheckbox
-          label="Personalizable"
-          checked={personalizable}
-          onChange={(v) => {
-            setPersonalizable(v);
-            apply(0, { personalizable: v });
-          }}
-        />
-        <FilterCheckbox
-          label="Con descuento"
-          checked={descuento}
-          onChange={(v) => {
-            setDescuento(v);
-            apply(0, { descuento: v });
-          }}
-        />
-        <FilterCheckbox
-          label="Destacados"
-          checked={destacados}
-          onChange={(v) => {
-            setDestacados(v);
-            apply(0, { destacados: v });
-          }}
-        />
-      </fieldset>
+  const CHARACTERISTIC_KEYS = ["personalizable", "descuento", "destacados"] as const;
+  const visibleCharacteristics = CHARACTERISTIC_KEYS.filter((k) => showSection(k));
+  if (visibleCharacteristics.length > 0) {
+    sections.push({
+      // El fieldset se posiciona según la PRIMERA de sus keys presente en la lista.
+      orderKey: visibleFilters
+        ? (visibleFilters.find((k) => (CHARACTERISTIC_KEYS as readonly string[]).includes(k)) ??
+          visibleCharacteristics[0])
+        : visibleCharacteristics[0],
+      node: (
+        <fieldset className="space-y-2">
+          <legend className="text-brand-purple-dark/80 mb-1.5 text-xs">Características</legend>
+          {showSection("personalizable") && (
+            <FilterCheckbox
+              label="Personalizable"
+              checked={personalizable}
+              onChange={(v) => {
+                setPersonalizable(v);
+                apply(0, { personalizable: v });
+              }}
+            />
+          )}
+          {showSection("descuento") && (
+            <FilterCheckbox
+              label="Con descuento"
+              checked={descuento}
+              onChange={(v) => {
+                setDescuento(v);
+                apply(0, { descuento: v });
+              }}
+            />
+          )}
+          {showSection("destacados") && (
+            <FilterCheckbox
+              label="Destacados"
+              checked={destacados}
+              onChange={(v) => {
+                setDestacados(v);
+                apply(0, { destacados: v });
+              }}
+            />
+          )}
+        </fieldset>
+      ),
+    });
+  }
 
-      {/* Orden */}
-      <div className="space-y-1.5">
-        <Label htmlFor="sort-select" className="text-brand-purple-dark/80 text-xs">
-          Ordenar por
-        </Label>
-        <select
-          id="sort-select"
-          value={orden}
-          onChange={(e) => {
-            const v = e.target.value;
-            setOrden(v);
-            apply(0, { orden: v });
-          }}
-          className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
-        >
-          <option value="recent">Más recientes</option>
-          <option value="featured">Destacados primero</option>
-          <option value="price-asc">Precio: menor a mayor</option>
-          <option value="price-desc">Precio: mayor a menor</option>
-          <option value="name">Nombre A-Z</option>
-        </select>
+  if (showSection("orden")) {
+    sections.push({
+      orderKey: "orden",
+      node: (
+        <div className="space-y-1.5">
+          <Label htmlFor="sort-select" className="text-brand-purple-dark/80 text-xs">
+            Ordenar por
+          </Label>
+          <select
+            id="sort-select"
+            value={orden}
+            onChange={(e) => {
+              const v = e.target.value;
+              setOrden(v);
+              apply(0, { orden: v });
+            }}
+            className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+          >
+            <option value="recent">Más recientes</option>
+            <option value="featured">Destacados primero</option>
+            <option value="price-asc">Precio: menor a mayor</option>
+            <option value="price-desc">Precio: mayor a menor</option>
+            <option value="name">Nombre A-Z</option>
+          </select>
+        </div>
+      ),
+    });
+  }
+
+  // Orden de las secciones = orden de visibleFilters (sort estable ES2019; sin
+  // lista, queda el orden canónico en que se armaron).
+  const orderedSections = visibleFilters
+    ? [...sections].sort(
+        (a, b) => visibleFilters.indexOf(a.orderKey) - visibleFilters.indexOf(b.orderKey),
+      )
+    : sections;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-brand-purple-dark flex items-center gap-2 text-sm font-semibold tracking-wider uppercase">
+          <Filter className="h-3.5 w-3.5" />
+          Filtros
+        </h2>
       </div>
+
+      {orderedSections.map((s) => (
+        <Fragment key={s.orderKey}>{s.node}</Fragment>
+      ))}
 
       {/* Acciones — botones explícitos para no-técnicos */}
       <div className="border-brand-purple/10 flex gap-2 border-t pt-4">

@@ -10,6 +10,14 @@
  *   - destacados: "1" (Product.isFeatured)
  *   - orden: recent | price-asc | price-desc | featured | name
  *
+ * Config por categoría (Category):
+ *   - visibleFilters (PLAN_CATALOG_V2 7.6): si la categoría activa lo define,
+ *     el panel y el strip de ocasiones muestran solo esas secciones, en ese
+ *     orden (lib/visible-filters.ts). Vacío = todos.
+ *   - featuredProductSlug: en la vista default de la categoría su producto va
+ *     fijado al frente del grid con badge "Destacado"; con filtros/búsqueda
+ *     activos solo conserva el badge. Slug inválido → se ignora en silencio.
+ *
  * SSR puro: cada combinación de filtros consulta DB. listStorefront-
  * Products acepta todos los filtros. Las consultas ESTRUCTURALES
  * (categorías, rango de precios, ocasiones) YA van con data cache
@@ -28,13 +36,17 @@ import { ActiveFilterChips, ProductsFilters } from "@/components/products-filter
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import {
+  countStorefrontProducts,
+  getCategoryFeaturedProductCard,
   getStorefrontPriceRange,
   listStorefrontCategories,
+  listStorefrontProducts,
   listStorefrontProductsPaginated,
   searchStorefrontProducts,
   type StorefrontProductCard,
 } from "@/features/products/public-service";
 import { listOcasiones } from "@/lib/catalog";
+import { resolveVisibleFilters } from "@/lib/visible-filters";
 import { OcasionFilterStrip } from "@/components/ocasion-filter-strip";
 import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
@@ -123,6 +135,35 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
     getCurrentCustomer(),
   ]);
 
+  const activeCategory = categoria ? categories.find((c) => c.slug === categoria) : null;
+
+  // Category.visibleFilters (PLAN_CATALOG_V2 7.6): si la categoría activa define
+  // la lista, el panel lateral y el strip de ocasiones muestran SOLO esas
+  // secciones, en ese orden. null/[] = todos (comportamiento de siempre).
+  const visibleFilterKeys = resolveVisibleFilters(activeCategory?.visibleFilters);
+
+  // Category.featuredProductSlug: destacado de la categoría. Se FIJA al frente
+  // solo en la vista default (sin búsqueda, orden "recent", página sin filtros
+  // que puedan excluirlo — forzarlo ahí contradiría la elección del cliente);
+  // en cualquier otro contexto solo lleva el badge "Destacado" donde aparezca.
+  // Slug inválido/archivado/de otra categoría → getCategoryFeaturedProductCard
+  // devuelve null y se ignora en silencio.
+  const featuredSlug = activeCategory?.featuredProductSlug ?? null;
+  const canPinFeatured =
+    !!categoria &&
+    !!featuredSlug &&
+    !(q && q.length >= 2) &&
+    orden === "recent" &&
+    !personalizable &&
+    !descuento &&
+    !destacados &&
+    !ocasion &&
+    minPrice == null &&
+    maxPrice == null;
+  const featuredCard = canPinFeatured
+    ? await getCategoryFeaturedProductCard(categoria, featuredSlug)
+    : null;
+
   // Si hay query de búsqueda, usar searchStorefrontProducts (fuzzy).
   // Search results pueden ser >100; paginamos client-side el resultado
   // filtrado. Para queries vacías, listStorefrontProductsPaginated hace
@@ -167,6 +208,26 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
     total = allCards.length;
     totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     products = allCards.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  } else if (featuredCard) {
+    // Destacado de la categoría fijado al frente: el listado paginado lo
+    // EXCLUYE (excludeSlug) para que no se duplique entre páginas; la ventana
+    // de las páginas ≥ 2 se desplaza en 1 (la página 1 muestra el destacado +
+    // PAGE_SIZE-1 del resto). total = resto + 1 → conteo y páginas exactos.
+    const restPageSize = page === 1 ? PAGE_SIZE - 1 : PAGE_SIZE;
+    const restSkip = page === 1 ? 0 : (page - 1) * PAGE_SIZE - 1;
+    const [restItems, restTotal] = await Promise.all([
+      listStorefrontProducts({
+        categorySlug: categoria,
+        sort: orden,
+        excludeSlug: featuredCard.slug,
+        skip: restSkip,
+        pageSize: restPageSize,
+      }),
+      countStorefrontProducts({ categorySlug: categoria, excludeSlug: featuredCard.slug }),
+    ]);
+    total = restTotal + 1;
+    totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    products = page === 1 ? [{ ...featuredCard, categoryFeatured: true }, ...restItems] : restItems;
   } else {
     const paginated = await listStorefrontProductsPaginated({
       categorySlug: categoria,
@@ -185,7 +246,14 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
     totalPages = paginated.totalPages;
   }
 
-  const activeCategory = categoria ? categories.find((c) => c.slug === categoria) : null;
+  // Badge "Destacado" sobre la card del featuredProductSlug dondequiera que
+  // aparezca (búsqueda, filtros activos, páginas sin pin). Si el slug no
+  // resuelve a un producto visible, simplemente no hay card que marcar.
+  if (featuredSlug) {
+    products = products.map((p) =>
+      p.slug === featuredSlug ? { ...p, categoryFeatured: true } : p,
+    );
+  }
 
   // JSON-LD (auditoría 2026-07-17): las páginas de listado no emitían structured data. CollectionPage
   // + ItemList (los productos visibles) + BreadcrumbList → Google entiende la colección y las migas.
@@ -232,10 +300,17 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
           </header>
 
           <div className="flex flex-col gap-6 lg:flex-row">
-            <ProductsFilters categories={categories} priceRange={priceRange} total={total} />
+            <ProductsFilters
+              categories={categories}
+              priceRange={priceRange}
+              total={total}
+              visibleFilters={visibleFilterKeys}
+            />
 
             <div className="flex-1">
-              <OcasionFilterStrip ocasiones={ocasiones} />
+              {(!visibleFilterKeys || visibleFilterKeys.includes("ocasion")) && (
+                <OcasionFilterStrip ocasiones={ocasiones} />
+              )}
               <ActiveFilterChips categories={categories} />
 
               {/* Cuando total=0 se oculta este conteo: sería un redundante "0 productos

@@ -9,7 +9,8 @@ import type { Metadata, ResolvingMetadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Sparkles } from "lucide-react";
-import { getCategoryBySlug, listCatalogProducts } from "@/lib/catalog";
+import { getCategoryBySlug, listCatalogProducts, getCatalogProductDetail } from "@/lib/catalog";
+import type { CatalogProductSummary } from "@/lib/catalog";
 import { ProductFromCatalogCard } from "@/components/product-from-catalog-card";
 import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
@@ -83,6 +84,31 @@ export default async function SubCategoryPage({
     limit: 48,
   });
 
+  // Category.featuredProductSlug: el destacado de la sub-categoría va PRIMERO
+  // en el grid con badge "Destacado", sin importar el defaultSort (ambos son
+  // curaduría de la misma categoría; acá no hay control de orden del cliente).
+  // Si no está en el lote (p. ej. más allá del limit 48), se valida con el
+  // detalle cacheado; slug inválido/archivado/de otra categoría → se ignora
+  // en silencio (fallback al listado normal).
+  let displayProducts = products;
+  if (subCat.featuredProductSlug) {
+    const featuredSlug = subCat.featuredProductSlug;
+    const inBatch = products.find((p) => p.slug === featuredSlug);
+    let featured: CatalogProductSummary | null = inBatch ?? null;
+    if (!featured) {
+      const detail = await getCatalogProductDetail(featuredSlug);
+      // El detalle viene con el gate storefront (F-04); pertenencia = su
+      // categoría directa es esta sub-categoría.
+      if (detail && detail.categorySlug === subcategoria) featured = detail;
+    }
+    if (featured) {
+      displayProducts = [
+        { ...featured, categoryFeatured: true },
+        ...products.filter((p) => p.slug !== featuredSlug),
+      ];
+    }
+  }
+
   // JSON-LD (auditoría 2026-07-17): BreadcrumbList (Inicio→Productos→[categoría]→subcategoría) +
   // CollectionPage/ItemList de los productos visibles.
   const subPath = `/productos/${categoria}/${subcategoria}`;
@@ -100,7 +126,7 @@ export default async function SubCategoryPage({
       name: subCat.name,
       path: subPath,
       description: subCat.description ?? undefined,
-      products: products.map((p) => ({ name: p.name, slug: p.slug })),
+      products: displayProducts.map((p) => ({ name: p.name, slug: p.slug })),
     }),
   ];
 
@@ -150,7 +176,7 @@ export default async function SubCategoryPage({
 
         <section className="py-10">
           <div className="mx-auto max-w-6xl px-6">
-            {products.length === 0 ? (
+            {displayProducts.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
                 <Sparkles className="mx-auto h-10 w-10 text-slate-300" />
                 <p className="mt-3 font-medium text-slate-700">
@@ -166,7 +192,7 @@ export default async function SubCategoryPage({
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {products.map((p) => (
+                {displayProducts.map((p) => (
                   <ProductFromCatalogCard key={p.slug} product={p} />
                 ))}
               </div>

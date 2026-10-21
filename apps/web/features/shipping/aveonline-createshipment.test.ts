@@ -194,6 +194,27 @@ describe("AveonlineProvider.createShipment — relacion_envios por carrier", () 
     expect(calls.some((c) => c.tipo === "relacionEnvios")).toBe(false);
   });
 
+  it("barrio y notas de entrega viajan a la guía (dsbarrio/dscom — antes vacíos)", async () => {
+    const calls: FetchCall[] = [];
+    stubFetch(calls);
+
+    const provider = new AveonlineProvider();
+    await provider.createShipment({
+      ...PARAMS,
+      carrier: "envia",
+      quoteId: "29",
+      delivery: {
+        ...PARAMS.delivery,
+        neighborhood: "La Candelaria",
+        notes: "Portería norte, preguntar por recepción",
+      },
+    });
+
+    const guia = calls.find((c) => c.tipo === "generarGuia2");
+    expect(guia?.body?.dsbarrio).toBe("La Candelaria");
+    expect(guia?.body?.dscom).toBe("Portería norte, preguntar por recepción");
+  });
+
   it("si relacionEnvios falla, la guía igual se entrega OK (best-effort, logueado)", async () => {
     process.env.AVEONLINE_GENERATE_REAL = "true";
     process.env.AVEONLINE_FORCE_BILLING = "true";

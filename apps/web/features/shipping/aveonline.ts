@@ -1031,7 +1031,9 @@ export class AveonlineProvider implements ShippingProvider {
       // cambio acá. El correo (dscorreop) sigue siendo el del comprador.
       destino: formatAveonlineCity(params.delivery.city, params.delivery.department),
       dsdir: params.delivery.address,
-      dsbarrio: "", // opcional Aveonline
+      // Alineación 2026-10-20: el barrio del checkout ahora llega a la guía
+      // (antes vacío — el mensajero solo veía la línea compuesta).
+      dsbarrio: params.delivery.neighborhood ?? "",
       IdTipoEntrega: "1", // 1=domicilio, 2=oficina
       dsnit: (params.delivery.documentNumber ?? "").replace(/\D/g, "").slice(0, 15) || "100001",
       dsnombrecompleto: params.delivery.contactName,
@@ -1046,7 +1048,10 @@ export class AveonlineProvider implements ShippingProvider {
         .map((i) => i.productSlug)
         .join(", ")
         .slice(0, 80),
-      dscom: "",
+      // Alineación 2026-10-20: las notas de entrega del cliente (portería,
+      // horarios, indicaciones) viajan en dscom. Capado a 200 chars defensivo
+      // (campo libre de la API PHP, sin límite documentado).
+      dscom: (params.delivery.notes ?? "").slice(0, 200),
       // Formas de pago de la guía (tabla oficial de la doc de cotización,
       // verificada 2026-07-28): `contraentrega` = "el DESTINATARIO asume el costo
       // del ENVÍO"; `idasumecosto` = "el DESTINATARIO asume el costo del RECAUDO".
