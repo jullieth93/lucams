@@ -136,8 +136,6 @@ export type CheckoutTexts = {
     notesPlaceholder: string;
     saveCheck: string;
     saveCheckSavedHint: string;
-    saveNameLabel: string;
-    saveNamePlaceholder: string;
     billingTitle: string;
     billingNote: string;
     billingCheck: string;
@@ -377,8 +375,6 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     notesPlaceholder: "Ej. timbre 2, dejar con portería",
     saveCheck: "💾 Guardar esta dirección en mi cuenta para la próxima",
     saveCheckSavedHint: "✓ Ya está guardada en tu cuenta — edítala si quieres guardar una variante",
-    saveNameLabel: "Nombre para recordarla (opcional)",
-    saveNamePlaceholder: "Ej. Casa, Oficina, Casa de mamá",
     billingTitle: "3. Facturación",
     billingNote:
       "Si necesitas un documento de venta (cuenta de cobro o factura, según corresponda), marca la casilla y déjanos tus datos: lo coordinamos a tu correo. Si es compra personal, déjala sin marcar.",
@@ -430,10 +426,10 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     listTitle: "Opciones de envío",
     free: "Gratis",
     lucamsToday: "Te llega hoy · pedido antes de las {{cutoff}}:00",
-    lucamsDays: "Te llega en {{daysLabel}} · se entrega el mismo día del despacho, tras fabricarlo",
+    lucamsDays: "Te llega en {{daysLabel}} · fabricación incluida, entrega el mismo día del despacho",
     lucamsBadge: "LUCAMS",
     lucamsBadgeToday: "LUCAMS · mismo día",
-    note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**. Con **LUCAMS** (mensajería propia) la entrega es el **mismo día del despacho**.",
+    note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**.",
     back: "← Cambiar dirección",
     next: "Continuar al pago →",
     nextPending: "Continuando al pago…",
@@ -602,8 +598,6 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "datos.notesPlaceholder": "checkout.datos.notes-placeholder",
   "datos.saveCheck": "checkout.datos.save-check",
   "datos.saveCheckSavedHint": "checkout.datos.save-check-saved-hint",
-  "datos.saveNameLabel": "checkout.datos.save-name-label",
-  "datos.saveNamePlaceholder": "checkout.datos.save-name-placeholder",
   "datos.billingTitle": "checkout.datos.billing-title",
   "datos.billingNote": "checkout.datos.billing-note",
   "datos.billingCheck": "checkout.datos.billing-check",

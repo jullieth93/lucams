@@ -13,6 +13,7 @@ import {
   type GiftInput,
 } from "@/features/checkout/schemas";
 import { parseStructuredAddress } from "@/features/checkout/parse-address";
+import { deriveAddressName } from "@/features/checkout/destination-types";
 import { BILLING_DOCUMENT_ENABLED } from "@/features/checkout/billing-document";
 import { saveAddressStep, saveContactStep } from "@/features/checkout/service";
 import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
@@ -193,13 +194,14 @@ export async function saveDatosAction(
 
   // Guardar la dirección en el libro del cliente (opt-in, solo logueados). NUNCA
   // debe romper el checkout: si falla, se loguea y el pago continúa igual.
+  // El name (Address.name, solo display) se DERIVA del tipo de destino / ciudad
+  // (mismo helper que /mi-cuenta/direcciones) — ya no se captura etiqueta libre.
   if (formData.get("saveToAccount") === "on") {
     try {
       const session = await getCurrentCustomer();
       if (session) {
-        const label = String(formData.get("saveAddressLabel") ?? "").trim();
         const result = await saveCheckoutAddressToAccount(session.customer.id, addressParsed.data, {
-          name: label || `Mi dirección en ${addressParsed.data.city}`,
+          name: deriveAddressName(addressParsed.data),
           phone: contactParsed.data.phone,
         });
         logger.info({

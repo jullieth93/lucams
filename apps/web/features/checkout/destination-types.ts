@@ -70,6 +70,37 @@ export const DESTINATION_CONFIG: Record<
   },
 };
 
+/** Labels SIN emoji (texto plano) del tipo de destino — para el nombre
+ *  derivado de la dirección guardada (Address.name, puramente display) y
+ *  títulos donde el emoji no aplica. */
+export const DESTINATION_PLAIN_LABELS: Record<DestinationType, string> = {
+  casa: "Casa",
+  edificio: "Edificio / Apartamento",
+  conjunto_torres: "Conjunto de torres",
+  conjunto_casas: "Conjunto de casas",
+  oficina: "Oficina / Empresa",
+};
+
+/** Type guard para leer `destinationType` desde JSON (structured de una
+ *  dirección guardada): null si el valor no es un tipo válido (legacy/tampered). */
+export function asDestinationType(value: unknown): DestinationType | null {
+  return typeof value === "string" && (DESTINATION_TYPES as readonly string[]).includes(value)
+    ? (value as DestinationType)
+    : null;
+}
+
+/** Nombre derivado para Address.name (obligatoria en DB, solo display — ya no
+ *  se captura una etiqueta libre): label limpio del tipo de destino si la
+ *  dirección urbana lo tiene; si no (rural/legacy), «Mi dirección en {city}». */
+export function deriveAddressName(structured: {
+  destinationType?: string | null;
+  city: string;
+}): string {
+  const type = asDestinationType(structured.destinationType);
+  if (type) return DESTINATION_PLAIN_LABELS[type];
+  return `Mi dirección en ${structured.city}`;
+}
+
 /** Selector del form: 4 opciones visibles; «Conjunto residencial» abre el
  *  sub-toggle Torres | Casas que resuelve a conjunto_torres / conjunto_casas. */
 export const DESTINATION_TYPE_LABEL = "Tipo de destino";

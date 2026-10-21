@@ -148,20 +148,20 @@ test("mi-cuenta · direcciones: crear urbana → lista+DB → default única →
   resultsPath = resolve(EVIDENCE_DIR, `results-${E2E_ENV}-${projectName}-${run}.json`);
   try {
     const customer = await ephemeralCustomer();
-    const label = `Casa E2E ${run.slice(-4)}`;
 
     // Form estructurado (urbana) con toPass: el form se monta client-side al
     // pulsar "Agregar" y un fill/select pre-hidratación se revierte (el select
     // queda en "Elige departamento…" y Zod rechaza — reproducido 2026-08-06).
-    // El TELÉFONO es obligatorio en el schema (LabelSchema) — sin él la acción
+    // El TELÉFONO es obligatorio en el schema (PhoneSchema) — sin él la acción
     // devuelve fieldErrors y la dirección nunca se crea (reproducido: el POST
-    // devolvía 200 con error y DB=0).
-    const fillAddressForm = async (opts: { label: string; via: string; cruce: string }) => {
+    // devolvía 200 con error y DB=0). Ya NO hay etiqueta libre: el nombre se
+    // deriva del tipo de destino y las direcciones se distinguen por su línea
+    // (vía/cruce).
+    const fillAddressForm = async (opts: { via: string; cruce: string }) => {
       const form = clientPage.locator("form", {
-        has: clientPage.locator('input[name="name"]'),
+        has: clientPage.locator('input[name="viaNumber"]'),
       });
       await expect(async () => {
-        await form.locator('input[name="name"]').fill(opts.label);
         await form.locator("#deptCode").selectOption({ index: 1 });
         await form.locator("#cityCode").selectOption({ index: 1 });
         await form.locator('input[name="viaNumber"]').fill(opts.via);
@@ -169,9 +169,6 @@ test("mi-cuenta · direcciones: crear urbana → lista+DB → default única →
         // Tipo de destino (requerido desde 2026-10): Casa — sin campos extra.
         await form.getByRole("radio", { name: /Casa/ }).first().click();
         await form.locator("#phone").fill(`300${run.replace(/\D/g, "").slice(-7)}`);
-        await expect(form.locator('input[name="name"]')).toHaveValue(opts.label, {
-          timeout: 1_500,
-        });
         await expect(form.locator("#deptCode")).not.toHaveValue("", { timeout: 1_500 });
         await expect(form.locator("#cityCode")).not.toHaveValue("", { timeout: 1_500 });
         await expect(form.locator('input[name="viaNumber"]')).toHaveValue(opts.via, {
@@ -186,30 +183,33 @@ test("mi-cuenta · direcciones: crear urbana → lista+DB → default única →
       .getByRole("button", { name: /nueva dirección|agregar/i })
       .first()
       .click();
-    await fillAddressForm({ label, via: "7A", cruce: "23-45" });
+    await fillAddressForm({ via: "7A", cruce: "23-45" });
     await clientPage.locator('input[name="isDefault"]').check();
     await clientPage.getByRole("button", { name: /guardar/i }).click();
 
-    // Cierra el form y la dirección aparece en la lista.
-    await expect(clientPage.locator("body")).toContainText(label, { timeout: 20_000 });
+    // Cierra el form y la dirección aparece en la lista (línea canónica).
+    const line1 = "Calle 7A # 23-45";
+    await expect(clientPage.locator("body")).toContainText(line1, { timeout: 20_000 });
     const address = await db().address.findFirst({
-      where: { customerId: customer.id, name: label },
-      select: { id: true, isDefault: true },
+      where: { customerId: customer.id, line1: { contains: "7A" } },
+      select: { id: true, isDefault: true, name: true },
     });
     expect(address, "la dirección debe existir en DB").not.toBeNull();
     expect(address!.isDefault).toBe(true);
-    record("address-created", true, `${label} (default) en lista + DB`);
+    // El nombre se DERIVA del tipo de destino (casa → "Casa"), sin etiqueta libre.
+    expect(address!.name).toBe("Casa");
+    record("address-created", true, `${line1} (default, nombre derivado "Casa") en lista + DB`);
 
     // Default única: crear una segunda SIN default y ponerla default → la primera deja de serlo.
-    const label2 = `Oficina E2E ${run.slice(-4)}`;
+    const line2 = "Calle 10 # 50-10";
     await clientPage
       .getByRole("button", { name: /nueva dirección|agregar/i })
       .first()
       .click();
-    await fillAddressForm({ label: label2, via: "10", cruce: "50-10" });
+    await fillAddressForm({ via: "10", cruce: "50-10" });
     await clientPage.locator('input[name="isDefault"]').check();
     await clientPage.getByRole("button", { name: /guardar/i }).click();
-    await expect(clientPage.locator("body")).toContainText(label2, { timeout: 20_000 });
+    await expect(clientPage.locator("body")).toContainText(line2, { timeout: 20_000 });
     await expect(async () => {
       const defaults = await db().address.count({
         where: { customerId: customer!.id, isDefault: true },
@@ -218,23 +218,24 @@ test("mi-cuenta · direcciones: crear urbana → lista+DB → default única →
     }).toPass({ timeout: 20_000 });
     record("address-single-default", true, "al defaultear la segunda, la primera pierde el flag");
 
-    // Editar la primera: cambiar la etiqueta.
-    const renamed = `Casa E2E ${run.slice(-4)} editada`;
-    const row = clientPage.locator("li", { hasText: label }).first();
+    // Editar la primera: cambiar el cruce (la etiqueta ya no existe — el nombre
+    // se deriva del tipo de destino).
+    const editedLine = "Calle 7A # 99-99";
+    const row = clientPage.locator("li", { hasText: line1 }).first();
     await row.getByRole("button", { name: /editar/i }).click();
-    await clientPage.locator('input[name="name"]').fill(renamed);
+    await clientPage.locator('input[name="cruceNumber"]').fill("99-99");
     await clientPage.getByRole("button", { name: /guardar/i }).click();
-    await expect(clientPage.locator("body")).toContainText(renamed, { timeout: 20_000 });
-    record("address-edited", true, `${label} → ${renamed}`);
+    await expect(clientPage.locator("body")).toContainText(editedLine, { timeout: 20_000 });
+    record("address-edited", true, `${line1} → ${editedLine}`);
 
     // Borrar con confirmación (soft-delete: la fila queda con deletedAt — la
     // aserción cuenta solo las VIVAS).
-    const row2 = clientPage.locator("li", { hasText: renamed }).first();
+    const row2 = clientPage.locator("li", { hasText: editedLine }).first();
     await row2.getByRole("button", { name: /eliminar/i }).click();
     await row2.getByRole("button", { name: /sí, eliminar|confirmar/i }).click();
     await expect(async () => {
       const remaining = await db().address.count({
-        where: { customerId: customer!.id, name: renamed, deletedAt: null },
+        where: { customerId: customer!.id, line1: { contains: "99-99" }, deletedAt: null },
       });
       expect(remaining).toBe(0);
     }).toPass({ timeout: 20_000 });

@@ -27,6 +27,13 @@ describe("resolveLucamsPromise", () => {
     for (const text of [one, many]) expect(text).not.toContain("{{");
   });
 
+  it("el copy default deja claro que la fabricación ya está incluida y la entrega es el mismo día del despacho", () => {
+    const text = resolveLucamsPromise(DEFAULT_CHECKOUT_TEXTS.shipping, 2, 12);
+    expect(text).toContain("fabricación incluida");
+    expect(text).toContain("entrega el mismo día del despacho");
+    expect(text).not.toContain("tras fabricarlo");
+  });
+
   it("el cutoff de un dígito se muestra con cero a la izquierda", () => {
     const texts = {
       ...DEFAULT_CHECKOUT_TEXTS.shipping,
