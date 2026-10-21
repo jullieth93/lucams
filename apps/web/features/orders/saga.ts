@@ -736,6 +736,11 @@ export async function processPaidOrder(
         contactName: recipient.contactName,
         documentNumber: ship.documentNumber,
         email: ship.email,
+        // Alineación Aveonline 2026-10-20: el barrio y las notas de entrega
+        // existen en la dirección del checkout — ahora sí viajan a la guía
+        // (dsbarrio/dscom; antes iban vacíos).
+        neighborhood: ship.neighborhood,
+        notes: ship.notes,
       },
       items,
       // COD (contraentrega): el courier cobra el total en efectivo al entregar y lo

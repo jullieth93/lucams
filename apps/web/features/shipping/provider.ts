@@ -19,6 +19,15 @@ export type ShippingAddress = {
   documentNumber?: string;
   /** Email del destinatario (Aveonline lo notifica si presente). */
   email?: string;
+  /**
+   * Barrio (texto libre del checkout) → `dsbarrio` de la guía. Alineación
+   * 2026-10-20: el dato existía en el schema de dirección pero NUNCA llegaba a
+   * Aveonline (dsbarrio iba vacío) — y el barrio es de lo primero que el
+   * mensajero usa para ubicar la zona.
+   */
+  neighborhood?: string;
+  /** Notas de entrega del cliente (portería, horarios…) → `dscom` de la guía. */
+  notes?: string;
 };
 
 export type ShipmentItem = {
