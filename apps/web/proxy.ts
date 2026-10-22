@@ -380,6 +380,13 @@ export async function proxy(request: NextRequest) {
           requestId,
           path,
           markAgeMs: last ? now - last : null,
+          // Diagnóstico del bug de prefetch (2026-10-22): saber CON QUÉ headers
+          // llegó la request que disparó la revocación.
+          nrp: request.headers.get("next-router-prefetch"),
+          purpose: request.headers.get("purpose"),
+          rsc: request.headers.get("rsc"),
+          secFetchMode: request.headers.get("sec-fetch-mode"),
+          referer: request.headers.get("referer") ? "present" : null,
         });
         await supabase.auth.signOut({ scope: "global" }).catch(() => {});
         const url = new URL("/admin/login", request.url);
