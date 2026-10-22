@@ -104,6 +104,22 @@ describe("DesignPreviewDialog — pager por unidad", () => {
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
     expect(screen.getByRole("img")).toHaveAttribute("src", PAGES[0]);
   });
+
+  // Regresión 2026-10-22: el DialogContent de Radix solo se monta al ABRIR, así
+  // que el listener nativo de rueda debe (re)conectarse con el diálogo abierto
+  // — antes el efecto corría una vez con viewerRef null y la rueda no zooomeaba
+  // nunca en este diálogo.
+  it("la rueda sobre la imagen zooomea con el diálogo abierto", () => {
+    renderDialog();
+    openDialog();
+    const viewer = document.querySelector(".touch-none");
+    expect(viewer).not.toBeNull();
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    fireEvent.wheel(viewer!, { deltaY: -120 });
+    expect(screen.getByText("120%")).toBeInTheDocument();
+    fireEvent.wheel(viewer!, { deltaY: 120 });
+    expect(screen.getByText("100%")).toBeInTheDocument();
+  });
 });
 
 /*

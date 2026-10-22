@@ -193,6 +193,10 @@ function ZoomablePreviewImage({
   );
   // Doble tap (táctil): timestamp + posición del último tap simple.
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  // Tras un doble tap táctil el browser TAMBIÉN sintetiza `dblclick` (mouse de
+  // compatibilidad): sin esta guardia el toggle correría dos veces y el zoom
+  // quedaría en cero neto (bug verificado en Chromium móvil, 2026-10-22).
+  const lastTouchToggleRef = useRef(0);
 
   const zoomed = zoom.scale > PREVIEW_ZOOM_MIN;
 
@@ -354,11 +358,19 @@ function ZoomablePreviewImage({
       lastTapRef.current = moved < 12 ? { time: now, x: e.clientX, y: e.clientY } : null;
       if (moved < 12 && last && now - last.time < 350) {
         lastTapRef.current = null;
+        lastTouchToggleRef.current = now;
         toggleZoom();
       }
     }
     if (pointersRef.current.size === 0) panRef.current = null;
   }
+
+  // dblclick de MOUSE alterna el zoom; el dblclick sintetizado tras un doble
+  // tap táctil se ignora (ya alternó vía pointerup — ver lastTouchToggleRef).
+  const handleDoubleClick = useCallback(() => {
+    if (Date.now() - lastTouchToggleRef.current < 500) return;
+    toggleZoom();
+  }, [toggleZoom]);
 
   return (
     <>
@@ -372,7 +384,7 @@ function ZoomablePreviewImage({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        onDoubleClick={toggleZoom}
+        onDoubleClick={handleDoubleClick}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá */}
         <img
