@@ -46,6 +46,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PRODUCT_REDIRECTS } from "@/lib/product-redirects";
+import { logger } from "@/lib/logger";
 import {
   ADMIN_ACTIVITY_COOKIE,
   ADMIN_IDLE_LIMIT_MS,
@@ -284,6 +285,13 @@ export async function proxy(request: NextRequest) {
             const safe = cookiesToSet.filter(
               ({ name, value }) => !(value === "" && AUTH_TOKEN_COOKIE_RE.test(name)),
             );
+            // Trazas de diagnóstico de sesión (2026-10-22, bug «logout al
+            // recargar»): volumen bajo — solo requests que escriben sesión.
+            if (safe.length < cookiesToSet.length) {
+              logger.info({ event: "proxy.session.wipe_ignored", requestId, path });
+            } else if (safe.some(({ name }) => AUTH_TOKEN_COOKIE_RE.test(name))) {
+              logger.info({ event: "proxy.session.refreshed", requestId, path });
+            }
             if (safe.length === 0) return;
             for (const { name, value } of safe) {
               request.cookies.set(name, value);
@@ -300,6 +308,15 @@ export async function proxy(request: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
+    // Traza de diagnóstico (2026-10-22): request CON cookie de sesión pero sin
+    // user válido = la sesión murió server-side (o el token es inválido) — el
+    // caso reportado por el owner. Solo se loguea cuando HAY cookie (volumen
+    // bajo: tráfico con sesión únicamente).
+    const hasAuthCookie = request.cookies.getAll().some((c) => AUTH_TOKEN_COOKIE_RE.test(c.name));
+    if (hasAuthCookie && !user) {
+      logger.warn({ event: "proxy.session.auth_cookie_but_no_user", requestId, path });
+    }
 
     // Gate /admin/* — requiere sesión Supabase. La verificación adicional
     // de que el user efectivamente tiene fila AdminUser activa la hacemos
@@ -329,6 +346,13 @@ export async function proxy(request: NextRequest) {
         // B-8: además de borrar cookies en el browser, revocamos el refresh token
         // server-side (scope global = todas las sesiones del user en GoTrue).
         // Best-effort: si el Auth server falla, el borrado local igual se hace.
+        logger.warn({
+          event: "proxy.session.revoke",
+          kind: "admin-idle",
+          requestId,
+          path,
+          markAgeMs: last ? now - last : null,
+        });
         await supabase.auth.signOut({ scope: "global" }).catch(() => {});
         const url = new URL("/admin/login", request.url);
         url.searchParams.set("expired", "1");
@@ -378,6 +402,13 @@ export async function proxy(request: NextRequest) {
         mark.status === "invalid" ||
         (mark.status === "valid" && now - mark.at > CUSTOMER_IDLE_LIMIT_MS)
       ) {
+        logger.warn({
+          event: "proxy.session.revoke",
+          kind: "customer-idle",
+          markStatus: mark.status,
+          requestId,
+          path,
+        });
         // Best-effort (igual que admin): si el Auth server falla, el borrado
         // local de cookies igual se hace.
         await supabase.auth.signOut({ scope: "global" }).catch(() => {});
