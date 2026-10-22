@@ -54,9 +54,7 @@ export function readActivityMark(raw: string | undefined | null): number | null 
 }
 
 export type ActivityMarkInspection =
-  | { status: "absent" }
-  | { status: "invalid" }
-  | { status: "valid"; at: number };
+  { status: "absent" } | { status: "invalid" } | { status: "valid"; at: number };
 
 /**
  * Versión DISCRIMINADA de readActivityMark (2026-10-22): distingue AUSENTE de

@@ -20,15 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import {
-  ChevronLeft,
-  ChevronRight,
-  RotateCcw,
-  Sparkles,
-  X,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   PREVIEW_ZOOM_MAX,
@@ -442,9 +434,7 @@ function LightboxView({
             fill
             sizes="100vw"
             draggable={false}
-            className={
-              "object-contain " + (gesturing ? "" : "transition-transform duration-150")
-            }
+            className={"object-contain " + (gesturing ? "" : "transition-transform duration-150")}
             style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})` }}
             onError={() => onImageError(images[activeIdx])}
             priority

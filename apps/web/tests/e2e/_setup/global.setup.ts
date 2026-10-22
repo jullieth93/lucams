@@ -70,7 +70,8 @@ export default async function globalSetup() {
   loadEnvFor(env);
 
   if (process.env.E2E_AUTH !== "1") {
-    console.log(      `[e2e setup] E2E_AUTH≠1 → sin storageState (ambiente ${env}; specs con auth se saltan)`,
+    console.log(
+      `[e2e setup] E2E_AUTH≠1 → sin storageState (ambiente ${env}; specs con auth se saltan)`,
     );
     return;
   }

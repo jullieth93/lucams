@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-13T22:26:50.359Z",
-  "threshold": 41.87,
+  "generatedAt": "2026-10-22T14:03:25.707Z",
+  "threshold": 42.69,
   "uncovered": [
     "apps/web/app/(auth)/confirmar-codigo/confirmar-form.tsx :: El código es numérico, de 6 a 10 dígitos.",
     "apps/web/app/(auth)/registro/registro-form.tsx :: Tu nombre es obligatorio",
@@ -84,7 +84,6 @@
     "apps/web/app/ocasion/[slug]/page.tsx :: o usa el",
     "apps/web/app/pedido/[token]/page.tsx :: Ver dirección exacta",
     "apps/web/app/pedido/[token]/page.tsx :: Tel. de quien recibe:",
-    "apps/web/app/pedido/[token]/page.tsx :: Documento de guía (PDF)",
     "apps/web/app/producto/[slug]/copies-qty-input.tsx :: c/u",
     "apps/web/app/producto/[slug]/name-price-picker.tsx :: ¿Cuántas letras tendrá?",
     "apps/web/app/producto/[slug]/name-price-picker.tsx :: por ficha ·",
@@ -196,13 +195,13 @@
     "apps/web/components/product-from-catalog-card.tsx :: Personalízalo",
     "apps/web/components/products-filters.tsx :: Filtros",
     "apps/web/components/products-filters.tsx :: Filtros",
-    "apps/web/components/products-filters.tsx :: Filtros",
     "apps/web/components/products-filters.tsx :: Buscar",
     "apps/web/components/products-filters.tsx :: Ej. fotoimán",
     "apps/web/components/products-filters.tsx :: Precio",
     "apps/web/components/products-filters.tsx :: Características",
     "apps/web/components/products-filters.tsx :: Ordenar por",
     "apps/web/components/products-filters.tsx :: Más recientes",
+    "apps/web/components/products-filters.tsx :: Filtros",
     "apps/web/components/products-filters.tsx :: Categoría",
     "apps/web/components/products-filters.tsx :: Filtrar por categoría",
     "apps/web/components/shop-mega-menu.tsx :: más →",
@@ -247,7 +246,6 @@
     "apps/web/components/address/structured-address-fields.tsx :: Ej. Vereda El Roble",
     "apps/web/components/address/structured-address-fields.tsx :: Ej. Finca Las Flores",
     "apps/web/components/address/structured-address-fields.tsx :: Indicaciones para llegar *",
-    "apps/web/components/address/structured-address-fields.tsx :: Ej. A 200m del puente, casa de dos pisos color azul, portón de madera.",
     "apps/web/components/address/structured-address-fields.tsx :: Código postal (opcional)",
     "apps/web/components/cms/cms-edit-overlay.tsx :: Modo edición: haz clic en un texto del sitio para abrir su editor en el CMS.",
     "apps/web/components/home/category-grid.tsx :: Ver categoría →",
@@ -255,6 +253,9 @@
     "apps/web/components/home/reviews-carousel.tsx :: Siguiente reseña",
     "apps/web/components/home/reviews-carousel.tsx :: Calificación:",
     "apps/web/components/product-detail/product-gallery.tsx :: Galería de",
-    "apps/web/components/product-detail/product-gallery.tsx :: Cerrar"
+    "apps/web/components/product-detail/product-gallery.tsx :: Cerrar",
+    "apps/web/components/product-detail/product-gallery.tsx :: Alejar la imagen",
+    "apps/web/components/product-detail/product-gallery.tsx :: Acercar la imagen",
+    "apps/web/components/product-detail/product-gallery.tsx :: Restablecer el zoom"
   ]
 }
