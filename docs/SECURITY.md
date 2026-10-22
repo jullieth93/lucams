@@ -57,7 +57,9 @@
 - **TTL de access token:** 1 hora (default Supabase, no extender).
 - **TTL de refresh token:** 30 días con rotación en cada uso.
 - **Logout server-side** invalida la sesión en Supabase, no solo borra la cookie.
-- **Inactividad:** sesión de admin expira tras 30 min sin actividad (`lib/admin-activity.ts`). Al expirar el proxy **revoca la sesión server-side** (`signOut({ scope: "global" })`, no solo borra cookies — B-8) y redirige a `/admin/login?expired=1`. La marca de actividad (`admin_last_activity`) va **firmada HMAC-SHA256 con `CSRF_SECRET`** (`<ts>.<hmac>`): la sella la acción de login y la renueva el proxy en cada request admin (ventana deslizante); marca ausente o con firma inválida ⇒ se trata como expirada (cierra el hueco de borrar/forjar la cookie).
+- **Inactividad admin:** sesión de admin expira tras 30 min sin actividad (`lib/admin-activity.ts`). Al expirar el proxy **revoca la sesión server-side** (`signOut({ scope: "global" })`, no solo borra cookies — B-8) y redirige a `/admin/login?expired=1`. La marca de actividad (`admin_last_activity`) va **firmada HMAC-SHA256 con `CSRF_SECRET`** (`<ts>.<hmac>`): la sella la acción de login y la renueva el proxy en cada request admin (ventana deslizante); marca ausente o con firma inválida ⇒ se trata como expirada (cierra el hueco de borrar/forjar la cookie).
+- **Inactividad cliente:** la sesión de cliente persiste **30 días con ventana deslizante** (`lib/customer-activity.ts`, cookie `customer_last_activity` httpOnly firmada HMAC, `path=/`); la sella toda vía de login y la renueva el proxy en cada request autenticada de página. Marca con >30 días o **firma inválida (forjada)** ⇒ revocación server-side + borrado sb-* + redirect. Marca **ausente con JWT válido** (ya verificado contra el Auth server por el `getUser` del proxy) ⇒ se **re-sella y se sigue** (2026-10-22 — antes era fail-closed como admin y producía logouts espurios: la ausencia tiene causas legítimas como sesiones previas a la feature o evicción del browser; la señal anti-robo se conserva en el caso forjado).
+- **Carrera de refresh token (de un solo uso) — endurecimiento 2026-10-22 (ADR-162):** con el access token expirado, requests concurrentes (navegación + prefetches RSC + polls `/api/*` + otra pestaña) disparan refreshes simultáneos y la request perdedora recibe `SIGNED_OUT`, cuyo borrado de cookies sb-* podía llegar al browser DESPUÉS de la response ganadora y borrar la sesión recién refrescada («logout fantasma» al recargar/navegar — limitación documentada por @supabase/ssr). Mitigación en `proxy.ts`: (a) el proxy ya no crea cliente de sesión para `/api/*` (los route handlers crean el suyo con `lib/supabase/server.ts` y SÍ pueden persistir cookies, así que refrescar también en el proxy solo sumaba racers); (b) el `setAll` del proxy **ignora los borrados** de cookies `sb-*-auth-token` — los cierres legítimos no dependen de esa vía (logout explícito borra desde su action; los idle-timeouts borran sobre su response de redirect).
 
 ### Política de contraseñas
 
@@ -113,7 +115,7 @@ rate-limit — nunca en claro). Los consume `evaluateAlerts` con dos reglas:
 
 ### Pendiente de verificación (mandato #9)
 
-- [ ] Configuración exacta de TTL de access/refresh tokens en panel Supabase Free → `supabase.com/docs/guides/auth/sessions`.
+- [ ] Configuración exacta de TTL de access/refresh tokens en panel Supabase Free → `supabase.com/docs/guides/auth/sessions`. Incluye verificar el **«refresh token reuse interval»** (default 10 s): es la válvula que hace benignos los refreshes concurrentes; si algún proyecto lo tuviera en 0, la carrera de refresh revocaría la familia completa de tokens (ADR-162).
 - [ ] Política de contraseñas configurable en plan Free → `supabase.com/docs/guides/auth/password-security`.
 
 ---

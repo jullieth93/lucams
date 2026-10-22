@@ -121,7 +121,8 @@ lucams_shop/
 │       │   ├── fetch-with-timeout.ts / retry.ts / circuit-breaker.ts
 │       │   ├── security-headers.ts / turnstile.ts / storage.ts / format.ts…
 │       ├── proxy.ts                      # Proxy (ex-middleware, Next 16): request ID,
-│       │                                 #   CORS, security headers, gate /admin/*
+│       │                                 #   sesión Supabase (NO en /api/* — ADR-162), CORS,
+│       │                                 #   security headers, gate /admin/*, idle-timeouts
 │       ├── next.config.ts
 │       └── package.json
 ├── packages/
@@ -797,7 +798,7 @@ Cinco buckets con políticas distintas (detalle exhaustivo en [`SECURITY.md` § 
 - **SSR dinámico** en storefront: home `force-dynamic`; el stack SSR del catálogo (`features/products/public-service.ts` — listado y PDP) consulta DB por request con dedup `React.cache()` por request (sin data cache: el PDP muestra stock en vivo, que decrementa en la saga) e invalida con `revalidatePath("/productos")` desde las mutaciones admin.
 - **Catálogo AI-ready** (`lib/catalog.ts` — `/api/catalog/*`, recomendador, búsqueda): `unstable_cache` con tag `catalog`; las mutaciones admin de productos/categorías/ocasiones/cupones/imágenes llaman `updateTag("catalog")` (`features/products/service.ts`, `stock-admin.ts`, `image-actions.ts`, `features/categories|ocasiones|coupons/service.ts`…). Ambos stacks comparten el gate de visibilidad (ver § Gate de visibilidad storefront).
 - **CMS v2**: lecturas con `unstable_cache` tag `cms`, TTL 1h (`apps/web/lib/cms.ts`); invalidación on-demand con `updateTag("cms")` desde las Server Actions del admin al publicar.
-- **Redirects**: cache in-memory 60 s en `proxy.ts` para `UrlRedirect` lookups.
+- **Redirects**: `lookupActiveRedirectCached` (`features/redirects/service.ts`) con `unstable_cache` (tag `redirects`, revalidate 60 s como red de seguridad) sobre la Data Cache compartida; las mutaciones admin emiten `updateTag("redirects")` y el redirect nuevo aplica de inmediato (B-8 2026-10-02 — antes era un Map in-memory por instancia que divergía en multi-instancia).
 - **Server Components** por defecto; client components solo donde haya interactividad real (carrito, editor, filtros).
 - **Cache de imágenes** automático en Vercel (`next/image` con AVIF/WebP; `product-images` se sube con `cacheControl` de 1 año — nombres con UUID, inmutables).
 

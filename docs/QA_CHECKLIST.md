@@ -15,6 +15,7 @@
 
 ## A. Autenticación cliente
 
+- [ ] La sesión PERSISTE al recargar, navegar (home → catálogo → PDP → /mi-cuenta) y volver tras >1 h de inactividad (refresh token de un solo uso — ADR-162: la carrera de refresh ya no borra la sesión y la marca de actividad ausente se re-sella con JWT válido)
 - [ ] Signup con email nuevo → recibe OTP de 6 dígitos en menos de 60s
 - [ ] OTP correcto → loguea + redirige a /mi-cuenta
 - [ ] OTP incorrecto → mensaje claro sin filtrar info
@@ -66,6 +67,7 @@
 - [ ] Click sobre hero abre Lightbox fullscreen
 - [ ] Lightbox: ← → arrows + Esc cierra + dots paginator
 - [ ] Lightbox: navegación con keyboard funciona
+- [ ] Lightbox: ZOOM completo (2026-10-22) — rueda anclada al cursor, pinch (2 dedos), doble click/tap 100%↔200% (un solo toggle neto en táctil), botones −/%/+/reset, pan con arrastre; el zoom se restablece al cambiar de imagen
 - [ ] "Personalizar" CTA solo visible si isPersonalizable=true
 - [ ] "Personalizar" → navega (Link) a `/estudio/[slug]?variant=<variantId>` (con `&copies=N` si la PDP tiene stepper de unidades) — NO abre wa.me
 - [ ] La variante elegida en la PDP llega preseleccionada al Estudio y `?copies=N` fija las unidades a diseñar
