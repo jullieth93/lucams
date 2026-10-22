@@ -325,12 +325,12 @@ polling (`GET /api/designs/<id>/render-status`) y el render corre en background:
 
 ### Migraciones de la jornada integral 2026-10-17/20 (fases 1-6, ADR-155…160)
 
-| Migración                                                         | Qué crea                                                         | STG           | PRD                       |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------- | ------------- | ------------------------- |
-| Prisma `20261017120000_wompi_payment_ledger`                      | Ledger `WompiPaymentAttempt`/`WompiPaymentTransaction` (ADR-137) | ✅ 2026-10-20 | pendiente (con el deploy) |
-| Prisma `20261017130000_design_client_rev`                         | `Design.clientRev` — concurrencia optimista del editor (ADR-156) | ✅ 2026-10-20 | pendiente (con el deploy) |
-| Prisma `20261020120000_design_archived_from`                      | `Design.archivedFrom`                                            | ✅ 2026-10-20 | pendiente (con el deploy) |
-| SQL `supabase/migrations/00000000000042_wompi_payment_ledger.sql` | RLS del ledger                                                   | ✅ 2026-10-20 | pendiente (con el deploy) |
+| Migración                                                         | Qué crea                                                         | STG           | PRD           |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------- | ------------- | ------------- |
+| Prisma `20261017120000_wompi_payment_ledger`                      | Ledger `WompiPaymentAttempt`/`WompiPaymentTransaction` (ADR-137) | ✅ 2026-10-20 | ✅ 2026-10-21 |
+| Prisma `20261017130000_design_client_rev`                         | `Design.clientRev` — concurrencia optimista del editor (ADR-156) | ✅ 2026-10-20 | ✅ 2026-10-21 |
+| Prisma `20261020120000_design_archived_from`                      | `Design.archivedFrom`                                            | ✅ 2026-10-20 | ✅ 2026-10-21 |
+| SQL `supabase/migrations/00000000000042_wompi_payment_ledger.sql` | RLS del ledger                                                   | ✅ 2026-10-20 | ✅ 2026-10-21 |
 
 - Las Prisma viajan con el `prisma migrate deploy` del release (mismo orden de siempre). La SQL
   042 **no agenda crons** (solo RLS de las tablas nuevas) — segura de aplicar en cualquier
@@ -339,10 +339,9 @@ polling (`GET /api/designs/<id>/render-status`) y el render corre en background:
   `packages/db/scripts/one-shot/wompi-payment-ledger-backfill.mjs` (dry-run por defecto,
   `--apply` con env-guard) — copia al ledger la evidencia local histórica de órdenes WOMPI
   (`wompiReference`/`paymentAttempt`/`wompiTransactionId`, marcando `backfilled`); NO consulta
-  la API de Wompi ni infiere estados. **Corrido en STG el 2026-10-20: 0 cambios necesarios.**
-  En PRD: correr tras el `migrate deploy` del release (desde `packages/db`:
-  `pnpm exec dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/wompi-payment-ledger-backfill.mjs`
-  y luego con `--apply`).
+  la API de Wompi ni infiere estados. **Corrido en STG el 2026-10-20 (0 cambios necesarios)
+  y en PRD el 2026-10-21 (2 órdenes procesadas, 0 conflictos)** — el ledger quedó al día en
+  ambos ambientes.
 - **Claves CMS nuevas** de la jornada (`estudio.lienzo.borrar-diseno-*`,
   `estudio.texto.ig-reaplicar-*`, `estudio.exportar.zoom-*-aria`, `estudio.letras.set-pager-*`,
   `estudio.plantillas.reemplazo-*`, confirms `account.designs.*` — 7 claves — y el texto
@@ -486,12 +485,12 @@ Dos ramas en `github.com/jullieth93/lucams`:
 
 - **NO hay `main`** — la rama de producción se llama `production` (decisión de Lucy).
 - **Flujo diario:** commitear en `develop` + `git push origin develop` al cerrar cada tanda (no acumular commits locales sin subir — pasó un atraso de 116).
-- **Release:** con OK explícito de Lucy, `git checkout production && git merge --ff-only develop && git push` → Vercel despliega producción. `production` solo avanza en releases.
-- **Hecho (verificado 2026-08-05):** la Production Branch de Vercel ya es `production` (Settings → Git) — los push a `develop` generan previews; solo el release (ff a `production`) actualiza el sitio en vivo.
+- **Release:** con OK explícito de Lucy, **PR `develop` → `production`** (`gh pr create --base production --head develop`) → esperar los required checks verdes → `gh pr merge --merge` → Vercel despliega producción. `production` solo avanza en releases. El push directo ff está bloqueado por branch protection (las merge-commits de los PRs hacen imposible el ff; práctica real vigente desde los PR #84+).
+- **Hecho (verificado 2026-08-05):** la Production Branch de Vercel ya es `production` (Settings → Git) — los push a `develop` generan previews; solo el release (PR a `production`) actualiza el sitio en vivo.
 - **Seeds de la ola (cuando el merge trae cambios de DATOS):** tras el push a `develop` (STG) y tras el release (PRD), correr por ambiente los scripts de `packages/db/scripts` que apliquen — `migrate-cms-v2.mjs` (keys CMS nuevas del site map) y/o `seed-templates.mjs` (plantillas del Estudio). Son upserts idempotentes (nunca pisan campos CMS ya editados; el barrido de legacy del seed archiva plantillas fuera del listado canónico). Se corren con el env del ambiente (`set -a && source .env.stg && set +a` para STG; el `.env.local.nube-backup` para PRD) y después se invalida el caché CMS (ver la nota de «migrate-cms-v2» abajo). Precedente completo: release 2026-09-11 (Ola 26-29) en `docs/STATE.md`.
 - **CI (2026-07-24):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) dispara en `develop` y `production`. Antes apuntaba a `[develop, main]` y **`main` no existe** → `production` se desplegaba sin ningún gate (auditoría 2026-07-21, A4). El fix ya viajó a `production` (merge del 2026-08-06; `git show production:.github/workflows/ci.yml` muestra los triggers nuevos) y CI corre verde en ambas ramas (homologación 2026-08-29). (También vigiló `catalogo-whatsapp` mientras esa rama vivió; se retiró con su borrado el 2026-09-11.) Los 7 jobs: `quality` (typecheck+lint+build), `unit-tests`, `e2e`, `lighthouse`, `secrets-scan` (gitleaks), `format-check` y `dep-audit` (`pnpm audit --prod --audit-level=high` — verde gracias a los `overrides` y al `auditConfig.ignoreGhsas` de [`pnpm-workspace.yaml`](../pnpm-workspace.yaml), cada uno con su justificación en comentario ahí). Todas las actions de los workflows están pineadas por SHA (auditoría 2026-08-24).
 
-  **HECHO (2026-09-19, FASE B de la auditoría integral — hallazgo F-01):** `production` y `develop` tienen branch protection activa vía API de GitHub: los 7 jobs de CI como _required status checks_, `enforce_admins: true` (sin bypass administrativo), historia lineal (ff-only), force-push y delete bloqueados. Sin required reviews (operador único — riesgo residual aceptado). Rollback si una emergencia lo exige: `gh api -X DELETE repos/jullieth93/lucams/branches/<rama>/protection`. El mismo día se activaron también secret scanning, push protection y Dependabot security updates (hallazgo F-02; `validity_checks` y `non_provider_patterns` no son activables vía API en este repo — quedan como pendientes menores en Settings → Code security).
+  **HECHO (2026-09-19, FASE B de la auditoría integral — hallazgo F-01):** `production` y `develop` tienen branch protection activa vía API de GitHub: los 7 jobs de CI como _required status checks_, `enforce_admins: true` (sin bypass administrativo), force-push y delete bloqueados. Los releases entran como **merge commits de PR** (PR #84+; la "historia lineal ff-only" ya no aplica a `production`). Sin required reviews (operador único — riesgo residual aceptado). Rollback si una emergencia lo exige: `gh api -X DELETE repos/jullieth93/lucams/branches/<rama>/protection`. El mismo día se activaron también secret scanning, push protection y Dependabot security updates (hallazgo F-02; `validity_checks` y `non_provider_patterns` no son activables vía API en este repo — quedan como pendientes menores en Settings → Code security).
 
 ### Homologación de ambientes — procedimiento verificable (ADR-102, 2026-09-15)
 

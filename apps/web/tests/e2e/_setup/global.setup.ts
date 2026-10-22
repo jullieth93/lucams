@@ -20,7 +20,7 @@
  *      borra aunque los specs mueran a mitad.
  */
 
-import { chromium } from "@playwright/test";
+import { chromium, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
@@ -41,6 +41,29 @@ import {
   loadEnvFor,
   strip,
 } from "./env";
+
+/**
+ * Click + espera de navegación robusto a hidratación (2026-10-22): un click que
+ * llega ANTES de que React hidrate la página se pierde silenciosamente (no hay
+ * handler) y el waitForURL subsiguiente moría a los 30 s — flake intermitente
+ * del setup (~3 de 5 corridas en frío). Se reintenta el click con esperas
+ * cortas; si la navegación nunca ocurre, se falla con mensaje claro.
+ */
+async function clickAndWaitForURL(
+  page: Page,
+  buttonName: RegExp,
+  url: RegExp | ((u: URL) => boolean),
+): Promise<void> {
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    await page.getByRole("button", { name: buttonName }).click();
+    const navigated = await page
+      .waitForURL(url, { timeout: 8_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (navigated) return;
+  }
+  throw new Error(`[e2e setup] el click en ${buttonName} nunca navegó tras 4 intentos`);
+}
 
 export default async function globalSetup() {
   const env = currentEnv();
@@ -150,19 +173,20 @@ export default async function globalSetup() {
     await page.goto("/admin/login", { waitUntil: "domcontentloaded" });
     await page.locator('input[name="email"]').fill(adminEmail);
     await page.locator('input[name="password"]').fill(ADMIN_PASSWORD);
-    await page.getByRole("button", { name: /iniciar sesión/i }).click();
-    await page.waitForURL(/\/admin\/login\/mfa/, { timeout: 30_000 });
+    await clickAndWaitForURL(page, /iniciar sesión/i, /\/admin\/login\/mfa/);
     await page.getByPlaceholder("123456").fill(totp(adminTotpSecret, Date.now()));
-    await page.getByRole("button", { name: /verificar y entrar/i }).click();
-    await page.waitForURL(/\/admin\/dashboard/, { timeout: 30_000 });
+    await clickAndWaitForURL(page, /verificar y entrar/i, /\/admin\/dashboard/);
     await context.storageState({ path: authStatePath(env, "admin") });
 
     // Cliente (login de storefront → redirect a "/" en éxito).
     await page.goto("/login", { waitUntil: "domcontentloaded" });
     await page.locator('input[name="email"]').fill(clientEmail);
     await page.locator('input[name="password"]').fill(CLIENT_PASSWORD);
-    await page.getByRole("button", { name: /iniciar sesión|entrar|ingresar/i }).click();
-    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 });
+    await clickAndWaitForURL(
+      page,
+      /iniciar sesión|entrar|ingresar/i,
+      (u) => !u.pathname.startsWith("/login"),
+    );
     await context.storageState({ path: authStatePath(env, "client") });
 
     await context.close();

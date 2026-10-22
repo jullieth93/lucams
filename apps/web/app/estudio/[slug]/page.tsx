@@ -22,7 +22,6 @@ import {
   getOwnedDesign,
   cloneDesignForEdit,
 } from "@/features/personalization/service";
-import { DRAFT_MARKER_ACCOUNT_MAX_AGE_MS, DRAFT_MARKER_GUEST_MAX_AGE_MS } from "./lib/draft-marker";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { declaresUnits, unitCountOf } from "@/features/personalization/design-units";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
@@ -778,9 +777,7 @@ export default async function EstudioPage({
             initialDesignId={initialDesignId}
             initialDesignCanvas={initialDesignCanvas}
             initialDesignAssets={initialDesignAssets}
-            draftMarkerMaxAgeMs={
-              studioCustomer ? DRAFT_MARKER_ACCOUNT_MAX_AGE_MS : DRAFT_MARKER_GUEST_MAX_AGE_MS
-            }
+            draftResumeEnabled={studioCustomer !== null}
             initialDesignTemplateId={initialDesignTemplateId}
             photoSlots={effectivePhotoSlots}
             // Lucy 2026-09-05 — catálogo del stepper de N fotos (packs; vacío = no pack).

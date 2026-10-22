@@ -249,6 +249,10 @@ export function ShopMegaMenu({
                 {isAdmin && (
                   <Link
                     href="/admin/dashboard"
+                    // prefetch={false}: misma razón que el chip del header
+                    // (ADR-162 — un prefetch a /admin/* puede disparar el
+                    // idle-timeout del panel y revocar la sesión entera).
+                    prefetch={false}
                     onClick={() => setMobileOpen(false)}
                     className="bg-brand-yellow/30 text-brand-purple-dark hover:bg-brand-yellow/50 mb-1 inline-flex items-center rounded-md px-2.5 py-1.5 text-[11px] font-semibold tracking-wider uppercase transition-colors"
                   >

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
+import { test as authTest } from "./fixtures/auth";
 
 /*
  * CERTIFICACIÓN (ronda 2 QA owner, 2026-10-08) — verificación Playwright contra STG
@@ -8,11 +9,14 @@ import { test, expect, type Page } from "@playwright/test";
  *  1. Calendario: la Nevera 3D muestra las 12 tarjetas (antes: nevera vacía — bug PANEL_FACE_Z).
  *  2. Separadores: el libro 3D muestra la Cara A arriba y el toggle "Ver respaldo" voltea a la B.
  *  3. Resume: «Sí, continuar» devuelve el lienzo CON fotos aun recargando al instante (flush auto-save).
+ *     2026-10-21 — el retomador es SOLO para clientes autenticados (decisión owner): el test corre
+ *     con clientPage y el 3b certifica que el INVITADO ya no ve el interstitial.
  *  4. Carrito «Editar» devuelve el lienzo CON fotos.
  *  5. El CTA de finalizar dice «Ver diseño» en todos los estudios (no «Vista previa»).
  *  6. La reseña destacada del home muestra mini-imagen + nombre del producto con link.
  *
- * Correr:  E2E_ENV=stg pnpm --filter web exec playwright test cert-ronda2
+ * Correr:  E2E_ENV=stg E2E_AUTH=1 pnpm --filter web exec playwright test cert-ronda2
+ *          (E2E_AUTH=1 genera el storageState del cliente que usa el test 3)
  */
 
 const MASCOT = path.resolve(__dirname, "../../public/brand/lucams-mascot.png");
@@ -176,24 +180,40 @@ test("2. Separadores — Cara A visible arriba + toggle «Ver respaldo»", async
   });
 });
 
-test("3. Resume — «Sí, continuar» devuelve el lienzo CON fotos (recarga inmediata)", async ({
+authTest(
+  "3. Resume (cliente autenticado) — «Sí, continuar» devuelve el lienzo CON fotos (recarga inmediata)",
+  async ({ clientPage: page }) => {
+    await openStudioAndFill(page, "set-fotoimanes-polaroid", 6);
+    const before = await photosCounter(page);
+    // Recarga INMEDIATA: valida el flush del auto-save al ocultar (antes: 0/6).
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const continuar = page.getByRole("button", { name: /Sí, continuar/i });
+    await continuar.waitFor({ state: "visible", timeout: 20_000 });
+    // Margen humano realista: el sendBeacon del flush va en vuelo al recargar; un
+    // humano tarda ≥1-2 s en leer el interstitial y hacer click (el beacon tarda
+    // ~300-500 ms). Sin este margen el e2e lee el draft ANTES de que aterrice el
+    // flush (race read-after-write, solo reproducible a velocidad de máquina).
+    await page.waitForTimeout(2_000);
+    await continuar.click();
+    await page.waitForURL(/designId=/, { timeout: 20_000 });
+    await dismissOverlays(page);
+    await expect.poll(async () => photosCounter(page), { timeout: 60_000 }).toBe(before);
+  },
+);
+
+test("3b. Resume — el INVITADO ya no ve «Continuar donde quedaste» (retomador solo con cuenta, 2026-10-21)", async ({
   page,
 }) => {
   await openStudioAndFill(page, "set-fotoimanes-polaroid", 6);
-  const before = await photosCounter(page);
-  // Recarga INMEDIATA: valida el flush del auto-save al ocultar (antes: 0/6).
   await page.reload({ waitUntil: "domcontentloaded" });
-  const continuar = page.getByRole("button", { name: /Sí, continuar/i });
-  await continuar.waitFor({ state: "visible", timeout: 20_000 });
-  // Margen humano realista: el sendBeacon del flush va en vuelo al recargar; un
-  // humano tarda ≥1-2 s en leer el interstitial y hacer click (el beacon tarda
-  // ~300-500 ms). Sin este margen el e2e lee el draft ANTES de que aterrice el
-  // flush (race read-after-write, solo reproducible a velocidad de máquina).
-  await page.waitForTimeout(2_000);
-  await continuar.click();
-  await page.waitForURL(/designId=/, { timeout: 20_000 });
-  await dismissOverlays(page);
-  await expect.poll(async () => photosCounter(page), { timeout: 60_000 }).toBe(before);
+  // El estudio bootea FRESCO (draft nuevo, 0/6) y NUNCA monta el interstitial.
+  await expect(
+    page
+      .getByText(/0\/6 fotos/)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: /Sí, continuar/i })).toHaveCount(0);
 });
 
 test("4. Carrito «Editar» devuelve el lienzo CON fotos", async ({ page }) => {

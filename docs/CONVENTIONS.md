@@ -129,8 +129,9 @@ apps/web/
 │   ├── storage.ts · photo-validation.ts
 │   └── format.ts · money.ts · utils.ts…
 ├── proxy.ts                             # Proxy (ex-middleware, Next 16): request ID,
-│                                        #   sesión Supabase, CORS, security headers,
-│                                        #   gate /admin/*, redirects, idle-timeout admin
+│                                        #   sesión Supabase (NO en /api/* — ADR-162), CORS,
+│                                        #   security headers, gate /admin/*, redirects,
+│                                        #   idle-timeouts admin (30 min) y cliente (30 d)
 └── ...
 ```
 
@@ -923,7 +924,10 @@ Antipatrón SUPERSEDED: toolbar con `overflow-x-auto` + labels `whitespace-nowra
 
 - **Componente:** `components/design-preview-dialog.tsx` (+ la matemática de zoom pura en
   `components/preview-zoom.ts`). Vive en `components/` porque es compartido real — no
-  reintroducir copias por ruta (nació en `app/carrito/`).
+  reintroducir copias por ruta (nació en `app/carrito/`). La misma matemática de zoom la
+  reusan el «Ver diseño» del Estudio y el lightbox de la galería del PDP
+  (`components/product-detail/product-gallery.tsx`, 2026-10-22); los tres visores llevan la
+  guardia que ignora el `dblclick` sintetizado tras un doble tap táctil.
 - **Miniatura clicable + paginación por unidad:** la miniatura de la línea abre el diálogo;
   con `Design.previewPagesCount > 1` se pasan las `pages` (vía `designPreviewDisplay()` de
   `features/personalization/preview-artifacts.ts`) y el lightbox pagina; con 1 unidad no hay

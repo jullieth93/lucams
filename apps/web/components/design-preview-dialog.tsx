@@ -167,7 +167,9 @@ export function DesignPreviewDialog({
   // el pan/pinch siga al dedo sin lag.
   const [gesturing, setGesturing] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
-  const viewerRef = useRef<HTMLDivElement>(null);
+  // Limpieza del listener de rueda activo (lo instala el callback ref del
+  // visor — ver setViewerRef abajo).
+  const wheelCleanupRef = useRef<(() => void) | null>(null);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ dist: number; scale: number } | null>(null);
   const panRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(
@@ -175,6 +177,10 @@ export function DesignPreviewDialog({
   );
   // Doble tap (táctil): timestamp + posición del último tap simple.
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  // Tras un doble tap táctil el browser TAMBIÉN sintetiza `dblclick` (mouse de
+  // compatibilidad): sin esta guardia el toggle correría dos veces y el zoom
+  // quedaría en cero neto (bug verificado en Chromium móvil, 2026-10-22).
+  const lastTouchToggleRef = useRef(0);
 
   // Aplica escala + pan clampeados contra el tamaño base renderizado de la
   // imagen (offsetWidth/Height ignora el transform — es la caja sin zoom).
@@ -210,33 +216,44 @@ export function DesignPreviewDialog({
   // interno del DialogContent sigue disponible con la rueda FUERA del visor.
   // El zoom se ancla a la posición del cursor (zoomPanTowardPoint); cuando el
   // pan llega a su límite clampeado, degrada suave hacia un zoom centrado.
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer) return;
-    const onWheel = (e: WheelEvent) => {
-      if (e.deltaY === 0) return; // scroll horizontal puro: no es gesto de zoom
-      e.preventDefault();
-      const current = zoomRef.current;
-      const nextScale = wheelPreviewZoom(current.scale, e.deltaY);
-      const img = imgRef.current;
-      if (!img) {
-        applyZoom(nextScale, current.x, current.y);
-        return;
-      }
-      // Cursor relativo al centro de la imagen SIN transformar: al bounding
-      // rect (ya trasladado/escalado) se le resta el pan actual.
-      const rect = img.getBoundingClientRect();
-      const pointX = e.clientX - (rect.left + rect.width / 2 - current.x);
-      const pointY = e.clientY - (rect.top + rect.height / 2 - current.y);
-      applyZoom(
-        nextScale,
-        zoomPanTowardPoint(current.x, pointX, current.scale, nextScale),
-        zoomPanTowardPoint(current.y, pointY, current.scale, nextScale),
-      );
-    };
-    viewer.addEventListener("wheel", onWheel, { passive: false });
-    return () => viewer.removeEventListener("wheel", onWheel);
-  }, [applyZoom]);
+  //
+  // CALLBACK REF, no useEffect (2026-10-22): el DialogContent de Radix se
+  // monta al abrir, en un commit POSTERIOR al cambio de `open` que lo dispara
+  // — el efecto corría con el ref todavía en null (tanto sin deps como con
+  // [open]) y la rueda NUNCA quedaba conectada en este diálogo (bug owner:
+  // «el Ver no deja hacer zoom con scroll»). El callback ref corre cuando el
+  // nodo realmente existe.
+  const setViewerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      wheelCleanupRef.current?.();
+      wheelCleanupRef.current = null;
+      if (!node) return;
+      const onWheel = (e: WheelEvent) => {
+        if (e.deltaY === 0) return; // scroll horizontal puro: no es gesto de zoom
+        e.preventDefault();
+        const current = zoomRef.current;
+        const nextScale = wheelPreviewZoom(current.scale, e.deltaY);
+        const img = imgRef.current;
+        if (!img) {
+          applyZoom(nextScale, current.x, current.y);
+          return;
+        }
+        // Cursor relativo al centro de la imagen SIN transformar: al bounding
+        // rect (ya trasladado/escalado) se le resta el pan actual.
+        const rect = img.getBoundingClientRect();
+        const pointX = e.clientX - (rect.left + rect.width / 2 - current.x);
+        const pointY = e.clientY - (rect.top + rect.height / 2 - current.y);
+        applyZoom(
+          nextScale,
+          zoomPanTowardPoint(current.x, pointX, current.scale, nextScale),
+          zoomPanTowardPoint(current.y, pointY, current.scale, nextScale),
+        );
+      };
+      node.addEventListener("wheel", onWheel, { passive: false });
+      wheelCleanupRef.current = () => node.removeEventListener("wheel", onWheel);
+    },
+    [applyZoom],
+  );
 
   const toggleZoom = useCallback(() => {
     setZoom((z) => {
@@ -351,11 +368,19 @@ export function DesignPreviewDialog({
       lastTapRef.current = moved < 12 ? { time: now, x: e.clientX, y: e.clientY } : null;
       if (moved < 12 && last && now - last.time < 350) {
         lastTapRef.current = null;
+        lastTouchToggleRef.current = now;
         toggleZoom();
       }
     }
     if (pointersRef.current.size === 0) panRef.current = null;
   }
+
+  // dblclick de MOUSE alterna el zoom; el dblclick sintetizado tras un doble
+  // tap táctil se ignora (ya alternó vía pointerup — ver lastTouchToggleRef).
+  const handleDoubleClick = useCallback(() => {
+    if (Date.now() - lastTouchToggleRef.current < 500) return;
+    toggleZoom();
+  }, [toggleZoom]);
 
   const zoomed = zoom.scale > PREVIEW_ZOOM_MIN;
 
@@ -396,7 +421,7 @@ export function DesignPreviewDialog({
             touch-action:none: los gestos (pinch/pan/doble tap) los manejan los
             pointer events de acá; sin esto el navegador secuestra el pinch. */}
         <div
-          ref={viewerRef}
+          ref={setViewerRef}
           className={`border-brand-purple/15 from-brand-cream relative touch-none overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4 select-none ${
             currentLoading ? "flex min-h-40 items-center justify-center" : ""
           }`}
@@ -405,7 +430,7 @@ export function DesignPreviewDialog({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          onDoubleClick={toggleZoom}
+          onDoubleClick={handleDoubleClick}
           // Pager por unidad (2026-10-13): flechas de teclado ←/→ cuando hay
           // varias páginas (el visor se vuelve focuseable solo en ese caso).
           {...(pageUrls

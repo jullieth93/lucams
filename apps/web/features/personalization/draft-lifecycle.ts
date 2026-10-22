@@ -10,7 +10,10 @@
  * Este módulo concentra la política:
  *   1. Retoma al entrar: NO vive acá. El Estudio retoma vía el marcador local
  *      "Continuar donde quedaste" (lib/draft-marker.ts, scope
- *      producto:variante, con gates de progreso real y unidades — ADR-152);
+ *      producto:variante, con gates de progreso real y unidades — ADR-152),
+ *      SOLO para clientes autenticados (decisión owner 2026-10-21: la cadena
+ *      para invitados era estructuralmente frágil — rotación de cart_session,
+ *      incógnito, purgas — y el interstitial fallaba de forma intermitente);
  *      el recover server-side valida ownership/estado. No hay reuso silencioso
  *      de DRAFT en el servidor (se eliminó 2026-10-19: cargaba diseños sin
  *      aviso). Los CLONES (cloneDesignForEdit / cloneDesignForReorder) son

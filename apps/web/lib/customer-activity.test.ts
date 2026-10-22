@@ -15,6 +15,7 @@ import {
   CUSTOMER_IDLE_LIMIT_MS,
   CUSTOMER_SESSION_REQUIRED_PREFIXES,
   customerActivityCookieOptions,
+  inspectCustomerActivityMark,
   readCustomerActivityMark,
   sealCustomerActivityMark,
 } from "./customer-activity";
@@ -70,4 +71,23 @@ it("constantes estables: cookie, ventana de 30 días y prefijos que requieren se
   expect(CUSTOMER_ACTIVITY_COOKIE).toBe("customer_last_activity");
   expect(CUSTOMER_IDLE_LIMIT_MS).toBe(30 * 24 * 60 * 60 * 1000);
   expect(CUSTOMER_SESSION_REQUIRED_PREFIXES).toContain("/mi-cuenta");
+});
+
+// 2026-10-22 — el proxy discrimina ausente (re-sella) de forjada (revoca).
+describe("inspectCustomerActivityMark", () => {
+  it("ausente → 'absent'; válida → 'valid' con timestamp; forjada/malformada → 'invalid'", () => {
+    expect(inspectCustomerActivityMark(undefined)).toEqual({ status: "absent" });
+    expect(inspectCustomerActivityMark("")).toEqual({ status: "absent" });
+
+    const now = Date.now();
+    expect(inspectCustomerActivityMark(sealCustomerActivityMark(now))).toEqual({
+      status: "valid",
+      at: now,
+    });
+
+    expect(inspectCustomerActivityMark(String(now))).toEqual({ status: "invalid" });
+    const mark = sealCustomerActivityMark(1724900000000);
+    const forged = `1724900000001.${mark.slice(mark.indexOf(".") + 1)}`;
+    expect(inspectCustomerActivityMark(forged)).toEqual({ status: "invalid" });
+  });
 });
