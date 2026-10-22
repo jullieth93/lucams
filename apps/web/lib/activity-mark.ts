@@ -52,3 +52,21 @@ export function readActivityMark(raw: string | undefined | null): number | null 
   if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
   return Number(ts);
 }
+
+export type ActivityMarkInspection =
+  | { status: "absent" }
+  | { status: "invalid" }
+  | { status: "valid"; at: number };
+
+/**
+ * Versión DISCRIMINADA de readActivityMark (2026-10-22): distingue AUSENTE de
+ * PRESENTE-PERO-INVÁLIDA (malformada o firma que no coincide = forjada). El
+ * idle-timeout de CLIENTE los trata distinto (ausente con sesión verificada se
+ * re-sella; forjada revoca — ver lib/customer-activity.ts); el de ADMIN sigue
+ * fail-closed con ambos vía readActivityMark.
+ */
+export function inspectActivityMark(raw: string | undefined | null): ActivityMarkInspection {
+  if (!raw) return { status: "absent" };
+  const at = readActivityMark(raw);
+  return at === null ? { status: "invalid" } : { status: "valid", at };
+}

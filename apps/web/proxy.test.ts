@@ -20,6 +20,9 @@ const { state } = vi.hoisted(() => ({
     lastLookupPath: null as string | null, // #29 — captura la llave con que el proxy consulta
     cookieOptions: null as Record<string, unknown> | null, // B-2 — lo pasado a createServerClient
     signOutCalls: [] as Array<{ scope?: string }>, // B-8 — revocación server-side al expirar
+    getUserCalls: 0, // 2026-10-22 — /api/* ya no toca la sesión en el proxy
+    wipeOnGetUser: false, // simula el SIGNED_OUT del refresh perdedor (borrado sb-*)
+    refreshOnGetUser: false, // simula un TOKEN_REFRESHED (set normal de la cookie)
   },
 }));
 
@@ -27,12 +30,33 @@ vi.mock("@supabase/ssr", () => ({
   createServerClient: (
     _url: string,
     _key: string,
-    options?: { cookieOptions?: Record<string, unknown> },
+    options?: {
+      cookieOptions?: Record<string, unknown>;
+      cookies?: {
+        setAll: (
+          cookies: Array<{ name: string; value: string; options?: Record<string, unknown> }>,
+        ) => void;
+      };
+    },
   ) => {
     state.cookieOptions = options?.cookieOptions ?? null;
     return {
       auth: {
-        getUser: async () => ({ data: { user: state.user } }),
+        getUser: async () => {
+          state.getUserCalls++;
+          // El SIGNED_OUT del cliente Auth tras un refresh fallido hace que
+          // @supabase/ssr borre las cookies de sesión vía setAll (valor vacío).
+          if (state.wipeOnGetUser) {
+            options?.cookies?.setAll([
+              { name: "sb-proy-auth-token", value: "", options: { maxAge: 0 } },
+              { name: "sb-proy-auth-token.0", value: "", options: { maxAge: 0 } },
+            ]);
+          }
+          if (state.refreshOnGetUser) {
+            options?.cookies?.setAll([{ name: "sb-proy-auth-token", value: "nuevo", options: {} }]);
+          }
+          return { data: { user: state.user } };
+        },
         signOut: async (opts?: { scope?: string }) => {
           state.signOutCalls.push(opts ?? {});
         },
@@ -82,6 +106,9 @@ beforeEach(() => {
   state.lastLookupPath = null;
   state.cookieOptions = null;
   state.signOutCalls = [];
+  state.getUserCalls = 0;
+  state.wipeOnGetUser = false;
+  state.refreshOnGetUser = false;
   vi.unstubAllEnvs();
   // B-8 — la marca de actividad va firmada con HMAC (CSRF_SECRET), mismo
   // patrón que checkout-session: se fija acá para tests deterministas.
@@ -193,11 +220,12 @@ describe("proxy · idle-timeout admin (30 min)", () => {
 });
 
 /*
- * Idle-timeout CLIENTE (2026-10-12): sesión persistente de 30 días con ventana
- * DESLIZANTE (cada request autenticada re-sella la marca firmada
- * `customer_last_activity`); >30 días sin actividad —o marca ausente/forjada
- * (fail-closed, mismo criterio B-8 de admin)— → signOut global + borrado sb-* +
- * redirect a `/` (o /login?next= si la ruta requiere sesión).
+ * Idle-timeout CLIENTE (2026-10-12, refinado 2026-10-22): sesión persistente de
+ * 30 días con ventana DESLIZANTE (cada request autenticada re-sella la marca
+ * firmada `customer_last_activity`); >30 días sin actividad —o marca FORJADA
+ * (firma inválida, criterio B-8)— → signOut global + borrado sb-* + redirect a
+ * `/` (o /login?next= si la ruta requiere sesión). Marca AUSENTE con sesión
+ * válida → se re-sella, no se revoca.
  */
 describe("proxy · idle-timeout cliente (30 días deslizante)", () => {
   it("marca con >30 días → expira: signOut global, borra sb-* y la marca, redirect a /", async () => {
@@ -229,14 +257,21 @@ describe("proxy · idle-timeout cliente (30 días deslizante)", () => {
     expect(Math.abs((ts ?? 0) - Date.now())).toBeLessThan(10_000);
   });
 
-  it("marca AUSENTE con sesión → expira (fail-closed: borrar la cookie no reinicia el reloj)", async () => {
+  it("marca AUSENTE con sesión VÁLIDA → NO revoca: re-sella la marca y sigue (2026-10-22)", async () => {
+    // El JWT ya fue verificado contra el Auth server por getUser; la ausencia
+    // tiene causas legítimas (sesión previa a la feature, evicción del
+    // browser). Cerrar acá era el logout espurio reportado por el owner.
     state.user = { id: "u1" };
     const res = await proxy(
       makeReq("/productos-listado", { cookies: { "sb-access-token": "tok" } }),
     );
-    expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("https://lucamsshop.com/");
-    expect(state.signOutCalls).toEqual([{ scope: "global" }]);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(state.signOutCalls).toEqual([]);
+    const renewed = res.cookies.get("customer_last_activity")?.value ?? "";
+    const ts = readCustomerActivityMark(renewed);
+    expect(ts).not.toBeNull();
+    expect(Math.abs((ts ?? 0) - Date.now())).toBeLessThan(10_000);
   });
 
   it("marca con firma INVÁLIDA (forjada) → expira", async () => {
@@ -501,7 +536,9 @@ describe("proxy · Cache-Control en páginas privadas (F-20)", () => {
 // módulo → la rama `true` se prueba con un import fresco del proxy).
 describe("proxy · cookieOptions de la sesión Supabase (B-2)", () => {
   it("secure=false fuera de prod/preview (dev local HTTP)", async () => {
-    await proxy(makeReq("/api/algo", { origin: "https://lucamsshop.com" }));
+    // Desde 2026-10-22 el cliente de sesión NO se crea para /api/*: el test usa
+    // una ruta de página para que el proxy instancie createServerClient.
+    await proxy(makeReq("/productos-listado"));
     expect(state.cookieOptions).toEqual({ secure: false, sameSite: "lax" });
   });
 
@@ -509,7 +546,39 @@ describe("proxy · cookieOptions de la sesión Supabase (B-2)", () => {
     vi.stubEnv("VERCEL_ENV", "production");
     vi.resetModules();
     const { proxy: proxyProd } = await import("./proxy");
-    await proxyProd(makeReq("/api/algo", { origin: "https://lucamsshop.com" }));
+    await proxyProd(makeReq("/productos-listado"));
     expect(state.cookieOptions).toEqual({ secure: true, sameSite: "lax" });
+  });
+});
+
+// 2026-10-22 — fix «logout fantasma» del storefront: (a) /api/* no crea cliente
+// de sesión en el proxy (los route handlers se autogestionan y persisten
+// cookies), (b) el setAll ignora los borrados de cookies sb-*-auth-token que
+// produce el SIGNED_OUT de la request perdedora de una carrera de refresh.
+describe("proxy · sesión Supabase — carrera de refresh y /api", () => {
+  it("/api/* NO llama getUser ni renueva la marca de cliente", async () => {
+    state.user = { id: "u1" };
+    const res = await proxy(makeReq("/api/vitals", { method: "POST" }));
+    expect(res.status).toBe(200);
+    expect(state.getUserCalls).toBe(0);
+    expect(res.cookies.get("customer_last_activity")).toBeUndefined();
+  });
+
+  it("página normal SÍ llama getUser (refresh de sesión vigente)", async () => {
+    await proxy(makeReq("/productos-listado"));
+    expect(state.getUserCalls).toBe(1);
+  });
+
+  it("IGNORA el borrado de cookies sb-*-auth-token del SIGNED_OUT perdedor", async () => {
+    state.wipeOnGetUser = true;
+    const res = await proxy(makeReq("/productos-listado"));
+    expect(res.cookies.get("sb-proy-auth-token")).toBeUndefined();
+    expect(res.cookies.get("sb-proy-auth-token.0")).toBeUndefined();
+  });
+
+  it("un set NORMAL de la cookie de sesión (TOKEN_REFRESHED) sí se propaga", async () => {
+    state.refreshOnGetUser = true;
+    const res = await proxy(makeReq("/productos-listado"));
+    expect(res.cookies.get("sb-proy-auth-token")?.value).toBe("nuevo");
   });
 });

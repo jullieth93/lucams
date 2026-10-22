@@ -14,15 +14,24 @@
  * ADR-062); este es el equivalente cliente con una ventana acorde a retail
  * (30 días, no 30 minutos).
  *
- * Firma y fail-closed (mismo criterio B-8 de admin): la marca va FIRMADA con
- * HMAC (primitivo compartido en lib/activity-mark.ts) y la cookie es httpOnly
- * — las cookies sb-* de Supabase NO lo son (el browser client lee la sesión de
- * document.cookie), así que un XSS que robe solo las sb-* llega SIN marca
- * válida y el proxy la trata como expirada. Marca ausente, malformada o con
- * firma inválida en una request autenticada ⇒ stale (borrar la cookie no
- * reinicia el reloj). Efecto colateral del despliegue inicial: las sesiones
- * pre-existentes (sin marca, anteriores a esta feature) expiran en su primera
- * request — un re-login único, deliberado.
+ * Firma y política ante marca dudosa: la marca va FIRMADA con HMAC (primitivo
+ * compartido en lib/activity-mark.ts) y la cookie es httpOnly — las cookies
+ * sb-* de Supabase NO lo son (el browser client lee la sesión de
+ * document.cookie). Desde 2026-10-22 la respuesta se discrimina (antes era
+ * fail-closed para todo, espejo del criterio B-8 de admin, y producía logouts
+ * espurios en el storefront):
+ *   - Marca AUSENTE con sesión VÁLIDA (el JWT ya fue verificado contra el
+ *     Auth server por el getUser del proxy) ⇒ se RE-SELLA y se sigue. La
+ *     sesión ya está criptográficamente verificada; la marca puede faltar por
+ *     sesiones creadas antes de la feature, por evicción del browser bajo
+ *     presión de almacenamiento o por cualquier vía de login que no la selle —
+ *     cerrar la sesión en esos casos era un logout espurio (bug owner
+ *     2026-10-22: «el login se pierde al recargar/navegar»).
+ *   - Marca PRESENTE pero con firma INVÁLIDA (forjada, p. ej.
+ *     `customer_last_activity=<now>` fabricado con cookies robadas) ⇒ se
+ *     revoca (signOut global + borrado sb-* + redirect): ahí sí hay señal de
+ *     manipulación (criterio B-8 intacto para este caso y para TODO el
+ *     idle-timeout de admin, que permanece fail-closed también ante ausencia).
  *
  * La escriben DOS lugares que DEBEN coincidir (patrón de admin-activity):
  *   - El proxy (middleware): renueva la marca en cada request autenticada de
@@ -40,7 +49,7 @@
  * agrega seguridad y sí falsos positivos (IPs móviles cambiantes).
  */
 
-import { readActivityMark, sealActivityMark } from "./activity-mark";
+import { inspectActivityMark, readActivityMark, sealActivityMark } from "./activity-mark";
 
 export const CUSTOMER_ACTIVITY_COOKIE = "customer_last_activity";
 
@@ -74,9 +83,17 @@ export function sealCustomerActivityMark(now: number): string {
 
 /**
  * Lee la marca de actividad del cliente de la request: timestamp (epoch ms) o
- * null si falta / es malformada / la firma no coincide — el caller (proxy)
- * trata null como sesión expirada (fail-closed, ver encabezado).
+ * null si falta / es malformada / la firma no coincide.
  */
 export function readCustomerActivityMark(raw: string | undefined | null): number | null {
   return readActivityMark(raw);
+}
+
+/**
+ * Versión discriminada para el proxy (2026-10-22): distingue marca AUSENTE
+ * (re-sellar si la sesión es válida) de marca FORJADA (revocar). Política
+ * completa en el encabezado del módulo.
+ */
+export function inspectCustomerActivityMark(raw: string | undefined | null) {
+  return inspectActivityMark(raw);
 }
