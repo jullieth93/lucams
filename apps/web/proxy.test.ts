@@ -214,9 +214,9 @@ describe("proxy · idle-timeout admin (30 min)", () => {
   // «PANEL ADMIN» del header disparaba el idle-timeout admin (signOut GLOBAL →
   // mata la sesión entera, tienda incluida) sin que el usuario fuera al panel.
   describe("prefetch RSC nunca revoca ni renueva marcas", () => {
-    const prefetchReq = (path: string, cookies: Record<string, string>) => {
+    const prefetchReq = (path: string, cookies: Record<string, string>, prefetchValue = "1") => {
       const req = new NextRequest(new URL(`https://lucamsshop.com${path}`), {
-        headers: { "next-router-prefetch": "1" },
+        headers: { "next-router-prefetch": prefetchValue },
       });
       for (const [k, v] of Object.entries(cookies)) req.cookies.set(k, v);
       return req;
@@ -236,6 +236,23 @@ describe("proxy · idle-timeout admin (30 min)", () => {
       expect(state.signOutCalls).toEqual([]); // ← la sesión NO se toca
       expect(res.cookies.get("sb-access-token")).toBeUndefined();
     });
+
+    it.each(["1", "2", "3"])(
+      "el valor %s del header (estrategias del Segment Cache de Next 16) también es prefetch",
+      async (value) => {
+        state.user = { id: "u1" };
+        const stale = sealAdminActivityMark(Date.now() - 31 * 60 * 1000);
+        const res = await proxy(
+          prefetchReq(
+            "/admin/dashboard",
+            { admin_last_activity: stale, "sb-access-token": "tok" },
+            value,
+          ),
+        );
+        expect(res.status).toBe(307);
+        expect(state.signOutCalls).toEqual([]);
+      },
+    );
 
     it("prefetch admin con marca FRESCA → 200 sin renovar la marca ni revocar", async () => {
       state.user = { id: "u1" };

@@ -23,13 +23,16 @@
  *   5. Auth gate `/admin/*`: redirige anónimos a /admin/login (la verificación
  *      de fila AdminUser activa la hacen las pages con getCurrentAdmin()).
  *   6. Idle-timeout admin (A7): 30 min sin actividad → limpia sesión + re-login.
+ *      SOLO en navegación real: un prefetch RSC nunca revoca ni renueva la
+ *      marca (ADR-162 — un prefetch de «PANEL ADMIN» con la marca vieja mataba
+ *      la sesión entera del usuario, tienda incluida).
  *   7. Idle-timeout cliente (2026-10-12, refinado 2026-10-22): la sesión de
  *      cliente persiste 30 días renovándose con actividad (ventana deslizante,
  *      cookie firmada `customer_last_activity`); >30 días sin actividad o marca
  *      FORJADA → signOut global + borrado de sb-* + redirect a `/` (o
  *      /login?next= si la ruta requiere sesión). Marca AUSENTE con sesión
  *      válida (JWT ya verificado por getUser) → se re-sella, no se revoca.
- *      Política completa en lib/customer-activity.ts.
+ *      Prefetch excluido. Política completa en lib/customer-activity.ts.
  *
  * NO se hace acá:
  *   - Rate limit — vive en `lib/rate-limit.ts` (ADR-016), aplicado en las actions.
@@ -336,8 +339,12 @@ export async function proxy(request: NextRequest) {
     // marca (prefetch ≠ actividad) y no se revoca; si la marca está vencida se
     // responde el redirect de expiración SIN tocar la sesión — el timeout
     // completo (signOut + borrado) corre solo en la navegación REAL al panel.
+    // OJO Next 16: el header `next-router-prefetch` NO siempre vale "1" — el
+    // Segment Cache usa '2' (PPRRuntime) y '3' (RuntimeShell) según la
+    // estrategia del segmento (next/dist/client/components/segment-cache/
+    // cache.js): la detección es por PRESENCIA del header, no por valor.
     const isPrefetch =
-      request.headers.get("next-router-prefetch") === "1" ||
+      request.headers.get("next-router-prefetch") !== null ||
       request.headers.get("purpose") === "prefetch";
     if (isAdminPath && !user) {
       const redirectUrl = new URL("/admin/login", request.url);
