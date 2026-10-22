@@ -333,19 +333,24 @@ export async function proxy(request: NextRequest) {
     // Prefetch RSC (Next lo dispara solo por tener un <Link> visible — p. ej.
     // «PANEL ADMIN» en el header del storefront): NO es actividad del usuario y
     // NUNCA debe gatillar acciones destructivas (la revocación del idle-timeout
-    // mata la sesión ENTERA, tienda incluida — bug owner 2026-10-22: entrar por
-    // /login con la marca admin vieja y el simple render del header revocaba la
-    // sesión al prefetchar /admin/dashboard). En prefetch: no se renueva la
-    // marca (prefetch ≠ actividad) y no se revoca; si la marca está vencida se
-    // responde el redirect de expiración SIN tocar la sesión — el timeout
-    // completo (signOut + borrado) corre solo en la navegación REAL al panel.
-    // OJO Next 16: el header `next-router-prefetch` NO siempre vale "1" — el
-    // Segment Cache usa '2' (PPRRuntime) y '3' (RuntimeShell) según la
-    // estrategia del segmento (next/dist/client/components/segment-cache/
-    // cache.js): la detección es por PRESENCIA del header, no por valor.
+    // mata la sesión ENTERA, tienda incluida — bug owner 2026-10-22). En
+    // prefetch: no se renueva la marca (prefetch ≠ actividad) y no se revoca;
+    // si la marca está vencida se responde el redirect de expiración SIN tocar
+    // la sesión — el timeout completo (signOut + borrado) corre solo en la
+    // navegación REAL al panel.
+    //
+    // OJO Next 16 (verificado con trazas en STG 2026-10-22): el propio Next
+    // ELIMINA los headers Flight internos (`rsc`, `next-router-prefetch`,
+    // `next-router-state-tree`) antes de entregar la request al proxy
+    // (next/dist/docs/.../proxy.md § "RSC requests and rewrites") — el check de
+    // `next-router-prefetch` acá es defensa en profundidad por si eso cambia,
+    // NO la garantía. La garantía real contra el bug es de origen: los enlaces
+    // del storefront al panel llevan prefetch={false} (site-header.tsx y
+    // shop-mega-menu.tsx), así que ese prefetch ni siquiera se emite.
     const isPrefetch =
       request.headers.get("next-router-prefetch") !== null ||
-      request.headers.get("purpose") === "prefetch";
+      request.headers.get("purpose") === "prefetch" ||
+      request.headers.get("sec-purpose") === "prefetch";
     if (isAdminPath && !user) {
       const redirectUrl = new URL("/admin/login", request.url);
       return withSecurityHeaders(NextResponse.redirect(redirectUrl), requestId);

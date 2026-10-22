@@ -184,6 +184,13 @@ export async function SiteHeader() {
           {admin && (
             <Link
               href="/admin/dashboard"
+              // prefetch={false} (2026-10-22, ADR-162): un prefetch a /admin/*
+              // dispara el idle-timeout del panel en el proxy y su revocación
+              // mata la sesión ENTERA (tienda incluida). En Next 16 el proxy no
+              // puede distinguir prefetch de navegación real (los headers Flight
+              // se eliminan antes de llegar al proxy), así que la única vía
+              // segura es NO prefetchar los enlaces al panel.
+              prefetch={false}
               className="text-brand-purple-dark bg-brand-yellow/30 hover:bg-brand-yellow/50 hidden rounded-md px-2.5 py-1 text-[11px] font-semibold tracking-wider uppercase transition-colors sm:inline-flex"
             >
               <CmsText blockKey="header.menu.admin" fallback="Panel admin" />
