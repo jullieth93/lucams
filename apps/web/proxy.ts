@@ -326,6 +326,19 @@ export async function proxy(request: NextRequest) {
     //
     // Excepción: /admin/login es público (es donde el user se autentica).
     const isAdminPath = path.startsWith("/admin") && !path.startsWith("/admin/login");
+
+    // Prefetch RSC (Next lo dispara solo por tener un <Link> visible — p. ej.
+    // «PANEL ADMIN» en el header del storefront): NO es actividad del usuario y
+    // NUNCA debe gatillar acciones destructivas (la revocación del idle-timeout
+    // mata la sesión ENTERA, tienda incluida — bug owner 2026-10-22: entrar por
+    // /login con la marca admin vieja y el simple render del header revocaba la
+    // sesión al prefetchar /admin/dashboard). En prefetch: no se renueva la
+    // marca (prefetch ≠ actividad) y no se revoca; si la marca está vencida se
+    // responde el redirect de expiración SIN tocar la sesión — el timeout
+    // completo (signOut + borrado) corre solo en la navegación REAL al panel.
+    const isPrefetch =
+      request.headers.get("next-router-prefetch") === "1" ||
+      request.headers.get("purpose") === "prefetch";
     if (isAdminPath && !user) {
       const redirectUrl = new URL("/admin/login", request.url);
       return withSecurityHeaders(NextResponse.redirect(redirectUrl), requestId);
@@ -343,6 +356,14 @@ export async function proxy(request: NextRequest) {
       const last = readAdminActivityMark(request.cookies.get(ADMIN_ACTIVITY_COOKIE)?.value);
       const now = Date.now();
       if (!last || now - last > ADMIN_IDLE_LIMIT_MS) {
+        // Prefetch: redirect de expiración SIN revocar ni borrar cookies — la
+        // sesión sigue viva para la tienda; la navegación REAL al panel (abajo,
+        // rama no-prefetch) ejecuta el timeout completo.
+        if (isPrefetch) {
+          const url = new URL("/admin/login", request.url);
+          url.searchParams.set("expired", "1");
+          return withSecurityHeaders(NextResponse.redirect(url), requestId);
+        }
         // B-8: además de borrar cookies en el browser, revocamos el refresh token
         // server-side (scope global = todas las sesiones del user en GoTrue).
         // Best-effort: si el Auth server falla, el borrado local igual se hace.
@@ -365,11 +386,14 @@ export async function proxy(request: NextRequest) {
         expired.cookies.delete({ name: ADMIN_ACTIVITY_COOKIE, path: "/admin" });
         return expired;
       }
-      response.cookies.set(
-        ADMIN_ACTIVITY_COOKIE,
-        sealAdminActivityMark(now),
-        adminActivityCookieOptions(),
-      );
+      // Prefetch con marca fresca: no renovar (prefetch ≠ actividad del usuario).
+      if (!isPrefetch) {
+        response.cookies.set(
+          ADMIN_ACTIVITY_COOKIE,
+          sealAdminActivityMark(now),
+          adminActivityCookieOptions(),
+        );
+      }
     }
 
     // Idle-timeout CLIENTE (30 días deslizante — política completa en
@@ -392,8 +416,11 @@ export async function proxy(request: NextRequest) {
     //   - No /admin/*: gobernado por el idle-timeout admin de 30 min (arriba).
     //   - No /auth/* (callback/logout): gestionan su propio ciclo de sesión
     //     (callback SELLA la marca tras el exchange PKCE; logout la borra).
+    //   - No prefetch (2026-10-22): no renueva ni revoca — un prefetch no es
+    //     actividad del usuario y una revocación disparada por prefetch es
+    //     invisible (mismo bug que el bloque admin de arriba).
     const isAuthFlowPath = path.startsWith("/auth/");
-    if (user && !path.startsWith("/admin") && !isAuthFlowPath) {
+    if (user && !path.startsWith("/admin") && !isAuthFlowPath && !isPrefetch) {
       const mark = inspectCustomerActivityMark(
         request.cookies.get(CUSTOMER_ACTIVITY_COOKIE)?.value,
       );

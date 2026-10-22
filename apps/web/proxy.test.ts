@@ -210,6 +210,57 @@ describe("proxy · idle-timeout admin (30 min)", () => {
     expect(res.headers.get("location") ?? "").toContain("expired=1");
   });
 
+  // 2026-10-22 — bug owner «la sesión se pierde sola»: el prefetch RSC del link
+  // «PANEL ADMIN» del header disparaba el idle-timeout admin (signOut GLOBAL →
+  // mata la sesión entera, tienda incluida) sin que el usuario fuera al panel.
+  describe("prefetch RSC nunca revoca ni renueva marcas", () => {
+    const prefetchReq = (path: string, cookies: Record<string, string>) => {
+      const req = new NextRequest(new URL(`https://lucamsshop.com${path}`), {
+        headers: { "next-router-prefetch": "1" },
+      });
+      for (const [k, v] of Object.entries(cookies)) req.cookies.set(k, v);
+      return req;
+    };
+
+    it("prefetch admin con marca VENCIDA → redirect de expiración SIN revocar ni borrar cookies", async () => {
+      state.user = { id: "u1" };
+      const stale = sealAdminActivityMark(Date.now() - 31 * 60 * 1000);
+      const res = await proxy(
+        prefetchReq("/admin/dashboard", {
+          admin_last_activity: stale,
+          "sb-access-token": "tok",
+        }),
+      );
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location") ?? "").toContain("expired=1");
+      expect(state.signOutCalls).toEqual([]); // ← la sesión NO se toca
+      expect(res.cookies.get("sb-access-token")).toBeUndefined();
+    });
+
+    it("prefetch admin con marca FRESCA → 200 sin renovar la marca ni revocar", async () => {
+      state.user = { id: "u1" };
+      const fresh = sealAdminActivityMark(Date.now() - 60 * 1000);
+      const res = await proxy(prefetchReq("/admin/pedidos", { admin_last_activity: fresh }));
+      expect(res.status).toBe(200);
+      expect(state.signOutCalls).toEqual([]);
+      expect(res.cookies.get("admin_last_activity")).toBeUndefined(); // no re-sella en prefetch
+    });
+
+    it("prefetch de storefront con marca de cliente VENCIDA → no revoca ni re-sella", async () => {
+      state.user = { id: "u1" };
+      const stale = sealCustomerActivityMark(Date.now() - CUSTOMER_IDLE_LIMIT_MS - 60_000);
+      const res = await proxy(
+        prefetchReq("/productos-listado", {
+          customer_last_activity: stale,
+          "sb-access-token": "tok",
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect(state.signOutCalls).toEqual([]);
+      expect(res.cookies.get("customer_last_activity")).toBeUndefined();
+    });
+  });
+
   it("/admin/login NO borra la marca (la sella la acción de login, no el proxy)", async () => {
     const res = await proxy(
       makeReq("/admin/login", { cookies: { admin_last_activity: String(Date.now()) } }),
