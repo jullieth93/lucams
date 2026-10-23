@@ -41,6 +41,8 @@
  * (styleSetId/withBorder) quedan como representante del set 1 para retrocompatibilidad.
  * La Vista Previa se PAGINA por set (pages de StudioPreviewModal) y las mismas páginas se
  * suben tras el finalize (uploadDesignPreviewPagesAction) para el "Ver" paginado del carrito.
+ * 2026-10-22 (decisión del owner) — la vista 3D del tablero memo muestra TODOS los sets
+ * juntos (antes solo el set activo), con rótulo de conteo como el de la galería de escenas.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -618,15 +620,17 @@ export function LetterSetEditor({
     if (building3D) return;
     setBuilding3D(true);
     try {
-      // El 3D muestra el SET ACTIVO con SU estilo, colores y borde (2026-10-19).
-      setBoard3D(
-        await buildLetterTileTextures(
-          letters,
-          tilesForUnit(activeUnit),
-          colorsForUnit(activeUnit),
-          borderForUnit(activeUnit),
+      // 2026-10-22 (decisión del owner — supera la de 2026-10-19 de «solo set activo»):
+      // el 3D muestra TODOS los sets juntos en el tablero, cada uno con SU estilo, colores
+      // y borde (patrón «un 3D, todas las unidades» del estudio de foto, handleOpenScenes).
+      // Las texturas de los sets se construyen EN PARALELO por set (cada set ya paraleliza
+      // adentro las cargas de imagen de sus fichas) y se concatenan en orden: set 1, set 2…
+      const perUnit = await Promise.all(
+        Array.from({ length: unitCount }, (_, u) =>
+          buildLetterTileTextures(letters, tilesForUnit(u), colorsForUnit(u), borderForUnit(u)),
         ),
       );
+      setBoard3D(perUnit.flat());
     } catch (err) {
       // #14 — detalle técnico al log; al cliente un mensaje claro es-CO.
       console.error("[studio.letter-set.3d]", err);
@@ -636,11 +640,32 @@ export function LetterSetEditor({
     }
   }
 
-  // Grid del tablero: packs chicos (vocales) en una sola fila; el abecedario en grilla ~√n.
-  const boardCols =
-    board3D === null || board3D.length <= 8
-      ? Math.max(1, board3D?.length ?? 1)
-      : Math.ceil(Math.sqrt(board3D.length));
+  // Grid del tablero: packs chicos (vocales) en una sola fila; el abecedario en grilla ~√n
+  // (ahora sobre el TOTAL de fichas de todos los sets — 2026-10-22). Multi-set: las columnas
+  // se ajustan a un DIVISOR del largo del set, así cada set completa filas ENTERAS y dos sets
+  // no se intercalan dentro de una fila (el layout del memo board rellena por filas con `cols`
+  // tal cual; la divisibilidad total = unitCount × largo garantiza filas completas).
+  const boardCols = (() => {
+    const total = board3D?.length ?? 0;
+    if (total === 0) return 1;
+    const base = total <= 8 ? total : Math.ceil(Math.sqrt(total));
+    const perSet = letters.length;
+    if (unitCount <= 1 || perSet % base === 0) return base;
+    let best = perSet;
+    for (let d = 1; d <= perSet; d++) {
+      if (perSet % d === 0 && Math.abs(d - base) < Math.abs(best - base)) best = d;
+    }
+    return best;
+  })();
+
+  // Rótulo overlay del modal 3D (2026-10-22 — patrón countBadgeLabel de scene-gallery, que
+  // para «letters» también hardcodea ficha/fichas; no hay clave CMS para este conteo):
+  // "2 sets · 54 fichas" con N > 1; con un solo set, solo el conteo de fichas.
+  const board3DBadge = (() => {
+    const total = board3D?.length ?? 0;
+    const tiles = `${total} ${total === 1 ? "ficha" : "fichas"}`;
+    return unitCount > 1 ? `${unitCount} sets · ${tiles}` : tiles;
+  })();
 
   /**
    * Cambio de tema de UN set (2026-10-19 — estilo POR SET): actualiza el estado
@@ -1404,6 +1429,12 @@ export function LetterSetEditor({
           </div>
           <div className="relative flex-1">
             <RoomBoardView3D magnets={board3D} cols={boardCols} style="memo" />
+            {/* Rótulo de cantidad (2026-10-22 — mismo patrón del countBadgeLabel de
+                scene-gallery): el 3D muestra TODOS los sets y el rótulo lo dice
+                ("2 sets · 54 fichas"). Overlay DOM, sin tocar el canvas WebGL. */}
+            <p className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-center text-xs font-bold text-white">
+              {board3DBadge}
+            </p>
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
             </p>

@@ -11,7 +11,8 @@
  *
  * jsdom no trae canvas 2D ni toBlob → se stubbean (el dibujo real de la lámina lo cubren los tests
  * puros de letter-tile-textures). Las server actions se mockean: acá se verifica el ORDEN, no el
- * servidor.
+ * servidor. Al final hay también una suite de la VISTA 3D multi-set (2026-10-22), que mockea la
+ * vista WebGL (room-board-view-3d) y espía la construcción de texturas.
  */
 
 import "@testing-library/jest-dom/vitest";
@@ -56,6 +57,41 @@ vi.mock("@/features/personalization/actions", () => ({
 }));
 vi.mock("@/app/carrito/actions", () => ({
   addPersonalizedToCartAction: (input: unknown) => addPersonalizedToCartAction(input),
+}));
+
+// 2026-10-22 — suite de la vista 3D multi-set: se mockea la vista WebGL (jsdom no
+// tiene WebGL; next/dynamic resuelve igual el módulo mockeado) y se ESPÍA la
+// construcción de texturas para contar los sets y las fichas que viajan al tablero.
+// El resto del módulo queda real (drawLetterTile/metrics los usa el compositor 2D).
+const buildLetterTileTexturesSpy = vi.fn(
+  (letters: readonly string[], _tiles: unknown, _colors: unknown, _withBorder?: unknown) =>
+    Promise.resolve(
+      letters.map((ch) => ({
+        dataUrl: `data:image/png;base64,fake-${ch}`,
+        wRatio: 5,
+        hRatio: 6.5,
+        shape: "rectangle" as const,
+      })),
+    ),
+);
+vi.mock("./lib/letter-tile-textures", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/letter-tile-textures")>();
+  return {
+    ...actual,
+    buildLetterTileTextures: (
+      letters: readonly string[],
+      tiles: unknown,
+      colors: unknown,
+      withBorder?: unknown,
+    ) => buildLetterTileTexturesSpy(letters, tiles, colors, withBorder),
+  };
+});
+const roomBoardView3DProps = vi.fn();
+vi.mock("./room-board-view-3d", () => ({
+  default: (props: { magnets: unknown[]; cols: number; style: string }) => {
+    roomBoardView3DProps(props);
+    return <div data-testid="room-board-3d" />;
+  },
 }));
 
 import { LetterSetEditor } from "./letter-set-editor";
@@ -718,5 +754,58 @@ describe("LetterSetEditor — estilo/borde por set y preview paginado (2026-10-1
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/carrito?personalized=1"));
     expect(uploadDesignPreviewPagesAction).not.toHaveBeenCalled();
+  });
+});
+
+
+/*
+ * 2026-10-22 (decisión del owner) — la vista 3D del tablero memo muestra TODOS los
+ * sets del diseño, no solo el set activo. Antes handleOpen3D construía texturas SOLO
+ * de activeUnit → con 2 sets el tablero mostraba 1 de 2 (bug reportado por el owner
+ * en «Abecedario Completo»). La vista WebGL está mockeada (ver arriba) y se espía
+ * buildLetterTileTextures: el contrato es UNA llamada por set y el array concatenado
+ * (2 × letters.length) llegando a RoomBoardView3D, con rótulo «N sets · M fichas».
+ */
+describe("LetterSetEditor — vista 3D con TODOS los sets (2026-10-22)", () => {
+  beforeEach(() => {
+    buildLetterTileTexturesSpy.mockClear();
+    roomBoardView3DProps.mockClear();
+  });
+
+  it("con 2 unidades el tablero recibe 2 × letters.length magnets y el rótulo dice «2 sets»", async () => {
+    renderEditor({ initialUnits: 2 });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Ver tus fichas en un tablero magnético 3D" }),
+    );
+
+    expect(await screen.findByTestId("room-board-3d")).toBeInTheDocument();
+
+    // Se construyeron texturas de AMBOS sets (una llamada por set), no solo del activo.
+    expect(buildLetterTileTexturesSpy).toHaveBeenCalledTimes(2);
+    // RoomBoardView3D recibió las fichas de los 2 sets concatenadas (5 vocales × 2).
+    const props = roomBoardView3DProps.mock.calls.at(-1)![0];
+    expect(props.magnets).toHaveLength(10);
+    // Multi-set: las columnas quedan en un divisor del largo del set (5) → cada set
+    // completa filas enteras y los sets no se intercalan dentro de una fila.
+    expect(props.cols).toBe(5);
+    // Rótulo overlay con el total (patrón countBadgeLabel de la galería de escenas).
+    expect(screen.getByText("2 sets · 10 fichas")).toBeInTheDocument();
+  });
+
+  it("con 1 set el tablero recibe las fichas del set y el rótulo solo cuenta fichas", async () => {
+    renderEditor();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Ver tus fichas en un tablero magnético 3D" }),
+    );
+
+    expect(await screen.findByTestId("room-board-3d")).toBeInTheDocument();
+
+    expect(buildLetterTileTexturesSpy).toHaveBeenCalledTimes(1);
+    const props = roomBoardView3DProps.mock.calls.at(-1)![0];
+    expect(props.magnets).toHaveLength(5);
+    expect(props.cols).toBe(5);
+    expect(screen.getByText("5 fichas")).toBeInTheDocument();
   });
 });
