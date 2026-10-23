@@ -600,6 +600,29 @@ test("home cumple WCAG 2.1 AA", async ({ page }) => {
 
 ## Performance / load testing
 
+### Profiling del Estudio (laboratorio, CDP — ADR-166/169)
+
+`apps/web/scripts/profile-studio-entry.mjs` mide la **entrada a `/estudio/<slug>`**
+con la metodología de ADR-166 (Chromium 390×844 dpr 3, CPU ×6 vía
+`Emulation.setCPUThrottlingRate`, contexto frío por corrida): segundos de JS del
+renderer (`ScriptDuration` del dominio Performance de CDP) hasta que el lienzo está
+montado y el hilo principal queda 1.5 s sin longtasks, conteo/ms de longtasks
+(PerformanceObserver inyectado pre-navegación) y top de funciones por self-time
+(Profiler de muestreo) para el análisis estructural. Reporta mediana de N corridas
+por slug y marca los que superen **+30 % de jsMs vs el control**
+(`set-fotoimanes-cuadrados`).
+
+```bash
+pnpm build                       # SIEMPRE contra build de producción (no next dev)
+cd apps/web && set -a && source ../../.env.local && set +a && pnpm exec next start -p 4000 &
+pnpm --filter web exec node scripts/profile-studio-entry.mjs --runs 3
+# opciones: --base-url, --slugs a,b,c, --runs n, --out path (default tmp/studio-perf-<ts>.json)
+```
+
+El JSON de salida (en `tmp/`, scratch gitignored) conserva corridas crudas,
+medianas y hotspots por slug — adjuntar las cifras al ADR correspondiente cuando
+la medición motive un cambio.
+
 ### Lighthouse CI
 
 ```yaml
