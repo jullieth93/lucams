@@ -664,7 +664,7 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   2026-10-19): `handleOpen3D` construye las texturas por set en paralelo (cada set
   con SU estilo/colores/borde), el modal muestra UN set arrancando en `activeUnit`
   con pills «Anterior»/«Siguiente» (wrap-around + teclado ← →), indicador
-  «Set N de M` en el header (texto CMS `unidades.unidadDe`) y rótulo con el conteo
+  «Set N de M`en el header (texto CMS`unidades.unidadDe`) y rótulo con el conteo
   de fichas del set visible; con 1 set no hay pager.
 - **Asistente IA de ideas (ADR-058)**: `studio-ai-panel.tsx` — el cliente cuenta la ocasión y
   recibe color de marca, frase (si el producto lleva texto), composición y un tip. Server:

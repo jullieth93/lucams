@@ -998,9 +998,7 @@ export async function assignPredesignedToDesignAction(input: {
       signedUrl: await refreshCustomerUploadSignedUrl(asset.storageUrl),
       // ADR-166 — derivado del reuso: se re-firma igual que el master (null en
       // assets previos al derivado → el lienzo cae al master).
-      canvasUrl: asset.canvasPath
-        ? await refreshCustomerUploadSignedUrl(asset.canvasPath)
-        : null,
+      canvasUrl: asset.canvasPath ? await refreshCustomerUploadSignedUrl(asset.canvasPath) : null,
       width: asset.width,
       height: asset.height,
     };

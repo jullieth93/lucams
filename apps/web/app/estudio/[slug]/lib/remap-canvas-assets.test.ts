@@ -112,7 +112,10 @@ describe("remapCanvasAssetUrls", () => {
         canvasUrl: "https://old.example/a1.canvas.webp",
       } as SlotState,
     ]);
-    const asset: StudioAsset = { ...fresh("a1"), canvasUrl: "https://fresh.example/a1.canvas.webp" };
+    const asset: StudioAsset = {
+      ...fresh("a1"),
+      canvasUrl: "https://fresh.example/a1.canvas.webp",
+    };
     const { canvasData } = remapCanvasAssetUrls(canvas, [asset]);
     expect(canvasData.slots[0]!.assetUrl).toBe("https://fresh.example/a1.jpg?token=nuevo");
     expect(canvasData.slots[0]!.canvasUrl).toBe("https://fresh.example/a1.canvas.webp");

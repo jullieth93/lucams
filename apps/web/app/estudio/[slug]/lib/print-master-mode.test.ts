@@ -48,9 +48,7 @@ const AVATAR_MASTER = "https://signed.example/avatar.jpg?token=t";
 
 describe("waitForMasterPhotosReady", () => {
   it("nodo slot-photo con la imagen del MASTER → resuelve de inmediato", async () => {
-    const stages = new Map<number, FakeStage | null>([
-      [0, fakeStage({ ".slot-photo": MASTER })],
-    ]);
+    const stages = new Map<number, FakeStage | null>([[0, fakeStage({ ".slot-photo": MASTER })]]);
     const start = performance.now();
     await waitForMasterPhotosReady([{ slotIndex: 0, assetUrl: MASTER }], stages);
     expect(performance.now() - start).toBeLessThan(200);
@@ -115,9 +113,7 @@ describe("runWithPrintMasters", () => {
 
   it("corre fn con el modo master ON y lo apaga al terminar (también si fn lanza)", async () => {
     stubInstantImage();
-    const stages = new Map<number, FakeStage | null>([
-      [0, fakeStage({ ".slot-photo": MASTER })],
-    ]);
+    const stages = new Map<number, FakeStage | null>([[0, fakeStage({ ".slot-photo": MASTER })]]);
     const slots = [{ slotIndex: 0, assetUrl: MASTER }];
 
     expect(isPrintMasterMode()).toBe(false);

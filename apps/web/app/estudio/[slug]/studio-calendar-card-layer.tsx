@@ -100,10 +100,7 @@ export function CalendarCardLayer({
   // ADR-166 — derivado en el lienzo; master solo durante el snapshot de
   // imprenta (lib/print-master-mode, fallback ADR-081).
   const printMaster = usePrintMasterMode();
-  const [photo] = useImage(
-    (printMaster ? assetUrl : (canvasUrl ?? assetUrl)) ?? "",
-    "anonymous",
-  );
+  const [photo] = useImage((printMaster ? assetUrl : (canvasUrl ?? assetUrl)) ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
   const [brandFonts, setBrandFonts] = useState<BrandCanvasFonts | null>(null);
   // Familia real del TÍTULO según el selector de tipo de letra (null hasta resolver →

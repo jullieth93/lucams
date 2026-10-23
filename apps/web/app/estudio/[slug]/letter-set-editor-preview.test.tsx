@@ -787,7 +787,11 @@ describe("LetterSetEditor — vista 3D con pager por set (2026-10-23)", () => {
   it("con 2 unidades: un set a la vez, indicador «Set 1 de 2» y el pager cambia al set 2 con SUS colores", async () => {
     const colorsA = ["#FF0000", "#00FF00", "#0000FF", "#123456", "#654321"];
     const colorsB = ["#AAAAAA", "#BBBBBB", "#CCCCCC", "#DDDDDD", "#EEEEEE"];
-    renderEditor({ initialUnits: 2, initialColorTheme: "nino", initialUnitColors: [colorsA, colorsB] });
+    renderEditor({
+      initialUnits: 2,
+      initialColorTheme: "nino",
+      initialUnitColors: [colorsA, colorsB],
+    });
     open3D();
     expect(await screen.findByTestId("room-board-3d")).toBeInTheDocument();
 
