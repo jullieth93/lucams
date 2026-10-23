@@ -271,6 +271,32 @@ Mismos campos que `cotizarDoble` **+ `idtransportador` obligatorio**. Si `idtran
 | Unidades máximas        | Depende (numbererror -6)                     |
 | Dimensiones             | Opcionales pero usadas para peso volumétrico |
 
+### 3.11 Limitación real: hay restricciones que la cotización NO reporta
+
+La API **no expone un endpoint de reglas/restricciones por transportadora** (verificado
+contra toda la doc auditada; pendiente confirmación de soporte Aveonline sobre si existe
+matriz consultable por carrier/ruta). La cotización `cotizarDoble` solo reporta las
+restricciones que cada carrier aplica en SU cotizador — y hay reglas que solo se aplican
+al **generar la guía** (`generarGuia2`):
+
+- **Caso real (STG LCM-2026-0003, 2026-10-22):** Transprensa cotizó OK un paquete liviano
+  y al generar la guía respondió «Transprensa no cotizo el envio. Transprensa no opera
+  envios de menos de 11 kilos» — la guía nunca existió y el pedido quedó atascado
+  post-venta. La cotización jamás avisó el mínimo de 11 kg.
+- **Caso real (STG LCM-2026-0004):** «No se pudo generar la guia en la transportadora.
+  Guia Anulada automaticamente» — misma clase: la restricción (cobertura del destino)
+  solo se manifiesta en la guía.
+
+**Defensa propia (ADR-163):** setting `SHIPPING_CARRIER_RULES` (`global/comercio`, JSON
+`{ keyNormalizada: { minWeightKg, maxWeightKg, note } }`, editable por fila en
+`/admin/envios`) y filtro en `quoteShipping` que excluye las ofertas que violen la regla
+**antes** de mostrarlas al cliente (el peso del paquete se computa con el mismo
+`computePackedPackage` de la guía — cotización y guía facturan idéntico). Red de
+descubrimiento de reglas nuevas: los rechazos parciales de cotización loguean
+`numbererror`+`dataerror` por carrier (`shipping.aveonline.quote.partial`) y las fallas
+de guía sugieren la acción en admin (`suggestShipmentFailureCause`, rama «no opera
+envíos de menos de N kilos»). Regla sembrada: `transprensa → minWeightKg 11`.
+
 ---
 
 ## 4. Generación de guía
