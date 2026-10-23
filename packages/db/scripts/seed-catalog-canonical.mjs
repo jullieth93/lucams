@@ -60,6 +60,29 @@ const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
 const PRUNE = process.argv.includes("--prune");
 
+// Dims de paquete final por personalizationKind (mismos defaults del one-shot
+// archivado seed-product-dims.mjs): Aveonline cotiza con peso/dims reales y
+// quoteShipping FALLA entero si un producto del carrito no los tiene
+// (MissingShippingDimsError). Se fusionan en physicalSpecs SOLO al crear —
+// physicalSpecs NO está en PRODUCT_UPDATE_FIELDS: los valores vivos en
+// STG/PRD (fuente de verdad comercial) nunca se pisan al re-correr el seed.
+const DIMS_DEFAULTS_BY_KIND = {
+  PHOTO_PACK: { weightGrams: 250, widthCm: 15, heightCm: 10, depthCm: 3 },
+  PHOTO_GRID: { weightGrams: 350, widthCm: 22, heightCm: 22, depthCm: 3 },
+  CALENDAR_PHOTO_MONTH: { weightGrams: 250, widthCm: 22, heightCm: 15, depthCm: 2 },
+  CALENDAR_PHOTO_HERO: { weightGrams: 350, widthCm: 30, heightCm: 20, depthCm: 2 },
+  EVENT_FAVOR: { weightGrams: 280, widthCm: 18, heightCm: 12, depthCm: 3 },
+  BUSINESS_LOGO: { weightGrams: 300, widthCm: 15, heightCm: 10, depthCm: 3 },
+  CUSTOM_DECOR: { weightGrams: 300, widthCm: 25, heightCm: 15, depthCm: 3 },
+  TEXT_ONLY: { weightGrams: 100, widthCm: 12, heightCm: 8, depthCm: 2 },
+  NONE: { weightGrams: 80, widthCm: 10, heightCm: 8, depthCm: 2 },
+};
+
+const withDefaultDims = (p) => ({
+  ...(DIMS_DEFAULTS_BY_KIND[p.personalizationKind] ?? DIMS_DEFAULTS_BY_KIND.NONE),
+  ...(p.physicalSpecs ?? {}),
+});
+
 // Campos que el update SÍ alinea (whitelist — todo lo demás es del admin).
 // Nunca incluir precio/imágenes/estado/merchandising acá (ver header).
 const PRODUCT_UPDATE_FIELDS = [
@@ -228,6 +251,8 @@ const productsData = [
     slug: "set-fotoimanes-polaroid",
     sku: "FI-POL-12",
     name: "Fotoimanes Polaroid",
+    // Dims reales del paquete en PRD (fuente de verdad comercial, audit 2026-10-22).
+    physicalSpecs: { weightGrams: 30, widthCm: 15, heightCm: 10, depthCm: 3 },
     description:
       "Fotoimanes con tus fotos en formato polaroid clásico (6×8 cm). Bordes blancos icónicos, impresión alta resolución, acabado mate. Se venden por packs: 1 pack = 6 unidades. El estilo (Clásica/Instagram) lo eliges como plantilla en el Estudio.",
     basePrice: 2250000,
@@ -247,7 +272,10 @@ const productsData = [
       // Ola 2A — paleta de marcos del Estudio (borde/color de tarjeta). Si falta,
       // el Estudio pierde «Color de tarjeta» (bug 2026-09-15: un one-shot que
       // reemplazó el schema la borró — el seed la declara para no recaer).
-      frameOptions: ["blanco", "negro", "aguamarina", "rosa", "lavanda", "amarillo"],
+      // 2026-10-22 (owner) — la Polaroid ofrece SOLO blanco/negro (+ «Sin Color»
+      // y «Personalizado», fijos del toolbar): Sin Color + Blanco + Negro +
+      // Personalizado. Misma reducción aplicada a Tiras Magnéticas.
+      frameOptions: ["blanco", "negro"],
     },
     images: [UNSPLASH("1530541930197-ff16ac917b0e"), UNSPLASH("1502920917128-1aa500764cbd")],
     variants: [
@@ -283,6 +311,8 @@ const productsData = [
     slug: "set-fotoimanes-cuadrados",
     sku: "FI-CUAD-12",
     name: "Fotoimanes Cuadrados",
+    // Dims reales del paquete en PRD (fuente de verdad comercial, audit 2026-10-22).
+    physicalSpecs: { weightGrams: 30, widthCm: 15, heightCm: 10, depthCm: 3 },
     description:
       "Fotoimanes cuadrados con tus fotos a sangre total (sin bordes). Si quieres, agrégale un marco de color en el Estudio: 6 colores de marca. Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
     basePrice: 2700000,
@@ -631,6 +661,8 @@ const productsData = [
     slug: "calendario-mes-a-mes-fotos",
     sku: "CAL-FOT-12",
     name: "Calendario Foto-Mes",
+    // Dims reales del paquete en PRD (fuente de verdad comercial, audit 2026-10-22).
+    physicalSpecs: { weightGrams: 90, widthCm: 8, heightCm: 10, depthCm: 1 },
     description:
       "Calendario magnético anual con una foto distinta por mes. 12 imanes intercambiables A4. Subís las 12 fotos en el Estudio.",
     basePrice: 4500000,
@@ -1105,7 +1137,7 @@ async function run(db, write) {
       console.log(`  + ${p.name}  [${p.personalizationKind}]  (${p.sku}, nuevo)`);
       if (write) {
         const created = await db.product.create({
-          data: { ...rest, categoryId, isActive: true },
+          data: { ...rest, physicalSpecs: withDefaultDims(rest), categoryId, isActive: true },
         });
         productId = created.id;
       }

@@ -498,6 +498,14 @@ export async function uploadCustomerPhoto(opts: {
   /** M.3.b.B.2 — tamaño físico del imán para validar resolución vs DPI 300.
    * Ej "5×5" / "15×15". Si no se pasa, el resolution check se omite. */
   productSizeCm?: string;
+  /**
+   * Fast-path de assets de GALERÍA (prediseñados, 2026-10-22): los masters son
+   * curados por el admin (resolución/brillo/nitidez ya garantizados), así que
+   * la pasada sharp de validatePhotoQuality es costo puro (~1 decode extra de
+   * ~2000px por cara). true = saltarla. NUNCA usar para fotos del cliente:
+   * ahí la validación sí aplica (alimenta el chip ⚠ de calidad).
+   */
+  skipQualityValidation?: boolean;
 }): Promise<CustomerUploadResult> {
   if (opts.buffer.length === 0) {
     throw new StorageError("EMPTY_FILE", "Archivo vacío");
@@ -608,18 +616,22 @@ export async function uploadCustomerPhoto(opts: {
   // M.3.b.B.2 — Validación de calidad post-procesamiento (no bloquea upload,
   // solo informa al cliente). Si el caller no pasa productSizeCm, omitimos
   // el DPI check y solo evaluamos brillo/blur.
+  // 2026-10-22 — skipQualityValidation (assets de galería curados): se omite
+  // la pasada completa (es costo puro para masters que ya vienen curados).
   let validation: CustomerUploadResult["validation"];
-  try {
-    const { validatePhotoQuality } = await import("./photo-validation");
-    validation = await validatePhotoQuality({
-      buffer: processed,
-      width,
-      height,
-      productSizeCm: opts.productSizeCm,
-    });
-  } catch {
-    // Validación opcional — si falla por OOM o sharp bug, no rompemos el upload.
-    validation = undefined;
+  if (!opts.skipQualityValidation) {
+    try {
+      const { validatePhotoQuality } = await import("./photo-validation");
+      validation = await validatePhotoQuality({
+        buffer: processed,
+        width,
+        height,
+        productSizeCm: opts.productSizeCm,
+      });
+    } catch {
+      // Validación opcional — si falla por OOM o sharp bug, no rompemos el upload.
+      validation = undefined;
+    }
   }
 
   return {

@@ -89,6 +89,14 @@ type StudioAssetPickerModalProps = {
   totalSlots: number;
   assets: StudioAsset[];
   designId: string | null;
+  /**
+   * Draft LAZY (2026-10-22): sin designId todavía (boot sin ?designId=, draft
+   * que nace en el primer auto-save), el primer clic en un prediseñado crea el
+   * draft EN EL MOMENTO por esta vía (misma Server Action del auto-save, con
+   * dedupe en vuelo). null = la creación falló → se muestra el error, nunca
+   * un guard silencioso.
+   */
+  ensureDesignId?: () => Promise<string | null>;
   /** Diseños prediseñados que el cliente puede aplicar al slot (vacío = solo subir foto). */
   predesigned?: PredesignedItem[];
   /** Ola 4 — tamaño físico del producto para la recomendación de resolución del uploader. */
@@ -128,6 +136,7 @@ export function StudioAssetPickerModal({
   totalSlots,
   assets,
   designId,
+  ensureDesignId,
   predesigned = [],
   productSizeCm,
   facesPerUnit,
@@ -192,10 +201,20 @@ export function StudioAssetPickerModal({
   // al slot (reusando el pipeline de foto: encuadre, finalize, render server-side).
   // Ola 21 — separadores 2 caras: si el diseño trae imageUrlB, asignamos A/B a la unidad física.
   const handleApplyPredesigned = async (item: PredesignedItem) => {
-    if (!designId || applyingId || slotIndex === null) return;
+    if (applyingId || slotIndex === null) return;
     setApplyingId(item.id);
     setError(null);
     try {
+      // Draft LAZY (2026-10-22): sin designId (boot sin ?designId=) se crea el
+      // draft en el momento — antes el guard silencioso mataba el primer clic.
+      let effectiveDesignId = designId;
+      if (!effectiveDesignId) {
+        effectiveDesignId = (await ensureDesignId?.()) ?? null;
+        if (!effectiveDesignId) {
+          setError(texts.plantillas.toastError);
+          return;
+        }
+      }
       // Paquete A — dedupe: el mismo diseño ya aplicado en esta sesión reusa
       // sus assets (no se sube una copia al servidor por aplicación).
       const cached = getCachedPredesigned?.(item.id);
@@ -205,7 +224,10 @@ export function StudioAssetPickerModal({
         assetA = cached.a;
         assetB = cached.b;
       } else {
-        const res = await assignPredesignedToDesignAction({ designId, galleryImageId: item.id });
+        const res = await assignPredesignedToDesignAction({
+          designId: effectiveDesignId,
+          galleryImageId: item.id,
+        });
         if (!res.ok) {
           setError(res.message);
           return;

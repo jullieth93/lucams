@@ -216,6 +216,7 @@ apps/web/app/estudio/[slug]/
 ├── studio-canvas-grid.tsx             # Grid responsive de N StudioSlots
 ├── studio-slot.tsx                    # 1 mini-canvas Konva por imán
 ├── studio-sidebar.tsx                 # Mis fotos + Plantillas + Auto-fill
+├── studio-checklist.tsx               # Checklist «Tu diseño» (pasos + badge FAB «Editar»)
 ├── studio-message-field.tsx           # "Tu mensaje" pack-level en sidebar
 ├── studio-toolbar.tsx                 # Header con auto-save + progress + Vista previa
 ├── studio-realism-overlay.tsx         # Bleed/safe area/grosor/sombra Konva layers
@@ -273,6 +274,10 @@ apps/web/app/estudio/[slug]/
     │                                  #   solo tras el 1er auto-save real, auto-limpieza de
     │                                  #   huérfanos/legacy
     ├── slot-photo-readiness.ts        # Espera de decodificación de fotos antes del bake 3D
+    ├── konva-pixel-ratio.ts           # Cap de Konva.pixelRatio a 2 en el editor (ADR-166:
+    │                                  #   backing stores a dpr nativo = 9× píxeles por draw)
+    ├── chrome-bitmap-cache.ts         # Chrome SVG rasterizado UNA vez y compartido entre
+    │                                  #   slots (ADR-166: Konva re-rasteriza SVG por drawImage)
     ├── use-debounced-commit.ts        # Commit con debounce 350 ms (campos IG)
     ├── recover-variant.ts             # resolveRecoverVariantId: variante del recover
     │                                  #   (?designId=) desde Design.metadata.variantId
@@ -346,6 +351,12 @@ packages/db/scripts/
   lado menor del stage → proporcional en 6.5/8/10 cm). Misma regla en el editor (Konva) y en
   producción (`production-render-canvas`; `service.ts` → `frameFullBleed`). Helpers puros en
   `frame-palette.ts` (`frameBleedMargin`, `insetToMinMargin`).
+- **Paleta POR PRODUCTO (`personalizationSchema.frameOptions`)**: el toolbar ofrece solo los
+  colores declarados por el producto (+ «Sin Color» y «Personalizado», fijos del código).
+  Decisión owner 2026-10-22: Polaroid Clásica y Tiras Magnéticas ofrecen SOLO
+  `["blanco","negro"]` (resultado: Sin Color + Blanco + Negro + Personalizado); el resto de
+  productos con marcos conserva la paleta completa de 6. Dato sembrado (seed canónico +
+  one-shot `frame-options-binary-20261022.mjs`), nunca código.
 - **El marco es MARCO, no fondo (ancho constante bajo zoom/pan)**: con tarjeta de color
   (frame-card/full-bleed), el hueco que deja la foto al alejarla (zoom-out) o moverla se
   rellena con el color de la tarjeta SIN marco (capa `background`). La decisión vive en
@@ -384,7 +395,13 @@ packages/db/scripts/
   plantilla puede fijar columnas y gap) → celdas pegadas = UNA pieza continua. Ambas viven
   declaradas en `seed-templates.mjs` (upsert idempotente; regresión E2E en
   `pdp-cantidad-tira.spec.ts`: 4 celdas verticales en UNA columna, no cuadrados 2×2). En modo
-  tira la barra de acciones del slot flota sobre la foto (`overlayActions`).
+  tira la barra de acciones del slot flota sobre la foto (`overlayActions`) y SOLO la
+  muestra el slot SELECCIONADO (2026-10-22, owner: la barra en todos los slots llenos
+  invadía las fotos): el primer tap en un slot lleno lo selecciona y muestra sus
+  acciones; el segundo tap (ya seleccionado) abre el editor como siempre; tap fuera de
+  cualquier celda suelta la selección y la tira vuelve a leerse continua. La
+  advertencia de calidad sigue descubrible en slots NO seleccionados con un badge ⚠
+  mínimo que abre la misma modal (la modal vive fuera de la barra, en portal).
 - **Foto a sangre VERTICAL con canaletas del color del marco**: la celda trae la foto a y=0 y
   la geometría final la pone `stripPhotoRect` por posición (la plantilla es uniforme por
   celda y no puede expresarlo): lados 12px (~2mm) de color, borde EXTERIOR 12px solo en
@@ -800,6 +817,21 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   «Ver diseño» usa `unitNoun` con género correcto («Ver tus separadores»). Los chips "📐"
   solo muestran tamaño. El header del estudio muestra el `variantLabel` de la variante
   efectiva (p.ej. «6 unidades · Con imán»), no solo el nombre del producto.
+- **Variante/tamaño visible EN EL LIENZO** (owner 2026-10-22 — en Abecedario el lienzo no
+  enunciaba la variante): el header de CADA sección de unidad multi-unidad
+  (`UnitSectionHeader`) lleva un chip con el desglose CON tamaño (`unitVariantLabel`, misma
+  fuente `studioPreviewVariantLabel` SIN omitir sizeCm — la omisión aplica solo a la Vista
+  Previa, que ya lo enuncia ella); los editores de letras (Abecedario/Vocales/Nombre)
+  incluyen el tamaño en el `variantLabel` de su header sticky (la Vista Previa sigue
+  recibiendo el desglose sin tamaño para no duplicar).
+- **«Ver diseño» bloqueado MIENTRAS guarda** (2026-10-22): con el auto-save en curso
+  (`autoSaveStatus.kind === "saving"`) el CTA queda deshabilitado con el estado busy
+  «Guardando diseño...» (toolbar inline y FAB) — abrir la vista previa en medio de un save
+  leía un estado a medio persistir (es seguro bloquear: `handleFinalize` siempre hace
+  `flushSaves` antes de componer). En estado de ERROR el botón queda habilitado (el flush
+  reintenta al pulsar) y el `AutoSaveIndicator` es visible también en <sm (variante
+  `compact` de la fila móvil — antes `hidden sm:flex`: el cliente de celular no veía ni el
+  guardando ni el error). Contrato en `studio-toolbar.test.tsx`.
 - **Popover «qué falta» de «Ver diseño»** (radix Popover): con el botón bloqueado lista
   EXPLÍCITAMENTE las fotos por cargar (label de cada slot: "Ene", "1A"…) y los textos IG
   faltantes por unidad (`igMissingRequiredTextLayersPerSlot` + etiquetas CMS `campo-ig-*`).
@@ -816,6 +848,21 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   `estudio.plantillas.toast-sin-lienzo-libre` — nunca se pisa contenido para abrir sitio).
   Una cara B ocupada nunca se pisa (`bBlocked` → toast CMS). Un prediseñado SIN cara B
   también ancla en cara A. Tests en `lib/apply-predesigned.test.ts`.
+- **Prediseñado como PRIMERA acción (draft LAZY)**: sin `?designId=` el draft no existe
+  hasta el primer auto-save con canvas sucio — todas las vías de prediseñado (clic del
+  sidebar, picker modal, drag & drop) lo crean EN EL MOMENTO vía `store.ensureDesignId`
+  (la registra el efecto de auto-save del editor: misma `createDraftDesignAction`, con
+  DEDUPE de la promesa en vuelo — doble-clic o auto-save concurrente no crean 2 drafts).
+  Nunca guard silencioso: si la creación falla, el caller muestra el toast CMS. Bug owner
+  2026-10-22: "solo carga el prediseño después de subir una foto" (la foto marcaba dirty
+  y el auto-save creaba el draft). Contrato en `studio-sidebar.test.tsx`.
+- **Fast-path de assets de galería** (`assignPredesignedToDesignAction`, 2026-10-22):
+  los masters son curados por el admin → se SALTA `validatePhotoQuality` (doble pasada
+  sharp de costo puro) y las caras A/B se procesan EN PARALELO (antes en serie). Cada
+  aplicación loguea duración por etapa (`design.predesigned.assign`). La copia
+  server-side del objeto NO es viable: galería en bucket PÚBLICO `product-images`,
+  assets en bucket PRIVADO `customer-uploads`, y `storage.copy` solo copia dentro del
+  mismo bucket. Las fotos del CLIENTE conservan la validación intacta (otro call-site).
 - **Modal de elección de cara** (`studio-face-choice-modal.tsx`): al aplicar un prediseño de
   1 cara a un producto de 2 caras (separadores), el Estudio PREGUNTA qué cara ocupar —
   elección explícita, sin aplicación global automática silenciosa.
@@ -1084,34 +1131,46 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
 ╚═══════════════════════════╩═══════════════════════════════════════════════╝
 ```
 
-### Mobile (< 768px)
+### Mobile (< 1024px)
 
-Canvas fullscreen + sheet drawer pull-up con tabs. Bottom sticky CTA cuando completo.
+Canvas a pantalla completa + DOS bottom-sheets: el FAB «Editar» (bottom-left) abre el
+sheet de herramientas (el MISMO `StudioSidebar` del aside desktop) y el botón resumen de
+estilo abre el sheet de borde/color (`studio-style-toolbar` en <sm). FAB «Ver diseño»
+(bottom-right, <sm). NO hay tabs «Plantillas / Mis fotos / ⚙» (wireframe viejo).
+
+Descubribilidad (2026-10-22, owner — lo que vive tras «Editar» pasaba desapercibido):
+el sidebar abre con el **checklist persistente «Tu diseño»** (`studio-checklist.tsx`):
+pasos derivados de las features del producto (fotos X/N, prediseñados disponibles,
+mensaje si `allowText` con 1 capa de texto, datos de la publicación si plantilla
+Instagram) con estado Listo/Pendiente/Opcional y tap que navega a su sección
+(scroll dentro de ESTA instancia del sidebar vía `rootRef` — la sidebar se monta dos
+veces con los mismos ids: aside + sheet). El FAB «Editar» lleva un **badge con el
+conteo de pasos pendientes** (solo los bloqueantes: fotos requeridas y datos IG;
+los opcionales nunca agobian). Hook compartido `useStudioChecklist`; textos CMS
+`estudio.checklist.*`.
 
 ```
 ┌─────────────────────────────────────┐
-│ ←  Personalizar    3/6  |  Vista previa │ ← header sticky
+│ ← Polaroid    3/6 · Guardando…      │ ← header sticky (autosave visible en <sm)
 ├─────────────────────────────────────┤
-│                                     │
 │         ┌───────┬───────┐           │
 │         │ Slot 1│ Slot 2│           │
-│         │   ✓   │   ✓   │           │
 │         ├───────┼───────┤           │
 │         │ Slot 3│ Slot 4│           │
-│         │   ✓   │  [4]  │ ← tap     │
-│         ├───────┼───────┤           │
-│         │ Slot 5│ Slot 6│           │
-│         │  [5]  │  [6]  │           │
 │         └───────┴───────┘           │
 │                                     │
-│       [ + ] zoom    [ - ] zoom      │ ← botones flotantes
-│                                     │
-├─────────────────────────────────────┤
-│ ░ Plantillas   📷 Mis fotos  ⚙ ░  │ ← sheet drawer tabs
-│  ┌──────┬──────┬──────┐             │
-│  │ Pol  │ Vint │ Cuad │             │ ← swipe-up para expandir
-│  └──────┴──────┴──────┘             │
+│ [✨ Editar ²]           [Ver diseño]│ ← FABs: badge de pendientes / CTA
 └─────────────────────────────────────┘
+   sheet «Editar» (bottom, 88vh):
+   ┌─────────────────────────────────┐
+   │ Tu diseño                       │ ← checklist (5.1)
+   │  ✓ Sube tus fotos (3 de 6)      │
+   │  ○ Elige diseños prediseñados   │
+   │  ○ Escribe tu mensaje           │
+   ├─────────────────────────────────┤
+   │ Mis fotos · Tu mensaje ·        │
+   │ Plantillas · Prediseñados       │
+   └─────────────────────────────────┘
 ```
 
 ### Modal: Subir/Ajustar foto
@@ -1286,6 +1345,13 @@ Estrategias aplicadas:
 - SVG mockups inline en lugar de PNG cuando aplique
 - Suspense boundaries por slot (cargan en paralelo)
 - Auto-save debounced 2s + dirty flag (no save si no hubo cambio real)
+- **Raster del lienzo (ADR-166, medido 2026-10-22 — entrada Polaroid 13.4 s → 7.6 s
+  de JS, 65 → 14 longtasks en emulación móvil CPU×6)**: `Konva.pixelRatio` capeado a
+  2 (`lib/konva-pixel-ratio.ts` — los exports usan pixelRatio relativo, no se afectan);
+  chrome SVG rasterizado una vez y compartido entre slots (`lib/chrome-bitmap-cache.ts`
+  — Konva re-rasteriza el vector en cada `drawImage`); capa de sombra (estática) con
+  `Layer.cache()` (`studio-realism-overlay.tsx`). Pendiente: derivado ligero (~800 px)
+  de los assets para el lienzo (el master 2000 px es para producción).
 - **INP — upscale/unsharp de fotos en
   Web Worker + OffscreenCanvas (`client-photo-upscale.worker.ts`, fallback inline
   idéntico); snapshots `toDataURL` de preview/3D cacheados por slot con

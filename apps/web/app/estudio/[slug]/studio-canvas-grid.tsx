@@ -164,6 +164,14 @@ type StudioCanvasGridProps = {
    */
   unitNoun?: string;
   /**
+   * 4.5 (2026-10-22) — desglose CORTO de la variante/tamaño vigente para el
+   * header de cada tarjeta-unidad en modo secciones ("Tira 1 de 2 · 6.5×20 cm ·
+   * Con imán"): en multi-unidad cada sección enuncia QUÉ es. Lo construye el
+   * editor con studioPreviewVariantLabel (misma fuente de la Vista Previa)
+   * SIN omitir el tamaño. undefined = sin chip.
+   */
+  unitVariantLabel?: string;
+  /**
    * Delimitación visual de PACKS (owner 2026-09-15, ADR-101): cuando el producto
    * se vende por packs de N unidades sueltas (fotoimanes: 6 por pack), el editor
    * pasa el tamaño del pack y la grilla plana se AGRUPA en tarjetas-unidad —
@@ -250,6 +258,7 @@ export function StudioCanvasGrid({
   noFold = false,
   backOptional = false,
   unitNoun,
+  unitVariantLabel,
   unitGroupSlots = null,
   interactiveSlots = true,
   onSlotClick,
@@ -1011,6 +1020,15 @@ export function StudioCanvasGrid({
             overlayActions={stripMode}
             allowText={allowText}
             onClick={() => {
+              // 4.4 (2026-10-22) — modo TIRA: la barra de acciones flota sobre
+              // la foto y solo la muestra el slot SELECCIONADO. En un slot
+              // LLENO no seleccionado, el primer tap solo lo selecciona (la
+              // tira se lee limpia); el segundo tap (ya seleccionado) abre el
+              // editor, como siempre. Slots vacíos abren el picker directo.
+              if (stripMode && slot.assetUrl && selectedSlotIndex !== slot.slotIndex) {
+                selectSlot(slot.slotIndex);
+                return;
+              }
               selectSlot(slot.slotIndex);
               onSlotClick(slot.slotIndex);
             }}
@@ -1057,8 +1075,11 @@ export function StudioCanvasGrid({
             optional={backOptional && slot.slotIndex % 2 === 1}
             onClick={() => {
               // Montar de inmediato + seleccionar + abrir el picker (igual que un slot real).
+              // 4.4 — misma regla del slot montado: en modo tira, un slot LLENO
+              // no seleccionado se selecciona primero (no abre el editor de una).
               setMountedSlots((prev) => new Set(prev).add(slot.slotIndex));
               selectSlot(slot.slotIndex);
+              if (stripMode && slot.assetUrl) return;
               onSlotClick(slot.slotIndex);
             }}
           />
@@ -1104,6 +1125,15 @@ export function StudioCanvasGrid({
       <div
         ref={scrollWrapperRef}
         className={needsStageHScroll ? "w-full overflow-x-auto" : undefined}
+        onClick={(e) => {
+          // 4.4 (2026-10-22) — modo TIRA: tap FUERA de cualquier celda suelta
+          // la selección (su barra de acciones flotante se oculta y la tira
+          // vuelve a leerse continua). Los taps en una celda no llegan acá como
+          // deselección porque su wrapper lleva data-slot-observe.
+          if (!stripMode) return;
+          const target = e.target as HTMLElement | null;
+          if (!target?.closest?.("[data-slot-observe]")) selectSlot(null);
+        }}
       >
         {multiUnitSections ? (
           // Ola 29 (owner 2026-09-11) — las secciones de TIRA van en grilla
@@ -1143,6 +1173,7 @@ export function StudioCanvasGrid({
                     unitSlots={unitSlots}
                     unitCount={unitCount}
                     noun={unitNoun ?? texts.unidades.nombrePieza}
+                    variantLabel={unitVariantLabel}
                     onApplied={announceApplied}
                   />
                   <div
@@ -1521,6 +1552,7 @@ function UnitSectionHeader({
   unitSlots,
   unitCount,
   noun,
+  variantLabel,
   onApplied,
 }: {
   store: StoreApi<StudioStoreState>;
@@ -1528,6 +1560,9 @@ function UnitSectionHeader({
   unitSlots: number;
   unitCount: number;
   noun: string;
+  /** 4.5 (2026-10-22) — chip discreto de variante/tamaño ("6.5×20 cm · Con
+   *  imán"): cada sección enuncia QUÉ es la unidad que se está diseñando. */
+  variantLabel?: string;
   onApplied: () => void;
 }) {
   const texts = useStudioTexts();
@@ -1543,6 +1578,11 @@ function UnitSectionHeader({
           total: unitCount,
         })}
       </h2>
+      {variantLabel && (
+        <span className="bg-brand-cream text-brand-purple-dark/80 ring-brand-purple/10 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1">
+          {variantLabel}
+        </span>
+      )}
       <span
         role="status"
         aria-label={fillStudioText(texts.unidades.progresoAria, {

@@ -38,6 +38,7 @@ const { state, MockStorageError } = vi.hoisted(() => {
       assetCreateError: null as Error | null,
       uploadValidation: undefined as unknown,
       uploadCalls: 0,
+      uploadArgs: [] as Array<Record<string, unknown>>,
       assetCreateCalls: 0,
       assetCreateArgs: [] as Array<Record<string, unknown>>,
       galleryAssets: [] as Array<Record<string, unknown>>,
@@ -73,8 +74,9 @@ vi.mock("@/lib/rate-limit", () => ({
 }));
 vi.mock("@/lib/storage", () => ({
   StorageError: MockStorageError,
-  uploadCustomerPhoto: async () => {
+  uploadCustomerPhoto: async (opts: Record<string, unknown>) => {
     state.uploadCalls += 1;
+    state.uploadArgs.push(opts);
     if (state.uploadError) throw state.uploadError;
     return {
       path: "sess_test/pending/uuid.jpg",
@@ -316,6 +318,7 @@ beforeEach(() => {
   state.assetCreateError = null;
   state.uploadValidation = undefined;
   state.uploadCalls = 0;
+  state.uploadArgs = [];
   state.assetCreateCalls = 0;
   state.assetCreateArgs = [];
   state.galleryAssets = [];
@@ -617,6 +620,28 @@ describe("assignPredesignedToDesignAction · dedupe por galleryImageId (2026-10-
     expect(state.uploadCalls).toBe(1);
     expect(state.assetCreateCalls).toBe(1);
     expect(state.assetCreateArgs.at(-1)).toMatchObject({ galleryImageId: "gal_1" });
+  });
+
+  // Fast-path de galería (2026-10-22): los masters son curados por el admin →
+  // la pasada sharp de validatePhotoQuality es costo puro y se salta SIEMPRE
+  // en este action (las fotos de cliente conservan la validación en su propio
+  // call-site). Las caras A/B se procesan en paralelo (ambas suben).
+  it("fast-path galería: skipQualityValidation en TODAS las subidas (A y B)", async () => {
+    vi.mocked(getGalleryImageById).mockResolvedValue({
+      id: "gal_1",
+      imageUrl: URL_A,
+      imageUrlB: URL_B,
+    });
+    const result = await assignPredesignedToDesignAction({
+      designId: "design_1",
+      galleryImageId: "gal_1",
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect(state.uploadCalls).toBe(2);
+    expect(state.uploadArgs).toHaveLength(2);
+    for (const args of state.uploadArgs) {
+      expect(args).toMatchObject({ skipQualityValidation: true });
+    }
   });
 });
 

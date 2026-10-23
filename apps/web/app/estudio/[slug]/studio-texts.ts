@@ -791,6 +791,26 @@ export type StudioTexts = {
     descCalendarios: string;
     resumenCalendarios: string;
   };
+  /** 5.1 (2026-10-22) — checklist persistente «Tu diseño»: pasos derivados de
+   *  las features del producto/sesión (fotos, prediseñados, mensaje, datos de
+   *  la publicación IG). Lo montan el sidebar (sección al tope) y el FAB
+   *  «Editar» en móvil (badge con el conteo de pasos pendientes). */
+  checklist: {
+    titulo: string;
+    pasoFotos: string;
+    /** Detalle del paso de fotos: {n} listas de {total}. */
+    pasoFotosDetalle: string;
+    pasoPredisenados: string;
+    pasoMensaje: string;
+    pasoPublicacion: string;
+    /** Tag de los pasos informativos que no bloquean («Opcional»). */
+    opcional: string;
+    /** Estado accesible de un paso (aria-label compone label + estado). */
+    completo: string;
+    pendiente: string;
+    /** Nombre audible del badge de pendientes sobre el FAB «Editar» ({n} = pasos). */
+    badgePendientes: string;
+  };
   /**
    * Fase 2 · item 2.8 (2026-10-07) — tour de onboarding POR TIPO DE PRODUCTO:
    * features del lienzo específico que StudioOnboarding suma tras los 3 pasos
@@ -1516,6 +1536,18 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Esta es la vista previa de tus {n} calendarios{año} — cada uno con {m} páginas.",
     resumenCalendarios: "{n} calendarios personalizados · {m} páginas c/u",
   },
+  checklist: {
+    titulo: "Tu diseño",
+    pasoFotos: "Sube tus fotos",
+    pasoFotosDetalle: "{n} de {total} listas",
+    pasoPredisenados: "Elige diseños prediseñados",
+    pasoMensaje: "Escribe tu mensaje",
+    pasoPublicacion: "Completa los datos de la publicación",
+    opcional: "Opcional",
+    completo: "Listo",
+    pendiente: "Pendiente",
+    badgePendientes: "Te faltan {n} pasos de tu diseño",
+  },
   tour: {
     igPerfilTitulo: "Tu foto de perfil",
     igPerfilTexto:
@@ -2126,6 +2158,16 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "unidades.resumenTiraUna": "estudio.unidades.resumen-tira-una",
   "unidades.descCalendarios": "estudio.unidades.desc-calendarios",
   "unidades.resumenCalendarios": "estudio.unidades.resumen-calendarios",
+  "checklist.titulo": "estudio.checklist.titulo",
+  "checklist.pasoFotos": "estudio.checklist.paso-fotos",
+  "checklist.pasoFotosDetalle": "estudio.checklist.paso-fotos-detalle",
+  "checklist.pasoPredisenados": "estudio.checklist.paso-predisenados",
+  "checklist.pasoMensaje": "estudio.checklist.paso-mensaje",
+  "checklist.pasoPublicacion": "estudio.checklist.paso-publicacion",
+  "checklist.opcional": "estudio.checklist.opcional",
+  "checklist.completo": "estudio.checklist.completo",
+  "checklist.pendiente": "estudio.checklist.pendiente",
+  "checklist.badgePendientes": "estudio.checklist.badge-pendientes",
   "tour.igPerfilTitulo": "estudio.tour.ig-perfil-titulo",
   "tour.igPerfilTexto": "estudio.tour.ig-perfil-texto",
   "tour.igTextosTitulo": "estudio.tour.ig-textos-titulo",

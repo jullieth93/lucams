@@ -90,7 +90,9 @@ const POLAROID = {
       allowText: true,
       sizeCm: "6×8",
       // Restaurada 2026-09-15 (ver nota en el update: el schema se fusiona).
-      frameOptions: ["blanco", "negro", "aguamarina", "rosa", "lavanda", "amarillo"],
+      // 2026-10-22 (owner) — la Polaroid ofrece SOLO blanco/negro (más «Sin
+      // Color» y «Personalizado», fijos del toolbar).
+      frameOptions: ["blanco", "negro"],
     },
   },
   variants: [6, 12, 18, 24].map((units, i) => ({
@@ -104,9 +106,21 @@ const POLAROID = {
 
 // Matriz CUADRADOS: por tamaño, pack = 6 × unitario de la tabla.
 const CUADRADOS_SIZES = [
-  { sizeCm: "4×4", unit: 400000, skus: ["FI-CUAD-12-V11", "FI-CUAD-12-V13", "FI-CUAD-12-V14", "FI-CUAD-12-V15"] },
-  { sizeCm: "5×5", unit: 450000, skus: ["FI-CUAD-12-V21", "FI-CUAD-12-V23", "FI-CUAD-12-V24", "FI-CUAD-12-V25"] },
-  { sizeCm: "7×7", unit: 600000, skus: ["FI-CUAD-12-V31", "FI-CUAD-12-V33", "FI-CUAD-12-V34", "FI-CUAD-12-V35"] },
+  {
+    sizeCm: "4×4",
+    unit: 400000,
+    skus: ["FI-CUAD-12-V11", "FI-CUAD-12-V13", "FI-CUAD-12-V14", "FI-CUAD-12-V15"],
+  },
+  {
+    sizeCm: "5×5",
+    unit: 450000,
+    skus: ["FI-CUAD-12-V21", "FI-CUAD-12-V23", "FI-CUAD-12-V24", "FI-CUAD-12-V25"],
+  },
+  {
+    sizeCm: "7×7",
+    unit: 600000,
+    skus: ["FI-CUAD-12-V31", "FI-CUAD-12-V33", "FI-CUAD-12-V34", "FI-CUAD-12-V35"],
+  },
 ];
 const CUADRADOS = {
   sku: "FI-CUAD-12",
@@ -234,9 +248,7 @@ async function migrateFamily(db, family) {
     select: { id: true, sku: true, name: true, price: true },
   });
   for (const v of legacy) {
-    console.log(
-      `  ⊘ legacy ${v.sku} (${v.name}) → desactivar${APPLY ? "" : "  [dry-run]"}`,
-    );
+    console.log(`  ⊘ legacy ${v.sku} (${v.name}) → desactivar${APPLY ? "" : "  [dry-run]"}`);
     if (APPLY) {
       await db.productVariant.update({
         where: { id: v.id },

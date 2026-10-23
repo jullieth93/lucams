@@ -17,7 +17,10 @@
  * (la superficie foto pasa slotCount/sizeCm a StudioPreviewModal y su línea de
  * resumen dice "Calendario personalizado · 12 páginas · 📐 7.5×10"): repetirlas
  * en el desglose ("12 fotos · 7.5×10 cm") sería ruido duplicado en líneas
- * contiguas, no más información.
+ * contiguas, no más información. OJO (2026-10-22, owner): la omisión aplica a
+ * la MODAL — en el LIENZO el tamaño sí se quiere visible: el header de cada
+ * sección de unidad (UnitSectionHeader) usa este mismo helper SIN omitir
+ * sizeCm, igual que los headers sticky de los editores de letras.
  *
  * Los attributes se extraen CLAVE A CLAVE con guards de tipo (no safeParse del
  * schema entero): el personalizationSchema trae muchas claves ajenas a la
