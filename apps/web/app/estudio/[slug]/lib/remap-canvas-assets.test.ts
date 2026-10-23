@@ -102,4 +102,57 @@ describe("remapCanvasAssetUrls", () => {
     expect(canvasData).toBe(canvas);
     expect(missingAssetIds).toEqual([]);
   });
+
+  it("ADR-166 — re-mapea canvasUrl con el derivado fresco del mismo assetId", () => {
+    const canvas = makeCanvas([
+      {
+        slotIndex: 0,
+        assetId: "a1",
+        assetUrl: "https://old.example/a1.jpg",
+        canvasUrl: "https://old.example/a1.canvas.webp",
+      } as SlotState,
+    ]);
+    const asset: StudioAsset = { ...fresh("a1"), canvasUrl: "https://fresh.example/a1.canvas.webp" };
+    const { canvasData } = remapCanvasAssetUrls(canvas, [asset]);
+    expect(canvasData.slots[0]!.assetUrl).toBe("https://fresh.example/a1.jpg?token=nuevo");
+    expect(canvasData.slots[0]!.canvasUrl).toBe("https://fresh.example/a1.canvas.webp");
+  });
+
+  it("ADR-166 — asset que PERDIÓ su derivado → canvasUrl null (el lienzo cae al master)", () => {
+    const canvas = makeCanvas([
+      {
+        slotIndex: 0,
+        assetId: "a1",
+        assetUrl: "https://fresh.example/a1.jpg?token=nuevo",
+        canvasUrl: "https://old.example/a1.canvas.webp",
+      } as SlotState,
+    ]);
+    // fresh("a1") no trae canvasUrl (derivado inexistente/purgado).
+    const { canvasData } = remapCanvasAssetUrls(canvas, [fresh("a1")]);
+    expect(canvasData.slots[0]!.assetUrl).toBe("https://fresh.example/a1.jpg?token=nuevo");
+    expect(canvasData.slots[0]!.canvasUrl).toBeNull();
+  });
+
+  it("ADR-166 — re-mapea profileCanvasUrl y la limpia cuando el asset perfil desaparece", () => {
+    const canvas = makeCanvas([
+      {
+        slotIndex: 0,
+        assetId: null,
+        assetUrl: null,
+        profileAssetId: "p1",
+        profileAssetUrl: "https://old.example/p1.jpg",
+        profileCanvasUrl: "https://old.example/p1.canvas.webp",
+      } as SlotState,
+    ]);
+    const profileAsset: StudioAsset = {
+      ...fresh("p1"),
+      canvasUrl: "https://fresh.example/p1.canvas.webp",
+    };
+    const { canvasData } = remapCanvasAssetUrls(canvas, [profileAsset]);
+    expect(canvasData.slots[0]!.profileCanvasUrl).toBe("https://fresh.example/p1.canvas.webp");
+
+    const gone = remapCanvasAssetUrls(canvasData, []);
+    expect(gone.canvasData.slots[0]!.profileCanvasUrl).toBeUndefined();
+    expect(gone.missingAssetIds).toEqual(["p1"]);
+  });
 });

@@ -182,6 +182,10 @@ export async function cloneDesignForEdit(
           customerId: a.customerId,
           sessionId: a.sessionId,
           storageUrl: a.storageUrl,
+          // El clon comparte los BYTES con el original (mismo storageUrl): el
+          // derivado de lienzo se comparte igual (las purgas preservan bytes
+          // referenciados por diseños vivos — ver retention-service).
+          canvasPath: a.canvasPath,
           mimeType: a.mimeType,
           sizeBytes: a.sizeBytes,
           width: a.width,
@@ -328,12 +332,26 @@ export async function cloneDesignForReorder(
         .copy(a.storageUrl, destPath);
       if (error) throw new Error(`copy asset ${a.id}: ${error.message}`);
       copiedUploads.push(destPath);
+      // El derivado de lienzo (ADR-166) también se copia a bytes propios:
+      // referenciar el del original dejaría al reorder roto cuando la purga
+      // post-entrega borre los bytes del original.
+      let destCanvasPath: string | null = null;
+      if (a.canvasPath) {
+        const canvasFilename = a.canvasPath.split("/").pop() ?? "foto.canvas.webp";
+        destCanvasPath = `${ownerId}/${clone.id}/${crypto.randomUUID()}-${canvasFilename}`;
+        const { error: canvasErr } = await supabaseService.storage
+          .from(BUCKET_CUSTOMER_UPLOADS)
+          .copy(a.canvasPath, destCanvasPath);
+        if (canvasErr) throw new Error(`copy asset canvas ${a.id}: ${canvasErr.message}`);
+        copiedUploads.push(destCanvasPath);
+      }
       const copy = await prisma.designAsset.create({
         data: {
           designId: clone.id,
           customerId: newOwner.customerId,
           sessionId: newOwner.sessionId,
           storageUrl: destPath,
+          canvasPath: destCanvasPath,
           mimeType: a.mimeType,
           sizeBytes: a.sizeBytes,
           width: a.width,

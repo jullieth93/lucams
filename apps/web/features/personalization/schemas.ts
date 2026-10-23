@@ -79,6 +79,12 @@ export const SlotStateSchema = z.object({
   slotIndex: z.number().int().min(0).max(99),
   assetId: z.string().nullable(),
   assetUrl: z.string().nullable(),
+  // ADR-166 (2026-10-22) — signed URL del derivado ≤800px para el lienzo
+  // (null/ausente = el lienzo usa el master de assetUrl). Misma naturaleza
+  // efímera que assetUrl (TTL 1h): el boot la re-hidrata por assetId
+  // (remap-canvas-assets). Declararla acá es lo que la hace sobrevivir el
+  // auto-save (Zod stripea claves no declaradas — ver profileAssetUrl abajo).
+  canvasUrl: z.string().max(2048).nullable().optional(),
   // Per-slot overrides — todos opcionales y validados con rangos sanos.
   cropX: z.number().optional(),
   cropY: z.number().optional(),
@@ -96,6 +102,9 @@ export const SlotStateSchema = z.object({
   // claves no declaradas) — igual que photoTransform/textOverrides (ADR-057 Fase A).
   profileAssetId: z.string().nullable().optional(),
   profileAssetUrl: z.string().max(2048).optional(),
+  // ADR-166 — derivado ≤800px del avatar para el lienzo (mismo tratamiento
+  // que canvasUrl; ausente = usa profileAssetUrl).
+  profileCanvasUrl: z.string().max(2048).optional(),
   // Fase 1B — encuadre de la foto de perfil IG (zoom/pan dentro del círculo).
   // Declararlo acá es lo que lo hace sobrevivir el auto-save (Zod stripea claves
   // no declaradas — mismo motivo que profileAssetId/photoTransform).

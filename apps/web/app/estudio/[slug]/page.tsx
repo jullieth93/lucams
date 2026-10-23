@@ -652,12 +652,15 @@ export default async function EstudioPage({
       // Hidratar DesignAssets existentes con signed URLs refrescadas
       const dbAssets = await prisma.designAsset.findMany({
         where: { designId: design.id },
-        select: { id: true, storageUrl: true, width: true, height: true },
+        select: { id: true, storageUrl: true, canvasPath: true, width: true, height: true },
       });
       initialDesignAssets = await Promise.all(
         dbAssets.map(async (a) => ({
           id: a.id,
           signedUrl: await refreshCustomerUploadSignedUrl(a.storageUrl),
+          // ADR-166 — derivado ≤800px para el lienzo; null (assets previos o
+          // masters ≤800px) → el lienzo cae al master.
+          canvasUrl: a.canvasPath ? await refreshCustomerUploadSignedUrl(a.canvasPath) : null,
           width: a.width,
           height: a.height,
         })),

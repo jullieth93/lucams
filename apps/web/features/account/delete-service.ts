@@ -93,7 +93,10 @@ export async function deleteCustomerAccount(
 
   // 0) Recolectar rutas de Storage + el email actual (para desuscribir) ANTES de limpiar la DB.
   const [assets, designs, terminalOrders, custRow] = await Promise.all([
-    prisma.designAsset.findMany({ where: { customerId }, select: { storageUrl: true } }),
+    prisma.designAsset.findMany({
+      where: { customerId },
+      select: { storageUrl: true, canvasPath: true },
+    }),
     prisma.design.findMany({
       where: { customerId },
       select: { id: true, previewUrl: true, productionUrl: true, productionUrls: true },
@@ -108,7 +111,9 @@ export async function deleteCustomerAccount(
   // Placeholder de supresión para las columnas de contacto (Order.email/phone, tickets, etc.).
   const deletedEmail = `deleted-${customerId}@deleted.lucamsshop.com`;
 
-  const uploadPaths = assets.map((a) => a.storageUrl).filter(Boolean);
+  const uploadPaths = assets
+    .flatMap((a) => [a.storageUrl, a.canvasPath])
+    .filter((p): p is string => Boolean(p));
   const previewPaths = designs
     .map((d) => (d.previewUrl ? pathFromPublicUrl(d.previewUrl, PREVIEWS_BUCKET) : null))
     .filter((p): p is string => Boolean(p));

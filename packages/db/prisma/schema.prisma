@@ -1794,6 +1794,13 @@ model DesignAsset {
   // storageUrl: Supabase Storage bucket customer-uploads (privado, RLS
   // owner-only). URL firmada con TTL 1h al cliente; admin con service role.
   storageUrl     String
+  // Derivado liviano para el LIENZO del Estudio (ADR-166, 2026-10-22): WebP
+  // borde largo ≤800px, objeto hermano `<…>/<uuid>.canvas.webp` en el mismo
+  // bucket. El lienzo Konva (y las texturas 3D que salen de sus snapshots)
+  // carga este en vez del master; el render de imprenta (300 DPI, ADR-081)
+  // sigue leyendo el MASTER por storageUrl. Nullable: assets previos al
+  // derivado (o masters ≤800px, que no lo generan) → el cliente cae al master.
+  canvasPath     String?
   mimeType       String // image/jpeg | image/png | image/webp
   sizeBytes      Int
   width          Int

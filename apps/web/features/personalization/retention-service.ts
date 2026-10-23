@@ -198,7 +198,7 @@ const CANDIDATE_SELECT = {
   // pages/NN.webp + wm/pages/NN.webp por convención de paths.
   previewPagesCount: true,
   productionUrls: true,
-  assets: { select: { storageUrl: true } },
+  assets: { select: { storageUrl: true, canvasPath: true } },
 } satisfies Prisma.DesignSelect;
 
 type PurgeCandidate = {
@@ -207,7 +207,7 @@ type PurgeCandidate = {
   draftPreviewUrl: string | null;
   previewPagesCount: number | null;
   productionUrls: string[];
-  assets: Array<{ storageUrl: string }>;
+  assets: Array<{ storageUrl: string; canvasPath: string | null }>;
 };
 
 /**
@@ -231,7 +231,11 @@ async function purgeDesignBatch(
   if (designs.length === 0) return { designsPurged: 0, assetsPurged: 0 };
 
   const designIds = designs.map((d) => d.id);
-  let uploadPaths = designs.flatMap((d) => d.assets.map((a) => a.storageUrl)).filter(Boolean);
+  // Los derivados de lienzo (canvasPath, ADR-166) se purgan junto a su master:
+  // mismo bucket, misma regla de bytes compartidos de abajo.
+  let uploadPaths = designs
+    .flatMap((d) => d.assets.flatMap((a) => [a.storageUrl, a.canvasPath]))
+    .filter((p): p is string => Boolean(p));
   // 2026-10-13 — no borrar bytes COMPARTIDOS con diseños vivos: cloneDesignForEdit
   // (READY→DRAFT) crea filas DesignAsset NUEVAS con el MISMO storageUrl del original.
   // Si el clon se borra (poda «últimos N» de draft-lifecycle o una purga idle) mientras
@@ -240,11 +244,16 @@ async function purgeDesignBatch(
   // referencia; las filas del lote se borran igual (son del diseño condenado).
   if (uploadPaths.length > 0) {
     const shared = await prisma.designAsset.findMany({
-      where: { storageUrl: { in: uploadPaths }, designId: { notIn: designIds } },
-      select: { storageUrl: true },
+      where: {
+        OR: [{ storageUrl: { in: uploadPaths } }, { canvasPath: { in: uploadPaths } }],
+        designId: { notIn: designIds },
+      },
+      select: { storageUrl: true, canvasPath: true },
     });
     if (shared.length > 0) {
-      const sharedUrls = new Set(shared.map((s) => s.storageUrl));
+      const sharedUrls = new Set(
+        shared.flatMap((s) => [s.storageUrl, s.canvasPath]).filter((p): p is string => !!p),
+      );
       uploadPaths = uploadPaths.filter((p) => !sharedUrls.has(p));
     }
   }
@@ -386,13 +395,13 @@ export async function purgeAbandonedAnonymousDesigns(
   // 3) DesignAsset anónimos huérfanos (subidos pero nunca ligados a un diseño), viejos.
   const orphans = await prisma.designAsset.findMany({
     where: { designId: null, customerId: null, createdAt: { lt: cutoff }, ...sessionScope },
-    select: { id: true, storageUrl: true },
+    select: { id: true, storageUrl: true, canvasPath: true },
     take: batchSize,
   });
   if (orphans.length > 0) {
     const ok = await removeStorage(
       CUSTOMER_UPLOADS_BUCKET,
-      orphans.map((a) => a.storageUrl),
+      orphans.flatMap((a) => [a.storageUrl, a.canvasPath]).filter((p): p is string => !!p),
     );
     if (ok) {
       await prisma.designAsset.deleteMany({ where: { id: { in: orphans.map((a) => a.id) } } });

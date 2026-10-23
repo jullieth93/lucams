@@ -20,6 +20,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { supabaseService } from "@/lib/supabase/service";
 import { applyTiledWatermark } from "@/lib/watermark";
+import { logger } from "@/lib/logger";
 
 const BUCKET = "product-images";
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -472,11 +473,40 @@ export type CustomerUploadResult = {
   sizeBytes: number;
   mimeType: string;
   exifStripped: boolean;
+  /**
+   * Derivado liviano para el LIENZO (ADR-166, 2026-10-22): WebP borde largo
+   * ≤800px, objeto hermano `<…>/<uuid>.canvas.webp` en el mismo bucket. El
+   * lienzo Konva lo carga en vez del master (que se reserva para imprenta).
+   * null cuando el master ya venía ≤800px (no se genera) o cuando el derivado
+   * falló — el cliente cae al master en ambos casos.
+   */
+  canvasPath: string | null;
+  /** Signed URL (TTL 1h, igual que signedUrl) del derivado. null si canvasPath es null. */
+  canvasSignedUrl: string | null;
   /** M.3.b.B.2 — resultado de validación calidad. Si no se pasa sizeCm, el
    * resolution check se omite y el resto corre. Si todo OK, el caller puede
    * ignorar este campo. */
   validation?: import("./photo-validation").PhotoValidationResult;
 };
+
+/**
+ * Derivado para el lienzo del Estudio (ADR-166): el master (borde largo
+ * ≤2400px) lo necesita solo imprenta (300 DPI); el lienzo y las texturas 3D
+ * trabajan sobrados con ~800px (el stage lógico es ~720px y los snapshots de
+ * preview/3D salen a ≤2x). q82: mismo punto de calidad/peso que el catálogo.
+ */
+export const CUSTOMER_UPLOAD_CANVAS_MAX_EDGE_PX = 800;
+export const CUSTOMER_UPLOAD_CANVAS_WEBP_QUALITY = 82;
+
+/**
+ * Path del derivado de lienzo a partir del path del master:
+ * `<ownerId>/<designId|pending>/<uuid>.<ext>` → `<…>/<uuid>.canvas.webp`.
+ * Sufijo (no carpeta) para que el barrido de huérfanos y las purgas por
+ * carpeta de diseño lo cubran con la misma regla que el master.
+ */
+export function customerUploadCanvasPath(masterPath: string): string {
+  return masterPath.replace(/\.[^./]+$/, ".canvas.webp");
+}
 
 /**
  * Sube una foto del cliente al bucket privado customer-uploads.
@@ -613,6 +643,51 @@ export async function uploadCustomerPhoto(opts: {
     );
   }
 
+  // Derivado para el LIENZO (ADR-166, 2026-10-22): WebP ≤800px del archivo YA
+  // procesado (misma orientación/EXIF-strip que el master). FAIL-OPEN a
+  // propósito: si el derivado falla la subida NO se rechaza — el cliente cae
+  // al master (canvasPath null), que es el comportamiento previo. Skip cuando
+  // el master ya es ≤800px de borde largo (el derivado no ahorraría nada).
+  let canvasPath: string | null = null;
+  let canvasSignedUrl: string | null = null;
+  if (Math.max(width, height) > CUSTOMER_UPLOAD_CANVAS_MAX_EDGE_PX) {
+    try {
+      const derivative = await sharp(processed)
+        .resize({
+          width: CUSTOMER_UPLOAD_CANVAS_MAX_EDGE_PX,
+          height: CUSTOMER_UPLOAD_CANVAS_MAX_EDGE_PX,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .webp({ quality: CUSTOMER_UPLOAD_CANVAS_WEBP_QUALITY })
+        .toBuffer();
+      const dPath = customerUploadCanvasPath(filename);
+      const { error: dUploadErr } = await supabase.storage
+        .from(CUSTOMER_UPLOADS_BUCKET)
+        .upload(dPath, derivative, {
+          contentType: "image/webp",
+          cacheControl: "3600",
+          upsert: false,
+          metadata: { owner_id: opts.ownerId },
+        } as never); // mismo metadata.owner_id que el master (RLS, M.1.b)
+      if (dUploadErr) throw new Error(dUploadErr.message);
+      const { data: dSigned, error: dSignErr } = await supabase.storage
+        .from(CUSTOMER_UPLOADS_BUCKET)
+        .createSignedUrl(dPath, 3600);
+      if (dSignErr || !dSigned) throw new Error(dSignErr?.message ?? "sign failed");
+      canvasPath = dPath;
+      canvasSignedUrl = dSigned.signedUrl;
+    } catch (err) {
+      logger.warn(
+        {
+          event: "storage.customer_upload.canvas_derivative_fail",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Canvas derivative failed — falling back to master",
+      );
+    }
+  }
+
   // M.3.b.B.2 — Validación de calidad post-procesamiento (no bloquea upload,
   // solo informa al cliente). Si el caller no pasa productSizeCm, omitimos
   // el DPI check y solo evaluamos brillo/blur.
@@ -642,6 +717,8 @@ export async function uploadCustomerPhoto(opts: {
     sizeBytes: processed.length,
     mimeType: finalMime,
     exifStripped: true,
+    canvasPath,
+    canvasSignedUrl,
     validation,
   };
 }

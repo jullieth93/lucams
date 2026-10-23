@@ -144,6 +144,7 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
 import { createStudioStore } from "./lib/store";
 import { createSerialTaskQueue } from "./lib/serial-task-queue";
 import { waitForSlotPhotosReady } from "./lib/slot-photo-readiness";
+import { runWithPrintMasters } from "./lib/print-master-mode";
 import { resolveSlotNoun, type SlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
 import { collectQualityWarnings, qualityWarningsKey } from "./lib/quality-warnings";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
@@ -2043,57 +2044,68 @@ export function StudioEditor({
         // DIRECTO a Storage. Ese camino no pasa por la Function, así que no tiene techo de tamaño.
         if (!result.ok && result.code === "NEEDS_CLIENT_SLOTS") {
           await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
-          // Misma espera de decodificación que los previews/3D (slot-photo-readiness):
-          // el PNG de imprenta NO puede hornear el placeholder lila — el stage
-          // montado no implica foto decodificada (useImage es async).
-          await waitForSlotPhotosReady(canvasData.slots, slotStagesRef.current);
-          // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
-          // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
-          // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
-          // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
-          const logicalStageW = canvasData.unitTemplate.stage.width;
-          // Los snapshots se generan 1 a 1 (Konva exporta en el main thread) pero
-          // las SUBIDAS van en paralelo (tope 3) con retry+timeout — ver
-          // lib/upload-with-retry.ts. Antes eran PUTs secuenciales sin retry y un
-          // micro-corte de red tumbaba el confirmar con el error crudo del
-          // navegador en pantalla (fix STG 2026-10-05).
-          const uploadRequests: StoragePutRequest[] = [];
-          for (const { slotIndex, url } of result.uploads) {
-            const stage = slotStagesRef.current.get(slotIndex);
-            if (!stage) {
-              throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
+          // ADR-166 (2026-10-22): el lienzo carga el derivado ≤800px; los PNG de
+          // IMPRENTA de este fallback se rasterizan de los stages, así que durante
+          // el snapshot los slots conmutan al MASTER (runWithPrintMasters hace
+          // preload + espera determinista por src del nodo slot-photo).
+          // (capturado antes del wrapper: el narrowing de `result` no cruza el async)
+          const stagedUploads = result.uploads;
+          await runWithPrintMasters(canvasData.slots, slotStagesRef.current, async () => {
+            // Misma espera de decodificación que los previews/3D (slot-photo-readiness):
+            // el PNG de imprenta NO puede hornear el placeholder lila — el stage
+            // montado no implica foto decodificada (useImage es async).
+            await waitForSlotPhotosReady(canvasData.slots, slotStagesRef.current);
+            // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
+            // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
+            // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
+            // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
+            const logicalStageW = canvasData.unitTemplate.stage.width;
+            // Los snapshots se generan 1 a 1 (Konva exporta en el main thread) pero
+            // las SUBIDAS van en paralelo (tope 3) con retry+timeout — ver
+            // lib/upload-with-retry.ts. Antes eran PUTs secuenciales sin retry y un
+            // micro-corte de red tumbaba el confirmar con el error crudo del
+            // navegador en pantalla (fix STG 2026-10-05).
+            const uploadRequests: StoragePutRequest[] = [];
+            for (const { slotIndex, url } of stagedUploads) {
+              const stage = slotStagesRef.current.get(slotIndex);
+              if (!stage) {
+                throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
+              }
+              // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y
+              // los indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos
+              // de PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y
+              // se restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
+              // indicadores — se ocultan también allá.)
+              const hiddenForSnapshot = [
+                ...stage.find(".realism"),
+                ...stage.find(".edit-indicator"),
+              ];
+              hiddenForSnapshot.forEach((l) => l.hide());
+              let dataUrl: string;
+              try {
+                const displayW = stage.width() || logicalStageW;
+                const pixelRatio = (logicalStageW * 3) / displayW;
+                dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
+              } finally {
+                hiddenForSnapshot.forEach((l) => l.show());
+              }
+              // FOTO1: heart/circle → recortar a la silueta (transparente afuera).
+              dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
+              uploadRequests.push({
+                url,
+                body: dataUrlToBlob(dataUrl),
+                contentType: "image/png",
+              });
             }
-            // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y
-            // los indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos
-            // de PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y
-            // se restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
-            // indicadores — se ocultan también allá.)
-            const hiddenForSnapshot = [...stage.find(".realism"), ...stage.find(".edit-indicator")];
-            hiddenForSnapshot.forEach((l) => l.hide());
-            let dataUrl: string;
             try {
-              const displayW = stage.width() || logicalStageW;
-              const pixelRatio = (logicalStageW * 3) / displayW;
-              dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
-            } finally {
-              hiddenForSnapshot.forEach((l) => l.show());
+              await uploadAllWithRetry(uploadRequests);
+            } catch {
+              // Mensaje amigable orientado a acción — el error crudo del motor
+              // ("NetworkError when attempting to fetch resource") no le dice
+              // nada al cliente.
+              throw new Error(texts.exportar.errorSubidaArchivos);
             }
-            // FOTO1: heart/circle → recortar a la silueta (transparente afuera).
-            dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
-            uploadRequests.push({
-              url,
-              body: dataUrlToBlob(dataUrl),
-              contentType: "image/png",
-            });
-          }
-          try {
-            await uploadAllWithRetry(uploadRequests);
-          } catch {
-            // Mensaje amigable orientado a acción — el error crudo del motor
-            // ("NetworkError when attempting to fetch resource") no le dice
-            // nada al cliente.
-            throw new Error(texts.exportar.errorSubidaArchivos);
-          }
+          });
           const retry = buildFinalizeForm();
           retry.set("useStagedSlots", "1");
           result = await finalizeDesignAction(retry);

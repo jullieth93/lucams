@@ -965,6 +965,10 @@ export function StudioCanvasGrid({
     // 2026-09-24 — dimensiones de la foto ORIGINAL si el asset pasó por el
     // upscale local (chip de calidad medido sobre la nitidez real, no sobre
     // los píxeles re-muestreados).
+    // ADR-166 — fallback a las dims del MASTER (width/height del asset): el
+    // lienzo carga el derivado ≤800px, así que medir el DPI sobre los píxeles
+    // decodificados falsearía el aviso de resolución. width=0 (placeholder de
+    // extractAssetsFromCanvas) no cuenta → undefined, como antes.
     const slotAsset = slot.assetId ? assets.find((a) => a.id === slot.assetId) : undefined;
     return (
       <motion.div
@@ -1056,8 +1060,8 @@ export function StudioCanvasGrid({
             onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
             interactiveSlots={interactiveSlots}
             onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
-            assetOriginalWidth={slotAsset?.originalWidth}
-            assetOriginalHeight={slotAsset?.originalHeight}
+            assetOriginalWidth={slotAsset?.originalWidth ?? (slotAsset?.width || undefined)}
+            assetOriginalHeight={slotAsset?.originalHeight ?? (slotAsset?.height || undefined)}
             onPredesignedDrop={(item) => {
               selectSlot(slot.slotIndex);
               void handlePredesignedDrop(slot.slotIndex, item);

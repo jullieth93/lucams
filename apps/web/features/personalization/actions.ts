@@ -799,6 +799,8 @@ export async function uploadDesignAssetAction(formData: FormData) {
         customerId,
         sessionId,
         storageUrl: uploaded.path, // path interno; signed URL generada al demand
+        // ADR-166 — derivado ≤800px para el lienzo (null = el cliente cae al master).
+        canvasPath: uploaded.canvasPath,
         mimeType: uploaded.mimeType,
         sizeBytes: uploaded.sizeBytes,
         width: uploaded.width,
@@ -828,6 +830,9 @@ export async function uploadDesignAssetAction(formData: FormData) {
       ok: true as const,
       assetId: asset.id,
       signedUrl: uploaded.signedUrl,
+      // ADR-166 — URL firmada del derivado ≤800px para el lienzo (null → el
+      // cliente usa el master, p.ej. fotos que ya venían ≤800px).
+      canvasUrl: uploaded.canvasSignedUrl,
       width: uploaded.width,
       height: uploaded.height,
       // M.3.b.B.2 — Validación de calidad para que el cliente muestre warning UI.
@@ -885,9 +890,16 @@ export async function assignPredesignedToDesignAction(input: {
       ok: true;
       assetId: string;
       signedUrl: string;
+      canvasUrl: string | null;
       width: number;
       height: number;
-      assetB?: { assetId: string; signedUrl: string; width: number; height: number };
+      assetB?: {
+        assetId: string;
+        signedUrl: string;
+        canvasUrl: string | null;
+        width: number;
+        height: number;
+      };
     }
   | { ok: false; message: string }
 > {
@@ -948,6 +960,7 @@ export async function assignPredesignedToDesignAction(input: {
         customerId,
         sessionId,
         storageUrl: uploaded.path,
+        canvasPath: uploaded.canvasPath,
         mimeType: uploaded.mimeType,
         sizeBytes: uploaded.sizeBytes,
         width: uploaded.width,
@@ -962,6 +975,7 @@ export async function assignPredesignedToDesignAction(input: {
     return {
       assetId: asset.id,
       signedUrl: uploaded.signedUrl,
+      canvasUrl: uploaded.canvasSignedUrl,
       width: uploaded.width,
       height: uploaded.height,
     };
@@ -982,6 +996,11 @@ export async function assignPredesignedToDesignAction(input: {
     return {
       assetId: asset.id,
       signedUrl: await refreshCustomerUploadSignedUrl(asset.storageUrl),
+      // ADR-166 — derivado del reuso: se re-firma igual que el master (null en
+      // assets previos al derivado → el lienzo cae al master).
+      canvasUrl: asset.canvasPath
+        ? await refreshCustomerUploadSignedUrl(asset.canvasPath)
+        : null,
       width: asset.width,
       height: asset.height,
     };

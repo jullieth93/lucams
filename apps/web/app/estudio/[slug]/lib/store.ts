@@ -343,6 +343,7 @@ export function createStudioStore() {
                 ...s,
                 assetId: asset.id,
                 assetUrl: asset.signedUrl,
+                canvasUrl: asset.canvasUrl ?? null,
                 filter: null,
                 textOverrides: undefined,
                 photoTransform: undefined,
@@ -372,12 +373,14 @@ export function createStudioStore() {
                 ...s,
                 assetId: null,
                 assetUrl: null,
+                canvasUrl: null,
                 filter: null,
                 textOverrides: undefined,
                 photoTransform: undefined,
                 // Ola 17 — el reset del slot también suelta la foto de perfil.
                 profileAssetId: null,
                 profileAssetUrl: undefined,
+                profileCanvasUrl: undefined,
                 // Fase 1B — y su encuadre (vuelve al cover centrado).
                 profileTransform: undefined,
               }
@@ -443,6 +446,7 @@ export function createStudioStore() {
                 ...s,
                 profileAssetId: asset ? asset.id : null,
                 profileAssetUrl: asset ? asset.signedUrl : undefined,
+                profileCanvasUrl: asset ? (asset.canvasUrl ?? undefined) : undefined,
                 // Fase 1B — al quitar/cambiar la foto el encuadre anterior no aplica.
                 ...(asset ? {} : { profileTransform: undefined }),
               }
@@ -603,7 +607,12 @@ export function createStudioStore() {
           const idxInEmpty = emptySlots.indexOf(s.slotIndex);
           const asset = assets[idxInEmpty];
           if (asset) {
-            return { ...s, assetId: asset.id, assetUrl: asset.signedUrl };
+            return {
+              ...s,
+              assetId: asset.id,
+              assetUrl: asset.signedUrl,
+              canvasUrl: asset.canvasUrl ?? null,
+            };
           }
           return s; // no había suficientes assets
         }),
@@ -867,11 +876,14 @@ export function createStudioStore() {
             s.assetId === assetId || s.profileAssetId === assetId
               ? {
                   ...s,
-                  ...(s.assetId === assetId ? { assetId: null, assetUrl: null } : {}),
+                  ...(s.assetId === assetId
+                    ? { assetId: null, assetUrl: null, canvasUrl: null }
+                    : {}),
                   ...(s.profileAssetId === assetId
                     ? {
                         profileAssetId: null,
                         profileAssetUrl: undefined,
+                        profileCanvasUrl: undefined,
                         profileTransform: undefined,
                       }
                     : {}),
@@ -1013,6 +1025,7 @@ function extractAssetsFromCanvas(canvasData: CanvasDataV2): StudioAsset[] {
       assets.push({
         id: slot.assetId,
         signedUrl: slot.assetUrl,
+        canvasUrl: slot.canvasUrl ?? null,
         width: 0,
         height: 0,
       });

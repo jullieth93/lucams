@@ -90,7 +90,7 @@ const CANDIDATE_SELECT = {
   id: true,
   productionUrl: true,
   productionUrls: true,
-  assets: { select: { storageUrl: true } },
+  assets: { select: { storageUrl: true, canvasPath: true } },
 } satisfies Prisma.DesignSelect;
 
 /**
@@ -171,7 +171,9 @@ export async function purgeDeliveredDesignAssets(opts?: {
   }
 
   const designIds = candidates.map((d) => d.id);
-  const uploadPaths = candidates.flatMap((d) => d.assets.map((a) => a.storageUrl)).filter(Boolean);
+  const uploadPaths = candidates
+    .flatMap((d) => d.assets.flatMap((a) => [a.storageUrl, a.canvasPath]))
+    .filter((p): p is string => Boolean(p));
   const productionPaths = candidates
     .flatMap((d) => [d.productionUrl, ...d.productionUrls])
     .filter((p): p is string => !!p);

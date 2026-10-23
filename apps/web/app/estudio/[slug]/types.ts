@@ -230,6 +230,15 @@ export type SlotState = {
   assetId: string | null;
   assetUrl: string | null;
   /**
+   * ADR-166 (2026-10-22) — signed URL del derivado ≤800px del asset para el
+   * LIENZO (Konva, previews 2D, texturas 3D vía snapshots). null/ausente = el
+   * lienzo usa el master de `assetUrl` (assets previos al derivado o masters
+   * ≤800px). El render de imprenta NUNCA la usa: lee el master del bucket por
+   * path, y el fallback ADR-081 (snapshots del cliente) cambia los stages al
+   * master antes de rasterizar (lib/print-master-mode).
+   */
+  canvasUrl?: string | null;
+  /**
    * Ola 17 (Lucy 2026-09-07) — FOTO DE PERFIL del header del post de Instagram
    * (plantilla Polaroid Instagram), POR SLOT: cada imán del pack es un post
    * independiente con su propio usuario. La capa `profile-photo` del unitTemplate
@@ -237,6 +246,8 @@ export type SlotState = {
    */
   profileAssetId?: string | null;
   profileAssetUrl?: string;
+  /** ADR-166 — derivado ≤800px del avatar (mismo contrato que `canvasUrl`). */
+  profileCanvasUrl?: string;
   /**
    * Fase 1B — encuadre de la foto de perfil IG dentro de su círculo (zoom/pan),
    * mismo shape que `photoTransform` (sin rotación: el avatar es un círculo).
@@ -400,6 +411,12 @@ export function isCanvasV1(data: CanvasData): data is CanvasDataV1 {
 export type StudioAsset = {
   id: string;
   signedUrl: string;
+  /**
+   * ADR-166 (2026-10-22) — signed URL del derivado ≤800px para el lienzo.
+   * null/ausente = usar `signedUrl` (master). Ambas caducan a 1h; el boot las
+   * re-hidrata juntas.
+   */
+  canvasUrl?: string | null;
   width: number;
   height: number;
   /**
@@ -440,6 +457,8 @@ export type StudioAsset = {
 export type StudioQualityWarning = {
   assetId: string;
   signedUrl: string;
+  /** ADR-166 — derivado ≤800px para la miniatura del aviso (null → signedUrl). */
+  canvasUrl?: string | null;
   level: "warning-soft" | "warning-strong" | "error";
   message?: string;
   recommendation?: string;

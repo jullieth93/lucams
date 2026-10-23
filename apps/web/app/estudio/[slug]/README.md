@@ -563,8 +563,16 @@ Estudio. El concepto "copias idénticas" no existe en las superficies personaliz
   PDP) se resuelve contra la MISMA lista visible del sidebar (`listTemplatesForKind`:
   activas, `mode=EDITABLE`, kind del producto, específicas-o-globales, filtro de aspect) y el
   draft nuevo arranca con ESA plantilla — `createDraftDesignAction` la recibe y el servidor
-  la re-valida; slug inválido → primera plantilla, sin error visible; con `?designId=` manda
-  el canvas guardado (SoT). Cambiar de plantilla en el sidebar persiste `Design.templateId`
+  la re-valida; slug inválido → sin selección (geometría de la primera plantilla, sin error
+  visible); con `?designId=` manda
+  el canvas guardado (SoT). **Sin plantilla seleccionada por defecto (2026-10-22):** el boot
+  de draft nuevo (`resolveBootTemplate`, `lib/boot-template.ts`) separa GEOMETRÍA de SELECCIÓN —
+  con >1 plantillas y sin `?template=` el `templateId` queda null (el checklist «Tu diseño» lo
+  marca pendiente) hasta que el cliente elige; con 1 sola plantilla la elección es trivial y
+  queda auto-seleccionada. El servidor tampoco persiste default: `createDraftDesign` sin
+  `templateId` guarda `Design.templateId = null` (antes grababa la primera visible y el
+  recover la «heredaba» como si el cliente la hubiera elegido). Cambiar de plantilla en el
+  sidebar persiste `Design.templateId`
   vía el auto-save (`saveCanvasAction` acepta `templateId` y `saveCanvas` lo valida; si no
   pasa, el canvas se guarda igual y el id queda como estaba). El concepto PREMADE está
   retirado del storefront.
@@ -650,7 +658,13 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   estudio lo recibe resuelto. La cantidad de sets se ajusta con un stepper dedicado;
   `lib/letter-set-resolve.ts` re-resuelve la variante exacta (tamaño/imantado) para que la
   cotización quede precisa; `use-letter-colors.ts` maneja tema + barajar + color por ficha.
-  Sets por defecto es/en con `make seed-letter-sets`.
+  Sets por defecto es/en con `make seed-letter-sets`. El 3D (tablero memo) muestra
+  TODOS los sets juntos (decisión owner 2026-10-22, supersede la de 2026-10-19 que
+  limitaba al set activo): `handleOpen3D` compone las texturas de las N unidades en
+  paralelo (cada set con SU estilo/colores/borde), las columnas se ajustan al divisor
+  de `letters.length` más cercano a √n para que cada set complete filas enteras y un
+  rótulo overlay indica «N sets · M fichas» (mismo idioma del `countBadgeLabel` de
+  `scene-gallery.tsx`).
 - **Asistente IA de ideas (ADR-058)**: `studio-ai-panel.tsx` — el cliente cuenta la ocasión y
   recibe color de marca, frase (si el producto lleva texto), composición y un tip. Server:
   `features/ai/actions.ts → suggestDesignAction` (Google Gemini — `gemini-provider.ts`);
@@ -1140,12 +1154,17 @@ estilo abre el sheet de borde/color (`studio-style-toolbar` en <sm). FAB «Ver d
 
 Descubribilidad (2026-10-22, owner — lo que vive tras «Editar» pasaba desapercibido):
 el sidebar abre con el **checklist persistente «Tu diseño»** (`studio-checklist.tsx`):
-pasos derivados de las features del producto (fotos X/N, prediseñados disponibles,
+pasos derivados de las features del producto («Elige tu plantilla» cuando hay >1
+plantilla — PRIMERO y pendiente hasta elección explícita: sin plantilla por defecto,
+la primera solo presta la geometría de render vía `resolveBootTemplate`
+(`lib/boot-template.ts`); con 1 plantilla la elección es trivial y se auto-selecciona—,
+fotos X/N, prediseñados disponibles,
 mensaje si `allowText` con 1 capa de texto, datos de la publicación si plantilla
 Instagram) con estado Listo/Pendiente/Opcional y tap que navega a su sección
 (scroll dentro de ESTA instancia del sidebar vía `rootRef` — la sidebar se monta dos
 veces con los mismos ids: aside + sheet). El FAB «Editar» lleva un **badge con el
-conteo de pasos pendientes** (solo los bloqueantes: fotos requeridas y datos IG;
+conteo de pasos pendientes** (solo los bloqueantes: plantilla sin elegir, fotos
+requeridas y datos IG;
 los opcionales nunca agobian). Hook compartido `useStudioChecklist`; textos CMS
 `estudio.checklist.*`.
 
@@ -1164,6 +1183,7 @@ los opcionales nunca agobian). Hook compartido `useStudioChecklist`; textos CMS
    sheet «Editar» (bottom, 88vh):
    ┌─────────────────────────────────┐
    │ Tu diseño                       │ ← checklist (5.1)
+   │  ○ Elige tu plantilla           │
    │  ✓ Sube tus fotos (3 de 6)      │
    │  ○ Elige diseños prediseñados   │
    │  ○ Escribe tu mensaje           │
@@ -1350,8 +1370,20 @@ Estrategias aplicadas:
   2 (`lib/konva-pixel-ratio.ts` — los exports usan pixelRatio relativo, no se afectan);
   chrome SVG rasterizado una vez y compartido entre slots (`lib/chrome-bitmap-cache.ts`
   — Konva re-rasteriza el vector en cada `drawImage`); capa de sombra (estática) con
-  `Layer.cache()` (`studio-realism-overlay.tsx`). Pendiente: derivado ligero (~800 px)
-  de los assets para el lienzo (el master 2000 px es para producción).
+  `Layer.cache()` (`studio-realism-overlay.tsx`).
+- **Derivado ligero del lienzo (ADR-166, deuda cerrada 2026-10-22):** el lienzo
+  (y previews/thumbs) carga un derivado WebP ≤800 px generado en la subida
+  (`uploadCustomerPhoto` lo crea tras el master, fail-open, skip si el master ya
+  es ≤800 px) y persistido como `DesignAsset.canvasPath` (objeto hermano
+  `<uuid>.canvas.webp` en `customer-uploads`); se firma y emite como `canvasUrl`
+  en los 3 puntos (upload, fast-path de galería, boot recover) y el remap por
+  `assetId` lo re-hidrata igual que el master. El master 2000 px queda SOLO
+  para imprenta: producción lee `DesignAsset.storageUrl` intacto y el fallback
+  ADR-081 del finalize (snapshots de stages, hoy Polaroid) conmuta los slots al
+  master durante el raster vía `runWithPrintMasters` (`lib/print-master-mode.ts`).
+  Assets legacy sin derivado caen al master (sin backfill). Las purgas
+  (retención, GDPR, reorder) cubren el hermano `.canvas.webp` con la misma
+  guardia de bytes compartidos.
 - **INP — upscale/unsharp de fotos en
   Web Worker + OffscreenCanvas (`client-photo-upscale.worker.ts`, fallback inline
   idéntico); snapshots `toDataURL` de preview/3D cacheados por slot con

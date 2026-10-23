@@ -40,6 +40,7 @@ import {
   type BrandCanvasFonts,
 } from "./lib/calendar-card-preview";
 import { analyzeSmartCrop } from "./lib/smart-crop";
+import { usePrintMasterMode } from "./lib/print-master-mode";
 
 /** Resolución del canvas offscreen: 0.5× de la página 1080×1440 → 540×720.
  *  Nítido a los tamaños reales de slot (≤ ~350px en desktop) y liviano: 12 tarjetas
@@ -54,6 +55,7 @@ type PhotoTransform = { offsetX: number; offsetY: number; scale: number; rotatio
 
 export function CalendarCardLayer({
   assetUrl,
+  canvasUrl,
   photoTransform,
   year,
   monthIndex0,
@@ -72,6 +74,8 @@ export function CalendarCardLayer({
   touchDrag = false,
 }: {
   assetUrl?: string | null;
+  /** ADR-166 — derivado ≤800px para el lienzo (null/ausente → master de assetUrl). */
+  canvasUrl?: string | null;
   photoTransform?: PhotoTransform | null;
   year: number;
   monthIndex0: number;
@@ -93,7 +97,13 @@ export function CalendarCardLayer({
    */
   touchDrag?: boolean;
 }) {
-  const [photo] = useImage(assetUrl ?? "", "anonymous");
+  // ADR-166 — derivado en el lienzo; master solo durante el snapshot de
+  // imprenta (lib/print-master-mode, fallback ADR-081).
+  const printMaster = usePrintMasterMode();
+  const [photo] = useImage(
+    (printMaster ? assetUrl : (canvasUrl ?? assetUrl)) ?? "",
+    "anonymous",
+  );
   const imageNodeRef = useRef<Konva.Image | null>(null);
   const [brandFonts, setBrandFonts] = useState<BrandCanvasFonts | null>(null);
   // Familia real del TÍTULO según el selector de tipo de letra (null hasta resolver →

@@ -88,6 +88,7 @@ import type { CalendarFontKey } from "@/features/personalization/schemas";
 import { getFilterParams } from "./lib/photo-filters";
 import { createFilterRecacher } from "./lib/filter-recache";
 import { analyzeSmartCrop, checkPhotoQuality, shouldApplySmartCropResult } from "./lib/smart-crop";
+import { usePrintMasterMode } from "./lib/print-master-mode";
 import { PREDESIGNED_DRAG_MIME, type PredesignedDragPayload } from "./lib/apply-predesigned";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -346,7 +347,11 @@ function StudioSlotImpl({
   // M.3.b.UX.v11 — Quality check de la foto al cargar.
   // El slot también carga la image (además del ImagePlaceholder interno) para
   // poder calcular quality vs sizeCm. Browser cachea — no impact performance.
-  const [photoImage] = useImage(slotState.assetUrl ?? "", "anonymous");
+  // ADR-166 — carga el DERIVADO ≤800px cuando existe (canvasUrl): el check de
+  // DPI usa las dimensiones del MASTER (assetOriginalWidth/Height, que el
+  // canvas-grid alimenta con las dims reales del asset), no los píxeles del
+  // archivo decodificado, así que el derivado no falsea el aviso.
+  const [photoImage] = useImage(slotState.canvasUrl ?? slotState.assetUrl ?? "", "anonymous");
   const photoQuality = useMemo(() => {
     if (!photoImage || !slotState.assetUrl) return null;
     // 2026-09-24 (auditoría honestidad): si la foto subida pasó por upscale
@@ -938,6 +943,7 @@ function StudioSlotImpl({
                 // de la plantilla; el drag de la foto vive dentro de CalendarCardLayer.
                 <CalendarCardLayer
                   assetUrl={slotState.assetUrl}
+                  canvasUrl={slotState.canvasUrl ?? null}
                   photoTransform={slotState.photoTransform ?? null}
                   year={calendarCard.year}
                   monthIndex0={calendarCard.monthIndex0}
@@ -1445,8 +1451,10 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
   return (
     prev.slotState.slotIndex === next.slotState.slotIndex &&
     prev.slotState.assetUrl === next.slotState.assetUrl &&
+    prev.slotState.canvasUrl === next.slotState.canvasUrl &&
     prev.slotState.assetId === next.slotState.assetId &&
     prev.slotState.profileAssetUrl === next.slotState.profileAssetUrl &&
+    prev.slotState.profileCanvasUrl === next.slotState.profileCanvasUrl &&
     prev.slotState.filter === next.slotState.filter &&
     prev.slotState.textOverrides === next.slotState.textOverrides &&
     prev.slotState.photoTransform === next.slotState.photoTransform &&
@@ -1726,6 +1734,7 @@ export function renderLayer(
           key={layer.id}
           layer={layer as ProfilePhotoLayer}
           profileAssetUrl={slotState.profileAssetUrl ?? null}
+          profileCanvasUrl={slotState.profileCanvasUrl ?? null}
           profileTransform={slotState.profileTransform ?? null}
           stageWidth={stage.width}
           onEdit={opts?.onProfilePhotoEdit}
@@ -1798,6 +1807,7 @@ function ProfileAvatarPulse({ x, y, radius }: { x: number; y: number; radius: nu
 function ProfilePhotoLayerRenderer({
   layer,
   profileAssetUrl,
+  profileCanvasUrl,
   profileTransform,
   stageWidth,
   onEdit,
@@ -1805,6 +1815,8 @@ function ProfilePhotoLayerRenderer({
 }: {
   layer: ProfilePhotoLayer;
   profileAssetUrl: string | null;
+  /** ADR-166 — derivado ≤800px del avatar para el lienzo (null → master). */
+  profileCanvasUrl?: string | null;
   /** Fase 1B — encuadre del avatar dentro del círculo (zoom/pan). null = cover
    *  centrado (comportamiento histórico de Ola 17). */
   profileTransform?: { offsetX: number; offsetY: number; scale: number } | null;
@@ -1814,7 +1826,13 @@ function ProfilePhotoLayerRenderer({
   /** Tooltip de hover (copy CMS estudio.texto.perfil-avatar-hint). */
   hint?: string;
 }) {
-  const [image] = useImage(profileAssetUrl ?? "", "anonymous");
+  // ADR-166 — derivado en el lienzo; master solo durante el snapshot de
+  // imprenta (lib/print-master-mode, fallback ADR-081).
+  const printMaster = usePrintMasterMode();
+  const [image] = useImage(
+    (printMaster ? profileAssetUrl : (profileCanvasUrl ?? profileAssetUrl)) ?? "",
+    "anonymous",
+  );
   const [hover, setHover] = useState(false);
   const interactive = !!onEdit;
   // Fase 2 · 2.7a — pulso de descubrimiento: visible solo la PRIMERA vez. El
@@ -2586,7 +2604,15 @@ function ImagePlaceholder({
    */
   touchDrag?: boolean;
 }) {
-  const [image] = useImage(slotState.assetUrl ?? "", "anonymous");
+  // ADR-166 — el lienzo carga el derivado ≤800px (canvasUrl) cuando existe;
+  // el MASTER solo durante el snapshot de imprenta del finalize (fallback
+  // ADR-081: los PNG de producción se rasterizan de este stage a 3× y no
+  // pueden salir del derivado — ver lib/print-master-mode).
+  const printMaster = usePrintMasterMode();
+  const [image] = useImage(
+    (printMaster ? slotState.assetUrl : (slotState.canvasUrl ?? slotState.assetUrl)) ?? "",
+    "anonymous",
+  );
   const imageNodeRef = useRef<Konva.Image | null>(null);
   // Convención del seed (verificada): image-placeholder usa x/y como TOP-LEFT
   // del slot (esquina superior izquierda). Ej. polaroid-clasico tiene

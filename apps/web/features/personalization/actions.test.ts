@@ -37,6 +37,8 @@ const { state, MockStorageError } = vi.hoisted(() => {
       uploadError: null as Error | null,
       assetCreateError: null as Error | null,
       uploadValidation: undefined as unknown,
+      // ADR-166 — false simula un master ≤800px (o derivado fallido): sin canvasPath.
+      uploadWithCanvasDerivative: true,
       uploadCalls: 0,
       uploadArgs: [] as Array<Record<string, unknown>>,
       assetCreateCalls: 0,
@@ -81,6 +83,10 @@ vi.mock("@/lib/storage", () => ({
     return {
       path: "sess_test/pending/uuid.jpg",
       signedUrl: "https://signed.example/upload",
+      canvasPath: state.uploadWithCanvasDerivative ? "sess_test/pending/uuid.canvas.webp" : null,
+      canvasSignedUrl: state.uploadWithCanvasDerivative
+        ? "https://signed.example/upload-canvas"
+        : null,
       width: 100,
       height: 100,
       sizeBytes: 3,
@@ -317,6 +323,7 @@ beforeEach(() => {
   state.uploadError = null;
   state.assetCreateError = null;
   state.uploadValidation = undefined;
+  state.uploadWithCanvasDerivative = true;
   state.uploadCalls = 0;
   state.uploadArgs = [];
   state.assetCreateCalls = 0;
@@ -404,6 +411,28 @@ describe("uploadDesignAssetAction · recomendación específica de calidad (Paqu
       validationRecommendation: undefined,
       validationChecks: undefined,
     });
+  });
+});
+
+describe("uploadDesignAssetAction · derivado de lienzo (ADR-166)", () => {
+  it("devuelve canvasUrl firmada y persiste canvasPath en la fila DesignAsset", async () => {
+    const result = await uploadDesignAssetAction(makeUploadForm());
+    expect(result).toMatchObject({
+      ok: true,
+      signedUrl: "https://signed.example/upload",
+      canvasUrl: "https://signed.example/upload-canvas",
+    });
+    expect(state.assetCreateArgs[0]).toMatchObject({
+      storageUrl: "sess_test/pending/uuid.jpg",
+      canvasPath: "sess_test/pending/uuid.canvas.webp",
+    });
+  });
+
+  it("sin derivado (master ≤800px): canvasUrl null → el cliente cae al master", async () => {
+    state.uploadWithCanvasDerivative = false;
+    const result = await uploadDesignAssetAction(makeUploadForm());
+    expect(result).toMatchObject({ ok: true, canvasUrl: null });
+    expect(state.assetCreateArgs[0]).toMatchObject({ canvasPath: null });
   });
 });
 
@@ -534,12 +563,18 @@ describe("assignPredesignedToDesignAction · dedupe por galleryImageId (2026-10-
       designId: "design_1",
       galleryImageId: "gal_1",
     });
-    expect(result).toMatchObject({ ok: true, assetId: "asset_1" });
+    expect(result).toMatchObject({
+      ok: true,
+      assetId: "asset_1",
+      // ADR-166 — la subida nueva también emite la URL del derivado de lienzo.
+      canvasUrl: "https://signed.example/upload-canvas",
+    });
     expect(state.uploadCalls).toBe(1);
     expect(state.assetCreateCalls).toBe(1);
     expect(state.assetCreateArgs[0]).toMatchObject({
       designId: "design_1",
       galleryImageId: "gal_1",
+      canvasPath: "sess_test/pending/uuid.canvas.webp",
     });
   });
 
@@ -548,6 +583,7 @@ describe("assignPredesignedToDesignAction · dedupe por galleryImageId (2026-10-
       {
         id: "asset_previo",
         storageUrl: "sess_test/previo.png",
+        canvasPath: "sess_test/previo.canvas.webp",
         width: 800,
         height: 600,
         createdAt: new Date("2026-10-01"),
@@ -561,12 +597,33 @@ describe("assignPredesignedToDesignAction · dedupe por galleryImageId (2026-10-
       ok: true,
       assetId: "asset_previo",
       signedUrl: "https://signed.example/fresh/sess_test/previo.png",
+      // ADR-166 — el reuso también re-firma el derivado de lienzo.
+      canvasUrl: "https://signed.example/fresh/sess_test/previo.canvas.webp",
       width: 800,
       height: 600,
     });
     expect(fetch).not.toHaveBeenCalled();
     expect(state.uploadCalls).toBe(0);
     expect(state.assetCreateCalls).toBe(0);
+  });
+
+  it("con asset previo SIN derivado (legacy): reusA con canvasUrl null (fallback al master)", async () => {
+    state.galleryAssets = [
+      {
+        id: "asset_previo",
+        storageUrl: "sess_test/previo.png",
+        canvasPath: null,
+        width: 800,
+        height: 600,
+        createdAt: new Date("2026-10-01"),
+      },
+    ];
+    const result = await assignPredesignedToDesignAction({
+      designId: "design_1",
+      galleryImageId: "gal_1",
+    });
+    expect(result).toMatchObject({ ok: true, assetId: "asset_previo", canvasUrl: null });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("par A/B: con ambos assets previos reusA los dos (orden createdAt); sin B, sube solo la B", async () => {
