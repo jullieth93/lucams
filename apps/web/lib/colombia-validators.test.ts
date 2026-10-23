@@ -9,6 +9,7 @@ import {
   capitalizeName,
   countWords,
   cruceNumberError,
+  documentNumberMatchesType,
   formatPhone,
   getDocumentHelp,
   normalizePhoneWithDial,
@@ -195,6 +196,21 @@ describe("validateDocument — seguridad / robustez", () => {
 
   it("rechaza payload alfanumérico largo en CC", () => {
     expect(validateDocument("CC", "<script>123</script>")).toBe(false);
+  });
+});
+
+describe("documentNumberMatchesType — fuente única cliente/server", () => {
+  it("es la misma regla que validateDocument (esta delega en ella)", () => {
+    expect(documentNumberMatchesType("CC", "1234567890")).toBe(true);
+    expect(documentNumberMatchesType("CC", "12345")).toBe(false);
+    expect(documentNumberMatchesType("PP", "ab123456")).toBe(true); // case-insensitive
+    expect(documentNumberMatchesType("NIT", "900123456-7")).toBe(true);
+    expect(documentNumberMatchesType("TI", "1234567")).toBe(false);
+  });
+
+  it("recorta espacios y rechaza vacío", () => {
+    expect(documentNumberMatchesType("CE", " 123456 ")).toBe(true);
+    expect(documentNumberMatchesType("CE", "")).toBe(false);
   });
 });
 

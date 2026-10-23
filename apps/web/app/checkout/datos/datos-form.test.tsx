@@ -217,10 +217,11 @@ describe("DatosForm — feedback de errores tras submit fallido", () => {
 
 /*
  * CP derivado de la ciudad (owner 2026-10-07): el catálogo DANE trae el CP REAL
- * de las principales ciudades (Bogotá 110111, Medellín 050001) y se prellena al
- * elegir ciudad — editable siempre. Ciudades sin CP municipal → prefijo
- * departamental parcial. Placeholder neutro y hint que aclara que no se pide
- * para cotizar.
+ * municipal y se prellena al elegir ciudad — editable siempre. 2026-10-22:
+ * cobertura COMPLETA del catálogo (171/171 ciudades, dataset oficial MinTIC
+ * mapeado por código DANE) — el prefill de prefijo departamental queda como
+ * fallback defensivo para futuras entradas sin zip. Placeholder neutro y hint
+ * que aclara que no se pide para cotizar.
  */
 describe("DatosForm — código postal derivado de la ciudad (owner 2026-10-07)", () => {
   it("elegir Bogotá prellena el CP real (110111), editable", () => {
@@ -239,12 +240,14 @@ describe("DatosForm — código postal derivado de la ciudad (owner 2026-10-07)"
     expect(document.querySelector<HTMLInputElement>("#zip")!.value).toBe("050001");
   });
 
-  it("ciudad sin CP municipal → prellena solo el prefijo departamental", () => {
+  it("Abejorral prellena su CP municipal real (055030) — cobertura MinTIC completa (2026-10-22)", () => {
     renderForm();
     fireEvent.change(document.querySelector("#deptCode")!, { target: { value: "05" } });
-    // Abejorral (05002) no tiene zip municipal en el catálogo.
+    // Abejorral (05002): con el dataset MinTIC todas las ciudades del catálogo
+    // tienen CP municipal — el prefill de prefijo departamental queda como
+    // fallback defensivo para futuras entradas de catálogo sin zip.
     fireEvent.change(document.querySelector("#cityCode")!, { target: { value: "05002" } });
-    expect(document.querySelector<HTMLInputElement>("#zip")!.value).toBe("05");
+    expect(document.querySelector<HTMLInputElement>("#zip")!.value).toBe("055030");
   });
 
   it("cambiar de departamento limpia el CP", () => {

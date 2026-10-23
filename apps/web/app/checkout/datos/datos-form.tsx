@@ -9,8 +9,9 @@
  *   - Teléfono: 10 dígitos móvil CO con auto-formato "300 887 3826"
  *   - Documento: regex por tipo (CC/CE/NIT/PP/TI)
  *   - Departamento/Ciudad: dropdowns DANE divipola (catálogo curado)
- *   - Código postal: opcional, SIN autocompletado (el CP municipal DANE se
- *     confundía con el número de pedido — fix QA STG 2026-10)
+ *   - Código postal: opcional, autorrellenado con el CP municipal del
+ *     catálogo DANE/MinTIC al elegir ciudad (editable; no alimenta la
+ *     cotización Aveonline, solo el snapshot de la orden)
  *   - Localidad (zona del catálogo lib/lucams-zones.ts): obligatoria si la
  *     ciudad está en el catálogo — dato de dirección, no filtro de oferta
  *   - Barrio: texto libre opcional (todas las ciudades)
@@ -48,6 +49,7 @@ import {
   validateDocument,
   validateName,
   validatePhone,
+  validateZip,
   viaExample,
   viaNumberError,
   type DocumentType,
@@ -831,7 +833,11 @@ export function DatosForm({
         : null) ?? err("documentNumber");
     const deptErr = req(!deptCode) ?? err("deptCode");
     const cityErr = req(!cityCode) ?? err("cityCode");
-    const zipErr = err("zip");
+    // CP opcional: solo hay error si escribió algo incompleto (el server exige
+    // 6 dígitos cuando hay valor — mismo mensaje del AddressSchema).
+    const zipErr =
+      (zip.length > 0 && !validateZip(zip) && (tch.zip || sc > 0) ? texts.zipError : null) ??
+      err("zip");
     const neighborhoodErr = err("neighborhood");
     const localityErr = req(showZoneSelect && !localityId) ?? err("localityId");
     // Dirección urbana: mensaje ESPECÍFICO de qué falta (fix QA STG 2026-10 —
@@ -1258,9 +1264,10 @@ export function DatosForm({
           </div>
         )}
 
-        {/* Depto + Ciudad + CP */}
+        {/* Depto + Ciudad + CP — misma fila en desktop, apilados en móvil
+            (orden lógico de ubicación). */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
-          <div className="sm:col-span-3">
+          <div className="sm:col-span-2">
             <Label
               htmlFor="deptCode"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
@@ -1293,7 +1300,7 @@ export function DatosForm({
             <input type="hidden" name="department" value={selectedDept?.name ?? ""} />
           </div>
 
-          <div className="sm:col-span-3">
+          <div className="sm:col-span-2">
             <Label
               htmlFor="cityCode"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
@@ -1342,21 +1349,30 @@ export function DatosForm({
               id="zip"
               name="zip"
               value={zip}
-              onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) => {
+                setZip(e.target.value.replace(/\D/g, "").slice(0, 6));
+                clearTouched("zip");
+              }}
+              onBlur={() => markTouched("zip")}
               placeholder={texts.zipPlaceholder}
               aria-invalid={Boolean(zipErr)}
               aria-describedby={zipErr ? "zip-error" : undefined}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               inputMode="numeric"
             />
-            {/* Campo opcional: NO se autorrellena (el CP municipal DANE se
-                confundía con el número de pedido) y la cotización Aveonline no
-                lo usa — ver handleCityChange. */}
+            {/* Opcional y autorrellenado al elegir ciudad (handleCityChange): CP
+                municipal del catálogo DANE/MinTIC, o solo el prefijo departamental
+                si la ciudad no lo tiene conocido (hint abajo lo advierte). La
+                cotización Aveonline no lo usa — es dato del snapshot de la orden. */}
             <FieldHint
               id="zip-error"
-              clientError={null}
+              clientError={zipErr}
               serverError={err("zip")}
-              hint={texts.zipHint}
+              hint={
+                selectedCity && !selectedCity.zip && zip.length > 0
+                  ? texts.zipPrefixHint
+                  : texts.zipHint
+              }
             />
           </div>
         </div>

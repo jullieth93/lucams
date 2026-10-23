@@ -23,6 +23,8 @@ import {
   NAME_REGEX,
   PHONE_REGEX,
   cruceNumberError,
+  documentNumberMatchesType,
+  getDocumentHelp,
   viaNumberError,
 } from "@/lib/colombia-validators";
 
@@ -36,20 +38,49 @@ export const DocumentNumberSchema = z
   .min(6, "Mínimo 6 caracteres")
   .max(15, "Máximo 15 caracteres");
 
-export const ContactSchema = z.object({
-  fullName: z
-    .string()
-    .min(2, "El nombre debe tener al menos 2 caracteres")
-    .max(120, "Máximo 120 caracteres")
-    // Regex central de nombre (lib/colombia-validators) — fuente única.
-    .regex(NAME_REGEX, "El nombre solo puede tener letras")
-    .trim(),
-  email: z.email("Email inválido").max(254).trim().toLowerCase(),
-  // Móvil colombiano: 10 dígitos empezando con 3 (sin espacios al persistir).
-  phone: z.string().regex(PHONE_REGEX, "Debe ser un móvil colombiano de 10 dígitos (300...)"),
-  documentType: DocumentTypeSchema.optional(),
-  documentNumber: DocumentNumberSchema.optional(),
-});
+export const ContactSchema = z
+  .object({
+    fullName: z
+      .string()
+      .min(2, "El nombre debe tener al menos 2 caracteres")
+      .max(120, "Máximo 120 caracteres")
+      // Regex central de nombre (lib/colombia-validators) — fuente única.
+      .regex(NAME_REGEX, "El nombre solo puede tener letras")
+      .trim(),
+    email: z.email("Email inválido").max(254).trim().toLowerCase(),
+    // Móvil colombiano: 10 dígitos empezando con 3 (sin espacios al persistir).
+    phone: z.string().regex(PHONE_REGEX, "Debe ser un móvil colombiano de 10 dígitos (300...)"),
+    documentType: DocumentTypeSchema.optional(),
+    documentNumber: DocumentNumberSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    // Documento coherente con su tipo (2026-10-22) — misma regla que el perfil
+    // de /mi-cuenta: ambos campos siguen OPCIONALES (perfiles/órdenes sin
+    // documento pasan), pero si hay valor se exige el par completo y el número
+    // debe cumplir el formato de su tipo (regex de lib/colombia-validators,
+    // fuente única compartida con la validación cliente del checkout).
+    const hasType = Boolean(data.documentType);
+    const hasNumber = Boolean(data.documentNumber?.trim());
+    if (hasType !== hasNumber) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["documentNumber"],
+        message: "Completa el tipo y el número de documento, o deja ambos vacíos.",
+      });
+      return;
+    }
+    if (
+      hasType &&
+      hasNumber &&
+      !documentNumberMatchesType(data.documentType!, data.documentNumber!)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["documentNumber"],
+        message: `Formato inválido. ${getDocumentHelp(data.documentType!)}`,
+      });
+    }
+  });
 export type ContactInput = z.infer<typeof ContactSchema>;
 
 /**

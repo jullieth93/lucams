@@ -41,13 +41,15 @@ describe("StructuredAddressFields — código postal derivado de la ciudad", () 
     expect(onChange).toHaveBeenCalledWith({ cityCode: "11001", localityId: "", zip: "110111" });
   });
 
-  it("ciudad sin CP municipal → CP queda VACÍO (no se inventa el prefijo departamental)", () => {
+  it("Abejorral propaga su CP municipal real (055030) — cobertura MinTIC completa (2026-10-22)", () => {
     const { container, onChange } = renderFields({ ...EMPTY_STRUCTURED_ADDRESS, deptCode: "05" });
-    // Abejorral (05002) no tiene zip municipal en el catálogo.
+    // Abejorral (05002): con el dataset MinTIC todas las ciudades del catálogo
+    // tienen CP municipal (la rama "ciudad sin zip" ya no es alcanzable con el
+    // catálogo vigente — este componente nunca inventó el prefijo departamental).
     fireEvent.change(container.querySelector<HTMLSelectElement>("#cityCode")!, {
       target: { value: "05002" },
     });
-    expect(onChange).toHaveBeenCalledWith({ cityCode: "05002", localityId: "", zip: "" });
+    expect(onChange).toHaveBeenCalledWith({ cityCode: "05002", localityId: "", zip: "055030" });
   });
 });
 
