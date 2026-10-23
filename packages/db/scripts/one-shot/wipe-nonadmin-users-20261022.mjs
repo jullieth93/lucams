@@ -66,6 +66,13 @@ for (const raw of readFileSync(ENV_FILE, "utf8").split("\n")) {
   let value = line.slice(idx + 1).trim();
   const commentIdx = value.indexOf(" #");
   if (commentIdx > 0) value = value.slice(0, commentIdx).trim();
+  // Valores con comillas (.env.stg) o sin ellas (.env.local).
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
   if (!(key in process.env)) process.env[key] = value;
 }
 
