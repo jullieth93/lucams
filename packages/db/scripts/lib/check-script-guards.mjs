@@ -48,6 +48,11 @@ const ALLOWLIST_PRD_DELIBERADO = new Set([
   // dirección estructurada (la copia vieja contradice la validación desplegada);
   // su caso de uso ES correr en los 3 ambientes incl. PRD.
   "one-shot/republish-checkout-rural-copy-20261021.mjs",
+  // 2026-10-22 — reduce frameOptions a blanco/negro en Polaroid y Tiras
+  // Magnéticas (decisión owner); su caso de uso ES correr en los 3 ambientes
+  // incl. PRD (dry-run por defecto + --apply, schema fusionado).
+  "one-shot/frame-options-binary-20261022.mjs",
+  "one-shot/shipping-carrier-rules-20261022.mjs",
 ]);
 
 const WRITE_RE =

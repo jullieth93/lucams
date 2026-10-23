@@ -15,7 +15,8 @@ export type ShippingAddress = {
   zip?: string;
   phone: string;
   contactName: string;
-  /** Documento (CC/NIT/etc) — Aveonline lo exige ≥6 dígitos numéricos. */
+  /** Documento (CC/NIT/PP/etc) — Aveonline exige numérico > 10000 en la guía
+   *  (un PP alfanumérico cae al placeholder; ver aveonline.ts dsnit). */
   documentNumber?: string;
   /** Email del destinatario (Aveonline lo notifica si presente). */
   email?: string;

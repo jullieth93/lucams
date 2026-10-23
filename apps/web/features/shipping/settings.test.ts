@@ -28,10 +28,12 @@ vi.mock("@/lib/cms", () => ({
 
 import {
   countEnabledZones,
+  getCarrierRules,
   getDisabledCarriersNormalized,
   getLucamsShippingSettings,
   LUCAMS_SHIPPING_DEFAULTS,
   normalizeCarrierKey,
+  parseCarrierRules,
 } from "./settings";
 
 describe("getLucamsShippingSettings", () => {
@@ -172,5 +174,74 @@ describe("normalizeCarrierKey", () => {
     expect(normalizeCarrierKey("COORDINADORA MERCANTIL")).toBe("coordinadoramercantil");
     expect(normalizeCarrierKey("coordinadora-mercantil")).toBe("coordinadoramercantil");
     expect(normalizeCarrierKey("Servientrega")).toBe("servientrega");
+  });
+});
+
+describe("getCarrierRules (SHIPPING_CARRIER_RULES)", () => {
+  it("sin setting → {} (ninguna regla)", async () => {
+    getSettingValue.mockImplementation(async (_k: string, fb: string) => fb);
+    expect(await getCarrierRules()).toEqual({});
+  });
+
+  it("parsea reglas válidas keyed por nombre normalizado", async () => {
+    getSettingValue.mockImplementation(async () =>
+      JSON.stringify({
+        transprensa: {
+          minWeightKg: 11,
+          maxWeightKg: null,
+          note: "No opera envíos de menos de 11 kg",
+        },
+        tccsa: { minWeightKg: null, maxWeightKg: 50, note: null },
+      }),
+    );
+    expect(await getCarrierRules()).toEqual({
+      transprensa: {
+        minWeightKg: 11,
+        maxWeightKg: null,
+        note: "No opera envíos de menos de 11 kg",
+      },
+      tccsa: { minWeightKg: null, maxWeightKg: 50, note: null },
+    });
+  });
+
+  it("JSON inválido → {} + warn (fail-safe: no se filtra nada)", async () => {
+    const { logger } = await import("@/lib/logger");
+    getSettingValue.mockImplementation(async () => "{json roto");
+    expect(await getCarrierRules()).toEqual({});
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "shipping.settings.carrier_rules.invalid_json" }),
+    );
+  });
+});
+
+describe("parseCarrierRules", () => {
+  it("descarta entradas malformadas y normaliza pesos inválidos a null", () => {
+    const rules = parseCarrierRules(
+      JSON.stringify({
+        transprensa: { minWeightKg: 11, maxWeightKg: null, note: "ok" },
+        conPesoRoto: { minWeightKg: "once", maxWeightKg: -3, note: null },
+        sinNada: { minWeightKg: null, maxWeightKg: null, note: null },
+        noObjeto: 42,
+      }),
+    );
+    expect(rules.transprensa).toEqual({ minWeightKg: 11, maxWeightKg: null, note: "ok" });
+    // Pesos no numéricos/negativos → null; al quedar solo con nulls y sin nota, se omite.
+    expect(rules.conPesoRoto).toBeUndefined();
+    expect(rules.sinNada).toBeUndefined();
+    expect(rules.noObjeto).toBeUndefined();
+  });
+
+  it("solo-nota es una regla válida (se conserva para mostrar contexto)", () => {
+    const rules = parseCarrierRules(JSON.stringify({ tccsa: { note: "Cobertura limitada" } }));
+    expect(rules.tccsa).toEqual({
+      minWeightKg: null,
+      maxWeightKg: null,
+      note: "Cobertura limitada",
+    });
+  });
+
+  it("valores no-objeto (array, string) → {}", () => {
+    expect(parseCarrierRules("[1,2]")).toEqual({});
+    expect(parseCarrierRules('"texto"')).toEqual({});
   });
 });

@@ -85,11 +85,23 @@ export function suggestShipmentFailureCause(error: ShipmentLastError): string {
     );
   }
   const msg = error.message.toLowerCase();
+  // "Transprensa no opera envios de menos de 11 kilos" (pedido LCM-2026-0003):
+  // el carrier tiene peso mínimo y el checkout lo ofreció igual. La sugerencia
+  // es configurar la regla (SHIPPING_CARRIER_RULES) para que no vuelva a
+  // ofrecerse en pedidos livianos.
+  if (/no opera\s+env[ií]os?\s+de\s+menos\s+de/.test(msg)) {
+    return (
+      "La transportadora no opera envíos por debajo de un peso mínimo y este paquete quedó " +
+      "por debajo. Configura su peso mínimo en Envíos (/admin/envios) para que el checkout " +
+      "deje de ofrecerla en pedidos livianos, o genera la guía con otra transportadora."
+    );
+  }
   if (msg.includes("anulada")) {
     return (
-      "La transportadora anuló la guía al generarla: suele ser un destino sin cobertura para " +
-      "esa transportadora, o la cuenta demo de Aveonline (ambiente de pruebas). Revisa la " +
-      "cobertura de la ciudad destino o prueba con otra transportadora."
+      "La transportadora anuló la guía apenas se generó: casi siempre es que la ciudad " +
+      "destino no tiene cobertura con ESA transportadora (o la cuenta Aveonline está en " +
+      "modo demo, que anula todo). Reintenta generando la guía con otra transportadora; " +
+      "si todas la anulan, confirma la cobertura del destino con tu asesor de Aveonline."
     );
   }
   if (msg.includes("origen no existe")) {

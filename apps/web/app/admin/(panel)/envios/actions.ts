@@ -14,10 +14,12 @@ import { recordAdminAction } from "@/lib/admin-audit";
 import { logger } from "@/lib/logger";
 import {
   countEnabledZones,
+  getCarrierRules,
   getDisabledCarriersRaw,
   getLucamsShippingSettings,
   normalizeCarrierKey,
   saveLucamsShippingSettings,
+  setCarrierRules,
   setDisabledCarriers,
   setLucamsShippingEnabled,
 } from "@/features/shipping/settings";
@@ -52,6 +54,80 @@ export async function setCarrierDisabledAction(formData: FormData): Promise<void
   // para que la próxima cotización del checkout vea el cambio al instante.
   updateTag("cms");
   revalidatePath("/admin/envios");
+}
+
+export type CarrierRuleActionState = { ok?: string; error?: string };
+
+/**
+ * Guarda la regla de peso de una transportadora Aveonline (setting
+ * SHIPPING_CARRIER_RULES, keyed por nombre normalizado): peso mínimo/máximo
+ * en kg (1 decimal) + nota opcional. quoteShipping NO ofrece el carrier si el
+ * paquete queda fuera del rango — evita guías rechazadas al despachar (ej.
+ * Transprensa no opera < 11 kg). Los 3 campos vacíos = borrar la regla.
+ */
+export async function saveCarrierRuleAction(
+  _prev: CarrierRuleActionState | null,
+  formData: FormData,
+): Promise<CarrierRuleActionState> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const carrierName = String(formData.get("carrierName") ?? "").trim();
+  if (!carrierName) return { error: "Falta el nombre de la transportadora." };
+
+  // Vacío = sin límite (null); número 0–10.000 kg, redondeado a 1 decimal.
+  const parseWeight = (field: string): number | null | "invalid" => {
+    const raw = String(formData.get(field) ?? "").trim();
+    if (!raw) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > 10_000) return "invalid";
+    return Math.round(n * 10) / 10;
+  };
+  const minWeightKg = parseWeight("minWeightKg");
+  const maxWeightKg = parseWeight("maxWeightKg");
+  if (minWeightKg === "invalid" || maxWeightKg === "invalid") {
+    return { error: "El peso debe ser un número entre 0 y 10.000 kg." };
+  }
+  if (minWeightKg !== null && maxWeightKg !== null && minWeightKg > maxWeightKg) {
+    return { error: "El peso mínimo no puede ser mayor que el peso máximo." };
+  }
+  const noteRaw = String(formData.get("note") ?? "").trim();
+  const note = noteRaw ? noteRaw.slice(0, 300) : null;
+
+  try {
+    const rules = await getCarrierRules();
+    const key = normalizeCarrierKey(carrierName);
+    if (minWeightKg === null && maxWeightKg === null && note === null) {
+      delete rules[key];
+    } else {
+      rules[key] = { minWeightKg, maxWeightKg, note };
+    }
+    await setCarrierRules(rules, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "shipping.carrier.save_rule",
+      entityType: "Integration",
+      entityId: "aveonline",
+      metadata: { carrierName, minWeightKg, maxWeightKg, note },
+    });
+    // Las settings viajan por el tag "cms" (getSettingValue cacheado): invalidar
+    // para que la próxima cotización del checkout vea el cambio al instante.
+    updateTag("cms");
+    revalidatePath("/admin/envios");
+    return {
+      ok:
+        minWeightKg === null && maxWeightKg === null && note === null
+          ? `Regla de ${carrierName} eliminada.`
+          : `Regla de ${carrierName} guardada: aplica desde la próxima cotización.`,
+    };
+  } catch (err) {
+    logger.warn({
+      event: "admin.shipping.carrier_rule.save_fail",
+      adminId: session.admin.id,
+      carrierName,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: err instanceof Error ? err.message : "No se pudo guardar la regla." };
+  }
 }
 
 export type LucamsShippingActionState = { ok?: string; error?: string };
