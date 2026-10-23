@@ -658,13 +658,14 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   estudio lo recibe resuelto. La cantidad de sets se ajusta con un stepper dedicado;
   `lib/letter-set-resolve.ts` re-resuelve la variante exacta (tamaño/imantado) para que la
   cotización quede precisa; `use-letter-colors.ts` maneja tema + barajar + color por ficha.
-  Sets por defecto es/en con `make seed-letter-sets`. El 3D (tablero memo) muestra
-  TODOS los sets juntos (decisión owner 2026-10-22, supersede la de 2026-10-19 que
-  limitaba al set activo): `handleOpen3D` compone las texturas de las N unidades en
-  paralelo (cada set con SU estilo/colores/borde), las columnas se ajustan al divisor
-  de `letters.length` más cercano a √n para que cada set complete filas enteras y un
-  rótulo overlay indica «N sets · M fichas» (mismo idioma del `countBadgeLabel` de
-  `scene-gallery.tsx`).
+  Sets por defecto es/en con `make seed-letter-sets`. El 3D (tablero memo) navega
+  los sets de a uno con pager (decisión owner 2026-10-23, idioma de
+  `CalendarCardFocus` — supersede «todos juntos» de 2026-10-22 y el set-activo de
+  2026-10-19): `handleOpen3D` construye las texturas por set en paralelo (cada set
+  con SU estilo/colores/borde), el modal muestra UN set arrancando en `activeUnit`
+  con pills «Anterior»/«Siguiente» (wrap-around + teclado ← →), indicador
+  «Set N de M` en el header (texto CMS `unidades.unidadDe`) y rótulo con el conteo
+  de fichas del set visible; con 1 set no hay pager.
 - **Asistente IA de ideas (ADR-058)**: `studio-ai-panel.tsx` — el cliente cuenta la ocasión y
   recibe color de marca, frase (si el producto lleva texto), composición y un tip. Server:
   `features/ai/actions.ts → suggestDesignAction` (Google Gemini — `gemini-provider.ts`);
