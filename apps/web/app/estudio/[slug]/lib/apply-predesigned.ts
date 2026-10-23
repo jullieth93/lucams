@@ -55,6 +55,14 @@ export type PredesignedDragPayload = Pick<PredesignedItem, "id" | "name">;
 /**
  * Resuelve los assets (A y, si hay, B) de un prediseñado: cache de sesión
  * primero; en miss, server action + registro en cache. No toca el canvas.
+ *
+ * Draft LAZY (2026-10-22): sin `?designId=` el draft NO existe hasta el primer
+ * auto-save con canvas sucio — un prediseñado como PRIMERA acción llegaba acá
+ * con designId null y moría en silencio (por eso "funcionaba después de subir
+ * una foto": la foto marcaba dirty y el auto-save creaba el draft). Ahora se
+ * crea el draft en el momento vía `store.ensureDesignId` (misma Server Action
+ * del auto-save, con dedupe de la llamada en vuelo — el doble-clic no crea 2
+ * drafts). Si la creación falla, el caller muestra el toast de error CMS.
  */
 async function resolvePredesignedAssets(
   store: StoreApi<StudioStoreState>,
@@ -63,9 +71,15 @@ async function resolvePredesignedAssets(
   const state = store.getState();
   const cached = state.predesignedAssetsByGalleryId[galleryImageId];
   if (cached) return { ok: true, a: cached.a, b: cached.b };
-  if (!state.designId) return { ok: false, message: "" }; // imposible tras boot; el caller pone el texto CMS
+  let designId = state.designId;
+  if (!designId) {
+    designId = (await state.ensureDesignId?.()) ?? null;
+    // El caller pone el texto CMS (toast genérico de error): la falla de
+    // creación del draft es visible, nunca silenciosa.
+    if (!designId) return { ok: false, message: "" };
+  }
   const res = await assignPredesignedToDesignAction({
-    designId: state.designId,
+    designId,
     galleryImageId,
   });
   if (!res.ok) return { ok: false, message: res.message };

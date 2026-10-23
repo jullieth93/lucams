@@ -16,13 +16,21 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prisma, shippingProvider, lucamsSettings } = vi.hoisted(() => ({
+const { prisma, shippingProvider, lucamsSettings, carrierRules } = vi.hoisted(() => ({
   prisma: {
     productVariant: { findMany: vi.fn(async () => [] as unknown[]) },
     customer: { findFirst: vi.fn(async () => null) },
   },
   shippingProvider: { quote: vi.fn(async () => [] as unknown[]) },
   lucamsSettings: vi.fn(),
+  carrierRules: vi.fn<
+    () => Promise<
+      Record<
+        string,
+        { minWeightKg: number | null; maxWeightKg: number | null; note: string | null }
+      >
+    >
+  >(async () => ({})),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -49,7 +57,10 @@ vi.mock("@/features/shipping/provider", () => ({
 }));
 vi.mock("@/features/shipping/settings", () => ({
   getDisabledCarriersNormalized: vi.fn(async () => []),
+  // normalizeCarrierKey real colapsa formato; acá identity y las keys de las
+  // reglas se escriben igual que carrierName en los tests.
   normalizeCarrierKey: (s: string) => s,
+  getCarrierRules: () => carrierRules(),
   getLucamsShippingSettings: () => lucamsSettings(),
 }));
 vi.mock("@/features/products/shipping-schemas", () => ({
@@ -79,8 +90,20 @@ const BOGOTA = "11001";
 
 /** Carrito con 2 items: uno listo (0 días de producción) y uno a fabricar (2). */
 const CART_ITEMS = [
-  { variantId: "v-listo", qty: 1, unitPrice: 10_000, productSlug: "iman-listo" },
-  { variantId: "v-personalizado", qty: 1, unitPrice: 20_000, productSlug: "iman-personalizado" },
+  {
+    variantId: "v-listo",
+    qty: 1,
+    inventoryUnits: 1,
+    unitPrice: 10_000,
+    productSlug: "iman-listo",
+  },
+  {
+    variantId: "v-personalizado",
+    qty: 1,
+    inventoryUnits: 1,
+    unitPrice: 20_000,
+    productSlug: "iman-personalizado",
+  },
 ];
 
 const VARIANTS = [
@@ -131,6 +154,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(BEFORE_CUTOFF);
   prisma.productVariant.findMany.mockResolvedValue(VARIANTS);
+  carrierRules.mockResolvedValue({});
   shippingProvider.quote.mockResolvedValue([
     {
       carrier: "coordinadora",
@@ -221,5 +245,72 @@ describe("quoteShipping — oferta Lucams con producción + cutoff", () => {
     expect(result.quotes).toHaveLength(1);
     expect(result.quotes[0].carrier).toBe(LUCAMS_CARRIER);
     expect(result.quotes[0].deliveryDays).toBe(2);
+  });
+});
+
+describe("quoteShipping — filtro por reglas de peso (SHIPPING_CARRIER_RULES)", () => {
+  // El carrito de prueba son 2 items de 100 g c/u → paquete de 0.2 kg
+  // (computePackedPackage REAL: cotización y guía usan el mismo modelo).
+  it("carrier por debajo de su peso mínimo NO entra al set ofrecido y se loguea", async () => {
+    carrierRules.mockResolvedValue({
+      Coordinadora: { minWeightKg: 11, maxWeightKg: null, note: "No opera < 11 kg" },
+    });
+    const result = await quoteShipping({
+      destinationCity: "Bogotá",
+      destinationDepartment: "Cundinamarca",
+      ctx,
+    });
+    expect(result.quotes.some((q) => q.carrier === "coordinadora")).toBe(false);
+    // El envío propio sobrevive al filtro (el flujo lucams-only no se rompe).
+    expect(result.quotes.some((q) => q.carrier === LUCAMS_CARRIER)).toBe(true);
+    const { logger } = await import("@/lib/logger");
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "shipping.quote.carrier_filtered",
+        carrierName: "Coordinadora",
+        packageWeightKg: 0.2,
+        violated: "minWeightKg",
+      }),
+    );
+  });
+
+  it("paquete dentro del rango → la oferta pasa intacta", async () => {
+    carrierRules.mockResolvedValue({
+      Coordinadora: { minWeightKg: 0.1, maxWeightKg: 5, note: null },
+    });
+    const result = await quoteShipping({
+      destinationCity: "Bogotá",
+      destinationDepartment: "Cundinamarca",
+      ctx,
+    });
+    expect(result.quotes.some((q) => q.carrier === "coordinadora")).toBe(true);
+  });
+
+  it("carrier por encima de su peso máximo también se excluye", async () => {
+    carrierRules.mockResolvedValue({
+      Coordinadora: { minWeightKg: null, maxWeightKg: 0.1, note: null },
+    });
+    const result = await quoteShipping({
+      destinationCity: "Bogotá",
+      destinationDepartment: "Cundinamarca",
+      ctx,
+    });
+    expect(result.quotes.some((q) => q.carrier === "coordinadora")).toBe(false);
+    const { logger } = await import("@/lib/logger");
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "shipping.quote.carrier_filtered",
+        violated: "maxWeightKg",
+      }),
+    );
+  });
+
+  it("sin reglas el comportamiento es el de siempre (todas las ofertas pasan)", async () => {
+    const result = await quoteShipping({
+      destinationCity: "Bogotá",
+      destinationDepartment: "Cundinamarca",
+      ctx,
+    });
+    expect(result.quotes.some((q) => q.carrier === "coordinadora")).toBe(true);
   });
 });

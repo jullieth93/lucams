@@ -106,6 +106,7 @@ export default async function CarritoPage() {
                         <DesignPreviewDialog
                           previewUrl={item.designPreviewUrl}
                           pages={item.designPreviewPages}
+                          pageLabels={item.designPreviewPageLabels}
                           watermarkNote={
                             item.designWatermarked ? (
                               <CmsText
@@ -191,6 +192,7 @@ export default async function CarritoPage() {
                                       // cuando el diseño las tiene: el "Ver" pagina
                                       // como la Vista Previa del Estudio.
                                       pages={item.designPreviewPages}
+                                      pageLabels={item.designPreviewPageLabels}
                                       watermarkNote={
                                         item.designWatermarked ? (
                                           <CmsText

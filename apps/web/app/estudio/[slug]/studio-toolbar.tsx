@@ -158,7 +158,13 @@ export function StudioToolbar({
   const texts = useStudioTexts();
 
   const complete = backOptional ? total > 0 && missingFaceA === 0 : completeAll;
-  const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
+  // 5.2 (2026-10-22) — «Ver diseño» se bloquea MIENTRAS el auto-save guarda:
+  // abrir la vista previa en medio de un save leía un estado a medio persistir.
+  // En estado error el botón QUEDA habilitado: handleFinalize hace flushSaves,
+  // que reintenta el guardado al pulsar (el indicador de error sigue visible).
+  const isSaving = autoSaveStatus.kind === "saving";
+  const canFinalize =
+    complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding && !isSaving;
   // Fase 1A — detalle de faltantes para el popover de «Vista previa» (fotos por
   // slot con su label + textos IG por unidad). null cuando no falta nada.
   const missing = useFinalizeMissing(store, backOptional, slotLabels);
@@ -250,6 +256,7 @@ export function StudioToolbar({
             <FinalizeButton
               isFinalizing={isFinalizing}
               isPreparing={isPreviewBuilding}
+              isSaving={isSaving}
               canFinalize={canFinalize}
               disabledTooltip={disabledTooltip}
               missing={missing}
@@ -313,8 +320,10 @@ export function StudioToolbar({
           ·
         </span>
         <ProgressBadge filled={filled} total={total} />
-        {/* AutoSave indicator mobile abajo del progress */}
-        <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
+        {/* AutoSave indicator mobile abajo del progress — 5.2 (2026-10-22):
+            VISIBLE también en <sm (compacto: icono + texto corto); el cliente
+            ve si el diseño está guardando/falló antes de «Ver diseño». */}
+        <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} compact />
         {/* Paquete C — mismo resumen de avisos de calidad en la fila móvil. */}
         <StudioQualityWarningsChip store={store} />
       </div>
@@ -551,6 +560,7 @@ function FinalizeMissingPopover({
 export function FinalizeButton({
   isFinalizing,
   isPreparing = false,
+  isSaving = false,
   canFinalize,
   disabledTooltip,
   missing = null,
@@ -559,6 +569,11 @@ export function FinalizeButton({
 }: {
   isFinalizing: boolean;
   isPreparing?: boolean;
+  /** 5.2 (2026-10-22) — auto-save en curso: el botón se bloquea con el estado
+   *  busy «Guardando diseño...» (mismo patrón visual de studio-busy-cta.ts).
+   *  En estado de ERROR del auto-save el botón queda habilitado: el finalize
+   *  hace flushSaves, que reintenta el guardado al pulsar. */
+  isSaving?: boolean;
   canFinalize: boolean;
   disabledTooltip?: string;
   /** Fase 1A — detalle de faltantes para el popover (null/undefined = sin popover). */
@@ -567,7 +582,7 @@ export function FinalizeButton({
   variant: "inline" | "fab";
 }) {
   const texts = useStudioTexts();
-  const busy = isFinalizing || isPreparing;
+  const busy = isFinalizing || isPreparing || isSaving;
   // Mientras procesa, el nombre audible se mantiene en la acción real (no en
   // el de "bloqueado"): el botón está OCUPADO, no inhabilitado por faltantes.
   const ariaLabel =
@@ -747,6 +762,10 @@ export function StudioFinalizeFab({
   onFinalize: () => void;
 }) {
   const isFinalizing = useStore(store, (s) => s.isFinalizing);
+  // 5.2 (2026-10-22) — el FAB también se bloquea mientras el auto-save guarda
+  // (mismo guard del toolbar inline; en error queda habilitado: el flush del
+  // finalize reintenta el guardado).
+  const isSaving = useStore(store, (s) => s.autoSaveStatus.kind === "saving");
   const filled = useStore(store, selectFilledSlotCount);
   const total = useStore(store, selectTotalSlotCount);
   const completeAll = useStore(store, selectIsComplete);
@@ -755,7 +774,8 @@ export function StudioFinalizeFab({
   );
   const texts = useStudioTexts();
   const complete = backOptional ? total > 0 && missingFaceA === 0 : completeAll;
-  const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
+  const canFinalize =
+    complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding && !isSaving;
   // Fase 1A — mismo detalle de faltantes del toolbar, para la variante móvil.
   const missing = useFinalizeMissing(store, backOptional, slotLabels);
   const disabledTooltip = !complete
@@ -767,6 +787,7 @@ export function StudioFinalizeFab({
     <FinalizeButton
       isFinalizing={isFinalizing}
       isPreparing={isPreviewBuilding}
+      isSaving={isSaving}
       canFinalize={canFinalize}
       disabledTooltip={disabledTooltip}
       missing={missing}
@@ -803,9 +824,17 @@ function ProgressBadge({ filled, total }: { filled: number; total: number }) {
 function AutoSaveIndicator({
   status,
   isFinalizing,
+  compact = false,
 }: {
   status: StudioStoreState["autoSaveStatus"];
   isFinalizing: boolean;
+  /**
+   * 5.2 (2026-10-22) — variante compacta para la fila MÓVIL del header
+   * (visible en <sm: el cliente debe ver si su diseño está guardando/falló
+   * antes de pulsar «Ver diseño»). Icono + texto corto; el estado "saved"
+   * no lleva el relativo ("hace 12 s") para no apretar la fila.
+   */
+  compact?: boolean;
 }) {
   const texts = useStudioTexts();
   if (isFinalizing) return null;
@@ -817,7 +846,9 @@ function AutoSaveIndicator({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -2 }}
         transition={{ duration: 0.15 }}
-        className="hidden items-center gap-1 text-xs sm:flex"
+        className={
+          compact ? "flex items-center gap-1 text-xs" : "hidden items-center gap-1 text-xs sm:flex"
+        }
       >
         {status.kind === "idle" && (
           <span className="text-brand-muted">{texts.lienzo.autosaveEditando}</span>
@@ -831,13 +862,19 @@ function AutoSaveIndicator({
         {status.kind === "saved" && (
           <>
             <Check className="h-3 w-3 text-emerald-600" />
-            <span className="text-brand-muted">{formatRelative(status.at, texts)}</span>
+            <span className="text-brand-muted">
+              {compact ? texts.lienzo.autosaveGuardado : formatRelative(status.at, texts)}
+            </span>
           </>
         )}
         {status.kind === "error" && (
           <Hint content={status.message}>
             <span
-              className="flex max-w-[300px] items-center gap-1 truncate text-red-600 sm:max-w-[480px]"
+              className={
+                compact
+                  ? "flex max-w-[140px] items-center gap-1 truncate text-red-600"
+                  : "flex max-w-[300px] items-center gap-1 truncate text-red-600 sm:max-w-[480px]"
+              }
               role="alert"
             >
               <AlertCircle className="h-3 w-3 flex-shrink-0" />

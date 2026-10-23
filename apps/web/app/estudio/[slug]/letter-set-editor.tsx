@@ -845,9 +845,20 @@ export function LetterSetEditor({
   // ver initialLanguage; el selector duplicado dentro del estudio se eliminó.)
 
   // Desglose de la variante VIGENTE (re-resuelta en vivo al cambiar tema):
-  // imantado, idioma y tema. Lo comparten el header sticky (2026-10-12) y la
-  // Vista Previa; el tamaño lo enuncia la propia modal (sizeCm) y no se duplica.
+  // tamaño, imantado, idioma y tema. 2026-10-22 (owner): el TAMAÑO se incluye
+  // en el header del lienzo (antes se omitía porque "la modal lo enuncia" — el
+  // owner lo quiere visible igual en el Estudio).
   const variantLabel = currentVariant
+    ? describeVariantAttributes({
+        sizeCm: currentVariant.sizeCm,
+        magnet: currentVariant.magnet,
+        language: currentVariant.language,
+        theme: currentVariant.theme,
+      }).join(" · ") || undefined
+    : undefined;
+  // …pero la Vista Previa recibe el desglose SIN tamaño: su propio resumen ya
+  // lo enuncia vía la prop sizeCm y duplicarlo en líneas contiguas es ruido.
+  const previewVariantLabel = currentVariant
     ? describeVariantAttributes({
         magnet: currentVariant.magnet,
         language: currentVariant.language,
@@ -866,8 +877,9 @@ export function LetterSetEditor({
         productName={product.name}
         productSlug={product.slug}
         productImageUrl={productImageUrl}
-        // 2026-10-12 — desglose de la variante bajo el nombre (el MISMO label
-        // de la Vista Previa, vivo al cambiar tema/idioma).
+        // 2026-10-12 — desglose de la variante bajo el nombre (vivo al cambiar
+        // tema/idioma). 2026-10-22 (owner): CON tamaño en el header; la Vista
+        // Previa usa previewVariantLabel (sin tamaño, lo enuncia ella misma).
         variantLabel={variantLabel}
         trailing={
           <span className="text-brand-purple-dark text-sm font-bold whitespace-nowrap tabular-nums">
@@ -1351,9 +1363,10 @@ export function LetterSetEditor({
         sizeCm={currentVariant?.sizeCm ? `${currentVariant.sizeCm} cm` : undefined}
         // Paquete F (2026-10-02) — desglose de la variante VIGENTE (re-resuelta en
         // vivo al cambiar tema): imantado, idioma y tema. El tamaño ya lo
-        // cubre sizeCm de arriba; no se duplica. Misma etiqueta del header (const
-        // variantLabel, extraída 2026-10-12).
-        variantLabel={variantLabel}
+        // cubre sizeCm de arriba; no se duplica (el HEADER sí lo lleva — el
+        // owner lo quiere visible en el lienzo, 2026-10-22; por eso la modal
+        // usa previewVariantLabel y no el variantLabel del header).
+        variantLabel={previewVariantLabel}
         unitPrice={unitPriceCents}
         // Multi-unidad (2026-09-09): el diseño contiene TODOS los sets → total =
         // precio del set × N y la línea del carrito es UNA (qty 1).

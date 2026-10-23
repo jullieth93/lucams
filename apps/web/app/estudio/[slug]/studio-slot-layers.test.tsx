@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => ({
     naturalHeight: number;
   },
   status: "loading",
-  /** URLs con que se invocó use-image (variante del chrome SVG elegida). */
+  /** URLs con que se invocó use-image / useChromeBitmap (variante del chrome SVG elegida). */
   imageSrcs: [] as string[],
   /** Props con que se invocó cada componente Konva mockeado, en orden de render. */
   konvaProps: [] as Array<{ name: string; props: Record<string, unknown> }>,
@@ -76,6 +76,16 @@ vi.mock("use-image", () => ({
   default: (src: string) => {
     mocks.imageSrcs.push(src);
     return [mocks.image, mocks.status];
+  },
+}));
+
+// 2026-10-22 — los SVG pasan por el bitmap compartido (lib/chrome-bitmap-cache):
+// el mock registra la variante pedida (mismo contrato de `imageSrcs`) y
+// devuelve la imagen fake para que el KonvaImage renderice.
+vi.mock("./lib/chrome-bitmap-cache", () => ({
+  useChromeBitmap: (src: string) => {
+    if (src) mocks.imageSrcs.push(src);
+    return mocks.image;
   },
 }));
 

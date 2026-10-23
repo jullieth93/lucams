@@ -23,6 +23,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// Side-effect PRIMERO: cap de pixelRatio de los stages Konva (debe quedar
+// fijado antes de montar cualquier <Stage> del editor).
+import "./lib/konva-pixel-ratio";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
@@ -41,6 +44,7 @@ import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { StudioCanvasGrid, StudioStageZoomControl } from "./studio-canvas-grid";
 import { stepStageZoom } from "./studio-canvas-grid-size";
 import { StudioSidebar } from "./studio-sidebar";
+import { useStudioChecklist } from "./studio-checklist";
 import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
 import { StudioStyleToolbar } from "./studio-style-toolbar";
 import { StudioOnboarding } from "./studio-onboarding";
@@ -720,6 +724,28 @@ export function StudioEditor({
     ],
   );
 
+  // 4.5 (2026-10-22) — chip de variante/tamaño del header de CADA sección de
+  // unidad (multi-unidad): el owner quiere el tamaño visible en el lienzo, no
+  // solo en la modal — acá NO se omite sizeCm (sí los conteos: la sección ya
+  // dice "Tira 1 de 2" y su chip de progreso). En single-unidad basta el
+  // header del toolbar (chip 📐 + variante) — este label solo alimenta las
+  // secciones.
+  const unitVariantLabel = useMemo(
+    () =>
+      studioPreviewVariantLabel({
+        mergedSchema: product.personalizationSchema,
+        live: isPhotoPack
+          ? {
+              photoSlots: livePhotoSlots,
+              ...(packSizeCm ? { sizeCm: packSizeCm } : {}),
+              ...(typeof liveMagnet === "boolean" ? { magnet: liveMagnet } : {}),
+            }
+          : undefined,
+        omit: ["quantity", "photoSlots"],
+      }),
+    [product.personalizationSchema, isPhotoPack, livePhotoSlots, packSizeCm, liveMagnet],
+  );
+
   // ADR-063 CAL2 — el año del calendario lo ELIGE el cliente (antes era un badge fijo del schema
   // del producto, y podía venir vacío). Default = año del producto → próximo año. Se ofrece un
   // rango seguro (nunca un año pasado) y se persiste por-diseño en el finalize.
@@ -820,6 +846,21 @@ export function StudioEditor({
   // Subscribir reactivamente al modal — assets/designId del store, no snapshot
   const modalAssets = useStore(store, (s) => s.assets);
   const modalDesignId = useStore(store, (s) => s.designId);
+  // Draft LAZY (2026-10-22) — el picker crea el draft en el momento si el
+  // prediseñado es la primera acción del cliente (la registra el efecto de
+  // auto-save; null antes de eso o si la creación falla).
+  const ensureDesignIdForPicker = useCallback(
+    () => store.getState().ensureDesignId?.() ?? Promise.resolve(null),
+    [store],
+  );
+  // 5.1 (2026-10-22) — checklist «Tu diseño»: el badge de pendientes del FAB
+  // «Editar» (móvil) comunica cuántos pasos bloqueantes faltan sin abrir el
+  // sheet (la sección del sidebar usa el mismo hook).
+  const { pendingCount: checklistPendingCount } = useStudioChecklist(store, {
+    allowText,
+    hasPredesigned: predesigned.length > 0,
+    backOptional,
+  });
   // Paquete C (2026-10-02) — fotos con aviso de calidad ASIGNADAS al diseño: las
   // lista la Vista Previa con checkbox de aceptación obligatorio. Suscripción
   // atómica por clave primitiva (patrón del store), detalle memoizado.
@@ -1170,6 +1211,43 @@ export function StudioEditor({
     let lastDraftThumbAt = 0;
     const queue = createSerialTaskQueue();
 
+    // Draft LAZY (2026-10-22) — creación del draft COMPARTIDA entre el
+    // auto-save y las vías que necesitan el designId antes del primer cambio
+    // (aplicar un prediseñado como primera acción: sidebar, picker modal y
+    // drag & drop llegan acá vía store.ensureDesignId). La promesa en vuelo se
+    // DEDUPLICA: un doble-clic (o un auto-save concurrente) no crea 2 drafts.
+    type EnsureResult = { ok: true; designId: string } | { ok: false; message: string };
+    let ensureInFlight: Promise<EnsureResult> | null = null;
+    const ensureDesign = (): Promise<EnsureResult> => {
+      const current = store.getState();
+      if (current.designId) return Promise.resolve({ ok: true, designId: current.designId });
+      if (!ensureInFlight) {
+        ensureInFlight = (async (): Promise<EnsureResult> => {
+          const cur = store.getState();
+          const canvasData = cur.canvasData;
+          const saveVariantId =
+            isPhotoPack && canvasData
+              ? packVariantIdFor(packVariants, canvasData.photoSlots, canvasData.magnet)
+              : variantId;
+          const created = await createDraftDesignAction({
+            productId: product.id,
+            templateId: cur.selectedTemplateId ?? undefined,
+            ...(saveVariantId ? { variantId: saveVariantId } : {}),
+          });
+          if (!created.ok) return { ok: false, message: created.message };
+          store.getState().setDesignId(created.designId);
+          return { ok: true, designId: created.designId };
+        })().finally(() => {
+          ensureInFlight = null;
+        });
+      }
+      return ensureInFlight;
+    };
+    store.getState().setDesignEnsurer(async () => {
+      const res = await ensureDesign();
+      return res.ok ? res.designId : null;
+    });
+
     const performSave = async (): Promise<Awaited<ReturnType<typeof saveCanvasAction>>> => {
       const current = store.getState();
       if (!current.isDirty || !current.canvasData) return { ok: true };
@@ -1184,17 +1262,14 @@ export function StudioEditor({
           ? packVariantIdFor(packVariants, canvasData.photoSlots, canvasData.magnet)
           : variantId;
         if (!designId) {
-          const created = await createDraftDesignAction({
-            productId: product.id,
-            templateId: current.selectedTemplateId ?? undefined,
-            ...(saveVariantId ? { variantId: saveVariantId } : {}),
-          });
-          if (!created.ok) {
-            current.setAutoSaveStatus({ kind: "error", message: created.message });
-            return { ok: false, code: "INTERNAL", message: created.message };
+          // Misma vía compartida (dedupe con las aplicaciones de prediseñado
+          // concurrentes): el draft nace UNA vez por sesión.
+          const ensured = await ensureDesign();
+          if (!ensured.ok) {
+            current.setAutoSaveStatus({ kind: "error", message: ensured.message });
+            return { ok: false, code: "INTERNAL", message: ensured.message };
           }
-          store.getState().setDesignId(created.designId);
-          designId = created.designId;
+          designId = ensured.designId;
         }
 
         if (finalizedRef.current) {
@@ -1365,6 +1440,7 @@ export function StudioEditor({
     return () => {
       unsubscribe();
       if (flushCanvasSaveRef.current === flushSaves) flushCanvasSaveRef.current = null;
+      store.getState().setDesignEnsurer(null);
       if (timer) clearTimeout(timer);
       window.removeEventListener("pagehide", flushOnHide);
       document.removeEventListener("visibilitychange", onVisibility);
@@ -2369,6 +2445,7 @@ export function StudioEditor({
             allowText={allowText}
             predesigned={predesigned}
             facesPerUnit={facesPerUnit}
+            backOptional={backOptional}
           />
         </aside>
 
@@ -2556,6 +2633,9 @@ export function StudioEditor({
             slotLabels={resolvedSlotLabels}
             // Multi-unidad — sustantivo de la unidad para pager/headers de sección.
             unitNoun={unitNoun}
+            // 4.5 — chip de variante/tamaño en el header de cada sección de
+            // unidad (multi-unidad: cada sección enuncia qué es).
+            unitVariantLabel={unitVariantLabel}
             // PACKS (owner 2026-09-15, ADR-101) — tamaño del pack para que la
             // grilla plana se delimite en tarjetas "Pack N" (fotoimanes packs
             // de 6); null = grilla plana de siempre.
@@ -2689,6 +2769,22 @@ export function StudioEditor({
             <Sparkles className="h-5 w-5" aria-hidden />
             <span>{texts.comun.editar}</span>
             <span className="sr-only">{texts.comun.editarSr}</span>
+            {/* 5.1 — badge de pasos pendientes (fotos requeridas / datos IG):
+                el FAB deja de ser mudo y comunica «te falta X» sin abrir el
+                sheet. Solo pasos bloqueantes; los opcionales no agobian. */}
+            {checklistPendingCount > 0 && (
+              <>
+                <span
+                  aria-hidden
+                  className="bg-brand-yellow text-brand-purple-dark absolute -top-1.5 -right-1.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-bold tabular-nums shadow ring-2 ring-white"
+                >
+                  {checklistPendingCount}
+                </span>
+                <span className="sr-only">
+                  {fillStudioText(texts.checklist.badgePendientes, { n: checklistPendingCount })}
+                </span>
+              </>
+            )}
           </button>
         </SheetTrigger>
         <SheetContent
@@ -2726,6 +2822,7 @@ export function StudioEditor({
               allowText={allowText}
               predesigned={predesigned}
               facesPerUnit={facesPerUnit}
+              backOptional={backOptional}
             />
           </div>
         </SheetContent>
@@ -2740,6 +2837,7 @@ export function StudioEditor({
         totalSlots={liveSlotCount}
         assets={modalAssets}
         designId={modalDesignId}
+        ensureDesignId={ensureDesignIdForPicker}
         predesigned={predesigned}
         productSizeCm={productConfig.sizeCm}
         facesPerUnit={facesPerUnit}

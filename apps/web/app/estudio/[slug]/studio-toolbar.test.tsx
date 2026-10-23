@@ -117,6 +117,34 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
     expect(btn).toHaveTextContent("Guardando diseño...");
   });
 
+  // 5.2 (2026-10-22) — «Ver diseño» se bloquea MIENTRAS el auto-save guarda:
+  // abrir la vista previa en medio de un save leía un estado a medio persistir.
+  it("auto-save en curso (saving): bloqueado con «Guardando diseño...» + aria-busy", () => {
+    const { store, onFinalize } = setup({ filled: 2 });
+    act(() => store.getState().setAutoSaveStatus({ kind: "saving" }));
+    const btn = screen.getByRole("button", { name: "Ver diseño de tu pedido" });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("aria-busy", "true");
+    expect(btn).toHaveTextContent("Guardando diseño...");
+    btn.click();
+    expect(onFinalize).not.toHaveBeenCalled();
+  });
+
+  it("auto-save guardado (saved): el botón vuelve a habilitarse", () => {
+    const { store } = setup({ filled: 2 });
+    act(() => store.getState().setAutoSaveStatus({ kind: "saving" }));
+    act(() => store.getState().setAutoSaveStatus({ kind: "saved", at: Date.now() }));
+    const btn = screen.getByRole("button", { name: "Ver diseño de tu pedido" });
+    expect(btn).toBeEnabled();
+  });
+
+  it("auto-save en error: HABILITADO (el finalize hace flushSaves y reintenta)", () => {
+    const { store } = setup({ filled: 2 });
+    act(() => store.getState().setAutoSaveStatus({ kind: "error", message: "boom" }));
+    const btn = screen.getByRole("button", { name: "Ver diseño de tu pedido" });
+    expect(btn).toBeEnabled();
+  });
+
   it("Ola 26 — finalizeBlockReason (textos requeridos IG): bloqueado CON las fotos completas, tooltip con los campos", async () => {
     const store = createStudioStore();
     store.getState().init({

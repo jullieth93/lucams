@@ -54,6 +54,10 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
 import { CmsText } from "@/components/cms/cms-text";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
+import {
+  designPreviewPageLabels,
+  unitNounForLine,
+} from "@/features/personalization/preview-page-labels";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import {
@@ -187,11 +191,19 @@ export default async function CheckoutGraciasPage({
                   name: true,
                   attributes: true,
                   images: true,
-                  product: { select: { name: true, images: true } },
+                  product: { select: { name: true, images: true, personalizationKind: true } },
                 },
               },
               design: {
-                select: { previewUrl: true, previewWatermarkedAt: true, previewPagesCount: true },
+                select: {
+                  previewUrl: true,
+                  previewWatermarkedAt: true,
+                  previewPagesCount: true,
+                  // 2026-10-22 — metadata + canvasData: rótulos por unidad del
+                  // "Ver" paginado (borde por set / unidades del diseño).
+                  metadata: true,
+                  canvasData: true,
+                },
               },
             },
           },
@@ -299,11 +311,17 @@ export default async function CheckoutGraciasPage({
                     name: true,
                     attributes: true,
                     images: true,
-                    product: { select: { name: true, images: true } },
+                    product: { select: { name: true, images: true, personalizationKind: true } },
                   },
                 },
                 design: {
-                  select: { previewUrl: true, previewWatermarkedAt: true, previewPagesCount: true },
+                  select: {
+                    previewUrl: true,
+                    previewWatermarkedAt: true,
+                    previewPagesCount: true,
+                    metadata: true,
+                    canvasData: true,
+                  },
                 },
               },
             },
@@ -379,12 +397,14 @@ function ApprovedPage({
         name: string;
         attributes: unknown;
         images: string[];
-        product: { name: string; images: string[] };
+        product: { name: string; images: string[]; personalizationKind: string | null };
       };
       design: {
         previewUrl: string | null;
         previewWatermarkedAt: Date | null;
         previewPagesCount: number | null;
+        metadata: unknown;
+        canvasData: unknown;
       } | null;
     }[];
   } | null;
@@ -446,6 +466,11 @@ function ApprovedPage({
               // Paquete F (2026-10-02) — la foto de LA VARIANTE antes que la
               // genérica del producto (mismo fallback que el carrito).
               const disp = it.design ? designPreviewDisplay(it.design) : null;
+              // 2026-10-22 — rótulo por página del pager ("Set 2 · con borde").
+              const pageLabels = designPreviewPageLabels(
+                it.design,
+                unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
+              );
               const img = disp?.watermarked
                 ? disp.displayUrl
                 : (it.designAssetUrl ??
@@ -496,6 +521,7 @@ function ApprovedPage({
                     <DesignPreviewDialog
                       previewUrl={disp.displayUrl}
                       pages={disp.pageUrls}
+                      pageLabels={pageLabels}
                       watermarkNote={
                         disp.watermarked ? (
                           <CmsText

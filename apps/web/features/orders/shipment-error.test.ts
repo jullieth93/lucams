@@ -121,6 +121,17 @@ describe("suggestShipmentFailureCause", () => {
     ).toContain("empaque");
   });
 
+  it("'no opera envios de menos de N kilos' → sugiere configurar peso mínimo en /admin/envios", () => {
+    const s = suggestShipmentFailureCause({
+      ...base,
+      timeout: false,
+      message: "Aveonline createShipment falló: Transprensa no opera envios de menos de 11 kilos",
+    });
+    expect(s).toContain("/admin/envios");
+    expect(s).toMatch(/peso mínimo/i);
+    expect(s).toMatch(/otra transportadora/i);
+  });
+
   it("mensaje desconocido → remite a la tabla de errores del doc", () => {
     const s = suggestShipmentFailureCause({ ...base, timeout: false, message: "algo exótico" });
     expect(s).toContain("INTEGRATIONS_AVEONLINE");

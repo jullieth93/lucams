@@ -42,6 +42,29 @@
  */
 
 import { Layer, Rect, Circle, Path } from "react-konva";
+import { useEffect, useRef } from "react";
+import type Konva from "konva";
+
+/**
+ * 2026-10-22 (perfil CDP, móvil CPU×6) — el shadowBlur de la sombra se
+ * rasteriza por SOFTWARE en cada redraw de la capa, y la capa es ESTÁTICA por
+ * stage/shape: se cachea a bitmap una vez (Layer.cache usa Konva.pixelRatio,
+ * ya capeado a 2 — lib/konva-pixel-ratio.ts) y los redraws siguientes son un
+ * blit. Sin esto, 6 slots × sombra a dpr nativo era el mayor costo de raster
+ * de la entrada al Estudio.
+ */
+function useCachedLayer(deps: readonly unknown[]) {
+  const ref = useRef<Konva.Layer | null>(null);
+  useEffect(() => {
+    const node = ref.current;
+    node?.cache();
+    return () => {
+      node?.clearCache();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return ref;
+}
 
 // M.3.b.UX.v13 (Lucy 2026-05-15) — Revertido el "siempre rect" del v9.
 // El imán físico ES el shape declarado (heart/circle/rect según producto).
@@ -98,6 +121,7 @@ export function RealismShadowLayer({
 }: RealismProps) {
   // M.3.b.UX.v13 (Lucy 2026-05-15) — la sombra sigue el shape físico del imán.
   // Heart imán → sombra heart-shape. Circle imán → sombra circle. Rect → rect.
+  const layerRef = useCachedLayer([stage.width, stage.height, shape, cornerRadiusPx]);
   const shadowProps = {
     fill: "#FFFFFF",
     shadowColor: "rgba(0, 0, 0, 0.28)",
@@ -110,7 +134,7 @@ export function RealismShadowLayer({
 
   if (shape === "circle") {
     return (
-      <Layer name="realism" listening={false}>
+      <Layer ref={layerRef} name="realism" listening={false}>
         <Circle
           x={stage.width / 2}
           y={stage.height / 2}
@@ -123,7 +147,7 @@ export function RealismShadowLayer({
 
   if (shape === "heart") {
     return (
-      <Layer name="realism" listening={false}>
+      <Layer ref={layerRef} name="realism" listening={false}>
         <Path
           data={HEART_PATH_DATA}
           x={0}
@@ -137,7 +161,7 @@ export function RealismShadowLayer({
   }
 
   return (
-    <Layer name="realism" listening={false}>
+    <Layer ref={layerRef} name="realism" listening={false}>
       <Rect
         x={0}
         y={0}

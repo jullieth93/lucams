@@ -851,11 +851,19 @@ export class AveonlineProvider implements ShippingProvider {
     }
 
     if (ok.length > 0 && failed.length > 0) {
+      // Rechazo PARCIAL: algunas cotizaron y otras no. Loguear el detalle
+      // (numbererror + dataerror) de cada rechazada — con solo los nombres no
+      // se podía distinguir "sin cobertura" de "paquete fuera de rango" (ej.
+      // peso mínimo del carrier), la pista para configurar CARRIER_RULES.
       logger.info({
         event: "shipping.aveonline.quote.partial",
         ok: ok.length,
         failed: failed.length,
-        failedCarriers: failed.map((c) => c.nombreTransportadora),
+        rejected: failed.map((c) => ({
+          carrier: c.nombreTransportadora,
+          code: c.numbererror,
+          msg: c.dataerror?.slice(0, 160),
+        })),
       });
     }
 
@@ -1001,6 +1009,18 @@ export class AveonlineProvider implements ShippingProvider {
       process.env.AVEONLINE_GENERATE_REAL === "true" &&
       (process.env.NODE_ENV === "production" || process.env.AVEONLINE_FORCE_BILLING === "true");
 
+    // dsnit del destinatario: Aveonline exige numérico ≥5 dígitos y valor
+    // >10000 (verificado sandbox 2026-07-28: "000001" se rechaza por "mayor a
+    // 10000"). El documento puede ser PP alfanumérico (checkout 2026-10): se
+    // extraen los dígitos, pero si no quedan suficientes (ej. "AB1234" → 1234
+    // ≤ 10000, o "ABCDEFGH" → "") se usa el placeholder "100001" igual que
+    // cuando el cliente no ingresó documento (admin lo completa desde
+    // /admin/pedidos antes de despachar).
+    const recipientDocDigits = (params.delivery.documentNumber ?? "")
+      .replace(/\D/g, "")
+      .slice(0, 15);
+    const recipientDocForGuide = Number(recipientDocDigits) > 10000 ? recipientDocDigits : "100001";
+
     const body = {
       tipo: "generarGuia2",
       token,
@@ -1018,10 +1038,8 @@ export class AveonlineProvider implements ShippingProvider {
       dscorreopre: process.env.EMAIL_FROM?.match(/<(.+?)>/)?.[1] ?? "hola@lucamsshop.com",
       // Destino (destinatario = cliente). Lucy 2026-05-21:
       // - destino con formato `CIUDAD(DEPTO)` UPPERCASE igual que cotización.
-      // - dsnit del cliente (Aveonline exige numérico ≥5 dígitos y valor >10000 —
-      //   verificado sandbox 2026-07-28: "000001" se rechaza por "mayor a 10000").
-      //   Si el cliente no ingresó CC en checkout, usamos "100001" como placeholder
-      //   válido (admin debe completarlo desde /admin/pedidos antes de despachar).
+      // - dsnit del cliente: dígitos del documento o placeholder "100001"
+      //   (regla completa en recipientDocForGuide, arriba).
       // - dscorreop con el email real del cliente (Aveonline le notifica).
       //
       // FLUJO REGALO (2026-10-05): `delivery.contactName`/`delivery.phone` ya
@@ -1035,7 +1053,7 @@ export class AveonlineProvider implements ShippingProvider {
       // (antes vacío — el mensajero solo veía la línea compuesta).
       dsbarrio: params.delivery.neighborhood ?? "",
       IdTipoEntrega: "1", // 1=domicilio, 2=oficina
-      dsnit: (params.delivery.documentNumber ?? "").replace(/\D/g, "").slice(0, 15) || "100001",
+      dsnit: recipientDocForGuide,
       dsnombrecompleto: params.delivery.contactName,
       dstel: params.delivery.phone,
       dscelular: params.delivery.phone,

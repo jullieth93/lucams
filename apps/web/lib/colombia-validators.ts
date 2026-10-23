@@ -38,10 +38,19 @@ const DOC_HELP_TEXT: Record<DocumentType, string> = {
   TI: "8 a 11 dígitos. Ej: 1029384756",
 };
 
-export function validateDocument(type: DocumentType, value: string): boolean {
+/**
+ * ¿El número cumple el formato de su tipo? Fuente ÚNICA de la regla — la
+ * usan la validación cliente del checkout, el superRefine server del
+ * ContactSchema (features/checkout/schemas.ts) y el perfil de /mi-cuenta.
+ */
+export function documentNumberMatchesType(type: DocumentType, value: string): boolean {
   const cleaned = value.trim();
   if (!cleaned) return false;
   return DOC_REGEX[type].test(cleaned);
+}
+
+export function validateDocument(type: DocumentType, value: string): boolean {
+  return documentNumberMatchesType(type, value);
 }
 
 export function getDocumentHelp(type: DocumentType): string {

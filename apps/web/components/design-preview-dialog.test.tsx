@@ -181,3 +181,49 @@ describe("DesignPreviewDialog — prefetch y estado de carga del pager", () => {
     expect(screen.queryByTestId("page-loading")).not.toBeInTheDocument();
   });
 });
+
+/*
+ * 2026-10-22 — rótulo por página (pageLabels): el detalle de cada unidad ("Set
+ * 2 · con borde") se muestra bajo el indicador "N / M". Alineado por índice con
+ * `pages`; si el array no cuadra en largo se ignora completo (nunca rótulos
+ * desalineados). Sin la prop, el pager se ve como siempre.
+ */
+describe("DesignPreviewDialog — rótulos por unidad (pageLabels)", () => {
+  const LABELS = ["Set 1 · con borde", "Set 2 · sin borde", "Set 3 · con borde"];
+
+  it("muestra el rótulo de la página actual y lo actualiza al paginar", () => {
+    renderDialog({ pages: PAGES, pageLabels: LABELS });
+    openDialog();
+    expect(screen.getByText("Set 1 · con borde")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    expect(screen.getByText("Set 2 · sin borde")).toBeInTheDocument();
+    expect(screen.queryByText("Set 1 · con borde")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Unidad 3 de 3" }));
+    expect(screen.getByText("Set 3 · con borde")).toBeInTheDocument();
+  });
+
+  it("sin pageLabels el pager no muestra rótulos (comportamiento intacto)", () => {
+    renderDialog({ pages: PAGES });
+    openDialog();
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    expect(screen.queryByText(/Set \d/)).not.toBeInTheDocument();
+  });
+
+  it("pageLabels de largo distinto a pages → se ignoran (guarda anti-desalineación)", () => {
+    renderDialog({ pages: PAGES, pageLabels: ["Set 1 · con borde", "Set 2 · sin borde"] });
+    openDialog();
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    expect(screen.queryByText(/Set \d/)).not.toBeInTheDocument();
+  });
+
+  it("entradas null en el array solo callan esa página", () => {
+    renderDialog({ pages: PAGES, pageLabels: [null, "Tira 2", null] });
+    openDialog();
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    expect(screen.queryByText("Tira 2")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    expect(screen.getByText("Tira 2")).toBeInTheDocument();
+  });
+});

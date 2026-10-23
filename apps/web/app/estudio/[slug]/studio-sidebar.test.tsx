@@ -446,3 +446,61 @@ describe("StudioSidebar — regla de caras en la aplicación global (2026-10-12)
     expect(faceSlotsOf(store)).toEqual([null, null, null, null]);
   });
 });
+
+// 2026-10-22 — draft LAZY: sin ?designId= el draft no existe hasta el primer
+// auto-save; un prediseñado como PRIMERA acción moría en un guard silencioso
+// (bug owner: "solo carga después de subir una foto"). Ahora store.ensureDesignId
+// crea el draft en el momento (la registra el editor; acá se simula).
+describe("StudioSidebar — prediseñado como primera acción SIN draft (draft LAZY)", () => {
+  beforeEach(() => {
+    assignCalls.length = 0;
+  });
+
+  function renderLazySidebar(ensurer: () => Promise<string | null>) {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: null,
+      productSlug: "set-fotoimanes-polaroid-clasica",
+      canvasData: minimalCanvas(),
+      templates: [],
+    });
+    store.getState().setDesignEnsurer(ensurer);
+    render(
+      <TooltipProvider>
+        <StudioSidebar
+          store={store}
+          productName="Set Fotoimanes"
+          productSku="SFP-01"
+          predesigned={predesignedItems(2)}
+        />
+      </TooltipProvider>,
+    );
+    return store;
+  }
+
+  it("sin designId: crea el draft en el momento y aplica con ESE id (nunca no-op silencioso)", async () => {
+    let ensureCalls = 0;
+    const store = renderLazySidebar(async () => {
+      ensureCalls++;
+      store.getState().setDesignId("d-new");
+      return "d-new";
+    });
+
+    clickDesign({ id: "g0", name: "Diseño 1", imageUrl: "https://example.com/g0.png" });
+
+    await waitFor(() => expect(assignCalls).toHaveLength(1));
+    expect(ensureCalls).toBe(1);
+    expect(assignCalls[0]).toMatchObject({ designId: "d-new", galleryImageId: "g0" });
+    expect(store.getState().canvasData!.slots[0]!.assetId).toBe("asset-g0-a");
+  });
+
+  it("si la creación del draft FALLA (ensurer → null): no se sube nada", async () => {
+    renderLazySidebar(async () => null);
+
+    clickDesign({ id: "g0", name: "Diseño 1", imageUrl: "https://example.com/g0.png" });
+
+    // El error lo muestra el caller (toast); el contrato es: jamás silencioso
+    // y jamás una subida sin designId.
+    await waitFor(() => expect(assignCalls).toHaveLength(0));
+  });
+});

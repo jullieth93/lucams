@@ -41,6 +41,11 @@ import { PredesignedHoverPreview } from "./predesigned-hover-preview";
 import { StudioMessageField } from "./studio-message-field";
 import { ConsentText } from "./studio-consent-text";
 import {
+  StudioChecklist,
+  useStudioChecklist,
+  type StudioChecklistStepId,
+} from "./studio-checklist";
+import {
   selectAssetIsUsed,
   selectFilledSlotCount,
   selectTotalSlotCount,
@@ -73,6 +78,9 @@ type StudioSidebarProps = {
   /** Paquete A (2026-10-02) — caras del producto: badges 1/2 caras de los
    *  prediseñados y llenado variado por pares A/B (default 1). */
   facesPerUnit?: number;
+  /** Separadores: la cara B es opcional — el paso «fotos» del checklist solo
+   *  exige las caras A (mismo criterio que «Ver diseño»). Default false. */
+  backOptional?: boolean;
 };
 
 export function StudioSidebar({
@@ -84,6 +92,7 @@ export function StudioSidebar({
   allowText = false,
   predesigned = [],
   facesPerUnit = 1,
+  backOptional = false,
 }: StudioSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -134,6 +143,40 @@ export function StudioSidebar({
   const [predesignedOpen, setPredesignedOpen] = useState(
     () => predesigned.length <= PREDESIGNED_COLLAPSE_THRESHOLD,
   );
+
+  // 5.1 (2026-10-22) — checklist persistente «Tu diseño» al tope del sidebar
+  // (mismo componente en el aside desktop y el sheet móvil). El badge del FAB
+  // «Editar» usa el mismo hook desde studio-editor.
+  const { steps: checklistSteps } = useStudioChecklist(store, {
+    allowText,
+    hasPredesigned: predesigned.length > 0,
+    backOptional,
+  });
+  // La sidebar se monta DOS veces (aside desktop + sheet móvil) con los mismos
+  // ids de sección: la navegación del checklist se resuelve dentro de ESTA
+  // instancia vía rootRef (un getElementById global podría caer en la copia
+  // oculta y no hacer nada).
+  const rootRef = useRef<HTMLDivElement>(null);
+  const scrollToSection = (selector: string) => {
+    rootRef.current
+      ?.querySelector(selector)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const handleChecklistSelect = (id: StudioChecklistStepId) => {
+    if (id === "fotos") {
+      scrollToSection("#sidebar-mis-fotos");
+    } else if (id === "predisenados") {
+      setPredesignedOpen(true);
+      // Tras expandir, la sección cambia de alto: el scroll espera un frame.
+      requestAnimationFrame(() => scrollToSection("#sidebar-predisenados"));
+    } else if (id === "mensaje") {
+      const input = rootRef.current?.querySelector<HTMLInputElement>("#studio-message-input");
+      input?.scrollIntoView({ behavior: "smooth", block: "center" });
+      input?.focus({ preventScroll: true });
+    } else if (id === "publicacion") {
+      scrollToSection("#sidebar-ig-datos");
+    }
+  };
 
   // Ola 21 — aplicar un diseño prediseñado al slot seleccionado (o al primer slot vacío).
   // 2026-09-22 — la aplicación vive en applyPredesignedToSlot (helper compartido
@@ -227,7 +270,11 @@ export function StudioSidebar({
   const handleApplyPredesigned = async (
     item: import("./studio-asset-picker-modal").PredesignedItem,
   ) => {
-    if (!designId || applyingPredesignedId) return;
+    // 2026-10-22 — SIN guard de designId: el draft es LAZY y se crea en el
+    // momento dentro de applyPredesignedToSlot (store.ensureDesignId). Antes
+    // este guard mataba el primer clic en silencio hasta que una foto subida
+    // marcaba el canvas dirty y el auto-save creaba el draft.
+    if (applyingPredesignedId) return;
     // Regla de caras (2026-10-12) + "pregunta SIEMPRE" (owner 2026-10-19): el
     // clic en la grilla de prediseñados NUNCA toma el selectedSlotIndex como
     // destino — assignAssetToSlot auto-selecciona el slot recién asignado, así
@@ -265,7 +312,7 @@ export function StudioSidebar({
   const handleFaceChoice = async (face: "A" | "B") => {
     const item = faceChoiceItem;
     setFaceChoiceItem(null);
-    if (!item || !designId) return;
+    if (!item) return;
     const target = firstFreeSlotOfFace(store.getState().canvasData?.slots ?? [], face);
     if (target === null) {
       openReplaceModal(item, face);
@@ -280,7 +327,7 @@ export function StudioSidebar({
   const handleReplacePick = async (slotIndex: number) => {
     const choice = replaceChoice;
     setReplaceChoice(null);
-    if (!choice || !designId) return;
+    if (!choice) return;
     await applyPredesigned(choice.item, slotIndex, true);
   };
 
@@ -289,7 +336,9 @@ export function StudioSidebar({
   // Las caras B ocupadas se respetan y se avisan en una sola pasada.
   const [applyingVariety, setApplyingVariety] = useState(false);
   const handleFillWithVariety = async () => {
-    if (!designId || applyingVariety || applyingPredesignedId) return;
+    // 2026-10-22 — sin guard de designId (draft LAZY): el primer uso crea el
+    // borrador en el momento vía store.ensureDesignId (dentro del helper).
+    if (applyingVariety || applyingPredesignedId) return;
     setApplyingVariety(true);
     try {
       const res = await applyPredesignedVarietyToEmptySlots({
@@ -383,12 +432,15 @@ export function StudioSidebar({
   const canAutoFill = assets.length > 0 && emptySlots > 0;
 
   return (
-    <div className="flex h-full flex-col gap-6 p-5">
+    <div ref={rootRef} className="flex h-full flex-col gap-6 p-5">
       {/* Producto info */}
       <div>
         <p className="text-brand-purple-dark text-sm font-semibold">{productName}</p>
         <p className="text-brand-muted mt-0.5 text-xs">SKU {productSku}</p>
       </div>
+
+      {/* 5.1 — checklist «Tu diseño»: pasos con estado + atajo a su sección. */}
+      <StudioChecklist steps={checklistSteps} onSelect={handleChecklistSelect} />
 
       {/* Progress bar X/N — el feedback más importante del editor */}
       <ProgressBar filled={filledSlots} total={totalSlots} />

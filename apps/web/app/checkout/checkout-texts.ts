@@ -78,6 +78,10 @@ export type CheckoutTexts = {
     zipLabel: string;
     zipPlaceholder: string;
     zipHint: string;
+    zipError: string;
+    /** Cuando la ciudad no tiene CP conocido y solo se prellena el prefijo
+     *  departamental (ver handleCityChange del form de datos). */
+    zipPrefixHint: string;
     zoneHint: string;
     neighborhoodLabel: string;
     neighborhoodPlaceholder: string;
@@ -309,10 +313,14 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     cityWait: "Elige departamento primero",
     cityMissing: "No tenemos esa ciudad en el catálogo. Contáctanos por WhatsApp.",
     zipLabel: "Código postal (opcional)",
-    // Sin autocompletado municipal (se confundía con el número de pedido, fix
-    // QA STG 2026-10): placeholder neutro y el cliente lo escribe si lo conoce.
+    // Autorrellenado con el CP municipal del catálogo DANE/MinTIC al elegir
+    // ciudad (2026-10-07); si la ciudad no tiene CP conocido se prellena solo
+    // el prefijo departamental y zipPrefixHint lo advierte.
     zipPlaceholder: "Opcional",
     zipHint: "Se prellena con tu ciudad — cámbialo si necesitas otro (no lo pedimos para cotizar)",
+    zipError: "Código postal debe tener 6 dígitos",
+    zipPrefixHint:
+      "Completamos los primeros dígitos según tu departamento — verifica tu código postal",
     // "{zona}" se interpola con la etiqueta del catálogo de zonas ("localidad", "comuna"…).
     zoneHint: "Tu {zona} nos ayuda a ofrecerte las mejores opciones de entrega.",
     neighborhoodLabel: "Barrio (opcional)",
@@ -544,6 +552,8 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "datos.zipLabel": "checkout.datos.zip-label",
   "datos.zipPlaceholder": "checkout.datos.zip-placeholder",
   "datos.zipHint": "checkout.datos.zip-hint",
+  "datos.zipError": "checkout.datos.zip-error",
+  "datos.zipPrefixHint": "checkout.datos.zip-prefix-hint",
   "datos.zoneHint": "checkout.datos.zone-hint",
   "datos.neighborhoodLabel": "checkout.datos.neighborhood-label",
   "datos.neighborhoodPlaceholder": "checkout.datos.neighborhood-placeholder",

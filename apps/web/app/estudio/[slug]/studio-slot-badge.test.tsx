@@ -10,7 +10,8 @@
  *   - calendario (slotLabel) → chip con el mes abreviado (antes era un badge
  *     absoluto top-left dentro de la tarjeta, encima de la plantilla).
  *   - modo tira (overlayActions) → chip dentro de la barra flotante (antes el
- *     badge flotaba sobre la foto).
+ *     badge flotaba sobre la foto). 2026-10-22: la barra flotante SOLO existe
+ *     en el slot SELECCIONADO (la tira se lee continua en los demás).
  * YA NO existe ningún badge absoluto top-left dentro del slot: flotaba sobre
  * la plantilla y tapaba el avatar del chrome de la Polaroid Instagram
  * (círculo en (34,34) r=16, ver instagram-template-spec.ts).
@@ -120,8 +121,15 @@ describe("StudioSlot — identificador de slot (chip en la barra de acciones)", 
     expect(chip!.textContent).toBe("Ene");
   });
 
-  it("modo tira (overlayActions): el número va como chip en la barra flotante, NO como badge sobre la foto", () => {
-    const { container } = renderSlot({ overlayActions: true });
+  it("modo tira (overlayActions): la barra flotante SOLO se muestra en el slot SELECCIONADO (2026-10-22)", () => {
+    // No seleccionado: la tira se lee continua — sin barra ni chip sobre la foto.
+    const unselected = renderSlot({ overlayActions: true, isSelected: false });
+    expect(unselected.container.querySelector(ABSOLUTE_BADGE_SELECTOR)).toBeNull();
+    expect(unselected.container.querySelector('[aria-label="Imán #1"]')).toBeNull();
+    unselected.unmount();
+
+    // Seleccionado: el número va como chip en la barra flotante (nunca badge absoluto).
+    const { container } = renderSlot({ overlayActions: true, isSelected: true });
     expect(container.querySelector(ABSOLUTE_BADGE_SELECTOR)).toBeNull();
     const chip = container.querySelector('[aria-label="Imán #1"]');
     expect(chip).not.toBeNull();

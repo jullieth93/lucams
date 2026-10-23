@@ -865,6 +865,17 @@ export async function uploadDesignAssetAction(formData: FormData) {
 // uploadCustomerPhoto) para que el slot lo trate como cualquier foto (encuadre, finalize, render).
 // Ola 21 — soporta pares cara A/B para separadores: si el diseño tiene `imageUrlB`, se suben
 // ambas imágenes y se devuelven los dos assets.
+//
+// Fast-path de galería (2026-10-22): los masters son curados por el admin, así que
+//  (a) se SALTA validatePhotoQuality (doble pasada sharp de costo puro acá) — las
+//      fotos de cliente la conservan intactas en su propio call-site;
+//  (b) las caras A/B se procesan EN PARALELO (antes en serie);
+//  (c) la copia server-side del objeto NO es viable sin cambios de infra: la galería
+//      vive en el bucket PÚBLICO `product-images` y los assets de diseño en el bucket
+//      PRIVADO `customer-uploads`, y la API de Supabase Storage (`storage.copy`) solo
+//      copia DENTRO del mismo bucket. Además el pipeline sharp (rotate/strip EXIF/
+//      re-encode) sigue siendo necesario para normalizar el master. → queda (a)+(b);
+//  (d) cada aplicación loguea duración por etapa (event design.predesigned.assign).
 
 export async function assignPredesignedToDesignAction(input: {
   designId: string;
@@ -907,18 +918,30 @@ export async function assignPredesignedToDesignAction(input: {
     return { ok: false, message: "Diseño no disponible." };
   }
 
-  async function uploadFromUrl(url: string) {
+  // Medición por etapa (2026-10-22) — log estructurado al final para verificar
+  // la mejora del fast-path (antes: fetch + doble pasada sharp + caras en serie).
+  const timings: Array<{ face: "A" | "B"; fetchMs: number; uploadMs: number }> = [];
+
+  async function uploadFromUrl(url: string, face: "A" | "B") {
+    const t0 = Date.now();
     const res = await fetch(url);
     if (!res.ok) throw new Error(`fetch ${res.status}`);
     const buffer = Buffer.from(await res.arrayBuffer());
     const mime = (res.headers.get("content-type") ?? "image/png").split(";")[0].trim();
+    const fetchMs = Date.now() - t0;
+    const t1 = Date.now();
     const uploaded = await uploadCustomerPhoto({
       buffer,
       originalMimeType: mime,
       ownerId,
       designId,
       productSizeCm: undefined,
+      // Fast-path galería (2026-10-22): el master es curado por el admin → se
+      // salta la pasada sharp de validatePhotoQuality (costo puro acá). Las
+      // fotos del CLIENTE conservan la validación intacta (otro call-site).
+      skipQualityValidation: true,
     });
+    const uploadMs = Date.now() - t1;
     const asset = await prisma.designAsset.create({
       data: {
         designId,
@@ -935,6 +958,7 @@ export async function assignPredesignedToDesignAction(input: {
         galleryImageId,
       },
     });
+    timings.push({ face, fetchMs, uploadMs });
     return {
       assetId: asset.id,
       signedUrl: uploaded.signedUrl,
@@ -964,15 +988,31 @@ export async function assignPredesignedToDesignAction(input: {
   }
 
   try {
-    const assetA = existing[0]
-      ? await reuseAsset(existing[0])
-      : await uploadFromUrl(galleryImage.imageUrl);
-    let assetB;
-    if (galleryImage.imageUrlB && isAllowedUrl(galleryImage.imageUrlB)) {
-      assetB = existing[1]
-        ? await reuseAsset(existing[1])
-        : await uploadFromUrl(galleryImage.imageUrlB);
-    }
+    const t0 = Date.now();
+    // 2026-10-22 — caras A/B EN PARALELO (antes en serie: en separadores 2
+    // caras el cliente esperaba fetch+sharp+upload de la A y DESPUÉS lo mismo
+    // de la B). El orden del resultado no depende de cuál termine primero.
+    const wantB = !!(galleryImage.imageUrlB && isAllowedUrl(galleryImage.imageUrlB));
+    const [assetA, assetB] = await Promise.all([
+      existing[0] ? reuseAsset(existing[0]) : uploadFromUrl(galleryImage.imageUrl, "A"),
+      wantB
+        ? existing[1]
+          ? reuseAsset(existing[1]!)
+          : uploadFromUrl(galleryImage.imageUrlB as string, "B")
+        : Promise.resolve(undefined),
+    ]);
+    logger.info(
+      {
+        event: "design.predesigned.assign",
+        designId,
+        galleryImageId,
+        faces: wantB ? 2 : 1,
+        reused: (existing[0] ? 1 : 0) + (wantB && existing[1] ? 1 : 0),
+        timings,
+        totalMs: Date.now() - t0,
+      },
+      "assignPredesigned timing",
+    );
     return { ok: true, ...assetA, assetB };
   } catch (err) {
     logger.warn(

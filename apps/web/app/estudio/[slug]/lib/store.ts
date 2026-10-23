@@ -242,6 +242,17 @@ export type StudioStoreState = {
   ) => void;
   removeAsset: (assetId: string) => void;
   setDesignId: (designId: string) => void;
+  /**
+   * Draft LAZY (2026-10-22): el boot NO crea la fila del diseño — nace en el
+   * primer auto-save con canvas sucio. Las vías que necesitan el designId ANTES
+   * del primer cambio (aplicar un prediseñado como primera acción) llaman a
+   * esta función registrada por el editor: crea el draft por la MISMA vía del
+   * auto-save (createDraftDesignAction, con dedupe de la llamada en vuelo) y
+   * devuelve el id; null si la creación falló (el caller muestra el toast).
+   * null mientras el editor no la registra (tests, unmount).
+   */
+  ensureDesignId: (() => Promise<string | null>) | null;
+  setDesignEnsurer: (fn: (() => Promise<string | null>) | null) => void;
   setAutoSaveStatus: (status: AutoSaveStatus) => void;
   setIsFinalizing: (v: boolean) => void;
   markClean: () => void;
@@ -267,6 +278,7 @@ const initialState = {
   isDirty: false,
   autoSaveStatus: { kind: "idle" } as AutoSaveStatus,
   isFinalizing: false,
+  ensureDesignId: null as StudioStoreState["ensureDesignId"],
   undoStack: [],
   redoStack: [],
 };
@@ -872,6 +884,7 @@ export function createStudioStore() {
     },
 
     setDesignId: (designId) => set({ designId }),
+    setDesignEnsurer: (fn) => set({ ensureDesignId: fn }),
     setAutoSaveStatus: (status) => set({ autoSaveStatus: status }),
     setIsFinalizing: (v) => set({ isFinalizing: v }),
     markClean: () => set({ isDirty: false }),

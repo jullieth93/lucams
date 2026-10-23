@@ -35,6 +35,7 @@ import { Trash2, RotateCcw, Pencil } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
+import { useChromeBitmap } from "./lib/chrome-bitmap-cache";
 import type Konva from "konva";
 import type { FilterFunction } from "konva/lib/Node";
 // Import filters específicos (no `import Konva from "konva"` que duplica instancia
@@ -1192,8 +1193,15 @@ function StudioSlotImpl({
         Patrón Casetify/Mixbook: action bar inferior fuera del canvas.
         Ola 2A — el padre (StudioCanvasGrid) RESERVA este alto en el grid para
         que la barra no se solape con la fila de abajo; en slots angostos se
-        compacta para que los 3 botones quepan sin desbordarse. */}
-      {(slotState.assetUrl || isSelected) && (
+        compacta para que los 3 botones quepan sin desbordarse.
+        4.4 (2026-10-22) — modo TIRA (overlayActions): la barra flota SOBRE la
+        foto y tenerla en TODOS los slots llenos rompía la continuidad de la
+        tira. Ahora solo la muestra el slot SELECCIONADO (el primer tap en un
+        slot lleno lo selecciona y muestra sus acciones; el segundo tap abre el
+        editor — la lógica vive en studio-canvas-grid). La advertencia de
+        calidad sigue descubrible en slots no seleccionados vía el badge ⚠
+        mínimo de abajo. */}
+      {(overlayActions ? isSelected : slotState.assetUrl || isSelected) && (
         <motion.div
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1265,51 +1273,28 @@ function StudioSlotImpl({
             barra: no interfiere con el drag/pan de la foto ni con el tab-order
             del grid (1 parada por slot). */}
           {photoQuality && !photoQuality.ok && (
-            <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowQualityModal(true);
-                }}
-                tabIndex={-1}
-                className={[
-                  "focus:ring-brand-turquoise inline-flex cursor-pointer items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 focus:ring-2 focus:outline-none",
-                  photoQuality.severity === "error"
-                    ? "bg-red-50 text-red-700 ring-red-200"
-                    : "bg-amber-50 text-amber-800 ring-amber-200",
-                ].join(" ")}
-                aria-label={
-                  photoQuality.severity === "error"
-                    ? "Foto demasiado chica para imprimir bien"
-                    : "Foto al límite de resolución"
-                }
-              >
-                {photoQuality.severity === "error" ? "⚠" : "ⓘ"}
-                {compact ? "" : ` ${texts.lienzo.slotQualityChip}`}
-              </button>
-              <PhotoQualityModal
-                open={showQualityModal}
-                onClose={() => setShowQualityModal(false)}
-                severity={photoQuality.severity === "error" ? "error" : "warning-soft"}
-                message={
-                  photoQuality.severity === "error"
-                    ? fillStudioText(texts.lienzo.qualityErrorTitle, {
-                        ancho: photoQuality.actualPx?.w ?? "",
-                        alto: photoQuality.actualPx?.h ?? "",
-                        sizeCm: sizeCm ?? "",
-                        anchoMin: photoQuality.requiredPx?.w ?? "",
-                        altoMin: photoQuality.requiredPx?.h ?? "",
-                      })
-                    : fillStudioText(texts.lienzo.qualityWarnTitle, {
-                        sizeCm: sizeCm ?? "",
-                        anchoMin: photoQuality.requiredPx?.w ?? "",
-                        altoMin: photoQuality.requiredPx?.h ?? "",
-                      })
-                }
-                imageUrl={slotState.assetUrl}
-              />
-            </>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowQualityModal(true);
+              }}
+              tabIndex={-1}
+              className={[
+                "focus:ring-brand-turquoise inline-flex cursor-pointer items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 focus:ring-2 focus:outline-none",
+                photoQuality.severity === "error"
+                  ? "bg-red-50 text-red-700 ring-red-200"
+                  : "bg-amber-50 text-amber-800 ring-amber-200",
+              ].join(" ")}
+              aria-label={
+                photoQuality.severity === "error"
+                  ? "Foto demasiado chica para imprimir bien"
+                  : "Foto al límite de resolución"
+              }
+            >
+              {photoQuality.severity === "error" ? "⚠" : "ⓘ"}
+              {compact ? "" : ` ${texts.lienzo.slotQualityChip}`}
+            </button>
           )}
 
           {/* Acciones secundarias derecha.
@@ -1396,6 +1381,61 @@ function StudioSlotImpl({
             </div>
           )}
         </motion.div>
+      )}
+
+      {/* 4.4 (2026-10-22) — modo TIRA: la advertencia de calidad sigue
+          descubrible en slots NO seleccionados (la barra de acciones solo se
+          muestra en el seleccionado) con un badge ⚠ mínimo no invasivo que
+          abre la misma modal de calidad. */}
+      {overlayActions && !isSelected && photoQuality && !photoQuality.ok && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowQualityModal(true);
+          }}
+          tabIndex={-1}
+          aria-label={
+            photoQuality.severity === "error"
+              ? "Foto demasiado chica para imprimir bien"
+              : "Foto al límite de resolución"
+          }
+          className={[
+            "focus:ring-brand-turquoise absolute right-1 bottom-1 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold shadow-md ring-1 backdrop-blur-sm focus:ring-2 focus:outline-none",
+            photoQuality.severity === "error"
+              ? "bg-red-50/95 text-red-700 ring-red-200"
+              : "bg-amber-50/95 text-amber-800 ring-amber-200",
+          ].join(" ")}
+        >
+          {photoQuality.severity === "error" ? "⚠" : "ⓘ"}
+        </button>
+      )}
+
+      {/* La modal de calidad vive FUERA de la barra de acciones (en portal):
+          en modo tira la barra solo existe en el slot seleccionado, pero el
+          badge ⚠ de un slot no seleccionado también la abre. */}
+      {photoQuality && !photoQuality.ok && (
+        <PhotoQualityModal
+          open={showQualityModal}
+          onClose={() => setShowQualityModal(false)}
+          severity={photoQuality.severity === "error" ? "error" : "warning-soft"}
+          message={
+            photoQuality.severity === "error"
+              ? fillStudioText(texts.lienzo.qualityErrorTitle, {
+                  ancho: photoQuality.actualPx?.w ?? "",
+                  alto: photoQuality.actualPx?.h ?? "",
+                  sizeCm: sizeCm ?? "",
+                  anchoMin: photoQuality.requiredPx?.w ?? "",
+                  altoMin: photoQuality.requiredPx?.h ?? "",
+                })
+              : fillStudioText(texts.lienzo.qualityWarnTitle, {
+                  sizeCm: sizeCm ?? "",
+                  anchoMin: photoQuality.requiredPx?.w ?? "",
+                  altoMin: photoQuality.requiredPx?.h ?? "",
+                })
+          }
+          imageUrl={slotState.assetUrl}
+        />
       )}
     </div>
   );
@@ -1995,6 +2035,11 @@ type AssetLayerData = {
  *
  * useImage("anonymous") permite cargar SVG via fetch + decode, listo para
  * stage.toDataURL() al finalize.
+ * 2026-10-22 (perfil CDP): los SVG pasan por useChromeBitmap — UNA
+ * rasterización compartida por todos los slots en vez de re-rasterizar el
+ * vector en cada drawImage de cada slot (blit de bitmap vs raster de SVG).
+ * PNG/JPG siguen con useImage (ya son bitmap: el decode lo deduplica el
+ * navegador por URL).
  */
 function AssetLayerRenderer({
   layer,
@@ -2007,7 +2052,11 @@ function AssetLayerRenderer({
   /** Ola 16 — modo sin borde (Instagram): usa la variante `_noborder` (solo chrome sobre la foto). */
   noBorder?: boolean;
 }) {
-  const [image] = useImage(noBorderChromeSrc(layer.src, noBorder, darkBackground), "anonymous");
+  const src = noBorderChromeSrc(layer.src, noBorder, darkBackground);
+  const isSvg = src.toLowerCase().split("?")[0]!.endsWith(".svg");
+  const [rasterImage] = useImage(isSvg ? "" : src, "anonymous");
+  const svgBitmap = useChromeBitmap(isSvg ? src : "", layer.width, layer.height);
+  const image = isSvg ? svgBitmap : rasterImage;
   if (!image) {
     // Fallback rect transparente mientras carga (no se ve, evita layout shift)
     return null;

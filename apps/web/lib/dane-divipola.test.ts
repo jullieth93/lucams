@@ -200,10 +200,12 @@ describe("getCityByCode", () => {
     expect(getCityByCode("05001")?.name).toBe("Medellín");
   });
 
-  it("encuentra una ciudad sin zip definido (Abejorral '05002')", () => {
+  it("encuentra una ciudad con zip del dataset MinTIC (Abejorral '05002')", () => {
+    // Cobertura completa desde 2026-10-22 (dataset MinTIC ixig-z8b5 mapeado
+    // por código DANE): Abejorral ya no es un caso "sin zip".
     const city = getCityByCode("05002");
     expect(city?.name).toBe("Abejorral");
-    expect(city?.zip).toBeUndefined();
+    expect(city?.zip).toBe("055030");
   });
 
   it("devuelve null para un código inexistente", () => {
@@ -393,6 +395,21 @@ describe("integridad del catálogo DIVIPOLA", () => {
   it("todo zip definido tiene formato de 6 dígitos", () => {
     const badZips = CITIES.filter((c) => c.zip && !/^[0-9]{6}$/.test(c.zip));
     expect(badZips).toEqual([]);
+  });
+
+  it("todas las ciudades del catálogo tienen zip (cobertura MinTIC 2026-10-22)", () => {
+    // Mapeo por código DANE contra el dataset "Códigos Postales Nacionales"
+    // (datos.gov.co, id ixig-z8b5). Si se agrega una ciudad sin zip, el
+    // checkout cae al prefill del prefijo departamental — este test avisa.
+    const sinZip = CITIES.filter((c) => !c.zip);
+    expect(sinZip).toEqual([]);
+  });
+
+  it("todo zip empieza por el prefijo de su departamento", () => {
+    // Sanity del mapeo DANE↔CP: el CP de un municipio siempre abre con el
+    // código de 2 dígitos de su departamento (estructura del CP nacional).
+    const mismatched = CITIES.filter((c) => c.zip && !c.zip.startsWith(c.deptCode));
+    expect(mismatched).toEqual([]);
   });
 
   it("toda ciudad del catálogo es resoluble por su par (deptCode, name)", () => {

@@ -8,6 +8,13 @@
  *                               "COORDINADORA MERCANTIL") deshabilitadas en
  *                               /admin/envios. quoteShipping
  *                               filtra esas ofertas ANTES de sellar el HMAC.
+ *   SHIPPING_CARRIER_RULES      JSON por transportadora (key normalizada) con
+ *                               reglas operativas: { "transprensa": {
+ *                               minWeightKg: 11, maxWeightKg: null, note: "…" } }.
+ *                               quoteShipping excluye la oferta si el peso del
+ *                               paquete viola el rango (antes del sello HMAC) —
+ *                               evita ofrecer carriers que luego rechazan la
+ *                               guía (ej. Transprensa no opera < 11 kg).
  *   LUCAMS_SHIPPING_ENABLED     "true"/"false" — envío propio.
  *   LUCAMS_SHIPPING_PRICE_COP   centavos COP enteros (default 1000000 = $10.000).
  *   LUCAMS_SHIPPING_CUTOFF_HOUR 0-23, hora Colombia (default 12).
@@ -33,6 +40,7 @@ import { createCmsField, getCmsFieldByKey, saveCmsFieldDraft } from "@/features/
 
 export const SETTING_KEYS = {
   disabledCarriers: "SHIPPING_DISABLED_CARRIERS",
+  carrierRules: "SHIPPING_CARRIER_RULES",
   lucamsEnabled: "LUCAMS_SHIPPING_ENABLED",
   lucamsPriceCop: "LUCAMS_SHIPPING_PRICE_COP",
   lucamsCutoffHour: "LUCAMS_SHIPPING_CUTOFF_HOUR",
@@ -154,6 +162,96 @@ export async function setDisabledCarriers(names: string[], adminId: string | nul
       label: "Transportadoras deshabilitadas",
       helpText:
         "Transportadoras de Aveonline que NO se ofrecen al cliente en el checkout (JSON con los nombres). Se gestiona desde Envíos (/admin/envios).",
+      type: "TEXTAREA",
+    },
+    adminId,
+  );
+}
+
+// ─── Reglas operativas por transportadora (peso mín/máx) ───
+
+/**
+ * Regla operativa de una transportadora. null = sin límite en ese extremo.
+ * `note` es el contexto del negocio (ej. el mensaje real de la transportadora).
+ */
+export type CarrierRule = {
+  minWeightKg: number | null;
+  maxWeightKg: number | null;
+  note: string | null;
+};
+
+/** Mapa key normalizada (normalizeCarrierKey) → regla. */
+export type CarrierRulesMap = Record<string, CarrierRule>;
+
+const MAX_RULE_NOTE_LEN = 300;
+
+function parseRuleWeight(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = typeof raw === "number" ? raw : Number.NaN;
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Parse defensivo de SHIPPING_CARRIER_RULES ({ keyNormalizada: regla }).
+ * JSON inválido → {} + warn (mismo fail-safe que el resto del archivo);
+ * entradas malformadas se descartan una a una.
+ */
+export function parseCarrierRules(raw: string): CarrierRulesMap {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    logger.warn({
+      event: "shipping.settings.carrier_rules.invalid_json",
+      msg: "SHIPPING_CARRIER_RULES tiene JSON inválido: ignorando reglas ({}). Corrígelo desde Envíos (/admin/envios).",
+    });
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const out: CarrierRulesMap = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const v = value as Record<string, unknown>;
+    const rule: CarrierRule = {
+      minWeightKg: parseRuleWeight(v.minWeightKg),
+      maxWeightKg: parseRuleWeight(v.maxWeightKg),
+      note:
+        typeof v.note === "string" && v.note.trim().length > 0
+          ? v.note.trim().slice(0, MAX_RULE_NOTE_LEN)
+          : null,
+    };
+    // Una entrada sin ningún límite ni nota no filtra nada: se omite.
+    if (rule.minWeightKg === null && rule.maxWeightKg === null && rule.note === null) continue;
+    out[key] = rule;
+  }
+  return out;
+}
+
+/** Reglas vigentes, keyed por normalizeCarrierKey(nombre Aveonline). */
+export async function getCarrierRules(): Promise<CarrierRulesMap> {
+  const raw = await getSettingValue(SETTING_KEYS.carrierRules, "{}");
+  return parseCarrierRules(raw);
+}
+
+/**
+ * Persiste el mapa completo de reglas (las keys se re-normalizan al escribir
+ * para que el lookup en quoteShipping nunca dependa del formato de entrada).
+ */
+export async function setCarrierRules(
+  rules: CarrierRulesMap,
+  adminId: string | null,
+): Promise<void> {
+  const normalized: CarrierRulesMap = {};
+  for (const [key, rule] of Object.entries(rules)) {
+    normalized[normalizeCarrierKey(key)] = rule;
+  }
+  await upsertShippingSetting(
+    SETTING_KEYS.carrierRules,
+    JSON.stringify(normalized),
+    {
+      label: "Reglas por transportadora (peso)",
+      helpText:
+        "Reglas operativas por transportadora (JSON { nombreNormalizado: { minWeightKg, maxWeightKg, note } }): el checkout NO ofrece una transportadora si el peso del paquete queda fuera de su rango. Se gestiona desde Envíos (/admin/envios).",
       type: "TEXTAREA",
     },
     adminId,

@@ -23,6 +23,7 @@ import { requireRole } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { listCarriersForAdmin } from "@/features/shipping/aveonline";
 import {
+  getCarrierRules,
   getDisabledCarriersNormalized,
   getLucamsShippingSettings,
   normalizeCarrierKey,
@@ -51,13 +52,15 @@ export default async function EnviosAdminPage() {
   } catch (err) {
     carriersError = err instanceof Error ? err.message : String(err);
   }
-  const [disabledNormalized, lucamsSettings] = await Promise.all([
+  const [disabledNormalized, carrierRules, lucamsSettings] = await Promise.all([
     getDisabledCarriersNormalized(),
+    getCarrierRules(),
     getLucamsShippingSettings(),
   ]);
   const carrierRows = carriers.map((c) => ({
     ...c,
     disabled: disabledNormalized.includes(normalizeCarrierKey(c.text)),
+    rule: carrierRules[normalizeCarrierKey(c.text)] ?? null,
   }));
 
   return (
@@ -83,7 +86,9 @@ export default async function EnviosAdminPage() {
           <p className="text-brand-muted mb-3 text-xs">
             Todo lo que el checkout puede ofrecer: tu envío propio y las transportadoras de tu
             cuenta Aveonline. Si deshabilitas una, el checkout deja de ofrecerla de inmediato (las
-            cotizaciones ya selladas de clientes en curso se respetan).
+            cotizaciones ya selladas de clientes en curso se respetan). Con «Regla de peso» puedes
+            fijar el peso mínimo/máximo del paquete con el que cada una opera: fuera de ese rango el
+            checkout no la ofrece (evita guías rechazadas al despachar).
           </p>
           {carriersError && (
             <AdminNotice tone="warning">

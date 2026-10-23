@@ -32,6 +32,10 @@ import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
 import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
 import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
 import {
+  designPreviewPageLabels,
+  unitNounForLine,
+} from "@/features/personalization/preview-page-labels";
+import {
   describeVariantAttributes,
   parseVariantAttributes,
 } from "@/features/products/variant-schemas";
@@ -131,15 +135,18 @@ export default async function PublicOrderPage({
               name: true,
               // Paquete F (2026-10-02) — attributes: desglose estructurado de la variante.
               attributes: true,
-              product: { select: { slug: true, name: true } },
+              product: { select: { slug: true, name: true, personalizationKind: true } },
             },
           },
           design: {
             // 2026-10-13 — sellos de artefactos watermark: el pedido público
             // exhibe la versión con marca de agua (y sus páginas por unidad).
+            // 2026-10-22 — canvasData: rótulos por unidad del pager (metadata
+            // ya se seleccionaba para la nota de borde).
             select: {
               previewUrl: true,
               metadata: true,
+              canvasData: true,
               previewWatermarkedAt: true,
               previewPagesCount: true,
             },
@@ -445,6 +452,11 @@ export default async function PublicOrderPage({
                 // Opciones de diseño del set de letras ("Sin borde") — el PNG las refleja, pero el
                 // texto evita que el cliente tenga que deducirlas de la miniatura (2026-09-05).
                 const borderNote = letterSetBorderNote(it.design?.metadata);
+                // 2026-10-22 — rótulo por página del pager ("Set 2 · con borde").
+                const pageLabels = designPreviewPageLabels(
+                  it.design,
+                  unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
+                );
                 // Paquete F (2026-10-02) — desglose estructurado de la variante (el
                 // nombre libre no siempre informa Con/Sin imán, tamaño, idioma…).
                 const variantBreakdown = describeVariantAttributes(
@@ -460,6 +472,7 @@ export default async function PublicOrderPage({
                       <DesignPreviewDialog
                         previewUrl={previewUrl}
                         pages={disp?.pageUrls ?? null}
+                        pageLabels={pageLabels}
                         watermarkNote={
                           disp?.watermarked ? (
                             <CmsText
@@ -540,6 +553,7 @@ export default async function PublicOrderPage({
                             // 2026-10-13 — páginas por unidad (watermark) cuando
                             // el diseño las tiene: el "Ver" pagina por unidad.
                             pages={disp?.pageUrls ?? null}
+                            pageLabels={pageLabels}
                             watermarkNote={
                               disp?.watermarked ? (
                                 <CmsText

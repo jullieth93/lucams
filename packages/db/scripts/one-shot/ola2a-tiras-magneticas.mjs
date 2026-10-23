@@ -5,7 +5,7 @@
  * + su variante + su plantilla de Estudio (Ola 2A, Lucy 2026-07-22).
  *
  * Producto: tira vertical estilo photobooth 5×15 cm con 3 fotos apiladas sobre fondo de
- * color (blanco/negro/pasteles — la misma paleta `frameOptions` de la Ola 2A). Estudio:
+ * color (blanco/negro — paleta `frameOptions` reducida 2026-10-22). Estudio:
  * 3 slots de foto (uno por foto) apilados en 1 columna (la plantilla fija gridCols=1) +
  * marco de color configurable. El preview compositado (1×3) ES la tira.
  *
@@ -23,14 +23,15 @@ import { assertDestructiveAllowed } from "../lib/env-guard.mjs";
 // bloquea PRD/remotos no reconocidos (fail-closed, lib/env-guard.mjs).
 assertDestructiveAllowed("ola2a-tiras-magneticas.mjs");
 
-
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 
 const prisma = new PrismaClient();
 
-const FRAME_OPTIONS = ["blanco", "negro", "aguamarina", "rosa", "lavanda", "amarillo"];
+// 2026-10-22 (owner) — la paleta de la tira se reduce a blanco/negro (más
+// «Sin Color» y «Personalizado», fijos del toolbar del Estudio).
+const FRAME_OPTIONS = ["blanco", "negro"];
 const PRICE = 1_900_000; // $19.000 COP — propuesto, Lucy lo ajusta
 const SLUG = "tiras-magneticas-fotos";
 const SKU = "FI-TIRA-01";
@@ -52,7 +53,7 @@ const result = await prisma.$transaction(async (tx) => {
       slug: SLUG,
       name: "Tiras Magnéticas",
       description:
-        "Tira vertical estilo photobooth de 5×15 cm con 3 de tus fotos apiladas sobre un fondo de color a tu gusto (blanco, negro o pasteles). La diseñas en el Estudio: subes 3 fotos y eliges el color del marco.",
+        "Tira vertical estilo photobooth de 5×15 cm con 3 de tus fotos apiladas sobre un fondo de color a tu gusto (blanco o negro). La diseñas en el Estudio: subes 3 fotos y eliges el color del marco.",
       basePrice: PRICE,
       sku: SKU,
       isActive: false, // OCULTO hasta que Lucy confirme precio y lo active
@@ -83,7 +84,7 @@ const result = await prisma.$transaction(async (tx) => {
     update: {
       name: "Tiras Magnéticas",
       description:
-        "Tira vertical estilo photobooth de 5×15 cm con 3 de tus fotos apiladas sobre un fondo de color a tu gusto (blanco, negro o pasteles). La diseñas en el Estudio: subes 3 fotos y eliges el color del marco.",
+        "Tira vertical estilo photobooth de 5×15 cm con 3 de tus fotos apiladas sobre un fondo de color a tu gusto (blanco o negro). La diseñas en el Estudio: subes 3 fotos y eliges el color del marco.",
       basePrice: PRICE,
       isActive: false,
       personalizationKind: "PHOTO_PACK",

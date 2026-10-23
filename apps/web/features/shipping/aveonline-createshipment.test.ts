@@ -237,3 +237,52 @@ describe("AveonlineProvider.createShipment — relacion_envios por carrier", () 
     expect(res.trackingNumber).toBe("123456789");
   });
 });
+
+// dsnit del destinatario (2026-10-22): Aveonline exige numérico > 10000. Con el
+// documento condicionado por tipo en checkout, un PP alfanumérico puede llegar a
+// la guía — se extraen sus dígitos y, si no superan 10000 (o no hay), cae al
+// placeholder "100001" (admin lo completa en /admin/pedidos antes de despachar).
+describe("AveonlineProvider.createShipment — dsnit del destinatario", () => {
+  beforeAll(() => {
+    process.env.AVEONLINE_USUARIO = "test-user";
+    process.env.AVEONLINE_CLAVE = "test-pass";
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function dsnitFor(documentNumber?: string): Promise<unknown> {
+    const calls: FetchCall[] = [];
+    stubFetch(calls);
+    const provider = new AveonlineProvider();
+    await provider.createShipment({
+      ...PARAMS,
+      carrier: "tcc-sa",
+      quoteId: "1010",
+      delivery: { ...PARAMS.delivery, documentNumber },
+    });
+    const guia = calls.find((c) => c.tipo === "generarGuia2");
+    return guia?.body?.dsnit;
+  }
+
+  it("CC numérica viaja tal cual", async () => {
+    expect(await dsnitFor("1020304050")).toBe("1020304050");
+  });
+
+  it("sin documento → placeholder '100001'", async () => {
+    expect(await dsnitFor(undefined)).toBe("100001");
+  });
+
+  it("PP alfanumérico con dígitos suficientes → sus dígitos", async () => {
+    expect(await dsnitFor("AB123456")).toBe("123456");
+  });
+
+  it("PP sin dígitos → placeholder (no string vacío)", async () => {
+    expect(await dsnitFor("ABCDEFGH")).toBe("100001");
+  });
+
+  it("PP con pocos dígitos (≤10000) → placeholder (Aveonline lo rechazaría)", async () => {
+    expect(await dsnitFor("AB1234")).toBe("100001");
+  });
+});

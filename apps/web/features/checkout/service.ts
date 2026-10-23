@@ -40,10 +40,12 @@ import { getLoyaltySettings } from "@/features/loyalty/settings";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
 import {
+  getCarrierRules,
   getDisabledCarriersNormalized,
   getLucamsShippingSettings,
   normalizeCarrierKey,
 } from "@/features/shipping/settings";
+import { computePackedPackage } from "@/features/shipping/aveonline";
 import { buildLucamsOffer, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { getZone } from "@/lib/lucams-zones";
@@ -394,11 +396,13 @@ export async function quoteShipping(input: {
   }
 
   // Config operativa del envío (settings CmsField SETTING, /admin/envios):
-  // transportadoras deshabilitadas a filtrar + oferta del envío propio Lucams
-  // (solo Bogotá con localidad habilitada; null si no aplica).
+  // transportadoras deshabilitadas + reglas de peso por transportadora a
+  // filtrar + oferta del envío propio Lucams (solo Bogotá con localidad
+  // habilitada; null si no aplica).
   const address = ctx.state.address ?? null;
-  const [disabledCarriers, lucamsOffer] = await Promise.all([
+  const [disabledCarriers, carrierRules, lucamsOffer] = await Promise.all([
     getDisabledCarriersNormalized(),
+    getCarrierRules(),
     address
       ? buildLucamsOffer(
           {
@@ -422,11 +426,34 @@ export async function quoteShipping(input: {
     // ShippingSelectionInput sellado — es solo display para la UI ("tarifa
     // estimada"); el anti-tamper del offersToken queda intacto.
     const estimated = quotes.length > 0 && quotes.every((q) => q.estimated === true);
-    // Transportadoras deshabilitadas por el negocio: se filtran ANTES de sellar
-    // el HMAC (el set sellado nunca las incluye → no son seleccionables).
-    const filtered = disabledCarriers.length
-      ? quotes.filter((q) => !disabledCarriers.includes(normalizeCarrierKey(q.carrierName)))
-      : quotes;
+    // Filtros de negocio ANTES de sellar el HMAC (el set sellado nunca las
+    // incluye → no son seleccionables):
+    //  1. Transportadoras deshabilitadas por el negocio.
+    //  2. Reglas de peso por transportadora (SHIPPING_CARRIER_RULES): si el
+    //     paquete viola el rango del carrier, ofrecerlo termina en guía
+    //     rechazada al despachar (ej. Transprensa no opera < 11 kg — pedido
+    //     LCM-2026-0003). El paquete es el MISMO modelo que usa la guía
+    //     (computePackedPackage) → cotización y despacho nunca divergen.
+    const pkg = computePackedPackage(items);
+    const filtered = quotes.filter((q) => {
+      const key = normalizeCarrierKey(q.carrierName);
+      if (disabledCarriers.includes(key)) return false;
+      const rule = carrierRules[key];
+      if (!rule) return true;
+      const violated =
+        (rule.minWeightKg !== null && pkg.pesoKg < rule.minWeightKg ? "minWeightKg" : null) ??
+        (rule.maxWeightKg !== null && pkg.pesoKg > rule.maxWeightKg ? "maxWeightKg" : null);
+      if (!violated) return true;
+      logger.info({
+        event: "shipping.quote.carrier_filtered",
+        carrier: q.carrier,
+        carrierName: q.carrierName,
+        packageWeightKg: pkg.pesoKg,
+        rule,
+        violated,
+      });
+      return false;
+    });
     return {
       estimated,
       quotes: [
