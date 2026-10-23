@@ -550,6 +550,10 @@ export function StudioEditor({
     isPolaroid?: boolean;
     facesPerUnit?: number;
     flat?: boolean;
+    /** 2026-10-23 — calendario multi-set: tarjetas por set + labels de mes (pager de
+     *  dos niveles del visor de detalle). Solo las llena handleOpenCalendar3D. */
+    cardsPerSet?: number;
+    cardLabels?: readonly string[];
   } | null>(null);
   const [sceneBuilding, setSceneBuilding] = useState(false);
   // CAL4 — construcción perezosa de las tarjetas mes para la galería (botón "Ver mi calendario").
@@ -1930,7 +1934,23 @@ export function StudioEditor({
         wCm: 7.5,
         hCm: 10,
       }));
-      setSceneMagnets({ magnets: cards, cols: 4, kind: "calendar", sizeCm: "7.5×10" });
+      // 2026-10-23 (owner) — pager de DOS NIVELES en el visor de detalle multi-set:
+      // las tarjetas por set salen de la fuente real (canvasData.unitSlots, ?? 12 — mismo
+      // fallback del montaje de la Vista Previa, :1658) y los labels de mes son los MISMOS
+      // de los slots del editor (slotLabels de la PDP, repetidos por unidad — misma regla
+      // de resolvedSlotLabels, :794). Con 1 set el visor queda como siempre.
+      const unitSlots = state.canvasData.unitSlots ?? 12;
+      const cardLabels = slotLabels
+        ? Array.from({ length: cards.length }, (_, i) => slotLabels[i % slotLabels.length])
+        : undefined;
+      setSceneMagnets({
+        magnets: cards,
+        cols: 4,
+        kind: "calendar",
+        sizeCm: "7.5×10",
+        cardsPerSet: unitSlots,
+        cardLabels,
+      });
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
@@ -1947,6 +1967,7 @@ export function StudioEditor({
     calendarLayout,
     liveCalendarFont,
     calendarBuilding,
+    slotLabels,
     texts,
   ]);
 
@@ -2738,6 +2759,9 @@ export function StudioEditor({
           isPolaroid={sceneMagnets.isPolaroid}
           facesPerUnit={sceneMagnets.facesPerUnit}
           flat={sceneMagnets.flat}
+          // 2026-10-23 — calendario multi-set: pager de dos niveles en el detalle.
+          cardsPerSet={sceneMagnets.cardsPerSet}
+          cardLabels={sceneMagnets.cardLabels}
           // Fase 1A — calendario "Sin imán": la galería oculta las escenas que
           // asumen imán (nevera/tablero); el detalle sigue disponible.
           magnet={liveMagnet}

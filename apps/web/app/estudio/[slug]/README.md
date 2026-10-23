@@ -988,6 +988,12 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   `SceneGallery` (`galleryScenes` filtra por `magnet`, puro y testeado) y el botón «Míralo en
   tu espacio» del visor se omite (`onOpenGallery` opcional). La pill de gestos solo se
   muestra en escenas 3D. Contrato en `scene-gallery.test.ts`.
+  **Multi-set (ADR-170, 2026-10-23):** el visor tiene pager de DOS NIVELES — Anterior/
+  Siguiente (+ ← →) recorre solo las 12 tarjetas del set actual con wrap DENTRO del set,
+  el indicador anuncia «{mes} — Set N de M» (labels de `slotLabels` + texto CMS
+  `unidades.unidadDe`, sin claves nuevas) y chips «Set N de M» saltan a la tarjeta 1 de
+  cada set; `cardsPerSet` = `canvasData.unitSlots` (misma fuente que la Vista Previa).
+  Con 1 set el visor queda como siempre («Tarjeta N de 12», lineal).
 - **Grosor físico real**: `MAGNET_DEPTH`/`TILE_DEPTH` de `magnet-3d.tsx` se derivan del
   `uPerCm` de cada escena a un grosor real de fotoimán (~2 mm) con un mínimo de mundo
   anti-z-fighting; el grosor por producto también llega vía prop `thicknessCm`

@@ -33,6 +33,16 @@
  *  - a11y: role="dialog" con useDialogA11y (foco inicial + trap + Esc + retorno), navegación con
  *    ← → y botones grandes, posición anunciada con aria-live.
  *
+ * 2026-10-23 (decisión owner) — pager de DOS NIVELES con calendario multi-set (hasta 4 sets):
+ * las tarjetas llegan aplanadas por set (set 0 = tarjetas 1..12, set 1 = 13..24…) con
+ * `cardsPerSet` y `cardLabels` (meses, los mismos labels de los slots del editor). El nivel
+ * TARJETA (Anterior/Siguiente + ← →) recorre SOLO las tarjetas del set actual con wrap-around
+ * DENTRO del set (no cruza al siguiente), el nivel SET son chips «Set N de M» que saltan a la
+ * tarjeta 1 del set elegido, y el indicador aria-live anuncia mes + set («Enero — Set 1 de 3»).
+ * Con 1 solo set (sin `cardsPerSet` o setCount = 1) el comportamiento es el histórico: recorrido
+ * lineal por todas las tarjetas y título «Tarjeta N de M», sin UI de set. Mismo idioma de
+ * navegación del pager por set del 3D de lettersets (letter-set-editor, misma fecha).
+ *
  * CSP estricta: cero assets externos · client-only (WebGL) → se importa con dynamic ssr:false.
  */
 
@@ -170,10 +180,12 @@ export default function CalendarCardFocus({
   onIndexChange,
   onClose,
   onOpenGallery,
+  cardsPerSet,
+  cardLabels,
 }: {
-  /** Las tarjetas mes (texturas compuestas) en orden 1..12. */
+  /** Las tarjetas mes (texturas compuestas) en orden 1..12, aplanadas por set si hay N sets. */
   cards: Magnet3D[];
-  /** Índice de la tarjeta enfocada (0-based). */
+  /** Índice de la tarjeta enfocada (0-based, global sobre todos los sets). */
   index: number;
   onIndexChange: (next: number) => void;
   /** Cierra el modal completo (este visor es la vista raíz del flujo del calendario). */
@@ -182,6 +194,14 @@ export default function CalendarCardFocus({
    *  undefined (Fase 1A — variante SIN IMÁN): no hay escenas que asuman imán → el botón
    *  «Míralo en tu espacio» no se renderiza. */
   onOpenGallery?: () => void;
+  /** 2026-10-23 — tarjetas POR SET (12 en el calendario; la fuente real es
+   *  canvasData.unitSlots). Con N > 1 sets activa el pager de dos niveles
+   *  (recorrido por tarjeta DENTRO del set + chips de salto por set). undefined/≥ n
+   *  = un solo set (comportamiento histórico). */
+  cardsPerSet?: number;
+  /** Labels por tarjeta (meses «Enero»…«Diciembre», repetidos por set — los mismos
+   *  de los slots del editor). Alimentan el indicador «Enero — Set 1 de 3». */
+  cardLabels?: readonly string[];
 }) {
   const isTouch = useIsTouch();
   const reduced = usePrefersReducedMotion();
@@ -189,6 +209,28 @@ export default function CalendarCardFocus({
   const n = cards.length;
   const i = Math.min(Math.max(index, 0), Math.max(0, n - 1));
   const card = cards[i];
+
+  // Pager de dos niveles (2026-10-23): el set de la tarjeta actual y cuántos sets hay.
+  // perSet queda acotado a n (un cardsPerSet mayor que el total = un solo set).
+  const perSet =
+    cardsPerSet && cardsPerSet > 0 ? Math.min(cardsPerSet, Math.max(1, n)) : Math.max(1, n);
+  const setCount = Math.max(1, Math.ceil(n / perSet));
+  const activeSet = Math.min(Math.floor(i / perSet), setCount - 1);
+  // Indicador aria-live: con 1 set el histórico «Tarjeta N de M»; con N sets, mes + set
+  // («Enero — Set 1 de 3» — el «Set N de M» es el MISMO texto CMS del pager de sets del
+  // editor, unidades.unidadDe + nombreSet; sin label de tarjeta queda solo el set).
+  const setLabel = fillStudioText(texts.unidades.unidadDe, {
+    nombre: texts.unidades.nombreSet,
+    n: activeSet + 1,
+    total: setCount,
+  });
+  const cardLabel = cardLabels?.[i];
+  const title =
+    setCount > 1
+      ? cardLabel
+        ? `${cardLabel} — ${setLabel}`
+        : setLabel
+      : fillStudioText(texts.escenas.calTitulo, { n: i + 1, total: n });
 
   // Texturas por ventana (tarjeta actual ±1, precarga los vecinos → siguiente/anterior sale al
   // instante) con dispose al salir de la ventana y al desmontar el visor. El hook es DOM-safe
@@ -201,12 +243,23 @@ export default function CalendarCardFocus({
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, { onClose });
 
+  // Nivel TARJETA (2026-10-23): wrap-around DENTRO del set actual — Anterior/Siguiente
+  // nunca cruza al set vecino (para eso están los chips de set). Con 1 set perSet = n y
+  // el comportamiento es el lineal histórico.
   const go = useCallback(
     (delta: number) => {
       if (n === 0) return;
-      onIndexChange((i + delta + n) % n);
+      const within = ((((i % perSet) + delta) % perSet) + perSet) % perSet;
+      onIndexChange(activeSet * perSet + within);
     },
-    [i, n, onIndexChange],
+    [i, n, perSet, activeSet, onIndexChange],
+  );
+  // Nivel SET: salto directo a la tarjeta 1 del set elegido (chips «Set N de M»).
+  const goToSet = useCallback(
+    (set: number) => {
+      onIndexChange(Math.min(set, setCount - 1) * perSet);
+    },
+    [setCount, perSet, onIndexChange],
   );
 
   // Navegación por teclado ← → (el trap/Escape lo maneja useDialogA11y sobre el mismo nodo).
@@ -239,7 +292,7 @@ export default function CalendarCardFocus({
     >
       <div className="flex items-center justify-between gap-2 px-4 py-3 text-white sm:px-6">
         <span className="font-display text-lg font-bold" aria-live="polite">
-          {fillStudioText(texts.escenas.calTitulo, { n: i + 1, total: n })}
+          {title}
         </span>
         <div className="flex items-center gap-2">
           {/* Ola 3 — "detalle primero, espacio después": desde el detalle se SUBE a la galería
@@ -289,6 +342,36 @@ export default function CalendarCardFocus({
           {isTouch ? texts.escenas.calHintTouch : texts.escenas.calHintMouse}
         </p>
       </div>
+
+      {/* Nivel SET del pager de dos niveles (2026-10-23): chips «Set N de M» que saltan a
+          la tarjeta 1 del set elegido. Mismo idioma de chips del pager de sets del editor
+          (unidades.unidadDe + nombreSet), solo cuando hay más de un set. */}
+      {setCount > 1 && (
+        <nav
+          aria-label={texts.unidades.pagerAria}
+          className="flex flex-wrap items-center justify-center gap-2 px-4 pt-1"
+        >
+          {Array.from({ length: setCount }, (_, s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => goToSet(s)}
+              aria-pressed={s === activeSet}
+              className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-bold transition-colors focus:ring-2 focus:ring-white focus:outline-none ${
+                s === activeSet
+                  ? "text-brand-purple-dark bg-white"
+                  : "bg-white/15 text-white hover:bg-white/25"
+              }`}
+            >
+              {fillStudioText(texts.unidades.unidadDe, {
+                nombre: texts.unidades.nombreSet,
+                n: s + 1,
+                total: setCount,
+              })}
+            </button>
+          ))}
+        </nav>
+      )}
 
       {/* Navegación mes anterior / siguiente (objetivos táctiles grandes). */}
       <div className="flex items-center justify-center gap-3 px-4 pt-1 pb-4">
