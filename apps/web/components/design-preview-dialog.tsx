@@ -75,6 +75,7 @@ function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number 
 export function DesignPreviewDialog({
   previewUrl,
   pages = null,
+  pageLabels = null,
   watermarkNote = null,
   productName,
   trigger = null,
@@ -94,6 +95,13 @@ export function DesignPreviewDialog({
    * devolvía al cliente a la página 1).
    */
   pages?: string[] | null;
+  /**
+   * 2026-10-22 — rótulo por página ("Set 2 · con borde", "Tira 1"), alineado
+   * por ÍNDICE con `pages` (la página k es la unidad k). Se muestra bajo el
+   * indicador "N / M". Si su largo no cuadra con `pages` se IGNORA completo:
+   * nunca rótulos desalineados. null/ausente → comportamiento de siempre.
+   */
+  pageLabels?: (string | null)[] | null;
   /** Aviso "vista previa con marca de agua…" (CMS); null cuando lo exhibido es limpio. */
   watermarkNote?: ReactNode;
   productName: string;
@@ -125,6 +133,13 @@ export function DesignPreviewDialog({
   }
   const pageIndex = pageUrls ? Math.min(pageIndexRaw, pageUrls.length - 1) : 0;
   const currentUrl = pageUrls ? pageUrls[pageIndex]! : previewUrl;
+  // Rótulo de la página actual (2026-10-22): solo si el array cuadra con las
+  // páginas (guarda anti-desalineación — el helper server ya lo garantiza, pero
+  // el diálogo no confía en la prop).
+  const currentLabel =
+    pageUrls && pageLabels && pageLabels.length === pageUrls.length
+      ? (pageLabels[pageIndex] ?? null)
+      : null;
   // Prefetch + estado de carga por página (2026-10-19): `requestedRef` deduplica
   // los prefetch (new Image), `loaded` marca las páginas YA decodificadas —
   // mientras la página actual no está en `loaded` el visor muestra un spinner
@@ -491,12 +506,22 @@ export function DesignPreviewDialog({
               >
                 <ChevronLeft className="h-5 w-5" aria-hidden />
               </button>
-              <p
-                className="text-brand-purple-dark text-sm font-bold tabular-nums"
-                aria-live="polite"
-              >
-                {pageIndex + 1} / {pageUrls.length}
-              </p>
+              <div className="flex min-w-0 flex-col items-center gap-0.5">
+                <p
+                  className="text-brand-purple-dark text-sm font-bold tabular-nums"
+                  aria-live="polite"
+                >
+                  {pageIndex + 1} / {pageUrls.length}
+                </p>
+                {/* 2026-10-22 — qué unidad es esta página ("Set 2 · con borde"):
+                    el detalle por unidad que la línea del carrito ya no puede
+                    mostrar de forma generalista. */}
+                {currentLabel && (
+                  <p className="text-brand-muted max-w-48 text-center text-xs leading-tight text-balance">
+                    {currentLabel}
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => goPage(1)}

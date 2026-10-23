@@ -53,6 +53,10 @@ import {
   letterSetUnitCount,
 } from "@/features/personalization/design-units";
 import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
+import {
+  designPreviewPageLabels,
+  unitNounForLine,
+} from "@/features/personalization/preview-page-labels";
 import { designHasMeaningfulProgress } from "@/features/personalization/design-progress";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 import { applyVolumePricing, type VolumeTierInput } from "./volume-pricing";
@@ -95,6 +99,12 @@ export type CartLineItem = {
    * para el "Ver" paginado del carrito/pedidos; null = imagen única de siempre.
    */
   designPreviewPages: string[] | null;
+  /**
+   * 2026-10-22 — rótulo por página del "Ver" paginado ("Set 2 · con borde",
+   * "Tira 1"), alineado por índice con `designPreviewPages`. null cuando el
+   * diseño es de 1 unidad o las unidades no cuadran con las páginas.
+   */
+  designPreviewPageLabels: string[] | null;
   /** true cuando la imagen exhibida de la línea lleva marca de agua (aviso al cliente). */
   designWatermarked: boolean;
   /**
@@ -445,6 +455,10 @@ function toDetail(cart: RawCart): CartDetail {
         designId: i.designId,
         designPreviewUrl: designDisp?.displayUrl ?? null,
         designPreviewPages: designDisp?.pageUrls ?? null,
+        designPreviewPageLabels: designPreviewPageLabels(
+          i.design,
+          unitNounForLine(i.variant.product.personalizationKind, i.variant.name),
+        ),
         designWatermarked: designDisp?.watermarked ?? false,
         designUnits: designDisplayUnits(i.design),
         pieceSummary: describeLine(i),

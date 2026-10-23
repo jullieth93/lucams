@@ -19,6 +19,10 @@ import { ChevronLeft, MapPin, Package, Star, Truck, Wallet } from "lucide-react"
 import { prisma } from "@/lib/db";
 import { CmsText } from "@/components/cms/cms-text";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
+import {
+  designPreviewPageLabels,
+  unitNounForLine,
+} from "@/features/personalization/preview-page-labels";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -93,13 +97,20 @@ export default async function CustomerPedidoDetallePage({
               sku: true,
               // Paquete F (2026-10-02) — attributes: desglose estructurado de la variante.
               attributes: true,
-              product: { select: { slug: true, name: true } },
+              product: { select: { slug: true, name: true, personalizationKind: true } },
             },
           },
           design: {
             // 2026-10-13 — sellos de artefactos watermark: el detalle del pedido
             // exhibe la versión con marca de agua (y sus páginas por unidad).
-            select: { previewUrl: true, previewWatermarkedAt: true, previewPagesCount: true },
+            // 2026-10-22 — metadata + canvasData: rótulos por unidad del pager.
+            select: {
+              previewUrl: true,
+              previewWatermarkedAt: true,
+              previewPagesCount: true,
+              metadata: true,
+              canvasData: true,
+            },
           },
         },
       },
@@ -234,6 +245,11 @@ export default async function CustomerPedidoDetallePage({
             // 2026-10-13 — exhibición CON marca de agua cuando el artefacto
             // existe; el snapshot limpio (designAssetUrl) queda de fallback.
             const disp = it.design ? designPreviewDisplay(it.design) : null;
+            // 2026-10-22 — rótulo por página del pager ("Set 2 · con borde").
+            const pageLabels = designPreviewPageLabels(
+              it.design,
+              unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
+            );
             const previewUrl = disp?.watermarked
               ? disp.displayUrl
               : (it.designAssetUrl ?? it.design?.previewUrl ?? null); // ADR-070 — snapshot primero
@@ -250,6 +266,7 @@ export default async function CustomerPedidoDetallePage({
                   <DesignPreviewDialog
                     previewUrl={previewUrl}
                     pages={disp?.pageUrls ?? null}
+                    pageLabels={pageLabels}
                     watermarkNote={
                       disp?.watermarked ? (
                         <CmsText
@@ -320,6 +337,7 @@ export default async function CustomerPedidoDetallePage({
                         // 2026-10-13 — páginas por unidad (watermark) cuando el
                         // diseño las tiene: el "Ver" pagina por unidad.
                         pages={disp?.pageUrls ?? null}
+                        pageLabels={pageLabels}
                         watermarkNote={
                           disp?.watermarked ? (
                             <CmsText
