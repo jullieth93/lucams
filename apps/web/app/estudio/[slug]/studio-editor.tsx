@@ -105,6 +105,7 @@ import {
 } from "./lib/draft-marker";
 import { isBookmarkGalleryTag, resolveGalleryTag } from "./lib/product-kind";
 import { remapCanvasAssetUrls } from "./lib/remap-canvas-assets";
+import { resolveBootTemplate } from "./lib/boot-template";
 import {
   fitPreviewToBudget,
   fitDraftThumbnail,
@@ -196,7 +197,9 @@ export type StudioEditorProps = {
    * desde el TemplatesStrip de la PDP), ya resuelta contra la lista visible del
    * producto en `page.tsx`. Solo aplica al boot de un draft NUEVO (el recover
    * flow ?designId= manda: su canvas guardado es la SoT). El servidor la
-   * re-valida en createDraftDesign; null → arranca con la primera, como siempre.
+   * re-valida en createDraftDesign; null → SIN selección inicial (5.1,
+   * 2026-10-22: el checklist pide elegir plantilla; la primera solo presta
+   * geometría de render).
    */
   initialTemplateId?: string | null;
   /**
@@ -957,11 +960,15 @@ export function StudioEditor({
             };
           }
         } else {
-          const bootTemplate =
-            (initialTemplateId ? templates.find((t) => t.id === initialTemplateId) : undefined) ??
-            templates[0];
+          // 5.1 (owner 2026-10-22) — SIN plantilla seleccionada por defecto:
+          // la primera plantilla solo presta su GEOMETRÍA para dibujar el
+          // lienzo; la selección (selectedTemplateId) arranca en null y la
+          // pide el checklist «Tu diseño». Excepciones dentro de
+          // resolveBootTemplate: deep-link ?template= (elección explícita) y
+          // producto de 1 sola plantilla (elección trivial → auto-selección).
+          const bootTemplate = resolveBootTemplate(templates, initialTemplateId);
           designId = null;
-          const unitTemplate = bootTemplate?.canvasData ?? {
+          const unitTemplate = bootTemplate.geometry?.canvasData ?? {
             version: 1 as const,
             stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
             layers: [
@@ -977,7 +984,7 @@ export function StudioEditor({
               },
             ],
           };
-          templateId = bootTemplate?.id ?? null;
+          templateId = bootTemplate.templateId;
           canvasData = {
             version: 2,
             unitTemplate,
@@ -1110,7 +1117,14 @@ export function StudioEditor({
           productSlug: product.slug,
           canvasData,
           templates,
-          selectedTemplateId: templateId ?? findTemplateIdForCanvas(canvasData, templates),
+          // 5.1 (owner 2026-10-22) — un draft NUEVO sin elección explícita NO
+          // "matchea" plantilla por dimensiones (arranca sin selección y el
+          // checklist la pide). El match best-effort queda SOLO como fallback
+          // del recover (?designId=) para diseños legacy de antes de persistir
+          // Design.templateId (2026-10-12): ese diseño YA tenía una plantilla
+          // vigente — reconocerla no es un default, es continuidad.
+          selectedTemplateId:
+            templateId ?? (initialDesignId ? findTemplateIdForCanvas(canvasData, templates) : null),
           // ADR-133 — canvas recuperado del snapshot local: arrancar dirty para
           // que el auto-save lo suba sin esperar un cambio nuevo del cliente.
           startDirty: recoveredFromLocalSnapshot,
@@ -3066,6 +3080,8 @@ function defaultGridFor(
   return { cols, rows, gap };
 }
 
+// 5.1 (2026-10-22) — solo queda como fallback del RECOVER de diseños legacy
+// (sin Design.templateId persistido); un draft nuevo NUNCA matchea por acá.
 function findTemplateIdForCanvas(canvas: CanvasDataV2, templates: StudioTemplate[]): string | null {
   // Best-effort: matchear por stage dimensions del unitTemplate
   const match = templates.find(

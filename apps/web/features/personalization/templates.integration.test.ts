@@ -8,8 +8,10 @@
  *   - createDraftDesign con templateId explícito valida COMPLETO (activa, no
  *     borrada, EDITABLE, kind del producto, producto-o-global) — antes solo
  *     isActive/deletedAt.
- *   - createDraftDesign SIN templateId arranca con la primera plantilla VISIBLE
- *     (específicas > globales + filtro de aspect), la MISMA que vería el cliente.
+ *   - createDraftDesign SIN templateId toma la GEOMETRÍA de la primera
+ *     plantilla VISIBLE (específicas > globales + filtro de aspect, la MISMA
+ *     que vería el cliente) pero NO la selecciona: 5.1 (owner 2026-10-22) —
+ *     ninguna plantilla se elige por defecto, Design.templateId queda null.
  *   - saveCanvas persiste Design.templateId cuando el cliente cambia de
  *     plantilla en el sidebar, validada en servidor; si no pasa la validación el
  *     canvasData se guarda igual y el templateId queda como estaba.
@@ -250,12 +252,16 @@ describe.skipIf(!hasDb)("plantillas del Estudio — reglas N-08", { timeout: T }
       }
     });
 
-    it("sin templateId arranca con la primera VISIBLE (aspect), no con la primera activa a secas", async () => {
+    it("sin templateId: geometría de la primera VISIBLE (aspect) pero SIN selección (templateId null)", async () => {
       // specA4x5 tiene order 0 (ganaría sin filtro de aspect) pero es 4:5 contra
-      // el 1:1 del producto → el draft debe arrancar con specA1x1 (order 1), la
-      // misma plantilla que el cliente vería primera en el sidebar.
+      // el 1:1 del producto → la geometría del draft sale de specA1x1 (order 1),
+      // la misma plantilla que el cliente vería primera en el sidebar.
+      // 5.1 (owner 2026-10-22): la geometría NO es una elección — ninguna
+      // plantilla queda seleccionada por defecto (templateId null).
       const design = await createDraftDesign({ productId: productAId, ...OWNER });
-      expect(design.templateId).toBe(specA1x1Id);
+      expect(design.templateId).toBeNull();
+      const cd = design.canvasData as { unitTemplate: { stage: { width: number } } };
+      expect(cd.unitTemplate.stage.width).toBe(1080);
     });
 
     it("la variante elegida define los slots iniciales del draft", async () => {
@@ -304,7 +310,13 @@ describe.skipIf(!hasDb)("plantillas del Estudio — reglas N-08", { timeout: T }
     });
 
     it("con templateId inválido guarda el canvas igual y CONSERVA el templateId anterior", async () => {
-      const design = await createDraftDesign({ productId: productAId, ...OWNER });
+      // 5.1 (2026-10-22) — el draft ya no trae selección por defecto: el
+      // "templateId anterior" del test se siembra con elección explícita.
+      const design = await createDraftDesign({
+        productId: productAId,
+        templateId: specA1x1Id,
+        ...OWNER,
+      });
       expect(design.templateId).toBe(specA1x1Id);
 
       const nuevoCanvas = { ...(design.canvasData as object), marca: RUN };
@@ -325,7 +337,11 @@ describe.skipIf(!hasDb)("plantillas del Estudio — reglas N-08", { timeout: T }
     });
 
     it("sin templateId en el payload no toca Design.templateId", async () => {
-      const design = await createDraftDesign({ productId: productAId, ...OWNER });
+      const design = await createDraftDesign({
+        productId: productAId,
+        templateId: specA1x1Id,
+        ...OWNER,
+      });
       await saveCanvas({ designId: design.id, canvasData: design.canvasData as never, ...OWNER });
       const row = await prisma.design.findUnique({
         where: { id: design.id },

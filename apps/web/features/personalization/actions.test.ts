@@ -244,7 +244,7 @@ describe("createDraftDesignAction · templateId del boot (N-08)", () => {
     });
   });
 
-  it("sin templateId crea el draft con la plantilla por defecto (undefined al service)", async () => {
+  it("sin templateId crea el draft sin plantilla seleccionada (undefined al service)", async () => {
     const result = await createDraftDesignAction({ productId: "prod_1" });
     expect(result).toMatchObject({ ok: true, designId: "design_d1" });
     expect(state.createDraftArgs[0]).toMatchObject({ productId: "prod_1", templateId: undefined });

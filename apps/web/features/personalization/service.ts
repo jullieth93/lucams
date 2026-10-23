@@ -535,7 +535,7 @@ export async function createDraftDesign(opts: {
   // Cargar unitTemplate desde PersonalizationTemplate (si se pasó templateId
   // explícito) o el primer template VISIBLE del kind del producto.
   let unitTemplate: CanvasDataV1;
-  let templateIdToUse: string | null = opts.templateId ?? null;
+  const templateIdToUse: string | null = opts.templateId ?? null;
 
   if (opts.templateId) {
     const tpl = await findUsableEditableTemplate({
@@ -548,11 +548,12 @@ export async function createDraftDesign(opts: {
     }
     unitTemplate = tpl.canvasData as unknown as CanvasDataV1;
   } else {
-    // Default: primera plantilla VISIBLE para el producto — MISMAS reglas que la
-    // página del Estudio (listTemplatesForKind: EDITABLE, específicas > globales,
-    // filtro de aspect). Antes era "primera activa del kind" sin aspect ni mode y
-    // el draft del servidor podía arrancar con una plantilla distinta de la que
-    // veía el cliente (inconsistencia server/cliente — N-08).
+    // Sin elección explícita: la primera plantilla VISIBLE presta solo su
+    // GEOMETRÍA al canvas del draft (específicas > globales + filtro de aspect,
+    // la MISMA que vería primera el cliente — N-08) pero NO queda seleccionada:
+    // 5.1 (owner 2026-10-22) — ninguna plantilla se elige por defecto, así
+    // Design.templateId queda null y el checklist «Tu diseño» pide la elección
+    // (el recover ya no la "hereda" sin que el cliente la haya tocado).
     const tpl = (
       await listTemplatesForKind(product.personalizationKind, {
         productId: product.id,
@@ -562,7 +563,6 @@ export async function createDraftDesign(opts: {
     )[0];
     if (tpl) {
       unitTemplate = tpl.canvasData as unknown as CanvasDataV1;
-      templateIdToUse = tpl.id;
     } else {
       // Fallback (ADR-063 T4): stage 1080×1080 con placeholder de foto full-stage. Antes solo
       // traía `background` (sin image-placeholder) → la foto no tenía dónde ubicarse. Con el

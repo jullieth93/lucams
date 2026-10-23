@@ -163,7 +163,9 @@ export function StudioSidebar({
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const handleChecklistSelect = (id: StudioChecklistStepId) => {
-    if (id === "fotos") {
+    if (id === "plantillas") {
+      scrollToSection("#sidebar-plantillas");
+    } else if (id === "fotos") {
       scrollToSection("#sidebar-mis-fotos");
     } else if (id === "predisenados") {
       setPredesignedOpen(true);

@@ -13,13 +13,15 @@
  * es el MISMO componente) y badge con el conteo de pendientes sobre el FAB
  * «Editar» (lo monta studio-editor con `useStudioChecklist`).
  *
- * Solo cuentan como PENDIENTES los pasos que bloquean «Ver diseño»: fotos
- * requeridas y datos IG. Prediseñados y mensaje son descubribles pero
- * opcionales (no suman al badge — nunca agobian).
+ * Cuentan como PENDIENTES: la elección de plantilla (5.1, owner 2026-10-22 —
+ * ninguna viene seleccionada por defecto; el paso solo aparece con >1
+ * plantilla, con 1 la elección es trivial y se auto-selecciona en el boot),
+ * las fotos requeridas y los datos IG. Prediseñados y mensaje son
+ * descubribibles pero opcionales (no suman al badge — nunca agobian).
  */
 
 import type { LucideIcon } from "lucide-react";
-import { AtSign, Camera, Check, MessageSquareHeart, Sparkles } from "lucide-react";
+import { AtSign, Camera, Check, LayoutTemplate, MessageSquareHeart, Sparkles } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { igMissingRequiredTextLayersPerSlot } from "@/features/personalization/instagram-template-spec";
@@ -33,7 +35,8 @@ import {
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
-export type StudioChecklistStepId = "fotos" | "predisenados" | "mensaje" | "publicacion";
+export type StudioChecklistStepId =
+  "plantillas" | "fotos" | "predisenados" | "mensaje" | "publicacion";
 
 export type StudioChecklistStep = {
   id: StudioChecklistStepId;
@@ -44,6 +47,7 @@ export type StudioChecklistStep = {
 };
 
 const STEP_ICONS: Record<StudioChecklistStepId, LucideIcon> = {
+  plantillas: LayoutTemplate,
   fotos: Camera,
   predisenados: Sparkles,
   mensaje: MessageSquareHeart,
@@ -59,6 +63,13 @@ export function useStudioChecklist(
   opts: { allowText?: boolean; hasPredesigned?: boolean; backOptional?: boolean },
 ): { steps: StudioChecklistStep[]; pendingCount: number } {
   const texts = useStudioTexts();
+  // «Elige tu plantilla» (5.1, 2026-10-22) — primera decisión del flujo: sin
+  // plantilla seleccionada por defecto, el paso nace pendiente y se completa
+  // al aplicar una (applyTemplate fija selectedTemplateId). Con 0 o 1
+  // plantilla no aplica: 0 = nada que elegir; 1 = elección trivial que el
+  // boot auto-selecciona (resolveBootTemplate).
+  const selectedTemplateId = useStore(store, (s) => s.selectedTemplateId);
+  const templatesCount = useStore(store, (s) => s.templates.length);
   const filled = useStore(store, selectFilledSlotCount);
   const total = useStore(store, selectTotalSlotCount);
   const missingPhotos = useStore(
@@ -100,6 +111,13 @@ export function useStudioChecklist(
   });
 
   const steps: StudioChecklistStep[] = [];
+  if (templatesCount > 1) {
+    steps.push({
+      id: "plantillas",
+      label: texts.checklist.pasoPlantillas,
+      state: selectedTemplateId ? "complete" : "pending",
+    });
+  }
   if (total > 0) {
     steps.push({
       id: "fotos",
