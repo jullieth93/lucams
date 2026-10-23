@@ -71,6 +71,8 @@ export type UploadAssetSuccess = {
   ok: true;
   assetId: string;
   signedUrl: string;
+  /** ADR-166 — derivado ≤800px para el lienzo (null = usar el master). */
+  canvasUrl?: string | null;
   width: number;
   height: number;
   validationLevel?: StudioAsset["validationLevel"];
@@ -237,6 +239,7 @@ async function processOne(file: File, opts: ProcessPhotoFilesOptions): Promise<P
     asset: {
       id: result.assetId,
       signedUrl: result.signedUrl,
+      canvasUrl: result.canvasUrl ?? null,
       width: result.width,
       height: result.height,
       // Si hubo upscale local, las dimensiones de la ORIGINAL (metadata de

@@ -105,6 +105,7 @@ import {
 } from "./lib/draft-marker";
 import { isBookmarkGalleryTag, resolveGalleryTag } from "./lib/product-kind";
 import { remapCanvasAssetUrls } from "./lib/remap-canvas-assets";
+import { resolveBootTemplate } from "./lib/boot-template";
 import {
   fitPreviewToBudget,
   fitDraftThumbnail,
@@ -143,6 +144,7 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
 import { createStudioStore } from "./lib/store";
 import { createSerialTaskQueue } from "./lib/serial-task-queue";
 import { waitForSlotPhotosReady } from "./lib/slot-photo-readiness";
+import { runWithPrintMasters } from "./lib/print-master-mode";
 import { resolveSlotNoun, type SlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
 import { collectQualityWarnings, qualityWarningsKey } from "./lib/quality-warnings";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
@@ -196,7 +198,9 @@ export type StudioEditorProps = {
    * desde el TemplatesStrip de la PDP), ya resuelta contra la lista visible del
    * producto en `page.tsx`. Solo aplica al boot de un draft NUEVO (el recover
    * flow ?designId= manda: su canvas guardado es la SoT). El servidor la
-   * re-valida en createDraftDesign; null → arranca con la primera, como siempre.
+   * re-valida en createDraftDesign; null → SIN selección inicial (5.1,
+   * 2026-10-22: el checklist pide elegir plantilla; la primera solo presta
+   * geometría de render).
    */
   initialTemplateId?: string | null;
   /**
@@ -546,6 +550,10 @@ export function StudioEditor({
     isPolaroid?: boolean;
     facesPerUnit?: number;
     flat?: boolean;
+    /** 2026-10-23 — calendario multi-set: tarjetas por set + labels de mes (pager de
+     *  dos niveles del visor de detalle). Solo las llena handleOpenCalendar3D. */
+    cardsPerSet?: number;
+    cardLabels?: readonly string[];
   } | null>(null);
   const [sceneBuilding, setSceneBuilding] = useState(false);
   // CAL4 — construcción perezosa de las tarjetas mes para la galería (botón "Ver mi calendario").
@@ -957,11 +965,15 @@ export function StudioEditor({
             };
           }
         } else {
-          const bootTemplate =
-            (initialTemplateId ? templates.find((t) => t.id === initialTemplateId) : undefined) ??
-            templates[0];
+          // 5.1 (owner 2026-10-22) — SIN plantilla seleccionada por defecto:
+          // la primera plantilla solo presta su GEOMETRÍA para dibujar el
+          // lienzo; la selección (selectedTemplateId) arranca en null y la
+          // pide el checklist «Tu diseño». Excepciones dentro de
+          // resolveBootTemplate: deep-link ?template= (elección explícita) y
+          // producto de 1 sola plantilla (elección trivial → auto-selección).
+          const bootTemplate = resolveBootTemplate(templates, initialTemplateId);
           designId = null;
-          const unitTemplate = bootTemplate?.canvasData ?? {
+          const unitTemplate = bootTemplate.geometry?.canvasData ?? {
             version: 1 as const,
             stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
             layers: [
@@ -977,7 +989,7 @@ export function StudioEditor({
               },
             ],
           };
-          templateId = bootTemplate?.id ?? null;
+          templateId = bootTemplate.templateId;
           canvasData = {
             version: 2,
             unitTemplate,
@@ -1110,7 +1122,14 @@ export function StudioEditor({
           productSlug: product.slug,
           canvasData,
           templates,
-          selectedTemplateId: templateId ?? findTemplateIdForCanvas(canvasData, templates),
+          // 5.1 (owner 2026-10-22) — un draft NUEVO sin elección explícita NO
+          // "matchea" plantilla por dimensiones (arranca sin selección y el
+          // checklist la pide). El match best-effort queda SOLO como fallback
+          // del recover (?designId=) para diseños legacy de antes de persistir
+          // Design.templateId (2026-10-12): ese diseño YA tenía una plantilla
+          // vigente — reconocerla no es un default, es continuidad.
+          selectedTemplateId:
+            templateId ?? (initialDesignId ? findTemplateIdForCanvas(canvasData, templates) : null),
           // ADR-133 — canvas recuperado del snapshot local: arrancar dirty para
           // que el auto-save lo suba sin esperar un cambio nuevo del cliente.
           startDirty: recoveredFromLocalSnapshot,
@@ -1915,7 +1934,23 @@ export function StudioEditor({
         wCm: 7.5,
         hCm: 10,
       }));
-      setSceneMagnets({ magnets: cards, cols: 4, kind: "calendar", sizeCm: "7.5×10" });
+      // 2026-10-23 (owner) — pager de DOS NIVELES en el visor de detalle multi-set:
+      // las tarjetas por set salen de la fuente real (canvasData.unitSlots, ?? 12 — mismo
+      // fallback del montaje de la Vista Previa, :1658) y los labels de mes son los MISMOS
+      // de los slots del editor (slotLabels de la PDP, repetidos por unidad — misma regla
+      // de resolvedSlotLabels, :794). Con 1 set el visor queda como siempre.
+      const unitSlots = state.canvasData.unitSlots ?? 12;
+      const cardLabels = slotLabels
+        ? Array.from({ length: cards.length }, (_, i) => slotLabels[i % slotLabels.length])
+        : undefined;
+      setSceneMagnets({
+        magnets: cards,
+        cols: 4,
+        kind: "calendar",
+        sizeCm: "7.5×10",
+        cardsPerSet: unitSlots,
+        cardLabels,
+      });
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
@@ -1932,6 +1967,7 @@ export function StudioEditor({
     calendarLayout,
     liveCalendarFont,
     calendarBuilding,
+    slotLabels,
     texts,
   ]);
 
@@ -2029,57 +2065,68 @@ export function StudioEditor({
         // DIRECTO a Storage. Ese camino no pasa por la Function, así que no tiene techo de tamaño.
         if (!result.ok && result.code === "NEEDS_CLIENT_SLOTS") {
           await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
-          // Misma espera de decodificación que los previews/3D (slot-photo-readiness):
-          // el PNG de imprenta NO puede hornear el placeholder lila — el stage
-          // montado no implica foto decodificada (useImage es async).
-          await waitForSlotPhotosReady(canvasData.slots, slotStagesRef.current);
-          // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
-          // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
-          // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
-          // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
-          const logicalStageW = canvasData.unitTemplate.stage.width;
-          // Los snapshots se generan 1 a 1 (Konva exporta en el main thread) pero
-          // las SUBIDAS van en paralelo (tope 3) con retry+timeout — ver
-          // lib/upload-with-retry.ts. Antes eran PUTs secuenciales sin retry y un
-          // micro-corte de red tumbaba el confirmar con el error crudo del
-          // navegador en pantalla (fix STG 2026-10-05).
-          const uploadRequests: StoragePutRequest[] = [];
-          for (const { slotIndex, url } of result.uploads) {
-            const stage = slotStagesRef.current.get(slotIndex);
-            if (!stage) {
-              throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
+          // ADR-166 (2026-10-22): el lienzo carga el derivado ≤800px; los PNG de
+          // IMPRENTA de este fallback se rasterizan de los stages, así que durante
+          // el snapshot los slots conmutan al MASTER (runWithPrintMasters hace
+          // preload + espera determinista por src del nodo slot-photo).
+          // (capturado antes del wrapper: el narrowing de `result` no cruza el async)
+          const stagedUploads = result.uploads;
+          await runWithPrintMasters(canvasData.slots, slotStagesRef.current, async () => {
+            // Misma espera de decodificación que los previews/3D (slot-photo-readiness):
+            // el PNG de imprenta NO puede hornear el placeholder lila — el stage
+            // montado no implica foto decodificada (useImage es async).
+            await waitForSlotPhotosReady(canvasData.slots, slotStagesRef.current);
+            // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
+            // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
+            // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
+            // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
+            const logicalStageW = canvasData.unitTemplate.stage.width;
+            // Los snapshots se generan 1 a 1 (Konva exporta en el main thread) pero
+            // las SUBIDAS van en paralelo (tope 3) con retry+timeout — ver
+            // lib/upload-with-retry.ts. Antes eran PUTs secuenciales sin retry y un
+            // micro-corte de red tumbaba el confirmar con el error crudo del
+            // navegador en pantalla (fix STG 2026-10-05).
+            const uploadRequests: StoragePutRequest[] = [];
+            for (const { slotIndex, url } of stagedUploads) {
+              const stage = slotStagesRef.current.get(slotIndex);
+              if (!stage) {
+                throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
+              }
+              // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y
+              // los indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos
+              // de PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y
+              // se restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
+              // indicadores — se ocultan también allá.)
+              const hiddenForSnapshot = [
+                ...stage.find(".realism"),
+                ...stage.find(".edit-indicator"),
+              ];
+              hiddenForSnapshot.forEach((l) => l.hide());
+              let dataUrl: string;
+              try {
+                const displayW = stage.width() || logicalStageW;
+                const pixelRatio = (logicalStageW * 3) / displayW;
+                dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
+              } finally {
+                hiddenForSnapshot.forEach((l) => l.show());
+              }
+              // FOTO1: heart/circle → recortar a la silueta (transparente afuera).
+              dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
+              uploadRequests.push({
+                url,
+                body: dataUrlToBlob(dataUrl),
+                contentType: "image/png",
+              });
             }
-            // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y
-            // los indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos
-            // de PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y
-            // se restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
-            // indicadores — se ocultan también allá.)
-            const hiddenForSnapshot = [...stage.find(".realism"), ...stage.find(".edit-indicator")];
-            hiddenForSnapshot.forEach((l) => l.hide());
-            let dataUrl: string;
             try {
-              const displayW = stage.width() || logicalStageW;
-              const pixelRatio = (logicalStageW * 3) / displayW;
-              dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
-            } finally {
-              hiddenForSnapshot.forEach((l) => l.show());
+              await uploadAllWithRetry(uploadRequests);
+            } catch {
+              // Mensaje amigable orientado a acción — el error crudo del motor
+              // ("NetworkError when attempting to fetch resource") no le dice
+              // nada al cliente.
+              throw new Error(texts.exportar.errorSubidaArchivos);
             }
-            // FOTO1: heart/circle → recortar a la silueta (transparente afuera).
-            dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
-            uploadRequests.push({
-              url,
-              body: dataUrlToBlob(dataUrl),
-              contentType: "image/png",
-            });
-          }
-          try {
-            await uploadAllWithRetry(uploadRequests);
-          } catch {
-            // Mensaje amigable orientado a acción — el error crudo del motor
-            // ("NetworkError when attempting to fetch resource") no le dice
-            // nada al cliente.
-            throw new Error(texts.exportar.errorSubidaArchivos);
-          }
+          });
           const retry = buildFinalizeForm();
           retry.set("useStagedSlots", "1");
           result = await finalizeDesignAction(retry);
@@ -2712,6 +2759,9 @@ export function StudioEditor({
           isPolaroid={sceneMagnets.isPolaroid}
           facesPerUnit={sceneMagnets.facesPerUnit}
           flat={sceneMagnets.flat}
+          // 2026-10-23 — calendario multi-set: pager de dos niveles en el detalle.
+          cardsPerSet={sceneMagnets.cardsPerSet}
+          cardLabels={sceneMagnets.cardLabels}
           // Fase 1A — calendario "Sin imán": la galería oculta las escenas que
           // asumen imán (nevera/tablero); el detalle sigue disponible.
           magnet={liveMagnet}
@@ -3066,6 +3116,8 @@ function defaultGridFor(
   return { cols, rows, gap };
 }
 
+// 5.1 (2026-10-22) — solo queda como fallback del RECOVER de diseños legacy
+// (sin Design.templateId persistido); un draft nuevo NUNCA matchea por acá.
 function findTemplateIdForCanvas(canvas: CanvasDataV2, templates: StudioTemplate[]): string | null {
   // Best-effort: matchear por stage dimensions del unitTemplate
   const match = templates.find(

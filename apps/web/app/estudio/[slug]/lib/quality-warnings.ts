@@ -44,6 +44,9 @@ function toWarning(asset: StudioAsset): StudioQualityWarning | null {
   return {
     assetId: asset.id,
     signedUrl: asset.signedUrl,
+    // ADR-166 — la miniatura del aviso usa el derivado cuando existe (48px en
+    // pantalla: el master sería peso puro).
+    canvasUrl: asset.canvasUrl ?? null,
     level: asset.validationLevel as StudioQualityWarning["level"],
     message: asset.validationMessage,
     recommendation: asset.validationRecommendation,

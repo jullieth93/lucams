@@ -11701,6 +11701,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 200,
             },
             {
+              key: "estudio.checklist.paso-plantillas",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Checklist: paso plantillas",
+              helpText:
+                "Paso bloqueante — visible solo si el producto tiene más de 1 plantilla; ninguna viene seleccionada por defecto (5.1, 2026-10-22).",
+              category: "HOME",
+              body: "Elige tu plantilla",
+              sortOrder: 205,
+            },
+            {
               key: "estudio.checklist.paso-fotos",
               kind: "BLOCK",
               type: "TEXT",

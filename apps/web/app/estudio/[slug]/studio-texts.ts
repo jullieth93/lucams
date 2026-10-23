@@ -797,6 +797,9 @@ export type StudioTexts = {
    *  «Editar» en móvil (badge con el conteo de pasos pendientes). */
   checklist: {
     titulo: string;
+    /** Paso de plantillas (5.1, 2026-10-22): solo con >1 plantilla; pendiente
+     *  hasta que el cliente elija una (ninguna viene seleccionada por defecto). */
+    pasoPlantillas: string;
     pasoFotos: string;
     /** Detalle del paso de fotos: {n} listas de {total}. */
     pasoFotosDetalle: string;
@@ -1538,6 +1541,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
   },
   checklist: {
     titulo: "Tu diseño",
+    pasoPlantillas: "Elige tu plantilla",
     pasoFotos: "Sube tus fotos",
     pasoFotosDetalle: "{n} de {total} listas",
     pasoPredisenados: "Elige diseños prediseñados",
@@ -2159,6 +2163,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "unidades.descCalendarios": "estudio.unidades.desc-calendarios",
   "unidades.resumenCalendarios": "estudio.unidades.resumen-calendarios",
   "checklist.titulo": "estudio.checklist.titulo",
+  "checklist.pasoPlantillas": "estudio.checklist.paso-plantillas",
   "checklist.pasoFotos": "estudio.checklist.paso-fotos",
   "checklist.pasoFotosDetalle": "estudio.checklist.paso-fotos-detalle",
   "checklist.pasoPredisenados": "estudio.checklist.paso-predisenados",

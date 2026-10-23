@@ -923,6 +923,102 @@ describe("uploadCustomerPhoto — camino feliz + firma de URL", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// uploadCustomerPhoto — derivado de lienzo ≤800px (ADR-166)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("uploadCustomerPhoto — derivado de lienzo (ADR-166)", () => {
+  const ownerId = "owner-123";
+  let bigPng: Buffer; // 1600×1200 — genera derivado
+  let smallPng: Buffer; // 640×480 — NO genera derivado
+
+  beforeAll(async () => {
+    bigPng = await sharp({
+      create: { width: 1600, height: 1200, channels: 3, background: { r: 40, g: 90, b: 160 } },
+    })
+      .png()
+      .toBuffer();
+    smallPng = await sharp({
+      create: { width: 640, height: 480, channels: 3, background: { r: 200, g: 200, b: 90 } },
+    })
+      .png()
+      .toBuffer();
+  });
+
+  it("master > 800px: genera el derivado WebP ≤800px como objeto hermano .canvas.webp y lo firma", async () => {
+    const result = await uploadCustomerPhoto({
+      buffer: bigPng,
+      originalMimeType: "image/png",
+      ownerId,
+      designId: "design-7",
+    });
+
+    // El MASTER sigue siendo el path principal (imprenta lo lee por este path).
+    expect(result.path).toMatch(/^owner-123\/design-7\/[0-9a-f-]{36}\.png$/);
+    expect(result.width).toBe(1600);
+    expect(result.height).toBe(1200);
+
+    // Derivado: hermano <uuid>.canvas.webp, firmado con el mismo TTL 1h.
+    expect(result.canvasPath).toBe(result.path.replace(/\.png$/, ".canvas.webp"));
+    expect(result.canvasSignedUrl).toBe(
+      `https://ref.supabase.co/sign/${result.canvasPath}?token=tok`,
+    );
+
+    // 2 uploads: master (image/png) + derivado (image/webp, mismo owner_id RLS).
+    expect(uploadMock).toHaveBeenCalledTimes(2);
+    const [dPath, dBuffer, dOpts] = uploadMock.mock.calls[1];
+    expect(dPath).toBe(result.canvasPath);
+    expect(dOpts).toMatchObject({
+      contentType: "image/webp",
+      cacheControl: "3600",
+      upsert: false,
+      metadata: { owner_id: ownerId },
+    });
+    // El derivado decodifica a ≤800px de borde largo (sin agrandar el otro eje).
+    const dMeta = await sharp(dBuffer).metadata();
+    expect(Math.max(dMeta.width ?? 0, dMeta.height ?? 0)).toBeLessThanOrEqual(800);
+    expect(dMeta.format).toBe("webp");
+
+    // 2 firmas: master + derivado, ambas TTL 1h.
+    expect(createSignedUrlMock).toHaveBeenCalledTimes(2);
+    expect(createSignedUrlMock.mock.calls[1][0]).toBe(result.canvasPath);
+    expect(createSignedUrlMock.mock.calls[1][1]).toBe(3600);
+  });
+
+  it("master ≤ 800px: NO genera derivado (canvasPath null → el cliente usa el master)", async () => {
+    const result = await uploadCustomerPhoto({
+      buffer: smallPng,
+      originalMimeType: "image/png",
+      ownerId,
+      designId: "design-7",
+    });
+    expect(result.canvasPath).toBeNull();
+    expect(result.canvasSignedUrl).toBeNull();
+    // Solo el upload + la firma del master.
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+    expect(createSignedUrlMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("derivado falla → la subida NO falla: canvasPath null y el master queda intacto (fail-open)", async () => {
+    // Primer upload (master) OK; segundo (derivado) falla.
+    uploadMock
+      .mockResolvedValueOnce({ error: null })
+      .mockResolvedValueOnce({ error: { message: "quota exceeded" } });
+    const result = await uploadCustomerPhoto({
+      buffer: bigPng,
+      originalMimeType: "image/png",
+      ownerId,
+      designId: "design-7",
+    });
+    expect(result.path).toMatch(/\.png$/);
+    expect(result.signedUrl).toContain("?token=tok");
+    expect(result.canvasPath).toBeNull();
+    expect(result.canvasSignedUrl).toBeNull();
+    // El master se firmó; la firma del derivado no se intentó tras el fallo.
+    expect(createSignedUrlMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // refreshCustomerUploadSignedUrl — re-firma de URL existente
 // ─────────────────────────────────────────────────────────────────────────────
 describe("refreshCustomerUploadSignedUrl", () => {
@@ -974,7 +1070,9 @@ describe("uploadCustomerPhoto — HEIC de iPhone (heic-decode)", () => {
     expect(result.height).toBe(854);
     expect(result.exifStripped).toBe(true);
     // El upload se hizo con el JPEG procesado, no con el HEIC original.
-    expect(uploadMock).toHaveBeenCalledTimes(1);
+    // (1280×854 > 800px → también se sube el derivado de lienzo, ADR-166: 2 uploads;
+    // el PRIMERO es siempre el master que lee imprenta.)
+    expect(uploadMock).toHaveBeenCalledTimes(2);
     const [, body, opts] = uploadMock.mock.calls[0];
     expect((opts as { contentType?: string }).contentType).toBe("image/jpeg");
     expect(Buffer.isBuffer(body)).toBe(true);

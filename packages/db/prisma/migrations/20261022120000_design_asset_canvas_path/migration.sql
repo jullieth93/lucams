@@ -1,0 +1,22 @@
+-- Derivado liviano para el lienzo del Estudio (ADR-166, 2026-10-22).
+--
+-- Hoy el lienzo Konva carga el MASTER completo de la foto (borde largo
+-- ≤2400px, hasta ~4 MB) vía signed URL — es la principal carga de red y
+-- decodificación de la entrada a /estudio. El master solo lo necesita
+-- imprenta (render server-side a 300 DPI, ADR-081, que lo lee del bucket por
+-- `storageUrl` y NO cambia).
+--
+-- `canvasPath` guarda el path del derivado WebP (borde largo ≤800px) que
+-- `uploadCustomerPhoto` genera como objeto hermano
+-- `<ownerId>/<designId|pending>/<uuid>.canvas.webp` en el mismo bucket
+-- privado `customer-uploads`. El lienzo (y las texturas 3D, que componen
+-- desde snapshots Konva) cargan el derivado; el cliente cae al master cuando
+-- la columna es null (assets previos a esta migración — sin backfill — o
+-- masters que ya venían ≤800px y no generan derivado).
+--
+-- Aditiva y reversible (DROP COLUMN), sin locks largos (columna nullable sin
+-- default = metadata-only). Escrita a mano y aplicada con `migrate deploy` —
+-- `migrate dev` no funciona contra esta DB (shadow DB en Supabase,
+-- convención del repo).
+
+ALTER TABLE "DesignAsset" ADD COLUMN "canvasPath" TEXT;

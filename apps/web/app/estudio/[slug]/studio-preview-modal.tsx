@@ -1087,7 +1087,7 @@ export function StudioPreviewModal({
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element -- signed URL temporal del cliente */}
                   <img
-                    src={w.signedUrl}
+                    src={w.canvasUrl ?? w.signedUrl}
                     alt=""
                     className={[
                       "h-12 w-12 shrink-0 rounded-md object-cover ring-1",

@@ -11,12 +11,13 @@
  *
  * jsdom no trae canvas 2D ni toBlob → se stubbean (el dibujo real de la lámina lo cubren los tests
  * puros de letter-tile-textures). Las server actions se mockean: acá se verifica el ORDEN, no el
- * servidor.
+ * servidor. Al final hay también una suite de la VISTA 3D multi-set con pager por set
+ * (2026-10-23), que mockea la vista WebGL (room-board-view-3d) y espía la construcción de texturas.
  */
 
 import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
 const push = vi.fn();
@@ -56,6 +57,43 @@ vi.mock("@/features/personalization/actions", () => ({
 }));
 vi.mock("@/app/carrito/actions", () => ({
   addPersonalizedToCartAction: (input: unknown) => addPersonalizedToCartAction(input),
+}));
+
+// Suite de la vista 3D multi-set (2026-10-23 — pager por set): se mockea la vista WebGL
+// (jsdom no tiene WebGL; next/dynamic resuelve igual el módulo mockeado) y se ESPÍA la
+// construcción de texturas para contar los sets y las fichas que viajan al tablero.
+// El resto del módulo queda real (drawLetterTile/metrics los usa el compositor 2D).
+// El dataUrl de cada ficha se etiqueta con el PRIMER color del set → el test distingue
+// qué set está mostrando el tablero.
+const buildLetterTileTexturesSpy = vi.fn(
+  (letters: readonly string[], _tiles: unknown, colors: unknown, _withBorder?: unknown) =>
+    Promise.resolve(
+      letters.map((ch) => ({
+        dataUrl: `data:image/png;base64,${(colors as readonly string[])[0]}-${ch}`,
+        wRatio: 5,
+        hRatio: 6.5,
+        shape: "rectangle" as const,
+      })),
+    ),
+);
+vi.mock("./lib/letter-tile-textures", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/letter-tile-textures")>();
+  return {
+    ...actual,
+    buildLetterTileTextures: (
+      letters: readonly string[],
+      tiles: unknown,
+      colors: unknown,
+      withBorder?: unknown,
+    ) => buildLetterTileTexturesSpy(letters, tiles, colors, withBorder),
+  };
+});
+const roomBoardView3DProps = vi.fn();
+vi.mock("./room-board-view-3d", () => ({
+  default: (props: { magnets: { dataUrl: string }[]; cols: number; style: string }) => {
+    roomBoardView3DProps(props);
+    return <div data-testid="room-board-3d" />;
+  },
 }));
 
 import { LetterSetEditor } from "./letter-set-editor";
@@ -718,5 +756,85 @@ describe("LetterSetEditor — estilo/borde por set y preview paginado (2026-10-1
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/carrito?personalized=1"));
     expect(uploadDesignPreviewPagesAction).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * 2026-10-23 (feedback del owner — supera la de 2026-10-22 de «todos los sets juntos»):
+ * la vista 3D del tablero memo muestra UN set a la vez con pager «Set N de M», mismo
+ * idioma de navegación del visor tarjeta-a-tarjeta del calendario (CalendarCardFocus):
+ * flechas Anterior/Siguiente, indicador de posición aria-live y wrap-around. Las
+ * texturas de todos los sets se construyen upfront (una llamada por set con SUS
+ * colores) y navegar solo cambia qué array recibe RoomBoardView3D.
+ */
+describe("LetterSetEditor — vista 3D con pager por set (2026-10-23)", () => {
+  beforeEach(() => {
+    buildLetterTileTexturesSpy.mockClear();
+    roomBoardView3DProps.mockClear();
+  });
+
+  const open3D = () =>
+    fireEvent.click(
+      screen.getByRole("button", { name: "Ver tus fichas en un tablero magnético 3D" }),
+    );
+  const lastBoardProps = () => roomBoardView3DProps.mock.calls.at(-1)![0];
+  // El dialog 3D (aria-label CMS setTableroAria): los chips «Set N de M» del pager del
+  // EDITOR también existen en el DOM detrás del modal → las aserciones del indicador se
+  // acotan al dialog.
+  const dialog3D = () =>
+    screen.getByRole("dialog", { name: "Vista 3D de tus fichas en un tablero magnético" });
+
+  it("con 2 unidades: un set a la vez, indicador «Set 1 de 2» y el pager cambia al set 2 con SUS colores", async () => {
+    const colorsA = ["#FF0000", "#00FF00", "#0000FF", "#123456", "#654321"];
+    const colorsB = ["#AAAAAA", "#BBBBBB", "#CCCCCC", "#DDDDDD", "#EEEEEE"];
+    renderEditor({
+      initialUnits: 2,
+      initialColorTheme: "nino",
+      initialUnitColors: [colorsA, colorsB],
+    });
+    open3D();
+    expect(await screen.findByTestId("room-board-3d")).toBeInTheDocument();
+
+    // Texturas de AMBOS sets construidas upfront, cada una con los colores de SU set.
+    expect(buildLetterTileTexturesSpy).toHaveBeenCalledTimes(2);
+    expect(buildLetterTileTexturesSpy.mock.calls[0]![2]).toEqual(colorsA);
+    expect(buildLetterTileTexturesSpy.mock.calls[1]![2]).toEqual(colorsB);
+
+    // …pero el tablero muestra SOLO el set 1 (5 vocales, no 10), con «Set 1 de 2».
+    expect(lastBoardProps().magnets).toHaveLength(5);
+    expect(lastBoardProps().cols).toBe(5);
+    expect(lastBoardProps().magnets[0]!.dataUrl).toContain(colorsA[0]);
+    expect(within(dialog3D()).getByText("Set 1 de 2")).toBeInTheDocument();
+
+    // «Siguiente» → el tablero pasa a las fichas del SET 2 (sus colores) sin
+    // reconstruir texturas (siguen siendo 2 llamadas al builder).
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    await waitFor(() => expect(lastBoardProps().magnets[0]!.dataUrl).toContain(colorsB[0]));
+    expect(lastBoardProps().magnets).toHaveLength(5);
+    expect(within(dialog3D()).getByText("Set 2 de 2")).toBeInTheDocument();
+    expect(buildLetterTileTexturesSpy).toHaveBeenCalledTimes(2);
+
+    // Wrap-around (idioma del visor del calendario): «Siguiente» en el último set
+    // vuelve al primero, y «Anterior» regresa al set 2.
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    await waitFor(() => expect(lastBoardProps().magnets[0]!.dataUrl).toContain(colorsA[0]));
+    expect(within(dialog3D()).getByText("Set 1 de 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Unidad anterior" }));
+    await waitFor(() => expect(lastBoardProps().magnets[0]!.dataUrl).toContain(colorsB[0]));
+  });
+
+  it("con 1 set: sin pager (ni flechas ni indicador), el tablero muestra las fichas del set", async () => {
+    renderEditor();
+    open3D();
+    expect(await screen.findByTestId("room-board-3d")).toBeInTheDocument();
+
+    expect(buildLetterTileTexturesSpy).toHaveBeenCalledTimes(1);
+    expect(lastBoardProps().magnets).toHaveLength(5);
+    expect(lastBoardProps().cols).toBe(5);
+    expect(screen.queryByRole("button", { name: "Unidad siguiente" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Unidad anterior" })).toBeNull();
+    expect(within(dialog3D()).queryByText(/Set 1 de 1/)).toBeNull();
+    // El conteo de fichas del set visible sigue como rótulo overlay.
+    expect(within(dialog3D()).getByText("5 fichas")).toBeInTheDocument();
   });
 });

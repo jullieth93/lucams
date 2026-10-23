@@ -38,7 +38,7 @@ vi.mock("@/lib/supabase/service", () => ({
 const NOW = new Date("2026-10-13T12:00:00.000Z");
 const hoursAgo = (n: number) => new Date(NOW.getTime() - n * 60 * 60 * 1000);
 
-type FakeAsset = { storageUrl: string; designId: string | null };
+type FakeAsset = { storageUrl: string; designId: string | null; canvasPath?: string | null };
 
 type FakeDesign = {
   id: string;
@@ -225,16 +225,26 @@ vi.mock("@/lib/db", () => ({
     designAsset: {
       // Bytes compartidos: assets de OTROS diseños (designId notIn) con el mismo
       // storageUrl — el clon READY→DRAFT referencia las fotos del original.
+      // ADR-166: la consulta real es un OR (storageUrl | canvasPath) — el mock
+      // replica ambas ramas (los fixtures no tienen canvasPath: la rama del
+      // derivado nunca matchea, como en producción con assets previos).
       findMany: async ({
         where,
       }: {
-        where: { storageUrl: { in: string[] }; designId: { notIn: string[] } };
-      }) =>
-        allAssets.filter(
+        where: {
+          OR: Array<{ storageUrl?: { in: string[] }; canvasPath?: { in: string[] } }>;
+          designId: { notIn: string[] };
+        };
+      }) => {
+        const storageIn = where.OR.find((c) => c.storageUrl)?.storageUrl?.in ?? [];
+        const canvasIn = where.OR.find((c) => c.canvasPath)?.canvasPath?.in ?? [];
+        return allAssets.filter(
           (a) =>
-            where.storageUrl.in.includes(a.storageUrl) &&
+            (storageIn.includes(a.storageUrl) ||
+              (a.canvasPath != null && canvasIn.includes(a.canvasPath))) &&
             (a.designId === null || !where.designId.notIn.includes(a.designId)),
-        ),
+        );
+      },
       deleteMany: async ({ where }: { where: { designId: { in: string[] } } }) => {
         deletedAssetDesignIds.push(...where.designId.in);
         allAssets = allAssets.filter((a) => !where.designId.in.includes(a.designId ?? ""));

@@ -286,6 +286,7 @@ export function StudioPhotoPreview({
             {calendarCard ? (
               <CalendarCardLayer
                 assetUrl={slotState.assetUrl}
+                canvasUrl={slotState.canvasUrl ?? null}
                 photoTransform={slotState.photoTransform ?? null}
                 year={calendarCard.year}
                 monthIndex0={calendarCard.monthIndex0}

@@ -163,7 +163,9 @@ export function StudioSidebar({
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const handleChecklistSelect = (id: StudioChecklistStepId) => {
-    if (id === "fotos") {
+    if (id === "plantillas") {
+      scrollToSection("#sidebar-plantillas");
+    } else if (id === "fotos") {
       scrollToSection("#sidebar-mis-fotos");
     } else if (id === "predisenados") {
       setPredesignedOpen(true);
@@ -1082,7 +1084,7 @@ function AssetThumb({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={asset.signedUrl}
+              src={asset.canvasUrl ?? asset.signedUrl}
               alt={`Foto subida ${idx + 1}`}
               className={[
                 "h-full w-full object-cover transition-opacity",

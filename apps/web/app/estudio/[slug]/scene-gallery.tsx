@@ -34,6 +34,10 @@
  * → vuelve al detalle de donde vino (la tarjeta que se estaba leyendo se conserva). La galería
  * pausa su useDialogA11y mientras el visor está activo → cero trap anidado.
  *
+ * 2026-10-23 (decisión owner) — calendario multi-set: el visor de detalle gana un pager de
+ * DOS NIVELES (tarjetas dentro del set con wrap-around + chips «Set N de M» de salto directo,
+ * indicador «Enero — Set 1 de 3»); la galería solo reenvía `cardsPerSet`/`cardLabels`.
+ *
  * Las texturas por imán (recortadas a su silueta) se calculan UNA vez en el editor y se pasan acá;
  * las escenas 3D las usan directo y los compositores 2D se arman perezosamente al abrir su chip y
  * se cachean. Las vistas 3D se importan diferidas (WebGL, client-only). `sizeCm` (tamaño real de
@@ -254,6 +258,10 @@ export function SceneGallery({
    *  «Míralo en tu espacio» se omite. undefined conserva el comportamiento de
    *  siempre. */
   magnet,
+  /** 2026-10-23 — calendario multi-set: tarjetas por set (unitSlots) y sus labels de mes,
+   *  para el pager de dos niveles del visor de detalle (CalendarCardFocus). */
+  cardsPerSet,
+  cardLabels,
 }: {
   magnets: Magnet3D[];
   cols: number;
@@ -270,6 +278,9 @@ export function SceneGallery({
   flat?: boolean;
   /** Fase 1A/2.10 — variante SIN IMÁN (false): sin escenas que afirman imán. */
   magnet?: boolean;
+  /** 2026-10-23 — calendario multi-set: tarjetas por set y labels de mes por tarjeta. */
+  cardsPerSet?: number;
+  cardLabels?: readonly string[];
 }) {
   const scenes = useMemo(
     // SIN IMÁN (Fase 2.10, owner 2026-10-07): las escenas que afirman imán se
@@ -539,6 +550,10 @@ export function SceneGallery({
           // Fase 1A — SIN IMÁN no hay escenas "en tu espacio" que ofrecer: el
           // botón «Míralo en tu espacio» se omite (sin destino al que subir).
           onOpenGallery={scenes.length > 0 ? openGallery : undefined}
+          // 2026-10-23 — pager de dos niveles multi-set (tarjeta dentro del set +
+          // chips de set); undefined = un solo set (comportamiento histórico).
+          cardsPerSet={cardsPerSet}
+          cardLabels={cardLabels}
         />
       )}
     </div>

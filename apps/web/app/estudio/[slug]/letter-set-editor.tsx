@@ -41,12 +41,16 @@
  * (styleSetId/withBorder) quedan como representante del set 1 para retrocompatibilidad.
  * La Vista Previa se PAGINA por set (pages de StudioPreviewModal) y las mismas páginas se
  * suben tras el finalize (uploadDesignPreviewPagesAction) para el "Ver" paginado del carrito.
+ * 2026-10-22 (decisión del owner) — la vista 3D del tablero memo deja de mostrar solo el
+ * set activo. 2026-10-23 (feedback owner sobre esa entrega): NO todos los sets juntos en un
+ * tablero, sino UN set a la vez con pager «Set N de M» (flechas Anterior/Siguiente + ← →),
+ * mismo idioma de navegación del visor tarjeta-a-tarjeta del calendario (CalendarCardFocus).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import nextDynamic from "next/dynamic";
-import { Box, Copy, Loader2, Minus, Plus, X } from "lucide-react";
+import { Box, ChevronLeft, ChevronRight, Copy, Loader2, Minus, Plus, X } from "lucide-react";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import {
   createLetterSetDesignAction,
@@ -606,7 +610,13 @@ export function LetterSetEditor({
 
   // Ola 2B — Vista 3D de las fichas en el tablero memo (modal fullscreen, WebGL diferido).
   // Las texturas se dibujan UNA vez al abrir (mismo dibujo que el preview 2D → WYSIWYG).
-  const [board3D, setBoard3D] = useState<Magnet3D[] | null>(null);
+  // 2026-10-23 (feedback owner — supera la de 2026-10-22 de «todos los sets juntos»): el
+  // tablero muestra UN set a la vez con pager «Set N de M», mismo idioma de navegación del
+  // visor tarjeta-a-tarjeta del calendario (CalendarCardFocus: flechas Anterior/Siguiente,
+  // posición aria-live, ← →, wrap-around). `board3D` guarda las texturas POR SET y
+  // `board3DUnit` es el set visible en el modal.
+  const [board3D, setBoard3D] = useState<Magnet3D[][] | null>(null);
+  const [board3DUnit, setBoard3DUnit] = useState(0);
   const [building3D, setBuilding3D] = useState(false);
   const board3DRef = useRef<HTMLDivElement>(null);
   const closeBoard3D = useCallback(() => setBoard3D(null), []);
@@ -618,15 +628,17 @@ export function LetterSetEditor({
     if (building3D) return;
     setBuilding3D(true);
     try {
-      // El 3D muestra el SET ACTIVO con SU estilo, colores y borde (2026-10-19).
-      setBoard3D(
-        await buildLetterTileTextures(
-          letters,
-          tilesForUnit(activeUnit),
-          colorsForUnit(activeUnit),
-          borderForUnit(activeUnit),
+      // Texturas de TODOS los sets UPFRONT (una llamada por set, en paralelo — cada set
+      // ya paraleliza adentro las cargas de imagen): el tope es 10 sets × 27 fichas y así
+      // navegar entre sets sale AL INSTANTE, sin reconstruir texturas en cada página.
+      // El pager arranca en el set ACTIVO del editor (lo que el cliente estaba mirando).
+      const perUnit = await Promise.all(
+        Array.from({ length: unitCount }, (_, u) =>
+          buildLetterTileTextures(letters, tilesForUnit(u), colorsForUnit(u), borderForUnit(u)),
         ),
       );
+      setBoard3DUnit(activeUnit);
+      setBoard3D(perUnit);
     } catch (err) {
       // #14 — detalle técnico al log; al cliente un mensaje claro es-CO.
       console.error("[studio.letter-set.3d]", err);
@@ -636,11 +648,48 @@ export function LetterSetEditor({
     }
   }
 
-  // Grid del tablero: packs chicos (vocales) en una sola fila; el abecedario en grilla ~√n.
+  // Navegación del pager 3D con wrap-around (misma fórmula del visor del calendario).
+  const go3DUnit = useCallback(
+    (delta: number) => {
+      setBoard3DUnit((u) => (u + delta + unitCount) % unitCount);
+    },
+    [unitCount],
+  );
+  // ← → cambian de set (mismo patrón de CalendarCardFocus; el trap/Esc lo da useDialogA11y).
+  useEffect(() => {
+    const node = board3DRef.current;
+    if (!node || board3D === null || unitCount <= 1) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        go3DUnit(-1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        go3DUnit(1);
+      }
+    };
+    node.addEventListener("keydown", onKey);
+    return () => node.removeEventListener("keydown", onKey);
+  }, [board3D, unitCount, go3DUnit]);
+
+  // Set visible en el modal (clamp defensivo) y grid del tablero sobre ESE set: packs
+  // chicos (vocales) en una sola fila; el abecedario en grilla ~√n (comportamiento clásico
+  // — el pager 2026-10-23 vuelve a mostrar un set por página, n = letters.length).
+  const board3DSet =
+    board3D === null ? null : (board3D[Math.min(board3DUnit, board3D.length - 1)] ?? null);
   const boardCols =
-    board3D === null || board3D.length <= 8
-      ? Math.max(1, board3D?.length ?? 1)
-      : Math.ceil(Math.sqrt(board3D.length));
+    board3DSet === null || board3DSet.length <= 8
+      ? Math.max(1, board3DSet?.length ?? 1)
+      : Math.ceil(Math.sqrt(board3DSet.length));
+
+  // Rótulo overlay del modal 3D (patrón countBadgeLabel de scene-gallery, que para
+  // «letters» también hardcodea ficha/fichas; no hay clave CMS para este conteo):
+  // conteo de fichas del set visible ("27 fichas"). La posición «Set N de M» va en el
+  // header del modal (multi-set), como en el visor del calendario.
+  const board3DBadge = (() => {
+    const total = board3DSet?.length ?? 0;
+    return `${total} ${total === 1 ? "ficha" : "fichas"}`;
+  })();
 
   /**
    * Cambio de tema de UN set (2026-10-19 — estilo POR SET): actualiza el estado
@@ -1393,6 +1442,18 @@ export function LetterSetEditor({
         >
           <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
             <span className="font-display text-lg font-bold">{texts.escenas.setTableroTitulo}</span>
+            {/* Pager 3D (2026-10-23 — feedback owner): indicador de posición «Set N de M»
+                con aria-live, mismo idioma del visor tarjeta-a-tarjeta del calendario
+                (CalendarCardFocus) y mismo texto CMS del pager de sets del editor. */}
+            {unitCount > 1 && (
+              <span className="text-sm font-bold text-white/90" aria-live="polite">
+                {fillStudioText(texts.unidades.unidadDe, {
+                  nombre: texts.unidades.nombreSet,
+                  n: board3DUnit + 1,
+                  total: unitCount,
+                })}
+              </span>
+            )}
             <button
               type="button"
               onClick={closeBoard3D}
@@ -1403,11 +1464,40 @@ export function LetterSetEditor({
             </button>
           </div>
           <div className="relative flex-1">
-            <RoomBoardView3D magnets={board3D} cols={boardCols} style="memo" />
+            <RoomBoardView3D magnets={board3DSet ?? []} cols={boardCols} style="memo" />
+            {/* Conteo de fichas del set visible (patrón countBadgeLabel de scene-gallery).
+                Overlay DOM, sin tocar el canvas WebGL. */}
+            <p className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-center text-xs font-bold text-white">
+              {board3DBadge}
+            </p>
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
             </p>
           </div>
+          {/* Navegación set anterior / siguiente (2026-10-23): mismas pills grandes del
+              visor del calendario, con wrap-around y ← → (efecto sobre board3DRef). */}
+          {unitCount > 1 && (
+            <div className="flex items-center justify-center gap-3 px-4 pt-1 pb-4">
+              <button
+                type="button"
+                onClick={() => go3DUnit(-1)}
+                aria-label={texts.exportar.pagerAnteriorAria}
+                className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white/15 px-5 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+              >
+                <ChevronLeft className="h-5 w-5" aria-hidden />
+                <span>{texts.comun.anterior}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => go3DUnit(1)}
+                aria-label={texts.exportar.pagerSiguienteAria}
+                className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white/15 px-5 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+              >
+                <span>{texts.comun.siguiente}</span>
+                <ChevronRight className="h-5 w-5" aria-hidden />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </>

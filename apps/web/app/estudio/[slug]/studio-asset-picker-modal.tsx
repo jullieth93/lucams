@@ -484,7 +484,7 @@ export function StudioAssetPickerModal({
               <div className="border-brand-purple/20 hover:border-brand-purple focus-within:border-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 disabled:scale-100">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={asset.signedUrl}
+                  src={asset.canvasUrl ?? asset.signedUrl}
                   alt={texts.fotos.fotoSubidaAlt}
                   className="h-full w-full object-cover"
                   loading="lazy"

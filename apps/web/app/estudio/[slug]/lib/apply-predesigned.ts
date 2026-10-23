@@ -86,6 +86,7 @@ async function resolvePredesignedAssets(
   const a: StudioAsset = {
     id: res.assetId,
     signedUrl: res.signedUrl,
+    canvasUrl: res.canvasUrl ?? null,
     width: res.width,
     height: res.height,
   };
@@ -93,6 +94,7 @@ async function resolvePredesignedAssets(
     ? {
         id: res.assetB.assetId,
         signedUrl: res.assetB.signedUrl,
+        canvasUrl: res.assetB.canvasUrl ?? null,
         width: res.assetB.width,
         height: res.assetB.height,
       }
