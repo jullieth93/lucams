@@ -52,7 +52,8 @@ export function igUsernameOverride(display: string): string | null {
  * guardar:
  *
  *  - Con coma: hasta 2 segmentos separados por coma (ciudad, país), cada uno
- *    multi-palabra, con inicial mayúscula en cada palabra.
+ *    multi-palabra, capitalizado por palabra (inicial mayúscula, resto
+ *    minúscula — "bOGOTÁ,COLOMBIA" → "Bogotá, Colombia").
  *  - Sin coma: 2 palabras exactas se leen como «Ciudad País» (compat con la
  *    convención vieja: "bogotá colombia" → "Bogotá, Colombia"); 1 palabra o
  *    3+ palabras se toman como UN solo lugar ("Korea del Sur" → "Korea Del
@@ -73,12 +74,12 @@ export const IG_LOCATION_MAX_SEGMENTS = 2;
 /** Largo máximo del input de ubicación (una línea corta del post impreso). */
 export const IG_LOCATION_MAX_LENGTH = 40;
 
-/** Primera letra en mayúscula (locale es-CO: tildes/ñ capitalizan bien). */
+/** Capitaliza la palabra: inicial mayúscula y el RESTO en minúscula (locale es-CO: tildes/ñ). */
 function capitalizeIgLocationWord(word: string): string {
-  return word.charAt(0).toLocaleUpperCase("es") + word.slice(1);
+  return word.charAt(0).toLocaleUpperCase("es") + word.slice(1).toLocaleLowerCase("es");
 }
 
-/** Inicial mayúscula por palabra dentro del segmento (conserva el resto). */
+/** Capitaliza cada palabra del segmento ("bOGOTÁ" → "Bogotá"; owner 2026-10-27). */
 function capitalizeIgLocationSegment(segment: string): string {
   return segment
     .split(" ")
