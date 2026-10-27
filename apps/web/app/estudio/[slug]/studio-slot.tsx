@@ -148,6 +148,12 @@ type StudioSlotProps = {
   /** Ola 2A — color del marco alrededor de la foto (hex #RRGGBB). null = sin marco. */
   borderColor?: string | null;
   /**
+   * Grosor del borde (2026-10-26) — FACTOR sobre el grosor base del producto
+   * (1 = histórico). Lo resuelve el grid con resolveBorderWidthFactor contra el
+   * rango del producto; producción consume el mismo valor (WYSIWYG).
+   */
+  borderWidthFactor?: number | null;
+  /**
    * Ola 3b (Lucy 2026-07-22) — el producto ofrece marcos de color (frameOptions).
    * Con borderColor la tarjeta completa se pinta del color y la foto va INSERTA
    * (frame-card full-bleed, "el color llega al fin del papel"), en vez del stroke
@@ -254,6 +260,7 @@ function StudioSlotImpl({
   cornerRadiusPx,
   showRealismGuides,
   borderColor,
+  borderWidthFactor = null,
   frameFullBleed = false,
   overlayActions = false,
   allowText = false,
@@ -978,6 +985,7 @@ function StudioSlotImpl({
                     // chrome oscuro), tira (borde exterior por posición), texto opcional.
                     {
                       borderColor: borderColor ?? null,
+                      borderWidthFactor,
                       allowText,
                       hasFrameCard,
                       fullBleed,
@@ -1471,6 +1479,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.cornerRadiusPx === next.cornerRadiusPx &&
     prev.showRealismGuides === next.showRealismGuides &&
     prev.borderColor === next.borderColor &&
+    prev.borderWidthFactor === next.borderWidthFactor &&
     prev.frameFullBleed === next.frameFullBleed &&
     prev.overlayActions === next.overlayActions &&
     prev.allowText === next.allowText &&
@@ -1519,6 +1528,12 @@ export function renderLayer(
    */
   opts?: {
     borderColor?: string | null;
+    /**
+     * Grosor del borde (2026-10-26) — FACTOR sobre el grosor base (1 = histórico):
+     * escala la franja full-bleed (frameBleedMargin) y el inset/canaletas de la
+     * tira (stripPhotoRect). Mismo valor que consume producción (WYSIWYG).
+     */
+    borderWidthFactor?: number | null;
     allowText?: boolean;
     hasFrameCard?: boolean;
     fullBleed?: boolean;
@@ -1556,6 +1571,7 @@ export function renderLayer(
   },
 ) {
   const borderColor = opts?.borderColor ?? null;
+  const borderWidthFactor = opts?.borderWidthFactor ?? 1;
   const allowText = opts?.allowText ?? false;
   const fullBleed = opts?.fullBleed ?? false;
   const isIg = opts?.isIg ?? false;
@@ -1644,15 +1660,20 @@ export function renderLayer(
       };
       let photoCornerRadius = baseLayer.cornerRadius;
       if (frameFullBleed && simpleCard && !useFullStage) {
-        const r = simpleCardPhotoRect(stage, borderColor, frameBleedMargin(stage));
+        const r = simpleCardPhotoRect(
+          stage,
+          borderColor,
+          frameBleedMargin(stage, borderWidthFactor),
+        );
         photoRect = r;
         photoCornerRadius = 0;
       } else if (fullBleed && borderColor && !useFullStage && !isIg) {
-        photoRect = insetToMinMargin(photoRect, stage, frameBleedMargin(stage));
+        photoRect = insetToMinMargin(photoRect, stage, frameBleedMargin(stage, borderWidthFactor));
       }
       if (stripPosition) {
         photoRect = stripPhotoRect(photoRect, stage, stripPosition, {
           borderless: isStripBorderless(photoRect, stage),
+          borderWidthFactor,
         });
       }
       const effectiveLayer = {

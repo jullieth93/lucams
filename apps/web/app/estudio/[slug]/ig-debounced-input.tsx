@@ -34,6 +34,7 @@ export function IgDebouncedInput({
   className,
   describedBy,
   autoCapitalize,
+  commitEcho,
   footer,
 }: {
   inputId: string;
@@ -49,10 +50,18 @@ export function IgDebouncedInput({
   className?: string;
   describedBy?: string;
   autoCapitalize?: string;
+  /**
+   * 2026-10-26 — eco del commit en formato DISPLAY (el valor que el store
+   *  devuelve tras el commit): sin él, en campos cuyo commit TRANSFORMA el
+   *  texto (ubicación: capitaliza y normaliza la coma), el sync del hook
+   *  reseteaba el draft a los ~350 ms y se comía el espacio que el cliente
+   *  estaba tecleando ("Santa Marta" imposible).
+   */
+  commitEcho?: (committed: string) => string;
   /** Contenido bajo el input que depende del draft vivo (p. ej. el contador). */
   footer?: (draft: string) => ReactNode;
 }) {
-  const { draft, change, flush } = useDebouncedCommit(value, onCommit);
+  const { draft, change, flush } = useDebouncedCommit(value, onCommit, undefined, commitEcho);
 
   return (
     <>

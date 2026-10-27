@@ -190,6 +190,7 @@ export async function buildCompositedPreview(
       dataUrl: snapshotSlotForPreview(stage, slot, {
         unitTemplate,
         borderColor: canvasData.borderColor ?? null,
+        borderWidthFactor: canvasData.borderWidthFactor ?? null,
       }),
     });
     await yieldToMain();
@@ -350,6 +351,7 @@ export async function buildBookmarkStripPreview(
     const dataUrl = snapshotSlotForPreview(stage, slot, {
       unitTemplate,
       borderColor: canvasData.borderColor ?? null,
+      borderWidthFactor: canvasData.borderWidthFactor ?? null,
     });
     faceJobs.push(
       loadImage(dataUrl).then((img) => {
@@ -558,6 +560,7 @@ export async function buildMagnetTextures(
       dataUrl: snapshotSlotForPreview(stage, slot, {
         unitTemplate,
         borderColor: canvasData.borderColor ?? null,
+        borderWidthFactor: canvasData.borderWidthFactor ?? null,
       }),
     });
     await yieldToMain();

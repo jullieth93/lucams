@@ -18,7 +18,7 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { createStudioStore } from "./lib/store";
 import type { CanvasDataV2 } from "./types";
@@ -56,6 +56,11 @@ vi.mock("@/features/personalization/actions", () => ({
 }));
 
 import { StudioSidebar } from "./studio-sidebar";
+
+// jsdom no implementa scrollIntoView: el resaltado guiado de plantillas lo usa.
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
 
 afterEach(cleanup);
 
@@ -206,7 +211,9 @@ describe("StudioSidebar — miniatura watermark de prediseñados (3.10, 2026-10-
  *      los lienzos ocupados de esa cara y el cliente elige cuál reemplazar
  *      (antes: solo un toast y callejón sin salida).
  *   4. Prediseño con imageUrlB → SIN pregunta de cara: llena cara A + cara B
- *      del primer par libre; sin par libre → modal de reemplazo (caras A).
+ *      del primer par libre; sin par libre → modal de reemplazo por UNIDADES
+ *      (2026-10-26: elegir un separador reemplaza sus 2 caras — antes solo la
+ *      cara A y el par quedaba mezclado).
  *   5. "Pregunta SIEMPRE" (owner 2026-10-19): el clic de la grilla IGNORA el
  *      slot seleccionado — assignAssetToSlot lo auto-selecciona al aplicar y
  *      eso hacía que los clics siguientes sobrescribieran sin preguntar.
@@ -385,27 +392,28 @@ describe("StudioSidebar — regla de caras en la aplicación global (2026-10-12)
     expect(assignCalls).toHaveLength(1); // no se subió nada todavía
   });
 
-  it("diseño de 2 caras SIN par libre → modal de reemplazo solo con caras A (anclas de unidad)", async () => {
+  it("diseño de 2 caras SIN par libre → modal de reemplazo por UNIDADES y el par se reemplaza completo (2026-10-26)", async () => {
     const store = renderTwoFaceSidebar(4, [0, 1, 2, 3]);
     clickDesign(TWO_FACES);
 
+    // Antes (bug): el modal ofrecía solo caras A y el reemplazo dejaba el par
+    // mezclado (A nueva + B vieja, con un toast genérico). Ahora ofrece
+    // SEPARADORES completos y elegir uno reemplaza sus 2 caras.
     expect(
-      await screen.findByRole("dialog", { name: "¿Cuál lienzo quieres reemplazar?" }),
-    ).toBeInTheDocument();
-    // Candidatas: solo las caras A ocupadas (slots 0 y 2 → «Lienzo 1»/«Lienzo 3»).
-    expect(
-      screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 1" }),
+      await screen.findByRole("dialog", { name: "¿Cuál separador quieres reemplazar?" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 3" }),
+      screen.getByRole("button", { name: "Reemplazar las 2 caras del separador 1" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Reemplazar el diseño del lienzo 2" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Reemplazar las 2 caras del separador 2" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Reemplazar el diseño del lienzo/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reemplazar las 2 caras del separador 2" }));
     await waitFor(() => expect(assignCalls).toHaveLength(1));
-    // La cara A de la unidad 2 se reemplaza; su cara B ocupada NO se pisa
-    // (bBlocked → aviso), misma regla de nunca pisar contenido.
-    expect(faceSlotsOf(store)).toEqual(["own-0", "own-1", "asset-g2-ab-a", "own-3"]);
+    // Las 2 caras del separador 2 quedan con el diseño nuevo (nada mezclado).
+    expect(faceSlotsOf(store)).toEqual(["own-0", "own-1", "asset-g2-ab-a", "asset-g2-ab-b"]);
   });
 
   it("producto de 1 cara SIN lienzos libres → modal de reemplazo con TODOS los lienzos ocupados", async () => {
@@ -444,6 +452,71 @@ describe("StudioSidebar — regla de caras en la aplicación global (2026-10-12)
     );
     expect(assignCalls).toHaveLength(0);
     expect(faceSlotsOf(store)).toEqual([null, null, null, null]);
+  });
+});
+
+/*
+ * 2026-10-26 — botón «Ver» (ojo) de cada tarjeta de prediseñado: abre el
+ * preview en Dialog (PredesignedViewDialog) — la única vía de ver el diseño
+ * en grande en táctil (el HoverCard es hover-only y en coarse ni se monta).
+ * «Usar este diseño» = la MISMA acción del click de la tarjeta.
+ */
+describe("StudioSidebar — botón «Ver» del prediseñado (preview en Dialog, 2026-10-26)", () => {
+  beforeEach(() => {
+    assignCalls.length = 0;
+  });
+
+  function renderSidebarWithPreview() {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes-polaroid-clasica",
+      canvasData: minimalCanvas(),
+      templates: [],
+    });
+    render(
+      <TooltipProvider>
+        <StudioSidebar
+          store={store}
+          productName="Set Fotoimanes"
+          productSku="SFP-01"
+          predesigned={predesignedItems(2)}
+        />
+      </TooltipProvider>,
+    );
+    return store;
+  }
+
+  it("«Ver» abre el preview en grande SIN aplicar nada; «Usar este diseño» aplica y cierra", async () => {
+    const store = renderSidebarWithPreview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ver el diseño Diseño 1 en grande" }));
+
+    // Preview abierto con la imagen grande; NO se aplicó ni se subió nada.
+    expect(await screen.findByRole("dialog", { name: "Diseño 1" })).toBeInTheDocument();
+    expect(assignCalls).toHaveLength(0);
+    expect(store.getState().canvasData!.slots.every((s) => s.assetId === null)).toBe(true);
+
+    // «Usar este diseño» aplica el MISMO flujo del click de la tarjeta.
+    fireEvent.click(screen.getByRole("button", { name: "Usar este diseño" }));
+    await waitFor(() => expect(assignCalls).toHaveLength(1));
+    expect(store.getState().canvasData!.slots[0]!.assetId).toBe("asset-g0-a");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Diseño 1" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("cerrar el preview no aplica nada", async () => {
+    renderSidebarWithPreview();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ver el diseño Diseño 2 en grande" }));
+    const dialog = await screen.findByRole("dialog", { name: "Diseño 2" });
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Diseño 2" })).not.toBeInTheDocument(),
+    );
+    expect(assignCalls).toHaveLength(0);
   });
 });
 
@@ -502,5 +575,137 @@ describe("StudioSidebar — prediseñado como primera acción SIN draft (draft L
     // El error lo muestra el caller (toast); el contrato es: jamás silencioso
     // y jamás una subida sin designId.
     await waitFor(() => expect(assignCalls).toHaveLength(0));
+  });
+});
+
+/*
+ * Ola 2 (2026-10-26) — densidad móvil + plantilla prominente:
+ *   1. density="compact" (instancia del sheet móvil): grillas de 4 columnas y
+ *      paddings menores; el aside desktop (default) no cambia.
+ *   2. La sección «Plantillas» va ANTES de «Mis fotos» (es el primer paso del
+ *      checklist) y, con >1 plantillas sin elección, lleva el chip «Pendiente».
+ *   3. Bloqueo guiado: templateNudgeSignal (intento de «Ver diseño» sin
+ *      plantilla) scrollea a la sección y la resalta (ring turquesa).
+ */
+describe("StudioSidebar — Ola 2: densidad compacta y plantilla prominente (2026-10-26)", () => {
+  const tpl = (id: string) =>
+    ({
+      id,
+      slug: id,
+      name: `Plantilla ${id}`,
+      previewUrl: "",
+      canvasData: minimalCanvas().unitTemplate,
+    }) as import("./types").StudioTemplate;
+
+  function renderOla2(opts: {
+    density?: "default" | "compact";
+    templates?: import("./types").StudioTemplate[];
+    templateNudgeSignal?: number;
+    withAsset?: boolean;
+  }) {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes-polaroid-clasica",
+      canvasData: minimalCanvas(),
+      templates: opts.templates ?? [],
+    });
+    if (opts.withAsset) {
+      store.getState().addAsset({
+        id: "a1",
+        signedUrl: "https://x/a1.png",
+        width: 100,
+        height: 100,
+      });
+    }
+    render(
+      <TooltipProvider>
+        <StudioSidebar
+          store={store}
+          productName="Set Fotoimanes"
+          productSku="SFP-01"
+          density={opts.density}
+          templateNudgeSignal={opts.templateNudgeSignal}
+        />
+      </TooltipProvider>,
+    );
+    return store;
+  }
+
+  it("density=compact: la grilla de «Mis fotos» pasa a 4 columnas (default: 3, intacto en desktop)", () => {
+    const { unmount } = render(
+      <TooltipProvider>
+        <StudioSidebar
+          store={renderOla2StoreWithAsset()}
+          productName="Set Fotoimanes"
+          productSku="SFP-01"
+          density="compact"
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByRole("list", { name: "Fotos subidas" }).className).toContain("grid-cols-4");
+    unmount();
+
+    render(
+      <TooltipProvider>
+        <StudioSidebar
+          store={renderOla2StoreWithAsset()}
+          productName="Set Fotoimanes"
+          productSku="SFP-01"
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByRole("list", { name: "Fotos subidas" }).className).toContain("grid-cols-3");
+  });
+
+  function renderOla2StoreWithAsset() {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes-polaroid-clasica",
+      canvasData: minimalCanvas(),
+      templates: [],
+    });
+    store.getState().addAsset({ id: "a1", signedUrl: "https://x/a1.png", width: 100, height: 100 });
+    return store;
+  }
+
+  it("«Plantillas» va ANTES de «Mis fotos» en el panel", () => {
+    renderOla2({ templates: [tpl("t1"), tpl("t2")] });
+    const plantillas = screen.getByText("Plantillas");
+    const misFotos = screen.getByText("Mis fotos");
+    expect(
+      plantillas.compareDocumentPosition(misFotos) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("con >1 plantillas sin elección: chip «Pendiente» en el encabezado; al elegir desaparece", () => {
+    const store = renderOla2({ templates: [tpl("t1"), tpl("t2")] });
+    // El checklist también usa la palabra «Pendiente» (estados de pasos): el
+    // chip es el que lleva el fondo amarillo del encabezado de la sección.
+    const section = screen.getByText("Plantillas").closest("section")!;
+    const chip = within(section).getByText("Pendiente");
+    expect(chip.className).toContain("bg-brand-yellow/40");
+
+    act(() => store.getState().setSelectedTemplate("t1"));
+    expect(within(section).queryByText("Pendiente")).toBeNull();
+  });
+
+  it("templateNudgeSignal (bloqueo guiado): la sección de plantillas se resalta y scrollea a la vista", async () => {
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
+    renderOla2({ templates: [tpl("t1"), tpl("t2")], templateNudgeSignal: Date.now() });
+
+    const section = screen.getByText("Plantillas").closest("section");
+    // El flash se prende en un callback diferido del effect (regla
+    // react-hooks/set-state-in-effect): se espera un tick.
+    await waitFor(() => expect(section?.className).toContain("ring-brand-turquoise"));
+    expect(scrollSpy).toHaveBeenCalled();
+    scrollSpy.mockRestore();
+  });
+
+  it("sin nudge (o nudge viejo): la sección no se resalta", () => {
+    renderOla2({ templates: [tpl("t1"), tpl("t2")] });
+    const section = screen.getByText("Plantillas").closest("section");
+    expect(section?.className).not.toContain("ring-brand-turquoise");
   });
 });

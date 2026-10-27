@@ -87,4 +87,66 @@ describe("useDebouncedCommit — commit debounced de los campos IG", () => {
     unmount();
     expect(commits).toEqual(["pendiente"]);
   });
+
+  // 2026-10-26 — bug "la ubicación no deja poner espacios": el commit
+  // TRANSFORMA el texto ("bogotá " → "Bogotá") y el sync externo comparaba el
+  // valor transformado del store contra el draft CRUDO del último commit →
+  // nunca igualaban → el draft se reseteaba ~350 ms tras cada pausa y se comía
+  // el espacio/la palabra que el cliente seguía tecleando.
+  describe("commitEcho (campos cuyo commit TRANSFORMA el texto)", () => {
+    const echo = (v: string) => v.trim().replace(/^./, (c) => c.toUpperCase());
+
+    function setupEcho(initial = "") {
+      vi.useFakeTimers();
+      const commits: string[] = [];
+      const hook = renderHook(
+        ({ value }) =>
+          useDebouncedCommit(value, (v) => commits.push(v), IG_FIELD_COMMIT_DEBOUNCE_MS, echo),
+        { initialProps: { value: initial } },
+      );
+      return { commits, ...hook };
+    }
+
+    it("el eco TRANSFORMADO del propio commit no resetea el draft (la pausa a mitad de escritura sobrevive)", () => {
+      const { result, commits, rerender } = setupEcho();
+
+      // Escribe "bogotá", pausa → commit. El store devuelve el valor
+      // TRANSFORMADO ("Bogotá"), no el draft crudo.
+      act(() => result.current.change("bogotá"));
+      act(() => vi.advanceTimersByTime(IG_FIELD_COMMIT_DEBOUNCE_MS));
+      expect(commits).toEqual(["bogotá"]);
+      rerender({ value: "Bogotá" });
+
+      // Sigue escribiendo: el draft NO se reseteó a "Bogotá".
+      act(() => result.current.change("bogotá, colombia"));
+      expect(result.current.draft).toBe("bogotá, colombia");
+    });
+
+    it("un cambio EXTERNO real sigue pisando el draft (undo / «aplicar a todas»)", () => {
+      const { result, commits, rerender } = setupEcho();
+
+      act(() => result.current.change("bogotá"));
+      act(() => vi.advanceTimersByTime(IG_FIELD_COMMIT_DEBOUNCE_MS));
+      expect(commits).toEqual(["bogotá"]);
+      rerender({ value: "Bogotá" }); // eco del propio commit → no-op
+
+      // Undo: el store vuelve a vacío (distinto del eco del commit) → resetea.
+      rerender({ value: "" });
+      expect(result.current.draft).toBe("");
+    });
+
+    it("flush tras un commit transformado NO re-commitea lo mismo (comparación en formato eco)", () => {
+      const { result, commits, rerender } = setupEcho();
+
+      act(() => result.current.change("bogotá"));
+      act(() => result.current.flush());
+      expect(commits).toEqual(["bogotá"]);
+      rerender({ value: "Bogotá" }); // el store refleja el eco
+
+      // Blur posterior sin cambios: no debe haber un segundo commit.
+      act(() => result.current.flush());
+      act(() => vi.advanceTimersByTime(IG_FIELD_COMMIT_DEBOUNCE_MS * 2));
+      expect(commits).toEqual(["bogotá"]);
+    });
+  });
 });

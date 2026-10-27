@@ -160,6 +160,9 @@ function StudioIgSlotFieldsInner({
               placeholder={layer.text}
               sanitize={sanitizeIgLocationInput}
               onCommit={(draft) => commitText(layer.id, igLocationOverride(draft))}
+              // Mismo motivo que el campo pack-level (2026-10-26): el commit
+              // transforma el texto; el eco evita el reset del draft.
+              commitEcho={(committed) => igLocationOverride(committed) ?? ""}
             />
             <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUbicacionHint}</p>
           </>
@@ -176,6 +179,7 @@ function StudioIgSlotFieldsInner({
               sanitize={sanitizeIgLikesInput}
               onCommit={(draft) => commitText(layer.id, igLikesOverride(draft))}
               describedBy={`${inputId}-suffix`}
+              commitEcho={(committed) => igLikesDisplay(igLikesOverride(committed) ?? "")}
             />
             {/* Sufijo FIJO fuera del valor editable: siempre se imprime. */}
             <span id={`${inputId}-suffix`} className="text-brand-purple-dark shrink-0 text-sm">

@@ -24,6 +24,16 @@ export function useDebouncedCommit(
   /** Commit al store; recibe el draft (el caller lo transforma a override). */
   onCommit: (value: string) => void,
   debounceMs: number = IG_FIELD_COMMIT_DEBOUNCE_MS,
+  /**
+   * 2026-10-26 (bug "la ubicación no deja poner espacios") — ECO del commit en
+   * formato DISPLAY: mapea el draft comprometido al valor que el store devuelve
+   * después (p.ej. ubicación: "bogotá " → "Bogotá"). Sin ella el sync externo
+   * comparaba el valor TRANSFORMADO del store contra el draft CRUDO del último
+   * commit, nunca igualaban y el draft se reseteaba ~350 ms después de cada
+   * pausa — comiéndose el espacio que el cliente acababa de teclear. Omitirla
+   * = identidad (campos sin transformación: caption y afines).
+   */
+  commitEcho?: (committed: string) => string,
 ): { draft: string; change: (next: string) => void; flush: () => void } {
   const [draft, setDraft] = useState(committedValue);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -34,9 +44,11 @@ export function useDebouncedCommit(
   // evento y el cleanup de desmontaje siempre corren después de este effect.
   const draftRef = useRef(draft);
   const onCommitRef = useRef(onCommit);
+  const commitEchoRef = useRef(commitEcho);
   useEffect(() => {
     draftRef.current = draft;
     onCommitRef.current = onCommit;
+    commitEchoRef.current = commitEcho;
   });
 
   const clearTimer = () => {
@@ -47,7 +59,12 @@ export function useDebouncedCommit(
   };
 
   const commitNow = useCallback((value: string) => {
-    lastCommitRef.current = value;
+    // Se registra el ECO (formato display) del commit: es lo que el store
+    // devolverá como `committedValue` en el próximo render — sin esto el sync
+    // confundía el eco del propio commit con un cambio externo y reseteaba el
+    // draft mientras el cliente seguía escribiendo.
+    const echo = commitEchoRef.current;
+    lastCommitRef.current = echo ? echo(value) : value;
     onCommitRef.current(value);
   }, []);
 
@@ -78,7 +95,17 @@ export function useDebouncedCommit(
     if (timerRef.current === null) return;
     clearTimer();
     const pending = draftRef.current;
-    if (pending !== lastCommitRef.current) commitNow(pending);
+    // La comparación va en formato ECO (display): el último commit se guarda
+    // transformado y el draft es crudo — compararlos en crudo re-commitearía
+    // siempre en campos con transformación (ubicación, likes).
+    const echo = commitEchoRef.current;
+    if ((echo ? echo(pending) : pending) === lastCommitRef.current) return;
+    commitNow(pending);
+    // Al BLUR (salir del campo) sí normalizamos el draft visible al formato
+    // impreso ("bogotá" → "Bogotá, Colombia", "1234" → "1.234") — el feedback
+    // de transformación que antes daba el reset. Mientras se ESCRIBE (commit
+    // debounced) el draft NUNCA se toca: esa era la causa del bug de espacios.
+    if (echo) setDraft(echo(pending));
   }, [commitNow]);
 
   // Al desmontar (cerrar el modal, cambiar de plantilla): no perder lo
@@ -88,7 +115,8 @@ export function useDebouncedCommit(
       if (timerRef.current !== null) {
         clearTimeout(timerRef.current);
         const pending = draftRef.current;
-        if (pending !== lastCommitRef.current) commitNow(pending);
+        const echo = commitEchoRef.current;
+        if ((echo ? echo(pending) : pending) !== lastCommitRef.current) commitNow(pending);
       }
     },
     [commitNow],

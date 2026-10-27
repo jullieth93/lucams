@@ -14,8 +14,9 @@
  *  3. La edición escribe el override INDIVIDUAL del slot (setSlotTextOverride)
  *     y NO toca los demás slots ni el valor pack-level.
  *  4. La ubicación es input de texto simple (owner 2026-10-12 — se retiró el
- *     combobox con sugerencias): máximo 2 palabras, inicial mayúscula, ", "
- *     al commit; compromete solo en este slot.
+ *     combobox con sugerencias). 2026-10-26: formato «Ciudad, País»
+ *     multi-palabra (ya no hay máximo de 2 palabras); compromete solo en este
+ *     slot.
  *
  * Los campos de texto comprometen al store con DEBOUNCE (IgDebouncedInput):
  * los tests hacen fireEvent.blur después de escribir para forzar el commit.

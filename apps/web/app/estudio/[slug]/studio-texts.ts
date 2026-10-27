@@ -255,6 +255,10 @@ export type StudioTexts = {
     borrarDisenoCuerpo: string;
     borrarDisenoConfirmar: string;
     borrarDisenoCancelar: string;
+    /** Ola 2 (2026-10-26) — pista de descubribilidad de la edición DIRECTA de
+     *  texto en el lienzo (pill dismissible junto al canvas; persiste en
+     *  localStorage al descartarla). Solo con plantilla de textos editables. */
+    textoEditableHint: string;
   };
   /** Plantillas y diseños. */
   plantillas: {
@@ -299,6 +303,27 @@ export type StudioTexts = {
     /** Nombre accesible del botón de cada lienzo. {n} = número (slotIndex+1). */
     reemplazoLienzoAria: string;
     reemplazoCancelar: string;
+    /** 2026-10-26 (bug del separador mezclado) — variante PAR del modal de
+     *  reemplazo: prediseñado de 2 caras con todo lleno → las opciones son
+     *  separadores COMPLETOS y elegir uno reemplaza sus 2 caras. */
+    reemplazoParTitulo: string;
+    /** Cuerpo del aviso de reemplazo de par. {nombre} = nombre del diseño. */
+    reemplazoParCuerpo: string;
+    /** Rótulo de cada separador en la lista de reemplazo por par. {n} = unidad. */
+    reemplazoParNombre: string;
+    /** Nombre accesible del botón de cada separador. {n} = número de unidad. */
+    reemplazoParAria: string;
+    /** Toast de confirmación del reemplazo por par. {n} = número de unidad. */
+    toastReemplazoPar: string;
+    /** 2026-10-26 — affordance «Ver» (ícono ojo) de cada tarjeta de prediseñado:
+     *  abre el preview en Dialog (la única vía en táctil; en desktop coexiste
+     *  con el hover). {nombre} = nombre del diseño. */
+    verDisenoAria: string;
+    /** CTA del Dialog de preview del prediseñado (aplica el diseño). */
+    verDisenoUsar: string;
+    /** Ola 2 (2026-10-26) — bloqueo GUIADO de «Ver diseño» sin plantilla
+     *  elegida (con >1): toast que acompaña el resaltado de la sección. */
+    elegirParaContinuar: string;
     elegirAria: string;
     aplicarDisenoAria: string;
     itemAria: string;
@@ -435,7 +460,8 @@ export type StudioTexts = {
     /** Rediseño asistido (2026-10-05) — ayudas y avisos de los controles por capa. */
     igUsuarioHint: string;
     /** Owner 2026-10-12 — la ubicación es input de texto simple (sin
-     *  sugerencias): el hint explica la regla de máximo 2 palabras. */
+     *  sugerencias). 2026-10-26: el hint explica el formato «Ciudad, País»
+     *  (multi-palabra por segmento; se retiró la regla de máximo 2 palabras). */
     igUbicacionHint: string;
     igTituloPlaceholder: string;
     igHashtagsPlaceholder: string;
@@ -471,6 +497,11 @@ export type StudioTexts = {
     estiloBordeTitulo: string;
     estiloConBorde: string;
     estiloSinBorde: string;
+    /** 2026-10-26 — slider de GROSOR del borde (productos que lo habilitan en
+     *  admin, rango personalizationSchema.borderWidth). Título visible. */
+    estiloGrosorTitulo: string;
+    /** Nombre audible del slider de grosor. */
+    estiloGrosorAria: string;
     /** Ola 24 — aviso cuando la paleta de color queda desactivada por «Sin borde». */
     estiloColorDeshabilitadoHint: string;
     /** Owner 2026-10-06 — aviso INFORMATIVO de la Instagram en «Sin borde»: la paleta
@@ -1086,6 +1117,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Se quitan las fotos y los textos de todos los espacios. Tus fotos subidas se conservan en «Mis fotos» y la plantilla no cambia. Si te arrepientes, puedes deshacerlo con Ctrl+Z.",
     borrarDisenoConfirmar: "Sí, borrar todo",
     borrarDisenoCancelar: "Cancelar",
+    // Ola 2 (2026-10-26) — descubribilidad de la edición directa de texto.
+    textoEditableHint: "Tip: toca un texto sobre el diseño para editarlo ✏️",
   },
   plantillas: {
     titulo: "Plantillas",
@@ -1118,6 +1151,18 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     reemplazoLienzoNombre: "Lienzo {n}",
     reemplazoLienzoAria: "Reemplazar el diseño del lienzo {n}",
     reemplazoCancelar: "Cancelar",
+    // 2026-10-26 — reemplazo por PAR (prediseñado de 2 caras, todo lleno).
+    reemplazoParTitulo: "¿Cuál separador quieres reemplazar?",
+    reemplazoParCuerpo:
+      "«{nombre}» trae frente y respaldo, y todos tus separadores ya tienen diseño. Elige cuál cambiar: se reemplazan sus 2 caras.",
+    reemplazoParNombre: "Separador {n}",
+    reemplazoParAria: "Reemplazar las 2 caras del separador {n}",
+    toastReemplazoPar: "Se reemplazó el separador {n} (ambas caras)",
+    // 2026-10-26 — preview «Ver» del prediseñado (táctil y desktop).
+    verDisenoAria: "Ver el diseño {nombre} en grande",
+    verDisenoUsar: "Usar este diseño",
+    // Ola 2 (2026-10-26) — bloqueo guiado sin plantilla elegida.
+    elegirParaContinuar: "Elige tu plantilla para continuar — toca una de las opciones ✨",
     elegirAria: "Selecciona plantilla del imán",
     aplicarDisenoAria: "Aplicar el diseño {nombre} al slot",
     itemAria: "Plantilla {nombre}",
@@ -1240,10 +1285,12 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Estos datos son SOLO de esta foto. Para editar los de todas a la vez, usa «Datos de la publicación» en el panel.",
     // Rediseño asistido (owner 2026-10-05) — ayudas/avisos de los controles por
     // capa: "@" y "me gusta" son fijos, título con contador y hashtags por chips
-    // (máx 3). Owner 2026-10-12: la ubicación es texto simple con regla de
-    // máximo 2 palabras (sin sugerencias).
+    // (máx 3). Owner 2026-10-12: la ubicación es texto simple (sin sugerencias);
+    // 2026-10-26: formato «Ciudad, País» multi-palabra (sin máximo de 2 palabras).
     igUsuarioHint: "Sin espacios · letras, números, punto y guion bajo",
-    igUbicacionHint: "Máximo 2 palabras — escribe «bogotá colombia» y se imprime Bogotá, Colombia",
+    // 2026-10-26 — Ciudad, País con espacios y varias palabras por segmento
+    // (antes: máximo 2 palabras — rompía "Santa Marta" / "Korea del Sur").
+    igUbicacionHint: "Ciudad y país separados por coma — ej: Santa Marta, Colombia",
     igTituloPlaceholder: "Ej: Nuestro paseo de domingo",
     igHashtagsPlaceholder: "Escribe un hashtag y presiona Enter",
     igHashtagsMaxAviso: "Máximo 3 hashtags — quita uno para agregar otro",
@@ -1269,6 +1316,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     estiloBordeTitulo: "Borde de foto",
     estiloConBorde: "Con borde",
     estiloSinBorde: "Sin borde",
+    estiloGrosorTitulo: "Grosor del borde",
+    estiloGrosorAria: "Grosor del borde",
     estiloColorDeshabilitadoHint:
       "Con «Sin borde» la foto cubre toda la tarjeta — el color no aplica.",
     estiloColorSinBordeHintIg:
@@ -1797,6 +1846,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.borrarDisenoCuerpo": "estudio.lienzo.borrar-diseno-cuerpo",
   "lienzo.borrarDisenoConfirmar": "estudio.lienzo.borrar-diseno-confirmar",
   "lienzo.borrarDisenoCancelar": "estudio.lienzo.borrar-diseno-cancelar",
+  "lienzo.textoEditableHint": "estudio.lienzo.texto-editable-hint",
   "plantillas.titulo": "estudio.plantillas.titulo",
   "plantillas.vacio": "estudio.plantillas.vacio",
   "plantillas.toastAplicada": "estudio.plantillas.toast-aplicada",
@@ -1822,6 +1872,14 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "plantillas.reemplazoLienzoNombre": "estudio.plantillas.reemplazo-lienzo-nombre",
   "plantillas.reemplazoLienzoAria": "estudio.plantillas.reemplazo-lienzo-aria",
   "plantillas.reemplazoCancelar": "estudio.plantillas.reemplazo-cancelar",
+  "plantillas.reemplazoParTitulo": "estudio.plantillas.reemplazo-par-titulo",
+  "plantillas.reemplazoParCuerpo": "estudio.plantillas.reemplazo-par-cuerpo",
+  "plantillas.reemplazoParNombre": "estudio.plantillas.reemplazo-par-nombre",
+  "plantillas.reemplazoParAria": "estudio.plantillas.reemplazo-par-aria",
+  "plantillas.toastReemplazoPar": "estudio.plantillas.toast-reemplazo-par",
+  "plantillas.verDisenoAria": "estudio.plantillas.ver-diseno-aria",
+  "plantillas.verDisenoUsar": "estudio.plantillas.ver-diseno-usar",
+  "plantillas.elegirParaContinuar": "estudio.plantillas.elegir-para-continuar",
   "plantillas.elegirAria": "estudio.plantillas.elegir-aria",
   "plantillas.aplicarDisenoAria": "estudio.plantillas.aplicar-diseno-aria",
   "plantillas.itemAria": "estudio.plantillas.item-aria",
@@ -1939,6 +1997,8 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.estiloBordeTitulo": "estudio.texto.estilo-borde-titulo",
   "texto.estiloConBorde": "estudio.texto.estilo-con-borde",
   "texto.estiloSinBorde": "estudio.texto.estilo-sin-borde",
+  "texto.estiloGrosorTitulo": "estudio.texto.estilo-grosor-titulo",
+  "texto.estiloGrosorAria": "estudio.texto.estilo-grosor-aria",
   "texto.estiloColorDeshabilitadoHint": "estudio.texto.estilo-color-deshabilitado-hint",
   "texto.estiloColorSinBordeHintIg": "estudio.texto.estilo-color-sin-borde-hint-ig",
   "texto.estiloColorDeshabilitadoHintTira": "estudio.texto.estilo-color-deshabilitado-hint-tira",

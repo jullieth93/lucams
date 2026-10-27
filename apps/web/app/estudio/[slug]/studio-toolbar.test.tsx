@@ -371,3 +371,73 @@ describe("StudioToolbar — desglose de la variante en el header (2026-10-12)", 
     expect(screen.getByRole("button", { name: "Ver diseño de tu pedido" })).toBeEnabled();
   });
 });
+
+/*
+ * Ola 2 (2026-10-26) — densidad del chrome MÓVIL: la fila propia de
+ * nombre+variante+progreso (<md) se eliminó; el nombre va junto a «Salir» en
+ * la fila principal y progreso/auto-save/variante comparten la fila del
+ * stepper (o una fila-info consolidada si el producto no tiene stepper).
+ */
+describe("StudioToolbar — chrome móvil consolidado (Ola 2, 2026-10-26)", () => {
+  it("el nombre del producto va en la fila principal (junto a «Salir») en <md", () => {
+    setup({ filled: 1 });
+    // El span móvil lleva el nombre exacto; el hero md+ lo lleva con prefijo
+    // («Personalizar · …»), así que el match exacto solo lo da la fila principal.
+    const nombre = screen.getByText("Fotoimanes cuadrados");
+    expect(nombre.className).toContain("md:hidden");
+    expect(nombre.className).toContain("truncate");
+  });
+
+  it("producto SIN stepper (imán suelto): una sola fila-info <md con progreso + variante (sin fila extra)", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "fotoimanes-cuadrados",
+      canvasData: makeCanvasData(1, 2),
+      templates: [],
+    });
+    renderStudio(
+      <StudioToolbar
+        store={store}
+        productName="Fotoimanes cuadrados"
+        productSlug="fotoimanes-cuadrados"
+        variantLabel="Con imán · Español"
+        onFinalize={vi.fn()}
+      />,
+    );
+    // La fila-info consolidada (<md) lleva el progreso y la variante.
+    const progreso = screen.getAllByText("1/2 fotos");
+    expect(progreso.length).toBeGreaterThanOrEqual(1);
+    // La variante aparece en el hero (md+, con prefijo «· ») y en la fila consolidada (<md).
+    expect(screen.getAllByText(/Con imán · Español/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("producto CON stepper de packs: el progreso y la variante comparten la fila del stepper", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes-polaroid",
+      canvasData: makeCanvasData(0, 6),
+      templates: [],
+    });
+    renderStudio(
+      <StudioToolbar
+        store={store}
+        productName="Set 6 Polaroid"
+        productSlug="set-fotoimanes-polaroid"
+        variantLabel="Con imán"
+        photoCount={{ min: 6, max: 24, facesPerUnit: 1, magnet: true }}
+        onFinalize={vi.fn()}
+      />,
+    );
+    // El stepper está (grupo «Packs» en modo pack) y la variante va como chip
+    // en la misma fila — NO hay badge «Con imán» aparte: exactamente 2
+    // menciones (hero md+ + chip de la fila), nada duplicado.
+    expect(screen.getByRole("group", { name: /packs/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/Con imán/).length).toBe(2);
+    // El progreso vive en la fila del stepper (mismo contenedor).
+    const chip = screen.getAllByText(/Con imán/)[1]!; // [0] = hero md+, [1] = chip de la fila
+    const row = chip.closest("div.border-t");
+    expect(row?.textContent).toContain("0/6 fotos");
+  });
+});

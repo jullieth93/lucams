@@ -12,7 +12,7 @@
  * El sidebar es store-aware: lee de zustand selectivamente.
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
@@ -22,6 +22,7 @@ import {
   Loader2,
   Check,
   ChevronDown,
+  Eye,
   GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +39,7 @@ import { predesignedFaceBadge } from "./lib/predesigned-variety";
 import { StudioFaceChoiceModal } from "./studio-face-choice-modal";
 import { StudioReplaceSlotModal, type ReplaceSlotOption } from "./studio-replace-slot-modal";
 import { PredesignedHoverPreview } from "./predesigned-hover-preview";
+import { PredesignedViewDialog } from "./predesigned-view-dialog";
 import { StudioMessageField } from "./studio-message-field";
 import { ConsentText } from "./studio-consent-text";
 import {
@@ -81,6 +83,19 @@ type StudioSidebarProps = {
   /** Separadores: la cara B es opcional — el paso «fotos» del checklist solo
    *  exige las caras A (mismo criterio que «Ver diseño»). Default false. */
   backOptional?: boolean;
+  /**
+   * Ola 2 (2026-10-26) — densidad del panel: "compact" es la instancia del
+   * SHEET móvil (full-width: las miniaturas crecían a ~110px — owner las quiere
+   * más pequeñas en celular, "cargadas o prediseñadas"): grilla de 4 columnas,
+   * gaps y paddings menores. El aside desktop ("default") no cambia en nada.
+   */
+  density?: "default" | "compact";
+  /**
+   * Ola 2 (2026-10-26) — señal del bloqueo GUIADO de plantilla (timestamp del
+   * intento de «Ver diseño» sin plantilla elegida): la sección de plantillas se
+   * scrollea a la vista y se RESALTA ~1.8 s. 0 = sin nudge.
+   */
+  templateNudgeSignal?: number;
 };
 
 export function StudioSidebar({
@@ -93,6 +108,8 @@ export function StudioSidebar({
   predesigned = [],
   facesPerUnit = 1,
   backOptional = false,
+  density = "default",
+  templateNudgeSignal = 0,
 }: StudioSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -143,6 +160,12 @@ export function StudioSidebar({
   const [predesignedOpen, setPredesignedOpen] = useState(
     () => predesigned.length <= PREDESIGNED_COLLAPSE_THRESHOLD,
   );
+  // 2026-10-26 — prediseñado en preview «Ver» (Dialog): la ÚNICA vía de ver el
+  // diseño en grande en táctil (el HoverCard es hover-only); en desktop
+  // coexiste con el hover.
+  const [viewingItem, setViewingItem] = useState<
+    import("./studio-asset-picker-modal").PredesignedItem | null
+  >(null);
 
   // 5.1 (2026-10-22) — checklist persistente «Tu diseño» al tope del sidebar
   // (mismo componente en el aside desktop y el sheet móvil). El badge del FAB
@@ -162,6 +185,28 @@ export function StudioSidebar({
       ?.querySelector(selector)
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  // Ola 2 (2026-10-26) — bloqueo GUIADO de la plantilla: «Ver diseño» sin
+  // plantilla elegida (con >1) emite templateNudgeSignal (timestamp) → la
+  // sección de plantillas se scrollea a la vista y se resalta ~1.8 s. El guard
+  // de frescura cubre la carrera de montaje del sheet móvil (el nudge abre el
+  // sheet y ESTA instancia monta unos cientos de ms después: un nudge reciente
+  // sigue contando). El setState va DIFERIDO en callbacks (regla
+  // react-hooks/set-state-in-effect: nunca síncrono en el cuerpo del effect).
+  const [flashSignal, setFlashSignal] = useState(0);
+  useEffect(() => {
+    if (!templateNudgeSignal || templateNudgeSignal <= flashSignal) return;
+    if (Date.now() - templateNudgeSignal > 2500) return;
+    rootRef.current
+      ?.querySelector("#sidebar-plantillas")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const on = window.setTimeout(() => setFlashSignal(templateNudgeSignal), 0);
+    const off = window.setTimeout(() => setFlashSignal(0), 1850);
+    return () => {
+      window.clearTimeout(on);
+      window.clearTimeout(off);
+    };
+  }, [templateNudgeSignal, flashSignal]);
+  const flashTemplates = flashSignal !== 0;
   const handleChecklistSelect = (id: StudioChecklistStepId) => {
     if (id === "plantillas") {
       scrollToSection("#sidebar-plantillas");
@@ -187,6 +232,9 @@ export function StudioSidebar({
     item: import("./studio-asset-picker-modal").PredesignedItem,
     targetSlot: number,
     forceTargetSlot = false,
+    // 2026-10-26 — reemplazo del PAR completo (modal de reemplazo en modo par):
+    // la cara B del diseño también reemplaza la B ocupada (elección explícita).
+    replacePair = false,
   ) => {
     setApplyingPredesignedId(item.id);
     try {
@@ -196,6 +244,7 @@ export function StudioSidebar({
         targetSlot,
         facesPerUnit,
         forceTargetSlot,
+        replacePair,
       });
       if (!res.ok) {
         // Fix STG 2026-10-06 — "no-free-slot" no es un error: todos los
@@ -210,9 +259,20 @@ export function StudioSidebar({
         );
         return;
       }
-      toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
+      // 2026-10-26 — el reemplazo por par anuncia lo que pasó de verdad:
+      // las 2 caras del separador N cambiaron (nunca A nueva + B vieja).
+      if (replacePair) {
+        toast.success(
+          fillStudioText(texts.plantillas.toastReemplazoPar, {
+            n: Math.floor(targetSlot / 2) + 1,
+          }),
+        );
+      } else {
+        toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
+      }
       // Paquete A — la cara B no se descarta en silencio: si su slot estaba
-      // ocupado se avisa (no se pisa el contenido del usuario).
+      // ocupado se avisa (no se pisa el contenido del usuario). En modo par la
+      // B ocupada se reemplaza a propósito (bReplaced), así que no aplica.
       if (res.bBlocked) toast.warning(texts.plantillas.toastCaraBOcupada);
       // Tarea "pregunta siempre" (owner 2026-10-19) — assignAssetToSlot
       // AUTO-SELECCIONA el slot recién asignado (feedback visual en el lienzo);
@@ -232,14 +292,31 @@ export function StudioSidebar({
 
   // 2026-10-19 — opciones del modal de reemplazo: lienzos OCUPADOS candidatos,
   // filtrados por la cara elegida (flujo cara → reemplazo) o, para diseños con
-  // imageUrlB (2 caras), solo caras A (el diseño necesita ancla A para su par).
+  // imageUrlB (2 caras), UNIDADES completas (anclas de cara A): elegir un
+  // separador reemplaza sus 2 caras (2026-10-26 — antes solo se cambiaba la
+  // cara A y el par quedaba mezclado A nueva + B vieja).
   const buildReplaceOptions = (
     item: import("./studio-asset-picker-modal").PredesignedItem,
     face: "A" | "B" | null,
   ): ReplaceSlotOption[] => {
     const slots = store.getState().canvasData?.slots ?? [];
-    const parity =
-      face !== null ? (face === "A" ? 0 : 1) : facesPerUnit === 2 && item.imageUrlB ? 0 : null;
+    // Modo PAR: prediseñado de 2 caras en producto de 2 caras, sin cara
+    // pre-fijada (vino directo del clic, no del modal de cara).
+    if (face === null && facesPerUnit === 2 && item.imageUrlB) {
+      return slots
+        .filter((s) => s.slotIndex % 2 === 0 && !!s.assetUrl)
+        .map((s) => {
+          const unitNumber = Math.floor(s.slotIndex / 2) + 1;
+          return {
+            slotIndex: s.slotIndex,
+            label: fillStudioText(texts.plantillas.reemplazoParNombre, { n: unitNumber }),
+            faceLabel: texts.plantillas.badgeDosCaras,
+            thumbUrl: s.assetUrl,
+            ariaLabel: fillStudioText(texts.plantillas.reemplazoParAria, { n: unitNumber }),
+          };
+        });
+    }
+    const parity = face !== null ? (face === "A" ? 0 : 1) : null;
     return slots
       .filter((s) => !!s.assetUrl)
       .filter((s) => parity === null || s.slotIndex % 2 === parity)
@@ -326,11 +403,14 @@ export function StudioSidebar({
 
   // Reemplazo explícito (2026-10-19) — el cliente eligió el lienzo ocupado a
   // reemplazar: aplicación con destino EXACTO (forceTargetSlot) sobre ese slot.
+  // 2026-10-26 — en modo par (prediseñado de 2 caras + todo lleno) la opción es
+  // la UNIDAD completa: se reemplazan las 2 caras (replacePair).
   const handleReplacePick = async (slotIndex: number) => {
     const choice = replaceChoice;
     setReplaceChoice(null);
     if (!choice) return;
-    await applyPredesigned(choice.item, slotIndex, true);
+    const pairMode = choice.face === null && facesPerUnit === 2 && !!choice.item.imageUrlB;
+    await applyPredesigned(choice.item, slotIndex, true, pairMode);
   };
 
   // Paquete A (2026-10-02) — llenado VARIADO: recorre el catálogo del tag sin
@@ -427,14 +507,20 @@ export function StudioSidebar({
   };
 
   const emptySlots = totalSlots - filledSlots;
+  // Ola 2 (2026-10-26) — densidad compacta (sheet móvil): grillas de 4 columnas
+  // y paddings/gaps menores; desktop conserva los valores de siempre.
+  const compact = density === "compact";
   // Botón mágico: con 1+ fotos alcanza para mostrarlo — autoFillSlots llena los slots
-  // vacíos que pueda con lo subido, sin repetir fotos (el resto queda vacío). La regla
-  // Ola 21 (exigir fotos para TODOS los vacíos) se retiró: en un calendario de 12 slots
-  // obligaba a subir las 12 fotos antes de siquiera ver el botón.
+  // vacíos que pueda priorizando las fotos NUNCA usadas (en este diseño ni en otras
+  // líneas del carrito del mismo producto), luego las de otras líneas del carrito y
+  // al final las ya usadas acá (menos usadas primero; dentro de cada grupo manda el
+  // orden de «Mis fotos»). La regla Ola 21 (exigir fotos para TODOS los vacíos) se
+  // retiró: en un calendario de 12 slots obligaba a subir las 12 fotos antes de
+  // siquiera ver el botón.
   const canAutoFill = assets.length > 0 && emptySlots > 0;
 
   return (
-    <div ref={rootRef} className="flex h-full flex-col gap-6 p-5">
+    <div ref={rootRef} className={`flex h-full flex-col ${compact ? "gap-4 p-4" : "gap-6 p-5"}`}>
       {/* Producto info */}
       <div>
         <p className="text-brand-purple-dark text-sm font-semibold">{productName}</p>
@@ -446,6 +532,66 @@ export function StudioSidebar({
 
       {/* Progress bar X/N — el feedback más importante del editor */}
       <ProgressBar filled={filledSlots} total={totalSlots} />
+
+      {/* ──────── Plantillas ────────
+          Ola 2 (2026-10-26, owner): la sección SUBE de orden (antes iba tras
+          «Mis fotos») — elegir plantilla es el primer paso del checklist y
+          «Ver diseño» se bloquea con guía mientras falte. Con >1 plantillas y
+          sin elección lleva el chip «Pendiente»; tras un intento de finalizar
+          (templateNudgeSignal) la sección se resalta ~1.8 s. */}
+      <section
+        aria-labelledby="sidebar-plantillas"
+        className={[
+          "border-brand-purple/10 rounded-xl border-t pt-5 transition-shadow duration-300",
+          flashTemplates ? "ring-brand-turquoise ring-2 ring-offset-2 ring-offset-white" : "",
+        ].join(" ")}
+      >
+        <div
+          id="sidebar-plantillas"
+          className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
+        >
+          <Sparkles className="text-brand-purple h-4 w-4" />
+          {texts.plantillas.titulo}
+          <span className="text-brand-muted text-xs font-normal">({templates.length})</span>
+          {templates.length > 1 && !selectedTemplateId && (
+            <span className="bg-brand-yellow/40 text-brand-purple-dark rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase">
+              {texts.checklist.pendiente}
+            </span>
+          )}
+        </div>
+
+        {templates.length === 0 ? (
+          <p className="text-brand-muted text-xs italic">{texts.plantillas.vacio}</p>
+        ) : (
+          <div
+            role="radiogroup"
+            aria-label={texts.plantillas.elegirAria}
+            className="grid grid-cols-2 gap-2"
+          >
+            {templates.map((tpl) => (
+              <TemplateCard
+                key={tpl.id}
+                template={tpl}
+                isSelected={tpl.id === selectedTemplateId}
+                productSizeCm={productSizeCm}
+                productShape={productShape}
+                onClick={() => {
+                  if (tpl.id === selectedTemplateId) return; // no-op si ya está
+                  applyTemplate(tpl);
+                  // A2.7 — Toast premium feedback
+                  toast.success(
+                    fillStudioText(texts.plantillas.toastAplicada, { nombre: tpl.name }),
+                    {
+                      duration: 2200,
+                      icon: "✨",
+                    },
+                  );
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* ──────── Mis fotos ──────── */}
       <section aria-labelledby="sidebar-mis-fotos">
@@ -501,7 +647,7 @@ export function StudioSidebar({
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading > 0 || !rightsAccepted}
           aria-label={texts.fotos.subirAria}
-          className="border-brand-purple/30 bg-brand-purple/5 text-brand-purple hover:bg-brand-purple/10 focus:ring-brand-purple flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed py-4 text-sm font-medium transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
+          className={`border-brand-purple/30 bg-brand-purple/5 text-brand-purple hover:bg-brand-purple/10 focus:ring-brand-purple flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed text-sm font-medium transition-colors focus:ring-2 focus:outline-none disabled:opacity-60 ${compact ? "py-3" : "py-4"}`}
         >
           {uploading > 0 ? (
             <>
@@ -562,7 +708,7 @@ export function StudioSidebar({
           <div
             role="list"
             aria-label={texts.fotos.listaAria}
-            className="mt-3 grid grid-cols-3 gap-2"
+            className={`grid ${compact ? "mt-2 grid-cols-4 gap-1.5" : "mt-3 grid-cols-3 gap-2"}`}
           >
             <AnimatePresence>
               {assets.map((asset, idx) => (
@@ -596,53 +742,6 @@ export function StudioSidebar({
       {/* ──────── Tu mensaje (Ola 3c — Polaroid Clásica: campo directo en la sidebar;
           tocar el texto del canvas sigue abriendo el editor completo como atajo) ──────── */}
       {allowText && <StudioMessageField store={store} />}
-
-      {/* ──────── Plantillas ──────── */}
-      <section
-        aria-labelledby="sidebar-plantillas"
-        className="border-brand-purple/10 border-t pt-5"
-      >
-        <div
-          id="sidebar-plantillas"
-          className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
-        >
-          <Sparkles className="text-brand-purple h-4 w-4" />
-          {texts.plantillas.titulo}
-          <span className="text-brand-muted text-xs font-normal">({templates.length})</span>
-        </div>
-
-        {templates.length === 0 ? (
-          <p className="text-brand-muted text-xs italic">{texts.plantillas.vacio}</p>
-        ) : (
-          <div
-            role="radiogroup"
-            aria-label={texts.plantillas.elegirAria}
-            className="grid grid-cols-2 gap-2"
-          >
-            {templates.map((tpl) => (
-              <TemplateCard
-                key={tpl.id}
-                template={tpl}
-                isSelected={tpl.id === selectedTemplateId}
-                productSizeCm={productSizeCm}
-                productShape={productShape}
-                onClick={() => {
-                  if (tpl.id === selectedTemplateId) return; // no-op si ya está
-                  applyTemplate(tpl);
-                  // A2.7 — Toast premium feedback
-                  toast.success(
-                    fillStudioText(texts.plantillas.toastAplicada, { nombre: tpl.name }),
-                    {
-                      duration: 2200,
-                      icon: "✨",
-                    },
-                  );
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </section>
 
       {/* ──────── Diseños prediseñados (galería admin) ──────── */}
       {predesigned.length > 0 && (
@@ -701,82 +800,102 @@ export function StudioSidebar({
                   {texts.plantillas.predisenadosLlenarCta}
                 </button>
               )}
-              <div className="grid grid-cols-3 gap-2">
+              <div className={`grid ${compact ? "grid-cols-4 gap-1.5" : "grid-cols-3 gap-2"}`}>
                 {predesigned.map((item) => {
                   const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
                   return (
                     // Preview emergente (owner 2026-10-19): sostener el mouse
                     // ~400 ms sobre la tarjeta abre el diseño en grande (imageUrl,
                     // no el thumb) con su nombre — reemplaza al tooltip de solo
-                    // texto. En táctil no aplica (hover-only): el tap sigue
-                    // aplicando el diseño como siempre.
-                    <PredesignedHoverPreview
-                      key={item.id}
-                      name={item.name}
-                      imageUrl={item.imageUrl}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleApplyPredesigned(item)}
-                        disabled={applyingPredesignedId !== null || applyingVariety}
-                        aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
-                          nombre: item.name,
-                        })}
-                        // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
-                        // arrastra hasta un slot (highlight de drop target ya existe en
-                        // el slot). El clic sigue aplicando al slot seleccionado/vacío.
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData(
-                            PREDESIGNED_DRAG_MIME,
-                            JSON.stringify({ id: item.id, name: item.name }),
-                          );
-                          e.dataTransfer.effectAllowed = "copy";
-                        }}
-                        className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={item.thumbUrl ?? item.imageUrl}
-                          alt={item.name}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          // La imagen interna no debe secuestrar el drag del botón.
-                          // 3.10 — disuasión anti-copia: sin menú contextual
-                          // ("Guardar imagen como…") sobre la miniatura.
-                          draggable={false}
-                          onContextMenu={(e) => e.preventDefault()}
-                        />
-                        {/* Paquete A — badge 1/2 caras (solo productos de 2 caras):
+                    // texto. En táctil el HoverCard NO se monta (2026-10-26: el
+                    // tap enfoca el trigger y radix abriría la tarjeta SOBRE el
+                    // modal que el tap abre); ahí el preview lo da el botón «Ver».
+                    <div key={item.id} className="relative">
+                      <PredesignedHoverPreview name={item.name} imageUrl={item.imageUrl}>
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPredesigned(item)}
+                          disabled={applyingPredesignedId !== null || applyingVariety}
+                          aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                            nombre: item.name,
+                          })}
+                          // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
+                          // arrastra hasta un slot (highlight de drop target ya existe en
+                          // el slot). El clic sigue aplicando al slot seleccionado/vacío.
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData(
+                              PREDESIGNED_DRAG_MIME,
+                              JSON.stringify({ id: item.id, name: item.name }),
+                            );
+                            e.dataTransfer.effectAllowed = "copy";
+                          }}
+                          className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square w-full cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={item.thumbUrl ?? item.imageUrl}
+                            alt={item.name}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                            // La imagen interna no debe secuestrar el drag del botón.
+                            // 3.10 — disuasión anti-copia: sin menú contextual
+                            // ("Guardar imagen como…") sobre la miniatura.
+                            draggable={false}
+                            onContextMenu={(e) => e.preventDefault()}
+                          />
+                          {/* Paquete A — badge 1/2 caras (solo productos de 2 caras):
                       "1 cara" = el respaldo se imprime EN BLANCO (regla única de
                       cara B vacía, owner 2026-10-07 — ver predesigned-variety.ts). */}
-                        {faceBadge && (
-                          <Hint
-                            content={
-                              faceBadge === "two"
-                                ? texts.plantillas.badgeDosCarasTitle
-                                : texts.plantillas.badgeUnaCaraTitle
-                            }
-                          >
-                            {/* stopPropagation: el badge vive DENTRO del botón con su
-                            propio Hint — sin esto el hover abriría ambos tooltips. */}
-                            <span
-                              onPointerMove={(e) => e.stopPropagation()}
-                              className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
+                          {faceBadge && (
+                            <Hint
+                              content={
+                                faceBadge === "two"
+                                  ? texts.plantillas.badgeDosCarasTitle
+                                  : texts.plantillas.badgeUnaCaraTitle
+                              }
                             >
-                              {faceBadge === "two"
-                                ? texts.plantillas.badgeDosCaras
-                                : texts.plantillas.badgeUnaCara}
-                            </span>
-                          </Hint>
-                        )}
-                        {applyingPredesignedId === item.id && (
-                          <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
-                            <Loader2 className="h-5 w-5 animate-spin text-white" />
-                          </div>
-                        )}
+                              {/* stopPropagation: el badge vive DENTRO del botón con su
+                            propio Hint — sin esto el hover abriría ambos tooltips. */}
+                              <span
+                                onPointerMove={(e) => e.stopPropagation()}
+                                className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
+                              >
+                                {faceBadge === "two"
+                                  ? texts.plantillas.badgeDosCaras
+                                  : texts.plantillas.badgeUnaCara}
+                              </span>
+                            </Hint>
+                          )}
+                          {applyingPredesignedId === item.id && (
+                            <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                              <Loader2 className="h-5 w-5 animate-spin text-white" />
+                            </div>
+                          )}
+                        </button>
+                      </PredesignedHoverPreview>
+                      {/* 2026-10-26 — «Ver» (ojo): abre el preview en Dialog
+                        (PredesignedViewDialog). Única vía en táctil (sin hover);
+                        en desktop coexiste con el HoverCard. Vive FUERA del
+                        botón de aplicar (HTML válido) y con stopPropagation +
+                        área 44×44 para no disparar la aplicación al tocarlo. */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewingItem(item);
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        aria-label={fillStudioText(texts.plantillas.verDisenoAria, {
+                          nombre: item.name,
+                        })}
+                        className="focus:ring-brand-turquoise absolute right-0 bottom-0 z-10 flex h-11 w-11 items-center justify-center rounded-full focus:ring-2 focus:outline-none"
+                      >
+                        <span className="text-brand-purple-dark flex h-7 w-7 items-center justify-center rounded-full bg-white/90 shadow">
+                          <Eye className="h-4 w-4" aria-hidden />
+                        </span>
                       </button>
-                    </PredesignedHoverPreview>
+                    </div>
                   );
                 })}
               </div>
@@ -800,8 +919,24 @@ export function StudioSidebar({
         open={replaceChoice !== null}
         designName={replaceChoice?.item.name ?? ""}
         options={replaceChoice ? buildReplaceOptions(replaceChoice.item, replaceChoice.face) : []}
+        pairMode={
+          replaceChoice !== null &&
+          replaceChoice.face === null &&
+          facesPerUnit === 2 &&
+          !!replaceChoice.item.imageUrlB
+        }
         onPick={(slotIndex) => void handleReplacePick(slotIndex)}
         onClose={() => setReplaceChoice(null)}
+      />
+      {/* 2026-10-26 — preview «Ver» del prediseñado (única vía en táctil).
+          «Usar este diseño» = la MISMA acción del click de la tarjeta. */}
+      <PredesignedViewDialog
+        item={viewingItem}
+        onUse={(item) => {
+          setViewingItem(null);
+          void handleApplyPredesigned(item);
+        }}
+        onClose={() => setViewingItem(null)}
       />
     </div>
   );

@@ -18,12 +18,26 @@
  *    automático: el sidebar vive a la derecha, así que abre a la IZQUIERDA
  *    (side="left"); si no cabe, radix la reubica.
  *
+ * 2026-10-26 (bugs del tap en móvil):
+ *  - En puntero COARSE (useIsTouch) el HoverCard NO se monta: radix también
+ *    abre al ENFOCAR el trigger y en táctil el tap enfoca → la tarjeta
+ *    flotante (portal body, z-50) quedaba montada SOBRE el modal de
+ *    reemplazo/picker que el mismo tap abre.
+ *  - En desktop el estado es CONTROLADO y el click del trigger (aplicar el
+ *    diseño) CIERRA la tarjeta en el momento — no queda flotando sobre lo
+ *    que la acción abra.
+ *  - El preview en táctil existe vía el botón «Ver» (ojo) de la tarjeta, que
+ *    abre PredesignedViewDialog (ver predesigned-view-dialog.tsx).
+ *
  * A11y: es un extra visual de hover — la info esencial ya viaja en el
- * aria-label del botón ("Aplicar el diseño {nombre}…"). La imagen repite el
- * nombre como alt por si el lector de pantalla entra al contenido.
+ * aria-label del botón ("Aplicar el diseño {nombre}…") y el preview accesible
+ * en táctil/teclado es el botón «Ver». La imagen repite el nombre como alt
+ * por si el lector de pantalla entra al contenido.
  */
 
+import { useState } from "react";
 import { HoverCard } from "radix-ui";
+import { useIsTouch } from "./use-is-touch";
 
 /** Delay de apertura (ms): suficiente para que PASAR rápido sobre la grilla no abra nada. */
 const OPEN_DELAY_MS = 400;
@@ -39,9 +53,22 @@ export function PredesignedHoverPreview({
   imageUrl: string;
   children: React.ReactNode;
 }) {
+  const isTouch = useIsTouch();
+  // Estado CONTROLADO (2026-10-26): el click del trigger cierra la tarjeta —
+  // aplicar un diseño no puede dejar el preview flotando encima del resultado.
+  const [open, setOpen] = useState(false);
+
+  // Táctil: sin hover no hay preview flotante (radix abriría al enfocar el
+  // trigger con el tap). El preview lo da el botón «Ver» de la tarjeta.
+  if (isTouch) return <>{children}</>;
+
   return (
-    <HoverCard.Root openDelay={OPEN_DELAY_MS} closeDelay={120}>
-      <HoverCard.Trigger asChild>{children}</HoverCard.Trigger>
+    <HoverCard.Root open={open} onOpenChange={setOpen} openDelay={OPEN_DELAY_MS} closeDelay={120}>
+      {/* onClickCapture: radix compone los handlers con el child (Slot) — el
+          click del botón (aplicar) sigue intacto y la tarjeta se cierra. */}
+      <HoverCard.Trigger asChild onClickCapture={() => setOpen(false)}>
+        {children}
+      </HoverCard.Trigger>
       <HoverCard.Portal>
         <HoverCard.Content
           side="left"

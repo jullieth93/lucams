@@ -78,6 +78,14 @@ export type StudioStoreState = {
   assets: StudioAsset[];
 
   /**
+   * AssetIds ya usados en OTRAS líneas del carrito del mismo producto (los
+   * resuelve page.tsx server-side y entran al boot). «Llenar slots con mis
+   * fotos» los BAJA de prioridad (nunca los excluye): un segundo pack no debe
+   * repetir las fotos del pack que ya está en el carrito.
+   */
+  cartAssetIdsInUse: string[];
+
+  /**
    * Paquete A (2026-10-02) — DEDUPE de prediseñados: galleryImageId → assets
    * ya subidos en ESTA sesión/diseño. Aplicar el mismo diseño a otro slot
    * reusa el asset en vez de subir una copia al servidor por slot.
@@ -111,6 +119,10 @@ export type StudioStoreState = {
      * re-guardarlo aunque el cliente no toque nada más.
      */
     startDirty?: boolean;
+    /** BUG auto-fill (2026-10-26): assetIds usados en OTRAS líneas del carrito
+     *  del mismo producto (page.tsx, server-side). El auto-fill los usa DESPUÉS
+     *  de los nunca-usados. */
+    cartAssetIdsInUse?: string[];
   }) => void;
   setCanvasData: (data: CanvasDataV2, opts?: { skipUndo?: boolean }) => void;
   assignAssetToSlot: (slotIndex: number, asset: StudioAsset) => void;
@@ -187,6 +199,13 @@ export type StudioStoreState = {
   applyTemplate: (template: StudioTemplate) => void;
   /** Ola 2A — color del marco alrededor de la foto (hex #RRGGBB) o null = sin marco. */
   setBorderColor: (color: string | null) => void;
+  /**
+   * Grosor del borde (2026-10-26) — FACTOR sobre el grosor base del producto,
+   * dentro del rango que el admin habilita (personalizationSchema.borderWidth).
+   * Persiste en canvasData.borderWidthFactor → producción lo consume igual
+   * (WYSIWYG). Va por setCanvasData → undo + auto-save.
+   */
+  setBorderWidthFactor: (factor: number) => void;
   /**
    * Lucy 2026-09-07 — tipo de letra del título/mes del calendario ("fredoka" | "inter" |
    * "caveat"). Persiste en canvasData.calendarFont → el render de producción la re-mapea
@@ -272,6 +291,7 @@ const initialState = {
   selectedSlotIndex: null,
   selectedTemplateId: null,
   assets: [],
+  cartAssetIdsInUse: [],
   predesignedAssetsByGalleryId: {},
   templates: [],
   booted: false,
@@ -304,6 +324,7 @@ export function createStudioStore() {
         selectedTemplateId: input.selectedTemplateId ?? null,
         // Hidratar assets desde slots ya llenos del canvasData (caso recover Design existente)
         assets: extractAssetsFromCanvas(input.canvasData),
+        cartAssetIdsInUse: input.cartAssetIdsInUse ?? [],
         undoStack: [],
         redoStack: [],
         booted: true,
@@ -592,20 +613,22 @@ export function createStudioStore() {
     },
 
     autoFillSlots: () => {
-      const { canvasData, assets } = get();
+      const { canvasData, assets, cartAssetIdsInUse } = get();
       if (!canvasData || assets.length === 0) return;
-      // Tomar assets en orden y asignarlos a slots vacíos también en orden.
-      // Slots ya llenos se preservan (no se pisan).
+      // Tomar assets PRIORIZADOS (2026-10-26 — bug "segundo pack repite las
+      // fotos del primero") y asignarlos a slots vacíos en orden. Slots ya
+      // llenos se preservan (no se pisan).
       const emptySlots = canvasData.slots
         .filter((s) => !s.assetUrl)
         .map((s) => s.slotIndex)
         .sort((x, y) => x - y);
+      const orderedAssets = orderAssetsForAutoFill(assets, canvasData.slots, cartAssetIdsInUse);
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) => {
           if (s.assetUrl) return s; // ya lleno
           const idxInEmpty = emptySlots.indexOf(s.slotIndex);
-          const asset = assets[idxInEmpty];
+          const asset = orderedAssets[idxInEmpty];
           if (asset) {
             return {
               ...s,
@@ -663,6 +686,13 @@ export function createStudioStore() {
       if (!canvasData) return;
       if ((canvasData.borderColor ?? null) === color) return;
       get().setCanvasData({ ...canvasData, borderColor: color });
+    },
+
+    setBorderWidthFactor: (factor) => {
+      const { canvasData } = get();
+      if (!canvasData || !Number.isFinite(factor)) return;
+      if (canvasData.borderWidthFactor === factor) return;
+      get().setCanvasData({ ...canvasData, borderWidthFactor: factor });
     },
 
     setCalendarFont: (font) => {
@@ -1007,6 +1037,44 @@ function recalcGridLayout(
             ? 12
             : 8;
   return { cols, rows, gap };
+}
+
+/**
+ * Orden de prioridad de «Llenar slots con mis fotos» (2026-10-26 — bug del
+ * segundo pack: el auto-fill repetía las fotos del pack ya en el carrito):
+ *   (a) nunca usados en este diseño NI en otras líneas del carrito,
+ *   (b) usados en OTRAS líneas del carrito del mismo producto (no excluidos:
+ *       el cliente puede querer repetir una foto a propósito),
+ *   (c) ya usados en ESTE diseño (los menos usados primero).
+ * Dentro de cada grupo manda el orden de «Mis fotos» (el array de assets).
+ * Exportada para tests; la usa store.autoFillSlots.
+ */
+export function orderAssetsForAutoFill(
+  assets: readonly StudioAsset[],
+  slots: readonly SlotState[],
+  cartAssetIdsInUse: readonly string[],
+): StudioAsset[] {
+  const useCount = new Map<string, number>();
+  for (const slot of slots) {
+    if (slot.assetId) useCount.set(slot.assetId, (useCount.get(slot.assetId) ?? 0) + 1);
+  }
+  const cartIds = new Set(cartAssetIdsInUse);
+  return assets
+    .map((asset, index) => ({
+      asset,
+      index,
+      usedHere: useCount.get(asset.id) ?? 0,
+      group: useCount.has(asset.id) ? 2 : cartIds.has(asset.id) ? 1 : 0,
+    }))
+    .sort(
+      (a, b) =>
+        a.group - b.group ||
+        // El conteo solo desempata dentro del grupo (c) (menos usados primero);
+        // en (a) y (b) es 0 para todos y cae al orden de «Mis fotos».
+        a.usedHere - b.usedHere ||
+        a.index - b.index,
+    )
+    .map((d) => d.asset);
 }
 
 /**
