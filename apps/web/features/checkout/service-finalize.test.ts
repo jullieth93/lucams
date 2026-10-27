@@ -6,6 +6,12 @@
  *    orden) — nunca crea otra orden ni cobra dos veces.
  *  - assertCheckoutAvailability propaga el mensaje que NOMBRA el producto
  *    agotado (fallback genérico si no hay nombre).
+ *  - Alerta in-app al admin por venta perdida por stock (2026-10-26):
+ *    notifyStockSaleLost dispara en assertCheckoutAvailability (checkout_step)
+ *    y en finalizeCheckout (order_create) sin romper el flujo si la alerta
+ *    falla; en finalize el InsufficientStockError se re-lanza como
+ *    STOCK_UNAVAILABLE con el copy que nombra el producto (la action redirige
+ *    a /carrito) en vez del genérico ORDER_CREATE_FAILED.
  *
  * Sin DB ni Supabase: todo lo externo mockeado (patrón de los tests de
  * actions del admin). Los errores tipados de orders son los REALES (los
@@ -20,6 +26,7 @@ const {
   assertStockAvailable,
   checkoutState,
   resolveWompiPaymentReference,
+  notifyStockSaleLost,
 } = vi.hoisted(() => ({
   prisma: {
     order: {
@@ -50,6 +57,7 @@ const {
   assertStockAvailable: vi.fn(async () => {}),
   checkoutState: { current: null as null | Record<string, unknown> },
   resolveWompiPaymentReference: vi.fn(),
+  notifyStockSaleLost: vi.fn(async () => {}),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -67,6 +75,7 @@ vi.mock("@/features/orders/service", () => ({ createOrderFromCart }));
 vi.mock("@/features/orders/payment-reference", () => ({ resolveWompiPaymentReference }));
 vi.mock("@/features/orders/saga", () => ({ processPaidOrder: vi.fn() }));
 vi.mock("@/features/orders/stock", () => ({ assertStockAvailable }));
+vi.mock("@/features/orders/stock-alerts", () => ({ notifyStockSaleLost }));
 vi.mock("@/features/coupons/redemption", () => ({
   priceCouponForCart: vi.fn(),
   CouponInvalidatedError: class CouponInvalidatedError extends Error {
@@ -528,5 +537,62 @@ describe("assertCheckoutAvailability — mensaje que nombra el producto", () => 
       "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
     );
     expect(err.message).not.toContain("v1");
+  });
+
+  it("dispara la alerta in-app al admin (contexto checkout_step) con los datos de la variante", async () => {
+    assertStockAvailable.mockRejectedValueOnce(
+      new InsufficientStockError("v1", 5, 3, "Imán Nevera"),
+    );
+    await assertCheckoutAvailability({
+      cart: cartFixture,
+      customerId: null,
+      state: {},
+    } as never).catch(() => null);
+    expect(notifyStockSaleLost).toHaveBeenCalledWith({
+      context: "checkout_step",
+      variantId: "v1",
+      requested: 5,
+      available: 3,
+      productName: "Imán Nevera",
+    });
+  });
+});
+
+describe("finalizeCheckout — stock agotado al crear la orden (order_create)", () => {
+  it("alerta al admin (una vez) y re-lanza como STOCK_UNAVAILABLE con el nombre del producto", async () => {
+    createOrderFromCart.mockRejectedValue(
+      new InsufficientStockError("v1", 999, 100, "Imán Nevera"),
+    );
+
+    const err = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" }).catch((e) => e);
+
+    expect(notifyStockSaleLost).toHaveBeenCalledTimes(1);
+    expect(notifyStockSaleLost).toHaveBeenCalledWith({
+      context: "order_create",
+      variantId: "v1",
+      requested: 999,
+      available: 100,
+      productName: "Imán Nevera",
+    });
+    // 2026-10-26 — el cliente ve el mensaje ESPECÍFICO de stock (la action
+    // redirige a /carrito), no el genérico "No pudimos iniciar el pago".
+    expect(err).toBeInstanceOf(CheckoutError);
+    expect(err.code).toBe("STOCK_UNAVAILABLE");
+    expect(err.message).toBe(
+      "Solo quedan 100 unidades de «Imán Nevera». Ajusta la cantidad en tu carrito.",
+    );
+  });
+
+  it("un fallo de la alerta NO rompe el flujo: STOCK_UNAVAILABLE sigue saliendo (fallback genérico sin nombre)", async () => {
+    notifyStockSaleLost.mockRejectedValueOnce(new Error("DB caída"));
+    createOrderFromCart.mockRejectedValue(new InsufficientStockError("v1", 999, 100));
+
+    const err = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(CheckoutError);
+    expect(err.code).toBe("STOCK_UNAVAILABLE");
+    expect(err.message).toBe(
+      "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
+    );
   });
 });

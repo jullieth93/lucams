@@ -52,12 +52,20 @@ import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
+import {
+  computeEarnedPoints,
+  pointValueCents,
+  RETROACTIVE_EARN_WINDOW_DAYS,
+} from "@/features/loyalty/service";
+import { getLoyaltySettings } from "@/features/loyalty/settings";
 import { CmsText } from "@/components/cms/cms-text";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 import {
   designPreviewPageLabels,
   unitNounForLine,
 } from "@/features/personalization/preview-page-labels";
+import { unitCountNounForLine } from "@/features/cart/line-preview";
+import { isBookmarkGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import {
@@ -191,7 +199,9 @@ export default async function CheckoutGraciasPage({
                   name: true,
                   attributes: true,
                   images: true,
-                  product: { select: { name: true, images: true, personalizationKind: true } },
+                  product: {
+                    select: { name: true, slug: true, images: true, personalizationKind: true },
+                  },
                 },
               },
               design: {
@@ -311,7 +321,9 @@ export default async function CheckoutGraciasPage({
                     name: true,
                     attributes: true,
                     images: true,
-                    product: { select: { name: true, images: true, personalizationKind: true } },
+                    product: {
+                      select: { name: true, slug: true, images: true, personalizationKind: true },
+                    },
                   },
                 },
                 design: {
@@ -356,7 +368,21 @@ export default async function CheckoutGraciasPage({
       // #24 — el invitado no tiene cuenta; su CTA debe ir a la vista pública por token, no a
       // /mi-cuenta (muro de login). getCurrentCustomer está memoizado (cache()).
       const session = await getCurrentCustomer();
-      return <ApprovedPage order={order} txId={tx.id} isGuest={!session} />;
+      // Puntos ganados (2026-10-26 — decisión owner): al logueado la saga ya se
+      // los acreditó y los ve acá; al INVITADO se le ofrece cobrarlos creando su
+      // cuenta con el mismo correo (retrocrédito automático al verificarla).
+      const loyaltySettings = await getLoyaltySettings();
+      const earnedPoints =
+        loyaltySettings.enabled && order ? computeEarnedPoints(order.total, loyaltySettings) : 0;
+      return (
+        <ApprovedPage
+          order={order}
+          txId={tx.id}
+          isGuest={!session}
+          earnedPoints={earnedPoints}
+          earnedValueCents={earnedPoints * pointValueCents(loyaltySettings)}
+        />
+      );
     }
     return <PaymentReceivedPage orderNumber={order?.number ?? tx.reference} txId={tx.id} />;
   }
@@ -375,10 +401,12 @@ export default async function CheckoutGraciasPage({
 
 // ─────────────────────────────────────────────────────────────────────
 
-function ApprovedPage({
+async function ApprovedPage({
   order,
   txId,
   isGuest,
+  earnedPoints,
+  earnedValueCents,
 }: {
   order: {
     id: string;
@@ -397,7 +425,12 @@ function ApprovedPage({
         name: string;
         attributes: unknown;
         images: string[];
-        product: { name: string; images: string[]; personalizationKind: string | null };
+        product: {
+          name: string;
+          slug: string;
+          images: string[];
+          personalizationKind: string | null;
+        };
       };
       design: {
         previewUrl: string | null;
@@ -410,6 +443,10 @@ function ApprovedPage({
   } | null;
   txId: string;
   isGuest: boolean;
+  /** Puntos ganados con esta compra (0 si el programa está apagado). */
+  earnedPoints: number;
+  /** Equivalencia de esos puntos en centavos COP (para el incentivo guest). */
+  earnedValueCents: number;
 }) {
   // #24 — invitado → /rastrear (prueba número+correo y emite un token fresco;
   // F-11: el token original ya no se puede releer de la DB). Con cuenta → histórico.
@@ -471,6 +508,14 @@ function ApprovedPage({
                 it.design,
                 unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
               );
+              // 2026-10-26 — sustantivo kind-aware del badge «N …» ("tiras",
+              // "sets"…); el bloque CMS publicado manda sobre este fallback.
+              const unitNounPlural = unitCountNounForLine({
+                personalizationKind: it.variant.product.personalizationKind,
+                variantName: it.variant.name,
+                designMetadata: it.design?.metadata,
+                isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
+              }).plural;
               const img = disp?.watermarked
                 ? disp.displayUrl
                 : (it.designAssetUrl ??
@@ -504,7 +549,10 @@ function ApprovedPage({
                   <DesignUnitsBadge
                     count={disp?.pageUrls?.length ?? 0}
                     label={
-                      <CmsText blockKey="checkout.gracias.unidades-badge" fallback="unidades" />
+                      <CmsText
+                        blockKey="checkout.gracias.unidades-badge"
+                        fallback={unitNounPlural}
+                      />
                     }
                   />
                 </>
@@ -638,6 +686,16 @@ function ApprovedPage({
         </DetailRow>
       </div>
 
+      {/* Puntos Lucams (2026-10-26): al logueado se le acreditaron al pagar;
+          al invitado se le ofrece cobrarlos creando su cuenta con el mismo
+          correo (retrocrédito automático al verificarla, 30 días). */}
+      {earnedPoints > 0 &&
+        (isGuest ? (
+          <GuestPointsBanner points={earnedPoints} valueCents={earnedValueCents} />
+        ) : (
+          <PointsEarnedNote points={earnedPoints} />
+        ))}
+
       <div className="text-brand-muted mt-8 text-xs">
         <CmsText blockKey="checkout.gracias.receipt-label" fallback="Comprobante Wompi" />:{" "}
         <code className="font-mono">{txId.slice(0, 16)}…</code>
@@ -667,6 +725,52 @@ function ApprovedPage({
       </div>
     </div>
   );
+}
+
+/**
+ * Banner post-compra para INVITADOS (2026-10-26 — decisión owner): los puntos
+ * de la compra existen pero no se acreditan sin cuenta; el CTA lleva a
+ * /registro y, si usa el mismo correo, el retrocrédito corre al verificarla
+ * (awardRetroactivePointsForNewCustomer — ventana de 30 días).
+ */
+async function GuestPointsBanner({ points, valueCents }: { points: number; valueCents: number }) {
+  const [titleBlock, bodyBlock, ctaBlock] = await Promise.all([
+    getCmsBlock("checkout.gracias.guest-points-title"),
+    getCmsBlock("checkout.gracias.guest-points-body"),
+    getCmsBlock("checkout.gracias.guest-points-cta"),
+  ]);
+  const puntos = points.toLocaleString("es-CO");
+  const title = (titleBlock?.body ?? "🎁 Ganaste {puntos} Puntos Lucams").replaceAll(
+    "{puntos}",
+    puntos,
+  );
+  const body = (
+    bodyBlock?.body ??
+    "Crea tu cuenta con este mismo correo en los próximos {dias} días y te los acreditamos: equivalen a {valor} para tu próxima compra."
+  )
+    .replaceAll("{dias}", String(RETROACTIVE_EARN_WINDOW_DAYS))
+    .replaceAll("{valor}", formatCOP(valueCents));
+  const cta = ctaBlock?.body ?? "Crear mi cuenta y cobrar mis puntos";
+
+  return (
+    <div className="border-brand-purple/15 from-brand-pink/10 to-brand-purple/10 mx-auto mt-6 max-w-md rounded-2xl border bg-gradient-to-br p-5 text-center shadow-sm">
+      <p className="text-brand-purple-dark font-display text-base font-bold">{title}</p>
+      <p className="text-brand-purple-dark/80 mt-1 text-xs leading-relaxed">{body}</p>
+      <Button asChild className="bg-gradient-brand mt-3 text-white hover:brightness-110">
+        <Link href="/registro">{cta}</Link>
+      </Button>
+    </div>
+  );
+}
+
+/** Línea de puntos ganados para el cliente CON sesión (la saga ya los acreditó). */
+async function PointsEarnedNote({ points }: { points: number }) {
+  const block = await getCmsBlock("checkout.gracias.points-earned");
+  const text = (block?.body ?? "✨ Ganaste {puntos} Puntos Lucams con esta compra.").replaceAll(
+    "{puntos}",
+    points.toLocaleString("es-CO"),
+  );
+  return <p className="text-brand-purple mx-auto mt-6 max-w-md text-sm font-semibold">{text}</p>;
 }
 
 function PendingPage({ orderNumber, txId }: { orderNumber: string; txId: string }) {

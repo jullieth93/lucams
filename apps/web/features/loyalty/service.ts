@@ -213,6 +213,114 @@ export async function awardLoyaltyPointsForPaidOrder(orderId: string): Promise<v
   }
 }
 
+// ─────────────────────── Retrocrédito al crear la cuenta (guest → registrado) ───────────────────────
+
+/**
+ * Ventana del retrocrédito (decisión owner 2026-10-26): las compras de
+ * INVITADO acreditan sus puntos si la persona crea/verifica la cuenta con el
+ * MISMO email dentro de los 30 días siguientes a la compra.
+ */
+export const RETROACTIVE_EARN_WINDOW_DAYS = 30;
+
+/** Estados "dinero recibido" que acreditan puntos (mismo set que referidos). */
+const PAID_LIKE_STATUSES = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] as const;
+
+/**
+ * Acredita al Customer recién verificado los puntos de sus órdenes de
+ * invitado: PAID (o posterior), email de contacto coincidente EXACTO
+ * (case-insensitive), creadas dentro de la ventana de 30 días y sin EARN
+ * previo. Lo llaman los flujos de verificación de signup y login (junto al
+ * claim de pedidos guest) — NUNCA antes de probar que el caller controla el
+ * buzón, o un atacante cobraría los puntos de compras ajenas con solo
+ * registrarse con el email de la víctima.
+ *
+ * Idempotente por orden: el índice único LoyaltyTxn(orderId, "EARN") convierte
+ * un retry (o una carrera con la saga) en P2002 → se salta esa orden. Best-
+ * effort: NUNCA lanza ni interrumpe el registro/login. Devuelve el total de
+ * puntos acreditados en esta corrida (0 si no había nada que acreditar).
+ */
+export async function awardRetroactivePointsForNewCustomer(input: {
+  customerId: string;
+  email: string;
+}): Promise<number> {
+  try {
+    const settings = await getLoyaltySettings();
+    if (!settings.enabled) return 0;
+    const email = input.email.trim();
+    if (!email) return 0;
+    const since = new Date(Date.now() - RETROACTIVE_EARN_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const orders = await prisma.order.findMany({
+      where: {
+        email: { equals: email, mode: "insensitive" },
+        deletedAt: null,
+        status: { in: [...PAID_LIKE_STATUSES] },
+        createdAt: { gte: since },
+        // Nunca órdenes de OTRO Customer ya vinculado (null = guest; el propio
+        // id cubre las que claimGuestOrdersForCustomer acaba de atribuirle).
+        OR: [{ customerId: null }, { customerId: input.customerId }],
+      },
+      select: { id: true, number: true, total: true },
+    });
+    if (orders.length === 0) return 0;
+
+    // Filtro lógico además del índice único: no re-acreditar órdenes que YA
+    // tienen su EARN (la saga se los acreditó a otra cuenta legítima, o un
+    // retry nuestro ya corrió).
+    const earned = await prisma.loyaltyTxn.findMany({
+      where: { orderId: { in: orders.map((o) => o.id) }, reason: LOYALTY_REASONS.earn },
+      select: { orderId: true },
+    });
+    const alreadyEarned = new Set(earned.map((t) => t.orderId));
+
+    let awarded = 0;
+    for (const order of orders) {
+      if (alreadyEarned.has(order.id)) continue;
+      const points = computeEarnedPoints(order.total, settings);
+      if (points <= 0) continue;
+      try {
+        await prisma.$transaction(async (tx) => {
+          await tx.loyaltyTxn.create({
+            data: {
+              customerId: input.customerId,
+              delta: points,
+              reason: LOYALTY_REASONS.earn,
+              orderId: order.id,
+            },
+          });
+          await tx.customer.update({
+            where: { id: input.customerId },
+            data: { loyaltyPoints: { increment: points } },
+          });
+        });
+        awarded += points;
+        logger.info({
+          event: "loyalty.earn.retroactive",
+          orderId: order.id,
+          orderNumber: order.number,
+          customerId: input.customerId,
+          points,
+        });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+          // Carrera con la saga o retry: la orden ya acreditó sus puntos.
+          logger.info({ event: "loyalty.earn.retroactive_already", orderId: order.id });
+          continue;
+        }
+        throw err;
+      }
+    }
+    return awarded;
+  } catch (err) {
+    // Best-effort: un fallo acá NUNCA rompe el registro ni el login.
+    logger.error({
+      event: "loyalty.earn.retroactive_fail",
+      customerId: input.customerId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return 0;
+  }
+}
+
 // ─────────────────────── Redeem (creación de la orden) ───────────────────────
 
 /**

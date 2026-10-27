@@ -22,6 +22,7 @@ import {
   CheckoutError,
   getAppliedCoupon,
   getCheckoutLoyalty,
+  getGuestLoyaltyIncentive,
   loadCheckoutContext,
   assertCheckoutAvailability,
 } from "@/features/checkout/service";
@@ -89,6 +90,12 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   // el checkout es de invitado. `applied` re-tarifado contra el carrito actual;
   // `error` si la redención guardada dejó de valer (mismo patrón del cupón).
   const loyalty = await getCheckoutLoyalty();
+
+  // Incentivo "crea tu cuenta y gana puntos" para INVITADOS (2026-10-26 —
+  // decisión owner): getCheckoutLoyalty devuelve null para el guest, así que
+  // sin este bloque no vería puntos en ningún paso. null si hay sesión, el
+  // programa está apagado o la compra no alcanza ni 1 punto.
+  const guestIncentive = await getGuestLoyaltyIncentive(ctx);
 
   // Toggle de negocio: ¿se ofrece contra entrega? (editable en /admin/contenido/paginas/global).
   // FAIL-CLOSED (CF-35): setting ausente/despublicada = COD deshabilitado — nunca se
@@ -321,6 +328,8 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
             loyaltyDiscount={loyalty?.applied?.discountCents ?? 0}
             loyaltyPoints={loyalty?.applied?.points}
             loyaltyEarnPreview={loyalty?.earnPreviewPoints}
+            guestIncentive={guestIncentive}
+            guestTexts={texts.guestLoyalty}
             texts={texts.summary}
           />
         </div>
@@ -351,7 +360,7 @@ function ReviewCard({
         </h3>
         <Link
           href={href}
-          className="text-brand-purple-dark hover:text-brand-purple text-xs font-semibold"
+          className="text-brand-purple-dark hover:text-brand-purple -my-3 inline-flex min-h-11 items-center px-2 text-xs font-semibold"
         >
           {editLabel}
         </Link>

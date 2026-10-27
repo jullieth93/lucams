@@ -8,10 +8,12 @@
  */
 
 import Image from "next/image";
+import Link from "next/link";
 import { ShoppingBag, Sparkles } from "lucide-react";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import type { CartDetail } from "@/features/cart/service";
+import type { GuestLoyaltyIncentive } from "@/features/checkout/service";
 import type { CheckoutTexts } from "../checkout-texts";
 
 export function OrderSummary({
@@ -23,6 +25,8 @@ export function OrderSummary({
   loyaltyDiscount,
   loyaltyPoints,
   loyaltyEarnPreview,
+  guestIncentive,
+  guestTexts,
   texts,
 }: {
   cart: CartDetail;
@@ -37,6 +41,12 @@ export function OrderSummary({
   loyaltyPoints?: number;
   /** Puntos que el cliente ganará con esta compra (programa activo + sesión). */
   loyaltyEarnPreview?: number;
+  /** Incentivo "crea tu cuenta y gana puntos" para INVITADOS (2026-10-26) —
+   *  lo resuelve el padre con getGuestLoyaltyIncentive (null si logueado,
+   *  programa apagado o catálogo). */
+  guestIncentive?: GuestLoyaltyIncentive | null;
+  /** Textos CMS del bloque de incentivo (checkout.guest-loyalty.*). */
+  guestTexts?: CheckoutTexts["guestLoyalty"];
   /** Textos CMS del resumen (roadmap B8) — los resuelve el padre server con getCheckoutTexts. */
   texts: CheckoutTexts["summary"];
 }) {
@@ -178,6 +188,32 @@ export function OrderSummary({
           <p className="text-brand-purple text-[11px] font-semibold">
             {texts.loyaltyEarn.replace("{n}", loyaltyEarnPreview.toLocaleString("es-CO"))}
           </p>
+        )}
+        {/* Incentivo de cuenta para invitados (2026-10-26 — decisión owner):
+            el guest no tiene balance que redimir ni preview de puntos; el
+            bloque le muestra lo que ganaría y lo lleva a /registro. El
+            carrito vive en cookie de sesión, así que sobrevive al registro. */}
+        {guestIncentive && guestTexts && !catalog && (
+          <div className="border-brand-purple/15 from-brand-pink/10 to-brand-purple/10 mt-3 rounded-xl border bg-gradient-to-br p-3.5">
+            <p className="text-brand-purple-dark text-xs font-bold">{guestTexts.title}</p>
+            <p className="text-brand-purple-dark/80 mt-1 text-[11px] leading-snug">
+              {guestTexts.body
+                .replace("{puntos}", guestIncentive.earnPreviewPoints.toLocaleString("es-CO"))
+                .replace("{valor}", formatCOP(guestIncentive.valueCents))}
+            </p>
+            {guestIncentive.referralsEnabled && (
+              <p className="text-brand-muted mt-1 text-[11px] leading-snug">
+                {guestTexts.referralNote}
+              </p>
+            )}
+            <Link
+              href="/registro"
+              className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm"
+            >
+              {guestTexts.cta}
+            </Link>
+            <p className="text-brand-muted mt-1.5 text-[10px] italic">{guestTexts.cartNote}</p>
+          </div>
         )}
         <p className="text-brand-muted mt-1 text-[10px]">
           {catalog ? texts.noteCatalog : texts.noteFinal}

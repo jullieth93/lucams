@@ -15,7 +15,7 @@
  * Limpieza scoped por prefijo RUN.
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
 
 // Settings controlables por test (null = cae al fallback del reader).
@@ -42,6 +42,7 @@ vi.mock("@/lib/cms", async (importOriginal) => {
 
 import {
   awardLoyaltyPointsForPaidOrder,
+  awardRetroactivePointsForNewCustomer,
   LoyaltyRedemptionError,
   quoteRedemptionForOrder,
   reserveRedeemedPoints,
@@ -308,5 +309,165 @@ describe.skipIf(!hasDb)("loyalty/service — integración DB", { timeout: T }, (
     await prisma.order.update({ where: { id: orderId }, data: { loyaltyPointsRedeemed: 400 } });
     await transitionOrder(orderId, "CANCELLED");
     expect(await balanceOf(customerId)).toBe(500);
+  });
+
+  // ───────────── Retrocrédito guest → cuenta (2026-10-26, decisión owner) ─────────────
+  // Cliente NUEVO dedicado por escenario: las órdenes usan `${RUN}-retro-*` en
+  // el email y el cleanup borra sus txns/cliente al final de cada test, para no
+  // contaminar el balance del customer compartido de los tests de arriba.
+  describe("awardRetroactivePointsForNewCustomer", () => {
+    const retroEmail = `${RUN}-retro@lucams.test`;
+    let retroCustomerId = "";
+
+    async function makeRetroCustomer(): Promise<string> {
+      const c = await prisma.customer.create({
+        data: {
+          email: retroEmail,
+          supabaseUserId: `${RUN}-retro-sub-${crypto.randomUUID()}`,
+          referralCode: `LCS-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+          firstName: "Retro",
+        },
+        select: { id: true },
+      });
+      retroCustomerId = c.id;
+      return c.id;
+    }
+
+    async function makeRetroOrder(opts: {
+      total: number;
+      status: string;
+      tag: string;
+      email?: string;
+      customerId?: string | null;
+      createdAt?: Date;
+    }): Promise<string> {
+      const order = await prisma.order.create({
+        data: {
+          number: `LCM-${RUN}-${opts.tag}`.toUpperCase(),
+          customerId: opts.customerId === undefined ? null : opts.customerId,
+          email: opts.email ?? retroEmail,
+          phone: "3001234567",
+          shippingAddress: { fullName: "Test", city: "Bogotá", department: "Cundinamarca" },
+          subtotal: opts.total,
+          discount: 0,
+          shipping: 0,
+          tax: 0,
+          total: opts.total,
+          paymentMethod: "WOMPI",
+          status: opts.status as "PAID",
+          ...(opts.createdAt ? { createdAt: opts.createdAt } : {}),
+        },
+        select: { id: true },
+      });
+      return order.id;
+    }
+
+    afterEach(async () => {
+      if (retroCustomerId) {
+        await prisma.loyaltyTxn.deleteMany({ where: { customerId: retroCustomerId } });
+        await prisma.customer.deleteMany({ where: { id: retroCustomerId } });
+        retroCustomerId = "";
+      }
+      await prisma.order.deleteMany({
+        where: { email: { contains: `${RUN}-retro`, mode: "insensitive" } },
+      });
+    });
+
+    it("acredita las PAID guest de los últimos 30 días (email case-insensitive) y es idempotente por orden", async () => {
+      programOn();
+      const newCustomerId = await makeRetroCustomer();
+      // Elegible: PAID, guest (customerId null), email con CASE DISTINTO.
+      const eligible = await makeRetroOrder({
+        total: 5_990_000,
+        status: "PAID",
+        tag: "retro-ok",
+        email: retroEmail.toUpperCase(),
+      });
+      // NO elegibles:
+      const old = await makeRetroOrder({
+        total: 5_990_000,
+        status: "PAID",
+        tag: "retro-old",
+        createdAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000), // > 30 días
+      });
+      const pending = await makeRetroOrder({
+        total: 5_990_000,
+        status: "PENDING_PAYMENT",
+        tag: "retro-pend",
+      });
+      // Vinculada a OTRO customer (el compartido de la suite): jamás se toca.
+      const foreign = await makeRetroOrder({
+        total: 5_990_000,
+        status: "PAID",
+        tag: "retro-foreign",
+        customerId,
+      });
+
+      const awarded = await awardRetroactivePointsForNewCustomer({
+        customerId: newCustomerId,
+        email: retroEmail,
+      });
+
+      // $59.900 → 59 puntos, solo de la orden elegible.
+      expect(awarded).toBe(59);
+      expect(await balanceOf(newCustomerId)).toBe(59);
+      expect(await prisma.loyaltyTxn.count({ where: { orderId: eligible, reason: "EARN" } })).toBe(
+        1,
+      );
+      // Las demás órdenes del email quedaron intactas (sin EARN).
+      expect(
+        await prisma.loyaltyTxn.count({
+          where: { orderId: { in: [old, pending, foreign] }, reason: "EARN" },
+        }),
+      ).toBe(0);
+
+      // Segunda corrida (re-login / re-verificación): no duplica.
+      const again = await awardRetroactivePointsForNewCustomer({
+        customerId: newCustomerId,
+        email: retroEmail,
+      });
+      expect(again).toBe(0);
+      expect(await balanceOf(newCustomerId)).toBe(59);
+    });
+
+    it("no re-acredita una orden que la saga ya pagó a OTRA cuenta (fila EARN existente)", async () => {
+      programOn();
+      const newCustomerId = await makeRetroCustomer();
+      // La orden era guest, pero la saga ya le acreditó el EARN a otro customer
+      // antes de que quedara vinculada (escenario de carrera histórico).
+      const orderId = await makeRetroOrder({
+        total: 5_990_000,
+        status: "PAID",
+        tag: "retro-earned",
+        customerId,
+      });
+      await awardLoyaltyPointsForPaidOrder(orderId);
+      const prevMain = await balanceOf(customerId);
+
+      const awarded = await awardRetroactivePointsForNewCustomer({
+        customerId: newCustomerId,
+        email: retroEmail,
+      });
+
+      expect(awarded).toBe(0);
+      expect(await balanceOf(newCustomerId)).toBe(0);
+      expect(await balanceOf(customerId)).toBe(prevMain); // sin cambios
+      expect(await prisma.loyaltyTxn.count({ where: { orderId, reason: "EARN" } })).toBe(1);
+    });
+
+    it("programa apagado → no-op", async () => {
+      const newCustomerId = await makeRetroCustomer();
+      await makeRetroOrder({ total: 5_990_000, status: "PAID", tag: "retro-off" });
+      programOff();
+
+      const awarded = await awardRetroactivePointsForNewCustomer({
+        customerId: newCustomerId,
+        email: retroEmail,
+      });
+
+      expect(awarded).toBe(0);
+      expect(await balanceOf(newCustomerId)).toBe(0);
+      programOn();
+    });
   });
 });
