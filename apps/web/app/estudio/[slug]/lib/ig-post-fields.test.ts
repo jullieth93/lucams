@@ -112,6 +112,11 @@ describe("ubicación — «Ciudad, País» multi-palabra (rediseño 2026-10-26, 
     expect(igLocationOverride("villa de leyva, boyacá")).toBe("Villa De Leyva, Boyacá");
   });
 
+  it("normaliza el resto de la palabra a minúscula (owner 2026-10-27)", () => {
+    expect(igLocationOverride("BOGOTÁ,COLOMBIA")).toBe("Bogotá, Colombia");
+    expect(igLocationOverride("sAnTa   mArTa,  cOlOmBiA")).toBe("Santa Marta, Colombia");
+  });
+
   it("sin coma: 2 palabras exactas se leen como «Ciudad País» (compat con la convención vieja)", () => {
     expect(igLocationOverride("bogotá colombia")).toBe("Bogotá, Colombia");
     expect(igLocationOverride("bogotá,colombia")).toBe("Bogotá, Colombia");
