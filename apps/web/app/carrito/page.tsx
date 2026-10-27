@@ -33,6 +33,7 @@ import { LinkPendingLabel } from "@/components/ui/link-pending-label";
 import { IconSubmitButton } from "./qty-button";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
+import type { UnitNoun } from "@/features/cart/line-preview";
 
 export const metadata: Metadata = {
   title: "Carrito",
@@ -85,11 +86,15 @@ export default async function CarritoPage() {
                           <Sparkles className="text-brand-muted h-7 w-7" />
                         </div>
                       )}
-                      {/* 2026-10-13 — «N unidades» sobre la miniatura cuando el
-                          diseño trae varias piezas (el «Ver» pagina por unidad). */}
+                      {/* 2026-10-13 — «N <sustantivo>» sobre la miniatura cuando el
+                          diseño trae varias piezas (el «Ver» pagina por unidad).
+                          2026-10-26 — el fallback es kind-aware ("tiras", "sets"…);
+                          el bloque CMS publicado manda sobre él cuando existe. */}
                       <DesignUnitsBadge
                         count={item.designPreviewPages?.length ?? 0}
-                        label={<CmsText blockKey="cart.unidades-badge" fallback="unidades" />}
+                        label={
+                          <CmsText blockKey="cart.unidades-badge" fallback={item.unitNoun.plural} />
+                        }
                       />
                     </>
                   );
@@ -264,7 +269,11 @@ export default async function CarritoPage() {
                             el stepper. */}
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                             {item.designId ? (
-                              <DesignUnitsLabel units={item.designUnits} qty={item.qty} />
+                              <DesignUnitsLabel
+                                units={item.designUnits}
+                                qty={item.qty}
+                                noun={item.unitNoun}
+                              />
                             ) : (
                               <QtyControls itemId={item.itemId} qty={item.qty} stock={item.stock} />
                             )}
@@ -409,12 +418,22 @@ function UnitPriceLabel({
  * el total de unidades físicas que recibirá el cliente: unidades del diseño
  * (designUnits, multi-unidad 2026-09-09) × qty de la línea (qty puede ser >1
  * por agrupación de diseños idénticos o copias legacy del flujo de nombre).
+ * El sustantivo es el del tipo de producto ("2 tiras", "3 packs", "2 sets" —
+ * unitNoun de la línea; antes todo decía "unidades").
  */
-function DesignUnitsLabel({ units, qty }: { units: number | null; qty: number }) {
+function DesignUnitsLabel({
+  units,
+  qty,
+  noun,
+}: {
+  units: number | null;
+  qty: number;
+  noun: UnitNoun;
+}) {
   const total = (units ?? 1) * qty;
   return (
     <span className="text-brand-purple-dark/80 text-sm font-medium tabular-nums">
-      {total} {total === 1 ? "unidad" : "unidades"}
+      {total} {total === 1 ? noun.singular : noun.plural}
     </span>
   );
 }

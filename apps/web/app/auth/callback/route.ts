@@ -19,11 +19,14 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import { recoverCustomerCartSessionId } from "@/features/cart/service";
+import { CART_SESSION_COOKIE, cartSessionCookieOptions, peekCartSession } from "@/lib/cart-session";
 import {
   CUSTOMER_ACTIVITY_COOKIE,
   customerActivityCookieOptions,
   sealCustomerActivityMark,
 } from "@/lib/customer-activity";
+import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -40,7 +43,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
     logger.info({
@@ -65,5 +68,33 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     sealCustomerActivityMark(Date.now()),
     customerActivityCookieOptions(),
   );
+
+  // Recuperación de carrito (misma regla que login/OTP): si el navegador NO
+  // trae cookie de carrito anónimo (el logout la borra), se escribe la cookie
+  // con el sessionId del carrito vivo más reciente del cliente para que
+  // reaparezca. Con cookie anónima presente se conserva el comportamiento
+  // histórico de este endpoint (sin merge). En type=recovery no aplica: esa
+  // sesión es temporal y termina en un signOut global al cambiar la clave.
+  // Best-effort: un fallo acá NUNCA rompe el callback de auth.
+  if (type !== "recovery" && data.user) {
+    try {
+      const anonSessionId = await peekCartSession();
+      if (!anonSessionId) {
+        const customer = await prisma.customer.findFirst({
+          where: { supabaseUserId: data.user.id, deletedAt: null },
+          select: { id: true },
+        });
+        const cartSessionId = customer ? await recoverCustomerCartSessionId(customer.id) : null;
+        if (cartSessionId) {
+          response.cookies.set(CART_SESSION_COOKIE, cartSessionId, cartSessionCookieOptions());
+        }
+      }
+    } catch (err) {
+      logger.warn({
+        event: "auth.callback.cart_recover_fail",
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
   return response;
 }

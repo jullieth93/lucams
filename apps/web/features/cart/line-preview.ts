@@ -31,6 +31,46 @@ const NOMBRES: Record<PieceKind, { singular: string; plural: string }> = {
 /** Sustantivo de la UNIDAD cuando el diseño trae varias (multi-unidad). */
 export type UnitNoun = { singular: string; plural: string };
 
+/**
+ * Sustantivo de la unidad comercial de una línea personalizada para los
+ * CONTEOS ("2 tiras", "3 packs", "1 set") — etiqueta de cantidad del carrito y
+ * badge «N …» sobre la miniatura. Antes todo decía "unidad/unidades", que para
+ * un cliente que pidió 2 tiras photobooth leía raro.
+ *
+ * Misma terminología que describePieces y el pager del Estudio
+ * (estudio.unidades.nombre*). Precedencia:
+ *   - sets de letras (metadata.surface "letterset") → set/sets;
+ *   - calendario (CALENDAR_PHOTO_MONTH) → calendario/calendarios;
+ *   - tiras photobooth (variante "Tira de…") → tira/tiras;
+ *   - separadores (familia de slugs/tags "separadores*") → separador/separadores;
+ *   - packs de foto (PHOTO_PACK: polaroid, fotoimanes) → pack/packs;
+ *   - resto → unidad/unidades.
+ */
+export function unitCountNounForLine(input: {
+  personalizationKind: string | null | undefined;
+  variantName: string | null | undefined;
+  /** Design.metadata de la línea (surface "letterset" → sets de letras). */
+  designMetadata?: unknown;
+  /** El producto es de la familia separadores (galleryTag/slug "separadores*"). */
+  isBookmark?: boolean;
+}): UnitNoun {
+  const meta =
+    input.designMetadata && typeof input.designMetadata === "object"
+      ? (input.designMetadata as { surface?: unknown })
+      : null;
+  if (meta?.surface === "letterset") return { singular: "set", plural: "sets" };
+  const kind = pieceKindFor(input.personalizationKind, input.variantName);
+  if (kind === "calendar") return { singular: "calendario", plural: "calendarios" };
+  if (kind === "strips") return { singular: "tira", plural: "tiras" };
+  if (kind === "bookmarks" || input.isBookmark) {
+    return { singular: "separador", plural: "separadores" };
+  }
+  if (input.personalizationKind === "PHOTO_PACK") {
+    return { singular: "pack", plural: "packs" };
+  }
+  return { singular: "unidad", plural: "unidades" };
+}
+
 export function pieceKindFor(
   personalizationKind: string | null | undefined,
   variantName: string | null | undefined,

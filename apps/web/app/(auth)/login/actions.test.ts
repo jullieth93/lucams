@@ -21,8 +21,13 @@ const rateLimit = vi.hoisted(() =>
 );
 const recordSecurityEvent = vi.hoisted(() => vi.fn(async () => {}));
 const customerUpsert = vi.hoisted(() => vi.fn(async () => ({ id: "cust-1" })));
+const customerFindFirst = vi.hoisted(() => vi.fn(async () => ({ id: "cust-1" }) as unknown));
 const peekCartSession = vi.hoisted(() => vi.fn(async () => null as string | null));
+const setCartSessionCookie = vi.hoisted(() => vi.fn(async (_sessionId: string) => {}));
 const mergeAnonCartIntoCustomer = vi.hoisted(() => vi.fn(async () => "sess-1"));
+const recoverCustomerCartSessionId = vi.hoisted(() =>
+  vi.fn(async (_customerId: string) => null as string | null),
+);
 // Cookie store capturado: el login SELLA la marca de actividad del cliente
 // (idle-timeout 30 días, lib/customer-activity.ts) al autenticarse.
 const cookieJar = vi.hoisted(() => new Map<string, string>());
@@ -52,12 +57,17 @@ vi.mock("@/lib/rate-limit", () => ({ rateLimit }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({ auth: { signInWithPassword } }),
 }));
-vi.mock("@/lib/db", () => ({ prisma: { customer: { upsert: customerUpsert } } }));
+vi.mock("@/lib/db", () => ({
+  prisma: { customer: { upsert: customerUpsert, findFirst: customerFindFirst } },
+}));
 vi.mock("@/lib/cart-session", () => ({
   peekCartSession,
-  setCartSessionCookie: vi.fn(async () => {}),
+  setCartSessionCookie,
 }));
-vi.mock("@/features/cart/service", () => ({ mergeAnonCartIntoCustomer }));
+vi.mock("@/features/cart/service", () => ({
+  mergeAnonCartIntoCustomer,
+  recoverCustomerCartSessionId,
+}));
 vi.mock("@/lib/security-events", () => ({
   recordSecurityEvent,
   SECURITY_EVENT: { LOGIN_FAIL: "auth.login.fail" },
@@ -82,6 +92,8 @@ beforeEach(() => {
   vi.stubEnv("CSRF_SECRET", "test-secret-fijo-login");
   rateLimit.mockResolvedValue({ allowed: true, count: 1 });
   peekCartSession.mockResolvedValue(null);
+  customerFindFirst.mockResolvedValue({ id: "cust-1" });
+  recoverCustomerCartSessionId.mockResolvedValue(null);
 });
 
 describe("loginAction — validación de input", () => {
@@ -210,8 +222,61 @@ describe("loginAction — éxito", () => {
         update: { supabaseUserId: "u-ok", deletedAt: null },
       }),
     );
-    // Sin cookie de carrito anon no hay merge.
+    // Sin cookie de carrito anon no hay MERGE, pero sí RECOVERY del carrito del
+    // customer (2026-10-26): el logout borra la cookie y el re-login debe
+    // re-vincular el carrito vivo del cliente en vez de perderlo.
     expect(mergeAnonCartIntoCustomer).not.toHaveBeenCalled();
+    expect(recoverCustomerCartSessionId).toHaveBeenCalledWith("cust-1");
+  });
+
+  it("sin cookie de carrito y CON carrito vivo del customer → escribe la cookie con su sessionId", async () => {
+    okAuth();
+    recoverCustomerCartSessionId.mockResolvedValue("sess-customer-vivo");
+
+    await expect(loginAction(null, loginForm())).rejects.toThrow("REDIRECT:/");
+
+    expect(recoverCustomerCartSessionId).toHaveBeenCalledWith("cust-1");
+    expect(setCartSessionCookie).toHaveBeenCalledWith("sess-customer-vivo");
+    expect(mergeAnonCartIntoCustomer).not.toHaveBeenCalled();
+  });
+
+  it("sin cookie de carrito y SIN carrito recuperable → NO escribe cookie de carrito", async () => {
+    okAuth();
+    recoverCustomerCartSessionId.mockResolvedValue(null);
+
+    await expect(loginAction(null, loginForm())).rejects.toThrow("REDIRECT:/");
+
+    expect(recoverCustomerCartSessionId).toHaveBeenCalledWith("cust-1");
+    expect(setCartSessionCookie).not.toHaveBeenCalled();
+    expect(mergeAnonCartIntoCustomer).not.toHaveBeenCalled();
+  });
+
+  it("con cookie anónima → merge intacto; la cookie solo se reescribe si el sessionId final cambia", async () => {
+    okAuth();
+    peekCartSession.mockResolvedValue("11111111-2222-4333-8444-555555555555");
+    mergeAnonCartIntoCustomer.mockResolvedValue("sess-customer-final");
+
+    await expect(loginAction(null, loginForm())).rejects.toThrow("REDIRECT:/");
+
+    expect(mergeAnonCartIntoCustomer).toHaveBeenCalledWith(
+      "11111111-2222-4333-8444-555555555555",
+      "cust-1",
+    );
+    expect(setCartSessionCookie).toHaveBeenCalledWith("sess-customer-final");
+    // Con cookie anónima NO corre la rama de recovery.
+    expect(recoverCustomerCartSessionId).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    okAuth();
+    peekCartSession.mockResolvedValue("11111111-2222-4333-8444-555555555555");
+    // El merge conserva el sessionId (el anon pasó a ser del customer) → no
+    // hace falta reescribir la cookie.
+    mergeAnonCartIntoCustomer.mockResolvedValue("11111111-2222-4333-8444-555555555555");
+
+    await expect(loginAction(null, loginForm())).rejects.toThrow("REDIRECT:/");
+
+    expect(mergeAnonCartIntoCustomer).toHaveBeenCalled();
+    expect(setCartSessionCookie).not.toHaveBeenCalled();
   });
 
   it("?next=/mi-cuenta (interno) → redirect al destino; ?next=//evil.com → cae a /", async () => {
@@ -229,11 +294,12 @@ describe("loginAction — éxito", () => {
   it("con carrito anon previo → merge al customer y no rompe el login si el merge falla", async () => {
     okAuth();
     peekCartSession.mockResolvedValue("11111111-2222-4333-8444-555555555555");
-    customerUpsert.mockResolvedValue({ id: "cust-9" });
-    // mergeCartSafely busca el customer por supabaseUserId con prisma real —
-    // acá el mock de db solo expone upsert; un findFirst undefined haría
-    // fallar el merge, que es best-effort por diseño: el login igual redirige.
+    // El merge/recovery es best-effort por diseño: un carrito roto NUNCA
+    // bloquea el login (el error se loguea y el redirect sigue).
+    mergeAnonCartIntoCustomer.mockRejectedValue(new Error("db caída"));
+
     await expect(loginAction(null, loginForm())).rejects.toThrow("REDIRECT:/");
+    expect(mergeAnonCartIntoCustomer).toHaveBeenCalled();
   });
 
   it("SELLA la marca de actividad del cliente (customer_last_activity firmada) al autenticarse", async () => {

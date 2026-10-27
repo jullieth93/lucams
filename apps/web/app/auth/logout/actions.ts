@@ -27,6 +27,10 @@ export async function logoutAction(): Promise<void> {
   await supabase.auth.signOut();
 
   (await cookies()).delete(CUSTOMER_ACTIVITY_COOKIE);
+  // Clearing the cart cookie on logout stays: on shared devices the next person
+  // must not see the previous account's cart. The next login recovers the
+  // customer's live cart (recoverCustomerCartSessionId in mergeCartSafely), so
+  // nothing is actually lost.
   await Promise.all([clearCartSession(), clearCheckoutState()]);
 
   if (user) {

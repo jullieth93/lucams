@@ -23,8 +23,9 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { mergeAnonCartIntoCustomer } from "@/features/cart/service";
+import { mergeAnonCartIntoCustomer, recoverCustomerCartSessionId } from "@/features/cart/service";
 import { claimGuestOrdersForCustomer } from "@/features/orders/claim-guest-orders";
+import { awardRetroactivePointsForNewCustomer } from "@/features/loyalty/service";
 import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
 import {
   CUSTOMER_ACTIVITY_COOKIE,
@@ -119,6 +120,12 @@ export async function verifyOtpAction(
   // o cualquiera se adjudicaría pedidos ajenos registrándose con email ajeno).
   if (authData.user) await claimGuestOrdersSafely(authData.user.id, parsed.data.email);
 
+  // Retrocrédito de puntos guest (2026-10-26 — decisión owner): las órdenes
+  // PAID de los últimos 30 días hechas con este email acreditan sus puntos a
+  // la cuenta recién verificada. Mismo gate de seguridad que el claim (solo
+  // tras OTP exitoso). Best-effort: nunca bloquea la verificación.
+  if (authData.user) await creditRetroactivePointsSafely(authData.user.id, parsed.data.email);
+
   // El OTP verificado CREA la sesión: sellar la marca de actividad del cliente
   // (idle-timeout 30 días — lib/customer-activity.ts), igual que en login.
   (await cookies()).set(
@@ -149,15 +156,45 @@ async function claimGuestOrdersSafely(supabaseUserId: string, email: string): Pr
   }
 }
 
-async function mergeCartSafely(supabaseUserId: string): Promise<void> {
+/**
+ * Retrocrédito de puntos guest (2026-10-26 — decisión owner): acredita los
+ * puntos de las órdenes PAID recientes (30 días) hechas con este email.
+ * Nunca lanza (la función interna ya es best-effort; esto es doble defensa).
+ */
+async function creditRetroactivePointsSafely(supabaseUserId: string, email: string): Promise<void> {
   try {
-    const anonSessionId = await peekCartSession();
-    if (!anonSessionId) return;
     const customer = await prisma.customer.findFirst({
       where: { supabaseUserId, deletedAt: null },
       select: { id: true },
     });
     if (!customer) return;
+    await awardRetroactivePointsForNewCustomer({ customerId: customer.id, email });
+  } catch (err) {
+    logger.warn({
+      event: "loyalty.retroactive.claim_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function mergeCartSafely(supabaseUserId: string): Promise<void> {
+  try {
+    const anonSessionId = await peekCartSession();
+    const customer = await prisma.customer.findFirst({
+      where: { supabaseUserId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) return;
+    if (!anonSessionId) {
+      // Sin cookie de carrito (el logout la borra): recuperar el carrito vivo
+      // más reciente del cliente escribiendo su sessionId en la cookie — sin
+      // esto el carrito "desaparecía" al re-login y el primer add mintaba un
+      // SEGUNDO Cart para el mismo customer. Sin carrito recuperable no se
+      // escribe nada (flujo normal: sesión fresca en el primer add).
+      const recovered = await recoverCustomerCartSessionId(customer.id);
+      if (recovered) await setCartSessionCookie(recovered);
+      return;
+    }
     const finalSessionId = await mergeAnonCartIntoCustomer(anonSessionId, customer.id);
     if (finalSessionId !== anonSessionId) {
       await setCartSessionCookie(finalSessionId);
