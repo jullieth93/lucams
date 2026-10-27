@@ -71,7 +71,7 @@ export default async function MiCuentaSoportePage() {
     <div className="mx-auto max-w-4xl">
       <Link
         href="/mi-cuenta"
-        className="text-brand-muted hover:text-brand-purple-dark mb-4 inline-flex items-center gap-1 text-sm"
+        className="text-brand-muted hover:text-brand-purple-dark -mt-2 mb-4 inline-flex min-h-10 items-center gap-1 text-sm"
       >
         <ChevronLeft className="h-4 w-4" /> {texts.back.miCuenta}
       </Link>

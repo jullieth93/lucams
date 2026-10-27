@@ -92,7 +92,7 @@ export function LoginForm({
               <Label htmlFor="password">{texts.passwordLabel}</Label>
               <Link
                 href="/recuperar-password"
-                className="text-brand-pink-ink hover:text-brand-coral-ink text-sm font-medium underline-offset-4 hover:underline"
+                className="text-brand-pink-ink hover:text-brand-coral-ink -my-2.5 inline-flex min-h-10 items-center text-sm font-medium underline-offset-4 hover:underline"
               >
                 {texts.forgot}
               </Link>

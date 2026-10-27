@@ -39,7 +39,7 @@ export default async function ResenasPage() {
     <div className="mx-auto max-w-2xl">
       <Link
         href="/mi-cuenta"
-        className="text-brand-muted hover:text-brand-purple mb-3 inline-flex items-center gap-1 text-xs"
+        className="text-brand-muted hover:text-brand-purple -mt-2 mb-3 inline-flex min-h-10 items-center gap-1 text-xs"
       >
         <ChevronLeft className="h-3 w-3" />
         {texts.back.miCuenta}

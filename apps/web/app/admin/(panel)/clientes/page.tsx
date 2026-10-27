@@ -218,7 +218,7 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`/admin/clientes/${c.id}`}
-                      className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-medium"
+                      className="text-brand-purple-dark hover:text-brand-purple -my-2 inline-flex min-h-10 items-center gap-1 text-xs font-medium"
                     >
                       Ver perfil
                       <ChevronRight className="h-3.5 w-3.5" />

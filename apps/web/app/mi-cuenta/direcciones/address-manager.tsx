@@ -165,7 +165,7 @@ function AddressCard({
             type="button"
             disabled={pending}
             onClick={() => run(() => setDefaultAddressAction(address.id))}
-            className="text-brand-muted hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium disabled:opacity-50"
+            className="text-brand-muted hover:text-brand-purple-dark -my-2 inline-flex min-h-10 items-center gap-1 text-xs font-medium disabled:opacity-50"
           >
             <Check className="h-3.5 w-3.5" /> {texts.makeDefault}
           </button>

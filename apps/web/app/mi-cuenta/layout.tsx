@@ -40,7 +40,7 @@ export default async function MiCuentaLayout({ children }: { children: React.Rea
             <SubmitButton
               variant="ghost"
               size="sm"
-              className="text-brand-muted hover:text-brand-purple-dark"
+              className="text-brand-muted hover:text-brand-purple-dark min-h-10"
             >
               {texts.nav.logout}
             </SubmitButton>

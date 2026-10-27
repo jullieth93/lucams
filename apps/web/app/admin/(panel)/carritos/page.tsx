@@ -342,7 +342,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
                       {c.status !== "recovered" && (
                         <Link
                           href={`/admin/carritos/${c.id}`}
-                          className="rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                          className="-my-2 inline-flex min-h-10 items-center rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
                         >
                           Recordar
                         </Link>

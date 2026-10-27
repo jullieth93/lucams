@@ -76,7 +76,10 @@ export function AdminPageHeader({
               <span key={i}>
                 {i > 0 && <span className="mx-1.5 text-slate-300">›</span>}
                 {b.href ? (
-                  <Link href={b.href} className="hover:text-brand-purple">
+                  <Link
+                    href={b.href}
+                    className="hover:text-brand-purple -my-2 inline-flex min-h-10 items-center"
+                  >
                     {b.label}
                   </Link>
                 ) : (

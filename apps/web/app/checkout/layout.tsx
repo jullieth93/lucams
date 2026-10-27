@@ -35,7 +35,7 @@ export default async function CheckoutLayout({ children }: { children: React.Rea
 
           <Link
             href="/carrito"
-            className="text-brand-purple-dark/70 hover:text-brand-purple-dark inline-flex items-center gap-1.5 text-sm font-medium"
+            className="text-brand-purple-dark/70 hover:text-brand-purple-dark -my-2.5 inline-flex min-h-11 items-center gap-1.5 px-2 text-sm font-medium"
           >
             <ArrowLeft className="h-4 w-4" />
             <span className="hidden sm:inline">{texts.layout.backCart}</span>
@@ -72,13 +72,13 @@ export default async function CheckoutLayout({ children }: { children: React.Rea
             )}
           </div>
           <div className="flex gap-4">
-            <Link href="/legal/terminos" className="hover:text-brand-purple-dark">
+            <Link href="/legal/terminos" className="hover:text-brand-purple-dark -my-3 py-3">
               {texts.layout.linkTerminos}
             </Link>
-            <Link href="/legal/privacidad" className="hover:text-brand-purple-dark">
+            <Link href="/legal/privacidad" className="hover:text-brand-purple-dark -my-3 py-3">
               {texts.layout.linkPrivacidad}
             </Link>
-            <Link href="/legal/garantias" className="hover:text-brand-purple-dark">
+            <Link href="/legal/garantias" className="hover:text-brand-purple-dark -my-3 py-3">
               {texts.layout.linkGarantias}
             </Link>
           </div>
