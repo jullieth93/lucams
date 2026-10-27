@@ -10,6 +10,10 @@
  */
 
 import { z } from "zod";
+import {
+  BORDER_WIDTH_FACTOR_MAX,
+  BORDER_WIDTH_FACTOR_MIN,
+} from "@/features/personalization/frame-palette";
 
 // ──────────────────────────────────────────────────────────────────
 //  Canvas V1 — plantilla unitaria / legacy
@@ -235,6 +239,16 @@ export const CanvasDataV2Schema = z
     // como fallback. Sin catchall en este schema: declararla acá es lo que la hace
     // sobrevivir el auto-save (Zod stripea claves no declaradas).
     igNoBorder: z.boolean().optional(),
+    // Grosor del borde elegido por el cliente en el Estudio (owner 2026-10-26):
+    // FACTOR multiplicador sobre el grosor base del producto (1 = el grosor de
+    // siempre; la base es 4% del lado menor en Cuadrados y 3% del ancho en
+    // Tiras — frame-palette). El admin habilita y acota el rango en
+    // personalizationSchema.borderWidth. Aditivo: ausente = diseño de antes de
+    // la ola (o producto sin el feature) → el render cae al default del
+    // producto o a 1 (resolveBorderWidthFactor). Sin catchall en este schema:
+    // declararla acá es lo que la hace sobrevivir el auto-save (Zod stripea
+    // claves no declaradas — mismo motivo que igNoBorder/clientRev).
+    borderWidthFactor: z.number().min(0.25).max(3).optional(),
     // ADR-133 (2026-10-08) — reloj del cliente (epoch ms del último cambio) estampado
     // por el Estudio al auto-guardar. Lo usa la reconciliación del snapshot local de
     // recuperación: si el canvas guardado en el server tiene clientRev MENOR que el
@@ -432,6 +446,45 @@ export type UploadAssetMetadata = z.infer<typeof UploadAssetMetadataSchema>;
 // Validar el shape de `Product.personalizationSchema` (JSON libre) al usarlo.
 // El editor lo lee para configurar el grid de slots + indicadores de tamaño.
 
+/**
+ * Rango de grosor de borde por producto (2026-10-26 — admin habilita y acota;
+ * el cliente elige dentro del rango en el Estudio). Valores = FACTOR sobre el
+ * grosor base histórico (1 = de siempre; ver frame-palette). Invariantes:
+ * min > 0, min ≤ default ≤ max, todo dentro de las cotas globales.
+ */
+export const BorderWidthConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    min: z.number().min(BORDER_WIDTH_FACTOR_MIN).max(BORDER_WIDTH_FACTOR_MAX),
+    max: z.number().min(BORDER_WIDTH_FACTOR_MIN).max(BORDER_WIDTH_FACTOR_MAX),
+    default: z.number().min(BORDER_WIDTH_FACTOR_MIN).max(BORDER_WIDTH_FACTOR_MAX),
+  })
+  .superRefine((cfg, ctx) => {
+    if (cfg.min > cfg.max) {
+      ctx.addIssue({
+        code: "custom",
+        message: "borderWidth: min no puede ser mayor que max",
+        path: ["min"],
+      });
+    }
+    if (cfg.default < cfg.min || cfg.default > cfg.max) {
+      ctx.addIssue({
+        code: "custom",
+        message: "borderWidth: default debe estar entre min y max",
+        path: ["default"],
+      });
+    }
+  });
+export type BorderWidthConfig = z.infer<typeof BorderWidthConfigSchema>;
+
+/** Defaults del rango cuando el admin habilita el feature (1 = grosor actual). */
+export const BORDER_WIDTH_CONFIG_DEFAULTS: BorderWidthConfig = {
+  enabled: true,
+  min: 1,
+  max: 2.5,
+  default: 1,
+};
+
 export const PhotoProductConfigSchema = z.object({
   photoSlots: z.number().int().min(1).max(50),
   aspectRatio: z.string().optional(),
@@ -443,6 +496,17 @@ export const PhotoProductConfigSchema = z.object({
   cornerRadiusPx: z.number().int().min(0).max(500).optional(),
   // Ola 2A — ids de marco de color ofrecidos en el Estudio (paleta frame-palette).
   frameOptions: z.array(z.string().max(24)).max(12).optional(),
+  /**
+   * Grosor de borde CONFIGURABLE por producto (owner 2026-10-26): el admin
+   * habilita el slider del Estudio y fija el rango; el cliente elige dentro de
+   * él. Los valores son FACTORES sobre el grosor base de la familia (1 = el
+   * grosor histórico: 4% del lado menor en Cuadrados, 3% del ancho en Tiras —
+   * frame-palette). La elección viaja en canvasData.borderWidthFactor y el
+   * render de producción la consume igual (WYSIWYG). Ausente/deshabilitado →
+   * el Estudio no muestra el slider y todo rinde con factor 1 (o el valor ya
+   * persistido en el diseño, clampado a las cotas globales).
+   */
+  borderWidth: BorderWidthConfigSchema.optional(),
   /**
    * Ola 3 (Lucy 2026-07-22) — ¿el producto admite TEXTO editable en el Estudio?
    * Default false: solo los productos que lo declaran (Polaroid) muestran/editan
@@ -531,4 +595,21 @@ export function parseStudioCanvasOverrides(raw: unknown): {
     canvasBaseScale: base.success ? (base.data ?? null) : null,
     gridColsOverride: cols.success ? (cols.data ?? null) : null,
   };
+}
+
+/**
+ * Lectura DEFENSIVA de la config de grosor de borde (2026-10-26, mismo criterio
+ * que parseStudioCanvasOverrides arriba: un safeParse del schema completo cae
+ * entero si OTRA key del JSON es inválida — ej. finish:"glass" del seed — y el
+ * slider desaparecería aunque borderWidth esté bien guardado). Se valida SOLO la
+ * key borderWidth. Devuelve el rango {min, max, default} cuando el feature está
+ * habilitado y es coherente; null en cualquier otro caso (ausente, deshabilitado,
+ * malformado) → el Estudio no muestra el slider y el render usa el fallback de
+ * resolveBorderWidthFactor (frame-palette).
+ */
+export function readBorderWidthConfig(raw: unknown): BorderWidthConfig | null {
+  const obj = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const parsed = BorderWidthConfigSchema.safeParse(obj.borderWidth);
+  if (!parsed.success) return null;
+  return parsed.data.enabled ? parsed.data : null;
 }

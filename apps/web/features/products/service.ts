@@ -364,6 +364,7 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
   const {
     canvasBaseScale,
     gridColsOverride,
+    borderWidth,
     photoSlots,
     facesPerUnit,
     aspectRatio,
@@ -393,6 +394,7 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
   const personalizationFields = {
     canvasBaseScale,
     gridColsOverride,
+    borderWidth,
     photoSlots,
     facesPerUnit,
     aspectRatio,

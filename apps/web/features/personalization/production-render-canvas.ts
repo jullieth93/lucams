@@ -232,6 +232,14 @@ async function renderSlotCanvas(
   frameFullBleed: boolean = false,
   /** Ola 4 — posición del slot dentro de una TIRA photobooth (borde exterior first/last). */
   stripPosition: StripPosition | null = null,
+  /**
+   * Grosor del borde (owner 2026-10-26) — FACTOR sobre la base histórica (1 = el
+   * de siempre). Lo persistió el cliente en canvasData.borderWidthFactor (el job
+   * lo resuelve contra el rango del producto, render-job-service) y acá llega ya
+   * resuelto. Escala la franja full-bleed (frameBleedMargin) y el inset/canaletas
+   * de la tira (stripPhotoRect) — la MISMA matemática del editor (WYSIWYG).
+   */
+  borderWidthFactor: number = 1,
 ): Promise<Buffer> {
   if (unit.stage.width > MAX_STAGE_DIM || unit.stage.height > MAX_STAGE_DIM) {
     throw new RenderNeedsKonvaError(
@@ -294,7 +302,7 @@ async function renderSlotCanvas(
   // la tarjeta entera de borderColor y la foto va inserta (misma regla que el editor).
   const fullBleed =
     frameFullBleed && typeof borderColor === "string" && !hasFrameCard && !useFullStage;
-  const bleedMargin = fullBleed ? frameBleedMargin(unit.stage) : 0;
+  const bleedMargin = fullBleed ? frameBleedMargin(unit.stage, borderWidthFactor) : 0;
   // Ola 4 — reglas nuevas por tipo de tarjeta (Lucy 2026-07-23):
   //  - "tarjeta simple" (Cuadrados: fondo + foto, sin chrome ni texto visible):
   //    borderColor null → foto a sangre TOTAL; borderColor set → franja UNIFORME.
@@ -399,7 +407,11 @@ async function renderSlotCanvas(
       let ph = phRaw;
       if (frameFullBleed && simpleCard && !useFullStage) {
         ph = {
-          ...simpleCardPhotoRect(unit.stage, borderColor ?? null, frameBleedMargin(unit.stage)),
+          ...simpleCardPhotoRect(
+            unit.stage,
+            borderColor ?? null,
+            frameBleedMargin(unit.stage, borderWidthFactor),
+          ),
           cornerRadius: 0,
         };
       } else if (fullBleed && !isIg && !useFullStage) {
@@ -412,6 +424,7 @@ async function renderSlotCanvas(
         ph = {
           ...stripPhotoRect(ph, unit.stage, stripPosition, {
             borderless: isStripBorderless(ph, unit.stage),
+            borderWidthFactor,
           }),
           cornerRadius: ph.cornerRadius,
         };
@@ -650,6 +663,12 @@ export async function renderProductionSlotsCanvas(opts: {
   includeText?: boolean;
   /** Ola 3b — producto con frameOptions: tarjeta full-bleed del color + foto inserta. */
   frameFullBleed?: boolean;
+  /**
+   * Grosor del borde (2026-10-26) — FACTOR persistido por el cliente en
+   * canvasData.borderWidthFactor, ya resuelto contra el rango del producto por
+   * el caller (1 = base histórica). Mismo valor que vio en el Estudio (WYSIWYG).
+   */
+  borderWidthFactor?: number;
 }): Promise<Buffer[]> {
   const mod = await loadCanvas(); // lazy: un binario faltante → NEEDS_KONVA (fallback), no crash.
   const out: Buffer[] = [];
@@ -671,6 +690,7 @@ export async function renderProductionSlotsCanvas(opts: {
         opts.includeText ?? true,
         opts.frameFullBleed ?? false,
         strip ? stripPositionOf(index, slots.length) : null,
+        opts.borderWidthFactor ?? 1,
       ),
     );
   }

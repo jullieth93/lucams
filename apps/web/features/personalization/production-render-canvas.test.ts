@@ -1227,3 +1227,96 @@ describe("renderProductionSlotsCanvas — Ola 24 (Lucy 2026-09-09)", () => {
     ).rejects.toBeInstanceOf(RenderNeedsKonvaError);
   });
 });
+
+describe("renderProductionSlotsCanvas — grosor de borde persistido (owner 2026-10-26)", () => {
+  // El factor llega YA RESUELTO del canvasData (el job lo clampa contra el rango
+  // del producto — render-job-service). Acá se verifica que el PNG de imprenta
+  // lo consume vía los helpers de frame-palette (WYSIWYG con el lienzo).
+  const PINK: [number, number, number] = [0xe8, 0x5b, 0x9f];
+  const BLUE: [number, number, number] = [0x3a, 0xa0, 0xff]; // fakePhoto
+  const slotOk = {
+    slotIndex: 0,
+    assetId: "a0",
+    photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+  };
+
+  it("tarjeta simple (Cuadrados): factor 2 DUPLICA la franja de color (12px → 24px)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 400 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "ph", type: "image-placeholder", x: 0, y: 0, width: 300, height: 400 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 800),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+      borderWidthFactor: 2,
+    });
+    // Con factor 1 la franja sería de 12px; con 2 es de 24: (18,18) ahora es
+    // COLOR (antes ya era foto) y la foto empieza recién a los 24px.
+    expect((await rgbaAt(bufs[0], 18 * 3, 18 * 3)).slice(0, 3)).toEqual(PINK);
+    expect((await rgbaAt(bufs[0], 30 * 3, 30 * 3)).slice(0, 3)).toEqual(BLUE);
+    expect((await rgbaAt(bufs[0], 294 * 3, 394 * 3)).slice(0, 3)).toEqual(PINK);
+  });
+
+  it("tira photobooth: factor 2 duplica el borde exterior Y las canaletas", async () => {
+    const stripUnit = {
+      version: 1 as const,
+      stage: { width: 390, height: 400 },
+      gridCols: 1,
+      gridGap: 0,
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
+        { id: "ph", type: "image-placeholder", x: 12, y: 0, width: 366, height: 400 },
+      ],
+    };
+    const stripSlots = [0, 1, 2].map((i) => ({ ...slotOk, slotIndex: i, assetId: `a${i}` }));
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: stripUnit,
+      slots: stripSlots,
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+      frameFullBleed: true,
+      borderWidthFactor: 2,
+    });
+    const nearWhite: [number, number, number] = [255, 255, 255];
+    const [first, middle] = bufs;
+    // Primera celda: borde exterior 12→24px — y=20 (antes foto) ahora es tarjeta.
+    expect((await rgbaAt(first, 195 * 3, 20 * 3)).slice(0, 3)).toEqual(nearWhite);
+    expect((await rgbaAt(first, 195 * 3, 30 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Celda del medio: media canaleta 8→16px — y=10 (antes foto) ahora es tarjeta.
+    expect((await rgbaAt(middle, 195 * 3, 10 * 3)).slice(0, 3)).toEqual(nearWhite);
+    expect((await rgbaAt(middle, 195 * 3, 20 * 3)).slice(0, 3)).toEqual(BLUE);
+  });
+
+  it("retrocompat: sin borderWidthFactor el render es el histórico (franja 12px / inset 12px)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 400 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "ph", type: "image-placeholder", x: 0, y: 0, width: 300, height: 400 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 800),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+      // sin borderWidthFactor — diseños guardados antes de la ola
+    });
+    // Franja de 12px: (18,18) ya es foto (con factor 2 sería color — ver arriba).
+    expect((await rgbaAt(bufs[0], 18 * 3, 18 * 3)).slice(0, 3)).toEqual(BLUE);
+    expect((await rgbaAt(bufs[0], 6 * 3, 6 * 3)).slice(0, 3)).toEqual(PINK);
+  });
+});

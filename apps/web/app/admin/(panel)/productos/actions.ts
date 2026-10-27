@@ -137,6 +137,19 @@ function parsePayload(formData: FormData) {
     // key del personalizationSchema (vuelve al default del Estudio).
     canvasBaseScale: getOptNum("canvasBaseScale"),
     gridColsOverride: getOptNum("gridColsOverride"),
+    // Grosor del borde (2026-10-26): el checkbox arma el rango {min, max,
+    // default} (factores sobre el grosor base; 1 = el actual). Apagado (o el
+    // panel de foto no aplica al kind) → null → el service BORRA la key del
+    // personalizationSchema. Si falta algún número, Zod lo rechaza con el
+    // mensaje del campo (el objeto viaja con nulls).
+    borderWidth:
+      get("borderWidthEnabled") === "on"
+        ? {
+            min: getOptNum("borderWidthMin"),
+            max: getOptNum("borderWidthMax"),
+            default: getOptNum("borderWidthDefault"),
+          }
+        : null,
   };
 }
 

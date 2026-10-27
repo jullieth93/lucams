@@ -292,6 +292,39 @@ describe("readPersonalizationAdminConfig (precarga del form)", () => {
     expect(readPersonalizationAdminConfig({ letterSet: "vowels" }).letterSet).toBe("vowels");
     expect(readPersonalizationAdminConfig({ letterSet: "consonantes" }).letterSet).toBeNull();
   });
+
+  it("borderWidth (2026-10-26): round-trip habilitar → editar → apagar", () => {
+    // Habilitar: el form manda el rango compuesto → se persiste con enabled:true
+    // (el contrato que lee el Estudio vía readBorderWidthConfig).
+    const built = buildPersonalizationSchemaFromInput({
+      personalizationKind: "PHOTO_PACK",
+      photoSlots: 6,
+      borderWidth: { min: 1, max: 2.5, default: 1.5 },
+    });
+    expect(built?.borderWidth).toEqual({ enabled: true, min: 1, max: 2.5, default: 1.5 });
+    // Precarga del form: solo el rango (el checkbox se deriva de != null).
+    expect(readPersonalizationAdminConfig(built).borderWidth).toEqual({
+      min: 1,
+      max: 2.5,
+      default: 1.5,
+    });
+    // Apagar (checkbox desmarcado → null) borra la key; undefined no la toca.
+    expect(
+      mergePersonalizationAdminInput(built as Record<string, unknown>, { borderWidth: null }),
+    ).not.toHaveProperty("borderWidth");
+    expect(mergePersonalizationAdminInput(built as Record<string, unknown>, {})).toHaveProperty(
+      "borderWidth",
+    );
+    // Lectura defensiva: enabled false o números faltantes → null (feature apagado).
+    expect(
+      readPersonalizationAdminConfig({
+        borderWidth: { enabled: false, min: 1, max: 2, default: 1 },
+      }).borderWidth,
+    ).toBeNull();
+    expect(
+      readPersonalizationAdminConfig({ borderWidth: { enabled: true, min: 1 } }).borderWidth,
+    ).toBeNull();
+  });
 });
 
 /*

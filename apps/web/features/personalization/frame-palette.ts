@@ -108,12 +108,79 @@ export function defaultTextFillOnCard(
 // (el stage escala con el tamaño físico de la variante).
 // ──────────────────────────────────────────────────────────────────────────
 
+// ──────────────────────────────────────────────────────────────────────────
+// GROSOR DE BORDE CONFIGURABLE (owner 2026-10-26 — decisión: el admin define el
+// RANGO por producto, el cliente elige dentro de él en el Estudio).
+//
+// REPRESENTACIÓN: FACTOR MULTIPLICADOR sobre el grosor base histórico de cada
+// familia (Cuadrados: 4% del lado menor — FRAME_BLEED_MARGIN_RATIO; Tiras: 3%
+// del ancho — stripOuterInset). 1 = el grosor de siempre. Se eligió factor y no
+// ratio absoluto porque UNA sola config sirve para ambas familias sin que el
+// admin conozca cada base, y la retrocompat es trivial: un canvasData sin
+// `borderWidthFactor` equivale a 1 (diseños viejos intactos).
+//
+// El factor viaja en `canvasData.borderWidthFactor` (lo escribe el slider del
+// Estudio) y el rango {min, max, default} en `personalizationSchema.borderWidth`
+// (lo edita el admin). El editor (Konva), el preview del modal, el snapshot de
+// producción y el render server-side consumen el MISMO valor vía estos helpers
+// (WYSIWYG por construcción).
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Factor neutro = el grosor base histórico del producto (retrocompat). */
+export const BORDER_WIDTH_FACTOR_DEFAULT = 1;
+
+/** Cotas globales defensivas del factor (anti payload manipulado; el rango del
+ *  producto siempre vive DENTRO de ellas — PhotoProductConfigSchema lo exige). */
+export const BORDER_WIDTH_FACTOR_MIN = 0.25;
+export const BORDER_WIDTH_FACTOR_MAX = 3;
+
+/** Rango por producto del grosor de borde (personalizationSchema.borderWidth). */
+export type BorderWidthRange = { min: number; max: number; default: number };
+
+/** Clampa un factor al rango [min, max] (el slider del Estudio y el render). */
+export function clampBorderWidthFactor(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return BORDER_WIDTH_FACTOR_DEFAULT;
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Factor EFECTIVO de grosor para renderizar un diseño:
+ *  - Con `range` (producto con el feature habilitado): ausente/inválido →
+ *    `range.default` (retrocompat: diseños viejos = el default del producto);
+ *    presente → clampado al rango (un valor fuera no se respeta).
+ *  - Sin `range` (producto sin la config o deshabilitada después): un valor
+ *    persistido VÁLIDO se respeta (es lo que el cliente vio al diseñar),
+ *    clampado solo a las cotas globales; ausente/inválido → 1 (base histórica).
+ */
+export function resolveBorderWidthFactor(raw: unknown, range?: BorderWidthRange | null): number {
+  const base =
+    typeof raw === "number" && Number.isFinite(raw)
+      ? raw
+      : (range?.default ?? BORDER_WIDTH_FACTOR_DEFAULT);
+  return clampBorderWidthFactor(
+    base,
+    range?.min ?? BORDER_WIDTH_FACTOR_MIN,
+    range?.max ?? BORDER_WIDTH_FACTOR_MAX,
+  );
+}
+
 /** Ancho mínimo de la franja de color como fracción del lado menor del stage (4%). */
 export const FRAME_BLEED_MARGIN_RATIO = 0.04;
 
-/** Franja mínima de color (px del stage) para el marco full-bleed. */
-export function frameBleedMargin(stage: { width: number; height: number }): number {
-  return Math.max(6, Math.round(Math.min(stage.width, stage.height) * FRAME_BLEED_MARGIN_RATIO));
+/**
+ * Franja mínima de color (px del stage) para el marco full-bleed.
+ * `factor` (2026-10-26) escala el grosor sobre la base 4% (1 = histórico);
+ * el piso de 6px se mantiene siempre.
+ */
+export function frameBleedMargin(
+  stage: { width: number; height: number },
+  factor: number = BORDER_WIDTH_FACTOR_DEFAULT,
+): number {
+  const f = Number.isFinite(factor) ? factor : BORDER_WIDTH_FACTOR_DEFAULT;
+  return Math.max(
+    6,
+    Math.round(Math.min(stage.width, stage.height) * FRAME_BLEED_MARGIN_RATIO * f),
+  );
 }
 
 export type PhotoRect = { x: number; y: number; width: number; height: number };
@@ -216,9 +283,14 @@ export function stripPositionOf(slotIndex: number, slotCount: number): StripPosi
 /**
  * Grosor del borde exterior de la tira (px del stage). ≈2 mm a 300 DPI sobre una tira
  * de 6.5 cm de ancho (390 px → 12 px); proporcional al ancho del stage.
+ * `factor` (2026-10-26) escala el grosor sobre la base 3% (1 = histórico).
  */
-export function stripOuterInset(stage: { width: number; height: number }): number {
-  return Math.max(6, Math.round(stage.width * 0.03));
+export function stripOuterInset(
+  stage: { width: number; height: number },
+  factor: number = BORDER_WIDTH_FACTOR_DEFAULT,
+): number {
+  const f = Number.isFinite(factor) ? factor : BORDER_WIDTH_FACTOR_DEFAULT;
+  return Math.max(6, Math.round(stage.width * 0.03 * f));
 }
 
 /**
@@ -226,9 +298,16 @@ export function stripOuterInset(stage: { width: number; height: number }): numbe
  * stage), del color del marco (la capa frame-card asoma donde la foto se inserta).
  * ≈0.7 mm por cara a 300 DPI sobre 6.5 cm de ancho (390 px → 8 px) → la canaleta
  * visible entre dos fotos es 2× (16 px ≈ 1.3 mm), como en la tira física.
+ * `factor` (2026-10-26): la canaleta ESCALA con el mismo factor del borde exterior
+ * (decisión documentada — con el borde grueso la canaleta fija se veía desproporcionada;
+ * el look de la tira física conserva la proporción canal/borde).
  */
-export function stripGutterPx(stage: { width: number; height: number }): number {
-  return Math.max(4, Math.round(stage.width * 0.02));
+export function stripGutterPx(
+  stage: { width: number; height: number },
+  factor: number = BORDER_WIDTH_FACTOR_DEFAULT,
+): number {
+  const f = Number.isFinite(factor) ? factor : BORDER_WIDTH_FACTOR_DEFAULT;
+  return Math.max(4, Math.round(stage.width * 0.02 * f));
 }
 
 /**
@@ -253,17 +332,20 @@ export function isStripBorderless(
  *    producto físico (regla 2026-09-08 — antes las fotos se tocaban, gap 0 real).
  *  - Ola 25 — `borderless` (sin borde): CERO inset y CERO canaleta — la celda
  *    queda a sangre total y las fotos se tocan (tira continua sin líneas).
+ *  - `borderWidthFactor` (2026-10-26): escala el inset exterior y la canaleta
+ *    sobre la base histórica (1 = de siempre; el slider del Estudio lo escribe).
  * Los lados los maneja la plantilla (ventana con margen lateral uniforme).
  */
 export function stripPhotoRect(
   ph: PhotoRect,
   stage: { width: number; height: number },
   position: StripPosition,
-  opts?: { borderless?: boolean },
+  opts?: { borderless?: boolean; borderWidthFactor?: number },
 ): PhotoRect {
   const borderless = opts?.borderless === true;
-  const inset = borderless ? 0 : stripOuterInset(stage);
-  const gutter = borderless ? 0 : stripGutterPx(stage);
+  const factor = opts?.borderWidthFactor ?? BORDER_WIDTH_FACTOR_DEFAULT;
+  const inset = borderless ? 0 : stripOuterInset(stage, factor);
+  const gutter = borderless ? 0 : stripGutterPx(stage, factor);
   const top = position === "first" || position === "single" ? inset : gutter;
   const bottom = position === "last" || position === "single" ? inset : gutter;
   return { ...ph, y: ph.y + top, height: Math.max(10, ph.height - top - bottom) };
