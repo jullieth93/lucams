@@ -355,11 +355,12 @@ polling (`GET /api/designs/<id>/render-status`) y el render corre en background:
   site map (borrar las filas en DB si existen — ya sin consumidor). **Ya aplicado en LOCAL**
   (seed + bodies actualizados directo en DB); pendiente STG y PRD al promover.
 
-### Claves CMS pendientes de sembrar (jornada 2026-10-26)
+### Claves CMS de la jornada 2026-10-26
 
-Declaradas en `packages/db/scripts/cms-site-map.mjs`; se materializan por ambiente con
-`make migrate-cms-v2` + «Actualizar caché de contenido» en `/admin/contenido` (mientras no
-se siembren, sirven los fallbacks del código). **Pendientes en los 3 ambientes.**
+Declaradas en `packages/db/scripts/cms-site-map.mjs`. **Sembradas en LOCAL, STG y PRD**
+(`migrate-cms-v2 --apply`, 2026-10-27; verificado por query: las 20 claves presentes en STG y
+PRD). **Pendiente manual:** «Actualizar caché de contenido» en `/admin/contenido` de cada
+ambiente (mientras no se invalide, sirven los fallbacks del código o el caché de hasta 1 h).
 
 - **Estudio / plantillas y prediseñados:** `estudio.plantillas.reemplazo-par-titulo`,
   `-cuerpo`, `-nombre`, `-aria` (modal de reemplazo por PAR de caras — ADR-158 ajustado),
