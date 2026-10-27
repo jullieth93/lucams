@@ -378,8 +378,8 @@ ambiente (mientras no se invalide, sirven los fallbacks del código o el caché 
   multi-palabra). El seed es upsert que NO pisa campos ya editados: si el ambiente la tiene
   publicada con el texto viejo, actualizarla a mano en `/admin/contenido`.
 - **Sumada 2026-10-27:** `estudio.texto.ig-ubicacion-formato` (aviso inline cuando la
-  ubicación no lleva exactamente una coma «Ciudad, País» — regla no bloqueante). Sembrar con
-  `make migrate-cms-v2` (mientras no se siembre, sirve el fallback del código).
+  ubicación no lleva exactamente una coma «Ciudad, País» — regla no bloqueante). **Sembrada
+  en LOCAL, STG y PRD** el 2026-10-27; pendiente solo invalidar caché en `/admin/contenido`.
 
 **Grosor del borde (ADR-173):** no es dato CMS ni migración — vive en
 `personalizationSchema.borderWidth` del Product y se configura por producto en
