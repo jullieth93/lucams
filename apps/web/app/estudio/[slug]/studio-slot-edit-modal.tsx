@@ -125,6 +125,8 @@ type StudioSlotEditModalProps = {
     unitTemplate: CanvasDataV1;
     totalSlots: number;
     borderColor: string | null;
+    /** Grosor del borde (2026-10-26) — factor sobre la base del producto. */
+    borderWidthFactor?: number | null;
     allowText: boolean;
     frameFullBleed: boolean;
     calendarCard: {
@@ -294,6 +296,7 @@ export function StudioSlotEditModal({
                       }}
                       totalSlots={preview.totalSlots}
                       borderColor={preview.borderColor}
+                      borderWidthFactor={preview.borderWidthFactor ?? null}
                       allowText={preview.allowText}
                       frameFullBleed={preview.frameFullBleed}
                       calendarCard={preview.calendarCard}

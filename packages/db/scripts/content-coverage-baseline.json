@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-22T14:03:25.707Z",
-  "threshold": 42.69,
+  "generatedAt": "2026-10-27T04:45:09.442Z",
+  "threshold": 42.5,
   "uncovered": [
     "apps/web/app/(auth)/confirmar-codigo/confirmar-form.tsx :: El código es numérico, de 6 a 10 dígitos.",
     "apps/web/app/(auth)/registro/registro-form.tsx :: Tu nombre es obligatorio",
@@ -54,8 +54,10 @@
     "apps/web/app/estudio/[slug]/book-view-3d.tsx :: Agrega una foto para ver tu separador en el libro.",
     "apps/web/app/estudio/[slug]/calendar-view-3d.tsx :: Agrega fotos a tus meses para ver tu calendario en 3D.",
     "apps/web/app/estudio/[slug]/fridge-3d-view.tsx :: Agrega al menos una foto para ver tus imanes en la nevera 3D.",
+    "apps/web/app/estudio/[slug]/gift-3d-view.tsx :: Agrega al menos una foto para ver tu regalo 3D.",
     "apps/web/app/estudio/[slug]/polaroid-3d-view.tsx :: Agrega al menos una foto para ver tus polaroids en 3D.",
     "apps/web/app/estudio/[slug]/room-board-view-3d.tsx :: Agrega tu diseño para verlo en el tablero.",
+    "apps/web/app/estudio/[slug]/shelf-3d-view.tsx :: Agrega al menos una foto para ver tu diseño en la repisa 3D.",
     "apps/web/app/estudio/[slug]/studio-preview-modal.tsx :: c/u",
     "apps/web/app/legal/cookies/page.tsx :: ¿Quieres cambiar qué cookies aceptas?",
     "apps/web/app/mi-cuenta/cupones/page.tsx :: Mis cupones",

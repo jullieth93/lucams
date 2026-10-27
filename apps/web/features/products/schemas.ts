@@ -183,6 +183,43 @@ const ProductBaseSchema = z.object({
     .max(6, "Máximo 6 columnas")
     .optional()
     .nullable(),
+  // Grosor del borde configurable en el Estudio (owner 2026-10-26): el form lo
+  // compone como objeto cuando el checkbox está marcado (null = feature
+  // apagado → el service borra la key del personalizationSchema). Los valores
+  // son FACTORES sobre el grosor base del producto: 1 = el grosor actual, 2 =
+  // el doble. Validación cruzada: 0 < min ≤ default ≤ max, dentro de las cotas
+  // globales (0.25–3 — un borde de 75% del lado rompería el diseño).
+  borderWidth: z
+    .object({
+      min: z
+        .number({ message: "Número requerido" })
+        .min(0.25, "Mínimo 0.25 (25% del grosor base)")
+        .max(3, "Máximo 3 (300% del grosor base)"),
+      max: z
+        .number({ message: "Número requerido" })
+        .min(0.25, "Mínimo 0.25 (25% del grosor base)")
+        .max(3, "Máximo 3 (300% del grosor base)"),
+      default: z
+        .number({ message: "Número requerido" })
+        .min(0.25, "Mínimo 0.25 (25% del grosor base)")
+        .max(3, "Máximo 3 (300% del grosor base)"),
+    })
+    .superRefine((bw, ctx) => {
+      if (bw.min > bw.max) {
+        ctx.addIssue({
+          code: "custom",
+          message: "El grosor mínimo no puede ser mayor que el máximo",
+        });
+      }
+      if (bw.default < bw.min || bw.default > bw.max) {
+        ctx.addIssue({
+          code: "custom",
+          message: "El grosor inicial debe estar entre el mínimo y el máximo",
+        });
+      }
+    })
+    .optional()
+    .nullable(),
   // ── Personalización completa desde el form (2026-10-02, tab "Personalización") ──
   // Antes personalizationKind/schema solo los escribían los scripts de catálogo
   // y un producto creado desde el admin nunca llegaba al Estudio ni a

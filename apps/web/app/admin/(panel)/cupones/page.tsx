@@ -306,7 +306,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                           <Hint content={c.isActive ? "Click para pausar" : "Click para reactivar"}>
                             <button
                               type="submit"
-                              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
+                              className={`-my-2 inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
                                 c.isActive
                                   ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
                                   : "bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
@@ -339,7 +339,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                         <div className="flex flex-wrap items-center justify-end gap-3">
                           <Link
                             href={`/admin/cupones/${c.id}`}
-                            className="text-brand-purple-dark hover:text-brand-purple text-[11px] font-medium"
+                            className="text-brand-purple-dark hover:text-brand-purple -my-2.5 inline-flex min-h-10 items-center text-[11px] font-medium"
                           >
                             Editar
                           </Link>
@@ -350,7 +350,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                             <input type="hidden" name="id" value={c.id} />
                             <button
                               type="submit"
-                              className="text-brand-muted text-[11px] font-medium hover:text-rose-600"
+                              className="text-brand-muted -my-2.5 inline-flex min-h-10 items-center text-[11px] font-medium hover:text-rose-600"
                             >
                               Archivar
                             </button>

@@ -23,6 +23,7 @@ import { resolveWompiPaymentReference } from "@/features/orders/payment-referenc
 import { emailsEqual } from "@/features/orders/order-customer";
 import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
+import { notifyStockSaleLost } from "@/features/orders/stock-alerts";
 import {
   InsufficientStockError,
   OrderAlreadyPaidError,
@@ -36,7 +37,7 @@ import {
   pointValueCents,
   quoteRedemption,
 } from "@/features/loyalty/service";
-import { getLoyaltySettings } from "@/features/loyalty/settings";
+import { getLoyaltySettings, getReferralSettings } from "@/features/loyalty/settings";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
 import {
@@ -48,6 +49,7 @@ import {
 import { computePackedPackage } from "@/features/shipping/aveonline";
 import { buildLucamsOffer, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { maxProductionDaysOf } from "@/lib/delivery-estimate";
+import { isCatalogMode } from "@/lib/store-mode";
 import { getZone } from "@/lib/lucams-zones";
 import {
   getEffectiveShippingDims,
@@ -203,6 +205,23 @@ export async function assertCheckoutAvailability(ctx: CheckoutContext): Promise<
     );
   } catch (err) {
     if (err instanceof InsufficientStockError) {
+      // Alerta in-app inmediata al admin (venta frenada por stock — 2026-10-26).
+      // Best-effort: notifyStockSaleLost nunca lanza; el redirect a /carrito no
+      // puede romperse por un fallo de notificación. El dedup (6h por variante)
+      // absorbe los reloads del paso y el doble disparo con order_create.
+      await notifyStockSaleLost({
+        context: "checkout_step",
+        variantId: err.variantId,
+        requested: err.requested,
+        available: err.available,
+        productName: err.productName,
+      }).catch((alertErr) =>
+        // Defensa extra: el redirect a /carrito jamás depende de la alerta.
+        logger.warn({
+          event: "checkout.availability.stock_alert_failed",
+          err: alertErr instanceof Error ? alertErr.message : String(alertErr),
+        }),
+      );
       // El error ya trae el nombre del producto agotado (customer-safe); sin
       // nombre, el genérico. La página redirige a /carrito con este mensaje.
       throw new CheckoutError(
@@ -687,6 +706,40 @@ export async function finalizeCheckout(input: {
         redirectTo,
       );
     }
+    // Stock agotado al crear la orden (assertStockAvailable dentro de la tx —
+    // carrera entre entrar al checkout y confirmar el pago). La orden NUNCA nació
+    // → no hay nada cobrado. Alerta in-app inmediata al admin (2026-10-26);
+    // best-effort, nunca lanza. Al cliente le llega el mensaje ESPECÍFICO que
+    // nombra el producto (STOCK_UNAVAILABLE → las actions redirigen a /carrito,
+    // mismo patrón que assertCheckoutAvailability al entrar al paso) — antes caía
+    // al genérico ORDER_CREATE_FAILED y el cliente veía "No pudimos iniciar el
+    // pago", sin saber que el problema era el stock.
+    if (err instanceof InsufficientStockError) {
+      await notifyStockSaleLost({
+        context: "order_create",
+        variantId: err.variantId,
+        requested: err.requested,
+        available: err.available,
+        productName: err.productName,
+      }).catch((alertErr) =>
+        // Defensa extra: la creación de la orden jamás depende de la alerta.
+        logger.warn({
+          event: "checkout.finalize.stock_alert_failed",
+          err: alertErr instanceof Error ? alertErr.message : String(alertErr),
+        }),
+      );
+      logger.warn({
+        event: "checkout.finalize.stock_unavailable",
+        variantId: err.variantId,
+        requested: err.requested,
+        available: err.available ?? null,
+      });
+      throw new CheckoutError(
+        "STOCK_UNAVAILABLE",
+        err.customerMessage() ??
+          "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
+      );
+    }
     logger.error({
       event: "checkout.finalize.order_create_fail",
       err: err instanceof Error ? err.message : String(err),
@@ -1158,6 +1211,44 @@ export async function getCheckoutLoyalty(): Promise<CheckoutLoyaltyInfo | null> 
     applied,
     error,
     earnPreviewPoints: computeEarnedPoints(estimatedTotal, settings),
+  };
+}
+
+export type GuestLoyaltyIncentive = {
+  /** Puntos que el invitado ganaría con esta compra si tuviera cuenta. */
+  earnPreviewPoints: number;
+  /** Equivalencia total en centavos COP (puntos × valor del punto vigente). */
+  valueCents: number;
+  /** Programa "Invita y gana" activo (habilita el microcopy de referidos). */
+  referralsEnabled: boolean;
+};
+
+/**
+ * Incentivo "crea tu cuenta y gana puntos" para INVITADOS (2026-10-26,
+ * decisión owner). Lo muestran /checkout/datos y el resumen del paso de pago.
+ * null si: la tienda está en modo catálogo (no hay compra en línea), el
+ * programa de puntos está apagado, el cliente tiene sesión (él ya ve el
+ * earnPreview de getCheckoutLoyalty), o la compra no alcanza ni 1 punto.
+ * Mismo estimado que earnPreviewPoints: productos tras cupón + envío ya
+ * seleccionado (en /checkout/datos aún no hay envío → solo productos).
+ */
+export async function getGuestLoyaltyIncentive(
+  ctx?: CheckoutContext,
+): Promise<GuestLoyaltyIncentive | null> {
+  if (isCatalogMode()) return null;
+  const settings = await getLoyaltySettings();
+  if (!settings.enabled) return null;
+  const context = ctx ?? (await loadCheckoutContext());
+  if (context.customerId) return null;
+  const merchandise = await merchandiseAfterCouponCents(context);
+  const shipping = context.state.shippingSelection?.fleteCop ?? 0;
+  const earnPreviewPoints = computeEarnedPoints(merchandise + shipping, settings);
+  if (earnPreviewPoints <= 0) return null;
+  const referrals = await getReferralSettings();
+  return {
+    earnPreviewPoints,
+    valueCents: earnPreviewPoints * pointValueCents(settings),
+    referralsEnabled: referrals.enabled,
   };
 }
 

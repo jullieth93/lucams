@@ -220,7 +220,7 @@ export async function SiteHeader() {
             <>
               <Link
                 href="/login"
-                className="text-brand-purple-dark hover:text-brand-purple hidden text-sm font-medium sm:inline"
+                className="text-brand-purple-dark hover:text-brand-purple -my-2 hidden min-h-10 items-center text-sm font-medium sm:inline-flex"
               >
                 <CmsText blockKey="header.menu.login" fallback="Ingresar" />
               </Link>

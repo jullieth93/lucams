@@ -139,6 +139,11 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
     initialProduct?.personalization?.textOnlyVariant ?? "name",
   );
   const personalization = initialProduct?.personalization;
+  // Grosor del borde (2026-10-26): el rango solo se edita cuando el checkbox
+  // está marcado; al apagarlo, la action manda null y el service borra la key.
+  const [borderWidthEnabled, setBorderWidthEnabled] = useState(
+    personalization?.borderWidth != null,
+  );
   // El kind que se persiste: LETTERSET → NONE (el marcador letterSet va aparte).
   const effectiveKind: ProductPersonalizationKind = kindSel === "LETTERSET" ? "NONE" : kindSel;
   const isPhotoKind = PHOTO_SURFACE_KINDS.has(effectiveKind);
@@ -734,6 +739,81 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
           </SectionCard>
         )}
 
+        {isPhotoKind && (
+          <SectionCard
+            title="Grosor del borde"
+            description="Si lo habilitas, el cliente elige el grosor del borde de color en el Estudio, dentro del rango que definas. Aplica a los productos con marco de color (Fotoimanes Cuadrados y Tiras photobooth). Los valores son factores: 1 = el grosor actual, 2 = el doble."
+          >
+            <Checkbox
+              name="borderWidthEnabled"
+              label="🎚️ El cliente puede elegir el grosor del borde"
+              hint="Aparece un control deslizante en la barra de estilo del Estudio. Apagado, todo se imprime con el grosor actual (1×)."
+              defaultChecked={personalization?.borderWidth != null}
+              disabled={pending}
+              onChange={setBorderWidthEnabled}
+            />
+            {borderWidthEnabled && (
+              <>
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Field
+                    id="borderWidthMin"
+                    label="Grosor mínimo (×)"
+                    hint="Lo más delgado que el cliente puede elegir. 1 = el grosor actual; puedes bajar a 0.25."
+                  >
+                    <Input
+                      id="borderWidthMin"
+                      name="borderWidthMin"
+                      type="number"
+                      min={0.25}
+                      max={3}
+                      step={0.25}
+                      defaultValue={personalization?.borderWidth?.min ?? 1}
+                      disabled={pending}
+                    />
+                  </Field>
+                  <Field
+                    id="borderWidthMax"
+                    label="Grosor máximo (×)"
+                    hint="Lo más grueso permitido. Un borde muy grueso le come espacio a la foto."
+                  >
+                    <Input
+                      id="borderWidthMax"
+                      name="borderWidthMax"
+                      type="number"
+                      min={0.25}
+                      max={3}
+                      step={0.25}
+                      defaultValue={personalization?.borderWidth?.max ?? 2.5}
+                      disabled={pending}
+                    />
+                  </Field>
+                  <Field
+                    id="borderWidthDefault"
+                    label="Grosor inicial (×)"
+                    hint="Con el que abre el Estudio. Debe quedar entre el mínimo y el máximo."
+                  >
+                    <Input
+                      id="borderWidthDefault"
+                      name="borderWidthDefault"
+                      type="number"
+                      min={0.25}
+                      max={3}
+                      step={0.25}
+                      defaultValue={personalization?.borderWidth?.default ?? 1}
+                      disabled={pending}
+                    />
+                  </Field>
+                </div>
+                {state?.fieldErrors?.borderWidth?.[0] && (
+                  <p role="alert" className="mt-2 text-sm text-red-600">
+                    {state.fieldErrors.borderWidth[0]}
+                  </p>
+                )}
+              </>
+            )}
+          </SectionCard>
+        )}
+
         {kindSel === "TEXT_ONLY" && (
           <SectionCard
             title="Configuración de texto"
@@ -1311,6 +1391,7 @@ const FIELD_LABELS: Record<string, string> = {
   letterSet: "Contenido del set",
   canvasBaseScale: "Tamaño base del lienzo",
   gridColsOverride: "Columnas de la grilla",
+  borderWidth: "Grosor del borde",
 };
 
 /**
@@ -1356,6 +1437,7 @@ function computeErrorTabs(
     letterSet: "personalizacion",
     canvasBaseScale: "personalizacion",
     gridColsOverride: "personalizacion",
+    borderWidth: "personalizacion",
     richDescription: "detalles",
     whyChooseThis: "detalles",
     idealFor: "detalles",

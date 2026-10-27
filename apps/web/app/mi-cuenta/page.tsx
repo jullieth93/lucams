@@ -236,7 +236,7 @@ export default async function MiCuentaPage() {
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
                 >
                   Compartir por WhatsApp
                 </a>
@@ -340,7 +340,7 @@ export default async function MiCuentaPage() {
           <h2 className="font-display text-brand-purple-dark text-xl">{profileHeading}</h2>
           <Link
             href="/mi-cuenta/perfil"
-            className="text-brand-pink-ink hover:text-brand-coral-ink inline-flex items-center gap-1 text-sm font-semibold"
+            className="text-brand-pink-ink hover:text-brand-coral-ink -my-2 inline-flex min-h-10 items-center gap-1 text-sm font-semibold"
           >
             <Pencil className="h-3.5 w-3.5" />
             {profileEdit}

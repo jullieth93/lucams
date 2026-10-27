@@ -14,7 +14,9 @@
  *     feed) en vez de duplicar filas.
  *
  * Quién escribe: features/observability/alerts.ts (ALERT), los catch de los
- * /api/cron/* (CRON), features/quotes/emails.ts (QUOTE) y
+ * /api/cron/* (CRON), features/quotes/emails.ts (QUOTE),
+ * features/orders/stock-alerts.ts (ALERT — venta perdida por stock, inmediata),
+ * features/orders/saga.ts (ALERT — tracking sin orden) y
  * features/observability/daily-summary.ts (SYSTEM).
  * Quién lee: /admin/notificaciones (page + actions) y el badge del sidebar.
  */

@@ -63,6 +63,7 @@ export const ADMIN_MANAGED_PERSONALIZATION_KEYS = [
   "galleryTag",
   "canvasBaseScale",
   "gridColsOverride",
+  "borderWidth",
   "variant",
   "letterCountMin",
   "letterCountMax",
@@ -90,6 +91,15 @@ export type PersonalizationFieldsInput = {
   galleryTag?: string | null;
   canvasBaseScale?: number | null;
   gridColsOverride?: number | null;
+  /**
+   * Grosor del borde configurable (2026-10-26): el form manda el rango ya
+   * compuesto cuando el checkbox está marcado, null cuando el admin lo apaga
+   * (el merge borra la key → el Estudio deja de mostrar el slider). Los
+   * valores son FACTORES sobre el grosor base del producto (1 = el actual;
+   * el shape persistido es { enabled: true, min, max, default } — el contrato
+   * de BorderWidthConfigSchema en features/personalization/schemas).
+   */
+  borderWidth?: { min: number; max: number; default: number } | null;
   // TEXT_ONLY — subtipo elegido en el form
   textOnlyVariant?: TextOnlyVariant | null;
   letterCountMin?: number | null;
@@ -137,6 +147,14 @@ export function mergePersonalizationAdminInput(
   setOrDelete(out, "galleryTag", input.galleryTag);
   setOrDelete(out, "canvasBaseScale", input.canvasBaseScale);
   setOrDelete(out, "gridColsOverride", input.gridColsOverride);
+  // Grosor del borde (2026-10-26): el rango se persiste con enabled:true (el
+  // contrato que lee el Estudio vía readBorderWidthConfig); null = borrar la
+  // key (feature apagado → slider oculto y render con el grosor base).
+  if (input.borderWidth === null) {
+    delete out.borderWidth;
+  } else if (input.borderWidth !== undefined) {
+    out.borderWidth = { enabled: true, ...input.borderWidth };
+  }
 
   // TEXT_ONLY — el subtipo del form se persiste como `variant` (la key que
   // surface.ts lee). "name" se escribe explícito para que cambiar de
@@ -208,6 +226,8 @@ export type PersonalizationAdminConfig = {
   galleryTag: string | null;
   canvasBaseScale: number | null;
   gridColsOverride: number | null;
+  /** Rango de grosor de borde habilitado (2026-10-26); null = feature apagado. */
+  borderWidth: { min: number; max: number; default: number } | null;
   textOnlyVariant: TextOnlyVariant;
   letterCountMin: number | null;
   letterCountMax: number | null;
@@ -249,6 +269,19 @@ export function readPersonalizationAdminConfig(raw: unknown): PersonalizationAdm
     galleryTag: strOrNull(s.galleryTag),
     canvasBaseScale: numOrNull(s.canvasBaseScale),
     gridColsOverride: numOrNull(s.gridColsOverride),
+    // borderWidth (2026-10-26): solo si el feature está habilitado y los 3
+    // factores son números finitos (lectura por-key defensiva, sin arrastrar
+    // otras keys inválidas del JSON).
+    borderWidth: (() => {
+      const bw = s.borderWidth;
+      if (bw === null || typeof bw !== "object") return null;
+      const o = bw as Record<string, unknown>;
+      const min = numOrNull(o.min);
+      const max = numOrNull(o.max);
+      const def = numOrNull(o.default);
+      if (o.enabled !== true || min === null || max === null || def === null) return null;
+      return { min, max, default: def };
+    })(),
     textOnlyVariant,
     letterCountMin: numOrNull(s.letterCountMin),
     // Fallback a nameMaxLength (key legada del seed del abecedario; surface.ts

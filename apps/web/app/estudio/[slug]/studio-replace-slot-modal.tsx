@@ -31,12 +31,17 @@ import { fillStudioText } from "./studio-texts";
 
 export type ReplaceSlotOption = {
   slotIndex: number;
-  /** Rótulo visible numerado ("Lienzo 2"). */
+  /** Rótulo visible numerado ("Lienzo 2"; en modo par, "Separador 2"). */
   label: string;
   /** Chip de cara para productos de 2 caras ("Cara A" / "Cara B"); null en 1 cara. */
   faceLabel?: string | null;
   /** Miniatura del diseño actual del lienzo (assetUrl del slot); null = sin imagen. */
   thumbUrl?: string | null;
+  /**
+   * Nombre accesible COMPLETO de la opción (2026-10-26, modo par: "Reemplazar
+   * las 2 caras del separador N"). Ausente → se arma con reemplazoLienzoAria.
+   */
+  ariaLabel?: string;
 };
 
 export type StudioReplaceSlotModalProps = {
@@ -45,6 +50,12 @@ export type StudioReplaceSlotModalProps = {
   designName: string;
   /** Lienzos ocupados candidatos a reemplazar (ya filtrados por el caller). */
   options: ReplaceSlotOption[];
+  /**
+   * 2026-10-26 (bug del separador mezclado) — las opciones son UNIDADES de 2
+   * caras (prediseñado con cara B + todo lleno): elegir una reemplaza AMBAS
+   * caras del par. Cambia título/cuerpo del modal a la variante de par.
+   */
+  pairMode?: boolean;
   onPick: (slotIndex: number) => void;
   onClose: () => void;
 };
@@ -53,6 +64,7 @@ export function StudioReplaceSlotModal({
   open,
   designName,
   options,
+  pairMode = false,
   onPick,
   onClose,
 }: StudioReplaceSlotModalProps) {
@@ -100,10 +112,17 @@ export function StudioReplaceSlotModal({
                   id="replace-slot-title"
                   className="text-brand-purple-dark text-base leading-tight font-bold"
                 >
-                  {texts.plantillas.reemplazoTitulo}
+                  {pairMode
+                    ? texts.plantillas.reemplazoParTitulo
+                    : texts.plantillas.reemplazoTitulo}
                 </h2>
                 <p id="replace-slot-desc" className="text-brand-muted mt-1 text-xs leading-snug">
-                  {fillStudioText(texts.plantillas.reemplazoCuerpo, { nombre: designName })}
+                  {fillStudioText(
+                    pairMode
+                      ? texts.plantillas.reemplazoParCuerpo
+                      : texts.plantillas.reemplazoCuerpo,
+                    { nombre: designName },
+                  )}
                 </p>
               </div>
               {/* Lista de lienzos ocupados: scroll propio para no romper el modal
@@ -114,9 +133,12 @@ export function StudioReplaceSlotModal({
                     key={opt.slotIndex}
                     type="button"
                     onClick={() => onPick(opt.slotIndex)}
-                    aria-label={fillStudioText(texts.plantillas.reemplazoLienzoAria, {
-                      n: opt.slotIndex + 1,
-                    })}
+                    aria-label={
+                      opt.ariaLabel ??
+                      fillStudioText(texts.plantillas.reemplazoLienzoAria, {
+                        n: opt.slotIndex + 1,
+                      })
+                    }
                     className="border-brand-purple/20 hover:border-brand-purple focus:ring-brand-turquoise group flex flex-col gap-1 rounded-md border-2 p-1.5 transition-colors focus:ring-2 focus:outline-none"
                   >
                     <span className="bg-brand-cream/50 relative block aspect-square w-full overflow-hidden rounded-sm">

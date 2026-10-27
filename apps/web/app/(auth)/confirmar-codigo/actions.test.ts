@@ -14,15 +14,30 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rateLimit, verifyOtp, resend, redirect } = vi.hoisted(() => ({
+const {
+  rateLimit,
+  verifyOtp,
+  resend,
+  redirect,
+  peekCartSession,
+  setCartSessionCookie,
+  mergeAnonCartIntoCustomer,
+  recoverCustomerCartSessionId,
+  customerFindFirst,
+} = vi.hoisted(() => ({
   rateLimit: vi.fn(async (_key: string, _limit?: number, _windowSeconds?: number) => ({
     allowed: true,
     count: 1,
     resetAt: new Date(),
   })),
-  verifyOtp: vi.fn(async () => ({ data: { user: null }, error: null })),
+  verifyOtp: vi.fn(async () => ({ data: { user: null as { id: string } | null }, error: null })),
   resend: vi.fn(async () => ({ error: null })),
   redirect: vi.fn(),
+  peekCartSession: vi.fn(async () => null as string | null),
+  setCartSessionCookie: vi.fn(async (_sessionId: string) => {}),
+  mergeAnonCartIntoCustomer: vi.fn(async () => "sess-1"),
+  recoverCustomerCartSessionId: vi.fn(async (_customerId: string) => null as string | null),
+  customerFindFirst: vi.fn(async () => ({ id: "cust-1" }) as unknown),
 }));
 
 vi.mock("next/headers", () => ({
@@ -40,11 +55,17 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({ auth: { verifyOtp, resend } }),
 }));
 vi.mock("@/lib/origin", () => ({ getRequestOrigin: async () => "https://lucamsshop.com" }));
-vi.mock("@/lib/db", () => ({ prisma: {} }));
-vi.mock("@/features/cart/service", () => ({ mergeAnonCartIntoCustomer: vi.fn() }));
+vi.mock("@/lib/db", () => ({ prisma: { customer: { findFirst: customerFindFirst } } }));
+vi.mock("@/features/cart/service", () => ({
+  mergeAnonCartIntoCustomer,
+  recoverCustomerCartSessionId,
+}));
+vi.mock("@/features/orders/claim-guest-orders", () => ({
+  claimGuestOrdersForCustomer: vi.fn(async () => {}),
+}));
 vi.mock("@/lib/cart-session", () => ({
-  peekCartSession: vi.fn(async () => null),
-  setCartSessionCookie: vi.fn(),
+  peekCartSession,
+  setCartSessionCookie,
 }));
 
 import { resendCodeAction, verifyOtpAction } from "./actions";
@@ -76,6 +97,10 @@ beforeEach(() => {
   // La marca de actividad que sella la verificación OTP va firmada (CSRF_SECRET).
   vi.stubEnv("CSRF_SECRET", "test-secret-fijo-confirmar-codigo");
   rateLimit.mockResolvedValue(allowed);
+  verifyOtp.mockResolvedValue({ data: { user: null }, error: null });
+  peekCartSession.mockResolvedValue(null);
+  customerFindFirst.mockResolvedValue({ id: "cust-1" });
+  recoverCustomerCartSessionId.mockResolvedValue(null);
 });
 
 describe("verifyOtpAction — doble bucket (B-4)", () => {
@@ -111,6 +136,47 @@ describe("verifyOtpAction — doble bucket (B-4)", () => {
     const res = await verifyOtpAction(null, verifyForm());
     expect(res.error).toMatch(/Demasiados intentos/);
     expect(verifyOtp).not.toHaveBeenCalled();
+  });
+});
+
+describe("verifyOtpAction — carrito tras OTP exitoso", () => {
+  // OTP verificado = sesión creada. Misma regla que loginAction (2026-10-26):
+  // sin cookie de carrito anon se RECUPERA el carrito vivo del customer (el
+  // logout borra la cookie); con cookie anon se hace el merge de siempre.
+  beforeEach(() => {
+    verifyOtp.mockResolvedValue({ data: { user: { id: "u-otp" } }, error: null });
+  });
+
+  it("sin cookie anon y CON carrito vivo del customer → escribe la cookie con su sessionId", async () => {
+    recoverCustomerCartSessionId.mockResolvedValue("sess-customer-vivo");
+
+    await verifyOtpAction(null, verifyForm());
+
+    expect(recoverCustomerCartSessionId).toHaveBeenCalledWith("cust-1");
+    expect(setCartSessionCookie).toHaveBeenCalledWith("sess-customer-vivo");
+    expect(mergeAnonCartIntoCustomer).not.toHaveBeenCalled();
+  });
+
+  it("sin cookie anon y SIN carrito recuperable → NO escribe cookie de carrito", async () => {
+    await verifyOtpAction(null, verifyForm());
+
+    expect(recoverCustomerCartSessionId).toHaveBeenCalledWith("cust-1");
+    expect(setCartSessionCookie).not.toHaveBeenCalled();
+    expect(mergeAnonCartIntoCustomer).not.toHaveBeenCalled();
+  });
+
+  it("con cookie anon → merge intacto y la cookie se reescribe con el sessionId final si cambia", async () => {
+    peekCartSession.mockResolvedValue("11111111-2222-4333-8444-555555555555");
+    mergeAnonCartIntoCustomer.mockResolvedValue("sess-customer-final");
+
+    await verifyOtpAction(null, verifyForm());
+
+    expect(mergeAnonCartIntoCustomer).toHaveBeenCalledWith(
+      "11111111-2222-4333-8444-555555555555",
+      "cust-1",
+    );
+    expect(setCartSessionCookie).toHaveBeenCalledWith("sess-customer-final");
+    expect(recoverCustomerCartSessionId).not.toHaveBeenCalled();
   });
 });
 

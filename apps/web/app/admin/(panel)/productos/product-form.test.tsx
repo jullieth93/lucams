@@ -129,6 +129,7 @@ describe("ProductForm — tab Personalización (2026-10-02)", () => {
     galleryTag: null,
     canvasBaseScale: null,
     gridColsOverride: null,
+    borderWidth: null,
     textOnlyVariant: "name",
     letterCountMin: null,
     letterCountMax: null,
@@ -219,6 +220,33 @@ describe("ProductForm — tab Personalización (2026-10-02)", () => {
     expect(
       screen.getByText(/compra directa — el producto se añade al carrito/i),
     ).toBeInTheDocument();
+  });
+
+  it("grosor del borde (2026-10-26): precarga el rango guardado; sin él, los campos nacen ocultos", () => {
+    // Con el feature guardado → checkbox marcado y los 3 factores precargados.
+    renderStudioForm({
+      ...STUDIO_PRODUCT,
+      personalization: {
+        ...PERSONALIZATION_DEFAULTS,
+        photoSlots: 6,
+        borderWidth: { min: 1, max: 2.5, default: 1.5 },
+      },
+    });
+    expect(
+      (screen.getByLabelText(/el cliente puede elegir el grosor/i) as HTMLInputElement).checked,
+    ).toBe(true);
+    expect((screen.getByLabelText(/grosor mínimo/i) as HTMLInputElement).value).toBe("1");
+    expect((screen.getByLabelText(/grosor máximo/i) as HTMLInputElement).value).toBe("2.5");
+    expect((screen.getByLabelText(/grosor inicial/i) as HTMLInputElement).value).toBe("1.5");
+  });
+
+  it("grosor del borde sin habilitar: sin inputs (la action manda null → el service borra la key)", () => {
+    renderStudioForm(STUDIO_PRODUCT); // PERSONALIZATION_DEFAULTS: borderWidth null
+    const checkbox = screen.getByLabelText(
+      /el cliente puede elegir el grosor/i,
+    ) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    expect(screen.queryByLabelText(/grosor mínimo/i)).not.toBeInTheDocument();
   });
 
   it("isPersonalizable se deriva del kind: sin checkbox suelto, el estado se muestra read-only", () => {

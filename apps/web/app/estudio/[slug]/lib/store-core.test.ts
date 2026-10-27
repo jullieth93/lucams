@@ -373,6 +373,102 @@ describe("autoFillSlots", () => {
   });
 });
 
+describe("autoFillSlots — priorización de fotos (2026-10-26, bug del segundo pack)", () => {
+  function setupWithCart(cartAssetIdsInUse: string[], slotCount = 4) {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes",
+      canvasData: makeCanvasData({
+        slotCount,
+        slots: Array.from({ length: slotCount }, (_, i) => ({
+          slotIndex: i,
+          assetId: null,
+          assetUrl: null,
+        })),
+      }),
+      templates: [],
+      cartAssetIdsInUse,
+    });
+    return store;
+  }
+
+  it("las fotos ya usadas en ESTE diseño van DESPUÉS de las nunca usadas", () => {
+    const store = setupWithCart([], 3);
+    // "vieja" ya está asignada al slot 0; el auto-fill llena 1 y 2.
+    store.getState().addAsset(asset("vieja"));
+    store.getState().assignAssetToSlot(0, asset("vieja"));
+    store.getState().addAsset(asset("nueva-1"));
+    store.getState().addAsset(asset("nueva-2"));
+    store.getState().autoFillSlots();
+    const slots = store.getState().canvasData?.slots;
+    expect(slots?.[1].assetId).toBe("nueva-1");
+    expect(slots?.[2].assetId).toBe("nueva-2");
+  });
+
+  it("si no alcanzan las nuevas, usa las ya usadas (menos usadas primero)", () => {
+    const store = setupWithCart([], 3);
+    store.getState().addAsset(asset("vieja"));
+    store.getState().assignAssetToSlot(0, asset("vieja"));
+    store.getState().addAsset(asset("nueva-1"));
+    // 2 slots vacíos y solo 1 foto nueva → el 2º vacío recibe la usada.
+    store.getState().autoFillSlots();
+    const slots = store.getState().canvasData?.slots;
+    expect(slots?.[1].assetId).toBe("nueva-1");
+    expect(slots?.[2].assetId).toBe("vieja");
+  });
+
+  it("las fotos de OTRAS líneas del carrito van después de las nunca usadas y antes de las usadas acá", () => {
+    const store = setupWithCart(["del-carrito"], 3);
+    store.getState().addAsset(asset("del-carrito"));
+    store.getState().addAsset(asset("nueva"));
+    store.getState().addAsset(asset("usada-aca"));
+    store.getState().assignAssetToSlot(0, asset("usada-aca"));
+    store.getState().autoFillSlots();
+    const slots = store.getState().canvasData?.slots;
+    // (a) nunca usada → (b) usada en otra línea → (c) usada en este diseño.
+    expect(slots?.[1].assetId).toBe("nueva");
+    expect(slots?.[2].assetId).toBe("del-carrito");
+    expect(slots?.[0].assetId).toBe("usada-aca");
+  });
+
+  it("caso del owner: pack de 6 ya en el carrito + 6 fotos nuevas → el auto-fill usa las NUEVAS", () => {
+    const oldIds = ["v1", "v2", "v3", "v4", "v5", "v6"];
+    const store = setupWithCart(oldIds, 6);
+    for (const id of oldIds) store.getState().addAsset(asset(id));
+    const newIds = ["n1", "n2", "n3", "n4", "n5", "n6"];
+    for (const id of newIds) store.getState().addAsset(asset(id));
+    store.getState().autoFillSlots();
+    expect(store.getState().canvasData?.slots.map((s) => s.assetId)).toEqual(newIds);
+  });
+
+  it("dentro de cada grupo manda el orden de «Mis fotos»", () => {
+    const store = setupWithCart(["c2", "c1"], 3);
+    // En el carrito están c1 y c2; en «Mis fotos» el orden es c2, c1, nueva.
+    store.getState().addAsset(asset("c2"));
+    store.getState().addAsset(asset("c1"));
+    store.getState().addAsset(asset("nueva"));
+    store.getState().autoFillSlots();
+    const slots = store.getState().canvasData?.slots;
+    expect(slots?.[0].assetId).toBe("nueva"); // grupo (a) primero
+    expect(slots?.[1].assetId).toBe("c2"); // grupo (b) en orden del array
+    expect(slots?.[2].assetId).toBe("c1");
+  });
+
+  it("en el grupo de usadas acá van primero las MENOS usadas", () => {
+    const store = setupWithCart([], 4);
+    // "poca" usada 1 vez (slot 0), "mucha" usada 2 veces (slots 1 y 2).
+    store.getState().addAsset(asset("poca"));
+    store.getState().addAsset(asset("mucha"));
+    store.getState().assignAssetToSlot(0, asset("poca"));
+    store.getState().assignAssetToSlot(1, asset("mucha"));
+    store.getState().assignAssetToSlot(2, asset("mucha"));
+    // Solo queda el slot 3 vacío → recibe la menos usada.
+    store.getState().autoFillSlots();
+    expect(store.getState().canvasData?.slots[3].assetId).toBe("poca");
+  });
+});
+
 describe("selectSlot / setSelectedTemplate / applyTemplate", () => {
   it("selectSlot y setSelectedTemplate actualizan la selección", () => {
     const store = setup();

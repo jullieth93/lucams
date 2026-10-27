@@ -32,7 +32,7 @@ export function ReferralCopyButton({
       }}
       className={
         className ??
-        "text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors"
+        "text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors"
       }
       aria-live="polite"
     >

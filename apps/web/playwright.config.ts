@@ -96,26 +96,33 @@ export default defineConfig({
       // Matriz §6 del prompt: Mobile 390×844 (Chrome móvil con touch).
       // Los audits de admin en 375×812 fijan su propio viewport dentro del spec
       // (precedente: mobile-admin-audit.spec.ts).
+      // 2026-10-26 — devices["Mobile Chrome"] YA NO EXISTE en el Playwright
+      // instalado (el spread de undefined era no-op silencioso: el proyecto
+      // corría con UA de desktop y SIN hasTouch → los chequeos táctiles de la
+      // auditoría responsive nunca corrían). Se usa "Pixel 5" (Chrome móvil
+      // Android real: UA móvil + isMobile + hasTouch) con el viewport de la
+      // matriz encima. La app no hace render server-side por UA (solo
+      // analytics), así que el cambio es seguro para la suite.
       name: "mobile-chrome",
-      use: { ...devices["Mobile Chrome"], viewport: { width: 390, height: 844 } },
+      use: { ...devices["Pixel 5"], viewport: { width: 390, height: 844 } },
     },
     {
       // Auditoría responsive Fase 5 (2026-10-13): móvil HORIZONTAL 844×390.
       // Solo corre audit-responsive.spec.ts — fuera de la suite y del gate CI.
       name: "mobile-landscape",
-      use: { ...devices["Mobile Chrome"], viewport: { width: 844, height: 390 } },
+      use: { ...devices["Pixel 5"], viewport: { width: 844, height: 390 } },
       testMatch: /audit-responsive\.spec\.ts/,
     },
     {
       // Auditoría responsive Fase 5 (2026-10-13): tablet VERTICAL 768×1024.
       name: "tablet",
-      use: { ...devices["Mobile Chrome"], viewport: { width: 768, height: 1024 } },
+      use: { ...devices["Pixel 5"], viewport: { width: 768, height: 1024 } },
       testMatch: /audit-responsive\.spec\.ts/,
     },
     {
       // Auditoría responsive Fase 5 (2026-10-13): tablet HORIZONTAL 1024×768.
       name: "tablet-landscape",
-      use: { ...devices["Mobile Chrome"], viewport: { width: 1024, height: 768 } },
+      use: { ...devices["Pixel 5"], viewport: { width: 1024, height: 768 } },
       testMatch: /audit-responsive\.spec\.ts/,
     },
     {

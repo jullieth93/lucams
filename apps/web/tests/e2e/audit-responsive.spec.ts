@@ -214,6 +214,10 @@ async function auditPantalla(
       for (const el of Array.from(document.querySelectorAll("a, button"))) {
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) continue;
+        // 2026-10-26 — excluir targets visualmente ocultos hasta el foco
+        // (skip-link sr-only de app/layout.tsx: 1×1px absoluto, solo visible
+        // con teclado). Un 1×1 no es tocable ni medible como target.
+        if (r.width <= 1 && r.height <= 1) continue;
         const s = getComputedStyle(el);
         if (s.display === "none" || s.visibility === "hidden") continue;
         // Solo targets visibles EN viewport (lo que el usuario ve sin scroll).

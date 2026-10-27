@@ -35,6 +35,8 @@ import {
   designPreviewPageLabels,
   unitNounForLine,
 } from "@/features/personalization/preview-page-labels";
+import { unitCountNounForLine } from "@/features/cart/line-preview";
+import { isBookmarkGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
 import {
   describeVariantAttributes,
   parseVariantAttributes,
@@ -457,6 +459,14 @@ export default async function PublicOrderPage({
                   it.design,
                   unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
                 );
+                // 2026-10-26 — sustantivo kind-aware del badge «N …» ("tiras",
+                // "sets"…); el bloque CMS publicado manda sobre este fallback.
+                const unitNounPlural = unitCountNounForLine({
+                  personalizationKind: it.variant.product.personalizationKind,
+                  variantName: it.variant.name,
+                  designMetadata: it.design?.metadata,
+                  isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
+                }).plural;
                 // Paquete F (2026-10-02) — desglose estructurado de la variante (el
                 // nombre libre no siempre informa Con/Sin imán, tamaño, idioma…).
                 const variantBreakdown = describeVariantAttributes(
@@ -496,13 +506,13 @@ export default async function PublicOrderPage({
                               className="object-cover"
                               unoptimized
                             />
-                            {/* 2026-10-13 — «N unidades» cuando el diseño pagina. */}
+                            {/* 2026-10-13 — «N <sustantivo>» cuando el diseño pagina. */}
                             <DesignUnitsBadge
                               count={disp?.pageUrls?.length ?? 0}
                               label={
                                 <CmsText
                                   blockKey="order.status.unidades-badge"
-                                  fallback="unidades"
+                                  fallback={unitNounPlural}
                                 />
                               }
                             />

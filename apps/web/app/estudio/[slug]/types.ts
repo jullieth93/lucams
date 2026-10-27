@@ -373,6 +373,14 @@ export type MultiSlotCanvasData = {
    */
   igNoBorder?: boolean;
   /**
+   * Grosor del borde elegido en el Estudio (owner 2026-10-26) como FACTOR sobre
+   * el grosor base del producto (1 = el de siempre; frame-palette). El slider de
+   * la barra de estilo lo escribe dentro del rango que el admin fija en
+   * personalizationSchema.borderWidth. Ausente = diseño de antes de la ola → el
+   * render cae al default del producto (boot lo pre-siembra) o a 1.
+   */
+  borderWidthFactor?: number;
+  /**
    * ADR-133 (2026-10-08) — reloj del cliente (epoch ms del último cambio) para la
    * reconciliación del snapshot local de recuperación al re-abrir un draft:
    * si el canvas del server trae clientRev menor que el snapshot de localStorage,

@@ -57,10 +57,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
+  clampBorderWidthFactor,
   frameColorById,
   isInstagramTemplate,
   isSimpleCardTemplate,
 } from "@/features/personalization/frame-palette";
+import type { BorderWidthConfig } from "@/features/personalization/schemas";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -86,15 +88,29 @@ type StudioStyleToolbarProps = {
   store: StoreApi<StudioStoreState>;
   /** Opciones de marco declaradas por el producto. */
   frameOptions?: string[];
+  /**
+   * Rango de grosor de borde habilitado por el admin (2026-10-26 —
+   * personalizationSchema.borderWidth, ya validado por readBorderWidthConfig).
+   * null/ausente → el slider no se muestra y todo rinde con el grosor base.
+   */
+  borderWidth?: BorderWidthConfig | null;
 };
 
-export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleToolbarProps) {
+export function StudioStyleToolbar({
+  store,
+  frameOptions = [],
+  borderWidth = null,
+}: StudioStyleToolbarProps) {
   const selectedTemplateId = useStore(store, (s) => s.selectedTemplateId);
   const templates = useStore(store, (s) => s.templates);
   const canvasData = useStore(store, (s) => s.canvasData);
   const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
   const setBorderColor = useStore(store, (s) => s.setBorderColor);
   const setImagePlaceholderRect = useStore(store, (s) => s.setImagePlaceholderRect);
+  // Grosor del borde (2026-10-26) — factor vivo del canvasData (persiste y
+  // viaja a producción tal cual — WYSIWYG); ausente → el default del rango.
+  const borderWidthFactor = useStore(store, (s) => s.canvasData?.borderWidthFactor ?? null);
+  const setBorderWidthFactor = useStore(store, (s) => s.setBorderWidthFactor);
   const texts = useStudioTexts();
   // Cuadrados — último color de marco elegido: «Sin borde» pone borderColor en null
   // SIN perder la elección (regla de no-reset de Clásica/tiras) y «Con borde» la
@@ -234,6 +250,25 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
 
   const showBorderSection = isIg || isPolaroidClasica || frameColors.length > 0;
   const showColorSection = frameColors.length > 0;
+  // Grosor del borde (2026-10-26) — slider dentro del rango que el admin fijó
+  // (personalizationSchema.borderWidth). Solo aplica a las familias que lo
+  // consumen: Cuadrados (tarjeta simple, franja full-bleed) y Tiras photobooth
+  // (inset exterior + canaletas). Con «Sin borde» queda visible pero INERTE
+  // (aria-disabled + atenuado, mismo patrón de la paleta de color): sin borde
+  // el grosor no pinta nada y el valor elegido se conserva para «Con borde».
+  const showWidthSection = !!borderWidth && (isSimpleCard || isStrip);
+  const widthDisabled = showWidthSection && isFullBleed;
+  const widthValue = borderWidth
+    ? clampBorderWidthFactor(
+        borderWidthFactor ?? borderWidth.default,
+        borderWidth.min,
+        borderWidth.max,
+      )
+    : 1;
+  const handleWidthChange = (v: number) => {
+    if (!borderWidth) return;
+    setBorderWidthFactor(clampBorderWidthFactor(v, borderWidth.min, borderWidth.max));
+  };
   // Fase 2 UX (2026-10-13) — nombre del color elegido, SIEMPRE visible: el
   // anillo + check del swatch no bastaban para saber cuál es el color activo.
   // Un hex fuera de la paleta se anuncia como «Personalizado #RRGGBB».
@@ -336,6 +371,23 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
                       onClick={() => handleBorderToggle(true)}
                     />
                   </div>
+                </section>
+              )}
+
+              {/* Grosor del borde (2026-10-26) — slider dentro del rango del
+                  producto; inerte con «Sin borde» (no hay borde que engordar). */}
+              {showWidthSection && borderWidth && (
+                <section className="mt-5">
+                  <BorderWidthControl
+                    large
+                    value={widthValue}
+                    min={borderWidth.min}
+                    max={borderWidth.max}
+                    disabled={widthDisabled}
+                    title={texts.texto.estiloGrosorTitulo}
+                    aria={texts.texto.estiloGrosorAria}
+                    onChange={handleWidthChange}
+                  />
                 </section>
               )}
 
@@ -460,6 +512,22 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
             </div>
           )}
 
+          {/* Grosor del borde (2026-10-26) — entre «Borde de foto» y «Color de
+              tarjeta»: es una propiedad DEL borde. Inerte con «Sin borde». */}
+          {showWidthSection && borderWidth && (
+            <div className="flex shrink-0 items-center gap-2">
+              <BorderWidthControl
+                value={widthValue}
+                min={borderWidth.min}
+                max={borderWidth.max}
+                disabled={widthDisabled}
+                title={texts.texto.estiloGrosorTitulo}
+                aria={texts.texto.estiloGrosorAria}
+                onChange={handleWidthChange}
+              />
+            </div>
+          )}
+
           {/* Color de tarjeta */}
           {showColorSection && (
             <div
@@ -543,6 +611,64 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Slider de GROSOR del borde (2026-10-26): el cliente elige dentro del rango
+ * que el admin habilitó por producto (factor sobre el grosor base — 100% = el
+ * grosor de siempre). El valor persiste en canvasData.borderWidthFactor vía el
+ * store y producción lo consume igual (WYSIWYG). `large` = variante del
+ * bottom-sheet móvil (targets táctiles más generosos).
+ */
+function BorderWidthControl({
+  value,
+  min,
+  max,
+  disabled,
+  large = false,
+  title,
+  aria,
+  onChange,
+}: {
+  /** Factor vigente (ya clampado al rango por el padre). */
+  value: number;
+  min: number;
+  max: number;
+  /** Con «Sin borde» queda visible pero inerte (el grosor no pinta nada). */
+  disabled: boolean;
+  large?: boolean;
+  title: string;
+  aria: string;
+  onChange: (factor: number) => void;
+}) {
+  const pct = Math.round(value * 100);
+  return (
+    <div
+      aria-disabled={disabled || undefined}
+      className={["flex w-full flex-col gap-1", disabled ? "opacity-60" : ""].join(" ")}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={`text-brand-purple-dark font-semibold whitespace-nowrap ${large ? "text-sm" : "text-xs"}`}
+        >
+          {title}
+        </span>
+        <span className="text-brand-muted text-xs whitespace-nowrap">· {pct}%</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={0.25}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={aria}
+        aria-valuetext={`${pct}%`}
+        className={`accent-brand-purple focus-visible:ring-brand-turquoise w-full cursor-pointer rounded focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed ${large ? "h-11" : "h-8"}`}
+      />
+    </div>
   );
 }
 

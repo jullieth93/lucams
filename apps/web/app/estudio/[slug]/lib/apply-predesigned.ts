@@ -183,8 +183,19 @@ export async function applyPredesignedToSlot(opts: {
    * reemplazo limpio de assignAssetToSlot, nunca una sobreescritura en silencio.
    */
   forceTargetSlot?: boolean;
+  /**
+   * Reemplazo EXPLÍCITO del PAR completo (2026-10-26 — bug del separador
+   * mezclado): el modal de reemplazo ofrece UNIDADES (separador con sus 2
+   * caras) cuando el prediseñado trae cara B y todo está lleno. El cliente
+   * eligió el separador entero → la cara B del diseño REEMPLAZA también la B
+   * ocupada (antes se descartaba con un toast genérico y quedaba A nueva +
+   * B vieja mezcladas). Solo tiene sentido con forceTargetSlot sobre una cara
+   * A (el ancla del par); el resultado reporta `bReplaced` para el copy del
+   * toast ("Se reemplazó el separador N (ambas caras)").
+   */
+  replacePair?: boolean;
 }): Promise<
-  | { ok: true; bBlocked?: boolean }
+  | { ok: true; bBlocked?: boolean; bReplaced?: boolean }
   | { ok: false; reason: ApplyPredesignedFailureReason; message: string }
 > {
   const slots = opts.store.getState().canvasData?.slots ?? [];
@@ -199,22 +210,32 @@ export async function applyPredesignedToSlot(opts: {
   const state = opts.store.getState();
   state.assignAssetToSlot(anchor, resolved.a);
   let bBlocked = false;
+  let bReplaced = false;
   // Con forceTargetSlot sobre una cara B (slot impar) NO se propaga la cara B
   // del diseño: caería en la cara A de la unidad SIGUIENTE (anchor+1). El flujo
   // que lo usa (cara elegida por el cliente) es para diseños de 1 cara, así que
   // esto es solo defensa ante un imageUrlB desactualizado en el catálogo.
   if (resolved.b && !(opts.forceTargetSlot && anchor % 2 === 1)) {
-    // Cara B a la hermana del ancla (convención separadores 2 caras: 2k/2k+1)
+    // Cara B a la hermana del ancla (convención separadores 2 caras: 2k/2k+1).
     // SOLO si está vacía — Paquete A: si está ocupada NO se pisa el contenido
     // del usuario ni se descarta en silencio: se reporta (bBlocked) para que
     // la UI avise. Slot inexistente (producto de 1 cara) = no aplica, sin aviso.
+    // EXCEPCIÓN (2026-10-26): replacePair — el cliente eligió el PAR completo
+    // en el modal de reemplazo (prediseñado de 2 caras con todo lleno), así que
+    // la B ocupada SÍ se reemplaza de forma explícita y se reporta bReplaced.
     const nextSlot = slots.find((s) => s.slotIndex === anchor + 1);
     if (nextSlot) {
-      if (!nextSlot.assetUrl) state.assignAssetToSlot(nextSlot.slotIndex, resolved.b);
-      else bBlocked = true;
+      if (!nextSlot.assetUrl) {
+        state.assignAssetToSlot(nextSlot.slotIndex, resolved.b);
+      } else if (opts.replacePair) {
+        state.assignAssetToSlot(nextSlot.slotIndex, resolved.b);
+        bReplaced = true;
+      } else {
+        bBlocked = true;
+      }
     }
   }
-  return { ok: true, bBlocked };
+  return { ok: true, bBlocked, ...(bReplaced ? { bReplaced: true } : {}) };
 }
 
 /**

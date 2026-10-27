@@ -505,8 +505,19 @@ hereda los proyectos).
   (dashboard, pedidos, productos, clientes, carritos, cupones, contenido, métricas — idem).
 - **Chequeos por pantalla × perfil:** (a) overflow horizontal objetivo
   (`scrollWidth > clientWidth`) → **critical** (falla el test) con el elemento culpable;
-  (b) tap targets <40px en perfiles táctiles → **medium** (solo se reporta);
+  (b) tap targets <40px en perfiles táctiles → **medium** (solo se reporta; el scan excluye
+  elementos de ≤1×1px — decorativos colapsados que no son targets reales);
   (c) screenshot full-page por pantalla en `tmp/audit-20261013/<perfil>/`.
+- **Fix del harness (2026-10-26):** los 4 perfiles táctiles dedicados usaban
+  `devices["Mobile Chrome"]`, que ya no existe en el Playwright instalado → el spread
+  `...devices[...]` era un no-op silencioso y los contextos quedaban sin `isMobile`/
+  `hasTouch`/user-agent móvil, así que **los tap targets nunca se medían**. Ahora usan
+  `devices["Pixel 5"]` (Chrome móvil vigente) con el viewport del proyecto encima
+  (`apps/web/playwright.config.ts`).
+- **Estado de tap targets:** corregidos en checkout, mi-cuenta, auth, PDP, admin y banner de
+  cookies (patrón `min-h-10` + margen negativo para no inflar el layout). Lo sistémico que
+  queda en 24–38px se acepta consciente: el gate AA es WCAG 2.5.8 (24px) — el umbral 40px del
+  harness es interno y más estricto, así que el reporte medium residual NO es una falla AA.
 - **Reporte consolidado:** cada worker escribe su parte en `tmp/audit-20261013/parts/` y el
   `global.teardown` las fusiona en `tmp/audit-20261013/report.json` (evita escrituras
   concurrentes del mismo archivo).

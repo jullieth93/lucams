@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { describePieces, pieceKindFor } from "./line-preview";
+import { describePieces, pieceKindFor, unitCountNounForLine } from "./line-preview";
 
 describe("pieceKindFor — cómo se llama la pieza", () => {
   it("el calendario habla de páginas, no de imanes", () => {
@@ -61,5 +61,58 @@ describe("describePieces — qué recibe el cliente", () => {
   it("sin nada verdadero que decir, no dice nada", () => {
     expect(describePieces({ kind: "magnets", pieces: null, sizeCm: null })).toBeNull();
     expect(describePieces({ kind: "magnets", pieces: 0, sizeCm: null })).toBeNull();
+  });
+});
+
+describe("unitCountNounForLine — sustantivo del conteo por tipo de producto", () => {
+  it("sets de letras (metadata.surface letterset) → set/sets", () => {
+    expect(
+      unitCountNounForLine({
+        personalizationKind: "TEXT_ONLY",
+        variantName: "Español · 5×7 cm · Con imán",
+        designMetadata: { surface: "letterset", unitCount: 2 },
+      }),
+    ).toEqual({ singular: "set", plural: "sets" });
+  });
+
+  it("calendario mes-a-mes → calendario/calendarios", () => {
+    expect(
+      unitCountNounForLine({
+        personalizationKind: "CALENDAR_PHOTO_MONTH",
+        variantName: "12 meses",
+      }),
+    ).toEqual({ singular: "calendario", plural: "calendarios" });
+  });
+
+  it("tiras photobooth (variante «Tira de…») → tira/tiras — aunque el kind sea PHOTO_PACK", () => {
+    expect(
+      unitCountNounForLine({ personalizationKind: "PHOTO_PACK", variantName: "Tira de 3 fotos" }),
+    ).toEqual({ singular: "tira", plural: "tiras" });
+  });
+
+  it("separadores (familia de slugs/tags separadores*) → separador/separadores", () => {
+    expect(
+      unitCountNounForLine({
+        personalizationKind: "PHOTO_PACK",
+        variantName: "2×6 cm",
+        isBookmark: true,
+      }),
+    ).toEqual({ singular: "separador", plural: "separadores" });
+  });
+
+  it("packs de foto (polaroid, fotoimanes) → pack/packs", () => {
+    expect(
+      unitCountNounForLine({ personalizationKind: "PHOTO_PACK", variantName: "Pack de 10" }),
+    ).toEqual({ singular: "pack", plural: "packs" });
+  });
+
+  it("sin señal de tipo → unidad/unidades (fallback de siempre)", () => {
+    expect(
+      unitCountNounForLine({ personalizationKind: "TEXT_ONLY", variantName: "Único" }),
+    ).toEqual({ singular: "unidad", plural: "unidades" });
+    expect(unitCountNounForLine({ personalizationKind: null, variantName: null })).toEqual({
+      singular: "unidad",
+      plural: "unidades",
+    });
   });
 });

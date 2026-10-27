@@ -60,12 +60,16 @@ export type SnapshotRenderContext = {
   unitTemplate: CanvasDataV1;
   /** Estilo canvas-level que afecta el render del slot (tarjeta de color). */
   borderColor?: string | null;
+  /** Grosor del borde (2026-10-26, factor sobre la base): también pinta la
+   *  geometría de la ventana → entra en la clave del cache. */
+  borderWidthFactor?: number | null;
 };
 
 type CacheEntry = {
   slot: SlotState;
   unitTemplate: CanvasDataV1;
   borderColor: string | null;
+  borderWidthFactor: number | null;
   /** Tamaño DE SALIDA del snapshot rasterizado (no el tamaño display del stage). */
   outW: number;
   outH: number;
@@ -144,6 +148,7 @@ export function snapshotSlotForPreview(
     opts?.targetWidth,
   );
   const borderColor = ctx.borderColor ?? null;
+  const borderWidthFactor = ctx.borderWidthFactor ?? null;
   const fontsStatus = currentFontsStatus();
   // ¿El slot quiere foto pero el stage aún la está cargando? (rama placeholder —
   // ver CacheEntry.photoPending). El nodo `slot-photo` solo existe con la foto
@@ -156,6 +161,7 @@ export function snapshotSlotForPreview(
     hit.slot === slot &&
     hit.unitTemplate === ctx.unitTemplate &&
     hit.borderColor === borderColor &&
+    hit.borderWidthFactor === borderWidthFactor &&
     hit.outW === outW &&
     hit.outH === outH &&
     hit.fontsStatus === fontsStatus &&
@@ -192,6 +198,7 @@ export function snapshotSlotForPreview(
     slot,
     unitTemplate: ctx.unitTemplate,
     borderColor,
+    borderWidthFactor,
     outW,
     outH,
     fontsStatus,

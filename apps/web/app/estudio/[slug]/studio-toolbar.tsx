@@ -169,6 +169,25 @@ export function StudioToolbar({
   // slot con su label + textos IG por unidad). null cuando no falta nada.
   const missing = useFinalizeMissing(store, backOptional, slotLabels);
 
+  // Ola 2 (2026-10-26) — densidad del chrome MÓVIL: la fila propia de
+  // nombre+variante+progreso (<md) se ELIMINA. El nombre va junto a «Salir» en
+  // la fila principal; progreso + auto-save + variante comparten la fila del
+  // stepper cuando existe (flex-wrap) y, si el producto no tiene stepper (imán
+  // suelto), una sola fila-info consolidada. La variante NO se repite: cuando
+  // el stepper ya lleva el badge «Con/Sin imán», el chip de variante lo
+  // REEMPLAZA (mismo contenido, una sola vez).
+  const liveUnitSlots = useStore(store, (s) => s.canvasData?.unitSlots ?? 1);
+  const photoStepper = !!photoCount && !photoCount.composition;
+  const unitStepperVisible = !photoStepper && liveUnitSlots > (photoCount?.facesPerUnit ?? 1);
+  // Progreso + auto-save compacto (solo <md): dentro de la fila del stepper si
+  // existe, si no en la fila-info consolidada.
+  const mobileChromeExtras = (
+    <>
+      <ProgressBadge filled={filled} total={total} />
+      <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} compact />
+    </>
+  );
+
   const disabledTooltip = !complete
     ? fillStudioText(texts.lienzo.finalizeTooltip, {
         n: backOptional ? missingFaceA : total - filled,
@@ -180,7 +199,7 @@ export function StudioToolbar({
       role="banner"
       className="border-brand-purple/10 sticky top-0 z-10 border-b bg-white backdrop-blur"
     >
-      <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-6 sm:py-3">
         {/* FB2 (feedback Lucy) — la salida del estudio no se veía en móvil (solo el ícono, sepultado
           bajo el header del sitio). Ahora es un botón con etiqueta "Salir" siempre visible, con
           fondo suave para que se lea como control tocable. Vuelve a la ficha del producto (el
@@ -195,6 +214,16 @@ export function StudioToolbar({
           <ArrowLeft className="h-4 w-4" />
           <span>{texts.lienzo.headerExit}</span>
         </Link>
+
+        {/* Ola 2 (2026-10-26) — nombre del producto EN LA FILA PRINCIPAL en <md
+            (truncado): la fila móvil propia de nombre+variante+progreso se
+            eliminó (densidad del chrome); el progreso y la variante comparten
+            la fila del stepper / la fila-info consolidada de abajo. */}
+        <Hint content={productName}>
+          <span className="text-brand-purple-dark min-w-0 flex-1 truncate text-xs font-semibold md:hidden">
+            {productName}
+          </span>
+        </Hint>
 
         {/* A1.1 — Hero del estudio: avatar producto + nombre + medidas físicas grandes */}
         <div className="hidden flex-1 items-center justify-center gap-3 md:flex">
@@ -274,7 +303,10 @@ export function StudioToolbar({
           A3 (2026-09-15) — el stepper de UNIDADES es UNIVERSAL: todo producto sin
           stepper de fotos lo muestra (calendario incluido — antes no salía). El
           control mismo se oculta cuando el producto no tiene unidades multi-slot
-          que contar (unitSlots ≤ caras — imán suelto de 1 foto). */}
+          que contar (unitSlots ≤ caras — imán suelto de 1 foto).
+          Ola 2 (2026-10-26) — la fila del stepper TAMBIÉN carga el chrome móvil
+          (progreso + auto-save compacto + chip de variante, todo <md): una sola
+          fila con wrap en vez de dos renglones apilados. */}
       {photoCount && !photoCount.composition ? (
         <StudioPhotoCountControl
           store={store}
@@ -286,47 +318,31 @@ export function StudioToolbar({
           // mismo del chip ("¿Cuántos separadores quieres?").
           unitNoun={slotNoun}
           magnet={photoCount.magnet}
+          variantLabel={variantLabel}
+          mobileExtras={mobileChromeExtras}
         />
-      ) : (
+      ) : unitStepperVisible ? (
         <StudioUnitCountControl
           store={store}
           facesPerUnit={photoCount?.facesPerUnit ?? 1}
           magnet={photoCount?.magnet}
           hint={photoCount?.composition ? undefined : "Cada unidad se diseña por separado"}
+          variantLabel={variantLabel}
+          mobileExtras={mobileChromeExtras}
         />
+      ) : (
+        // Sin stepper que mostrar (imán suelto de 1 foto): la fila-info
+        // consolidada <md lleva progreso + auto-save + variante (reemplaza a la
+        // fila móvil vieja; el chip de calidad ya vive en la fila principal).
+        <div className="border-brand-purple/10 bg-brand-cream/50 flex flex-wrap items-center justify-center gap-2 border-t px-3 py-2 md:hidden">
+          {mobileChromeExtras}
+          {variantLabel && (
+            <span className="ring-brand-purple/20 text-brand-purple-dark inline-flex max-w-[55%] items-center truncate rounded-full bg-white px-3 py-1 text-xs font-bold ring-1">
+              {variantLabel}
+            </span>
+          )}
+        </div>
       )}
-
-      {/* Progress badge mobile (visible solo < md).
-          Ola 34 (owner 2026-09-18) — nombre del producto EN MÓVIL: el hero
-          avatar+nombre es md+ y el cliente no veía qué producto estaba
-          trabajando ("en el estudio en versión móvil no aparece qué producto
-          estoy trabajando"). Va EN ESTA MISMA FILA (ya existía) truncado a una
-          línea → cero altura extra de chrome: la tarjeta del canvas sigue
-          iniciando dentro del primer viewport de 375×812. */}
-      <div className="border-brand-purple/10 bg-brand-cream/50 flex items-center justify-center gap-2 border-t py-2 md:hidden">
-        <Hint content={productName}>
-          <span className="text-brand-purple-dark max-w-[38%] truncate text-xs font-semibold">
-            {productName}
-          </span>
-        </Hint>
-        {/* 2026-10-12 — desglose de la variante también en la fila móvil (el
-            hero es md+): secundario, truncado, sin quitarle espacio al nombre. */}
-        {variantLabel && (
-          <span className="text-brand-muted max-w-[30%] truncate text-[11px] font-medium">
-            {variantLabel}
-          </span>
-        )}
-        <span aria-hidden className="text-brand-purple/25">
-          ·
-        </span>
-        <ProgressBadge filled={filled} total={total} />
-        {/* AutoSave indicator mobile abajo del progress — 5.2 (2026-10-22):
-            VISIBLE también en <sm (compacto: icono + texto corto); el cliente
-            ve si el diseño está guardando/falló antes de «Ver diseño». */}
-        <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} compact />
-        {/* Paquete C — mismo resumen de avisos de calidad en la fila móvil. */}
-        <StudioQualityWarningsChip store={store} />
-      </div>
 
       {/* M.3.b.UX.v4 Lucy 2026-05-15 — leyenda simplificada y contextualizada.
         Una sola guide ahora (la silueta del producto YA es el borde físico).
@@ -966,7 +982,7 @@ function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label={fillStudioText(texts.lienzo.tamanoChipAria, { size: sizeCm })}
-        className="bg-brand-cream text-brand-purple-dark ring-brand-purple/15 hover:bg-brand-yellow/20 hover:ring-brand-purple/40 focus:ring-brand-turquoise inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+        className="bg-brand-cream text-brand-purple-dark ring-brand-purple/15 hover:bg-brand-yellow/20 hover:ring-brand-purple/40 focus:ring-brand-turquoise -my-1.5 inline-flex min-h-8 items-center gap-1 rounded-full px-2 py-0.5 ring-1 transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
       >
         📐 {sizeCm} cm
         <span className="text-brand-muted text-[9px]">{open ? "▴" : "▾"}</span>

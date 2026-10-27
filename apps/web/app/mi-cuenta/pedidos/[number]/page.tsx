@@ -23,6 +23,8 @@ import {
   designPreviewPageLabels,
   unitNounForLine,
 } from "@/features/personalization/preview-page-labels";
+import { unitCountNounForLine } from "@/features/cart/line-preview";
+import { isBookmarkGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -163,7 +165,7 @@ export default async function CustomerPedidoDetallePage({
     <div className="mx-auto max-w-3xl">
       <Link
         href="/mi-cuenta/pedidos"
-        className="text-brand-muted hover:text-brand-purple mb-3 inline-flex items-center gap-1 text-xs"
+        className="text-brand-muted hover:text-brand-purple -mt-2 mb-3 inline-flex min-h-10 items-center gap-1 text-xs"
       >
         <ChevronLeft className="h-3 w-3" />
         {texts.back.misPedidos}
@@ -250,6 +252,14 @@ export default async function CustomerPedidoDetallePage({
               it.design,
               unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
             );
+            // 2026-10-26 — sustantivo kind-aware del badge «N …» ("tiras",
+            // "sets"…); el bloque CMS publicado manda sobre este fallback.
+            const unitNounPlural = unitCountNounForLine({
+              personalizationKind: it.variant.product.personalizationKind,
+              variantName: it.variant.name,
+              designMetadata: it.design?.metadata,
+              isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
+            }).plural;
             const previewUrl = disp?.watermarked
               ? disp.displayUrl
               : (it.designAssetUrl ?? it.design?.previewUrl ?? null); // ADR-070 — snapshot primero
@@ -290,11 +300,14 @@ export default async function CustomerPedidoDetallePage({
                           className="object-cover"
                           unoptimized
                         />
-                        {/* 2026-10-13 — «N unidades» cuando el diseño pagina. */}
+                        {/* 2026-10-13 — «N <sustantivo>» cuando el diseño pagina. */}
                         <DesignUnitsBadge
                           count={disp?.pageUrls?.length ?? 0}
                           label={
-                            <CmsText blockKey="order.status.unidades-badge" fallback="unidades" />
+                            <CmsText
+                              blockKey="order.status.unidades-badge"
+                              fallback={unitNounPlural}
+                            />
                           }
                         />
                       </button>

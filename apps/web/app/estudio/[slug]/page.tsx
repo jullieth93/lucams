@@ -33,6 +33,7 @@ import {
 } from "@/features/personalization/letter-tiles";
 import { listGalleryImages } from "@/features/personalization/design-gallery";
 import { resolveGalleryTag } from "./lib/product-kind";
+import { listCartDesignAssetIdsInUse } from "./lib/cart-design-assets.server";
 import { resolveRecoverVariantId } from "./lib/recover-variant";
 import { NameEditor } from "./name-editor";
 import { LetterSetEditor } from "./letter-set-editor";
@@ -732,6 +733,19 @@ export default async function EstudioPage({
   const predesigned = await listGalleryImages(galleryTag, galleryVariantAttributes);
   const studioCustomer = await getCurrentCustomer();
 
+  // Auto-fill del segundo pack (2026-10-26): assetIds que ya usan OTRAS líneas
+  // del carrito de ESTE producto (session o customer actual). El editor los
+  // baja de prioridad en «Llenar slots con mis fotos» — nunca los excluye.
+  const cartSessionId = await peekCartSession();
+  const cartAssetIdsInUse = await listCartDesignAssetIdsInUse({
+    sessionId: cartSessionId,
+    customerId: studioCustomer?.customer.id ?? null,
+    productId: product.id,
+    excludeDesignIds: [sp.designId, initialDesignId].filter(
+      (id): id is string => typeof id === "string",
+    ),
+  });
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
@@ -791,6 +805,7 @@ export default async function EstudioPage({
             predesigned={predesigned}
             slotLabels={slotLabels}
             calendarYear={calendarYear}
+            cartAssetIdsInUse={cartAssetIdsInUse}
           />
         </StudioTextsProvider>
       </main>

@@ -351,3 +351,91 @@ describe("defaultTextFillOnCard — blanco solo sobre tarjeta negra (owner 2026-
     expect(defaultTextFillOnCard("rosa")).toBe("#3D2E5C");
   });
 });
+
+// 2026-10-26 (owner) — grosor de borde CONFIGURABLE: el admin define el rango
+// por producto (personalizationSchema.borderWidth), el cliente elige en el
+// Estudio y el factor viaja en canvasData.borderWidthFactor. Los helpers
+// aceptan el FACTOR sobre el grosor base (1 = histórico) y la resolución
+// efectiva (resolveBorderWidthFactor) es la ÚNICA regla de fallback/clamp
+// compartida por el Estudio y producción (WYSIWYG).
+describe("frame-palette — grosor de borde configurable (2026-10-26)", () => {
+  it("frameBleedMargin: el factor escala la base 4% y el piso de 6px se mantiene", async () => {
+    const { frameBleedMargin } = await import("./frame-palette");
+    const stage = { width: 600, height: 600 };
+    expect(frameBleedMargin(stage)).toBe(24); // retrocompat: sin factor = 1
+    expect(frameBleedMargin(stage, 1)).toBe(24);
+    expect(frameBleedMargin(stage, 2)).toBe(48);
+    expect(frameBleedMargin(stage, 0.5)).toBe(12);
+    // El piso de 6px manda incluso con el factor mínimo global (0.25 × 4px = 1 → 6).
+    expect(frameBleedMargin({ width: 100, height: 400 }, 0.25)).toBe(6);
+    // Un factor no finito (payload manipulado) cae a la base.
+    expect(frameBleedMargin(stage, Number.NaN)).toBe(24);
+  });
+
+  it("stripOuterInset / stripGutterPx: escalan con el factor (la canaleta escala igual — decisión)", async () => {
+    const { stripOuterInset, stripGutterPx } = await import("./frame-palette");
+    const stage = { width: 390, height: 400 };
+    expect(stripOuterInset(stage)).toBe(12); // retrocompat
+    expect(stripOuterInset(stage, 2)).toBe(23); // 390 × 3% × 2 = 23.4 → 23
+    expect(stripGutterPx(stage)).toBe(8);
+    expect(stripGutterPx(stage, 2)).toBe(16); // 390 × 2% × 2 = 15.6 → 16
+    expect(stripOuterInset(stage, Number.NaN)).toBe(12);
+    expect(stripGutterPx(stage, Number.NaN)).toBe(8);
+  });
+
+  it("stripPhotoRect: borderWidthFactor escala el inset exterior y las canaletas", async () => {
+    const { stripPhotoRect } = await import("./frame-palette");
+    const stage = { width: 390, height: 400 };
+    const ph = { x: 12, y: 0, width: 366, height: 400 };
+    // Factor 2: inset exterior 12→23 (390×3%×2=23.4), media canaleta 8→16.
+    expect(stripPhotoRect(ph, stage, "first", { borderWidthFactor: 2 })).toEqual({
+      ...ph,
+      y: 23,
+      height: 361, // 400 - 23 (inset) - 16 (media canaleta)
+    });
+    expect(stripPhotoRect(ph, stage, "middle", { borderWidthFactor: 2 })).toEqual({
+      ...ph,
+      y: 16,
+      height: 368, // 400 - 16 - 16
+    });
+    // Sin el opt → idéntico al histórico (retrocompat).
+    expect(stripPhotoRect(ph, stage, "first")).toEqual({ ...ph, y: 12, height: 380 });
+    // Sin borde el factor no pinta nada (0 inset, 0 canaleta).
+    expect(stripPhotoRect(ph, stage, "first", { borderless: true, borderWidthFactor: 2 })).toEqual(
+      ph,
+    );
+  });
+
+  it("clampBorderWidthFactor: clampa al rango y NaN cae a 1", async () => {
+    const { clampBorderWidthFactor } = await import("./frame-palette");
+    expect(clampBorderWidthFactor(2, 1, 2.5)).toBe(2);
+    expect(clampBorderWidthFactor(0.1, 1, 2.5)).toBe(1);
+    expect(clampBorderWidthFactor(9, 1, 2.5)).toBe(2.5);
+    expect(clampBorderWidthFactor(Number.NaN, 1, 2.5)).toBe(1);
+  });
+
+  it("resolveBorderWidthFactor CON rango del producto: ausente → default; fuera de rango → clamp", async () => {
+    const { resolveBorderWidthFactor } = await import("./frame-palette");
+    const range = { min: 1, max: 2.5, default: 1.5 };
+    // Diseño viejo sin el campo → el default del producto (retrocompat).
+    expect(resolveBorderWidthFactor(undefined, range)).toBe(1.5);
+    expect(resolveBorderWidthFactor("gordo", range)).toBe(1.5);
+    // El valor persistido manda, pero nunca fuera del rango.
+    expect(resolveBorderWidthFactor(2, range)).toBe(2);
+    expect(resolveBorderWidthFactor(0.1, range)).toBe(1);
+    expect(resolveBorderWidthFactor(99, range)).toBe(2.5);
+  });
+
+  it("resolveBorderWidthFactor SIN rango (producto sin el feature): valor persistido válido se respeta; ausente → 1", async () => {
+    const { resolveBorderWidthFactor } = await import("./frame-palette");
+    expect(resolveBorderWidthFactor(undefined)).toBe(1);
+    expect(resolveBorderWidthFactor(undefined, null)).toBe(1);
+    // Si el admin deshabilitó el feature DESPUÉS de que el cliente eligió, el
+    // PNG de imprenta sigue coincidiendo con lo que el cliente vio (WYSIWYG),
+    // solo acotado a las cotas globales (0.25–3).
+    expect(resolveBorderWidthFactor(1.75, null)).toBe(1.75);
+    expect(resolveBorderWidthFactor(0.01, null)).toBe(0.25);
+    expect(resolveBorderWidthFactor(50, null)).toBe(3);
+    expect(resolveBorderWidthFactor("x", null)).toBe(1);
+  });
+});

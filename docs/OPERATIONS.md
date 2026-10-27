@@ -355,6 +355,36 @@ polling (`GET /api/designs/<id>/render-status`) y el render corre en background:
   site map (borrar las filas en DB si existen — ya sin consumidor). **Ya aplicado en LOCAL**
   (seed + bodies actualizados directo en DB); pendiente STG y PRD al promover.
 
+### Claves CMS de la jornada 2026-10-26
+
+Declaradas en `packages/db/scripts/cms-site-map.mjs`. **Sembradas en LOCAL, STG y PRD**
+(`migrate-cms-v2 --apply`, 2026-10-27; verificado por query: las 20 claves presentes en STG y
+PRD). **Pendiente manual:** «Actualizar caché de contenido» en `/admin/contenido` de cada
+ambiente (mientras no se invalide, sirven los fallbacks del código o el caché de hasta 1 h).
+
+- **Estudio / plantillas y prediseñados:** `estudio.plantillas.reemplazo-par-titulo`,
+  `-cuerpo`, `-nombre`, `-aria` (modal de reemplazo por PAR de caras — ADR-158 ajustado),
+  `estudio.plantillas.toast-reemplazo-par`, `estudio.plantillas.ver-diseno-aria`,
+  `estudio.plantillas.ver-diseno-usar` (botón «Ver» + dialog del prediseñado en táctil),
+  `estudio.plantillas.elegir-para-continuar` (bloqueo guiado de plantilla — ADR-167
+  ajustado).
+- **Estudio / lienzo y estilo:** `estudio.lienzo.texto-editable-hint` (pill descubrible de
+  edición de texto), `estudio.texto.estilo-grosor-titulo`, `estudio.texto.estilo-grosor-aria`
+  (slider de grosor del borde — ADR-173).
+- **Checkout / fidelización de invitados (ADR-175):** `checkout.guest-loyalty.title`,
+  `.body`, `.referral-note`, `.cta`, `.cart-note`; `checkout.gracias.guest-points-title`,
+  `guest-points-body`, `guest-points-cta`, `checkout.gracias.points-earned`.
+- **Default actualizado:** `estudio.texto.ig-ubicacion-hint` (ubicación «Ciudad, País»
+  multi-palabra). El seed es upsert que NO pisa campos ya editados: si el ambiente la tiene
+  publicada con el texto viejo, actualizarla a mano en `/admin/contenido`.
+- **Sumada 2026-10-27:** `estudio.texto.ig-ubicacion-formato` (aviso inline cuando la
+  ubicación no lleva exactamente una coma «Ciudad, País» — regla no bloqueante). Sembrar con
+  `make migrate-cms-v2` (mientras no se siembre, sirve el fallback del código).
+
+**Grosor del borde (ADR-173):** no es dato CMS ni migración — vive en
+`personalizationSchema.borderWidth` del Product y se configura por producto en
+`/admin/productos` (tab Personalización, SectionCard «Grosor del borde»).
+
 ### Higiene de Supabase Storage — estrategia completa (2026-10-12)
 
 Contexto: el 2026-10-12 se midieron **~316 MB de objetos huérfanos en PRD** (217 MB en

@@ -8,8 +8,10 @@
  * override en TODOS los slots vía setTextOverrideAllSlots:
  *  - @usuario: "@" fija fuera del input, sanitización en vivo.
  *  - Ubicación: INPUT DE TEXTO simple (owner 2026-10-12 — se retiró el
- *    combobox con sugerencias): máximo 2 palabras, inicial mayúscula y el
- *    separador se imprime como ", " ("bogotá colombia" → "Bogotá, Colombia").
+ *    combobox con sugerencias). 2026-10-26 (bug de espacios): formato
+ *    «Ciudad, País» con segmentos MULTI-PALABRA e inicial mayúscula por
+ *    palabra ("santa marta, colombia" → "Santa Marta, Colombia"); sin coma,
+ *    3+ palabras son UN solo lugar ("Korea del Sur" → "Korea Del Sur").
  *  - «Me gusta»: OBLIGATORIO (rediseño), solo numérico, miles es-CO, sufijo fijo.
  *  - Título: contador n/140.
  *  - Hashtags: chips agregar/quitar, máximo 3, "#" fija.
@@ -30,7 +32,7 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, act } from "@testing-library/react";
 import { StudioIgPostFields } from "./studio-ig-post-fields";
 import { createStudioStore } from "./lib/store";
@@ -140,45 +142,78 @@ describe("StudioIgPostFields — diligenciamiento masivo IG (rediseño asistido 
     expect(overrides(store, "user_name")).toEqual([undefined, undefined]);
   });
 
-  it("ubicación: input de texto simple — el espacio se imprime como «, » y cada palabra con inicial mayúscula", () => {
+  it("ubicación: input de texto simple — «Ciudad, País» multi-palabra con espacios (rediseño 2026-10-26)", () => {
     const store = makeStore();
     render(<StudioIgPostFields store={store} />);
 
     const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
     expect(input.value).toBe("");
-    // El hint explica la regla de máximo 2 palabras.
-    expect(screen.getByText(/Máximo 2 palabras/)).toBeInTheDocument();
+    // El hint explica el formato «Ciudad, País» (ya no hay máximo de 2 palabras).
+    expect(screen.getByText(/Ciudad y país separados por coma/)).toBeInTheDocument();
 
     // El draft es inmediato; al blur se transforma y compromete en TODOS los slots.
-    fireEvent.change(input, { target: { value: "bogotá colombia" } });
-    expect(input.value).toBe("bogotá colombia");
+    fireEvent.change(input, { target: { value: "santa marta, colombia" } });
+    expect(input.value).toBe("santa marta, colombia");
     expect(overrides(store, "location")).toEqual([undefined, undefined]);
 
     fireEvent.blur(input);
-    expect(overrides(store, "location")).toEqual(["Bogotá, Colombia", "Bogotá, Colombia"]);
+    expect(overrides(store, "location")).toEqual([
+      "Santa Marta, Colombia",
+      "Santa Marta, Colombia",
+    ]);
     // Tras el commit el input muestra el valor transformado (como se imprime).
-    expect(input.value).toBe("Bogotá, Colombia");
+    expect(input.value).toBe("Santa Marta, Colombia");
   });
 
-  it("ubicación: máximo 2 palabras en vivo (la tercera no entra) y una sola palabra queda sin coma", () => {
+  it("ubicación: sin coma, 3+ palabras son UN solo lugar («Korea del Sur» nunca se parte)", () => {
     const store = makeStore();
     render(<StudioIgPostFields store={store} />);
 
     const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
 
-    fireEvent.change(input, { target: { value: "mi vereda del campo" } });
-    expect(input.value).toBe("mi vereda");
+    // Un lugar multi-palabra entra COMPLETO (el bug lo cortaba a 2 palabras).
+    fireEvent.change(input, { target: { value: "korea del sur" } });
+    expect(input.value).toBe("korea del sur");
     fireEvent.blur(input);
-    expect(overrides(store, "location")).toEqual(["Mi, Vereda", "Mi, Vereda"]);
+    expect(overrides(store, "location")).toEqual(["Korea Del Sur", "Korea Del Sur"]);
 
-    fireEvent.change(input, { target: { value: "colombia" } });
+    // Compat: 2 palabras sin coma siguen leyéndose «Ciudad País».
+    fireEvent.change(input, { target: { value: "bogotá colombia" } });
     fireEvent.blur(input);
-    expect(overrides(store, "location")).toEqual(["Colombia", "Colombia"]);
+    expect(overrides(store, "location")).toEqual(["Bogotá, Colombia", "Bogotá, Colombia"]);
 
     // Vacío → override null (lo cobra el guard de requeridos).
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.blur(input);
     expect(overrides(store, "location")).toEqual([undefined, undefined]);
+  });
+
+  it("ubicación: una PAUSA a mitad de escritura NO resetea el draft ni se come el espacio (bug 2026-10-26)", () => {
+    vi.useFakeTimers();
+    try {
+      const store = makeStore();
+      render(<StudioIgPostFields store={store} />);
+
+      const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+      // El cliente escribe "bogotá", hace una pausa (>350 ms → commit debounced
+      // al store) y sigue escribiendo ", colombia".
+      fireEvent.change(input, { target: { value: "bogotá" } });
+      act(() => vi.advanceTimersByTime(500)); // dispara el commit "bogotá"
+      expect(overrides(store, "location")).toEqual(["Bogotá", "Bogotá"]);
+
+      // Antes del fix: el eco transformado del commit ("Bogotá") no coincidía
+      // con el draft crudo y el sync EXTERNO del hook reseteaba el input → el
+      // espacio y lo que seguía se perdían ("Bogotá,colombia" o peor).
+      fireEvent.change(input, { target: { value: "bogotá, colombia" } });
+      expect(input.value).toBe("bogotá, colombia");
+
+      // El commit final guarda el texto completo y bien formateado.
+      act(() => vi.advanceTimersByTime(500));
+      expect(overrides(store, "location")).toEqual(["Bogotá, Colombia", "Bogotá, Colombia"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("«me gusta»: solo numérico con miles es-CO, sufijo fijo fuera del input", () => {
@@ -392,5 +427,95 @@ describe("StudioIgPostFields — re-aplicado EXPLÍCITO a todos los slots (2026-
     // Ubicación sin valor pack-level (y "varía por foto") → intacta.
     expect(overrides(store, "location")).toEqual(["Bogotá", "Medellín"]);
     expect(overrides(store, "caption")).toEqual(["Nuestro paseo", "Nuestro paseo"]);
+  });
+});
+
+/*
+ * Regla de formato «Ciudad, País» de la Ubicación IG (owner 2026-10-27): aviso
+ * inline ORIENTATIVO (ámbar) tras el primer commit/blur cuando el texto no
+ * cumple (sin coma o segmento vacío). NUNCA bloquea: el valor se guarda igual
+ * (override con el heuristic), el auto-save corre y vacío es válido. Mientras
+ * se escribe por primera vez no se muestra nada.
+ */
+describe("StudioIgPostFields — aviso de formato de la ubicación (2026-10-27)", () => {
+  const AVISO = /ciudad y país separados por una coma/i;
+
+  it("mientras escribe (sin commit ni blur) NO se muestra nada; al blur con «sin coma» aparece", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "bogotá" } });
+    expect(screen.queryByRole("alert")).toBeNull(); // aún no tocado: sin aviso
+
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toMatch(AVISO);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("el aviso NO bloquea: el valor se guarda igual (override con heuristic) y al corregir desaparece en vivo", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "bogotá" } });
+    fireEvent.blur(input);
+    // Guardado con el fallback (heuristic sin coma): no se perdió nada.
+    expect(overrides(store, "location")).toEqual(["Bogotá", "Bogotá"]);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    // Corrige: agrega la coma → el aviso se reevalúa en vivo y desaparece.
+    fireEvent.change(input, { target: { value: "bogotá, colombia" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.blur(input);
+    expect(overrides(store, "location")).toEqual(["Bogotá, Colombia", "Bogotá, Colombia"]);
+    expect(input.value).toBe("Bogotá, Colombia"); // normalizado al blur
+  });
+
+  it("vacío es válido: borrar el texto quita el aviso y limpia el override", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "santa marta," } }); // segmento vacío
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toMatch(AVISO);
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.queryByRole("alert")).toBeNull(); // vacío nunca avisa
+    fireEvent.blur(input);
+    expect(overrides(store, "location")).toEqual([undefined, undefined]);
+  });
+
+  it("válido directo: «Santa Marta, Colombia» no avisa y queda capitalizado", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "santa marta, colombia" } });
+    fireEvent.blur(input);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(input).not.toHaveAttribute("aria-invalid");
+    expect(overrides(store, "location")).toEqual([
+      "Santa Marta, Colombia",
+      "Santa Marta, Colombia",
+    ]);
+  });
+
+  it("valor LEGACY sin coma (persistido antes de la regla): no explota ni avisa hasta tocar el campo", () => {
+    const store = makeStore();
+    // Simula un diseño guardado antes de la regla (override sin coma).
+    store.getState().setTextOverrideAllSlots("location", { text: "Korea Del Sur" });
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    // Al cargar no hay aviso (campo no tocado) y el valor se muestra tal cual.
+    expect(input.value).toBe("Korea Del Sur");
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    // Al editarlo y salir sin coma, AHORA sí avisa (orientativo).
+    fireEvent.change(input, { target: { value: "korea del sur" } });
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toMatch(AVISO);
   });
 });

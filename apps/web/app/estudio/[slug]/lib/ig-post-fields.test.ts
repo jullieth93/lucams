@@ -13,12 +13,13 @@ import {
   IG_HASHTAGS_MAX,
   IG_LIKES_SUFFIX,
   IG_LOCATION_MAX_LENGTH,
-  IG_LOCATION_MAX_WORDS,
+  IG_LOCATION_MAX_SEGMENTS,
   IG_USERNAME_MAX,
   igHashtagsFromStored,
   igHashtagsOverride,
   igLikesDisplay,
   igLikesOverride,
+  igLocationFormatIsValid,
   igLocationOverride,
   igUsernameDisplay,
   igUsernameOverride,
@@ -104,44 +105,87 @@ describe("hashtags — chips, «#» fija y máximo 3", () => {
   });
 });
 
-describe("ubicación — texto simple con validación y transformación (owner 2026-10-12, sin sugerencias)", () => {
-  it("el override capitaliza la inicial de cada palabra y une con «, »", () => {
-    expect(igLocationOverride("bogotá colombia")).toBe("Bogotá, Colombia");
-    expect(igLocationOverride("medellín colombia")).toBe("Medellín, Colombia");
-    // Una sola palabra queda sin coma; también vale el país solo.
-    expect(igLocationOverride("colombia")).toBe("Colombia");
-  });
-
-  it("acepta coma como separador y la normaliza a «, » al commit", () => {
-    expect(igLocationOverride("bogotá,colombia")).toBe("Bogotá, Colombia");
+describe("ubicación — «Ciudad, País» multi-palabra (rediseño 2026-10-26, bug de espacios)", () => {
+  it("con coma: 2 segmentos multi-palabra, inicial mayúscula por palabra", () => {
+    expect(igLocationOverride("santa marta, colombia")).toBe("Santa Marta, Colombia");
     expect(igLocationOverride("Bogotá, Colombia")).toBe("Bogotá, Colombia");
+    expect(igLocationOverride("villa de leyva, boyacá")).toBe("Villa De Leyva, Boyacá");
   });
 
-  it("máximo 2 palabras: la tercera se descarta", () => {
-    expect(IG_LOCATION_MAX_WORDS).toBe(2);
-    expect(igLocationOverride("san pedro sula")).toBe("San, Pedro");
-    expect(igLocationOverride("mi vereda del campo")).toBe("Mi, Vereda");
+  it("sin coma: 2 palabras exactas se leen como «Ciudad País» (compat con la convención vieja)", () => {
+    expect(igLocationOverride("bogotá colombia")).toBe("Bogotá, Colombia");
+    expect(igLocationOverride("bogotá,colombia")).toBe("Bogotá, Colombia");
+    expect(igLocationOverride("medellín colombia")).toBe("Medellín, Colombia");
   });
 
-  it("vacío o solo espacios → null (sin override; el guard de requeridos lo cobra)", () => {
+  it("sin coma: 1 palabra o 3+ palabras son UN solo lugar (nunca se parte a la mitad ni se comen palabras)", () => {
+    expect(igLocationOverride("colombia")).toBe("Colombia");
+    expect(igLocationOverride("korea del sur")).toBe("Korea Del Sur");
+    expect(igLocationOverride("santa marta colombia")).toBe("Santa Marta Colombia");
+  });
+
+  it("máximo 2 segmentos: lo que sigue a la coma se acumula en el país", () => {
+    expect(IG_LOCATION_MAX_SEGMENTS).toBe(2);
+    expect(igLocationOverride("bogotá, colombia, sur")).toBe("Bogotá, Colombia Sur");
+  });
+
+  it("vacío o solo espacios/coma → null (sin override; el guard de requeridos lo cobra)", () => {
     expect(igLocationOverride("")).toBeNull();
     expect(igLocationOverride("   ")).toBeNull();
+    expect(igLocationOverride(",")).toBeNull();
   });
 
   it("sanitiza en vivo: caracteres inválidos fuera, espacios colapsados, sin espacio inicial", () => {
     expect(sanitizeIgLocationInput("bogotá!! colombia?")).toBe("bogotá colombia");
     expect(sanitizeIgLocationInput("  san   josé")).toBe("san josé");
-    // Conserva tildes/ñ, guion y apóstrofe (nombres reales de lugares).
-    expect(sanitizeIgLocationInput("villa de leyva's")).toBe("villa de");
   });
 
-  it("máximo 2 palabras EN VIVO, conservando el separador para escribir la 2ª palabra", () => {
+  it("NUNCA se come espacios ni palabras en vivo: ciudades multi-palabra entran completas", () => {
+    // El bug: la 3ª palabra no entraba y el espacio final desaparecía.
+    expect(sanitizeIgLocationInput("santa marta")).toBe("santa marta");
+    expect(sanitizeIgLocationInput("santa marta, colombia")).toBe("santa marta, colombia");
+    expect(sanitizeIgLocationInput("korea del sur")).toBe("korea del sur");
+    // Separador final conservado para seguir escribiendo.
     expect(sanitizeIgLocationInput("bogotá ")).toBe("bogotá ");
-    expect(sanitizeIgLocationInput("bogotá colombia extra")).toBe("bogotá colombia");
+    expect(sanitizeIgLocationInput("bogotá, ")).toBe("bogotá, ");
+  });
+
+  it("máximo UNA coma en vivo (las extra se vuelven espacio); conserva apóstrofe y guion", () => {
+    expect(sanitizeIgLocationInput("bogotá, colombia, extra")).toBe("bogotá, colombia extra");
+    expect(sanitizeIgLocationInput("villa de leyva's")).toBe("villa de leyva's");
   });
 
   it("largo acotado (una línea corta del post impreso)", () => {
     expect(IG_LOCATION_MAX_LENGTH).toBe(40);
     expect(sanitizeIgLocationInput("a".repeat(60))).toHaveLength(40);
+  });
+});
+
+describe("igLocationFormatIsValid — regla «Ciudad, País» de la UI (owner 2026-10-27)", () => {
+  it("válido: exactamente UNA coma con ambos segmentos (multi-palabra OK)", () => {
+    expect(igLocationFormatIsValid("Santa Marta, Colombia")).toBe(true);
+    expect(igLocationFormatIsValid("santa marta, colombia")).toBe(true);
+    expect(igLocationFormatIsValid("bogotá,colombia")).toBe(true);
+    expect(igLocationFormatIsValid("Villa de Leyva, Boyacá")).toBe(true);
+  });
+
+  it("vacío (o solo espacios) es VÁLIDO: el campo es opcional y nunca bloquea", () => {
+    expect(igLocationFormatIsValid("")).toBe(true);
+    expect(igLocationFormatIsValid("   ")).toBe(true);
+  });
+
+  it("inválido: sin coma, coma sin país, país sin ciudad, solo coma", () => {
+    expect(igLocationFormatIsValid("Bogotá")).toBe(false);
+    expect(igLocationFormatIsValid("Korea del Sur")).toBe(false);
+    expect(igLocationFormatIsValid("Santa Marta,")).toBe(false);
+    expect(igLocationFormatIsValid(", Colombia")).toBe(false);
+    expect(igLocationFormatIsValid(",")).toBe(false);
+  });
+
+  it("legacy sin coma: el fallback del override sigue guardando algo sensato (no explota)", () => {
+    // La regla de formato es de la UI; valores persistidos sin coma siguen
+    // transformándose con el heuristic (nunca null ni basura).
+    expect(igLocationFormatIsValid("Korea del Sur")).toBe(false); // la UI avisaría
+    expect(igLocationOverride("Korea del Sur")).toBe("Korea Del Sur"); // pero se imprime bien
   });
 });

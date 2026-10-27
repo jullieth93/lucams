@@ -354,6 +354,55 @@ describe("applyPredesignedToSlot — paridad Cara A/B (2026-10-05: nunca cruzar 
   });
 });
 
+describe("applyPredesignedToSlot — reemplazo del PAR completo (replacePair, 2026-10-26)", () => {
+  // Bug: prediseñado de 2 caras con todo lleno — el modal solo ofrecía caras A
+  // y, al reemplazar, la B ocupada se descartaba (bBlocked + toast) dejando el
+  // separador mezclado (A nueva + B vieja). Ahora el modal ofrece UNIDADES y
+  // replacePair reemplaza AMBAS caras de forma explícita.
+  it("cara B ocupada + replacePair → se reemplaza también la B (bReplaced) y no hay bBlocked", async () => {
+    const store = setup(2, [0, 1]); // separador 1 completo
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 0,
+      facesPerUnit: 2,
+      forceTargetSlot: true,
+      replacePair: true,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: false, bReplaced: true });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[0]!.assetId).toBe("asset-g1-ab-a");
+    expect(slots[1]!.assetId).toBe("asset-g1-ab-b"); // la B vieja SÍ se reemplazó
+  });
+
+  it("sin replacePair la cara B ocupada sigue protegida (bBlocked) — regla Paquete A intacta", async () => {
+    const store = setup(2, [0, 1]);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 0,
+      facesPerUnit: 2,
+      forceTargetSlot: true,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: true });
+    expect(store.getState().canvasData!.slots[1]!.assetId).toBe("own-1");
+  });
+
+  it("replacePair con la B libre → se asigna normal y bReplaced queda ausente", async () => {
+    const store = setup(2, [0]);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 0,
+      facesPerUnit: 2,
+      forceTargetSlot: true,
+      replacePair: true,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: false });
+    expect(store.getState().canvasData!.slots[1]!.assetId).toBe("asset-g1-ab-b");
+  });
+});
+
 describe("applyPredesignedVarietyToEmptySlots — variedad round-robin (Paquete A)", () => {
   it("3 diseños en 3 slots vacíos: todos distintos", async () => {
     const store = setup(3);

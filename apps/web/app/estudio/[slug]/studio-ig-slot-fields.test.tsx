@@ -14,8 +14,9 @@
  *  3. La edición escribe el override INDIVIDUAL del slot (setSlotTextOverride)
  *     y NO toca los demás slots ni el valor pack-level.
  *  4. La ubicación es input de texto simple (owner 2026-10-12 — se retiró el
- *     combobox con sugerencias): máximo 2 palabras, inicial mayúscula, ", "
- *     al commit; compromete solo en este slot.
+ *     combobox con sugerencias). 2026-10-26: formato «Ciudad, País»
+ *     multi-palabra (ya no hay máximo de 2 palabras); compromete solo en este
+ *     slot.
  *
  * Los campos de texto comprometen al store con DEBOUNCE (IgDebouncedInput):
  * los tests hacen fireEvent.blur después de escribir para forzar el commit.
@@ -175,6 +176,22 @@ describe("StudioIgSlotFields — campos IG en la edición individual (QA ronda 2
     // (El input muestra el valor transformado cuando el host re-renderiza con
     // los overrides frescos — el sync post-commit se prueba en el bloque
     // pack-level, donde el valor display viene del store en vivo.)
+  });
+
+  // 2026-10-27 (owner) — la regla «Ciudad, País» también avisa en la edición
+  // INDIVIDUAL: mismo aviso inline orientativo tras el blur (nunca bloquea).
+  it("ubicación individual: sin coma al blur → aviso inline orientativo, y el valor se guarda igual", () => {
+    const store = makeStore();
+    renderFields(store, 1);
+
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "korea del sur" } });
+    expect(screen.queryByRole("alert")).toBeNull(); // mientras escribe: nada
+
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toMatch(/ciudad y país separados por una coma/i);
+    // Guardado igual (fallback del heuristic): el aviso no bloquea nada.
+    expect(slotOverrides(store, 1)?.location?.text).toBe("Korea Del Sur");
   });
 
   it("«me gusta»: solo numérico con sufijo fijo, individual por slot", () => {

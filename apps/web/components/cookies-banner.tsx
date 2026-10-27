@@ -149,21 +149,21 @@ export function CookiesBanner({ policyVersion = null }: { policyVersion?: string
               <button
                 type="button"
                 onClick={() => commit(rejectAllPreferences())}
-                className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 rounded-full border bg-white px-4 py-2 text-xs font-semibold"
+                className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-10 items-center rounded-full border bg-white px-4 py-2 text-xs font-semibold"
               >
                 Solo necesarias
               </button>
               <button
                 type="button"
                 onClick={() => setModalOpen(true)}
-                className="text-brand-purple-dark hover:text-brand-purple rounded-full px-4 py-2 text-xs font-semibold underline-offset-2 hover:underline"
+                className="text-brand-purple-dark hover:text-brand-purple inline-flex min-h-10 items-center rounded-full px-4 py-2 text-xs font-semibold underline-offset-2 hover:underline"
               >
                 Personalizar
               </button>
               <button
                 type="button"
                 onClick={() => commit(acceptAllPreferences())}
-                className="bg-brand-purple hover:bg-brand-purple-dark rounded-full px-5 py-2 text-xs font-semibold text-white shadow-sm"
+                className="bg-brand-purple hover:bg-brand-purple-dark inline-flex min-h-10 items-center rounded-full px-5 py-2 text-xs font-semibold text-white shadow-sm"
               >
                 Aceptar todas
               </button>
@@ -226,14 +226,14 @@ export function CookiesBanner({ policyVersion = null }: { policyVersion?: string
             <button
               type="button"
               onClick={() => commit(rejectAllPreferences())}
-              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 rounded-full border bg-white px-4 py-2 text-xs font-semibold"
+              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-10 items-center rounded-full border bg-white px-4 py-2 text-xs font-semibold"
             >
               Solo necesarias
             </button>
             <button
               type="button"
               onClick={() => commit({ ...prefs, savedAt: new Date().toISOString() })}
-              className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1 rounded-full px-5 py-2 text-xs font-semibold text-white shadow-sm"
+              className="bg-brand-purple hover:bg-brand-purple-dark inline-flex min-h-10 items-center gap-1 rounded-full px-5 py-2 text-xs font-semibold text-white shadow-sm"
             >
               <Sparkles className="h-3.5 w-3.5" />
               Guardar mis preferencias

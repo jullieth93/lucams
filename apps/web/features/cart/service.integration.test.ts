@@ -44,6 +44,7 @@ import {
   updateCartItemQty,
   removeCartItem,
   mergeAnonCartIntoCustomer,
+  recoverCustomerCartSessionId,
 } from "./service";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -2070,6 +2071,56 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       const result = await mergeAnonCartIntoCustomer(sid("identity-missing"), customer.id);
 
       expect(result).toBe(customerSession);
+    });
+  });
+
+  describe("recoverCustomerCartSessionId — login sin cookie de carrito (2026-10-26)", () => {
+    it("devuelve el sessionId del carrito VIVO más reciente del customer", async () => {
+      const customer = await makeCustomer();
+      const older = sid("rec-old");
+      await addProductToCart({
+        sessionId: older,
+        customerId: customer.id,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
+      const newer = sid("rec-new");
+      await addProductToCart({
+        sessionId: newer,
+        customerId: customer.id,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
+
+      expect(await recoverCustomerCartSessionId(customer.id)).toBe(newer);
+
+      // Tocar el viejo lo vuelve el más reciente (orderBy updatedAt desc).
+      await prisma.cart.update({ where: { sessionId: older }, data: { updatedAt: new Date() } });
+      expect(await recoverCustomerCartSessionId(customer.id)).toBe(older);
+    });
+
+    it("null cuando el customer no tiene carrito", async () => {
+      const customer = await makeCustomer();
+      expect(await recoverCustomerCartSessionId(customer.id)).toBeNull();
+    });
+
+    it("null cuando el carrito del customer está VACÍO (no se escribe cookie por nada)", async () => {
+      const customer = await makeCustomer();
+      await makeEmptyCart({ customerId: customer.id });
+      expect(await recoverCustomerCartSessionId(customer.id)).toBeNull();
+    });
+
+    it("null cuando el carrito del customer está SOFT-DELETED (pagado/cotizado)", async () => {
+      const customer = await makeCustomer();
+      const sessionId = sid("rec-soft");
+      const detail = await addProductToCart({
+        sessionId,
+        customerId: customer.id,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
+      await prisma.cart.update({ where: { id: detail.cartId }, data: { deletedAt: new Date() } });
+      expect(await recoverCustomerCartSessionId(customer.id)).toBeNull();
     });
   });
 

@@ -338,13 +338,16 @@ export default async function ProductoDetallePage({
             className="text-brand-muted mb-6 flex items-center gap-1 text-xs"
             aria-label="Ruta de navegación"
           >
-            <Link href="/productos" className="hover:text-brand-purple">
+            <Link
+              href="/productos"
+              className="hover:text-brand-purple -my-2 inline-flex min-h-10 items-center"
+            >
               Tienda
             </Link>
             <ChevronRight className="h-3 w-3" />
             <Link
               href={`/productos?categoria=${product.category.slug}`}
-              className="hover:text-brand-purple"
+              className="hover:text-brand-purple -my-2 inline-flex min-h-10 items-center"
             >
               {product.category.name}
             </Link>

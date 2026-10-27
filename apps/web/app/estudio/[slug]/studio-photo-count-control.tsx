@@ -64,6 +64,19 @@ export type StudioPhotoCountControlProps = {
    * se muestra para que el cliente vea qué va a recibir. undefined = no mostrar.
    */
   magnet?: boolean;
+  /**
+   * Ola 2 (2026-10-26) — desglose de la variante efectiva ("Con imán · Español"…)
+   * como chip EN LA FILA del stepper (solo <md; en desktop ya va en el hero del
+   * header). Cuando llega, REEMPLAZA al badge «Con/Sin imán»: mismo dato, una
+   * sola vez (antes se repetía en la fila móvil del header, ya eliminada).
+   */
+  variantLabel?: string;
+  /**
+   * Ola 2 (2026-10-26) — chrome móvil extra de la fila (progreso X/N + auto-save
+   * compacto): la inyecta la toolbar para compartir UNA fila con wrap. Se
+   * renderiza solo <md (el wrapper lo oculta en ≥md).
+   */
+  mobileExtras?: React.ReactNode;
 };
 
 export function StudioPhotoCountControl({
@@ -74,6 +87,8 @@ export function StudioPhotoCountControl({
   sizeCm,
   unitNoun,
   magnet,
+  variantLabel,
+  mobileExtras,
 }: StudioPhotoCountControlProps) {
   const texts = useStudioTexts();
   // Sustantivo de la unidad + concordancia de género para las plantillas CMS:
@@ -209,13 +224,30 @@ export function StudioPhotoCountControl({
       </span>
       {/* "¿Con imán?" (2026-09-08) — badge read-only de la elección hecha en la
           PDP. No es control: cambiarla es cambiar de variante (otro precio y otro
-          físico) y eso pasa en la ficha del producto, no en el lienzo. */}
-      {typeof magnet === "boolean" && (
-        <span className="ring-brand-purple/20 text-brand-purple-dark inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold ring-1">
-          {magnet ? texts.lienzo.magnetCon : texts.lienzo.magnetSin}
-          <span className="text-brand-muted font-medium">· {texts.lienzo.magnetHint}</span>
+          físico) y eso pasa en la ficha del producto, no en el lienzo.
+          Ola 2 (2026-10-26) — si la toolbar manda el desglose COMPLETO de la
+          variante, el chip lo reemplaza (mismo dato, sin duplicar renglones) y
+          solo se muestra en <md (en desktop ya va en el hero del header). */}
+      {variantLabel ? (
+        <span className="ring-brand-purple/20 text-brand-purple-dark inline-flex max-w-full items-center gap-1.5 truncate rounded-full bg-white px-3 py-1.5 text-xs font-bold ring-1 md:hidden">
+          {variantLabel}
+          <span className="text-brand-muted hidden font-medium sm:inline">
+            · {texts.lienzo.magnetHint}
+          </span>
         </span>
+      ) : (
+        typeof magnet === "boolean" && (
+          <span className="ring-brand-purple/20 text-brand-purple-dark inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold ring-1">
+            {magnet ? texts.lienzo.magnetCon : texts.lienzo.magnetSin}
+            <span className="text-brand-muted hidden font-medium sm:inline">
+              · {texts.lienzo.magnetHint}
+            </span>
+          </span>
+        )
       )}
+      {/* Ola 2 (2026-10-26) — progreso + auto-save compacto en la MISMA fila
+          (solo <md; el wrapper contents lo oculta en ≥md). */}
+      {mobileExtras && <div className="contents md:hidden">{mobileExtras}</div>}
     </div>
   );
 }

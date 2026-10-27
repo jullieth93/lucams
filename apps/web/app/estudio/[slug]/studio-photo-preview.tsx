@@ -52,6 +52,9 @@ export type StudioPhotoPreviewProps = {
   slotState: SlotState;
   totalSlots: number;
   borderColor?: string | null;
+  /** Grosor del borde (2026-10-26) — FACTOR sobre la base del producto (1 = histórico);
+   *  el preview replica la misma geometría del lienzo (renderLayer, frame-palette). */
+  borderWidthFactor?: number | null;
   allowText?: boolean;
   frameFullBleed?: boolean;
   /** Calendarios: compone la tarjeta del mes (mismo dibujo que producción). */
@@ -75,6 +78,7 @@ export function StudioPhotoPreview({
   slotState,
   totalSlots,
   borderColor = null,
+  borderWidthFactor = null,
   allowText = false,
   frameFullBleed = false,
   calendarCard = null,
@@ -311,6 +315,7 @@ export function StudioPhotoPreview({
                   true, // siempre interactivo: es el lugar designado para los gestos
                   {
                     borderColor: borderColor ?? null,
+                    borderWidthFactor,
                     allowText,
                     hasFrameCard,
                     fullBleed,

@@ -26,6 +26,21 @@ import { randomUUID } from "node:crypto";
 const COOKIE_NAME = "cart_session";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 días
 
+/** Nombre de la cookie — exportado para el Route Handler /auth/callback, que
+ *  escribe la cookie en el RESPONSE (no vía cookies() de next/headers). */
+export const CART_SESSION_COOKIE = COOKIE_NAME;
+
+/** Opciones de la cookie — misma razón de exportación que CART_SESSION_COOKIE. */
+export function cartSessionCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: COOKIE_MAX_AGE,
+  } as const;
+}
+
 export async function peekCartSession(): Promise<string | null> {
   const c = await cookies();
   const value = c.get(COOKIE_NAME)?.value;
@@ -47,13 +62,7 @@ export async function getOrCreateCartSession(): Promise<string> {
 
 export async function setCartSessionCookie(sessionId: string): Promise<void> {
   const c = await cookies();
-  c.set(COOKIE_NAME, sessionId, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: COOKIE_MAX_AGE,
-  });
+  c.set(COOKIE_NAME, sessionId, cartSessionCookieOptions());
 }
 
 /**

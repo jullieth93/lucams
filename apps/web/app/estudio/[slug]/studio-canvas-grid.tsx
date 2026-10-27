@@ -1020,6 +1020,7 @@ export function StudioCanvasGrid({
             cornerRadiusPx={cornerRadiusPx}
             showRealismGuides={showRealismGuides}
             borderColor={canvasData.borderColor ?? null}
+            borderWidthFactor={canvasData.borderWidthFactor ?? null}
             frameFullBleed={frameFullBleed}
             overlayActions={stripMode}
             allowText={allowText}
@@ -1958,6 +1959,9 @@ function StudioSlotEditModalWrapper({
   const unitTemplate = useStore(store, (s) => s.canvasData?.unitTemplate);
   const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
   const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
+  // Grosor del borde (2026-10-26) — el preview del modal usa el MISMO factor
+  // del lienzo (renderLayer lo escala vía frame-palette) — WYSIWYG.
+  const borderWidthFactor = useStore(store, (s) => s.canvasData?.borderWidthFactor ?? null);
   // Ola 28 (1.2.1.A) — color EFECTIVO de la tarjeta para el preview de la pestaña
   // Texto: borderColor puede ser null (la Clásica nace blanca sin setear nada) —
   // la regla compartida resuelve el color real (frame-palette.cardBackgroundHex).
@@ -2134,6 +2138,7 @@ function StudioSlotEditModalWrapper({
               unitTemplate,
               totalSlots: slotCount,
               borderColor,
+              borderWidthFactor,
               allowText,
               frameFullBleed,
               calendarCard:

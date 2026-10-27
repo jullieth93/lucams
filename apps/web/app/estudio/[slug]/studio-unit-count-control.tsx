@@ -37,6 +37,17 @@ export type StudioUnitCountControlProps = {
   /** Hint junto al stepper. Default: el texto CMS (pensado para tiras). La
    *  toolbar pasa uno genérico para el resto de productos (A3). */
   hint?: string;
+  /**
+   * Ola 2 (2026-10-26) — desglose de la variante como chip EN LA FILA (solo
+   *  <md; en desktop va en el hero). Cuando llega, reemplaza al badge
+   *  «Con/Sin imán» (mismo dato, sin duplicar renglones).
+   */
+  variantLabel?: string;
+  /**
+   * Ola 2 (2026-10-26) — chrome móvil extra de la fila (progreso X/N +
+   *  auto-save compacto) inyectado por la toolbar; solo <md.
+   */
+  mobileExtras?: React.ReactNode;
 };
 
 export function StudioUnitCountControl({
@@ -44,6 +55,8 @@ export function StudioUnitCountControl({
   facesPerUnit = 1,
   magnet,
   hint,
+  variantLabel,
+  mobileExtras,
 }: StudioUnitCountControlProps) {
   const texts = useStudioTexts();
   // N vivo de unidades + slots por unidad del canvasData. Selectores ATÓMICOS
@@ -126,15 +139,32 @@ export function StudioUnitCountControl({
           <Plus className="h-4 w-4" aria-hidden />
         </button>
       </div>
-      <span className="text-brand-purple-dark/70 text-xs font-medium">
+      {/* Ola 2 (2026-10-26) — el hint descriptivo se oculta en <sm (misma regla
+          que el stepper de fotos, Ola 32): en 375px sumaba una línea de chrome
+          antes del lienzo; el stepper conserva sus aria-labels. */}
+      <span className="text-brand-purple-dark/70 hidden text-xs font-medium sm:inline">
         {hint ?? texts.lienzo.unitsCountHint}
       </span>
-      {typeof magnet === "boolean" && (
-        <span className="ring-brand-purple/20 text-brand-purple-dark inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold ring-1">
-          {magnet ? texts.lienzo.magnetCon : texts.lienzo.magnetSin}
-          <span className="text-brand-muted font-medium">· {texts.lienzo.magnetHint}</span>
+      {variantLabel ? (
+        <span className="ring-brand-purple/20 text-brand-purple-dark inline-flex max-w-full items-center gap-1.5 truncate rounded-full bg-white px-3 py-1.5 text-xs font-bold ring-1 md:hidden">
+          {variantLabel}
+          <span className="text-brand-muted hidden font-medium sm:inline">
+            · {texts.lienzo.magnetHint}
+          </span>
         </span>
+      ) : (
+        typeof magnet === "boolean" && (
+          <span className="ring-brand-purple/20 text-brand-purple-dark inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold ring-1">
+            {magnet ? texts.lienzo.magnetCon : texts.lienzo.magnetSin}
+            <span className="text-brand-muted hidden font-medium sm:inline">
+              · {texts.lienzo.magnetHint}
+            </span>
+          </span>
+        )
       )}
+      {/* Ola 2 (2026-10-26) — progreso + auto-save compacto en la MISMA fila
+          (solo <md). */}
+      {mobileExtras && <div className="contents md:hidden">{mobileExtras}</div>}
     </div>
   );
 }

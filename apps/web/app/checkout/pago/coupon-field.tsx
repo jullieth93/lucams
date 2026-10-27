@@ -130,7 +130,7 @@ export function CouponField({
         <button
           type="submit"
           disabled={pending}
-          className="bg-brand-purple-dark hover:bg-brand-purple inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-60"
+          className="bg-brand-purple-dark hover:bg-brand-purple inline-flex min-h-10 items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-60"
         >
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : texts.couponApply}
         </button>

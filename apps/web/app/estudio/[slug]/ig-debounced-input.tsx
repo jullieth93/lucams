@@ -17,6 +17,7 @@
  */
 
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { useDebouncedCommit } from "./lib/use-debounced-commit";
 
 /** Clase de input compartida por los controles asistidos de los campos IG. */
@@ -34,6 +35,8 @@ export function IgDebouncedInput({
   className,
   describedBy,
   autoCapitalize,
+  commitEcho,
+  warningFor,
   footer,
 }: {
   inputId: string;
@@ -49,10 +52,42 @@ export function IgDebouncedInput({
   className?: string;
   describedBy?: string;
   autoCapitalize?: string;
+  /**
+   * 2026-10-26 — eco del commit en formato DISPLAY (el valor que el store
+   *  devuelve tras el commit): sin él, en campos cuyo commit TRANSFORMA el
+   *  texto (ubicación: capitaliza y normaliza la coma), el sync del hook
+   *  reseteaba el draft a los ~350 ms y se comía el espacio que el cliente
+   *  estaba tecleando ("Santa Marta" imposible).
+   */
+  commitEcho?: (committed: string) => string;
+  /**
+   * 2026-10-27 (owner) — AVISO de formato inline (hoy: Ubicación «Ciudad,
+   *  País»): devuelve el mensaje cuando el draft NO cumple, null si está bien
+   *  (o vacío — el campo es opcional y vacío es válido). El aviso solo aparece
+   *  tras el primer commit/blur (touched): nunca mientras escribe por primera
+   *  vez, nunca bloquea guardar ni finalizar; se reevalúa en vivo sobre el
+   *  draft y desaparece al corregir.
+   */
+  warningFor?: (draft: string) => string | null;
   /** Contenido bajo el input que depende del draft vivo (p. ej. el contador). */
   footer?: (draft: string) => ReactNode;
 }) {
-  const { draft, change, flush } = useDebouncedCommit(value, onCommit);
+  const [touched, setTouched] = useState(false);
+  const { draft, change, flush } = useDebouncedCommit(
+    value,
+    (d) => {
+      // El commit (debounce o blur) marca el campo como tocado: a partir de
+      // ahí el aviso de formato puede mostrarse.
+      setTouched(true);
+      onCommit(d);
+    },
+    undefined,
+    commitEcho,
+  );
+  const warning = touched && warningFor ? warningFor(draft) : null;
+  const warningId = `${inputId}-warning`;
+  const describedByMerged =
+    [describedBy, warning ? warningId : null].filter(Boolean).join(" ") || undefined;
 
   return (
     <>
@@ -63,14 +98,25 @@ export function IgDebouncedInput({
         maxLength={maxLength}
         inputMode={inputMode}
         placeholder={placeholder}
-        aria-describedby={describedBy}
+        aria-describedby={describedByMerged}
+        aria-invalid={warning ? true : undefined}
         onChange={(e) => change(sanitize ? sanitize(e.target.value) : e.target.value)}
-        onBlur={flush}
+        onBlur={() => {
+          flush();
+          setTouched(true);
+        }}
         className={className ?? IG_INPUT_CLASS}
         autoComplete="off"
         autoCapitalize={autoCapitalize}
         spellCheck={autoCapitalize === "none" ? false : undefined}
       />
+      {warning && (
+        // Ámbar suave (patrón de los avisos del estudio, p.ej. los chips de
+        // calidad amber-100/amber-900): es ORIENTATIVO, no un error bloqueante.
+        <p id={warningId} role="alert" className="mt-1 text-xs font-semibold text-amber-700">
+          {warning}
+        </p>
+      )}
       {footer?.(draft)}
     </>
   );

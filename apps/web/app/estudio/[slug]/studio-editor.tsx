@@ -39,7 +39,11 @@ import {
   saveCanvasAction,
 } from "@/features/personalization/actions";
 import { uploadPreviewPagesWithRetry } from "./preview-pages-upload";
-import { parsePhotoProductConfig, CALENDAR_FONT_OPTIONS } from "@/features/personalization/schemas";
+import {
+  parsePhotoProductConfig,
+  readBorderWidthConfig,
+  CALENDAR_FONT_OPTIONS,
+} from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { StudioCanvasGrid, StudioStageZoomControl } from "./studio-canvas-grid";
 import { stepStageZoom } from "./studio-canvas-grid-size";
@@ -48,6 +52,7 @@ import { useStudioChecklist } from "./studio-checklist";
 import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
 import { StudioStyleToolbar } from "./studio-style-toolbar";
 import { StudioOnboarding } from "./studio-onboarding";
+import { StudioTextEditHint } from "./studio-text-edit-hint";
 import { StudioGesturesHint, GESTURES_HINT_STORAGE_KEY } from "./studio-gestures-hint";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { readClientCookiePreferences } from "@/lib/cookie-consent";
@@ -81,6 +86,7 @@ import { SceneGallery, type SceneKind } from "./scene-gallery";
 import {
   initialFrameColorFromSchema,
   isInstagramTemplate,
+  resolveBorderWidthFactor,
 } from "@/features/personalization/frame-palette";
 import { igMissingRequiredTextLayerIds } from "@/features/personalization/instagram-template-spec";
 import { resolveTourSurface } from "./lib/studio-tour";
@@ -272,6 +278,12 @@ export type StudioEditorProps = {
   slotLabels?: string[];
   /** ADR-057 Fase D — año del calendario (para el badge del editor). */
   calendarYear?: number;
+  /**
+   * 2026-10-26 — assetIds usados en OTRAS líneas del carrito del mismo
+   * producto (los resuelve page.tsx server-side): «Llenar slots con mis
+   * fotos» los usa DESPUÉS de los nunca-usados (bug del segundo pack).
+   */
+  cartAssetIdsInUse?: string[];
 };
 
 /** Variante elegible de un pack: N de fotos por imán + precio (centavos, ya resuelto). */
@@ -327,6 +339,7 @@ export function StudioEditor({
   predesigned = [],
   slotLabels,
   calendarYear,
+  cartAssetIdsInUse,
 }: StudioEditorProps) {
   const router = useRouter();
   const store = useMemo(() => createStudioStore(), []);
@@ -474,6 +487,11 @@ export function StudioEditor({
   const showRealismGuides = false;
   // A2.8 — Sheet drawer mobile state (sidebar bottom slide-up).
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  // Ola 2 (2026-10-26) — bloqueo GUIADO de la plantilla: con >1 plantillas y
+  // sin elección, «Ver diseño» no procede (handleFinalize): se abre el panel de
+  // Personalizar en móvil (o scroll en desktop) y la sección de plantillas se
+  // RESALTA. Esta señal (timestamp) la consumen ambas instancias del sidebar.
+  const [templateNudgeAt, setTemplateNudgeAt] = useState(0);
   // H8 (2026-08-06) — el banner de cookies (fixed bottom z-[9000]) tapa el FAB
   // de edición en mobile hasta que el visitante elige. Mientras no haya
   // consentimiento persistido, el FAB sube por encima del banner; el evento
@@ -656,6 +674,13 @@ export function StudioEditor({
     () => initialFrameColorFromSchema(product.personalizationSchema),
     [product.personalizationSchema],
   );
+  // Grosor del borde (owner 2026-10-26) — rango habilitado por el admin
+  // (personalizationSchema.borderWidth), leído defensivo por-key. null = el
+  // producto no ofrece el slider y todo rinde con el grosor base (factor 1).
+  const borderWidthConfig = useMemo(
+    () => readBorderWidthConfig(product.personalizationSchema),
+    [product.personalizationSchema],
+  );
 
   // ── Valores VIVOS del canvasData (Lucy 2026-09-05, packs) ──
   // Mientras no hay canvasData (boot) caen al inicial de la prop. Selectores
@@ -783,6 +808,13 @@ export function StudioEditor({
   // las features del onboarding (lib/studio-tour) y su clave de localStorage.
   const isIgTemplate = useStore(store, (s) =>
     s.canvasData ? isInstagramTemplate(s.canvasData.unitTemplate.layers) : false,
+  );
+  // Ola 2 (2026-10-26) — la pista «toca un texto para editarlo» solo aplica si
+  // la plantilla vigente tiene capas de texto editables (polaroid, calendario…).
+  const hasEditableTextLayers = useStore(store, (s) =>
+    (s.canvasData?.unitTemplate.layers ?? []).some(
+      (l) => l.type === "text" && (l as { editable?: boolean }).editable === true,
+    ),
   );
   const tourSurface = resolveTourSurface({
     isInstagramTemplate: isIgTemplate,
@@ -1104,6 +1136,22 @@ export function StudioEditor({
           canvasData = { ...canvasData, borderColor: initialBorderColor };
         }
 
+        // Grosor del borde (2026-10-26) — pre-siembra del DEFAULT del producto:
+        // un diseño sin el campo (creado antes de la ola o con el feature
+        // recién habilitado) arranca en el default del rango; uno persistido se
+        // respeta, clampado al rango vigente (el admin pudo haberlo estrechado).
+        // Retrocompat total: con el feature apagado (borderWidthConfig null) no
+        // se escribe nada y el render cae a 1 (grosor histórico).
+        if (borderWidthConfig) {
+          const resolved = resolveBorderWidthFactor(
+            canvasData.borderWidthFactor,
+            borderWidthConfig,
+          );
+          if (canvasData.borderWidthFactor !== resolved) {
+            canvasData = { ...canvasData, borderWidthFactor: resolved };
+          }
+        }
+
         // Recover (?designId= — «Editar» desde carrito/Mis diseños) — las signed
         // URLs persistidas en los slots caducan a 1 h (lib/storage): se re-mapean
         // por assetId con las FRESCAS del boot (initialDesignAssets). Sin esto el
@@ -1133,6 +1181,7 @@ export function StudioEditor({
           // ADR-133 — canvas recuperado del snapshot local: arrancar dirty para
           // que el auto-save lo suba sin esperar un cambio nuevo del cliente.
           startDirty: recoveredFromLocalSnapshot,
+          cartAssetIdsInUse,
         });
 
         // Item 2.4 (endurecido 2026-10-13) — el marcador del retomador solo se
@@ -1216,11 +1265,13 @@ export function StudioEditor({
     templates,
     store,
     initialBorderColor,
+    borderWidthConfig,
     texts,
     isCalendarMonth,
     facesPerUnit,
     resumeOffer,
     draftResumeEnabled,
+    cartAssetIdsInUse,
   ]);
 
   // ──────────── Auto-save 2s debounce ────────────
@@ -1594,6 +1645,23 @@ export function StudioEditor({
   const handleFinalize = useCallback(async () => {
     let state = store.getState();
     if (!state.canvasData || state.isFinalizing || previewBuilding) return;
+    // Ola 2 (2026-10-26) — plantilla OBLIGATORIA con bloqueo GUIADO (decisión
+    // owner): con >1 plantillas y sin elección (5.1: ninguna viene
+    // pre-seleccionada), «Ver diseño» no procede — abre el panel de plantillas
+    // (sheet «Editar» en móvil; scroll a la sección en desktop), la resalta y
+    // avisa. El botón NO se deshabilita: el bloqueo guía, no castiga.
+    if (templates.length > 1 && !state.selectedTemplateId) {
+      toast.error(texts.plantillas.elegirParaContinuar);
+      setTemplateNudgeAt(Date.now());
+      if (
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(max-width: 1023.98px)").matches
+      ) {
+        setMobileSheetOpen(true);
+      }
+      return;
+    }
     // Ola 26 (owner 2026-09-09) — GUARD: la Polaroid Instagram no se finaliza con
     // textos requeridos vacíos (usuario, ubicación, título, hashtags). El botón ya
     // se muestra bloqueado con el tooltip; esta es la defensa en profundidad (cualquier
@@ -1747,6 +1815,7 @@ export function StudioEditor({
     }
   }, [
     store,
+    templates,
     productConfig.shape,
     productConfig.cornerRadiusPx,
     productConfig.noFold,
@@ -2493,6 +2562,7 @@ export function StudioEditor({
             predesigned={predesigned}
             facesPerUnit={facesPerUnit}
             backOptional={backOptional}
+            templateNudgeSignal={templateNudgeAt}
           />
         </aside>
 
@@ -2506,7 +2576,11 @@ export function StudioEditor({
             (el aside llegaba a encogerse de 288 a ~153px). Con min-w-0 la sección
             respeta su parte del flex y el observer mide el ancho útil real. */}
         <section className="flex min-w-0 flex-1 flex-col items-center p-4 pb-28 sm:pb-24 lg:p-8 lg:pb-16">
-          <StudioStyleToolbar store={store} frameOptions={productConfig.frameOptions} />
+          <StudioStyleToolbar
+            store={store}
+            frameOptions={productConfig.frameOptions}
+            borderWidth={borderWidthConfig}
+          />
 
           {/* ADR-057 Fase D + CAL2 — banner de calendario: el cliente elige el AÑO (selector) y
               pone una foto por mes. Ola 2A (Lucy 2026-07-22): el selector de año se perdía
@@ -2570,8 +2644,10 @@ export function StudioEditor({
               2-3 líneas y el lienzo quedaba bajo el fold. Ola 32b (mismo día, feedback visual):
               el scroll horizontal se veía roto ("se sale de pantalla"). Ahora los pills son
               compactos en <sm (h-11 = 44px de target, px-3, text-xs, ring-2) y la fila envuelve
-              centrada sin scroll; ≥sm conserva el tamaño original (h-12, ring-4). */}
-          <div className="mt-1 mb-3 flex flex-wrap items-center justify-center gap-1.5 px-2 sm:mt-2 sm:mb-6 sm:gap-2 sm:px-4 lg:mb-8">
+              centrada sin scroll; ≥sm conserva el tamaño original (h-12, ring-4).
+              Ola 2 (2026-10-26) — mínimo vertical en <sm: gaps y margen inferior
+              aún más finos (los targets táctiles de 44px se conservan). */}
+          <div className="mt-1 mb-2 flex flex-wrap items-center justify-center gap-1 px-2 sm:mt-2 sm:mb-6 sm:gap-2 sm:px-4 lg:mb-8">
             {aiEnabled && (
               <button
                 type="button"
@@ -2665,6 +2741,12 @@ export function StudioEditor({
               </button>
             )}
           </div>
+
+          {/* Ola 2 (2026-10-26) — pista de descubribilidad de la edición DIRECTA
+              de texto en el lienzo (tap sobre el texto → editor): pill en flujo
+              (no bloquea gestos ni el canvas), dismissible y persistida en
+              localStorage. Solo si la plantilla tiene textos editables. */}
+          {hasEditableTextLayers && <StudioTextEditHint />}
 
           <StudioCanvasGrid
             store={store}
@@ -2861,7 +2943,10 @@ export function StudioEditor({
           </SheetHeader>
           {/* Reusa el mismo StudioSidebar — no se duplica el código.
               Debe recibir las MISMAS props que la instancia desktop (paridad:
-              sin `predesigned` la galería de diseños no aparecía en móvil). */}
+              sin `predesigned` la galería de diseños no aparecía en móvil).
+              Ola 2 (2026-10-26) — `density="compact"`: el sheet es full-width y
+              las miniaturas crecían demasiado (~110px); grilla de 4 columnas,
+              gaps y paddings menores SOLO acá (el aside desktop no cambia). */}
           <div className="pb-6">
             <StudioSidebar
               store={store}
@@ -2873,7 +2958,23 @@ export function StudioEditor({
               predesigned={predesigned}
               facesPerUnit={facesPerUnit}
               backOptional={backOptional}
+              density="compact"
+              templateNudgeSignal={templateNudgeAt}
             />
+          </div>
+          {/* Ola 2 (2026-10-26) — «Listo» sticky: cierre explícito del sheet
+              (mismo patrón del sheet de estilo y del picker de fotos — antes el
+              sheet de Personalizar era el único sin salida clara abajo). La X
+              del header se conserva. */}
+          <div className="border-brand-purple/10 sticky bottom-0 mt-auto border-t bg-white px-4 py-3">
+            <SheetClose asChild>
+              <button
+                type="button"
+                className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+              >
+                {texts.texto.estiloSheetListo}
+              </button>
+            </SheetClose>
           </div>
         </SheetContent>
       </Sheet>

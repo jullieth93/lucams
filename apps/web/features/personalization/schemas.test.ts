@@ -16,6 +16,7 @@ import {
   PhotoProductConfigSchema,
   parsePhotoProductConfig,
   parseStudioCanvasOverrides,
+  readBorderWidthConfig,
   calendarFontOrDefault,
 } from "./schemas";
 
@@ -563,6 +564,85 @@ describe("parseStudioCanvasOverrides — lectura defensiva por-key (fix admin 20
     expect(parseStudioCanvasOverrides({ canvasBaseScale: 1.5, gridColsOverride: 0 })).toEqual({
       canvasBaseScale: 1.5,
       gridColsOverride: null, // fuera de [1, 6]
+    });
+  });
+});
+
+describe("CanvasDataV2Schema — borderWidthFactor (2026-10-26, grosor de borde del Estudio)", () => {
+  const base = {
+    version: 2 as const,
+    unitTemplate: {
+      version: 1 as const,
+      stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+      layers: [{ id: "bg", type: "background", color: "#FFFFFF" }],
+    },
+    slotCount: 1,
+    slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+    gridLayout: { cols: 1, rows: 1, gap: 8 },
+  };
+
+  it("acepta el factor y lo conserva en el parse (sobrevive el auto-save)", () => {
+    const parsed = CanvasDataV2Schema.parse({ ...base, borderWidthFactor: 2 });
+    expect(parsed.borderWidthFactor).toBe(2);
+  });
+
+  it("retrocompatible: canvasData sin la clave sigue siendo válido (= grosor base)", () => {
+    expect(CanvasDataV2Schema.parse(base).borderWidthFactor).toBeUndefined();
+  });
+
+  it("rechaza factores fuera de las cotas globales (0.25–3) — nunca se persisten", () => {
+    expect(CanvasDataV2Schema.safeParse({ ...base, borderWidthFactor: 0.1 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, borderWidthFactor: 4 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, borderWidthFactor: "grueso" }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("readBorderWidthConfig — lectura defensiva por-key del rango (2026-10-26)", () => {
+  it("lee el rango habilitado y válido", () => {
+    expect(
+      readBorderWidthConfig({
+        photoSlots: 6,
+        borderWidth: { enabled: true, min: 1, max: 2.5, default: 1 },
+      }),
+    ).toEqual({ enabled: true, min: 1, max: 2.5, default: 1 });
+  });
+
+  it("ausente, deshabilitado o malformado → null (el Estudio no muestra el slider)", () => {
+    expect(readBorderWidthConfig({ photoSlots: 6 })).toBeNull();
+    expect(readBorderWidthConfig(null)).toBeNull();
+    expect(readBorderWidthConfig("no-objeto")).toBeNull();
+    expect(
+      readBorderWidthConfig({ borderWidth: { enabled: false, min: 1, max: 2.5, default: 1 } }),
+    ).toBeNull();
+    expect(readBorderWidthConfig({ borderWidth: { enabled: true, min: 1 } })).toBeNull();
+  });
+
+  it("rechaza rangos incoherentes (min > max, default fuera, fuera de cotas)", () => {
+    expect(
+      readBorderWidthConfig({ borderWidth: { enabled: true, min: 2, max: 1, default: 1 } }),
+    ).toBeNull();
+    expect(
+      readBorderWidthConfig({ borderWidth: { enabled: true, min: 1, max: 2.5, default: 0.5 } }),
+    ).toBeNull();
+    expect(
+      readBorderWidthConfig({ borderWidth: { enabled: true, min: 1, max: 9, default: 1 } }),
+    ).toBeNull();
+  });
+
+  it("REGRESIÓN: otra key inválida (finish:'glass' del seed) NO oculta el rango guardado", () => {
+    const schemaConGlass = {
+      photoSlots: 6,
+      finish: "glass", // fuera del enum de PhotoProductConfigSchema
+      borderWidth: { enabled: true, min: 1, max: 2.5, default: 1.5 },
+    };
+    expect(PhotoProductConfigSchema.safeParse(schemaConGlass).success).toBe(false);
+    expect(readBorderWidthConfig(schemaConGlass)).toEqual({
+      enabled: true,
+      min: 1,
+      max: 2.5,
+      default: 1.5,
     });
   });
 });

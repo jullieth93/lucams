@@ -44,7 +44,8 @@ import {
 import { isPurchasableVariant } from "@/features/products/storefront-visibility";
 import { logger } from "@/lib/logger";
 import { designIdentity, sameLineContent } from "./design-identity";
-import { describePieces, pieceKindFor } from "./line-preview";
+import { describePieces, pieceKindFor, unitCountNounForLine, type UnitNoun } from "./line-preview";
+import { isBookmarkGalleryTag, resolveGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import {
   designDisplayUnits,
@@ -114,6 +115,12 @@ export type CartLineItem = {
    * cliente lo lee como error. `null` en líneas sin diseño (catálogo simple).
    */
   designUnits: number | null;
+  /**
+   * Sustantivo de la unidad comercial de la línea para los conteos ("2 tiras",
+   * "3 packs" — unitCountNounForLine). El carrito lo usa en la etiqueta de
+   * cantidad y como fallback del badge CMS «N …» sobre la miniatura.
+   */
+  unitNoun: UnitNoun;
   /**
    * Frase que describe la pieza FÍSICA ("6 imanes · 6×6 cm cada imán"), para que el checkout pueda
    * mostrar lo mismo que la modal del Estudio y el cliente confirme sabiendo qué recibe.
@@ -461,6 +468,14 @@ function toDetail(cart: RawCart): CartDetail {
         ),
         designWatermarked: designDisp?.watermarked ?? false,
         designUnits: designDisplayUnits(i.design),
+        unitNoun: unitCountNounForLine({
+          personalizationKind: i.variant.product.personalizationKind,
+          variantName: i.variant.name,
+          designMetadata: i.design?.metadata,
+          isBookmark: isBookmarkGalleryTag(
+            resolveGalleryTag(i.variant.product.personalizationSchema, i.variant.product.slug),
+          ),
+        }),
         pieceSummary: describeLine(i),
         borderNote: letterSetBorderNote(i.design?.metadata),
       };
@@ -1123,6 +1138,24 @@ export async function mergeAnonCartIntoCustomer(
   });
 
   return customerCart.sessionId;
+}
+
+/**
+ * Login SIN cookie de carrito anónimo (el logout la borra — app/auth/logout):
+ * devuelve el sessionId del carrito VIVO más reciente del cliente para que el
+ * caller lo escriba en `cart_session` y el carrito reaparezca al re-entrar.
+ * Sin esto, el primer addToCart tras el re-login mintaba un UUID nuevo y creaba
+ * un SEGUNDO Cart para el mismo customer (el viejo quedaba huérfano hasta la
+ * purga de 60 días).
+ *
+ * `null` cuando no hay nada recuperable (sin carrito, soft-deleted — lo filtra
+ * la query — o vacío): el caller NO escribe cookie y el flujo normal minta una
+ * sesión fresca en el primer add.
+ */
+export async function recoverCustomerCartSessionId(customerId: string): Promise<string | null> {
+  const cart = await findCartByCustomer(customerId);
+  if (!cart || cart.items.length === 0) return null;
+  return cart.sessionId;
 }
 
 /**

@@ -256,7 +256,14 @@ apps/web/app/estudio/[slug]/
 ├── book-view-3d.tsx                   # Vista 3D libro (separadores — ADR-063)
 ├── fridge-3d-view.tsx                 # Vista 3D nevera
 ├── room-board-view-3d.tsx             # Vista 3D tablero magnético en pared
-├── scene-gallery.tsx                  # Galería "míralo en tu espacio" (ADR-063)
+├── shelf-3d-view.tsx                  # Vista 3D repisa (piezas recostadas — ADR-172)
+├── gift-3d-view.tsx                   # Vista 3D regalo (piezas recostadas — ADR-172)
+├── predesigned-view-dialog.tsx        # Preview en grande del prediseñado (botón «Ver»,
+│                                      #   única vía en puntero coarse — ADR-158 ajustado)
+├── studio-text-edit-hint.tsx          # Pill descubrible «toca el texto para editarlo»
+│                                      #   (dismissible, persistida en localStorage)
+├── scene-gallery.tsx                  # Galería "míralo en tu espacio" (ADR-063) — TODAS
+│                                      #   las escenas 3D (is3DScene, ADR-172)
 ├── scene-3d-error-boundary.tsx        # ErrorBoundary por escena 3D (un fallo WebGL
 │                                      #   degrada la tarjeta, nunca la página)
 ├── studio-3d-environment.tsx          # Entorno/luces compartido de las escenas 3D
@@ -306,8 +313,13 @@ apps/web/app/estudio/[slug]/
     ├── compose-calendar-page.ts       # Composición de página de calendario (3D/confirmación):
     │                                  #   cache por página (clave de contenido), fotos vía
     │                                  #   optimizador Next en paralelo, páginas WebP
-    ├── compose-gift-flatlay.ts        # Flat-lay de regalo del fotoimán (ADR-063)
-    ├── compose-shelf-flatlay.ts       # Flat-lay de repisa (ADR-063)
+    ├── leaning-scene-layout.ts        # Matemática PURA de las escenas con piezas
+    │                                  #   recostadas (repisa/regalo — ADR-172): fila centrada,
+    │                                  #   pose de apoyo (esquina inferior en la superficie,
+    │                                  #   superior contra el plano vertical)
+    ├── cart-design-assets.server.ts   # listCartDesignAssetIdsInUse: assetIds en uso por las
+    │                                  #   demás líneas del carrito (prioriza el auto-fill,
+    │                                  #   ADR-176); lo pasa page.tsx al store
     ├── letter-set-resolve.ts          # Resuelve la variante exacta del set (tema/idioma/tamaño)
     ├── letter-tile-textures.ts        # Texturas de las fichas de letra
     ├── faces.ts                       # Caras por unidad física (separadores 2 caras)
@@ -569,7 +581,10 @@ Estudio. El concepto "copias idénticas" no existe en las superficies personaliz
   de draft nuevo (`resolveBootTemplate`, `lib/boot-template.ts`) separa GEOMETRÍA de SELECCIÓN —
   con >1 plantillas y sin `?template=` el `templateId` queda null (el checklist «Tu diseño» lo
   marca pendiente) hasta que el cliente elige; con 1 sola plantilla la elección es trivial y
-  queda auto-seleccionada. El servidor tampoco persiste default: `createDraftDesign` sin
+  queda auto-seleccionada. **Bloqueo guiado al finalizar (ADR-167 ajustado):** con >1
+  plantillas y sin elección, «Ver diseño» NO procede — toast y apertura del sheet /
+  resaltado de la sección Plantillas (subió antes de «Mis fotos», con chip «Pendiente»;
+  texto CMS `estudio.plantillas.elegir-para-continuar`). El servidor tampoco persiste default: `createDraftDesign` sin
   `templateId` guarda `Design.templateId = null` (antes grababa la primera visible y el
   recover la «heredaba» como si el cliente la hubiera elegido). Cambiar de plantilla en el
   sidebar persiste `Design.templateId`
@@ -676,9 +691,13 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   defaults de `studio-texts.ts` son el copy exacto pre-CMS (regla de oro). Incluye el panel IA
   (`estudio.ia.*`, ej. la nota de privacidad `estudio.ia.nota-privacidad`) y los
   nombres audibles (aria-label/alt/sr-only).
-- **Vistas 3D «míralo en tu espacio» (ADR-063)**: nevera, tablero magnético, libro
-  (separadores), calendario y flat-lays de regalo/repisa — react-three-fiber con entorno
+- **Vistas 3D «míralo en tu espacio» (ADR-063/ADR-172)**: nevera, tablero magnético, libro
+  (separadores), calendario, repisa y regalo — TODAS react-three-fiber con entorno
   compartido (`studio-3d-environment.tsx`) y texturas procedurales (`lib/procedural-textures.ts`).
+  Repisa/regalo fueron los últimos flat-lays 2D: reemplazados por escenas 3D con piezas
+  recostadas a tamaño real (`shelf-3d-view`/`gift-3d-view`, matemática en
+  `lib/leaning-scene-layout.ts`); `is3DScene` (scene-gallery) es el punto único de verdad
+  (pill de gestos, rótulo de cantidad).
 - **Packs de foto: variante resuelta server-side**: la PDP elige "Unidades" (pack size) y
   "¿Con imán?"; el Estudio persiste `photoSlots`, `sizeCm` y `magnet` en la raíz del
   canvasData V2 (auto-save) y muestra el imán como badge read-only junto al stepper de fotos
@@ -786,14 +805,30 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   foto). Clásica y tiras conservan su paleta desactivada en «Sin borde» (regla de la toolbar
   de estilo — ver «Marcos, fondos y ventanas de foto»).
   Contrato en `studio-style-toolbar.test.tsx`.
+- **Grosor del borde configurable por producto (ADR-173)**: el admin habilita un rango
+  `personalizationSchema.borderWidth {enabled, min, max, default}` por producto (form de
+  `/admin/productos`, tab Personalización, SectionCard «Grosor del borde»; sin migración —
+  el JSON ya existía). El Estudio muestra un slider en la toolbar de estilo (desktop y sheet
+  móvil; textos `estudio.texto.estilo-grosor-*`) y la elección viaja en
+  `canvasData.borderWidthFactor` como FACTOR sobre la base histórica (1 = el grosor de
+  siempre; cotas 0.25–3). Producción WYSIWYG: los helpers de `frame-palette.ts` están
+  parametrizados por el factor (la franja de marco y la canaleta de tiras escalan
+  proporcional) → el PNG de imprenta respeta exactamente lo que el cliente vio.
 - **Campos "Datos de la publicación" asistidos** (`studio-ig-post-fields.tsx` + helpers puros
   testeados en `lib/ig-post-fields.ts`): el override guarda el texto EXACTO del post (se
   imprime verbatim) y la UI muestra los fijos como adornos fuera del valor editable:
   - **@usuario**: "@" prefijada SIEMPRE visible (adorno fijo; el override se guarda CON "@").
     Sanitización en vivo: sin espacios, solo letras/números/punto/guion bajo, tope 30.
   - **Ubicación**: texto libre con datalist nativo "Ciudad, País" (ciudades de Colombia +
-    destinos frecuentes — asistencia de escritura, no validación) y transformación (máximo 2
-    palabras, capitalización, espacio → ", ").
+    destinos frecuentes — asistencia de escritura, no validación) y transformación al guardar
+    (`igLocationOverride`): CON coma → hasta 2 segmentos multi-palabra (ciudad, país), cada
+    palabra con inicial mayúscula («Santa Marta, Colombia»); SIN coma → 2 palabras exactas se
+    leen «Ciudad País» (compat con la convención vieja), 1 o 3+ palabras = UN solo lugar
+    («Korea del Sur»). Nunca se comen espacios: el commit debounced registra el ECO en formato
+    display (4º parámetro `commitEcho` de `useDebouncedCommit`) — sin él el sync externo
+    reseteaba el draft a los ~350 ms y se tragaba el espacio recién tecleado. Tope 40 chars,
+    máximo una coma (las extra se convierten en espacio). Hint CMS
+    `estudio.texto.ig-ubicacion-hint`.
   - **«Me gusta» OBLIGATORIO**: `IG_REQUIRED_TEXT_LAYER_IDS` incluye `likes_count` (5 capas
     requeridas, lista decorativa vacía; el guard `igMissingRequiredTextLayerIds` lee el spec,
     sin tocar studio-editor). Input solo numérico mostrado con separador de miles es-CO y la
@@ -863,6 +898,16 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   `estudio.plantillas.toast-sin-lienzo-libre` — nunca se pisa contenido para abrir sitio).
   Una cara B ocupada nunca se pisa (`bBlocked` → toast CMS). Un prediseñado SIN cara B
   también ancla en cara A. Tests en `lib/apply-predesigned.test.ts`.
+  **Excepción — reemplazo por PAR de caras** (separadores con ambas caras llenas): el modal
+  «¿Cuál lienzo quieres reemplazar?» opera en `pairMode` (cada tarjeta ES el par A+B) y el
+  apply corre con `replacePair`, que reemplaza las DOS caras del par elegido de una vez; el
+  toast confirma «ambas caras». Claves CMS `estudio.plantillas.reemplazo-par-*` y
+  `estudio.plantillas.toast-reemplazo-par`.
+- **Preview del prediseñado en táctil (ADR-158 ajustado)**: en puntero coarse el `HoverCard`
+  del sidebar NO se monta (un tap abría el preview encima del flujo); cada tarjeta lleva un
+  botón «Ver» (ojo, 44px) que abre `predesigned-view-dialog.tsx` — imagen grande + «Usar
+  este diseño» (mismo destino explícito de siempre). Disponible también en el asset picker;
+  en desktop el hover queda intacto. Claves CMS `estudio.plantillas.ver-diseno-aria`/`-usar`.
 - **Prediseñado como PRIMERA acción (draft LAZY)**: sin `?designId=` el draft no existe
   hasta el primer auto-save con canvas sucio — todas las vías de prediseñado (clic del
   sidebar, picker modal, drag & drop) lo crean EN EL MOMENTO vía `store.ensureDesignId`
@@ -897,6 +942,13 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   too-big/network/server (`isTooBigUploadError`, pura) se comparte entre ambos caminos. La
   Server Action se INYECTA al pipeline (`upload`) para no importar código de servidor y
   testear con fakes. Tests en `lib/upload-photo-pipeline.test.ts`.
+- **Auto-fill «Llenar slots con mis fotos» prioriza lo no usado (ADR-176)**: el orden plano
+  de «Mis fotos» repetía la primera foto del pack anterior en el siguiente diseño.
+  `orderAssetsForAutoFill` (`lib/store.ts`, puro) ordena por grupos: (a) fotos nunca usadas
+  (ni en este diseño ni en otras líneas del carrito), (b) usadas en OTRAS líneas del carrito
+  (los `assetId` los cosecha `listCartDesignAssetIdsInUse` de `lib/cart-design-assets.server.ts`
+  y llegan al store vía `page.tsx`), (c) usadas en este diseño (las menos repetidas primero).
+  Dentro de (a)/(b) manda el orden de «Mis fotos».
 - **PUTs a signed URLs resilientes** (`lib/upload-with-retry.ts`): concurrencia tope 3, retry
   con backoff exponencial (2 reintentos, solo errores de red y 5xx — un 4xx de firma vencida
   es definitivo) y timeout de 30 s por intento. Cualquier fallo de subida (y los `TypeError`
@@ -981,7 +1033,8 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
 - **Gate por variante SIN IMÁN**: con `magnet === false` las escenas que AFIRMAN imán —
   nevera, mural de corcho y tablero memo (`MAGNET_SCENES` en `scene-gallery.tsx`) — NO se
   ofrecen en NINGÚN kind (adherir piezas sin imán es una afirmación falsa del producto). La
-  escena Polaroid (tarjetas en una mesa), las 2D (repisa/regalo) y el libro no asumen imán.
+  escena Polaroid (tarjetas en una mesa), repisa/regalo (piezas recostadas, sin adherencia) y
+  el libro no asumen imán.
   Si ninguna escena sobrevive (calendario, letters) la galería muestra estado vacío (textos
   CMS `estudio.escenas.vacio` / `vacio-hint`). En el calendario el flujo vive en el visor de
   detalle tarjeta-a-tarjeta (`CalendarCardFocus`, válido sin imán): el gate está DENTRO de
@@ -1023,7 +1076,8 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
 - **Zoom 3D en móvil** (minDistance por visor; objetivo: la pieza ≥50% del alto): nevera 2.6,
   tablero 1.7, libro doblado 3.0 (plano 2.8), polaroid 3.0, calendario detalle 3.5 (la
   tarjeta ya desborda el alto a menor distancia).
-- **dpr táctil = 2** en los 5 Canvas (book/fridge/polaroid/room-board/calendar-focus) para
+- **dpr táctil = 2** en los 7 Canvas (book/fridge/polaroid/room-board/calendar-focus/shelf/
+  gift) para
   nitidez retina en zoom cercano — ×1.78 más píxeles/frame en GPU móvil, mitigado por escenas
   estáticas con sombra horneada (`frameloop="demand"` en el calendario).
 - **Texturas 3D por tamaño físico (PROPUESTA pendiente de integración)**: helper listo en
@@ -1056,6 +1110,10 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
 - **Color picker propio multiplataforma** (`apps/web/components/color-picker.tsx` +
   `apps/web/lib/color.ts`, SIN dependencias nuevas): reemplaza el `<input type="color">`
   nativo, cuya UI varía por SO/navegador.
+- **Hint descubrible de edición de texto** (`studio-text-edit-hint.tsx`): si el canvas tiene
+  capas de texto editables, una pill sobre el lienzo enseña que el texto se edita con un toque;
+  dismissible y persistida en localStorage (`TEXT_EDIT_HINT_STORAGE_KEY`) — no vuelve a
+  aparecer una vez cerrada. Texto CMS `estudio.lienzo.texto-editable-hint`.
 - **«Continuar donde quedaste» honesto — SOLO clientes autenticados** (`lib/draft-marker.ts`,
   decisión owner 2026-10-21): el editor solo lee/escribe el marcador y muestra el interstitial
   con `draftResumeEnabled` (page.tsx lo activa cuando hay Customer en sesión). Para el invitado
@@ -1155,9 +1213,14 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
 ### Mobile (< 1024px)
 
 Canvas a pantalla completa + DOS bottom-sheets: el FAB «Editar» (bottom-left) abre el
-sheet de herramientas (el MISMO `StudioSidebar` del aside desktop) y el botón resumen de
+sheet de herramientas (el MISMO `StudioSidebar` del aside desktop, montado con
+`density="compact"` — grillas de 4 columnas, gaps y padding menores; el aside desktop queda
+intacto — y footer sticky «Listo» que solo cierra) y el botón resumen de
 estilo abre el sheet de borde/color (`studio-style-toolbar` en <sm). FAB «Ver diseño»
-(bottom-right, <sm). NO hay tabs «Plantillas / Mis fotos / ⚙» (wireframe viejo).
+(bottom-right, <sm). NO hay tabs «Plantillas / Mis fotos / ⚙» (wireframe viejo). El toolbar
+móvil va consolidado en UNA fila (nombre del producto junto a «Salir», stepper + variante +
+progreso juntos; el chip de variante no se duplica — props `variantLabel`/`mobileExtras`) y
+las pills de acciones son compactas en <sm.
 
 Descubribilidad (2026-10-22, owner — lo que vive tras «Editar» pasaba desapercibido):
 el sidebar abre con el **checklist persistente «Tu diseño»** (`studio-checklist.tsx`):

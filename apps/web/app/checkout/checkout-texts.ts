@@ -51,6 +51,19 @@ export type CheckoutTexts = {
     /** Preview de puntos a ganar ({n} = cantidad). Puntos Lucams, 2026-10-13. */
     loyaltyEarn: string;
   };
+  /** Incentivo de crear cuenta para INVITADOS con el programa de puntos activo
+   *  (2026-10-26 — decisión owner). Se muestra en /checkout/datos y en el
+   *  resumen del paso de pago. Placeholders: {puntos} = puntos que ganaría con
+   *  esta compra, {valor} = su equivalencia en pesos ya formateada ("$5.000"). */
+  guestLoyalty: {
+    title: string;
+    body: string;
+    /** Microcopy de referidos: solo se muestra si REFERRAL_ENABLED está activo. */
+    referralNote: string;
+    cta: string;
+    /** Tranquiliza: el registro no pierde el carrito (vive en cookie de sesión). */
+    cartNote: string;
+  };
   datos: {
     contactTitle: string;
     nameLabel: string;
@@ -287,6 +300,13 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
       "Precios en pesos colombianos (COP) · el envío se coordina por WhatsApp al confirmar tu cotización",
     noteFinal: "Precios en pesos colombianos (COP) · el total es el valor final que pagas",
     loyaltyEarn: "✨ Ganarás {n} Puntos Lucams con esta compra",
+  },
+  guestLoyalty: {
+    title: "✨ Crea tu cuenta y gana puntos",
+    body: "Con esta compra ganarías {puntos} Puntos Lucams (equivalen a {valor} para tu próxima compra).",
+    referralNote: "Además, con tu cuenta puedes invitar amigos y ganar cupones.",
+    cta: "Crear mi cuenta",
+    cartNote: "Tu carrito se conserva: sigues justo donde vas.",
   },
   datos: {
     contactTitle: "1. Contacto",
@@ -526,6 +546,11 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "summary.noteCatalog": "checkout.summary.note-catalog",
   "summary.noteFinal": "checkout.summary.note-final",
   "summary.loyaltyEarn": "checkout.summary.loyalty-earn",
+  "guestLoyalty.title": "checkout.guest-loyalty.title",
+  "guestLoyalty.body": "checkout.guest-loyalty.body",
+  "guestLoyalty.referralNote": "checkout.guest-loyalty.referral-note",
+  "guestLoyalty.cta": "checkout.guest-loyalty.cta",
+  "guestLoyalty.cartNote": "checkout.guest-loyalty.cart-note",
   "datos.contactTitle": "checkout.datos.contact-title",
   "datos.nameLabel": "checkout.datos.name-label",
   "datos.namePlaceholder": "checkout.datos.name-placeholder",

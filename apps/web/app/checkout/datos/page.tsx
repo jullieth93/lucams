@@ -16,6 +16,7 @@ import { QuoteForm } from "./quote-form";
 import {
   loadCheckoutContext,
   assertCheckoutAvailability,
+  getGuestLoyaltyIncentive,
   CheckoutError,
 } from "@/features/checkout/service";
 import { getSavedAddressesForCheckout } from "@/features/addresses/service";
@@ -52,6 +53,9 @@ export default async function CheckoutDatosPage() {
     !catalog && ctx.customerId ? await getSavedAddressesForCheckout(ctx.customerId) : [];
   // Roadmap B8 — textos CMS del paso (formulario de datos o cotización + resumen).
   const texts = await getCheckoutTexts();
+  // Incentivo "crea tu cuenta y gana puntos" para invitados (2026-10-26):
+  // null si hay sesión, el programa está apagado o estamos en modo catálogo.
+  const guestIncentive = await getGuestLoyaltyIncentive(ctx);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -71,7 +75,12 @@ export default async function CheckoutDatosPage() {
           )}
         </div>
         <div className="lg:col-span-1">
-          <OrderSummary cart={ctx.cart} texts={texts.summary} />
+          <OrderSummary
+            cart={ctx.cart}
+            guestIncentive={guestIncentive}
+            guestTexts={texts.guestLoyalty}
+            texts={texts.summary}
+          />
         </div>
       </div>
     </div>

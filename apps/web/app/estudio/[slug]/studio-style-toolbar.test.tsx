@@ -84,6 +84,12 @@ function setup(opts: {
   templateCanvas?: CanvasDataV1;
   /** Opciones de marco del producto; default binario IG. */
   frameOptions?: string[];
+  /** Rango de grosor de borde habilitado por el admin (2026-10-26). */
+  borderWidth?: { min: number; max: number; default: number } | null;
+  /** Factor ya persistido en el canvas (diseño recuperado). */
+  borderWidthFactor?: number;
+  /** Grilla de tira photobooth (1 col, gap 0, varios slots). */
+  strip?: boolean;
 }) {
   const template = {
     id: `tpl-${opts.slug}`,
@@ -93,16 +99,23 @@ function setup(opts: {
     canvasData: opts.templateCanvas ?? opts.unitTemplate,
   } as unknown as StudioTemplate;
   const store = createStudioStore();
+  const canvas = canvasOf(opts.unitTemplate, opts.borderColor);
+  if (opts.strip) canvas.gridLayout = { cols: 1, rows: 2, gap: 0 };
+  if (opts.borderWidthFactor !== undefined) canvas.borderWidthFactor = opts.borderWidthFactor;
   store.getState().init({
     designId: "d1",
     productSlug: "polaroid",
-    canvasData: canvasOf(opts.unitTemplate, opts.borderColor),
+    canvasData: canvas,
     templates: [template],
     selectedTemplateId: template.id,
   });
   render(
     <TooltipProvider>
-      <StudioStyleToolbar store={store} frameOptions={opts.frameOptions ?? ["blanco", "negro"]} />
+      <StudioStyleToolbar
+        store={store}
+        frameOptions={opts.frameOptions ?? ["blanco", "negro"]}
+        borderWidth={opts.borderWidth ? { enabled: true, ...opts.borderWidth } : null}
+      />
     </TooltipProvider>,
   );
   return store;
@@ -409,5 +422,99 @@ describe("StudioStyleToolbar — bottom-sheet de estilo en móvil (2026-10-13)",
         name: "Estilo actual: Sin borde, color Sin color. Toca para cambiarlo.",
       }),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+ * Slider de GROSOR del borde (owner 2026-10-26): el admin habilita el rango por
+ * producto (personalizationSchema.borderWidth), el cliente elige dentro de él y
+ * el factor persiste en canvasData.borderWidthFactor (producción lo consume
+ * igual — WYSIWYG). Contrato:
+ *  1. Solo aparece si el producto lo habilita Y la plantilla lo consume
+ *     (Cuadrados tarjeta simple / Tiras).
+ *  2. Diseño sin el campo → el slider arranca en el DEFAULT del rango
+ *     (retrocompat); el valor elegido escribe al store (undo + auto-save).
+ *  3. Un valor persistido FUERA del rango vigente se muestra clampado.
+ *  4. Con «Sin borde» el slider queda visible pero INERTE (no hay borde que
+ *     engordar) y el valor se conserva para «Con borde».
+ */
+describe("StudioStyleToolbar — slider de grosor del borde (2026-10-26)", () => {
+  const RANGE = { min: 1, max: 2.5, default: 1.5 };
+
+  it("aparece en Cuadrados con el producto habilitado y escribe el factor al store (clamp incluido)", () => {
+    const store = setup({
+      slug: "cuadrados-simple",
+      unitTemplate: squareUnit(),
+      borderColor: "#E85B9F",
+      frameOptions: ["blanco", "rosa"],
+      borderWidth: RANGE,
+    });
+    const slider = screen.getByLabelText("Grosor del borde") as HTMLInputElement;
+    // Sin valor persistido → el slider abre en el default del producto (150%).
+    expect(slider.value).toBe("1.5");
+    expect(screen.getByText("· 150%")).toBeInTheDocument();
+
+    fireEvent.change(slider, { target: { value: "2.25" } });
+    expect(store.getState().canvasData!.borderWidthFactor).toBe(2.25);
+  });
+
+  it("también aplica a la tira photobooth (grilla 1 col, gap 0)", () => {
+    setup({
+      slug: "tira-photobooth",
+      unitTemplate: squareUnit(),
+      borderColor: "#E85B9F",
+      frameOptions: ["blanco", "rosa"],
+      strip: true,
+      borderWidth: RANGE,
+    });
+    expect(screen.getByLabelText("Grosor del borde")).toBeInTheDocument();
+  });
+
+  it("un factor persistido FUERA del rango vigente se muestra clampado (el admin estrechó el rango)", () => {
+    setup({
+      slug: "cuadrados-simple",
+      unitTemplate: squareUnit(),
+      borderColor: "#E85B9F",
+      frameOptions: ["blanco", "rosa"],
+      borderWidth: RANGE,
+      borderWidthFactor: 5, // quedó por encima del nuevo max (2.5)
+    });
+    const slider = screen.getByLabelText("Grosor del borde") as HTMLInputElement;
+    expect(slider.value).toBe("2.5");
+    expect(screen.getByText("· 250%")).toBeInTheDocument();
+  });
+
+  it("sin la config del producto NO hay slider (producto sin el feature)", () => {
+    setup({
+      slug: "cuadrados-simple",
+      unitTemplate: squareUnit(),
+      borderColor: "#E85B9F",
+      frameOptions: ["blanco", "rosa"],
+    });
+    expect(screen.queryByLabelText("Grosor del borde")).not.toBeInTheDocument();
+  });
+
+  it("con «Sin borde» el slider queda inerte y el valor se conserva para «Con borde»", () => {
+    const store = setup({
+      slug: "cuadrados-simple",
+      unitTemplate: squareUnit(),
+      borderColor: "#E85B9F",
+      frameOptions: ["blanco", "rosa"],
+      borderWidth: RANGE,
+      borderWidthFactor: 2,
+    });
+    const slider = screen.getByLabelText("Grosor del borde") as HTMLInputElement;
+    expect(slider.value).toBe("2");
+
+    // En Cuadrados «Sin borde» = borderColor null (sangre total) → sin borde
+    // que engordar: el slider se deshabilita PERO el factor elegido sobrevive.
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+    expect((screen.getByLabelText("Grosor del borde") as HTMLInputElement).disabled).toBe(true);
+    expect(store.getState().canvasData!.borderWidthFactor).toBe(2);
+
+    // Al volver a «Con borde» el slider revive con el mismo valor.
+    fireEvent.click(screen.getByRole("radio", { name: "Con borde" }));
+    expect((screen.getByLabelText("Grosor del borde") as HTMLInputElement).disabled).toBe(false);
+    expect(store.getState().canvasData!.borderWidthFactor).toBe(2);
   });
 });

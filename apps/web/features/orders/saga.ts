@@ -30,6 +30,7 @@ import { assertTransactionalAllowed } from "@/lib/stage-guard";
 import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./service";
 import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import { decrementStockForOrder } from "./stock";
+import { notifyStockSaleLost } from "./stock-alerts";
 import { inventoryUnitsForOrderItem } from "@/features/personalization/design-units";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
@@ -416,6 +417,28 @@ export async function processPaidOrder(
           reason: "Stock agotado entre PENDING_PAYMENT y PAID — refund manual",
         });
         await flagOrderNeedsReconciliation(order.id, input.wompiTransactionId ?? null, err);
+        // Alerta in-app INMEDIATA (2026-10-26): el flag la hace visible en
+        // /admin/pedidos y el cron de alertas la levanta en ≤5 min, pero una
+        // venta cobrada sin stock no puede esperar el ciclo. En COD no hubo
+        // cobro en línea: finalizeCheckout cancela la orden al recibir este
+        // shipment_failed (contexto cod_finalize). Best-effort: nunca lanza.
+        await notifyStockSaleLost({
+          context: order.paymentMethod === "COD" ? "cod_finalize" : "saga_paid",
+          variantId: err.variantId,
+          requested: err.requested,
+          available: err.available,
+          productName: err.productName,
+          orderId: order.id,
+          orderNumber: order.number,
+        }).catch((alertErr) =>
+          // Defensa extra: la saga jamás depende de la alerta (el webhook no
+          // debe reintentar en loop por un fallo de notificación).
+          logger.warn({
+            event: "order.saga.paid.stock_alert_failed",
+            orderId: order.id,
+            err: alertErr instanceof Error ? alertErr.message : String(alertErr),
+          }),
+        );
         return {
           status: "shipment_failed",
           reason: `Stock insuficiente al confirmar pago (variant ${err.variantId}). Requiere reconciliación admin.`,

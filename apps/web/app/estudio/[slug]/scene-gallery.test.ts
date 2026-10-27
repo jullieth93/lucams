@@ -16,6 +16,7 @@ import {
   galleryEscapeAction,
   galleryScenes,
   initialModalView,
+  is3DScene,
   sceneThicknessCm,
   scenesForKind,
 } from "./scene-gallery";
@@ -76,9 +77,9 @@ describe("galleryScenes — gate SIN IMÁN", () => {
   });
 
   it("Fase 2.10 (owner 2026-10-07, REVERSA de Paquete D): SIN IMÁN filtra las escenas que afirman imán en TODOS los kinds", () => {
-    // photo: caen nevera y mural; quedan las 2D (repisa/regalo). La escena
-    // Polaroid se MANTIENE: tarjetas acostadas en una mesa — no asume
-    // adherencia a nevera/metal.
+    // photo: caen nevera y mural; quedan repisa/regalo (apoyadas, sin
+    // adherencia — 3D desde 2026-10-26). La escena Polaroid se MANTIENE:
+    // tarjetas acostadas en una mesa — no asume adherencia a nevera/metal.
     expect(galleryScenes("photo", true, false)).toEqual(["polaroid", "shelf", "gift"]);
     expect(galleryScenes("photo", false, false)).toEqual(["shelf", "gift"]);
     // bookmark: el libro no asume imán → intacto.
@@ -151,6 +152,22 @@ describe("countBadgeLabel — rótulo de cantidad en la escena 3D (owner 2026-09
 
   it("kind por defecto es photo (retrocompatible)", () => {
     expect(countBadgeLabel(1)).toBe("1 unidad · tamaño real");
+  });
+});
+
+describe("is3DScene — repisa y regalo pasan de flat-lay 2D a escena 3D (2026-10-26)", () => {
+  it("shelf y gift son escenas 3D (pill de gestos + rótulo de cantidad, como nevera/libro)", () => {
+    expect(is3DScene("shelf")).toBe(true);
+    expect(is3DScene("gift")).toBe(true);
+  });
+
+  it("TODAS las escenas de la galería son 3D (ya no queda ningún flat-lay 2D)", () => {
+    const all = ["fridge", "polaroid", "board", "memo", "book", "shelf", "gift"] as const;
+    for (const s of all) expect(is3DScene(s)).toBe(true);
+  });
+
+  it("el filtro SIN IMÁN sigue conservando shelf/gift (no afirman imán) aunque ahora son 3D", () => {
+    expect(galleryScenes("photo", false, false)).toEqual(["shelf", "gift"]);
   });
 });
 

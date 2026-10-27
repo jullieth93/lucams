@@ -45,20 +45,30 @@ export function igUsernameOverride(display: string): string | null {
 // ── Ubicación ───────────────────────────────────────────────────────────────
 
 /*
- * Decisión de producto (owner 2026-10-12): la ubicación es un INPUT DE TEXTO
- * simple, SIN asistencia de sugerencias — el combobox con la lista curada
- * (Fase 2 · 2.7b) se retiró porque el commit por tecla + el filtrado por
- * render hacían MUY LENTA la plantilla. En su lugar hay validación y
- * transformación automática:
+ * Formato real (rediseño 2026-10-26 — bug "no deja poner espacios"): la
+ * ubicación es «Ciudad, País» con ESPACIOS y varias palabras por segmento
+ * ("Santa Marta, Colombia", "Korea del Sur"). Se retira la regla vieja de
+ * máximo 2 palabras (rompía ciudades multi-palabra). La transformación al
+ * guardar:
  *
- *  - Máximo 2 palabras (Ciudad País).
- *  - Primera letra de cada palabra SIEMPRE mayúscula (al commit).
- *  - El separador (espacio o coma) se imprime como ", ": escribe
- *    "bogotá colombia" → queda "Bogotá, Colombia".
+ *  - Con coma: hasta 2 segmentos separados por coma (ciudad, país), cada uno
+ *    multi-palabra, con inicial mayúscula en cada palabra.
+ *  - Sin coma: 2 palabras exactas se leen como «Ciudad País» (compat con la
+ *    convención vieja: "bogotá colombia" → "Bogotá, Colombia"); 1 palabra o
+ *    3+ palabras se toman como UN solo lugar ("Korea del Sur" → "Korea Del
+ *    Sur") — partir a la mitad produciría "Korea Del, Sur", que es basura.
+ *  - Nunca se comen espacios ni palabras.
+ *
+ * REGLA DE VALIDACIÓN (owner 2026-10-27): el formato pedido es «Ciudad, País»
+ * — exactamente UNA coma con ambos segmentos no vacíos. La UI la cobra como
+ * AVISO inline al commit/blur (nunca bloquea el tecleo, el auto-save ni el
+ * finalize: el campo es decorativo y VACÍO sigue siendo válido). El heuristic
+ * sin-coma de igLocationOverride queda como fallback de robustez (valores
+ * legacy persistidos), ya no promovido por la UI.
  */
 
-/** Máximo de palabras de la ubicación (Ciudad País). */
-export const IG_LOCATION_MAX_WORDS = 2;
+/** Máximo de segmentos separados por coma (ciudad, país). */
+export const IG_LOCATION_MAX_SEGMENTS = 2;
 
 /** Largo máximo del input de ubicación (una línea corta del post impreso). */
 export const IG_LOCATION_MAX_LENGTH = 40;
@@ -68,34 +78,80 @@ function capitalizeIgLocationWord(word: string): string {
   return word.charAt(0).toLocaleUpperCase("es") + word.slice(1);
 }
 
+/** Inicial mayúscula por palabra dentro del segmento (conserva el resto). */
+function capitalizeIgLocationSegment(segment: string): string {
+  return segment
+    .split(" ")
+    .filter((w) => w !== "")
+    .map(capitalizeIgLocationWord)
+    .join(" ");
+}
+
 /**
  * Sanitiza la entrada del campo ubicación EN VIVO: solo letras (con tildes/ñ),
- * números, espacios, coma, punto, apóstrofe y guion; espacios colapsados; y
- * MÁXIMO IG_LOCATION_MAX_WORDS palabras — la tercera palabra no entra (el
- * separador final se conserva para poder escribir la segunda palabra).
+ * números, espacios, coma, punto, apóstrofe y guion; espacios colapsados (pero
+ * el separador final se conserva para seguir escribiendo); MÁXIMO una coma
+ * (2 segmentos: ciudad, país) — las comas extra se convierten en espacio.
  */
 export function sanitizeIgLocationInput(raw: string): string {
   const clean = raw
     .replace(/[^\p{L}\p{N}\s,.'’-]/gu, "")
     .replace(/\s+/g, " ")
     .replace(/^\s+/, "");
-  const m = clean.match(/^\S+(?:[\s,]+\S*)?/);
-  return (m ? m[0] : "").slice(0, IG_LOCATION_MAX_LENGTH);
+  const commaIdx = clean.indexOf(",");
+  const limited =
+    commaIdx === -1
+      ? clean
+      : clean.slice(0, commaIdx + 1) +
+        clean
+          .slice(commaIdx + 1)
+          .replace(/,+/g, " ")
+          .replace(/\s+/g, " ");
+  return limited.slice(0, IG_LOCATION_MAX_LENGTH);
 }
 
 /**
- * Texto a guardar en el override (lo que se imprime): las primeras
- * IG_LOCATION_MAX_WORDS palabras, cada una con inicial mayúscula, unidas con
- * ", " ("bogotá colombia" → "Bogotá, Colombia"; una sola palabra queda sin
- * coma). Vacío → null (sin override; el guard de requeridos lo cobra).
+ * Texto a guardar en el override (lo que se imprime): «Ciudad, País» bien
+ * capitalizado. Con coma → 2 segmentos multi-palabra; sin coma → 2 palabras
+ * exactas se leen «Ciudad País», el resto es UN solo lugar. Vacío → null
+ * (sin override; el guard de requeridos lo cobra).
  */
 export function igLocationOverride(display: string): string | null {
-  const words = display
-    .split(/[\s,]+/)
-    .filter((w) => w !== "")
-    .slice(0, IG_LOCATION_MAX_WORDS);
-  if (words.length === 0) return null;
-  return words.map(capitalizeIgLocationWord).join(", ");
+  const clean = sanitizeIgLocationInput(display).trim();
+  if (clean === "") return null;
+  const segments: string[] = [];
+  if (clean.includes(",")) {
+    const [city = "", country = ""] = clean.split(",");
+    if (city.trim() !== "") segments.push(city.trim());
+    if (country.trim() !== "") segments.push(country.trim());
+  } else {
+    const words = clean.split(" ").filter((w) => w !== "");
+    if (words.length === 2) {
+      // Compat con la convención vieja: «ciudad país» en 2 palabras.
+      segments.push(words[0]!, words[1]!);
+    } else {
+      segments.push(clean);
+    }
+  }
+  if (segments.length === 0) return null;
+  return segments.slice(0, IG_LOCATION_MAX_SEGMENTS).map(capitalizeIgLocationSegment).join(", ");
+}
+
+/**
+ * Regla de formato de la UI (owner 2026-10-27): «Ciudad, País» — exactamente
+ * UNA coma con ambos segmentos no vacíos. VACÍO = válido (campo decorativo
+ * opcional: el aviso inline es orientativo, nunca bloquea guardar ni
+ * finalizar). Las comas extra no pueden llegar acá (el sanitize en vivo las
+ * convierte en espacio); los casos reales de aviso son «sin coma» y segmento
+ * vacío («Santa Marta,» / «, Colombia»).
+ */
+export function igLocationFormatIsValid(display: string): boolean {
+  const clean = sanitizeIgLocationInput(display).trim();
+  if (clean === "") return true;
+  const commaCount = (clean.match(/,/g) ?? []).length;
+  if (commaCount !== 1) return false;
+  const [city = "", country = ""] = clean.split(",");
+  return city.trim() !== "" && country.trim() !== "";
 }
 
 // ── «Me gusta» ──────────────────────────────────────────────────────────────

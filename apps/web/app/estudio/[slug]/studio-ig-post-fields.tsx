@@ -14,9 +14,12 @@
  *    tal cual).
  *  - Ubicación: INPUT DE TEXTO simple (owner 2026-10-12 — se retiró el combobox
  *    con sugerencias de Fase 2 · 2.7b: la asistencia + el commit por tecla
- *    hacían MUY LENTA la plantilla). Validación y transformación automática
- *    (lib/ig-post-fields.ts): máximo 2 palabras, inicial mayúscula y el
- *    separador se imprime como ", " ("bogotá colombia" → "Bogotá, Colombia").
+ *    hacían MUY LENTA la plantilla). 2026-10-26 (bug "no deja poner espacios"):
+ *    formato «Ciudad, País» — hasta 2 segmentos separados por coma, cada uno
+ *    MULTI-PALABRA, con inicial mayúscula por palabra ("santa marta, colombia"
+ *    → "Santa Marta, Colombia"); el commit transforma y el input lleva eco de
+ *    display para que una pausa a mitad de escritura no resetee el draft
+ *    (lib/ig-post-fields.ts + lib/use-debounced-commit.ts).
  *  - «Me gusta»: OBLIGATORIO desde el rediseño (antes decorativo). El input es
  *    solo numérico y se muestra con separador de miles es-CO; la palabra
  *    "me gusta" es un sufijo FIJO fuera del valor editable (el override guarda
@@ -72,6 +75,7 @@ import {
   igHashtagsOverride,
   igLikesDisplay,
   igLikesOverride,
+  igLocationFormatIsValid,
   igLocationOverride,
   igUsernameDisplay,
   igUsernameOverride,
@@ -225,6 +229,15 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
               placeholder={variesPlaceholder ?? f.defaultText}
               sanitize={sanitizeIgLocationInput}
               onCommit={(draft) => commitText(f.id, igLocationOverride(draft))}
+              // El commit TRANSFORMA (capitaliza + normaliza la coma): sin el
+              // eco en formato display el draft se reseteaba a media escritura
+              // y se comía los espacios (2026-10-26).
+              commitEcho={(committed) => igLocationOverride(committed) ?? ""}
+              // 2026-10-27 (owner) — aviso inline del formato «Ciudad, País»
+              // (orientativo: nunca bloquea guardar ni finalizar; vacío = OK).
+              warningFor={(d) =>
+                igLocationFormatIsValid(d) ? null : texts.texto.igUbicacionFormato
+              }
             />
             <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUbicacionHint}</p>
           </>
@@ -242,6 +255,9 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
               sanitize={sanitizeIgLikesInput}
               onCommit={(draft) => commitText(f.id, igLikesOverride(draft))}
               describedBy={`${inputId}-suffix`}
+              // El commit formatea los miles ("1234" → display "1.234"): sin el
+              // eco el draft se reseteaba a media escritura (2026-10-26).
+              commitEcho={(committed) => igLikesDisplay(igLikesOverride(committed) ?? "")}
             />
             {/* Sufijo FIJO fuera del valor editable: siempre se imprime. */}
             <span id={`${inputId}-suffix`} className="text-brand-purple-dark shrink-0 text-sm">

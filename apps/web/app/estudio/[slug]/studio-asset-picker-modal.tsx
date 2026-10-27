@@ -28,7 +28,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, X, Image as ImageIcon, Loader2, Sparkles } from "lucide-react";
+import { Upload, X, Image as ImageIcon, Loader2, Sparkles, Eye } from "lucide-react";
 import {
   uploadDesignAssetAction,
   assignPredesignedToDesignAction,
@@ -41,6 +41,7 @@ import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 import { ConsentText } from "./studio-consent-text";
 import { PhotoQualityModal } from "./photo-quality-modal";
+import { PredesignedViewDialog } from "./predesigned-view-dialog";
 import { Hint } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -193,6 +194,10 @@ export function StudioAssetPickerModal({
   // directo: abre el PhotoQualityModal (mismo del sidebar) con CTA "Usar de
   // todos modos" que sí asigna. Fotos sin warning mantienen 1-click.
   const [qualityAsset, setQualityAsset] = useState<StudioAsset | null>(null);
+  // 2026-10-26 — preview «Ver» del prediseñado (única vía de verlo en grande
+  // en táctil; el HoverCard del sidebar es hover-only). Mismo Dialog que el
+  // sidebar; «Usar este diseño» = la misma acción del click de la tarjeta.
+  const [viewingItem, setViewingItem] = useState<PredesignedItem | null>(null);
   // Consentimiento de derechos de imagen (Ley 1581): obligatorio antes de subir.
   const [rightsAccepted, setRightsAccepted] = useState(false);
   const texts = useStudioTexts();
@@ -292,10 +297,13 @@ export function StudioAssetPickerModal({
   };
 
   // #15 — foco inicial + trap + Escape + retorno de foco (reutiliza modalRef; activo si isOpen).
-  // Mientras el PhotoQualityModal está abierto ENCIMA (z-50), este trap se
-  // desactiva: Escape/foco los maneja el modal de calidad (si no, Escape
-  // cerraría ambos modales de una).
-  useDialogA11y(modalRef, { onClose, active: isOpen && qualityAsset === null });
+  // Mientras el PhotoQualityModal está abierto ENCIMA (z-50) o el Dialog de
+  // preview «Ver» del prediseñado (radix, 2026-10-26), este trap se desactiva:
+  // Escape/foco los maneja el modal de arriba (si no, Escape cerraría ambos).
+  useDialogA11y(modalRef, {
+    onClose,
+    active: isOpen && qualityAsset === null && viewingItem === null,
+  });
 
   // Focus inicial cuando abre
   useEffect(() => {
@@ -399,58 +407,81 @@ export function StudioAssetPickerModal({
       {predesigned.map((item) => {
         const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
         return (
-          <Hint key={item.id} content={item.name}>
+          <div key={item.id} className="relative">
+            <Hint content={item.name}>
+              <button
+                type="button"
+                onClick={() => handleApplyPredesigned(item)}
+                disabled={applyingId !== null}
+                aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                  nombre: item.name,
+                })}
+                className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square w-full overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.thumbUrl ?? item.imageUrl}
+                  alt={item.name}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  // 3.10 — disuasión anti-copia: sin drag al escritorio ni menú
+                  // contextual ("Guardar imagen como…") sobre la miniatura.
+                  draggable={false}
+                  onContextMenu={(e) => e.preventDefault()}
+                />
+                {/* Paquete A — badge 1/2 caras (solo productos de
+                2 caras): "1 cara" = respaldo EN BLANCO (regla única
+                de cara B vacía, owner 2026-10-07). */}
+                {faceBadge && (
+                  <Hint
+                    content={
+                      faceBadge === "two"
+                        ? texts.plantillas.badgeDosCarasTitle
+                        : texts.plantillas.badgeUnaCaraTitle
+                    }
+                  >
+                    {/* stopPropagation: el badge vive DENTRO del botón
+                      con su propio Hint — sin esto el hover abriría
+                      ambos tooltips. */}
+                    <span
+                      onPointerMove={(e) => e.stopPropagation()}
+                      className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
+                    >
+                      {faceBadge === "two"
+                        ? texts.plantillas.badgeDosCaras
+                        : texts.plantillas.badgeUnaCara}
+                    </span>
+                  </Hint>
+                )}
+                {applyingId === item.id && (
+                  <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin text-white" />
+                  </div>
+                )}
+              </button>
+            </Hint>
+            {/* 2026-10-26 — «Ver» (ojo): el picker no tiene hover preview; este
+                botón abre el preview en Dialog (PredesignedViewDialog) — la
+                única vía de ver el diseño en grande antes de aplicarlo en
+                táctil. stopPropagation + área 44×44 para no disparar la
+                aplicación al tocarlo. */}
             <button
               type="button"
-              onClick={() => handleApplyPredesigned(item)}
-              disabled={applyingId !== null}
-              aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+              onClick={(e) => {
+                e.stopPropagation();
+                setViewingItem(item);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              aria-label={fillStudioText(texts.plantillas.verDisenoAria, {
                 nombre: item.name,
               })}
-              className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
+              className="focus:ring-brand-turquoise absolute right-0 bottom-0 z-10 flex h-11 w-11 items-center justify-center rounded-full focus:ring-2 focus:outline-none"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={item.thumbUrl ?? item.imageUrl}
-                alt={item.name}
-                className="h-full w-full object-cover"
-                loading="lazy"
-                // 3.10 — disuasión anti-copia: sin drag al escritorio ni menú
-                // contextual ("Guardar imagen como…") sobre la miniatura.
-                draggable={false}
-                onContextMenu={(e) => e.preventDefault()}
-              />
-              {/* Paquete A — badge 1/2 caras (solo productos de
-              2 caras): "1 cara" = respaldo EN BLANCO (regla única
-              de cara B vacía, owner 2026-10-07). */}
-              {faceBadge && (
-                <Hint
-                  content={
-                    faceBadge === "two"
-                      ? texts.plantillas.badgeDosCarasTitle
-                      : texts.plantillas.badgeUnaCaraTitle
-                  }
-                >
-                  {/* stopPropagation: el badge vive DENTRO del botón
-                    con su propio Hint — sin esto el hover abriría
-                    ambos tooltips. */}
-                  <span
-                    onPointerMove={(e) => e.stopPropagation()}
-                    className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
-                  >
-                    {faceBadge === "two"
-                      ? texts.plantillas.badgeDosCaras
-                      : texts.plantillas.badgeUnaCara}
-                  </span>
-                </Hint>
-              )}
-              {applyingId === item.id && (
-                <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-white" />
-                </div>
-              )}
+              <span className="text-brand-purple-dark flex h-7 w-7 items-center justify-center rounded-full bg-white/90 shadow">
+                <Eye className="h-4 w-4" aria-hidden />
+              </span>
             </button>
-          </Hint>
+          </div>
         );
       })}
     </div>
@@ -739,6 +770,18 @@ export function StudioAssetPickerModal({
           setQualityAsset(null);
           if (pending) handlePickAsset(pending);
         }}
+      />
+
+      {/* 2026-10-26 — preview «Ver» del prediseñado (radix Dialog, z-50, por
+        encima del picker z-40). «Usar este diseño» = la misma acción del click
+        de la tarjeta (handleApplyPredesigned cierra el picker como siempre). */}
+      <PredesignedViewDialog
+        item={viewingItem}
+        onUse={(item) => {
+          setViewingItem(null);
+          void handleApplyPredesigned(item);
+        }}
+        onClose={() => setViewingItem(null)}
       />
     </>
   );

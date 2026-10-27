@@ -35,7 +35,8 @@ import { prisma } from "@/lib/db";
 import { supabaseService } from "@/lib/supabase/service";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
-import { parsePhotoProductConfig } from "./schemas";
+import { parsePhotoProductConfig, readBorderWidthConfig } from "./schemas";
+import { resolveBorderWidthFactor } from "./frame-palette";
 import { loadEffectiveProductConfig } from "./effective-variant-server";
 import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
 import type { CanvasDataV2 } from "./schemas";
@@ -176,6 +177,12 @@ type RenderContext = {
   };
   shape: string | undefined;
   borderColor: string | null;
+  /**
+   * Grosor del borde (2026-10-26) — factor YA resuelto: canvasData.borderWidthFactor
+   * clampado contra el rango del producto (readBorderWidthConfig); sin config, un
+   * valor persistido válido se respeta (es lo que el cliente vio — WYSIWYG).
+   */
+  borderWidthFactor: number;
   includeText: boolean;
   frameFullBleed: boolean;
 };
@@ -251,6 +258,13 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
     typeof (canvasData as { borderColor?: unknown }).borderColor === "string"
       ? ((canvasData as { borderColor?: string }).borderColor ?? null)
       : null;
+  // Grosor del borde (2026-10-26): el valor persistido por el cliente, resuelto
+  // contra el rango del producto (ausente → default del rango; sin rango → el
+  // valor persistido válido o 1). Misma regla del lienzo del Estudio (WYSIWYG).
+  const borderWidthFactor = resolveBorderWidthFactor(
+    (canvasData as { borderWidthFactor?: unknown }).borderWidthFactor,
+    readBorderWidthConfig(productSchema),
+  );
   const includeText = productSchema ? productConfig.allowText === true : true;
   const frameFullBleed = productSchema ? (productConfig.frameOptions?.length ?? 0) > 0 : false;
 
@@ -268,6 +282,7 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
     engines,
     shape,
     borderColor,
+    borderWidthFactor,
     includeText,
     frameFullBleed,
   };
@@ -308,6 +323,7 @@ async function renderOneSlot(ctx: RenderContext, slot: CanvasDataV2["slots"][num
     borderColor: ctx.borderColor,
     includeText: ctx.includeText,
     frameFullBleed: ctx.frameFullBleed,
+    borderWidthFactor: ctx.borderWidthFactor,
   };
   // Tier 1 sharp solo sin marco y sin frameOptions (Ola 4); si declara NEEDS_KONVA, tier canvas.
   if (!ctx.borderColor && !ctx.frameFullBleed) {

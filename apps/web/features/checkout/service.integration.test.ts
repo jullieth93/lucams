@@ -1290,11 +1290,13 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       expect(addr.fullName).toBe("Lucia Perez");
     }, 30000);
 
-    it("ORDER_CREATE_FAILED cuando no hay stock: NO crea Order ni llama a Wompi", async () => {
+    it("STOCK_UNAVAILABLE cuando no hay stock: NO crea Order ni llama a Wompi y el mensaje nombra el producto", async () => {
       // assertStockAvailable (dentro de createOrderFromCart) lanza
       // InsufficientStockError si qty pedida > stock de la variante (stock=100).
       // Pedimos 999 → falla en la creación de la Order; finalizeCheckout lo
-      // envuelve como ORDER_CREATE_FAILED ANTES de tocar el gateway de pago.
+      // re-lanza como STOCK_UNAVAILABLE (customer-safe, nombra el producto)
+      // ANTES de tocar el gateway de pago — la action redirige a /carrito con
+      // ese mensaje (2026-10-26; antes caía al genérico ORDER_CREATE_FAILED).
       const sid = uuid();
       await createCartWithItem({ sessionId: sid, qty: 999, unitPrice: 50_000 });
       setCartCookie(sid);
@@ -1302,9 +1304,10 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
 
       await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
         name: "CheckoutError",
-        code: "ORDER_CREATE_FAILED",
-        // El mensaje real propaga el de InsufficientStockError (no es genérico).
-        message: expect.stringContaining("Stock insuficiente"),
+        code: "STOCK_UNAVAILABLE",
+        // customerMessage() de InsufficientStockError: «Prod RUN (Con dims)» con
+        // el stock que quede en ese momento (tests COD anteriores lo decrementan).
+        message: expect.stringMatching(/^Solo quedan \d+ unidades de «.+»/),
       });
 
       // No quedó NINGUNA Order (la $transaction de createOrderFromCart hizo rollback).
