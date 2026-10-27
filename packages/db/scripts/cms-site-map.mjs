@@ -10181,6 +10181,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               body: "Datos aplicados a todas las fotos del set",
               sortOrder: 630,
             },
+            {
+              key: "estudio.texto.ig-ubicacion-formato",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Ubicación IG: aviso de formato «Ciudad, País»",
+              helpText:
+                "2026-10-27 — aviso inline (ámbar, orientativo) cuando la ubicación no cumple el formato «Ciudad, País»: exactamente una coma con ambos segmentos con texto. Aparece tras el commit/blur del campo; NUNCA bloquea guardar ni finalizar (el campo vacío es válido).",
+              category: "HOME",
+              body: "Escribe ciudad y país separados por una coma — ej: Santa Marta, Colombia",
+              sortOrder: 631,
+            },
           ],
         },
         {

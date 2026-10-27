@@ -58,6 +58,13 @@ export function igUsernameOverride(display: string): string | null {
  *    3+ palabras se toman como UN solo lugar ("Korea del Sur" → "Korea Del
  *    Sur") — partir a la mitad produciría "Korea Del, Sur", que es basura.
  *  - Nunca se comen espacios ni palabras.
+ *
+ * REGLA DE VALIDACIÓN (owner 2026-10-27): el formato pedido es «Ciudad, País»
+ * — exactamente UNA coma con ambos segmentos no vacíos. La UI la cobra como
+ * AVISO inline al commit/blur (nunca bloquea el tecleo, el auto-save ni el
+ * finalize: el campo es decorativo y VACÍO sigue siendo válido). El heuristic
+ * sin-coma de igLocationOverride queda como fallback de robustez (valores
+ * legacy persistidos), ya no promovido por la UI.
  */
 
 /** Máximo de segmentos separados por coma (ciudad, país). */
@@ -128,6 +135,23 @@ export function igLocationOverride(display: string): string | null {
   }
   if (segments.length === 0) return null;
   return segments.slice(0, IG_LOCATION_MAX_SEGMENTS).map(capitalizeIgLocationSegment).join(", ");
+}
+
+/**
+ * Regla de formato de la UI (owner 2026-10-27): «Ciudad, País» — exactamente
+ * UNA coma con ambos segmentos no vacíos. VACÍO = válido (campo decorativo
+ * opcional: el aviso inline es orientativo, nunca bloquea guardar ni
+ * finalizar). Las comas extra no pueden llegar acá (el sanitize en vivo las
+ * convierte en espacio); los casos reales de aviso son «sin coma» y segmento
+ * vacío («Santa Marta,» / «, Colombia»).
+ */
+export function igLocationFormatIsValid(display: string): boolean {
+  const clean = sanitizeIgLocationInput(display).trim();
+  if (clean === "") return true;
+  const commaCount = (clean.match(/,/g) ?? []).length;
+  if (commaCount !== 1) return false;
+  const [city = "", country = ""] = clean.split(",");
+  return city.trim() !== "" && country.trim() !== "";
 }
 
 // ── «Me gusta» ──────────────────────────────────────────────────────────────

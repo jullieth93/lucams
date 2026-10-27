@@ -75,6 +75,7 @@ import {
   igHashtagsOverride,
   igLikesDisplay,
   igLikesOverride,
+  igLocationFormatIsValid,
   igLocationOverride,
   igUsernameDisplay,
   igUsernameOverride,
@@ -232,6 +233,11 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
               // eco en formato display el draft se reseteaba a media escritura
               // y se comía los espacios (2026-10-26).
               commitEcho={(committed) => igLocationOverride(committed) ?? ""}
+              // 2026-10-27 (owner) — aviso inline del formato «Ciudad, País»
+              // (orientativo: nunca bloquea guardar ni finalizar; vacío = OK).
+              warningFor={(d) =>
+                igLocationFormatIsValid(d) ? null : texts.texto.igUbicacionFormato
+              }
             />
             <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUbicacionHint}</p>
           </>

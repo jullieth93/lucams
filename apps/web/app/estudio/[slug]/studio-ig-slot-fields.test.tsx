@@ -178,6 +178,22 @@ describe("StudioIgSlotFields — campos IG en la edición individual (QA ronda 2
     // pack-level, donde el valor display viene del store en vivo.)
   });
 
+  // 2026-10-27 (owner) — la regla «Ciudad, País» también avisa en la edición
+  // INDIVIDUAL: mismo aviso inline orientativo tras el blur (nunca bloquea).
+  it("ubicación individual: sin coma al blur → aviso inline orientativo, y el valor se guarda igual", () => {
+    const store = makeStore();
+    renderFields(store, 1);
+
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "korea del sur" } });
+    expect(screen.queryByRole("alert")).toBeNull(); // mientras escribe: nada
+
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toMatch(/ciudad y país separados por una coma/i);
+    // Guardado igual (fallback del heuristic): el aviso no bloquea nada.
+    expect(slotOverrides(store, 1)?.location?.text).toBe("Korea Del Sur");
+  });
+
   it("«me gusta»: solo numérico con sufijo fijo, individual por slot", () => {
     const store = makeStore();
     renderFields(store, 1);

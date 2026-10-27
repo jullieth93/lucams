@@ -19,6 +19,7 @@ import {
   igHashtagsOverride,
   igLikesDisplay,
   igLikesOverride,
+  igLocationFormatIsValid,
   igLocationOverride,
   igUsernameDisplay,
   igUsernameOverride,
@@ -157,5 +158,34 @@ describe("ubicación — «Ciudad, País» multi-palabra (rediseño 2026-10-26, 
   it("largo acotado (una línea corta del post impreso)", () => {
     expect(IG_LOCATION_MAX_LENGTH).toBe(40);
     expect(sanitizeIgLocationInput("a".repeat(60))).toHaveLength(40);
+  });
+});
+
+describe("igLocationFormatIsValid — regla «Ciudad, País» de la UI (owner 2026-10-27)", () => {
+  it("válido: exactamente UNA coma con ambos segmentos (multi-palabra OK)", () => {
+    expect(igLocationFormatIsValid("Santa Marta, Colombia")).toBe(true);
+    expect(igLocationFormatIsValid("santa marta, colombia")).toBe(true);
+    expect(igLocationFormatIsValid("bogotá,colombia")).toBe(true);
+    expect(igLocationFormatIsValid("Villa de Leyva, Boyacá")).toBe(true);
+  });
+
+  it("vacío (o solo espacios) es VÁLIDO: el campo es opcional y nunca bloquea", () => {
+    expect(igLocationFormatIsValid("")).toBe(true);
+    expect(igLocationFormatIsValid("   ")).toBe(true);
+  });
+
+  it("inválido: sin coma, coma sin país, país sin ciudad, solo coma", () => {
+    expect(igLocationFormatIsValid("Bogotá")).toBe(false);
+    expect(igLocationFormatIsValid("Korea del Sur")).toBe(false);
+    expect(igLocationFormatIsValid("Santa Marta,")).toBe(false);
+    expect(igLocationFormatIsValid(", Colombia")).toBe(false);
+    expect(igLocationFormatIsValid(",")).toBe(false);
+  });
+
+  it("legacy sin coma: el fallback del override sigue guardando algo sensato (no explota)", () => {
+    // La regla de formato es de la UI; valores persistidos sin coma siguen
+    // transformándose con el heuristic (nunca null ni basura).
+    expect(igLocationFormatIsValid("Korea del Sur")).toBe(false); // la UI avisaría
+    expect(igLocationOverride("Korea del Sur")).toBe("Korea Del Sur"); // pero se imprime bien
   });
 });

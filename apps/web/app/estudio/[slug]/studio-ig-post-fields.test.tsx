@@ -429,3 +429,93 @@ describe("StudioIgPostFields — re-aplicado EXPLÍCITO a todos los slots (2026-
     expect(overrides(store, "caption")).toEqual(["Nuestro paseo", "Nuestro paseo"]);
   });
 });
+
+/*
+ * Regla de formato «Ciudad, País» de la Ubicación IG (owner 2026-10-27): aviso
+ * inline ORIENTATIVO (ámbar) tras el primer commit/blur cuando el texto no
+ * cumple (sin coma o segmento vacío). NUNCA bloquea: el valor se guarda igual
+ * (override con el heuristic), el auto-save corre y vacío es válido. Mientras
+ * se escribe por primera vez no se muestra nada.
+ */
+describe("StudioIgPostFields — aviso de formato de la ubicación (2026-10-27)", () => {
+  const AVISO = /ciudad y país separados por una coma/i;
+
+  it("mientras escribe (sin commit ni blur) NO se muestra nada; al blur con «sin coma» aparece", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "bogotá" } });
+    expect(screen.queryByRole("alert")).toBeNull(); // aún no tocado: sin aviso
+
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toMatch(AVISO);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("el aviso NO bloquea: el valor se guarda igual (override con heuristic) y al corregir desaparece en vivo", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "bogotá" } });
+    fireEvent.blur(input);
+    // Guardado con el fallback (heuristic sin coma): no se perdió nada.
+    expect(overrides(store, "location")).toEqual(["Bogotá", "Bogotá"]);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    // Corrige: agrega la coma → el aviso se reevalúa en vivo y desaparece.
+    fireEvent.change(input, { target: { value: "bogotá, colombia" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.blur(input);
+    expect(overrides(store, "location")).toEqual(["Bogotá, Colombia", "Bogotá, Colombia"]);
+    expect(input.value).toBe("Bogotá, Colombia"); // normalizado al blur
+  });
+
+  it("vacío es válido: borrar el texto quita el aviso y limpia el override", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "santa marta," } }); // segmento vacío
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toMatch(AVISO);
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.queryByRole("alert")).toBeNull(); // vacío nunca avisa
+    fireEvent.blur(input);
+    expect(overrides(store, "location")).toEqual([undefined, undefined]);
+  });
+
+  it("válido directo: «Santa Marta, Colombia» no avisa y queda capitalizado", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "santa marta, colombia" } });
+    fireEvent.blur(input);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(input).not.toHaveAttribute("aria-invalid");
+    expect(overrides(store, "location")).toEqual([
+      "Santa Marta, Colombia",
+      "Santa Marta, Colombia",
+    ]);
+  });
+
+  it("valor LEGACY sin coma (persistido antes de la regla): no explota ni avisa hasta tocar el campo", () => {
+    const store = makeStore();
+    // Simula un diseño guardado antes de la regla (override sin coma).
+    store.getState().setTextOverrideAllSlots("location", { text: "Korea Del Sur" });
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+
+    // Al cargar no hay aviso (campo no tocado) y el valor se muestra tal cual.
+    expect(input.value).toBe("Korea Del Sur");
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    // Al editarlo y salir sin coma, AHORA sí avisa (orientativo).
+    fireEvent.change(input, { target: { value: "korea del sur" } });
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toMatch(AVISO);
+  });
+});

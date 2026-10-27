@@ -463,6 +463,10 @@ export type StudioTexts = {
      *  sugerencias). 2026-10-26: el hint explica el formato «Ciudad, País»
      *  (multi-palabra por segmento; se retiró la regla de máximo 2 palabras). */
     igUbicacionHint: string;
+    /** Owner 2026-10-27 — aviso inline de FORMATO de la ubicación (regla
+     *  «Ciudad, País»: una coma, ambos segmentos con texto). Orientativo: se
+     *  muestra tras commit/blur, nunca bloquea guardar ni finalizar. */
+    igUbicacionFormato: string;
     igTituloPlaceholder: string;
     igHashtagsPlaceholder: string;
     /** Aviso al intentar agregar un 4º hashtag (tope de producto: 3). */
@@ -1291,6 +1295,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     // 2026-10-26 — Ciudad, País con espacios y varias palabras por segmento
     // (antes: máximo 2 palabras — rompía "Santa Marta" / "Korea del Sur").
     igUbicacionHint: "Ciudad y país separados por coma — ej: Santa Marta, Colombia",
+    // 2026-10-27 — aviso inline cuando el texto no cumple «Ciudad, País».
+    igUbicacionFormato: "Escribe ciudad y país separados por una coma — ej: Santa Marta, Colombia",
     igTituloPlaceholder: "Ej: Nuestro paseo de domingo",
     igHashtagsPlaceholder: "Escribe un hashtag y presiona Enter",
     igHashtagsMaxAviso: "Máximo 3 hashtags — quita uno para agregar otro",
@@ -1975,6 +1981,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.igSlotCamposHint": "estudio.texto.ig-slot-campos-hint",
   "texto.igUsuarioHint": "estudio.texto.ig-usuario-hint",
   "texto.igUbicacionHint": "estudio.texto.ig-ubicacion-hint",
+  "texto.igUbicacionFormato": "estudio.texto.ig-ubicacion-formato",
   "texto.igTituloPlaceholder": "estudio.texto.ig-titulo-placeholder",
   "texto.igHashtagsPlaceholder": "estudio.texto.ig-hashtags-placeholder",
   "texto.igHashtagsMaxAviso": "estudio.texto.ig-hashtags-max-aviso",
