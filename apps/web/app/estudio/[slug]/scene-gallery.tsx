@@ -39,9 +39,16 @@
  * indicador «Enero — Set 1 de 3»); la galería solo reenvía `cardsPerSet`/`cardLabels`.
  *
  * Las texturas por imán (recortadas a su silueta) se calculan UNA vez en el editor y se pasan acá;
- * las escenas 3D las usan directo y los compositores 2D se arman perezosamente al abrir su chip y
- * se cachean. Las vistas 3D se importan diferidas (WebGL, client-only). `sizeCm` (tamaño real de
- * la variante) se reenvía a las escenas 3D para que las piezas escalen a su tamaño físico.
+ * las vistas 3D se importan diferidas (WebGL, client-only). `sizeCm` (tamaño real de la variante)
+ * se reenvía a las escenas 3D para que las piezas escalen a su tamaño físico.
+ *
+ * 2026-10-26 (decisión owner: "3D completo ahora") — las escenas Repisa y Regalo dejan de ser
+ * flat-lays 2D (PNG 1080×1080 compuestos en canvas y servidos como <img> plano, que se
+ * distorsionaban al acercar) y pasan a ser escenas react-three-fiber (shelf-3d-view.tsx /
+ * gift-3d-view.tsx) con el mismo estándar que nevera/libro/polaroid: OrbitControls con límites,
+ * texturas del diseño, env-map procedural y pill de gestos. Los compositores 2D
+ * (lib/compose-shelf-flatlay.ts / compose-gift-flatlay.ts) quedaron retirados. Los ids `shelf` /
+ * `gift`, sus textos CMS y su supervivencia al filtro SIN IMÁN no cambian.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -51,17 +58,17 @@ import { useDialogA11y } from "./use-dialog-a11y";
 import { Scene3DErrorBoundary } from "./scene-3d-error-boundary";
 import { CALENDAR_CARD_THICKNESS_CM } from "./magnet-3d";
 import type { Magnet3D } from "./fridge-3d-view";
-import { composeGiftFlatlay } from "./lib/compose-gift-flatlay";
-import { composeShelfFlatlay } from "./lib/compose-shelf-flatlay";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
 
 // Roadmap B1 — los "Cargando … 3D…" de los dynamic imports son texto CMS
 // (estudio.escenas.loading-*); sin provider caen al default exacto pre-CMS.
+// "armando" (estudio.escenas.armando) es el fallback genérico: lo usan las escenas sin
+// clave de carga propia (repisa/regalo, 2026-10-26).
 function SceneLoading({
   textKey,
 }: {
-  textKey: "loadingNevera" | "loadingTablero" | "loadingPolaroid" | "loadingLibro";
+  textKey: "loadingNevera" | "loadingTablero" | "loadingPolaroid" | "loadingLibro" | "armando";
 }) {
   const texts = useStudioTexts();
   return (
@@ -87,6 +94,15 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   ssr: false,
   loading: () => <SceneLoading textKey="loadingLibro" />,
 });
+// 2026-10-26 — repisa y regalo ahora son escenas 3D (antes flat-lays 2D).
+const ShelfView3D = nextDynamic(() => import("./shelf-3d-view"), {
+  ssr: false,
+  loading: () => <SceneLoading textKey="armando" />,
+});
+const GiftView3D = nextDynamic(() => import("./gift-3d-view"), {
+  ssr: false,
+  loading: () => <SceneLoading textKey="armando" />,
+});
 // Ola 2C — visor de detalle tarjeta-a-tarjeta del calendario (WebGL, client-only).
 const CalendarCardFocus = nextDynamic(() => import("./calendar-card-focus"), {
   ssr: false,
@@ -110,8 +126,6 @@ const SCENE_EMOJI: Record<Scene, string> = {
   shelf: "📚",
   gift: "🎁",
 };
-
-const ALL_SCENES = Object.keys(SCENE_EMOJI) as Scene[];
 
 /**
  * Escenas ofrecidas por tipo de producto (el calendario-de-pared NO se ofrece: archivado).
@@ -207,10 +221,23 @@ export function countBadgeLabel(count: number, kind: SceneKind = "photo", cols =
  * variante SIN IMÁN (`magnet === false`) ofrecerlas sería una afirmación
  * falsa del producto físico (regla owner 2026-10-07, Fase 2.10).
  * La escena Polaroid NO entra: son tarjetas ACOSTADAS sobre una mesa de
- * madera (no asumen adherencia a nevera/metal). Las escenas 2D (`shelf`,
- * `gift`) y el libro (`book`) tampoco asumen imán.
+ * madera (no asumen adherencia a nevera/metal). Repisa y regalo tampoco:
+ * las piezas van APOYADAS (contra la pared / contra la caja), nunca
+ * adheridas — igual el libro (`book`).
  */
 const MAGNET_SCENES: ReadonlySet<Scene> = new Set(["fridge", "board", "memo"]);
+
+/**
+ * ¿La escena se renderiza como vista 3D interactiva (react-three-fiber, con pill de gestos y
+ * rótulo de cantidad)? Desde el 2026-10-26 TODAS las escenas de la galería son 3D: repisa y
+ * regalo eran los últimos flat-lays 2D (PNG plano sin zoom) y pasaron a escenas r3f
+ * (shelf-3d-view / gift-3d-view). El set queda como punto único de verdad por si alguna escena
+ * futura vuelve a ser plana.
+ */
+const FLAT_SCENES: ReadonlySet<Scene> = new Set();
+export function is3DScene(scene: Scene): boolean {
+  return !FLAT_SCENES.has(scene);
+}
 
 /**
  * Escenas efectivamente ofrecidas en la galería: las del kind filtradas por
@@ -218,8 +245,9 @@ const MAGNET_SCENES: ReadonlySet<Scene> = new Set(["fridge", "board", "memo"]);
  * para el calendario; Paquete D (2026-10-02) lo retiró para los demás
  * productos ("el 3D es ilustrativo"); el owner REVIRTIÓ Paquete D el
  * 2026-10-07 (Fase 2.10): con `magnet === false` las escenas que afirman
- * imán (MAGNET_SCENES) NO se ofrecen en NINGÚN kind — photo conserva las 2D
- * (repisa/regalo, y polaroid si aplica), bookmark conserva el libro, y
+ * imán (MAGNET_SCENES) NO se ofrecen en NINGÚN kind — photo conserva
+ * repisa/regalo (apoyadas, sin adherencia; 3D desde 2026-10-26) y polaroid
+ * si aplica, bookmark conserva el libro, y
  * letters (solo tablero memo) queda SIN escenas → la galería muestra un
  * estado vacío coherente (mismo criterio del calendario: el cliente no sube
  * a una galería sin destino).
@@ -251,12 +279,12 @@ export function SceneGallery({
    *  "¿Con imán?" de la variante. `false` (SIN IMÁN): las escenas que afirman
    *  imán (nevera/mural/tablero memo — MAGNET_SCENES) NO se ofrecen en NINGÚN
    *  kind — adherir piezas sin imán es una afirmación falsa del producto
-   *  físico. Quedan las escenas 2D (repisa/regalo), la polaroid (tarjetas
-   *  acostadas en mesa) y el libro. Si ninguna escena sobrevive (calendario,
-   *  letters), la galería muestra un estado vacío coherente; en el calendario
-   *  el flujo vive en el visor de detalle (CalendarCardFocus) y su botón
-   *  «Míralo en tu espacio» se omite. undefined conserva el comportamiento de
-   *  siempre. */
+   *  físico. Quedan repisa/regalo (piezas apoyadas, sin adherencia), la
+   *  polaroid (tarjetas acostadas en mesa) y el libro. Si ninguna escena
+   *  sobrevive (calendario, letters), la galería muestra un estado vacío
+   *  coherente; en el calendario el flujo vive en el visor de detalle
+   *  (CalendarCardFocus) y su botón «Míralo en tu espacio» se omite.
+   *  undefined conserva el comportamiento de siempre. */
   magnet,
   /** 2026-10-23 — calendario multi-set: tarjetas por set (unitSlots) y sus labels de mes,
    *  para el pager de dos niveles del visor de detalle (CalendarCardFocus). */
@@ -305,15 +333,6 @@ export function SceneGallery({
     shelf: texts.escenas.chipRepisa,
     gift: texts.escenas.chipRegalo,
   };
-  // Compositores 2D: se arman perezosamente al abrir su chip y se cachean.
-  const [shelfUrl, setShelfUrl] = useState<string | null>(null);
-  const [giftUrl, setGiftUrl] = useState<string | null>(null);
-  const [building, setBuilding] = useState(false);
-  // #18 — escenas cuyo compositor falló: mostramos un fallback claro en vez de un panel colgado.
-  const [failed, setFailed] = useState<Record<Scene, boolean>>(
-    () => Object.fromEntries(ALL_SCENES.map((s) => [s, false])) as Record<Scene, boolean>,
-  );
-
   // Ola 3 — detalle PRIMERO del calendario: con kind="calendar" el modal abre en el visor
   // tarjeta-a-tarjeta y la galería queda un nivel arriba ("Míralo en tu espacio"). focusIndex
   // se conserva al ir y volver: la tarjeta que estabas leyendo sigue ahí al regresar.
@@ -343,45 +362,9 @@ export function SceneGallery({
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, { onClose: onGalleryEscape, active: !detailOpen });
 
-  // Armar el compositor 2D de la escena activa (una sola vez por escena).
-  useEffect(() => {
-    let cancelled = false;
-    const build = async () => {
-      const need =
-        (activeScene === "shelf" && shelfUrl === null) ||
-        (activeScene === "gift" && giftUrl === null);
-      if (!need) return;
-      setBuilding(true);
-      if (!cancelled) setFailed((f) => (f[activeScene] ? { ...f, [activeScene]: false } : f)); // #18 limpiar al reintentar
-      try {
-        if (activeScene === "shelf") {
-          const url = await composeShelfFlatlay(magnets);
-          if (!cancelled) setShelfUrl(url);
-        } else if (activeScene === "gift") {
-          const url = await composeGiftFlatlay(magnets);
-          if (!cancelled) setGiftUrl(url);
-        }
-      } catch {
-        // #18 — marcar la escena como fallida (fallback visible) en vez de dejarla colgada en carga.
-        // No rompemos el editor: el cliente puede cambiar de escena o reintentar.
-        if (!cancelled) setFailed((f) => ({ ...f, [activeScene]: true }));
-      } finally {
-        if (!cancelled) setBuilding(false);
-      }
-    };
-    void build();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeScene, magnets, shelfUrl, giftUrl]);
-
-  const is3D =
-    activeScene === "fridge" ||
-    activeScene === "board" ||
-    activeScene === "polaroid" ||
-    activeScene === "memo" ||
-    activeScene === "book";
-  const flatUrl = activeScene === "shelf" ? shelfUrl : activeScene === "gift" ? giftUrl : null;
+  // 2026-10-26 — TODAS las escenas son 3D (repisa/regalo eran los últimos flat-lays 2D):
+  // is3DScene queda como punto único de verdad (pill de gestos, rótulo de cantidad).
+  const is3D = is3DScene(activeScene);
 
   return (
     <div
@@ -464,8 +447,9 @@ export function SceneGallery({
           </div>
         ) : is3D ? (
           /* #18 para las escenas 3D (2026-10-12): si una textura falla al cargar dentro del
-             canvas (useTexture con dataURL inválido/enorme), el boundary muestra el mismo
-             fallback amigable de los compositores 2D en vez de un lienzo negro/colgado. */
+             canvas (useTexture con dataURL inválido/enorme), el boundary muestra el fallback
+             amigable en vez de un lienzo negro/colgado. Desde 2026-10-26 TODAS las escenas son
+             3D (repisa/regalo incluidas) → esta es la única rama de render de escena. */
           <Scene3DErrorBoundary>
             {activeScene === "fridge" ? (
               <FridgeView3D
@@ -486,6 +470,10 @@ export function SceneGallery({
               />
             ) : activeScene === "memo" ? (
               <RoomBoardView3D magnets={magnets} cols={cols} style="memo" sizeCm={sizeCm} />
+            ) : activeScene === "shelf" ? (
+              <ShelfView3D magnets={magnets} sizeCm={sizeCm} thicknessCm={sceneThicknessCm(kind)} />
+            ) : activeScene === "gift" ? (
+              <GiftView3D magnets={magnets} sizeCm={sizeCm} thicknessCm={sceneThicknessCm(kind)} />
             ) : (
               <BookView3D
                 bookmarks={magnets}
@@ -495,28 +483,6 @@ export function SceneGallery({
               />
             )}
           </Scene3DErrorBoundary>
-        ) : building && !flatUrl ? (
-          <div className="text-brand-cream/90 flex h-full items-center justify-center text-sm">
-            {texts.escenas.armando}
-          </div>
-        ) : failed[activeScene] ? (
-          <div className="text-brand-cream/90 flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm">
-            <p>{texts.escenas.error}</p>
-            <p className="text-brand-cream/70 text-xs">{texts.escenas.errorHint}</p>
-          </div>
-        ) : flatUrl ? (
-          <div className="absolute inset-0 flex items-center justify-center overflow-hidden p-2 sm:p-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={flatUrl}
-              alt={
-                activeScene === "gift"
-                  ? "Tu diseño presentado como un regalo"
-                  : "Tu diseño en una repisa"
-              }
-              className="max-h-[calc(100%-1rem)] max-w-[calc(100%-1rem)] rounded-2xl object-contain shadow-2xl"
-            />
-          </div>
         ) : null}
 
         {/* Rótulo de cantidad (owner 2026-09-15): "N tiras/unidades · tamaño real" — overlay
@@ -527,10 +493,10 @@ export function SceneGallery({
           </p>
         )}
 
-        {/* Pill de gestos SOLO en escenas 3D (zoom/rotación). Fase 2.6 (owner
-            2026-10-07): la pill de las escenas planas 2D ("Mantén presionada la
-            imagen para guardarla o compartirla") se ELIMINÓ — la imagen plana no
-            tiene gesto propio que explicar y el texto sobraba sobre la escena. */}
+        {/* Pill de gestos de las escenas 3D (zoom/rotación). Desde 2026-10-26 todas las escenas
+            son 3D, así que la pill acompaña siempre a la escena activa. Fase 2.6 (owner
+            2026-10-07): la pill de las antiguas escenas planas 2D se había eliminado — la imagen
+            plana no tenía gesto propio que explicar. */}
         {is3D && (
           <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
             {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
