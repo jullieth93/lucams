@@ -675,7 +675,12 @@ const templatesData = [
           // shape físico (heart/circle/rect cuadrado) se vea proporcionado. Ola 4:
           // es la plantilla de los Fotoimanes Cuadrados 1:1 (sin borde → foto a
           // sangre total; con borde → franja uniforme, ver frame-palette).
-          canvasData: blankCanvas({ stageW: 600, stageH: 600, includeText: true }),
+          // 2026-10-27 (owner) — SIN capa de texto: un diseño cuadrado NO lleva
+          // texto (el producto tiene allowText=false; la capa editable residual
+          // habilitaba la pestaña Texto de «Ajustar foto» sin que el lienzo ni
+          // producción la dibujaran — inconsistencia corregida). La actualización
+          // de DBs existentes la hace el one-shot cuadrados-sin-texto-20261027.mjs.
+          canvasData: blankCanvas({ stageW: 600, stageH: 600, includeText: false }),
         },
       ]
     : []),

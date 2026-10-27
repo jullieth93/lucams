@@ -314,7 +314,7 @@ const productsData = [
     // Dims reales del paquete en PRD (fuente de verdad comercial, audit 2026-10-22).
     physicalSpecs: { weightGrams: 30, widthCm: 15, heightCm: 10, depthCm: 3 },
     description:
-      "Fotoimanes cuadrados con tus fotos a sangre total (sin bordes). Si quieres, agrégale un marco de color en el Estudio: 6 colores de marca. Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
+      "Fotoimanes cuadrados con tus fotos a sangre total (sin bordes). Si quieres, agrégale un marco de color en el Estudio: blanco, negro o el color exacto que quieras con «Personalizado». Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
     basePrice: 2700000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
@@ -325,7 +325,11 @@ const productsData = [
       sizeCm: "5×5",
       shape: "rectangle",
       // Ola 2A — paleta de marcos del Estudio (ver polaroid; bug 2026-09-15).
-      frameOptions: ["blanco", "negro", "aguamarina", "rosa", "lavanda", "amarillo"],
+      // 2026-10-27 (owner) — Cuadrados se suma a la paleta BINARIA de Polaroid y
+      // Tiras (decisión 2026-10-22): SOLO blanco/negro (+ «Sin Color» y
+      // «Personalizado», fijos del toolbar). El dato en DBs existentes lo alinea
+      // el one-shot frame-options-binary-cuadrados-20261027.mjs.
+      frameOptions: ["blanco", "negro"],
     },
     images: [UNSPLASH("1554080353-a576cf803bda")],
     // Variants modulares: Tamaño (4×4 / 5×5 / 7×7) × PACKS de 6 (1-4 packs).

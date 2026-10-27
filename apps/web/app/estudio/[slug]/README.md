@@ -369,6 +369,10 @@ packages/db/scripts/
   `["blanco","negro"]` (resultado: Sin Color + Blanco + Negro + Personalizado); el resto de
   productos con marcos conserva la paleta completa de 6. Dato sembrado (seed canónico +
   one-shot `frame-options-binary-20261022.mjs`), nunca código.
+  Extensión owner 2026-10-27: Fotoimanes Cuadrados se suma a la paleta binaria
+  `["blanco","negro"]` (mismo resultado de 4 opciones) y su descripción de catálogo ya no
+  promete «6 colores de marca» — one-shot `frame-options-binary-cuadrados-20261027.mjs`
+  aplicado en LOCAL/STG/PRD.
 - **El marco es MARCO, no fondo (ancho constante bajo zoom/pan)**: con tarjeta de color
   (frame-card/full-bleed), el hueco que deja la foto al alejarla (zoom-out) o moverla se
   rellena con el color de la tarjeta SIN marco (capa `background`). La decisión vive en
@@ -486,6 +490,16 @@ packages/db/scripts/
 - **Texto pack-level**: la vía principal del mensaje Polaroid es el campo "Tu mensaje" del
   sidebar (escribe todos los slots); tap en el texto del canvas = atajo al modal (guard anti
   doble-panel táctil en `studio-slot.tsx`).
+- **`allowText` gobierna TODA la superficie de texto del producto** (fix 2026-10-27 — la
+  plantilla cuadrada traía una capa `free_text` editable aunque el producto no admite texto):
+  la pestaña Texto de «Ajustar foto» solo se habilita si el producto admite texto Y la
+  plantilla del slot tiene capas de texto editables (`studio-canvas-grid.tsx` filtra
+  `textLayers` por `allowText`); el hint «toca el texto para editarlo» (`studio-editor.tsx`
+  → `hasEditableTextLayers`) se apaga igual. `StudioSlotEditModal` además blinda su tab
+  inicial: sin foto y sin texto arranca en Foto, nunca queda en una pestaña deshabilitada.
+  En Cuadrados la capa de texto también se retiró de la plantilla
+  (one-shot `cuadrados-sin-texto-20261027.mjs`, LOCAL/STG/PRD) — los diseños existentes la
+  conservan en su snapshot, inerte por los gates.
 - **Nombre y sets de letras: «Borde de las fichas» ARRIBA de «Elige los colores»** — primero
   se define el borde; debajo la paleta. Con «Sin borde» el apagado del color solo aplica con
   tema ILUSTRADO (`styleId !== null`): sin marco no hay nada que pintar → el hint "Toca una

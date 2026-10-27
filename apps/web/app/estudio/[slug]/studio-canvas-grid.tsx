@@ -2017,7 +2017,11 @@ function StudioSlotEditModalWrapper({
   );
 
   const textLayers = useMemo(() => {
-    if (!unitTemplate) return [];
+    // allowText del producto MANDA sobre la plantilla: un producto sin texto
+    // (Cuadrados) nunca ofrece la pestaña Texto aunque su plantilla traiga una
+    // capa editable residual (misma regla que el render del lienzo, que no
+    // dibuja texto sin allowText — studio-slot).
+    if (!allowText || !unitTemplate) return [];
     const layers = unitTemplate.layers.filter(
       (l): l is TextLayer => l.type === "text" && (l as TextLayer).editable === true,
     );
@@ -2029,7 +2033,7 @@ function StudioSlotEditModalWrapper({
       }
     }
     return layers;
-  }, [unitTemplate, editModal]);
+  }, [allowText, unitTemplate, editModal]);
 
   return (
     <StudioSlotEditModal
