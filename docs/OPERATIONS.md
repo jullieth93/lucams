@@ -385,6 +385,27 @@ ambiente (mientras no se invalide, sirven los fallbacks del código o el caché 
 `personalizationSchema.borderWidth` del Product y se configura por producto en
 `/admin/productos` (tab Personalización, SectionCard «Grosor del borde»).
 
+### One-shots de datos de la jornada 2026-10-27 (fixes Estudio Cuadrados — ADR-177 + extensión ADR-164)
+
+Sin claves CMS nuevas. Dos one-shots (dry-run por defecto, `--apply` ejecuta; allowlisted en
+`check-script-guards.mjs`), **aplicados en LOCAL, STG y PRD** (2026-10-27, idempotencia
+verificada con re-corrida dry-run «~ ya estaba» en los 3 ambientes):
+
+- `packages/db/scripts/one-shot/cuadrados-sin-texto-20261027.mjs` — retira las capas
+  `type:"text"` del canvasData de la plantilla cuadrada y restaura la geometría de la foto
+  (height `stageH-140` → `stageH-80`). Efecto inmediato incluso con el código viejo: sin
+  capas editables, la pestaña Texto de «Ajustar foto» queda deshabilitada.
+- `packages/db/scripts/one-shot/frame-options-binary-cuadrados-20261027.mjs` — fusiona
+  `frameOptions:["blanco","negro"]` en `personalizationSchema` del producto
+  `set-fotoimanes-cuadrados` y actualiza su `description` (deja de prometer «6 colores de
+  marca»; el picker «Personalizado» cubre el multi-color).
+
+**Pendiente manual:** «Actualizar caché de contenido» en `/admin/contenido` de STG y PRD
+(escrituras directas en DB; el caché `catalog` sirve el dato viejo hasta invalidar o ~1 h).
+Los diseños existentes no se tocan: conservan su snapshot (la capa de texto queda inerte por
+los gates de `allowText` del ADR-177; los colores pastel ya elegidos se anuncian como
+«Personalizado #HEX»).
+
 ### Higiene de Supabase Storage — estrategia completa (2026-10-12)
 
 Contexto: el 2026-10-12 se midieron **~316 MB de objetos huérfanos en PRD** (217 MB en

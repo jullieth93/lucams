@@ -53,6 +53,11 @@ const ALLOWLIST_PRD_DELIBERADO = new Set([
   // incl. PRD (dry-run por defecto + --apply, schema fusionado).
   "one-shot/frame-options-binary-20261022.mjs",
   "one-shot/shipping-carrier-rules-20261022.mjs",
+  // 2026-10-27 — Cuadrados: paleta binaria + descripción alineada, y plantilla
+  // sin capa de texto (decisión owner); mismo patrón PRD-deliberado de
+  // frame-options-binary-20261022 (dry-run por defecto + --apply).
+  "one-shot/frame-options-binary-cuadrados-20261027.mjs",
+  "one-shot/cuadrados-sin-texto-20261027.mjs",
 ]);
 
 const WRITE_RE =

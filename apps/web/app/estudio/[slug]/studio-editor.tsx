@@ -810,11 +810,15 @@ export function StudioEditor({
     s.canvasData ? isInstagramTemplate(s.canvasData.unitTemplate.layers) : false,
   );
   // Ola 2 (2026-10-26) — la pista «toca un texto para editarlo» solo aplica si
-  // la plantilla vigente tiene capas de texto editables (polaroid, calendario…).
+  // el PRODUCTO admite texto (allowText) Y la plantilla vigente tiene capas de
+  // texto editables (polaroid). Misma regla que el render del lienzo: sin
+  // allowText las capas no se dibujan → no hay nada que tappear (Cuadrados).
   const hasEditableTextLayers = useStore(store, (s) =>
-    (s.canvasData?.unitTemplate.layers ?? []).some(
-      (l) => l.type === "text" && (l as { editable?: boolean }).editable === true,
-    ),
+    allowText
+      ? (s.canvasData?.unitTemplate.layers ?? []).some(
+          (l) => l.type === "text" && (l as { editable?: boolean }).editable === true,
+        )
+      : false,
   );
   const tourSurface = resolveTourSurface({
     isInstagramTemplate: isIgTemplate,

@@ -212,6 +212,38 @@ describe("StudioSlotEditModal — letra del calendario dentro de «Ajustar Foto�
   });
 });
 
+describe("StudioSlotEditModal — pestaña Texto apagada sin hasText (owner 2026-10-27)", () => {
+  it("sin foto Y sin texto (producto sin allowText): NUNCA abre en la pestaña Texto", () => {
+    render(<StudioSlotEditModal {...baseProps()} hasPhoto={false} hasText={false} />);
+    const tabFoto = screen.getByRole("tab", { name: /Foto/ });
+    const tabTexto = screen.getByRole("tab", { name: /Texto/ });
+    expect(tabTexto).toBeDisabled();
+    // El default cae en Foto (antes caía en Texto y quedaba una pestaña vacía).
+    expect(tabFoto).toHaveAttribute("data-state", "active");
+    expect(tabTexto).toHaveAttribute("data-state", "inactive");
+  });
+
+  it("sin foto PERO con texto: el default sigue siendo la pestaña Texto (comportamiento histórico)", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes-polaroid",
+      canvasData: igCanvasData(),
+      templates: [],
+    });
+    render(
+      <StudioSlotEditModal
+        {...baseProps()}
+        hasPhoto={false}
+        photoUrl={null}
+        hasText={true}
+        textLayers={IG_TEXT_LAYERS}
+      />,
+    );
+    expect(screen.getByRole("tab", { name: /Texto/ })).toHaveAttribute("data-state", "active");
+  });
+});
+
 describe("StudioSlotEditModal — campos IG en la pestaña Texto (QA ronda 2, owner 2026-10-07)", () => {
   it("con plantilla Instagram la pestaña Texto muestra «Campos de Instagram» (store activo vía registry)", () => {
     // El modal no recibe el store por props (host congelado): la sección lo

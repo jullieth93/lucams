@@ -33,16 +33,35 @@ function renderStudio(ui: ReactElement) {
 
 // ── Mocks de frontera ────────────────────────────────────────────────
 
+// Props capturadas por slot para disparar interacciones (onEdit) desde el test.
+const slotProps = vi.hoisted(() => ({
+  map: new Map<number, { onEdit?: (tab: "photo" | "text") => void }>(),
+}));
+// Spy de la modal de edición: el contrato allowText → hasText se blinda contra
+// las props que recibe (la modal real no corre en jsdom por Konva).
+const editModalSpy = vi.hoisted(() => ({ last: null as Record<string, unknown> | null }));
+
 vi.mock("./studio-slot", () => ({
-  StudioSlot: ({
-    slotState,
-    displaySize,
-  }: {
+  StudioSlot: (props: {
     slotState: { slotIndex: number };
     displaySize?: number;
-  }) => <div data-testid={`studio-slot-${slotState.slotIndex}`} data-display-size={displaySize} />,
+    onEdit?: (tab: "photo" | "text") => void;
+  }) => {
+    slotProps.map.set(props.slotState.slotIndex, { onEdit: props.onEdit });
+    return (
+      <div
+        data-testid={`studio-slot-${props.slotState.slotIndex}`}
+        data-display-size={props.displaySize}
+      />
+    );
+  },
 }));
-vi.mock("./studio-slot-edit-modal", () => ({ StudioSlotEditModal: () => null }));
+vi.mock("./studio-slot-edit-modal", () => ({
+  StudioSlotEditModal: (props: Record<string, unknown>) => {
+    editModalSpy.last = props;
+    return null;
+  },
+}));
 vi.mock("./use-prefers-reduced-motion", () => ({ usePrefersReducedMotion: () => true }));
 
 /** Observer falso: registra los slotIndex observados y expone el callback. */
@@ -133,6 +152,8 @@ beforeEach(() => {
   io.observed = [];
   io.elements = new Map();
   io.callback = null;
+  slotProps.map.clear();
+  editModalSpy.last = null;
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
 });
@@ -573,5 +594,83 @@ describe("StudioCanvasGrid — calendario multi-set (secciones «Set N»)", () =
     // Header de sección + pastilla del pager usan el mismo rótulo.
     expect(screen.getAllByText("Set 1 de 2").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("Set 2 de 2").length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ── Gateo allowText de la pestaña Texto (owner 2026-10-27) ───────────
+//
+// Bug: la pestaña «Texto» de «Ajustar foto» se habilitaba con CUALQUIER capa
+// de texto editable de la plantilla, sin mirar el allowText del producto. La
+// plantilla de Cuadrados traía una capa `free_text` residual (el producto tiene
+// allowText=false → el lienzo y producción nunca la dibujan) y el tab aparecía
+// habilitado. Contrato: allowText del producto MANDA — sin él la modal recibe
+// hasText=false y textLayers=[] aunque la plantilla tenga capas editables.
+
+/** Canvas de 1 slot cuya plantilla SÍ trae una capa de texto editable. */
+function makeTextLayerCanvas(): CanvasDataV2 {
+  return {
+    version: 2,
+    unitTemplate: {
+      version: 1,
+      stage: { width: 600, height: 600 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "p1", type: "image-placeholder", x: 40, y: 40, width: 520, height: 520 },
+        {
+          id: "free_text",
+          type: "text",
+          x: 300,
+          y: 540,
+          text: "Escribe tu mensaje",
+          editable: true,
+        },
+      ],
+    } as CanvasDataV2["unitTemplate"],
+    slotCount: 1,
+    slots: [{ slotIndex: 0, assetId: "a1", assetUrl: "blob:foto" }],
+    gridLayout: { cols: 1, rows: 1, gap: 24 },
+  };
+}
+
+function setupTextGate(allowText: boolean) {
+  const store = createStudioStore();
+  store.getState().init({
+    designId: "d1",
+    productSlug: "set-fotoimanes-cuadrados",
+    canvasData: makeTextLayerCanvas(),
+    templates: [],
+  });
+  renderStudio(
+    <StudioCanvasGrid
+      store={store}
+      allowText={allowText}
+      onSlotClick={() => {}}
+      stageZoomRaw={1}
+      onStageZoomState={() => {}}
+      registerSlotStages={() => {}}
+    />,
+  );
+  // Abrir «Ajustar foto» del slot 0 (el modal queda montado siempre; isOpen lo
+  // marca la petición de edición).
+  act(() => {
+    slotProps.map.get(0)?.onEdit?.("photo");
+  });
+}
+
+describe("StudioCanvasGrid — allowText gobierna la pestaña Texto (owner 2026-10-27)", () => {
+  it("allowText=false (Cuadrados): la modal recibe hasText=false y textLayers=[] aunque la plantilla tenga capa editable", () => {
+    setupTextGate(false);
+    expect(editModalSpy.last?.isOpen).toBe(true);
+    expect(editModalSpy.last?.hasText).toBe(false);
+    expect(editModalSpy.last?.textLayers).toEqual([]);
+  });
+
+  it("allowText=true (Polaroid): la modal recibe hasText=true con la capa editable de la plantilla", () => {
+    setupTextGate(true);
+    expect(editModalSpy.last?.isOpen).toBe(true);
+    expect(editModalSpy.last?.hasText).toBe(true);
+    expect((editModalSpy.last?.textLayers as Array<{ id: string }>).map((l) => l.id)).toEqual([
+      "free_text",
+    ]);
   });
 });

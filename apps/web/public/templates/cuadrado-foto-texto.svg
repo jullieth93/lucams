@@ -1,12 +1,12 @@
 <svg width="600" height="600" viewBox="0 0 600 600" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!--
-    Mockup "Plantilla Cuadrado" (2026-09-14) — fotoimán cuadrado 1:1 con tu foto
-    y un mensaje corto debajo. Espejo del lienzo real (blankCanvas 600×600 con
-    texto): foto casi a sangre con margen uniforme + línea de mensaje editable.
+    Mockup "Plantilla Cuadrado" — fotoimán cuadrado 1:1 con tu foto.
+    Espejo del lienzo real (blankCanvas 600×600 SIN texto, 2026-10-27: un diseño
+    cuadrado no lleva mensaje): foto casi a sangre con margen uniforme; el marco
+    de color es opcional (blanco/negro/Personalizado) y lo pinta el Estudio.
   -->
   <rect width="600" height="600" rx="10" fill="#FFFFFF" stroke="#7C6AAD" stroke-opacity="0.25" stroke-width="2"/>
-  <rect x="40" y="40" width="520" height="420" rx="8" fill="#F4ECFF"/>
-  <path d="M300 275c-17-13-37-27-37-46 0-11 8-18 18-18 8 0 13 4 19 12 6-8 11-12 19-12 10 0 18 7 18 18 0 19-20 33-37 46z" fill="#7C6AAD" opacity="0.35"/>
-  <text x="300" y="520" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="34" font-weight="bold" fill="#3D2E5C">Tu mensaje acá</text>
-  <text x="300" y="566" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="16" fill="#7C6AAD">Fotoimán cuadrado · tu foto + mensaje</text>
+  <rect x="40" y="40" width="520" height="520" rx="8" fill="#F4ECFF"/>
+  <path d="M300 335c-24-19-52-38-52-65 0-15 11-25 25-25 11 0 18 6 27 17 9-11 16-17 27-17 14 0 25 10 25 25 0 27-28 46-52 65z" fill="#7C6AAD" opacity="0.35"/>
+  <text x="300" y="430" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="20" fill="#7C6AAD">Fotoimán cuadrado · tu foto</text>
 </svg>

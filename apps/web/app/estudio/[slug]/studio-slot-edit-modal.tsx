@@ -173,8 +173,9 @@ export function StudioSlotEditModal({
   onCalendarFontChange,
   applyToAll,
 }: StudioSlotEditModalProps) {
-  // Tab activa: Foto por default si hay foto; si no, Texto (si aplica).
-  const defaultTab = hasPhoto ? "photo" : "text";
+  // Tab activa: Foto por default si hay foto; si no, Texto (si aplica). Sin
+  // texto disponible (hasText=false, ej. producto sin allowText) siempre Foto.
+  const defaultTab = hasPhoto || !hasText ? "photo" : "text";
   const [activeTab, setActiveTab] = useState(defaultTab);
   const texts = useStudioTexts();
   // 2026-10-19 (owner — un solo «Listo») — commit pendiente del editor de texto
@@ -192,10 +193,10 @@ export function StudioSlotEditModal({
   // cambia hasPhoto mientras está abierto) ajustando el estado DURANTE el render
   // (patrón oficial de React para "derive el estado de las props"), porque
   // react-hooks/set-state-in-effect prohíbe el setState sincrónico en efectos.
-  const [tabSync, setTabSync] = useState({ open: isOpen, hasPhoto });
-  if (tabSync.open !== isOpen || tabSync.hasPhoto !== hasPhoto) {
-    setTabSync({ open: isOpen, hasPhoto });
-    if (isOpen) setActiveTab(hasPhoto ? "photo" : "text");
+  const [tabSync, setTabSync] = useState({ open: isOpen, hasPhoto, hasText });
+  if (tabSync.open !== isOpen || tabSync.hasPhoto !== hasPhoto || tabSync.hasText !== hasText) {
+    setTabSync({ open: isOpen, hasPhoto, hasText });
+    if (isOpen) setActiveTab(hasPhoto || !hasText ? "photo" : "text");
   }
 
   const title = slotLabel
