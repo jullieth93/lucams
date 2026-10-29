@@ -50,7 +50,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PRODUCT_REDIRECTS } from "@/lib/product-redirects";
 import { productNotFoundResponse } from "@/lib/product-not-found";
-import { getStorefrontProductSlugSet } from "@/features/products/public-service";
+import { getStorefrontProductSlugs } from "@/features/products/public-service";
 import { logger } from "@/lib/logger";
 import {
   ADMIN_ACTIVITY_COOKIE,
@@ -229,8 +229,8 @@ export async function proxy(request: NextRequest) {
   // redirect registrado redirige, no 404.
   if (path.startsWith("/producto/") && request.method === "GET") {
     const slug = path.slice("/producto/".length).split("/")[0];
-    const liveSlugs = await getStorefrontProductSlugSet().catch(() => null);
-    if (liveSlugs && !liveSlugs.has(slug)) {
+    const liveSlugs = await getStorefrontProductSlugs().catch(() => null);
+    if (liveSlugs && !liveSlugs.includes(slug)) {
       return withSecurityHeaders(productNotFoundResponse(), requestId);
     }
   }
