@@ -860,7 +860,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                     return (
                       <div
                         key={it.id}
-                        className="border-brand-purple/12 relative rounded-xl border bg-white p-2 shadow-sm"
+                        className="border-brand-purple/12 group relative rounded-xl border bg-white p-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-purple/10"
                       >
                         {/* Paquete A — click en la tarjeta abre el detalle (caras
                         A/B lado a lado + ficha). El archivar sigue aparte. */}
@@ -869,14 +869,14 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                           onClick={() => setDetail(it)}
                           aria-label={`Ver detalle de ${it.name}`}
                           aria-haspopup="dialog"
-                          className="focus:ring-brand-turquoise block w-full rounded-lg focus:ring-2 focus:outline-none"
+                          className="focus:ring-brand-turquoise block w-full overflow-hidden rounded-lg focus:ring-2 focus:outline-none"
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
                           <img
                             src={it.imageUrl}
                             alt={it.name}
                             className={
-                              "aspect-square w-full rounded-lg object-cover " +
+                              "aspect-square w-full rounded-lg object-cover transition-transform duration-300 group-hover:scale-[1.05] " +
                               (it.isActive ? "" : "opacity-50 grayscale")
                             }
                           />
