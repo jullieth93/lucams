@@ -236,6 +236,29 @@ const listStorefrontCategoriesCached = cache(async function listStorefrontCatego
   return topLevelOnly ? all.filter((c) => c.parentId === null) : all;
 });
 
+/**
+ * Set de slugs de productos VIVOS en storefront (gate F-04 completo). Lo usa el
+ * proxy para decidir 404 REAL de /producto/<slug> antes de confirmar el stream:
+ * con loading.tsx en el segmento, el notFound() del page/generateMetadata sale
+ * como 200+noindex (soft 404 — auditoría SEO 2026-10-28, SEO-001).
+ *
+ * Staleness: tag "catalog" — toda mutación admin de productos dispara
+ * updateTag("catalog") (ver header del módulo), así que un producto recién
+ * creado/reactivado NUNCA cae en falso 404; el TTL de 1h es la red de seguridad
+ * ante escrituras por fuera del admin. En el proxy se consume fail-open
+ * (error de DB → se deja pasar el request a la página).
+ */
+export const getStorefrontProductSlugSet = cachedCatalog(
+  async function getStorefrontProductSlugSet(): Promise<ReadonlySet<string>> {
+    const rows = await prisma.product.findMany({
+      where: STOREFRONT_WHERE,
+      select: { slug: true },
+    });
+    return new Set(rows.map((r) => r.slug));
+  },
+  ["storefront-product-slug-set"],
+);
+
 export function listStorefrontCategories(opts: { topLevelOnly?: boolean } = {}) {
   return listStorefrontCategoriesCached(opts.topLevelOnly ?? false);
 }
