@@ -196,18 +196,18 @@ export default async function AdminMetricasPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard
               label="Pedidos pagados"
-              value={paidCount.toLocaleString("es-CO")}
+              value={paidCount}
               trendLabel="Acumulado histórico (pagado, preparación, enviado, entregado)"
             />
             <KpiCard
               label="Esperando pago"
-              value={pendingCount.toLocaleString("es-CO")}
+              value={pendingCount}
               trend={pendingCount > 0 ? "down" : "neutral"}
               trendLabel="Pedidos creados que aún no confirman el pago"
             />
             <KpiCard
               label="Pedidos últimos 30 días"
-              value={ordersLast30.toLocaleString("es-CO")}
+              value={ordersLast30}
               trendLabel="Sin contar borradores (carritos abandonados)"
             />
             <KpiCard
@@ -330,12 +330,12 @@ export default async function AdminMetricasPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard
               label="Campos administrables"
-              value={cmsStats.totalFields.toLocaleString("es-CO")}
+              value={cmsStats.totalFields}
               trendLabel="Textos, imágenes y ajustes editables del sitio"
             />
             <KpiCard
               label="Cambios sin publicar"
-              value={cmsStats.draftsPending.toLocaleString("es-CO")}
+              value={cmsStats.draftsPending}
               trend={
                 cmsStats.staleDrafts > 0 ? "down" : cmsStats.draftsPending === 0 ? "up" : "neutral"
               }
@@ -349,7 +349,7 @@ export default async function AdminMetricasPage() {
             />
             <KpiCard
               label="Sin editar desde su carga inicial"
-              value={cmsStats.neverEdited.toLocaleString("es-CO")}
+              value={cmsStats.neverEdited}
               trendLabel="Candidatos a revisar si el texto aún aplica"
             />
             <KpiCard
