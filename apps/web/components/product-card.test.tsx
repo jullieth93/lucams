@@ -40,6 +40,7 @@ function makeCard(over: Partial<StorefrontProductCard> = {}): StorefrontProductC
     id: "p1",
     slug: "iman-corazon",
     name: "Imán Corazón",
+    sku: "IMN-CORAZON",
     basePrice: 20_000,
     compareAtPrice: null,
     isPersonalizable: false,

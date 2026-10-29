@@ -43,6 +43,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isCatalogMode } from "@/lib/store-mode";
 import { ClearCheckoutSession } from "./clear-checkout-session";
 import { AutoRefresh } from "./auto-refresh";
+import { TrackPurchase } from "@/components/analytics-trackers";
 import { processPaidOrder, flagForeignApprovedPayment } from "@/features/orders/saga";
 import {
   findOrderIdByWompiReference,
@@ -178,6 +179,9 @@ export default async function CheckoutGraciasPage({
           number: true,
           status: true,
           total: true,
+          // E09 (GA4 purchase): shipping/tax para el desglose del evento.
+          shipping: true,
+          tax: true,
           email: true,
           shippingCarrier: true,
           shippingAddress: true,
@@ -191,16 +195,25 @@ export default async function CheckoutGraciasPage({
             select: {
               id: true,
               qty: true,
+              // E09 (GA4 purchase): precio unitario cobrado + SKU para los ítems del evento.
+              unitPrice: true,
               designAssetUrl: true,
               // Paquete F (2026-10-02) — name/attributes: desglose de la variante bajo
               // las miniaturas; images: foto propia de la variante antes que la del producto.
               variant: {
                 select: {
                   name: true,
+                  sku: true,
                   attributes: true,
                   images: true,
                   product: {
-                    select: { name: true, slug: true, images: true, personalizationKind: true },
+                    select: {
+                      name: true,
+                      sku: true,
+                      slug: true,
+                      images: true,
+                      personalizationKind: true,
+                    },
                   },
                 },
               },
@@ -306,6 +319,9 @@ export default async function CheckoutGraciasPage({
             number: true,
             status: true,
             total: true,
+            // E09 (GA4 purchase): shipping/tax para el desglose del evento.
+            shipping: true,
+            tax: true,
             email: true,
             shippingCarrier: true,
             shippingAddress: true,
@@ -315,14 +331,23 @@ export default async function CheckoutGraciasPage({
               select: {
                 id: true,
                 qty: true,
+                // E09 (GA4 purchase): precio unitario cobrado + SKU para los ítems del evento.
+                unitPrice: true,
                 designAssetUrl: true,
                 variant: {
                   select: {
                     name: true,
+                    sku: true,
                     attributes: true,
                     images: true,
                     product: {
-                      select: { name: true, slug: true, images: true, personalizationKind: true },
+                      select: {
+                        name: true,
+                        sku: true,
+                        slug: true,
+                        images: true,
+                        personalizationKind: true,
+                      },
                     },
                   },
                 },
@@ -413,6 +438,8 @@ async function ApprovedPage({
     number: string;
     status: string;
     total: number;
+    shipping: number;
+    tax: number;
     email: string;
     shippingCarrier: string | null;
     shippingAddress: unknown;
@@ -420,13 +447,16 @@ async function ApprovedPage({
     items: {
       id: string;
       qty: number;
+      unitPrice: number;
       designAssetUrl: string | null;
       variant: {
         name: string;
+        sku: string;
         attributes: unknown;
         images: string[];
         product: {
           name: string;
+          sku: string;
           slug: string;
           images: string[];
           personalizationKind: string | null;
@@ -457,6 +487,23 @@ async function ApprovedPage({
   return (
     <div className="mx-auto max-w-2xl py-8 text-center">
       <ClearCheckoutSession />
+      {/* GA4 purchase (E09): idempotente por número de orden (localStorage,
+          el auto-refresh y las recargas no re-cuentan la conversión). */}
+      {order && (
+        <TrackPurchase
+          transactionId={order.number}
+          valueCents={order.total}
+          shippingCents={order.shipping}
+          taxCents={order.tax}
+          items={order.items.map((it) => ({
+            sku: it.variant.sku || it.variant.product.sku,
+            name: it.variant.product.name,
+            variantName: it.variant.name,
+            priceCents: it.unitPrice,
+            quantity: it.qty,
+          }))}
+        />
+      )}
       <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 ring-8 ring-emerald-100">
         <CheckCircle2 className="h-12 w-12 text-emerald-600" />
       </div>

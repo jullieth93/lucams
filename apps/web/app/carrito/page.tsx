@@ -28,6 +28,7 @@ import { isCatalogMode } from "@/lib/store-mode";
 import { getCurrentCustomer } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
+import { TrackViewCart } from "@/components/analytics-trackers";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { LinkPendingLabel } from "@/components/ui/link-pending-label";
 import { IconSubmitButton } from "./qty-button";
@@ -51,6 +52,19 @@ export default async function CarritoPage() {
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
+      {/* GA4 view_cart (E09) — solo cuando hay ítems; no-op sin env/consent. */}
+      {cart && cart.items.length > 0 && (
+        <TrackViewCart
+          valueCents={cart.subtotal}
+          items={cart.items.map((i) => ({
+            sku: i.variantSku,
+            name: i.productName,
+            variantName: i.variantName,
+            priceCents: i.unitPrice,
+            quantity: i.qty,
+          }))}
+        />
+      )}
       <SiteHeader />
 
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-8 sm:px-10">

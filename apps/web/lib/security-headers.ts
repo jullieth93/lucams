@@ -49,9 +49,20 @@ export function buildCsp(nonce: string, isProd: boolean): string {
   const vercelImg = isVercelPreview ? " https://vercel.live https://vercel.com" : "";
   const vercelConnect = isVercelPreview ? " https://vercel.live wss://ws-us3.pusher.com" : "";
   const vercelFont = isVercelPreview ? " https://vercel.live https://assets.vercel.com" : "";
+  // GA4 (E09, auditoría SEO 2026-10-28): gtag.js (script desde googletagmanager.com)
+  // y los beacons de medición (google-analytics.com — el wildcard cubre
+  // region1.google-analytics.com, el endpoint regional de GA4). Gateado a la
+  // env NEXT_PUBLIC_GA_MEASUREMENT_ID (mismo patrón que supabaseOrigin): sin
+  // analytics configurado la CSP NO se ensancha.
+  const ga4Enabled = Boolean(process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim());
+  const ga4Script = ga4Enabled ? " https://www.googletagmanager.com" : "";
+  const ga4Connect = ga4Enabled ? " https://*.google-analytics.com" : "";
+  const ga4Img = ga4Enabled
+    ? " https://*.google-analytics.com https://www.googletagmanager.com"
+    : "";
   const scriptSrc = isProd
-    ? `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com https://checkout.wompi.co${vercelLive}`
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co";
+    ? `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com https://checkout.wompi.co${vercelLive}${ga4Script}`
+    : `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co${ga4Script}`;
   // El host de Supabase NO siempre es *.supabase.co: el stack local del
   // nightly A3 corre en http://localhost:54321 y la CSP bloqueaba las llamadas
   // auth del browser (AuthRetryableFetchError — el connect-src no lo cubría).
@@ -82,11 +93,11 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     // customer-uploads salen con el host del stack local (http://<lan-ip>:54321) y la
     // CSP las bloqueaba — las minis del Estudio no pintaban en local mientras STG/PRD
     // (https://*.supabase.co) sí. Duplicado en prod es inocuo (ya cubierto por el wildcard).
-    `img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com${vercelImg}${supabaseOrigin}`,
+    `img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com${vercelImg}${supabaseOrigin}${ga4Img}`,
     `font-src 'self' https://fonts.gstatic.com${vercelFont}`,
     // Solo hosts que el NAVEGADOR contacta: Supabase (auth/storage/realtime) + Wompi (widget/checkout).
     // El envío (Aveonline) y la IA (Gemini) se llaman SERVER-SIDE → no van en connect-src.
-    `connect-src 'self' https://*.supabase.co https://api.wompi.co${vercelConnect}${supabaseOrigin}`,
+    `connect-src 'self' https://*.supabase.co https://api.wompi.co${vercelConnect}${supabaseOrigin}${ga4Connect}`,
     // frame-src también lleva vercel.live en previews (H14, 2026-08-06): el fix
     // de 2026-08-05 lo había agregado SOLO a script-src, pero la toolbar de
     // Vercel Live es un IFRAME y seguía bloqueada por frame-src (error CSP en

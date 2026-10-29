@@ -69,6 +69,8 @@ export type CartLineItem = {
   productName: string;
   variantId: string;
   variantName: string;
+  /** SKU de la variante (E09 — item_id de los eventos GA4 de carrito/checkout). */
+  variantSku: string;
   /**
    * Desglose estructurado de la variante (Paquete F, 2026-10-02 —
    * describeVariantAttributes): ["12 fotos", "6×8 cm", "Sin imán"].
@@ -439,6 +441,7 @@ function toDetail(cart: RawCart): CartDetail {
         productName: i.variant.product.name,
         variantId: i.variantId,
         variantName: i.variant.name,
+        variantSku: i.variant.sku,
         variantBreakdown: describeVariantAttributes(parseVariantAttributes(i.variant.attributes)),
         isPersonalizable: i.variant.product.isPersonalizable,
         qty: i.qty,

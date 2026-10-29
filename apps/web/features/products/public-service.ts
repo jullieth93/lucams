@@ -70,6 +70,8 @@ export type StorefrontProductCard = {
   id: string;
   slug: string;
   name: string;
+  /** E09 (GA4): item_id de los eventos de listado (view_item_list). */
+  sku: string;
   basePrice: number;
   compareAtPrice: number | null;
   isPersonalizable: boolean;
@@ -379,6 +381,7 @@ const STOREFRONT_CARD_SELECT = {
   id: true,
   slug: true,
   name: true,
+  sku: true,
   basePrice: true,
   compareAtPrice: true,
   isPersonalizable: true,
@@ -510,6 +513,7 @@ export async function searchStorefrontProducts(
     id: string;
     slug: string;
     name: string;
+    sku: string;
     basePrice: number;
     compareAtPrice: number | null;
     isPersonalizable: boolean;
@@ -532,7 +536,7 @@ export async function searchStorefrontProducts(
   // GREATEST() toma el mayor → un mismo row no se "infla" sumando.
   const rows = await prisma.$queryRaw<Row[]>`
     SELECT
-      p.id, p.slug, p.name, p."basePrice", p."compareAtPrice",
+      p.id, p.slug, p.name, p.sku, p."basePrice", p."compareAtPrice",
       p."isPersonalizable", p.images, p."isFeatured",
       c.name AS "categoryName", c.slug AS "categorySlug",
       GREATEST(
@@ -568,7 +572,7 @@ export async function searchStorefrontProducts(
   // marcadas como sugerencias.
   const suggestions = await prisma.$queryRaw<Row[]>`
     SELECT
-      p.id, p.slug, p.name, p."basePrice", p."compareAtPrice",
+      p.id, p.slug, p.name, p.sku, p."basePrice", p."compareAtPrice",
       p."isPersonalizable", p.images, p."isFeatured",
       c.name AS "categoryName", c.slug AS "categorySlug",
       similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})) AS score
@@ -589,6 +593,7 @@ function mapRow(r: {
   id: string;
   slug: string;
   name: string;
+  sku: string;
   basePrice: number;
   compareAtPrice: number | null;
   isPersonalizable: boolean;
@@ -602,6 +607,7 @@ function mapRow(r: {
     id: r.id,
     slug: r.slug,
     name: r.name,
+    sku: r.sku,
     basePrice: r.basePrice,
     compareAtPrice: r.compareAtPrice,
     isPersonalizable: r.isPersonalizable,
@@ -721,6 +727,7 @@ export async function listRelatedProducts(opts: {
       id: true,
       slug: true,
       name: true,
+      sku: true,
       basePrice: true,
       compareAtPrice: true,
       isPersonalizable: true,
@@ -754,6 +761,7 @@ export async function listRelatedProducts(opts: {
     id: p.id,
     slug: p.slug,
     name: p.name,
+    sku: p.sku,
     basePrice: p.basePrice,
     compareAtPrice: p.compareAtPrice,
     isPersonalizable: p.isPersonalizable,
@@ -780,6 +788,7 @@ export async function listRelatedProducts(opts: {
       id: true,
       slug: true,
       name: true,
+      sku: true,
       basePrice: true,
       compareAtPrice: true,
       isPersonalizable: true,

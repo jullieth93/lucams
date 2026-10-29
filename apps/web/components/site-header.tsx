@@ -21,22 +21,11 @@ import { ShopMegaMenu, type MegaMenuTexts } from "@/components/shop-mega-menu";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { getCartItemCount } from "@/features/cart/service";
-import { getCategoryTree } from "@/lib/catalog";
+import { getCategoryTree, listOcasiones } from "@/lib/catalog";
 import { getCurrentAdmin, getCurrentCustomer, getCurrentUser } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
 import { getCmsBlock, getCmsImage } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
-
-// Fallbacks de las etiquetas de ocasión — idénticos a lo que TOP_OCASIONES
-// tiene hardcodeado en shop-mega-menu.tsx (REGLA DE ORO del CMS).
-const OCCASION_LABEL_FALLBACKS: Record<string, string> = {
-  cumpleanos: "Cumpleaños",
-  matrimonio: "Matrimonio",
-  "dia-madre": "Día Madre",
-  "dia-padre": "Día Padre",
-  navidad: "Navidad",
-  empresarial: "Empresarial",
-};
 
 // Resuelve un bloque CMS a string plano: mismo patrón que <CmsText>, pero
 // para textos que bajan por props a un client component.
@@ -48,7 +37,6 @@ async function cmsMenuText(key: string, fallback: string): Promise<string> {
 // <ShopMegaMenu> es client component ("use client") y no puede leer el CMS:
 // sus textos se resuelven acá en el server y se pasan por props.
 async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
-  const slugs = Object.keys(OCCASION_LABEL_FALLBACKS);
   const [
     catalog,
     helpCta,
@@ -61,7 +49,6 @@ async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
     admin,
     login,
     signup,
-    occasionLabels,
   ] = await Promise.all([
     cmsMenuText("header.menu.catalog", "Catálogo"),
     cmsMenuText("header.menu.help-cta", "¿Te ayudamos a elegir?"),
@@ -74,11 +61,6 @@ async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
     cmsMenuText("header.menu.admin", "Panel admin"),
     cmsMenuText("header.menu.login", "Ingresar"),
     cmsMenuText("header.menu.signup", "Crear cuenta"),
-    Promise.all(
-      slugs.map((slug) =>
-        cmsMenuText(`header.menu.occasion.${slug}`, OCCASION_LABEL_FALLBACKS[slug]),
-      ),
-    ),
   ]);
   return {
     catalog,
@@ -92,22 +74,33 @@ async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
     admin,
     login,
     signup,
-    occasions: Object.fromEntries(slugs.map((slug, i) => [slug, occasionLabels[i]])),
   };
 }
 
 export async function SiteHeader() {
   const sessionId = await peekCartSession();
-  const [session, authUser, admin, categoryTree, megaMenuTexts, siteLogo] = await Promise.all([
-    getCurrentCustomer(),
-    getCurrentUser(),
-    getCurrentAdmin(),
-    getCategoryTree(),
-    getMegaMenuTexts(),
-    getCmsImage("site.logo"),
-  ]);
+  const [session, authUser, admin, categoryTree, ocasiones, megaMenuTexts, siteLogo] =
+    await Promise.all([
+      getCurrentCustomer(),
+      getCurrentUser(),
+      getCurrentAdmin(),
+      getCategoryTree(),
+      listOcasiones(),
+      getMegaMenuTexts(),
+      getCmsImage("site.logo"),
+    ]);
   const cartCount = sessionId ? await getCartItemCount(sessionId, session?.customer.id ?? null) : 0;
   const isAuthenticated = Boolean(authUser);
+
+  // Chips "Por ocasión" del mega-menú (SEO-002, auditoría 2026-10-28): antes 6
+  // slugs quemados con labels CMS; ahora las activas de DB con su nombre real
+  // (se editan en /admin/ocasiones). La del mes en curso (monthHint) va primera;
+  // el sort es estable → el resto conserva el order del admin. El menú muestra
+  // hasta 6; el resto queda en el índice /ocasion.
+  const currentMonth = new Date().getMonth() + 1;
+  const menuOcasiones = [...ocasiones]
+    .sort((a, b) => Number(b.monthHint === currentMonth) - Number(a.monthHint === currentMonth))
+    .map((o) => ({ slug: o.slug, name: o.name }));
 
   return (
     <header className="border-brand-purple/10 sticky top-0 z-40 border-b bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 sm:px-10">
@@ -123,6 +116,7 @@ export async function SiteHeader() {
               Antes había además un link plano "Catálogo" → redundante. */}
           <ShopMegaMenu
             tree={categoryTree}
+            ocasiones={menuOcasiones}
             isLoggedIn={isAuthenticated}
             isAdmin={!!admin}
             texts={megaMenuTexts}

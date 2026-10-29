@@ -106,7 +106,8 @@ describe("addToCartAction — self-heal de CART_IDENTITY_MISMATCH", () => {
       .mockResolvedValueOnce({ itemCount: 1 });
 
     await expect(addToCartAction(addForm())).rejects.toThrow("NEXT_REDIRECT");
-    expect(redirectSpy).toHaveBeenCalledWith("/carrito?added=1");
+    // cartQty/cartVariant: handoff del tracker GA4 de add_to_cart (E09).
+    expect(redirectSpy).toHaveBeenCalledWith("/carrito?added=1&cartQty=1");
 
     expect(cartSessionLib.rotateCartSession).toHaveBeenCalledTimes(1);
     expect(cartService.addProductToCart).toHaveBeenCalledTimes(2);

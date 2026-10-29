@@ -4,8 +4,9 @@
  *
  * Cubre: filtrado de categorías inactivas y cap de 8 en el menú, singular/plural
  * del conteo de productos, sub-categorías activas con "+N más" (>6) en desktop,
- * labels de ocasión con/sin CMS (fallback ?? label quemado), y el acordeón del
- * drawer móvil (expandir/colapsar, link de sub-categoría, cierre al navegar).
+ * chips de ocasión desde DB (prop `ocasiones`, nombres reales, cap de 6 — antes
+ * 6 slugs quemados con labels CMS, SEO-002), y el acordeón del drawer móvil
+ * (expandir/colapsar, link de sub-categoría, cierre al navegar).
  *
  * Mismo setup que shop-mega-menu.test.tsx (ResizeObserver stub, portal Radix).
  */
@@ -20,7 +21,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 
-import { ShopMegaMenu, type MegaMenuTexts } from "./shop-mega-menu";
+import { ShopMegaMenu, type MegaMenuOcasion, type MegaMenuTexts } from "./shop-mega-menu";
 
 globalThis.ResizeObserver = class {
   observe() {}
@@ -46,9 +47,14 @@ const TEXTS: MegaMenuTexts = {
   admin: "Panel admin",
   login: "Ingresar",
   signup: "Crear cuenta",
-  // Solo algunas ocasiones tienen label del CMS → el resto cae al fallback.
-  occasions: { cumpleanos: "Cumples" },
 };
+
+// Ocasiones como las entrega el server (listOcasiones → {slug, name}): 7 para
+// ejercitar el cap de 6 chips del menú.
+const OCASIONES: MegaMenuOcasion[] = Array.from({ length: 7 }, (_, i) => ({
+  slug: `ocasion-${i}`,
+  name: `Ocasión ${i}`,
+}));
 
 function makeCategory(over: Partial<CategoryNode> = {}): CategoryNode {
   return {
@@ -95,6 +101,7 @@ describe("ShopMegaMenu — filtrado y caps del árbol", () => {
           makeCategory({ slug: "activa", name: "Activa" }),
           makeCategory({ slug: "inactiva", name: "Inactiva", isActive: false }),
         ]}
+        ocasiones={[]}
         isLoggedIn={false}
         isAdmin={false}
         texts={TEXTS}
@@ -109,7 +116,9 @@ describe("ShopMegaMenu — filtrado y caps del árbol", () => {
     const tree = Array.from({ length: 10 }, (_, i) =>
       makeCategory({ slug: `cat-${i}`, name: `Categoría ${i}` }),
     );
-    render(<ShopMegaMenu tree={tree} isLoggedIn={false} isAdmin={false} texts={TEXTS} />);
+    render(
+      <ShopMegaMenu tree={tree} ocasiones={[]} isLoggedIn={false} isAdmin={false} texts={TEXTS} />,
+    );
     await openDesktopMenu();
     // El menú desktop lista 8 (la 9ª/10ª no aparecen).
     const grid = screen.getByText("Categoría 0").closest("div.grid")!;
@@ -125,6 +134,7 @@ describe("ShopMegaMenu — filtrado y caps del árbol", () => {
           makeCategory({ slug: "una", name: "Una", productCount: 1 }),
           makeCategory({ slug: "varias", name: "Varias", productCount: 5 }),
         ]}
+        ocasiones={[]}
         isLoggedIn={false}
         isAdmin={false}
         texts={TEXTS}
@@ -145,6 +155,7 @@ describe("ShopMegaMenu — sub-categorías y ocasiones (desktop)", () => {
     render(
       <ShopMegaMenu
         tree={[makeCategory({ slug: "padre", name: "Padre", children })]}
+        ocasiones={[]}
         isLoggedIn={false}
         isAdmin={false}
         texts={TEXTS}
@@ -169,6 +180,7 @@ describe("ShopMegaMenu — sub-categorías y ocasiones (desktop)", () => {
             ],
           }),
         ]}
+        ocasiones={[]}
         isLoggedIn={false}
         isAdmin={false}
         texts={TEXTS}
@@ -179,14 +191,43 @@ describe("ShopMegaMenu — sub-categorías y ocasiones (desktop)", () => {
     expect(screen.queryByText("Inactiva")).not.toBeInTheDocument();
   });
 
-  it("label de ocasión: manda el CMS cuando existe, fallback al quemado si no", async () => {
+  it("chips de ocasión: nombres reales de la prop (DB), href /ocasion/<slug> y cap de 6", async () => {
     render(
-      <ShopMegaMenu tree={[makeCategory()]} isLoggedIn={false} isAdmin={false} texts={TEXTS} />,
+      <ShopMegaMenu
+        tree={[makeCategory()]}
+        ocasiones={OCASIONES}
+        isLoggedIn={false}
+        isAdmin={false}
+        texts={TEXTS}
+      />,
+    );
+    // Desktop: con 7 ocasiones solo entran 6 chips.
+    await openDesktopMenu();
+    expect(screen.getByRole("link", { name: "Ocasión 0" })).toHaveAttribute(
+      "href",
+      "/ocasion/ocasion-0",
+    );
+    expect(screen.getByText("Ocasión 5")).toBeInTheDocument();
+    expect(screen.queryByText("Ocasión 6")).not.toBeInTheDocument();
+
+    // Móvil (drawer): el mismo cap aplica.
+    await openDrawer();
+    expect(screen.getAllByText("Ocasión 5").length).toBe(2);
+    expect(screen.queryByText("Ocasión 6")).not.toBeInTheDocument();
+  });
+
+  it("sin ocasiones activas la sección 'Por ocasión' no se muestra", async () => {
+    render(
+      <ShopMegaMenu
+        tree={[makeCategory()]}
+        ocasiones={[]}
+        isLoggedIn={false}
+        isAdmin={false}
+        texts={TEXTS}
+      />,
     );
     await openDesktopMenu();
-    // Desktop y móvil renderizan las chips de ocasión.
-    expect(screen.getAllByText("Cumples").length).toBeGreaterThan(0); // CMS
-    expect(screen.getAllByText("Matrimonio").length).toBeGreaterThan(0); // fallback
+    expect(screen.queryByText("Por ocasión")).not.toBeInTheDocument();
   });
 });
 
@@ -199,6 +240,7 @@ describe("ShopMegaMenu — drawer móvil (acordeón y sección de cuenta)", () =
             children: [child({ slug: "s1", name: "Sub uno" })],
           }),
         ]}
+        ocasiones={[]}
         isLoggedIn={false}
         isAdmin={false}
         texts={TEXTS}
@@ -226,6 +268,7 @@ describe("ShopMegaMenu — drawer móvil (acordeón y sección de cuenta)", () =
     render(
       <ShopMegaMenu
         tree={[makeCategory({ children: [] })]}
+        ocasiones={[]}
         isLoggedIn={false}
         isAdmin={false}
         texts={TEXTS}
@@ -241,6 +284,7 @@ describe("ShopMegaMenu — drawer móvil (acordeón y sección de cuenta)", () =
     render(
       <ShopMegaMenu
         tree={[makeCategory({ children: [child({ slug: "s1", name: "Sub uno" })] })]}
+        ocasiones={[]}
         isLoggedIn={false}
         isAdmin={false}
         texts={TEXTS}
@@ -253,7 +297,7 @@ describe("ShopMegaMenu — drawer móvil (acordeón y sección de cuenta)", () =
   });
 
   it("logueado: link de cuenta va a /mi-cuenta; NO hay login ni registro", async () => {
-    render(<ShopMegaMenu tree={[]} isLoggedIn isAdmin={false} texts={TEXTS} />);
+    render(<ShopMegaMenu tree={[]} ocasiones={[]} isLoggedIn isAdmin={false} texts={TEXTS} />);
     await openDrawer();
     expect(screen.getByRole("link", { name: "Mi cuenta" })).toHaveAttribute("href", "/mi-cuenta");
     expect(screen.queryByRole("link", { name: "Ingresar" })).not.toBeInTheDocument();
@@ -261,7 +305,9 @@ describe("ShopMegaMenu — drawer móvil (acordeón y sección de cuenta)", () =
   });
 
   it("invitado: link de cuenta va a /login y además hay registro; ambos cierran el drawer", async () => {
-    render(<ShopMegaMenu tree={[]} isLoggedIn={false} isAdmin={false} texts={TEXTS} />);
+    render(
+      <ShopMegaMenu tree={[]} ocasiones={[]} isLoggedIn={false} isAdmin={false} texts={TEXTS} />,
+    );
     await openDrawer();
     const login = screen.getByRole("link", { name: "Ingresar" });
     expect(login).toHaveAttribute("href", "/login");
@@ -272,7 +318,9 @@ describe("ShopMegaMenu — drawer móvil (acordeón y sección de cuenta)", () =
   });
 
   it("Centro de ayuda y Contacto siempre visibles en la sección de cuenta", async () => {
-    render(<ShopMegaMenu tree={[]} isLoggedIn isAdmin={false} texts={TEXTS} />);
+    render(
+      <ShopMegaMenu tree={[]} ocasiones={[]} isLoggedIn={false} isAdmin={false} texts={TEXTS} />,
+    );
     await openDrawer();
     expect(screen.getByRole("link", { name: "Centro de ayuda" })).toHaveAttribute("href", "/ayuda");
     expect(screen.getByRole("link", { name: "Contacto" })).toHaveAttribute("href", "/contacto");

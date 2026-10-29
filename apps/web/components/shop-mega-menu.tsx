@@ -2,12 +2,12 @@
  * <ShopMegaMenu /> — Mega-menú jerárquico del header (PLAN_CATALOG_V2 1.4).
  *
  * Desktop: NavigationMenu Radix con grid 3 columnas mostrando categorías raíz
- *   + sub-categorías agrupadas debajo de cada padre + chip "Por ocasión" al pie.
+ *   + sub-categorías agrupadas debajo de cada padre + chips "Por ocasión" al pie.
  * Mobile: Sheet drawer slide-in con expansión por categoría (acordeón).
  *
- * Consume CategoryNode tree (server-side fetch). Como es client component,
- * los textos CMS (header.menu.*) los resuelve el server parent (site-header)
- * y llegan por la prop `texts`.
+ * Consume CategoryNode tree + ocasiones activas (server-side fetch). Como es
+ * client component, los textos CMS (header.menu.*) los resuelve el server
+ * parent (site-header) y llegan por la prop `texts`.
  */
 
 "use client";
@@ -31,18 +31,14 @@ import { resolveCategoryIcon } from "@/lib/category-visuals";
 // fallback por slug de lib/category-visuals.ts (el viejo mapa ICONS quemado
 // acá) y por último al icono default genérico.
 
-const TOP_OCASIONES = [
-  { slug: "cumpleanos", label: "Cumpleaños" },
-  { slug: "matrimonio", label: "Matrimonio" },
-  { slug: "dia-madre", label: "Día Madre" },
-  { slug: "dia-padre", label: "Día Padre" },
-  { slug: "navidad", label: "Navidad" },
-  { slug: "empresarial", label: "Empresarial" },
-];
+// Ocasión tal como la muestra el menú: nombre REAL de DB (OcasionTag.name,
+// editable en /admin/ocasiones) — antes eran 6 slugs quemados con labels del
+// CMS (SEO-002, auditoría 2026-10-28). El server parent las trae con
+// listOcasiones() y las ordena poniendo primero la del mes en curso.
+export type MegaMenuOcasion = { slug: string; name: string };
 
 // Textos del menú que vienen del CMS (header.menu.*), resueltos por el
 // server parent — este client component no puede leer el CMS directamente.
-// `occasions` mapea slug de ocasión → etiqueta.
 export type MegaMenuTexts = {
   catalog: string;
   helpCta: string;
@@ -55,16 +51,17 @@ export type MegaMenuTexts = {
   admin: string;
   login: string;
   signup: string;
-  occasions: Record<string, string>;
 };
 
 export function ShopMegaMenu({
   tree,
+  ocasiones,
   isLoggedIn,
   isAdmin,
   texts,
 }: {
   tree: CategoryNode[];
+  ocasiones: MegaMenuOcasion[];
   isLoggedIn: boolean;
   isAdmin: boolean;
   texts: MegaMenuTexts;
@@ -73,6 +70,8 @@ export function ShopMegaMenu({
   const visibleCategories = tree.filter((c) => c.isActive);
   // Máximo 8 categorías en el menú; el resto queda detrás de "Ver todo el catálogo".
   const menuCategories = visibleCategories.slice(0, 8);
+  // Máximo 6 chips de ocasión (antes TOP_OCASIONES quemado); el resto vive en /ocasion.
+  const menuOcasiones = ocasiones.slice(0, 6);
 
   return (
     <>
@@ -138,28 +137,30 @@ export function ShopMegaMenu({
                     })}
                   </div>
 
-                  <div className="border-brand-purple/10 mt-4 border-t pt-4">
-                    <p className="text-brand-muted mb-2 text-[10px] font-bold tracking-wider uppercase">
-                      {texts.occasionsTitle}
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {TOP_OCASIONES.map((o) => (
+                  {menuOcasiones.length > 0 && (
+                    <div className="border-brand-purple/10 mt-4 border-t pt-4">
+                      <p className="text-brand-muted mb-2 text-[10px] font-bold tracking-wider uppercase">
+                        {texts.occasionsTitle}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {menuOcasiones.map((o) => (
+                          <Link
+                            key={o.slug}
+                            href={`/ocasion/${o.slug}`}
+                            className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/10 rounded-full border bg-white px-2.5 py-0.5 text-xs"
+                          >
+                            {o.name}
+                          </Link>
+                        ))}
                         <Link
-                          key={o.slug}
-                          href={`/ocasion/${o.slug}`}
-                          className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/10 rounded-full border bg-white px-2.5 py-0.5 text-xs"
+                          href="/recomendador"
+                          className="bg-brand-purple inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
                         >
-                          {texts.occasions[o.slug] ?? o.label}
+                          <Sparkles className="h-3 w-3" /> {texts.helpChip}
                         </Link>
-                      ))}
-                      <Link
-                        href="/recomendador"
-                        className="bg-brand-purple inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
-                      >
-                        <Sparkles className="h-3 w-3" /> {texts.helpChip}
-                      </Link>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <Link
                     href="/productos"
@@ -203,23 +204,25 @@ export function ShopMegaMenu({
                 />
               );
             })}
-            <div className="border-brand-purple/10 mt-4 border-t pt-3">
-              <p className="text-brand-muted mb-2 px-2 text-[10px] font-bold tracking-wider uppercase">
-                {texts.occasionsTitle}
-              </p>
-              <div className="flex flex-wrap gap-1.5 px-2">
-                {TOP_OCASIONES.map((o) => (
-                  <Link
-                    key={o.slug}
-                    href={`/ocasion/${o.slug}`}
-                    onClick={() => setMobileOpen(false)}
-                    className="border-brand-purple/20 text-brand-purple-dark rounded-full border bg-white px-2.5 py-1 text-xs"
-                  >
-                    {texts.occasions[o.slug] ?? o.label}
-                  </Link>
-                ))}
+            {menuOcasiones.length > 0 && (
+              <div className="border-brand-purple/10 mt-4 border-t pt-3">
+                <p className="text-brand-muted mb-2 px-2 text-[10px] font-bold tracking-wider uppercase">
+                  {texts.occasionsTitle}
+                </p>
+                <div className="flex flex-wrap gap-1.5 px-2">
+                  {menuOcasiones.map((o) => (
+                    <Link
+                      key={o.slug}
+                      href={`/ocasion/${o.slug}`}
+                      onClick={() => setMobileOpen(false)}
+                      className="border-brand-purple/20 text-brand-purple-dark rounded-full border bg-white px-2.5 py-1 text-xs"
+                    >
+                      {o.name}
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <Link
               href="/recomendador"
               onClick={() => setMobileOpen(false)}

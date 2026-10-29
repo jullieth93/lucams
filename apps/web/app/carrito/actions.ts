@@ -122,7 +122,13 @@ export async function addToCartAction(formData: FormData): Promise<void> {
     });
     revalidatePath("/carrito");
     revalidatePath("/", "layout");
-    redirect(`${returnTo}?added=1`);
+    // cartQty/cartVariant: handoff para el tracker GA4 de add_to_cart en el
+    // cliente (E09) — la action es server-side y el evento debe dispararse
+    // TRAS el éxito, en la página de destino. RouteToasts los limpia de la
+    // URL junto con `added` (un refresh no re-dispara el evento).
+    const okParams = new URLSearchParams({ added: "1", cartQty: String(qty) });
+    if (variantId) okParams.set("cartVariant", variantId);
+    redirect(`${returnTo}?${okParams.toString()}`);
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
     logger.warn({

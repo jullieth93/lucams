@@ -96,6 +96,32 @@ describe("buildCsp — prod (nonce + 'self', sin strict-dynamic)", () => {
     expect(csp).not.toContain("vercel.com");
     expect(csp).not.toContain("pusher.com");
   });
+
+  it("con NEXT_PUBLIC_GA_MEASUREMENT_ID permite gtag.js y los beacons de GA4 (E09)", () => {
+    // gtag.js se carga desde googletagmanager.com (script-src); la medición va a
+    // google-analytics.com por fetch/beacon (connect-src) con fallback a pixel
+    // (img-src). El wildcard cubre region1.google-analytics.com (endpoint regional).
+    process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID = "G-TEST123";
+    try {
+      const dir = (name: string, csp: string) => csp.split("; ").find((d) => d.startsWith(name))!;
+      for (const csp of [buildCsp("N", true), buildCsp("N", false)]) {
+        expect(dir("script-src", csp)).toContain("https://www.googletagmanager.com");
+        expect(dir("connect-src", csp)).toContain("https://*.google-analytics.com");
+        expect(dir("img-src", csp)).toContain("https://*.google-analytics.com");
+        expect(dir("img-src", csp)).toContain("https://www.googletagmanager.com");
+      }
+    } finally {
+      delete process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+    }
+  });
+
+  it("sin NEXT_PUBLIC_GA_MEASUREMENT_ID la CSP NO se ensancha para Google", () => {
+    delete process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+    for (const csp of [buildCsp("N", true), buildCsp("N", false)]) {
+      expect(csp).not.toContain("googletagmanager.com");
+      expect(csp).not.toContain("google-analytics.com");
+    }
+  });
 });
 
 describe("buildCsp — dev (permisivo para HMR)", () => {
