@@ -156,12 +156,12 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <KpiCard
             label="Pendientes de contacto"
-            value={metrics.pendingCount.toLocaleString("es-CO")}
+            value={metrics.pendingCount}
             trendLabel={`${formatCOP(metrics.pendingValueCents)} en carritos sin recordatorio`}
           />
           <KpiCard
             label="Con recordatorio enviado"
-            value={metrics.remindedCount.toLocaleString("es-CO")}
+            value={metrics.remindedCount}
             trendLabel="Esperando que el cliente retome"
           />
           <KpiCard
