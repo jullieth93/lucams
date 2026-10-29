@@ -101,7 +101,7 @@ export function AdminLoginForm() {
             ¿Cliente buscando tu cuenta?{" "}
             <a
               href="/login"
-              className="text-brand-purple-dark underline-offset-4 hover:text-brand-purple font-medium hover:underline"
+              className="text-brand-purple-dark hover:text-brand-purple font-medium underline-offset-4 hover:underline"
             >
               Ingresar a tu cuenta
             </a>

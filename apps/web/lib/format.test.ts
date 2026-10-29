@@ -34,15 +34,11 @@ describe("formatRelativeTime", () => {
   });
 
   it("minutes ago", () => {
-    expect(formatRelativeTime(new Date(now.getTime() - 5 * 60_000), now)).toBe(
-      "hace 5 minutos",
-    );
+    expect(formatRelativeTime(new Date(now.getTime() - 5 * 60_000), now)).toBe("hace 5 minutos");
   });
 
   it("hours ago", () => {
-    expect(formatRelativeTime(new Date(now.getTime() - 3 * 3_600_000), now)).toBe(
-      "hace 3 horas",
-    );
+    expect(formatRelativeTime(new Date(now.getTime() - 3 * 3_600_000), now)).toBe("hace 3 horas");
   });
 
   it("1 day ago → ayer (numeric: auto)", () => {
