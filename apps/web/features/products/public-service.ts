@@ -191,6 +191,10 @@ const fetchStorefrontCategoryTree = cachedCatalog(
         // (filtros visibles por categoría + producto destacado de la categoría).
         visibleFilters: true,
         featuredProductSlug: true,
+        // richDescription/useCase: sección editorial "Sobre {categoría}" + línea de
+        // casos de uso en la vista raíz de categoría (auditoría SEO 2026-10-28, E18).
+        richDescription: true,
+        useCase: true,
         // Roadmap B3 — visual de catálogo (icono lucide + gradiente del home
         // grid). Null → el componente cae al fallback por slug / default.
         icon: true,
