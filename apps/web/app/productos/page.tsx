@@ -50,6 +50,7 @@ import { resolveVisibleFilters } from "@/lib/visible-filters";
 import { OcasionFilterStrip } from "@/components/ocasion-filter-strip";
 import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
+import { TrackViewItemList } from "@/components/analytics-trackers";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -199,6 +200,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
       id: r.id,
       slug: r.slug,
       name: r.name,
+      sku: r.sku,
       basePrice: r.basePrice,
       compareAtPrice: r.compareAtPrice,
       isPersonalizable: r.isPersonalizable,
@@ -285,6 +287,18 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <JsonLd data={jsonLdData} />
+      {/* GA4 view_item_list (E09): qué listado vio el cliente (catálogo,
+          categoría o búsqueda) y con qué ítems. No-op sin env/consent. */}
+      <TrackViewItemList
+        listId={q ? "search" : categoria ? `category:${categoria}` : "catalog"}
+        listName={q ? `Búsqueda: ${q}` : (activeCategory?.name ?? "Tienda")}
+        items={products.map((p) => ({
+          sku: p.sku,
+          name: p.name,
+          categoryName: p.category.name,
+          priceCents: p.minVariantPrice ?? p.basePrice,
+        }))}
+      />
       <SiteHeader />
 
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">

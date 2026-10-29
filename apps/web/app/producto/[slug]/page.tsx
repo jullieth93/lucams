@@ -13,7 +13,9 @@
  */
 
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { JsonLd } from "@/components/json-ld";
+import { TrackAddToCartSuccess, TrackViewItem } from "@/components/analytics-trackers";
 import { breadcrumbList } from "@/lib/seo/structured-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -334,6 +336,42 @@ export default async function ProductoDetallePage({
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <JsonLd data={[jsonLd, breadcrumbJsonLd]} />
+      {/* GA4 ecommerce (E09): view_item con la variante elegida (o el producto
+          si aún no hay selección) y add_to_cart cuando vuelve el redirect de
+          éxito de la action (?added=1&cartQty&cartVariant). No-ops sin env o
+          sin consentimiento de analíticas (lib/analytics.ts). */}
+      <TrackViewItem
+        item={{
+          sku: selectedVariant?.sku ?? product.sku,
+          name: product.name,
+          variantName: selectedVariant?.name,
+          categoryName: product.category.name,
+          priceCents: displayPrice,
+          quantity: 1,
+        }}
+      />
+      <Suspense fallback={null}>
+        <TrackAddToCartSuccess
+          itemsByVariantId={Object.fromEntries(
+            selectable.map((v) => [
+              v.id,
+              {
+                sku: v.sku,
+                name: product.name,
+                variantName: v.name,
+                categoryName: product.category.name,
+                priceCents: v.price ?? product.basePrice,
+              },
+            ]),
+          )}
+          fallbackItem={{
+            sku: product.sku,
+            name: product.name,
+            categoryName: product.category.name,
+            priceCents: displayPrice,
+          }}
+        />
+      </Suspense>
       <SiteHeader />
 
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-8 sm:px-10">

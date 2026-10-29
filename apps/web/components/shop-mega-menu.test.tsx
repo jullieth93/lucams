@@ -59,7 +59,6 @@ const TEXTS: MegaMenuTexts = {
   admin: "Panel admin",
   login: "Ingresar",
   signup: "Crear cuenta",
-  occasions: {},
 };
 
 function makeCategory(over: Partial<CategoryNode> = {}): CategoryNode {
@@ -92,7 +91,9 @@ async function openDrawer(): Promise<void> {
 
 describe("ShopMegaMenu — acceso admin en el drawer móvil (2026-09-07)", () => {
   it("con isAdmin=true el drawer muestra el link 'Panel admin' a /admin/dashboard", async () => {
-    render(<ShopMegaMenu tree={[makeCategory()]} isLoggedIn isAdmin texts={TEXTS} />);
+    render(
+      <ShopMegaMenu tree={[makeCategory()]} ocasiones={[]} isLoggedIn isAdmin texts={TEXTS} />,
+    );
     await openDrawer();
 
     const link = screen.getByRole("link", { name: "Panel admin" });
@@ -107,6 +108,7 @@ describe("ShopMegaMenu — acceso admin en el drawer móvil (2026-09-07)", () =>
     render(
       <ShopMegaMenu
         tree={[makeCategory()]}
+        ocasiones={[]}
         isLoggedIn
         isAdmin
         texts={{ ...TEXTS, admin: "Panel de administración" }}
@@ -121,7 +123,13 @@ describe("ShopMegaMenu — acceso admin en el drawer móvil (2026-09-07)", () =>
 
   it("con isAdmin=false NO aparece el link 'Panel admin'", async () => {
     render(
-      <ShopMegaMenu tree={[makeCategory()]} isLoggedIn={false} isAdmin={false} texts={TEXTS} />,
+      <ShopMegaMenu
+        tree={[makeCategory()]}
+        ocasiones={[]}
+        isLoggedIn={false}
+        isAdmin={false}
+        texts={TEXTS}
+      />,
     );
     await openDrawer();
 
@@ -129,7 +137,9 @@ describe("ShopMegaMenu — acceso admin en el drawer móvil (2026-09-07)", () =>
   });
 
   it("click en 'Panel admin' cierra el drawer (onClick → setMobileOpen(false))", async () => {
-    render(<ShopMegaMenu tree={[makeCategory()]} isLoggedIn isAdmin texts={TEXTS} />);
+    render(
+      <ShopMegaMenu tree={[makeCategory()]} ocasiones={[]} isLoggedIn isAdmin texts={TEXTS} />,
+    );
     await openDrawer();
 
     fireEvent.click(screen.getByRole("link", { name: "Panel admin" }));

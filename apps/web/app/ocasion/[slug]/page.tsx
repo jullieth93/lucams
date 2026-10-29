@@ -73,12 +73,13 @@ export default async function OcasionPage({ params }: { params: Promise<{ slug: 
   const products = await listCatalogProducts({ ocasionSlug: slug, limit: 24 });
 
   // JSON-LD (auditoría 2026-07-17): BreadcrumbList + CollectionPage/ItemList de los productos de la
-  // ocasión.
+  // ocasión. La miga intermedia es "Ocasiones" → /ocasion, igual que el breadcrumb visual
+  // (SEO-002, auditoría 2026-10-28 — antes decía "Tienda" acá y "Ocasiones" en pantalla).
   const ocasionPath = `/ocasion/${slug}`;
   const jsonLdData = [
     breadcrumbList([
       { name: "Inicio", path: "/" },
-      { name: "Tienda", path: "/productos" },
+      { name: "Ocasiones", path: "/ocasion" },
       { name: ocasion.name, path: ocasionPath },
     ]),
     collectionPage({
@@ -102,7 +103,9 @@ export default async function OcasionPage({ params }: { params: Promise<{ slug: 
                 Inicio
               </Link>
               <span className="mx-2">›</span>
-              <span>Ocasiones</span>
+              <Link href="/ocasion" className="hover:text-brand-purple">
+                Ocasiones
+              </Link>
               <span className="mx-2">›</span>
               <span className="font-semibold">{ocasion.name}</span>
             </nav>

@@ -2,8 +2,8 @@
  * sitemap.xml dinámico para Google/Bing crawlers.
  *
  * Incluye:
- *   - Páginas estáticas (home, /productos, /recomendador, 8 legales, /ayuda,
- *     /contacto)
+ *   - Páginas estáticas (home, /productos, /ocasion, /recomendador, 8 legales,
+ *     /ayuda, /contacto)
  *   - Categorías raíz (filtro /productos?categoria=X)
  *   - Subcategorías con ruta jerárquica (/productos/[categoria]/[subcategoria])
  *   - Ocasiones activas (/ocasion/[slug])
@@ -24,6 +24,8 @@ import { getCanonicalSiteUrl } from "@/lib/origin";
 const STATIC_PATHS = [
   { path: "", priority: 1.0, changeFrequency: "daily" as const },
   { path: "productos", priority: 0.9, changeFrequency: "daily" as const },
+  // Índice de ocasiones (SEO-002, auditoría 2026-10-28): padre de las landings /ocasion/[slug].
+  { path: "ocasion", priority: 0.8, changeFrequency: "weekly" as const },
   { path: "recomendador", priority: 0.8, changeFrequency: "monthly" as const },
   { path: "rastrear", priority: 0.5, changeFrequency: "monthly" as const },
   { path: "ayuda", priority: 0.7, changeFrequency: "weekly" as const },

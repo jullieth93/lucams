@@ -60,4 +60,16 @@ describe("collectionPage", () => {
     expect("description" in cp).toBe(false);
     expect(cp.mainEntity.numberOfItems).toBe(0);
   });
+
+  it("itemUrlPrefix cambia la URL de los ítems (índice /ocasion → landings de ocasión)", () => {
+    const cp = collectionPage({
+      name: "Ocasiones",
+      path: "/ocasion",
+      products: [{ name: "Cumpleaños", slug: "cumpleanos" }],
+      itemUrlPrefix: "/ocasion/",
+    });
+    expect(cp.mainEntity.itemListElement[0]).toMatchObject({
+      url: `${SITE_URL}/ocasion/cumpleanos`,
+    });
+  });
 });

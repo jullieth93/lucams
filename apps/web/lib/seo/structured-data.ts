@@ -41,13 +41,18 @@ export function breadcrumbList(items: { name: string; path: string }[]) {
 /**
  * CollectionPage + ItemList de una página de listado/categoría (los productos visibles). Google usa
  * el ItemList para entender que es una colección y puede mostrar carruseles/listados.
+ *
+ * `itemUrlPrefix` (default "/producto/"): prefijo de la URL de cada ítem — el índice /ocasion
+ * lista landings de ocasión, no PDPs (SEO-002, auditoría 2026-10-28).
  */
 export function collectionPage(opts: {
   name: string;
   path: string;
   description?: string;
   products: { name: string; slug: string }[];
+  itemUrlPrefix?: string;
 }) {
+  const itemUrlPrefix = opts.itemUrlPrefix ?? "/producto/";
   return {
     "@context": "https://schema.org/",
     "@type": "CollectionPage",
@@ -61,7 +66,7 @@ export function collectionPage(opts: {
         "@type": "ListItem",
         position: i + 1,
         name: p.name,
-        url: `${SITE_URL}/producto/${p.slug}`,
+        url: `${SITE_URL}${itemUrlPrefix}${p.slug}`,
       })),
     },
   };

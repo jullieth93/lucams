@@ -73,6 +73,7 @@ function makeResult(over: Partial<SearchResult> = {}): SearchResult {
     id: "p1",
     slug: "iman-corazon",
     name: "Imán Corazón",
+    sku: "IMN-CORAZON",
     basePrice: 20_000,
     compareAtPrice: null,
     isPersonalizable: false,

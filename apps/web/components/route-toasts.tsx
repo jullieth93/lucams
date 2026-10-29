@@ -95,6 +95,13 @@ export function RouteToasts() {
     // Limpiar query string preservando el resto de params
     const params = new URLSearchParams(sp.toString());
     for (const k of handled) params.delete(k);
+    // Handoff del tracker GA4 de add_to_cart (E09): viajan en el redirect de
+    // éxito de addToCartAction junto a ?added=1 y se limpian con él — un
+    // refresh no debe re-disparar el evento ni dejar params internos en la URL.
+    if (handled.includes("added")) {
+      params.delete("cartQty");
+      params.delete("cartVariant");
+    }
     const qs = params.toString();
     queueMicrotask(() => {
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });

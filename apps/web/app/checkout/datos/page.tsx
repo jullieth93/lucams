@@ -13,6 +13,7 @@ import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { DatosForm } from "./datos-form";
 import { QuoteForm } from "./quote-form";
+import { TrackBeginCheckout } from "@/components/analytics-trackers";
 import {
   loadCheckoutContext,
   assertCheckoutAvailability,
@@ -60,6 +61,18 @@ export default async function CheckoutDatosPage() {
   return (
     <div className="mx-auto max-w-6xl">
       {!catalog && <CheckoutStepper current={1} />}
+      {/* GA4 begin_checkout (E09): el paso 1 del checkout ES el inicio del
+          embudo de pago (también en modo catálogo, donde es cotización). */}
+      <TrackBeginCheckout
+        valueCents={ctx.cart.subtotal}
+        items={ctx.cart.items.map((i) => ({
+          sku: i.variantSku,
+          name: i.productName,
+          variantName: i.variantName,
+          priceCents: i.unitPrice,
+          quantity: i.qty,
+        }))}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
