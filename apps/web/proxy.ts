@@ -49,6 +49,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PRODUCT_REDIRECTS } from "@/lib/product-redirects";
+import { productNotFoundResponse } from "@/lib/product-not-found";
+import { getStorefrontProductSlugSet } from "@/features/products/public-service";
 import { logger } from "@/lib/logger";
 import {
   ADMIN_ACTIVITY_COOKIE,
@@ -212,6 +214,24 @@ export async function proxy(request: NextRequest) {
         NextResponse.redirect(targetUrl, dynamicRedirect.statusCode),
         requestId,
       );
+    }
+  }
+
+  // SEO-001 (auditoría SEO 2026-10-28) — 404 HTTP REAL para PDPs inexistentes.
+  // El segmento /producto/[slug] tiene loading.tsx: Next confirma el shell con 200
+  // antes de que el notFound() del page/generateMetadata resuelva (streaming) y la
+  // PDP inexistente salía como soft 404 (200 + noindex — verificado en producción).
+  // Acá se decide ANTES del render contra el set cacheado de slugs vivos (tag
+  // "catalog": las mutaciones admin lo invalidan en el acto → un producto recién
+  // creado no cae en falso 404). FAIL-OPEN: si la consulta falla (DB caída), se
+  // deja pasar el request — nunca 404 en falso por un error transitorio.
+  // Va DESPUÉS de los redirects (legacy + UrlRedirect admin): una URL vieja con
+  // redirect registrado redirige, no 404.
+  if (path.startsWith("/producto/") && request.method === "GET") {
+    const slug = path.slice("/producto/".length).split("/")[0];
+    const liveSlugs = await getStorefrontProductSlugSet().catch(() => null);
+    if (liveSlugs && !liveSlugs.has(slug)) {
+      return withSecurityHeaders(productNotFoundResponse(), requestId);
     }
   }
 

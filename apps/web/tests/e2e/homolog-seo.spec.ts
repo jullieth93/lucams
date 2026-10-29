@@ -3,8 +3,8 @@
  *   sitemap.xml (productos + legales), robots.txt (bloquea /admin, SIN /_next),
  *   OG image real, canonical al dominio del ambiente, JSON-LD home + PDP (en modo
  *   catálogo el Product NO emite Offer/InStock — la tienda no vende en línea),
- *   PDP inexistente → noindex garantizado (el 404 HTTP duro lo impide el boundary
- *   loading.tsx del segmento; ver comentario en el paso 7) y /status con noindex.
+ *   PDP inexistente → 404 HTTP real (decidido en el proxy, SEO-001) y /status
+ *   con noindex.
  *   Solo lectura — corre en LOCAL y STG × desktop.
  */
 
@@ -103,18 +103,14 @@ test("seo: sitemap + robots + OG image + canonical + JSON-LD home/PDP (sin Offer
     expect(productLd!).not.toContain("InStock");
     record("jsonld-pdp-catalog", true, `Product sin Offer/InStock (${product!.slug})`);
 
-    // 7. PDP inexistente → protección anti-indexación. Auditoría SEO 2026-10-28:
-    // el segmento tiene loading.tsx, así que Next confirma el shell con 200 antes de
-    // que notFound() resuelva (streaming) — un 404 HTTP duro requeriría chequear la
-    // existencia del slug en el proxy (pendiente, ver tmp/seo-audit). Lo que SÍ se
-    // garantiza acá es que la respuesta no es indexable: meta robots noindex + UI 404.
+    // 7. PDP inexistente → 404 HTTP REAL. Auditoría SEO 2026-10-28 (SEO-001):
+    // el proxy decide el 404 antes del render contra el set cacheado de slugs
+    // vivos (el boundary loading.tsx del segmento impedía el 404 post-stream).
     const notFound = await request.get("/producto/producto-inexistente-seo-audit");
+    expect(notFound.status(), "una PDP inexistente debe responder 404 real").toBe(404);
     const notFoundBody = await notFound.text();
-    expect(notFoundBody, "una PDP inexistente debe emitir meta robots noindex").toContain(
-      "noindex",
-    );
-    expect(notFoundBody).toContain("no encontrada");
-    record("pdp-inexistente-noindex", true, `status ${notFound.status()} + noindex`);
+    expect(notFoundBody).toContain("noindex");
+    record("pdp-404", true, `status ${notFound.status()} + noindex`);
 
     // 8. /status es una página interna de salud de servicios: meta robots noindex.
     await anonPage.goto("/status", { waitUntil: "domcontentloaded" });
