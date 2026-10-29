@@ -126,7 +126,10 @@ export async function transitionOrderAction(
   }
 
   try {
-    await transitionOrder(orderId, to, { actorAdminId: session.admin.id });
+    await transitionOrder(orderId, to, {
+      actorAdminId: session.admin.id,
+      note: reason || undefined,
+    });
 
     // Auditoría 2026-07-13: el path manual también avisa al cliente (antes solo la saga
     // del webhook lo hacía). Idempotente (idempotencyKey de Resend) y best-effort (un fallo
