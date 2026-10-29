@@ -36,6 +36,7 @@ import {
   AdminEmpty,
 } from "@/components/admin-page";
 import { markReadAction, markAllReadAction } from "./actions";
+import { formatRelativeTime } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Notificaciones" };
 
@@ -229,8 +230,11 @@ export default async function AdminNotificacionesPage({
                           {sev.label}
                         </span>
                         <span className="text-brand-muted text-xs">{typeMeta.label}</span>
-                        <span className="text-brand-muted text-xs">
-                          {dateFmt.format(n.createdAt)}
+                        <span
+                          className="text-brand-muted text-xs"
+                          title={dateFmt.format(n.createdAt)}
+                        >
+                          {formatRelativeTime(n.createdAt)}
                         </span>
                       </div>
                       <p

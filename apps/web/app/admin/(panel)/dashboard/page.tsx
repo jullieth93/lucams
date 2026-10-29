@@ -1,16 +1,15 @@
 /*
  * Panel admin — Dashboard (rediseño brand 2026-05-18).
  *
- * Inspirado en commerce-ops dashboard (tabs Operaciones/Negocio + OpsCards
- * + QuickLinks + glow-brand). Adaptado a paleta Lucams.
- *
  * Estructura:
- *   - Hero: saludo con name + tagline + chip alerta si hay reseñas pendientes
- *   - Operaciones: 4 OpsCards (Por producir, Reclamos abiertos,
- *     Bajo stock, Reseñas pendientes) — algunos urgentes (>0)
- *   - Negocio: 4 KpiCards (Clientes, Productos, Ocasiones activas, Cupones vigentes)
- *   - Acceso rápido: 6 QuickLinks a las pantallas operativas
- *   - Sección "Próximamente" colapsada con módulos placeholder Fase 4/5
+ *   - Hero: saludo con name + tagline + chip alerta si hay pendientes
+ *   - Operaciones: OpsCards (Por producir, Agotadas, Stock bajo, Reseñas
+ *     pendientes, Tickets de soporte, Reclamos de garantía) — urgentes si >0
+ *   - Negocio: 4 KpiCards (Clientes con trend del mes, Productos,
+ *     Sub-categorías, Cupones vigentes)
+ *   - Acceso rápido: QuickLinks (catálogo, cupones, contenido, ajustes)
+ *   - Diseños del Estudio: QuickLinks (plantillas, fichas, prediseñados)
+ *   - Trazabilidad: QuickLinks (auditoría, ajustes del sitio)
  *
  * Datos: Prisma queries en paralelo. Soft-delete filtrado.
  */
@@ -76,8 +75,15 @@ export default async function AdminDashboardPage({
     status: "PENDING_PAYMENT" as const,
   };
 
+  // Trend real del KPI Clientes: altas del mes en curso (el resto de KPIs son
+  // conteos de catálogo — "total acumulado" es su trend honesto).
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
   const [
     customerCount,
+    newCustomersThisMonth,
     productionOrderCount,
     pendingOrderCount,
     productCount,
@@ -90,6 +96,7 @@ export default async function AdminDashboardPage({
     openWarranty,
   ] = await Promise.all([
     prisma.customer.count({ where: { deletedAt: null } }),
+    prisma.customer.count({ where: { deletedAt: null, createdAt: { gte: monthStart } } }),
     prisma.order.count({
       where: { deletedAt: null, status: { in: ["PAID", "FULFILLING"] } },
     }),
@@ -253,7 +260,16 @@ export default async function AdminDashboardPage({
             Estado del negocio
           </h2>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <KpiCard label="Clientes" value={customerCount} />
+            <KpiCard
+              label="Clientes"
+              value={customerCount}
+              trend={newCustomersThisMonth > 0 ? "up" : "neutral"}
+              trendLabel={
+                newCustomersThisMonth > 0
+                  ? `+${newCustomersThisMonth} este mes`
+                  : "Sin altas este mes"
+              }
+            />
             <KpiCard label="Productos" value={productCount} />
             <KpiCard label="Sub-categorías" value={subCategoryCount} />
             <KpiCard label="Cupones vigentes" value={activeCouponCount} />

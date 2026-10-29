@@ -15,6 +15,25 @@ export function formatCOP(centavos: number): string {
   return copFormatter.format(centavos / 100);
 }
 
+const relativeFormatter = new Intl.RelativeTimeFormat("es-CO", { numeric: "auto" });
+
+/**
+ * Tiempo relativo corto para feeds admin ("hace 5 min", "ayer", "hace 2 sem.").
+ * Escala: minuto → hora → día → semana → fecha absoluta no (eso lo decide el
+ * caller si lo quiere de tooltip). Futuros leves (skew de reloj) → "ahora".
+ */
+export function formatRelativeTime(date: Date, now: Date = new Date()): string {
+  const diffMs = date.getTime() - now.getTime();
+  const absMin = Math.abs(diffMs) / 60_000;
+  if (absMin < 1) return "ahora";
+  if (absMin < 60) return relativeFormatter.format(Math.trunc(diffMs / 60_000), "minute");
+  const absHours = absMin / 60;
+  if (absHours < 24) return relativeFormatter.format(Math.trunc(diffMs / 3_600_000), "hour");
+  const absDays = absHours / 24;
+  if (absDays < 7) return relativeFormatter.format(Math.trunc(diffMs / 86_400_000), "day");
+  return relativeFormatter.format(Math.trunc(diffMs / 604_800_000), "week");
+}
+
 /** Slug URL-safe (minúsculas, sin tildes, guiones, tope 80 chars). Única fuente: admin productos/categorías. */
 export function slugify(s: string): string {
   return s

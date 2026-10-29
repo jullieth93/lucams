@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCOP } from "./format";
+import { formatCOP, formatRelativeTime } from "./format";
 
 describe("formatCOP", () => {
   it("formats 0 centavos as $ 0", () => {
@@ -23,5 +23,35 @@ describe("formatCOP", () => {
   it("rounds non-integer centavos to nearest peso", () => {
     // Centavos siempre deberían ser enteros (Prisma Int), pero defensive.
     expect(formatCOP(100_050)).toMatch(/\$\s*1\.001/);
+  });
+});
+
+describe("formatRelativeTime", () => {
+  const now = new Date("2026-10-29T12:00:00Z");
+
+  it("less than a minute ago → ahora", () => {
+    expect(formatRelativeTime(new Date(now.getTime() - 30_000), now)).toBe("ahora");
+  });
+
+  it("minutes ago", () => {
+    expect(formatRelativeTime(new Date(now.getTime() - 5 * 60_000), now)).toBe("hace 5 minutos");
+  });
+
+  it("hours ago", () => {
+    expect(formatRelativeTime(new Date(now.getTime() - 3 * 3_600_000), now)).toBe("hace 3 horas");
+  });
+
+  it("1 day ago → ayer (numeric: auto)", () => {
+    expect(formatRelativeTime(new Date(now.getTime() - 24 * 3_600_000), now)).toBe("ayer");
+  });
+
+  it("weeks ago beyond 7 days", () => {
+    expect(formatRelativeTime(new Date(now.getTime() - 14 * 86_400_000), now)).toBe(
+      "hace 2 semanas",
+    );
+  });
+
+  it("slight future clock skew → ahora", () => {
+    expect(formatRelativeTime(new Date(now.getTime() + 20_000), now)).toBe("ahora");
   });
 });
