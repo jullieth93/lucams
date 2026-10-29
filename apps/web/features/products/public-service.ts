@@ -237,10 +237,14 @@ const listStorefrontCategoriesCached = cache(async function listStorefrontCatego
 });
 
 /**
- * Set de slugs de productos VIVOS en storefront (gate F-04 completo). Lo usa el
- * proxy para decidir 404 REAL de /producto/<slug> antes de confirmar el stream:
- * con loading.tsx en el segmento, el notFound() del page/generateMetadata sale
- * como 200+noindex (soft 404 — auditoría SEO 2026-10-28, SEO-001).
+ * Lista de slugs de productos VIVOS en storefront (gate F-04 completo). La usa
+ * el proxy para decidir 404 REAL de /producto/<slug> antes de confirmar el
+ * stream: con loading.tsx en el segmento, el notFound() del page/generateMetadata
+ * sale como 200+noindex (soft 404 — auditoría SEO 2026-10-28, SEO-001).
+ *
+ * Devuelve ARRAY, no Set: el data cache de Vercel serializa a JSON y un Set
+ * vuelve como objeto plano (`.has is not a function` en producción — la copia
+ * in-memory local lo enmascaraba). El proxy hace `includes` (catálogo pequeño).
  *
  * Staleness: tag "catalog" — toda mutación admin de productos dispara
  * updateTag("catalog") (ver header del módulo), así que un producto recién
@@ -248,15 +252,15 @@ const listStorefrontCategoriesCached = cache(async function listStorefrontCatego
  * ante escrituras por fuera del admin. En el proxy se consume fail-open
  * (error de DB → se deja pasar el request a la página).
  */
-export const getStorefrontProductSlugSet = cachedCatalog(
-  async function getStorefrontProductSlugSet(): Promise<ReadonlySet<string>> {
+export const getStorefrontProductSlugs = cachedCatalog(
+  async function getStorefrontProductSlugs(): Promise<readonly string[]> {
     const rows = await prisma.product.findMany({
       where: STOREFRONT_WHERE,
       select: { slug: true },
     });
-    return new Set(rows.map((r) => r.slug));
+    return rows.map((r) => r.slug);
   },
-  ["storefront-product-slug-set"],
+  ["storefront-product-slugs"],
 );
 
 export function listStorefrontCategories(opts: { topLevelOnly?: boolean } = {}) {
