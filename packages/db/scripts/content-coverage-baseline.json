@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-27T04:45:09.442Z",
-  "threshold": 42.5,
+  "generatedAt": "2026-10-29T04:06:30.389Z",
+  "threshold": 42.12,
   "uncovered": [
     "apps/web/app/(auth)/confirmar-codigo/confirmar-form.tsx :: El código es numérico, de 6 a 10 dígitos.",
     "apps/web/app/(auth)/registro/registro-form.tsx :: Tu nombre es obligatorio",
@@ -84,6 +84,10 @@
     "apps/web/app/ocasion/[slug]/page.tsx :: Pronto tendremos productos especialmente para",
     "apps/web/app/ocasion/[slug]/page.tsx :: catálogo completo",
     "apps/web/app/ocasion/[slug]/page.tsx :: o usa el",
+    "apps/web/app/ocasion/page.tsx :: Ruta de navegación",
+    "apps/web/app/ocasion/page.tsx :: Inicio",
+    "apps/web/app/ocasion/page.tsx :: Un imán para cada momento: encuentra el detalle perfecto según la ocasión que estás celebrando, con la curaduría de productos que preparamos para cada una.",
+    "apps/web/app/ocasion/page.tsx :: catálogo completo",
     "apps/web/app/pedido/[token]/page.tsx :: Ver dirección exacta",
     "apps/web/app/pedido/[token]/page.tsx :: Tel. de quien recibe:",
     "apps/web/app/producto/[slug]/copies-qty-input.tsx :: c/u",
