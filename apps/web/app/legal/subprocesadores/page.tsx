@@ -4,6 +4,9 @@ import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Subprocesadores",
+  description:
+    "Proveedores que tratan datos personales por cuenta de Lucams Shop, qué datos manejan y con qué garantías.",
+  alternates: { canonical: "/legal/subprocesadores" },
 };
 
 // P0-008 (Bloque B 2026-06-27) — subprocesadores reales (ADR-039).

@@ -41,7 +41,9 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const { slug } = await params;
   const ocasion = await getOcasionBySlug(slug);
-  if (!ocasion) return { title: "Ocasión no encontrada" };
+  // notFound() acá y no solo en el page: si generateMetadata resuelve, el stream
+  // confirma 200 y el 404 del body saldría como soft 404 (auditoría SEO 2026-10-28).
+  if (!ocasion) notFound();
 
   const description = ocasion.description.slice(0, 160);
   // #25 — heredar las imágenes OG del layout (el merge shallow de Next las borraría).

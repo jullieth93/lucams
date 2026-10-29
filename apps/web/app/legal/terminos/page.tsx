@@ -4,6 +4,9 @@ import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Términos y Condiciones",
+  description:
+    "Términos y condiciones de uso y compra en Lucams Shop: precios, pagos, envíos, retracto, garantía legal y reversión del pago (Colombia).",
+  alternates: { canonical: "/legal/terminos" },
 };
 
 // P0-006 (Bloque B 2026-06-27) — texto sustantivo basado en las obligaciones de

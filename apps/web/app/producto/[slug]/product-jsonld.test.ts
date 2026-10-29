@@ -96,4 +96,12 @@ describe("buildProductJsonLd — modo full (Etapa 2)", () => {
     const jsonLd = buildProductJsonLd(BASE);
     expect(jsonLd).not.toHaveProperty("aggregateRating");
   });
+
+  it("usa el logo de marca como imagen ABSOLUTA cuando el producto no tiene fotos", () => {
+    const jsonLd = buildProductJsonLd({ ...BASE, images: [] });
+    // schema.org exige URL absoluta: una relativa no se resuelve dentro del JSON-LD.
+    expect(jsonLd.image).toEqual([`${SITE_URL}/brand/lucams-logo.png`]);
+    expect((jsonLd.image as string[])[0]).toMatch(/^https?:\/\//);
+    expect((jsonLd.image as string[])[0]).toMatch(/\/brand\/lucams-logo\.png$/);
+  });
 });

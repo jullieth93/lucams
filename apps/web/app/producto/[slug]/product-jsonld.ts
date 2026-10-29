@@ -53,7 +53,9 @@ export function buildProductJsonLd(input: ProductJsonLdInput): Record<string, un
     name,
     description: description.slice(0, 5000),
     sku,
-    image: images.length > 0 ? images : ["/brand/lucams-logo.png"],
+    // Fallback absoluto (schema.org exige URL absoluta; una relativa no se resuelve
+    // contra metadataBase dentro del JSON-LD — auditoría SEO 2026-10-28).
+    image: images.length > 0 ? images : [`${SITE_URL}/brand/lucams-logo.png`],
     category: categoryName,
     brand: { "@type": "Brand", name: "Lucams Shop" },
     // aggregateRating solo si hay reseñas reales aprobadas (Google rechaza rating vacío/inventado).

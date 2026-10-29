@@ -29,6 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
     description:
       descriptionBlock?.body ??
       "Consulta el estado de tu pedido con tu número y correo, sin necesidad de cuenta.",
+    alternates: { canonical: "/rastrear" },
   };
 }
 

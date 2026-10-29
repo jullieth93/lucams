@@ -94,6 +94,12 @@ export const metadata: Metadata = {
     title: SITE_TITLE,
     description: "Imanes magnéticos personalizados hechos en Colombia.",
   },
+  // Verificación de Google Search Console (auditoría SEO 2026-10-28): el token lo genera
+  // GSC y vive en la env GOOGLE_SITE_VERIFICATION (server-side; no es secreto pero no
+  // hace falta exponerlo al bundle). Sin la env no se emite ninguna meta (no-op).
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }
+    : {}),
 };
 
 /* En Next.js 16, themeColor y otros viewport-related metadata

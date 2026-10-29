@@ -22,6 +22,7 @@ export const metadata: Metadata = {
   title: "Recomendador de imanes",
   description:
     "¿No sabes qué elegir? Te ayudamos en 4 preguntas a encontrar el imán perfecto para tu ocasión.",
+  alternates: { canonical: "/recomendador" },
 };
 
 // CSP por nonce (C3): requiere render dinámico (los scripts necesitan el nonce).

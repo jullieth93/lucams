@@ -4,6 +4,9 @@ import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Garantías",
+  description:
+    "Cobertura, plazos, exclusiones y procedimiento de la garantía legal de los productos de Lucams Shop.",
+  alternates: { canonical: "/legal/garantias" },
 };
 
 // Fallback que se renderiza cuando el CmsBlock no existe, no está publicado o la DB falla.
