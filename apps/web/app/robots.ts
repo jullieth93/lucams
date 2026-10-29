@@ -7,9 +7,13 @@
  *                      public-readable pero no nos interesa indexarlo)
  *   - /mi-cuenta/*   → área privada cliente
  *   - /auth/*        → endpoints internos de auth
- *   - /_next/*       → assets de Next (sirve por CDN, no duplicar)
  *   - /maintenance   → página estática solo activa en mantenimiento
  *   - Páginas con search/filtros parametrizados que generan dup content
+ *
+ * /_next/ NO se bloquea (auditoría SEO 2026-10-28): no hay assetPrefix/CDN, así que
+ * los JS/CSS del render y TODAS las imágenes de producto (optimizer `/_next/image`)
+ * se sirven desde ahí. Bloquearlo impedía a Googlebot renderizar y a Googlebot-Image
+ * rastrear el catálogo (guía JavaScript SEO de Google).
  *
  * Ref: https://nextjs.org/docs/app/api-reference/file-conventions/metadata/robots
  */
@@ -33,7 +37,6 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
           "/api/",
           "/auth/",
           "/mi-cuenta/",
-          "/_next/",
           "/maintenance",
           // Nota (auditoría 2026-07-13): antes se bloqueaba "/productos?*", pero eso bloqueaba
           // también las páginas de categoría (?categoria=X) que el sitemap SÍ lista → se

@@ -4,6 +4,9 @@ import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Hábeas Data",
+  description:
+    "Política de tratamiento de datos personales de Lucams Shop: finalidades, derechos del titular y cómo ejercerlos (Ley 1581 de 2012).",
+  alternates: { canonical: "/legal/habeas-data" },
 };
 
 // Fallback que se renderiza cuando el CmsBlock no existe, no está publicado o la DB falla.

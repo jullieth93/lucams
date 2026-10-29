@@ -4,6 +4,9 @@ import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Seguridad",
+  description:
+    "Política de divulgación responsable: cómo reportar vulnerabilidades de seguridad en lucamsshop.com.",
+  alternates: { canonical: "/legal/security" },
 };
 
 const FALLBACK = `

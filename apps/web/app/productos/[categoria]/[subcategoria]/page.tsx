@@ -23,10 +23,17 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const { categoria, subcategoria } = await params;
   const cat = await getCategoryBySlug(subcategoria);
-  if (!cat) return { title: "Categoría no encontrada" };
+  // Auditoría SEO 2026-10-28 — los guards de existencia/estado/jerarquía se replican
+  // acá (además del body del page) para decidir el 404/308 ANTES de que la metadata
+  // confirme el stream con 200; si no, Next solo puede emitir meta refresh + noindex
+  // (soft 404 / redirect blando, ver nota en el page).
+  if (!cat || !cat.isActive || !cat.parentSlug) notFound();
+  if (cat.parentSlug !== categoria) {
+    permanentRedirect(`/productos/${cat.parentSlug}/${subcategoria}`);
+  }
   // #23 — canonical desde el padre REAL (no el segmento crudo): un acceso con el padre incorrecto
   // igual canoniza a la URL válida. La validación/redirect vive en el body del page.
-  const canonicalParent = cat.parentSlug ?? categoria;
+  const canonicalParent = cat.parentSlug;
   // #25 — heredar las imágenes OG del layout (el merge shallow de Next las borraría al declarar
   // un openGraph propio). CategoryNode.image se antepone si existe.
   const previousImages = (await parent).openGraph?.images ?? [];
@@ -67,10 +74,10 @@ export default async function SubCategoryPage({
   // incorrecto redirige a la ruta correcta en vez de renderizar un breadcrumb roto y URLs
   // duplicadas infinitas indexables. El destino usa el parentSlug real → no hay loop.
   //
-  // Nota (Next 16): como el guard corre tras un await (getCategoryBySlug), el stream ya commiteó
-  // 200, así que Next emite una redirección client-side (meta refresh) y un noindex en vez de un
-  // 308/404 HTTP duro (streaming.md). Suficiente para SEO: la meta refresh reencamina al usuario,
-  // el <link rel=canonical> apunta al padre real y el noindex evita indexar las variantes basura.
+  // Nota (Next 16): estos mismos guards corren primero en generateMetadata (auditoría SEO
+  // 2026-10-28), así que el 404/308 se decide antes de confirmar el stream. Los guards de acá
+  // quedan como respaldo: si el body los alcanzara tras el commit del stream, Next solo puede
+  // emitir meta refresh + noindex (streaming.md).
   if (!subCat.parentSlug) notFound();
   if (subCat.parentSlug !== categoria) {
     permanentRedirect(`/productos/${subCat.parentSlug}/${subcategoria}`);

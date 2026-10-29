@@ -71,7 +71,11 @@ type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
   const product = await getStorefrontProductBySlug(slug);
-  if (!product) return { title: "Producto no encontrado" };
+  // notFound() acá (y no solo en el page): si generateMetadata resuelve, Next confirma
+  // el stream con 200 y el notFound() posterior del body sale como 200 + noindex
+  // (soft 404, verificado en producción — auditoría SEO 2026-10-28). Decidiendo el 404
+  // antes de confirmar el head, la respuesta sale con status 404 real.
+  if (!product) notFound();
   const title = product.seoTitle ?? product.name;
   const description = product.seoDescription ?? product.description.slice(0, 160);
   const image = product.images[0] ?? "/brand/lucams-logo.png";

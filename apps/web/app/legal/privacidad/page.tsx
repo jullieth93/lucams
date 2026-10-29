@@ -5,6 +5,7 @@ import { LegalPageHeader } from "@/components/legal/legal-page-header";
 export const metadata: Metadata = {
   title: "Aviso de Privacidad",
   description: "Política de tratamiento de datos personales · Ley 1581 de 2012 (Colombia).",
+  alternates: { canonical: "/legal/privacidad" },
 };
 
 // P0-006 (Bloque B 2026-06-27) — texto sustantivo basado en docs/COMPLIANCE.md

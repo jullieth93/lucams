@@ -1,8 +1,10 @@
 /*
  * HOMOLOGACIÓN E2E — SEO/estáticos (docs/TESTING.md):
- *   sitemap.xml (productos + legales), robots.txt (bloquea /admin), OG image
- *   real, canonical al dominio del ambiente, JSON-LD home + PDP (en modo
- *   catálogo el Product NO emite Offer/InStock — la tienda no vende en línea).
+ *   sitemap.xml (productos + legales), robots.txt (bloquea /admin, SIN /_next),
+ *   OG image real, canonical al dominio del ambiente, JSON-LD home + PDP (en modo
+ *   catálogo el Product NO emite Offer/InStock — la tienda no vende en línea),
+ *   PDP inexistente → noindex garantizado (el 404 HTTP duro lo impide el boundary
+ *   loading.tsx del segmento; ver comentario en el paso 7) y /status con noindex.
  *   Solo lectura — corre en LOCAL y STG × desktop.
  */
 
@@ -48,10 +50,13 @@ test("seo: sitemap + robots + OG image + canonical + JSON-LD home/PDP (sin Offer
     expect(sitemapBody).toContain("/producto/");
     record("sitemap", true, "productos + legales + PDPs");
 
-    // 2. robots.txt: bloquea /admin.
+    // 2. robots.txt: bloquea /admin y NO bloquea /_next (auditoría SEO 2026-10-28:
+    // el disallow de /_next impedía a Googlebot-Image rastrear /_next/image).
     const robots = await request.get("/robots.txt");
     expect(robots.ok()).toBeTruthy();
-    expect((await robots.text()).toLowerCase()).toContain("disallow: /admin");
+    const robotsBody = (await robots.text()).toLowerCase();
+    expect(robotsBody).toContain("disallow: /admin");
+    expect(robotsBody, "robots.txt no debe bloquear /_next").not.toContain("/_next");
     record("robots", true);
 
     // 3. OG image real: la home declara og:image y responde imagen.
@@ -97,6 +102,25 @@ test("seo: sitemap + robots + OG image + canonical + JSON-LD home/PDP (sin Offer
     expect(productLd!, "en modo catálogo el Product NO emite Offer").not.toContain('"Offer"');
     expect(productLd!).not.toContain("InStock");
     record("jsonld-pdp-catalog", true, `Product sin Offer/InStock (${product!.slug})`);
+
+    // 7. PDP inexistente → protección anti-indexación. Auditoría SEO 2026-10-28:
+    // el segmento tiene loading.tsx, así que Next confirma el shell con 200 antes de
+    // que notFound() resuelva (streaming) — un 404 HTTP duro requeriría chequear la
+    // existencia del slug en el proxy (pendiente, ver tmp/seo-audit). Lo que SÍ se
+    // garantiza acá es que la respuesta no es indexable: meta robots noindex + UI 404.
+    const notFound = await request.get("/producto/producto-inexistente-seo-audit");
+    const notFoundBody = await notFound.text();
+    expect(notFoundBody, "una PDP inexistente debe emitir meta robots noindex").toContain(
+      "noindex",
+    );
+    expect(notFoundBody).toContain("no encontrada");
+    record("pdp-inexistente-noindex", true, `status ${notFound.status()} + noindex`);
+
+    // 8. /status es una página interna de salud de servicios: meta robots noindex.
+    await anonPage.goto("/status", { waitUntil: "domcontentloaded" });
+    const statusRobots = await anonPage.locator('meta[name="robots"]').getAttribute("content");
+    expect(statusRobots ?? "", "/status debe emitir meta robots noindex").toContain("noindex");
+    record("status-noindex", true, statusRobots!);
 
     writeFileSync(
       resultsPath,

@@ -58,6 +58,11 @@ export async function getActiveProduct(opts: { personalizable?: boolean } = {}) 
     where: {
       isActive: true,
       deletedAt: null,
+      // Mismo gate que el storefront (STOREFRONT_PRODUCT_WHERE): sin él el picker
+      // podía elegir un producto cuya categoría está inactiva/borrada → la PDP
+      // devuelve 404 y los specs fallaban por datos, no por código (auditoría SEO
+      // 2026-10-28).
+      category: { isActive: true, deletedAt: null },
       ...(opts.personalizable !== undefined ? { isPersonalizable: opts.personalizable } : {}),
     },
     select: {

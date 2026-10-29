@@ -20,11 +20,12 @@ import { buildWhatsAppUrl } from "@/lib/wa";
 import { ContactForm } from "./contact-form";
 
 export async function generateMetadata(): Promise<Metadata> {
-  return getPageSeo("seo.page.contacto", {
+  const seo = await getPageSeo("seo.page.contacto", {
     title: "Contacto",
     description:
       "Escríbenos por WhatsApp, email o el formulario. Te respondemos en menos de 24 horas hábiles.",
   });
+  return { ...seo, alternates: { canonical: "/contacto" } };
 }
 
 export const dynamic = "force-dynamic";

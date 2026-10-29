@@ -4,6 +4,9 @@ import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Devoluciones y Retracto",
+  description:
+    "Cómo ejercer el derecho de retracto, qué productos aplican y cómo funciona el reembolso en Lucams Shop (Ley 1480 de 2011).",
+  alternates: { canonical: "/legal/devoluciones" },
 };
 
 // P0-007 (Bloque B 2026-06-27) — texto verificado contra Ley 1480 art. 47 +

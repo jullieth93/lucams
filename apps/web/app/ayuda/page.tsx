@@ -26,11 +26,12 @@ import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
 
 export async function generateMetadata(): Promise<Metadata> {
-  return getPageSeo("seo.page.ayuda", {
+  const seo = await getPageSeo("seo.page.ayuda", {
     title: "Ayuda",
     description:
       "Preguntas frecuentes sobre personalización, envíos, métodos de pago, garantías y devoluciones en Lucams Shop.",
   });
+  return { ...seo, alternates: { canonical: "/ayuda" } };
 }
 
 export const dynamic = "force-dynamic";

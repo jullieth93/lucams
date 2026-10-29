@@ -5,6 +5,9 @@ import { CookiesReopenLink } from "@/components/cookies-banner";
 
 export const metadata: Metadata = {
   title: "Política de Cookies",
+  description:
+    "Qué cookies usa Lucams Shop, para qué sirven, cuánto duran y cómo controlarlas o revocar tu consentimiento.",
+  alternates: { canonical: "/legal/cookies" },
 };
 
 const FALLBACK = `

@@ -31,6 +31,8 @@ import { isCatalogMode } from "@/lib/store-mode";
 export const metadata: Metadata = {
   title: "Estado del sitio",
   description: "Estado en tiempo real de los servicios de Lucams Shop.",
+  // Página interna de salud de servicios: no aporta al índice.
+  robots: { index: false, follow: false },
 };
 
 export const dynamic = "force-dynamic";

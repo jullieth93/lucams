@@ -9,9 +9,10 @@
  *   - Ocasiones activas (/ocasion/[slug])
  *   - Productos activos individuales (/producto/[slug])
  *
- * `lastModified` proviene de updatedAt en DB para productos y
- * categorías. Para páginas estáticas usamos build time (BUILD_VERSION
- * tag o hoy si no hay).
+ * `lastModified` proviene de updatedAt en DB para productos, categorías y
+ * ocasiones. Las páginas estáticas NO declaran lastModified: con
+ * `force-dynamic` un `new Date()` por request emite una señal
+ * siempre-fresca que Google aprende a ignorar (auditoría SEO 2026-10-28).
  *
  * Ref: https://nextjs.org/docs/app/api-reference/file-conventions/metadata/sitemap
  */
@@ -42,12 +43,10 @@ export const dynamic = "force-dynamic";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // #28 — misma URL canónica que canonicals/OG/metadataBase (antes leía SITE_URL del CMS → split-brain).
   const baseUrl = getCanonicalSiteUrl();
-  const now = new Date();
 
-  // Páginas estáticas
+  // Páginas estáticas (sin lastModified: ver nota del encabezado)
   const staticEntries: MetadataRoute.Sitemap = STATIC_PATHS.map((s) => ({
     url: `${baseUrl}/${s.path}`,
-    lastModified: now,
     changeFrequency: s.changeFrequency,
     priority: s.priority,
   }));
