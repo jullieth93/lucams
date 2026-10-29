@@ -364,15 +364,15 @@ ambiente (mientras no se invalide, sirven los fallbacks del código o el caché 
 
 ### Migración de la revisión integral admin (2026-10-29)
 
-| Migración                                                           | Qué crea                                             | STG           | PRD                   |
-| ------------------------------------------------------------------- | ---------------------------------------------------- | ------------- | --------------------- |
-| Prisma `20261029120000_order_status_events`                         | `OrderStatusEvent` (historial de estados del pedido) | ✅ 2026-10-29 | pendiente del release |
-| SQL `supabase/migrations/00000000000045_order_status_event_rls.sql` | RLS deny-by-default de la tabla                      | ✅ 2026-10-29 | pendiente del release |
+| Migración                                                           | Qué crea                                             | STG           | PRD           |
+| ------------------------------------------------------------------- | ---------------------------------------------------- | ------------- | ------------- |
+| Prisma `20261029120000_order_status_events`                         | `OrderStatusEvent` (historial de estados del pedido) | ✅ 2026-10-29 | ✅ 2026-10-29 |
+| SQL `supabase/migrations/00000000000045_order_status_event_rls.sql` | RLS deny-by-default de la tabla                      | ✅ 2026-10-29 | ✅ 2026-10-29 |
 
 La SQL 045 **no agenda crons** (solo RLS) — segura de aplicar en cualquier momento. El código
-que la escribe (`transitionOrder` / `createOrderFromCart`) llegó a `develop` con el PR #113; el
-historial se puebla desde el deploy (los pedidos históricos no tienen eventos retroactivos — el
-detalle solo muestra la tarjeta «Historial» cuando hay eventos).
+que la escribe (`transitionOrder` / `createOrderFromCart`) llegó a `production` con el release
+PR #118 (2026-10-29); el historial se puebla desde el deploy (los pedidos históricos no tienen
+eventos retroactivos — el detalle solo muestra la tarjeta «Historial» cuando hay eventos).
 
 - **Estudio / plantillas y prediseñados:** `estudio.plantillas.reemplazo-par-titulo`,
   `-cuerpo`, `-nombre`, `-aria` (modal de reemplazo por PAR de caras — ADR-158 ajustado),
