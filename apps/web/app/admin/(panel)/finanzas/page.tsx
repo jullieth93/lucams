@@ -295,7 +295,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                 >
                   {(() => {
                     const max = Math.max(...periodoData.buckets.map((x) => x.totalCents));
-                    return periodoData.buckets.map((b) => {
+                    return periodoData.buckets.map((b, i) => {
                       const heightPct =
                         max > 0 ? Math.max(2, Math.round((b.totalCents / max) * 100)) : 2;
                       return (
@@ -306,13 +306,16 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                           <Hint
                             content={`${b.label}: ${formatCOP(b.totalCents)} (${b.count} pedido${b.count === 1 ? "" : "s"})`}
                           >
+                            {/* admin-bar-grow: las barras crecen desde 0 al cargar,
+                                escalonadas 35ms por barra (globals.css). */}
                             <div
-                              className={
-                                b.totalCents > 0
-                                  ? "bg-brand-purple/80 w-full rounded-t"
-                                  : "bg-brand-purple/15 w-full rounded-t"
-                              }
-                              style={{ height: `${heightPct}%` }}
+                              className={`admin-bar-grow w-full rounded-t ${
+                                b.totalCents > 0 ? "bg-brand-purple/80" : "bg-brand-purple/15"
+                              }`}
+                              style={{
+                                height: `${heightPct}%`,
+                                animationDelay: `${Math.min(i * 35, 700)}ms`,
+                              }}
                             />
                           </Hint>
                         </div>
@@ -358,7 +361,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                     </div>
                     <div className="bg-brand-purple/10 mt-1.5 h-2 overflow-hidden rounded-full">
                       <div
-                        className="bg-brand-purple h-full rounded-full"
+                        className="bg-brand-purple admin-bar-grow-x h-full rounded-full"
                         style={{ width: `${m.pct}%` }}
                       />
                     </div>
