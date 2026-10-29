@@ -297,6 +297,11 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
               {activeCategory?.description ??
                 "Productos que cuentan historias. Personalizables, hechos a mano, listos para llegar a tu espacio."}
             </p>
+            {activeCategory?.useCase && (
+              <p className="text-brand-muted mt-1 max-w-2xl text-sm italic">
+                {activeCategory.useCase}
+              </p>
+            )}
           </header>
 
           <div className="flex flex-col gap-6 lg:flex-row">
@@ -364,6 +369,22 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
               )}
             </div>
           </div>
+
+          {/* Auditoría SEO 2026-10-28 (E18): contenido editorial de la categoría raíz,
+              espejo de la sección "Sobre" de la subcategoría. Solo en la vista limpia
+              (sin búsqueda, página 1): las vistas filtradas/paginadas canonizan acá y
+              repetir el texto largo ahí diluiría la página. Texto plano (whitespace-
+              pre-line), mismo criterio que la subcategoría. */}
+          {activeCategory?.richDescription && !q && page === 1 && (
+            <section className="border-brand-purple/10 mt-10 rounded-xl border bg-white px-6 py-8">
+              <h2 className="text-brand-purple-dark mb-3 text-lg font-bold">
+                Sobre {activeCategory.name}
+              </h2>
+              <div className="max-w-3xl text-sm leading-relaxed whitespace-pre-line text-slate-600">
+                {activeCategory.richDescription}
+              </div>
+            </section>
+          )}
         </div>
       </main>
       <SiteFooter />
