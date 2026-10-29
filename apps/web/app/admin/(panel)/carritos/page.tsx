@@ -33,7 +33,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentAdmin } from "@/lib/auth";
-import { formatCOP } from "@/lib/format";
+import { formatCOP, formatRelativeTime } from "@/lib/format";
 import {
   ABANDONED_STATUS_LABEL,
   getCartRecoveryMetrics,
@@ -60,14 +60,6 @@ const STATUS_FILTER_LABEL: Record<(typeof STATUS_OPTIONS)[number], string> = {
   all: "Todos",
 };
 
-/** "hace 5 h" / "hace 3 d" — antigüedad legible del abandono. */
-function ageLabel(from: Date, now: Date): string {
-  const hours = Math.max(0, Math.round((now.getTime() - from.getTime()) / 3_600_000));
-  if (hours < 24) return `hace ${hours} h`;
-  const days = Math.floor(hours / 24);
-  return `hace ${days} d`;
-}
-
 const dateFmt = new Intl.DateTimeFormat("es-CO", {
   day: "2-digit",
   month: "short",
@@ -93,7 +85,6 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
     getCartRecoverySettings(),
   ]);
   const hasActiveFilters = !!q || status !== "pending";
-  const now = new Date();
 
   return (
     <AdminPage>
@@ -316,7 +307,9 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
                     </span>
                   </td>
                   <td className="text-brand-muted px-4 py-3 text-xs">
-                    {ageLabel(c.lastActivityAt, now)}
+                    <span title={dateFmt.format(c.lastActivityAt)}>
+                      {formatRelativeTime(c.lastActivityAt)}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">
