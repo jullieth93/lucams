@@ -24,9 +24,6 @@ const { tx, prisma } = vi.hoisted(() => {
     },
     orderItem: { deleteMany: vi.fn(async () => ({ count: 0 })) },
     design: { updateMany: vi.fn(async () => ({ count: 0 })) },
-    // Evento inicial del historial de estados (createOrderFromCart lo escribe
-    // tras crear la Order, dentro de la misma tx).
-    orderStatusEvent: { create: vi.fn(async () => ({})) },
     productVariant: {
       findUnique: vi.fn(async () => ({
         id: "v1",

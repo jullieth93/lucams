@@ -21,9 +21,6 @@ const { tx, prisma } = vi.hoisted(() => {
     },
     orderItem: { deleteMany: vi.fn(async () => ({ count: 0 })) },
     design: { updateMany: vi.fn(async () => ({ count: 0 })) },
-    // Historial de estados: transitionOrder/createOrderFromCart escriben el
-    // evento dentro de la tx; el stub evita el undefined.create.
-    orderStatusEvent: { create: vi.fn(async () => ({})) },
     productVariant: {
       findUnique: vi.fn(async () => ({
         id: "v1",
