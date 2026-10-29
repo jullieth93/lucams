@@ -7,6 +7,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BadgeCheck, ShieldCheck } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { formatRelativeTime } from "@/lib/format";
 import {
   listWarrantyClaims,
   type WarrantyStatus,
@@ -149,7 +150,10 @@ export default async function AdminGarantiasPage({ searchParams }: { searchParam
                     </div>
                   )}
                   <p className="text-brand-muted mt-1 text-xs">
-                    {c.customerName} · {c.customerEmail} · {dateFmt.format(c.requestedAt)}
+                    {c.customerName} · {c.customerEmail} ·{" "}
+                    <span title={dateFmt.format(c.requestedAt)}>
+                      {formatRelativeTime(c.requestedAt)}
+                    </span>
                   </p>
                   {c.resolutionNote && (
                     <p className="text-brand-purple-dark/80 mt-1 text-xs italic">

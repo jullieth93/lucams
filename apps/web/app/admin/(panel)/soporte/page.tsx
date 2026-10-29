@@ -13,6 +13,7 @@
 import type { Metadata } from "next";
 import { LifeBuoy } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { formatRelativeTime } from "@/lib/format";
 import { listSupportTickets, type SupportTicketStatus } from "@/features/support/admin-service";
 import { SUBJECT_LABELS } from "@/features/support/schemas";
 import {
@@ -131,7 +132,10 @@ export default async function AdminSoportePage({ searchParams }: { searchParams:
                     {t.message}
                   </p>
                   <p className="text-brand-muted mt-1 text-xs">
-                    {t.name} · {t.email} · {dateFmt.format(t.createdAt)}
+                    {t.name} · {t.email} ·{" "}
+                    <span title={dateFmt.format(t.createdAt)}>
+                      {formatRelativeTime(t.createdAt)}
+                    </span>
                     {t.orderNumber ? ` · pedido ${t.orderNumber}` : ""}
                     {t.resolvedAt ? ` · cerrado ${dateFmt.format(t.resolvedAt)}` : ""}
                   </p>

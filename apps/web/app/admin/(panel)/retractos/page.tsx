@@ -7,7 +7,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Undo2 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
-import { formatCOP } from "@/lib/format";
+import { formatCOP, formatRelativeTime } from "@/lib/format";
 import { listRetractRequests } from "@/features/retract/service";
 import type { RetractStatus } from "@lucams/db";
 import {
@@ -121,7 +121,10 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
                     <span className="font-semibold">{formatCOP(r.refundAmount)}</span>
                   </p>
                   <p className="text-brand-muted text-xs">
-                    {r.customerEmail} · solicitado {dateFmt.format(r.requestedAt)}
+                    {r.customerEmail} · solicitado{" "}
+                    <span title={dateFmt.format(r.requestedAt)}>
+                      {formatRelativeTime(r.requestedAt)}
+                    </span>
                   </p>
                   {r.reason && (
                     <p className="text-brand-purple-dark/80 mt-1 text-xs italic">“{r.reason}”</p>
