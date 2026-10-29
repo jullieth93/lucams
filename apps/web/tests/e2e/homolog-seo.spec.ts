@@ -110,10 +110,9 @@ test("seo: sitemap + robots + OG image + canonical + JSON-LD home/PDP (sin Offer
     // garantiza acá es que la respuesta no es indexable: meta robots noindex + UI 404.
     const notFound = await request.get("/producto/producto-inexistente-seo-audit");
     const notFoundBody = await notFound.text();
-    expect(
-      notFoundBody,
-      "una PDP inexistente debe emitir meta robots noindex",
-    ).toContain("noindex");
+    expect(notFoundBody, "una PDP inexistente debe emitir meta robots noindex").toContain(
+      "noindex",
+    );
     expect(notFoundBody).toContain("no encontrada");
     record("pdp-inexistente-noindex", true, `status ${notFound.status()} + noindex`);
 
