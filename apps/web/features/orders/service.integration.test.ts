@@ -1536,6 +1536,62 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(row!.updatedBy).toBe("admin-42");
     });
 
+    // Historial de estados (OrderStatusEvent, 2026-10-29)
+    it("crear la orden escribe el evento inicial PENDING_PAYMENT (source system)", async () => {
+      const order = await seedPending();
+      const events = await prisma.orderStatusEvent.findMany({
+        where: { orderId: order.id },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0].fromStatus).toBeNull();
+      expect(events[0].toStatus).toBe("PENDING_PAYMENT");
+      expect(events[0].source).toBe("system");
+    });
+
+    it("cada transición aplicada escribe su evento con from/to, actor y nota", async () => {
+      const order = await seedPending();
+      await transitionOrder(order.id, "PAID", { actorAdminId: "admin-42" });
+      await transitionOrder(order.id, "CANCELLED", {
+        actorAdminId: "admin-42",
+        note: "cliente canceló",
+      });
+      const events = await prisma.orderStatusEvent.findMany({
+        where: { orderId: order.id },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(events).toHaveLength(3);
+      expect(events[1]).toMatchObject({
+        fromStatus: "PENDING_PAYMENT",
+        toStatus: "PAID",
+        source: "admin",
+        actorAdminId: "admin-42",
+      });
+      expect(events[2]).toMatchObject({
+        fromStatus: "PAID",
+        toStatus: "CANCELLED",
+        source: "admin",
+        note: "cliente canceló",
+      });
+    });
+
+    it("transición idempotente (mismo estado) NO escribe evento duplicado", async () => {
+      const order = await seedPending();
+      await transitionOrder(order.id, "PAID", { actorAdminId: "admin-42" });
+      await transitionOrder(order.id, "PAID", { actorAdminId: "admin-42" }); // no-op
+      const events = await prisma.orderStatusEvent.findMany({ where: { orderId: order.id } });
+      expect(events).toHaveLength(2); // inicial + una sola transición
+    });
+
+    it("actor de sistema tipo cron:* se clasifica como source=cron", async () => {
+      const order = await seedPending();
+      await transitionOrder(order.id, "CANCELLED", { actorAdminId: "cron:expire-pending-orders" });
+      const last = await prisma.orderStatusEvent.findFirst({
+        where: { orderId: order.id, toStatus: "CANCELLED" },
+      });
+      expect(last?.source).toBe("cron");
+    });
+
     it("transición ilegal PENDING_PAYMENT → SHIPPED lanza OrderTransitionError y NO cambia el status", async () => {
       const order = await seedPending();
       await expect(transitionOrder(order.id, "SHIPPED")).rejects.toBeInstanceOf(

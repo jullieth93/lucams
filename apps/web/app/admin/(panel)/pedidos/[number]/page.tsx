@@ -16,11 +16,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
-import { Box, User, MapPin, CreditCard, Truck, Package, Undo2 } from "lucide-react";
+import { Box, User, MapPin, CreditCard, Truck, Package, Undo2, History } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { getOrder } from "@/features/orders/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
 import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
@@ -68,6 +69,14 @@ const STATUS_TONE: Record<string, "emerald" | "amber" | "purple" | "rose" | "sla
   DRAFT: "slate",
 };
 
+// Quién movió el estado (OrderStatusEvent.source).
+const SOURCE_LABEL: Record<string, string> = {
+  admin: "Admin",
+  webhook: "Webhook",
+  cron: "Automático",
+  system: "Sistema",
+};
+
 type ShippingAddrSnapshot = {
   fullName?: string;
   email?: string;
@@ -95,6 +104,13 @@ export default async function AdminPedidoDetallePage({
   const { number } = await params;
   const order = await getOrder(decodeURIComponent(number));
   if (!order) notFound();
+
+  // Historial de transiciones (OrderStatusEvent — lo escribe transitionOrder en
+  // la misma tx del cambio de estado + el evento inicial de createOrderFromCart).
+  const statusEvents = await prisma.orderStatusEvent.findMany({
+    where: { orderId: order.id },
+    orderBy: { createdAt: "asc" },
+  });
 
   // ADR-063 T1 — firmar todos los PNGs de producción (bucket privado) para que el admin los
   // descargue e imprima. Antes esto era imposible desde la UI. TTL 1h → refrescar la página si expira.
@@ -771,6 +787,49 @@ export default async function AdminPedidoDetallePage({
                 </>
               )}
             </Card>
+
+            {/* Historial del pedido (OrderStatusEvent — timeline de transiciones) */}
+            {statusEvents.length > 0 && (
+              <Card icon={<History className="h-4 w-4" />} title="Historial">
+                <ol className="relative ml-1.5 space-y-3">
+                  {statusEvents.map((ev, i) => (
+                    <li key={ev.id} className="relative pl-5">
+                      {/* Línea conectora + punto del timeline */}
+                      {i < statusEvents.length - 1 && (
+                        <span
+                          aria-hidden
+                          className="bg-brand-purple/15 absolute top-3.5 left-[3px] h-[calc(100%+2px)] w-px"
+                        />
+                      )}
+                      <span
+                        aria-hidden
+                        className={`absolute top-1.5 left-0 h-[7px] w-[7px] rounded-full ${
+                          i === statusEvents.length - 1
+                            ? "bg-brand-pink ring-brand-pink/30 ring-2"
+                            : "bg-brand-purple/50"
+                        }`}
+                      />
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+                        <span className="text-brand-purple-dark font-semibold">
+                          {ev.fromStatus === null
+                            ? "Pedido creado"
+                            : `${(STATUS_LABEL[ev.fromStatus] ?? ev.fromStatus) as string} → ${(STATUS_LABEL[ev.toStatus] ?? ev.toStatus) as string}`}
+                        </span>
+                        <span className="text-brand-muted">
+                          · {SOURCE_LABEL[ev.source] ?? ev.source}
+                        </span>
+                      </div>
+                      {ev.note && (
+                        <p className="text-brand-muted mt-0.5 text-[11px] italic">“{ev.note}”</p>
+                      )}
+                      <p className="text-brand-muted mt-0.5 text-[10px]">
+                        {dateFmt.format(ev.createdAt)}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+            )}
 
             {/* Acciones */}
             <OrderActions
