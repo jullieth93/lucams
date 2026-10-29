@@ -1224,12 +1224,15 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     // NOTA: listOrders NO filtra por RUN — para aserciones precisas sobre CANTIDAD
     // filtramos con `q` por un token único, no por el total global de la DB.
     let seededEmailToken = "";
+    let seededGuestNameToken = "";
     let orderPaidId = "";
     let orderPendingId = "";
     let orderShippedId = "";
+    let orderGuestId = "";
 
     beforeAll(async () => {
       seededEmailToken = `${RUN}list${uniq()}`;
+      seededGuestNameToken = `Invitada ${RUN}Nombre${uniq()}`;
       // 3 orders que comparten el token en el email → buscables con q exacto.
       // Registran keep-alive para SOBREVIVIR al afterEach entre los `it` de este
       // describe (se limpian en el afterAll del describe).
@@ -1251,10 +1254,23 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       orderPaidId = b.id;
       orderShippedId = c.id;
 
+      // Order de INVITADA con nombre único en el snapshot de envío (customerId
+      // null): la búsqueda por nombre propio solo la encuentra vía el filtro
+      // JSON shippingAddress.fullName (no tiene Customer relacionado).
+      const { cartId: gCartId, sessionId: gSessionId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      keepAliveSessionIds.add(gSessionId);
+      const guest = await createOrderFromCart(
+        baseInput(gCartId, { shipping: { fullName: seededGuestNameToken } }),
+      );
+      keepAliveOrderIds.add(guest.id);
+      orderGuestId = guest.id;
+
       // Llevar b a PAID y c a SHIPPED para probar filtro por status.
       await prisma.order.update({ where: { id: orderPaidId }, data: { status: "PAID" } });
       await prisma.order.update({ where: { id: orderShippedId }, data: { status: "SHIPPED" } });
-    }, T); // hookTimeout: crea 3 orders vía el pooler; el default 10s no alcanza.
+    }, T); // hookTimeout: crea 4 orders vía el pooler; el default 10s no alcanza.
 
     it("busca por email (q, insensitive) y devuelve solo las 3 orders del token", async () => {
       const res = await listOrders({ q: seededEmailToken });
@@ -1262,6 +1278,12 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(res.items).toHaveLength(3);
       const ids = res.items.map((o) => o.id).sort();
       expect(ids).toEqual([orderPendingId, orderPaidId, orderShippedId].sort());
+    });
+
+    it("busca por nombre de INVITADA (shippingAddress.fullName del snapshot JSON)", async () => {
+      const res = await listOrders({ q: seededGuestNameToken });
+      expect(res.total).toBe(1);
+      expect(res.items[0].id).toBe(orderGuestId);
     });
 
     it("filtra por status combinado con q → solo la order PAID del token", async () => {

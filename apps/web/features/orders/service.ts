@@ -1162,6 +1162,16 @@ export async function listOrders(opts: OrderListOpts = {}) {
             { phone: { contains: q } },
             { customer: { firstName: { contains: q, mode: "insensitive" } } },
             { customer: { lastName: { contains: q, mode: "insensitive" } } },
+            // Invitados (customerId null): el nombre vive en el snapshot JSON de
+            // envío — la tabla lo MUESTRA (fallback shipName) pero la búsqueda no
+            // lo encontraba; buscar a una invitada por su nombre devolvía 0 filas.
+            {
+              shippingAddress: {
+                path: ["fullName"],
+                string_contains: q,
+                mode: "insensitive",
+              },
+            },
           ],
         }
       : {}),
