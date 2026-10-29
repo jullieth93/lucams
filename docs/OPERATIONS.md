@@ -364,10 +364,10 @@ ambiente (mientras no se invalide, sirven los fallbacks del código o el caché 
 
 ### Migración de la revisión integral admin (2026-10-29)
 
-| Migración                                                   | Qué crea                                              | STG           | PRD      |
-| ----------------------------------------------------------- | ----------------------------------------------------- | ------------- | -------- |
-| Prisma `20261029120000_order_status_events`                 | `OrderStatusEvent` (historial de estados del pedido)  | ✅ 2026-10-29 | pendiente del release |
-| SQL `supabase/migrations/00000000000045_order_status_event_rls.sql` | RLS deny-by-default de la tabla              | ✅ 2026-10-29 | pendiente del release |
+| Migración                                                           | Qué crea                                             | STG           | PRD                   |
+| ------------------------------------------------------------------- | ---------------------------------------------------- | ------------- | --------------------- |
+| Prisma `20261029120000_order_status_events`                         | `OrderStatusEvent` (historial de estados del pedido) | ✅ 2026-10-29 | pendiente del release |
+| SQL `supabase/migrations/00000000000045_order_status_event_rls.sql` | RLS deny-by-default de la tabla                      | ✅ 2026-10-29 | pendiente del release |
 
 La SQL 045 **no agenda crons** (solo RLS) — segura de aplicar en cualquier momento. El código
 que la escribe (`transitionOrder` / `createOrderFromCart`) llegó a `develop` con el PR #113; el
