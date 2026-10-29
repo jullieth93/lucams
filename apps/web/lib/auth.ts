@@ -65,10 +65,10 @@ export const getCurrentCustomer = cache(
  * puede ser ambas cosas. Un admin que NO sea cliente solo tendrá fila
  * en AdminUser, no en Customer.
  */
-export async function getCurrentAdmin(): Promise<{
+export const getCurrentAdmin = cache(async (): Promise<{
   user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
   admin: AdminUser;
-} | null> {
+} | null> => {
   const user = await getCurrentUser();
   if (!user) return null;
 
@@ -78,4 +78,4 @@ export async function getCurrentAdmin(): Promise<{
   if (!admin) return null;
 
   return { user, admin };
-}
+});

@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { AdminSubmitButton } from "@/components/admin-submit-button";
 import { AdminTableAutoCards } from "@/components/admin-table-auto-cards";
+import { CountUp } from "@/components/admin/count-up";
 import { Hint } from "@/components/ui/tooltip";
 
 // ─────────────────── Layout primitives ───────────────────
@@ -47,8 +48,11 @@ import { Hint } from "@/components/ui/tooltip";
 type BreadcrumbItem = { label: string; href?: string };
 
 export function AdminPage({ children }: { children: ReactNode }) {
+  // admin-fade-in: entrada suave de página (fade + rise 4px, 300ms). La clase
+  // existía en globals.css desde la v3 del shell pero NINGÚN componente la
+  // usaba — cableada acá la heredan todas las páginas del panel.
   return (
-    <div className="min-h-[calc(100vh-3.5rem)]">
+    <div className="admin-fade-in min-h-[calc(100vh-3.5rem)]">
       <div className="mx-auto max-w-7xl">{children}</div>
     </div>
   );
@@ -111,7 +115,10 @@ export function AdminPageHeader({
 }
 
 export function AdminPageBody({ children }: { children: ReactNode }) {
-  return <main className="space-y-6 px-4 py-6 sm:px-6 sm:py-8">{children}</main>;
+  // <div>, no <main>: el <main id="contenido"> único de la página lo renderiza
+  // AdminShell — un <main> anidado es HTML inválido (a11y: dos landmarks).
+  // admin-stagger: entrada escalonada de las secciones (globals.css).
+  return <div className="admin-stagger space-y-6 px-4 py-6 sm:px-6 sm:py-8">{children}</div>;
 }
 
 // ─────────────────── Notice banners ───────────────────
@@ -410,7 +417,9 @@ export function OpsCard({
           <span className="bg-brand-coral inline-flex h-2.5 w-2.5 animate-pulse rounded-full" />
         )}
       </div>
-      <p className={`text-3xl font-bold tabular-nums ${c.text}`}>{value}</p>
+      <p className={`text-3xl font-bold tabular-nums ${c.text}`}>
+        {typeof value === "number" ? <CountUp value={value} /> : value}
+      </p>
       <p className="text-brand-purple-dark mt-1 text-sm font-medium">{label}</p>
       {description && <p className="text-brand-muted text-xs">{description}</p>}
     </Link>
@@ -437,7 +446,7 @@ export function KpiCard({
     <div className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
       <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">{label}</p>
       <p className="text-brand-purple-dark font-display mt-2 text-3xl font-bold tabular-nums">
-        {value}
+        {typeof value === "number" ? <CountUp value={value} /> : value}
       </p>
       <p className={`mt-1.5 flex items-center gap-1 text-xs ${trendColor}`}>
         <TrendIcon className="h-3 w-3" />
