@@ -23,14 +23,16 @@ export function AdminLoginForm() {
   );
 
   return (
-    <Card className="w-full max-w-md border-slate-200 shadow-md">
+    <Card className="auth-card-in w-full max-w-md border-white/40 bg-white/95 shadow-2xl backdrop-blur-xl">
       <CardHeader className="space-y-2">
-        <div className="flex items-center gap-2 text-slate-500">
+        <div className="text-brand-purple flex items-center gap-2">
           <Shield className="h-4 w-4" strokeWidth={2} />
           <span className="text-xs font-medium tracking-wider uppercase">Acceso restringido</span>
         </div>
-        <CardTitle className="text-2xl font-bold text-slate-900">Panel administrativo</CardTitle>
-        <CardDescription className="text-slate-600">
+        <CardTitle className="text-brand-purple-dark font-display text-2xl font-bold">
+          Panel administrativo
+        </CardTitle>
+        <CardDescription className="text-brand-purple-dark/70">
           Solo personal autorizado de Lucams Shop.
         </CardDescription>
       </CardHeader>
@@ -38,7 +40,7 @@ export function AdminLoginForm() {
       <form action={formAction}>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-slate-700">
+            <Label htmlFor="email" className="text-brand-purple-dark/85">
               Correo electrónico
             </Label>
             <EmailInput
@@ -55,7 +57,7 @@ export function AdminLoginForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-slate-700">
+            <Label htmlFor="password" className="text-brand-purple-dark/85">
               Contraseña
             </Label>
             <PasswordInput
@@ -84,7 +86,7 @@ export function AdminLoginForm() {
         <CardFooter className="mt-2 flex flex-col gap-3">
           <Button
             type="submit"
-            className="w-full bg-slate-900 font-semibold text-white hover:bg-slate-800"
+            className="bg-gradient-brand w-full font-semibold text-white shadow-lg transition-all hover:shadow-xl hover:brightness-110 active:scale-[0.98]"
             disabled={pending}
           >
             {pending ? (
@@ -95,11 +97,11 @@ export function AdminLoginForm() {
               "Iniciar sesión"
             )}
           </Button>
-          <p className="text-center text-xs leading-relaxed text-slate-500">
+          <p className="text-brand-muted text-center text-xs leading-relaxed">
             ¿Cliente buscando tu cuenta?{" "}
             <a
               href="/login"
-              className="font-medium text-slate-700 underline-offset-4 hover:underline"
+              className="text-brand-purple-dark hover:text-brand-purple font-medium underline-offset-4 hover:underline"
             >
               Ingresar a tu cuenta
             </a>

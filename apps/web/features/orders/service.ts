@@ -717,6 +717,10 @@ async function createOrderFromCartTx(
       },
       select: returnSelect,
     });
+    // Historial de estados: evento inicial (la orden nace PENDING_PAYMENT).
+    await tx.orderStatusEvent.create({
+      data: { orderId: order.id, fromStatus: null, toStatus: "PENDING_PAYMENT", source: "system" },
+    });
     // Puntos Lucams — reserva atómica dentro de la tx: decremento gateado del
     // balance (LoyaltyRedemptionError si ya no alcanza → rollback completo) +
     // LoyaltyTxn REDEEM ligada a la orden recién creada.
@@ -771,15 +775,27 @@ export async function clearCartAfterPaid(
  *
  * Puede agregar campos auxiliares con la transición (ej. trackingNumber
  * al pasar a FULFILLING). El caller los pasa en `extra`.
+ *
+ * Historial (2026-10-29): cada transición aplicada escribe un OrderStatusEvent
+ * en la MISMA transacción atómica del UPDATE (si la orden no cambió — idempotencia
+ * TOCTOU — no se escribe evento). `source`: "admin" cuando viene actorAdminId real,
+ * "cron" para actores de sistema tipo "cron:*", si no "system".
  */
 export async function transitionOrder(
   orderId: string,
   to: string,
   options: {
     actorAdminId?: string;
+    /** Motivo opcional (ej. razón de cancelación del admin) — queda en el evento. */
+    note?: string;
     extra?: Prisma.OrderUpdateInput;
   } = {},
 ) {
+  const eventSource = options.actorAdminId
+    ? options.actorAdminId.startsWith("cron:")
+      ? "cron"
+      : "admin"
+    : "system";
   const current = await prisma.order.findFirst({
     where: { id: orderId, deletedAt: null },
     select: { id: true, status: true, number: true },
@@ -789,6 +805,16 @@ export async function transitionOrder(
   if (!canTransition(current.status, to)) {
     throw new OrderTransitionError(current.status, to);
   }
+
+  // Evento del historial (misma tx que el UPDATE de estado).
+  const statusEventData = {
+    orderId,
+    fromStatus: current.status,
+    toStatus: to as typeof current.status,
+    source: eventSource,
+    actorAdminId: options.actorAdminId ?? null,
+    note: options.note ?? null,
+  };
 
   // P0-002 (Lucy 2026-06-26) — Si la transición es a CANCELLED/REFUNDED,
   // revertir stock dentro de la misma transacción. revertStockForOrder es
@@ -822,6 +848,8 @@ export async function transitionOrder(
         if (fresh?.status === to) return fresh; // ya movido a `to` por otro proceso → idempotente
         throw new OrderTransitionError(fresh?.status ?? current.status, to); // aborta la tx (rollback)
       }
+      // Historial: la transición SÍ se aplicó en esta tx → queda el evento.
+      await tx.orderStatusEvent.create({ data: statusEventData });
       const updated = await tx.order.findFirstOrThrow({ where: { id: orderId } });
       const orderWithItems = await tx.order.findFirst({
         where: { id: orderId },
@@ -903,25 +931,30 @@ export async function transitionOrder(
     return updated;
   }
 
-  // #11 (TOCTOU) — mismo guard atómico para la rama sin revert.
-  const res = await prisma.order.updateMany({
-    where: { id: orderId, status: current.status },
-    data: {
-      status: to as Prisma.OrderUpdateManyMutationInput["status"],
-      updatedBy: options.actorAdminId ?? null,
-      ...autoStamp,
-      ...(options.extra as Prisma.OrderUpdateManyMutationInput),
-    },
-  });
-  if (res.count === 0) {
-    const fresh = await prisma.order.findFirst({
-      where: { id: orderId, deletedAt: null },
-      select: { id: true, status: true, number: true },
+  // #11 (TOCTOU) — mismo guard atómico para la rama sin revert. El evento del
+  // historial va en la misma tx: si el gate no aplica (otro proceso ganó la
+  // carrera), no queda evento huérfano.
+  return prisma.$transaction(async (tx) => {
+    const res = await tx.order.updateMany({
+      where: { id: orderId, status: current.status },
+      data: {
+        status: to as Prisma.OrderUpdateManyMutationInput["status"],
+        updatedBy: options.actorAdminId ?? null,
+        ...autoStamp,
+        ...(options.extra as Prisma.OrderUpdateManyMutationInput),
+      },
     });
-    if (fresh?.status === to) return fresh; // otro proceso ya aplicó la misma transición → idempotente
-    throw new OrderTransitionError(fresh?.status ?? current.status, to); // no pisar el estado nuevo
-  }
-  return prisma.order.findFirstOrThrow({ where: { id: orderId } });
+    if (res.count === 0) {
+      const fresh = await tx.order.findFirst({
+        where: { id: orderId, deletedAt: null },
+        select: { id: true, status: true, number: true },
+      });
+      if (fresh?.status === to) return fresh; // otro proceso ya aplicó la misma transición → idempotente
+      throw new OrderTransitionError(fresh?.status ?? current.status, to); // no pisar el estado nuevo
+    }
+    await tx.orderStatusEvent.create({ data: statusEventData });
+    return tx.order.findFirstOrThrow({ where: { id: orderId } });
+  });
 }
 
 /**
@@ -960,6 +993,7 @@ export async function refundOrder(
 
   await transitionOrder(orderId, "REFUNDED", {
     actorAdminId: opts.adminId,
+    note: opts.reason?.trim() || undefined,
     extra: {
       refundedAt: new Date(),
       refundedBy: opts.adminId,
@@ -1162,6 +1196,16 @@ export async function listOrders(opts: OrderListOpts = {}) {
             { phone: { contains: q } },
             { customer: { firstName: { contains: q, mode: "insensitive" } } },
             { customer: { lastName: { contains: q, mode: "insensitive" } } },
+            // Invitados (customerId null): el nombre vive en el snapshot JSON de
+            // envío — la tabla lo MUESTRA (fallback shipName) pero la búsqueda no
+            // lo encontraba; buscar a una invitada por su nombre devolvía 0 filas.
+            {
+              shippingAddress: {
+                path: ["fullName"],
+                string_contains: q,
+                mode: "insensitive",
+              },
+            },
           ],
         }
       : {}),

@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { AuthScene } from "@/components/auth/auth-scene";
 import { MfaChallenge } from "./mfa-challenge";
 
 export const metadata: Metadata = { title: "Verificación en 2 pasos" };
@@ -33,8 +34,9 @@ export default async function AdminMfaPage() {
   if (!totp) redirect("/admin/seguridad?enroll=required");
 
   return (
-    <div className="bg-brand-cream flex min-h-screen items-center justify-center px-4">
-      <div className="border-brand-purple/15 w-full max-w-sm rounded-2xl border bg-white p-6 shadow-sm">
+    <div className="from-brand-purple-dark via-brand-purple to-brand-pink relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br px-4">
+      <AuthScene variant="dark" />
+      <div className="auth-card-in relative z-10 w-full max-w-sm rounded-2xl border border-white/40 bg-white/95 p-6 shadow-2xl backdrop-blur-xl">
         <div className="mb-4 flex flex-col items-center text-center">
           <div className="bg-brand-purple/10 mb-3 flex h-12 w-12 items-center justify-center rounded-full">
             <ShieldCheck className="text-brand-purple h-6 w-6" />

@@ -1224,12 +1224,15 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     // NOTA: listOrders NO filtra por RUN — para aserciones precisas sobre CANTIDAD
     // filtramos con `q` por un token único, no por el total global de la DB.
     let seededEmailToken = "";
+    let seededGuestNameToken = "";
     let orderPaidId = "";
     let orderPendingId = "";
     let orderShippedId = "";
+    let orderGuestId = "";
 
     beforeAll(async () => {
       seededEmailToken = `${RUN}list${uniq()}`;
+      seededGuestNameToken = `Invitada ${RUN}Nombre${uniq()}`;
       // 3 orders que comparten el token en el email → buscables con q exacto.
       // Registran keep-alive para SOBREVIVIR al afterEach entre los `it` de este
       // describe (se limpian en el afterAll del describe).
@@ -1251,10 +1254,23 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       orderPaidId = b.id;
       orderShippedId = c.id;
 
+      // Order de INVITADA con nombre único en el snapshot de envío (customerId
+      // null): la búsqueda por nombre propio solo la encuentra vía el filtro
+      // JSON shippingAddress.fullName (no tiene Customer relacionado).
+      const { cartId: gCartId, sessionId: gSessionId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      keepAliveSessionIds.add(gSessionId);
+      const guest = await createOrderFromCart(
+        baseInput(gCartId, { shipping: { fullName: seededGuestNameToken } }),
+      );
+      keepAliveOrderIds.add(guest.id);
+      orderGuestId = guest.id;
+
       // Llevar b a PAID y c a SHIPPED para probar filtro por status.
       await prisma.order.update({ where: { id: orderPaidId }, data: { status: "PAID" } });
       await prisma.order.update({ where: { id: orderShippedId }, data: { status: "SHIPPED" } });
-    }, T); // hookTimeout: crea 3 orders vía el pooler; el default 10s no alcanza.
+    }, T); // hookTimeout: crea 4 orders vía el pooler; el default 10s no alcanza.
 
     it("busca por email (q, insensitive) y devuelve solo las 3 orders del token", async () => {
       const res = await listOrders({ q: seededEmailToken });
@@ -1262,6 +1278,12 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(res.items).toHaveLength(3);
       const ids = res.items.map((o) => o.id).sort();
       expect(ids).toEqual([orderPendingId, orderPaidId, orderShippedId].sort());
+    });
+
+    it("busca por nombre de INVITADA (shippingAddress.fullName del snapshot JSON)", async () => {
+      const res = await listOrders({ q: seededGuestNameToken });
+      expect(res.total).toBe(1);
+      expect(res.items[0].id).toBe(orderGuestId);
     });
 
     it("filtra por status combinado con q → solo la order PAID del token", async () => {
@@ -1512,6 +1534,62 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       });
       expect(row!.status).toBe("PAID");
       expect(row!.updatedBy).toBe("admin-42");
+    });
+
+    // Historial de estados (OrderStatusEvent, 2026-10-29)
+    it("crear la orden escribe el evento inicial PENDING_PAYMENT (source system)", async () => {
+      const order = await seedPending();
+      const events = await prisma.orderStatusEvent.findMany({
+        where: { orderId: order.id },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0].fromStatus).toBeNull();
+      expect(events[0].toStatus).toBe("PENDING_PAYMENT");
+      expect(events[0].source).toBe("system");
+    });
+
+    it("cada transición aplicada escribe su evento con from/to, actor y nota", async () => {
+      const order = await seedPending();
+      await transitionOrder(order.id, "PAID", { actorAdminId: "admin-42" });
+      await transitionOrder(order.id, "CANCELLED", {
+        actorAdminId: "admin-42",
+        note: "cliente canceló",
+      });
+      const events = await prisma.orderStatusEvent.findMany({
+        where: { orderId: order.id },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(events).toHaveLength(3);
+      expect(events[1]).toMatchObject({
+        fromStatus: "PENDING_PAYMENT",
+        toStatus: "PAID",
+        source: "admin",
+        actorAdminId: "admin-42",
+      });
+      expect(events[2]).toMatchObject({
+        fromStatus: "PAID",
+        toStatus: "CANCELLED",
+        source: "admin",
+        note: "cliente canceló",
+      });
+    });
+
+    it("transición idempotente (mismo estado) NO escribe evento duplicado", async () => {
+      const order = await seedPending();
+      await transitionOrder(order.id, "PAID", { actorAdminId: "admin-42" });
+      await transitionOrder(order.id, "PAID", { actorAdminId: "admin-42" }); // no-op
+      const events = await prisma.orderStatusEvent.findMany({ where: { orderId: order.id } });
+      expect(events).toHaveLength(2); // inicial + una sola transición
+    });
+
+    it("actor de sistema tipo cron:* se clasifica como source=cron", async () => {
+      const order = await seedPending();
+      await transitionOrder(order.id, "CANCELLED", { actorAdminId: "cron:expire-pending-orders" });
+      const last = await prisma.orderStatusEvent.findFirst({
+        where: { orderId: order.id, toStatus: "CANCELLED" },
+      });
+      expect(last?.source).toBe("cron");
     });
 
     it("transición ilegal PENDING_PAYMENT → SHIPPED lanza OrderTransitionError y NO cambia el status", async () => {

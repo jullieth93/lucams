@@ -653,6 +653,7 @@ model Order {
   giftMessage             String?
   items                   OrderItem[]
   wompiAttempts           WompiPaymentAttempt[]
+  statusEvents            OrderStatusEvent[]
   // DIAN factura electrónica (Fase 7 implementa el envío; aquí el
   // schema queda ready para no remigrar después).
   billingDocumentType     DocumentType?
@@ -699,6 +700,25 @@ model Order {
   @@index([couponId])
   @@index([needsReconciliation])
   @@index([shippingAddressKey])
+}
+
+// Historial de transiciones de estado del pedido (2026-10-29): cada salto de
+// status lo escribe transitionOrder en la MISMA transacción atómica del UPDATE
+// (incl. el registro inicial al crear la orden). Fuente: quién lo movió
+// (admin con actorAdminId, webhook Wompi/Aveonline, cron, sistema). Visible en
+// el detalle admin del pedido. Solo backend privilegiado (RLS deny-by-default).
+model OrderStatusEvent {
+  id           String      @id @default(cuid())
+  orderId      String
+  order        Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus   OrderStatus?
+  toStatus     OrderStatus
+  source       String // "admin" | "webhook" | "cron" | "system"
+  actorAdminId String? // AdminUser.id cuando source="admin"
+  note         String?
+  createdAt    DateTime    @default(now())
+
+  @@index([orderId, createdAt])
 }
 
 // Anti-abuso COD (ADR-065): lista de bloqueo persistente. Lucy puede vetar a mano un teléfono, email o

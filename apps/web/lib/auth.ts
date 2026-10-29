@@ -65,17 +65,19 @@ export const getCurrentCustomer = cache(
  * puede ser ambas cosas. Un admin que NO sea cliente solo tendrá fila
  * en AdminUser, no en Customer.
  */
-export async function getCurrentAdmin(): Promise<{
-  user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
-  admin: AdminUser;
-} | null> {
-  const user = await getCurrentUser();
-  if (!user) return null;
+export const getCurrentAdmin = cache(
+  async (): Promise<{
+    user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
+    admin: AdminUser;
+  } | null> => {
+    const user = await getCurrentUser();
+    if (!user) return null;
 
-  const admin = await prisma.adminUser.findFirst({
-    where: { supabaseUserId: user.id, isActive: true, deletedAt: null },
-  });
-  if (!admin) return null;
+    const admin = await prisma.adminUser.findFirst({
+      where: { supabaseUserId: user.id, isActive: true, deletedAt: null },
+    });
+    if (!admin) return null;
 
-  return { user, admin };
-}
+    return { user, admin };
+  },
+);

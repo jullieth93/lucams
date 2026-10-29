@@ -41,6 +41,8 @@ import {
   getCustomerReferralRows,
   getCustomerTotalSpent,
 } from "@/features/customers/service";
+import { customerWaLink } from "@/lib/wa";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { formatCOP } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -98,6 +100,14 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
   if (!customer) notFound();
 
   const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(" ") || "Cliente";
+  // wa.me con mensaje pre-armado (mismo patrón del detalle de pedido; null =
+  // teléfono no parseable → se oculta el botón).
+  const waLink = customer.phone
+    ? customerWaLink(
+        customer.phone,
+        `Hola ${customer.firstName ?? fullName}, te escribo de Lucams Shop. `,
+      )
+    : null;
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
     month: "short",
@@ -128,13 +138,27 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
           { label: fullName },
         ]}
         actions={
-          <Link
-            href="/admin/clientes"
-            className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver
-          </Link>
+          <div className="flex items-center gap-2">
+            {/* Mismo patrón del detalle de pedido: wa.me con mensaje pre-armado. */}
+            {waLink && (
+              <a
+                href={waLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
+              >
+                <WhatsAppIcon className="h-3.5 w-3.5 text-emerald-700" />
+                WhatsApp
+              </a>
+            )}
+            <Link
+              href="/admin/clientes"
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </Link>
+          </div>
         }
       />
 

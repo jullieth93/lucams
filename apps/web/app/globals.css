@@ -301,6 +301,185 @@ h6 {
   }
 }
 
+/* Entrada escalonada de secciones (la usa AdminPageBody): cada hijo directo
+   sube y aparece con un pequeño desfase. Capeado en el 8vo hijo — las páginas
+   con más secciones no esperan medio segundo extra por las últimas. */
+.admin-stagger > * {
+  animation: adminRise 0.4s ease-out both;
+}
+.admin-stagger > *:nth-child(2) {
+  animation-delay: 0.05s;
+}
+.admin-stagger > *:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.admin-stagger > *:nth-child(4) {
+  animation-delay: 0.15s;
+}
+.admin-stagger > *:nth-child(5) {
+  animation-delay: 0.2s;
+}
+.admin-stagger > *:nth-child(6) {
+  animation-delay: 0.25s;
+}
+.admin-stagger > *:nth-child(7) {
+  animation-delay: 0.3s;
+}
+.admin-stagger > *:nth-child(n + 8) {
+  animation-delay: 0.35s;
+}
+@keyframes adminRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Skeleton con barrido de brillo (loading.tsx del panel). Barra base crema
+   con un highlight que recorre de izquierda a derecha — más cálido que el
+   pulse gris genérico y coherente con la paleta. */
+.admin-skeleton {
+  background-color: color-mix(in srgb, var(--brand-purple) 7%, white);
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--brand-purple) 12%, white) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: adminShimmer 1.4s linear infinite;
+}
+@keyframes adminShimmer {
+  from {
+    background-position: 180% 0;
+  }
+  to {
+    background-position: -80% 0;
+  }
+}
+
+/* ─────────── Auth scene (login admin/cliente, OTP, recuperar) ───────────
+   Fondo vivo compartido: blobs de marca que derivan lento + destellos que
+   titilan. Todo CSS (sin JS); el bloque global de prefers-reduced-motion
+   las reduce a estático. La usan /admin/login, /admin/login/mfa y el
+   layout del grupo (auth). */
+.auth-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.auth-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(72px);
+  will-change: transform;
+}
+.auth-drift-a {
+  animation: authDriftA 22s ease-in-out infinite;
+}
+.auth-drift-b {
+  animation: authDriftB 27s ease-in-out infinite;
+}
+.auth-drift-c {
+  animation: authDriftC 32s ease-in-out infinite;
+}
+@keyframes authDriftA {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(6vw, -4vh) scale(1.12);
+  }
+  66% {
+    transform: translate(-3vw, 5vh) scale(0.94);
+  }
+}
+@keyframes authDriftB {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-7vw, -6vh) scale(1.15);
+  }
+}
+@keyframes authDriftC {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(4vw, 6vh) scale(0.9);
+  }
+}
+
+.auth-sparkle {
+  position: absolute;
+  animation: authTwinkle 3.4s ease-in-out infinite;
+}
+@keyframes authTwinkle {
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: scale(0.8) rotate(0deg);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.15) rotate(18deg);
+  }
+}
+
+/* Entrada de la tarjeta de auth: sube, aparece y asienta con easing suave. */
+.auth-card-in {
+  animation: authCardIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes authCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Barras de gráficos admin (finanzas): crecen desde 0 al cargar la página.
+   scaleY (no height) para no pelear con el alto inline en %. */
+.admin-bar-grow {
+  transform-origin: bottom;
+  animation: adminBarGrow 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes adminBarGrow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Variante horizontal (barras de progreso, ej. «Por método de pago»). */
+.admin-bar-grow-x {
+  transform-origin: left;
+  animation: adminBarGrowX 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes adminBarGrowX {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 /* ─────────── Contenido largo del CMS (legales, ayuda) ───────────
    `<CmsMarkdown>` aplica la clase `.cms-markdown` pero NADIE la estilaba: react-markdown emite
    <p>/<h2>/<ul> limpios y el preflight de Tailwind deja todos los márgenes en 0, así que los 8

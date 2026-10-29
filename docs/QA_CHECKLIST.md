@@ -209,13 +209,13 @@
 
 ## L. SEO técnico
 
-- [ ] /sitemap.xml válido en Google Search Console
-- [ ] /robots.txt con Disallow /admin /api /mi-cuenta /\_next
+- [x] /sitemap.xml válido en Google Search Console (enviado 2026-10-28, 42 URLs descubiertas)
+- [x] /robots.txt con Disallow /admin /api /mi-cuenta (sin `/\_next` desde 2026-10-29: bloqueaba `/_next/image` a Googlebot-Image — auditoría SEO)
 - [ ] /manifest.webmanifest se descarga 200
 - [ ] PDP JSON-LD Product válido en https://search.google.com/test/rich-results
 - [ ] Open Graph en home + PDP genera preview correcto
 - [ ] Twitter Cards summary_large_image
-- [ ] canonical alternate en PDPs
+- [x] canonical alternate en PDPs (y en todas las indexables desde 2026-10-29)
 
 ## M. Accesibilidad WCAG 2.1 AA
 
