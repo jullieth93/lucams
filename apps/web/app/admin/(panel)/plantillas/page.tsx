@@ -70,7 +70,7 @@ function groupByCategory(templates: AdminTemplate[]): CategoryGroup[] {
 function TemplateCard({ t }: { t: AdminTemplate }) {
   const st = templateStatus(t);
   return (
-    <div className="border-brand-purple/10 group flex flex-col overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-purple/10">
+    <div className="border-brand-purple/10 group hover:shadow-brand-purple/10 flex flex-col overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
       <div className="bg-brand-cream/50 relative aspect-square overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

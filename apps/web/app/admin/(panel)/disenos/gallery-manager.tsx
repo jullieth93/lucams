@@ -860,7 +860,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                     return (
                       <div
                         key={it.id}
-                        className="border-brand-purple/12 group relative rounded-xl border bg-white p-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-purple/10"
+                        className="border-brand-purple/12 group hover:shadow-brand-purple/10 relative rounded-xl border bg-white p-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
                       >
                         {/* Paquete A — click en la tarjeta abre el detalle (caras
                         A/B lado a lado + ficha). El archivar sigue aparte. */}
