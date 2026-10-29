@@ -451,6 +451,35 @@ h6 {
   }
 }
 
+/* Barras de gráficos admin (finanzas): crecen desde 0 al cargar la página.
+   scaleY (no height) para no pelear con el alto inline en %. */
+.admin-bar-grow {
+  transform-origin: bottom;
+  animation: adminBarGrow 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes adminBarGrow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Variante horizontal (barras de progreso, ej. «Por método de pago»). */
+.admin-bar-grow-x {
+  transform-origin: left;
+  animation: adminBarGrowX 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes adminBarGrowX {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 /* ─────────── Contenido largo del CMS (legales, ayuda) ───────────
    `<CmsMarkdown>` aplica la clase `.cms-markdown` pero NADIE la estilaba: react-markdown emite
    <p>/<h2>/<ul> limpios y el preflight de Tailwind deja todos los márgenes en 0, así que los 8
