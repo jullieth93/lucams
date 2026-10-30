@@ -51,6 +51,7 @@ import { OcasionFilterStrip } from "@/components/ocasion-filter-strip";
 import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
 import { TrackViewItemList } from "@/components/analytics-trackers";
+import { CategoryIntro } from "@/components/category-intro";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -307,14 +308,21 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
               {activeCategory ? activeCategory.name : "Tienda Lucams"}
             </h1>
-            <p className="text-brand-purple-dark/70 mt-2 max-w-2xl text-base">
-              {activeCategory?.description ??
-                "Productos que cuentan historias. Personalizables, hechos a mano, listos para llegar a tu espacio."}
-            </p>
-            {activeCategory?.useCase && (
-              <p className="text-brand-muted mt-1 max-w-2xl text-sm italic">
-                {activeCategory.useCase}
-              </p>
+            {/* 2026-10-29 (owner) — en móvil el intro editorial se colapsa a 2
+                líneas con «Leer más» (el texto completo copaba el primer
+                viewport y el producto «se perdía»). Desktop intacto. */}
+            {activeCategory ? (
+              <CategoryIntro
+                description={activeCategory.description ?? ""}
+                useCase={activeCategory.useCase}
+              />
+            ) : (
+              <>
+                <p className="text-brand-purple-dark/70 mt-2 max-w-2xl text-base">
+                  Productos que cuentan historias. Personalizables, hechos a mano, listos para
+                  llegar a tu espacio.
+                </p>
+              </>
             )}
           </header>
 

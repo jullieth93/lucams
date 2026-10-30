@@ -183,5 +183,14 @@ export async function adminLoginAction(
     (f) => f.factor_type === "totp" && f.status === "verified",
   );
   if (!hasVerifiedTotp) redirect("/admin/seguridad?enroll=required");
+  // Misma clase de fix para el reto aal2 (2026-10-30, visto en el setup e2e):
+  // con factor verificado pero sesión aal1, el destino es /admin/login/mfa
+  // DIRECTO — antes lo hacía el candado del layout con redirect() en medio de
+  // la navegación RSC al home (misma fragilidad: redirect desde layout
+  // compartido durante soft-nav).
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal && aal.nextLevel === "aal2" && aal.currentLevel === "aal1") {
+    redirect("/admin/login/mfa");
+  }
   redirect(adminHomePath(admin.role));
 }

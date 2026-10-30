@@ -90,22 +90,26 @@ export function useDebouncedCommit(
     [commitNow, debounceMs],
   );
 
-  /** Commit inmediato si hay tecleo pendiente (blur). Sin pendiente → no-op. */
+  /** Commit inmediato si hay tecleo pendiente (blur) + normalización VISIBLE. */
   const flush = useCallback(() => {
-    if (timerRef.current === null) return;
-    clearTimer();
-    const pending = draftRef.current;
-    // La comparación va en formato ECO (display): el último commit se guarda
-    // transformado y el draft es crudo — compararlos en crudo re-commitearía
-    // siempre en campos con transformación (ubicación, likes).
+    if (timerRef.current !== null) {
+      clearTimer();
+      const pending = draftRef.current;
+      // La comparación va en formato ECO (display): el último commit se guarda
+      // transformado y el draft es crudo — compararlos en crudo re-commitearía
+      // siempre en campos con transformación (ubicación, likes).
+      const echo = commitEchoRef.current;
+      if ((echo ? echo(pending) : pending) !== lastCommitRef.current) commitNow(pending);
+    }
+    // Al BLUR (salir del campo) el draft visible se normaliza al formato
+    // impreso ("bogotá" → "Bogotá, Colombia", "1234" → "1.234") — SIEMPRE,
+    // también cuando el commit ya había corrido por debounce (2026-10-30, bug
+    // owner: antes la normalización solo corría con commit PENDIENTE, así que
+    // quien escribía pausado —debounce ya disparado— veía su texto crudo para
+    // siempre). Mientras se ESCRIBE el draft NUNCA se toca: esa era la causa
+    // del bug de espacios.
     const echo = commitEchoRef.current;
-    if ((echo ? echo(pending) : pending) === lastCommitRef.current) return;
-    commitNow(pending);
-    // Al BLUR (salir del campo) sí normalizamos el draft visible al formato
-    // impreso ("bogotá" → "Bogotá, Colombia", "1234" → "1.234") — el feedback
-    // de transformación que antes daba el reset. Mientras se ESCRIBE (commit
-    // debounced) el draft NUNCA se toca: esa era la causa del bug de espacios.
-    if (echo) setDraft(echo(pending));
+    if (echo) setDraft(echo(draftRef.current));
   }, [commitNow]);
 
   // Al desmontar (cerrar el modal, cambiar de plantilla): no perder lo

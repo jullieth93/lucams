@@ -870,7 +870,7 @@ test.describe("estudio Ola 25+28 — textos IG visibles con color por capa + mar
 });
 
 test.describe("estudio Ola 29 — letra por defecto sobre el color de la tarjeta (Polaroid Clásica)", () => {
-  test("el mensaje sale OSCURO sobre tarjeta blanca Y rosada, y BLANCO solo sobre negra (regla owner 2026-09-14)", async ({
+  test("el mensaje sale OSCURO sobre tarjeta blanca y BLANCO sobre negra (regla owner 2026-09-14, paleta binaria 2026-10-22)", async ({
     page,
   }, testInfo) => {
     test.skip(!ctx.igSlug, "no hay producto con plantilla photo-pack-polaroid-instagram en la DB");
@@ -886,6 +886,12 @@ test.describe("estudio Ola 29 — letra por defecto sobre el color de la tarjeta
     await page.waitForTimeout(2_500);
     await dismissOverlays(page);
     const panel = await resolvePanel(page);
+    // 2026-10-29 — sin plantilla por defecto (ADR-167) + lienzo bloqueado hasta
+    // elegirla (overlay guía): el test selecciona la Clásica EXPLÍCITAMENTE
+    // antes de tocar slots (si no, los botones de acción del slot quedan bajo
+    // el overlay y el click nunca aterriza).
+    await panel.getByRole("radio", { name: /Plantilla Polaroid Clásica/ }).click();
+    await page.waitForTimeout(600);
     await uploadAndFillSlot1(page, panel, ctx.igProductId);
     await dismissOverlays(page);
 
@@ -913,31 +919,12 @@ test.describe("estudio Ola 29 — letra por defecto sobre el color de la tarjeta
     const darkOnWhite = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "dark", MSG_CARD_AT);
     expect(darkOnWhite).toBeGreaterThan(0);
 
-    // Tarjeta ROSADA → la letra SIGUE OSCURA (regla REDEFINIDA owner 2026-09-14,
-    // defaultTextFillOnCard en frame-palette.ts: letra BLANCA solo cuando la
-    // tarjeta es casi-negra — luminancia Rec.601 < 0.30; el negro contrasta
-    // mejor sobre toda la paleta pastel de marca, rosa incluida. La regla
-    // anterior — blanco también sobre rosa/lavanda — la revirtió el owner en
-    // STG). Este test exigía la regla VIEJA y por eso fallaba.
-    await page.getByRole("radio", { name: "Rosa" }).first().click();
-    await page.waitForTimeout(800);
-    const darkOnPink = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "dark", MSG_CARD_AT);
-    expect(darkOnPink).toBeGreaterThan(0);
-    // …y NO sale tinta clara sobre el rosa. Tolerancia acotada: los px "light"
-    // espurios NO son tinta — son el STROKE BLANCO del dot turquesa de la zona
-    // de edición (Circle edit-indicator en la esquina del recuadro punteado;
-    // adorno de pantalla que jamás se hornea en producción). Su posición depende
-    // del ancho estimado del recuadro (largo del texto × fontSize), así que el
-    // conteo varía con la métrica de fuente del ambiente: medido 27 px de una
-    // zona de 250×44 = 11.000 px (~0.25%; verificado 2026-09-29 — excluyendo el
-    // cuadrante del dot el conteo es 0). Si algún día la letra saliera BLANCA
-    // sobre rosa (regla rota), el conteo sería de cientos de px, no decenas.
-    const lightOnPink = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "light", MSG_CARD_AT);
-    expect(lightOnPink).toBeLessThanOrEqual(60);
-
-    // Tarjeta NEGRA → ahí SÍ: la letra por defecto sale BLANCA (única tarjeta
-    // por debajo del umbral 0.30). (Sin assert de tinta oscura residual: el
-    // fondo negro de la tarjeta ES tinta "dark" para la sonda — indistinguible.)
+    // 2026-10-29 — la paleta de la Polaroid es BINARIA (blanco/negro) desde
+    // 2026-10-22 (one-shot frame-options-binary): ya no hay «Rosa». La regla
+    // del owner (letra blanca SOLO sobre tarjeta casi-negra — luminancia
+    // Rec.601 < 0.30) se verifica directo: blanco → oscuro (arriba), negro →
+    // blanco (abajo). (Sin assert de tinta oscura residual sobre negro: el
+    // fondo negro ES tinta "dark" para la sonda — indistinguible.)
     await page.getByRole("radio", { name: "Negro" }).first().click();
     await page.waitForTimeout(800);
     const lightOnBlack = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "light", MSG_CARD_AT);
@@ -1024,8 +1011,21 @@ test.describe("estudio Ola 25 — tira SIN borde continua (tiras-magneticas-foto
     await page.waitForTimeout(AUTOSAVE_WAIT);
     await page.keyboard.press("Escape").catch(() => {});
 
-    // Toggle «Sin borde» (toolbar de estilo, sobre el lienzo).
+    // Toggle «Sin borde» (toolbar de estilo, sobre el lienzo). En móvil la
+    // toolbar vive en el bottom-sheet (ADR-151): abrirlo primero por el botón
+    // resumen y cerrarlo con «Listo» tras el toggle (si queda abierto tapa el
+    // lienzo y las sondas de píxeles miden el sheet).
+    const styleTrigger = page.getByRole("button", { name: /Toca para cambiarlo/ });
+    if (await styleTrigger.isVisible().catch(() => false)) {
+      await styleTrigger.click();
+    }
     await page.getByRole("radio", { name: "Sin borde" }).first().click();
+    const sheetListo = page
+      .locator('[data-slot="sheet-content"]')
+      .getByRole("button", { name: "Listo", exact: true });
+    if (await sheetListo.isVisible().catch(() => false)) {
+      await sheetListo.click();
+    }
     await page.waitForTimeout(1_000);
 
     // Celda 390×400 (stage de la plantilla tira). Con borde había canaleta blanca

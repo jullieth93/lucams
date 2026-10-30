@@ -8,6 +8,10 @@
  *   estudio.fotos.thumb-arrastrar    → "Tócala para ponerla en el próximo lienzo vacío, o arrástrala al lienzo que quieras"
  *     («Mis fotos» ahora es biblioteca usable: el tap asigna — el texto viejo
  *     solo mencionaba arrastrar).
+ *   estudio.texto.ig-ubicacion-hint  → "Ciudad y país separados por coma — ej: Santa Marta, Colombia"
+ *     (2026-10-30: el body publicado en las DBs era el de ANTES de la regla
+ *     multi-palabra del 2026-10-26 — «Máximo 2 palabras…»; contradictorio con
+ *     el comportamiento vivo).
  *
  * Por qué: migrate-cms-v2 solo actualiza la ESTRUCTURA de campos existentes y
  * nunca pisa el cuerpo publicado (contenido del owner). Estos dos campos ya
@@ -47,6 +51,11 @@ const FIELDS = [
     "estudio.fotos.thumb-arrastrar",
     "Tócala para ponerla en el próximo lienzo vacío, o arrástrala al lienzo que quieras",
     "Arrastra al canvas o toca un slot vacío para asignar",
+  ],
+  [
+    "estudio.texto.ig-ubicacion-hint",
+    "Ciudad y país separados por coma — ej: Santa Marta, Colombia",
+    "Máximo 2 palabras — escribe «bogotá colombia» y se imprime Bogotá, Colombia",
   ],
 ];
 

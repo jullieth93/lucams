@@ -48,16 +48,21 @@ import {
  * handler) y el waitForURL subsiguiente moría a los 30 s — flake intermitente
  * del setup (~3 de 5 corridas en frío). Se reintenta el click con esperas
  * cortas; si la navegación nunca ocurre, se falla con mensaje claro.
+ * 2026-10-29 — endurecido en frío: networkidle antes del click (el botón se
+ * desmontaba durante la hidratación con la escena animada del login → click
+ * perdido) y 30 s de ventana por intento (la acción de login con bcrypt +
+ * cold-compile de Turbopack tardaba ~10 s en dev > los 8 s anteriores).
  */
 async function clickAndWaitForURL(
   page: Page,
   buttonName: RegExp,
   url: RegExp | ((u: URL) => boolean),
 ): Promise<void> {
+  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
   for (let attempt = 1; attempt <= 4; attempt++) {
     await page.getByRole("button", { name: buttonName }).click();
     const navigated = await page
-      .waitForURL(url, { timeout: 8_000 })
+      .waitForURL(url, { timeout: 30_000 })
       .then(() => true)
       .catch(() => false);
     if (navigated) return;
