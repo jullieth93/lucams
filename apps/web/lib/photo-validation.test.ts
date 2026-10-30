@@ -76,8 +76,10 @@ let darkStrongImg: Buffer; // mean 15  → too dark (warning-strong)
 let darkSoftImg: Buffer; //   mean 35  → dark    (warning-soft)
 let brightSoftImg: Buffer; // mean 237.5 → over-bright (warning-soft)
 // Blur controlado, brillo SIEMPRE OK (~130), para aislar el check de blur.
-let blurStrongImg: Buffer; // stdev 4  → very blurry (warning-strong)
-let blurSoftImg: Buffer; //   stdev 10 → blurry    (warning-soft)
+// Umbrales 2026-10-29: strong < 4, soft < 10 (antes 5/15 — falsos positivos
+// con retratos de fondo desenfocado y fotos de celular apenas suaves).
+let blurStrongImg: Buffer; // stdev 3  → very blurry (warning-strong)
+let blurSoftImg: Buffer; //   stdev 8  → blurry    (warning-soft)
 // Gris sólido brillo OK → blur stdev 0 (very blurry).
 let solidOkBrightnessImg: Buffer;
 // Basura para forzar el catch de sharp.
@@ -88,8 +90,8 @@ beforeAll(async () => {
   darkStrongImg = await checker(120, 0, 30); // mean 15, stdev 15 (blur ok)
   darkSoftImg = await checker(120, 20, 50); // mean 35, stdev 15 (blur ok, en el límite)
   brightSoftImg = await checker(120, 220, 255); // mean 237.5, stdev 17.5 (blur ok)
-  blurStrongImg = await checker(120, 126, 134); // mean 130, stdev 4
-  blurSoftImg = await checker(120, 120, 140); // mean 130, stdev 10
+  blurStrongImg = await checker(120, 125, 131); // mean 128, stdev 3
+  blurSoftImg = await checker(120, 122, 138); // mean 130, stdev 8
   solidOkBrightnessImg = await solidGray(100, 128); // mean 128, stdev 0
 });
 
@@ -143,28 +145,21 @@ describe("validatePhotoQuality · resolución (DPI)", () => {
     expect(r.resolution.message).toBeUndefined();
   });
 
-  it("0.8 <= ratio < 1.0 → warning-soft (justa)", async () => {
-    // requiredPx 591; 590/591 = 0.9983 (<1, >=0.8)
+  it("0.8 <= ratio < 1.0 → OK (la barra soft bajó a 240 DPI el 2026-10-29)", async () => {
+    // requiredPx 591; 590/591 = 0.9983 — entre 240 y 300 DPI ya NO se avisa:
+    // a la distancia de lectura del producto se ve nítido (falso positivo).
     const r = await validatePhotoQuality({
       buffer: goodImg,
       width: 590,
       height: 590,
       productSizeCm: "5×5",
     });
-    expect(r.resolution.level).toBe("warning-soft");
-    expect(r.resolution.passed).toBe(false);
-    expect(r.resolution.message).toContain("justa");
+    expect(r.resolution.level).toBe("ok");
+    expect(r.resolution.passed).toBe(true);
   });
 
-  it("borde: ratio == 0.8 exacto NO es warning-strong, es warning-soft", async () => {
-    // Necesitamos actualMinPx/requiredPx == 0.8 exacto. requiredPx 591 no da
-    // entero a 0.8 (472.8). Usamos 15cm → requiredPx 1772; 1772*0.8 = 1417.6.
-    // En su lugar elegimos un requiredPx divisible: 7cm → 827; 827*0.8=661.6.
-    // Más simple: el código usa "< WARNING_STRONG_BELOW (0.8)" para strong.
-    // ratio exactamente 0.8 cae en la rama soft. Probamos con un requiredPx
-    // que dé 0.8 entero: requiredPx debe ser múltiplo de 5. 591 no lo es,
-    // pero podemos verificar la semántica con ratio apenas >= 0.8.
-    // 473/591 = 0.80033 → soft (>= 0.8).
+  it("borde: ratio apenas >= 0.8 (240 DPI efectivos) pasa limpio", async () => {
+    // 473/591 = 0.80033 → OK (la barra soft es < 0.8).
     const r = await validatePhotoQuality({
       buffer: goodImg,
       width: 473,
@@ -172,15 +167,28 @@ describe("validatePhotoQuality · resolución (DPI)", () => {
       productSizeCm: "5×5",
     });
     expect(r.resolution.ratio).toBeGreaterThanOrEqual(0.8);
-    expect(r.resolution.level).toBe("warning-soft");
+    expect(r.resolution.level).toBe("ok");
   });
 
-  it("0.5 <= ratio < 0.8 → warning-strong (pixelada)", async () => {
-    // 472/591 = 0.7986 (< 0.8, >= 0.5)
+  it("0.67 <= ratio < 0.8 → warning-soft (suficiente, cerca del límite)", async () => {
+    // 472/591 = 0.7986 (< 0.8, >= 0.67)
     const r = await validatePhotoQuality({
       buffer: goodImg,
       width: 472,
       height: 472,
+      productSizeCm: "5×5",
+    });
+    expect(r.resolution.level).toBe("warning-soft");
+    expect(r.resolution.passed).toBe(false);
+    expect(r.resolution.message).toContain("suficiente");
+  });
+
+  it("0.5 <= ratio < 0.67 → warning-strong (pixelada)", async () => {
+    // 360/591 = 0.609 (< 0.67, >= 0.5)
+    const r = await validatePhotoQuality({
+      buffer: goodImg,
+      width: 360,
+      height: 360,
       productSizeCm: "5×5",
     });
     expect(r.resolution.level).toBe("warning-strong");
@@ -351,9 +359,9 @@ describe("validatePhotoQuality · brillo", () => {
 // ──────────────────────────────────────────────────────────────────
 
 describe("validatePhotoQuality · blur (Laplacian stdev)", () => {
-  it("stdev < 5 → warning-strong (muy borrosa)", async () => {
+  it("stdev < 4 → warning-strong (muy borrosa)", async () => {
     const r = await validatePhotoQuality({ buffer: blurStrongImg, width: 600, height: 600 });
-    expect(r.blur.laplacianStdev).toBeCloseTo(4, 3);
+    expect(r.blur.laplacianStdev).toBeCloseTo(3, 3);
     expect(r.blur.level).toBe("warning-strong");
     expect(r.blur.passed).toBe(false);
     expect(r.blur.message).toContain("muy borrosa");
@@ -365,14 +373,14 @@ describe("validatePhotoQuality · blur (Laplacian stdev)", () => {
     expect(r.blur.level).toBe("warning-strong");
   });
 
-  it("5 <= stdev < 15 → warning-soft (poca nitidez)", async () => {
+  it("4 <= stdev < 10 → warning-soft (poca nitidez)", async () => {
     const r = await validatePhotoQuality({ buffer: blurSoftImg, width: 600, height: 600 });
-    expect(r.blur.laplacianStdev).toBeCloseTo(10, 3);
+    expect(r.blur.laplacianStdev).toBeCloseTo(8, 3);
     expect(r.blur.level).toBe("warning-soft");
     expect(r.blur.message).toContain("poca nitidez");
   });
 
-  it("stdev >= 15 → OK (nítida)", async () => {
+  it("stdev >= 10 → OK (nítida)", async () => {
     const r = await validatePhotoQuality({ buffer: goodImg, width: 600, height: 600 });
     expect(r.blur.laplacianStdev).toBeCloseTo(30, 2);
     expect(r.blur.passed).toBe(true);
@@ -380,12 +388,11 @@ describe("validatePhotoQuality · blur (Laplacian stdev)", () => {
     expect(r.blur.message).toBeUndefined();
   });
 
-  it("borde: stdev == 15 exacto NO es borroso → OK (darkSoftImg tiene stdev 15)", async () => {
-    // darkSoftImg = checker(20,50) → stdev (50-20)/2 ≈ 15.0005 (apenas >= 15).
-    const r = await validatePhotoQuality({ buffer: darkSoftImg, width: 600, height: 600 });
-    expect(r.blur.laplacianStdev).toBeCloseTo(15, 2);
-    expect(r.blur.laplacianStdev).toBeGreaterThanOrEqual(15);
-    // 15 NO es < 15 → blur OK.
+  it("borde: stdev == 10 exacto NO es borroso → OK (checker(115,135) da stdev 10)", async () => {
+    // checker(115,135) → stdev (135-115)/2 ≈ 10 (apenas >= 10, umbral 2026-10-29).
+    const img = await checker(120, 115, 135);
+    const r = await validatePhotoQuality({ buffer: img, width: 600, height: 600 });
+    expect(r.blur.laplacianStdev).toBeGreaterThanOrEqual(10);
     expect(r.blur.level).toBe("ok");
   });
 });
@@ -450,19 +457,20 @@ describe("validatePhotoQuality · agregación de nivel", () => {
   });
 
   it("mensaje prioriza resolución sobre blur cuando ambos son warning", async () => {
-    // resolución warning-soft (590px) + blur warning-soft (blurSoftImg).
+    // resolución warning-soft (450px → ratio 0.761, banda 0.67-0.8 del ajuste
+    // 2026-10-29) + blur warning-soft (blurSoftImg, stdev 8).
     // message = resolution.message ?? blur.message → debe ser el de resolución.
     const r = await validatePhotoQuality({
       buffer: blurSoftImg, // blur soft, brillo ok
-      width: 590,
-      height: 590,
+      width: 450,
+      height: 450,
       productSizeCm: "5×5", // resolución soft
     });
     expect(r.resolution.level).toBe("warning-soft");
     expect(r.blur.level).toBe("warning-soft");
     expect(r.level).toBe("warning-soft");
     expect(r.message).toBe(r.resolution.message);
-    expect(r.message).toContain("justa");
+    expect(r.message).toContain("suficiente");
     // recommendation prioriza resolución también.
     expect(r.recommendation).toBe("Una foto más grande va a quedar mejor al imprimir.");
   });

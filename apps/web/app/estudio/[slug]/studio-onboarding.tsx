@@ -40,6 +40,7 @@ import { LucamsLogo } from "@/components/lucams-logo";
 import { Hint } from "@/components/ui/tooltip";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import {
   ArrowRight,
   Sparkles,
@@ -280,7 +281,7 @@ export function StudioOnboarding({
                   type="button"
                   onClick={skip}
                   aria-label={texts.comun.saltarTutorial}
-                  className="text-brand-muted hover:bg-brand-purple/10 hover:text-brand-purple-dark/70 flex h-7 w-7 items-center justify-center rounded-md transition-colors focus:outline-none"
+                  className={CLOSE_X_CLASS + " h-7 w-7"}
                 >
                   <X className="h-4 w-4" />
                 </button>

@@ -27,10 +27,10 @@ describe("scenesForKind", () => {
     expect(scenesForKind()).toEqual(["fridge", "polaroid", "board", "shelf", "gift"]);
   });
 
-  it("calendar: las tarjetas mes van a nevera/tablero — el calendario de pared NO se ofrece", () => {
+  it("calendar: nevera/tablero + repisa/regalo (estas últimas sostienen la variante SIN IMÁN desde 2026-10-29)", () => {
     const scenes = scenesForKind("calendar");
-    expect(scenes).toEqual(["fridge", "board"]);
-    // "Archivado": no hay ninguna escena de calendario en el union type ni en la lista.
+    expect(scenes).toEqual(["fridge", "board", "shelf", "gift"]);
+    // "Archivado": no hay ninguna escena de calendario de pared ni de libro.
     expect(scenes).not.toContain("book");
     expect(scenes).not.toContain("polaroid");
   });
@@ -72,8 +72,8 @@ describe("scenesForKind", () => {
 });
 
 describe("galleryScenes — gate SIN IMÁN", () => {
-  it("calendario sin imán (Fase 1A, 2026-09-27): sin escenas nevera/tablero — su flujo vive en el visor de detalle", () => {
-    expect(galleryScenes("calendar", false, false)).toEqual([]);
+  it("calendario sin imán (2026-10-29, owner): conserva repisa/regalo (tarjetas apoyadas, sin adherencia)", () => {
+    expect(galleryScenes("calendar", false, false)).toEqual(["shelf", "gift"]);
   });
 
   it("Fase 2.10 (owner 2026-10-07, REVERSA de Paquete D): SIN IMÁN filtra las escenas que afirman imán en TODOS los kinds", () => {
@@ -90,8 +90,13 @@ describe("galleryScenes — gate SIN IMÁN", () => {
   });
 
   it("magnet true/undefined: mismas escenas de siempre por kind", () => {
-    expect(galleryScenes("calendar", false, true)).toEqual(["fridge", "board"]);
-    expect(galleryScenes("calendar", false, undefined)).toEqual(["fridge", "board"]);
+    expect(galleryScenes("calendar", false, true)).toEqual(["fridge", "board", "shelf", "gift"]);
+    expect(galleryScenes("calendar", false, undefined)).toEqual([
+      "fridge",
+      "board",
+      "shelf",
+      "gift",
+    ]);
     expect(galleryScenes("photo", true)).toEqual(["fridge", "polaroid", "board", "shelf", "gift"]);
     expect(galleryScenes("letters", false, true)).toEqual(["memo"]);
   });

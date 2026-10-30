@@ -96,6 +96,7 @@ Insignia circular con:
 ### Reglas de uso
 
 - **Botones primarios**: fondo `brand-purple`, texto blanco. Hover: oscurece 8%.
+- **Botones de cierre («X») de diálogos, sheets y modales**: fondo `brand-purple`, X blanca, redondos — punto único `CloseXButton`/`CLOSE_X_CLASS` (`apps/web/components/ui/close-x-button.tsx`, 2026-10-29). Nunca ghost grises: el cierre debe ser visible sobre cualquier contenido.
 - **Botones secundarios**: borde `brand-turquoise`, texto `brand-purple-dark`, fondo transparente.
 - **CTA "Comprar ahora"**: fondo `brand-pink`, texto blanco. Reservado para acciones de conversión.
 - **Banner "Envío gratis"**: fondo `brand-yellow`, texto `brand-purple-dark`.

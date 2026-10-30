@@ -22,6 +22,7 @@
 import "server-only";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { formatCOPExact } from "@/lib/format";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
@@ -325,7 +326,7 @@ export async function processPaidOrder(
                 where: { id: order.id, needsReconciliation: false },
                 data: {
                   needsReconciliation: true,
-                  reconciliationReason: `Tope por cliente del cupón excedido al pagar (checkout concurrente con la misma identidad): se cobró un descuento de ${order.discount} centavos por encima de maxUsesPerCustomer. Revisa y decide.`,
+                  reconciliationReason: `Tope por cliente del cupón excedido al pagar (checkout concurrente con la misma identidad): se cobró un descuento de ${formatCOPExact(order.discount)} por encima de maxUsesPerCustomer. Revisa y decide.`,
                 },
               });
             }
@@ -347,7 +348,7 @@ export async function processPaidOrder(
               where: { id: order.id, needsReconciliation: false },
               data: {
                 needsReconciliation: true,
-                reconciliationReason: `Cupón agotado al pagar: se otorgó un descuento de ${order.discount} centavos por encima del cupo global (maxUses). El total ya se cobró/autorizó con el descuento — revisa y decide.`,
+                reconciliationReason: `Cupón agotado al pagar: se otorgó un descuento de ${formatCOPExact(order.discount)} por encima del cupo global (maxUses). El total ya se cobró/autorizó con el descuento — revisa y decide.`,
               },
             });
           }

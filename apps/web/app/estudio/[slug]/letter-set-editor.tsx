@@ -77,6 +77,7 @@ import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
 import { NAME_TILE_THEMES } from "./letter-tile";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { Hint } from "@/components/ui/tooltip";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -1458,13 +1459,18 @@ export function LetterSetEditor({
               type="button"
               onClick={closeBoard3D}
               aria-label={texts.comun.cerrarVista3d}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+              className={CLOSE_X_CLASS + " h-10 w-10"}
             >
               <X className="h-5 w-5" />
             </button>
           </div>
           <div className="relative flex-1">
-            <RoomBoardView3D magnets={board3DSet ?? []} cols={boardCols} style="memo" />
+            <RoomBoardView3D
+              magnets={board3DSet ?? []}
+              cols={boardCols}
+              style="memo"
+              magnet={currentVariant?.magnet}
+            />
             {/* Conteo de fichas del set visible (patrón countBadgeLabel de scene-gallery).
                 Overlay DOM, sin tocar el canvas WebGL. */}
             <p className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-center text-xs font-bold text-white">

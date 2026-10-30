@@ -55,6 +55,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
 import { X, ZoomIn } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { Scene3DErrorBoundary } from "./scene-3d-error-boundary";
 import { CALENDAR_CARD_THICKNESS_CM } from "./magnet-3d";
 import type { Magnet3D } from "./fridge-3d-view";
@@ -135,7 +136,10 @@ export function scenesForKind(kind: SceneKind = "photo"): Scene[] {
   switch (kind) {
     case "calendar":
       // Las tarjetas mes 7.5×10 son imanes de nevera → nevera/tablero, nunca calendario de pared.
-      return ["fridge", "board"];
+      // 2026-10-29 (owner) — la variante SIN IMÁN ofrece repisa/regalo (tarjetas
+      // APOYADAS, sin adherencia): antes el gate de escenas magnéticas dejaba el
+      // calendario sin imán SIN escenas (estado vacío).
+      return ["fridge", "board", "shelf", "gift"];
     case "letters":
       // Abecedario / pack vocales: el tablero memo claro (deletrear nombres y fichas).
       return ["memo"];
@@ -280,10 +284,11 @@ export function SceneGallery({
    *  imán (nevera/mural/tablero memo — MAGNET_SCENES) NO se ofrecen en NINGÚN
    *  kind — adherir piezas sin imán es una afirmación falsa del producto
    *  físico. Quedan repisa/regalo (piezas apoyadas, sin adherencia), la
-   *  polaroid (tarjetas acostadas en mesa) y el libro. Si ninguna escena
-   *  sobrevive (calendario, letters), la galería muestra un estado vacío
-   *  coherente; en el calendario el flujo vive en el visor de detalle
-   *  (CalendarCardFocus) y su botón «Míralo en tu espacio» se omite.
+   *  polaroid (tarjetas acostadas en mesa) y el libro; el calendario sin imán
+   *  conserva repisa/regalo desde 2026-10-29. Si ninguna escena sobrevive
+   *  (letters), la galería muestra un estado vacío coherente.
+   *  `true` (CON IMÁN): el reverso de cada pieza se pinta del negro de la
+   *  goma ferrita en las escenas (owner 2026-10-29 — MAGNET_BACK_COLOR).
    *  undefined conserva el comportamiento de siempre. */
   magnet,
   /** 2026-10-23 — calendario multi-set: tarjetas por set (unitSlots) y sus labels de mes,
@@ -394,7 +399,7 @@ export function SceneGallery({
             type="button"
             onClick={onClose}
             aria-label={texts.comun.cerrar}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+            className={CLOSE_X_CLASS + " h-10 w-10"}
           >
             <X className="h-5 w-5" />
           </button>
@@ -436,11 +441,10 @@ export function SceneGallery({
       <div className="relative flex-1">
         {scenes.length === 0 ? (
           /* Fase 2.10 (owner 2026-10-07) — TODAS las escenas quedaron filtradas por
-             SIN IMÁN (p.ej. letters: su única escena es el tablero memo, que afirma
-             imán): en vez de un panel en blanco, un estado vacío coherente. Es el
-             mismo criterio del calendario (el cliente no sube a una galería sin
-             destino — allá el botón «Míralo en tu espacio» se omite; acá el modal ya
-             está abierto, así que se explica y se ofrece cerrar). */
+             SIN IMÁN sin escenas (p.ej. letters: su única escena es el tablero
+             memo, que afirma imán): en vez de un panel en blanco, un estado
+             vacío coherente. (El calendario sin imán SÍ conserva escenas desde
+             2026-10-29: repisa/regalo, piezas apoyadas sin adherencia.) */
           <div className="text-brand-cream/90 flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm">
             <p>{texts.escenas.vacio}</p>
             <p className="text-brand-cream/70 text-xs">{texts.escenas.vacioHint}</p>
@@ -457,6 +461,7 @@ export function SceneGallery({
                 cols={cols}
                 sizeCm={sizeCm}
                 thicknessCm={sceneThicknessCm(kind)}
+                magnet={magnet}
               />
             ) : activeScene === "polaroid" ? (
               <PolaroidView3D magnets={magnets} sizeCm={sizeCm} />
@@ -467,13 +472,30 @@ export function SceneGallery({
                 style="cork"
                 sizeCm={sizeCm}
                 thicknessCm={sceneThicknessCm(kind)}
+                magnet={magnet}
               />
             ) : activeScene === "memo" ? (
-              <RoomBoardView3D magnets={magnets} cols={cols} style="memo" sizeCm={sizeCm} />
+              <RoomBoardView3D
+                magnets={magnets}
+                cols={cols}
+                style="memo"
+                sizeCm={sizeCm}
+                magnet={magnet}
+              />
             ) : activeScene === "shelf" ? (
-              <ShelfView3D magnets={magnets} sizeCm={sizeCm} thicknessCm={sceneThicknessCm(kind)} />
+              <ShelfView3D
+                magnets={magnets}
+                sizeCm={sizeCm}
+                thicknessCm={sceneThicknessCm(kind)}
+                magnet={magnet}
+              />
             ) : activeScene === "gift" ? (
-              <GiftView3D magnets={magnets} sizeCm={sizeCm} thicknessCm={sceneThicknessCm(kind)} />
+              <GiftView3D
+                magnets={magnets}
+                sizeCm={sizeCm}
+                thicknessCm={sceneThicknessCm(kind)}
+                magnet={magnet}
+              />
             ) : (
               <BookView3D
                 bookmarks={magnets}
@@ -513,13 +535,15 @@ export function SceneGallery({
           index={focusIndex}
           onIndexChange={setFocusIndex}
           onClose={closeModal}
-          // Fase 1A — SIN IMÁN no hay escenas "en tu espacio" que ofrecer: el
-          // botón «Míralo en tu espacio» se omite (sin destino al que subir).
+          // 2026-10-29 — con SIN IMÁN el calendario conserva repisa/regalo:
+          // el botón «Míralo en tu espacio» solo se omite si NO queda ninguna
+          // escena (caso letters).
           onOpenGallery={scenes.length > 0 ? openGallery : undefined}
           // 2026-10-23 — pager de dos niveles multi-set (tarjeta dentro del set +
           // chips de set); undefined = un solo set (comportamiento histórico).
           cardsPerSet={cardsPerSet}
           cardLabels={cardLabels}
+          magnet={magnet}
         />
       )}
     </div>

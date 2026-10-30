@@ -16,7 +16,7 @@
  * humano, que es lo que persiste Quote.city/Quote.department).
  */
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -32,6 +32,7 @@ import { TurnstileWidget } from "@/components/turnstile-widget";
 import { createQuoteAction, type QuoteActionState } from "@/features/quotes/actions";
 import type { QuoteFormInput } from "@/features/quotes/schemas";
 import type { CartLineItem } from "@/features/cart/service";
+import { dedupeCartLineDetail } from "@/features/cart/line-preview";
 import { formatCOP } from "@/lib/format";
 import {
   DEPARTMENTS,
@@ -40,6 +41,7 @@ import {
   type DaneCity,
 } from "@/lib/dane-divipola";
 import { formatPhone, stripPhone, validatePhone } from "@/lib/colombia-validators";
+import { focusNextFieldOnEnter, tagEnterKeyHints } from "@/lib/enter-next-field";
 import type { CheckoutTexts } from "../checkout-texts";
 
 export function QuoteForm({
@@ -84,6 +86,12 @@ export function QuoteForm({
   // Autorización de tratamiento (Ley 1581) — obligatoria antes de enviar la PII de la cotización.
   const [dataConsent, setDataConsent] = useState(false);
 
+  // 2026-10-29 (owner) — Enter = siguiente campo (en móvil no hay TAB).
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    tagEnterKeyHints(formRef.current);
+  });
+
   const phoneClientError =
     phoneDisplay.length > 0 && !validatePhone(phoneDisplay) && phoneTouched
       ? "Móvil colombiano: 10 dígitos empezando con 3"
@@ -94,7 +102,7 @@ export function QuoteForm({
   const whatsappError = phoneClientError ?? err("customerWhatsapp");
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form ref={formRef} action={formAction} onKeyDown={focusNextFieldOnEnter} className="space-y-6">
       {/* Ola 2A — resumen de lo que estás cotizando, con el PREVIEW del diseño personalizado
           por ítem cuando existe (compositado del Estudio en Supabase Storage); si no hay
           diseño, la imagen normal del producto. En móvil queda arriba del form (el resumen
@@ -109,6 +117,13 @@ export function QuoteForm({
           <ul className="divide-brand-purple/10 mt-3 divide-y">
             {items.map((item) => {
               const imgUrl = item.designPreviewUrl ?? item.imageUrl ?? null;
+              // 2026-10-29 — mismo dedupe del /carrito: cada hecho (cantidad,
+              // tamaño) se enuncia una sola vez en la línea.
+              const detail = dedupeCartLineDetail({
+                variantName: item.variantName,
+                variantBreakdown: item.variantBreakdown,
+                pieceSummary: item.pieceSummary,
+              });
               return (
                 <li key={item.itemId} className="flex items-start gap-4 py-4">
                   {/* `object-contain` sobre fondo crema, no `object-cover`: el preview del Estudio es
@@ -145,14 +160,19 @@ export function QuoteForm({
                     </p>
                     <p className="text-brand-muted mt-0.5 text-xs">{item.variantName}</p>
                     {/* Paquete F (2026-10-02) — desglose estructurado de la variante. */}
-                    {item.variantBreakdown.length > 0 && (
+                    {detail.variantBreakdown.length > 0 && (
                       <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
-                        {item.variantBreakdown.join(" · ")}
+                        {detail.variantBreakdown.join(" · ")}
                       </p>
                     )}
-                    {item.pieceSummary && (
+                    {item.templateName && (
+                      <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
+                        Plantilla: {item.templateName}
+                      </p>
+                    )}
+                    {detail.pieceSummary && (
                       <p className="text-brand-purple-dark/80 mt-1 text-xs">
-                        📐 {item.pieceSummary}
+                        📐 {detail.pieceSummary}
                       </p>
                     )}
                     {item.designPreviewUrl && (

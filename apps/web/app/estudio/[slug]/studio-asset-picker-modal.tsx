@@ -27,6 +27,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, X, Image as ImageIcon, Loader2, Sparkles, Eye } from "lucide-react";
 import {
@@ -613,7 +614,7 @@ export function StudioAssetPickerModal({
                       type="button"
                       onClick={onClose}
                       aria-label={texts.comun.cerrar}
-                      className="text-brand-muted hover:text-brand-purple-dark hover:bg-brand-cream focus:ring-brand-purple rounded-md p-2 transition-colors focus:ring-2 focus:outline-none"
+                      className={CLOSE_X_CLASS + " h-9 w-9"}
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -692,7 +693,7 @@ export function StudioAssetPickerModal({
                         {/* Sticky: en móvil los tabs quedan visibles mientras el
                           grid scrollea. El wrapper blanco (-mx-5) tapa el
                           contenido que pasa por debajo. */}
-                        <div className="sticky top-0 z-10 -mx-5 bg-white px-5 pb-2">
+                        <div className="sticky top-0 z-20 -mx-5 bg-white px-5 pb-2">
                           <TabsList
                             aria-label={texts.fotos.pickerTabsAria}
                             className="bg-brand-purple/5 flex w-full gap-1 rounded-lg p-1"

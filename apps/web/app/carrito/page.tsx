@@ -34,7 +34,7 @@ import { LinkPendingLabel } from "@/components/ui/link-pending-label";
 import { IconSubmitButton } from "./qty-button";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
-import type { UnitNoun } from "@/features/cart/line-preview";
+import { dedupeCartLineDetail, type UnitNoun } from "@/features/cart/line-preview";
 
 export const metadata: Metadata = {
   title: "Carrito",
@@ -79,6 +79,14 @@ export default async function CarritoPage() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               <ul className="space-y-3 md:col-span-2">
                 {cart.items.map((item) => {
+                  // 2026-10-29 (owner) — el detalle de la línea no repite hechos:
+                  // cantidad/tamaño se enuncian UNA vez (variantName → breakdown
+                  // → resumen de pieza; el primero que lo dice gana).
+                  const detail = dedupeCartLineDetail({
+                    variantName: item.variantName,
+                    variantBreakdown: item.variantBreakdown,
+                    pieceSummary: item.pieceSummary,
+                  });
                   // Miniatura compartida entre el disparador clicable (diseños
                   // con preview) y el div estático (catálogo simple).
                   const thumb = (
@@ -175,9 +183,15 @@ export default async function CarritoPage() {
                               estructurado (variantBreakdown): el nombre libre no siempre
                               informa las dimensiones de compra (p. ej. Con/Sin imán). */}
                             <p className="text-brand-muted mt-0.5 text-xs">{item.variantName}</p>
-                            {item.variantBreakdown.length > 0 && (
+                            {detail.variantBreakdown.length > 0 && (
                               <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
-                                {item.variantBreakdown.join(" · ")}
+                                {detail.variantBreakdown.join(" · ")}
+                              </p>
+                            )}
+                            {item.templateName && (
+                              <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
+                                <CmsText blockKey="cart.plantilla-label" fallback="Plantilla" />:{" "}
+                                {item.templateName}
                               </p>
                             )}
                             {item.designId ? (
@@ -251,9 +265,9 @@ export default async function CarritoPage() {
                             {/* Resumen de pieza ("2 tiras de 3 fotos · 6.5×20 cm cada tira"):
                               mismo dato que muestra el checkout (quote-form) — multi-unidad
                               2026-09-09: la línea describe las unidades del diseño. */}
-                            {item.pieceSummary && (
+                            {detail.pieceSummary && (
                               <p className="text-brand-purple-dark/80 mt-1 text-xs">
-                                📐 {item.pieceSummary}
+                                📐 {detail.pieceSummary}
                               </p>
                             )}
                             <UnitPriceLabel

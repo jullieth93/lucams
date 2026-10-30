@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Copy, Minus, Plus, RotateCcw } from "lucide-react";
+import { Check, Copy, Minus, Plus, RotateCcw, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Hint } from "@/components/ui/tooltip";
 import type Konva from "konva";
@@ -292,6 +292,34 @@ export function StudioCanvasGrid({
   // este diseño a todas" (cada aplicación lo incrementa → se anuncia de nuevo).
   const [appliedTick, setAppliedTick] = useState(0);
   const announceApplied = useCallback(() => setAppliedTick((t) => t + 1), []);
+  // 2026-10-29 (owner) — calendario: las secciones de meses se pueden
+  // colapsar/expandir (header con chevron + chips-mapa de meses al colapsar).
+  // Los slots colapsados quedan montados si ya lo estaban (el set de
+  // mountedSlots no se limpia) y el finalize fuerza el montaje total
+  // (forceMountAll, ADR-063 T5) antes de cualquier snapshot.
+  const [collapsedCalUnits, setCollapsedCalUnits] = useState<ReadonlySet<number>>(new Set());
+  const toggleCalUnitCollapsed = useCallback((u: number) => {
+    setCollapsedCalUnits((prev) => {
+      const next = new Set(prev);
+      if (next.has(u)) next.delete(u);
+      else next.add(u);
+      return next;
+    });
+  }, []);
+  // Chip del mapa de meses: expande la unidad y salta al mes elegido.
+  const jumpToCalendarSlot = useCallback((unit: number, slotIndex: number) => {
+    setCollapsedCalUnits((prev) => {
+      if (!prev.has(unit)) return prev;
+      const next = new Set(prev);
+      next.delete(unit);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      containerRef.current
+        ?.querySelector(`[data-slot-observe="${slotIndex}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, []);
   // Ola 22 (Lucy 2026-09-08) — zoom de LIENZO: acerca TODA la plantilla (display-only,
   // no toca el diseño ni la exportación). El valor crudo lo pide el padre (prop
   // `stageZoomRaw`, control en la fila de pills); el tope es STAGE_ZOOM_MAX (Ola 33)
@@ -1161,6 +1189,7 @@ export function StudioCanvasGrid({
           >
             {Array.from({ length: unitCount }, (_, u) => {
               const { start, end } = unitSlotRange(u, unitSlots);
+              const calCollapsed = isCalendar && collapsedCalUnits.has(u);
               return (
                 <section
                   key={u}
@@ -1180,26 +1209,38 @@ export function StudioCanvasGrid({
                     noun={unitNoun ?? texts.unidades.nombrePieza}
                     variantLabel={unitVariantLabel}
                     onApplied={announceApplied}
+                    collapsible={isCalendar}
+                    collapsed={calCollapsed}
+                    onToggleCollapse={() => toggleCalUnitCollapsed(u)}
                   />
-                  <div
-                    className={
-                      stripMode
-                        ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza
-                          // entera (las celdas no llevan sombra). Multi-unidad: una
-                          // sombra por TIRA (cada sección es una pieza física).
-                          "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
-                        : "grid"
-                    }
-                    style={{
-                      gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
-                      gap: layout.gap,
-                      ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
-                    }}
-                  >
-                    <AnimatePresence>
-                      {canvasData.slots.slice(start, end).map((slot) => renderSlotCell(slot))}
-                    </AnimatePresence>
-                  </div>
+                  {calCollapsed ? (
+                    <CalendarMonthChips
+                      slots={canvasData.slots.slice(start, end)}
+                      labels={slotLabels}
+                      onJump={(slotIndex) => jumpToCalendarSlot(u, slotIndex)}
+                    />
+                  ) : (
+                    <div
+                      id={`studio-unit-${u}-grid`}
+                      className={
+                        stripMode
+                          ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza
+                            // entera (las celdas no llevan sombra). Multi-unidad: una
+                            // sombra por TIRA (cada sección es una pieza física).
+                            "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
+                          : "grid"
+                      }
+                      style={{
+                        gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                        gap: layout.gap,
+                        ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+                      }}
+                    >
+                      <AnimatePresence>
+                        {canvasData.slots.slice(start, end).map((slot) => renderSlotCell(slot))}
+                      </AnimatePresence>
+                    </div>
+                  )}
                 </section>
               );
             })}
@@ -1378,27 +1419,85 @@ export function StudioCanvasGrid({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
           >
-            <div
-              className={
-                stripMode
-                  ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza entera (las
-                    // celdas individuales no llevan sombra — separaban la tira visualmente).
-                    // Sin overflow-hidden: el anillo de selección del slot no debe cortarse.
-                    "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
-                  : "grid"
-              }
-              style={{
-                gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
-                gap: layout.gap,
-                // Ola 4 — ancho explícito + margin auto: el grid siempre centrado en
-                // el marco, sin estirarse cuando el cap de alto achica las celdas.
-                ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
-              }}
-            >
-              <AnimatePresence>
-                {canvasData.slots.map((slot) => renderSlotCell(slot))}
-              </AnimatePresence>
-            </div>
+            {/* 2026-10-29 (owner) — calendario de UN set: encabezado colapsable
+                con ayuda visual (resumen «N de 12 meses con foto» + chevron;
+                colapsado = mapa de chips por mes). */}
+            {isCalendar &&
+              (() => {
+                const totalSlotsCal = canvasData.slots.length;
+                const filledCal = canvasData.slots.filter((s) => s.assetUrl).length;
+                const collapsed = collapsedCalUnits.has(0);
+                return (
+                  <>
+                    <div className="mb-2 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-1 pt-1">
+                      <h2 className="text-brand-purple-dark font-display text-sm font-bold">
+                        {texts.unidades.calMesesTitulo}
+                      </h2>
+                      <span
+                        role="status"
+                        className={[
+                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums",
+                          filledCal === totalSlotsCal
+                            ? "bg-emerald-100 text-emerald-700"
+                            : filledCal === 0
+                              ? "bg-red-50 text-red-700"
+                              : "bg-brand-purple/10 text-brand-purple-dark",
+                        ].join(" ")}
+                      >
+                        {filledCal === totalSlotsCal && <Check className="h-3 w-3" aria-hidden />}
+                        {fillStudioText(texts.unidades.calMesesResumen, {
+                          filled: filledCal,
+                          total: totalSlotsCal,
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleCalUnitCollapsed(0)}
+                        aria-expanded={!collapsed}
+                        aria-controls="studio-unit-0-grid"
+                        aria-label={texts.unidades.calMesesToggleAria}
+                        className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple inline-flex h-8 w-8 items-center justify-center rounded-full text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+                          aria-hidden
+                        />
+                      </button>
+                    </div>
+                    {collapsed && (
+                      <CalendarMonthChips
+                        slots={canvasData.slots}
+                        labels={slotLabels}
+                        onJump={(slotIndex) => jumpToCalendarSlot(0, slotIndex)}
+                      />
+                    )}
+                  </>
+                );
+              })()}
+            {!(isCalendar && collapsedCalUnits.has(0)) && (
+              <div
+                id="studio-unit-0-grid"
+                className={
+                  stripMode
+                    ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza entera (las
+                      // celdas individuales no llevan sombra — separaban la tira visualmente).
+                      // Sin overflow-hidden: el anillo de selección del slot no debe cortarse.
+                      "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
+                    : "grid"
+                }
+                style={{
+                  gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                  gap: layout.gap,
+                  // Ola 4 — ancho explícito + margin auto: el grid siempre centrado en
+                  // el marco, sin estirarse cuando el cap de alto achica las celdas.
+                  ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+                }}
+              >
+                <AnimatePresence>
+                  {canvasData.slots.map((slot) => renderSlotCell(slot))}
+                </AnimatePresence>
+              </div>
+            )}
           </motion.div>
         )}
       </div>
@@ -1559,6 +1658,9 @@ function UnitSectionHeader({
   noun,
   variantLabel,
   onApplied,
+  collapsible = false,
+  collapsed = false,
+  onToggleCollapse,
 }: {
   store: StoreApi<StudioStoreState>;
   unitIndex: number;
@@ -1569,6 +1671,11 @@ function UnitSectionHeader({
    *  imán"): cada sección enuncia QUÉ es la unidad que se está diseñando. */
   variantLabel?: string;
   onApplied: () => void;
+  /** 2026-10-29 (owner) — calendario: la sección se puede colapsar/expandir
+   *  (ayuda visual: chevron + resumen de meses listos). */
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }) {
   const texts = useStudioTexts();
   const filled = useStore(store, selectUnitFilledCount(unitIndex, unitSlots));
@@ -1622,6 +1729,57 @@ function UnitSectionHeader({
           </button>
         </Hint>
       )}
+      {collapsible && onToggleCollapse && (
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+          aria-controls={`studio-unit-${unitIndex}-grid`}
+          aria-label={texts.unidades.calMesesToggleAria}
+          className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple inline-flex h-8 w-8 items-center justify-center rounded-full text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+        >
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+            aria-hidden
+          />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 2026-10-29 (owner) — ayuda visual del calendario COLAPSADO: una fila de
+ * chips por mes (lleno = verde, pendiente = contorno ámbar) que sirve de mapa
+ * del set; tocar un chip expande la grilla y salta a ese mes.
+ */
+function CalendarMonthChips({
+  slots,
+  labels,
+  onJump,
+}: {
+  /** Slots de la unidad (el padre se suscribe a canvasData: re-render en cada cambio). */
+  slots: CanvasDataV2["slots"];
+  labels?: readonly string[];
+  onJump: (slotIndex: number) => void;
+}) {
+  return (
+    <div className="flex w-full flex-wrap items-center justify-center gap-1.5 py-1">
+      {slots.map((slot) => (
+        <button
+          key={slot.slotIndex}
+          type="button"
+          onClick={() => onJump(slot.slotIndex)}
+          className={[
+            "focus:ring-brand-turquoise rounded-full px-2 py-1 text-[10px] font-bold transition-colors focus:ring-2 focus:outline-none",
+            slot.assetUrl
+              ? "bg-emerald-100 text-emerald-800"
+              : "border-brand-purple/25 text-brand-purple-dark/70 hover:border-brand-purple/60 border bg-white",
+          ].join(" ")}
+        >
+          {labels?.[slot.slotIndex] ?? slot.slotIndex + 1}
+        </button>
+      ))}
     </div>
   );
 }

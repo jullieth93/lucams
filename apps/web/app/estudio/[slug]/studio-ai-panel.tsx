@@ -8,6 +8,7 @@
 
 import { useRef, useState } from "react";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { Sparkles, X, Loader2, Copy, Check } from "lucide-react";
 import { suggestDesignAction } from "@/features/ai/actions";
 import type { DesignSuggestion } from "@/features/ai/schemas";
@@ -90,7 +91,7 @@ export function StudioAiPanel({
             type="button"
             onClick={onClose}
             aria-label={texts.comun.cerrarAsistente}
-            className="text-brand-muted hover:bg-brand-purple/5 hover:text-brand-purple-dark rounded-full p-1.5"
+            className={CLOSE_X_CLASS + " h-9 w-9"}
           >
             <X className="h-5 w-5" />
           </button>

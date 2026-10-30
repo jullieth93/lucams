@@ -65,6 +65,9 @@ const result = await prisma.$transaction(async (tx) => {
         sizeCm: "5×15",
         shape: "rectangle",
         frameOptions: FRAME_OPTIONS,
+        // 2026-10-29 (owner) — slider «Grosor del borde» del Estudio (ADR-173):
+        // la tira es de las familias que lo consumen (inset exterior + canaletas).
+        borderWidth: { enabled: true, min: 1, max: 2.5, default: 1 },
       },
       physicalSpecs: {
         widthCm: 5,
@@ -94,6 +97,8 @@ const result = await prisma.$transaction(async (tx) => {
         sizeCm: "5×15",
         shape: "rectangle",
         frameOptions: FRAME_OPTIONS,
+        // 2026-10-29 (owner) — slider «Grosor del borde» del Estudio (ADR-173).
+        borderWidth: { enabled: true, min: 1, max: 2.5, default: 1 },
       },
       categoryId: category.id,
     },

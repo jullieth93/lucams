@@ -27,6 +27,7 @@ import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CloseXButton } from "@/components/ui/close-x-button";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
@@ -83,16 +84,19 @@ export function StudioFaceChoiceModal({
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="ring-brand-purple/10 pointer-events-auto flex w-[92vw] max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
             >
-              <div className="px-5 pt-5 pb-3">
-                <h2
-                  id="face-choice-title"
-                  className="text-brand-purple-dark text-base leading-tight font-bold"
-                >
-                  {texts.plantillas.caraPreguntaTitulo}
-                </h2>
-                <p id="face-choice-desc" className="text-brand-muted mt-1 text-xs leading-snug">
-                  {fillStudioText(texts.plantillas.caraPreguntaCuerpo, { nombre: designName })}
-                </p>
+              <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3">
+                <div>
+                  <h2
+                    id="face-choice-title"
+                    className="text-brand-purple-dark text-base leading-tight font-bold"
+                  >
+                    {texts.plantillas.caraPreguntaTitulo}
+                  </h2>
+                  <p id="face-choice-desc" className="text-brand-muted mt-1 text-xs leading-snug">
+                    {fillStudioText(texts.plantillas.caraPreguntaCuerpo, { nombre: designName })}
+                  </p>
+                </div>
+                <CloseXButton onClick={onClose} label={texts.comun.cerrar} className="shrink-0" />
               </div>
               <div className="border-brand-purple/10 flex shrink-0 flex-col gap-2 border-t px-5 py-3">
                 <div className="flex gap-2">
