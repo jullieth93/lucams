@@ -69,6 +69,10 @@ const ALLOWLIST_PRD_DELIBERADO = new Set([
   // 2026-10-29 — cierra el drift STG→PRD de la variante SEP-MAG-2X6-5
   // (`magnet: true` ausente en PRD; sync de contenido ADR-126).
   "one-shot/sync-variant-magnet-attr-20261029.mjs",
+  // 2026-10-29 — homologación STG→PRD de los 3 drifts de contenido (decisión
+  // owner: STG manda): zonas Envío Lucams sin «bosa», Cuadrados borderWidth
+  // max 2, S-128 inactiva. Dry-run por defecto + --apply.
+  "one-shot/homologate-prd-to-stg-20261029.mjs",
 ]);
 
 const WRITE_RE =
