@@ -148,5 +148,21 @@ describe("useDebouncedCommit — commit debounced de los campos IG", () => {
       act(() => vi.advanceTimersByTime(IG_FIELD_COMMIT_DEBOUNCE_MS * 2));
       expect(commits).toEqual(["bogotá"]);
     });
+
+    it("2026-10-30 (bug owner): el blur SIEMPRE normaliza el draft visible, también con el commit ya hecho por debounce", () => {
+      const { result, commits } = setupEcho();
+
+      // Escribe y pausa: el debounce commitea (crudo) ANTES del blur.
+      act(() => result.current.change("bogotá,colombia"));
+      act(() => vi.advanceTimersByTime(IG_FIELD_COMMIT_DEBOUNCE_MS));
+      expect(commits).toEqual(["bogotá,colombia"]);
+      expect(result.current.draft).toBe("bogotá,colombia"); // crudo mientras edita
+
+      // Blur: sin commit pendiente (el timer ya corrió) — el draft visible
+      // IGUAL se normaliza al formato impreso.
+      act(() => result.current.flush());
+      expect(result.current.draft).toBe("Bogotá,colombia");
+      expect(commits).toEqual(["bogotá,colombia"]); // sin commit extra
+    });
   });
 });
