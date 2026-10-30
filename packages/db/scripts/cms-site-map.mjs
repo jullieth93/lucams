@@ -2442,6 +2442,46 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
       sortOrder: 70,
       sections: [
         {
+          key: "listado",
+          title: "Listado de productos (categoría)",
+          prefixes: ["productos.", "categoria."],
+          sortOrder: 5,
+          fields: [
+            {
+              key: "productos.intro-default",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Listado: intro por defecto (sin categoría)",
+              helpText:
+                "Bajada del encabezado de /productos cuando no hay categoría activa (vista «Tienda»).",
+              category: "HOME",
+              body: "Productos que cuentan historias. Personalizables, hechos a mano, listos para llegar a tu espacio.",
+              sortOrder: 10,
+            },
+            {
+              key: "categoria.leer-mas",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Categoría: «Leer más» del intro (móvil)",
+              helpText:
+                "Botón que expande el intro editorial colapsado en móvil (2026-10-30, ADR-184).",
+              category: "HOME",
+              body: "Leer más",
+              sortOrder: 20,
+            },
+            {
+              key: "categoria.leer-menos",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Categoría: «Leer menos» del intro (móvil)",
+              helpText: "Botón que recolapsa el intro editorial expandido en móvil.",
+              category: "HOME",
+              body: "Leer menos",
+              sortOrder: 30,
+            },
+          ],
+        },
+        {
           key: "general",
           title: "Textos",
           prefixes: ["pdp."],
