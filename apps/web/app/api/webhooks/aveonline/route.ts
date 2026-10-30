@@ -146,12 +146,16 @@ export async function POST(req: Request) {
             data: {
               source: "AVEONLINE",
               externalId,
+              // Allowlist (LUC-SEC-003): NUNCA persistir fragmentos del body crudo.
+              // `payload.token` ES el secreto compartido (autentica la notificación) —
+              // guardarlo en rawBodyHead lo replicaba en texto claro en DB y backups.
+              // Solo campos operativos + hash truncado para correlación (como en logs).
               payload: {
                 trackingNumber: event.trackingNumber,
                 status: event.status,
                 carrierStatusRaw: event.carrierStatusRaw,
                 timestamp: event.timestamp.toISOString(),
-                rawBodyHead: rawBody.slice(0, 1000),
+                bodyHash: createHash("sha256").update(rawBody).digest("hex").slice(0, 16),
               },
             },
           });

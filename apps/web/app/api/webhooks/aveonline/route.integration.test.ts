@@ -326,6 +326,52 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     expect(order?.status).toBe("SHIPPED");
   });
 
+  it("LUC-SEC-003: webhook autenticado por payload.token NO persiste el token ni el body crudo (allowlist)", async () => {
+    // El Token de la integración viaja EN el body y autentica la notificación: si el
+    // payload persistido guarda un fragmento crudo (rawBodyHead), el secreto compartido
+    // queda en texto claro en WebhookEvent → DB, backups y dumps. Lo que debe
+    // persistirse es un esquema allowlist + hash truncado para correlación.
+    const guia = freshGuia();
+    const orderId = await makeFulfillingOrder(String(guia));
+
+    const res = await POST(
+      new Request("http://localhost/api/webhooks/aveonline", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          token: SECRET, // ← señuelo: ES el secreto, autentica la notificación
+          status: "ok",
+          guia,
+          estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }],
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const ev = await prisma.webhookEvent.findFirst({
+      where: { source: "AVEONLINE", externalId: { startsWith: `${guia}-` } },
+    });
+    expect(ev).not.toBeNull();
+    const persisted = JSON.stringify(ev?.payload);
+    // El secreto NO puede aparecer en NINGUNA parte del payload persistido.
+    expect(persisted).not.toContain(SECRET);
+    // Solo campos allowlist + hash de correlación: nada de body crudo.
+    expect(ev?.payload).toMatchObject({
+      trackingNumber: String(guia),
+      status: "IN_TRANSIT",
+    });
+    expect(Object.keys(ev?.payload as object).sort()).toEqual(
+      ["bodyHash", "carrierStatusRaw", "status", "timestamp", "trackingNumber"].sort(),
+    );
+    expect(persisted).not.toContain("rawBodyHead");
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
+    expect(order?.status).toBe("SHIPPED"); // el webhook legítimo sigue funcionando
+  });
+
   it("D-1: con AVEONLINE_ALLOW_QUERY_SECRET ausente, ?secret= NO autentica (401) y el header sí", async () => {
     delete process.env.AVEONLINE_ALLOW_QUERY_SECRET; // default OFF
     try {
