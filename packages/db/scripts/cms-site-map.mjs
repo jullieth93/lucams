@@ -8956,7 +8956,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Foto asignada: confirmación",
-              helpText: "Aviso breve al tocar una foto de «Mis fotos» y quedar asignada a un lienzo. {n} = número del lienzo.",
+              helpText:
+                "Aviso breve al tocar una foto de «Mis fotos» y quedar asignada a un lienzo. {n} = número del lienzo.",
               category: "HOME",
               body: "Lista: quedó en el lienzo {n}.",
               sortOrder: 211,
@@ -8966,7 +8967,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Sin lienzo libre: aviso",
-              helpText: "Aviso al tocar una foto de «Mis fotos» cuando todos los lienzos ya tienen foto.",
+              helpText:
+                "Aviso al tocar una foto de «Mis fotos» cuando todos los lienzos ya tienen foto.",
               category: "HOME",
               body: "Todos los lienzos están llenos. Arrastra la foto al lienzo que quieras reemplazar.",
               sortOrder: 212,
@@ -8976,7 +8978,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Eliminar foto: nombre accesible",
-              helpText: "Lo lee el lector de pantalla sobre el botón de basura de cada miniatura de «Mis fotos».",
+              helpText:
+                "Lo lee el lector de pantalla sobre el botón de basura de cada miniatura de «Mis fotos».",
               category: "HOME",
               body: "Eliminar esta foto de Mis fotos",
               sortOrder: 213,
@@ -8996,7 +8999,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Eliminar foto: cuerpo de confirmación",
-              helpText: "Explica que la foto se quita de «Mis fotos» y de cualquier lienzo donde se esté usando.",
+              helpText:
+                "Explica que la foto se quita de «Mis fotos» y de cualquier lienzo donde se esté usando.",
               category: "HOME",
               body: "Se quita de «Mis fotos» y de cualquier lienzo donde la estés usando. Esta acción no se puede deshacer (puedes volver a subirla).",
               sortOrder: 215,
@@ -11894,7 +11898,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Calendario: nombre accesible del colapsable",
-              helpText: "Lo lee el lector de pantalla sobre el botón que muestra u oculta los meses.",
+              helpText:
+                "Lo lee el lector de pantalla sobre el botón que muestra u oculta los meses.",
               category: "HOME",
               body: "Mostrar u ocultar los meses del calendario",
               sortOrder: 127,

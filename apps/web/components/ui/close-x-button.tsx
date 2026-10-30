@@ -24,7 +24,12 @@ export function CloseXButton({
   ...props
 }: React.ComponentProps<"button"> & { label?: string }) {
   return (
-    <button type="button" aria-label={label} className={cn(CLOSE_X_CLASS, "h-8 w-8", className)} {...props}>
+    <button
+      type="button"
+      aria-label={label}
+      className={cn(CLOSE_X_CLASS, "h-8 w-8", className)}
+      {...props}
+    >
       <XIcon className="h-4 w-4" aria-hidden />
       <span className="sr-only">{label}</span>
     </button>

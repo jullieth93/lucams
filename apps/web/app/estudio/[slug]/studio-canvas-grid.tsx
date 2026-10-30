@@ -1444,9 +1444,7 @@ export function StudioCanvasGrid({
                               : "bg-brand-purple/10 text-brand-purple-dark",
                         ].join(" ")}
                       >
-                        {filledCal === totalSlotsCal && (
-                          <Check className="h-3 w-3" aria-hidden />
-                        )}
+                        {filledCal === totalSlotsCal && <Check className="h-3 w-3" aria-hidden />}
                         {fillStudioText(texts.unidades.calMesesResumen, {
                           filled: filledCal,
                           total: totalSlotsCal,

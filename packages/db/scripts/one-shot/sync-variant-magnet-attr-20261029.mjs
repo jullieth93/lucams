@@ -35,9 +35,7 @@ async function main() {
     return;
   }
   const attrs =
-    typeof variant.attributes === "object" && variant.attributes !== null
-      ? variant.attributes
-      : {};
+    typeof variant.attributes === "object" && variant.attributes !== null ? variant.attributes : {};
   if (attrs.magnet === true) {
     console.log(`~ ${SKU} ya declara magnet: true — nada que hacer`);
     return;

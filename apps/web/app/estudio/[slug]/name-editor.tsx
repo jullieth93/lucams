@@ -1081,7 +1081,12 @@ export function NameEditor({
             </button>
           </div>
           <div className="relative flex-1">
-            <RoomBoardView3D magnets={board3D} cols={board3D.length} style="memo" magnet={variantMagnet} />
+            <RoomBoardView3D
+              magnets={board3D}
+              cols={board3D.length}
+              style="memo"
+              magnet={variantMagnet}
+            />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
             </p>

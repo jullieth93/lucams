@@ -68,9 +68,7 @@ vi.mock("@supabase/ssr", () => ({
           listFactors: async () => ({
             data: {
               all:
-                state.totpVerified === false
-                  ? []
-                  : [{ factor_type: "totp", status: "verified" }],
+                state.totpVerified === false ? [] : [{ factor_type: "totp", status: "verified" }],
             },
           }),
         },
