@@ -15,6 +15,22 @@ export function formatCOP(centavos: number): string {
   return copFormatter.format(centavos / 100);
 }
 
+const copExactFormatter = new Intl.NumberFormat("es-CO", {
+  style: "currency",
+  currency: "COP",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * Como formatCOP pero muestra los centavos cuando los hay (2026-10-29 —
+ * conciliación Wompi: una diferencia de $0,50 importa; `$ 26.410,50`).
+ * formatCOP sigue siendo el default de vitrina (precios redondos).
+ */
+export function formatCOPExact(centavos: number): string {
+  return copExactFormatter.format(centavos / 100);
+}
+
 const relativeFormatter = new Intl.RelativeTimeFormat("es-CO", { numeric: "auto" });
 
 /**

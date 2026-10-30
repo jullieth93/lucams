@@ -19,6 +19,7 @@ import { Popover as PopoverPrimitive } from "radix-ui";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { AlertTriangle, X } from "lucide-react";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { collectQualityWarnings, qualityWarningsKey } from "./lib/quality-warnings";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -80,7 +81,7 @@ export function StudioQualityWarningsChip({
             </p>
             <PopoverPrimitive.Close
               aria-label={texts.comun.cerrar}
-              className="text-brand-muted hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors focus:ring-2 focus:outline-none"
+              className={CLOSE_X_CLASS + " h-6 w-6 shrink-0"}
             >
               <X className="h-3.5 w-3.5" aria-hidden />
             </PopoverPrimitive.Close>

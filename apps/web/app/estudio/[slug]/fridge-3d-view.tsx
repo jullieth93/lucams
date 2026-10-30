@@ -45,7 +45,13 @@ import { OrbitControls, RoundedBox, ContactShadows, Center } from "@react-three/
 import { FitCamera } from "./fit-camera";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { MagnetMesh, magnetWorldSizes, realWorldDepth, type MagnetShape } from "./magnet-3d";
+import {
+  MagnetMesh,
+  magnetWorldSizes,
+  realWorldDepth,
+  MAGNET_BACK_COLOR,
+  type MagnetShape,
+} from "./magnet-3d";
 import { frenchDoorClusterLayout, FRIDGE_SCENE } from "./lib/cluster-layout";
 
 export type Magnet3D = {
@@ -79,6 +85,9 @@ type FridgeView3DProps = {
    *  MAGNET_THICKNESS_CM). El calendario pasa CALENDAR_CARD_THICKNESS_CM (cartulina ~0.4 mm):
    *  las tarjetas heredaban el grosor de imán y se veían gruesas como fichas magnéticas. */
   thicknessCm?: number;
+  /** 2026-10-29 (owner) — variante CON IMÁN: el reverso de la pieza se pinta del
+   *  negro de la goma ferrita (MAGNET_BACK_COLOR). false/undefined = reverso normal. */
+  magnet?: boolean;
 };
 
 // ── Nevecón FRENCH DOOR de tamaño FIJO (no depende de la cantidad de imanes) ──
@@ -139,19 +148,22 @@ const SEAM_COLOR = "#34373D";
 const HANDLE_COLOR = "#C9CDD4";
 const FOOT_COLOR = "#212227";
 
-/** Un imán con CUERPO: extruido desde su silueta (canto blanco del material + brillo PET). */
+/** Un imán con CUERPO: extruido desde su silueta (canto blanco del material + brillo PET).
+ *  Con variante CON IMÁN el reverso es el negro de la goma ferrita (owner 2026-10-29). */
 function Magnet({
   m,
   width,
   height,
   depth,
   position,
+  magnet,
 }: {
   m: Magnet3D;
   width: number;
   height: number;
   depth: number;
   position: [number, number, number];
+  magnet?: boolean;
 }) {
   return (
     <MagnetMesh
@@ -161,6 +173,7 @@ function Magnet({
       shape={m.shape}
       depth={depth}
       cornerRadiusRatio={m.cornerRadiusRatio}
+      backColor={magnet ? MAGNET_BACK_COLOR : undefined}
       position={position}
     />
   );
@@ -465,17 +478,35 @@ function fridgeClusterLayout(
   };
 }
 
-function Magnets({ items, depth, z }: { items: FridgeItem[]; depth: number; z: number }) {
+function Magnets({
+  items,
+  depth,
+  z,
+  magnet,
+}: {
+  items: FridgeItem[];
+  depth: number;
+  z: number;
+  magnet?: boolean;
+}) {
   return (
     <>
       {items.map(({ m, w, h, x, y }, i) => (
-        <Magnet key={i} m={m} width={w} height={h} depth={depth} position={[x, y, z]} />
+        <Magnet
+          key={i}
+          m={m}
+          width={w}
+          height={h}
+          depth={depth}
+          position={[x, y, z]}
+          magnet={magnet}
+        />
       ))}
     </>
   );
 }
 
-function Scene({ magnets, cols, sizeCm, thicknessCm }: FridgeView3DProps) {
+function Scene({ magnets, cols, sizeCm, thicknessCm, magnet }: FridgeView3DProps) {
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
   // Clúster a tamaño real + sus bounds: la cámara encuadra nevera Y clúster completo.
@@ -517,7 +548,7 @@ function Scene({ magnets, cols, sizeCm, thicknessCm }: FridgeView3DProps) {
       <Center>
         <group>
           <Fridge />
-          <Magnets items={layout.items} depth={depth} z={magnetZ} />
+          <Magnets items={layout.items} depth={depth} z={magnetZ} magnet={magnet} />
         </group>
       </Center>
 
@@ -561,7 +592,13 @@ function Scene({ magnets, cols, sizeCm, thicknessCm }: FridgeView3DProps) {
   );
 }
 
-export default function FridgeView3D({ magnets, cols, sizeCm, thicknessCm }: FridgeView3DProps) {
+export default function FridgeView3D({
+  magnets,
+  cols,
+  sizeCm,
+  thicknessCm,
+  magnet,
+}: FridgeView3DProps) {
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -583,7 +620,13 @@ export default function FridgeView3D({ magnets, cols, sizeCm, thicknessCm }: Fri
     >
       <color attach="background" args={["#FFF8F0"]} />
       <Suspense fallback={null}>
-        <Scene magnets={magnets} cols={cols} sizeCm={sizeCm} thicknessCm={thicknessCm} />
+        <Scene
+          magnets={magnets}
+          cols={cols}
+          sizeCm={sizeCm}
+          thicknessCm={thicknessCm}
+          magnet={magnet}
+        />
       </Suspense>
     </Canvas>
   );

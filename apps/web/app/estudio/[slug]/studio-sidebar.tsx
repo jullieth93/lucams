@@ -5,8 +5,11 @@
  *
  * Diferencias vs sidebar M.3:
  *   - Progress bar X/N + indicador visual completo
- *   - Botón "🪄 Llenar slots con mis fotos" con stagger animation
- *   - Lista assets con drag handle nativo + click-to-assign al slot seleccionado
+ *   - Botón "🪄 Llenar slots con mis fotos" con stagger animation (2026-10-29:
+ *     deshabilitado mientras haya subidas en vuelo)
+ *   - Lista assets con drag handle nativo + TAP-TO-ASSIGN (al lienzo libre
+ *     seleccionado o al próximo libre) + borrado individual con confirmación
+ *     (2026-10-29 — «Mis fotos» como biblioteca usable)
  *   - Plantillas con preview card + ring on selected + click apply
  *
  * El sidebar es store-aware: lee de zustand selectivamente.
@@ -24,11 +27,24 @@ import {
   ChevronDown,
   Eye,
   GripVertical,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
-import { uploadDesignAssetAction } from "@/features/personalization/actions";
+import {
+  deleteDesignAssetAction,
+  uploadDesignAssetAction,
+} from "@/features/personalization/actions";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import {
   applyPredesignedToSlot,
   applyPredesignedVarietyToEmptySlots,
@@ -135,6 +151,9 @@ export function StudioSidebar({
   const totalSlots = useStore(store, selectTotalSlotCount);
   const addAsset = useStore(store, (s) => s.addAsset);
   const autoFillSlots = useStore(store, (s) => s.autoFillSlots);
+  // 2026-10-29 — biblioteca usable: tap-to-assign + borrado individual.
+  const assignAssetToSlot = useStore(store, (s) => s.assignAssetToSlot);
+  const removeAsset = useStore(store, (s) => s.removeAsset);
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
   // 2026-10-19 — el clic en prediseñados YA NO usa selectedSlotIndex (pregunta
   // siempre el destino); solo queda la acción para limpiar la selección tras
@@ -517,7 +536,47 @@ export function StudioSidebar({
   // orden de «Mis fotos»). La regla Ola 21 (exigir fotos para TODOS los vacíos) se
   // retiró: en un calendario de 12 slots obligaba a subir las 12 fotos antes de
   // siquiera ver el botón.
+  // 2026-10-29 (owner) — queda DESHABILITADO mientras haya subidas en vuelo:
+  // llenar con un set incompleto de fotos repartía mal y confundía ("no puso
+  // todas"). El botón se ve (feedback de que existe) pero no actúa hasta que
+  // terminen de subir.
   const canAutoFill = assets.length > 0 && emptySlots > 0;
+
+  // 2026-10-29 (owner) — «Mis fotos» como biblioteca USABLE: el tap asigna al
+  // lienzo seleccionado si está libre, si no al próximo libre; sin libre, aviso
+  // (nunca pisa contenido en silencio — misma regla de los prediseñados).
+  const handleAssignAsset = (asset: StudioAsset) => {
+    const state = store.getState();
+    const slots = state.canvasData?.slots ?? [];
+    const selected = state.selectedSlotIndex;
+    const selectedFree =
+      selected !== null && slots.some((s) => s.slotIndex === selected && !s.assetUrl);
+    const target = selectedFree ? selected : (slots.find((s) => !s.assetUrl)?.slotIndex ?? null);
+    if (target === null) {
+      toast.warning(texts.fotos.sinLienzoLibre);
+      return;
+    }
+    assignAssetToSlot(target, asset);
+    toast.success(fillStudioText(texts.fotos.asignadaToast, { n: target + 1 }));
+  };
+
+  // 2026-10-29 (owner) — borrado individual con confirmación: cliente primero
+  // (optimista, limpia los slots que la usan), servidor después; si el servidor
+  // falla se restaura la foto en la biblioteca y se avisa.
+  const [pendingDeleteAsset, setPendingDeleteAsset] = useState<StudioAsset | null>(null);
+  const handleConfirmDeleteAsset = () => {
+    const asset = pendingDeleteAsset;
+    setPendingDeleteAsset(null);
+    if (!asset) return;
+    removeAsset(asset.id);
+    toast.success(texts.fotos.eliminadaToast);
+    void deleteDesignAssetAction(asset.id).then((res) => {
+      if (!res.ok) {
+        addAsset(asset);
+        toast.error(res.message ?? texts.fotos.eliminarError);
+      }
+    });
+  };
 
   return (
     <div ref={rootRef} className={`flex h-full flex-col ${compact ? "gap-4 p-4" : "gap-6 p-5"}`}>
@@ -685,20 +744,27 @@ export function StudioSidebar({
           </p>
         )}
 
-        {/* Auto-fill button — superhero del editor */}
+        {/* Auto-fill button — superhero del editor.
+            2026-10-29: deshabilitado mientras haya subidas en vuelo (llenar con
+            un set incompleto repartía mal las fotos). */}
         {canAutoFill && (
           <motion.button
             type="button"
             onClick={autoFillSlots}
+            disabled={uploading > 0}
             aria-label={fillStudioText(texts.fotos.autofillAria, {
               n: Math.min(emptySlots, assets.length),
             })}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="bg-brand-turquoise/15 text-brand-purple-dark hover:bg-brand-turquoise/25 focus:ring-brand-turquoise mt-3 flex w-full items-center justify-center gap-1.5 rounded-md py-2.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none"
+            className="bg-brand-turquoise/15 text-brand-purple-dark hover:bg-brand-turquoise/25 focus:ring-brand-turquoise mt-3 flex w-full items-center justify-center gap-1.5 rounded-md py-2.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Wand2 className="text-brand-purple h-4 w-4" />
+            {uploading > 0 ? (
+              <Loader2 className="text-brand-purple h-4 w-4 animate-spin" />
+            ) : (
+              <Wand2 className="text-brand-purple h-4 w-4" />
+            )}
             {texts.fotos.autofillCta}
           </motion.button>
         )}
@@ -720,6 +786,8 @@ export function StudioSidebar({
                   hideUsed={hideUsed}
                   autoImproved={improvedAssetIds.has(asset.id)}
                   onDragStart={(e) => onDragStartAsset(e, asset)}
+                  onAssign={() => handleAssignAsset(asset)}
+                  onRequestDelete={() => setPendingDeleteAsset(asset)}
                 />
               ))}
             </AnimatePresence>
@@ -938,6 +1006,46 @@ export function StudioSidebar({
         }}
         onClose={() => setViewingItem(null)}
       />
+
+      {/* 2026-10-29 — confirmación de borrado individual de «Mis fotos». */}
+      <Dialog
+        open={pendingDeleteAsset !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteAsset(null);
+        }}
+      >
+        <DialogContent aria-describedby="asset-delete-desc">
+          <DialogHeader>
+            <DialogTitle className="text-brand-purple-dark">
+              {texts.fotos.eliminarTitulo}
+            </DialogTitle>
+            <DialogDescription id="asset-delete-desc">
+              {texts.fotos.eliminarCuerpo}
+            </DialogDescription>
+          </DialogHeader>
+          {pendingDeleteAsset && (
+            <div className="flex justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element -- signed URL temporal del cliente */}
+              <img
+                src={pendingDeleteAsset.canvasUrl ?? pendingDeleteAsset.signedUrl}
+                alt=""
+                className="ring-brand-purple/20 h-24 w-24 rounded-md object-cover ring-1"
+              />
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPendingDeleteAsset(null)}>
+              {texts.comun.cerrar}
+            </Button>
+            <Button
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={handleConfirmDeleteAsset}
+            >
+              {texts.fotos.eliminarConfirmar}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1156,6 +1264,8 @@ function AssetThumb({
   hideUsed,
   autoImproved = false,
   onDragStart,
+  onAssign,
+  onRequestDelete,
 }: {
   store: StoreApi<StudioStoreState>;
   asset: StudioAsset;
@@ -1164,6 +1274,10 @@ function AssetThumb({
   /** C2 — la foto se mejoró automáticamente al subir (upscale local): badge "✨ Mejorada". */
   autoImproved?: boolean;
   onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
+  /** 2026-10-29 — biblioteca usable: tap/clic asigna al próximo lienzo libre. */
+  onAssign: () => void;
+  /** 2026-10-29 — borrado individual (lo confirma el Dialog del sidebar). */
+  onRequestDelete: () => void;
 }) {
   const isUsed = useStore(store, selectAssetIsUsed(asset.id));
   // P0.3 — Estado del modal de warning calidad (al click sobre thumb problemático)
@@ -1198,12 +1312,22 @@ function AssetThumb({
           role="listitem"
           draggable
           onDragStart={(e) => onDragStart(e as unknown as React.DragEvent<HTMLDivElement>)}
-          onClick={hasWarning ? () => setShowQualityModal(true) : undefined}
+          // 2026-10-29 — tap/clic = asignar (biblioteca usable); con aviso de
+          // calidad el clic abre el modal, que ofrece «Usar de todos modos».
+          onClick={hasWarning ? () => setShowQualityModal(true) : onAssign}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              if (hasWarning) setShowQualityModal(true);
+              else onAssign();
+            }
+          }}
+          tabIndex={0}
           initial={{ opacity: 0, scale: 0.85 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.85 }}
           transition={{ duration: 0.2, delay: idx * 0.04 }}
-          className="group/thumb flex cursor-grab flex-col gap-1 active:cursor-grabbing"
+          className="group/thumb focus:ring-brand-turquoise flex cursor-pointer flex-col gap-1 rounded-md focus:ring-2 focus:outline-none active:cursor-grabbing"
         >
           <div
             className={[
@@ -1236,6 +1360,21 @@ function AssetThumb({
             >
               <GripVertical className="h-3 w-3" />
             </div>
+
+            {/* 2026-10-29 — borrado individual: basura visible SIEMPRE (en táctil
+                no hay hover); arriba a la derecha, sin tapar la cara de la foto. */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRequestDelete();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              aria-label={texts.fotos.eliminarAria}
+              className="focus:ring-brand-purple absolute top-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-700 shadow transition-colors hover:bg-red-50 focus:ring-2 focus:outline-none"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            </button>
           </div>
 
           {/* Fila-caption de chips (text-[9px], fondos suaves con texto oscuro —
@@ -1292,11 +1431,17 @@ function AssetThumb({
         </motion.div>
       </Hint>
 
-      {/* P0.3 — Modal de calidad: explica el problema + sugerencia accionable */}
+      {/* P0.3 — Modal de calidad: explica el problema + sugerencia accionable.
+          2026-10-29: «Usar de todos modos» asigna igual (misma vía del picker). */}
       <PhotoQualityModal
         open={showQualityModal}
         onClose={() => setShowQualityModal(false)}
         asset={asset}
+        actionLabel={texts.fotos.calidadUsarDeTodosModos}
+        onAction={() => {
+          setShowQualityModal(false);
+          onAssign();
+        }}
       />
     </>
   );

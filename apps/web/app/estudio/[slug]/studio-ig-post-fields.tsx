@@ -85,6 +85,7 @@ import {
   sanitizeIgUsernameInput,
 } from "./lib/ig-post-fields";
 import { IG_INPUT_CLASS as INPUT_CLASS, IgDebouncedInput } from "./ig-debounced-input";
+import { focusNextFieldOnEnter } from "@/lib/enter-next-field";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, type StudioTexts } from "./studio-texts";
@@ -323,7 +324,9 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
         {texts.texto.igDatosTitulo}{" "}
         <span className="text-brand-muted text-xs font-normal">{texts.texto.igDatosSub}</span>
       </p>
-      <div className="space-y-3">
+      {/* 2026-10-29 (owner) — Enter = siguiente campo (en móvil no hay TAB):
+          «pasar y ajustar los datos de publicación» como en PC. */}
+      <div className="space-y-3" onKeyDown={focusNextFieldOnEnter}>
         {fields.map((f) => {
           const required = REQUIRED.has(f.id);
           const inputId = `studio-ig-field-${f.id}`;

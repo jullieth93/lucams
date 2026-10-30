@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCOP, formatRelativeTime } from "./format";
+import { formatCOP, formatCOPExact, formatRelativeTime } from "./format";
 
 describe("formatCOP", () => {
   it("formats 0 centavos as $ 0", () => {
@@ -53,5 +53,16 @@ describe("formatRelativeTime", () => {
 
   it("slight future clock skew → ahora", () => {
     expect(formatRelativeTime(new Date(now.getTime() + 20_000), now)).toBe("ahora");
+  });
+});
+
+describe("formatCOPExact (2026-10-29 — conciliación: los centavos importan)", () => {
+  it("sin centavos se ve igual que formatCOP (26.410.000 centavos → «$ 264.100»)", () => {
+    expect(formatCOPExact(26_410_000)).toMatch(/\$\s*264\.100/);
+    expect(formatCOPExact(26_410_000)).not.toContain(",00");
+  });
+
+  it("con centavos los discrimina (26.410.050 centavos → «$ 264.100,50»)", () => {
+    expect(formatCOPExact(26_410_050)).toMatch(/264\.100,5/);
   });
 });

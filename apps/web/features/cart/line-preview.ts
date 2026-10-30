@@ -84,6 +84,76 @@ export function pieceKindFor(
   return "magnets";
 }
 
+// ──────────────────────────────────────────────────────────────────
+//  Dedupe del detalle de la línea (owner 2026-10-29)
+// ──────────────────────────────────────────────────────────────────
+//
+// La línea del carrito mostraba el mismo dato 2-3 veces: el nombre libre de la
+// variante («Set 12 tarjetas · 7.5×10 cm»), el desglose estructurado
+// («12 fotos · 7.5×10 cm · Con imán») y el resumen de pieza («12 páginas ·
+// 7.5×10 cada página») repetían cantidad y tamaño. Regla: cada HECHO (un número
+// de cantidad o una medida A×B) se muestra UNA sola vez — el primer contenedor
+// de arriba hacia abajo que lo enuncia gana (variantName → breakdown →
+// pieceSummary). Un token sobrevive solo si aporta un hecho nuevo («Con imán»,
+// «2 calendarios de …» — el 2 es nuevo).
+
+const SIZE_RE = /(\d+(?:[.,]\d+)?)\s*[×x]\s*(\d+(?:[.,]\d+)?)/g;
+const NUMBER_RE = /\d+(?:[.,]\d+)?/g;
+
+/**
+ * Hechos mencionados en un texto: cada medida «A×B» cuenta como UN hecho
+ * compuesto (normalizada «7.5×10»), no como dos números sueltos — «6 fotos» y
+ * «6×6 cm» son hechos DISTINTOS aunque compartan el 6.
+ */
+function mentionedFacts(text: string): Set<string> {
+  const facts = new Set<string>();
+  const withoutSizes = text.replace(SIZE_RE, (m) => {
+    facts.add(m.replace(/\s+/g, "").replace(/x/gi, "×"));
+    return " ";
+  });
+  for (const n of withoutSizes.match(NUMBER_RE) ?? []) facts.add(n);
+  return facts;
+}
+
+/** ¿El token aporta al menos UN hecho no mencionado antes? Los tokens sin
+ *  número («Con imán», «Blanco clásico») siempre aportan. */
+function addsNewFact(token: string, seen: Set<string>): boolean {
+  const facts = [...mentionedFacts(token)];
+  if (facts.length === 0) return true;
+  return facts.some((f) => !seen.has(f));
+}
+
+/**
+ * Dedupe del detalle de una línea del carrito/checkout: filtra de
+ * `variantBreakdown` y `pieceSummary` los tokens cuyos números ya enunció un
+ * contenedor superior. `pieceSummary` queda null cuando ya no dice nada nuevo.
+ */
+export function dedupeCartLineDetail(input: {
+  variantName: string;
+  variantBreakdown: string[];
+  pieceSummary: string | null;
+}): { variantBreakdown: string[]; pieceSummary: string | null } {
+  const seen = mentionedFacts(input.variantName);
+
+  const variantBreakdown = input.variantBreakdown.filter((token) => {
+    if (!addsNewFact(token, seen)) return false;
+    for (const f of mentionedFacts(token)) seen.add(f);
+    return true;
+  });
+
+  let pieceSummary: string | null = null;
+  if (input.pieceSummary) {
+    const kept = input.pieceSummary.split(" · ").filter((token) => {
+      if (!addsNewFact(token, seen)) return false;
+      for (const f of mentionedFacts(token)) seen.add(f);
+      return true;
+    });
+    pieceSummary = kept.length > 0 ? kept.join(" · ") : null;
+  }
+
+  return { variantBreakdown, pieceSummary };
+}
+
 /**
  * Frase que resume la pieza física: cuántas son y cuánto mide cada una.
  * Devuelve `null` si no hay nada verdadero que decir — mejor callar que inventar una medida.

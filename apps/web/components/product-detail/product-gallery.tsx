@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, RotateCcw, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import {
   PREVIEW_ZOOM_MAX,
   PREVIEW_ZOOM_MIN,
@@ -374,7 +375,7 @@ function LightboxView({
         type="button"
         onClick={onClose}
         aria-label="Cerrar"
-        className="absolute top-3 right-3 z-10 rounded-full bg-white/10 p-2 text-white backdrop-blur hover:bg-white/20"
+        className={CLOSE_X_CLASS + " absolute top-3 right-3 z-10 h-10 w-10"}
       >
         <X className="h-5 w-5" />
       </button>

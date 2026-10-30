@@ -43,13 +43,23 @@ const PX_PER_CM_300DPI = DPI_300 / CM_PER_INCH;
 
 // ──────────────────────────────────────────────────────────────────
 //  Thresholds — tunables si Lucy reporta falsos positivos
+//
+//  RECALIBRADO 2026-10-29 (feedback owner: los avisos "a veces no son
+//  acertivos"):
+//   - Resolución: la barra "soft" baja de 300 DPI a 240 DPI (80% del
+//     requerido). A la distancia de lectura de un imán/separador, 240 DPI se
+//     ve nítido; avisar entre 240–300 DPI era ruido sin valor accionable.
+//     La banda "strong" baja a < 200 DPI (0.67): ahí sí se nota el pixelado.
+//   - Blur: stdev < 15 era demasiado agresivo (retratos con fondo
+//     desenfocado —bokeh— y fotos de celular apenas suaves caían en aviso).
+//     Soft baja a < 10 y strong a < 4.
 // ──────────────────────────────────────────────────────────────────
 
-/** Resolución: ratio = minDim / requiredPx. */
+/** Resolución: ratio = minDim / requiredPx (requiredPx = barra 300 DPI). */
 const RES_THRESHOLDS = {
-  ERROR_BELOW: 0.5, // < 50% de la resolución requerida
-  WARNING_STRONG_BELOW: 0.8, // 50-80% pasable pero pixelado
-  WARNING_SOFT_BELOW: 1.0, // 80-100% borderline
+  ERROR_BELOW: 0.5, // < 50% de la resolución requerida (< 150 DPI efectivos)
+  WARNING_STRONG_BELOW: 0.67, // < 200 DPI efectivos: pixelado visible
+  WARNING_SOFT_BELOW: 0.8, // < 240 DPI efectivos: suficiente, pero cerca del límite
 };
 
 /**
@@ -65,10 +75,10 @@ const BRIGHTNESS_THRESHOLDS = {
   TOO_BRIGHT_ABOVE: 235, // brillo medio muy alto → zonas quemadas de luz
 };
 
-/** Blur: stdev del Laplacian. < 10 muy borrosa, 10-25 borrosa moderada. */
+/** Blur: stdev del Laplacian. < 4 muy borrosa, 4-10 borrosa moderada (2026-10-29). */
 const BLUR_THRESHOLDS = {
-  VERY_BLURRY_BELOW: 5,
-  BLURRY_BELOW: 15,
+  VERY_BLURRY_BELOW: 4,
+  BLURRY_BELOW: 10,
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -174,7 +184,7 @@ export async function validatePhotoQuality(
         actualMinPx,
         requiredPx,
         ratio,
-        message: `La resolución está justa para tamaño ${productSizeCm} cm. Si tienes una versión más grande, va a salir mejor.`,
+        message: `La resolución es suficiente para ${productSizeCm} cm, pero está cerca del límite: si tienes la foto original en mayor resolución (no la de WhatsApp), se va a ver aún más nítida.`,
       };
     } else {
       resolution = { passed: true, level: "ok", actualMinPx, requiredPx, ratio };

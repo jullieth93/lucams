@@ -134,6 +134,10 @@ export type CartLineItem = {
    * Lucy 2026-09-05). `null` para cualquier otro producto.
    */
   borderNote: string | null;
+  /** 2026-10-29 — nombre de la plantilla elegida en el Estudio («Polaroid
+   *  Clásica», «Polaroid Instagram»…). null en líneas de catálogo simple o
+   *  diseños legacy sin templateId. */
+  templateName: string | null;
 };
 
 export type CartDetail = {
@@ -304,6 +308,10 @@ const cartItemsInclude = {
           previewWatermarkedAt: true,
           previewPagesCount: true,
           status: true,
+          // 2026-10-29 (owner) — nombre de la PLANTILLA del diseño («Polaroid
+          // Clásica» vs «Polaroid Instagram»): el cliente no distinguía en el
+          // carrito qué plantilla había elegido.
+          template: { select: { name: true } },
           // productId + canvasData + metadata: identidad de contenido del diseño
           // (designIdentity) — los merges agrupan líneas con diseños distintos pero
           // idénticos (Paquete H, 2026-10-02).
@@ -481,6 +489,7 @@ function toDetail(cart: RawCart): CartDetail {
         }),
         pieceSummary: describeLine(i),
         borderNote: letterSetBorderNote(i.design?.metadata),
+        templateName: i.design?.template?.name ?? null,
       };
     });
   return {

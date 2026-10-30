@@ -357,6 +357,18 @@ export type StudioTexts = {
     thumbUsada: string;
     thumbAviso: string;
     thumbArrastrar: string;
+    /** 2026-10-29 — biblioteca usable («Mis fotos»): el tap sobre una foto la
+     *  asigna al lienzo seleccionado si está libre, si no al próximo libre. */
+    asignadaToast: string;
+    /** 2026-10-29 — no queda lienzo libre al tocar una foto de la biblioteca. */
+    sinLienzoLibre: string;
+    /** 2026-10-29 — borrado individual de una foto de la biblioteca. */
+    eliminarAria: string;
+    eliminarTitulo: string;
+    eliminarCuerpo: string;
+    eliminarConfirmar: string;
+    eliminadaToast: string;
+    eliminarError: string;
     /** ADR-101 (owner 2026-09-15) — badge de la foto que se ajustó automáticamente
      *  al subir (upscale local, client-photo-upscale). 2026-09-24: wording honesto —
      *  "Optimizada", sin prometer nitidez (el re-muestreo no crea detalle). */
@@ -807,6 +819,11 @@ export type StudioTexts = {
     aplicarATodasTitle: string;
     /** Feedback aria-live tras aplicar a todas. */
     aplicadaFeedback: string;
+    /** 2026-10-29 (owner) — calendario: la grilla de meses se puede colapsar/
+     *  expandir con ayuda visual (resumen + chips de estado por mes). */
+    calMesesTitulo: string;
+    calMesesResumen: string;
+    calMesesToggleAria: string;
     /**
      * Modal de confirmación: línea de unidades del diseño (se muestra siempre
      * que el modelo multi-unidad está activo, también con 1 unidad).
@@ -1022,7 +1039,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     sheetTitulo: "Personalizar",
     calBannerTitulo: "📅 Tu calendario",
     calBannerAno: "Año del calendario:",
-    calBannerHint: "· una foto por mes (toca cada mes para elegir tu foto)",
+    calBannerHint: "Una foto por mes: toca cada mes para elegir la tuya",
     calFontLabel: "Tipo de letra:",
     calFontOptionFredoka: "Redondeada (Fredoka)",
     calFontOptionInter: "Moderna (Inter)",
@@ -1200,7 +1217,18 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "✨ Todos los imanes tienen foto. Toca un imán para cambiarle la foto (o arrástrale otra en computador).",
     thumbUsada: "Ya está pegada en algún imán. Puedes arrastrar otra foto.",
     thumbAviso: "Click para ver detalles del problema de calidad.",
-    thumbArrastrar: "Arrastra al canvas o toca un slot vacío para asignar",
+    thumbArrastrar:
+      "Tócala para ponerla en el próximo lienzo vacío, o arrástrala al lienzo que quieras",
+    asignadaToast: "Lista: quedó en el lienzo {n}.",
+    sinLienzoLibre:
+      "Todos los lienzos están llenos. Arrastra la foto al lienzo que quieras reemplazar.",
+    eliminarAria: "Eliminar esta foto de Mis fotos",
+    eliminarTitulo: "¿Eliminar esta foto?",
+    eliminarCuerpo:
+      "Se quita de «Mis fotos» y de cualquier lienzo donde la estés usando. Esta acción no se puede deshacer (puedes volver a subirla).",
+    eliminarConfirmar: "Sí, eliminar",
+    eliminadaToast: "Foto eliminada de Mis fotos.",
+    eliminarError: "No pudimos eliminar la foto. Intenta de nuevo.",
     badgeMejorada: "✨ Optimizada",
     badgeMejoradaTitle:
       "La ajustamos automáticamente al tamaño de impresión. Ojo: esto suaviza la foto pero no recupera detalle — si tienes la original en mayor resolución, úsala.",
@@ -1584,6 +1612,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     aplicarATodasAria: "Aplicar el diseño de esta unidad a todas las unidades",
     aplicarATodasTitle: "Copia fotos, encuadres y textos de esta unidad a las demás",
     aplicadaFeedback: "Diseño aplicado a todas las unidades",
+    calMesesTitulo: "Tus meses",
+    calMesesResumen: "{filled} de {total} meses con foto",
+    calMesesToggleAria: "Mostrar u ocultar los meses del calendario",
     modalUnidades: "{n} {sustantivo} — cada {uno} con su propio diseño",
     descTiras:
       "Esta es la vista previa de las {n} tiras que vas a recibir — cada una con {m} fotos.",
@@ -1912,6 +1943,14 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "fotos.thumbUsada": "estudio.fotos.thumb-usada",
   "fotos.thumbAviso": "estudio.fotos.thumb-aviso",
   "fotos.thumbArrastrar": "estudio.fotos.thumb-arrastrar",
+  "fotos.asignadaToast": "estudio.fotos.asignada-toast",
+  "fotos.sinLienzoLibre": "estudio.fotos.sin-lienzo-libre",
+  "fotos.eliminarAria": "estudio.fotos.eliminar-aria",
+  "fotos.eliminarTitulo": "estudio.fotos.eliminar-titulo",
+  "fotos.eliminarCuerpo": "estudio.fotos.eliminar-cuerpo",
+  "fotos.eliminarConfirmar": "estudio.fotos.eliminar-confirmar",
+  "fotos.eliminadaToast": "estudio.fotos.eliminada-toast",
+  "fotos.eliminarError": "estudio.fotos.eliminar-error",
   "fotos.badgeMejorada": "estudio.fotos.badge-mejorada",
   "fotos.badgeMejoradaTitle": "estudio.fotos.badge-mejorada-title",
   "fotos.calidadTituloFuerte": "estudio.fotos.calidad-titulo-fuerte",
@@ -2222,6 +2261,9 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "unidades.aplicarATodasAria": "estudio.unidades.aplicar-a-todas-aria",
   "unidades.aplicarATodasTitle": "estudio.unidades.aplicar-a-todas-title",
   "unidades.aplicadaFeedback": "estudio.unidades.aplicada-feedback",
+  "unidades.calMesesTitulo": "estudio.unidades.cal-meses-titulo",
+  "unidades.calMesesResumen": "estudio.unidades.cal-meses-resumen",
+  "unidades.calMesesToggleAria": "estudio.unidades.cal-meses-toggle-aria",
   "unidades.modalUnidades": "estudio.unidades.modal-unidades",
   "unidades.descTiras": "estudio.unidades.desc-tiras",
   "unidades.descTiraUna": "estudio.unidades.desc-tira-una",

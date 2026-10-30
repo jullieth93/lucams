@@ -29,6 +29,8 @@ import "./lib/konva-pixel-ratio";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CLOSE_X_CLASS, CloseXButton } from "@/components/ui/close-x-button";
+import { Hint } from "@/components/ui/tooltip";
 import { useRouter } from "next/navigation";
 import { useStore } from "zustand";
 import type Konva from "konva";
@@ -527,6 +529,12 @@ export function StudioEditor({
     store.getState().clearAllSlots();
     setClearDesignOpen(false);
   }, [store]);
+  // 2026-10-29 (owner) — con >1 plantillas y SIN elección, el LIENZO queda
+  // deshabilitado (overlay guía): editar slots sin plantilla era trabajo
+  // perdido (el boot solo presta la geometría de render, ADR-167). El bloqueo
+  // de «Ver diseño» (templateNudge) sigue como segunda red.
+  const selectedTemplateId = useStore(store, (s) => s.selectedTemplateId);
+  const templatePending = templates.length > 1 && !selectedTemplateId;
   // Si el finalize ya pasó pero el CARRITO falló, reintentar desde la modal no puede volver a
   // finalizar: el diseño quedó en READY y `finalizeDesign` solo acepta borradores, así que el
   // reintento moría con «Design is READY — only DRAFT can be finalized» y no había salida. Se
@@ -2653,16 +2661,17 @@ export function StudioEditor({
               aún más finos (los targets táctiles de 44px se conservan). */}
           <div className="mt-1 mb-2 flex flex-wrap items-center justify-center gap-1 px-2 sm:mt-2 sm:mb-6 sm:gap-2 sm:px-4 lg:mb-8">
             {aiEnabled && (
+              // 2026-10-29 (owner) — «Ideas» pasa a pill SECUNDARIO discreto:
+              // el primario visual es «Ver en tu espacio»/3D; el asistente IA
+              // queda disponible pero sin competir (outline, sin sombra XL).
               <button
                 type="button"
                 onClick={() => setAiOpen(true)}
-                // A11Y — bg-brand-pink con texto blanco daba 3.27:1 (WCAG 1.4.3 AA pide 4.5:1 para
-                // texto de 14px). Se baja al tono de tinta YA existente (ADR-044): 5.31:1. La paleta
-                // no se toca. El nombre accesible sale del CONTENIDO (no de aria-label) para que
+                // El nombre accesible sale del CONTENIDO (no de aria-label) para que
                 // contenga el texto visible — WCAG 2.5.3, control por voz dice lo que ve.
-                className="bg-brand-pink-ink ring-brand-pink-ink/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
+                className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple hover:bg-brand-purple/5 focus:ring-brand-purple inline-flex h-11 items-center gap-1.5 rounded-full border-2 bg-white/95 px-3 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none sm:h-12 sm:gap-2 sm:px-4 sm:text-sm"
               >
-                <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+                <Sparkles className="text-brand-purple h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
                 <span>{texts.lienzo.btnIdeas}</span>
                 <span className="sr-only">&nbsp;{texts.lienzo.ideasSr}</span>
               </button>
@@ -2733,16 +2742,21 @@ export function StudioEditor({
             {/* 2026-10-19 — «Borrar el diseño»: acción destructiva GLOBAL (faltaba;
                 solo existía el borrado por slot). Solo se muestra con contenido
                 real en el lienzo; pide confirmación (StudioClearDesignModal) y
-                queda deshacible con Ctrl+Z/undo (va por setCanvasData). */}
+                queda deshacible con Ctrl+Z/undo (va por setCanvasData).
+                2026-10-29 (owner) — solo el icono de basura (44px táctil) con
+                tooltip: el texto completo hacía la fila de pills demasiado
+                invasiva en móvil. */}
             {hasDesignContent && (
-              <button
-                type="button"
-                onClick={() => setClearDesignOpen(true)}
-                className="inline-flex h-11 items-center gap-1.5 rounded-full border-2 border-red-300 bg-white px-3 text-xs font-bold text-red-700 shadow-sm transition-transform hover:scale-105 hover:border-red-400 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:outline-none active:scale-95 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm"
-              >
-                <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
-                <span>{texts.lienzo.borrarDisenoCta}</span>
-              </button>
+              <Hint content={texts.lienzo.borrarDisenoCta}>
+                <button
+                  type="button"
+                  onClick={() => setClearDesignOpen(true)}
+                  aria-label={texts.lienzo.borrarDisenoCta}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border-2 border-red-300 bg-white text-red-700 shadow-sm transition-transform hover:scale-105 hover:border-red-400 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:outline-none active:scale-95 sm:h-12 sm:w-12"
+                >
+                  <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+                </button>
+              </Hint>
             )}
           </div>
 
@@ -2752,70 +2766,111 @@ export function StudioEditor({
               localStorage. Solo si la plantilla tiene textos editables. */}
           {hasEditableTextLayers && <StudioTextEditHint />}
 
-          <StudioCanvasGrid
-            store={store}
-            sizeCm={productConfig.sizeCm}
-            shape={productConfig.shape}
-            finish={productConfig.finish}
-            cornerRadiusPx={productConfig.cornerRadiusPx}
-            showRealismGuides={showRealismGuides}
-            // Ola 3 — calendario: meses; separadores 2 caras: "1A","1B",… por unidad.
-            // Multi-unidad (2026-09-09): con N calendarios los meses se repiten por
-            // unidad (cada una vuelve a empezar en Enero). Fase 1A — la expresión
-            // vive en resolvedSlotLabels (compartida con toolbar/FAB).
-            slotLabels={resolvedSlotLabels}
-            // Multi-unidad — sustantivo de la unidad para pager/headers de sección.
-            unitNoun={unitNoun}
-            // 4.5 — chip de variante/tamaño en el header de cada sección de
-            // unidad (multi-unidad: cada sección enuncia qué es).
-            unitVariantLabel={unitVariantLabel}
-            // PACKS (owner 2026-09-15, ADR-101) — tamaño del pack para que la
-            // grilla plana se delimite en tarjetas "Pack N" (fotoimanes packs
-            // de 6); null = grilla plana de siempre.
-            unitGroupSlots={packUnitsPerGroup}
-            // Ola 4 (Lucy 2026-07-23) — calendario: cada slot previsualiza la TARJETA
-            // compuesta del mes (foto + título + grilla), no la foto a sangre.
-            calendarPreview={
-              isCalendarMonth
-                ? {
-                    year: selectedYear,
-                    startMonth:
-                      (product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0,
-                    layout: calendarLayout,
-                    font: liveCalendarFont,
-                  }
-                : null
-            }
-            slotNoun={slotNounPair.one}
-            allowText={allowText}
-            frameFullBleed={frameFullBleed}
-            facesPerUnit={facesPerUnit}
-            // Alargados planos (noFold): sin línea de doblez en la tarjeta-unidad.
-            noFold={productConfig.noFold === true}
-            // Cara B opcional (separadores backOptional): el placeholder del slot
-            // vacío de Cara B avisa que puede quedar sin diseñar.
-            backOptional={backOptional}
-            interactiveSlots={!isTouch}
-            onSlotClick={handleSlotClick}
-            stageZoomRaw={stageZoomRaw}
-            onStageZoomState={setStageZoomState}
-            // Fase 2 · item 2.1 — pinch-to-zoom del lienzo en táctil: el grid
-            // pide el nuevo zoom (mismo estado de los botones −/+).
-            onStageZoomChange={setStageZoomRaw}
-            // Overrides por producto (owner 2026-09-24, admin → Avanzado):
-            // columnas de la grilla (fuerza N columnas en desktop) y tamaño
-            // base del lienzo (el "100%" del cliente). null = automático.
-            gridColsOverride={productConfig.gridColsOverride ?? null}
-            canvasBaseScale={productConfig.canvasBaseScale ?? null}
-            openEditSlot={openEditSlot}
-            onEditClose={() => setOpenEditSlot(null)}
-            onRequestChangePhoto={handleRequestChangePhoto}
-            onRequestChangeProfilePhoto={handleRequestChangeProfilePhoto}
-            registerSlotStages={(stages) => {
-              slotStagesRef.current = stages;
-            }}
-            forceMountAll={forceMountAll}
-          />
+          {/* 2026-10-29 (owner) — lienzo DESHABILITADO hasta elegir plantilla
+              (con >1): el overlay bloquea la interacción con los slots y guía
+              hacia el panel de plantillas (en <lg abre el sheet «Editar»; en
+              desktop dispara el nudge que scrollea y resalta la sección). */}
+          <div className="relative w-full">
+            <div
+              aria-hidden={templatePending || undefined}
+              className={templatePending ? "pointer-events-none select-none" : undefined}
+            >
+              <StudioCanvasGrid
+                store={store}
+                sizeCm={productConfig.sizeCm}
+                shape={productConfig.shape}
+                finish={productConfig.finish}
+                cornerRadiusPx={productConfig.cornerRadiusPx}
+                showRealismGuides={showRealismGuides}
+                // Ola 3 — calendario: meses; separadores 2 caras: "1A","1B",… por unidad.
+                // Multi-unidad (2026-09-09): con N calendarios los meses se repiten por
+                // unidad (cada una vuelve a empezar en Enero). Fase 1A — la expresión
+                // vive en resolvedSlotLabels (compartida con toolbar/FAB).
+                slotLabels={resolvedSlotLabels}
+                // Multi-unidad — sustantivo de la unidad para pager/headers de sección.
+                unitNoun={unitNoun}
+                // 4.5 — chip de variante/tamaño en el header de cada sección de
+                // unidad (multi-unidad: cada sección enuncia qué es).
+                unitVariantLabel={unitVariantLabel}
+                // PACKS (owner 2026-09-15, ADR-101) — tamaño del pack para que la
+                // grilla plana se delimite en tarjetas "Pack N" (fotoimanes packs
+                // de 6); null = grilla plana de siempre.
+                unitGroupSlots={packUnitsPerGroup}
+                // Ola 4 (Lucy 2026-07-23) — calendario: cada slot previsualiza la TARJETA
+                // compuesta del mes (foto + título + grilla), no la foto a sangre.
+                calendarPreview={
+                  isCalendarMonth
+                    ? {
+                        year: selectedYear,
+                        startMonth:
+                          (product.personalizationSchema as { startMonth?: number })?.startMonth ??
+                          0,
+                        layout: calendarLayout,
+                        font: liveCalendarFont,
+                      }
+                    : null
+                }
+                slotNoun={slotNounPair.one}
+                allowText={allowText}
+                frameFullBleed={frameFullBleed}
+                facesPerUnit={facesPerUnit}
+                // Alargados planos (noFold): sin línea de doblez en la tarjeta-unidad.
+                noFold={productConfig.noFold === true}
+                // Cara B opcional (separadores backOptional): el placeholder del slot
+                // vacío de Cara B avisa que puede quedar sin diseñar.
+                backOptional={backOptional}
+                interactiveSlots={!isTouch}
+                onSlotClick={handleSlotClick}
+                stageZoomRaw={stageZoomRaw}
+                onStageZoomState={setStageZoomState}
+                // Fase 2 · item 2.1 — pinch-to-zoom del lienzo en táctil: el grid
+                // pide el nuevo zoom (mismo estado de los botones −/+).
+                onStageZoomChange={setStageZoomRaw}
+                // Overrides por producto (owner 2026-09-24, admin → Avanzado):
+                // columnas de la grilla (fuerza N columnas en desktop) y tamaño
+                // base del lienzo (el "100%" del cliente). null = automático.
+                gridColsOverride={productConfig.gridColsOverride ?? null}
+                canvasBaseScale={productConfig.canvasBaseScale ?? null}
+                openEditSlot={openEditSlot}
+                onEditClose={() => setOpenEditSlot(null)}
+                onRequestChangePhoto={handleRequestChangePhoto}
+                onRequestChangeProfilePhoto={handleRequestChangeProfilePhoto}
+                registerSlotStages={(stages) => {
+                  slotStagesRef.current = stages;
+                }}
+                forceMountAll={forceMountAll}
+              />
+            </div>
+            {templatePending && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/70 backdrop-blur-[2px]">
+                <div className="border-brand-purple/20 mx-4 flex max-w-xs flex-col items-center gap-3 rounded-2xl border bg-white p-5 text-center shadow-xl">
+                  <Sparkles className="text-brand-purple h-6 w-6" aria-hidden />
+                  <p className="text-brand-purple-dark font-display text-base font-bold">
+                    {texts.checklist.pasoPlantillas}
+                  </p>
+                  <p className="text-brand-muted text-xs leading-snug">
+                    {texts.plantillas.elegirParaContinuar}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTemplateNudgeAt(Date.now());
+                      if (
+                        typeof window !== "undefined" &&
+                        typeof window.matchMedia === "function" &&
+                        window.matchMedia("(max-width: 1023.98px)").matches
+                      ) {
+                        setMobileSheetOpen(true);
+                      }
+                    }}
+                    className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+                  >
+                    {texts.checklist.pasoPlantillas}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
       </div>
 
@@ -2871,7 +2926,7 @@ export function StudioEditor({
               type="button"
               onClick={closeBook3D}
               aria-label={texts.comun.cerrarVista3d}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+              className={CLOSE_X_CLASS + " h-10 w-10"}
             >
               <X className="h-5 w-5" />
             </button>
@@ -2931,7 +2986,7 @@ export function StudioEditor({
           showCloseButton={false}
           className="border-brand-purple/10 max-h-[88vh] overflow-y-auto rounded-t-2xl border-t bg-white p-0 lg:hidden"
         >
-          <SheetHeader className="border-brand-purple/10 sticky top-0 z-10 flex-row items-center justify-between border-b bg-white/95 px-4 py-3 backdrop-blur">
+          <SheetHeader className="border-brand-purple/10 sticky top-0 z-20 flex-row items-center justify-between border-b bg-white/95 px-4 py-3 backdrop-blur">
             <SheetTitle className="text-brand-purple-dark text-base font-bold">
               {texts.lienzo.sheetTitulo}
             </SheetTitle>
@@ -2939,7 +2994,7 @@ export function StudioEditor({
               <button
                 type="button"
                 aria-label={texts.comun.cerrarPersonalizacion}
-                className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark -mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full transition-colors"
+                className={CLOSE_X_CLASS + " -mr-2 size-11 shrink-0"}
               >
                 <X className="size-5" aria-hidden />
               </button>
@@ -2970,7 +3025,7 @@ export function StudioEditor({
               (mismo patrón del sheet de estilo y del picker de fotos — antes el
               sheet de Personalizar era el único sin salida clara abajo). La X
               del header se conserva. */}
-          <div className="border-brand-purple/10 sticky bottom-0 mt-auto border-t bg-white px-4 py-3">
+          <div className="border-brand-purple/10 sticky bottom-0 z-20 mt-auto border-t bg-white px-4 py-3">
             <SheetClose asChild>
               <button
                 type="button"
@@ -3287,16 +3342,19 @@ function StudioClearDesignModal({
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="ring-brand-purple/10 pointer-events-auto flex w-[92vw] max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
             >
-              <div className="px-5 pt-5 pb-3">
-                <h2
-                  id="clear-design-title"
-                  className="text-brand-purple-dark text-base leading-tight font-bold"
-                >
-                  {texts.lienzo.borrarDisenoTitulo}
-                </h2>
-                <p id="clear-design-desc" className="text-brand-muted mt-1 text-xs leading-snug">
-                  {texts.lienzo.borrarDisenoCuerpo}
-                </p>
+              <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3">
+                <div>
+                  <h2
+                    id="clear-design-title"
+                    className="text-brand-purple-dark text-base leading-tight font-bold"
+                  >
+                    {texts.lienzo.borrarDisenoTitulo}
+                  </h2>
+                  <p id="clear-design-desc" className="text-brand-muted mt-1 text-xs leading-snug">
+                    {texts.lienzo.borrarDisenoCuerpo}
+                  </p>
+                </div>
+                <CloseXButton onClick={onClose} label={texts.comun.cerrar} className="shrink-0" />
               </div>
               <div className="border-brand-purple/10 flex shrink-0 flex-col gap-2 border-t px-5 py-3">
                 <button

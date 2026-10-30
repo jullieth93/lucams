@@ -18,6 +18,7 @@
 
 import { useState } from "react";
 import { PencilLine, X } from "lucide-react";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { useStudioTexts } from "./studio-texts-provider";
 
 /** localStorage: "1" = la pista ya se descartó (no volver a mostrar). */
@@ -58,7 +59,7 @@ export function StudioTextEditHint() {
         type="button"
         onClick={dismiss}
         aria-label={texts.comun.cerrarTip}
-        className="text-brand-purple-dark/60 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-turquoise inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors focus:ring-2 focus:outline-none"
+        className={CLOSE_X_CLASS + " h-7 w-7 shrink-0"}
       >
         <X className="h-3.5 w-3.5" aria-hidden />
       </button>

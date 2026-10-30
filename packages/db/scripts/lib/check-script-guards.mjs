@@ -58,6 +58,17 @@ const ALLOWLIST_PRD_DELIBERADO = new Set([
   // frame-options-binary-20261022 (dry-run por defecto + --apply).
   "one-shot/frame-options-binary-cuadrados-20261027.mjs",
   "one-shot/cuadrados-sin-texto-20261027.mjs",
+  // 2026-10-29 — habilita el slider «Grosor del borde» (ADR-173) en Tiras
+  // Magnéticas y lo deja canónico en Cuadrados (decisión owner); mismo patrón
+  // PRD-deliberado (dry-run por defecto + --apply, schema fusionado).
+  "one-shot/border-width-tiras-cuadrados-20261029.mjs",
+  // 2026-10-29 — republica 2 textos del Estudio cuyo default cambió con la
+  // jornada ADR-178 (cal-banner-hint sin «·» huérfano; thumb-arrastrar con el
+  // tap-to-assign); mismo patrón de republish-checkout-rural-copy-20261021.
+  "one-shot/republish-estudio-texts-20261029.mjs",
+  // 2026-10-29 — cierra el drift STG→PRD de la variante SEP-MAG-2X6-5
+  // (`magnet: true` ausente en PRD; sync de contenido ADR-126).
+  "one-shot/sync-variant-magnet-attr-20261029.mjs",
 ]);
 
 const WRITE_RE =

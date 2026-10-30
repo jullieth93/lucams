@@ -29,6 +29,7 @@ import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CloseXButton } from "@/components/ui/close-x-button";
 import { useStudioTexts } from "./studio-texts-provider";
 import type { StudioAsset } from "./types";
 
@@ -156,6 +157,7 @@ export function PhotoQualityModal({
                     {isSoft ? texts.fotos.calidadSubSuave : texts.fotos.calidadSubFuerte}
                   </p>
                 </div>
+                <CloseXButton onClick={onClose} label={texts.comun.cerrar} className="shrink-0" />
               </div>
 
               {/* Body con thumbnail + mensaje — zona SCROLLEABLE: es la única

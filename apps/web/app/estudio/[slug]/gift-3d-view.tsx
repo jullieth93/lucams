@@ -34,7 +34,7 @@ import * as THREE from "three";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { StudioEnvironment } from "./studio-3d-environment";
-import { MagnetMesh, magnetWorldSizes, realWorldDepth } from "./magnet-3d";
+import { MagnetMesh, magnetWorldSizes, realWorldDepth, MAGNET_BACK_COLOR } from "./magnet-3d";
 import { getWoodTexture } from "./lib/procedural-textures";
 import { fanYaw, flatGridLayout, leaningPose, leaningRowLayout } from "./lib/leaning-scene-layout";
 import type { Magnet3D } from "./fridge-3d-view";
@@ -45,6 +45,8 @@ export type GiftView3DProps = {
   sizeCm?: string;
   /** Grosor FÍSICO de la pieza en cm (default: 2 mm del fotoimán — misma regla que nevera). */
   thicknessCm?: number;
+  /** 2026-10-29 (owner) — variante CON IMÁN: reverso negro de goma ferrita. */
+  magnet?: boolean;
 };
 
 // Escala del mundo: 0.09 u/cm — un fotoimán de 6.5 cm ≈ 0.59 u y la caja base ≈ 14 cm de alto.
@@ -249,7 +251,7 @@ type GiftLayout = {
   flatHalfW: number;
 };
 
-function Scene({ magnets, sizeCm, thicknessCm }: GiftView3DProps) {
+function Scene({ magnets, sizeCm, thicknessCm, magnet }: GiftView3DProps) {
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
   const layout = useMemo<GiftLayout>(() => {
@@ -370,6 +372,7 @@ function Scene({ magnets, sizeCm, thicknessCm }: GiftView3DProps) {
                 shape={m.shape}
                 depth={depth}
                 cornerRadiusRatio={m.cornerRadiusRatio}
+                backColor={magnet ? MAGNET_BACK_COLOR : undefined}
               />
             </group>
           </group>
@@ -428,7 +431,7 @@ function Scene({ magnets, sizeCm, thicknessCm }: GiftView3DProps) {
   );
 }
 
-export default function GiftView3D({ magnets, sizeCm, thicknessCm }: GiftView3DProps) {
+export default function GiftView3D({ magnets, sizeCm, thicknessCm, magnet }: GiftView3DProps) {
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -449,7 +452,7 @@ export default function GiftView3D({ magnets, sizeCm, thicknessCm }: GiftView3DP
       {/* Papel cálido del flat-lay histórico como fondo de la escena. */}
       <color attach="background" args={["#F7EDDF"]} />
       <Suspense fallback={null}>
-        <Scene magnets={magnets} sizeCm={sizeCm} thicknessCm={thicknessCm} />
+        <Scene magnets={magnets} sizeCm={sizeCm} thicknessCm={thicknessCm} magnet={magnet} />
       </Suspense>
     </Canvas>
   );

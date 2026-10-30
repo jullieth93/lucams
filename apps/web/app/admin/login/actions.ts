@@ -168,5 +168,20 @@ export async function adminLoginAction(
   );
   // Destino post-login = home del rol: CMS_EDITOR no tiene acceso a /admin/dashboard
   // (solo contenido), así que aterriza en /admin/contenido (ver adminHomePath).
+  //
+  // 2026-10-29 (bug owner: pantalla en BLANCO tras login sin autenticador): si el
+  // admin NO tiene TOTP verificado, ir DIRECTO a /admin/seguridad?enroll=required.
+  // Antes: redirect al home del rol → el gate MFA del layout (panel) redirigía a
+  // seguridad DURANTE la navegación RSC — esa doble cadena (action → home →
+  // seguridad, redirect lanzado desde un LAYOUT compartido) hacía que el router
+  // recibiera un payload de redirect para la URL ya destino y la re-pidiera en
+  // bucle: la página quedaba en blanco hasta un refresh manual. Con el redirect
+  // directo, el payload del action incluye el árbol completo del grupo (panel)
+  // con su layout (login NO está en (panel)) y la página enrola de una.
+  const { data: factors } = await supabase.auth.mfa.listFactors();
+  const hasVerifiedTotp = (factors?.all ?? []).some(
+    (f) => f.factor_type === "totp" && f.status === "verified",
+  );
+  if (!hasVerifiedTotp) redirect("/admin/seguridad?enroll=required");
   redirect(adminHomePath(admin.role));
 }

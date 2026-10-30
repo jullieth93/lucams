@@ -433,6 +433,27 @@ export async function proxy(request: NextRequest) {
           adminActivityCookieOptions(),
         );
       }
+
+      // 2026-10-29 (bug owner: pantalla en BLANCO tras login sin autenticador) —
+      // el gate «MFA obligatorio» (B-1) SUBE al proxy: antes vivía SOLO en el
+      // layout del (panel) con redirect() de React, que en navegaciones RSC
+      // (soft nav del sidebar) dejaba la página en blanco/en bucle hasta un
+      // refresh manual (el router no resuelve un redirect lanzado desde un
+      // layout compartido). Acá es un redirect HTTP real: el router lo sigue
+      // como navegación de documento y /admin/seguridad renderiza de una.
+      // /admin/seguridad es la excepción (es la pantalla de enrolamiento).
+      // El gate del layout se CONSERVA como defensa en profundidad.
+      if (!path.startsWith("/admin/seguridad")) {
+        const { data: factors } = await supabase.auth.mfa.listFactors();
+        const hasVerifiedTotp = (factors?.all ?? []).some(
+          (f) => f.factor_type === "totp" && f.status === "verified",
+        );
+        if (!hasVerifiedTotp) {
+          const url = new URL("/admin/seguridad", request.url);
+          url.searchParams.set("enroll", "required");
+          return withSecurityHeaders(NextResponse.redirect(url), requestId);
+        }
+      }
     }
 
     // Idle-timeout CLIENTE (30 días deslizante — política completa en

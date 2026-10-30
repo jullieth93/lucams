@@ -69,6 +69,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { formatCOPExact } from "@/lib/format";
 import { listTransactionsByReference, getWompiConfig } from "@/lib/wompi";
 import { isWompiTransactionOlderThanOrder } from "./payment-reference";
 import { transitionOrder, OrderTransitionError } from "./service";
@@ -182,7 +183,7 @@ export async function expireStalePendingOrders(
               where: { id: order.id, needsReconciliation: false },
               data: {
                 needsReconciliation: true,
-                reconciliationReason: `Monto Wompi (${mismatch.amount_in_cents}) ≠ total de la orden (${order.total}) detectado por el cron expire-pending (tx ${mismatch.id}). Revisar antes de despachar o reembolsar.`,
+                reconciliationReason: `Monto Wompi (${formatCOPExact(mismatch.amount_in_cents)}) ≠ total de la orden (${formatCOPExact(order.total)}) detectado por el cron expire-pending (tx ${mismatch.id}). Revisar antes de despachar o reembolsar.`,
               },
             });
             skipped += 1;

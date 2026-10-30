@@ -393,6 +393,27 @@ eventos retroactivos — el detalle solo muestra la tarjeta «Historial» cuando
   ubicación no lleva exactamente una coma «Ciudad, País» — regla no bloqueante). **Sembrada
   en LOCAL, STG y PRD** el 2026-10-27; pendiente solo invalidar caché en `/admin/contenido`.
 
+### Claves CMS y datos de la jornada 2026-10-29 (ADR-178…182)
+
+Declaradas en `packages/db/scripts/cms-site-map.mjs`:
+
+- **Estudio / biblioteca «Mis fotos» usable:** `estudio.fotos.asignada-toast`,
+  `estudio.fotos.sin-lienzo-libre`, `estudio.fotos.eliminar-aria`, `-titulo`, `-cuerpo`,
+  `-confirmar`, `estudio.fotos.eliminada-toast`, `estudio.fotos.eliminar-error`.
+- **Estudio / calendario colapsable:** `estudio.unidades.cal-meses-titulo`,
+  `estudio.unidades.cal-meses-resumen`, `estudio.unidades.cal-meses-toggle-aria`.
+- **Carrito:** `cart.plantilla-label` (rótulo «Plantilla: …» de la línea con diseño).
+- **Defaults actualizados (republish con historial, respeta edición del owner):**
+  `estudio.lienzo.cal-banner-hint` (sin el «·» huérfano) y `estudio.fotos.thumb-arrastrar`
+  (tap-to-assign) — one-shot `republish-estudio-texts-20261029.mjs`.
+- **Datos de producto:** `personalizationSchema.borderWidth` habilitado en
+  `tiras-magneticas-fotos` (LOCAL/STG/PRD) y homologado en `set-fotoimanes-cuadrados`
+  (LOCAL/PRD; STG ya lo tenía con max 2 — se conserva) — one-shot
+  `border-width-tiras-cuadrados-20261029.mjs`.
+
+**Aplicado en LOCAL, STG y PRD** el 2026-10-29 (migrate-cms-v2 + ambos one-shots).
+**Pendiente manual:** «Actualizar caché de contenido» en `/admin/contenido` de cada ambiente.
+
 **Grosor del borde (ADR-173):** no es dato CMS ni migración — vive en
 `personalizationSchema.borderWidth` del Product y se configura por producto en
 `/admin/productos` (tab Personalización, SectionCard «Grosor del borde»).

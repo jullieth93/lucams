@@ -6,7 +6,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { describePieces, pieceKindFor, unitCountNounForLine } from "./line-preview";
+import {
+  dedupeCartLineDetail,
+  describePieces,
+  pieceKindFor,
+  unitCountNounForLine,
+} from "./line-preview";
 
 describe("pieceKindFor — cómo se llama la pieza", () => {
   it("el calendario habla de páginas, no de imanes", () => {
@@ -114,5 +119,55 @@ describe("unitCountNounForLine — sustantivo del conteo por tipo de producto", 
       singular: "unidad",
       plural: "unidades",
     });
+  });
+});
+
+describe("dedupeCartLineDetail — cada hecho se muestra UNA vez (owner 2026-10-29)", () => {
+  it("el caso reportado: Set 12 tarjetas no repite cantidad ni tamaño", () => {
+    const r = dedupeCartLineDetail({
+      variantName: "Set 12 tarjetas · 7.5×10 cm",
+      variantBreakdown: ["12 fotos", "7.5×10 cm", "Con imán"],
+      pieceSummary: "12 páginas · 7.5×10 cada página",
+    });
+    expect(r.variantBreakdown).toEqual(["Con imán"]);
+    expect(r.pieceSummary).toBeNull();
+  });
+
+  it("multi-unidad: el conteo de unidades SÍ es hecho nuevo y sobrevive", () => {
+    const r = dedupeCartLineDetail({
+      variantName: "Set 12 tarjetas · 7.5×10 cm",
+      variantBreakdown: ["12 fotos", "7.5×10 cm", "Con imán"],
+      pieceSummary: "2 calendarios de 12 páginas · 7.5×10 cada página",
+    });
+    expect(r.variantBreakdown).toEqual(["Con imán"]);
+    expect(r.pieceSummary).toBe("2 calendarios de 12 páginas");
+  });
+
+  it("sin duplicación no se toca nada", () => {
+    const r = dedupeCartLineDetail({
+      variantName: "Con imán",
+      variantBreakdown: ["6 fotos", "6×6 cm", "Con imán"],
+      pieceSummary: "6 imanes · 6×6 cm cada imán",
+    });
+    // La variante no enuncia cantidad ni tamaño → breakdown intacto…
+    expect(r.variantBreakdown).toEqual(["6 fotos", "6×6 cm", "Con imán"]);
+    // …pero el resumen de pieza repite 6 y 6×6 del breakdown → fuera.
+    expect(r.pieceSummary).toBeNull();
+  });
+
+  it("los tokens sin número («Con imán») siempre aportan", () => {
+    const r = dedupeCartLineDetail({
+      variantName: "12 fotos · 7.5×10 cm · Con imán",
+      variantBreakdown: ["12 fotos", "7.5×10 cm", "Con imán"],
+      pieceSummary: null,
+    });
+    expect(r.variantBreakdown).toEqual(["Con imán"]);
+  });
+
+  it("pieceSummary null/vacío → null", () => {
+    expect(
+      dedupeCartLineDetail({ variantName: "Único", variantBreakdown: [], pieceSummary: null })
+        .pieceSummary,
+    ).toBeNull();
   });
 });

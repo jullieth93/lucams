@@ -54,6 +54,7 @@ import {
   viaNumberError,
   type DocumentType,
 } from "@/lib/colombia-validators";
+import { focusNextFieldOnEnter, tagEnterKeyHints } from "@/lib/enter-next-field";
 import { detectEmailTypo, isValidEmail, suggestEmails } from "@/lib/email-domains";
 import { VIA_TYPES, composeDestinationSuffix } from "@/features/checkout/schemas";
 import {
@@ -1007,6 +1008,15 @@ export function DatosForm({
     // invalidRef siempre tiene la lista fresca sin re-dispararlo al tipear.
   }, [submitCount, state]);
 
+  // 2026-10-29 (owner) — Enter = siguiente campo (en móvil no hay TAB): la
+  // tecla de acción del teclado virtual se rotula «siguiente» y mueve el foco
+  // (handler onKeyDown en el <form>). Sin deps: los campos condicionales del
+  // destino aparecen/desaparecen y hay que etiquetarlos tras cada render.
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    tagEnterKeyHints(formRef.current);
+  });
+
   // (2026-10-20, feedback owner — «Continuar al envío no avisa qué falta»): el
   // form va con noValidate — la validación nativa del navegador bloqueaba el
   // submit ANTES de este handler, así que un campo obligatorio VACÍO solo
@@ -1045,7 +1055,14 @@ export function DatosForm({
   }
 
   return (
-    <form action={formAction} onSubmit={handleSubmitAttempt} noValidate className="space-y-6">
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={handleSubmitAttempt}
+      onKeyDown={focusNextFieldOnEnter}
+      noValidate
+      className="space-y-6"
+    >
       {/* CONTACTO */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">

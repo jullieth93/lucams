@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { useRouter } from "next/navigation";
 import nextDynamic from "next/dynamic";
 import { Loader2, Sparkles, Minus, Plus, Box, X } from "lucide-react";
@@ -1074,13 +1075,13 @@ export function NameEditor({
               type="button"
               onClick={closeBoard3D}
               aria-label={texts.comun.cerrarVista3d}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+              className={CLOSE_X_CLASS + " h-10 w-10"}
             >
               <X className="h-5 w-5" />
             </button>
           </div>
           <div className="relative flex-1">
-            <RoomBoardView3D magnets={board3D} cols={board3D.length} style="memo" />
+            <RoomBoardView3D magnets={board3D} cols={board3D.length} style="memo" magnet={variantMagnet} />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
             </p>

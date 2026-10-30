@@ -20,6 +20,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { CloseXButton } from "@/components/ui/close-x-button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
@@ -242,19 +243,7 @@ export function StudioSlotEditModal({
               {texts.texto.slotEditDesc}
             </DialogDescription>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            aria-label={texts.comun.cerrar}
-            className="text-brand-purple-dark/70 hover:text-brand-purple-dark"
-          >
-            <span className="sr-only">{texts.comun.cerrar}</span>
-            <span aria-hidden className="text-lg leading-none">
-              ×
-            </span>
-          </Button>
+          <CloseXButton onClick={onClose} label={texts.comun.cerrar} className="h-9 w-9" />
         </div>
 
         <Tabs

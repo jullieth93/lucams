@@ -23,6 +23,7 @@ import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ownerKey, ipKey } from "@/lib/rate-limit-keys";
 import { StorageError, refreshCustomerUploadSignedUrl, uploadCustomerPhoto } from "@/lib/storage";
+import { supabaseService } from "@/lib/supabase/service";
 import { getGalleryImageById } from "./design-gallery";
 import { prisma } from "@/lib/db";
 import {
@@ -862,6 +863,115 @@ export async function uploadDesignAssetAction(formData: FormData) {
       ),
     };
   }
+}
+
+// ──────────── 2026-10-29 — borrado individual de foto subida (biblioteca «Mis fotos») ────────────
+//
+// El Estudio permite eliminar UNA foto de la biblioteca (antes solo se podía
+// borrar todo el diseño). Reglas:
+//   - Ownership estricto (mismo modelo que uploadDesignAssetAction).
+//   - Solo si el asset NO ancla un diseño que ya salió de borrador: un READY/
+//     USED_IN_ORDER lo necesita para re-render/producción. En DRAFT el cliente
+//     es dueño de romperlo (el cliente ya lo quitó de los slots en cliente).
+//   - Bytes compartidos (mismo storageUrl en varios assets — duplicados del
+//     pipeline) NO se borran del bucket; la fila sí.
+//   - Si el remove de Storage falla, la fila se borra igual: los bytes huérfanos
+//     los recoge el barrido de retención (retention-service orphan sweep).
+
+export async function deleteDesignAssetAction(assetId: string) {
+  const parsed = z.string().uuid().safeParse(assetId);
+  if (!parsed.success) {
+    return { ok: false as const, code: "VALIDATION" as const, message: "Asset inválido" };
+  }
+
+  const { customerId, sessionId } = await resolveOwner();
+  if (!customerId && !sessionId) {
+    return {
+      ok: false as const,
+      code: "FORBIDDEN" as const,
+      message: "No autorizado",
+    };
+  }
+  const ownerId = customerId ?? sessionId!;
+  const rl = await rateLimit(ownerKey("delete_design_asset", ownerId), 60, 600);
+  if (!rl.allowed) {
+    return {
+      ok: false as const,
+      code: "RATE_LIMIT" as const,
+      message: "Demasiadas eliminaciones en poco tiempo. Espera unos minutos.",
+    };
+  }
+
+  const asset = await prisma.designAsset.findUnique({
+    where: { id: parsed.data },
+    select: {
+      id: true,
+      customerId: true,
+      sessionId: true,
+      storageUrl: true,
+      canvasPath: true,
+      designId: true,
+      design: { select: { status: true } },
+    },
+  });
+  if (!asset) {
+    // Idempotente: borrar dos veces (doble tap) no es error para el cliente.
+    return { ok: true as const };
+  }
+  const owns = customerId
+    ? asset.customerId === customerId
+    : asset.customerId === null && asset.sessionId === sessionId;
+  if (!owns) {
+    logger.warn({ event: "design.asset.delete.forbidden", assetId: parsed.data });
+    return { ok: false as const, code: "FORBIDDEN" as const, message: "No autorizado" };
+  }
+  if (asset.design && asset.design.status !== "DRAFT") {
+    return {
+      ok: false as const,
+      code: "CONFLICT" as const,
+      message: "Esta foto ya hace parte de un diseño guardado; no se puede eliminar.",
+    };
+  }
+
+  // Bytes compartidos: solo se borran del bucket los objetos que NINGÚN otro
+  // asset vivo referencia (misma guarda de las purgas de retención).
+  const paths = [asset.storageUrl, asset.canvasPath].filter((p): p is string => !!p);
+  const shared = await prisma.designAsset.findMany({
+    where: {
+      id: { not: asset.id },
+      OR: [
+        { storageUrl: { in: paths } },
+        ...(asset.canvasPath ? [{ canvasPath: asset.canvasPath }] : []),
+      ],
+    },
+    select: { storageUrl: true, canvasPath: true },
+  });
+  const sharedPaths = new Set(shared.flatMap((s) => [s.storageUrl, s.canvasPath]));
+  const toRemove = paths.filter((p) => !sharedPaths.has(p));
+
+  if (toRemove.length > 0) {
+    const { error } = await supabaseService.storage.from("customer-uploads").remove(toRemove);
+    if (error) {
+      // No bloquea el borrado de la fila: el orphan sweep de retención recoge
+      // los bytes que queden sueltos.
+      logger.warn(
+        { event: "design.asset.delete.storage_fail", assetId: asset.id, err: error.message },
+        "Storage remove failed on asset delete",
+      );
+    }
+  }
+
+  await prisma.designAsset.delete({ where: { id: asset.id } });
+  logger.info(
+    {
+      event: "design.asset.delete.success",
+      assetId: asset.id,
+      ownerType: customerId ? "customer" : "session",
+      bytesRemoved: toRemove.length,
+    },
+    "Design asset deleted",
+  );
+  return { ok: true as const };
 }
 
 // ──────────── Fase B2 — aplicar un diseño PREDISEÑADO a un slot ────────────

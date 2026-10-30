@@ -32,7 +32,7 @@ import * as THREE from "three";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { StudioEnvironment } from "./studio-3d-environment";
-import { MagnetMesh, magnetWorldSizes, realWorldDepth } from "./magnet-3d";
+import { MagnetMesh, magnetWorldSizes, realWorldDepth, MAGNET_BACK_COLOR } from "./magnet-3d";
 import { getWoodTexture } from "./lib/procedural-textures";
 import { fanYaw, leaningPose, leaningRowLayout } from "./lib/leaning-scene-layout";
 import type { Magnet3D } from "./fridge-3d-view";
@@ -43,6 +43,8 @@ export type ShelfView3DProps = {
   sizeCm?: string;
   /** Grosor FÍSICO de la pieza en cm (default: 2 mm del fotoimán — misma regla que nevera). */
   thicknessCm?: number;
+  /** 2026-10-29 (owner) — variante CON IMÁN: reverso negro de goma ferrita. */
+  magnet?: boolean;
 };
 
 // Escala del mundo: 0.055 u/cm (como la nevera) — una tabla de ~60 cm ≈ 3.3 u y un fotoimán de
@@ -149,7 +151,7 @@ type ShelfLayout = {
   topY: number;
 };
 
-function Scene({ magnets, sizeCm, thicknessCm }: ShelfView3DProps) {
+function Scene({ magnets, sizeCm, thicknessCm, magnet }: ShelfView3DProps) {
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
   const layout = useMemo<ShelfLayout>(() => {
@@ -235,6 +237,7 @@ function Scene({ magnets, sizeCm, thicknessCm }: ShelfView3DProps) {
                 shape={m.shape}
                 depth={depth}
                 cornerRadiusRatio={m.cornerRadiusRatio}
+                backColor={magnet ? MAGNET_BACK_COLOR : undefined}
               />
             </group>
           </group>
@@ -278,7 +281,7 @@ function Scene({ magnets, sizeCm, thicknessCm }: ShelfView3DProps) {
   );
 }
 
-export default function ShelfView3D({ magnets, sizeCm, thicknessCm }: ShelfView3DProps) {
+export default function ShelfView3D({ magnets, sizeCm, thicknessCm, magnet }: ShelfView3DProps) {
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -298,7 +301,7 @@ export default function ShelfView3D({ magnets, sizeCm, thicknessCm }: ShelfView3
     >
       <color attach="background" args={["#FFF8F0"]} />
       <Suspense fallback={null}>
-        <Scene magnets={magnets} sizeCm={sizeCm} thicknessCm={thicknessCm} />
+        <Scene magnets={magnets} sizeCm={sizeCm} thicknessCm={thicknessCm} magnet={magnet} />
       </Suspense>
     </Canvas>
   );

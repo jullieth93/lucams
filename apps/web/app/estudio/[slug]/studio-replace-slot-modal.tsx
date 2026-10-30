@@ -26,6 +26,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ImageOff } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CloseXButton } from "@/components/ui/close-x-button";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
@@ -107,23 +108,26 @@ export function StudioReplaceSlotModal({
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="ring-brand-purple/10 pointer-events-auto flex max-h-[85vh] w-[92vw] max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
             >
-              <div className="px-5 pt-5 pb-3">
-                <h2
-                  id="replace-slot-title"
-                  className="text-brand-purple-dark text-base leading-tight font-bold"
-                >
-                  {pairMode
-                    ? texts.plantillas.reemplazoParTitulo
-                    : texts.plantillas.reemplazoTitulo}
-                </h2>
-                <p id="replace-slot-desc" className="text-brand-muted mt-1 text-xs leading-snug">
-                  {fillStudioText(
-                    pairMode
-                      ? texts.plantillas.reemplazoParCuerpo
-                      : texts.plantillas.reemplazoCuerpo,
-                    { nombre: designName },
-                  )}
-                </p>
+              <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3">
+                <div>
+                  <h2
+                    id="replace-slot-title"
+                    className="text-brand-purple-dark text-base leading-tight font-bold"
+                  >
+                    {pairMode
+                      ? texts.plantillas.reemplazoParTitulo
+                      : texts.plantillas.reemplazoTitulo}
+                  </h2>
+                  <p id="replace-slot-desc" className="text-brand-muted mt-1 text-xs leading-snug">
+                    {fillStudioText(
+                      pairMode
+                        ? texts.plantillas.reemplazoParCuerpo
+                        : texts.plantillas.reemplazoCuerpo,
+                      { nombre: designName },
+                    )}
+                  </p>
+                </div>
+                <CloseXButton onClick={onClose} label={texts.comun.cerrar} className="shrink-0" />
               </div>
               {/* Lista de lienzos ocupados: scroll propio para no romper el modal
                   con muchos slots (calendario de 12, pack de 6 separadores…). */}

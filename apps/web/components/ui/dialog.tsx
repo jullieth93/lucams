@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { XIcon } from "lucide-react";
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
@@ -69,11 +70,13 @@ function DialogContent({
       >
         {children}
         {showCloseButton && (
-          <DialogPrimitive.Close data-slot="dialog-close" asChild>
-            <Button variant="ghost" className="absolute top-2 right-2" size="icon-sm">
-              <XIcon />
-              <span className="sr-only">Cerrar</span>
-            </Button>
+          <DialogPrimitive.Close
+            data-slot="dialog-close"
+            aria-label="Cerrar"
+            className={cn(CLOSE_X_CLASS, "absolute top-2 right-2 h-8 w-8")}
+          >
+            <XIcon className="h-4 w-4" aria-hidden />
+            <span className="sr-only">Cerrar</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>
