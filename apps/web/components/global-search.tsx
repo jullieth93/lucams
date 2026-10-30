@@ -81,7 +81,7 @@ export function GlobalSearch() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Buscar"
-        className="text-brand-purple-dark hover:text-brand-purple hover:bg-brand-purple/5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors"
+        className="text-brand-purple-dark hover:text-brand-purple hover:bg-brand-purple/5 inline-flex min-h-10 min-w-10 items-center justify-center gap-1 rounded-md px-2 transition-colors"
       >
         {/* Lupita estándar en el trigger (antes iba la mascota de marca — Lucy 2026-07-29:
             en la barra de búsqueda el icono debe comunicar "buscar", no marca). */}

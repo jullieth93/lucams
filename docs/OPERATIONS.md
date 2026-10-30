@@ -404,8 +404,10 @@ Declaradas en `packages/db/scripts/cms-site-map.mjs`:
   `estudio.unidades.cal-meses-resumen`, `estudio.unidades.cal-meses-toggle-aria`.
 - **Carrito:** `cart.plantilla-label` (rótulo «Plantilla: …» de la línea con diseño).
 - **Defaults actualizados (republish con historial, respeta edición del owner):**
-  `estudio.lienzo.cal-banner-hint` (sin el «·» huérfano) y `estudio.fotos.thumb-arrastrar`
-  (tap-to-assign) — one-shot `republish-estudio-texts-20261029.mjs`.
+  `estudio.lienzo.cal-banner-hint` (sin el «·» huérfano), `estudio.fotos.thumb-arrastrar`
+  (tap-to-assign) y `estudio.texto.ig-ubicacion-hint` (la copia vieja «Máximo 2 palabras…»
+  contradecía la regla multi-palabra del 2026-10-26) — one-shot
+  `republish-estudio-texts-20261029.mjs` (los 3 ambientes, 2026-10-29/30).
 - **Datos de producto:** `personalizationSchema.borderWidth` habilitado en
   `tiras-magneticas-fotos` (LOCAL/STG/PRD) y homologado en `set-fotoimanes-cuadrados`
   (LOCAL/PRD; STG ya lo tenía con max 2 — se conserva) — one-shot

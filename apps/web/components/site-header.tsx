@@ -125,7 +125,7 @@ export async function SiteHeader() {
           <Hint content="Te ayudamos a elegir en 4 preguntas">
             <Link
               href="/recomendador"
-              className="bg-brand-purple/10 text-brand-purple-dark hover:bg-brand-purple/20 hidden items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:inline-flex"
+              className="bg-brand-purple/10 text-brand-purple-dark hover:bg-brand-purple/20 hidden min-h-10 items-center gap-1 rounded-full px-3 text-xs font-semibold transition-colors sm:inline-flex"
             >
               <Sparkles className="h-3.5 w-3.5" />{" "}
               <CmsText blockKey="header.menu.help-cta" fallback="¿Te ayudamos a elegir?" />
@@ -140,7 +140,7 @@ export async function SiteHeader() {
           <Hint content="Rastrear mi pedido">
             <Link
               href="/rastrear"
-              className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center p-1.5"
+              className="text-brand-purple-dark hover:text-brand-purple inline-flex min-h-10 min-w-10 items-center justify-center p-2"
               aria-label="Rastrear mi pedido"
             >
               <Truck className="h-5 w-5" />
@@ -149,7 +149,7 @@ export async function SiteHeader() {
 
           <Link
             href="/carrito"
-            className="text-brand-purple-dark hover:text-brand-purple relative inline-flex items-center p-1.5"
+            className="text-brand-purple-dark hover:text-brand-purple relative inline-flex min-h-10 min-w-10 items-center justify-center p-2"
             aria-label={`Carrito (${cartCount} ítems)`}
           >
             <ShoppingBag className="h-5 w-5" />
@@ -169,7 +169,7 @@ export async function SiteHeader() {
             los enlaces de texto). */}
           <Link
             href={isAuthenticated ? "/mi-cuenta" : "/login"}
-            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center p-1.5 sm:hidden"
+            className="text-brand-purple-dark hover:text-brand-purple inline-flex min-h-10 min-w-10 items-center justify-center p-2 sm:hidden"
             aria-label={isAuthenticated ? "Mi cuenta" : "Ingresar a mi cuenta"}
           >
             <User className="h-5 w-5" />

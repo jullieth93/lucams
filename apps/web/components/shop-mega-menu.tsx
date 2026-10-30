@@ -80,7 +80,7 @@ export function ShopMegaMenu({
         <NavigationMenu>
           <NavigationMenuList>
             <NavigationMenuItem>
-              <NavigationMenuTrigger className="text-brand-purple-dark data-[active]:text-brand-purple-dark data-[state=open]:text-brand-purple-dark hover:text-brand-purple bg-transparent text-sm font-medium hover:bg-transparent">
+              <NavigationMenuTrigger className="text-brand-purple-dark data-[active]:text-brand-purple-dark data-[state=open]:text-brand-purple-dark hover:text-brand-purple min-h-10 bg-transparent text-sm font-medium hover:bg-transparent">
                 {texts.catalog}
               </NavigationMenuTrigger>
               <NavigationMenuContent>
@@ -181,7 +181,7 @@ export function ShopMegaMenu({
           <button
             type="button"
             aria-label="Abrir menú"
-            className="text-brand-purple-dark hover:text-brand-purple hover:bg-brand-purple/5 inline-flex items-center justify-center rounded-md p-1.5 sm:hidden"
+            className="text-brand-purple-dark hover:text-brand-purple hover:bg-brand-purple/5 inline-flex min-h-10 min-w-10 items-center justify-center rounded-md sm:hidden"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -337,7 +337,7 @@ function MobileCategoryAccordion({
             onClick={() => setExpanded(!expanded)}
             aria-expanded={expanded}
             aria-label={`Expandir sub-categorías de ${cat.name}`}
-            className="text-brand-muted hover:bg-brand-purple/10 rounded p-1"
+            className="text-brand-muted hover:bg-brand-purple/10 flex min-h-10 min-w-10 items-center justify-center rounded"
           >
             <ChevronDown
               className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
