@@ -22,6 +22,7 @@
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Move, ZoomIn, MousePointer2, Hand } from "lucide-react";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { useStudioTexts } from "./studio-texts-provider";
 import { useIsTouch } from "./use-is-touch";
 
@@ -124,7 +125,7 @@ export function StudioGesturesHint({ open, onClose, persistent = false }: Props)
               type="button"
               onClick={onClose}
               aria-label={texts.comun.cerrarTip}
-              className="text-white/70 hover:text-white"
+              className={CLOSE_X_CLASS + " h-8 w-8"}
             >
               <X className="h-4 w-4" />
             </button>

@@ -29,6 +29,7 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { formatCOPExact } from "@/lib/format";
 import { verifyWebhookSignature, getWompiExpectedWebhookEnv } from "@/lib/wompi";
 import { getClientIp } from "@/lib/client-ip";
 import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
@@ -281,7 +282,7 @@ export async function POST(req: Request) {
       where: { id: order.id },
       data: {
         needsReconciliation: true,
-        reconciliationReason: `Monto Wompi (${transaction.amount_in_cents}) ≠ total de la orden (${order.total}). Revisar antes de despachar.`,
+        reconciliationReason: `Monto Wompi (${formatCOPExact(transaction.amount_in_cents)}) ≠ total de la orden (${formatCOPExact(order.total)}). Revisar antes de despachar.`,
       },
     });
     await prisma.webhookEvent.update({

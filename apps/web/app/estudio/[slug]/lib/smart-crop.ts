@@ -221,15 +221,17 @@ export function checkPhotoQuality(
   const actualW = originalDims?.width ?? image.naturalWidth;
   const actualH = originalDims?.height ?? image.naturalHeight;
 
-  // Umbrales:
-  //   >= requirement: OK
-  //   50-100% requirement: warn (puede verse OK pero al límite)
+  // Umbrales (RECALIBRADOS 2026-10-29, alineados con el check server-side de
+  // lib/photo-validation — feedback owner: avisos "no acertivos"):
+  //   >= 80% del requerido (≥240 DPI efectivos): OK — a la distancia de lectura
+  //     del producto se ve nítido; avisar entre 240–300 DPI era ruido.
+  //   50-80% requirement: warn (puede verse OK pero al límite)
   //   < 50% requirement: error (claramente pixelado)
   const minSide = Math.min(actualW, actualH);
   const requiredMin = Math.min(requiredW, requiredH);
   const ratio = minSide / requiredMin;
 
-  if (ratio >= 1) return { ok: true };
+  if (ratio >= 0.8) return { ok: true };
   return {
     ok: false,
     requiredPx: { w: Math.round(requiredW), h: Math.round(requiredH) },

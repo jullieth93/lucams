@@ -23,6 +23,7 @@ const { state } = vi.hoisted(() => ({
     getUserCalls: 0, // 2026-10-22 — /api/* ya no toca la sesión en el proxy
     wipeOnGetUser: false, // simula el SIGNED_OUT del refresh perdedor (borrado sb-*)
     refreshOnGetUser: false, // simula un TOKEN_REFRESHED (set normal de la cookie)
+    totpVerified: true, // 2026-10-29 — gate MFA-enroll del proxy (default: admin enrolado)
   },
 }));
 
@@ -59,6 +60,17 @@ vi.mock("@supabase/ssr", () => ({
         },
         signOut: async (opts?: { scope?: string }) => {
           state.signOutCalls.push(opts ?? {});
+        },
+        // 2026-10-29 — gate «MFA obligatorio» en el proxy (bug pantalla en
+        // blanco del enroll): el mock declara el factor según state.totpVerified
+        // (default true — los tests históricos asumen admin ya enrolado).
+        mfa: {
+          listFactors: async () => ({
+            data: {
+              all:
+                state.totpVerified === false ? [] : [{ factor_type: "totp", status: "verified" }],
+            },
+          }),
         },
       },
     };
@@ -109,6 +121,7 @@ beforeEach(() => {
   state.getUserCalls = 0;
   state.wipeOnGetUser = false;
   state.refreshOnGetUser = false;
+  state.totpVerified = true;
   vi.unstubAllEnvs();
   // B-8 — la marca de actividad va firmada con HMAC (CSRF_SECRET), mismo
   // patrón que checkout-session: se fija acá para tests deterministas.
@@ -136,6 +149,44 @@ describe("proxy · gate /admin para anónimos", () => {
     const res = await proxy(makeReq("/admin/pedidos", { cookies: { admin_last_activity: fresh } }));
     expect(res.status).toBe(200);
     expect(res.headers.get("location") ?? "").not.toContain("/admin/login");
+  });
+});
+
+describe("proxy · gate MFA obligatorio (B-1) en el proxy (2026-10-29)", () => {
+  // Antes el gate era un redirect() de React en el layout del (panel): en
+  // navegaciones RSC (soft nav) dejaba la página en blanco/en bucle hasta un
+  // refresh manual. En el proxy es un redirect HTTP real que el router sigue
+  // como navegación de documento. El gate del layout sigue como backstop.
+  const freshMark = () => sealAdminActivityMark(Date.now() - 60 * 1000);
+
+  it("admin SIN TOTP verificado → redirect a /admin/seguridad?enroll=required", async () => {
+    state.user = { id: "u1" };
+    state.totpVerified = false;
+    const res = await proxy(
+      makeReq("/admin/pedidos", { cookies: { admin_last_activity: freshMark() } }),
+    );
+    expect(res.status).toBe(307);
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("/admin/seguridad");
+    expect(loc).toContain("enroll=required");
+  });
+
+  it("admin sin TOTP en /admin/seguridad → NO redirige (es la pantalla de enrolamiento)", async () => {
+    state.user = { id: "u1" };
+    state.totpVerified = false;
+    const res = await proxy(
+      makeReq("/admin/seguridad", { cookies: { admin_last_activity: freshMark() } }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("admin CON TOTP verificado → pasa normal", async () => {
+    state.user = { id: "u1" };
+    const res = await proxy(
+      makeReq("/admin/pedidos", { cookies: { admin_last_activity: freshMark() } }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location") ?? "").not.toContain("/admin/seguridad");
   });
 });
 

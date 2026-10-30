@@ -7,6 +7,7 @@
  */
 
 import { X } from "lucide-react";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { NAME_TILE_THEMES, LETTER_SWATCHES, LETTER_SWATCH_LABELS } from "./letter-tile";
 import { CustomColorPicker } from "@/components/color-picker";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -114,7 +115,7 @@ export function SwatchRow({
           type="button"
           onClick={onClose}
           aria-label={texts.comun.cerrar}
-          className="text-brand-muted hover:bg-brand-purple/5 hover:text-brand-purple-dark focus-visible:ring-brand-turquoise absolute top-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          className={CLOSE_X_CLASS + " absolute top-2 right-2 h-8 w-8"}
         >
           <X className="h-4 w-4" aria-hidden />
         </button>

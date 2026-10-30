@@ -962,7 +962,24 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   (ni en este diseño ni en otras líneas del carrito), (b) usadas en OTRAS líneas del carrito
   (los `assetId` los cosecha `listCartDesignAssetIdsInUse` de `lib/cart-design-assets.server.ts`
   y llegan al store vía `page.tsx`), (c) usadas en este diseño (las menos repetidas primero).
-  Dentro de (a)/(b) manda el orden de «Mis fotos».
+  Dentro de (a)/(b) manda el orden de «Mis fotos». **2026-10-29 (owner):** el botón queda
+  DESHABILITADO mientras haya subidas en vuelo (llenar con un set incompleto repartía mal).
+- **«Mis fotos» es una biblioteca USABLE (2026-10-29, owner — ADR-178)**: el tap/clic sobre
+  una miniatura la asigna al lienzo seleccionado si está libre, si no al próximo libre (con
+  el modal de calidad primero si la foto tiene aviso — «Usar de todos modos» asigna igual), y
+  cada miniatura lleva borrado individual con confirmación (server: `deleteDesignAssetAction`
+  en `features/personalization/actions.ts` — ownership estricto, solo assets sin diseño o de
+  diseños DRAFT, bytes compartidos entre assets NO se borran del bucket, fallo de Storage no
+  bloquea el borrado de la fila — los bytes huérfanos los recoge el orphan sweep de
+  retención). Textos nuevos `estudio.fotos.asignada-*` / `sin-lienzo-libre` / `eliminar-*`.
+  El calendario además tiene la grilla de meses COLAPSABLE por set (chevron + resumen «N de
+  12» + mapa de chips por mes al colapsar — `CalendarMonthChips` en `studio-canvas-grid.tsx`;
+  claves `estudio.unidades.cal-meses-*`).
+- **Avisos de calidad recalibrados (2026-10-29, owner — ADR-179)**: barra soft de resolución
+  300→240 DPI efectivos y strong <200 DPI en `lib/photo-validation.ts` (server) y en el chip
+  del slot (`checkPhotoQuality` de `lib/smart-crop.ts`, banda warn 50–80%); blur soft/strong
+  10/4 (antes 15/5). Copy del aviso soft reescrito (accionable: «la original, no la de
+  WhatsApp»).
 - **PUTs a signed URLs resilientes** (`lib/upload-with-retry.ts`): concurrencia tope 3, retry
   con backoff exponencial (2 reintentos, solo errores de red y 5xx — un 4xx de firma vencida
   es definitivo) y timeout de 30 s por intento. Cualquier fallo de subida (y los `TypeError`
@@ -1048,13 +1065,16 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   nevera, mural de corcho y tablero memo (`MAGNET_SCENES` en `scene-gallery.tsx`) — NO se
   ofrecen en NINGÚN kind (adherir piezas sin imán es una afirmación falsa del producto). La
   escena Polaroid (tarjetas en una mesa), repisa/regalo (piezas recostadas, sin adherencia) y
-  el libro no asumen imán.
-  Si ninguna escena sobrevive (calendario, letters) la galería muestra estado vacío (textos
-  CMS `estudio.escenas.vacio` / `vacio-hint`). En el calendario el flujo vive en el visor de
-  detalle tarjeta-a-tarjeta (`CalendarCardFocus`, válido sin imán): el gate está DENTRO de
+  el libro no asumen imán. **2026-10-29 (owner, ADR-180):** el calendario SIN imán conserva
+  repisa/regalo (`scenesForKind("calendar")` = nevera/tablero/repisa/regalo — ya no queda con
+  la galería vacía) y con variante CON IMÁN TODAS las vistas pintan el reverso de la pieza del
+  negro de la goma ferrita (`MAGNET_BACK_COLOR`; prop `magnet` en las vistas; la escena
+  Polaroid no aplica: las tarjetas van acostadas boca arriba).
+  Si ninguna escena sobrevive (letters) la galería muestra estado vacío (textos
+  CMS `estudio.escenas.vacio` / `vacio-hint`). El gate está DENTRO de
   `SceneGallery` (`galleryScenes` filtra por `magnet`, puro y testeado) y el botón «Míralo en
-  tu espacio» del visor se omite (`onOpenGallery` opcional). La pill de gestos solo se
-  muestra en escenas 3D. Contrato en `scene-gallery.test.ts`.
+  tu espacio» del visor se omite si no hay destino (`onOpenGallery` opcional). La pill de
+  gestos solo se muestra en escenas 3D. Contrato en `scene-gallery.test.ts`.
   **Multi-set (ADR-170, 2026-10-23):** el visor tiene pager de DOS NIVELES — Anterior/
   Siguiente (+ ← →) recorre solo las 12 tarjetas del set actual con wrap DENTRO del set,
   el indicador anuncia «{mes} — Set N de M» (labels de `slotLabels` + texto CMS

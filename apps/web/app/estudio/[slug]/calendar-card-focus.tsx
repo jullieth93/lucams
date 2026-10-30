@@ -52,12 +52,18 @@ import { OrbitControls, ContactShadows } from "@react-three/drei";
 import type * as THREE from "three";
 import { ChevronLeft, ChevronRight, Home, X } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { useIsTouch } from "./use-is-touch";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useWindowTextures } from "./use-window-textures";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { ExtrudedMagnetMesh, realWorldDepth, CALENDAR_CARD_THICKNESS_CM } from "./magnet-3d";
+import {
+  ExtrudedMagnetMesh,
+  realWorldDepth,
+  CALENDAR_CARD_THICKNESS_CM,
+  MAGNET_BACK_COLOR,
+} from "./magnet-3d";
 import type { Magnet3D } from "./fridge-3d-view";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -86,10 +92,13 @@ function Scene({
   card,
   texture,
   reduced,
+  magnet,
 }: {
   card: Magnet3D;
   texture: THREE.Texture | null;
   reduced: boolean;
+  /** 2026-10-29 (owner) — variante CON IMÁN: reverso negro de goma ferrita. */
+  magnet?: boolean;
 }) {
   // Ancho del cm real (o 7.5 por defecto), alto del aspecto del lienzo — regla magnetWorldSizes.
   const w = (card.wCm ?? 7.5) * U_PER_CM;
@@ -130,7 +139,9 @@ function Scene({
             height={h}
             shape="rectangle"
             depth={realWorldDepth(U_PER_CM, CALENDAR_CARD_THICKNESS_CM)}
-            backColor="#F4EFE3"
+            // 2026-10-29 (owner): con imán el reverso es el negro de la goma
+            // ferrita; sin imán conserva el papel crema de siempre.
+            backColor={magnet ? MAGNET_BACK_COLOR : "#F4EFE3"}
             cornerRadiusRatio={CARD_CORNER_RATIO}
           />
         </group>
@@ -182,6 +193,7 @@ export default function CalendarCardFocus({
   onOpenGallery,
   cardsPerSet,
   cardLabels,
+  magnet,
 }: {
   /** Las tarjetas mes (texturas compuestas) en orden 1..12, aplanadas por set si hay N sets. */
   cards: Magnet3D[];
@@ -202,6 +214,9 @@ export default function CalendarCardFocus({
   /** Labels por tarjeta (meses «Enero»…«Diciembre», repetidos por set — los mismos
    *  de los slots del editor). Alimentan el indicador «Enero — Set 1 de 3». */
   cardLabels?: readonly string[];
+  /** 2026-10-29 (owner) — variante CON IMÁN: el reverso de la tarjeta se pinta
+   *  del negro de la goma ferrita (MAGNET_BACK_COLOR); sin imán, papel crema. */
+  magnet?: boolean;
 }) {
   const isTouch = useIsTouch();
   const reduced = usePrefersReducedMotion();
@@ -312,7 +327,7 @@ export default function CalendarCardFocus({
             type="button"
             onClick={onClose}
             aria-label={texts.comun.cerrar}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+            className={CLOSE_X_CLASS + " h-10 w-10"}
           >
             <X className="h-5 w-5" />
           </button>
@@ -335,7 +350,7 @@ export default function CalendarCardFocus({
         >
           <color attach="background" args={["#F5EDE2"]} />
           <Suspense fallback={null}>
-            <Scene card={card} texture={texture} reduced={reduced} />
+            <Scene card={card} texture={texture} reduced={reduced} magnet={magnet} />
           </Suspense>
         </Canvas>
         <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">

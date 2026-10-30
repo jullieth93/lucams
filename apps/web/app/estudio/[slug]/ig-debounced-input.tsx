@@ -97,6 +97,9 @@ export function IgDebouncedInput({
         value={draft}
         maxLength={maxLength}
         inputMode={inputMode}
+        // 2026-10-29 (owner) — la tecla de acción del teclado virtual se rotula
+        // «siguiente»; el salto real lo hace focusNextFieldOnEnter del contenedor.
+        enterKeyHint="next"
         placeholder={placeholder}
         aria-describedby={describedByMerged}
         aria-invalid={warning ? true : undefined}

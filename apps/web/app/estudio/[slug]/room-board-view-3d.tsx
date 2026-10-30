@@ -50,7 +50,13 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, GradientTexture } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
 import { StudioEnvironment } from "./studio-3d-environment";
-import { MagnetMesh, realWorldDepth, TILE_THICKNESS_CM, magnetWorldSizes } from "./magnet-3d";
+import {
+  MagnetMesh,
+  realWorldDepth,
+  TILE_THICKNESS_CM,
+  magnetWorldSizes,
+  MAGNET_BACK_COLOR,
+} from "./magnet-3d";
 import { clusterLayout, boardFitHalf, BOARD_SCENE } from "./lib/cluster-layout";
 import { getCorkTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
@@ -161,10 +167,13 @@ function Magnets({
   items,
   style,
   thicknessCm,
+  magnet,
 }: {
   items: BoardItem[];
   style: BoardStyle;
   thicknessCm?: number;
+  /** 2026-10-29 (owner) — CON IMÁN: reverso negro de goma ferrita. */
+  magnet?: boolean;
 }) {
   const depth = boardDepth(style, thicknessCm);
   const z = FRONT_Z + totalThickness(depth) / 2 + 0.005;
@@ -180,6 +189,7 @@ function Magnets({
           shape={m.shape}
           depth={depth}
           cornerRadiusRatio={m.cornerRadiusRatio}
+          backColor={magnet ? MAGNET_BACK_COLOR : undefined}
           position={[x, y, z]}
         />
       ))}
@@ -219,12 +229,14 @@ function Scene({
   style,
   sizeCm,
   thicknessCm,
+  magnet,
 }: {
   magnets: Magnet3D[];
   cols: number;
   style: BoardStyle;
   sizeCm?: string;
   thicknessCm?: number;
+  magnet?: boolean;
 }) {
   const layout = useMemo(() => boardClusterLayout(magnets, cols, sizeCm), [magnets, cols, sizeCm]);
   return (
@@ -262,7 +274,7 @@ function Scene({
       <directionalLight position={[-5, 2, 5]} intensity={0.3} />
 
       <Board style={style} />
-      <Magnets items={layout.items} style={style} thicknessCm={thicknessCm} />
+      <Magnets items={layout.items} style={style} thicknessCm={thicknessCm} magnet={magnet} />
 
       {/* #12 — encuadra el tablero al aspecto del viewport (fit-to-width en móvil vertical).
           2026-09-15: si el clúster a tamaño real desborda el tablero, el encuadre crece hasta
@@ -304,6 +316,7 @@ export default function RoomBoardView3D({
   style = "memo",
   sizeCm,
   thicknessCm,
+  magnet,
 }: {
   magnets: Magnet3D[];
   cols: number;
@@ -313,6 +326,8 @@ export default function RoomBoardView3D({
   /** 2026-10-12 — grosor FÍSICO de la pieza en cm (default por estilo: imán 2 mm / ficha
    *  1.5 mm). El calendario pasa CALENDAR_CARD_THICKNESS_CM (cartulina ~0.4 mm). */
   thicknessCm?: number;
+  /** 2026-10-29 (owner) — variante CON IMÁN: reverso negro de goma ferrita. */
+  magnet?: boolean;
 }) {
   if (magnets.length === 0) {
     return (
@@ -341,6 +356,7 @@ export default function RoomBoardView3D({
           style={style}
           sizeCm={sizeCm}
           thicknessCm={thicknessCm}
+          magnet={magnet}
         />
       </Suspense>
     </Canvas>

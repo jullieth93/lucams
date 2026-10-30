@@ -120,8 +120,9 @@ describe("checkPhotoQuality — resolución mínima de imprenta (300 DPI)", () =
     expect(checkPhotoQuality(img(1000, 800), "6×6").ok).toBe(true);
   });
 
-  it("50–100% del requerido → warn con los px requeridos/reales", () => {
-    // 12 cm → 1416 px; 1000px ≈ 70% → warn.
+  it("50–80% del requerido → warn con los px requeridos/reales", () => {
+    // 12 cm → 1416 px; 1000px ≈ 70% → warn (banda recalibrada 2026-10-29:
+    // 80-100% del requerido —240-300 DPI efectivos— ya NO avisa).
     const r = checkPhotoQuality(img(1000, 800), "12×12");
     expect(r.ok).toBe(false);
     expect(r.severity).toBe("warn");
@@ -134,6 +135,11 @@ describe("checkPhotoQuality — resolución mínima de imprenta (300 DPI)", () =
     const r = checkPhotoQuality(img(1000, 800), "30×30");
     expect(r.ok).toBe(false);
     expect(r.severity).toBe("error");
+  });
+
+  it("80-100% del requerido (240-300 DPI efectivos) → ok (recalibrado 2026-10-29)", () => {
+    // 12 cm → 1416 px requeridos; 1200px ≈ 85% → antes warn, ahora ok.
+    expect(checkPhotoQuality(img(1200, 1200), "12×12").ok).toBe(true);
   });
 
   it("mide por el lado MENOR de la foto", () => {

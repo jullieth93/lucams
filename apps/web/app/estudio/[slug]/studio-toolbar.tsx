@@ -25,6 +25,7 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, HelpCircle, X } from "lucide-react";
 import { Popover as PopoverPrimitive } from "radix-ui";
+import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
@@ -527,7 +528,7 @@ function FinalizeMissingPopover({
             </p>
             <PopoverPrimitive.Close
               aria-label={texts.comun.cerrar}
-              className="text-brand-muted hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors focus:ring-2 focus:outline-none"
+              className={CLOSE_X_CLASS + " h-6 w-6 shrink-0"}
             >
               <X className="h-3.5 w-3.5" aria-hidden />
             </PopoverPrimitive.Close>

@@ -330,6 +330,11 @@ const productsData = [
       // «Personalizado», fijos del toolbar). El dato en DBs existentes lo alinea
       // el one-shot frame-options-binary-cuadrados-20261027.mjs.
       frameOptions: ["blanco", "negro"],
+      // 2026-10-29 (owner) — slider «Grosor del borde» del Estudio (ADR-173):
+      // habilitado en las DBs vía /admin/productos la semana del 2026-10-26; el
+      // seed lo declara para que un ambiente fresco nazca homologado (el mismo
+      // dato lo alinea el one-shot border-width-tiras-cuadrados-20261029.mjs).
+      borderWidth: { enabled: true, min: 1, max: 2.5, default: 1 },
     },
     images: [UNSPLASH("1554080353-a576cf803bda")],
     // Variants modulares: Tamaño (4×4 / 5×5 / 7×7) × PACKS de 6 (1-4 packs).
@@ -1071,7 +1076,6 @@ const productsData = [
     images: [UNSPLASH("1503454537195-1dcabb73ffb9")],
   },
 ];
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  EJECUCIÓN — dry-run imprime el plan; --apply aplica en transacción única
