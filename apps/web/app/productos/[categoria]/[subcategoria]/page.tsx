@@ -17,6 +17,7 @@ import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CategoryIntro } from "@/components/category-intro";
+import { CmsText } from "@/components/cms/cms-text";
 
 export async function generateMetadata(
   { params }: { params: Promise<{ categoria: string; subcategoria: string }> },
@@ -172,7 +173,12 @@ export default async function SubCategoryPage({
             {/* 2026-10-29 — mismo criterio que la vista de categoría raíz: en
                 móvil el intro va colapsado con «Leer más» (CategoryIntro). */}
             {subCat.description && (
-              <CategoryIntro description={subCat.description} useCase={subCat.useCase} />
+              <CategoryIntro
+                description={subCat.description}
+                useCase={subCat.useCase}
+                readMore={<CmsText blockKey="categoria.leer-mas" fallback="Leer más" />}
+                readLess={<CmsText blockKey="categoria.leer-menos" fallback="Leer menos" />}
+              />
             )}
             <p className="mt-3 text-sm text-slate-500">
               {subCat.productCount} {subCat.productCount === 1 ? "producto" : "productos"}{" "}
