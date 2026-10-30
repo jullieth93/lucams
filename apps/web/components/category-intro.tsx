@@ -9,15 +9,20 @@
  * (el SEO lo lee igual — el clamp es visual).
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
 export function CategoryIntro({
   description,
   useCase,
+  readMore,
+  readLess,
 }: {
   description: string;
   useCase?: string | null;
+  /** Textos CMS (los resuelve el padre server con <CmsText>) — 2026-10-30. */
+  readMore: ReactNode;
+  readLess: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -32,7 +37,7 @@ export function CategoryIntro({
         aria-expanded={expanded}
         className="text-brand-purple-dark hover:text-brand-purple focus:ring-brand-turquoise mt-1 inline-flex min-h-10 items-center gap-1 text-xs font-semibold focus:ring-2 focus:outline-none sm:hidden"
       >
-        {expanded ? "Leer menos" : "Leer más"}
+        {expanded ? readLess : readMore}
         <ChevronDown
           className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
           aria-hidden

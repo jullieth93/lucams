@@ -52,6 +52,7 @@ import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
 import { TrackViewItemList } from "@/components/analytics-trackers";
 import { CategoryIntro } from "@/components/category-intro";
+import { CmsText } from "@/components/cms/cms-text";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -315,14 +316,16 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
               <CategoryIntro
                 description={activeCategory.description ?? ""}
                 useCase={activeCategory.useCase}
+                readMore={<CmsText blockKey="categoria.leer-mas" fallback="Leer más" />}
+                readLess={<CmsText blockKey="categoria.leer-menos" fallback="Leer menos" />}
               />
             ) : (
-              <>
-                <p className="text-brand-purple-dark/70 mt-2 max-w-2xl text-base">
-                  Productos que cuentan historias. Personalizables, hechos a mano, listos para
-                  llegar a tu espacio.
-                </p>
-              </>
+              <p className="text-brand-purple-dark/70 mt-2 max-w-2xl text-base">
+                <CmsText
+                  blockKey="productos.intro-default"
+                  fallback="Productos que cuentan historias. Personalizables, hechos a mano, listos para llegar a tu espacio."
+                />
+              </p>
             )}
           </header>
 
