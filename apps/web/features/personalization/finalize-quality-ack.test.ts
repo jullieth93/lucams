@@ -66,11 +66,19 @@ vi.mock("@/lib/supabase/service", () => ({
 
 import { finalizeDesign } from "./service";
 
+// LUC-SEC-004 — el finalize ahora NORMALIZA los buffers de origen cliente:
+// los fixtures deben ser imágenes reales (bytes basura son rechazados, que es
+// exactamente el comportamiento nuevo que se quiere). PNG 1×1 válido.
+const REAL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 const BASE_OPTS = {
   designId: "design_1",
-  previewBuffer: Buffer.from([1, 2, 3]),
+  previewBuffer: REAL_PNG,
   previewMime: "image/png",
-  productionBuffers: [Buffer.from([4, 5, 6])],
+  productionBuffers: [REAL_PNG],
   customerId: null,
   sessionId: "sess_test",
 };

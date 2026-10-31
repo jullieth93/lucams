@@ -66,11 +66,23 @@ export function previewExtensionForMime(mime: string): "webp" | "jpg" | "png" {
  * webp hasta que quepa. Fail-closed: si ninguna combinación baja del techo (o
  * el buffer no es una imagen decodificable), lanza — el caller traduce a un
  * error de validación, jamás sube un archivo que el bucket rechazaría.
+ *
+ * LUC-SEC-005 (2026-10-30): límites EXPLÍCITOS de decodificación — este buffer
+ * viene del cliente y aún no pasa por el normalizador. Mismo presupuesto que
+ * RASTER_PIXEL_BUDGET.preview (normalize-raster.ts; se duplica acá a propósito:
+ * importarlo arrastraría un ciclo sharp-safe ↔ normalize-raster).
  */
+const COMPRESS_MAX_INPUT_PIXELS = 25_000_000;
+const SHARP_LIMITS = {
+  limitInputPixels: COMPRESS_MAX_INPUT_PIXELS,
+  limitInputChannels: 4,
+  pages: 1,
+  failOn: "warning" as const,
+};
 export async function compressPreviewImage(input: Buffer, maxBytes = PREVIEW_TARGET_BYTES) {
   // metadata() valida que el buffer sea una imagen real (un blob con mime
   // mentiroso cae acá, antes de cualquier pipeline).
-  const meta = await sharp(input).metadata();
+  const meta = await sharp(input, SHARP_LIMITS).metadata();
   const baseWidth = Math.min(meta.width ?? 1080, 2048);
   // Entradas enormes (>4.5 MB, el cap de Vercel) empiezan con resize: la
   // calidad sola no basta con un PNG fotográfico de varios MP.
@@ -79,7 +91,7 @@ export async function compressPreviewImage(input: Buffer, maxBytes = PREVIEW_TAR
   for (const scale of scales) {
     const width = Math.max(64, Math.round(baseWidth * scale));
     for (const quality of qualities) {
-      const out = await sharp(input)
+      const out = await sharp(input, SHARP_LIMITS)
         .rotate() // respeta EXIF de orientación (fotos de celular)
         .resize({ width, withoutEnlargement: true })
         .webp({ quality })
