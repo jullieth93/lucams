@@ -13,6 +13,10 @@
  */
 
 import { NextResponse } from "next/server";
+import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
+
+// LUC-SEC-007 — techo de aplicación del body de ESTA ruta (plataforma = 2ª capa).
+const LOG_ERROR_MAX_BODY_BYTES = 32 * 1024;
 import { headers } from "next/headers";
 import { z } from "zod";
 import { captureClientError } from "@/lib/error-capture";
@@ -47,7 +51,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false }, { status: 429 });
     }
 
-    const parsed = ReportSchema.safeParse(await request.json());
+    // LUC-SEC-007 — techo de aplicación: un reporte de error son <32 KB.
+    let rawReport: unknown;
+    try {
+      rawReport = JSON.parse(await readBodyWithLimit(request, LOG_ERROR_MAX_BODY_BYTES));
+    } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        return NextResponse.json({ ok: false, error: "payload too large" }, { status: 413 });
+      }
+      return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
+    }
+    const parsed = ReportSchema.safeParse(rawReport);
     if (!parsed.success) {
       return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
     }

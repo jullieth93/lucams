@@ -15,6 +15,10 @@
  */
 
 import { NextResponse } from "next/server";
+import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
+
+// LUC-SEC-007 — techo de aplicación del body de ESTA ruta (plataforma = 2ª capa).
+const VITALS_MAX_BODY_BYTES = 16 * 1024;
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -104,7 +108,16 @@ export async function POST(request: Request) {
     const rlGlobal = await rateLimit("vitals:new-row:global", 3000, 5 * 60);
     if (!rlGlobal.allowed) return NextResponse.json({ ok: false });
 
-    const body = await request.json();
+    // LUC-SEC-007 — techo de aplicación: un beacon de vitals son <2 KB.
+    let body: unknown;
+    try {
+      body = JSON.parse(await readBodyWithLimit(request, VITALS_MAX_BODY_BYTES));
+    } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        return NextResponse.json({ error: "payload too large" }, { status: 413 });
+      }
+      return NextResponse.json({ error: "invalid" }, { status: 400 });
+    }
     const parsed = VitalSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid" }, { status: 400 });

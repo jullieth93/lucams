@@ -33,6 +33,12 @@ import { formatCOPExact } from "@/lib/format";
 import { verifyWebhookSignature, getWompiExpectedWebhookEnv } from "@/lib/wompi";
 import { getClientIp } from "@/lib/client-ip";
 import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
+import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
+
+// LUC-SEC-007 — techo de aplicación para el body del webhook (un evento Wompi
+// real son unos pocos KB; 64 KB es holgura generosa). El límite de plataforma
+// queda como segunda capa.
+const WOMPI_MAX_BODY_BYTES = 64 * 1024;
 import { processPaidOrder, processFailedPaymentOrder } from "@/features/orders/saga";
 import {
   findOrderIdByWompiReference,
@@ -51,10 +57,16 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   // 1) Leer raw body (string) — necesario para verificar la firma byte-exacto.
+  //    LUC-SEC-007: con TECHO de aplicación (64 KB — un evento Wompi real es
+  //    de unos pocos KB). La firma exige el body crudo, no aceptarlo ilimitado.
   let rawBody: string;
   try {
-    rawBody = await req.text();
+    rawBody = await readBodyWithLimit(req, WOMPI_MAX_BODY_BYTES);
   } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      logger.warn({ event: "webhook.wompi.body_too_large", limit: err.limit });
+      return NextResponse.json({ error: "payload too large" }, { status: 413 });
+    }
     logger.warn({
       event: "webhook.wompi.body_read_fail",
       err: err instanceof Error ? err.message : String(err),

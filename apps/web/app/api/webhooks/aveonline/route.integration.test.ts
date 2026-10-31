@@ -372,6 +372,41 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     expect(order?.status).toBe("SHIPPED"); // el webhook legítimo sigue funcionando
   });
 
+  it("LUC-SEC-007: body sobredimensionado (>32 KB) → 413 SIN verificar credencial ni persistir nada", async () => {
+    // Un atacante no necesita firma válida para forzar la lectura del body — por
+    // eso el techo corre ANTES: la respuesta es 413 y ni la validación ni la
+    // persistencia (WebhookEvent / SecurityEvent) se ejecutan.
+    const res = await POST(
+      new Request("http://localhost/api/webhooks/aveonline", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: SECRET, guia: 1, padding: "x".repeat(64 * 1024) }),
+      }),
+    );
+    expect(res.status).toBe(413);
+  });
+
+  it("LUC-SEC-007: Content-Length mentiroso (declara poco, el stream es mayor) → 413 igual", async () => {
+    // El techo no confía en el header: lee el stream y aborta al sobrepasarlo.
+    const big = "x".repeat(64 * 1024);
+    const stream = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(big));
+        c.close();
+      },
+    });
+    const res = await POST(
+      new Request("http://localhost/api/webhooks/aveonline", {
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": "10" },
+        body: stream,
+        // duplex requerido por undici para bodies en stream (falta en los types de TS).
+        ...({ duplex: "half" } as RequestInit),
+      }),
+    );
+    expect(res.status).toBe(413);
+  });
+
   it("D-1: con AVEONLINE_ALLOW_QUERY_SECRET ausente, ?secret= NO autentica (401) y el header sí", async () => {
     delete process.env.AVEONLINE_ALLOW_QUERY_SECRET; // default OFF
     try {

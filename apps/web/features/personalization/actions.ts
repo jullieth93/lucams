@@ -510,7 +510,10 @@ export async function finalizeDesignAction(formData: FormData): Promise<
 // preview global (watermarked si existe).
 
 /** Tope por página (la componición por unidad es mucho menor que el montaje global). */
-const MAX_PREVIEW_PAGE_BYTES = 2 * 1024 * 1024;
+// LUC-SEC-006 (2026-10-30) — 1 MB por página (2× el máximo observado en PRD,
+// 0.49 MB): las 24 páginas de un calendario quedan ≤24 MB por request, bajo el
+// límite global de 32 MB. Antes 2 MB/página (48 MB teóricos — exigía el 50 MB).
+const MAX_PREVIEW_PAGE_BYTES = 1 * 1024 * 1024;
 
 export async function uploadDesignPreviewPagesAction(
   formData: FormData,
