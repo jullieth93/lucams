@@ -412,8 +412,10 @@ describe("toDetail — imagen por variante y desglose (Paquete F)", () => {
         variantImages: ["https://cdn.test/variante.jpg"],
         productImages: ["https://cdn.test/producto.jpg"],
         design: {
-          id: "design_1",
-          previewUrl: "https://cdn.test/preview-diseno.png",
+          id: "cdesign1",
+          // LUC-SEC-001 — ref legacy (bucket público, pre-046): el display la
+          // convierte a la URL autorizada del handler.
+          previewUrl: "https://cdn.test/storage/v1/object/public/design-previews/cdesign1/preview.png",
           status: "READY",
           metadata: null,
           canvasData: null,
@@ -421,7 +423,9 @@ describe("toDetail — imagen por variante y desglose (Paquete F)", () => {
       },
     ]);
     const detail = await updateCartItemQty("sess_1", "ci_1", 1);
-    expect(detail.items[0].imageUrl).toBe("https://cdn.test/preview-diseno.png");
+    // El diseño del fixture lleva sello watermark (default del seed) → el carrito
+    // exhibe la miniatura watermark (thumb.webp) por el handler autorizado.
+    expect(detail.items[0].imageUrl).toBe("/api/design-preview/cdesign1/thumb.webp");
   });
 
   it("sin diseño ni fotos de variante ni de producto: imageUrl null (nunca undefined)", async () => {

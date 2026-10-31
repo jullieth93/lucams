@@ -20,6 +20,7 @@ import { designPreviewDisplay } from "@/features/personalization/preview-artifac
 import { CmsText } from "@/components/cms/cms-text";
 import { DesignGrid, type DesignCardData } from "./design-grid";
 import { getAccountTexts } from "../account-texts.server";
+import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 
 export const metadata: Metadata = {
   title: "Mis diseños",
@@ -43,8 +44,12 @@ export default async function DisenosPage() {
     // cuando existe; sin ella, placeholder de marca en el grid. Los diseños
     // LISTOS exhiben la miniatura representativa WATERMARK (thumb.webp =
     // primera unidad legible; fallback al preview limpio si no hay artefactos).
+    // LUC-SEC-001 — la miniatura del borrador (draftPreviewUrl) y el thumb
+    // salen por el handler autorizado; refs legacy convertidas. "" = sin imagen.
     previewUrl:
-      d.status === "DRAFT" ? (d.draftPreviewUrl ?? "") : (designPreviewDisplay(d)?.thumbUrl ?? ""),
+      d.status === "DRAFT"
+        ? (d.draftPreviewUrl ? (previewRefToAuthorizedUrl(d.draftPreviewUrl) ?? "") : "")
+        : (designPreviewDisplay(d)?.thumbUrl ?? ""),
     productName: d.product.name,
     productSlug: d.product.slug,
     // F-11 — solo sabemos SI hay link activo (hash en DB); el token plano ya no

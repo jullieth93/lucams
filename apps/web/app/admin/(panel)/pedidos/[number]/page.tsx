@@ -38,6 +38,7 @@ import {
 } from "@/features/products/variant-schemas";
 import { customerWaLink } from "@/lib/wa";
 import { OrderActions } from "./order-actions";
+import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 
 export const metadata: Metadata = { title: "Detalle pedido" };
 
@@ -258,7 +259,9 @@ export default async function AdminPedidoDetallePage({
               )}
               <ul className="divide-brand-purple/10 divide-y">
                 {order.items.map((it) => {
-                  const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
+                  const previewRef = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
+                  // LUC-SEC-001 — convertir a la URL autorizada del handler (sesión admin).
+                  const previewUrl = previewRef ? previewRefToAuthorizedUrl(previewRef) : null;
                   // Paquete F (2026-10-02) — desglose estructurado de la variante.
                   const variantBreakdown = describeVariantAttributes(
                     parseVariantAttributes(it.variant.attributes),

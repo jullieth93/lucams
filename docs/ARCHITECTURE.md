@@ -778,7 +778,7 @@ Cinco buckets con políticas distintas (detalle exhaustivo en [`SECURITY.md` § 
 | ------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------- |
 | `product-images`    | Público (lectura abierta) | Imágenes oficiales del catálogo (`<productId>/<uuid>.webp`, cacheControl 1 año; máx 5 MB)                     | —                     |
 | `customer-uploads`  | Privado                   | Fotos que sube el cliente al estudio de personalización (máx 10 MB)                                           | 1 hora                |
-| `design-previews`   | Público                   | Previews renderizados de diseños (galería, compartir; máx 3 MB, png/webp/jpeg)                                | —                     |
+| `design-previews`   | Privado                   | Previews renderizados de diseños (limpio + watermark + borradores; máx 3 MB, png/webp/jpeg). Lectura solo vía Route Handler autorizado `/api/design-preview/*` (LUC-SEC-001, migración 046): dueño/admin todo; tokens de compartir/cotización/pedido solo watermark | —                     |
 | `production-assets` | Privado                   | Renders de producción generados al confirmar orden, descargables por admin (máx 30 MB, png/tiff/pdf, ADR-063) | 1 hora (configurable) |
 | `cms-media`         | Público                   | Assets de campos IMAGE del CMS v2 (máx 5 MB)                                                                  | —                     |
 

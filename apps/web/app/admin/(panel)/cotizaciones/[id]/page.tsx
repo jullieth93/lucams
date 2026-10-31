@@ -26,6 +26,7 @@ import {
   AdminCard,
 } from "@/components/admin-page";
 import { QuoteActions } from "../quote-actions";
+import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 
 export const metadata: Metadata = { title: "Detalle cotización" };
 
@@ -123,7 +124,13 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
                   const showVariant = item.variantName && item.variantName !== "Default";
                   // Miniatura: preview del diseño si es personalizado; si no, la foto
                   // real del producto (antes: ícono genérico que no decía qué era).
-                  const thumbSrc = item.previewUrl ?? item.product?.images?.[0] ?? null;
+                  // LUC-SEC-001 — el snapshot del diseño se convierte a la URL autorizada
+                  // del handler (la sesión admin autoriza; la foto de producto es
+                  // de otro bucket y NO pasa por el handler).
+                  const designPreviewSrc = item.previewUrl
+                    ? previewRefToAuthorizedUrl(item.previewUrl)
+                    : null;
+                  const thumbSrc = designPreviewSrc ?? item.product?.images?.[0] ?? null;
                   return (
                     <li key={item.id} className="flex items-start gap-3 py-3">
                       <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">

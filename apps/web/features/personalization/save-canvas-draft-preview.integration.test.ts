@@ -2,10 +2,11 @@
  * saveCanvas — miniatura del DRAFT para "Mis diseños" (2026-10-13).
  *
  * El auto-save del Estudio envía opcionalmente `draftPreviewDataUrl` (≤400 px
- * WebP/JPEG, throttled 1/min); el service la sube best-effort al bucket PÚBLICO
- * design-previews en el path FIJO `<designId>/draft-preview.<ext>` (upsert: NO
- * acumula archivos) y la persiste en Design.draftPreviewUrl, que
- * listCustomerDesigns devuelve para la tarjeta del borrador.
+ * WebP/JPEG, throttled 1/min); el service la sube best-effort al bucket
+ * design-previews (privado desde la migración 046) en el path FIJO
+ * `<designId>/draft-preview.<ext>` (upsert: NO acumula archivos) y la persiste
+ * en Design.draftPreviewUrl como URL AUTORIZADA del handler /api/design-preview/*
+ * (LUC-SEC-001), que listCustomerDesigns devuelve para la tarjeta del borrador.
  *
  * Mismo enfoque que finalize-design.orchestration.integration.test.ts: mockea
  * SOLO el I/O de Storage (supabaseService) y usa Prisma real — corre en el job
@@ -138,8 +139,10 @@ describe.skipIf(!hasDb)("saveCanvas — miniatura del borrador (2026-10-13)", ()
     });
 
     const design = await prisma.design.findUnique({ where: { id: designId } });
+    // LUC-SEC-001 — se persiste la URL AUTORIZADA del handler (el bucket ya
+    // no es público); el objeto sigue en el mismo path de Storage.
     expect(design?.draftPreviewUrl).toBe(
-      `https://mock.supabase/storage/v1/object/public/design-previews/${designId}/draft-preview.webp`,
+      `/api/design-preview/${designId}/draft-preview.webp`,
     );
     const newUploads = mock.uploads.slice(before);
     expect(newUploads).toHaveLength(1);
@@ -229,7 +232,7 @@ describe.skipIf(!hasDb)("saveCanvas — miniatura del borrador (2026-10-13)", ()
     const rows = await listCustomerDesigns(ownerId);
     const row = rows.find((r) => r.id === designId);
     expect(row?.status).toBe("DRAFT");
-    expect(row?.draftPreviewUrl).toContain(`/design-previews/${designId}/draft-preview.webp`);
+    expect(row?.draftPreviewUrl).toBe(`/api/design-preview/${designId}/draft-preview.webp`);
   });
 
   it("un diseño de OTRO cliente no acepta thumbnail (ownership intacto)", async () => {

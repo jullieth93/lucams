@@ -308,11 +308,18 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         productId: persoProductId,
         status: "READY",
         canvasData: {},
-        previewUrl: "https://cdn.lucams.test/preview-ready-1.png",
       },
       select: { id: true },
     });
     readyDesignId = ready.id;
+    // LUC-SEC-001 — URL pública LEGACY (formato real de las filas pre-046); el
+    // display la convierte a la URL autorizada del handler.
+    await prisma.design.update({
+      where: { id: ready.id },
+      data: {
+        previewUrl: `https://cdn.lucams.test/storage/v1/object/public/design-previews/${ready.id}/preview.png`,
+      },
+    });
 
     // Contenido DISTINTO al de `ready`: desde 2026-07-25 el carrito agrupa por contenido, así que
     // dos canvas vacíos serían "el mismo diseño" y este fixture dejaría de representar dos pedidos
@@ -705,8 +712,9 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(item.unitPrice).toBe(PERSO_VAR_B_PRICE);
       expect(item.isPersonalizable).toBe(true);
       // El preview del Design reemplaza la imagen genérica del producto.
-      expect(item.designPreviewUrl).toBe("https://cdn.lucams.test/preview-ready-1.png");
-      expect(item.imageUrl).toBe("https://cdn.lucams.test/preview-ready-1.png");
+      // LUC-SEC-001 — la URL exhibida es la del handler autorizado.
+      expect(item.designPreviewUrl).toBe(`/api/design-preview/${readyDesignId}/preview.png`);
+      expect(item.imageUrl).toBe(`/api/design-preview/${readyDesignId}/preview.png`);
       // Multi-unidad (2026-09-25): el fixture no declara unidades → 1 (texto
       // "1 unidad" en el carrito en vez del stepper).
       expect(item.designUnits).toBe(1);
