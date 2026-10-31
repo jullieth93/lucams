@@ -47,6 +47,10 @@ export const CRON_JOBS: Record<string, { intervalMs: number; label: string }> = 
     label: "Purga diseños entregados",
   },
   "purge-event-logs": { intervalMs: 24 * 60 * 60 * 1000, label: "Purga logs con PII (180d)" },
+  // LUC-SEC-010 — migración 047: purga diaria de rate_limit_buckets (SQL puro
+  // vía pg_cron; el latido lo escribe la propia función en AlertState con la
+  // cardinalidad "borradas N, quedan M"). Si calla, el dead-man salta a las 48 h.
+  "purge-rate-limits": { intervalMs: 24 * 60 * 60 * 1000, label: "Purga buckets de rate limit" },
   "cms-publish-scheduled": { intervalMs: 5 * 60 * 1000, label: "Publicación programada CMS" },
   // N-12 — migración 032: expira órdenes WOMPI en PENDING_PAYMENT > PENDING_PAYMENT_EXPIRY_HOURS.
   "expire-pending-orders": { intervalMs: 60 * 60 * 1000, label: "Expiración de pedidos sin pagar" },
