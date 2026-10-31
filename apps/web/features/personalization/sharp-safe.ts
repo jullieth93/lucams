@@ -1,28 +1,20 @@
 /*
  * `sharp` endurecido: única puerta de entrada a la librería en todo el proyecto.
  *
- * PROBLEMA. `sharp` hereda de libvips las CVE-2026-33327, 33328, 35590 y 35591 (dos de severidad
- * alta en CVSSv4), que solo se parchean en `sharp >= 0.35.0`. Pero esta app está clavada en 0.34.4
- * a propósito: el commit `6e86f94` bajó de 0.35.3 porque libvips reventaba en el runtime de Vercel.
- * Es decir, la versión que arregla la vulnerabilidad es la que tumba producción — y 0.35.3 sigue
- * siendo la última publicada, así que no hay una versión que resuelva ambas cosas.
+ * ESTADO VIGENTE (LUC-SEC-011, 2026-10-30): sharp está en **0.35.5** (override en
+ * pnpm-workspace.yaml), versión parcheada para GHSA-f88m-g3jw-g9cj (las CVE de
+ * libvips en los decodificadores GIF/TIFF/VIPS) y para GHSA-wq5f-xc86-pv6w
+ * (librsvg). La línea 0.35.x carga y corre en las lambdas de Vercel — evidencia:
+ * PRD la opera en producción desde 2026-10-06 (render de imprenta + optimizer).
  *
- * Y la exposición es real, no teórica: el Estudio está vivo en modo catálogo y `finalizeDesign`
- * procesa con sharp las fotos que sube cualquier invitado.
+ * Historia (por qué existe el bloqueo): en 0.34.4 la app no era alcanzable a las
+ * CVE porque `sharp.block()` desactiva los loaders de formatos que la tienda no
+ * acepta (GIF/TIFF/VIPS — `ALLOWED_MIME` se limita a jpeg/png/webp/heic/heif).
+ * Con 0.35.5 el parche ya viene de fábrica; el bloqueo se CONSERVA como defensa
+ * en profundidad (superficie que no usamos no se expone) y este módulo sigue
+ * siendo la única puerta: quien importe `sharp` directo reabre el hueco.
  *
- * SOLUCIÓN. El propio advisory de sharp documenta una mitigación sin actualizar: bloquear los
- * cargadores vulnerables. Las CVE están en los decodificadores de GIF, TIFF y del formato nativo
- * VIPS — y esta tienda no acepta ninguno de los tres: `ALLOWED_MIME` en `schemas.ts` se limita a
- * jpeg, png, webp, heic y heif. Bloquearlos cierra el vector con cero impacto funcional.
- *
- * Fuente: https://github.com/advisories/GHSA-f88m-g3jw-g9cj (consultado 2026-07-25).
- *
- * POR QUÉ UN MÓDULO Y NO UNA LLAMADA SUELTA. `sharp.block()` es global y basta con ejecutarlo una
- * vez, pero si cada archivo importara `sharp` directamente bastaría con que uno nuevo olvidara el
- * bloqueo para reabrir el hueco. Importando desde acá, usar sharp implica estar endurecido.
- *
- * AL SUBIR A >= 0.35.x: este bloqueo puede retirarse, pero conviene conservarlo igual — sigue
- * siendo superficie de ataque que la tienda no usa.
+ * Fuente: https://github.com/advisories/GHSA-f88m-g3jw-g9cj (re-consultado 2026-10-30).
  */
 
 import sharp from "sharp";

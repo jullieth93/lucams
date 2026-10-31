@@ -53,10 +53,11 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  // Anti-import-directo de sharp (auditoría 2026-08-24, F-4): sharp@0.34.4 está
-  // clavado por ERR_DLOPEN_FAILED en lambdas de Vercel y su GHSA-f88m-g3jw-g9cj
-  // quedó mitigada SOLO porque todo el código de runtime pasa por
-  // features/personalization/sharp-safe.ts (bloquea los loaders GIF/TIFF/VIPS).
+  // Anti-import-directo de sharp (auditoría 2026-08-24, F-4; al día 2026-10-30
+  // con LUC-SEC-011): sharp ya está en 0.35.5 (parcheado), y la GHSA-f88m-g3jw-g9cj
+  // salió del ignore del audit gate. Todo el código de runtime pasa por
+  // features/personalization/sharp-safe.ts (bloquea los loaders GIF/TIFF/VIPS como
+  // defensa en profundidad).
   // Un import directo nuevo saltaría ese bloqueo → prohibido. Exentos:
   // sharp-safe.ts (la puerta única) y los tests/specs (corren en CI/local,
   // nunca en una lambda de prod ni procesan input no confiable en runtime).

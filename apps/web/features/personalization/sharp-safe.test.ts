@@ -1,10 +1,10 @@
 /*
  * El endurecimiento de sharp tiene que EFECTIVAMENTE bloquear, no solo estar escrito.
  *
- * Contexto (2026-07-25): sharp 0.34.4 hereda CVE de libvips que solo se parchean en >= 0.35.0, pero
- * esa rama tumba el runtime de Vercel (commit 6e86f94) y 0.35.3 sigue siendo la última publicada.
- * En vez de elegir entre "vulnerable" y "caído", se aplica la mitigación que documenta el propio
- * advisory: bloquear los cargadores de GIF, TIFF y VIPS, formatos que esta tienda no acepta.
+ * Contexto (actualizado 2026-10-30, LUC-SEC-011): sharp está en 0.35.5 — parcheado para
+ * GHSA-f88m-g3jw-g9cj y corriendo en Vercel (PRD lo opera desde 2026-10-06). El bloqueo de los
+ * cargadores de GIF, TIFF y VIPS (formatos que esta tienda no acepta) se CONSERVA como defensa
+ * en profundidad: superficie no usada no se expone.
  *
  * La exposición es real: el Estudio está vivo en modo catálogo y procesa fotos de invitados.
  *
