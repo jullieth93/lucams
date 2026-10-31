@@ -33,6 +33,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { LinkPendingLabel } from "@/components/ui/link-pending-label";
 import { IconSubmitButton } from "./qty-button";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
+import { PagedPreviewThumb } from "@/components/paged-preview-thumb";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { dedupeCartLineDetail, type UnitNoun } from "@/features/cart/line-preview";
 import { isPreviewHandlerUrl } from "@/features/personalization/preview-artifacts";
@@ -134,13 +135,29 @@ export default async function CarritoPage() {
                       className="border-brand-purple/10 flex gap-4 rounded-xl border bg-white p-3"
                     >
                       {item.designPreviewUrl ? (
-                        // 2026-10-13 — la miniatura del diseño también abre el
-                        // lightbox (además del botón «Ver»: Radix admite un solo
-                        // trigger por Dialog, así que es una 2ª instancia del
-                        // mismo componente con trigger personalizado).
-                        <DesignPreviewDialog
+                        // 2026-10-31 (owner) — la miniatura PAGINA por unidad como
+                        // cualquier otro preview (lineamiento transversal): chevrons
+                        // ‹ › sobre las páginas watermark y click → lightbox con el
+                        // pager completo (PagedPreviewThumb comparte el diálogo).
+                        <PagedPreviewThumb
+                          pages={item.designPreviewPages ?? []}
+                          fallbackUrl={item.imageUrl}
+                          alt={`Diseño de ${item.productName}`}
+                          contain
+                          placeholder={<Sparkles className="text-brand-muted h-7 w-7" />}
+                          badge={
+                            <DesignUnitsBadge
+                              count={item.designPreviewPages?.length ?? 0}
+                              label={
+                                <CmsText
+                                  blockKey="cart.unidades-badge"
+                                  fallback={item.unitNoun.plural}
+                                />
+                              }
+                            />
+                          }
+                          sizeClassName="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 aspect-square h-24 w-24 overflow-hidden rounded-md bg-gradient-to-br"
                           previewUrl={item.designPreviewUrl}
-                          pages={item.designPreviewPages}
                           pageLabels={item.designPreviewPageLabels}
                           watermarkNote={
                             item.designWatermarked ? (
@@ -151,15 +168,6 @@ export default async function CarritoPage() {
                             ) : null
                           }
                           productName={item.productName}
-                          trigger={
-                            <button
-                              type="button"
-                              aria-label={`Ver el diseño de ${item.productName}`}
-                              className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 focus-visible:ring-brand-turquoise relative aspect-square h-24 w-24 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-md bg-gradient-to-br focus-visible:ring-2 focus-visible:outline-none"
-                            >
-                              {thumb}
-                            </button>
-                          }
                           title={
                             <CmsText
                               blockKey="cart.vista-previa-diseno-titulo"
