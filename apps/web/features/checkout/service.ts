@@ -48,6 +48,7 @@ import {
 } from "@/features/shipping/settings";
 import { computePackedPackage } from "@/features/shipping/aveonline";
 import { buildLucamsOffer, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
+import { declaredValueCopPerInventoryUnit } from "@/features/personalization/design-units";
 import { maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { isCatalogMode } from "@/lib/store-mode";
 import { getZone } from "@/lib/lucams-zones";
@@ -385,7 +386,16 @@ export async function quoteShipping(input: {
       widthCm: dims.widthCm,
       heightCm: dims.heightCm,
       depthCm: dims.depthCm,
-      declaredValueCop: it.unitPrice,
+      // unitPrice es el precio de la UNIDAD DE VENTA pero qty cuenta unidades
+      // FÍSICAS (inventoryUnits: las 26 letras del abecedario, los 5 vocales…).
+      // Sin la conversión el valor asegurado se inflaba ×N ($39.900 → $1.037.400
+      // en el abecedario) y la valoración ~1 % del carrier sumaba ~$10.000 al
+      // flete (bug 2026-10-31). La guía hace la misma conversión en la saga.
+      declaredValueCop: declaredValueCopPerInventoryUnit({
+        unitPriceCop: it.unitPrice,
+        qty: it.qty,
+        inventoryUnits: it.inventoryUnits,
+      }),
     };
   });
 

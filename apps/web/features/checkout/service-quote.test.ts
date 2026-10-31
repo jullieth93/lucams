@@ -314,3 +314,57 @@ describe("quoteShipping — filtro por reglas de peso (SHIPPING_CARRIER_RULES)",
     expect(result.quotes.some((q) => q.carrier === "coordinadora")).toBe(true);
   });
 });
+
+describe("quoteShipping — valor declarado con packs multi-unidad (bug 2026-10-31)", () => {
+  // Regresión del bug real de PRD: una variante con `quantity` N (abecedario
+  // ×26, vocales ×5, separadores ×2-6) declaraba unitPrice × N a Aveonline —
+  // un set de $39.900 se aseguraba en $1.037.400 y la valoración ~1 % del
+  // carrier inflaba el flete ~$10.000 (Bogotá→Bogotá cotizaba ~$20-36k en vez
+  // de ~$8-10k). El valor declarado POR unidad física debe ser
+  // unitPrice × qty / inventoryUnits.
+  it("declara el valor de venta de la línea, no el precio del pack × unidades físicas", async () => {
+    const abecedarioCtx = {
+      ...(ctx as object),
+      cart: {
+        ...(ctx as { cart: object }).cart,
+        items: [
+          {
+            variantId: "v-personalizado",
+            qty: 1,
+            inventoryUnits: 26,
+            unitPrice: 3_990_000, // centavos, por SET de 26 letras
+            productSlug: "abecedario-completo",
+          },
+        ],
+      },
+    } as never;
+    await quoteShipping({
+      destinationCity: "Bogotá",
+      destinationDepartment: "Cundinamarca",
+      ctx: abecedarioCtx,
+    });
+    const [quoteInput] = shippingProvider.quote.mock.calls[0] as unknown as [
+      { items: Array<{ qty: number; declaredValueCop: number }> },
+    ];
+    const items = quoteInput.items;
+    expect(items).toHaveLength(1);
+    expect(items[0].qty).toBe(26); // unidades físicas (peso/dims apilados)
+    expect(items[0].declaredValueCop).toBe(Math.round(3_990_000 / 26));
+    // El total asegurado es el valor de venta real (≤ redondeo por unidad).
+    expect(Math.abs(items[0].declaredValueCop * items[0].qty - 3_990_000)).toBeLessThanOrEqual(13);
+  });
+
+  it("un pack sin multiplicador (inventoryUnits = qty) declara el unitPrice tal cual", async () => {
+    await quoteShipping({
+      destinationCity: "Bogotá",
+      destinationDepartment: "Cundinamarca",
+      ctx,
+    });
+    const [quoteInput] = shippingProvider.quote.mock.calls[0] as unknown as [
+      { items: Array<{ qty: number; declaredValueCop: number }> },
+    ];
+    const items = quoteInput.items;
+    expect(items[0].declaredValueCop).toBe(10_000);
+    expect(items[1].declaredValueCop).toBe(20_000);
+  });
+});

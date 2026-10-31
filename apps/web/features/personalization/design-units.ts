@@ -246,3 +246,21 @@ export function inventoryUnitsForOrderItem(input: {
     letterSetUnitCount(input.metadata);
   return input.qty * packUnits * designUnits;
 }
+
+/**
+ * Valor declarado POR unidad física para cotización/guía (ShipmentItem.qty
+ * cuenta unidades FÍSICAS — inventoryUnits; ej. las 26 letras del abecedario)
+ * cuando `unitPriceCop` es el precio de la UNIDAD DE VENTA (la variante/pack).
+ * Declarar unitPrice × inventoryUnits inflaba el asegurado ×N (un abecedario
+ * de $39.900 se declaraba en $1.037.400 y la valoración ~1 % de la
+ * transportadora sumaba ~$10.000 al flete — bug 2026-10-31). Con la división,
+ * Σ(valorDeclarado × qty) = unitPrice × qty = el valor real de la línea.
+ */
+export function declaredValueCopPerInventoryUnit(input: {
+  unitPriceCop: number;
+  qty: number;
+  inventoryUnits: number;
+}): number {
+  if (input.qty < 1 || input.inventoryUnits <= input.qty) return input.unitPriceCop;
+  return Math.round((input.unitPriceCop * input.qty) / input.inventoryUnits);
+}

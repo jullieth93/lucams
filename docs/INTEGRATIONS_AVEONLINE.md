@@ -1209,6 +1209,8 @@ Ahora, siempre `contraentrega=0, idasumecosto=0`:
 
 Cotización y guía comparten ahora `computePackedPackage(items)`: UN bulto con peso Σ(peso×qty), espesor Σ(dim_menor×qty) y huella = máx de las dos dims mayores por item. Antes: cotización per-línea con qty solo en peso y guía con bounding-box máximo por eje → volumen sub-declarado con qty>1 (la transportadora re-mide y liquida en contra) y flete cotizado ≠ facturado. Con el modelo unificado: qty=2 **nunca duplica** el flete (una guía tarifada por peso/volumen real) y tampoco se sobredimensiona.
 
+> **Ajuste 2026-10-31 (ADR-185) — valor declarado POR unidad física:** `ShipmentItem.qty` cuenta unidades FÍSICAS (`inventoryUnits`: las 26 letras del abecedario, los 5 vocales…) pero `unitPrice` es el precio de la UNIDAD DE VENTA. Declarar `unitPrice` por unidad física inflaba el asegurado ×N (un abecedario de $39.900 se declaraba en $1.037.400 → la valoración ~1 % por carrier sumaba ~$10.000 al flete; reproducido live: Bogotá→Bogotá ENVÍA $20.374 con el modelo viejo vs $8.399 corregido). Cotización y saga derivan el valor con `declaredValueCopPerInventoryUnit` (`unitPrice × qty_venta / inventoryUnits`): el total asegurado es el valor de venta real de la línea.
+
 ### 21.3 Otros cambios aplicados
 
 - `relacion_envios: "1"` → `"0"`: declarábamos intención de relacionar y jamás creamos la relación (doc: 1=sí, 0=no).

@@ -32,7 +32,7 @@ import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./ser
 import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import { decrementStockForOrder } from "./stock";
 import { notifyStockSaleLost } from "./stock-alerts";
-import { inventoryUnitsForOrderItem } from "@/features/personalization/design-units";
+import { inventoryUnitsForOrderItem, declaredValueCopPerInventoryUnit } from "@/features/personalization/design-units";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { buildShipmentLastError } from "./shipment-error";
@@ -622,14 +622,23 @@ export async function processPaidOrder(
       missingDims.push(`${it.variant.product.slug}(${it.variant.id})`);
       continue;
     }
+    const inventoryUnits = inventoryUnitsForOrderItem(it);
     items.push({
       productSlug: it.variant.product.slug,
-      qty: inventoryUnitsForOrderItem(it),
+      qty: inventoryUnits,
       weightGrams: dims.weightGrams,
       widthCm: dims.widthCm,
       heightCm: dims.heightCm,
       depthCm: dims.depthCm,
-      declaredValueCop: it.unitPrice,
+      // unitPrice es por UNIDAD DE VENTA pero qty cuenta unidades FÍSICAS
+      // (inventoryUnits): sin la conversión el valor asegurado de la guía se
+      // inflaba ×N (abecedario $39.900 → $1.037.400) y la transportadora cobraba
+      // la valoración sobre ese monto (bug 2026-10-31; mismo fix en quoteShipping).
+      declaredValueCop: declaredValueCopPerInventoryUnit({
+        unitPriceCop: it.unitPrice,
+        qty: it.qty,
+        inventoryUnits,
+      }),
     });
   }
   if (missingDims.length > 0) {

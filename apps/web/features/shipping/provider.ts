@@ -42,6 +42,10 @@ export type ShipmentItem = {
   widthCm: number;
   heightCm: number;
   depthCm: number;
+  // Valor asegurable POR unidad física (qty cuenta unidades físicas —
+  // inventoryUnits). Los callers lo derivan con declaredValueCopPerInventoryUnit
+  // (unitPrice × qty / inventoryUnits) para que Σ(valor × qty) sea el valor de
+  // venta real de la línea, no inflado por el multiplicador del pack.
   declaredValueCop: number; // Para seguro
 };
 
