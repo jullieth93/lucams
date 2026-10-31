@@ -60,6 +60,81 @@ describe.skipIf(!hasDb)("security-events — integración DB (F-07)", { timeout:
     expect(rows[0].ipHash).toMatch(/^[0-9a-f]{16}$/);
     expect(rows[0].actorId).toBeNull();
     expect(rows[0].createdAt).toBeInstanceOf(Date);
+    expect(rows[0].count).toBe(1); // LUC-SEC-008: toda fila lleva su conteo
+    expect(rows[0].dedupKey).toBeTruthy();
+  });
+
+  it("LUC-SEC-008 — agregación por ventana: 3 eventos de la MISMA clave en el mismo minuto → 1 fila con count=3", async () => {
+    const meta = { run: RUN, case: "agg" };
+    for (let i = 0; i < 3; i++) {
+      await recordSecurityEvent({
+        event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+        outcome: "rejected",
+        ip: "192.0.2.55",
+        metadata: meta,
+      });
+    }
+    const rows = await prisma.securityEvent.findMany({
+      where: {
+        event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+        metadata: { path: ["run"], equals: RUN },
+      },
+    });
+    const mine = rows.filter((r) => (r.metadata as { case?: string }).case === "agg");
+    expect(mine).toHaveLength(1); // una fila por bucket, no una por request
+    expect(mine[0].count).toBe(3);
+  });
+
+  it("LUC-SEC-008 — ráfaga de 25 (misma clave): sigue siendo 1 fila y el contador queda EXACTO en el múltiplo de lote", async () => {
+    const meta = { run: RUN, case: "flood" };
+    for (let i = 0; i < 25; i++) {
+      await recordSecurityEvent({
+        event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+        outcome: "rejected",
+        ip: "198.51.100.44",
+        metadata: meta,
+      });
+    }
+    const rows = await prisma.securityEvent.findMany({
+      where: {
+        event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+        metadata: { path: ["run"], equals: RUN },
+      },
+    });
+    const mine = rows.filter((r) => (r.metadata as { case?: string }).case === "flood");
+    expect(mine).toHaveLength(1);
+    // 5 escrituras de +1 (n=1..5) + n=15 (+10) + n=25 (+10) = 25 exacto.
+    expect(mine[0].count).toBe(25);
+  });
+
+  it("LUC-SEC-008 — la alerta SUMA count (no cuenta filas): una fila agregada con count=5 dispara igual", async () => {
+    await prisma.securityEvent.create({
+      data: {
+        event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
+        outcome: "failure",
+        ipHash: hashIp("192.0.2.200"),
+        metadata: { run: RUN, case: "sum" },
+        count: 5,
+      },
+    });
+    const firing = await evaluateAlerts();
+    const alert = firing.find((a) => a.key === "security_admin_login_fails");
+    expect(alert).toBeDefined();
+  });
+
+  it("LUC-SEC-008 — fail-open intacto: si la persistencia falla, el flujo no se rompe", async () => {
+    const spy = vi
+      .spyOn(prisma.securityEvent, "upsert")
+      .mockRejectedValueOnce(new Error("db caída (simulada)"));
+    await expect(
+      recordSecurityEvent({
+        event: SECURITY_EVENT.LOGIN_FAIL,
+        outcome: "failure",
+        ip: "192.0.2.99",
+        metadata: { run: RUN, case: "failopen" },
+      }),
+    ).resolves.toBeUndefined();
+    spy.mockRestore();
   });
 
   it("evaluateAlerts dispara security_admin_login_fails con ≥5 logins admin fallidos en 15 min", async () => {

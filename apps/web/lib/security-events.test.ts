@@ -10,7 +10,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockPrisma, mockLogger } = vi.hoisted(() => ({
-  mockPrisma: { securityEvent: { create: vi.fn() } },
+  mockPrisma: { securityEvent: { upsert: vi.fn() } },
   mockLogger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
 vi.mock("server-only", () => ({}));
@@ -23,7 +23,7 @@ import { recordSecurityEvent, SECURITY_EVENT } from "./security-events";
 describe("recordSecurityEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPrisma.securityEvent.create.mockResolvedValue({});
+    mockPrisma.securityEvent.upsert.mockResolvedValue({});
   });
 
   it("persiste el evento con la IP hasheada (SHA-256 truncado, nunca en claro)", async () => {
@@ -34,8 +34,9 @@ describe("recordSecurityEvent", () => {
       metadata: { code: "invalid_credentials" },
     });
 
-    expect(mockPrisma.securityEvent.create).toHaveBeenCalledTimes(1);
-    const data = mockPrisma.securityEvent.create.mock.calls[0][0].data;
+    // LUC-SEC-008 — upsert por dedupKey (agregación por ventana) en vez de create por request.
+    expect(mockPrisma.securityEvent.upsert).toHaveBeenCalledTimes(1);
+    const data = mockPrisma.securityEvent.upsert.mock.calls[0][0].create;
     expect(data.event).toBe("auth.admin_login.fail");
     expect(data.outcome).toBe("failure");
     expect(data.ipHash).toBe(hashIp("203.0.113.9"));
@@ -51,13 +52,13 @@ describe("recordSecurityEvent", () => {
       outcome: "rejected",
     });
 
-    const data = mockPrisma.securityEvent.create.mock.calls[0][0].data;
+    const data = mockPrisma.securityEvent.upsert.mock.calls[0][0].create;
     expect(data.ipHash).toBeNull();
     expect(data.metadata).toEqual({});
   });
 
   it("es FAIL-OPEN: si la DB falla, loguea y NO lanza (no rompe el login/webhook)", async () => {
-    mockPrisma.securityEvent.create.mockRejectedValueOnce(new Error("db caída"));
+    mockPrisma.securityEvent.upsert.mockRejectedValueOnce(new Error("db caída"));
 
     await expect(
       recordSecurityEvent({ event: SECURITY_EVENT.LOGIN_FAIL, outcome: "failure", ip: "1.2.3.4" }),

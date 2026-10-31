@@ -62,6 +62,10 @@ async function postEvent(opts: {
       to: [`${RUN}@lucams.test`],
       from: "tienda@lucamsshop.com",
       subject: `Test ${RUN}`,
+      // LUC-SEC-009 — campos extra que llegan en eventos reales (headers de
+      // soporte, links de click, user-agent) y NO deben persistirse.
+      click: { link: "https://tracker.ejemplo.test/c/abc", userAgent: "Mozilla/5.0 (soporte)" },
+      extra_pii_field: "no-persistir",
     },
   });
   const now = Math.floor(Date.now() / 1000);
@@ -105,6 +109,23 @@ describe.skipIf(!hasDb)("webhook Resend ROUTE — firma Svix + upsert con guarda
     expect(res.status).toBe(401);
     const row = await prisma.emailEvent.findUnique({ where: { resendId: emailId } });
     expect(row).toBeNull();
+  });
+
+  it("LUC-SEC-009 — EmailEvent.metadata sigue el allowlist (sin campos extra del proveedor)", async () => {
+    const emailId = `re_${RUN}_allowlist`;
+    const res = await postEvent({
+      emailId,
+      type: "email.delivered",
+      occurredAt: "2026-08-20T10:00:00.000Z",
+    });
+    expect(res.status).toBe(200);
+    const row = await prisma.emailEvent.findUnique({ where: { resendId: emailId } });
+    expect(row).not.toBeNull();
+    const meta = row!.metadata as Record<string, unknown>;
+    expect(Object.keys(meta).sort()).toEqual(["bodyHash", "dataKeys"].sort());
+    expect(JSON.stringify(meta)).not.toContain("no-persistir");
+    expect(JSON.stringify(meta)).not.toContain("tracker.ejemplo.test");
+    expect(meta.bodyHash).toMatch(/^[0-9a-f]{16}$/);
   });
 
   it("evento nuevo → crea EmailEvent (rama create del upsert)", async () => {

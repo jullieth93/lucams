@@ -202,7 +202,25 @@ export async function POST(req: Request) {
             data: {
               source: "WOMPI",
               externalId: eventKey,
-              payload: event as unknown as object,
+              // LUC-SEC-009 (2026-10-31): allowlist en vez del evento crudo
+              // completo (antes cabían campos financieros/de soporte de más en
+              // DB, backups y herramientas internas). Se conserva lo que la
+              // operación lee (webhook-seal: data.transaction.id) + bodyHash
+              // truncado para correlación. Retención: purge-event-logs (180 d).
+              payload: {
+                event: event.event ?? null,
+                timestamp: event.timestamp ?? null,
+                data: {
+                  transaction: {
+                    id: transaction.id,
+                    status: transaction.status,
+                    reference: transaction.reference,
+                    amount_in_cents: transaction.amount_in_cents,
+                    currency: transaction.currency ?? null,
+                  },
+                },
+                bodyHash: createHash("sha256").update(rawBody).digest("hex").slice(0, 16),
+              },
             },
           });
         } catch (err) {
