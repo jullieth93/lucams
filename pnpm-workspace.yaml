@@ -101,16 +101,12 @@ overrides:
   # que postcss/next ya resolvían.
   source-map-js: 1.2.2
 
-# sharp queda clavado en 0.34.4 a propósito: la línea 0.35.x rompía las lambdas de Vercel
-# (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP — detectado en la certificación del
-# 2026-07-28, auditoría histórica consolidada fuera del repo; la evidencia vive en git history).
-# GHSA-f88m-g3jw-g9cj (libvips heredado, sharp <0.35.0) se excluye del gate de audit porque
-# ya está mitigada en código por sharp-safe (bloquea los loaders alcanzables) y el riesgo
-# residual quedó aceptado y documentado en la Fase A. NO quitar este ignore sin verificar
-# antes que sharp 0.35.x carga en una lambda real de Vercel.
+# LUC-SEC-011 (2026-10-30): GHSA-f88m-g3jw-g9cj YA NO se excluye del gate — sharp está
+# en 0.35.5 (override arriba), versión parcheada para ese advisory, y carga en las lambdas
+# de Vercel (evidencia: PRD la corre en producción desde 2026-10-06). La exclusión era un
+# punto ciego: una regresión futura de sharp habría pasado el gate sin ruido.
 auditConfig:
   ignoreGhsas:
-    - GHSA-f88m-g3jw-g9cj
     # GHSA-vfj7-8cjw-p6xm (braces ≤3.0.3, high, 2026-10-03): el advisory declara
     # patched >=3.0.4 pero esa versión NO existe en npm (latest = 3.0.3,
     # 2024-05-21) — advisory prematuro, no hay patch que aplicar. Cadena dev-only

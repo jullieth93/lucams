@@ -58,8 +58,8 @@ describe("cron-heartbeat", () => {
     else process.env.CRON_JOBS_DISABLED = originalDisabled;
   });
 
-  it("rastrea los 13 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
-    expect(Object.keys(CRON_JOBS)).toHaveLength(13);
+  it("rastrea los 14 jobs, incluidos cms-publish-scheduled (5 min), expire-pending-orders (N-12) y purge-rate-limits (LUC-SEC-010)", () => {
+    expect(Object.keys(CRON_JOBS)).toHaveLength(14);
     expect(CRON_JOBS["cms-publish-scheduled"]).toEqual({
       intervalMs: 5 * 60 * 1000,
       label: "Publicación programada CMS",

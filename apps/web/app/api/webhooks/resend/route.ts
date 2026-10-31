@@ -30,7 +30,7 @@
  */
 
 import { headers } from "next/headers";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
@@ -154,9 +154,16 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    // Cast a Prisma JSON: la data del webhook es structurally compatible
-    // (sólo strings/numbers/bools/arrays/objects anidados serializables).
-    const metadata = JSON.parse(JSON.stringify(event.data));
+    // LUC-SEC-009 (2026-10-31): antes metadata = TODO event.data (headers de
+    // soporte, links de click, user-agent — PII de más en DB y backups).
+    // Allowlist: huella del esquema (dataKeys, para detectar drift del
+    // proveedor sin guardar contenido) + hash truncado del body para
+    // correlación. Nadie lee metadata hoy (entregabilidad usa conteos por
+    // `type`). Retención: purge-event-logs (180 d).
+    const metadata = {
+      dataKeys: Object.keys(event.data).sort(),
+      bodyHash: createHash("sha256").update(rawBody).digest("hex").slice(0, 16),
+    };
     const occurredAt = new Date(event.created_at);
     // D-2: el upsert last-write-wins permitía que un evento viejo/reordenado pisara
     // email.bounced/email.complained → la supresión de lib/resend.ts dejaba de aplicar

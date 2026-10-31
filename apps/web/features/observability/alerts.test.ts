@@ -25,8 +25,15 @@ const groupBy = vi.hoisted(() => vi.fn());
 const orderCount = vi.hoisted(() => vi.fn(async (_args?: { where?: { status?: string } }) => 0));
 const webhookCount = vi.hoisted(() => vi.fn(async () => 0));
 // F-07 (2026-09-19): las reglas de seguridad cuentan SecurityEvent por `event`.
-const securityEventCount = vi.hoisted(() =>
-  vi.fn(async (_args?: { where?: { event?: string } }) => 0),
+// LUC-SEC-008 (2026-10-31): las reglas agregan `_sum.count` (las filas se
+// agregan por ventana con count), ya no cuentan filas con `count()`.
+const securityEventAggregate = vi.hoisted(() =>
+  vi.fn(
+    async (_args?: {
+      _sum?: { count?: boolean };
+      where?: { event?: string };
+    }): Promise<{ _sum: { count: number | null } }> => ({ _sum: { count: 0 } }),
+  ),
 );
 const getCronHealth = vi.hoisted(() => vi.fn(async () => []));
 // Tipos explícitos: sin ellos TS infiere `lastSuccessAt: Date` / `bounceRatePct:
@@ -87,7 +94,7 @@ vi.mock("@/lib/db", () => ({
     errorLog: { groupBy },
     order: { count: orderCount },
     webhookEvent: { count: webhookCount },
-    securityEvent: { count: securityEventCount },
+    securityEvent: { aggregate: securityEventAggregate },
     $queryRaw: queryRaw,
   },
 }));
@@ -115,7 +122,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   errorGroups([]);
   orderCount.mockResolvedValue(0);
-  securityEventCount.mockResolvedValue(0);
+  securityEventAggregate.mockResolvedValue({ _sum: { count: 0 } });
   getCronHealth.mockResolvedValue([]);
   getBackupHealth.mockResolvedValue({ lastSuccessAt: new Date(), stale: false });
   getMonitorHealth.mockResolvedValue({
@@ -419,8 +426,8 @@ describe("evaluateAlerts — monitor externo de uptime (VM, 2026-09-13)", () => 
 describe("evaluateAlerts — reglas de seguridad sobre SecurityEvent (F-07, 2026-09-19)", () => {
   /** Solo el evento indicado devuelve `n`; el resto de conteos queda en 0. */
   function securityCount(event: string, n: number) {
-    securityEventCount.mockImplementation((args?: { where?: { event?: string } }) =>
-      Promise.resolve(args?.where?.event === event ? n : 0),
+    securityEventAggregate.mockImplementation((args?: { where?: { event?: string } }) =>
+      Promise.resolve({ _sum: { count: args?.where?.event === event ? n : 0 } }),
     );
   }
 
@@ -429,7 +436,8 @@ describe("evaluateAlerts — reglas de seguridad sobre SecurityEvent (F-07, 2026
 
     await evaluateAlerts(now);
 
-    expect(securityEventCount).toHaveBeenCalledWith({
+    expect(securityEventAggregate).toHaveBeenCalledWith({
+      _sum: { count: true },
       where: {
         event: "auth.admin_login.fail",
         createdAt: { gte: new Date("2026-09-19T11:45:00Z") },

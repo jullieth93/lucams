@@ -528,6 +528,41 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     expect(order.needsReconciliation).toBe(false);
   });
 
+  it("LUC-SEC-009 — el payload persistido sigue el allowlist (sin campos crudos extra) + bodyHash", async () => {
+    // El evento completo de Wompi trae más campos de los que la operación necesita
+    // (status_message, created_at del proveedor, etc. — potencialmente PII/financiero
+    // de más en DB, backups y herramientas internas). Solo se conserva el allowlist.
+    const reference = `${RUN}-allowlist`;
+    await makeOrder(reference, 55_000);
+
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx-allow`,
+          status: "APPROVED",
+          amountInCents: 55_000,
+          reference,
+          statusMessage: "Transacción aprobada con datos sensibles de más",
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+
+    const ev = await prisma.webhookEvent.findFirst({
+      where: { source: "WOMPI", externalId: { startsWith: `${RUN}-tx-allow-` } },
+    });
+    expect(ev).not.toBeNull();
+    const p = ev!.payload as Record<string, unknown>;
+    expect(Object.keys(p).sort()).toEqual(["bodyHash", "data", "event", "timestamp"].sort());
+    const tx = (p.data as Record<string, unknown>).transaction as Record<string, unknown>;
+    expect(Object.keys(tx).sort()).toEqual(
+      ["amount_in_cents", "currency", "id", "reference", "status"].sort(),
+    );
+    // Negativo: el status_message NO se persiste.
+    expect(JSON.stringify(p)).not.toContain("datos sensibles de más");
+    expect(p.bodyHash).toMatch(/^[0-9a-f]{16}$/);
+  });
+
   it("carrera de dedup (findUnique miss + create P2002 por entrega concurrente) → 200, sin doble saga ni 500", async () => {
     // Certificación 2026-07-29: dos entregas concurrentes del mismo evento pasan el
     // findUnique; el create perdedor revienta P2002. Antes: 500 crudo → reintentos

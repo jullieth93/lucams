@@ -1207,12 +1207,19 @@ model AdminActionLog {
 // security_webhook_invalid) y el cron purge-event-logs (retención 180 días).
 
 model SecurityEvent {
-  id        String   @id @default(cuid())
-  event     String // p.ej. "auth.login.fail", "auth.admin_login.fail", "webhook.invalid_signature"
-  outcome   String // "failure" (auth rechazada) | "rejected" (firma/secreto inválido)
-  ipHash    String?
-  actorId   String?
-  metadata  Json
+  id       String @id @default(cuid())
+  event    String // p.ej. "auth.login.fail", "auth.admin_login.fail", "webhook.invalid_signature"
+  outcome  String // "failure" (auth rechazada) | "rejected" (firma/secreto inválido)
+  ipHash   String?
+  actorId  String?
+  metadata Json
+  // LUC-SEC-008 (2026-10-30) — agregación anti-amplificación: una fila por
+  // (evento, outcome, ipHash, actorId, hash de metadata, minuto), no por
+  // request. `count` acumula las ocurrencias del bucket; `dedupKey` es la
+  // clave única del bucket (nullable: filas pre-008 no la tienen).
+  count    Int     @default(1)
+  dedupKey String? @unique
+
   createdAt DateTime @default(now())
 
   @@index([createdAt])
