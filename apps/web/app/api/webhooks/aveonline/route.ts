@@ -28,16 +28,28 @@ import { secureEquals } from "@/lib/timing-safe";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { processTrackingUpdate } from "@/features/orders/saga";
 
+import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
+
+// LUC-SEC-007 — techo de aplicación para el body del webhook (32 KB; el payload
+// documentado son unos pocos KB). El límite de plataforma queda como 2ª capa.
+const AVEONLINE_MAX_BODY_BYTES = 32 * 1024;
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   // Leer body primero: del payload puede salir el tercer factor de validación
   // (`token` de la integración — lo re-envía Aveonline en cada notificación).
+  // LUC-SEC-007: con TECHO de aplicación (32 KB — el payload documentado son
+  // unos pocos KB). La credencial exige el body crudo, no aceptarlo ilimitado.
   let rawBody: string;
   try {
-    rawBody = await req.text();
+    rawBody = await readBodyWithLimit(req, AVEONLINE_MAX_BODY_BYTES);
   } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      logger.warn({ event: "webhook.aveonline.body_too_large", limit: err.limit });
+      return NextResponse.json({ error: "payload too large" }, { status: 413 });
+    }
     logger.warn({
       event: "webhook.aveonline.body_read_fail",
       err: err instanceof Error ? err.message : String(err),

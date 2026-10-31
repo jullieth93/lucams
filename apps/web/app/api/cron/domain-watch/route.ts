@@ -24,6 +24,7 @@
 
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
 import { processDomainObservation } from "@/features/observability/domain-watch";
 import { recordCronHeartbeat } from "@/features/observability/cron-heartbeat";
 import { logger } from "@/lib/logger";
@@ -48,8 +49,12 @@ export async function POST(req: NextRequest) {
 
   let body: unknown;
   try {
-    body = await req.json();
-  } catch {
+    // LUC-SEC-007 — techo de aplicación (8 KB sobran para observaciones de dominio).
+    body = JSON.parse(await readBodyWithLimit(req, 8 * 1024));
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      return Response.json({ ok: false, error: "payload too large" }, { status: 413 });
+    }
     return Response.json({ ok: false, error: "invalid json" }, { status: 400 });
   }
   const parsed = ObservationSchema.safeParse(body);

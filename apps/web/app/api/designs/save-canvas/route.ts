@@ -18,6 +18,7 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
 import { getClientIp } from "@/lib/client-ip";
 import { logger } from "@/lib/logger";
+import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { SaveCanvasSchema } from "@/features/personalization/schemas";
@@ -26,8 +27,13 @@ import { saveCanvas } from "@/features/personalization/service";
 export async function POST(req: Request) {
   let raw: unknown;
   try {
-    raw = await req.json();
-  } catch {
+    // LUC-SEC-007 — techo de aplicación (2 MB: canvas + miniatura base64 del
+    // auto-save legítimo). Un beacon mayor es basura o abuso → 413.
+    raw = JSON.parse(await readBodyWithLimit(req, 2 * 1024 * 1024));
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      return NextResponse.json({ ok: false }, { status: 413 });
+    }
     return NextResponse.json({ ok: false }, { status: 400 });
   }
   const parsed = SaveCanvasSchema.safeParse(raw);

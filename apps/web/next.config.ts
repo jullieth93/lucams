@@ -110,13 +110,22 @@ const nextConfig: NextConfig = {
   // M.3.b.fix (2026-05-13) — Next.js 16 redujo el default de
   // `serverActions.bodySizeLimit` de 4 MB (Next 15) a 1 MB.
   //
-  // Casos que requieren headroom:
-  //   - saveCanvasAction: canvasData V2 con slots[] + signed URLs Supabase
-  //     ~600 B/slot. Hasta 20 slots (calendarios) + plantillas → ~50KB típico.
-  //   - finalizeDesignAction (2026-05-21): refactor a FormData con blobs.
-  //     Envía preview (~1-2 MB) + N production PNGs (~2-5 MB c/u). Para
-  //     producto 6-slot promedio: ~18-30 MB total. Subimos a 50 MB para
-  //     cubrir caso límite de 20 slots × 2-3 MB c/u (~40-60 MB).
+  // LUC-SEC-006 (auditoría 2026-10-30) — el 50 MB cubría un flujo MUERTO (los
+  // PNG de producción ya van por tickets firmados directo a Storage, ADR-081).
+  // Inventario REAL por action (tope de su propia validación):
+  //   - uploadGalleryImageAction (admin): ≤2 masters × 15 MB = 30 MB (strip
+  //     2-caras) — la EXCEPCIÓN que fija el global. Autenticada + role-gated
+  //     (MANAGER_UP), sin superficie anónima.
+  //   - finalizeDesignAction: preview ≤8 MB + slot inline ≤20 MB (name-editor)
+  //     = 28 MB tope de validación (observado PRD: ~1 MB).
+  //   - uploadDesignPreviewPagesAction: ≤24 páginas × 1 MB = 24 MB (cap por
+  //     página bajado de 2 MB: 2× el máximo observado en PRD, 0.49 MB).
+  //   - uploadProductImagesAction (admin): lotes de ≤4 × 5 MB = 20 MB
+  //     (chunked en el cliente desde LUC-SEC-006).
+  //   - uploadDesignAssetAction: 1 foto ≤10 MB + overhead multipart.
+  //   - saveCanvasAction y demás: JSON ≤2 MB.
+  // Global = 32 MB: la excepción de galería (30 MB) + overhead. Bajar más exige
+  // partir la subida de masters 2-caras en dos llamadas — diferido, documentado.
   //
   // POR QUÉ FormData en finalize en vez de dataURL JSON:
   //   - React Flight protocol (Server Actions wire format) tiene un límite
@@ -126,7 +135,7 @@ const nextConfig: NextConfig = {
   //     multipart. Sin límite de "array nesting", solo de body size.
   experimental: {
     serverActions: {
-      bodySizeLimit: "50mb",
+      bodySizeLimit: "32mb",
     },
   },
 
