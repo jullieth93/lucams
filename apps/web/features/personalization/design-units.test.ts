@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   declaresUnits,
+  declaredValueCopPerInventoryUnit,
   designUnitPriceMultiplier,
   gridSlotCountForLayout,
   inventoryUnitsForOrderItem,
@@ -236,5 +237,47 @@ describe("inventoryUnitsForOrderItem — unidades físicas de inventario", () =>
         productSchema: { facesPerUnit: 2 },
       }),
     ).toBe(1);
+  });
+});
+
+describe("declaredValueCopPerInventoryUnit — valor asegurado por unidad física", () => {
+  it("el total declarado es el valor de venta de la línea, nunca × las unidades físicas (bug 2026-10-31)", () => {
+    // Abecedario: $39.900 la variante, 26 letras físicas → NO declarar $1.037.400.
+    const perUnit = declaredValueCopPerInventoryUnit({
+      unitPriceCop: 3_990_000,
+      qty: 1,
+      inventoryUnits: 26,
+    });
+    expect(perUnit).toBe(Math.round(3_990_000 / 26));
+    // La suma declarada se mantiene dentro del redondeo por unidad (≤ qty/2 centavos).
+    expect(Math.abs(perUnit * 26 - 3_990_000)).toBeLessThanOrEqual(13);
+  });
+
+  it("qty comercial > 1 escala el total declarado por línea", () => {
+    // 2 sets de 26 letras a $39.900 c/u → declarado total $79.800.
+    const perUnit = declaredValueCopPerInventoryUnit({
+      unitPriceCop: 3_990_000,
+      qty: 2,
+      inventoryUnits: 52,
+    });
+    expect(Math.abs(perUnit * 52 - 7_980_000)).toBeLessThanOrEqual(26);
+  });
+
+  it("packs sin multiplicador (inventoryUnits = qty) declaran el unitPrice tal cual", () => {
+    expect(
+      declaredValueCopPerInventoryUnit({ unitPriceCop: 2_250_000, qty: 1, inventoryUnits: 1 }),
+    ).toBe(2_250_000);
+    expect(
+      declaredValueCopPerInventoryUnit({ unitPriceCop: 2_250_000, qty: 2, inventoryUnits: 2 }),
+    ).toBe(2_250_000);
+  });
+
+  it("guardas defensivas: qty < 1 o inventoryUnits < qty no dividen", () => {
+    expect(
+      declaredValueCopPerInventoryUnit({ unitPriceCop: 2_250_000, qty: 0, inventoryUnits: 5 }),
+    ).toBe(2_250_000);
+    expect(
+      declaredValueCopPerInventoryUnit({ unitPriceCop: 2_250_000, qty: 3, inventoryUnits: 2 }),
+    ).toBe(2_250_000);
   });
 });

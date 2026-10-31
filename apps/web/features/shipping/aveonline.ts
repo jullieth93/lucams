@@ -156,6 +156,12 @@ const centsToPesos = (cents: number) => Math.round(cents / 100);
  *    3 calendarios de 1cm declaraban 30×30×1 → re-liquidación en contra) ni
  *    suma ciega de ejes (SOBRE-dimensiona).
  *  - valorDeclarado: Σ(valor_unit × qty) en PESOS, piso $10.000 (error -5).
+ *    valor_unit es POR unidad física (los callers lo derivan con
+ *    declaredValueCopPerInventoryUnit: unitPrice × qty_venta / inventoryUnits),
+ *    así el total asegurado es el valor de venta real de la línea — nunca el
+ *    precio del pack multiplicado por las unidades físicas (bug 2026-10-31:
+ *    un abecedario de $39.900 se aseguraba en $1.037.400 y la valoración ~1 %
+ *    del carrier inflaba el flete ~$10.000).
  * Cotización y guía usan EL MISMO modelo → el flete cotizado == el facturado.
  */
 export function computePackedPackage(items: ShipmentItem[]): {
