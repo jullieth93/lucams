@@ -125,6 +125,22 @@ export function previewRefToAuthorizedUrl(
   return path ? designPreviewAuthorizedUrl(path, capability) : null;
 }
 
+/**
+ * ¿La URL sale del handler autorizado /api/design-preview/*? Esas imágenes NO
+ * pueden pasar por el optimizer de next/image: (1) el loader NO reenvía los
+ * headers/cookies al fetchear el src (doc oficial image.md) → el handler
+ * responde 404 en superficies de sesión; (2) las URLs con capacidad
+ * (?st/qt/ot) llevan query string y Next 16 exige images.localPatterns para
+ * locales con query (anti-enumeración). Marcar el <Image> con `unoptimized`
+ * cuando esto es true (el navegador pega directo al handler con las
+ * cookies/capacidad intactas). Regresión LUC-SEC-001 detectada 2026-10-31:
+ * la miniatura del carrito se veía vacía mientras el "Ver" (que usa <img>)
+ * funcionaba.
+ */
+export function isPreviewHandlerUrl(src: string): boolean {
+  return src.startsWith(PREVIEW_ROUTE_PREFIX);
+}
+
 /** Subconjunto del Design que la selección de exhibición necesita. */
 export type DesignPreviewArtifactState = {
   previewUrl: string | null;
