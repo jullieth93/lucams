@@ -80,9 +80,7 @@ describe.skipIf(!hasDb)("security-events — integración DB (F-07)", { timeout:
         metadata: { path: ["run"], equals: RUN },
       },
     });
-    const mine = rows.filter(
-      (r) => (r.metadata as { case?: string }).case === "agg",
-    );
+    const mine = rows.filter((r) => (r.metadata as { case?: string }).case === "agg");
     expect(mine).toHaveLength(1); // una fila por bucket, no una por request
     expect(mine[0].count).toBe(3);
   });
@@ -103,9 +101,7 @@ describe.skipIf(!hasDb)("security-events — integración DB (F-07)", { timeout:
         metadata: { path: ["run"], equals: RUN },
       },
     });
-    const mine = rows.filter(
-      (r) => (r.metadata as { case?: string }).case === "flood",
-    );
+    const mine = rows.filter((r) => (r.metadata as { case?: string }).case === "flood");
     expect(mine).toHaveLength(1);
     // 5 escrituras de +1 (n=1..5) + n=15 (+10) + n=25 (+10) = 25 exacto.
     expect(mine[0].count).toBe(25);

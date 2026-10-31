@@ -36,9 +36,12 @@ async function bucketExists(key: string): Promise<boolean> {
 describe.skipIf(!hasDb)("purge_rate_limit_buckets (LUC-SEC-010)", () => {
   afterAll(async () => {
     if (!hasDb) return;
-    await prisma
-      .$executeRaw`DELETE FROM rate_limit_buckets WHERE key LIKE ${RUN + "%"}`.catch(() => {});
-    await prisma.alertState.deleteMany({ where: { key: "cron:purge-rate-limits" } }).catch(() => {});
+    await prisma.$executeRaw`DELETE FROM rate_limit_buckets WHERE key LIKE ${RUN + "%"}`.catch(
+      () => {},
+    );
+    await prisma.alertState
+      .deleteMany({ where: { key: "cron:purge-rate-limits" } })
+      .catch(() => {});
   });
 
   it("borra claves >7 días, conserva frescas, idempotente y deja latido con cardinalidad", async () => {

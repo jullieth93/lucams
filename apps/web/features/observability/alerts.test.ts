@@ -426,9 +426,8 @@ describe("evaluateAlerts — monitor externo de uptime (VM, 2026-09-13)", () => 
 describe("evaluateAlerts — reglas de seguridad sobre SecurityEvent (F-07, 2026-09-19)", () => {
   /** Solo el evento indicado devuelve `n`; el resto de conteos queda en 0. */
   function securityCount(event: string, n: number) {
-    securityEventAggregate.mockImplementation(
-      (args?: { where?: { event?: string } }) =>
-        Promise.resolve({ _sum: { count: args?.where?.event === event ? n : 0 } }),
+    securityEventAggregate.mockImplementation((args?: { where?: { event?: string } }) =>
+      Promise.resolve({ _sum: { count: args?.where?.event === event ? n : 0 } }),
     );
   }
 
