@@ -67,6 +67,7 @@ import {
 } from "./preview-artifacts-server";
 import { PREVIEW_PAGES_MAX, designPreviewDerivedPaths } from "./preview-artifacts";
 import { PREVIEW_ROUTE_PREFIX } from "./preview-access";
+import { normalizeRasterImage, RasterRejected, RASTER_PIXEL_BUDGET } from "./normalize-raster";
 import {
   mergeVariantOverProduct,
   parseVariantAttributes,
@@ -1225,6 +1226,56 @@ export async function saveCanvas(opts: {
 
 const MAX_STAGED_SLOT_BYTES = 20 * 1024 * 1024;
 
+// LUC-SEC-004 (2026-10-30) — techo de bytes de SALIDA del snapshot normalizado
+// = el límite del bucket production-assets (30 MB): falla limpio acá en vez de
+// reventar contra el upload.
+const MAX_NORMALIZED_PRODUCTION_BYTES = 30 * 1024 * 1024;
+// Preview: la action ya capea la entrada en 8 MB (MAX_PREVIEW_INPUT_BYTES).
+const MAX_NORMALIZE_PREVIEW_INPUT_BYTES = 8 * 1024 * 1024;
+
+/**
+ * LUC-SEC-004/005 — TODO snapshot de producción de origen cliente (inline o área
+ * de paso) pasa por el normalizador único ANTES de tocar production-assets:
+ * magic bytes, presupuesto de píxeles, dimensiones, re-encode PNG canónico sin
+ * metadatos. Antes solo se validaba tamaño/existencia y el byte hostil llegaba
+ * a imprenta con MIME impuesto. Un rechazo en la vía STAGED borra el área de
+ * paso de inmediato (el reintento del cliente re-sube; no dejamos el blob malo).
+ */
+async function normalizeClientProductionBuffers(
+  designId: string,
+  buffers: Buffer[],
+  stagedPathsToDeleteOnReject?: string[],
+): Promise<Buffer[]> {
+  try {
+    const out = await Promise.all(
+      buffers.map((b) =>
+        normalizeRasterImage(b, {
+          maxPixels: RASTER_PIXEL_BUDGET.production,
+          maxInputBytes: MAX_STAGED_SLOT_BYTES,
+          maxOutputBytes: MAX_NORMALIZED_PRODUCTION_BYTES,
+          output: { format: "png" },
+        }),
+      ),
+    );
+    return out.map((o) => o.buffer);
+  } catch (err) {
+    if (err instanceof RasterRejected) {
+      logger.warn(
+        { event: "design.finalize.production_buffer_rejected", designId, reason: err.reason },
+        "Snapshot de producción rechazado por el normalizador",
+      );
+      if (stagedPathsToDeleteOnReject?.length) {
+        await removeStorage(BUCKET_PRODUCTION, stagedPathsToDeleteOnReject);
+      }
+      // Al cliente: mensaje genérico (sin detalles internos del decoder).
+      throw new Error(
+        "No pudimos procesar una de las imágenes del diseño. Intenta de nuevo con fotos más livianas.",
+      );
+    }
+    throw err;
+  }
+}
+
 /**
  * Emite N URLs firmadas de subida (2 h) para los snapshots del cliente.
  *
@@ -1561,12 +1612,15 @@ export async function finalizeDesign(opts: {
   let productionBuffers: Buffer[] | undefined;
   if (opts.productionBuffers) {
     // Caras B vacías → cara BLANCA del tamaño/DPI de su cara A (owner 2026-10-07).
+    // LUC-SEC-004: los buffers del CLIENTE se normalizan ANTES de expandir (las
+    // caras blancas son sharp server-side, ya nacen canónicas).
+    const normalized = await normalizeClientProductionBuffers(design.id, opts.productionBuffers);
     productionBuffers =
       emptyBackSlots.size > 0
         ? await (
             await loadBlankBackFace()
-          ).expandMissingBackFaces(opts.productionBuffers, requiredSlotIndexes, expectedSlotCount)
-        : opts.productionBuffers;
+          ).expandMissingBackFaces(normalized, requiredSlotIndexes, expectedSlotCount)
+        : normalized;
   }
   if (canvasForRender && !opts.productionBuffers && !opts.useStagedClientSlots) {
     // Guard estático: los motivos de fallback decidibles por slot SIN renderizar (filtro,
@@ -1581,7 +1635,14 @@ export async function finalizeDesign(opts: {
   // Fuera del `if` de v2: con canvasData v1 también se emiten tickets, y dejar la lectura dentro
   // dejaba al cliente en un bucle —sube los PNG, y el finalize vuelve a pedírselos— sin salida.
   if (!productionBuffers && opts.useStagedClientSlots) {
-    const staged = await readStagedClientSlots(design.id, requiredSlotIndexes);
+    const stagedRaw = await readStagedClientSlots(design.id, requiredSlotIndexes);
+    // LUC-SEC-004: normalizar lo recogido del área de paso; si es inválido se
+    // borra de inmediato (el cliente re-sube en el reintento).
+    const staged = await normalizeClientProductionBuffers(
+      design.id,
+      stagedRaw,
+      requiredSlotIndexes.map((i) => stagedSlotPath(design.id, i)),
+    );
     // Caras B vacías → cara BLANCA del tamaño/DPI de su cara A (owner 2026-10-07).
     productionBuffers =
       emptyBackSlots.size > 0
@@ -1676,16 +1737,36 @@ export async function finalizeDesign(opts: {
   // encolado/parcialmente procesado (el cron lo termina). renderMs mide el kick en ese caso.
   const renderMs = Date.now() - tFinalizeStart;
 
-  // Subir preview compositado del grid completo. La extensión refleja el mime
-  // REAL (T2, 2026-09-22: webp/jpg/png) — los consumers (OrderItem.designAssetUrl,
-  // admin) usan la URL autorizada del handler, nunca asumen ".png".
-  const previewMime = PREVIEW_ALLOWED_MIME.includes(opts.previewMime as PreviewMime)
-    ? (opts.previewMime as PreviewMime)
-    : "image/png";
+  // Subir preview compositado del grid completo. LUC-SEC-004/005: el buffer del
+  // cliente pasa por el normalizador único (magic bytes reales, presupuesto de
+  // píxeles, re-encode sin metadatos) — el mime que manda es el REAL sniffado,
+  // no el declarado. La extensión refleja ese mime (T2, 2026-09-22).
+  let previewBufferNorm: Buffer;
+  let previewMime: PreviewMime;
+  try {
+    const normalized = await normalizeRasterImage(opts.previewBuffer, {
+      maxPixels: RASTER_PIXEL_BUDGET.preview,
+      maxInputBytes: MAX_NORMALIZE_PREVIEW_INPUT_BYTES,
+      output: { format: "keep" },
+    });
+    previewBufferNorm = normalized.buffer;
+    previewMime = PREVIEW_ALLOWED_MIME.includes(normalized.mime as PreviewMime)
+      ? (normalized.mime as PreviewMime)
+      : "image/png";
+  } catch (err) {
+    if (err instanceof RasterRejected) {
+      logger.warn(
+        { event: "design.finalize.preview_rejected", designId: design.id, reason: err.reason },
+        "Preview rechazado por el normalizador",
+      );
+      throw new Error("No pudimos procesar la imagen del preview. Intenta con fotos más livianas.");
+    }
+    throw err;
+  }
   const previewPath = `${design.id}/preview.${previewExtensionForMime(previewMime)}`;
   const { error: pErr } = await supabase.storage
     .from(BUCKET_PREVIEWS)
-    .upload(previewPath, opts.previewBuffer, {
+    .upload(previewPath, previewBufferNorm, {
       contentType: previewMime,
       // 1 año: el path va versionado por diseño (<designId>/preview.<ext>) y el contenido
       // no cambia una vez finalizado (T4). El cacheControl del OBJETO ya no lo expone
@@ -1719,7 +1800,7 @@ export async function finalizeDesign(opts: {
   // recomponer las unidades del montaje: separadores/calendario no son grids
   // uniformes). El thumb queda provisionalmente del global; la primera página
   // lo reemplaza al llegar (miniatura representativa, decisión 2026-10-13).
-  const previewArtifactsOk = await uploadPreviewWatermarkArtifacts(design.id, opts.previewBuffer);
+  const previewArtifactsOk = await uploadPreviewWatermarkArtifacts(design.id, previewBufferNorm);
 
   // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física cuelga de la página
   // con el DOBLEZ ARRIBA; la imprenta recibe la tira DESPLEGADA VERTICAL en disposición

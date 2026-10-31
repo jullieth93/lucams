@@ -132,7 +132,17 @@ export async function uploadPreviewPages(
     // un pager con huecos en el carrito).
     const processed = await Promise.all(
       pages.map(async (page) => ({
-        clean: await sharp(page).rotate().webp({ quality: PREVIEW_PAGE_WEBP_QUALITY }).toBuffer(),
+        // LUC-SEC-005 — presupuesto explícito por página (las compone el
+        // Estudio = origen cliente).
+        clean: await sharp(page, {
+          limitInputPixels: 25_000_000,
+          limitInputChannels: 4,
+          pages: 1,
+          failOn: "warning",
+        })
+          .rotate()
+          .webp({ quality: PREVIEW_PAGE_WEBP_QUALITY })
+          .toBuffer(),
         wm: await applyTiledWatermark(page),
       })),
     );

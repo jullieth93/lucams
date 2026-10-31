@@ -20,6 +20,11 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { supabaseService } from "@/lib/supabase/service";
 import { applyTiledWatermark } from "@/lib/watermark";
+
+// Re-export (canónica en ./image-sniff desde LUC-SEC-004/005 — el
+// normalizador la usa sin ciclo de imports; los call sites no cambian).
+import { sniffImageMime } from "./image-sniff";
+export { sniffImageMime };
 import { logger } from "@/lib/logger";
 
 const BUCKET = "product-images";
@@ -155,41 +160,6 @@ function inferExtension(mime: string): string {
  * Exportado para la mediateca CMS (lib/cms-media.ts, roadmap B5): mismo
  * pipeline anti-polyglot en los uploads de la mediateca.
  */
-export function sniffImageMime(buf: Buffer): string | null {
-  if (buf.length < 12) return null;
-  // JPEG: FF D8 FF
-  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (
-    buf[0] === 0x89 &&
-    buf[1] === 0x50 &&
-    buf[2] === 0x4e &&
-    buf[3] === 0x47 &&
-    buf[4] === 0x0d &&
-    buf[5] === 0x0a &&
-    buf[6] === 0x1a &&
-    buf[7] === 0x0a
-  )
-    return "image/png";
-  // WebP: "RIFF"...."WEBP"
-  if (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP")
-    return "image/webp";
-  // Contenedores ISOBMFF: ....ftyp + major_brand.
-  if (buf.toString("ascii", 4, 8) === "ftyp") {
-    const brand = buf.toString("ascii", 8, 12);
-    if (brand === "avif" || brand === "avis") return "image/avif";
-    // HEIC (fotos iPhone): heic/heix/heim/heis + secuencias hevc/hevx/hevm/hevs.
-    if (brand === "heic" || brand === "heix" || brand === "heim" || brand === "heis") {
-      return "image/heic";
-    }
-    if (brand === "hevc" || brand === "hevx" || brand === "hevm" || brand === "hevs") {
-      return "image/heic";
-    }
-    // HEIF genérico: brands mif1/msf1.
-    if (brand === "mif1" || brand === "msf1") return "image/heif";
-  }
-  return null;
-}
 
 /**
  * Cuerpo compartido de upload de imagen optimizada al bucket público: valida tamaño +
@@ -553,60 +523,46 @@ export async function uploadCustomerPhoto(opts: {
     );
   }
 
-  // Verifica el MIME REAL por magic bytes (no confiar en originalMimeType, que el
-  // cliente falsifica) — paridad con uploadProductImage. Rechaza polyglots
-  // (.html/.svg con extensión .jpg) ANTES de sharp, con error claro, y usa el
-  // formato real como fuente de verdad para la rama HEIC y el contentType final.
-  const realMime = sniffImageMime(opts.buffer);
-  if (!realMime || !CUSTOMER_UPLOAD_ALLOWED_MIME.has(realMime)) {
-    throw new StorageError(
-      "INVALID_TYPE",
-      "El archivo no es una imagen válida (jpg/png/webp/heic/heif).",
-    );
-  }
-
-  // Strip EXIF + auto-orient + convert HEIC→JPEG via sharp.
-  // sharp.rotate() respeta EXIF orientation y luego strip lo descarta.
-  // .toBuffer() devuelve buffer optimizado.
-  // sharp-safe (no sharp directo): garantiza sharp.block() de los loaders con CVE
-  // ANTES de procesar el upload (auditoría experto 2026-07-26, cierra el bypass).
-  const sharp = (await import("@/features/personalization/sharp-safe")).default;
+  // LUC-SEC-004/005 (2026-10-30) — el procesamiento pasa por el NORMALIZADOR
+  // ÚNICO de raster (normalize-raster.ts): magic bytes reales (anti-poliglota,
+  // igual que antes pero en un solo punto), presupuesto de píxeles (HEIC lee el
+  // box ispe ANTES de que heic-decode materialice el RGBA completo), re-encode
+  // canónico sin metadatos. HEIC → JPEG como siempre (sharp prebuilt de Linux
+  // no trae HEVC — verificado 2026-08-05; Vercel también es Linux).
   let processed: Buffer;
   let finalMime: string;
   let width: number;
   let height: number;
   try {
-    const isHeic = realMime === "image/heic" || realMime === "image/heif";
-    if (isHeic) {
-      // HEIC: el sharp prebuilt para Linux NO incluye el decodificador HEVC
-      // (de265 ausente — verificado 2026-08-05; Vercel también es Linux).
-      // Decodificamos con heic-decode (JS/WASM puro, funciona en cualquier
-      // plataforma) y componemos el JPEG desde los píxeles crudos.
-      // Nota: la orientación EXIF del HEIC la aplica el decodificador (libheif
-      // rota al decodificar), no hace falta rotate() extra.
-      const { default: heicDecode } = await import("heic-decode");
-      const decoded = await heicDecode({ buffer: opts.buffer });
-      const out = await sharp(Buffer.from(decoded.data.buffer), {
-        raw: { width: decoded.width, height: decoded.height, channels: 4 },
-      })
-        .jpeg({ quality: 92, mozjpeg: true })
-        .toBuffer({ resolveWithObject: true });
-      processed = out.data;
-      finalMime = "image/jpeg";
-      width = out.info.width;
-      height = out.info.height;
-    } else {
-      const pipeline = sharp(opts.buffer).rotate(); // auto-orient + strip EXIF
-      const out = await pipeline.toBuffer({ resolveWithObject: true });
-      processed = out.data;
-      finalMime = realMime; // MIME REAL detectado por bytes, no el declarado
-      width = out.info.width;
-      height = out.info.height;
-    }
+    const { normalizeRasterImage, RASTER_PIXEL_BUDGET } =
+      await import("@/features/personalization/normalize-raster");
+    const out = await normalizeRasterImage(opts.buffer, {
+      maxPixels: RASTER_PIXEL_BUDGET.photo,
+      maxInputBytes: CUSTOMER_UPLOAD_MAX_BYTES,
+      output: { format: "keep" }, // formato REAL sniffado (HEIC ya mapea a JPEG adentro)
+    });
+    processed = out.buffer;
+    finalMime = out.mime;
+    width = out.width;
+    height = out.height;
   } catch (err) {
+    const { RasterRejected } = await import("@/features/personalization/normalize-raster");
+    if (err instanceof RasterRejected && err.reason === "not-an-image") {
+      throw new StorageError(
+        "INVALID_TYPE",
+        "El archivo no es una imagen válida (jpg/png/webp/heic/heif).",
+      );
+    }
+    if (err instanceof RasterRejected && err.reason === "too-large-input") {
+      throw new StorageError(
+        "FILE_TOO_LARGE",
+        `El archivo excede ${CUSTOMER_UPLOAD_MAX_BYTES / 1024 / 1024} MB`,
+      );
+    }
+    // LUC-SEC-005 — NUNCA exponer detalles internos del decoder al cliente.
     throw new StorageError(
       "UPLOAD_FAILED",
-      `No pudimos procesar la imagen: ${err instanceof Error ? err.message : String(err)}`,
+      "No pudimos procesar la imagen. Intenta con otra foto.",
     );
   }
 
@@ -652,6 +608,9 @@ export async function uploadCustomerPhoto(opts: {
   let canvasSignedUrl: string | null = null;
   if (Math.max(width, height) > CUSTOMER_UPLOAD_CANVAS_MAX_EDGE_PX) {
     try {
+      // sharp-safe (no sharp directo): loaders con CVE bloqueados + la entrada
+      // acá es el master YA normalizado arriba.
+      const sharp = (await import("@/features/personalization/sharp-safe")).default;
       const derivative = await sharp(processed)
         .resize({
           width: CUSTOMER_UPLOAD_CANVAS_MAX_EDGE_PX,
