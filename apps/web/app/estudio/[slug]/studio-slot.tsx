@@ -757,12 +757,16 @@ function StudioSlotImpl({
   if (onEdit) filledHints.push("A para ajustar la foto");
   if (onEdit && hasEditableText) filledHints.push("Tab para editar el texto");
   if (onCenterPhoto && slotState.photoTransform) filledHints.push("C para centrar");
+  // WCAG 2.5.3 (axe label-content-name-mismatch, nightly 2026-10-31): el nombre
+  // accesible EMPIEZA por el microcopy visible del slot vacío ("Pásame una foto" /
+  // "¡Suéltala aquí!") — un usuario de control por voz dice lo que VE.
+  const emptyInvite = isDropping ? texts.lienzo.slotEmptyDrop : texts.lienzo.slotEmptyInvite;
   const ariaLabel = slotState.assetUrl
     ? `${slotName}, con foto cargada. ${filledHints.join(", ")}.`
     : slotOptional
       ? // Cara B opcional (backOptional): el nombre audible también lo dice.
-        `${slotName}, vacío, ${texts.lienzo.slotCaraBOpcional.toLowerCase()}. Enter para subir foto.`
-      : `${slotName}, vacío. Enter para subir foto.`;
+        `${emptyInvite} — ${slotName}, vacío, ${texts.lienzo.slotCaraBOpcional.toLowerCase()}. Enter para subir foto.`
+      : `${emptyInvite} — ${slotName}, vacío. Enter para subir foto.`;
 
   // C1 — guía del slot vacío en 3 niveles (reposo → hover → drag-over).
   const slotGuideStroke = isDropping

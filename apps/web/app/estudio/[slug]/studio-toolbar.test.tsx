@@ -91,7 +91,7 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
   it("diseño incompleto: deshabilitado con tooltip/aria de fotos faltantes", () => {
     setup({ filled: 1 });
     const btn = screen.getByRole("button", {
-      name: "Faltan 1 fotos por cargar para ver la vista previa",
+      name: "Ver diseño: Faltan 1 fotos por cargar para ver la vista previa",
     });
     expect(btn).toBeDisabled();
   });
@@ -166,7 +166,7 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
     );
     // Botón deshabilitado con el motivo como tooltip y nombre audible (patrón
     // del bloqueo por fotos faltantes).
-    const btn = screen.getByRole("button", { name: reason });
+    const btn = screen.getByRole("button", { name: `Ver diseño: ${reason}` });
     expect(btn).toBeDisabled();
     // El motivo ya no viaja en el title nativo: es el tooltip de marca (Hint),
     // que abre con foco de teclado sobre el wrapper focusable (el botón está
@@ -264,7 +264,9 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
       />,
     );
     expect(
-      screen.getByRole("button", { name: "Faltan 1 fotos por cargar para ver la vista previa" }),
+      screen.getByRole("button", {
+        name: "Ver diseño: Faltan 1 fotos por cargar para ver la vista previa",
+      }),
     ).toBeDisabled();
   });
 
@@ -304,9 +306,13 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
     // Bloqueado: el botón interno conserva su nombre/tooltip y el trigger del
     // popover tiene nombre audible propio (accesible por teclado).
     expect(
-      screen.getByRole("button", { name: "Faltan 2 fotos por cargar para ver la vista previa" }),
+      screen.getByRole("button", {
+        name: "Ver diseño: Faltan 2 fotos por cargar para ver la vista previa",
+      }),
     ).toBeDisabled();
-    const trigger = screen.getByRole("button", { name: "Qué falta para ver la vista previa" });
+    const trigger = screen.getByRole("button", {
+      name: "Ver diseño — Qué falta para ver la vista previa",
+    });
     fireEvent.click(trigger);
     expect(await screen.findByText("Para ver tu vista previa te falta:")).toBeInTheDocument();
     expect(screen.getByText("Fotos por cargar:")).toBeInTheDocument();
@@ -322,7 +328,9 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
         onFinalize={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Qué falta para ver la vista previa" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Ver diseño — Qué falta para ver la vista previa" }),
+    );
     expect(await screen.findByText("11")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
   });
@@ -330,7 +338,7 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
   it("diseño completo: sin popover (el botón se habilita normal)", () => {
     setup({ filled: 2 });
     expect(
-      screen.queryByRole("button", { name: "Qué falta para ver la vista previa" }),
+      screen.queryByRole("button", { name: "Ver diseño — Qué falta para ver la vista previa" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver diseño de tu pedido" })).toBeEnabled();
   });
