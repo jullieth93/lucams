@@ -159,7 +159,13 @@ describe("StudioSlot — identificador de slot (chip en la barra de acciones)", 
     });
     expect(screen.getByText("Opcional")).toBeInTheDocument();
     const slot = container.querySelector('[data-slot-index="1"]');
-    expect(slot!.getAttribute("aria-label")).toContain("opcional");
+    // 2026-10-31 (WCAG 2.5.3): el nombre del slot vacío = su texto visible
+    // ("Pásame una foto Opcional"); la descripción completa vive en
+    // aria-describedby (sr-only) y lleva "opcional" en minúscula.
+    expect(slot!.getAttribute("aria-label")).toContain("Opcional");
+    const descId = slot!.getAttribute("aria-describedby");
+    expect(descId).toBeTruthy();
+    expect(container.querySelector(`#${CSS.escape(descId!)}`)!.textContent).toContain("opcional");
   });
 
   it("slot vacío SIN slotOptional (Cara A u otro producto): sin badge 'Opcional'", () => {
