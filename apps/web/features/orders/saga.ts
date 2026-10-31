@@ -32,7 +32,10 @@ import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./ser
 import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import { decrementStockForOrder } from "./stock";
 import { notifyStockSaleLost } from "./stock-alerts";
-import { inventoryUnitsForOrderItem, declaredValueCopPerInventoryUnit } from "@/features/personalization/design-units";
+import {
+  inventoryUnitsForOrderItem,
+  declaredValueCopPerInventoryUnit,
+} from "@/features/personalization/design-units";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { buildShipmentLastError } from "./shipment-error";
