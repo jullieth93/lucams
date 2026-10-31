@@ -176,7 +176,11 @@ export function StudioChecklist({
               <button
                 type="button"
                 onClick={() => onSelect?.(step.id)}
-                aria-label={`${step.label}: ${stateText}`}
+                // WCAG 2.5.3 (axe label-content-name-mismatch, nightly 2026-10-31):
+                // SIN aria-label — el nombre accesible sale del contenido visible
+                // (label + detalle + estado), con espacios REALES entre spans para
+                // que el texto computado lleve separación (sin ellos textContent
+                // pegaba "…plantillaPendiente" y el aria-label no calzaba).
                 className="hover:bg-brand-purple/5 focus:ring-brand-turquoise flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors focus:ring-2 focus:outline-none"
               >
                 <span
@@ -208,9 +212,15 @@ export function StudioChecklist({
                 </span>
                 <span
                   className={[
-                    "shrink-0 text-[10px] font-bold tracking-wide uppercase",
+                    "shrink-0 text-[10px] font-bold tracking-wide",
+                    // SIN `uppercase` (WCAG 2.5.3 / axe label-content-name-mismatch,
+                    // nightly 2026-10-31): el text-transform cambia el texto RENDERIZADO
+                    // ("PENDIENTE") y axe lo compara con el nombre accesible ("Pendiente")
+                    // → mismatch. Negrita + tracking conservan la lectura de etiqueta.
                     step.state === "complete"
-                      ? "text-emerald-600"
+                      ? // emerald-700 (5.2:1 sobre crema) — emerald-600 daba 3.54:1
+                        // (axe color-contrast serious, nightly 2026-10-31).
+                        "text-emerald-700"
                       : step.state === "pending"
                         ? "text-brand-purple"
                         : "text-brand-muted",
