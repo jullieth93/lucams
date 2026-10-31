@@ -215,7 +215,13 @@ export async function validatePhotoQuality(
     // Resize a 600 max dimension antes de analizar — análisis a fullres es
     // overkill (las métricas son escala-invariantes para imágenes naturales)
     // y come CPU innecesaria.
-    const sample = sharp(buffer).resize(600, 600, { fit: "inside", withoutEnlargement: true });
+    // LUC-SEC-005 — presupuesto explícito de píxeles aunque el caller ya
+    // normalizó: el contrato defensivo no depende del orden de los pipelines.
+    const sample = sharp(buffer, {
+      limitInputPixels: 50_000_000,
+      limitInputChannels: 4,
+      pages: 1,
+    }).resize(600, 600, { fit: "inside", withoutEnlargement: true });
 
     // Stats del canal grayscale → mean luminance.
     const greyStats = await sample.clone().grayscale().stats();

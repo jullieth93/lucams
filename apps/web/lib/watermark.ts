@@ -45,7 +45,10 @@ export async function applyTiledWatermark(
   opts?: { maxEdgePx?: number; quality?: number },
 ): Promise<{ data: Buffer; width: number; height: number }> {
   const sharp = (await import("@/features/personalization/sharp-safe")).default;
-  let img = sharp(buffer).rotate(); // auto-orient por EXIF + strip
+  // LUC-SEC-005 — presupuesto explícito de píxeles (defensa en profundidad: el
+  // input ya viene normalizado, pero el contrato no depende del orden).
+  const LIMITS = { limitInputPixels: 50_000_000, limitInputChannels: 4, pages: 1 };
+  let img = sharp(buffer, LIMITS).rotate(); // auto-orient por EXIF + strip
   if (opts?.maxEdgePx) {
     img = img.resize({
       width: opts.maxEdgePx,
@@ -55,7 +58,7 @@ export async function applyTiledWatermark(
     });
   }
   const resized = await img.toBuffer({ resolveWithObject: true });
-  const out = await sharp(resized.data)
+  const out = await sharp(resized.data, LIMITS)
     .composite([
       {
         input: Buffer.from(
