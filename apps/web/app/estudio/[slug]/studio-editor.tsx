@@ -2777,6 +2777,7 @@ export function StudioEditor({
             >
               <StudioCanvasGrid
                 store={store}
+                canvasDisabled={templatePending}
                 sizeCm={productConfig.sizeCm}
                 shape={productConfig.shape}
                 finish={productConfig.finish}

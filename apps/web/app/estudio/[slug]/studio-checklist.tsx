@@ -218,7 +218,9 @@ export function StudioChecklist({
                     // ("PENDIENTE") y axe lo compara con el nombre accesible ("Pendiente")
                     // → mismatch. Negrita + tracking conservan la lectura de etiqueta.
                     step.state === "complete"
-                      ? "text-emerald-600"
+                      ? // emerald-700 (5.2:1 sobre crema) — emerald-600 daba 3.54:1
+                        // (axe color-contrast serious, nightly 2026-10-31).
+                        "text-emerald-700"
                       : step.state === "pending"
                         ? "text-brand-purple"
                         : "text-brand-muted",
