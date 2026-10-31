@@ -66,6 +66,7 @@ import {
   uploadPreviewWatermarkArtifacts,
 } from "./preview-artifacts-server";
 import { PREVIEW_PAGES_MAX, designPreviewDerivedPaths } from "./preview-artifacts";
+import { PREVIEW_ROUTE_PREFIX } from "./preview-access";
 import {
   mergeVariantOverProduct,
   parseVariantAttributes,
@@ -953,12 +954,13 @@ export async function createLetterSetDesign(opts: {
 
 /**
  * 2026-10-13 — miniatura del DRAFT para "Mis diseños": sube el dataURL (≤400 px,
- * WebP/JPEG — lo genera el auto-save del Estudio, throttled) al bucket público
+ * WebP/JPEG — lo genera el auto-save del Estudio, throttled) al bucket
  * design-previews en el path FIJO `<designId>/draft-preview.<ext>` con upsert
  * (sobreescribe la anterior: NO acumula archivos por diseño; si cambia la
- * extensión entre navegadores, borra el archivo viejo). Devuelve la URL pública
- * o null si el payload no es una imagen aceptada. La purga de retención y el
- * barrido de huérfanos cubren estos bytes (path anclado al designId + columna
+ * extensión entre navegadores, borra el archivo viejo). Devuelve la URL
+ * AUTORIZADA del handler (LUC-SEC-001: el bucket ya no es público) o null si
+ * el payload no es una imagen aceptada. La purga de retención y el barrido de
+ * huérfanos cubren estos bytes (path anclado al designId + columna
  * Design.draftPreviewUrl en purgeDesignBatch/archiveCustomerDesign).
  */
 async function uploadDraftPreviewThumbnail(
@@ -974,8 +976,8 @@ async function uploadDraftPreviewThumbnail(
   // Cap defensivo server-side (el schema ya limita el string a ~160 KB
   // binarios): un thumbnail legítimo pesa 10-40 KB.
   if (buf.length === 0 || buf.length > 256 * 1024) return null;
-  // El bucket es PÚBLICO: verificar que el buffer decodifica como imagen del
-  // mime declarado antes de exponerlo (un blob arbitrario no se sube).
+  // Defensa en profundidad: verificar que el buffer decodifica como imagen del
+  // mime declarado antes de guardarlo (un blob arbitrario no se sube).
   const { sniffImageMime } = await import("@/lib/storage");
   if (sniffImageMime(buf) !== mime) return null;
 
@@ -1000,10 +1002,8 @@ async function uploadDraftPreviewThumbnail(
   if (previousPath && previousPath !== path) {
     await removeStorage(PREVIEWS_BUCKET, [previousPath]);
   }
-  const {
-    data: { publicUrl },
-  } = supabaseService.storage.from(BUCKET_PREVIEWS).getPublicUrl(path);
-  return publicUrl;
+  // LUC-SEC-001: URL autorizada del handler (el bucket ya no es público).
+  return `${PREVIEW_ROUTE_PREFIX}${path}`;
 }
 
 export async function saveCanvas(opts: {
@@ -1206,7 +1206,7 @@ export async function saveCanvas(opts: {
 //       finalize si hay slots vacíos; el server bloquea por defensa.
 //       Excepción 2026-09-22: con `backOptional` en el schema del producto
 //       las caras B —slots impares— pueden faltar; producción duplica la A)
-//   3. Sube preview compositado a bucket design-previews (público)
+//   3. Sube preview compositado a bucket design-previews (privado — migración 046)
 //   4. Sube N production PNGs a bucket production-assets (privado)
 //   5. Marca Design.status=READY, persiste previewUrl + productionUrls[]
 
@@ -1556,7 +1556,7 @@ export async function finalizeDesign(opts: {
   //
   // Va ANTES de subir el preview a propósito: la primera pasada de un diseño que necesita el
   // fallback termina en `NEEDS_CLIENT_SLOTS`, y si el cliente abandona ahí, un preview ya subido
-  // quedaría huérfano en un bucket PÚBLICO sin ninguna fila que lo referencie (revisión adversarial
+  // quedaría huérfano sin ninguna fila que lo referencie (revisión adversarial
   // 2026-07-25). Resolver primero los PNG deja el efecto de red recién cuando el finalize va a salir.
   let productionBuffers: Buffer[] | undefined;
   if (opts.productionBuffers) {
@@ -1678,7 +1678,7 @@ export async function finalizeDesign(opts: {
 
   // Subir preview compositado del grid completo. La extensión refleja el mime
   // REAL (T2, 2026-09-22: webp/jpg/png) — los consumers (OrderItem.designAssetUrl,
-  // admin) solo usan la URL pública, nunca asumen ".png".
+  // admin) usan la URL autorizada del handler, nunca asumen ".png".
   const previewMime = PREVIEW_ALLOWED_MIME.includes(opts.previewMime as PreviewMime)
     ? (opts.previewMime as PreviewMime)
     : "image/png";
@@ -1688,9 +1688,11 @@ export async function finalizeDesign(opts: {
     .upload(previewPath, opts.previewBuffer, {
       contentType: previewMime,
       // 1 año: el path va versionado por diseño (<designId>/preview.<ext>) y el contenido
-      // no cambia una vez finalizado (T4). OJO: si el diseño se RE-finaliza, el upsert
-      // pisa el mismo path y el CDN/navegador puede servir el preview anterior hasta que
-      // venza el cache — riesgo aceptado (re-finalize es excepcional y admin-driven).
+      // no cambia una vez finalizado (T4). El cacheControl del OBJETO ya no lo expone
+      // (bucket privado, migración 046): solo lo usa la descarga server-side del handler.
+      // OJO: si el diseño se RE-finaliza, el upsert pisa el mismo path y la caché
+      // privada del handler puede servir el preview anterior hasta 5 min — riesgo
+      // aceptado (re-finalize es excepcional y admin-driven).
       cacheControl: "31536000",
       upsert: true,
     });
@@ -1701,9 +1703,10 @@ export async function finalizeDesign(opts: {
     );
     throw new Error(`No pudimos subir el preview: ${pErr.message}`);
   }
-  const {
-    data: { publicUrl: previewPublicUrl },
-  } = supabase.storage.from(BUCKET_PREVIEWS).getPublicUrl(previewPath);
+  // LUC-SEC-001 (2026-10-30): el bucket ya NO es público — se persiste la URL
+  // AUTORIZADA del Route Handler (/api/design-preview/*), nunca getPublicUrl().
+  // La autorización se evalúa por request (dueño/admin/token watermark).
+  const previewPublicUrl = `${PREVIEW_ROUTE_PREFIX}${previewPath}`;
 
   // 2026-10-13 — artefactos WATERMARK del preview (anti-copia en las superficies
   // de exhibición: carrito, "Ver diseño", Mis diseños, /d/<token> + OG,
@@ -2146,9 +2149,9 @@ export async function ensureDesignShareToken(
  *
  * NO borramos previewUrl ni el objeto del bucket: las vistas de pedido (cliente,
  * confirmación y producción en admin) leen design.previewUrl en vivo para diseños
- * USED_IN_ORDER; borrarlo dejaría imágenes rotas en esas vistas. La imagen sigue
- * accesible en su URL pública directa para quien ya la tenga — retirarla del bucket
- * requiere desacoplar el pedido de la imagen del diseño (ver docs/DECISIONS.md).
+ * USED_IN_ORDER; borrarlo dejaría imágenes rotas en esas vistas. Con el bucket
+ * privado (migración 046) la imagen solo sale por el handler autorizado — retirarla
+ * del bucket requiere desacoplar el pedido de la imagen del diseño (ver docs/DECISIONS.md).
  */
 export async function archiveCustomerDesign(
   designId: string,
@@ -2173,9 +2176,10 @@ export async function archiveCustomerDesign(
   });
 
   // #1 (safe slice) — un diseño READY SIN pedido no lo referencia ninguna vista: al archivar borramos
-  // su preview del bucket PÚBLICO (design-previews) para no dejar la foto del cliente de por vida
-  // (minimización Ley 1581). El caso USED_IN_ORDER se conserva (las 3 vistas de pedido leen el preview
-  // en vivo) hasta implementar el snapshot del preview en OrderItem (ADR-056, opción A elegida por Lucy).
+  // su preview del bucket design-previews (privado desde la migración 046) para no dejar la foto del
+  // cliente de por vida (minimización Ley 1581). El caso USED_IN_ORDER se conserva (las 3 vistas de
+  // pedido leen el preview en vivo) hasta implementar el snapshot del preview en OrderItem (ADR-056,
+  // opción A elegida por Lucy).
   // 2026-10-13 — junto con el preview van sus artefactos derivados por convención
   // de paths (preview-wm.webp, thumb.webp, pages/NN.webp, wm/pages/NN.webp):
   // muestran la misma cara y nadie los referencia ya.
@@ -2288,7 +2292,8 @@ export async function saveDesignPreviewPages(opts: {
   }
   // El sello previewWatermarkedAt avala que preview-wm.webp + thumb.webp
   // EXISTEN. Si el finalize no logró su paso watermark (best-effort), se
-  // regenera el global desde el preview limpio ya público antes de sellar —
+  // regenera el global desde el preview limpio (descarga server-side de
+  // Storage — el bucket ya no es público) antes de sellar —
   // nunca se marca una URL que 404.
   const wmReady =
     design.previewWatermarkedAt !== null ||

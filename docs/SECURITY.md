@@ -584,6 +584,15 @@ export async function GET(req: Request) {
 
 Definidos en [`ARCHITECTURE.md` § Storage](./ARCHITECTURE.md#storage-supabase).
 
+### Lectura autorizada de previews de diseños (LUC-SEC-001, 2026-10-30)
+
+`design-previews` es **privado** (migración 046): los bytes solo salen por el Route Handler `GET /api/design-preview/<designId>/<archivo>` (`app/api/design-preview/[...path]/route.ts`), que autoriza por request con la matriz pura de `features/personalization/preview-access.ts`:
+
+- **Dueño** (cookie `cart_session` == `Design.sessionId`, o `Customer` autenticado) y **admin activo** → cualquier variante (limpio, páginas, borradores, watermark).
+- **Capacidad por token** (`?st=` share `/d/`, `?qt=` cotización, `?ot=` pedido — el join exige que la orden/cotización incluya ESE diseño) → **solo** variantes watermark.
+- Resto → 404 sin oráculo. Respuesta con `Cache-Control: private, max-age=300` (nada de caché pública para contenido personal).
+- `Design.previewUrl`/`draftPreviewUrl` y los snapshots (`OrderItem.designAssetUrl`, `QuoteItem.previewUrl`) persisten la URL del handler; las URLs públicas legacy se convierten al vuelo (`previewRefToAuthorizedUrl`) y un GET anónimo directo al bucket muere.
+
 ### Flujo de upload del estudio de personalización
 
 Implementado como **Server Action** `uploadDesignAssetAction` (`apps/web/features/personalization/actions.ts`) + `uploadCustomerPhoto` (`apps/web/lib/storage.ts`) — el archivo viaja al servidor (no hay endpoint `POST /api/upload/sign` ni upload directo del cliente a Storage):

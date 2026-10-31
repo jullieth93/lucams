@@ -69,6 +69,7 @@ import { unitCountNounForLine } from "@/features/cart/line-preview";
 import { isBookmarkGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
+import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 import {
   describeVariantAttributes,
   parseVariantAttributes,
@@ -563,13 +564,14 @@ async function ApprovedPage({
                 designMetadata: it.design?.metadata,
                 isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
               }).plural;
+              // LUC-SEC-001 — los refs del DISEÑO salen por el handler
+              // autorizado (cookie de sesión del comprador); las fotos de
+              // variante/producto viven en otro bucket y no se convierten.
+              const designRef = it.designAssetUrl ?? it.design?.previewUrl ?? null;
+              const designImg = designRef ? previewRefToAuthorizedUrl(designRef) : null;
               const img = disp?.watermarked
                 ? disp.displayUrl
-                : (it.designAssetUrl ??
-                  it.design?.previewUrl ??
-                  it.variant.images[0] ??
-                  it.variant.product.images[0] ??
-                  null);
+                : (designImg ?? it.variant.images[0] ?? it.variant.product.images[0] ?? null);
               const personalized = Boolean(it.designAssetUrl ?? it.design?.previewUrl);
               const breakdown = describeVariantAttributes(
                 parseVariantAttributes(it.variant.attributes),

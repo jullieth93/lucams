@@ -59,6 +59,7 @@ import { supabaseService } from "@/lib/supabase/service";
 import { logger } from "@/lib/logger";
 import { listStagedSlotPaths } from "./staged-slots";
 import { designPreviewDerivedPaths } from "./preview-artifacts";
+import { PREVIEW_ROUTE_PREFIX, parsePreviewStoragePath } from "./preview-access";
 
 const CUSTOMER_UPLOADS_BUCKET = "customer-uploads";
 export const PREVIEWS_BUCKET = "design-previews";
@@ -113,11 +114,19 @@ export function capRetentionDaysNonProd(days: number): number {
   return Math.min(days, RETENTION_NONPROD_MAX_DAYS);
 }
 
-/** Extrae el path de storage de una URL pública (previews). Si ya es un path, lo devuelve tal cual. */
+/**
+ * Extrae el path de storage de una ref de preview. Acepta tres formatos:
+ * URL pública legacy (bucket público, pre LUC-SEC-001), URL del handler
+ * autorizado `/api/design-preview/<path>` (formato vigente) o path pelado.
+ */
 export function pathFromPublicUrl(url: string, bucket: string): string | null {
   const marker = `/storage/v1/object/public/${bucket}/`;
   const i = url.indexOf(marker);
   if (i >= 0) return url.slice(i + marker.length);
+  if (bucket === "design-previews" && url.startsWith(PREVIEW_ROUTE_PREFIX)) {
+    const path = url.slice(PREVIEW_ROUTE_PREFIX.length).split("?")[0]!;
+    return parsePreviewStoragePath(path) ? path : null;
+  }
   return url.startsWith("http") ? null : url;
 }
 

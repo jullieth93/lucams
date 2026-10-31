@@ -2,11 +2,16 @@
  * Artefactos de visualización del preview de un diseño (2026-10-13).
  *
  * El finalize sube el montaje compositado LIMPIO a design-previews/<designId>/
- * preview.<ext> (bucket PÚBLICO). Encima de ese preview se derivan, por
- * convención de paths (sin columnas extra de URL — la existencia la sellan
+ * preview.<ext>. PRIVACIDAD (LUC-SEC-001, 2026-10-30): el bucket deja de ser
+ * público (migración 046) — los bytes solo salen por el Route Handler
+ * autorizado /api/design-preview/* y las URLs que este módulo deriva apuntan
+ * ahí (las URLs públicas legacy persistidas en filas viejas se CONVIERTEN al
+ * handler; un GET anónimo directo al bucket muere con 404).
+ *
+ * Convención de paths (sin columnas extra de URL — la existencia la sellan
  * Design.previewWatermarkedAt / Design.previewPagesCount):
  *
- *   <designId>/preview.<ext>        preview global LIMPIO (admin / snapshots)
+ *   <designId>/preview.<ext>        preview global LIMPIO (dueño / admin)
  *   <designId>/preview-wm.webp      preview global CON watermark (exhibición)
  *   <designId>/pages/NN.webp        página por unidad LIMPIA (01-based, pad 2)
  *   <designId>/wm/pages/NN.webp     página por unidad CON watermark
@@ -21,13 +26,24 @@
  *   - Admin y producción (production-assets, privado) → LIMPIOS siempre.
  *   - Borradores (draft-preview.<ext>) → sin watermark (solo los ve el dueño).
  *
+ * Autorización (quién puede ABRIR cada variante — preview-access.ts):
+ *   - Limpios y borradores: dueño (cookie/cuenta) o admin. NUNCA por token.
+ *   - Watermark: dueño/admin o capacidad por token (st=share, qt=cotización,
+ *     ot=pedido) — las superficies públicas la pasan por `capability`.
+ *
  * Fallbacks: sin previewWatermarkedAt la superficie cae al preview limpio
- * (diseños anteriores al backfill o fallo best-effort del pipeline); sin
- * previewPagesCount el "Ver" paginado cae al preview global watermarked.
+ * (visible solo para dueño/admin — en superficies por token la imagen no
+ * carga, fail-closed); sin previewPagesCount el "Ver" paginado cae al global.
  *
  * Módulo PURO (sin server-only ni sharp): lo importan server components,
  * features y tests por igual.
  */
+
+import {
+  parsePreviewStoragePath,
+  previewStoragePathFromRef,
+  PREVIEW_ROUTE_PREFIX,
+} from "./preview-access";
 
 /** Tope de páginas por unidad aceptadas en el upload (un diseño no pasa de esto). */
 export const PREVIEW_PAGES_MAX = 24;
@@ -74,35 +90,39 @@ export function designPreviewDerivedPaths(designId: string, pagesCount?: number 
   return paths;
 }
 
-// ──────────── URLs públicas derivadas de Design.previewUrl ────────────
+// ──────────── URLs autorizadas (Route Handler /api/design-preview/*) ────────────
 
 /**
- * Base pública del preview ("…/design-previews/<designId>/") a partir de
- * Design.previewUrl. null si la URL no sigue la convención (<id>/preview.<ext>)
- * — diseños históricos raros degradan al preview limpio tal cual.
+ * Capacidad por token para superficies públicas: `st` (share /d/<token>),
+ * `qt` (cotización), `ot` (pedido). El handler solo la honra en variantes
+ * watermark — un token nunca abre el preview limpio ni los borradores.
  */
-export function designPreviewBaseFromUrl(previewUrl: string): string | null {
-  const idx = previewUrl.lastIndexOf("/preview.");
-  if (idx === -1) return null;
-  return `${previewUrl.slice(0, idx)}/`;
+export type PreviewCapability = { name: "st" | "qt" | "ot"; value: string };
+
+function withCapability(url: string, capability?: PreviewCapability): string {
+  return capability ? `${url}?${capability.name}=${encodeURIComponent(capability.value)}` : url;
 }
 
-export function designPreviewWmUrl(previewUrl: string): string | null {
-  const base = designPreviewBaseFromUrl(previewUrl);
-  return base ? `${base}preview-wm.webp` : null;
+/** URL autorizada de un path del bucket (validada contra la allowlist). */
+export function designPreviewAuthorizedUrl(
+  path: string,
+  capability?: PreviewCapability,
+): string | null {
+  if (!parsePreviewStoragePath(path)) return null;
+  return withCapability(`${PREVIEW_ROUTE_PREFIX}${path}`, capability);
 }
 
-export function designPreviewThumbUrl(previewUrl: string): string | null {
-  const base = designPreviewBaseFromUrl(previewUrl);
-  return base ? `${base}thumb.webp` : null;
-}
-
-/** URLs de las páginas CON watermark (01-based). [] si count < 1 o URL fuera de convención. */
-export function designPreviewWmPageUrls(previewUrl: string, pagesCount: number): string[] {
-  const base = designPreviewBaseFromUrl(previewUrl);
-  const n = Math.min(PREVIEW_PAGES_MAX, Math.trunc(pagesCount) || 0);
-  if (!base || n < 1) return [];
-  return Array.from({ length: n }, (_, i) => `${base}wm/pages/${previewPageFileStem(i + 1)}.webp`);
+/**
+ * Convierte cualquier ref persistida (handler URL nueva o URL pública legacy
+ * de filas anteriores a LUC-SEC-001) a la URL autorizada. null si no sigue
+ * ninguna convención — una ref desconocida no se sirve (fail-closed).
+ */
+export function previewRefToAuthorizedUrl(
+  ref: string,
+  capability?: PreviewCapability,
+): string | null {
+  const path = previewStoragePathFromRef(ref);
+  return path ? designPreviewAuthorizedUrl(path, capability) : null;
 }
 
 /** Subconjunto del Design que la selección de exhibición necesita. */
@@ -127,26 +147,43 @@ export type DesignPreviewDisplay = {
 
 /**
  * Selección de exhibición con watermark (decisión 2026-10-13): prefiere las
- * versiones watermark y cae al preview limpio cuando no existen. null si el
- * diseño no tiene preview.
+ * versiones watermark y cae al preview limpio cuando no existen. Todas las
+ * URLs salen por el handler autorizado (el bucket ya no es público): las
+ * superficies con sesión (carrito, cuenta, admin) no necesitan capability;
+ * las públicas (/d/, cotización, pedido por token) la pasan para las
+ * variantes watermark. null si el diseño no tiene preview o la ref no sigue
+ * la convención (fail-closed: la URL vieja ya no resuelve de todos modos).
  */
 export function designPreviewDisplay(
   design: DesignPreviewArtifactState,
+  capability?: PreviewCapability,
 ): DesignPreviewDisplay | null {
   if (!design.previewUrl) return null;
+  const cleanPath = previewStoragePathFromRef(design.previewUrl);
+  const designId = cleanPath ? parsePreviewStoragePath(cleanPath)!.designId : null;
+  if (!cleanPath || !designId) return null;
+  const cleanUrl = designPreviewAuthorizedUrl(cleanPath, capability)!;
   const hasWm = design.previewWatermarkedAt !== null;
-  const wmUrl = hasWm ? designPreviewWmUrl(design.previewUrl) : null;
-  const thumbUrl = hasWm ? designPreviewThumbUrl(design.previewUrl) : null;
+  const wmUrl = hasWm
+    ? designPreviewAuthorizedUrl(designPreviewWmPath(designId), capability)
+    : null;
+  const thumbUrl = hasWm
+    ? designPreviewAuthorizedUrl(designPreviewThumbPath(designId), capability)
+    : null;
   // Las páginas (siempre watermark por convención de paths) se rigen por su
   // propio sello: llegan en un request posterior al finalize, así que su
   // existencia es independiente de la del preview-wm global.
   const pages =
     (design.previewPagesCount ?? 0) > 1
-      ? designPreviewWmPageUrls(design.previewUrl, design.previewPagesCount!)
+      ? Array.from(
+          { length: Math.min(PREVIEW_PAGES_MAX, Math.trunc(design.previewPagesCount!)) },
+          (_, i) =>
+            designPreviewAuthorizedUrl(designPreviewWmPagePath(designId, i + 1), capability)!,
+        )
       : [];
   return {
-    displayUrl: wmUrl ?? design.previewUrl,
-    thumbUrl: thumbUrl ?? wmUrl ?? design.previewUrl,
+    displayUrl: wmUrl ?? cleanUrl,
+    thumbUrl: thumbUrl ?? wmUrl ?? cleanUrl,
     pageUrls: pages.length > 1 ? pages : null,
     watermarked: wmUrl !== null || pages.length > 1,
   };

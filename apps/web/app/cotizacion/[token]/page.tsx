@@ -29,6 +29,7 @@ import { getCmsBlock } from "@/lib/cms";
 import { formatCOP, formatCityDept } from "@/lib/format";
 import { buildPublicShareUrl } from "@/lib/public-url";
 import { buildQuoteWhatsAppUrl, getQuoteByToken } from "@/features/quotes/service";
+import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 import { CopyQuoteLink } from "./copy-quote-link";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -112,12 +113,18 @@ export default async function CotizacionPage({ params }: { params: Params }) {
               {quote.items.map((item, idx) => {
                 // La variante "Default" es interna (productos sin opciones) — no se muestra.
                 const showVariant = item.variantName && item.variantName !== "Default";
+                // LUC-SEC-001 — el snapshot (handler URL nueva o pública legacy)
+                // se convierte a la URL autorizada con la capacidad ?qt= de ESTA
+                // cotización (el handler verifica que la quote incluya el diseño).
+                const previewSrc = item.previewUrl
+                  ? previewRefToAuthorizedUrl(item.previewUrl, { name: "qt", value: token })
+                  : null;
                 return (
                   <li key={idx} className="flex items-start gap-3 py-3">
                     <div className="bg-brand-purple/5 relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg">
-                      {item.previewUrl ? (
+                      {previewSrc ? (
                         <Image
-                          src={item.previewUrl}
+                          src={previewSrc}
                           alt=""
                           fill
                           sizes="48px"

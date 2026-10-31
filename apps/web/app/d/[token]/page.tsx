@@ -6,6 +6,9 @@
  * datos de la cuenta. Token imposible de adivinar (32 hex) → sin IDOR. noindex (es un
  * diseño personal, no contenido de catálogo). El preview sirve como OG image para que
  * al compartir por WhatsApp/redes se vea la miniatura.
+ *
+ * LUC-SEC-001 (2026-10-30): las imágenes salen por /api/design-preview/* con la
+ * capacidad ?st=<token> (solo variantes watermark — el limpio queda para dueño/admin).
  */
 
 import { cache } from "react";
@@ -16,6 +19,7 @@ import { Sparkles } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { CmsText } from "@/components/cms/cms-text";
 import { SITE_NAME } from "@/lib/site";
+import { getCanonicalSiteUrl } from "@/lib/origin";
 import { getSharedDesign } from "@/features/personalization/service";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 
@@ -33,8 +37,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const design = await loadSharedDesign(token);
   if (!design) return { title: "Diseño no encontrado", robots: { index: false } };
   // 2026-10-13 — la OG image también es la versión WATERMARK (anti-copia al
-  // compartir por WhatsApp/redes); fallback al preview limpio si no existe.
-  const display = designPreviewDisplay(design);
+  // compartir por WhatsApp/redes). LUC-SEC-001: URL absoluta del handler con la
+  // capacidad ?st= (el crawler de OG no trae cookies ni sesión).
+  const display = designPreviewDisplay(design, { name: "st", value: token });
+  const siteUrl = getCanonicalSiteUrl();
   return {
     title: `Un ${design.product.name} personalizado`,
     description: `Mira este ${design.product.name} hecho en el Estudio de ${SITE_NAME}. Crea el tuyo con tus fotos.`,
@@ -42,7 +48,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     openGraph: {
       title: `Un ${design.product.name} personalizado · ${SITE_NAME}`,
       description: `Hecho en el Estudio de ${SITE_NAME} 🦝✨`,
-      images: display ? [{ url: display.displayUrl }] : [],
+      images: display ? [{ url: `${siteUrl}${display.displayUrl}` }] : [],
     },
   };
 }
@@ -54,7 +60,8 @@ export default async function SharedDesignPage({ params }: { params: Params }) {
 
   // 2026-10-13 — la vista pública exhibe la versión WATERMARK del preview
   // (anti-copia); el aviso aclara que la impresión final no la lleva.
-  const display = designPreviewDisplay(design);
+  // LUC-SEC-001: con la capacidad ?st= del token de compartir.
+  const display = designPreviewDisplay(design, { name: "st", value: token });
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -83,7 +90,7 @@ export default async function SharedDesignPage({ params }: { params: Params }) {
           </h1>
 
           <div className="border-brand-purple/15 mx-auto mt-6 max-w-sm overflow-hidden rounded-2xl border bg-white p-3 shadow-sm">
-            {/* eslint-disable-next-line @next/next/no-img-element -- preview público de Supabase */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- preview autorizado vía /api/design-preview */}
             <img
               src={display?.displayUrl ?? ""}
               alt={`Diseño de ${design.product.name}`}

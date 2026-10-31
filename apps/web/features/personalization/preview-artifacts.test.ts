@@ -1,29 +1,34 @@
 /*
- * preview-artifacts (2026-10-13) — convención de paths de los artefactos
- * watermark del preview y selección de exhibición (fallbacks):
+ * preview-artifacts (2026-10-13, actualizado LUC-SEC-001 2026-10-30) —
+ * convención de paths de los artefactos watermark del preview y selección de
+ * exhibición (fallbacks):
  *   - preview-wm.webp / thumb.webp solo se exhiben con el sello
  *     previewWatermarkedAt; las páginas (wm/pages/NN.webp) con previewPagesCount.
  *   - Sin artefactos, las superficies caen al preview LIMPIO.
+ *   - TODAS las URLs de exhibición salen por el handler autorizado
+ *     /api/design-preview/* (el bucket ya no es público); las refs públicas
+ *     legacy se convierten, y una ref fuera de convención → null (fail-closed).
  * Módulo puro: estos tests no tocan DB ni Storage.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   PREVIEW_PAGES_MAX,
-  designPreviewBaseFromUrl,
+  designPreviewAuthorizedUrl,
   designPreviewDerivedPaths,
   designPreviewDisplay,
   designPreviewPagePath,
   designPreviewThumbPath,
-  designPreviewThumbUrl,
   designPreviewWmPagePath,
-  designPreviewWmPageUrls,
   designPreviewWmPath,
-  designPreviewWmUrl,
   previewPageFileStem,
+  previewRefToAuthorizedUrl,
 } from "./preview-artifacts";
 
-const PREVIEW_URL =
+// Ref NUEVA (la que persiste el código post LUC-SEC-001) y su equivalente
+// LEGACY (URL pública del bucket, filas anteriores a la migración 046).
+const REF_NEW = "/api/design-preview/abc123/preview.webp";
+const REF_LEGACY =
   "https://ref.supabase.co/storage/v1/object/public/design-previews/abc123/preview.webp";
 
 describe("convención de paths (bucket design-previews)", () => {
@@ -59,28 +64,28 @@ describe("convención de paths (bucket design-previews)", () => {
   });
 });
 
-describe("derivación de URLs desde Design.previewUrl", () => {
-  it("base y variantes", () => {
-    expect(designPreviewBaseFromUrl(PREVIEW_URL)).toBe(
-      "https://ref.supabase.co/storage/v1/object/public/design-previews/abc123/",
+describe("URLs autorizadas (handler /api/design-preview/*)", () => {
+  it("path válido → URL del handler; con capability → query string", () => {
+    expect(designPreviewAuthorizedUrl("abc123/preview-wm.webp")).toBe(
+      "/api/design-preview/abc123/preview-wm.webp",
     );
-    expect(designPreviewWmUrl(PREVIEW_URL)).toBe(
-      "https://ref.supabase.co/storage/v1/object/public/design-previews/abc123/preview-wm.webp",
-    );
-    expect(designPreviewThumbUrl(PREVIEW_URL)).toBe(
-      "https://ref.supabase.co/storage/v1/object/public/design-previews/abc123/thumb.webp",
-    );
-    expect(designPreviewWmPageUrls(PREVIEW_URL, 2)).toEqual([
-      "https://ref.supabase.co/storage/v1/object/public/design-previews/abc123/wm/pages/01.webp",
-      "https://ref.supabase.co/storage/v1/object/public/design-previews/abc123/wm/pages/02.webp",
-    ]);
+    expect(
+      designPreviewAuthorizedUrl("abc123/preview-wm.webp", { name: "st", value: "tok 32" }),
+    ).toBe("/api/design-preview/abc123/preview-wm.webp?st=tok%2032");
   });
 
-  it("URL fuera de convención (sin /preview.) → null / []", () => {
-    const rara = "https://cdn.ajena.test/img/foo.png";
-    expect(designPreviewBaseFromUrl(rara)).toBeNull();
-    expect(designPreviewWmUrl(rara)).toBeNull();
-    expect(designPreviewWmPageUrls(rara, 3)).toEqual([]);
+  it("path fuera de allowlist → null", () => {
+    expect(designPreviewAuthorizedUrl("abc123/preview.gif")).toBeNull();
+    expect(designPreviewAuthorizedUrl("../etc/passwd")).toBeNull();
+  });
+
+  it("previewRefToAuthorizedUrl convierte ref nueva y legacy; rechaza ajenas", () => {
+    expect(previewRefToAuthorizedUrl(REF_NEW)).toBe("/api/design-preview/abc123/preview.webp");
+    expect(previewRefToAuthorizedUrl(REF_LEGACY)).toBe("/api/design-preview/abc123/preview.webp");
+    expect(previewRefToAuthorizedUrl(REF_LEGACY, { name: "ot", value: "tok" })).toBe(
+      "/api/design-preview/abc123/preview.webp?ot=tok",
+    );
+    expect(previewRefToAuthorizedUrl("https://evil.test/abc123/preview.webp")).toBeNull();
   });
 });
 
@@ -95,43 +100,59 @@ describe("designPreviewDisplay — selección con fallback", () => {
     ).toBeNull();
   });
 
-  it("sin artefactos (diseño histórico): cae al preview limpio, sin pager", () => {
-    const d = designPreviewDisplay({
-      previewUrl: PREVIEW_URL,
-      previewWatermarkedAt: null,
-      previewPagesCount: null,
-    });
-    expect(d).toEqual({
-      displayUrl: PREVIEW_URL,
-      thumbUrl: PREVIEW_URL,
-      pageUrls: null,
-      watermarked: false,
-    });
+  it("ref fuera de convención → null (fail-closed: la URL vieja ya no resuelve)", () => {
+    expect(
+      designPreviewDisplay({
+        previewUrl: "https://cdn.ajena.test/img/foo.png",
+        previewWatermarkedAt: new Date(),
+        previewPagesCount: null,
+      }),
+    ).toBeNull();
   });
 
-  it("con sello watermark: exhibe preview-wm y thumb watermark", () => {
+  it.each([
+    ["nueva", REF_NEW],
+    ["legacy", REF_LEGACY],
+  ] as const)(
+    "sin artefactos (ref %s): cae al preview limpio AUTORIZADO, sin pager",
+    (_label, ref) => {
+      const d = designPreviewDisplay({
+        previewUrl: ref,
+        previewWatermarkedAt: null,
+        previewPagesCount: null,
+      });
+      expect(d).toEqual({
+        displayUrl: "/api/design-preview/abc123/preview.webp",
+        thumbUrl: "/api/design-preview/abc123/preview.webp",
+        pageUrls: null,
+        watermarked: false,
+      });
+    },
+  );
+
+  it("con sello watermark: exhibe preview-wm y thumb watermark por el handler", () => {
     const d = designPreviewDisplay({
-      previewUrl: PREVIEW_URL,
+      previewUrl: REF_NEW,
       previewWatermarkedAt: new Date(),
       previewPagesCount: null,
     });
-    expect(d?.displayUrl).toBe(designPreviewWmUrl(PREVIEW_URL));
-    expect(d?.thumbUrl).toBe(designPreviewThumbUrl(PREVIEW_URL));
+    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview-wm.webp");
+    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/thumb.webp");
     expect(d?.pageUrls).toBeNull();
     expect(d?.watermarked).toBe(true);
   });
 
   it("con páginas: el pager usa las wm/pages; 1 sola página no pagina", () => {
     const d = designPreviewDisplay({
-      previewUrl: PREVIEW_URL,
+      previewUrl: REF_NEW,
       previewWatermarkedAt: new Date(),
       previewPagesCount: 3,
     });
     expect(d?.pageUrls).toHaveLength(3);
-    expect(d?.pageUrls?.[0]).toContain("/wm/pages/01.webp");
+    expect(d?.pageUrls?.[0]).toBe("/api/design-preview/abc123/wm/pages/01.webp");
 
     const una = designPreviewDisplay({
-      previewUrl: PREVIEW_URL,
+      previewUrl: REF_NEW,
       previewWatermarkedAt: new Date(),
       previewPagesCount: 1,
     });
@@ -140,13 +161,27 @@ describe("designPreviewDisplay — selección con fallback", () => {
 
   it("páginas sin sello global (edge: finalize wm falló, páginas llegaron): paginan watermark pero el display cae al limpio", () => {
     const d = designPreviewDisplay({
-      previewUrl: PREVIEW_URL,
+      previewUrl: REF_NEW,
       previewWatermarkedAt: null,
       previewPagesCount: 2,
     });
-    expect(d?.displayUrl).toBe(PREVIEW_URL);
-    expect(d?.thumbUrl).toBe(PREVIEW_URL);
+    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp");
+    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/preview.webp");
     expect(d?.pageUrls).toHaveLength(2);
     expect(d?.watermarked).toBe(true); // las páginas sí llevan marca
+  });
+
+  it("con capability (superficie pública por token): TODAS las URLs la llevan", () => {
+    const d = designPreviewDisplay(
+      {
+        previewUrl: REF_LEGACY,
+        previewWatermarkedAt: new Date(),
+        previewPagesCount: 2,
+      },
+      { name: "st", value: "token32hex" },
+    );
+    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview-wm.webp?st=token32hex");
+    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/thumb.webp?st=token32hex");
+    expect(d?.pageUrls?.[0]).toBe("/api/design-preview/abc123/wm/pages/01.webp?st=token32hex");
   });
 });
