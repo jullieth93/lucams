@@ -67,7 +67,7 @@ import {
 } from "@/features/personalization/preview-page-labels";
 import { unitCountNounForLine } from "@/features/cart/line-preview";
 import { isBookmarkGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
-import { DesignPreviewDialog } from "@/components/design-preview-dialog";
+import { PagedPreviewThumb } from "@/components/paged-preview-thumb";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 import {
@@ -615,9 +615,28 @@ async function ApprovedPage({
                     // Miniatura clicable → lightbox compartido (zoom + pager por
                     // unidad). El botón «Ver» no aplica acá: la miniatura ES el
                     // disparador (prop trigger del diálogo).
-                    <DesignPreviewDialog
+                    // 2026-10-31 (owner) — la miniatura PAGINA por unidad como
+                    // cualquier otro preview (PagedPreviewThumb con chevrons ‹ ›);
+                    // antes era estática y el paginado solo vivía en el «Ver».
+                    <PagedPreviewThumb
+                      pages={disp.pageUrls ?? []}
+                      fallbackUrl={img}
+                      alt={it.variant.product.name}
+                      contain={personalized}
+                      placeholder={<Sparkles className="text-brand-muted h-6 w-6" />}
+                      badge={
+                        <DesignUnitsBadge
+                          count={disp?.pageUrls?.length ?? 0}
+                          label={
+                            <CmsText
+                              blockKey="checkout.gracias.unidades-badge"
+                              fallback={unitNounPlural}
+                            />
+                          }
+                        />
+                      }
+                      sizeClassName="border-brand-purple/10 h-20 w-20 overflow-hidden rounded-lg border bg-white sm:h-24 sm:w-24"
                       previewUrl={disp.displayUrl}
-                      pages={disp.pageUrls}
                       pageLabels={pageLabels}
                       watermarkNote={
                         disp.watermarked ? (
@@ -628,15 +647,6 @@ async function ApprovedPage({
                         ) : null
                       }
                       productName={it.variant.product.name}
-                      trigger={
-                        <button
-                          type="button"
-                          aria-label={`Ver el diseño de ${it.variant.product.name}`}
-                          className="border-brand-purple/10 focus-visible:ring-brand-turquoise relative h-20 w-20 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-white focus-visible:ring-2 focus-visible:outline-none sm:h-24 sm:w-24"
-                        >
-                          {thumb}
-                        </button>
-                      }
                       title={
                         <CmsText
                           blockKey="cart.vista-previa-diseno-titulo"
