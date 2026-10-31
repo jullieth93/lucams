@@ -35,6 +35,7 @@ import { IconSubmitButton } from "./qty-button";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { dedupeCartLineDetail, type UnitNoun } from "@/features/cart/line-preview";
+import { isPreviewHandlerUrl } from "@/features/personalization/preview-artifacts";
 
 export const metadata: Metadata = {
   title: "Carrito",
@@ -102,6 +103,13 @@ export default async function CarritoPage() {
                           // (object-cover cuadrado se comía los bordes del
                           // diseño — line-preview.ts). Foto de catálogo: cover.
                           className={item.designId ? "object-contain p-1.5" : "object-cover"}
+                          // Las URLs del handler /api/design-preview/* NO pueden
+                          // pasar por el optimizer: no reenvía cookies (el handler
+                          // autoriza por cart_session/cuenta → 404) y las variantes
+                          // con capacidad llevan query (Next 16 las bloquea sin
+                          // images.localPatterns). El navegador pega directo.
+                          // (Regresión LUC-SEC-001, 2026-10-31 — miniatura vacía.)
+                          unoptimized={isPreviewHandlerUrl(item.imageUrl)}
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">

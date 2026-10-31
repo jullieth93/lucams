@@ -21,6 +21,7 @@ import {
   designPreviewThumbPath,
   designPreviewWmPagePath,
   designPreviewWmPath,
+  isPreviewHandlerUrl,
   previewPageFileStem,
   previewRefToAuthorizedUrl,
 } from "./preview-artifacts";
@@ -183,5 +184,22 @@ describe("designPreviewDisplay — selección con fallback", () => {
     expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview-wm.webp?st=token32hex");
     expect(d?.thumbUrl).toBe("/api/design-preview/abc123/thumb.webp?st=token32hex");
     expect(d?.pageUrls?.[0]).toBe("/api/design-preview/abc123/wm/pages/01.webp?st=token32hex");
+  });
+});
+
+describe("isPreviewHandlerUrl — gate del `unoptimized` en next/image", () => {
+  // Regresión 2026-10-31: la miniatura del carrito se veía vacía porque el
+  // optimizer de next/image no reenvía cookies al fetchear el src (handler
+  // 404) y Next 16 bloquea locales con query sin images.localPatterns.
+  it("detecta las URLs del handler (con y sin capacidad)", () => {
+    expect(isPreviewHandlerUrl("/api/design-preview/abc123/thumb.webp")).toBe(true);
+    expect(isPreviewHandlerUrl("/api/design-preview/abc123/thumb.webp?st=tok")).toBe(true);
+  });
+
+  it("no toca imágenes públicas de catálogo (siguen optimizadas)", () => {
+    expect(
+      isPreviewHandlerUrl("https://ref.supabase.co/storage/v1/object/public/product-images/x.webp"),
+    ).toBe(false);
+    expect(isPreviewHandlerUrl("/_next/static/media/logo.png")).toBe(false);
   });
 });
