@@ -45,6 +45,9 @@ import {
 import { createLetterSetDesign, finalizeDesign } from "./service";
 
 const RUN = `fichas${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
+// LUC-SEC-001 — la cookie cart_session es UUID v4 (el handler la valida por
+// formato); el diseño del finalize usa una sesión con formato real.
+const OWNER_SESSION = crypto.randomUUID();
 
 // Alfabeto "es" (27 letras, incluye Ñ) — fuente única para el set completo y las aserciones.
 const ES_ALPHABET = ALPHABET.es ?? [];
@@ -238,7 +241,7 @@ describe.skipIf(!canRunStorage)("certificación fichas end-to-end (Ola 2A + Ola 
         styleSetId: setId,
         language: "es",
         customerId: null,
-        sessionId: `test-${RUN}`,
+        sessionId: OWNER_SESSION,
       });
       designId = created.id;
       // El diseño queda con las 5 vocales y el idioma del Estudio (no el de la variante).
@@ -263,15 +266,28 @@ describe.skipIf(!canRunStorage)("certificación fichas end-to-end (Ola 2A + Ola 
         previewBuffer: preview,
         productionBuffers: [preview],
         customerId: null,
-        sessionId: `test-${RUN}`,
+        sessionId: OWNER_SESSION,
       });
       expect(finalized.status).toBe("READY");
-      expect(finalized.previewUrl).toContain("design-previews");
+      // LUC-SEC-001 — se persiste la URL AUTORIZADA del handler (bucket privado).
+      expect(finalized.previewUrl).toBe(`/api/design-preview/${designId}/preview.png`);
       expect(finalized.productionUrls).toHaveLength(1);
 
-      // El preview quedó público (es el thumbnail que ve el carrito/cotización).
-      const res = await fetch(finalized.previewUrl!);
+      // Certificación real end-to-end: el handler sirve los bytes al DUEÑO
+      // (cookie cart_session) y la URL pública vieja está muerta.
+      const { GET } = await import("@/app/api/design-preview/[...path]/route");
+      const res = await GET(
+        new Request(`http://localhost${finalized.previewUrl}`, {
+          headers: { cookie: `cart_session=${OWNER_SESSION}` },
+        }),
+        { params: Promise.resolve({ path: [designId, "preview.png"] }) },
+      );
       expect(res.status).toBe(200);
+      expect(Buffer.from(await res.arrayBuffer()).equals(preview)).toBe(true);
+      const publicRes = await fetch(
+        `${strip(process.env.NEXT_PUBLIC_SUPABASE_URL)}/storage/v1/object/public/design-previews/${designId}/preview.png`,
+      );
+      expect(publicRes.ok).toBe(false);
     },
   );
 

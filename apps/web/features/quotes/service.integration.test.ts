@@ -73,7 +73,10 @@ let namedVariantId = "";
 let designId = "";
 const DEFAULT_PRICE = 12_000; // centavos
 const NAMED_PRICE = 20_000; // centavos
-const DESIGN_PREVIEW = "https://cdn.lucams.test/preview-quote.png";
+// LUC-SEC-001 — la fixture usa el formato LEGACY real (URL pública del bucket
+// pre-046); el carrito la convierte a la URL autorizada del handler y ESA es la
+// que el snapshot de la cotización persiste.
+const DESIGN_PREVIEW_LEGACY = "https://cdn.lucams.test/storage/v1/object/public/design-previews";
 
 function sid(label: string): string {
   return `${RUN}-${label}-${Math.floor(Math.random() * 1e9)}`;
@@ -162,11 +165,14 @@ describe.skipIf(!hasDb)(
           productId,
           status: "READY",
           canvasData: {},
-          previewUrl: DESIGN_PREVIEW,
         },
         select: { id: true },
       });
       designId = design.id;
+      await prisma.design.update({
+        where: { id: design.id },
+        data: { previewUrl: `${DESIGN_PREVIEW_LEGACY}/${design.id}/preview.png` },
+      });
     });
 
     afterAll(async () => {
@@ -252,7 +258,7 @@ describe.skipIf(!hasDb)(
         const personalized = quote!.items.find((i) => i.quantity === 1)!;
         expect(personalized.variantName).toBe("Set 12");
         expect(personalized.designId).toBe(designId);
-        expect(personalized.previewUrl).toBe(DESIGN_PREVIEW);
+        expect(personalized.previewUrl).toBe(`/api/design-preview/${designId}/preview.png`);
 
         // El carrito quedó VACÍO (soft-delete "quote:create", como el checkout).
         const cartAfter = await prisma.cart.findUnique({ where: { id: cart.id } });

@@ -229,9 +229,8 @@ describe.skipIf(!hasDb)("finalizeDesign — orquestación (I/O de storage mockea
     });
     expect(updated.status).toBe("READY");
     expect(updated.productionUrls).toEqual([`${designId}/slot-01.png`]);
-    expect(updated.previewUrl).toBe(
-      `https://mock.supabase/design-previews/${designId}/preview.png`,
-    );
+    // LUC-SEC-001 — se persiste la URL autorizada del handler, no la pública.
+    expect(updated.previewUrl).toBe(`/api/design-preview/${designId}/preview.png`);
     // Antes del worker: lo último subido es el PNG del cliente (50px).
     const first = productionUploadLast(designId);
     expect(first).toBeDefined();

@@ -43,6 +43,7 @@ import { WarrantyControl } from "./warranty-control";
 import { reorderAction } from "./actions";
 import { ReorderControl } from "@/components/orders/reorder-control";
 import { getAccountTexts } from "../../account-texts.server";
+import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 
 export const metadata: Metadata = {
   title: "Detalle de mi pedido",
@@ -260,9 +261,14 @@ export default async function CustomerPedidoDetallePage({
               designMetadata: it.design?.metadata,
               isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
             }).plural;
+            // LUC-SEC-001 — snapshot/fallback del diseño por el handler
+            // autorizado (sesión del cliente dueño del pedido).
+            const fallbackRef = it.designAssetUrl ?? it.design?.previewUrl ?? null;
             const previewUrl = disp?.watermarked
               ? disp.displayUrl
-              : (it.designAssetUrl ?? it.design?.previewUrl ?? null); // ADR-070 — snapshot primero
+              : fallbackRef
+                ? previewRefToAuthorizedUrl(fallbackRef)
+                : null; // ADR-070 — snapshot primero
             // Paquete F (2026-10-02) — desglose estructurado de la variante.
             const variantBreakdown = describeVariantAttributes(
               parseVariantAttributes(it.variant.attributes),

@@ -20,6 +20,7 @@ import {
   designPreviewWmPagePath,
   designPreviewWmPath,
 } from "./preview-artifacts";
+import { previewStoragePathFromRef } from "./preview-access";
 
 const PREVIEWS_BUCKET = "design-previews";
 
@@ -81,16 +82,21 @@ export async function uploadPreviewWatermarkArtifacts(
 /**
  * Red de seguridad (rara): el finalize subió el preview limpio pero su paso
  * watermark falló. Regenera SOLO preview-wm.webp descargando el preview limpio
- * ya público. Devuelve true si el objeto quedó subido.
+ * directo de Storage (LUC-SEC-001: el bucket ya no es público — el fetch HTTP
+ * de la URL vieja murió con la migración 046). Acepta la ref en cualquiera de
+ * los dos formatos persistidos (handler nuevo / pública legacy). Devuelve true
+ * si el objeto quedó subido.
  */
 export async function ensurePreviewWatermarkGlobal(
   designId: string,
   previewUrl: string,
 ): Promise<boolean> {
   try {
-    const res = await fetch(previewUrl);
-    if (!res.ok) return false;
-    const buffer = Buffer.from(await res.arrayBuffer());
+    const path = previewStoragePathFromRef(previewUrl);
+    if (!path) return false;
+    const { data, error } = await supabaseService.storage.from(PREVIEWS_BUCKET).download(path);
+    if (error || !data) return false;
+    const buffer = Buffer.from(await data.arrayBuffer());
     const wm = await applyTiledWatermark(buffer);
     return await uploadWebp(designPreviewWmPath(designId), wm.data);
   } catch (err) {

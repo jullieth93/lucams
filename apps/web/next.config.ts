@@ -55,14 +55,6 @@ const nextConfig: NextConfig = {
         pathname: "/storage/v1/object/public/product-images/**",
       },
       {
-        // Estudio M.3.b — preview compositado del grid (multi-slot snapshot)
-        // visible en cart/order para que el cliente vea su diseño final.
-        // Bucket `design-previews` es público (no signed URL).
-        protocol: "https",
-        hostname: "zxkucphbsfygakgxcnik.supabase.co",
-        pathname: "/storage/v1/object/public/design-previews/**",
-      },
-      {
         // Mediateca CMS (roadmap B5) — imágenes administrables del sitio
         // (banners, hero, logos). Bucket `cms-media` público.
         protocol: "https",
@@ -70,28 +62,29 @@ const nextConfig: NextConfig = {
         pathname: "/storage/v1/object/public/cms-media/**",
       },
       {
-        // Supabase STG (lucams-stg) — mismos buckets públicos que prod, para que
-        // los previews muestren previews del diseño/imágenes (antes: optimizer 400
-        // en /carrito y /checkout, verificación E2E 2026-08-05).
+        // Supabase STG (lucams-stg) — mismos buckets públicos que prod.
+        // LUC-SEC-001 (2026-10-30): `design-previews` ya NO es público — los
+        // previews de diseños salen por el handler same-origin
+        // /api/design-preview/* (no requiere remotePatterns).
         protocol: "https",
         hostname: "mjbdiqdkykhsixvqlrrp.supabase.co",
-        pathname: "/storage/v1/object/public/{product-images,design-previews,cms-media}/**",
+        pathname: "/storage/v1/object/public/{product-images,cms-media}/**",
       },
       {
         // Stack LOCAL de Supabase (dev diario): la API Kong escucha en :54321.
-        // Sin esto, next/image rechazaba los previews del diseño y /carrito moría
-        // con HTTP 500 en local (verificación E2E 2026-08-05).
+        // (Los previews de diseños van por /api/design-preview/* same-origin
+        // desde LUC-SEC-001 — ya no necesitan patrón acá.)
         protocol: "http",
         hostname: "127.0.0.1",
         port: "54321",
-        pathname: "/storage/v1/object/public/{product-images,design-previews,cms-media}/**",
+        pathname: "/storage/v1/object/public/{product-images,cms-media}/**",
       },
       {
         // Mismo stack local vía nombre (algunos flujos generan URLs con localhost).
         protocol: "http",
         hostname: "localhost",
         port: "54321",
-        pathname: "/storage/v1/object/public/{product-images,design-previews,cms-media}/**",
+        pathname: "/storage/v1/object/public/{product-images,cms-media}/**",
       },
       {
         // Mismo stack local vía IP LAN de la VM (navegación desde otros dispositivos
@@ -100,7 +93,7 @@ const nextConfig: NextConfig = {
         protocol: "http",
         hostname: "192.168.20.180",
         port: "54321",
-        pathname: "/storage/v1/object/public/{product-images,design-previews,cms-media}/**",
+        pathname: "/storage/v1/object/public/{product-images,cms-media}/**",
       },
       {
         protocol: "https",

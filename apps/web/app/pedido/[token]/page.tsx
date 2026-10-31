@@ -21,7 +21,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MapPin, Package, Truck, Wallet } from "lucide-react";
 import { CmsText } from "@/components/cms/cms-text";
-import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
+import {
+  designPreviewDisplay,
+  previewRefToAuthorizedUrl,
+} from "@/features/personalization/preview-artifacts";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { SITE_NAME } from "@/lib/site";
 import { getCmsBlock } from "@/lib/cms";
@@ -447,10 +450,18 @@ export default async function PublicOrderPage({
                 // existe (preview-wm.webp / wm/pages/NN.webp); el snapshot limpio
                 // (designAssetUrl) queda de fallback (diseño sin artefactos o ya
                 // purgado — el snapshot sobrevive al borrado del diseño).
-                const disp = it.design ? designPreviewDisplay(it.design) : null;
+                // LUC-SEC-001 (2026-10-30): todas las URLs salen por el handler
+                // autorizado con la capacidad ?ot= del token del pedido (solo
+                // variantes watermark; el fallback limpio solo carga para
+                // dueño/admin — fail-closed para el visitante por token).
+                const cap = { name: "ot" as const, value: token };
+                const disp = it.design ? designPreviewDisplay(it.design, cap) : null;
+                const fallbackRef = it.designAssetUrl ?? it.design?.previewUrl ?? null;
                 const previewUrl = disp?.watermarked
                   ? disp.displayUrl
-                  : (it.designAssetUrl ?? it.design?.previewUrl ?? null); // ADR-070 — snapshot primero
+                  : fallbackRef
+                    ? previewRefToAuthorizedUrl(fallbackRef, cap)
+                    : null; // ADR-070 — snapshot primero
                 // Opciones de diseño del set de letras ("Sin borde") — el PNG las refleja, pero el
                 // texto evita que el cliente tenga que deducirlas de la miniatura (2026-09-05).
                 const borderNote = letterSetBorderNote(it.design?.metadata);
