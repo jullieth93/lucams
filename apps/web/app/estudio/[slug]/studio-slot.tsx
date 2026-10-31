@@ -119,6 +119,10 @@ export function nextWheelScale(current: number, deltaY: number, min = 0.5, max =
 type StudioSlotProps = {
   slotState: SlotState;
   unitTemplate: CanvasDataV1;
+  /** 2026-10-31 (axe aria-hidden-focus, nightly): true cuando el lienzo está
+   * deshabilitado pendiente de plantilla — el slot sale del orden de tabulación
+   * (el wrapper lleva aria-hidden; un hijo enfocable sería la violación). */
+  canvasDisabled?: boolean;
   /** Ancho lógico del slot en pantalla. Si no se pasa displayHeight, se usa
    * el aspect ratio del unitTemplate.stage para calcular height (FIX-1). */
   displaySize: number;
@@ -280,6 +284,7 @@ function StudioSlotImpl({
   onKeyboardNav,
   onRegisterStage,
   interactiveSlots = true,
+  canvasDisabled = false,
 }: StudioSlotProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -753,24 +758,36 @@ function StudioSlotImpl({
   // manda en el aria cuando existe (la unidad "Separador N" la anuncia la tarjeta del grid).
   const nounCap = slotNoun.charAt(0).toUpperCase() + slotNoun.slice(1);
   const slotName = slotLabel ?? `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}`;
+  // Chip indicador visible del slot ("Imán #N" o el slotLabel: mes/cara) — se
+  // computa UNA vez: lo pinta el overlay vacío y la barra de acciones, y (WCAG
+  // 2.5.3) debe ir también en el nombre accesible del slot vacío.
+  const slotIndicatorText =
+    slotLabel ??
+    fillStudioText(texts.lienzo.slotIndicator, {
+      sustantivo: nounCap,
+      n: slotState.slotIndex + 1,
+    });
   // #17 — anunciar solo los atajos que existen para este slot (honesto).
   const filledHints = ["Enter para cambiar foto", "Delete para quitar"];
   if (onEdit) filledHints.push("A para ajustar la foto");
   if (onEdit && hasEditableText) filledHints.push("Tab para editar el texto");
   if (onCenterPhoto && slotState.photoTransform) filledHints.push("C para centrar");
   // WCAG 2.5.3 (axe label-content-name-mismatch, nightly 2026-10-31): el nombre
-  // accesible del slot vacío = EXACTAMENTE su texto visible (el microcopy de
-  // invitación + el badge "Opcional" si es cara B) — contenido garantizado por
-  // construcción en cualquier ambiente/contenido CMS. La guía completa (nombre
-  // del slot + atajos) va en aria-DESCRIBEDBY (sr-only): se anuncia tras el
-  // nombre sin exigir contener texto visible.
+  // accesible del slot vacío = EXACTAMENTE su texto visible EN ORDEN DOM (el
+  // microcopy de invitación + el badge "Opcional" si es cara B + el chip
+  // indicador "Imán #N") — contenido garantizado por construcción en cualquier
+  // ambiente/contenido CMS. La guía completa (nombre del slot + atajos) va en
+  // aria-DESCRIBEDBY (sr-only): se anuncia tras el nombre sin exigir contener
+  // texto visible.
   const emptyInvite = isDropping ? texts.lienzo.slotEmptyDrop : texts.lienzo.slotEmptyInvite;
   const slotDesc = slotState.assetUrl
     ? null
     : `${slotName}, vacío${slotOptional ? `, ${texts.lienzo.slotCaraBOpcional.toLowerCase()}` : ""}. Enter para subir foto.`;
   const ariaLabel = slotState.assetUrl
     ? `${slotName}, con foto cargada. ${filledHints.join(", ")}.`
-    : [emptyInvite, slotOptional ? texts.lienzo.slotCaraBOpcional : null].filter(Boolean).join(" ");
+    : [emptyInvite, slotOptional ? texts.lienzo.slotCaraBOpcional : null, slotIndicatorText]
+        .filter(Boolean)
+        .join(" ");
 
   // C1 — guía del slot vacío en 3 niveles (reposo → hover → drag-over).
   const slotGuideStroke = isDropping
@@ -797,11 +814,21 @@ function StudioSlotImpl({
           </defs>
         </svg>
       )}
+      {/* WCAG 2.5.3 — descripción completa del slot para AT. FUERA del
+        role=button a propósito (nightly 2026-10-31): dentro, axe la cuenta como
+        "texto visible" del botón (sr-only = clip, no display:none) y dispara
+        label-content-name-mismatch contra el aria-label. Fuera sigue anunciándose
+        vía aria-describedby (referencia por id, no por anidamiento). */}
+      {slotDesc && (
+        <span id={slotDescId} className="sr-only">
+          {slotDesc}
+        </span>
+      )}
       <div className="relative">
         <motion.div
           ref={containerRef}
           role="button"
-          tabIndex={0}
+          tabIndex={canvasDisabled ? -1 : 0}
           aria-label={ariaLabel}
           aria-describedby={slotDesc ? slotDescId : undefined}
           aria-pressed={isSelected}
@@ -908,14 +935,6 @@ function StudioSlotImpl({
             }
           }}
         >
-          {/* WCAG 2.5.3 — descripción completa del slot para AT (sr-only: NO es
-          texto visible, así que no exige estar en el nombre; el nombre es el
-          microcopy visible, ver ariaLabel arriba). */}
-          {slotDesc && (
-            <span id={slotDescId} className="sr-only">
-              {slotDesc}
-            </span>
-          )}
           {/* Konva Stage — 3 layers stacked:
           1. RealismShadowLayer (bottom) — sombra del imán físico
           2. Content Layer (middle)      — unit template del seed
@@ -1147,6 +1166,10 @@ function StudioSlotImpl({
                   ].join(" ")}
                 >
                   {isDropping ? texts.lienzo.slotEmptyDrop : texts.lienzo.slotEmptyInvite}
+                  {/* WCAG 2.5.3 (axe visibleVirtual concatena los runs de texto
+                      SIN separador): el espacio real evita "…fotoImán #N" — sin
+                      él el nombre accesible nunca contiene el texto visible.
+                      Visualmente inerte (colapsa al final del span). */}{" "}
                 </span>
 
                 {/* Cara B OPCIONAL (backOptional, 2026-09-25): badge compacto
@@ -1157,17 +1180,14 @@ function StudioSlotImpl({
                   <Hint content={texts.lienzo.slotCaraBOpcionalTitle}>
                     <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase">
                       {texts.lienzo.slotCaraBOpcional}
+                      {/* Mismo espacio real que la invitación (WCAG 2.5.3). */}{" "}
                     </span>
                   </Hint>
                 )}
 
                 {/* Indicador del slot: mes (calendario) o "Imán #N". */}
                 <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
-                  {slotLabel ??
-                    fillStudioText(texts.lienzo.slotIndicator, {
-                      sustantivo: nounCap,
-                      n: slotState.slotIndex + 1,
-                    })}
+                  {slotIndicatorText}
                 </span>
               </motion.div>
             )}
@@ -1256,24 +1276,10 @@ function StudioSlotImpl({
               SIEMPRE en esta barra, FUERA del template — incluido el modo tira
               (overlayActions), donde la barra flota sobre la foto como unidad. */}
           {slotState.assetUrl && (
-            <Hint
-              content={
-                slotLabel ??
-                fillStudioText(texts.lienzo.slotIndicator, {
-                  sustantivo: nounCap,
-                  n: slotState.slotIndex + 1,
-                })
-              }
-            >
+            <Hint content={slotIndicatorText}>
               <span
                 className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[9px] font-bold ring-1"
-                aria-label={
-                  slotLabel ??
-                  fillStudioText(texts.lienzo.slotIndicator, {
-                    sustantivo: nounCap,
-                    n: slotState.slotIndex + 1,
-                  })
-                }
+                aria-label={slotIndicatorText}
               >
                 {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
               </span>
@@ -1501,6 +1507,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.overlayActions === next.overlayActions &&
     prev.allowText === next.allowText &&
     prev.interactiveSlots === next.interactiveSlots &&
+    prev.canvasDisabled === next.canvasDisabled &&
     prev.calendarCard?.year === next.calendarCard?.year &&
     prev.calendarCard?.monthIndex0 === next.calendarCard?.monthIndex0 &&
     prev.calendarCard?.layout === next.calendarCard?.layout &&

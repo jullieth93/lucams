@@ -188,6 +188,12 @@ type StudioCanvasGridProps = {
    * la rueda SOLA scrollea la página, no zooomea la foto).
    */
   interactiveSlots?: boolean;
+  /** 2026-10-31 (axe aria-hidden-focus, nightly): true cuando el lienzo está
+   * deshabilitado pendiente de elegir plantilla (ADR-167/2026-10-26) — el wrapper
+   * lleva aria-hidden + pointer-events-none y los slots NO deben quedar
+   * enfocables por teclado (un aria-hidden con hijos enfocables es la
+   * violación). */
+  canvasDisabled?: boolean;
   onSlotClick: (slotIndex: number) => void;
   /**
    * Ola 22 (Lucy 2026-09-09) — zoom de LIENZO controlado desde la fila de pills
@@ -261,6 +267,7 @@ export function StudioCanvasGrid({
   unitVariantLabel,
   unitGroupSlots = null,
   interactiveSlots = true,
+  canvasDisabled = false,
   onSlotClick,
   stageZoomRaw,
   onStageZoomState,
@@ -1088,6 +1095,7 @@ export function StudioCanvasGrid({
             onPhotoTransformChange={(transform) => setSlotPhotoTransform(slot.slotIndex, transform)}
             onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
             interactiveSlots={interactiveSlots}
+            canvasDisabled={canvasDisabled}
             onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
             assetOriginalWidth={slotAsset?.originalWidth ?? (slotAsset?.width || undefined)}
             assetOriginalHeight={slotAsset?.originalHeight ?? (slotAsset?.height || undefined)}
