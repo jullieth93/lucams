@@ -54,6 +54,7 @@
 
 - **Cookies `sb-*` de sesión (Supabase SSR): `SameSite=Lax` + `Secure` en prod/preview** (`cookieOptions.secure` en `lib/supabase/server.ts` y `proxy.ts`, auditoría 2026-08-24 B-2 — sin él, la cookie viajaría por HTTP plano en el primer contacto pre-HSTS).
 - **Trade-off documentado — `httpOnly: false` en las `sb-*`:** el browser client lee la sesión desde `document.cookie` (reto MFA, `lib/supabase/browser.ts`), así que no pueden ser HttpOnly con `@supabase/ssr`. La exposición a XSS la mitiga la CSP por nonce, no httpOnly. Las cookies propias sensibles SÍ son HttpOnly (`cart_session`, `checkout_state`, `admin_last_activity`, `lucams_cms_edit`).
+- **`cart_session` (sesión anónima, modelo actualizado 2026-10-31 — LUC-SEC-013):** UUID v4 de 122 bits sin firma (firmarla no evita el robo de cookie). HOY abre más que un carrito: borradores de diseño y previews de fotos personales vía `/api/design-preview/*` (LUC-SEC-001). Mitigaciones: rotación en self-heal de identidad, borrado en logout, purga de borradores idle (30 d) y post-entrega (90 d), nunca en logs ni URLs. Residual aceptado documentado en `lib/cart-session.ts`: el checkout no rota (gracias + recuperación ADR-171 dependen de ella).
 - **TTL de access token:** 1 hora (default Supabase, no extender).
 - **TTL de refresh token:** 30 días con rotación en cada uso.
 - **Logout server-side** invalida la sesión en Supabase, no solo borra la cookie.

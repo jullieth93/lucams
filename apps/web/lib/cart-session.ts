@@ -1,16 +1,28 @@
 /*
  * Cart session — cookie sessionId para carritos anon.
  *
- * Modelo:
+ * Modelo de amenazas VIGENTE (actualizado 2026-10-31, LUC-SEC-013 — el
+ * anterior decía "el carrito no contiene datos sensibles", de antes de que la
+ * identidad anónima protegiera diseños y fotos):
  *   - Cookie `cart_session` con un UUID v4 generado server-side.
  *   - Cart.sessionId @unique en DB — el sessionId mapea 1:1 a un Cart.
  *   - HttpOnly + SameSite=Lax + Secure(prod) + 30 días.
- *   - Sin firmar (HMAC) — el sessionId es alta entropía (122 bits) y
- *     el carrito anon no contiene datos sensibles (sin PII, sin precio
- *     final autoritativo). Adversary que adivine la cookie de otro
- *     usuario ve y modifica su carrito vacío — no es vector de daño.
- *     Si más adelante guardamos `customDesign` con datos sensibles, se
- *     evalúa firmar.
+ *   - Sin firmar (HMAC) — el sessionId es alta entropía (122 bits) y firmarlo
+ *     NO evita el robo de cookie (quien la roba la presenta firmada igual).
+ *   - QUÉ ABRE HOY la cookie (por eso ya no es "sin datos sensibles"):
+ *     el carrito, los borradores de diseño y —desde LUC-SEC-001— los previews
+ *     de diseños personales vía /api/design-preview/* (Design.sessionId).
+ *     Quien robe la cookie ve las fotos/diseños de esa sesión anónima.
+ *   - Mitigaciones vigentes: rotación en self-heal de identidad
+ *     (CART_IDENTITY_MISMATCH) y borrado en logout (auth/logout/actions.ts);
+ *     purga de borradores anónimos idle (30 d) y de datos post-entrega (90 d)
+ *     vía los crons de retención; el valor nunca se loguea ni va en URLs.
+ *   - Residual ACEPTADO (decisión de producto pendiente del owner): el
+ *     checkout NO rota la cookie — la página de gracias y la recuperación de
+ *     carrito al re-login (ADR-171) dependen de ella. Diseños de pedidos
+ *     pagados quedan además cubiertos por los tokens de orden (?ot=) y por la
+ *     cuenta del cliente. Si el owner decide rotar en checkout, hay que mover
+ *     la página de gracias a capacidad por token primero.
  *
  * Uso:
  *   const sessionId = await getOrCreateCartSession();   // crea si falta
