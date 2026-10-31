@@ -74,7 +74,7 @@ export type FiringAlert = {
 export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAlert[]> {
   const firing: FiringAlert[] = [];
 
-  const [errGroups, recon, stuck, stalePendingWompi, adminLoginFails, webhookInvalid] =
+  const [errGroups, recon, stuck, stalePendingWompi, adminLoginFailsAgg, webhookInvalidAgg] =
     await Promise.all([
       // N-33 — errors_spike agrupa por RUTA (routePath): el doc (OBSERVABILITY.md)
       // define el pico como "5+ errores 500 en 5 min en una misma ruta", no un
@@ -110,19 +110,28 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
       }),
       // F-07 (2026-09-19) — reglas de seguridad sobre SecurityEvent (la persistencia
       // durable que antes no existía: estos rechazos solo vivían en logs efímeros).
-      prisma.securityEvent.count({
+      // LUC-SEC-008 (2026-10-31): los eventos se agregan por ventana con
+      // `count` (anti-amplificación) — las reglas SUMAN count, no cuentan
+      // filas. Filas históricas (count=1 por defecto) suman igual que antes.
+      prisma.securityEvent.aggregate({
+        _sum: { count: true },
         where: {
           event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
           createdAt: { gte: new Date(now.getTime() - ADMIN_LOGIN_FAIL_WINDOW_MS) },
         },
       }),
-      prisma.securityEvent.count({
+      prisma.securityEvent.aggregate({
+        _sum: { count: true },
         where: {
           event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
           createdAt: { gte: new Date(now.getTime() - WEBHOOK_INVALID_WINDOW_MS) },
         },
       }),
     ]);
+
+  // LUC-SEC-008 — aggregate(_sum.count) → número (filas históricas count=1 suman igual).
+  const adminLoginFails = Number(adminLoginFailsAgg._sum.count ?? 0);
+  const webhookInvalid = Number(webhookInvalidAgg._sum.count ?? 0);
 
   const spikes = errGroups
     .filter((g) => g.routePath !== null && g._count._all >= 5)
