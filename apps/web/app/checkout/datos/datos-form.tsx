@@ -578,6 +578,13 @@ export function DatosForm({
     // rehabilita (hay cambios que sí tendría sentido guardar como variante).
     setAppliedSavedId(id);
     setSaveToAccount(false);
+    // El celular de contacto NO es dato de la dirección estructurada, pero la
+    // dirección guardada lo tiene (Address.phone = celular de entrega): si el
+    // campo está vacío se precarga (bug 2026-10-31 — «me carga todo menos el
+    // número celular»). Un celular ya digitado NO se pisa.
+    if (!phoneDisplay.replace(/\D/g, "") && a.phone) {
+      setPhoneDisplay(formatPhone(a.phone));
+    }
   }
 
   // true cuando la dirección del form coincide EXACTAMENTE con la guardada que
