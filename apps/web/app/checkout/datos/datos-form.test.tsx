@@ -394,6 +394,25 @@ describe("DatosForm — 'Guardar en mi cuenta' con dirección guardada aplicada"
     expect(saveCheckbox()).not.toBeChecked();
     expect(saveCheckbox()).toBeDisabled();
   });
+
+  // Bug 2026-10-31 (owner): al elegir una dirección guardada se precargaba
+  // todo MENOS el celular de contacto — Address.phone viajaba en el prefill
+  // (CheckoutPrefillAddress.phone) pero applySavedAddress nunca lo aplicaba.
+  it("precarga el celular de la dirección guardada cuando el campo está vacío", () => {
+    renderWithSaved();
+    const phone = document.querySelector<HTMLInputElement>("#phone-display")!;
+    expect(phone.value).toBe("");
+    applySaved();
+    expect(phone.value).toBe("300 123 4567");
+  });
+
+  it("NO pisa un celular ya digitado al aplicar la guardada", () => {
+    renderWithSaved();
+    const phone = document.querySelector<HTMLInputElement>("#phone-display")!;
+    fireEvent.change(phone, { target: { value: "3015556677" } });
+    applySaved();
+    expect(phone.value).toBe("301 555 6677");
+  });
 });
 
 /*
