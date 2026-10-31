@@ -571,10 +571,7 @@ async function ApprovedPage({
               const designImg = designRef ? previewRefToAuthorizedUrl(designRef) : null;
               const img = disp?.watermarked
                 ? disp.displayUrl
-                : (designImg ??
-                  it.variant.images[0] ??
-                  it.variant.product.images[0] ??
-                  null);
+                : (designImg ?? it.variant.images[0] ?? it.variant.product.images[0] ?? null);
               const personalized = Boolean(it.designAssetUrl ?? it.design?.previewUrl);
               const breakdown = describeVariantAttributes(
                 parseVariantAttributes(it.variant.attributes),

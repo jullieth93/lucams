@@ -141,9 +141,7 @@ describe.skipIf(!hasDb)("saveCanvas — miniatura del borrador (2026-10-13)", ()
     const design = await prisma.design.findUnique({ where: { id: designId } });
     // LUC-SEC-001 — se persiste la URL AUTORIZADA del handler (el bucket ya
     // no es público); el objeto sigue en el mismo path de Storage.
-    expect(design?.draftPreviewUrl).toBe(
-      `/api/design-preview/${designId}/draft-preview.webp`,
-    );
+    expect(design?.draftPreviewUrl).toBe(`/api/design-preview/${designId}/draft-preview.webp`);
     const newUploads = mock.uploads.slice(before);
     expect(newUploads).toHaveLength(1);
     expect(newUploads[0]).toMatchObject({

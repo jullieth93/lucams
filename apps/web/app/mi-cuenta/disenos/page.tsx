@@ -48,7 +48,9 @@ export default async function DisenosPage() {
     // salen por el handler autorizado; refs legacy convertidas. "" = sin imagen.
     previewUrl:
       d.status === "DRAFT"
-        ? (d.draftPreviewUrl ? (previewRefToAuthorizedUrl(d.draftPreviewUrl) ?? "") : "")
+        ? d.draftPreviewUrl
+          ? (previewRefToAuthorizedUrl(d.draftPreviewUrl) ?? "")
+          : ""
         : (designPreviewDisplay(d)?.thumbUrl ?? ""),
     productName: d.product.name,
     productSlug: d.product.slug,

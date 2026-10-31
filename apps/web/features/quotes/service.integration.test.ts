@@ -76,8 +76,7 @@ const NAMED_PRICE = 20_000; // centavos
 // LUC-SEC-001 — la fixture usa el formato LEGACY real (URL pública del bucket
 // pre-046); el carrito la convierte a la URL autorizada del handler y ESA es la
 // que el snapshot de la cotización persiste.
-const DESIGN_PREVIEW_LEGACY =
-  "https://cdn.lucams.test/storage/v1/object/public/design-previews";
+const DESIGN_PREVIEW_LEGACY = "https://cdn.lucams.test/storage/v1/object/public/design-previews";
 
 function sid(label: string): string {
   return `${RUN}-${label}-${Math.floor(Math.random() * 1e9)}`;

@@ -89,9 +89,9 @@ describe("previewStoragePathFromRef — convierte refs viejas y nuevas a path de
 
 describe("canAccessDesignPreview — matriz completa", () => {
   it("anónimo sin relación → denegado en todas las variantes", () => {
-    expect(
-      canAccessDesignPreview({ design: DESIGN, variantClass: "clean", caller: NOBODY }),
-    ).toBe(false);
+    expect(canAccessDesignPreview({ design: DESIGN, variantClass: "clean", caller: NOBODY })).toBe(
+      false,
+    );
     expect(
       canAccessDesignPreview({ design: DESIGN, variantClass: "watermark", caller: NOBODY }),
     ).toBe(false);

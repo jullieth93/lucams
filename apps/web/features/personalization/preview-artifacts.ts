@@ -164,7 +164,9 @@ export function designPreviewDisplay(
   if (!cleanPath || !designId) return null;
   const cleanUrl = designPreviewAuthorizedUrl(cleanPath, capability)!;
   const hasWm = design.previewWatermarkedAt !== null;
-  const wmUrl = hasWm ? designPreviewAuthorizedUrl(designPreviewWmPath(designId), capability) : null;
+  const wmUrl = hasWm
+    ? designPreviewAuthorizedUrl(designPreviewWmPath(designId), capability)
+    : null;
   const thumbUrl = hasWm
     ? designPreviewAuthorizedUrl(designPreviewThumbPath(designId), capability)
     : null;
@@ -175,7 +177,8 @@ export function designPreviewDisplay(
     (design.previewPagesCount ?? 0) > 1
       ? Array.from(
           { length: Math.min(PREVIEW_PAGES_MAX, Math.trunc(design.previewPagesCount!)) },
-          (_, i) => designPreviewAuthorizedUrl(designPreviewWmPagePath(designId, i + 1), capability)!,
+          (_, i) =>
+            designPreviewAuthorizedUrl(designPreviewWmPagePath(designId, i + 1), capability)!,
         )
       : [];
   return {

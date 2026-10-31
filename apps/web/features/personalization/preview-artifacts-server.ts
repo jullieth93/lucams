@@ -94,9 +94,7 @@ export async function ensurePreviewWatermarkGlobal(
   try {
     const path = previewStoragePathFromRef(previewUrl);
     if (!path) return false;
-    const { data, error } = await supabaseService.storage
-      .from(PREVIEWS_BUCKET)
-      .download(path);
+    const { data, error } = await supabaseService.storage.from(PREVIEWS_BUCKET).download(path);
     if (error || !data) return false;
     const buffer = Buffer.from(await data.arrayBuffer());
     const wm = await applyTiledWatermark(buffer);

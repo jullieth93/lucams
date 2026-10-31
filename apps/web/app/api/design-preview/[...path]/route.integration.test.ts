@@ -74,10 +74,7 @@ const cleanup: Array<Promise<unknown>> = [];
 function req(path: string, opts: { session?: string; query?: string } = {}) {
   const headers = new Headers();
   if (opts.session) headers.set("cookie", `cart_session=${opts.session}`);
-  return new Request(
-    `http://localhost/api/design-preview/${path}${opts.query ?? ""}`,
-    { headers },
-  );
+  return new Request(`http://localhost/api/design-preview/${path}${opts.query ?? ""}`, { headers });
 }
 
 async function call(path: string, opts: Parameters<typeof req>[1] = {}) {
@@ -137,7 +134,14 @@ beforeAll(async () => {
 
   // Orden y cotización que referencian el diseño (capacidades ot/qt)
   const variant = await prisma.productVariant.create({
-    data: { productId: product.id, name: `Var ${RUN}`, sku: `${RUN}-V1`.toUpperCase(), price: 10_000, stock: 5, attributes: {} },
+    data: {
+      productId: product.id,
+      name: `Var ${RUN}`,
+      sku: `${RUN}-V1`.toUpperCase(),
+      price: 10_000,
+      stock: 5,
+      attributes: {},
+    },
     select: { id: true },
   });
   const order = await prisma.order.create({
@@ -198,7 +202,11 @@ afterAll(async () => {
 
 describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)", () => {
   it("anónimo sin cookie ni token → 404 en TODAS las variantes (sin oráculo)", async () => {
-    for (const p of [`${designId}/preview.png`, `${designId}/preview-wm.webp`, `${designId}/draft-preview.webp`]) {
+    for (const p of [
+      `${designId}/preview.png`,
+      `${designId}/preview-wm.webp`,
+      `${designId}/draft-preview.webp`,
+    ]) {
       const res = await call(p);
       expect(res.status).toBe(404);
     }
@@ -209,7 +217,9 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
   });
 
   it("sesión anónima AJENA → 404 aun conociendo el designId", async () => {
-    expect((await call(`${designId}/preview-wm.webp`, { session: OTHER_SESSION })).status).toBe(404);
+    expect((await call(`${designId}/preview-wm.webp`, { session: OTHER_SESSION })).status).toBe(
+      404,
+    );
   });
 
   it("dueño por cookie cart_session → 200 con los bytes y cache privado", async () => {
@@ -239,20 +249,36 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
   });
 
   it("share token /d/ → watermark 200, pero preview limpio y borrador 404", async () => {
-    expect((await call(`${designId}/preview-wm.webp`, { query: `?st=${SHARE_TOKEN}` })).status).toBe(200);
-    expect((await call(`${designId}/preview.png`, { query: `?st=${SHARE_TOKEN}` })).status).toBe(404);
-    expect((await call(`${designId}/draft-preview.webp`, { query: `?st=${SHARE_TOKEN}` })).status).toBe(404);
+    expect(
+      (await call(`${designId}/preview-wm.webp`, { query: `?st=${SHARE_TOKEN}` })).status,
+    ).toBe(200);
+    expect((await call(`${designId}/preview.png`, { query: `?st=${SHARE_TOKEN}` })).status).toBe(
+      404,
+    );
+    expect(
+      (await call(`${designId}/draft-preview.webp`, { query: `?st=${SHARE_TOKEN}` })).status,
+    ).toBe(404);
   });
 
   it("share token incorrecto → 404", async () => {
-    expect((await call(`${designId}/preview-wm.webp`, { query: "?st=token-mal" })).status).toBe(404);
+    expect((await call(`${designId}/preview-wm.webp`, { query: "?st=token-mal" })).status).toBe(
+      404,
+    );
   });
 
   it("order token → solo watermark; quote token → solo watermark", async () => {
-    expect((await call(`${designId}/preview-wm.webp`, { query: `?ot=${ORDER_TOKEN}` })).status).toBe(200);
-    expect((await call(`${designId}/preview.png`, { query: `?ot=${ORDER_TOKEN}` })).status).toBe(404);
-    expect((await call(`${designId}/preview-wm.webp`, { query: `?qt=${QUOTE_TOKEN}` })).status).toBe(200);
-    expect((await call(`${designId}/preview.png`, { query: `?qt=${QUOTE_TOKEN}` })).status).toBe(404);
+    expect(
+      (await call(`${designId}/preview-wm.webp`, { query: `?ot=${ORDER_TOKEN}` })).status,
+    ).toBe(200);
+    expect((await call(`${designId}/preview.png`, { query: `?ot=${ORDER_TOKEN}` })).status).toBe(
+      404,
+    );
+    expect(
+      (await call(`${designId}/preview-wm.webp`, { query: `?qt=${QUOTE_TOKEN}` })).status,
+    ).toBe(200);
+    expect((await call(`${designId}/preview.png`, { query: `?qt=${QUOTE_TOKEN}` })).status).toBe(
+      404,
+    );
   });
 
   it("order token de OTRA orden (no contiene el diseño) → 404", async () => {
@@ -273,14 +299,21 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
       select: { id: true },
     });
     try {
-      expect((await call(`${designId}/preview-wm.webp`, { query: `?ot=${otherOrderToken}` })).status).toBe(404);
+      expect(
+        (await call(`${designId}/preview-wm.webp`, { query: `?ot=${otherOrderToken}` })).status,
+      ).toBe(404);
     } finally {
       await prisma.order.delete({ where: { id: other.id } }).catch(() => {});
     }
   });
 
   it("path traversal y shapes inválidos → 404 sin tocar Storage", async () => {
-    for (const p of ["..%2F..%2Fetc", `${designId}/preview.exe`, `${designId}/pages/1.webp`, `${designId}/preview.png/extra`]) {
+    for (const p of [
+      "..%2F..%2Fetc",
+      `${designId}/preview.exe`,
+      `${designId}/pages/1.webp`,
+      `${designId}/preview.png/extra`,
+    ]) {
       expect((await call(p)).status).toBe(404);
     }
   });

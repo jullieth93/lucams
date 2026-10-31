@@ -82,9 +82,9 @@ describe("URLs autorizadas (handler /api/design-preview/*)", () => {
   it("previewRefToAuthorizedUrl convierte ref nueva y legacy; rechaza ajenas", () => {
     expect(previewRefToAuthorizedUrl(REF_NEW)).toBe("/api/design-preview/abc123/preview.webp");
     expect(previewRefToAuthorizedUrl(REF_LEGACY)).toBe("/api/design-preview/abc123/preview.webp");
-    expect(
-      previewRefToAuthorizedUrl(REF_LEGACY, { name: "ot", value: "tok" }),
-    ).toBe("/api/design-preview/abc123/preview.webp?ot=tok");
+    expect(previewRefToAuthorizedUrl(REF_LEGACY, { name: "ot", value: "tok" })).toBe(
+      "/api/design-preview/abc123/preview.webp?ot=tok",
+    );
     expect(previewRefToAuthorizedUrl("https://evil.test/abc123/preview.webp")).toBeNull();
   });
 });
@@ -110,7 +110,10 @@ describe("designPreviewDisplay — selección con fallback", () => {
     ).toBeNull();
   });
 
-  it.each([["nueva", REF_NEW], ["legacy", REF_LEGACY]] as const)(
+  it.each([
+    ["nueva", REF_NEW],
+    ["legacy", REF_LEGACY],
+  ] as const)(
     "sin artefactos (ref %s): cae al preview limpio AUTORIZADO, sin pager",
     (_label, ref) => {
       const d = designPreviewDisplay({

@@ -415,7 +415,8 @@ describe("toDetail — imagen por variante y desglose (Paquete F)", () => {
           id: "cdesign1",
           // LUC-SEC-001 — ref legacy (bucket público, pre-046): el display la
           // convierte a la URL autorizada del handler.
-          previewUrl: "https://cdn.test/storage/v1/object/public/design-previews/cdesign1/preview.png",
+          previewUrl:
+            "https://cdn.test/storage/v1/object/public/design-previews/cdesign1/preview.png",
           status: "READY",
           metadata: null,
           canvasData: null,

@@ -36,7 +36,8 @@ const STORAGE_PATH_RE =
   /^([a-z0-9]+)\/(preview\.(?:png|jpe?g|webp)|draft-preview\.(?:png|jpe?g|webp)|preview-wm\.webp|thumb\.webp|pages\/\d{2}\.webp|wm\/pages\/\d{2}\.webp)$/;
 
 /** Variantes limpias: solo dueño o admin. */
-const CLEAN_FILES = /^preview\.(?:png|jpe?g|webp)$|^draft-preview\.(?:png|jpe?g|webp)$|^pages\/\d{2}\.webp$/;
+const CLEAN_FILES =
+  /^preview\.(?:png|jpe?g|webp)$|^draft-preview\.(?:png|jpe?g|webp)$|^pages\/\d{2}\.webp$/;
 
 export function parsePreviewStoragePath(
   path: string,
