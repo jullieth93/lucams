@@ -494,7 +494,7 @@ function FinalizeMissingPopover({
         <span
           role="button"
           tabIndex={0}
-          aria-label={texts.lienzo.finalizePopoverAria}
+          aria-label={`${texts.lienzo.finalizeBtn} — ${texts.lienzo.finalizePopoverAria}`}
           className={[
             "focus:ring-brand-purple cursor-help focus:ring-2 focus:ring-offset-2 focus:outline-none",
             triggerClassName ?? "inline-flex rounded-md",
@@ -602,10 +602,12 @@ export function FinalizeButton({
   const busy = isFinalizing || isPreparing || isSaving;
   // Mientras procesa, el nombre audible se mantiene en la acción real (no en
   // el de "bloqueado"): el botón está OCUPADO, no inhabilitado por faltantes.
+  // WCAG 2.5.3 (nightly 2026-10-31): bloqueado, el nombre audible empieza por
+  // el texto VISIBLE del botón (finalizeBtn) y sigue con el motivo.
   const ariaLabel =
     canFinalize || busy
       ? texts.lienzo.finalizeAria
-      : (disabledTooltip ?? texts.lienzo.finalizeAriaBloqueado);
+      : `${texts.lienzo.finalizeBtn}: ${disabledTooltip ?? texts.lienzo.finalizeAriaBloqueado}`;
   // Texto del estado ocupado: preparando la vista previa o guardando tras
   // confirmar (inline lleva el texto largo; el FAB, el corto compartido).
   const busyText = isPreparing

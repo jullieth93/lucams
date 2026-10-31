@@ -147,7 +147,13 @@ test("auth: registro+OTP+sesión+logout+login+recuperar+restablecer (LOCAL full 
       await anonPage.goto("/registro", { waitUntil: "domcontentloaded" });
       await expect(async () => {
         await anonPage.locator('input[name="firstName"]').fill("Prueba");
-        await anonPage.locator('input[name="lastName"]').fill(`Auth${run.slice(-4)}`);
+        // 2026-10-31 (nightly): el sufijo eran DÍGITOS del timestamp y el servidor
+        // (correctamente, NAME_REGEX) rechaza dígitos en el apellido → el registro
+        // fallaba con "solo puede tener letras" y nunca llegaba a /confirmar-codigo.
+        // Sufijo en LETRAS derivado del timestamp (misma unicidad, regla válida).
+        await anonPage
+          .locator('input[name="lastName"]')
+          .fill(`Auth${run.slice(-4).replace(/\d/g, (d) => "abcdefghij"[Number(d)])}`);
         await anonPage.locator('input[name="email"]').fill(EMAIL);
         await anonPage.locator('input[name="password"]').fill(PASSWORD);
         await anonPage.locator('input[name="passwordConfirm"]').fill(PASSWORD);

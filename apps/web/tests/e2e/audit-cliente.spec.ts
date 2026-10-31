@@ -434,6 +434,15 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       .waitFor({ state: "attached", timeout: 8_000 })
       .catch(() => {});
     await dismissOverlays(page);
+    // ADR-167 (2026-10-22): con >1 plantilla activa y sin default, «Vista
+    // previa» NO procede hasta elegir una explícitamente (bloqueo guiado) —
+    // el nocturno quedaba esperando la modal para siempre (falla desde la
+    // semana del 2026-10-22, no por un bug del producto). Seleccionar la
+    // primera como haría un cliente real.
+    const tplRadio = page.getByRole("radio").first();
+    if (await tplRadio.isVisible().catch(() => false)) {
+      if ((await tplRadio.getAttribute("aria-checked")) !== "true") await tplRadio.click();
+    }
     // En mobile (390px) el panel "Mis fotos" no está en pantalla: vive tras el
     // FAB «Editar» (bottom sheet). En desktop el panel lateral ya es visible.
     const editarFab = page.getByRole("button", { name: /^Editar/i }).first();
@@ -481,11 +490,21 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
 
     // Finalizar diseño: «Vista previa» abre el modal "Así se verá tu pedido" y
     // de ahí se agrega al carrito (flujo vigente 2026-09; antes era directo).
-    const listo = page.getByRole("button", { name: /Vista previa|Listo/i }).first();
+    // 2026-10-31 (nightly): el regex viejo /Vista previa|Listo/i con .first()
+    // caía en un PASO del checklist «Tu diseño» (ADR-164) en vez del CTA real —
+    // el clic no abría la modal y el wait por «agregar al carrito» moría en
+    // timeout. Se apunta al CTA por su nombre accesible exacto (aria-label).
+    const listo = page.getByRole("button", { name: "Ver diseño de tu pedido" });
     await expect(listo).toBeEnabled({ timeout: 15_000 });
     await listo.click();
     const agregar = page.getByRole("button", { name: /agregar al carrito/i }).first();
-    await agregar.waitFor({ state: "visible", timeout: 20_000 });
+    // 2026-10-31 (nightly): el compositado del preview (6 fotos a alta resolución
+    // + la espera de decodificación de slot-photo-readiness) supera 20 s en runners
+    // cargados — la modal solo se MONTA cuando previewUrl existe
+    // (studio-preview-modal: `if (!previewUrl) return null`). 60 s cubre el caso
+    // medido sin esconder un cuelgue real (la navegación a /carrito sigue con su
+    // propio timeout).
+    await agregar.waitFor({ state: "visible", timeout: 60_000 });
     await agregar.click();
     // El click dispara design.finalize: render SERVER-SIDE de la producción
     // (6 slots × foto original ≈ 28 MB — medido 21.6s en dev sobre el stack
