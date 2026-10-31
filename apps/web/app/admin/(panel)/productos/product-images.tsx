@@ -34,15 +34,28 @@ export function ProductImages({ productId, images }: { productId: string; images
   const handleUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setError(null);
-    const formData = new FormData();
-    formData.set("productId", productId);
-    for (const f of Array.from(files)) {
-      formData.append("files", f);
-    }
+    // LUC-SEC-006 (2026-10-30) — lotes de ≤4 imágenes por llamada (≤20 MB por
+    // request bajo el límite global de 32 MB de Server Actions; antes un lote
+    // de 10×5 MB exigía el tope viejo de 50 MB). Secuencial y conservando el
+    // orden: el error por foto sigue nombrando cuál falló.
+    const chunks: File[][] = [];
+    const all = Array.from(files);
+    for (let i = 0; i < all.length; i += 4) chunks.push(all.slice(i, i + 4));
     startTransition(async () => {
-      const res = await uploadProductImagesAction(formData);
-      if (res?.error) setError(res.error);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      try {
+        for (const chunk of chunks) {
+          const formData = new FormData();
+          formData.set("productId", productId);
+          for (const f of chunk) formData.append("files", f);
+          const res = await uploadProductImagesAction(formData);
+          if (res?.error) {
+            setError(res.error);
+            break; // no seguir subiendo tras un error (el mensaje nombra la foto)
+          }
+        }
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
     });
   };
 

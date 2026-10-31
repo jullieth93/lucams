@@ -35,6 +35,11 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
 import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
+import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
+
+// LUC-SEC-007 — techo de aplicación para el body del webhook (128 KB; un evento
+// Resend con metadata son unos pocos KB). El límite de plataforma es 2ª capa.
+const RESEND_MAX_BODY_BYTES = 128 * 1024;
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -104,7 +109,17 @@ function verifySvixSignature(
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const rawBody = await req.text();
+  // LUC-SEC-007: la firma Svix exige el body crudo, no aceptarlo ilimitado.
+  let rawBody: string;
+  try {
+    rawBody = await readBodyWithLimit(req, RESEND_MAX_BODY_BYTES);
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      logger.warn({ event: "webhook.resend.body_too_large", limit: err.limit });
+      return new Response("Payload too large", { status: 413 });
+    }
+    return new Response("Bad request", { status: 400 });
+  }
   const hdrs = await headers();
 
   if (

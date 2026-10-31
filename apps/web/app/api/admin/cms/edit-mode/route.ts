@@ -25,6 +25,7 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { CMS_EDIT_COOKIE } from "@/lib/cms-edit-mode";
 import { isSafeInternalPath } from "@/lib/safe-redirect";
+import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
 
 // E-1 (auditoría 2026-08-24): delegar en el validador robusto — rechaza "\\",
 // caracteres de control y "//" (el check local anterior solo filtraba "//" y
@@ -34,7 +35,18 @@ function safeNext(raw: string): string {
 }
 
 export async function POST(request: Request) {
-  const form = await request.formData();
+  // LUC-SEC-007 (2026-10-30): el form es urlencoded (sin enctype multipart) y
+  // lleva 2 campos cortos — se lee con techo de aplicación (8 KB) y se parsea
+  // como URLSearchParams, en vez de formData() sin límite antes del guard.
+  let form: URLSearchParams;
+  try {
+    form = new URLSearchParams(await readBodyWithLimit(request, 8 * 1024));
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      return NextResponse.json({ error: "payload too large" }, { status: 413 });
+    }
+    return NextResponse.json({ error: "bad request" }, { status: 400 });
+  }
   const op = String(form.get("op") ?? "");
   const next = safeNext(String(form.get("next") ?? "/"));
 

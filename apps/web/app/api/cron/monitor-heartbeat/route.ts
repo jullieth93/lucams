@@ -25,6 +25,10 @@ import { recordMonitorHeartbeat } from "@/features/observability/cron-heartbeat"
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
 import { cronSecretOk } from "@/lib/cron-auth";
+import { readBodyWithLimit } from "@/lib/read-body-with-limit";
+
+// LUC-SEC-007 — techo de aplicación del body de ESTA ruta (plataforma = 2ª capa).
+const CRON_HEARTBEAT_MAX_BODY_BYTES = 8 * 1024;
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +40,9 @@ export async function POST(req: NextRequest) {
 
   let detail: string | undefined;
   try {
-    const body = (await req.json()) as { detail?: unknown };
+    const body = JSON.parse(await readBodyWithLimit(req, CRON_HEARTBEAT_MAX_BODY_BYTES)) as {
+      detail?: unknown;
+    };
     if (typeof body?.detail === "string" && body.detail.trim()) {
       detail = body.detail.trim().slice(0, 300);
     }
