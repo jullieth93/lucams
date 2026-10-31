@@ -65,7 +65,11 @@ const nextConfig: NextConfig = {
         // Supabase STG (lucams-stg) — mismos buckets públicos que prod.
         // LUC-SEC-001 (2026-10-30): `design-previews` ya NO es público — los
         // previews de diseños salen por el handler same-origin
-        // /api/design-preview/* (no requiere remotePatterns).
+        // /api/design-preview/* (no requiere remotePatterns). OJO: ese handler
+        // autoriza por cookie/capacidad y el optimizer NO reenvía headers al
+        // fetchear el src (además Next 16 bloquea locales con query sin
+        // localPatterns) → todo <Image> con esas URLs debe llevar
+        // `unoptimized` (ver isPreviewHandlerUrl en preview-artifacts.ts).
         protocol: "https",
         hostname: "mjbdiqdkykhsixvqlrrp.supabase.co",
         pathname: "/storage/v1/object/public/{product-images,cms-media}/**",
