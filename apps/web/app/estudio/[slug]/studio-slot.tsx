@@ -344,6 +344,7 @@ function StudioSlotImpl({
   // un ID único por slot para el SVG clipPath inline (objectBoundingBox 0-1
   // → escala automática al tamaño del wrapper).
   const heartClipId = useId();
+  const slotDescId = useId();
   const slotClipPath =
     shape === "circle"
       ? "circle(50% at 50% 50%)"
@@ -758,15 +759,18 @@ function StudioSlotImpl({
   if (onEdit && hasEditableText) filledHints.push("Tab para editar el texto");
   if (onCenterPhoto && slotState.photoTransform) filledHints.push("C para centrar");
   // WCAG 2.5.3 (axe label-content-name-mismatch, nightly 2026-10-31): el nombre
-  // accesible EMPIEZA por el microcopy visible del slot vacío ("Pásame una foto" /
-  // "¡Suéltala aquí!") — un usuario de control por voz dice lo que VE.
+  // accesible del slot vacío = EXACTAMENTE su texto visible (el microcopy de
+  // invitación + el badge "Opcional" si es cara B) — contenido garantizado por
+  // construcción en cualquier ambiente/contenido CMS. La guía completa (nombre
+  // del slot + atajos) va en aria-DESCRIBEDBY (sr-only): se anuncia tras el
+  // nombre sin exigir contener texto visible.
   const emptyInvite = isDropping ? texts.lienzo.slotEmptyDrop : texts.lienzo.slotEmptyInvite;
+  const slotDesc = slotState.assetUrl
+    ? null
+    : `${slotName}, vacío${slotOptional ? `, ${texts.lienzo.slotCaraBOpcional.toLowerCase()}` : ""}. Enter para subir foto.`;
   const ariaLabel = slotState.assetUrl
     ? `${slotName}, con foto cargada. ${filledHints.join(", ")}.`
-    : slotOptional
-      ? // Cara B opcional (backOptional): el nombre audible también lo dice.
-        `${emptyInvite} — ${slotName}, vacío, ${texts.lienzo.slotCaraBOpcional.toLowerCase()}. Enter para subir foto.`
-      : `${emptyInvite} — ${slotName}, vacío. Enter para subir foto.`;
+    : [emptyInvite, slotOptional ? texts.lienzo.slotCaraBOpcional : null].filter(Boolean).join(" ");
 
   // C1 — guía del slot vacío en 3 niveles (reposo → hover → drag-over).
   const slotGuideStroke = isDropping
@@ -799,6 +803,7 @@ function StudioSlotImpl({
           role="button"
           tabIndex={0}
           aria-label={ariaLabel}
+          aria-describedby={slotDesc ? slotDescId : undefined}
           aria-pressed={isSelected}
           onClick={(e: ReactMouseEvent) => {
             // M.3.b.UX.v5 (Lucy 2026-05-15) — si el cliente acaba de arrastrar
@@ -903,6 +908,14 @@ function StudioSlotImpl({
             }
           }}
         >
+          {/* WCAG 2.5.3 — descripción completa del slot para AT (sr-only: NO es
+          texto visible, así que no exige estar en el nombre; el nombre es el
+          microcopy visible, ver ariaLabel arriba). */}
+          {slotDesc && (
+            <span id={slotDescId} className="sr-only">
+              {slotDesc}
+            </span>
+          )}
           {/* Konva Stage — 3 layers stacked:
           1. RealismShadowLayer (bottom) — sombra del imán físico
           2. Content Layer (middle)      — unit template del seed
