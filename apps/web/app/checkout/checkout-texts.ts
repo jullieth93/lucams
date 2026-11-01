@@ -453,12 +453,12 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     errorWa: "Contáctanos por WhatsApp",
     listTitle: "Opciones de envío",
     free: "Gratis",
-    lucamsToday: "Te llega hoy · pedido antes de las {{cutoff}}:00",
-    lucamsDays:
-      "Te llega en {{daysLabel}} · fabricación incluida, entrega el mismo día del despacho",
+    lucamsToday:
+      "Entrega estimada hoy · pedido antes de las {{cutoff}}:00 · sujeta a disponibilidad de ruta",
+    lucamsDays: "Entrega estimada en alrededor de {{daysLabel}} · incluye preparación y ruta local",
     lucamsBadge: "LUCAMS",
-    lucamsBadgeToday: "LUCAMS · mismo día",
-    note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**.",
+    lucamsBadgeToday: "LUCAMS · estimado hoy",
+    note: "Son tiempos **estimados**, no una fecha garantizada. La **preparación toma alrededor de 2 días hábiles antes del despacho** y el tránsito se cuenta **después del despacho**. En todo caso, el plazo máximo legal de entrega es de **30 días calendario**.",
     back: "← Cambiar dirección",
     next: "Continuar al pago →",
     nextPending: "Continuando al pago…",
@@ -724,13 +724,13 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
 };
 
 /**
- * Resuelve la promesa del envío propio LUCAMS con sus tokens: {{cutoff}} = hora límite
+ * Resuelve la estimación del envío propio LUCAMS con sus tokens: {{cutoff}} = hora límite
  * de settings (2 dígitos), {{daysLabel}} = cantidad con plural resuelto
  * ("1 día hábil" / "N días hábiles" — los días ya incluyen fabricación + hora
  * de corte, calculados server-side con lib/delivery-estimate.ts) y {{days}} =
  * solo el número (back-compat con plantillas CMS antiguas). deliveryDays = 0 →
- * texto de entrega hoy. La usan el selector de envío (envio/quote-list) y el
- * resumen del paso de pago (pago/page) para que la promesa se lea IDÉNTICA en
+ * texto estimado para hoy. La usan el selector de envío (envio/quote-list) y el
+ * resumen del paso de pago (pago/page) para que la estimación se lea IDÉNTICA en
  * ambos pasos.
  */
 export function resolveLucamsPromise(

@@ -62,7 +62,7 @@ Si prefieres que te acompañemos o quieres un pedido especial, escríbenos por *
 
 ## Envío y entrega
 
-Despachamos a través de **transportadoras aliadas** (ver [Subprocesadores](/legal/subprocesadores)). El tiempo de entrega depende de tu ciudad y se te informa **antes** de que pagues. Cuando el pedido incluye personalización, al plazo de envío se suma el tiempo de producción, que también se indica en el producto.
+Despachamos a través de **transportadoras aliadas** (ver [Subprocesadores](/legal/subprocesadores)). Antes de pagar te mostramos por separado el tiempo **estimado de preparación antes del despacho** y el tiempo **estimado de tránsito después del despacho**. Ambos pueden variar según el producto, el destino, la capacidad operativa y la transportadora; no constituyen una fecha garantizada.
 
 El costo del envío se **calcula en el sitio durante el checkout**, a través de nuestro operador logístico (**Aveonline**). Donde ofrezcamos **contraentrega**, el recaudo del pago lo gestiona ese operador al momento de la entrega. Si tu pedido se cierra por WhatsApp, el envío se cotiza y se coordina por ese canal.
 

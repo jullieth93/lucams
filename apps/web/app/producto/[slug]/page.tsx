@@ -676,22 +676,23 @@ export default async function ProductoDetallePage({
                     <span>
                       {catalog ? (
                         <>
-                          Lo producimos a mano y lo{" "}
                           <strong>
-                            despachamos en máximo {product.productionDays} días hábiles
+                            Preparación estimada: alrededor de {product.productionDays} días hábiles
+                            antes del despacho
                           </strong>
-                          . Desde ahí, las transportadoras aliadas estiman {product.shippingDaysMin}
-                          –{product.shippingDaysMax} días según tu ciudad; el envío lo coordinamos
-                          por WhatsApp.
+                          . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
+                          {product.shippingDaysMax} días de tránsito según tu ciudad; el envío lo
+                          coordinamos por WhatsApp.
                         </>
                       ) : (
                         <>
-                          Hecho a pedido: lo{" "}
+                          Hecho a pedido.{" "}
                           <strong>
-                            despachamos en máximo {product.productionDays} días hábiles
+                            Preparación estimada: alrededor de {product.productionDays} días hábiles
+                            antes del despacho
                           </strong>
-                          . Desde ahí, las transportadoras aliadas estiman {product.shippingDaysMin}
-                          –{product.shippingDaysMax}{" "}
+                          . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
+                          {product.shippingDaysMax}{" "}
                           <CmsText
                             blockKey="pdp.envio.lucams-ciudades"
                             fallback="días según tu ciudad. En Bogotá, con"
@@ -701,16 +702,16 @@ export default async function ProductoDetallePage({
                           </strong>{" "}
                           <CmsText
                             blockKey="pdp.envio.lucams-entrega"
-                            fallback="(localidades habilitadas) la entrega es el"
+                            fallback="(localidades habilitadas), la ruta se estima para el"
                           />{" "}
                           <strong>
                             <CmsText
                               blockKey="pdp.envio.lucams-mismo-dia"
-                              fallback="mismo día del despacho"
+                              fallback="mismo día del despacho, sujeta a disponibilidad"
                             />
                           </strong>
                           {product.productionDays === 0
-                            ? " — y si pides antes de la hora límite, te llega hoy"
+                            ? " — si pides antes de la hora límite, se estima para hoy"
                             : ""}
                           .
                         </>

@@ -1040,10 +1040,18 @@ export async function getOrder(idOrNumber: string) {
               // Paquete F (2026-10-02) — attributes: desglose estructurado de la
               // variante en el detalle del pedido (Con/Sin imán, tamaño, idioma…).
               attributes: true,
-              // productionDays: la promesa de entrega propia ("Envío Lucams" =
+              // productionDays: la estimación de entrega propia ("Envío Lucams" =
               // fabricación + hora de corte, lib/delivery-estimate.ts) se deriva
               // del Product actual vía los items persistidos — sin snapshot extra.
-              product: { select: { name: true, productionDays: true } },
+              product: {
+                select: {
+                  name: true,
+                  productionDays: true,
+                  personalizationKind: true,
+                  personalizationSchema: true,
+                  physicalSpecs: true,
+                },
+              },
             },
           },
           // productionUrls: paths de los PNGs 300 DPI para imprenta (ADR-063 T1). El admin los
@@ -1063,6 +1071,8 @@ export async function getOrder(idOrNumber: string) {
               // Paquete C (2026-10-02) — aceptación explícita de calidad de fotos
               // (checkbox de la Vista Previa): evidencia ante reclamos de garantía.
               qualityAcknowledgedAt: true,
+              canvasData: true,
+              metadata: true,
             },
           },
         },
@@ -1095,18 +1105,24 @@ export async function getOrderProductionBundle(idOrNumber: string) {
           // un solo juego por línea, así que un pedido de 2 unidades del mismo diseño se producía
           // como 1 y el cliente recibía la mitad (auditoría 2026-07-25).
           qty: true,
-          variant: { select: { sku: true } },
+          variant: { select: { sku: true, attributes: true } },
           design: {
             select: {
               productionUrls: true,
               moderationStatus: true,
               metadata: true,
+              canvasData: true,
               // ADR-131 — con productionUrls vacío el render puede seguir en curso
               // (PENDING/PROCESSING) o haber fallado (FAILED): el ZIP lo avisa en vez
               // de omitir el item en silencio.
               renderJob: { select: { status: true, doneUnits: true, totalUnits: true } },
               product: {
-                select: { name: true, personalizationKind: true, personalizationSchema: true },
+                select: {
+                  name: true,
+                  personalizationKind: true,
+                  personalizationSchema: true,
+                  physicalSpecs: true,
+                },
               },
             },
           },
@@ -1136,6 +1152,11 @@ export async function getOrderProductionBundle(idOrNumber: string) {
         personalizationKind: d.product?.personalizationKind ?? "NONE",
         startMonth: typeof schema?.startMonth === "number" ? schema.startMonth : 0,
         calendarYear: typeof meta?.calendarYear === "number" ? meta.calendarYear : undefined,
+        productSchema: d.product?.personalizationSchema ?? null,
+        physicalSpecs: d.product?.physicalSpecs ?? null,
+        variantAttrs: it.variant.attributes,
+        canvasData: d.canvasData,
+        designMetadata: d.metadata,
         productionUrls: d.productionUrls,
         moderationStatus: d.moderationStatus,
         renderPending,

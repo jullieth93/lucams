@@ -49,6 +49,36 @@ import { unitIndexOfSlot, deployedSizeCm } from "./lib/faces";
 import { generateGridLayout } from "./lib/grid-layout";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
+import { constrainPhotoTransformToCover } from "@/features/personalization/photo-fit";
+
+type PhotoTransformChange = Partial<{
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+  rotation: number;
+}>;
+
+function coveredPhotoTransform(
+  unitTemplate: CanvasDataV2["unitTemplate"],
+  slot: CanvasDataV2["slots"][number],
+  asset: StudioAsset | undefined,
+  change: PhotoTransformChange,
+): PhotoTransformChange {
+  const photoLayer = unitTemplate.layers.find((layer) => layer.type === "image-placeholder") as
+    { width?: number; height?: number } | undefined;
+  const imageW = asset?.width ?? 0;
+  const imageH = asset?.height ?? 0;
+  if (!photoLayer?.width || !photoLayer.height || imageW <= 0 || imageH <= 0) return change;
+
+  const current = slot.photoTransform ?? { offsetX: 0, offsetY: 0, scale: 1, rotation: 0 };
+  return constrainPhotoTransformToCover({
+    windowW: photoLayer.width,
+    windowH: photoLayer.height,
+    imageW,
+    imageH,
+    transform: { ...current, ...change },
+  });
+}
 
 const MAX_VIEWPORT_WIDTH = 1600; // px lógicos máximo del grid en desktop (Lucy 2026-09-08: 1024→1280 — la plantilla se veía chica con márgenes vacíos; owner 2026-09-18: 1280→1600 — en pantallas anchas seguía habiendo aire lateral; el ancho útil real lo acotan sidebar + padding del layout)
 
@@ -1005,6 +1035,13 @@ export function StudioCanvasGrid({
     // decodificados falsearía el aviso de resolución. width=0 (placeholder de
     // extractAssetsFromCanvas) no cuenta → undefined, como antes.
     const slotAsset = slot.assetId ? assets.find((a) => a.id === slot.assetId) : undefined;
+    const updatePhotoTransform = (transform: PhotoTransformChange) =>
+      setSlotPhotoTransform(
+        slot.slotIndex,
+        noFold
+          ? coveredPhotoTransform(canvasData.unitTemplate, slot, slotAsset, transform)
+          : transform,
+      );
     return (
       <motion.div
         key={slot.slotIndex}
@@ -1092,7 +1129,7 @@ export function StudioCanvasGrid({
             // Ola 6 — el callback de transform está siempre disponible para el
             // editor a pantalla completa; los gestos inline se habilitan/deshabilitan
             // vía interactiveSlots.
-            onPhotoTransformChange={(transform) => setSlotPhotoTransform(slot.slotIndex, transform)}
+            onPhotoTransformChange={updatePhotoTransform}
             onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
             interactiveSlots={interactiveSlots}
             canvasDisabled={canvasDisabled}
@@ -1536,6 +1573,7 @@ export function StudioCanvasGrid({
         slotLabels={slotLabels}
         allowText={allowText}
         frameFullBleed={frameFullBleed}
+        requirePhotoCoverage={noFold}
         calendarPreview={calendarPreview}
         onChangePhoto={onRequestChangePhoto}
         onRequestChangeProfilePhoto={onRequestChangeProfilePhoto}
@@ -2048,6 +2086,7 @@ function StudioSlotEditModalWrapper({
   slotLabels,
   allowText = false,
   frameFullBleed = false,
+  requirePhotoCoverage = false,
   calendarPreview = null,
   onChangePhoto,
   onRequestChangeProfilePhoto,
@@ -2059,6 +2098,8 @@ function StudioSlotEditModalWrapper({
   slotLabels?: string[];
   allowText?: boolean;
   frameFullBleed?: boolean;
+  /** Productos planos a sangre: zoom/pan nunca pueden descubrir el respaldo. */
+  requirePhotoCoverage?: boolean;
   calendarPreview?: {
     year: number;
     startMonth: number;
@@ -2173,7 +2214,26 @@ function StudioSlotEditModalWrapper({
   const setSlotProfilePhoto = useStore(store, (s) => s.setSlotProfilePhoto);
   const setSlotProfileTransform = useStore(store, (s) => s.setSlotProfileTransform);
   const setTextOverrideAllSlots = useStore(store, (s) => s.setTextOverrideAllSlots);
+  const assets = useStore(store, (s) => s.assets);
   const texts = useStudioTexts();
+
+  const updatePhotoTransform = useCallback(
+    (change: PhotoTransformChange) => {
+      if (slotIndex === null) return;
+      const current = store
+        .getState()
+        .canvasData?.slots.find((slot) => slot.slotIndex === slotIndex);
+      if (!current || !unitTemplate) return;
+      const asset = current.assetId
+        ? assets.find((entry) => entry.id === current.assetId)
+        : undefined;
+      setSlotPhotoTransform(
+        slotIndex,
+        requirePhotoCoverage ? coveredPhotoTransform(unitTemplate, current, asset, change) : change,
+      );
+    },
+    [assets, requirePhotoCoverage, setSlotPhotoTransform, slotIndex, store, unitTemplate],
+  );
 
   // Ola 17 — la plantilla (unitTemplate) declara la capa `profile-photo` que
   // habilita el control "Foto de perfil" en la pestaña Foto del editor.
@@ -2242,8 +2302,7 @@ function StudioSlotEditModalWrapper({
         if (slotIndex !== null) setSlotPhotoTransform(slotIndex, null);
       }}
       onRotate={() => {
-        if (slotIndex !== null)
-          setSlotPhotoTransform(slotIndex, { rotation: (slotRotation + 90) % 360 });
+        updatePhotoTransform({ rotation: (slotRotation + 90) % 360 });
       }}
       onApplyTextOverride={(layerId, override) => {
         // QA 1.2 — undefined = «Aplicar» sin cambios: no-op (no tocar el store,
@@ -2322,7 +2381,7 @@ function StudioSlotEditModalWrapper({
                     }
                   : null,
               onTransformChange: (t) => {
-                if (slotIndex !== null) setSlotPhotoTransform(slotIndex, t);
+                updatePhotoTransform(t);
               },
             }
           : undefined

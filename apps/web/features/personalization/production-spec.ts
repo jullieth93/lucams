@@ -65,6 +65,8 @@ export type ProductionSpec = {
   especificaciones: DatoDeFicha[];
   /** Decisiones del CLIENTE que hay que respetar (colores, textos, año). */
   personalizacion: DatoDeFicha[];
+  /** Unidades 1-based cuyo reverso B opcional se imprime deliberadamente blanco. */
+  reversosEnBlanco: number[];
 };
 
 type Entrada = {
@@ -307,7 +309,27 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   const llevaImán = attrs.magnet !== false;
 
   const formato = resolverFormato(e);
-  const { frase, pasos } = describirFormato(formato, llevaImán);
+  const { frase, pasos: pasosBase } = describirFormato(formato, llevaImán);
+
+  const canvasSlots = Array.isArray(e.canvasData?.slots) ? e.canvasData.slots : [];
+  const reversosEnBlanco =
+    n(e.productSchema?.facesPerUnit) === 2 && e.productSchema?.backOptional === true
+      ? canvasSlots.flatMap((raw, index) => {
+          if (!raw || typeof raw !== "object") return [];
+          const slot = raw as Record<string, unknown>;
+          const slotIndex = Number.isInteger(slot.slotIndex) ? Number(slot.slotIndex) : index;
+          if (slotIndex % 2 === 0) return [];
+          return slot.assetId || slot.assetUrl ? [] : [Math.floor(slotIndex / 2) + 1];
+        })
+      : [];
+  const pasos = [...pasosBase];
+  if (reversosEnBlanco.length > 0) {
+    pasos.splice(
+      Math.min(1, pasos.length),
+      0,
+      `Imprime en BLANCO el reverso B de ${reversosEnBlanco.length === 1 ? "la unidad" : "las unidades"} ${reversosEnBlanco.join(", ")}; no copies ni espejes la cara A.`,
+    );
+  }
 
   const especificaciones: DatoDeFicha[] = [];
   // La medida sale de la VARIANTE. `physicalSpecs` describe el EMPAQUE y engaña: el abecedario dice
@@ -343,6 +365,12 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   }
 
   const personalizacion: DatoDeFicha[] = [];
+  if (reversosEnBlanco.length > 0) {
+    personalizacion.push({
+      etiqueta: "Reversos en blanco",
+      valor: `Cara B opcional en blanco: ${reversosEnBlanco.map((unit) => `unidad ${unit}`).join(", ")}`,
+    });
+  }
   // Multi-unidad (2026-09-09) — el diseño contiene N unidades y TODAS se fabrican
   // (tiras ×2, calendarios ×2, sets ×2). La ficha lo dice explícito: del PNG solo
   // no se deduce que son varias piezas independientes.
@@ -420,5 +448,6 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
     pasosArmado: pasos,
     especificaciones,
     personalizacion,
+    reversosEnBlanco,
   };
 }
