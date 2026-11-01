@@ -29,7 +29,11 @@ import {
   parseShipmentLastError,
   suggestShipmentFailureCause,
 } from "@/features/orders/shipment-error";
-import { lucamsDeliveryDays, maxProductionDaysOf } from "@/lib/delivery-estimate";
+import {
+  formatLucamsDeliveryEstimate,
+  lucamsDeliveryDays,
+  maxProductionDaysOf,
+} from "@/lib/delivery-estimate";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCOP } from "@/lib/format";
 import {
@@ -39,6 +43,10 @@ import {
 import { customerWaLink } from "@/lib/wa";
 import { OrderActions } from "./order-actions";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
+import {
+  resolveProductionSpec,
+  type ProductionSpec,
+} from "@/features/personalization/production-spec";
 
 export const metadata: Metadata = { title: "Detalle pedido" };
 
@@ -93,6 +101,30 @@ type ShippingAddrSnapshot = {
   neighborhood?: string;
   notes?: string;
 };
+
+const TRANSPARENCY_GRID = {
+  backgroundColor: "#ffffff",
+  backgroundImage:
+    "linear-gradient(45deg, #e5e7eb 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)",
+  backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0px",
+  backgroundSize: "16px 16px",
+} as const;
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function productionPieceLabel(index: number, spec: ProductionSpec): string {
+  const base = `Pieza ${String(index + 1).padStart(2, "0")}`;
+  if (spec.formatoFisico.tipo === "tira-desplegada" && spec.formatoFisico.plana) {
+    return spec.reversosEnBlanco.includes(index + 1)
+      ? `${base} · frente A + reverso B en blanco`
+      : `${base} · frente A + reverso B`;
+  }
+  return base;
+}
 
 export default async function AdminPedidoDetallePage({
   params,
@@ -154,14 +186,8 @@ export default async function AdminPedidoDetallePage({
           now: order.createdAt,
         })
       : null;
-  const internalPromise =
-    internalPromiseDays === null
-      ? null
-      : internalPromiseDays === 0
-        ? "Entrega hoy"
-        : internalPromiseDays === 1
-          ? "Entrega mañana"
-          : `Entrega en ${internalPromiseDays} días hábiles`;
+  const internalEstimate =
+    internalPromiseDays === null ? null : formatLucamsDeliveryEstimate(internalPromiseDays);
   // Para entrega propia, SHIPPED se lee mejor como "En ruta" (no hay courier externo).
   const statusLabel =
     isInternalDelivery && order.status === "SHIPPED"
@@ -266,16 +292,28 @@ export default async function AdminPedidoDetallePage({
                   const variantBreakdown = describeVariantAttributes(
                     parseVariantAttributes(it.variant.attributes),
                   );
+                  const productionSpec = it.design
+                    ? resolveProductionSpec({
+                        personalizationKind: it.variant.product.personalizationKind,
+                        productSchema: jsonRecord(it.variant.product.personalizationSchema),
+                        variantAttrs: jsonRecord(it.variant.attributes),
+                        physicalSpecs: jsonRecord(it.variant.product.physicalSpecs),
+                        canvasData: jsonRecord(it.design.canvasData),
+                        designMetadata: jsonRecord(it.design.metadata),
+                        productionUrls: it.design.productionUrls,
+                        lineQty: it.qty,
+                      })
+                    : null;
                   return (
                     <li key={it.id} className="flex items-start gap-3 py-3">
-                      <div className="bg-brand-purple/5 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg">
+                      <div className="bg-brand-purple/5 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg p-1">
                         {previewUrl ? (
                           <Image
                             src={previewUrl}
                             alt=""
                             fill
                             sizes="64px"
-                            className="object-cover"
+                            className="object-contain"
                             unoptimized
                           />
                         ) : (
@@ -340,33 +378,83 @@ export default async function AdminPedidoDetallePage({
                                 </Hint>
                               )}
                             </div>
-                            <div className="flex flex-wrap gap-1.5">
+                            {productionSpec && (
+                              <div className="border-brand-purple/10 bg-brand-cream/30 mb-2 rounded-md border p-2 text-[11px]">
+                                <p className="text-brand-purple-dark font-semibold">
+                                  {productionSpec.queEsCadaArchivo}
+                                </p>
+                                {productionSpec.reversosEnBlanco.length > 0 && (
+                                  <p className="mt-1 font-bold text-amber-800">
+                                    Reverso B en blanco: unidad(es){" "}
+                                    {productionSpec.reversosEnBlanco.join(", ")}. No copiar ni
+                                    espejar la cara A.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                               {it.design.productionUrls.map((path, i) => {
                                 const url = signedProduction.get(path);
                                 const label = `pieza-${String(i + 1).padStart(2, "0")}`;
+                                const displayLabel = productionSpec
+                                  ? productionPieceLabel(i, productionSpec)
+                                  : `Pieza ${String(i + 1).padStart(2, "0")}`;
                                 const approved = it.design?.moderationStatus === "APPROVED";
                                 return url ? (
-                                  <Hint
+                                  <div
                                     key={path}
-                                    content={
-                                      approved
-                                        ? undefined
-                                        : "No imprimir hasta aprobar en Moderación"
-                                    }
+                                    className={`overflow-hidden rounded-lg border ${
+                                      approved ? "border-brand-purple/15" : "border-amber-300"
+                                    }`}
                                   >
                                     <a
                                       href={url}
-                                      download={`${order.number}-${label}.png`}
-                                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${
-                                        approved
-                                          ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5"
-                                          : "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-50"
-                                      }`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      aria-label={`Abrir ${displayLabel} a resolución completa`}
+                                      className="relative block h-80 w-full overflow-hidden"
+                                      style={TRANSPARENCY_GRID}
                                     >
-                                      ⬇ {label}
-                                      {!approved && <span>⚠️</span>}
+                                      <Image
+                                        src={url}
+                                        alt={displayLabel}
+                                        fill
+                                        sizes="(min-width: 640px) 320px, 100vw"
+                                        className="object-contain"
+                                        unoptimized
+                                      />
                                     </a>
-                                  </Hint>
+                                    <div className="bg-white p-2">
+                                      <p className="text-brand-purple-dark text-[11px] font-bold">
+                                        {displayLabel}
+                                      </p>
+                                      <p className="text-brand-muted text-[10px]">
+                                        Cuadrícula gris = transparencia exterior del troquel.
+                                      </p>
+                                      {!approved && (
+                                        <p className="mt-1 text-[10px] font-bold text-amber-800">
+                                          ⚠️ No imprimir hasta aprobar en Moderación.
+                                        </p>
+                                      )}
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        <a
+                                          href={url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-brand-purple-dark text-[11px] font-semibold underline"
+                                        >
+                                          Ver completa
+                                        </a>
+                                        <a
+                                          href={url}
+                                          download={`${order.number}-${label}.png`}
+                                          className="text-brand-purple-dark text-[11px] font-semibold underline"
+                                        >
+                                          Descargar PNG
+                                        </a>
+                                      </div>
+                                    </div>
+                                  </div>
                                 ) : (
                                   <span key={path} className="text-brand-muted text-[11px]">
                                     {label} (no disponible)
@@ -673,7 +761,7 @@ export default async function AdminPedidoDetallePage({
                       {ship.localityName && (
                         <Row label="Zona de entrega" value={ship.localityName} />
                       )}
-                      {internalPromise && <Row label="Promesa" value={internalPromise} />}
+                      {internalEstimate && <Row label="Estimación" value={internalEstimate} />}
                       <p className="text-brand-muted mt-1 text-[10px]">
                         Entrega interna (mensajería propia): no hay guía de transportadora. Marca la
                         salida en ruta y la entrega a mano con las acciones de abajo.

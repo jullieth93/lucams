@@ -7,6 +7,7 @@
 
 import "server-only";
 import path from "node:path";
+import type { SKRSContext2D } from "@napi-rs/canvas";
 
 type CanvasMod = typeof import("@napi-rs/canvas");
 let _mod: CanvasMod | null = null;
@@ -55,6 +56,33 @@ const GAP = 28;
 const HEADER_H = 150;
 const FOOTER_H = 96;
 const LABEL_H = 64;
+
+function paintTransparencyGrid(
+  ctx: SKRSContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  const size = 16;
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(x, y, width, height);
+  ctx.fillStyle = "#E5E7EB";
+  for (let row = 0; row < Math.ceil(height / size); row++) {
+    for (let col = 0; col < Math.ceil(width / size); col++) {
+      if ((row + col) % 2 === 0) {
+        const tileX = col * size;
+        const tileY = row * size;
+        ctx.fillRect(
+          x + tileX,
+          y + tileY,
+          Math.min(size, width - tileX),
+          Math.min(size, height - tileY),
+        );
+      }
+    }
+  }
+}
 
 /** Compone la hoja de armado. Devuelve un PNG (Buffer). */
 export async function composeAssemblySheet(opts: {
@@ -107,8 +135,9 @@ export async function composeAssemblySheet(opts: {
     const st = STATUS_META[piece.moderationStatus] ?? STATUS_META.PENDING!;
 
     // Marco de la miniatura: color de alerta si no está aprobada.
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(x, y, cellW, thumbH);
+    // La cuadrícula hace visible el alpha del troquel: sobre blanco puro las
+    // esquinas redondeadas inferiores parecían un corte recto en Admin/armado.
+    paintTransparencyGrid(ctx, x, y, cellW, thumbH);
     ctx.strokeStyle = piece.moderationStatus === "APPROVED" ? "#E7DFD3" : st.color;
     ctx.lineWidth = piece.moderationStatus === "APPROVED" ? 1 : 3;
     ctx.strokeRect(x, y, cellW, thumbH);

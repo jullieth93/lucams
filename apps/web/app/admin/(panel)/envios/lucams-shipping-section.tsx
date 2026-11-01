@@ -102,7 +102,7 @@ export function LucamsShippingSection({ initial }: { initial: LucamsShippingInit
           </span>
         </label>
         <label className="text-brand-purple-dark block text-sm font-semibold">
-          Hora límite «entrega hoy»
+          Hora límite para estimación del mismo día
           <select
             name="cutoffHour"
             value={cutoffHour}
@@ -118,8 +118,8 @@ export function LucamsShippingSection({ initial }: { initial: LucamsShippingInit
           <span className="text-brand-muted mt-1 block text-xs font-normal">
             Pedidos antes de esta hora (Colombia) entran a producción el mismo día; a esta hora o
             después, el siguiente día hábil. La entrega es el día que termina la fabricación:
-            «Entrega hoy» solo aplica a productos listos (sin fabricación pendiente) pedidos antes
-            de la hora límite.
+            «Estimado hoy» solo aplica a productos listos (sin fabricación pendiente) pedidos antes
+            de la hora límite y sigue sujeto a disponibilidad de ruta.
           </span>
         </label>
       </div>

@@ -676,41 +676,65 @@ export default async function ProductoDetallePage({
                     <span>
                       {catalog ? (
                         <>
-                          Lo producimos a mano y lo{" "}
                           <strong>
-                            despachamos en máximo {product.productionDays} días hábiles
+                            <CmsText
+                              blockKey="pdp.envio.preparacion-prefix"
+                              fallback="Preparación estimada: alrededor de"
+                            />{" "}
+                            {product.productionDays}{" "}
+                            <CmsText
+                              blockKey="pdp.envio.preparacion-suffix"
+                              fallback="días hábiles antes del despacho"
+                            />
                           </strong>
-                          . Desde ahí, las transportadoras aliadas estiman {product.shippingDaysMin}
-                          –{product.shippingDaysMax} días según tu ciudad; el envío lo coordinamos
-                          por WhatsApp.
+                          <CmsText
+                            blockKey="pdp.envio.transito-prefix"
+                            fallback=". Después, las transportadoras aliadas estiman"
+                          />{" "}
+                          {product.shippingDaysMin}–{product.shippingDaysMax}{" "}
+                          <CmsText
+                            blockKey="pdp.envio.catalog-transito-suffix"
+                            fallback="días de tránsito según tu ciudad; el envío lo coordinamos por WhatsApp."
+                          />
                         </>
                       ) : (
                         <>
-                          Hecho a pedido: lo{" "}
+                          Hecho a pedido.{" "}
                           <strong>
-                            despachamos en máximo {product.productionDays} días hábiles
+                            <CmsText
+                              blockKey="pdp.envio.preparacion-prefix"
+                              fallback="Preparación estimada: alrededor de"
+                            />{" "}
+                            {product.productionDays}{" "}
+                            <CmsText
+                              blockKey="pdp.envio.preparacion-suffix"
+                              fallback="días hábiles antes del despacho"
+                            />
                           </strong>
-                          . Desde ahí, las transportadoras aliadas estiman {product.shippingDaysMin}
-                          –{product.shippingDaysMax}{" "}
+                          <CmsText
+                            blockKey="pdp.envio.transito-prefix"
+                            fallback=". Después, las transportadoras aliadas estiman"
+                          />{" "}
+                          {product.shippingDaysMin}–{product.shippingDaysMax}{" "}
                           <CmsText
                             blockKey="pdp.envio.lucams-ciudades"
-                            fallback="días según tu ciudad. En Bogotá, con"
+                            fallback="días de tránsito según tu ciudad. En Bogotá, con"
                           />{" "}
                           <strong>
                             <CmsText blockKey="pdp.envio.lucams-nombre" fallback="Envío Lucams" />
                           </strong>{" "}
                           <CmsText
                             blockKey="pdp.envio.lucams-entrega"
-                            fallback="(localidades habilitadas) la entrega es el"
+                            fallback="(localidades habilitadas), la ruta se estima para el"
                           />{" "}
                           <strong>
                             <CmsText
                               blockKey="pdp.envio.lucams-mismo-dia"
-                              fallback="mismo día del despacho"
+                              fallback="mismo día del despacho, sujeta a disponibilidad"
                             />
                           </strong>
                           {product.productionDays === 0
-                            ? " — y si pides antes de la hora límite, te llega hoy"
+                            ? " — si pides antes de la hora límite, se estima para hoy"
                             : ""}
                           .
                         </>

@@ -1,5 +1,5 @@
 /*
- * Tests de resolveLucamsPromise (checkout-texts.ts): la promesa "Envío
+ * Tests de resolveLucamsPromise (checkout-texts.ts): la estimación "Envío
  * Lucams" se resuelve con los tokens {{cutoff}} / {{days}} / {{s}} y se lee
  * IDÉNTICA en el selector de envío (/checkout/envio) y en el resumen del paso
  * de pago (/checkout/pago). El copy debe ser fiel a la regla real de
@@ -27,11 +27,11 @@ describe("resolveLucamsPromise", () => {
     for (const text of [one, many]) expect(text).not.toContain("{{");
   });
 
-  it("el copy default deja claro que la fabricación ya está incluida y la entrega es el mismo día del despacho", () => {
+  it("el copy default deja claro que incluye preparación y que es una estimación", () => {
     const text = resolveLucamsPromise(DEFAULT_CHECKOUT_TEXTS.shipping, 2, 12);
-    expect(text).toContain("fabricación incluida");
-    expect(text).toContain("entrega el mismo día del despacho");
-    expect(text).not.toContain("tras fabricarlo");
+    expect(text).toContain("incluye preparación");
+    expect(text).toContain("Entrega estimada");
+    expect(text).toContain("alrededor de");
   });
 
   it("el cutoff de un dígito se muestra con cero a la izquierda", () => {

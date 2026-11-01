@@ -724,7 +724,7 @@ export default async function PublicOrderPage({
                 <p className="text-brand-muted mt-2 text-xs">
                   {order.status === "DELIVERED"
                     ? "Tu pedido fue entregado por nuestro equipo Lucam&apos;s."
-                    : "Tu pedido va con nuestro equipo Lucam&apos;s — la entrega es directa, el mismo día del despacho, sin transportadora externa."}
+                    : "Tu pedido va con nuestro equipo Lucam&apos;s — la entrega se estima para el mismo día del despacho, sujeta a las condiciones de la ruta."}
                 </p>
               )}
               {/* Rastreo (feedback owner 2026-10-20): esta vista YA es el

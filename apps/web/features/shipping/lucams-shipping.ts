@@ -16,9 +16,9 @@
  * HISTÓRICO de la "zona" genérica de entrega (localidad en Bogotá, comuna en
  * Medellín). Se conservan por compatibilidad con datos ya guardados.
  *
- * Promesa de entrega = producción a mano + hora de corte (fabricamos y
- * entregamos el mismo día del despacho): la regla vive en
- * lib/delivery-estimate.ts y es compartida con admin/guía/emails.
+ * Estimación operativa = preparación a mano + hora de corte. No constituye
+ * una fecha garantizada: la regla vive en lib/delivery-estimate.ts y es
+ * compartida con admin/guía/emails.
  */
 
 import "server-only";
@@ -35,7 +35,7 @@ export const LUCAMS_CARRIER = "lucams";
 // así que el cambio aplica también a pedidos históricos sin migración.
 export const LUCAMS_CARRIER_NAME = "LUCAMS";
 
-// La regla de la promesa (producción + hora de corte) vive en
+// La regla de la estimación (producción + hora de corte) vive en
 // lib/delivery-estimate.ts; se re-exporta la hora Colombia por compatibilidad
 // con los callers existentes (admin, guía imprimible).
 export { bogotaHour };
@@ -54,12 +54,13 @@ export type LucamsDestination = {
  * del precio/días: la usan quoteShipping (al ofrecer) y el offersToken sellado
  * HMAC que finalizeCheckout re-valida con match exacto.
  *
- * Promesa de entrega (regla única de lib/delivery-estimate.ts):
+ * Estimación de entrega (regla única de lib/delivery-estimate.ts):
  * `deliveryDays = maxProductionDays + (hora Colombia >= cutoff ? 1 : 0)` —
  * los días de fabricación a mano del carrito corren desde hoy si el pedido
- * entra antes del cutoff (si no, desde el siguiente día hábil) y la entrega
- * es el mismo día del despacho. `opts.maxProductionDays` ausente → default
- * fail-safe (LUCAMS_DEFAULT_PRODUCTION_DAYS), nunca promete de menos.
+ * entra antes del cutoff (si no, desde el siguiente día hábil). El resultado
+ * es orientativo y está sujeto a disponibilidad de la ruta propia.
+ * `opts.maxProductionDays` ausente → default fail-safe
+ * (LUCAMS_DEFAULT_PRODUCTION_DAYS), nunca estima de menos.
  */
 export async function buildLucamsOffer(
   destination: LucamsDestination,

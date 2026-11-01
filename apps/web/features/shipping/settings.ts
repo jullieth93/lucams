@@ -381,9 +381,9 @@ export async function saveLucamsShippingSettings(
     SETTING_KEYS.lucamsCutoffHour,
     String(input.cutoffHour),
     {
-      label: "Hora límite envío mismo día",
+      label: "Hora límite para estimación del mismo día",
       helpText:
-        "Hora de Colombia (0-23) hasta la cual el pedido entra a producción el mismo día; después, arranca el siguiente día hábil. La promesa «Entrega hoy» solo aplica a productos listos (sin fabricación pendiente). Se gestiona desde Envíos (/admin/envios).",
+        "Hora de Colombia (0-23) hasta la cual el pedido entra a producción el mismo día; después, arranca el siguiente día hábil. La estimación «hoy» solo aplica a productos listos (sin fabricación pendiente) y está sujeta a disponibilidad de ruta. Se gestiona desde Envíos (/admin/envios).",
       type: "NUMBER",
     },
     adminId,

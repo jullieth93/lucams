@@ -511,6 +511,17 @@ describe("F-30 · errores inesperados no devuelven err.message crudo al anónimo
     });
   });
 
+  it("finalize: foto sin cobertura a sangre devuelve una acción segura para el cliente", async () => {
+    state.finalizeError = new Error("PHOTO_NOT_FULL_BLEED: slots 1");
+    const result = await finalizeDesignAction(makeFinalizeForm());
+    expect(result).toMatchObject({
+      ok: false,
+      code: "PHOTO_NOT_FULL_BLEED",
+    });
+    expect(JSON.stringify(result)).toContain("cubra todo el separador");
+    expect(JSON.stringify(result)).not.toContain("slots 1");
+  });
+
   it("finalize: error inesperado (Prisma/Supabase) → INTERNAL con copy genérico", async () => {
     state.finalizeError = new Error(
       "PrismaClientInitializationError: Can't reach database server at db.internal:5432",

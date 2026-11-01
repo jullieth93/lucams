@@ -921,6 +921,8 @@ export type StudioTexts = {
     bootTitulo: string;
     boot: string;
     preview: string;
+    /** Separadores planos: la foto debe cubrir toda el área de impresión. */
+    fotoSinCobertura: string;
     vista3d: string;
     espacio: string;
     calendario: string;
@@ -1691,6 +1693,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     bootTitulo: "No pudimos abrir el Estudio",
     boot: "No pudimos abrir el Estudio. Recarga la página o escríbenos por WhatsApp.",
     preview: "No pudimos preparar la vista previa. Intenta de nuevo en un momento.",
+    fotoSinCobertura: "Ajusta la foto para que cubra todo el separador, sin franjas blancas.",
     vista3d: "No pudimos abrir la vista 3D. Intenta de nuevo.",
     espacio: "No pudimos abrir la vista de tu espacio. Intenta de nuevo.",
     calendario: "No pudimos armar tu calendario. Intenta de nuevo.",
@@ -2319,6 +2322,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "errores.bootTitulo": "estudio.errores.boot-titulo",
   "errores.boot": "estudio.errores.boot",
   "errores.preview": "estudio.errores.preview",
+  "errores.fotoSinCobertura": "estudio.errores.foto-sin-cobertura",
   "errores.vista3d": "estudio.errores.vista-3d",
   "errores.espacio": "estudio.errores.espacio",
   "errores.calendario": "estudio.errores.calendario",

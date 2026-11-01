@@ -10,6 +10,7 @@ import {
   LUCAMS_DEFAULT_PRODUCTION_DAYS,
   lucamsDeliveryDays,
   maxProductionDaysOf,
+  formatLucamsDeliveryEstimate,
 } from "./delivery-estimate";
 
 const CUTOFF = 12;
@@ -75,5 +76,15 @@ describe("bogotaHour", () => {
     expect(bogotaHour(new Date("2026-09-29T14:00:00Z"))).toBe(9);
     expect(bogotaHour(new Date("2026-09-29T16:59:59Z"))).toBe(11);
     expect(bogotaHour(new Date("2026-09-29T17:00:00Z"))).toBe(12);
+  });
+});
+
+describe("formatLucamsDeliveryEstimate", () => {
+  it("presenta la fecha como estimación y no como promesa contractual", () => {
+    expect(formatLucamsDeliveryEstimate(0)).toBe(
+      "Entrega estimada hoy · sujeta a disponibilidad de ruta",
+    );
+    expect(formatLucamsDeliveryEstimate(1)).toBe("Entrega estimada en alrededor de 1 día hábil");
+    expect(formatLucamsDeliveryEstimate(3)).toBe("Entrega estimada en alrededor de 3 días hábiles");
   });
 });

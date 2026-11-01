@@ -101,7 +101,7 @@ export async function HomeHero() {
                   NUNCA se promete una fecha de entrega total (regla de certificación 2026-08-01). */}
               <CmsText
                 blockKey="home.hero.chip-eta"
-                fallback="Despacho en máx. {{fab}} días hábiles · la transportadora tarda ~{{entrega}} días según tu ciudad"
+                fallback="Preparación estimada: alrededor de {{fab}} días hábiles · tránsito estimado: ~{{entrega}} días después del despacho"
               />
             </span>
           </div>

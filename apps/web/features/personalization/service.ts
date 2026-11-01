@@ -80,6 +80,7 @@ import {
 // 500 aunque nunca renderice nada (caso real 2026-07-28: ERR_DLOPEN_FAILED libvips-cpp.so
 // tumbó /producto/* en Vercel). Mismo patrón que lib/photo-validation.ts y lib/storage.ts.
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
+import { photoTransformCoversWindow } from "./photo-fit";
 import type { z } from "zod";
 import type { SlotStateSchema } from "./schemas";
 type SlotState = z.infer<typeof SlotStateSchema>;
@@ -1571,6 +1572,45 @@ export async function finalizeDesign(opts: {
       .map((s) => s.slotIndex);
     if (empty.length > 0) {
       throw new Error(`INCOMPLETE_SLOTS: slots vacíos ${empty.join(", ")}`);
+    }
+  }
+
+  // Separadores planos (`noFold`) se imprimen a sangre: una foto con zoom-out
+  // o paneo fuera del excedente deja una franja blanca dentro de la pieza. El
+  // editor limita el gesto, pero esta guarda server-side evita que un canvas
+  // legacy o manipulado eluda la regla antes de crear los archivos de imprenta.
+  if (v2 && productConfig.noFold === true) {
+    const photoLayer = v2.unitTemplate.layers.find(
+      (layer) => layer.type === "image-placeholder",
+    ) as { width?: unknown; height?: unknown } | undefined;
+    const windowW = typeof photoLayer?.width === "number" ? photoLayer.width : 0;
+    const windowH = typeof photoLayer?.height === "number" ? photoLayer.height : 0;
+    const assetIds = v2.slots
+      .filter((slot) => !emptyBackSlots.has(slot.slotIndex) && slot.assetId)
+      .map((slot) => slot.assetId as string);
+    const assets = await prisma.designAsset.findMany({
+      where: { designId: design.id, id: { in: assetIds } },
+      select: { id: true, width: true, height: true },
+    });
+    const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+    const uncovered = v2.slots
+      .filter((slot) => !emptyBackSlots.has(slot.slotIndex))
+      .filter((slot) => {
+        const asset = slot.assetId ? assetById.get(slot.assetId) : undefined;
+        return (
+          !asset ||
+          !photoTransformCoversWindow({
+            windowW,
+            windowH,
+            imageW: asset.width,
+            imageH: asset.height,
+            transform: slot.photoTransform,
+          })
+        );
+      })
+      .map((slot) => slot.slotIndex);
+    if (uncovered.length > 0) {
+      throw new Error(`PHOTO_NOT_FULL_BLEED: slots ${uncovered.join(", ")}`);
     }
   }
 

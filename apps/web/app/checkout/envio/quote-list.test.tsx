@@ -37,10 +37,10 @@ const TEXTS: CheckoutTexts["shipping"] = {
   errorWa: "WhatsApp",
   listTitle: "Opciones de envío",
   free: "Gratis",
-  lucamsToday: "Entrega hoy (pedido antes de las {{cutoff}}:00)",
+  lucamsToday: "Entrega estimada hoy (pedido antes de las {{cutoff}}:00)",
   lucamsDays: "{{days}} días hábiles",
   lucamsBadge: "LUCAMS",
-  lucamsBadgeToday: "LUCAMS · mismo día",
+  lucamsBadgeToday: "LUCAMS · estimado hoy",
   note: "Nota de tiempos",
   back: "Volver",
   next: "Continuar",
@@ -131,9 +131,11 @@ describe("QuoteList — logos de transportadora", () => {
         deliveryDays: 2,
       }),
     ]);
-    expect(screen.getByText(/Entrega hoy \(pedido antes de las 12:00\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Entrega estimada hoy \(pedido antes de las 12:00\)/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/^2 días hábiles$/)).toBeInTheDocument();
-    expect(screen.getByText(/LUCAMS · mismo día/)).toBeInTheDocument();
+    expect(screen.getByText(/LUCAMS · estimado hoy/)).toBeInTheDocument();
   });
 });
 

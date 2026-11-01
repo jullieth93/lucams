@@ -1174,6 +1174,21 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
 
 ## DPI y sangrado (estado real)
 
+### Cobertura obligatoria en separadores planos (`noFold`)
+
+Los separadores planos se imprimen a sangre. A diferencia de otras plantillas que permiten alejar
+la foto para mostrar el respaldo como decisión creativa, `noFold` exige cobertura total:
+
+- `constrainPhotoTransformToCover` mantiene `scale >= 1` (cover) y limita cada offset al excedente
+  real de la foto, incluyendo rotaciones 90/270;
+- la grilla y el modal pasan todos los gestos por esa regla;
+- «Vista previa» guía al primer lienzo descubierto en diseños legacy;
+- `finalizeDesign` valida otra vez con dimensiones autoritativas de `DesignAsset` y rechaza canvas
+  manipulados con `PHOTO_NOT_FULL_BLEED`.
+
+El reverso B opcional sigue siendo **blanco**; cobertura obligatoria aplica solo a slots con foto.
+No se regeneran automáticamente diseños/pedidos históricos aprobados.
+
 - **Sin cambio de escala todavía** — requiere decisión con imprenta (ver abajo). Esta sección
   solo documenta el estado real vigente para que esa conversación tenga los números encima de
   la mesa.

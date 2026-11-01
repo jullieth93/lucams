@@ -78,8 +78,8 @@ function buildFallbackFaqs(
       slug: "cuanto-demora",
       question: "¿Cuánto demora mi pedido?",
       answer: catalog
-        ? "Lo producimos a mano y lo **despachamos en máximo {{fab}} días hábiles** desde que confirmas. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas (tránsito estimado: ~{{entrega}} días según tu ciudad) y te pasamos el número de guía para que sigas tu pedido."
-        : "Lo producimos a mano y lo **despachamos en máximo {{fab}} días hábiles** desde que confirmas. Desde ahí, la transportadora tarda ~{{entrega}} días según tu ciudad; al despachar te enviamos el número de guía para que sigas tu pedido.",
+        ? "La **preparación toma alrededor de {{fab}} días hábiles antes del despacho**. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas (tránsito estimado: ~{{entrega}} días después del despacho, según tu ciudad) y te pasamos el número de guía para que sigas tu pedido."
+        : "La **preparación toma alrededor de {{fab}} días hábiles antes del despacho**. Desde ahí, el tránsito estimado de la transportadora es de ~{{entrega}} días según tu ciudad; al despachar te enviamos el número de guía para que sigas tu pedido.",
     },
     {
       slug: "metodos-pago",
@@ -98,7 +98,7 @@ function buildFallbackFaqs(
     {
       slug: "envio-mismo-dia",
       question: "¿Tienen envío el mismo día en Bogotá?",
-      answer: `Sí: **Envío Lucams**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá** y la entrega es **el mismo día del despacho**, con **tarifa fija** que ves antes de pagar. Si el producto está **listo (sin fabricación pendiente)** y tu pedido queda confirmado **antes de las ${cutoffHour}:00**, te llega **ese mismo día**; si hay que fabricarlo a mano, primero lo producimos y te llega el día que lo despachemos. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.`,
+      answer: `Sí: **Envío Lucams**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá**, con **tarifa fija** que ves antes de pagar. La ruta local se estima para el **mismo día del despacho**, sujeta a disponibilidad y condiciones de la ruta. Si el producto está **listo (sin fabricación pendiente)** y tu pedido queda confirmado **antes de las ${cutoffHour}:00**, la entrega se estima para ese mismo día; si hay que fabricarlo a mano, primero corre el tiempo de preparación. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.`,
     },
     {
       slug: "cambios-devoluciones",
