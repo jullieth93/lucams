@@ -52,6 +52,11 @@ const EXACT_FIELDS = [
     newBody: "LUCAMS · estimado hoy",
   },
   {
+    key: "pdp.envio.lucams-ciudades",
+    oldBody: "días según tu ciudad. En Bogotá, con",
+    newBody: "días de tránsito según tu ciudad. En Bogotá, con",
+  },
+  {
     key: "pdp.envio.lucams-entrega",
     oldBody: "(localidades habilitadas) la entrega es el",
     newBody: "(localidades habilitadas), la ruta se estima para el",

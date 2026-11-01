@@ -677,25 +677,48 @@ export default async function ProductoDetallePage({
                       {catalog ? (
                         <>
                           <strong>
-                            Preparación estimada: alrededor de {product.productionDays} días hábiles
-                            antes del despacho
+                            <CmsText
+                              blockKey="pdp.envio.preparacion-prefix"
+                              fallback="Preparación estimada: alrededor de"
+                            />{" "}
+                            {product.productionDays}{" "}
+                            <CmsText
+                              blockKey="pdp.envio.preparacion-suffix"
+                              fallback="días hábiles antes del despacho"
+                            />
                           </strong>
-                          . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
-                          {product.shippingDaysMax} días de tránsito según tu ciudad; el envío lo
-                          coordinamos por WhatsApp.
+                          <CmsText
+                            blockKey="pdp.envio.transito-prefix"
+                            fallback=". Después, las transportadoras aliadas estiman"
+                          />{" "}
+                          {product.shippingDaysMin}–{product.shippingDaysMax}{" "}
+                          <CmsText
+                            blockKey="pdp.envio.catalog-transito-suffix"
+                            fallback="días de tránsito según tu ciudad; el envío lo coordinamos por WhatsApp."
+                          />
                         </>
                       ) : (
                         <>
                           Hecho a pedido.{" "}
                           <strong>
-                            Preparación estimada: alrededor de {product.productionDays} días hábiles
-                            antes del despacho
+                            <CmsText
+                              blockKey="pdp.envio.preparacion-prefix"
+                              fallback="Preparación estimada: alrededor de"
+                            />{" "}
+                            {product.productionDays}{" "}
+                            <CmsText
+                              blockKey="pdp.envio.preparacion-suffix"
+                              fallback="días hábiles antes del despacho"
+                            />
                           </strong>
-                          . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
-                          {product.shippingDaysMax}{" "}
+                          <CmsText
+                            blockKey="pdp.envio.transito-prefix"
+                            fallback=". Después, las transportadoras aliadas estiman"
+                          />{" "}
+                          {product.shippingDaysMin}–{product.shippingDaysMax}{" "}
                           <CmsText
                             blockKey="pdp.envio.lucams-ciudades"
-                            fallback="días según tu ciudad. En Bogotá, con"
+                            fallback="días de tránsito según tu ciudad. En Bogotá, con"
                           />{" "}
                           <strong>
                             <CmsText blockKey="pdp.envio.lucams-nombre" fallback="Envío Lucams" />
