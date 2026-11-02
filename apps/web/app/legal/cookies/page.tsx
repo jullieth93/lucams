@@ -69,7 +69,7 @@ Si actualizamos nuestras cookies o esta política, publicaremos la nueva versió
 
 ---
 
-_Versión 1 · vigente desde 2026-09-29_
+_Versión 2 · vigente desde 2026-11-02_
 `;
 
 export default function Page() {
@@ -78,7 +78,7 @@ export default function Page() {
       <LegalPageHeader
         blockKey="legal.cookies.heading"
         defaultTitle="Política de Cookies"
-        lastUpdated="Última actualización: 2026-09-29 · Versión 1"
+        lastUpdated="Última actualización: 2026-11-02 · Versión 2"
       />
       <CmsMarkdown blockKey="legal.cookies" fallback={FALLBACK} className="mt-6" />
       <div className="border-brand-purple/15 from-brand-purple/5 to-brand-pink/5 mt-8 rounded-2xl border bg-gradient-to-br p-5">

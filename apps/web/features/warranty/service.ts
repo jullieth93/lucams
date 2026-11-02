@@ -6,7 +6,9 @@ import { prisma } from "@/lib/db";
  * el negocio diagnostica y aplica un remedio (reparación / cambio / devolución del dinero).
  *
  * Diferencias vs retracto (Ley 2439):
- *  - Ventana = Product.warrantyMonths (meses calendario) desde la ENTREGA, no 5 días hábiles.
+ *  - Ventana = OrderItem.warrantyMonths (meses calendario) desde la ENTREGA,
+ *    es decir, el término sellado cuando se realizó la compra, no el producto
+ *    vigente que el Admin podría haber editado después.
  *  - Los productos PERSONALIZADOS sí tienen garantía (un imán defectuoso se cubre).
  *  - Historial permitido: un producto puede fallar varias veces; se bloquea un nuevo reclamo
  *    solo si ya hay uno ACTIVO (PENDING/IN_REVIEW/APPROVED) para ese item.
@@ -56,7 +58,8 @@ export async function getWarrantyItems(
         select: {
           id: true,
           qty: true,
-          variant: { select: { product: { select: { name: true, warrantyMonths: true } } } },
+          warrantyMonths: true,
+          variant: { select: { product: { select: { name: true } } } },
           warrantyClaims: {
             where: { status: { in: ACTIVE_STATUSES } },
             select: { status: true },
@@ -70,7 +73,7 @@ export async function getWarrantyItems(
   const now = new Date();
   const delivered = order.status === "DELIVERED" && !!order.deliveredAt;
   return order.items.map((it) => {
-    const wm = it.variant.product.warrantyMonths;
+    const wm = it.warrantyMonths;
     const within = order.deliveredAt ? isWithinWarranty(order.deliveredAt, wm, now) : false;
     const active = (it.warrantyClaims[0]?.status as WarrantyStatus | undefined) ?? null;
     let reason: WarrantyIneligibleReason | null = null;
@@ -111,7 +114,7 @@ export async function createWarrantyClaim(input: {
     where: { id: input.orderItemId },
     select: {
       id: true,
-      variant: { select: { product: { select: { warrantyMonths: true } } } },
+      warrantyMonths: true,
       order: { select: { customerId: true, status: true, deliveredAt: true, deletedAt: true } },
       warrantyClaims: { where: { status: { in: ACTIVE_STATUSES } }, select: { id: true }, take: 1 },
     },
@@ -121,7 +124,7 @@ export async function createWarrantyClaim(input: {
   if (item.order.status !== "DELIVERED" || !item.order.deliveredAt) {
     throw new WarrantyError("NOT_DELIVERED");
   }
-  if (!isWithinWarranty(item.order.deliveredAt, item.variant.product.warrantyMonths, new Date())) {
+  if (!isWithinWarranty(item.order.deliveredAt, item.warrantyMonths, new Date())) {
     throw new WarrantyError("OUT_OF_WARRANTY");
   }
   if (item.warrantyClaims.length > 0) throw new WarrantyError("ACTIVE_CLAIM");

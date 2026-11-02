@@ -64,4 +64,4 @@ Estamos para ayudarte. Escríbenos a **{{email_retracto}}**, a **{{email_contact
 
 ---
 
-_Versión 1 · vigente desde 2026-09-29_
+_Versión 2 · vigente desde 2026-11-02_

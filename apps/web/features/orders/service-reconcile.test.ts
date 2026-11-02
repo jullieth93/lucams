@@ -125,6 +125,7 @@ function cartItem(overrides: Record<string, unknown> = {}) {
         isActive: true,
         deletedAt: null,
         name: "Imán Nevera",
+        warrantyMonths: 3,
       },
     },
     ...overrides,
@@ -219,6 +220,10 @@ describe("createOrderFromCart — gate TOCTOU de reconciliación", () => {
           items: expect.objectContaining({ create: expect.any(Array) }),
         }),
       }),
+    );
+    const recreatedItems = vi.mocked(tx.order.update).mock.calls[0]![0].data.items.create;
+    expect(recreatedItems).toEqual(
+      expect.arrayContaining([expect.objectContaining({ warrantyMonths: 3 })]),
     );
   });
 });

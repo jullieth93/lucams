@@ -509,7 +509,7 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
       "tienes 5 días hábiles desde que recibes para retractarte de productos del catálogo estándar; te devolvemos el dinero en máximo 15 días calendario. Los productos personalizados en el Estudio (con tu foto o tu texto) no tienen retracto por ser hechos a tu medida (Ley 1480, art. 47).",
     legalWarrantyTitle: "Garantía:",
     legalWarrantyBody:
-      "todos los productos tienen garantía de 3 meses desde la entrega por defectos de fabricación o impresión (término informado según la naturaleza del producto, Ley 1480 art. 8); puedes pedir reparación, cambio o devolución del dinero.",
+      "cada producto tiene garantía legal durante el plazo que se informa en su ficha y se confirma en tu pedido, contado desde la entrega; puedes pedir reparación, cambio o devolución del dinero por defectos de fabricación o impresión.",
     legalMore: "Más en",
     legalDevoluciones: "Devoluciones y Retracto",
     legalGarantias: "Garantías",

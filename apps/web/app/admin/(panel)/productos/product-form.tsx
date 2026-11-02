@@ -389,15 +389,15 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             <Field
               id="warrantyMonths"
               label="Garantía (meses)"
-              hint="Ley 1480: mínimo 3 (término informado al consumidor)."
+              hint="Define el plazo informado al cliente para este producto (de 1 a 120 meses)."
             >
               <Input
                 id="warrantyMonths"
                 name="warrantyMonths"
                 type="number"
-                min={0}
+                min={1}
                 max={120}
-                defaultValue={initialProduct?.warrantyMonths ?? 3}
+                defaultValue={initialProduct?.warrantyMonths ?? 1}
                 disabled={pending}
               />
             </Field>

@@ -392,12 +392,15 @@ describe("orderConfirmationEmail", () => {
             qty: 1,
             lineTotal: 3_000_000,
             breakdown: ["12 fotos", "6×8 cm", "Sin imán"],
+            warrantyMonths: 1,
           },
         ],
       }),
     );
     expect(r.html).toContain("12 fotos · 6×8 cm · Sin imán");
     expect(r.text).toContain("(12 fotos · 6×8 cm · Sin imán)");
+    expect(r.html).toContain("Garantía: 1 mes desde la entrega");
+    expect(r.text).toContain("Garantía: 1 mes desde la entrega");
   });
 
   it("Paquete H — ítem sin desglose (vacío/ausente) no pinta línea secundaria", async () => {

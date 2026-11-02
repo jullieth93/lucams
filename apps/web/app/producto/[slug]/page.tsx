@@ -287,10 +287,9 @@ export default async function ProductoDetallePage({
   // cliente) están exceptuados del retracto. `isPersonalizable` (personalización OPCIONAL) NO basta:
   // comprado sin diseño custom, conserva el retracto (verificación adversarial).
   const alwaysCustom = requiresPersonalization || isLetterSetProduct || isNamePerTile;
-  // Garantía: nunca anunciar menos del término informado al consumidor (3 meses, Ley 1480
-  // art. 8 — término fijado e informado por la naturaleza del producto), aunque un dato
-  // legado traiga < 3. Default 3 para productos sin valor explícito.
-  const warrantyMonths = Math.max(product.warrantyMonths ?? 3, 3);
+  // Garantía: el término es configurable por producto y se informa en esta
+  // ficha antes de comprar. La DB y el schema lo restringen a 1..120 meses.
+  const warrantyMonths = product.warrantyMonths;
 
   // JSON-LD Product structured data — Google rich results.
   // priceValidUntil usa la updatedAt + 1 año (no Date.now() para evitar
