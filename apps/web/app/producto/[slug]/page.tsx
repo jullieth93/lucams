@@ -290,6 +290,7 @@ export default async function ProductoDetallePage({
   // Garantía: el término es configurable por producto y se informa en esta
   // ficha antes de comprar. La DB y el schema lo restringen a 1..120 meses.
   const warrantyMonths = product.warrantyMonths;
+  const warrantyTerm = `${warrantyMonths} ${warrantyMonths === 1 ? "mes" : "meses"}`;
 
   // JSON-LD Product structured data — Google rich results.
   // priceValidUntil usa la updatedAt + 1 año (no Date.now() para evitar
@@ -790,7 +791,7 @@ export default async function ProductoDetallePage({
                     Devoluciones y Retracto
                   </Link>
                   <Link href="/legal/garantias" className="hover:text-brand-purple underline">
-                    Garantías ({warrantyMonths} meses)
+                    Garantía ({warrantyTerm})
                   </Link>
                 </div>
               </section>
