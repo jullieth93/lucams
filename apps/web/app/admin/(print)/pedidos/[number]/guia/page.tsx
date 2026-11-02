@@ -25,7 +25,11 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { getOrder } from "@/features/orders/service";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
-import { lucamsDeliveryDays, maxProductionDaysOf } from "@/lib/delivery-estimate";
+import {
+  formatLucamsDeliveryEstimate,
+  lucamsDeliveryDays,
+  maxProductionDaysOf,
+} from "@/lib/delivery-estimate";
 import { getSettingValue } from "@/lib/cms";
 import { formatCOP } from "@/lib/format";
 import { PrintGuideButton } from "./print-button";
@@ -79,12 +83,7 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
     cutoffHour: settings.cutoffHour,
     now: order.createdAt,
   });
-  const promiseText =
-    deliveryDays === 0
-      ? `Entrega hoy — pedido antes de las ${String(settings.cutoffHour).padStart(2, "0")}:00`
-      : deliveryDays === 1
-        ? "Entrega mañana"
-        : `Entrega en ${deliveryDays} días hábiles`;
+  const estimateText = formatLucamsDeliveryEstimate(deliveryDays);
   const isCod = order.paymentMethod === "COD";
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
@@ -147,7 +146,7 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
             </span>
           </p>
           <p className="border border-black px-1 py-0.5 text-[9px] font-bold whitespace-nowrap">
-            {promiseText}
+            {estimateText}
           </p>
         </section>
 

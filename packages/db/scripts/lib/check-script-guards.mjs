@@ -66,6 +66,10 @@ const ALLOWLIST_PRD_DELIBERADO = new Set([
   // jornada ADR-178 (cal-banner-hint sin «·» huérfano; thumb-arrastrar con el
   // tap-to-assign); mismo patrón de republish-checkout-rural-copy-20261021.
   "one-shot/republish-estudio-texts-20261029.mjs",
+  // 2026-11-01 — unifica preparación/tránsito como estimaciones en CMS y
+  // términos. Se ejecuta en STG ahora; queda preparado para PRD solo tras
+  // aprobación del owner (dry-run default + historial CMS reversible).
+  "one-shot/republish-delivery-estimates-20261101.mjs",
   // 2026-10-29 — cierra el drift STG→PRD de la variante SEP-MAG-2X6-5
   // (`magnet: true` ausente en PRD; sync de contenido ADR-126).
   "one-shot/sync-variant-magnet-attr-20261029.mjs",

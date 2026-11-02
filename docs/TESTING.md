@@ -881,6 +881,19 @@ se aprietan de nuevo a medida que sube la cobertura real (ratchet).
 
 ---
 
+## Regresiones críticas: entrega y archivos de imprenta
+
+- `photo-fit.test.ts`: reproduce el encuadre descubierto de LCM-2026-0003, rotación 90°, zoom
+  mínimo cover y límites de paneo.
+- `production-spec.test.ts`: un reverso B opcional vacío se anuncia como blanco y nunca como espejo.
+- `checkout-texts.test.ts` + `delivery-estimate.test.ts`: singular/plural, cutoff y lenguaje
+  explícitamente estimado.
+- Certificación manual STG: crear un separador plano, intentar zoom-out/pan hasta el borde,
+  confirmar que el editor no descubre blanco, finalizar, abrir Admin y revisar las cuatro esquinas
+  sobre la cuadrícula; descargar ZIP y cotejar PNG, `armado.png` y `LEEME.txt`.
+- Antes de promover a PRD: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`, smoke del
+  preview STG y evidencia visual del pedido de prueba. Los pedidos PRD históricos son solo lectura.
+
 ## Tests que NO escribimos
 
 - **Tests de Prisma/Next.js/Supabase nativos.** Son librerías; sus mantenedores los testean.

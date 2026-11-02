@@ -38,6 +38,97 @@ export function coverScaleBase(
   return Math.max(windowW / imgW, windowH / imgH);
 }
 
+export type PhotoTransform = {
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+  rotation?: number;
+};
+
+type PhotoCoverageInput = {
+  windowW: number;
+  windowH: number;
+  imageW: number;
+  imageH: number;
+  transform?: Partial<PhotoTransform> | null;
+};
+
+function normalizedQuarterRotation(rotation: number | undefined): number {
+  return (((rotation ?? 0) % 360) + 360) % 360;
+}
+
+/**
+ * Devuelve la caja visible de una foto después de aplicar cover, zoom y rotación.
+ * Los offsets se expresan en coordenadas lógicas del stage, igual que Konva y
+ * los dos renderers de producción.
+ */
+function photoCoverageGeometry(input: PhotoCoverageInput) {
+  const rotation = normalizedQuarterRotation(input.transform?.rotation);
+  const swapsAxes = rotation === 90 || rotation === 270;
+  const orientedW = swapsAxes ? input.imageH : input.imageW;
+  const orientedH = swapsAxes ? input.imageW : input.imageH;
+  const coverBase = coverScaleBase(input.windowW, input.windowH, orientedW, orientedH);
+  const scale = clampPhotoScale(input.transform?.scale ?? 1);
+
+  return {
+    renderedW: orientedW * coverBase * scale,
+    renderedH: orientedH * coverBase * scale,
+    offsetX: input.transform?.offsetX ?? 0,
+    offsetY: input.transform?.offsetY ?? 0,
+    rotation,
+    scale,
+  };
+}
+
+/**
+ * Comprueba que la foto cubra por completo la ventana de impresión, sin que se
+ * alcance a ver el respaldo. Se usa como invariante de los productos planos a
+ * sangre (hoy, separadores `noFold`) tanto en cliente como en servidor.
+ */
+export function photoTransformCoversWindow(input: PhotoCoverageInput): boolean {
+  if (input.windowW <= 0 || input.windowH <= 0 || input.imageW <= 0 || input.imageH <= 0) {
+    return false;
+  }
+  const geometry = photoCoverageGeometry(input);
+  const epsilon = 0.01;
+  const maxOffsetX = Math.max(0, (geometry.renderedW - input.windowW) / 2);
+  const maxOffsetY = Math.max(0, (geometry.renderedH - input.windowH) / 2);
+  return (
+    geometry.renderedW + epsilon >= input.windowW &&
+    geometry.renderedH + epsilon >= input.windowH &&
+    Math.abs(geometry.offsetX) <= maxOffsetX + epsilon &&
+    Math.abs(geometry.offsetY) <= maxOffsetY + epsilon
+  );
+}
+
+/**
+ * Ajusta una transformación para conservar cobertura total: scale nunca baja
+ * de cover (1) y el paneo queda dentro del excedente real de la foto rotada.
+ */
+export function constrainPhotoTransformToCover(input: PhotoCoverageInput): PhotoTransform {
+  const requested: PhotoTransform = {
+    offsetX: input.transform?.offsetX ?? 0,
+    offsetY: input.transform?.offsetY ?? 0,
+    scale: Math.max(1, clampPhotoScale(input.transform?.scale ?? 1)),
+    rotation: normalizedQuarterRotation(input.transform?.rotation),
+  };
+  if (input.windowW <= 0 || input.windowH <= 0 || input.imageW <= 0 || input.imageH <= 0) {
+    return requested;
+  }
+
+  const geometry = photoCoverageGeometry({ ...input, transform: requested });
+  const maxOffsetX = Math.max(0, (geometry.renderedW - input.windowW) / 2);
+  const maxOffsetY = Math.max(0, (geometry.renderedH - input.windowH) / 2);
+  const clampOffset = (value: number, max: number) =>
+    max === 0 ? 0 : Math.max(-max, Math.min(max, value));
+  return {
+    offsetX: clampOffset(requested.offsetX, maxOffsetX),
+    offsetY: clampOffset(requested.offsetY, maxOffsetY),
+    scale: requested.scale,
+    rotation: requested.rotation,
+  };
+}
+
 /**
  * Sensibilidad del pinch (zoom con dos dedos), ÚNICA para la grilla interactiva
  * (studio-slot) y el preview del modal de edición (studio-photo-preview): el

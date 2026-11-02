@@ -322,6 +322,27 @@ polling (`GET /api/designs/<id>/render-status`) y el render corre en background:
   "Preparando archivos de impresión… X de N" / "el render falló" según el `RenderJob`, y el ZIP
   de producción (`/admin/pedidos/<n>/produccion`) responde **409** mientras haya un job vivo
   (nunca un ZIP a medias) y grita en el LEEME.txt los items con render FAILED.
+- **Inspección del troquel y reversos:** el detalle del pedido muestra cada PNG completo con
+  `object-contain` sobre cuadrícula de transparencia; gris visible en las esquinas = alpha exterior
+  del troquel, no contenido faltante. El ZIP y `armado.png` repiten esa cuadrícula y el LEEME/ficha
+  enuncian «reverso B en blanco» cuando `backOptional` lo exige. Nunca espejar la cara A.
+- **Productos planos a sangre (`noFold`):** el finalize rechaza una foto que no cubra toda la
+  ventana (`PHOTO_NOT_FULL_BLEED`). No se debe saltar la guarda ni regenerar pedidos históricos
+  sin comparación visual y aprobación del owner.
+
+### Publicar el lenguaje estimado de entrega en STG
+
+El código trae los fallbacks nuevos, pero los campos CMS ya publicados conservan su body. Ejecutar
+desde `packages/db` primero en dry-run y luego con `--apply` usando `.env.stg`:
+
+```bash
+pnpm exec dotenv -e ../../.env.stg -- node scripts/one-shot/republish-delivery-estimates-20261101.mjs
+pnpm exec dotenv -e ../../.env.stg -- node scripts/one-shot/republish-delivery-estimates-20261101.mjs --apply
+```
+
+Después, sembrar claves nuevas con `migrate-cms-v2`, invalidar el caché CMS desde
+`/admin/contenido` y verificar checkout, PDP, ayuda y `legal/terminos`. PRD requiere aprobación
+explícita posterior; repetir dry-run allí antes de cualquier `--apply`.
 
 ### Migraciones de la jornada integral 2026-10-17/20 (fases 1-6, ADR-155…160)
 

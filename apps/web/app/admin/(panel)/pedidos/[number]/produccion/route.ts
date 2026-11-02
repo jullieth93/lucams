@@ -21,6 +21,8 @@ import {
 } from "@/features/personalization/assembly-sheet";
 import { MONTH_NAMES_ES } from "@/features/personalization/calendar-grid";
 import { logger } from "@/lib/logger";
+import { resolveProductionSpec } from "@/features/personalization/production-spec";
+import { parseVariantAttributes } from "@/features/products/variant-schemas";
 
 // Descarga N archivos de storage + zip: dar presupuesto (no el default de 15s).
 export const maxDuration = 60;
@@ -48,6 +50,12 @@ function slug(s: string): string {
     .replace(/^-+|-+$/g, "")
     .toLowerCase()
     .slice(0, 40);
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ number: string }> }) {
@@ -132,6 +140,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
   for (let itemIdx = 0; itemIdx < bundle.items.length; itemIdx++) {
     const item = bundle.items[itemIdx]!;
     const isCalendar = item.personalizationKind === "CALENDAR_PHOTO_MONTH";
+    const spec = resolveProductionSpec({
+      personalizationKind: item.personalizationKind,
+      productSchema: jsonRecord(item.productSchema),
+      variantAttrs: parseVariantAttributes(item.variantAttrs),
+      physicalSpecs: jsonRecord(item.physicalSpecs),
+      canvasData: jsonRecord(item.canvasData),
+      designMetadata: jsonRecord(item.designMetadata),
+      productionUrls: item.productionUrls,
+      lineQty: item.qty,
+    });
     // La CANTIDAD va en el nombre de la carpeta y en la hoja de resumen, no en archivos duplicados:
     // los PNG serían byte a byte iguales y solo engordarían el ZIP. Lo que hacía falta era decirlo,
     // porque antes no aparecía en ninguna parte y un pedido de 2 se imprimía como 1.
@@ -143,6 +161,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
         (item.qty > 1
           ? `  ⚠️ IMPRIMIR ${item.qty} COPIAS DE CADA PIEZA (${item.productionUrls.length} × ${item.qty} = ${item.productionUrls.length * item.qty} impresiones)`
           : ""),
+      `  Qué es cada archivo: ${spec.queEsCadaArchivo}`,
+      ...spec.especificaciones.map((entry) => `  ${entry.etiqueta}: ${entry.valor}`),
+      ...spec.personalizacion.map((entry) => `  ${entry.etiqueta}: ${entry.valor}`),
+      "  Armado:",
+      ...spec.pasosArmado.map((step, index) => `    ${index + 1}. ${step}`),
     );
     if (item.moderationStatus !== "APPROVED") {
       summary.push(
@@ -154,7 +177,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
       const monthIndex0 = (((item.startMonth + i) % 12) + 12) % 12;
       const label = isCalendar
         ? `${MONTH_NAMES_ES[monthIndex0] ?? `Mes ${i + 1}`}${item.calendarYear ? ` ${item.calendarYear}` : ""}`
-        : `Pieza ${i + 1}`;
+        : spec.reversosEnBlanco.includes(i + 1)
+          ? `Pieza ${i + 1} · frente A + reverso B en blanco`
+          : `Pieza ${i + 1}`;
       const fileName = isCalendar
         ? `${String(i + 1).padStart(2, "0")}-${MONTH_SLUG[monthIndex0] ?? `mes-${i + 1}`}.png`
         : `pieza-${String(i + 1).padStart(2, "0")}.png`;

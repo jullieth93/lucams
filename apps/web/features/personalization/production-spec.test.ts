@@ -240,6 +240,29 @@ describe("lo que NO está horneado en el PNG y hay que escribir", () => {
     expect(spec.personalizacion.find((x) => x.etiqueta === "Marco")?.valor).toMatch(/a sangre/i);
   });
 
+  it("identifica reversos B opcionales en blanco y prohíbe espejar la cara A", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      productSchema: { facesPerUnit: 2, backOptional: true, noFold: true },
+      productionUrls: ["pieza-1.png", "pieza-2.png"],
+      designMetadata: { faceStrips: { facesPerUnit: 2, strips: 2 } },
+      canvasData: {
+        slots: [
+          { slotIndex: 0, assetId: "a" },
+          { slotIndex: 1, assetId: null, assetUrl: null },
+          { slotIndex: 2, assetId: "b" },
+          { slotIndex: 3, assetId: "c" },
+        ],
+      },
+    });
+
+    expect(spec.reversosEnBlanco).toEqual([1]);
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Reversos en blanco")?.valor).toMatch(
+      /unidad 1/i,
+    );
+    expect(spec.pasosArmado.join(" ")).toMatch(/no copies ni espejes/i);
+  });
+
   // Hay diseños de 2026 sobre un producto cuyo schema dice 2027: leer el del producto imprime mal.
   it("el año del calendario sale del diseño, no del producto", () => {
     const spec = resolveProductionSpec({

@@ -978,7 +978,9 @@ describe.skipIf(!hasDb)(
         expect(texts.datos.refError).toContain("Mínimo 20 caracteres");
         expect(texts.datos.viaTypeAria).toBe("Tipo de vía");
         expect(texts.quote.consent).toContain("Ley 1581 de 2012");
-        expect(texts.shipping.note).toContain("**estimados por la transportadora**");
+        expect(texts.shipping.note).toContain("**preparación toma alrededor de 2 días hábiles");
+        expect(texts.shipping.note).toContain("**después del despacho**");
+        expect(texts.shipping.note).toContain("**30 días calendario**");
         expect(texts.shipping.errorWa).toBe("Contáctanos por WhatsApp");
         expect(texts.payment.couponAsk).toBe("¿Tienes un cupón?");
         expect(texts.payment.billingNote).toContain("cuenta de cobro o factura");

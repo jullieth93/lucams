@@ -136,6 +136,7 @@ import {
   type StoragePutRequest,
 } from "./lib/upload-with-retry";
 import { PHOTO_PACK_UNITS_PER_PACK } from "@/features/products/variant-schemas";
+import { photoTransformCoversWindow } from "@/features/personalization/photo-fit";
 
 // FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
 // (three.js) van diferidas DENTRO de SceneGallery, así que este import estático no infla el bundle
@@ -1698,6 +1699,36 @@ export function StudioEditor({
       }
       state = store.getState();
       if (!state.designId || !state.canvasData) return;
+      // Los separadores planos se imprimen a sangre. Diseños legacy podían
+      // conservar zoom < cover o paneo excesivo y dejar una franja blanca en
+      // producción. Guiamos al primer lienzo afectado antes del preview; el
+      // service repite la validación como defensa ante canvas manipulados.
+      if (productConfig.noFold === true) {
+        const photoLayer = state.canvasData.unitTemplate.layers.find(
+          (layer) => layer.type === "image-placeholder",
+        ) as { width?: number; height?: number } | undefined;
+        const assetById = new Map(state.assets.map((asset) => [asset.id, asset]));
+        const uncovered = state.canvasData.slots.find((slot) => {
+          if (!slot.assetId) return false;
+          const asset = assetById.get(slot.assetId);
+          return (
+            !asset ||
+            !photoTransformCoversWindow({
+              windowW: photoLayer?.width ?? 0,
+              windowH: photoLayer?.height ?? 0,
+              imageW: asset.width,
+              imageH: asset.height,
+              transform: slot.photoTransform,
+            })
+          );
+        });
+        if (uncovered) {
+          state.selectSlot(uncovered.slotIndex);
+          setOpenEditSlot({ slotIndex: uncovered.slotIndex, tab: "photo" });
+          toast.error(texts.errores.fotoSinCobertura);
+          return;
+        }
+      }
       // Fase 2 · item 2.2 (2026-10-07) — partición por UNIDAD física para la
       // Vista Previa paginada (set/tira/separador/pack; 1 rango = sin pager).
       const unitRanges = previewUnitRanges({

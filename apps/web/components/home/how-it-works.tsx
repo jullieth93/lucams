@@ -20,9 +20,9 @@ import { isCatalogMode } from "@/lib/store-mode";
 // en producción (catálogo). La coletilla COD se mantiene al final para que
 // stripCodMention la recorte si COD_ENABLED está apagado.
 const STEP3_DESC_CATALOG =
-  "Lo producimos a mano y despachamos en máximo {{fab}} días hábiles; desde ahí, la transportadora tarda ~{{entrega}} días más según tu ciudad (te lo confirmamos por WhatsApp). Cierras la compra por WhatsApp — contraentrega disponible.";
+  "La preparación toma alrededor de {{fab}} días hábiles antes del despacho; desde ahí, el tránsito estimado es de ~{{entrega}} días según tu ciudad (te lo confirmamos por WhatsApp). Cierras la compra por WhatsApp — contraentrega disponible.";
 const STEP3_DESC_FULL =
-  "Lo producimos a mano y despachamos en máximo {{fab}} días hábiles; desde ahí, la transportadora tarda ~{{entrega}} días más según tu ciudad. Pagas en línea de forma segura — contraentrega disponible.";
+  "La preparación toma alrededor de {{fab}} días hábiles antes del despacho; desde ahí, el tránsito estimado es de ~{{entrega}} días según tu ciudad. Pagas en línea de forma segura — contraentrega disponible.";
 
 const STEPS = [
   {

@@ -599,6 +599,13 @@ La configuración de personalización de un producto (`personalizationKind` +
 "Personalización" → `features/products/personalization-schema.ts`); ya no depende de
 los scripts de seed. Los tooltips de toda la app usan el primitivo de marca
 `components/ui/tooltip.tsx` (`Hint`/`Tooltip`, radix), nunca el `title=` nativo.
+
+La frontera de imprenta comparte invariantes puras entre cliente y servidor. En productos planos
+`personalizationSchema.noFold=true`, `photo-fit.ts` calcula cover/rotación/límites de paneo y
+`finalizeDesign` vuelve a validar contra las dimensiones autoritativas de `DesignAsset`; un canvas
+fuera de cobertura no llega a `RenderJob`. `production-spec.ts` es la fuente única de semántica de
+armado (piezas, caras, reversos B blancos) para el detalle Admin y el ZIP. Los PNG privados se
+presentan con `object-contain` sobre cuadrícula de alpha: la visualización no recorta ni altera bytes.
 | Storefront misc | `UrlRedirect`, `WishlistItem`, `BackInStockSubscription` |
 | B2B | `Quote`, `QuoteItem`, `WholesaleTier` (este último con consumidor storefront desde 2026-10-02: el carrito lo aplica como descuento por volumen público — ver § Reglas) |
 | Costeo / recetas (BOM) | `Material`, `ProductMaterial` |

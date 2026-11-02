@@ -308,7 +308,11 @@ export async function finalizeDesignAction(formData: FormData): Promise<
       message: string;
       uploads: { slotIndex: number; url: string }[];
     }
-  | { ok: false; code: "VALIDATION" | "INCOMPLETE_SLOTS" | "INTERNAL"; message: string }
+  | {
+      ok: false;
+      code: "VALIDATION" | "INCOMPLETE_SLOTS" | "PHOTO_NOT_FULL_BLEED" | "INTERNAL";
+      message: string;
+    }
 > {
   const designId = String(formData.get("designId") ?? "").trim();
   if (!designId) {
@@ -483,9 +487,13 @@ export async function finalizeDesignAction(formData: FormData): Promise<
     // F-30 — INCOMPLETE_SLOTS is an expected domain guard whose copy is customer-safe (it only
     // describes the caller's own slots) and keeps its code; any other error is internal
     // (Prisma/Supabase) and the client gets a generic message — the detail stays in the log.
-    const code: "INCOMPLETE_SLOTS" | "INTERNAL" = msg.startsWith("INCOMPLETE_SLOTS")
+    const code: "INCOMPLETE_SLOTS" | "PHOTO_NOT_FULL_BLEED" | "INTERNAL" = msg.startsWith(
+      "INCOMPLETE_SLOTS",
+    )
       ? "INCOMPLETE_SLOTS"
-      : "INTERNAL";
+      : msg.startsWith("PHOTO_NOT_FULL_BLEED")
+        ? "PHOTO_NOT_FULL_BLEED"
+        : "INTERNAL";
     logger.warn({ event: "design.finalize.fail", code, err: msg }, "finalizeDesign failed");
     return {
       ok: false,
@@ -493,7 +501,9 @@ export async function finalizeDesignAction(formData: FormData): Promise<
       message:
         code === "INCOMPLETE_SLOTS"
           ? msg
-          : "No pudimos preparar tu diseño para impresión. Intenta de nuevo en unos minutos.",
+          : code === "PHOTO_NOT_FULL_BLEED"
+            ? "Ajusta la foto para que cubra todo el separador, sin franjas blancas, y vuelve a intentarlo."
+            : "No pudimos preparar tu diseño para impresión. Intenta de nuevo en unos minutos.",
     };
   }
 }

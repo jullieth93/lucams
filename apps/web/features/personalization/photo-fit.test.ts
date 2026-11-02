@@ -15,6 +15,8 @@ import {
   coverScaleBase,
   PINCH_SENSITIVITY,
   pinchAdjustedRatio,
+  constrainPhotoTransformToCover,
+  photoTransformCoversWindow,
 } from "./photo-fit";
 
 describe("photo-fit — regla cover + zoom compartida (editor/sharp/canvas)", () => {
@@ -49,6 +51,69 @@ describe("photo-fit — regla cover + zoom compartida (editor/sharp/canvas)", ()
     expect(finalScale(200, 200, 1000, 800, 1)).toBeCloseTo(0.25); // cover exacto
     expect(finalScale(200, 200, 1000, 800, 0.2)).toBeCloseTo(0.125); // clamp a 0.5
     expect(finalScale(200, 200, 1000, 800, 10)).toBeCloseTo(0.75); // clamp a 3
+  });
+});
+
+describe("photo-fit — cobertura obligatoria de productos planos a sangre", () => {
+  it("detecta el hueco blanco del encuadre observado en LCM-2026-0003", () => {
+    expect(
+      photoTransformCoversWindow({
+        windowW: 400,
+        windowH: 1500,
+        imageW: 1125,
+        imageH: 2000,
+        transform: {
+          scale: 0.9580693425411546,
+          offsetX: 0,
+          offsetY: -40.29663085937489,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("sube zoom a cover y limita el paneo al excedente disponible", () => {
+    const constrained = constrainPhotoTransformToCover({
+      windowW: 400,
+      windowH: 1500,
+      imageW: 1125,
+      imageH: 2000,
+      transform: { scale: 0.5, offsetX: 999, offsetY: -999 },
+    });
+
+    expect(constrained.scale).toBe(1);
+    expect(constrained.offsetX).toBeCloseTo(221.875);
+    expect(constrained.offsetY).toBe(0);
+    expect(
+      photoTransformCoversWindow({
+        windowW: 400,
+        windowH: 1500,
+        imageW: 1125,
+        imageH: 2000,
+        transform: constrained,
+      }),
+    ).toBe(true);
+  });
+
+  it("intercambia ejes para rotaciones de 90° y conserva zoom válido", () => {
+    const constrained = constrainPhotoTransformToCover({
+      windowW: 300,
+      windowH: 600,
+      imageW: 1200,
+      imageH: 600,
+      transform: { scale: 1.5, offsetX: 500, offsetY: 500, rotation: 90 },
+    });
+
+    expect(constrained.scale).toBe(1.5);
+    expect(constrained.rotation).toBe(90);
+    expect(
+      photoTransformCoversWindow({
+        windowW: 300,
+        windowH: 600,
+        imageW: 1200,
+        imageH: 600,
+        transform: constrained,
+      }),
+    ).toBe(true);
   });
 });
 

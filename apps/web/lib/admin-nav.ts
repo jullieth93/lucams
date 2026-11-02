@@ -416,7 +416,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/envios",
         icon: Truck,
         description:
-          "Transportadoras que el checkout ofrece (activar/desactivar, incluido el envío propio Lucams) y configuración del envío propio: precio, hora límite «entrega hoy» y zonas de entrega por ciudad.",
+          "Transportadoras que el checkout ofrece (activar/desactivar, incluido el envío propio Lucams) y configuración del envío propio: precio, hora límite para estimación local y zonas de entrega por ciudad.",
       },
       {
         label: "Integraciones",

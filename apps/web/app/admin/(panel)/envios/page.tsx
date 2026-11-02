@@ -7,7 +7,7 @@
  * Acá se gestionan:
  *   - Lista unificada de transportadoras: «Envío Lucams» (propio) + carriers
  *     de la cuenta Aveonline, con toggles on/off.
- *   - Configuración del envío propio: precio, hora límite «entrega hoy» y
+ *   - Configuración del envío propio: precio, hora límite operativa y
  *     zonas de entrega por ciudad.
  * Lo técnico de Aveonline (webhooks de tracking) quedó en
  * /admin/integraciones/aveonline.
@@ -122,9 +122,9 @@ export default async function EnviosAdminPage() {
           </div>
           <p className="text-brand-muted mb-3 text-xs">
             Mensajería interna por zonas de entrega: aparece en el checkout como una opción más. La
-            promesa suma la fabricación a mano del pedido y la hora límite («Entrega hoy» solo si el
-            pedido entra antes de la hora límite y no hay fabricación pendiente; si no, «Entrega en
-            N días hábiles»). Estos pedidos NO generan guía de Aveonline — se despachan a mano y
+            estimación suma la preparación del pedido y la hora límite («Estimado hoy» solo si el
+            pedido entra antes de la hora límite y no hay fabricación pendiente; si no, «Alrededor
+            de N días hábiles»). Estos pedidos NO generan guía de Aveonline — se despachan a mano y
             tienen su propia guía de entrega imprimible en el detalle del pedido. El on/off se
             maneja en la lista de transportadoras de arriba.
           </p>
