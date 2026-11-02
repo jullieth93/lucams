@@ -144,7 +144,7 @@ Esta política rige desde su fecha de entrada en vigencia y se mantiene mientras
 
 ---
 
-_Versión 1 · vigente desde 2026-09-29_
+_Versión 2 · vigente desde 2026-11-02_
 `;
 
 export default function Page() {
