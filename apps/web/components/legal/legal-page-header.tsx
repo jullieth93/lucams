@@ -5,7 +5,7 @@
  *
  * - `legal.<slug>.heading` → título por página
  * - `legal.last-updated` → línea de fecha+versión COMÚN (default para todo
- *   el paquete legal v1, 2026-09-29: los 8 documentos comparten versión)
+ *   el paquete legal v2, 2026-11-02: los 8 documentos comparten versión)
  * - `lastUpdated` (prop opcional) → línea LITERAL por página. Hoy cookies y
  *   security la pasan explícita por costumbre del versionado propio que
  *   tenían antes del paquete v1; debe coincidir con la línea de versión del
@@ -32,7 +32,7 @@ export function LegalPageHeader({
         {lastUpdated ?? (
           <CmsText
             blockKey="legal.last-updated"
-            fallback="Última actualización: 2026-09-29 · Versión 1"
+            fallback="Última actualización: 2026-11-02 · Versión 2"
           />
         )}
       </p>

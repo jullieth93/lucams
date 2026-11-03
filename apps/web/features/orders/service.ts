@@ -289,6 +289,7 @@ async function createOrderFromCartTx(
                     isActive: true,
                     deletedAt: true,
                     name: true,
+                    warrantyMonths: true,
                     personalizationSchema: true,
                     category: { select: { isActive: true, deletedAt: true } },
                   },
@@ -529,6 +530,9 @@ async function createOrderFromCartTx(
         variantId: ci.variantId,
         qty: ci.qty,
         unitPrice: ci.unitPrice,
+        // Garantía inmutable de esta compra: una edición futura del producto
+        // nunca reduce el término anunciado y aceptado al confirmar el pedido.
+        warrantyMonths: ci.variant.product.warrantyMonths,
         designId: ci.designId,
         customDesign: ci.design?.canvasData ?? ci.customDesign ?? Prisma.JsonNull,
         templateId: ci.templateId,

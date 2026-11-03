@@ -180,7 +180,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/garantias",
         icon: BadgeCheck,
         description:
-          "Reclamos de garantía (3 meses, término informado — Ley 1480 art. 8): recibir, evaluar, resolver (reparación/reposición/devolución) o rechazar, y notificar al cliente en cada cierre. Módulo único — absorbe la antigua bandeja /admin/reclamos (redirect 308).",
+          "Reclamos de garantía: recibir, evaluar, resolver (reparación/reposición/devolución) o rechazar según el plazo informado en la compra, y notificar al cliente en cada cierre. Módulo único — absorbe la antigua bandeja /admin/reclamos (redirect 308).",
       },
     ],
   },

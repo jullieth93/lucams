@@ -34,6 +34,8 @@ export type OrderConfirmationData = {
      * secundaria bajo el nombre; []/ausente ⇒ solo el nombre.
      */
     breakdown?: string[];
+    /** Término sellado para esta compra; opcional solo para previews históricos. */
+    warrantyMonths?: number;
   }>;
   shippingAddress: string; // ya formateada
   /** Token público para vista guest /pedido/<token> sin login. */
@@ -67,6 +69,7 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
   // campo en OrderConfirmationData): las filas de items van sin precio y la
   // tabla de totales se omite completa.
   const hidePrices = data.isGift === true;
+  const warrantyLabel = (months: number) => `${months} ${months === 1 ? "mes" : "meses"}`;
   const itemsRows = data.items
     .map(
       (it) => `
@@ -75,6 +78,10 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
     ${escapeHtml(it.name)} <span style="opacity:0.55;">×${it.units ?? it.qty}</span>${
       it.breakdown && it.breakdown.length > 0
         ? `<div style="font-size:12px;color:#3D2E5C;opacity:0.6;">${escapeHtml(it.breakdown.join(" · "))}</div>`
+        : ""
+    }${
+      it.warrantyMonths
+        ? `<div style="font-size:12px;color:#3D2E5C;opacity:0.6;">Garantía: ${warrantyLabel(it.warrantyMonths)} desde la entrega</div>`
         : ""
     }
   </td>${
@@ -164,8 +171,8 @@ ${ctaButton(orderCtaUrl, "Ver mi pedido →")}
 
 <p style="font-size:12px;color:#3D2E5C;opacity:0.6;margin-top:16px;">${
     hidePrices
-      ? `Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía de 3 meses</a>.`
-      : `Los valores están en pesos colombianos (COP) y son el total que pagas. Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía de 3 meses</a>.`
+      ? `Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía informada para cada producto</a>.`
+      : `Los valores están en pesos colombianos (COP) y son el total que pagas. Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía informada para cada producto</a>.`
   }</p>
 
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:14px;">¿Algún cambio? Escríbenos por WhatsApp o responde este correo.</p>
@@ -175,13 +182,13 @@ ${ctaButton(orderCtaUrl, "Ver mi pedido →")}
     ? data.items
         .map(
           (it) =>
-            `  - ${it.name}${it.breakdown && it.breakdown.length > 0 ? ` (${it.breakdown.join(" · ")})` : ""} ×${it.units ?? it.qty}`,
+            `  - ${it.name}${it.breakdown && it.breakdown.length > 0 ? ` (${it.breakdown.join(" · ")})` : ""} ×${it.units ?? it.qty}${it.warrantyMonths ? ` · Garantía: ${warrantyLabel(it.warrantyMonths)} desde la entrega` : ""}`,
         )
         .join("\n")
     : data.items
         .map(
           (it) =>
-            `  - ${it.name}${it.breakdown && it.breakdown.length > 0 ? ` (${it.breakdown.join(" · ")})` : ""} ×${it.units ?? it.qty} → ${formatCOP(it.lineTotal)}`,
+            `  - ${it.name}${it.breakdown && it.breakdown.length > 0 ? ` (${it.breakdown.join(" · ")})` : ""} ×${it.units ?? it.qty} → ${formatCOP(it.lineTotal)}${it.warrantyMonths ? ` · Garantía: ${warrantyLabel(it.warrantyMonths)} desde la entrega` : ""}`,
         )
         .join("\n");
 
@@ -217,7 +224,7 @@ ${
 Los valores están en pesos colombianos (COP) y son el total que pagas.`
 }
 Retracto (5 días hábiles, catálogo estándar): ${siteUrl}/legal/devoluciones
-Garantía (3 meses desde la entrega): ${siteUrl}/legal/garantias`;
+Garantía (plazo informado para cada producto): ${siteUrl}/legal/garantias`;
 
   return {
     subject: `Pedido ${data.orderNumber} confirmado 🎉`,

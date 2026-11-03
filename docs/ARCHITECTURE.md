@@ -394,6 +394,7 @@ model OrderItem {
   variant         ProductVariant @relation(fields: [variantId], references: [id])
   qty             Int
   unitPrice       Int
+  warrantyMonths  Int            // snapshot del término informado al comprar
   customDesign    Json?
   designAssetUrl  String?        // PNG alta resolución para producción
 }
