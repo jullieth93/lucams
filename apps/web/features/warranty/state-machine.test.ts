@@ -191,7 +191,8 @@ describe("createWarrantyClaim — validaciones", () => {
   function mockItem(over: Record<string, unknown> = {}) {
     return {
       id: "oi-1",
-      variant: { product: { warrantyMonths: 12 } },
+      warrantyMonths: 12,
+      variant: { product: {} },
       order: {
         customerId: "cust-1",
         status: "DELIVERED",
@@ -297,7 +298,8 @@ describe("getWarrantyItems — elegibilidad", () => {
         {
           id: "oi-1",
           qty: 2,
-          variant: { product: { name: "Imán foto", warrantyMonths: 12 } },
+          warrantyMonths: 12,
+          variant: { product: { name: "Imán foto" } },
           warrantyClaims: [] as { status: WarrantyStatus }[],
         },
       ],
@@ -343,7 +345,8 @@ describe("getWarrantyItems — elegibilidad", () => {
           {
             id: "oi-1",
             qty: 1,
-            variant: { product: { name: "Imán foto", warrantyMonths: 12 } },
+            warrantyMonths: 12,
+            variant: { product: { name: "Imán foto" } },
             warrantyClaims: [{ status: "IN_REVIEW" as WarrantyStatus }],
           },
         ],

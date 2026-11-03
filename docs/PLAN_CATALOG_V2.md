@@ -594,15 +594,15 @@ model CouponUsage {
 
 ---
 
-### [4.2] Garantía + tiempos directo en `Product` (2026-05-15)
+### [4.2] Garantía + tiempos directo en `Product`
 
 - **Decisión**: sumar 3 campos a `Product`:
-  - `warrantyMonths: Int @default(12)` — Ley 1480 art. 11 mínimo 12 meses
+  - `warrantyMonths: Int @default(1)` — término informado para ese producto (1..120 meses)
   - `productionDays: Int @default(3)` — días hábiles producción
   - `shippingDaysMin: Int @default(2)` y `shippingDaysMax: Int @default(5)` — días hábiles envío
-- **Rationale**: campos estructurados queryables por bot + visibles al cliente en PDP. Cumplen requisito Ley 1480 art. 23 (plazos de entrega).
-- **Implica**: migración Prisma. Render PDP: "Listo en X días + envío Y-Z días = recibís entre el {fecha_min} y el {fecha_max}". Bot responde "Tu pedido llega aproximadamente en X-Y días hábiles".
-- **Admin**: edita por producto desde `/admin/productos/[id]`. Defaults razonables para que Lucy no tenga que tocar producto a producto.
+- **Rationale**: campos estructurados queryables por bot + visibles al cliente en PDP. La garantía se comunica antes de comprar y el plazo de cada venta se sella en `OrderItem.warrantyMonths`, para que una edición posterior no reduzca derechos adquiridos.
+- **Implica**: migración Prisma; render PDP muestra el plazo de garantía configurado. El bot responde el valor de la ficha vigente; los reclamos usan el snapshot de la orden. Los tiempos de preparación y tránsito se informan como estimaciones separadas, no como fecha garantizada.
+- **Admin**: edita por producto desde `/admin/productos/[id]`, con mínimo 1 mes y máximo 120.
 
 ---
 
@@ -640,12 +640,12 @@ model CouponUsage {
 
 ---
 
-### [4.6] Garantía 12 meses legal mínimo (2026-05-15)
+### [4.6] Garantía por producto
 
-- **Decisión**: `warrantyMonths` default 12 meses cumpliendo Ley 1480 art. 11. Sin extensiones por marketing.
-- **Rationale**: cumple obligación legal. Cubre productos defectuosos por descascarado / decoloración / desimantación. Extender por marketing solo si Lucy lo decide explícitamente para un producto puntual (cambio admin per-producto).
-- **Implica**: ninguna feature extra. Página `/legal/garantias` ya documenta proceso.
-- **Admin**: Lucy puede override por producto (`warrantyMonths: 18` para vidrio premium por ejemplo) si quiere diferenciador comercial.
+- **Decisión**: el catálogo inicia con 1 mes y Admin puede configurar un plazo mayor por producto. La Ley 1480 art. 8 exige informar el término anunciado; si no se anunciara, aplicaría el supletorio de 1 año. Personalizar el producto no elimina la garantía por defecto.
+- **Rationale**: ofrece flexibilidad comercial sin promesas ambiguas ni reducción retroactiva: el plazo informado en la compra queda guardado por item.
+- **Implica**: `/legal/garantias` describe la regla; la ficha y el email de confirmación muestran el término aplicable. La garantía sigue cubriendo defectos de fabricación, materiales o impresión.
+- **Admin**: puede ajustar `warrantyMonths` entre 1 y 120 para ventas futuras; por ejemplo, 18 meses para un producto premium.
 
 ---
 

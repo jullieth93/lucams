@@ -104,7 +104,7 @@ function buildFallbackFaqs(
       slug: "cambios-devoluciones",
       question: "¿Cómo cambio o devuelvo un producto?",
       answer:
-        "Tienes **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: **3 meses** desde la entrega, y el plazo **se suspende** mientras tu producto esté en reparación. [Más detalles](/legal/devoluciones) y [Garantías](/legal/garantias).",
+        "Tienes **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: aplica el plazo que ves en la ficha del producto y que confirmamos en tu pedido (el catálogo inicia con **1 mes**); el plazo **se suspende** mientras tu producto esté en reparación. [Más detalles](/legal/devoluciones) y [Garantías](/legal/garantias).",
     },
     {
       slug: "cuidado-imanes",
