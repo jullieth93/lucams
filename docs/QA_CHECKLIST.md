@@ -173,7 +173,7 @@
 - [ ] /legal/terminos menciona Ley 1480 + retracto + garantía
 - [ ] /legal/cookies tabla con cookies reales del sitio
 - [ ] /legal/devoluciones plazos correctos (5 días hábiles)
-- [ ] /legal/garantias menciona 1 año Ley 1480 art. 11
+- [ ] /legal/garantias explica el plazo informado por producto (art. 8), el default de 1 mes y el término supletorio de 1 año si no se informara ninguno
 - [ ] /legal/habeas-data 6 derechos + proceso para ejercerlos
 - [ ] /legal/subprocesadores tabla actual + DPA links válidos
 - [ ] /legal/security email security@ + scope

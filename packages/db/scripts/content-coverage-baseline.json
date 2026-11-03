@@ -113,7 +113,7 @@
     "apps/web/app/producto/[slug]/page.tsx :: Producto personalizado: por ser hecho a tu medida no aplica el derecho de retracto (Ley 1480, art. 47). La garantía por defectos de fabricación sí te cubre.",
     "apps/web/app/producto/[slug]/page.tsx :: Tienes 5 días hábiles desde que recibes para retractarte sin dar razones (Ley 1480, art. 47); te devolvemos el dinero en máximo 15 días calendario.",
     "apps/web/app/producto/[slug]/page.tsx :: Devoluciones y Retracto",
-    "apps/web/app/producto/[slug]/page.tsx :: Garantías (",
+    "apps/web/app/producto/[slug]/page.tsx :: Garantía (",
     "apps/web/app/producto/[slug]/product-reviews.tsx :: Reseñas",
     "apps/web/app/producto/[slug]/product-reviews.tsx :: reseña",
     "apps/web/app/producto/[slug]/product-reviews.tsx :: Todavía no hay reseñas. ¡Si compraste este producto, sé la primera persona en opinar!",

@@ -100,6 +100,7 @@ function orderFixture(over: Record<string, unknown> = {}) {
       {
         unitPrice: 7_990_000,
         qty: 1,
+        warrantyMonths: 3,
         variant: {
           sku: "FI-12-SIN",
           attributes: { photoSlots: 12, sizeCm: "6×8", magnet: false },
@@ -170,6 +171,8 @@ describe("sendOrderConfirmation — destino del CTA «Ver mi pedido» (Paquete H
 
     expect(state.sent[0].html).toContain(BREAKDOWN_TEXT);
     expect(state.sent[0].text).toContain(BREAKDOWN_TEXT);
+    expect(state.sent[0].html).toContain("Garantía: 3 meses desde la entrega");
+    expect(state.sent[0].text).toContain("Garantía: 3 meses desde la entrega");
   });
 });
 
