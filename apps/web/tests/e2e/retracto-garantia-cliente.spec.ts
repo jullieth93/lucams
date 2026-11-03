@@ -58,7 +58,7 @@ let productId = "";
 let categoryId = "";
 // Pedidos: dentro de ventana de retracto (1 día), fuera de retracto pero con
 // garantía vigente (30 días), y fuera de garantía (400 días > 3 meses, el
-// término informado — antes 12 meses).
+// término sellado explícitamente para esta compra).
 let orderInWindow = { id: "", number: "", itemId: "" };
 let orderOutOfRetract = { id: "", number: "" };
 let orderOutOfWarranty = { id: "", number: "" };
@@ -80,7 +80,8 @@ async function makeDeliveredOrder(tag: string, deliveredAt: Date) {
       status: "DELIVERED",
       deliveredAt,
       customerId,
-      items: { create: [{ variantId, qty: 1, unitPrice: 20_000 }] },
+      // La garantía es un snapshot de la compra, no un dato del catálogo.
+      items: { create: [{ variantId, qty: 1, unitPrice: 20_000, warrantyMonths: 3 }] },
     },
     select: { id: true, items: { select: { id: true } } },
   });
@@ -238,7 +239,7 @@ test("garantía: cliente reporta defecto dentro del periodo → acuse + Warranty
   await expect(page.locator("body")).toContainText(/garantía en revisión/i, { timeout: 20_000 });
 });
 
-test("ventana de retracto vencida (30 días) → SIN control de retracto; garantía de 3 meses sigue ofrecida", async ({
+test("ventana de retracto vencida (30 días) → SIN control de retracto; garantía sellada de 3 meses sigue ofrecida", async ({
   page,
 }) => {
   await loginClient(page);
@@ -249,11 +250,11 @@ test("ventana de retracto vencida (30 días) → SIN control de retracto; garant
 
   // Fuera de los 5 días hábiles: el control no renderiza nada (ni CTA ni nota).
   await expect(page.locator("summary", { hasText: /solicitar retracto/i })).toHaveCount(0);
-  // Garantía de 3 meses sigue vigente a los 30 días → el CTA sí aparece.
+  // Garantía sellada de 3 meses sigue vigente a los 30 días → el CTA sí aparece.
   await expect(page.locator("summary", { hasText: /reportar garantía/i })).toBeVisible();
 });
 
-test("fuera de garantía (400 días > 3 meses) → nota explícita y sin formulario", async ({
+test("fuera de garantía (400 días > 3 meses sellados) → nota explícita y sin formulario", async ({
   page,
 }) => {
   await loginClient(page);

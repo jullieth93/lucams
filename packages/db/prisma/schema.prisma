@@ -321,8 +321,10 @@ model Product {
   // Shape: { material, thicknessMm, magnetType, weightGrams, packaging, includes[],
   //          careInstructions?, countryOfOrigin: "CO" }
   physicalSpecs         Json?
-  // PLAN_CATALOG_V2 4.2 — garantía legal Ley 1480 art. 11 (default 12 meses mínimo).
-  warrantyMonths        Int                       @default(12)
+  // PLAN_CATALOG_V2 4.2 — término de garantía informado para ESTE producto.
+  // El Admin lo configura desde 1 a 120 meses; al comprar se copia de forma
+  // inmutable a OrderItem.warrantyMonths para nunca reducir una promesa previa.
+  warrantyMonths        Int                       @default(1)
   // PLAN_CATALOG_V2 4.2 — días hábiles de producción. Default 3.
   // Productos kind=NONE (Coleccionables) deberían tener productionDays=1 (stock ready).
   productionDays        Int                       @default(3)
@@ -708,15 +710,15 @@ model Order {
 // (admin con actorAdminId, webhook Wompi/Aveonline, cron, sistema). Visible en
 // el detalle admin del pedido. Solo backend privilegiado (RLS deny-by-default).
 model OrderStatusEvent {
-  id           String      @id @default(cuid())
+  id           String       @id @default(cuid())
   orderId      String
-  order        Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   fromStatus   OrderStatus?
   toStatus     OrderStatus
   source       String // "admin" | "webhook" | "cron" | "system"
   actorAdminId String? // AdminUser.id cuando source="admin"
   note         String?
-  createdAt    DateTime    @default(now())
+  createdAt    DateTime     @default(now())
 
   @@index([orderId, createdAt])
 }
@@ -781,6 +783,9 @@ model OrderItem {
   variant        ProductVariant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
   qty            Int
   unitPrice      Int
+  // Garantía ofrecida al confirmar esta compra. Es un snapshot: editar el
+  // producto después solo afecta ventas futuras, nunca derechos ya adquiridos.
+  warrantyMonths Int                      @default(1)
   // Personalización (sub-bloque M)
   // - designId: snapshot del Design en estado USED_IN_ORDER (immutable post-pago).
   //   Si el Design original se borra después, la order conserva customDesign +
@@ -805,10 +810,9 @@ model OrderItem {
   createdAt DateTime @default(now())
 
   // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
-  // de dinero/stock de este modelo viven en la migración Prisma
-  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
-  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
-  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+  // de dinero/stock viven en 20260904144657_money_stock_nonnegative_checks.
+  // El rango 1..120 de warrantyMonths vive en 20261102100000_warranty_snapshot.
+  // Prisma no expresa CHECK; al sumar campos con invariantes, agregá su guarda SQL.
 
   @@index([orderId])
   @@index([variantId])
@@ -1023,7 +1027,8 @@ enum WarrantyStatus {
 }
 
 // Reclamo de garantía legal sobre un item comprado. A diferencia del retracto:
-//  - Ventana = Product.warrantyMonths (meses calendario) desde la entrega, no 5 días hábiles.
+//  - Ventana = OrderItem.warrantyMonths sellado (meses calendario) desde la entrega,
+//    no 5 días hábiles ni el valor actual del producto.
 //  - Los productos PERSONALIZADOS sí tienen garantía legal (un imán defectuoso se cubre).
 //  - Se permite historial (no @unique): un producto puede fallar más de una vez; el service
 //    bloquea un nuevo reclamo si ya hay uno ACTIVO (no resuelto/rechazado) para ese item.
@@ -1207,7 +1212,7 @@ model AdminActionLog {
 // security_webhook_invalid) y el cron purge-event-logs (retención 180 días).
 
 model SecurityEvent {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   event    String // p.ej. "auth.login.fail", "auth.admin_login.fail", "webhook.invalid_signature"
   outcome  String // "failure" (auth rechazada) | "rejected" (firma/secreto inválido)
   ipHash   String?

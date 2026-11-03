@@ -60,7 +60,7 @@ Para ejercerlo, escríbenos a **{{email_retracto}}** o por WhatsApp. Más detall
 
 ## Garantía legal
 
-Todos los productos cuentan con **garantía legal** (Ley 1480 de 2011, arts. 7 a 11 y 16) de **tres (3) meses** contados desde la entrega, frente a defectos de fabricación, de materiales o de impresión. Conforme al art. 8 de esa ley —que fija como término el **anunciado por el productor** a falta de disposición de la autoridad competente— fijamos este plazo acorde a la naturaleza de nuestros productos (papelería magnética personalizada, de alta manipulación) y te lo informamos expresamente aquí.
+Todos los productos cuentan con **garantía legal** (Ley 1480 de 2011, arts. 7 a 11 y 16) frente a defectos de fabricación, de materiales o de impresión. El plazo aplicable es el que informamos expresamente en la ficha de cada producto antes de la compra y confirmamos en tu pedido; el catálogo inicia con **un (1) mes** como plazo predeterminado, sin perjuicio de que un producto anuncie uno mayor. Conforme al art. 8 de esa ley —que fija como término el **anunciado por el productor** a falta de disposición de la autoridad competente— ese es el plazo que se cuenta desde la entrega.
 
 El plazo se **suspende** mientras tu producto esté en reparación por garantía y, si te reponemos el producto completo, **corre de nuevo desde cero** (art. 9). Ante un defecto cubierto, primero lo **reparamos totalmente gratis** —el transporte corre por nuestra cuenta—; si el producto **no admite reparación**, te lo reponemos por uno nuevo o te devolvemos el dinero; y si **la falla se repite**, tú eliges entre una nueva reparación, la devolución total o parcial del precio, o el cambio por otro producto de iguales o mejores características (art. 11). La garantía no cubre el daño por mal uso, fuerza mayor o caso fortuito, hecho de un tercero, o el incumplimiento de las instrucciones de uso y conservación (art. 16) —y probar esas causales nos corresponde a nosotros.
 
@@ -120,4 +120,4 @@ Podemos actualizar estos Términos para reflejar cambios legales o de nuestro se
 
 ---
 
-_Versión 1 · vigente desde 2026-09-29_
+_Versión 2 · vigente desde 2026-11-02_

@@ -2399,7 +2399,7 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               type: "TEXT",
               label: "Legal garantía: cuerpo",
               category: "LEGAL",
-              body: "todos los productos tienen garantía legal de 1 año por defectos de fabricación; puedes pedir reparación, cambio o devolución del dinero.",
+              body: "cada producto tiene garantía legal durante el plazo que se informa en su ficha y se confirma en tu pedido, contado desde la entrega; puedes pedir reparación, cambio o devolución del dinero por defectos de fabricación o impresión.",
               sortOrder: 330,
             },
             {
