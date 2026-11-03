@@ -9,10 +9,7 @@ import { describe, expect, it } from "vitest";
 import path from "node:path";
 import sharp from "sharp";
 import { createCanvas, GlobalFonts, loadImage } from "@napi-rs/canvas";
-import {
-  parseTileSizeCm,
-  renderLetterTileProduction,
-} from "./letter-tile-render";
+import { parseTileSizeCm, renderLetterTileProduction } from "./letter-tile-render";
 
 GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Baloo2.ttf"), "Baloo 2");
 GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Fredoka.ttf"), "Fredoka");

@@ -16,7 +16,15 @@ import {
 
 type Call =
   | { op: "fillRect"; x: number; y: number; w: number; h: number; fill: unknown }
-  | { op: "fillText"; text: string; x: number; y: number; font: string; fill: unknown; rot: number };
+  | {
+      op: "fillText";
+      text: string;
+      x: number;
+      y: number;
+      font: string;
+      fill: unknown;
+      rot: number;
+    };
 
 function recordingCtx(): { ctx: BrandPatternContext2D; calls: Call[] } {
   const calls: Call[] = [];

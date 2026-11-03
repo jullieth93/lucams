@@ -1009,7 +1009,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     unitCaraA: "Cara A",
     unitCaraB: "Cara B",
     slotCaraBOpcional: "Opcional",
-    slotCaraBOpcionalTitle: "Si no diseñas el respaldo, lo imprimimos con la marca de agua de Lucams.",
+    slotCaraBOpcionalTitle:
+      "Si no diseñas el respaldo, lo imprimimos con la marca de agua de Lucams.",
     doblezDesplegado: "Doblez · Desplegado: {tamano}",
     doblezNotaRotacion:
       "La tira se imprime con las caras cabeza a cabeza hacia el doblez — al doblarla sobre la página ambas se leen derechas.",

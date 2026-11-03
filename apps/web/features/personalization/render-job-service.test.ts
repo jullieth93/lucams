@@ -68,7 +68,12 @@ const { state, MockNeedsKonva } = vi.hoisted(() => {
       /** Letterset (owner 2026-11-03): set de fichas mockeado y modo del renderer por ficha. */
       letterTileSet: null as null | { tiles: { imageUrl: string }[] },
       tileRenderMode: "ok" as "ok" | "konva",
-      renderedTiles: [] as { letter: string; color: string; withBorder: boolean; hasImage: boolean }[],
+      renderedTiles: [] as {
+        letter: string;
+        color: string;
+        withBorder: boolean;
+        hasImage: boolean;
+      }[],
       productVariants: [] as { id: string; price: number; stock: number; attributes: unknown }[],
     },
   };

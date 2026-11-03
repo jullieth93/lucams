@@ -564,8 +564,7 @@ export function productionPieceGroups(e: {
       typeof cd.unitSlots === "number" && cd.unitSlots >= 1 ? Math.trunc(cd.unitSlots) : 12;
     if (e.productionCount !== unitCount * unitSlots) return null;
     const startMonth = typeof e.startMonth === "number" ? e.startMonth : 0;
-    const year =
-      typeof meta.calendarYear === "number" ? meta.calendarYear : null;
+    const year = typeof meta.calendarYear === "number" ? meta.calendarYear : null;
     return Array.from({ length: unitCount }, (_, u) => ({
       key: `calendario-${u + 1}`,
       title: unitCount > 1 ? `Calendario ${u + 1} de ${unitCount}` : "Calendario",

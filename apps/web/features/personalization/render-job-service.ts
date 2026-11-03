@@ -353,8 +353,7 @@ async function buildLettersetRenderContext(
   const rawUnits = Array.isArray(meta.units) ? meta.units : [];
   const units = Array.from({ length: unitCount }, (_, i) => {
     const u = rawUnits[i] as
-      | { colors?: unknown; styleSetId?: unknown; withBorder?: unknown }
-      | undefined;
+      { colors?: unknown; styleSetId?: unknown; withBorder?: unknown } | undefined;
     if (!u || typeof u !== "object") return rootUnit;
     return {
       colors: Array.isArray(u.colors)

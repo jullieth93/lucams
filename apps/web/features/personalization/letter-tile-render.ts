@@ -24,11 +24,7 @@
 import "server-only";
 import path from "node:path";
 import { RenderNeedsKonvaError } from "./production-render";
-import {
-  LETTER_TILE_RATIO,
-  drawLetterTile,
-  type LetterTileImage,
-} from "./letter-tile-draw";
+import { LETTER_TILE_RATIO, drawLetterTile, type LetterTileImage } from "./letter-tile-draw";
 
 /** DPI de imprenta (misma densidad que el resto de la línea de producción). */
 const PRODUCTION_DPI = 300;

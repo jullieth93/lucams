@@ -21,7 +21,10 @@ import {
 } from "@/features/personalization/assembly-sheet";
 import { MONTH_NAMES_ES } from "@/features/personalization/calendar-grid";
 import { logger } from "@/lib/logger";
-import { resolveProductionSpec, productionPieceGroups } from "@/features/personalization/production-spec";
+import {
+  resolveProductionSpec,
+  productionPieceGroups,
+} from "@/features/personalization/production-spec";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
 
 // Descarga N archivos de storage + zip: dar presupuesto (no el default de 15s).
