@@ -127,6 +127,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
         units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
         breakdown: describeVariantAttributes(parseVariantAttributes(it.variant.attributes)),
+        warrantyMonths: it.warrantyMonths,
       })),
       shippingAddress: formatAddressLine(ship),
       publicTrackingToken,

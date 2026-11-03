@@ -25,6 +25,7 @@
  *   - one-shot/update-production-days-20260911.mjs
  *   - one-shot/publish-legal-v5-20260911.mjs
  *   - one-shot/publish-legal-v1-20260929.mjs
+ *   - one-shot/publish-legal-v2-20261102.mjs
  * Agregar a la allowlist exige editar ESTE archivo (dif visible en PR) con la
  * misma justificación en el header del script exento.
  *
@@ -44,6 +45,10 @@ const ALLOWLIST_PRD_DELIBERADO = new Set([
   "one-shot/update-production-days-20260911.mjs",
   "one-shot/publish-legal-v5-20260911.mjs",
   "one-shot/publish-legal-v1-20260929.mjs",
+  // 2026-11-02 — publica la política de garantía modular, actualiza el CMS y
+  // deja el catálogo en su nuevo plazo predeterminado de 1 mes. Corre en los
+  // tres ambientes tras migrar el snapshot de las órdenes; dry-run + --apply.
+  "one-shot/publish-legal-v2-20261102.mjs",
   // 2026-10-21 — republica la copia rural del checkout cuyo default cambió con la
   // dirección estructurada (la copia vieja contradice la validación desplegada);
   // su caso de uso ES correr en los 3 ambientes incl. PRD.

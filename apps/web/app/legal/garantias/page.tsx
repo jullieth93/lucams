@@ -27,12 +27,12 @@ Si necesitas nuestros datos completos de identificación, te los damos con gusto
 
 ## Cuánto dura (art. 8)
 
-Tienes **3 meses de garantía**, contados **desde el día en que recibes tu producto**. La ley (art. 8) dice que, a falta de un término fijado por la autoridad competente, la garantía dura **lo que el productor anuncie** —y solo si no se anuncia nada, un año—. Nuestros productos son **papelería magnética personalizada** —impresos hechos a pedido, de alta manipulación— así que fijamos este término acorde a su naturaleza y te lo informamos expresamente aquí, antes de que compres. Aplica a todo nuestro catálogo, sin importar si compraste en línea o si cerramos tu pedido por WhatsApp a partir de una cotización del sitio.
+El **plazo de garantía de cada producto** se informa de forma expresa en su ficha, **antes de que compres**, y se confirma en el correo y el detalle de tu pedido. Se cuenta desde el día en que recibes el producto. El catálogo inicia con **1 mes** como plazo predeterminado; un producto puede anunciar un plazo mayor y, en ese caso, aplica el mayor que viste al comprar. La ley (art. 8) dice que, a falta de un término fijado por la autoridad competente, la garantía dura **lo que el productor anuncie** —y solo si no se anuncia nada, un año—. Aplica a compras en línea y a pedidos cerrados por WhatsApp a partir de una cotización del sitio.
 
 ## Cómo se cuenta el plazo (art. 9)
 
 - **Si tu producto entra a reparación, el reloj se pausa.** El término de la garantía se **suspende** durante todo el tiempo que estés sin tu producto por efectividad de la garantía, y se retoma cuando te lo devolvemos. Esos días nunca cuentan en tu contra.
-- **Si te reponemos el producto completo** por uno nuevo, el término **corre de nuevo desde cero**: 3 meses completos contados desde la entrega del producto repuesto.
+- **Si te reponemos el producto completo** por uno nuevo, el término **corre de nuevo desde cero**: el plazo que correspondía a tu compra, contado desde la entrega del producto repuesto.
 
 ## Qué cubre (art. 7 y 11)
 
@@ -70,7 +70,7 @@ La ley (art. 11) nos pide darte las instrucciones de uso y mantenimiento del pro
 
 ## Qué puedes pedir (art. 11)
 
-Si tu producto sale con defecto dentro de los **3 meses de garantía**, la ley fija esta escalera:
+Si tu producto sale con defecto dentro del **plazo de garantía informado para tu compra**, la ley fija esta escalera:
 
 1. **Primero, reparación totalmente gratis.** El transporte o el envío del producto también corre por nuestra cuenta, nunca por la tuya.
 2. **Si el producto no admite reparación**, te lo **reponemos por uno nuevo** o te **devolvemos el dinero que pagaste**.
@@ -100,7 +100,7 @@ Queremos resolverlo directamente contigo, de la mejor manera. Pero si no quedas 
 
 ---
 
-_Versión 1 · vigente desde 2026-09-29_
+_Versión 2 · vigente desde 2026-11-02_
 `;
 
 export default function Page() {
