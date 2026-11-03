@@ -168,24 +168,23 @@ curl -f http://localhost:4000/api/health/all       # 200 si db + storage OK (agr
 curl -f http://localhost:4000/api/health && echo OK
 ```
 
-### Jobs de limpieza pg_cron — VERSIONADOS (auditoría 2026-07-13)
+### Jobs de limpieza SQL pg_cron — VERSIONADOS
 
-Los jobs de limpieza internos (solo SQL, sin secret) están versionados en
-`supabase/migrations/00000000000012_pgcron_cleanup_jobs.sql`: **`rate_limit_cleanup`** (borra
-buckets viejos, cada 15 min) y **`stock_reservation_cleanup`** (libera reservas expiradas, cada
-minuto). La migración es GUARDADA (se salta limpio si pg_cron no está instalado, ej. el Postgres
-de CI) e IDEMPOTENTE (re-agenda por nombre). Al habilitar `pg_cron` en el dashboard de Supabase,
-re-aplicar la migración agenda los jobs.
+Los jobs de limpieza internos (solo SQL, sin secret) viven en migraciones guardadas e idempotentes:
+
+- `lucams-purge-rate-limits` (`29 5 * * *`, migración `047` — LUC-SEC-010): ejecuta `purge_rate_limit_buckets()` (borra claves > 7 días y registra latido en `AlertState['cron:purge-rate-limits']`). Los dos jobs legacy de la `012` quedaron retirados (`stock_reservation_cleanup` en la `033` y `rate_limit_cleanup` en la `048`).
+- `lucams-internal-cron-history-purge` (`17 4 * * *`) y `lucams-internal-net-response-purge` (`43 4 * * *`, migración `043`): purgan `cron.job_run_details` (> 14 d) y `net._http_response` (> 24 h).
 
 ### Jobs HTTP pg_cron — VERSIONADOS vía Vault (auditoría 2026-07-17)
 
 Los jobs que llaman a `GET /api/cron/*` (protegidos por `CRON_SECRET`, mandato #11 — no Vercel
 Cron) **también están versionados** en `supabase/migrations/00000000000015_pgcron_http_jobs.sql`
-(+ la `016` de purge-event-logs, la `021` de cms-publish-scheduled —roadmap C3— y la `032` de
-expire-pending-orders —N-12—).
+(+ `016` purge-event-logs, `021` cms-publish-scheduled, `032` expire-pending-orders, `035`
+purge-delivered-designs, `041` process-render-jobs, `043` purgas internas pg_cron/pg_net, `044`
+tracking-sync, `047` purge-rate-limits y `048` retiro de duplicado `rate_limit_cleanup` + idle-skip SQL).
 Antes vivían solo como comandos manuales aquí → en un `db reset`, proyecto nuevo o DR se perdían
-silenciosamente (alertas, resumen diario, palancas de ingreso, purga de retención). La migración es
-GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
+silenciosamente (alertas, resumen diario, palancas de ingreso, purga de retención). Las migraciones son
+GUARDADAS (pg_cron + pg_net) e IDEMPOTENTES.
 
 **Sin secreto en el SQL (mandato #12):** el comando de cada job lee en runtime la base URL y el
 `CRON_SECRET` desde **Supabase Vault** (`vault.decrypted_secrets`) y manda el secreto por el header
@@ -201,25 +200,19 @@ GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 | `lucams-purge-anon-designs`          | `0 8 * * *`          | `/api/cron/purge-anon-designs`      | Retención: diseños DRAFT anónimos (Ley 1581) + DRAFT idle de logueados (90d) + READYs abandonados (ADR-130) + carritos (AbandonedCart ≥90d, carts idle ≥60d/vacíos ≥7d) + barrido de huérfanos de Storage (2026-10-12)                                                                                                                                                          |
 | `lucams-purge-delivered-designs`     | `0 9 * * *`          | `/api/cron/purge-delivered-designs` | Retención post-entrega: borra fotos crudas + renders de diseños entregados ≥90d (migración 035)                                                                                                                                                                                                                                                                                 |
 | `lucams-purge-event-logs`            | `0 3 * * *`          | `/api/cron/purge-event-logs`        | Retención: purga logs con PII — EmailEvent + WebhookEvent > 180d (migración 016)                                                                                                                                                                                                                                                                                                |
-| `lucams-cms-publish-scheduled`       | `*/5 * * * *`        | `/api/cron/cms-publish-scheduled`   | CMS: publica versiones programadas (roadmap C3, e.g. campañas)                                                                                                                                                                                                                                                                                                                  |
+| `lucams-cms-publish-scheduled`       | `*/5 * * * *`        | `/api/cron/cms-publish-scheduled`   | CMS: publica versiones programadas (roadmap C3). Con idle-skip SQL (migración 048): consulta `CmsFieldVersion` (`publishAt <= now()` sin publicar) antes de invocar `net.http_get`; si no hay trabajo actualiza heartbeat local y evita cold start                                                                                                                              |
 | `lucams-expire-pending-orders`       | `23 * * * *`         | `/api/cron/expire-pending-orders`   | Expira órdenes WOMPI en PENDING_PAYMENT > 24h (N-12, migración 032)                                                                                                                                                                                                                                                                                                             |
-| `lucams-process-render-jobs`         | `* * * * *`          | `/api/cron/process-render-jobs`     | Render de producción 300 DPI ASÍNCRONO (ADR-136, migración 041): procesa la cola RenderJob página por página con progreso real (doneUnits) y reintentos acotados (FAILED tras 3 → ErrorLog). Ver la sección de abajo                                                                                                                                                            |
+| `lucams-process-render-jobs`         | `* * * * *`          | `/api/cron/process-render-jobs`     | Render de producción 300 DPI ASÍNCRONO (ADR-136, migración 041): procesa la cola RenderJob página por página con progreso real (doneUnits) y reintentos acotados. Con idle-skip SQL (migración 048): consulta `RenderJob` (`PENDING` o `PROCESSING` atascado >5 min) antes de disparar HTTP                                                                                     |
 | `lucams-tracking-sync`               | `4,19,34,49 * * * *` | `/api/cron/tracking-sync`           | Polling de respaldo del tracking Aveonline (migración 044): consulta `obtenerEstadoAuth` de las guías activas (FULFILLING/SHIPPED, no INTERNO-*, ≤90d, máx 25/corrida) y alimenta el MISMO pipeline del webhook (`processTrackingUpdate`). Si el webhook AveCRM no llega o se pierde, la orden igual converge a SHIPPED/DELIVERED con su email y `deliveredAt` (ancla retracto) |
+| `stock_reservation_cleanup`          | `*/15 * * * *`       | SQL puro (sin HTTP)                 | Libera reservas de stock vencidas (`release_expired_reservations()`, migración 013)                                                                                                                                                                                                                                                                                             |
+| `lucams-purge-rate-limits`           | `29 5 * * *`         | SQL puro (sin HTTP)                 | Higiene anti-abuso: `purge_rate_limit_buckets()` borra claves inactivas >7d en `rate_limit_buckets` con latido en `AlertState` (migración 047; reemplaza al legacy `rate_limit_cleanup` de `012`, retirado en `048`)                                                                                                                                                            |
 | `lucams-internal-cron-history-purge` | `17 4 * * *`         | SQL puro (sin HTTP)                 | Higiene interna: purga `cron.job_run_details` > 14d (migración 043 — pg_cron NO se auto-limpia; su historial fue el consumidor #1 de la BD: 93 MB en PRD al 2026-10-20)                                                                                                                                                                                                         |
 | `lucams-internal-net-response-purge` | `43 4 * * *`         | SQL puro (sin HTTP)                 | Higiene interna: purga `net._http_response` > 24h (migración 043). La app nunca lee las respuestas (fire-and-forget); el único lector es `monitor_uptime_prd()` de STG ~10 min después — 24h cubre con holgura                                                                                                                                                                  |
 
-> **STG difiere (2026-08-05): los 5 jobs que envían email quedaron DESAGENDADOS en stg**
-> (`lucams-alerts`, `lucams-daily-summary`, `lucams-review-request`, `lucams-cart-recovery`,
-> `lucams-back-in-stock`). Motivo: los previews de Vercel recibieron `RESEND_API_KEY` el
-> 2026-08-04 y los crons de stg empezaron a enviar correos reales (alertas cada 30 min,
-> resumen diario duplicado). En stg quedan agendados solo `lucams-cms-publish-scheduled`,
-> `lucams-purge-anon-designs`, `lucams-purge-event-logs` y los 2 SQL puros
-> (`rate_limit_cleanup`, `stock_reservation_cleanup`); PRD conserva los 10 (+ el
-> `lucams-expire-pending-orders` de la migración 032 — N-12). **OJO:** las
-> migraciones 015/023 re-agendan por patrón unschedule→schedule — re-aplicarlas en stg
-> devuelve los crons de email, y el estado deseado en stg es desagendados. La 032, en
-> cambio, es SEGURA de aplicar en stg: agenda únicamente su job nuevo (sin email) y no
-> toca los desagendados.
+> **Postura por ambiente (PRD = 15 jobs activos; STG = 11; LOCAL = 4 SQL activos + 11 HTTP inactivos):**
+>
+> - **STG (2026-08-05):** los 5 jobs que envían email quedan **DESAGENDADOS** (`lucams-alerts`, `lucams-daily-summary`, `lucams-review-request`, `lucams-cart-recovery`, `lucams-back-in-stock`) para no disparar correos reales con `RESEND_API_KEY` de previews; en cambio STG corre `uptime-monitor-prd` (`*/10 * * * *`, monitoreo externo de PRD). **OJO:** no re-aplicar `015`/`023` crudas en STG porque re-agendan los 5 crons de email; las migraciones `032`–`048` son seguras en STG porque solo tocan sus jobs sin correo.
+> - **LOCAL (`scripts/db-local-setup.sh`):** tras aplicar migraciones, desactiva (`active = false`) los jobs `net.http_get` para evitar fallos cada minuto cuando `pnpm dev` está apagado, dejando activos los 4 SQL puros.
 
 **Env var:** `CRON_SECRET` (generar con `openssl rand -hex 32`) — en `.env.local` y en Vercel. Sin
 ella los endpoints responden 401 (fail-closed). El destinatario de alertas/resumen sale de la setting
@@ -235,8 +228,8 @@ select vault.create_secret('<CRON_SECRET real>',    'cron_secret');
 select vault.create_secret('<VERCEL_BYPASS_TOKEN>', 'cron_vercel_bypass');
 ```
 
-Luego re-aplicar las migraciones con jobs (la 015 agenda 6; la 016 y la 021 agregan 1 cada una; la 032 agenda `lucams-expire-pending-orders`; la 035 agenda `lucams-purge-delivered-designs` → los 10 HTTP + 1 SQL puro). Para rotar el secreto: `vault.update_secret`.
-Sin los secretos, los jobs quedan agendados pero fallan en runtime hasta setearlos.
+Luego aplicar las migraciones (`013`–`048` dejan configurados los 11 HTTP + 4 SQL puros en PRD). Para rotar el secreto: `vault.update_secret`.
+Sin los secretos, los jobs quedan agendados pero fallan o hacen no-op seguro en runtime hasta setearlos.
 
 > **Tercer secreto `cron_vercel_bypass` (migración 023, 2026-08-01):** los previews de Vercel tienen
 > Deployment Protection (SSO) — sin bypass, los jobs HTTP reciben la página de login de Vercel (200
@@ -595,9 +588,7 @@ Dos ramas en `github.com/jullieth93/lucams`:
 - **Release:** con OK explícito de Lucy, **PR `develop` → `production`** (`gh pr create --base production --head develop`) → esperar los required checks verdes → `gh pr merge --merge` → Vercel despliega producción. `production` solo avanza en releases. El push directo ff está bloqueado por branch protection (las merge-commits de los PRs hacen imposible el ff; práctica real vigente desde los PR #84+).
 - **Hecho (verificado 2026-08-05):** la Production Branch de Vercel ya es `production` (Settings → Git) — los push a `develop` generan previews; solo el release (PR a `production`) actualiza el sitio en vivo.
 - **Seeds de la ola (cuando el merge trae cambios de DATOS):** tras el push a `develop` (STG) y tras el release (PRD), correr por ambiente los scripts de `packages/db/scripts` que apliquen — `migrate-cms-v2.mjs` (keys CMS nuevas aditivas), `sync-and-prune-cms-v2.mjs` (sincronización estructural + poda transaccional al retirar claves a Capa 3, ADR-187) y/o `seed-templates.mjs` (plantillas del Estudio). Son idempotentes (nunca pisan campos CMS editados manualmente; `sync-and-prune-cms-v2.mjs` corre en dry-run por defecto y exige `--apply`). Se corren con el env del ambiente (`set -a && source .env.stg && set +a` para STG; el `.env.local.nube-backup` para PRD) y después se invalida el caché CMS (ver la nota de «migrate-cms-v2» abajo). Precedente completo: release 2026-09-11 (Ola 26-29) en `docs/STATE.md`.
-- **CI (2026-07-24):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) dispara en `develop` y `production`. Antes apuntaba a `[develop, main]` y **`main` no existe** → `production` se desplegaba sin ningún gate (auditoría 2026-07-21, A4). El fix ya viajó a `production` (merge del 2026-08-06; `git show production:.github/workflows/ci.yml` muestra los triggers nuevos) y CI corre verde en ambas ramas (homologación 2026-08-29). (También vigiló `catalogo-whatsapp` mientras esa rama vivió; se retiró con su borrado el 2026-09-11.) Los 7 jobs: `quality` (typecheck+lint+build), `unit-tests`, `e2e`, `lighthouse`, `secrets-scan` (gitleaks), `format-check` y `dep-audit` (`pnpm audit --prod --audit-level=high` — verde gracias a los `overrides` y al `auditConfig.ignoreGhsas` de [`pnpm-workspace.yaml`](../pnpm-workspace.yaml), cada uno con su justificación en comentario ahí). Todas las actions de los workflows están pineadas por SHA (auditoría 2026-08-24).
-
-  **HECHO (2026-09-19, FASE B de la auditoría integral — hallazgo F-01):** `production` y `develop` tienen branch protection activa vía API de GitHub: los 7 jobs de CI como _required status checks_, `enforce_admins: true` (sin bypass administrativo), force-push y delete bloqueados. Los releases entran como **merge commits de PR** (PR #84+; la "historia lineal ff-only" ya no aplica a `production`). Sin required reviews (operador único — riesgo residual aceptado). Rollback si una emergencia lo exige: `gh api -X DELETE repos/jullieth93/lucams/branches/<rama>/protection`. El mismo día se activaron también secret scanning, push protection y Dependabot security updates (hallazgo F-02; `validity_checks` y `non_provider_patterns` no son activables vía API en este repo — quedan como pendientes menores en Settings → Code security).
+- **CI y protección de ramas:** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) dispara en `pull_request` hacia `develop` y `production` + `workflow_dispatch` (sin trigger `push`: el ruleset `protect-ramas-criticas` bloquea pushes directos sin bypass y exige rama al día, así que cada cambio ya entra certificado desde su PR). Incluye detección fail-closed de cambios solo-documentales (`changes`) y **5 required status checks** en el ruleset `protect-ramas-criticas` (`id: 26248226`): `Typecheck + Lint + Build` (incluye `prettier --check` y `pnpm audit --prod --audit-level=high`), `Vitest tests (unit + integración con Postgres)`, `RLS behavior (rls-matrix contra Supabase local)`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`. Todas las actions están pineadas por SHA; secret scanning, push protection y Dependabot security updates están activos. El smoke post-deploy ([`.github/workflows/post-deploy-smoke.yml`](../.github/workflows/post-deploy-smoke.yml)) se dispara con el `deployment_status` nativo de Vercel `Production` (`ref: production`).
 
 ### Homologación de ambientes — procedimiento verificable (ADR-102, 2026-09-15)
 

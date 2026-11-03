@@ -1,17 +1,28 @@
 name: CI
 
-# Ramas REALES del repo (verificado con `git branch -a` el 2026-07-24): `develop`,
-# `production` y `catalogo-whatsapp`. **`main` NO EXISTE** — la rama de producción se llama
-# `production` (ver docs/OPERATIONS.md § Estrategia de ramas y releases). Mientras el trigger
-# apuntó a la rama fantasma `main`, todo merge a `production` — la que ven los clientes — se
-# desplegaba SIN typecheck, sin lint, sin los ~3.000 vitest, sin E2E/a11y, sin Lighthouse y sin
-# gitleaks: el único gate era el `next build` de Vercel. Auditoría 2026-07-21, hallazgo A4.
-# `master` queda fuera a propósito: es legado local, no existe en `origin`.
+# Ramas protegidas del repo (`develop` y `production`; `main` NO existe — ver
+# docs/OPERATIONS.md § Estrategia de ramas y releases).
+#
+# Optimización 2026-11-03:
+#   - Sin trigger `push`: el ruleset `protect-ramas-criticas` bloquea pushes
+#     directos a `develop` y `production` (`bypass_actors: []`) y exige rama al
+#     día (`strict: true`), así que todo cambio entra por `pull_request` con el
+#     árbol final ya certificado. Quitar `push` baja el ciclo feature→release de
+#     4 corridas a 2 y elimina los checks duplicados en PRs de release.
+#   - `workflow_dispatch` permite disparar el CI completo bajo demanda en
+#     cualquier rama.
+#   - Fast-path fail-closed para PRs solo-documentación (`docs/**`, `README.md`,
+#     `CLAUDE.md`, `AGENTS.md`): valida `gitleaks` + `prettier --check` +
+#     `pnpm audit --prod` en ~30 s sin levantar Postgres, Supabase Docker,
+#     Playwright ni `next build`. `packages/db/legal-content/*.md` NO entra en
+#     docs-only porque es contenido servido al cliente.
+#   - Consolidación de VMs: `format:check` y `pnpm audit --prod` corren dentro
+#     de `quality`; Lighthouse (desktop + móvil) reutiliza el build y Postgres
+#     seedeado del job `e2e` (ahorra 3 VMs y 1 `next build` por corrida).
 on:
-  push:
-    branches: [develop, production]
   pull_request:
     branches: [develop, production]
+  workflow_dispatch: {}
 
 # Cancela runs anteriores del mismo PR/branch si llega uno nuevo.
 concurrency:
@@ -38,10 +49,55 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
+  changes:
+    name: Detectar alcance (código vs solo docs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        run: |
+          # Fail-closed: ante cualquier duda (workflow_dispatch, diff vacío o ruta
+          # fuera del allowlist documental), corre el suite completo (`docs_only=false`).
+          DOCS_ONLY="false"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FILES=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" || true)
+            if [ -n "$FILES" ] && ! echo "$FILES" | grep -qvE '^(docs/|README\.md$|CLAUDE\.md$|AGENTS\.md$|apps/web/(README|AGENTS)\.md$|apps/web/.*/README\.md$)'; then
+              DOCS_ONLY="true"
+              echo "Fast-path documental activado (archivos: $(echo "$FILES" | tr '\n' ' '))"
+            fi
+          fi
+          echo "docs_only=$DOCS_ONLY" >> "$GITHUB_OUTPUT"
+
+  secrets-scan:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # En eventos pull_request gitleaks-action lista los commits del PR vía API
+    # (`pulls/<n>/commits`); requiere `pull-requests: read` en este job.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   quality:
     name: Typecheck + Lint + Build
+    needs: changes
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -59,39 +115,42 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: pnpm --filter @lucams/db db:generate
+      # Corren SIEMPRE (incluso en PRs solo-docs: prettier valida también **/*.md).
+      - name: Prettier format check
+        run: pnpm format:check
+
+      - name: Audit production dependencies (high+)
+        run: pnpm audit --prod --audit-level=high
 
       - name: Typecheck
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm -r typecheck
 
       - name: Lint
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm -r lint
 
-      # Gate de paridad exacta CMS v2 (ADR-082 — modelo de 3 capas):
+      # Gate de paridad exacta CMS v2 (ADR-082/187 — modelo de 3 capas):
       # verifica por AST que toda clave CMS leída en apps/web exista en
-      # packages/db/scripts/cms-site-map.mjs y que ningún campo declarado en el
-      # site-map quede huérfano sin lector en apps/web (<1s, sin BD).
+      # packages/db/scripts/cms-site-map.mjs y que ningún campo quede huérfano.
       - name: Paridad exacta CMS v2 (código ↔ cms-site-map.mjs)
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm --filter web exec vitest run lib/cms-sitemap-parity.test.ts
 
       # Lint de guards (N-06, 2026-09-12): todo script de packages/db/scripts que
-      # escribe en DB debe importar lib/env-guard.mjs (fail-closed → PRD/remotos
-      # no reconocidos bloqueados). Allowlist PRD-deliberado dentro del script.
+      # escribe en DB debe importar lib/env-guard.mjs (fail-closed).
       - name: Lint de guards en scripts de DB (N-06)
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm --filter @lucams/db exec node scripts/lib/check-script-guards.mjs
 
-      # Tests unitarios de los propios guards (A10-06, remediación R3 2026-09-26):
-      # env-guard (clasificación fail-closed de hosts — lo que protege PRD),
-      # zombie-settings y test-coupon-signal corren con node --test y antes no
-      # corrían en NINGÚN pipeline. Son rápidos (~1s) y no tocan DB.
+      # Tests unitarios de los propios guards (A10-06, remediación R3 2026-09-26).
       - name: Tests de guards de scripts DB (env-guard, node --test)
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm --filter @lucams/db test
 
-      # Guard es-CO: el copy debe ser TUTEO, nunca voseo (mandato de idioma). Falla si
-      # aparece cualquier token de voseo en el código fuente (excluye tests y los scripts
-      # que justamente corrigen voseo).
+      # Guard es-CO: el copy debe ser TUTEO, nunca voseo (mandato de idioma).
       - name: Lint de voseo (es-CO tuteo)
+        if: needs.changes.outputs.docs_only != 'true'
         run: |
           if grep -rniE '\b(para vos|a vos|con vos|tenés|podés|querés|hacés|respondé|escribinos|mandanos|elegí|contá|contanos|contás|usás|generá|creá|marcá|completá|dejala|registrate|corré|ingresá|revisá|configurá|seleccioná)\b' \
                apps/web packages/db/scripts \
@@ -103,15 +162,15 @@ jobs:
           echo "OK: sin voseo."
 
       - name: Build
+        if: needs.changes.outputs.docs_only != 'true'
         run: pnpm --filter web build
 
   unit-tests:
     name: Vitest tests (unit + integración con Postgres)
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
-    # 15 min: la instrumentación de cobertura (v8) añade overhead sobre el run normal.
     timeout-minutes: 15
-    # Postgres real (service container) → los ~1.400 tests, incl. integración con DB,
-    # corren y se ENFORCEAN en CI. Conexión directa (sin pooler) → rápido y sin flakiness.
     services:
       postgres:
         image: postgres:15
@@ -126,17 +185,15 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # DB del service (sobreescribe los placeholders globales).
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
-      # Dummies de Wompi: finalizeCheckout construye el provider; los tests mockean la API real.
       WOMPI_ENV: sandbox
       WOMPI_PUBLIC_KEY: pub_test_ci
       WOMPI_PRIVATE_KEY: prv_test_ci
       WOMPI_INTEGRITY_SECRET: test_integrity_ci
       WOMPI_EVENTS_SECRET: test_events_ci
-      # Vacío → los tests que exigen el stack Supabase REAL (R3 rls-matrix, que pega a
-      # PostgREST/GoTrue) saltan limpio. El resto usa Prisma contra el service o mockea supabase.
+      # Vacío → los tests que exigen GoTrue/Storage real saltan limpio (corren en
+      # rls-behavior y en nightly-full.yml).
       NEXT_PUBLIC_SUPABASE_URL: ""
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""
       SUPABASE_SECRET_KEY: ""
@@ -157,9 +214,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: pnpm --filter @lucams/db db:generate
-
       - name: Compat de Supabase (roles + extensiones + stubs auth/storage)
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/supabase-compat.sql
 
@@ -167,8 +221,6 @@ jobs:
         run: pnpm --filter @lucams/db exec prisma migrate deploy
 
       # A9-08 (remediación R3 2026-09-26): drift check Prisma ↔ Supabase.
-      # Snapshot del schema public JUSTO después de Prisma → el check posterior
-      # aísla exactamente lo que las SQL de Supabase agregan/quitan.
       - name: Snapshot del schema post-Prisma (drift check)
         run: pnpm --filter @lucams/db exec node scripts/audit-schema-drift.mjs snapshot --out "$RUNNER_TEMP/schema-post-prisma.json"
 
@@ -179,31 +231,16 @@ jobs:
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
 
-      # Falla el PR si las fuentes divergen: algo declarado en schema.prisma que
-      # no existe, SQL creando tablas/columnas no allowlisteadas, o SQL quitando
-      # algo que Prisma creó. Tolerancias conocidas (rate_limit_buckets,
-      # AdminRecoveryCode/A5-01) salen como warning. Ver docs/TESTING.md.
       - name: Drift check Prisma ↔ Supabase (A9-08)
         run: pnpm --filter @lucams/db exec node scripts/audit-schema-drift.mjs check --baseline "$RUNNER_TEMP/schema-post-prisma.json"
 
       - name: Run vitest (unit + integración) + gate de cobertura
-        # test:coverage = vitest run --coverage. Los thresholds de vitest.config.ts
-        # (lines/statements/functions/branches) fallan el job si la cobertura cae por
-        # debajo del piso → gate de regresión. text-summary imprime el % en el log.
         run: pnpm --filter web test:coverage
 
-  # F-06 (auditoría 2026-09-26, remediación R3): el comportamiento RLS (rls-matrix —
-  # ¿una policy AISLA de verdad?, 58 policies) solo corría en nightly → una migración
-  # que debilitara una policy se mergeaba y se detectaba hasta 24h después. Este job
-  # lo promueve al gate de PR con el MISMO patrón del nightly (Supabase localstack
-  # efímero in-runner: GoTrue + PostgREST reales). Corre SOLO las 2 suites RLS
-  # (~2s de tests; el costo es levantar el stack, ~4-6 min en paralelo con el resto
-  # del CI — no alarga el camino crítico del gate, que es el job e2e).
-  # admin-login/admin-mfa quedan en nightly A PROPÓSITO: exigen build + navegador
-  # + seed CMS (~15 min) y eso SÍ inflaría el gate de PR — ver docs/TESTING.md
-  # (recordatorio: su verde del nightly es requisito del checklist de release).
   rls-behavior:
     name: RLS behavior (rls-matrix contra Supabase local)
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -226,17 +263,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: pnpm --filter @lucams/db db:generate
-
       - uses: supabase/setup-cli@d239d1052f6f024a8d746d7e5aeddead63b9cb53 # v3
         with:
-          # Versión FIJADA (misma que nightly-full.yml): `latest` se topa con el
-          # rate limit de la API de GitHub.
           version: 2.111.0
 
-      # Mismo patrón que nightly-full.yml: stack efímero sin auto-aplicar
-      # migrations (workdir pelado .github/ci/localstack) + parseo tolerante de keys.
       - name: Levantar Supabase local y exportar credenciales
         working-directory: .github/ci/localstack
         run: |
@@ -264,8 +294,6 @@ jobs:
         run: pnpm --filter @lucams/db exec prisma migrate deploy
 
       - name: Aplicar migraciones SQL de Supabase (RLS, storage, pg_cron)
-        # SUPABASE_ADMIN_URL (superuser del stack local): el event trigger de la
-        # migración 014 exige privilegios que el rol postgres no tiene.
         run: |
           for f in $(ls supabase/migrations/*.sql | sort); do
             echo "→ $f"
@@ -276,19 +304,15 @@ jobs:
         run: pnpm --filter web exec vitest run features/security/rls-coverage.integration.test.ts features/security/rls-matrix.integration.test.ts
 
   e2e:
-    name: E2E + a11y (axe WCAG) — Playwright
+    name: E2E + a11y + Lighthouse — Playwright
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    # Gatea en CADA PR los flujos anónimos (antes existían pero NO corrían en CI → una
-    # regresión de compra, de contraste AA o de layout público pasaba sin detección).
-    # Corre contra el BUILD de producción (next start) + Postgres real, no `next dev`.
-    #
-    # Alcance del gate: smoke + a11y + axe (WCAG 2.1 A/AA) + compra (carrito→checkout) + estudio
-    # (#5 — el diferenciador #1 ya tiene gate por-PR: la spec navega anónima y solo usa Prisma, NO
-    # necesita GoTrue). FUERA del gate por-PR: admin-login/admin-mfa (crean usuarios vía service role
-    # → necesitan GoTrue real) → corren en `.github/workflows/nightly-full.yml` (scheduled +
-    # on-demand, levantando su propio localstack Supabase in-runner). La regresión visual (snapshots
-    # por-píxel) sigue local/preview. Ver docs/TESTING.md.
+    timeout-minutes: 30
+    # Unifica Playwright (smoke + a11y + axe + compra + estudio + responsive) y
+    # Lighthouse (desktop + móvil — ADR-066) sobre el MISMO Postgres seedeado y
+    # el MISMO build de producción (`next build`), eliminando 1 VM, 47 migraciones
+    # SQL repetidas y 1 compilación completa de Next.js en cada PR.
     services:
       postgres:
         image: postgres:15
@@ -305,17 +329,12 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
-      # Los flujos ANÓNIMOS del E2E no contactan Supabase (getUser sin cookie → null), así que los
-      # placeholders no-vacíos del env top-level bastan para que arranque next start (+ validación
-      # de env). Wompi dummy: compra.spec se detiene antes de pagar; el provider solo se construye.
       WOMPI_ENV: sandbox
       WOMPI_PUBLIC_KEY: pub_test_ci
       WOMPI_PRIVATE_KEY: prv_test_ci
       WOMPI_INTEGRITY_SECRET: test_integrity_ci
       WOMPI_EVENTS_SECRET: test_events_ci
       PORT: "4000"
-      # NO seteamos PLAYWRIGHT_BASE_URL → el webServer del config levanta `next start`
-      # (build prod) en :4000, espera a que responda, corre los tests y lo tumba.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -333,9 +352,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: pnpm --filter @lucams/db db:generate
-
       - name: Compat de Supabase (roles + extensiones + stubs auth/storage)
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/supabase-compat.sql
 
@@ -349,15 +365,10 @@ jobs:
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
 
-      - name: Seed del catálogo (productos para PDP/carrito/estudio)
-        # N-06: los canónicos son dry-run por defecto — CI pasa --apply explícito.
+      - name: Seed del catálogo (productos para PDP/carrito/estudio/Lighthouse)
         run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
 
       - name: Instalar navegador Playwright (chromium + deps)
-        # Reintentos con apt-get update entre cada uno: el repo apt de Chrome
-        # (dl.google.com) a veces sirve índices a medio actualizar ("Hash Sum
-        # mismatch") y tumbaba el job entero pese a ser un flake de infra
-        # (2026-09-09: 3 corridas seguidas rojas por eso).
         run: |
           for i in 1 2 3 4; do
             if pnpm --filter web exec playwright install --with-deps chromium; then
@@ -370,178 +381,28 @@ jobs:
           echo "::error::playwright install falló tras 4 intentos"
           exit 1
 
-      - name: Build de producción (necesario para el next start del webServer)
+      - name: Build de producción (compartido por Playwright y Lighthouse)
         run: pnpm --filter web build
 
-      - name: Playwright (smoke + a11y + axe + compra + gate responsive)
-        # El webServer del config levanta `next start` en :4000 y lo gestiona.
-        # mobile-storefront-audit (2026-09-18): GATE de overflow horizontal del
-        # storefront en 4 anchos (375/768/1024/1280) — nace de la auditoría UX
-        # responsive del owner; falla el PR si una pantalla se sale del ancho.
+      - name: Playwright (smoke + a11y + axe + compra + estudio + gate responsive)
         run: pnpm --filter web exec playwright test smoke.spec a11y.spec axe.spec compra.spec estudio.spec mobile-storefront-audit.spec --project=desktop-chrome
 
-      - name: Subir reporte Playwright (si falla)
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: playwright-report
-          path: apps/web/playwright-report/
-          retention-days: 7
-
-  lighthouse:
-    name: Lighthouse (perf/a11y/SEO) — ADR-066
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Gate de calidad del STOREFRONT público (home + catálogo): accesibilidad y SEO como error
-    # (deterministas), performance y best-practices como warn (el score de perf en CI es variable).
-    # Corre contra el BUILD de producción (next start) + Postgres con catálogo seedeado, igual que E2E.
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: lucams_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
-      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
-      WOMPI_ENV: sandbox
-      WOMPI_PUBLIC_KEY: pub_test_ci
-      WOMPI_PRIVATE_KEY: prv_test_ci
-      WOMPI_INTEGRITY_SECRET: test_integrity_ci
-      WOMPI_EVENTS_SECRET: test_events_ci
-      PORT: "4000"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate Prisma client
-        run: pnpm --filter @lucams/db db:generate
-
-      - name: Compat de Supabase (roles + extensiones + stubs auth/storage)
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/supabase-compat.sql
-
-      - name: Aplicar migraciones Prisma (schema desde cero)
-        run: pnpm --filter @lucams/db exec prisma migrate deploy
-
-      - name: Aplicar migraciones SQL de Supabase (RLS, funciones)
+      - name: Lighthouse CI desktop (ADR-066 — home + catálogo)
         run: |
-          for f in $(ls supabase/migrations/*.sql | sort); do
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
-          done
+          fuser -k 4000/tcp 2>/dev/null || true
+          pnpm lhci
 
-      - name: Seed del catálogo (para /productos)
-        # N-06: los canónicos son dry-run por defecto — CI pasa --apply explícito.
-        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
+      - name: Lighthouse CI móvil (ADR-066 — home + catálogo)
+        run: |
+          fuser -k 4000/tcp 2>/dev/null || true
+          pnpm lhci:mobile
 
-      - name: Build de producción
-        run: pnpm --filter web build
-
-      - name: Lighthouse CI (autorun — levanta next start :4000)
-        run: pnpm lhci
-
-      - name: Lighthouse CI móvil (misma 2 URLs, emulación móvil default)
-        # Segunda corrida con lighthouserc.mobile.js: el gate desktop no cubre el
-        # form factor de la mayoría del tráfico. Performance en WARN 0.4 conservador
-        # (baseline móvil aún no medido — ratchet hacia arriba documentado en el config).
-        run: pnpm lhci:mobile
-
-      - name: Subir reportes Lighthouse (si falla)
+      - name: Subir reportes Playwright / Lighthouse (si falla)
         if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: lighthouse-report
-          path: .lighthouseci/
+          name: e2e-lighthouse-reports
+          path: |
+            apps/web/playwright-report/
+            .lighthouseci/
           retention-days: 7
-
-  secrets-scan:
-    name: Gitleaks secret scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # El workflow fija `permissions: contents: read` (least privilege), pero en eventos
-    # pull_request la action lista los commits del PR vía API (pulls/<n>/commits) y con
-    # ese token mínimo GitHub responde 403 "Resource not accessible by integration"
-    # (fallaron así los runs de PR #56 y #58, 2026-09-30). Job-level: se añade SOLO
-    # pull-requests: read a este job; el resto hereda el mínimo global.
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  format-check:
-    name: Prettier format check
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Prettier check
-        run: pnpm format:check
-
-  dep-audit:
-    name: Dependency audit (pnpm)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Falla el CI si hay vulnerabilidades high/critical en dependencias de PRODUCCIÓN
-      # (Bloque C / S3). --prod excluye el toolchain de dev (vitest/jsdom/undici), cuyas
-      # vulns no se despliegan. Si aparece una high en prod, hay que triarla antes de mergear.
-      - name: Audit production dependencies (high+)
-        run: pnpm audit --prod --audit-level=high

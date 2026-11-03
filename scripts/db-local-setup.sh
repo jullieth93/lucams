@@ -33,4 +33,11 @@ for f in $(ls supabase/migrations/*.sql | sort); do
   psql "$LOCAL_ADMIN" -v ON_ERROR_STOP=1 -f "$f"
 done
 
+# En el stack LOCAL de desarrollo no hay secretos en Vault (`cron_base_url` /
+# `cron_secret`), así que los jobs HTTP (`net.http_get`) fallarían cada minuto
+# llenando `cron.job_run_details` de ruido. Quedan registrados en `cron.job`
+# con `active = false` (los SQL puros sí permanecen activos).
+psql "$LOCAL_ADMIN" -v ON_ERROR_STOP=1 -c \
+  "UPDATE cron.job SET active = false WHERE command LIKE '%net.http_get%';" >/dev/null
+
 echo "✓ esquema completo aplicado al stack local"

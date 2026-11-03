@@ -705,16 +705,18 @@ export default function () {
 
 ## Smoke tests post-deploy
 
-**Automatizado desde 2026-09-26 (F-08, remediación R3):** `.github/workflows/post-deploy-smoke.yml`
-corre `apps/web/scripts/post-deploy-smoke.mjs` contra PRD al completarse el CI de `production`,
-cada 30 min (schedule) y on-demand. Sonda `/api/health`, `/api/health/db`, `/api/health/crons`,
-`/` y `/productos` (todo GET público read-only, sin secrets) y **falla el workflow** si alguno no
-devuelve 200 — un smoke rojo post-deploy es señal de evaluar rollback (docs/OPERATIONS.md §
-Release strategy). Desde 2026-09-27 (A11R-04, remediación R7) las sondas HTML (`/` y `/productos`)
-además aserten contenido mínimo: marcadores estructurales estables del layout (`lang="es-CO"`,
-skip-link `href="#contenido"`, `<main id="contenido">`) — un 200 con body vacío/degradado ya no
-sale verde. El set de abajo queda como referencia del smoke E2E manual profundo
-(`release-check-a1.spec.ts`).
+**Automatizado:** `.github/workflows/post-deploy-smoke.yml` corre `apps/web/scripts/post-deploy-smoke.mjs`
+contra PRD al completarse el evento nativo `deployment_status` de Vercel (`Production` + `success`)
+y on-demand (`workflow_dispatch`), haciendo checkout explícito de `ref: production` (nunca del
+default branch `develop`). Sonda `/api/health`, `/api/health/db`, `/api/health/crons`, `/` y
+`/productos` (GET público read-only) más el drift check de `_prisma_migrations` de `production`
+contra PRD y **falla el workflow** si algo no responde 200 o hay migraciones pendientes — un smoke
+rojo post-deploy es señal de evaluar rollback (docs/OPERATIONS.md § Release strategy). El monitoreo
+continuo entre deploys lo cubre `uptime-monitor-prd` cada 10 min desde Supabase STG (sin cron
+duplicado en GitHub Actions). Las sondas HTML (`/` y `/productos`) además asertan contenido mínimo:
+marcadores estructurales estables del layout (`lang="es-CO"`, skip-link `href="#contenido"`,
+`<main id="contenido">`) — un 200 con body vacío/degradado ya no sale verde. El set de abajo queda
+como referencia del smoke E2E manual profundo (`release-check-a1.spec.ts`).
 
 Set mínimo de tests E2E que correr **inmediatamente después de un deploy a producción**. Si fallan: rollback automático.
 
@@ -754,7 +756,7 @@ test.describe.parallel("Smoke", () => {
 
 | Test                                   | Herramienta                                        | Cuándo            |
 | -------------------------------------- | -------------------------------------------------- | ----------------- |
-| `pnpm audit --prod --audit-level=high` | pnpm audit (job `dep-audit` de CI)                 | Cada PR           |
+| `pnpm audit --prod --audit-level=high` | pnpm audit (paso dentro del job `quality` de CI)   | Cada PR           |
 | `gitleaks detect` (secret scanning)    | gitleaks                                           | Cada PR           |
 | Headers de seguridad presentes         | Playwright (assertions sobre `response.headers()`) | Cada deploy       |
 | Rate limit funciona                    | Playwright (loop hasta 429)                        | Cada PR (Fase 1+) |
@@ -766,51 +768,55 @@ test.describe.parallel("Smoke", () => {
 
 ## CI workflow
 
-> **Estado real (verificado 2026-09-03; actualizado 2026-09-26 con la remediación R3):** el CI real es `.github/workflows/ci.yml` (ramas
-> `develop`/`production`/`catalogo-whatsapp` — `main` NO existe) con estos jobs:
+> **Estado real:** el CI vigente es `.github/workflows/ci.yml`, disparado en `pull_request` hacia
+> `develop` y `production` + `workflow_dispatch` (sin trigger `push`: el ruleset `protect-ramas-criticas`
+> bloquea pushes directos y exige rama al día, evitando duplicar corridas post-merge). Incluye un
+> job preliminar `changes` (fast-path fail-closed para PRs exclusivos de documentación `docs/**`,
+> `README.md`, `CLAUDE.md`, `AGENTS.md` — excluyendo `packages/db/legal-content/*.md` que es
+> contenido servido al cliente) y **5 gates requeridos** en el ruleset:
 >
-> - **`quality`** — typecheck + lint + build, más cuatro gates propios: la **paridad exacta
+> - **`quality`** (`Typecheck + Lint + Build`) — `prettier --check`, `pnpm audit --prod --audit-level=high`,
+>   typecheck, lint y `next build`, más cuatro gates propios: la **paridad exacta
 >   CMS↔código** (`apps/web/lib/cms-sitemap-parity.test.ts`, ADR-187 — recorre el AST de `apps/web`
 >   y falla si una clave CMS se consume sin estar en `packages/db/scripts/cms-site-map.mjs` o si se
 >   declara sin consumidor; local con `make audit-content`), el **lint de
->   guards de scripts de DB** (`check-script-guards.mjs`, N-06 2026-09-12 — todo script que
+>   guards de scripts de DB** (`check-script-guards.mjs`, N-06 — todo script que
 >   escribe en DB debe importar `env-guard.mjs`; local con `make audit-script-guards`), los
 >   **tests de los guards** (`pnpm --filter @lucams/db test` — env-guard/zombie-settings/
->   coupon-signal con `node --test`; R3 2026-09-26) y el
->   **lint de voseo** (el copy es-CO es tuteo).
+>   coupon-signal con `node --test`) y el **lint de voseo** (el copy es-CO es tuteo).
 > - **`unit-tests`** — `pnpm --filter web test:coverage` contra un Postgres service container
 >   (+ `supabase-compat.sql` y las SQL de `supabase/migrations`); incluye el gate de coverage y
 >   `rls-coverage`. Los tests que exigen Supabase real saltan limpio. Entre las migraciones Prisma
->   y las SQL corre el **drift check Prisma ↔ Supabase** (`audit-schema-drift.mjs`, R3 2026-09-26):
+>   y las SQL corre el **drift check Prisma ↔ Supabase** (`audit-schema-drift.mjs`):
 >   snapshot post-Prisma + check post-SQL; falla el PR si las dos fuentes del schema divergen
->   (tolerancias documentadas: `rate_limit_buckets`; `AdminRecoveryCode`/A5-01 salió de la
->   allowlist en R6 2026-09-27 — ya la crea la migración Prisma `20260926120000_admin_recovery_code`).
-> - **`rls-behavior`** (R3 2026-09-26) — `rls-coverage` + `rls-matrix` de COMPORTAMIENTO contra un
->   Supabase localstack efímero en el runner (mismo patrón que el nightly). Promueve al gate de PR
->   lo que antes solo se detectaba en la corrida nocturna.
-> - **`e2e`** — smoke + a11y + axe + compra + estudio contra el build de producción.
-> - **`lighthouse`**, **`secrets-scan`** (gitleaks), **`format-check`**, **`dep-audit`**
->   (`pnpm audit --prod --audit-level=high`).
+>   (tolerancia documentada: `rate_limit_buckets`).
+> - **`rls-behavior`** — `rls-coverage` + `rls-matrix` de COMPORTAMIENTO contra un
+>   Supabase localstack efímero en el runner.
+> - **`e2e`** (`E2E + a11y + Lighthouse — Playwright`) — unifica sobre el mismo Postgres seedeado y
+>   el mismo build de producción los specs E2E públicos (`smoke`, `a11y`, `axe`, `compra`, `estudio`,
+>   `mobile-storefront-audit`) seguidos de **Lighthouse CI** desktop y móvil (ADR-066).
+> - **`secrets-scan`** — `gitleaks` (corre siempre, incluso en PRs solo-docs).
 >
 > El sketch de abajo queda como referencia de la estructura conceptual.
 
 ### Gate de release (certificación)
 
 Además del gate por-PR, la certificación de un release exige **verde reciente del nightly**
-(`.github/workflows/nightly-full.yml`, on-demand con `workflow_dispatch` sobre el SHA del release)
-en estos jobs — su rojo bloquea la certificación:
+(`.github/workflows/nightly-full.yml`, que en `schedule` salta limpio si no hubo commits en 24 h y
+en `workflow_dispatch` corre siempre) en estos jobs exclusivos — su rojo bloquea la certificación:
 
-- **`e2e-supabase-real`** — incluye `admin-login` + `admin-mfa` (MFA admin obligatorio desde
-  2026-08-29) y `cms-editing-flow`. No están en el gate por-PR a propósito: exigen build +
-  navegador + GoTrue (~15 min) e inflarían cada PR; su red es este gate de release.
+- **`e2e-supabase-real`** — corre únicamente los specs que exigen GoTrue/Mailpit o cross-browser
+  (`admin-login`, `admin-mfa`, `cms-editing-flow`, `responsive-admin-audit`, `audit-cliente`,
+  `homolog-auth`, `retracto-garantia-cliente` + Firefox/WebKit), sin repetir los 5 specs de `ci.yml`.
 - **`e2e-wompi-sandbox`** (F-01, R3 2026-09-26) — el journey de dinero E2E. Si el job se SALTA por
   secrets sandbox ausentes, la certificación exige la **corrida manual equivalente**
   (`scripts/e2e-fullmode.sh wompi-sandbox` con las llaves sandbox en `.env.local`) con artifacts
   (`/tmp/e2e-tx-*.png`) archivados sobre el SHA del release — MANUAL_CONTROLLED.
-- **`vitest-supabase-real`** — suite completa contra Supabase real (incl. `rls-matrix`, las suites
-  autocontenidas de personalization y storage real).
-- **Post-deploy:** `post-deploy-smoke.yml` verde sobre el deploy del release (o su corrida manual
-  con `SMOKE_BASE_URL`).
+- **`vitest-supabase-real`** — corre las 6 suites de integración/live que exigen GoTrue/Storage
+  real o Wompi sandbox (`auth-actions`, `finalize-server-render`, `personalization/service`,
+  `letter-tiles`, `retention-service`, `wompi.live`).
+- **Post-deploy:** `post-deploy-smoke.yml` verde tras el `deployment_status` de Vercel `Production`
+  (o su corrida manual con `SMOKE_BASE_URL`).
 
 ```yaml
 # .github/workflows/ci.yml (estructura propuesta)
