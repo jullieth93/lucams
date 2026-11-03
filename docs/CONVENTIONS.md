@@ -690,7 +690,7 @@ model OrderItem {
 
 ## DB — retention y archival
 
-Implementado hoy (crons `/api/cron/purge-event-logs` diario 03:00, `/api/cron/purge-anon-designs` 08:00 y `/api/cron/purge-delivered-designs` 09:00, más los cleanups SQL puros de la migración `00000000000012`):
+Implementado hoy (crons `/api/cron/purge-event-logs` diario 03:00, `/api/cron/purge-anon-designs` 08:00 y `/api/cron/purge-delivered-designs` 09:00, más los cleanups SQL puros de las migraciones `043` y `047`):
 
 | Datos                                      | Retención              | Mecanismo                                                                                                            |
 | ------------------------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -840,9 +840,9 @@ logger.info({ event: "order.created", orderId, customerId });
 
 ## Code style
 
-- **Prettier** (`pnpm format` / `format:check`, gate `format-check` en CI) + **ESLint** flat config (`eslint-config-next` core-web-vitals + typescript, más `no-restricted-imports` para sharp — F-4). Pre-commit hook versionado en `scripts/git-hooks/pre-commit` = scan de secretos con **gitleaks** (activar una vez por clone: `git config core.hooksPath scripts/git-hooks`); la capa forzosa es GitHub Push Protection + el job `secrets-scan` de CI.
+- **Prettier** (`pnpm format` / `format:check`, ejecutado en el job `quality` de CI — incluso en el fast-path documental) + **ESLint** flat config (`eslint-config-next` core-web-vitals + typescript, más `no-restricted-imports` para sharp — F-4). Pre-commit hook versionado en `scripts/git-hooks/pre-commit` = scan de secretos con **gitleaks** (activar una vez por clone: `git config core.hooksPath scripts/git-hooks`); la capa forzosa es GitHub Push Protection + el job `secrets-scan` de CI.
 - **Gates ANTES de cada push (lección CI 2026-09-15):** `pnpm typecheck && pnpm lint && pnpm format:check && make audit-content` + la suite de tests que aplique (`make audit-content` corre `apps/web/lib/cms-sitemap-parity.test.ts` y verifica paridad bidireccional exacta entre `apps/web` y `cms-site-map.mjs`).
-- **Verificar CI DESPUÉS de cada push (lección CI 2026-10-06 — un push quedó rojo 4 min por prettier + ratchet CMS sin correr):** los gates locales no reemplazan la confirmación remota. Tras `git push`, vigilar el run con `gh run list --branch <rama> --limit 1` (o `gh run watch`) hasta verlo en verde; si falla, `gh run view <id> --log-failed`, corregir y re-pushear de inmediato — ningún trabajo se da por terminado con el CI en rojo, y el deploy de Vercel NO valida prettier/lint/tests por sí solo.
+- **Verificar CI en cada PR (lección CI 2026-10-06):** los gates locales no reemplazan la confirmación remota, y los pushes directos a `develop`/`production` están bloqueados por `protect-ramas-criticas`. Tras abrir o actualizar el PR, vigilar el run con `gh pr checks <n> --watch` (o `gh run watch`) hasta verlo en verde; si falla, `gh run view <id> --log-failed`, corregir y re-pushear de inmediato — ningún trabajo se da por terminado con el CI en rojo, y el deploy de Vercel NO valida prettier/lint/tests por sí solo.
 - **TypeScript estricto:** `"strict": true` en `apps/web/tsconfig.json`.
 - **No usar `any`.** Si no hay tipo, usar `unknown` y narrow.
 - **Archivos < 400 líneas** (split en submódulos si crece).

@@ -4,7 +4,7 @@
 
 ## Qué es hoy
 
-**Lucams Shop** (`lucamsshop.com`): e-commerce colombiano de productos magnéticos personalizados (fotoimanes, separadores, calendarios, tiras, letras/abecedario). **En producción y vendiendo en modo `full`** (`NEXT_PUBLIC_STORE_MODE=full` — ADR-077): pagos reales con Wompi + contraentrega (COD), envíos con Aveonline + «Envío Lucams» propio en Bogotá. Monorepo pnpm: `apps/web` (Next.js 16 + TS + Tailwind v4 + shadcn/ui) y `packages/db` (Prisma + Supabase). Despliegue en Vercel (`develop` → previews/STG, `production` → PRD vía PR con 8 required checks — ADR-105).
+**Lucams Shop** (`lucamsshop.com`): e-commerce colombiano de productos magnéticos personalizados (fotoimanes, separadores, calendarios, tiras, letras/abecedario). **En producción y vendiendo en modo `full`** (`NEXT_PUBLIC_STORE_MODE=full` — ADR-077): pagos reales con Wompi + contraentrega (COD), envíos con Aveonline + «Envío Lucams» propio en Bogotá. Monorepo pnpm: `apps/web` (Next.js 16 + TS + Tailwind v4 + shadcn/ui) y `packages/db` (Prisma + Supabase). Despliegue en Vercel (`develop` → previews/STG, `production` → PRD; ambas ramas protegidas por el ruleset `protect-ramas-criticas` vía PR con 5 required checks consolidados — ADR-105).
 
 ## Módulos y features operativos
 
