@@ -5,6 +5,13 @@
  * rotación/esquinas. Replica el render de Konva del editor (studio-slot.tsx): fondo, foto con
  * encuadre + clip, texto con stroke/shadow, marcos.
  *
+ * W3 (owner 2026-11-03) — FULL-BLEED rectangular: en tarjetas rectangulares el redondeo del
+ * BORDE de la pieza ya NO se hornea en el PNG (nada de esquinas transparentes); el arte va a
+ * sangre hasta las 4 esquinas y el redondeo lo hace el corte físico (troquel, declarado en la
+ * ficha de producción). Solo se conserva: la silueta de las formas troqueladas especiales
+ * (corazón/círculo) y el cornerRadius de ventanas de foto INSERTAS (elemento de diseño que no
+ * coincide con el contorno de la tarjeta, ej. la ventana de la Polaroid).
+ *
  * Los FILTROS siguen en fallback al PNG del cliente (que aplica el filtro EXACTO de Konva) — no se
  * re-implementan aquí para no divergir (hallazgo de la revisión adversarial A1a).
  *
@@ -338,15 +345,15 @@ async function renderSlotCanvas(
 
   for (const layer of unit.layers) {
     if (layer.type === "frame-card") {
-      // Tarjeta de color a todo el stage (debajo de foto y texto), esquinas suaves.
-      // El color lo manda canvasData.borderColor (paleta del Estudio); `fill` es el
-      // fallback blanco-clásico cuando el cliente no eligió color.
+      // Tarjeta de color a todo el stage (debajo de foto y texto). El color lo manda
+      // canvasData.borderColor (paleta del Estudio); `fill` es el fallback blanco-clásico
+      // cuando el cliente no eligió color.
+      // W3 (owner 2026-11-03): la tarjeta se imprime RECTANGULAR completa — el redondeo
+      // de esquinas lo resuelve el corte físico (troquel), ya no se hornea en el PNG.
       const fill = borderColor ?? (typeof layer.fill === "string" ? layer.fill : "#FFFFFF");
-      const radius = Number(layer.cornerRadius) || 0;
       ctx.save();
-      roundRectPath(ctx, 0, 0, unit.stage.width, unit.stage.height, radius);
       ctx.fillStyle = fill;
-      ctx.fill();
+      ctx.fillRect(0, 0, unit.stage.width, unit.stage.height);
       ctx.restore();
     } else if (layer.type === "background") {
       const bgColor = isIg
@@ -451,11 +458,20 @@ async function renderSlotCanvas(
       ctx.save();
       // FOTO1 (ADR-063): heart/circle → clip a la SILUETA (elipse/corazón), transparente fuera →
       // la imprenta troquela por ese borde (idéntico a lo que el cliente encuadró en el editor).
-      // Resto de formas → clip al rect del placeholder (o rounded-rect).
+      // W3 (owner 2026-11-03): en tarjetas RECTANGULARES el redondeo del BORDE de la pieza lo
+      // hace el corte físico (troquel) — el PNG va a sangre completa. El cornerRadius solo se
+      // hornea cuando la ventana de foto es un elemento de DISEÑO INSERTO (no coincide con el
+      // contorno de la tarjeta, ej. la ventana de la Polaroid).
+      const fullStageWindow =
+        phRaw.x <= 0 &&
+        phRaw.y <= 0 &&
+        phRaw.x + phRaw.width >= unit.stage.width &&
+        phRaw.y + phRaw.height >= unit.stage.height;
+      const clipRadius = fullStageWindow ? 0 : ph.cornerRadius;
       if (useFullStage) {
         shapeSilhouettePath(ctx, shape, unit.stage.width, unit.stage.height);
-      } else if (ph.cornerRadius > 0) {
-        roundRectPath(ctx, ph.x, ph.y, ph.width, ph.height, ph.cornerRadius);
+      } else if (clipRadius > 0) {
+        roundRectPath(ctx, ph.x, ph.y, ph.width, ph.height, clipRadius);
       } else {
         ctx.beginPath();
         ctx.rect(ph.x, ph.y, ph.width, ph.height);
@@ -547,6 +563,14 @@ async function renderSlotCanvas(
         cornerRadius: Number(phLayer.cornerRadius) || 0,
       };
       const w = Math.max(6, Math.round(unit.stage.width * 0.04));
+      // W3 (owner 2026-11-03): si la ventana de foto coincide con el contorno de la
+      // tarjeta, el redondeo lo hace el troquel — el marco se dibuja a ESCUADRA (PNG
+      // rectangular a sangre). Ventana inserta (diseño) conserva su radio.
+      const fullStageWindow =
+        ph.x <= 0 &&
+        ph.y <= 0 &&
+        ph.x + ph.width >= unit.stage.width &&
+        ph.y + ph.height >= unit.stage.height;
       ctx.save();
       ctx.strokeStyle = borderColor;
       ctx.lineWidth = w;
@@ -556,7 +580,7 @@ async function renderSlotCanvas(
         ph.y + w / 2,
         Math.max(0, ph.width - w),
         Math.max(0, ph.height - w),
-        Math.max(0, ph.cornerRadius - w / 2),
+        fullStageWindow ? 0 : Math.max(0, ph.cornerRadius - w / 2),
       );
       ctx.stroke();
       ctx.restore();

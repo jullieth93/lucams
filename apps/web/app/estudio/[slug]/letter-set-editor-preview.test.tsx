@@ -273,7 +273,8 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
       expect.objectContaining({ withBorder: true }),
     );
 
-    // El set se imprime como UNA lámina: preview y producción son el mismo PNG aprobado.
+    // El set sube como UNA lámina aprobada (preview + fallback de producción son el
+    // mismo PNG); el RenderJob la reemplaza con el render por ficha (ADR-188).
     const fd = finalizeDesignAction.mock.calls[0]![0];
     expect(fd.get("designId")).toBe("design-1");
     expect(fd.get("slotCount")).toBe("1");
@@ -480,7 +481,8 @@ describe("LetterSetEditor — recover flow (?designId=)", () => {
         ],
       }),
     );
-    // Y se sube UNA lámina de producción por set (2 sets = 2 archivos).
+    // Y se sube UNA lámina por set como fallback de producción (2 sets = 2 archivos;
+    // el RenderJob las reemplaza por fichas individuales — ADR-188).
     const fd = finalizeDesignAction.mock.calls[0]![0];
     expect(fd.get("slotCount")).toBe("2");
     expect(fd.get("production_0")).toBeInstanceOf(Blob);
@@ -553,7 +555,8 @@ describe("LetterSetEditor — stepper de cantidad de sets (2026-10-12)", () => {
     // Precio en vivo: variante $450 × 2 sets = $ 900 (header + panel).
     expect(screen.getAllByText(/\$\s?900/).length).toBeGreaterThan(0);
 
-    // Y el diseño se crea con los 2 sets (una lámina de producción por set).
+    // Y el diseño se crea con los 2 sets (una lámina por set como fallback; el
+    // RenderJob las reemplaza por fichas individuales — ADR-188).
     await openPreview();
     fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
     await waitFor(() => expect(createLetterSetDesignAction).toHaveBeenCalledTimes(1));

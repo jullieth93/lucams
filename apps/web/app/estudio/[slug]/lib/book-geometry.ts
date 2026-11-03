@@ -135,7 +135,8 @@ export function stripDimsForFace(
 /**
  * Agrupa las texturas del Estudio en UNIDADES físicas de separador (ola 3 — convención de
  * lib/faces.ts: slot par = cara A → AL FRENTE, slot impar = cara B → ATRÁS). Con unidad sin
- * cara B (no debería: facesPerUnit=2) la trasera queda EN BLANCO (back = null).
+ * cara B (no debería: facesPerUnit=2) la trasera lleva el patrón de marca (back = null → el
+ * caller la pinta con la textura «Lucams», owner 2026-11-03).
  *
  * Ola 6 — cuando llega `sizeCm` (variante de separador con dimensiones reales) forzamos el
  * pareo de caras, aunque las texturas ya hayan sido rotadas 90° en el editor y su aspecto
@@ -145,12 +146,14 @@ export function stripDimsForFace(
  * Diseños VIEJOS de tira completa (lienzo vertical, pre-ola-3): no traen cara B — cada textura
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  *
- * 2026-10-07 (decisión owner — REVIERTE la regla espejo del Paquete D, 2026-10-02):
- * una cara B SIN diseñar (slot sin assetUrl — misma condición que producción,
- * blank-back-face.ts) se muestra EN BLANCO (back = null; el caller pinta la cara
- * trasera blanca), nunca espejo de la cara A: es lo que imprenta produce y lo
- * que el cliente ve en la Vista Previa. "Si cargo únicamente la Cara A, espero
- * que la Cara B sea en blanco en vista 3D, preview y físico."
+ * 2026-11-03 (decisión owner — SUPERSEDE el blanco de 2026-10-07, que revirtió
+ * la regla espejo del Paquete D, 2026-10-02): una cara B SIN diseñar (slot sin
+ * assetUrl — misma condición que producción, default-back-face.ts) se muestra con
+ * el PATRÓN DE MARCA «Lucams» (back = null; el caller pinta la cara trasera con
+ * la textura del patrón — brand-back-texture.ts), nunca espejo de la cara A: es
+ * lo que imprenta produce y lo que el cliente ve en la Vista Previa. "Si cargo
+ * únicamente la Cara A, la Cara B lleva la marca de agua Lucams en vista 3D,
+ * preview y físico."
  */
 export function bookmarkFaceUnits<
   T extends {
@@ -169,8 +172,8 @@ export function bookmarkFaceUnits<
 ): { front: T; back: T | null }[] {
   // Ola 10 — si el producto declara facesPerUnit=2, agrupamos por pares de slotIndex
   // (no por orden del array). La cara B sin diseño propio (slot sin assetUrl — el
-  // snapshot del stage existe siempre, así que dataUrl NO discrimina) queda EN
-  // BLANCO: back = null (REGLA ÚNICA, decisión owner 2026-10-07).
+  // snapshot del stage existe siempre, así que dataUrl NO discrimina) queda con el
+  // PATRÓN DE MARCA: back = null (REGLA ÚNICA, decisión owner 2026-11-03).
   if (
     facesPerUnit === 2 &&
     bookmarks.length > 0 &&
@@ -185,7 +188,7 @@ export function bookmarkFaceUnits<
       if (!front) continue; // unidad sin cara A: no renderizar
       const back = bySlot.get(2 * k + 1);
       // Cara B con diseño propio ⇔ su slot tiene assetUrl (misma condición que
-      // producción). Sin él → EN BLANCO (back = null), nunca espejo de la cara A.
+      // producción). Sin él → patrón de marca (back = null), nunca espejo de la cara A.
       units.push({ front, back: back?.assetUrl ? back : null });
     }
     return units;
@@ -198,7 +201,7 @@ export function bookmarkFaceUnits<
   const units: { front: T; back: T | null }[] = [];
   for (let k = 0; 2 * k < bookmarks.length; k++) {
     const front = bookmarks[2 * k]!;
-    // Unidad sin cara B (textura faltante): trasera EN BLANCO (owner 2026-10-07).
+    // Unidad sin cara B (textura faltante): trasera con patrón de marca (owner 2026-11-03).
     units.push({ front, back: bookmarks[2 * k + 1] ?? null });
   }
   return units;

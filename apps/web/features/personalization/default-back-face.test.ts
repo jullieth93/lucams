@@ -1,18 +1,19 @@
 /*
- * Test de la cara B EN BLANCO de producción (decisión owner 2026-10-07 —
- * revierte la regla espejo del Paquete D, 2026-10-02): una cara B sin diseñar
- * (backOptional) se imprime EN BLANCO — un PNG blanco puro con las dimensiones
- * y DPI EXACTAS de la cara A de su pareja, nunca una copia de la A.
+ * Test de la cara B POR DEFECTO de producción (decisión owner 2026-11-03 —
+ * supersede para separadores backOptional la regla «cara B vacía = EN BLANCO»
+ * de 2026-10-07): una cara B sin diseñar se imprime con el PATRÓN DE MARCA
+ * «Lucams» — un PNG blanco con el wordmark tileado, con las dimensiones y DPI
+ * EXACTAS de la cara A de su pareja, nunca una copia de la A.
  */
 
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import {
-  blankBackFacePng,
-  blankOutEmptyBackFaces,
+  defaultBackFacePng,
   expandMissingBackFaces,
-} from "./blank-back-face";
+  fillEmptyBackFaces,
+} from "./default-back-face";
 
 /** Cara fake de color sólido (PNG) con densidad declarada. */
 async function fakeFace(w: number, h: number, hex: string, density = 300): Promise<Buffer> {
@@ -24,31 +25,29 @@ async function fakeFace(w: number, h: number, hex: string, density = 300): Promi
     .toBuffer();
 }
 
-/** RGBA de un pixel del PNG (decodificado con @napi-rs/canvas, patrón del repo). */
-async function rgbaAt(
-  png: Buffer,
-  x: number,
-  y: number,
-): Promise<[number, number, number, number]> {
+/** ¿El PNG tiene algún pixel NO blanco? (el patrón tileado deja wordmarks grises). */
+async function hasNonWhitePixel(png: Buffer): Promise<boolean> {
   const img = await loadImage(png);
   const c = createCanvas(img.width, img.height);
   const ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0);
-  const d = ctx.getImageData(x, y, 1, 1).data;
-  return [d[0], d[1], d[2], d[3]];
+  const d = ctx.getImageData(0, 0, img.width, img.height).data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i]! < 250 || d[i + 1]! < 250 || d[i + 2]! < 250) return true;
+  }
+  return false;
 }
 
-describe("blankBackFacePng (cara B en blanco para imprenta, owner 2026-10-07)", () => {
-  it("blanco PURO con las dimensiones y DPI EXACTAS de la cara A de referencia", async () => {
+describe("defaultBackFacePng (cara B con patrón de marca para imprenta, owner 2026-11-03)", () => {
+  it("fondo blanco + wordmarks tileados, con las dimensiones y DPI EXACTAS de la cara A", async () => {
     const faceA = await fakeFace(600, 200, "#123456", 300);
-    const blank = await blankBackFacePng(faceA);
-    const meta = await sharp(blank).metadata();
+    const back = await defaultBackFacePng(faceA);
+    const meta = await sharp(back).metadata();
     expect(meta.width).toBe(600);
     expect(meta.height).toBe(200);
     expect(meta.density).toBe(300);
-    // Blanco puro en el centro y en una esquina (nada de la foto de A).
-    expect(await rgbaAt(blank, 300, 100)).toEqual([255, 255, 255, 255]);
-    expect(await rgbaAt(blank, 5, 5)).toEqual([255, 255, 255, 255]);
+    // NO es blanco puro: el patrón «Lucams» deja wordmarks gris-lila (nada de la foto de A).
+    expect(await hasNonWhitePixel(back)).toBe(true);
   });
 
   it("sin densidad en la referencia → 300 DPI de producción por defecto", async () => {
@@ -57,8 +56,8 @@ describe("blankBackFacePng (cara B en blanco para imprenta, owner 2026-10-07)", 
     })
       .png()
       .toBuffer();
-    const blank = await blankBackFacePng(noDensity);
-    const meta = await sharp(blank).metadata();
+    const back = await defaultBackFacePng(noDensity);
+    const meta = await sharp(back).metadata();
     expect(meta.width).toBe(100);
     expect(meta.height).toBe(80);
     expect(meta.density).toBe(300);
@@ -66,7 +65,7 @@ describe("blankBackFacePng (cara B en blanco para imprenta, owner 2026-10-07)", 
 });
 
 describe("expandMissingBackFaces (buffers del cliente → un buffer por slot)", () => {
-  it("cara B vacía → PNG BLANCO del tamaño de su cara A (NO copia de la A)", async () => {
+  it("cara B vacía → PNG con patrón del tamaño de su cara A (NO copia de la A)", async () => {
     const a1 = await fakeFace(600, 200, "#FF0000");
     const a2 = await fakeFace(600, 200, "#00FF00");
     // Slots requeridos: 0 (1A) y 2 (2A) — las caras B (1 y 3) quedaron vacías.
@@ -78,7 +77,7 @@ describe("expandMissingBackFaces (buffers del cliente → un buffer por slot)", 
       const meta = await sharp(out[i]!).metadata();
       expect(meta.width).toBe(600);
       expect(meta.height).toBe(200);
-      expect(await rgbaAt(out[i]!, 300, 100)).toEqual([255, 255, 255, 255]);
+      expect(await hasNonWhitePixel(out[i]!)).toBe(true);
     }
   });
 
@@ -95,22 +94,22 @@ describe("expandMissingBackFaces (buffers del cliente → un buffer por slot)", 
   });
 });
 
-describe("blankOutEmptyBackFaces (render server-side → descarta la copia de trabajo)", () => {
-  it("reemplaza SOLO las caras B vacías por el blanco; el resto queda intacto", async () => {
+describe("fillEmptyBackFaces (render server-side → descarta la copia de trabajo)", () => {
+  it("reemplaza SOLO las caras B vacías por el patrón; el resto queda intacto", async () => {
     const a1 = await fakeFace(600, 200, "#FF0000");
     const copiaTrabajo = await fakeFace(600, 200, "#FF0000"); // la B duplicada por canvasForRender
     const a2 = await fakeFace(600, 200, "#00FF00");
     const b2 = await fakeFace(600, 200, "#0000FF"); // B diseñada: NO se toca
-    const out = await blankOutEmptyBackFaces([a1, copiaTrabajo, a2, b2], new Set([1]));
+    const out = await fillEmptyBackFaces([a1, copiaTrabajo, a2, b2], new Set([1]));
     expect(out[0]).toBe(a1);
     expect(out[2]).toBe(a2);
     expect(out[3]).toBe(b2);
-    expect(await rgbaAt(out[1]!, 300, 100)).toEqual([255, 255, 255, 255]);
+    expect(await hasNonWhitePixel(out[1]!)).toBe(true);
   });
 
   it("sin caras B vacías → el mismo array (identidad)", async () => {
     const a1 = await fakeFace(600, 200, "#FF0000");
     const buffers = [a1];
-    expect(await blankOutEmptyBackFaces(buffers, new Set())).toBe(buffers);
+    expect(await fillEmptyBackFaces(buffers, new Set())).toBe(buffers);
   });
 });

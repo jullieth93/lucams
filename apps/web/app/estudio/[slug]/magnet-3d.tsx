@@ -356,9 +356,10 @@ export function realWorldDepth(uPerCm: number, thicknessCm = MAGNET_THICKNESS_CM
  *  crema histórico (#F1EBDD): decisión del cliente 2026-09-22. */
 export const MAGNET_BACK_COLOR = "#1A1A1A";
 
-/** Blanco PURO de una cara B sin diseñar (decisión owner 2026-10-07 — revierte la regla
- *  espejo del Paquete D): lo que se ve en el 3D y en la Vista Previa es lo que imprenta
- *  recibe (blankBackFacePng — PNG blanco con las dimensiones/DPI de la cara A). */
+/** Blanco de RESPALDO de una cara B sin diseñar mientras se genera la textura del
+ *  patrón de marca «Lucams» (decisión owner 2026-11-03 — la cara B vacía ya no se
+ *  imprime en blanco: lleva el patrón, default-back-face.ts; el blanco queda solo
+ *  como fallback del instante de carga, igual que el placeholder de una foto). */
 export const BLANK_FACE_COLOR = "#FFFFFF";
 
 /** Silueta física centrada en el origen (unidades de mundo). Espejo exacto de buildShapePath. */
@@ -707,9 +708,11 @@ export const FACE_FLIP_ROTATION: readonly [number, number, number] = [0, Math.PI
  * es el negro de la goma ferrita (MAGNET_BACK_COLOR), no el cartón crema — decisión del cliente.
  * 2026-10-02 (Paquete D — REGLA ÚNICA, REVERTIDA 2026-10-07): una cara B sin
  * diseñar llegaba acá ya resuelta ESPEJO de la cara A (bookmarkFaceUnits la
- * duplicaba). Decisión owner 2026-10-07: la cara B vacía se imprime EN BLANCO
- * en TODOS lados (3D, preview y físico) — bookmarkFaceUnits devuelve back = null
- * y acá la trasera se pinta blanca (BLANK_FACE_COLOR), sin textura.
+ * duplicaba). Decisión owner 2026-11-03 (supersede el blanco de 2026-10-07): la
+ * cara B vacía se imprime con el PATRÓN DE MARCA «Lucams» en TODOS lados (3D,
+ * preview y físico) — bookmarkFaceUnits devuelve back = null y el caller
+ * (book-view-3d) pasa la textura del patrón como backDataUrl; acá la trasera
+ * solo se pinta blanca (BLANK_FACE_COLOR) mientras esa textura carga.
  *
  * 2026-09-25 (fotos rotadas 90° en STG): la región de cada cara sale de `foldedFaceRegion` —
  * si la textura llega con la orientación cruzada respecto a la cara física (el editor aún rota
@@ -731,8 +734,9 @@ export function FoldedStripMesh({
   position = [0, 0, 0],
 }: {
   dataUrl: string;
-  /** Diseño de la cara TRASERA (cara B de la unidad). Sin él (cara B vacía): la
-   *  trasera se pinta EN BLANCO (BLANK_FACE_COLOR — decisión owner 2026-10-07),
+  /** Diseño de la cara TRASERA (cara B de la unidad — el caller pasa la textura del
+   *  patrón «Lucams» cuando está vacía, owner 2026-11-03). Sin él: la trasera se
+   *  pinta en BLANCO de respaldo (BLANK_FACE_COLOR) mientras la textura carga —
    *  nunca espejo de la frontal. */
   backDataUrl?: string;
   /** Aspecto del lienzo del diseño (stage.width / stage.height) para el recorte cover. */
@@ -776,10 +780,9 @@ export function FoldedStripMesh({
       {/* Cara trasera: rotada ~π sobre el pliegue (cuelga del lado −Z, diseño a −Z). flipV +
           flipU = rotación de 180° de la textura: compensa EXACTO la rotación del mesh sobre X,
           así el diseño B se lee DERECHO (de pie, no espejado) al mirarla desde atrás.
-          backDataUrl = cara B REAL de la unidad (ola 3); backLean la recuesta sobre la mesa
-          cuando es larga. Cara B VACÍA (sin backDataUrl — bookmarkFaceUnits la resuelve como
-          back = null): la trasera se pinta EN BLANCO (decisión owner 2026-10-07 — lo mismo
-          que imprime producción), nunca espejo de la cara A. */}
+          backDataUrl = cara B REAL de la unidad (ola 3) — o, si está vacía, la textura del
+          patrón de marca «Lucams» que pasa book-view-3d (owner 2026-11-03 — lo mismo que
+          imprime producción), nunca espejo de la cara A. Sin textura (cargando): blanco. */}
       <group rotation={[Math.PI + delta + backLean, 0, 0]}>
         {backDataUrl ? (
           <MagnetMesh
@@ -794,8 +797,8 @@ export function FoldedStripMesh({
             position={[0, hang / 2, rFold]}
           />
         ) : (
-          // Cara B vacía → tapa BLANCA pura sin textura (mismo cuerpo de cartulina
-          // y reverso negro del imán que una cara impresa).
+          // Sin textura de la cara B (aún cargando el patrón) → tapa BLANCA de respaldo
+          // (mismo cuerpo de cartulina y reverso negro del imán que una cara impresa).
           <ExtrudedMagnetMesh
             texture={null}
             blankColor={BLANK_FACE_COLOR}

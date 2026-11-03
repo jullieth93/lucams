@@ -21,7 +21,7 @@ import {
 } from "@/features/personalization/assembly-sheet";
 import { MONTH_NAMES_ES } from "@/features/personalization/calendar-grid";
 import { logger } from "@/lib/logger";
-import { resolveProductionSpec } from "@/features/personalization/production-spec";
+import { resolveProductionSpec, productionPieceGroups } from "@/features/personalization/production-spec";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
 
 // Descarga N archivos de storage + zip: dar presupuesto (no el default de 15s).
@@ -173,16 +173,43 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
       );
     }
 
+    // W2 (owner 2026-11-03) — productos AGRUPADOS (sets de letras por ficha,
+    // calendario multi-set, tiras ×N): rótulos reales por pieza y subcarpeta por
+    // set/unidad dentro del ZIP (el calendario conserva sus nombres de mes).
+    const groups = isCalendar
+      ? null
+      : productionPieceGroups({
+          personalizationKind: item.personalizationKind,
+          canvasData: jsonRecord(item.canvasData),
+          designMetadata: jsonRecord(item.designMetadata),
+          productionCount: item.productionUrls.length,
+          startMonth:
+            typeof jsonRecord(item.productSchema)?.startMonth === "number"
+              ? (jsonRecord(item.productSchema)!.startMonth as number)
+              : undefined,
+        });
+    const pieceInfo = new Map<number, { label: string; subfolder: string }>();
+    if (groups) {
+      for (const g of groups) {
+        const subfolder = groups.length > 1 ? `${g.key}/` : "";
+        for (const p of g.pieces) pieceInfo.set(p.index, { label: p.label, subfolder });
+      }
+    }
+
     for (let i = 0; i < item.productionUrls.length; i++) {
       const monthIndex0 = (((item.startMonth + i) % 12) + 12) % 12;
+      const grouped = pieceInfo.get(i);
       const label = isCalendar
         ? `${MONTH_NAMES_ES[monthIndex0] ?? `Mes ${i + 1}`}${item.calendarYear ? ` ${item.calendarYear}` : ""}`
-        : spec.reversosEnBlanco.includes(i + 1)
-          ? `Pieza ${i + 1} · frente A + reverso B en blanco`
-          : `Pieza ${i + 1}`;
+        : (grouped?.label ??
+          (spec.reversosConMarcaAgua.includes(i + 1)
+            ? `Pieza ${i + 1} · frente A + reverso B con marca de agua Lucams`
+            : `Pieza ${i + 1}`));
       const fileName = isCalendar
         ? `${String(i + 1).padStart(2, "0")}-${MONTH_SLUG[monthIndex0] ?? `mes-${i + 1}`}.png`
-        : `pieza-${String(i + 1).padStart(2, "0")}.png`;
+        : grouped
+          ? `${grouped.subfolder}${String(i + 1).padStart(2, "0")}-${slug(grouped.label)}.png`
+          : `pieza-${String(i + 1).padStart(2, "0")}.png`;
 
       const bytes = await downloadProductionAsset(item.productionUrls[i]!);
       if (!bytes) {
