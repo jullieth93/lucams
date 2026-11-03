@@ -716,8 +716,9 @@ Las migraciones `00000000000012/015/016/021/023/032/035` agendan los jobs (idemp
 │    lucams-purge-event-logs (03:00)   → /api/cron/purge-event-logs  │
 │    lucams-cms-publish-scheduled (*/5min) → /api/cron/cms-publish-scheduled│
 │    lucams-expire-pending-orders (c/1h, min 23) → /api/cron/expire-pending-orders│
-│  SQL puro (012):                                          │
-│    rate_limit_cleanup (*/15min) — buckets > 1 día         │
+│  SQL puro (043/047; la 033 y la 048 retiraron los legacy de 012): │
+│    lucams-purge-rate-limits (05:29) — buckets > 7 días + latido   │
+│    lucams-internal-cron-history-purge / net-response-purge        │
 │  Fuera de pg_cron:                                      │
 │    backup diario a R2 (backup.yml) → POST /api/cron/backup-heartbeat│
 │    tras cada éxito (latido que lee la regla backup_stale) │

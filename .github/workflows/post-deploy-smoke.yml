@@ -1,51 +1,49 @@
 name: Post-deploy smoke (PRD)
 
-# F-08 (auditoría 2026-09-26, remediación R3): smoke post-deploy AUTOMATIZADO.
-# Antes la verificación post-deploy de PRD era un spec manual — un deploy "verde"
-# con una capacidad rota podía durar 10-20 min hasta que el monitor externo la
-# viera. Este workflow sondea los health endpoints públicos + 2 journeys
-# read-only (homepage, catálogo) y sale ROJO si algo no responde 200.
+# F-08 (auditoría 2026-09-26, remediación R3; saneado 2026-11-03):
+# Smoke post-deploy AUTOMATIZADO de PRD + verificación de deriva de migraciones Prisma.
 #
-# Triggers:
-#   - workflow_run del CI sobre `production`: el push a production dispara el
-#     deploy de Vercel y el CI a la vez; el CI tarda más que el build de Vercel,
-#     así que al completar el CI el deploy ya está (o casi) servido — el script
-#     tolera la propagación con reintentos. NO existe workflow de deploy propio
-#     (Vercel despliega por integración Git, sin workflow_run de deployment), así
-#     que el cierre del CI sobre production es el proxy más fiel disponible.
-#   - schedule ligero (2 veces por hora): segunda red independiente del monitor
-#     de STG (A9-12 — si STG está pausado no hay sondeo externo; este vive en
-#     GitHub). Getters públicos, costo cero.
-#   - workflow_dispatch: verificación manual post-hotfix.
+# Triggers vigentes (2026-11-03):
+#   - `deployment_status` nativo de Vercel (`environment == 'Production'` y
+#     `state == 'success'`): dispara en el instante exacto en que Vercel termina
+#     de servir el deploy de `production` (sin adivinar tiempos con `workflow_run`).
+#   - `workflow_dispatch`: verificación manual bajo demanda.
 #
-# NO usa secrets: todo es GET público read-only (los health endpoints son
-# públicos a propósito; el detalle sensible de /api/health/crons exige
-# x-cron-secret y acá NO se pide — solo el status agregado).
+# Por qué se retiró el `schedule` cada 30 min (2026-11-03):
+#   - Duplicaba a `uptime-monitor-prd` (pg_cron en Supabase STG cada 10 min,
+#     144 corridas/día puntuales con alerta por email vía Resend y latido en
+#     `/admin/observability` — ver docs/OPERATIONS.md § Plan de monitoreo).
+#   - Además `schedule` y `workflow_run` corrían sobre la rama por defecto
+#     (`develop`) sin `ref: production`, comparando migraciones en pruebas de
+#     STG contra la BD de PRD (falso rojo en `run 41551828115`). Ahora el
+#     checkout fija explícitamente `ref: production`.
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [production]
-  schedule:
-    # Minutos 7 y 37 de cada hora (fuera de las marcas :00/:30 de la manada).
-    - cron: "7,37 * * * *"
+  deployment_status: {}
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
-concurrency:
-  group: post-deploy-smoke
-  cancel-in-progress: false # un smoke a medias no se cancela: su resultado importa
-
 jobs:
   smoke:
     name: Health endpoints + journeys read-only de PRD
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment_status.environment == 'Production')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: post-deploy-smoke
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # CRÍTICO: siempre comparar contra la rama real de producción (`production`),
+          # nunca contra el default branch (`develop`) donde pueden vivir migraciones
+          # en etapa de validación STG.
+          ref: production
 
       # Sin pnpm install ni build: el script es Node 22 pelado (fetch nativo),
       # cero dependencias — el smoke no debe depender del toolchain del repo.
@@ -54,14 +52,8 @@ jobs:
         env:
           SMOKE_BASE_URL: https://lucamsshop.com
 
-      # Deriva de schema (2026-10-20 — incidente real: 4 migraciones Prisma quedaron
-      # sin aplicar en PRD tras un release y el cron cart-recovery reventó 2h después
-      # con "column does not exist"; el smoke de rutas no lo veía). Compara las
-      # migraciones del repo contra `_prisma_migrations` de PRD con psql pelado
-      # (preinstalado en ubuntu-latest) y falla ROJO si hay pendientes — el release
-      # correcto corre `prisma migrate deploy` ANTES del merge (docs/OPERATIONS.md).
-      # Reusa el secret del backup diario; si falta, se salta con warning (mismo
-      # patrón fail-visible de backup.yml).
+      # Deriva de schema (2026-10-20): compara las migraciones de `production`
+      # contra `_prisma_migrations` de PRD y falla ROJO si hay pendientes.
       - name: Migraciones Prisma pendientes en PRD (drift check)
         env:
           HAS_DB: ${{ secrets.BACKUP_DATABASE_URL != '' }}
