@@ -446,7 +446,7 @@ async function main() {
       `${sectionsCreated} secciones nuevas, ${sectionsUpdated} actualizadas`,
   );
   console.log(
-    `Campos canónicos (176): ${fieldsCreated} ${APPLY ? "creados" : "a crear"} · ` +
+    `Campos canónicos (${canonicalFieldDefs.size}): ${fieldsCreated} ${APPLY ? "creados" : "a crear"} · ` +
       `${fieldsStructUpdated} ${APPLY ? "reubicados/alineados" : "a reubicar/alinear"} · ` +
       `${fieldsTokenized} ${APPLY ? "republicados con {{tokens}}" : "a republicar con {{tokens}}"}`,
   );
