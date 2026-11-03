@@ -589,8 +589,8 @@ Definidos en [`ARCHITECTURE.md` § Storage](./ARCHITECTURE.md#storage-supabase).
 
 `design-previews` es **privado** (migración 046): los bytes solo salen por el Route Handler `GET /api/design-preview/<designId>/<archivo>` (`app/api/design-preview/[...path]/route.ts`), que autoriza por request con la matriz pura de `features/personalization/preview-access.ts`:
 
-- **Dueño** (cookie `cart_session` == `Design.sessionId`, o `Customer` autenticado) y **admin activo** → cualquier variante (limpio, páginas, borradores, watermark).
-- **Capacidad por token** (`?st=` share `/d/`, `?qt=` cotización, `?ot=` pedido — el join exige que la orden/cotización incluya ESE diseño) → **solo** variantes watermark.
+- **Dueño** (cookie `cart_session` == `Design.sessionId`, o `Customer` autenticado) y **admin activo** → cualquier variante (limpio, páginas, borradores, watermark legacy).
+- **Capacidad por token** (`?st=` share `/d/`, `?qt=` cotización, `?ot=` pedido — el join exige que la orden/cotización incluya ESE diseño) → las variantes de EXHIBICIÓN (preview limpio, páginas y artefactos watermark legacy), **nunca borradores**. (2026-11-03, ADR-191: el anti-copia se retiró — los tokens abren el preview limpio como antes de 2026-10-13.)
 - Resto → 404 sin oráculo. Respuesta con `Cache-Control: private, max-age=300` (nada de caché pública para contenido personal).
 - `Design.previewUrl`/`draftPreviewUrl` y los snapshots (`OrderItem.designAssetUrl`, `QuoteItem.previewUrl`) persisten la URL del handler; las URLs públicas legacy se convierten al vuelo (`previewRefToAuthorizedUrl`) y un GET anónimo directo al bucket muere.
 
