@@ -17,10 +17,21 @@ import { join } from "node:path";
 
 const CI_YML = join(__dirname, "..", "..", "..", ".github", "workflows", "ci.yml");
 
+const SMOKE_YML = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  ".github",
+  "workflows",
+  "post-deploy-smoke.yml",
+);
+
 /**
- * Ramas PERMANENTES que siempre deben gatearse. `catalogo-whatsapp` NO va aquí a propósito: es la
- * rama de la Etapa 1 y se borrará al mergearse — exigirla volvería rojo el test justo cuando
- * alguien haga lo correcto (quitarla del YAML), que es el mismo anti-patrón que este test previene.
+ * Ramas PERMANENTES que siempre deben gatearse en `pull_request`. `catalogo-whatsapp` NO va aquí a
+ * propósito: es la rama de la Etapa 1 y se borrará al mergearse — exigirla volvería rojo el test
+ * justo cuando alguien haga lo correcto (quitarla del YAML), que es el mismo anti-patrón que este
+ * test previene.
  */
 const REQUIRED_BRANCHES = ["develop", "production"];
 
@@ -49,11 +60,14 @@ describe("triggers de la CI", () => {
   const source = readFileSync(CI_YML, "utf-8");
   const lists = triggerBranchLists(source);
 
-  it("encuentra las listas de ramas de push y pull_request (si no, el test se volvió ciego)", () => {
-    expect(lists.length).toBe(2);
+  it("gatea pull_request sin duplicar corrida en push sobre ramas protegidas + expone workflow_dispatch", () => {
+    expect(lists.length).toBe(1);
+    expect(source).toMatch(/^\s+pull_request:\s*$/m);
+    expect(source).toMatch(/^\s+workflow_dispatch:/m);
+    expect(source).not.toMatch(/^\s+push:\s*$/m);
   });
 
-  it.each(REQUIRED_BRANCHES)("gatea la rama %s en push y en pull_request", (branch) => {
+  it.each(REQUIRED_BRANCHES)("gatea la rama %s en pull_request", (branch) => {
     for (const list of lists) {
       expect(list, `falta '${branch}' en ${JSON.stringify(list)}`).toContain(branch);
     }
@@ -71,7 +85,8 @@ describe("triggers de la CI", () => {
     }
   });
 
-  it("usa la misma lista de ramas en push y en pull_request", () => {
-    expect(lists[0]).toEqual(lists[1]);
+  it("post-deploy-smoke hace checkout explícito de ref: production (evita falso rojo de drift contra develop)", () => {
+    const smokeSource = readFileSync(SMOKE_YML, "utf-8");
+    expect(smokeSource).toMatch(/^\s+ref:\s*production\s*$/m);
   });
 });
