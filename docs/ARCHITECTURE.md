@@ -138,17 +138,19 @@ lucams_shop/
 │       └── package.json
 ├── supabase/
 │   └── migrations/                       # SQL no-Prisma (RLS, grants, storage,
-│                                         #   funciones, pg_cron) 00000000000002…39
+│                                         #   funciones, pg_cron) 00000000000002…48
 ├── .github/workflows/
-│   ├── ci.yml                            # 8 jobs: quality + unit-tests +
-│   │                                     #   rls-behavior + e2e + lighthouse +
-│   │                                     #   secrets-scan + format-check + dep-audit
-│   ├── nightly-full.yml                  # Tests que necesitan Supabase real
-│   │                                     #   (+ e2e dinero Wompi sandbox)
-│   ├── backup.yml                        # Backup DB → R2 cifrado gpg (A-3)
-│   ├── dr-drill.yml                      # DR drill — restore desde R2
+│   ├── ci.yml                            # Gate de PR: changes (fast-path docs) +
+│   │                                     #   secrets-scan + quality (fmt/audit/lint/
+│   │                                     #   typecheck/build) + unit-tests +
+│   │                                     #   rls-behavior + e2e (Playwright + LHCI)
+│   ├── nightly-full.yml                  # Nocturno (guard 24h) + on-demand:
+│   │                                     #   Supabase real + cross-browser + Wompi
+│   ├── backup.yml                        # Backup DB + Storage → R2 cifrado gpg (A-3)
+│   ├── dr-drill.yml                      # DR drill mensual — restore desde R2
 │   ├── domain-watch.yml                  # RDAP dominio → POST /api/cron/domain-watch
-│   └── post-deploy-smoke.yml             # Smoke PRD post-deploy + 2 veces/hora
+│   └── post-deploy-smoke.yml             # Smoke PRD en deployment_status Production
+│                                         #   (ref: production + drift Prisma)
 ├── docs/                                 # Documentación (este archivo entre otros)
 ├── README.md
 ├── CLAUDE.md
@@ -883,9 +885,9 @@ shadcn/ui usa Radix primitives, que ya cumplen ARIA. Mantener `aria-*` props cua
 
 ## CI/CD y gates de release
 
-- **6 workflows** en `.github/workflows/`: `ci.yml` (8 jobs por PR: `quality`, `unit-tests` — con drift check Prisma↔Supabase, `rls-behavior`, `e2e` + a11y, `lighthouse`, `secrets-scan`, `format-check`, `dep-audit`), `nightly-full.yml` (tests contra Supabase real + E2E de dinero con Wompi sandbox), `backup.yml`, `dr-drill.yml`, `domain-watch.yml` y `post-deploy-smoke.yml` (smoke de PRD tras cada deploy + 2 veces por hora).
+- **6 workflows** en `.github/workflows/`: `ci.yml` (`pull_request` hacia `develop`/`production` + `workflow_dispatch`, sin trigger `push`; detector fail-closed `changes` para fast-path documental en ~50 s + 5 jobs de gate: `secrets-scan`, `quality` —incluye `prettier --check`, `pnpm audit --prod`, typecheck, lint, paridad CMS, guards DB, lint voseo y build—, `unit-tests` con drift check Prisma↔Supabase, `rls-behavior` y `e2e` unificado con Playwright + Lighthouse desktop/móvil), `nightly-full.yml` (guard de actividad 24 h en `schedule`; corre únicamente las suites exclusivas de GoTrue/Storage real, cross-browser Firefox/WebKit y Wompi sandbox), `backup.yml` (diario a R2 cifrado gpg), `dr-drill.yml` (mensual), `domain-watch.yml` (mensual) y `post-deploy-smoke.yml` (disparado nativamente por `deployment_status` de Vercel `Production` + `workflow_dispatch`, con `ref: production` explícito y drift check de `_prisma_migrations`).
 - **Drift check de schema en CI** (A9-08): `packages/db/scripts/audit-schema-drift.mjs` compara el schema resultante de aplicar solo las migraciones Prisma contra el resultado de aplicar también las migraciones SQL de Supabase — falla el job `unit-tests` si divergen. La migración Prisma aditiva `20260926120000_admin_recovery_code` (remediación A5-01 de la certificación) convirtió a Prisma en la fuente única del `CREATE TABLE "AdminRecoveryCode"` (antes solo lo creaba la SQL `00000000000008`); ambas quedaron idempotentes (`IF NOT EXISTS`) para no chocar en ningún orden de aplicación.
-- **Branch protection de `production`** (ADR-105, 2026-09-27): exige pull request + **8 required checks** (los 7 históricos + `rls-behavior`); push directo cerrado también para admins. Release = PR `develop`→`production` → 8 checks verdes → merge ff → deploy. Rollback: `vercel rollback` (instantáneo, revierte código no DB — seguro por la convención expand-then-contract) ensayado el 2026-09-27 + `post-deploy-smoke` como detector.
+- **Ruleset `protect-ramas-criticas` (`id: 26248226`, ADR-105)** sobre `develop` y `production`: bloquea pushes directos, force-push y borrado sin actores con bypass (`bypass_actors: []`), exige PR con rama al día (`strict: true`) y **5 required status checks** consolidados (`Typecheck + Lint + Build`, `Vitest tests (unit + integración con Postgres)`, `RLS behavior (rls-matrix contra Supabase local)`, `E2E + a11y + Lighthouse — Playwright`, `Gitleaks secret scan`). Flujo: rama corta → PR a `develop` (STG) → PR `develop` → `production` (PRD) → deploy Vercel → `post-deploy-smoke.yml`. Rollback: `vercel rollback` (instantáneo, revierte código no DB — seguro por la convención expand-then-contract) + forward-fix.
 
 ---
 
