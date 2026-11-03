@@ -47,20 +47,23 @@
 - **Producción por ficha + full-bleed + admin agrupado (ADR-188/189/190, owner 2026-11-03):** los
   sets de letras (Abecedario/Vocales/Nombre) se producen con **un PNG 300 DPI por ficha** renderizado
   server-side por el RenderJob (`letter-tile-render.ts` + `letter-tile-draw.ts` puro compartido con
-  el editor/3D; la lámina única que sube el cliente queda como fallback); los PNG de imprenta
-  rectangulares van **a sangre** (el redondeo de esquinas lo hace el troquel, ya no se hornea en el
-  PNG; se conservan las siluetas corazón/círculo y las ventanas insertas de diseño); y
-  `/admin/pedidos/[number]` + el ZIP presentan los productos agrupados **organizados por set/unidad
-  con rótulos reales** (letra de ficha, mes de calendario, segmento de tira — helper puro
-  `productionPieceGroups`). La cara B vacía de separadores lleva el patrón de marca «Lucams» en
-  preview/3D/producción (ADR-190).
+  el editor/3D; la lámina única que sube el cliente queda como fallback — si el encolado del job
+  falla, se reporta a ErrorLog y el admin regenera desde el pedido con «Regenerar archivos por
+  ficha»); los PNG de imprenta rectangulares van **a sangre** (el redondeo de esquinas lo hace el
+  troquel, ya no se hornea en el PNG; se conservan las siluetas corazón/círculo y las ventanas
+  insertas de diseño); y `/admin/pedidos/[number]` + el ZIP presentan los productos agrupados
+  **organizados por set/unidad con rótulos reales** (letra de ficha, mes de calendario, segmento de
+  tira — helper puro `productionPieceGroups`) en **grilla compacta + lightbox**
+  (`production-pieces-gallery.tsx`). La cara B vacía de separadores lleva el patrón de marca
+  «Lucams» en preview/3D/producción (ADR-190), con contorno por cara en la Vista Previa de los
+  alargados planos.
 - Asistente IA con Gemini vía adaptador `AiProvider` (ADR-058).
 - Uploads con compresión WebP obligatoria: presupuesto 4 MB con piso 300 DPI, HEIC fail-closed (ADR-142), tickets de subida con retry backoff ×3 (ADR-156).
 
 **Render de producción (imprenta)**
 
 - **Asíncrono (ADR-136):** tabla `RenderJob`, kick de 8 s en el finalize, worker por cron `lucams-process-render-jobs` (cada minuto, migración supabase **041**), progreso real en UI vía `/api/designs/<id>/render-status`; el ZIP de admin responde 409 mientras el render vive.
-- Los PNG 300 DPI los renderiza el servidor (3 tiers), no el navegador (ADR-081). Watermark anti-copia tiling LUCAMS en TODAS las vistas servidas (carrito, Mis diseños, /d + OG, cotización, gracias, pedido); canvas/3D/admin/producción limpios (ADR-148).
+- Los PNG 300 DPI los renderiza el servidor (3 tiers), no el navegador (ADR-081). Watermark anti-copia tiling LUCAMS en las vistas PÚBLICAS/por token (share /d + OG, cotización, pedido público, gracias de invitado); las vistas del DUEÑO (carrito, Mis diseños, mi-cuenta pedidos, gracias logueada) exhiben LIMPIO vía `preferClean` (ADR-148 ajustado 2026-11-03); canvas/3D/admin/producción limpios.
 - Mis diseños: thumbnails de borrador (`draftPreviewUrl`), CTA «Editar» para READY, badges de estado (ADR-147).
 - El lenguaje de entrega es estimado en todas las capas (preparación antes del despacho + tránsito
   después); Términos conserva el máximo legal de 30 días calendario. Los bodies CMS existentes se

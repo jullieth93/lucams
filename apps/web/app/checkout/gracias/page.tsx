@@ -182,6 +182,9 @@ export default async function CheckoutGraciasPage({
           shipping: true,
           tax: true,
           email: true,
+          // 2026-11-03 — ownership del pedido para exhibir los previews LIMPIOS
+          // al dueño logueado (preferClean; invitado/tercero siguen con watermark).
+          customerId: true,
           shippingCarrier: true,
           shippingAddress: true,
           createdAt: true,
@@ -322,6 +325,9 @@ export default async function CheckoutGraciasPage({
             shipping: true,
             tax: true,
             email: true,
+            // 2026-11-03 — ownership del pedido para preferClean (previews limpios
+            // solo para el dueño logueado; invitado/tercero siguen con watermark).
+            customerId: true,
             shippingCarrier: true,
             shippingAddress: true,
             createdAt: true,
@@ -392,6 +398,11 @@ export default async function CheckoutGraciasPage({
       // #24 — el invitado no tiene cuenta; su CTA debe ir a la vista pública por token, no a
       // /mi-cuenta (muro de login). getCurrentCustomer está memoizado (cache()).
       const session = await getCurrentCustomer();
+      // 2026-11-03 (owner) — previews LIMPIOS solo cuando la sesión es la DUEÑA
+      // del pedido; invitado (o cuenta ajena) sigue con el watermark anti-copia.
+      const viewerOwnsOrder = Boolean(
+        session && order?.customerId && order.customerId === session.customer.id,
+      );
       // Puntos ganados (2026-10-26 — decisión owner): al logueado la saga ya se
       // los acreditó y los ve acá; al INVITADO se le ofrece cobrarlos creando su
       // cuenta con el mismo correo (retrocrédito automático al verificarla).
@@ -403,6 +414,7 @@ export default async function CheckoutGraciasPage({
           order={order}
           txId={tx.id}
           isGuest={!session}
+          preferClean={viewerOwnsOrder}
           earnedPoints={earnedPoints}
           earnedValueCents={earnedPoints * pointValueCents(loyaltySettings)}
         />
@@ -429,6 +441,7 @@ async function ApprovedPage({
   order,
   txId,
   isGuest,
+  preferClean = false,
   earnedPoints,
   earnedValueCents,
 }: {
@@ -472,6 +485,8 @@ async function ApprovedPage({
   } | null;
   txId: string;
   isGuest: boolean;
+  /** 2026-11-03 (owner) — la sesión es la dueña del pedido: previews LIMPIOS. */
+  preferClean?: boolean;
   /** Puntos ganados con esta compra (0 si el programa está apagado). */
   earnedPoints: number;
   /** Equivalencia de esos puntos en centavos COP (para el incentivo guest). */
@@ -538,13 +553,15 @@ async function ApprovedPage({
           <p className="text-brand-muted mb-2 text-xs font-medium">Esto es lo que pediste</p>
           <ul className="mx-auto grid max-w-xl gap-2.5 text-left">
             {order.items.map((it) => {
-              // 2026-10-13 — el diseño personalizado se exhibe CON marca de agua
-              // cuando el artefacto existe (preview-wm.webp por convención de
-              // paths); el snapshot limpio (designAssetUrl) queda de fallback
-              // para diseños sin artefactos o ya purgados.
+              // 2026-11-03 (owner) — el dueño logueado ve sus diseños LIMPIOS
+              // (preferClean); invitado/tercero conserva el watermark anti-copia.
+              // El snapshot limpio (designAssetUrl) queda de fallback para
+              // diseños sin artefactos o ya purgados.
               // Paquete F (2026-10-02) — la foto de LA VARIANTE antes que la
               // genérica del producto (mismo fallback que el carrito).
-              const disp = it.design ? designPreviewDisplay(it.design) : null;
+              const disp = it.design
+                ? designPreviewDisplay(it.design, undefined, { preferClean })
+                : null;
               // 2026-10-22 — rótulo por página del pager ("Set 2 · con borde").
               const pageLabels = designPreviewPageLabels(
                 it.design,
@@ -658,9 +675,12 @@ async function ApprovedPage({
               );
             })}
           </ul>
-          {/* 2026-10-13 — aviso de marca de agua cuando alguna miniatura la lleva. */}
+          {/* 2026-10-13 — aviso de marca de agua cuando alguna miniatura la lleva
+              (con preferClean — el dueño logueado ve limpio — no aplica). */}
           {order.items.some((it) =>
-            it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
+            it.design
+              ? designPreviewDisplay(it.design, undefined, { preferClean })?.watermarked === true
+              : false,
           ) && (
             <p className="text-brand-muted mx-auto mt-2 max-w-md text-[11px]">
               Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la

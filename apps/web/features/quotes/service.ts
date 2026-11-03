@@ -167,7 +167,7 @@ export async function createQuoteFromCart(
                 variantName: i.variantName,
                 unitPrice: i.unitPrice,
                 quantity: i.qty,
-                previewUrl: i.designPreviewUrl,
+                previewUrl: i.designPreviewWatermarkUrl ?? i.designPreviewUrl,
               })),
             },
           },

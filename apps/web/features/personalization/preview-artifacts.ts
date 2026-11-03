@@ -19,9 +19,13 @@
  *                                   (primera unidad/página legible ≤800 px; sin
  *                                   páginas, el preview global reducido)
  *
- * Qué superficie muestra qué versión (decisión de producto 2026-10-13):
- *   - Carrito, "Ver diseño", Mis diseños, /d/<token> + OG, cotización pública,
- *     checkout gracias, pedido público y mi-cuenta pedidos → WATERMARK.
+ * Qué superficie muestra qué versión (decisión de producto 2026-10-13, AJUSTADA
+ * 2026-11-03 — owner):
+ *   - Carrito, Mis diseños, mi-cuenta pedidos y gracias del dueño LOGUEADO →
+ *     LIMPIOS (preferClean: el diseño es suyo; el anti-copia no aplica a uno
+ *     mismo y el tiling dañaba la lectura de diseños oscuros).
+ *   - /d/<token> + OG, cotización pública, pedido público por token, gracias de
+ *     invitado → WATERMARK (anti-copia ante terceros).
  *   - Canvas de edición en vivo y vistas 3D → LIMPIOS (son locales).
  *   - Admin y producción (production-assets, privado) → LIMPIOS siempre.
  *   - Borradores (draft-preview.<ext>) → sin watermark (solo los ve el dueño).
@@ -162,9 +166,16 @@ export type DesignPreviewDisplay = {
 };
 
 /**
- * Selección de exhibición con watermark (decisión 2026-10-13): prefiere las
- * versiones watermark y cae al preview limpio cuando no existen. Todas las
- * URLs salen por el handler autorizado (el bucket ya no es público): las
+ * Selección de exhibición. Regla de marca de agua (decisión owner 2026-11-03,
+ * ajuste de la de 2026-10-13): las superficies del DUEÑO (su carrito, su cuenta,
+ * su pedido, su página de gracias logueada) exhiben las versiones LIMPIAS — el
+ * watermark anti-copia queda para las superficies públicas/por token (/d,
+ * cotización, pedido público), que es donde un tercero podría copiar el diseño.
+ * La autorización la refuerza el handler (preview-access.ts: los limpios solo
+ * salen para dueño/admin — fail-closed). Sin `preferClean` (o sin artefactos
+ * limpios), la superficie cae a watermark como siempre.
+ *
+ * Las URLs salen por el handler autorizado (el bucket ya no es público): las
  * superficies con sesión (carrito, cuenta, admin) no necesitan capability;
  * las públicas (/d/, cotización, pedido por token) la pasan para las
  * variantes watermark. null si el diseño no tiene preview o la ref no sigue
@@ -173,6 +184,7 @@ export type DesignPreviewDisplay = {
 export function designPreviewDisplay(
   design: DesignPreviewArtifactState,
   capability?: PreviewCapability,
+  opts?: { preferClean?: boolean },
 ): DesignPreviewDisplay | null {
   if (!design.previewUrl) return null;
   const cleanPath = previewStoragePathFromRef(design.previewUrl);
@@ -186,21 +198,37 @@ export function designPreviewDisplay(
   const thumbUrl = hasWm
     ? designPreviewAuthorizedUrl(designPreviewThumbPath(designId), capability)
     : null;
-  // Las páginas (siempre watermark por convención de paths) se rigen por su
-  // propio sello: llegan en un request posterior al finalize, así que su
-  // existencia es independiente de la del preview-wm global.
-  const pages =
-    (design.previewPagesCount ?? 0) > 1
-      ? Array.from(
-          { length: Math.min(PREVIEW_PAGES_MAX, Math.trunc(design.previewPagesCount!)) },
-          (_, i) =>
-            designPreviewAuthorizedUrl(designPreviewWmPagePath(designId, i + 1), capability)!,
+  // Las páginas se rigen por su propio sello: llegan en un request posterior al
+  // finalize, así que su existencia es independiente de la del preview-wm global.
+  // preferClean (dueño) usa las páginas LIMPIAS (pages/NN.webp); el resto, las
+  // watermark (wm/pages/NN.webp).
+  const pageCount = (design.previewPagesCount ?? 0) > 1 ? Math.trunc(design.previewPagesCount!) : 0;
+  const cleanPages =
+    opts?.preferClean && pageCount > 1
+      ? Array.from({ length: Math.min(PREVIEW_PAGES_MAX, pageCount) }, (_, i) =>
+          designPreviewAuthorizedUrl(designPreviewPagePath(designId, i + 1), capability)!,
         )
       : [];
+  const wmPages =
+    pageCount > 1
+      ? Array.from({ length: Math.min(PREVIEW_PAGES_MAX, pageCount) }, (_, i) =>
+          designPreviewAuthorizedUrl(designPreviewWmPagePath(designId, i + 1), capability)!,
+        )
+      : [];
+  if (opts?.preferClean) {
+    return {
+      displayUrl: cleanUrl,
+      // No hay thumb limpio dedicado: la primera página limpia (multi-unidad) o
+      // el preview global limpio hacen de miniatura.
+      thumbUrl: cleanPages[0] ?? cleanUrl,
+      pageUrls: cleanPages.length > 1 ? cleanPages : null,
+      watermarked: false,
+    };
+  }
   return {
     displayUrl: wmUrl ?? cleanUrl,
     thumbUrl: thumbUrl ?? wmUrl ?? cleanUrl,
-    pageUrls: pages.length > 1 ? pages : null,
-    watermarked: wmUrl !== null || pages.length > 1,
+    pageUrls: wmPages.length > 1 ? wmPages : null,
+    watermarked: wmUrl !== null || wmPages.length > 1,
   };
 }

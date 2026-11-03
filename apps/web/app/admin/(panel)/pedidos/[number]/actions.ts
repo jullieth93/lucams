@@ -14,6 +14,7 @@ import { sealManuallyResolvedWebhookEvents } from "@/features/orders/webhook-sea
 import { orderStatusLabel } from "@/features/orders/order-status-display";
 import { sendOrderShipped, sendOrderDelivered, sendOrderCancelled } from "@/features/orders/emails";
 import { orderHasUnmoderatedDesigns } from "@/features/moderation/service";
+import { letterSetUnitCount } from "@/features/personalization/design-units";
 import { formatCOP } from "@/lib/format";
 
 /**
@@ -383,4 +384,69 @@ export async function blockOrderAddressAction(
   logger.info({ event: "admin.cod_blocklist.add_address", adminId: session.admin.id, orderId });
   revalidatePath("/admin/finanzas/bloqueos");
   return { success: "Dirección bloqueada para contra entrega." };
+}
+
+/**
+ * Regenerar los archivos de impresión POR FICHA de un diseño de set de letras
+ * (owner 2026-11-03, ADR-188): diseños cuya producción quedó en LÁMINA por set
+ * (históricos, o porque el encolado del job de mejora falló en silencio en el
+ * finalize — el catch best-effort ya reporta a ErrorLog desde hoy). Crea/resetea
+ * el RenderJob con el conteo real (letras × sets) y lo patea; el worker (cron
+ * cada minuto) termina de reemplazar las láminas por fichas 300 DPI.
+ *
+ * Guardas: solo diseños letterset/name (metadata.letters) en formato lámina
+ * (productionUrls.length === sets). Si ya está en fichas, es no-op amable.
+ */
+export async function regenerateLettersetProductionAction(
+  _prev: { error?: string; success?: string } | null,
+  formData: FormData,
+): Promise<{ error?: string; success?: string }> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL });
+
+  const designId = String(formData.get("designId") ?? "");
+  const orderNumber = String(formData.get("orderNumber") ?? "");
+  if (!designId || !orderNumber) return { error: "Faltan datos." };
+
+  const design = await prisma.design.findUnique({
+    where: { id: designId },
+    select: { id: true, productId: true, metadata: true, productionUrls: true },
+  });
+  const meta = (design?.metadata ?? null) as Record<string, unknown> | null;
+  const letters = Array.isArray(meta?.letters) ? (meta.letters as unknown[]) : [];
+  if (!design || letters.length === 0) {
+    return { error: "Este diseño no es un set de letras." };
+  }
+  const sets = letterSetUnitCount(meta);
+  if (design.productionUrls.length === letters.length * sets) {
+    return { success: "Este diseño ya tiene sus archivos por ficha." };
+  }
+
+  const { createOrResetRenderJob, processRenderJobs, RENDER_JOB_KICK_BUDGET_MS } =
+    await import("@/features/personalization/render-job-service");
+  await createOrResetRenderJob({
+    designId: design.id,
+    productId: design.productId,
+    slotCount: letters.length * sets,
+  });
+  // Kick acotado (mismo presupuesto del finalize): las primeras fichas salen ya;
+  // el resto lo cierra el cron del minuto siguiente.
+  await processRenderJobs({ onlyDesignId: design.id, budgetMs: RENDER_JOB_KICK_BUDGET_MS });
+
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "order.design_regen_letterset",
+    entityType: "Design",
+    entityId: design.id,
+    metadata: { orderNumber, fichas: letters.length * sets },
+  });
+  logger.info({
+    event: "admin.order.regen_letterset",
+    adminId: session.admin.id,
+    designId: design.id,
+    orderNumber,
+  });
+  revalidatePath(`/admin/pedidos/${encodeURIComponent(orderNumber)}`);
+  return {
+    success: `Render por ficha encolado (${letters.length * sets} fichas). En unos minutos reemplazan la lámina.`,
+  };
 }

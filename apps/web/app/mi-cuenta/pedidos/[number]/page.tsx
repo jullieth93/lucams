@@ -244,9 +244,11 @@ export default async function CustomerPedidoDetallePage({
       >
         <ul className="divide-brand-purple/10 divide-y">
           {order.items.map((it) => {
-            // 2026-10-13 — exhibición CON marca de agua cuando el artefacto
-            // existe; el snapshot limpio (designAssetUrl) queda de fallback.
-            const disp = it.design ? designPreviewDisplay(it.design) : null;
+            // 2026-11-03 (owner) — mi-cuenta es la vista del DUEÑO: exhibición
+            // LIMPIA (preferClean); el anti-copia queda para superficies públicas.
+            const disp = it.design
+              ? designPreviewDisplay(it.design, undefined, { preferClean: true })
+              : null;
             // 2026-10-22 — rótulo por página del pager ("Set 2 · con borde").
             const pageLabels = designPreviewPageLabels(
               it.design,
