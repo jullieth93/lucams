@@ -61,11 +61,7 @@ import {
   RENDER_JOB_KICK_BUDGET_MS,
 } from "./render-job-service";
 import { ALPHABET } from "./letter-tiles";
-import {
-  ensurePreviewWatermarkGlobal,
-  uploadPreviewPages,
-  uploadPreviewWatermarkArtifacts,
-} from "./preview-artifacts-server";
+import { uploadPreviewPages } from "./preview-artifacts-server";
 import { PREVIEW_PAGES_MAX, designPreviewDerivedPaths } from "./preview-artifacts";
 import { PREVIEW_ROUTE_PREFIX } from "./preview-access";
 import { normalizeRasterImage, RasterRejected, RASTER_PIXEL_BUDGET } from "./normalize-raster";
@@ -1836,18 +1832,12 @@ export async function finalizeDesign(opts: {
   // La autorización se evalúa por request (dueño/admin/token watermark).
   const previewPublicUrl = `${PREVIEW_ROUTE_PREFIX}${previewPath}`;
 
-  // 2026-10-13 — artefactos WATERMARK del preview (anti-copia en las superficies
-  // de exhibición: carrito, "Ver diseño", Mis diseños, /d/<token> + OG,
-  // cotización, gracias, pedidos): preview-wm.webp + thumb.webp por convención
-  // de paths (preview-artifacts.ts). BEST-EFFORT: si sharp/Storage fallan, el
-  // finalize sigue y las superficies degradan al preview limpio (columna
-  // previewWatermarkedAt queda null = "no existen"). Las páginas por unidad las
-  // sube el Estudio tras el finalize (saveDesignPreviewPages) — el Estudio ya
-  // las compone para su modal y es la fuente más fiel (server-side no puede
-  // recomponer las unidades del montaje: separadores/calendario no son grids
-  // uniformes). El thumb queda provisionalmente del global; la primera página
-  // lo reemplaza al llegar (miniatura representativa, decisión 2026-10-13).
-  const previewArtifactsOk = await uploadPreviewWatermarkArtifacts(design.id, previewBufferNorm);
+  // 2026-11-03 (ADR-191, owner) — ya NO se generan artefactos watermark del
+  // preview (anti-copia retirado: dañaba la lectura de los diseños). Las páginas
+  // por unidad las sube el Estudio tras el finalize (saveDesignPreviewPages) —
+  // el Estudio ya las compone para su modal y es la fuente más fiel (server-side
+  // no puede recomponer las unidades del montaje: separadores/calendario no son
+  // grids uniformes).
 
   // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física cuelga de la página
   // con el DOBLEZ ARRIBA; la imprenta recibe la tira DESPLEGADA VERTICAL en disposición
@@ -2020,11 +2010,11 @@ export async function finalizeDesign(opts: {
       // Paquete C — sello de la aceptación explícita de calidad (checkbox de la
       // Vista Previa). Solo se escribe cuando el cliente la marcó.
       ...(opts.qualityAcknowledged ? { qualityAcknowledgedAt: new Date() } : {}),
-      // 2026-10-13 — sello de los artefactos watermark (preview-wm.webp +
-      // thumb.webp subidos arriba, best-effort). En un RE-finalize el conteo de
+      // ADR-191 (2026-11-03) — ya no hay artefactos watermark que sellar
+      // (previewWatermarkedAt queda null). En un RE-finalize el conteo de
       // páginas se resetea: las páginas viejas eran del canvas anterior y el
       // Estudio las re-sube tras confirmar (saveDesignPreviewPages).
-      previewWatermarkedAt: previewArtifactsOk ? new Date() : null,
+      previewWatermarkedAt: null,
       previewPagesCount: null,
       ...(mergedMetadata ? { metadata: mergedMetadata as Prisma.InputJsonValue } : {}),
     },
@@ -2439,22 +2429,11 @@ export async function saveDesignPreviewPages(opts: {
   if (uploaded === null) {
     return { ok: false, message: "No pudimos procesar las páginas del preview" };
   }
-  // El sello previewWatermarkedAt avala que preview-wm.webp + thumb.webp
-  // EXISTEN. Si el finalize no logró su paso watermark (best-effort), se
-  // regenera el global desde el preview limpio (descarga server-side de
-  // Storage — el bucket ya no es público) antes de sellar —
-  // nunca se marca una URL que 404.
-  const wmReady =
-    design.previewWatermarkedAt !== null ||
-    (design.previewUrl ? await ensurePreviewWatermarkGlobal(design.id, design.previewUrl) : false);
   await prisma.design.update({
     where: { id: design.id },
-    // La miniatura representativa (thumb.webp) quedó regenerada desde la
-    // primera página dentro de uploadPreviewPages.
-    data: {
-      previewPagesCount: uploaded,
-      ...(wmReady ? { previewWatermarkedAt: new Date() } : {}),
-    },
+    // 2026-11-03 (ADR-191): ya no se generan artefactos watermark — solo se
+    // sella el conteo de páginas limpias.
+    data: { previewPagesCount: uploaded },
   });
   logger.info(
     { event: "design.preview_pages.saved", designId: design.id, pagesCount: uploaded },

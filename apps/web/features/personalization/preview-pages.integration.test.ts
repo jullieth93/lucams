@@ -1,10 +1,10 @@
 /*
- * saveDesignPreviewPages + artefactos watermark del finalize (2026-10-13).
+ * saveDesignPreviewPages — páginas por unidad del preview (2026-10-13;
+ * 2026-11-03: sin watermark — ADR-191).
  *
- * Cubre el pipeline de exhibición con marca de agua:
- *   - saveDesignPreviewPages sube pages/NN.webp (limpia) + wm/pages/NN.webp
- *     (watermark) + thumb.webp (primera página, ≤800 px) y sella
- *     Design.previewPagesCount / previewWatermarkedAt.
+ * Cubre el pipeline de exhibición:
+ *   - saveDesignPreviewPages sube pages/NN.webp (limpias) y sella
+ *     Design.previewPagesCount.
  *   - Ownership y estado: solo el dueño y solo diseños READY/USED_IN_ORDER.
  *   - Página no decodificable → ok:false sin sellar (best-effort, fallback al
  *     preview global en las superficies).
@@ -126,7 +126,7 @@ afterAll(async () => {
 });
 
 describe.skipIf(!hasDb)("saveDesignPreviewPages (2026-10-13)", () => {
-  it("sube páginas limpias + watermark y el thumb de la primera página; sella las columnas", async () => {
+  it("sube las páginas limpias y sella el conteo (sin watermark — ADR-191)", async () => {
     const designId = await makeDesign("READY");
     const before = mock.uploads.length;
 
@@ -139,18 +139,12 @@ describe.skipIf(!hasDb)("saveDesignPreviewPages (2026-10-13)", () => {
     expect(result).toEqual({ ok: true, pagesCount: 2 });
     const paths = mock.uploads.slice(before).map((u) => u.path);
     expect(paths).toEqual(
-      expect.arrayContaining([
-        `${designId}/pages/01.webp`,
-        `${designId}/wm/pages/01.webp`,
-        `${designId}/pages/02.webp`,
-        `${designId}/wm/pages/02.webp`,
-        `${designId}/thumb.webp`,
-      ]),
+      expect.arrayContaining([`${designId}/pages/01.webp`, `${designId}/pages/02.webp`]),
     );
+    // ADR-191 (2026-11-03): ya NO se generan wm/pages ni thumb watermark.
+    expect(paths.some((p) => p.includes("/wm/"))).toBe(false);
     const design = await prisma.design.findUnique({ where: { id: designId } });
     expect(design?.previewPagesCount).toBe(2);
-    // previewWatermarkedAt solo avanza si el preview-wm global existe: este
-    // diseño no tiene previewUrl → no se puede regenerar → no se sella.
     expect(design?.previewWatermarkedAt).toBeNull();
   });
 

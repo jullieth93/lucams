@@ -41,9 +41,9 @@ export default async function DisenosPage() {
     // 2026-10-13 — los DRAFT no tienen preview final (se genera en el
     // finalize): su tarjeta usa la miniatura del auto-save (draftPreviewUrl)
     // cuando existe; sin ella, placeholder de marca en el grid. Los diseños
-    // Mis diseños = vista del DUEÑO (2026-11-03, owner): miniatura LIMPIA
-    // (preferClean — antes thumb.webp watermark). El thumb limpio no existe como
-    // artefacto: preferClean usa la primera página limpia o el preview global.
+    // LISTOS exhiben la miniatura representativa (2026-11-03, ADR-191: LIMPIA —
+    // el watermark anti-copia se retiró; no hay thumb limpio dedicado: manda la
+    // primera página limpia o el preview global).
     // LUC-SEC-001 — la miniatura del borrador (draftPreviewUrl) y el thumb
     // salen por el handler autorizado; refs legacy convertidas. "" = sin imagen.
     previewUrl:
@@ -51,7 +51,7 @@ export default async function DisenosPage() {
         ? d.draftPreviewUrl
           ? (previewRefToAuthorizedUrl(d.draftPreviewUrl) ?? "")
           : ""
-        : (designPreviewDisplay(d, undefined, { preferClean: true })?.thumbUrl ?? ""),
+        : (designPreviewDisplay(d)?.thumbUrl ?? ""),
     productName: d.product.name,
     productSlug: d.product.slug,
     // F-11 — solo sabemos SI hay link activo (hash en DB); el token plano ya no

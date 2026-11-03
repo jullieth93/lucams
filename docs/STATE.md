@@ -63,7 +63,7 @@
 **Render de producción (imprenta)**
 
 - **Asíncrono (ADR-136):** tabla `RenderJob`, kick de 8 s en el finalize, worker por cron `lucams-process-render-jobs` (cada minuto, migración supabase **041**), progreso real en UI vía `/api/designs/<id>/render-status`; el ZIP de admin responde 409 mientras el render vive.
-- Los PNG 300 DPI los renderiza el servidor (3 tiers), no el navegador (ADR-081). Watermark anti-copia tiling LUCAMS en las vistas PÚBLICAS/por token (share /d + OG, cotización, pedido público, gracias de invitado); las vistas del DUEÑO (carrito, Mis diseños, mi-cuenta pedidos, gracias logueada) exhiben LIMPIO vía `preferClean` (ADR-148 ajustado 2026-11-03); canvas/3D/admin/producción limpios.
+- Los PNG 300 DPI los renderiza el servidor (3 tiers), no el navegador (ADR-081). **El watermark anti-copia tiling LUCAMS se RETIRÓ de los previews de diseño (ADR-191, owner 2026-11-03):** todas las superficies exhiben limpio (carrito, «Ver diseño», Mis diseños, /d, cotización, gracias, pedidos); el handler los sirve también por token y los borradores siguen siendo solo del dueño/admin. Los artefactos wm históricos quedan huérfanos cubiertos por la purga de retención. La galería de prediseñados conserva SU watermark (arte propio de la tienda — `design-gallery.ts`).
 - Mis diseños: thumbnails de borrador (`draftPreviewUrl`), CTA «Editar» para READY, badges de estado (ADR-147).
 - El lenguaje de entrega es estimado en todas las capas (preparación antes del despacho + tránsito
   después); Términos conserva el máximo legal de 30 días calendario. Los bodies CMS existentes se
