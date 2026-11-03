@@ -1,26 +1,19 @@
 /*
- * Generación y upload de los artefactos watermark del preview (2026-10-13).
+ * Upload de las páginas por unidad del preview (2026-10-13; 2026-11-03: sin
+ * watermark — ADR-191: el anti-copia tiling se retiró de los previews de
+ * diseño, ver preview-artifacts.ts).
  *
  * Server-only (sharp + Supabase service). La convención de paths y la selección
- * de exhibición viven en ./preview-artifacts (puro). Toda la generación es
+ * de exhibición viven en ./preview-artifacts (puro). La generación es
  * BEST-EFFORT para el finalize: si sharp o Storage fallan se loguea y se
- * devuelve null/false — el preview limpio ya quedó subido y las superficies
- * degradan a él (nunca se bloquea una compra por la marca de agua).
+ * devuelve null — el preview limpio ya quedó subido y las superficies lo usan
+ * (nunca se bloquea una compra por las páginas del pager).
  */
 
 import "server-only";
 import { supabaseService } from "@/lib/supabase/service";
 import { logger } from "@/lib/logger";
-import { applyTiledWatermark } from "@/lib/watermark";
-import {
-  PREVIEW_PAGES_MAX,
-  PREVIEW_THUMB_MAX_EDGE_PX,
-  designPreviewPagePath,
-  designPreviewThumbPath,
-  designPreviewWmPagePath,
-  designPreviewWmPath,
-} from "./preview-artifacts";
-import { previewStoragePathFromRef } from "./preview-access";
+import { PREVIEW_PAGES_MAX, designPreviewPagePath } from "./preview-artifacts";
 
 const PREVIEWS_BUCKET = "design-previews";
 
@@ -38,7 +31,7 @@ async function uploadWebp(path: string, data: Buffer): Promise<boolean> {
   if (error) {
     logger.warn(
       { event: "design.preview_artifacts.upload_fail", path, err: error.message },
-      "Upload de artefacto watermark falló",
+      "Upload de página del preview falló",
     );
     return false;
   }
@@ -46,79 +39,10 @@ async function uploadWebp(path: string, data: Buffer): Promise<boolean> {
 }
 
 /**
- * Genera y sube la versión WATERMARK del preview global y la miniatura
- * representativa (el global reducido a ≤800 px — si luego llegan páginas por
- * unidad, saveDesignPreviewPages la reemplaza por la primera página legible).
- * Devuelve true si ambos objetos quedaron subidos (el caller sella
- * Design.previewWatermarkedAt solo en ese caso).
- */
-export async function uploadPreviewWatermarkArtifacts(
-  designId: string,
-  previewBuffer: Buffer,
-): Promise<boolean> {
-  try {
-    const [wm, thumb] = await Promise.all([
-      applyTiledWatermark(previewBuffer),
-      applyTiledWatermark(previewBuffer, { maxEdgePx: PREVIEW_THUMB_MAX_EDGE_PX }),
-    ]);
-    const [wmOk, thumbOk] = await Promise.all([
-      uploadWebp(designPreviewWmPath(designId), wm.data),
-      uploadWebp(designPreviewThumbPath(designId), thumb.data),
-    ]);
-    return wmOk && thumbOk;
-  } catch (err) {
-    logger.warn(
-      {
-        event: "design.preview_artifacts.generate_fail",
-        designId,
-        err: err instanceof Error ? err.message : String(err),
-      },
-      "No se pudieron generar los artefactos watermark del preview (best-effort)",
-    );
-    return false;
-  }
-}
-
-/**
- * Red de seguridad (rara): el finalize subió el preview limpio pero su paso
- * watermark falló. Regenera SOLO preview-wm.webp descargando el preview limpio
- * directo de Storage (LUC-SEC-001: el bucket ya no es público — el fetch HTTP
- * de la URL vieja murió con la migración 046). Acepta la ref en cualquiera de
- * los dos formatos persistidos (handler nuevo / pública legacy). Devuelve true
- * si el objeto quedó subido.
- */
-export async function ensurePreviewWatermarkGlobal(
-  designId: string,
-  previewUrl: string,
-): Promise<boolean> {
-  try {
-    const path = previewStoragePathFromRef(previewUrl);
-    if (!path) return false;
-    const { data, error } = await supabaseService.storage.from(PREVIEWS_BUCKET).download(path);
-    if (error || !data) return false;
-    const buffer = Buffer.from(await data.arrayBuffer());
-    const wm = await applyTiledWatermark(buffer);
-    return await uploadWebp(designPreviewWmPath(designId), wm.data);
-  } catch (err) {
-    logger.warn(
-      {
-        event: "design.preview_artifacts.ensure_wm_fail",
-        designId,
-        err: err instanceof Error ? err.message : String(err),
-      },
-      "No se pudo regenerar el preview watermark global (best-effort)",
-    );
-    return false;
-  }
-}
-
-/**
  * Sube las páginas por unidad del preview (las compone el Estudio con el MISMO
- * compositor de la modal «Vista previa» — fidelidad WYSIWYG): versión limpia
- * re-codificada a WebP en pages/NN.webp y versión watermark en wm/pages/NN.webp,
- * y regenera thumb.webp desde la PRIMERA página (la miniatura representativa:
- * el montaje global de un set multi-unidad se veía como "punticos" en el
- * carrito). Devuelve el número de páginas subidas, o null si falló todo.
+ * compositor de la modal «Vista previa» — fidelidad WYSIWYG), re-codificadas a
+ * WebP en pages/NN.webp. Devuelve el número de páginas subidas, o null si falló
+ * todo.
  */
 export async function uploadPreviewPages(
   designId: string,
@@ -127,14 +51,14 @@ export async function uploadPreviewPages(
   if (pages.length === 0 || pages.length > PREVIEW_PAGES_MAX) return null;
   try {
     const sharp = (await import("./sharp-safe")).default;
-    // Decode + watermark de TODAS las páginas primero: si una no decodifica se
-    // aborta sin subir nada (todo-o-nada — un set de páginas a medias dejaría
-    // un pager con huecos en el carrito).
+    // Decode de TODAS las páginas primero: si una no decodifica se aborta sin
+    // subir nada (todo-o-nada — un set de páginas a medias dejaría un pager con
+    // huecos en el carrito).
     const processed = await Promise.all(
-      pages.map(async (page) => ({
+      pages.map((page) =>
         // LUC-SEC-005 — presupuesto explícito por página (las compone el
         // Estudio = origen cliente).
-        clean: await sharp(page, {
+        sharp(page, {
           limitInputPixels: 25_000_000,
           limitInputChannels: 4,
           pages: 1,
@@ -143,22 +67,11 @@ export async function uploadPreviewPages(
           .rotate()
           .webp({ quality: PREVIEW_PAGE_WEBP_QUALITY })
           .toBuffer(),
-        wm: await applyTiledWatermark(page),
-      })),
+      ),
     );
     for (const [i, p] of processed.entries()) {
-      const n = i + 1;
-      const [cleanOk, wmOk] = await Promise.all([
-        uploadWebp(designPreviewPagePath(designId, n), p.clean),
-        uploadWebp(designPreviewWmPagePath(designId, n), p.wm.data),
-      ]);
-      if (!cleanOk || !wmOk) return null; // upload parcial: no sellar el count
+      if (!(await uploadWebp(designPreviewPagePath(designId, i + 1), p))) return null;
     }
-    // Miniatura representativa: primera unidad/página legible, con watermark.
-    const thumb = await applyTiledWatermark(pages[0]!, {
-      maxEdgePx: PREVIEW_THUMB_MAX_EDGE_PX,
-    });
-    if (!(await uploadWebp(designPreviewThumbPath(designId), thumb.data))) return null;
     return processed.length;
   } catch (err) {
     logger.warn(

@@ -19,16 +19,14 @@
  *                                   (primera unidad/página legible ≤800 px; sin
  *                                   páginas, el preview global reducido)
  *
- * Qué superficie muestra qué versión (decisión de producto 2026-10-13, AJUSTADA
- * 2026-11-03 — owner):
- *   - Carrito, Mis diseños, mi-cuenta pedidos y gracias del dueño LOGUEADO →
- *     LIMPIOS (preferClean: el diseño es suyo; el anti-copia no aplica a uno
- *     mismo y el tiling dañaba la lectura de diseños oscuros).
- *   - /d/<token> + OG, cotización pública, pedido público por token, gracias de
- *     invitado → WATERMARK (anti-copia ante terceros).
+ * Qué superficie muestra qué versión (owner 2026-11-03 — ADR-191, SUPERSEDE
+ * ADR-148): el watermark anti-copia se RETIRÓ de los previews de diseño — TODAS
+ * las superficies exhiben LIMPIO (carrito, «Ver diseño», Mis diseños, /d +
+ * OG, cotización, gracias, pedidos). Los artefactos wm históricos quedan
+ * huérfanos (la purga de retención los cubre).
  *   - Canvas de edición en vivo y vistas 3D → LIMPIOS (son locales).
  *   - Admin y producción (production-assets, privado) → LIMPIOS siempre.
- *   - Borradores (draft-preview.<ext>) → sin watermark (solo los ve el dueño).
+ *   - Borradores (draft-preview.<ext>) → solo el dueño/admin (NUNCA por token).
  *
  * Autorización (quién puede ABRIR cada variante — preview-access.ts):
  *   - Limpios y borradores: dueño (cookie/cuenta) o admin. NUNCA por token.
@@ -166,69 +164,46 @@ export type DesignPreviewDisplay = {
 };
 
 /**
- * Selección de exhibición. Regla de marca de agua (decisión owner 2026-11-03,
- * ajuste de la de 2026-10-13): las superficies del DUEÑO (su carrito, su cuenta,
- * su pedido, su página de gracias logueada) exhiben las versiones LIMPIAS — el
- * watermark anti-copia queda para las superficies públicas/por token (/d,
- * cotización, pedido público), que es donde un tercero podría copiar el diseño.
- * La autorización la refuerza el handler (preview-access.ts: los limpios solo
- * salen para dueño/admin — fail-closed). Sin `preferClean` (o sin artefactos
- * limpios), la superficie cae a watermark como siempre.
+ * Selección de exhibición. Regla vigente (owner 2026-11-03 — ADR-191, SUPERSEDE
+ * ADR-148 y su ajuste de preferClean del mismo día): el watermark anti-copia se
+ * RETIRÓ de los previews de diseño — dañaba la lectura (muy visible sobre
+ * diseños oscuros) sin que el cliente supiera qué era. TODAS las superficies
+ * exhiben las versiones LIMPIAS (preview.<ext> global, pages/NN.webp por unidad);
+ * los artefactos wm históricos quedan huérfanos en el bucket (la purga de
+ * retención los cubre por designPreviewDerivedPaths). La autorización la
+ * refuerza el handler (preview-access.ts): limpios para dueño/admin y — como
+ * antes de 2026-10-13 — para las capacidades por token (link compartido,
+ * cotización, pedido); los BORRADORES nunca salen por token.
  *
- * Las URLs salen por el handler autorizado (el bucket ya no es público): las
- * superficies con sesión (carrito, cuenta, admin) no necesitan capability;
- * las públicas (/d/, cotización, pedido por token) la pasan para las
- * variantes watermark. null si el diseño no tiene preview o la ref no sigue
- * la convención (fail-closed: la URL vieja ya no resuelve de todos modos).
+ * Todas las URLs salen por el handler autorizado (el bucket ya no es público):
+ * las superficies con sesión no necesitan capability; las públicas (/d/,
+ * cotización, pedido por token) la pasan. null si el diseño no tiene preview o
+ * la ref no sigue la convención (fail-closed: la URL vieja ya no resuelve).
  */
 export function designPreviewDisplay(
   design: DesignPreviewArtifactState,
   capability?: PreviewCapability,
-  opts?: { preferClean?: boolean },
 ): DesignPreviewDisplay | null {
   if (!design.previewUrl) return null;
   const cleanPath = previewStoragePathFromRef(design.previewUrl);
   const designId = cleanPath ? parsePreviewStoragePath(cleanPath)!.designId : null;
   if (!cleanPath || !designId) return null;
   const cleanUrl = designPreviewAuthorizedUrl(cleanPath, capability)!;
-  const hasWm = design.previewWatermarkedAt !== null;
-  const wmUrl = hasWm
-    ? designPreviewAuthorizedUrl(designPreviewWmPath(designId), capability)
-    : null;
-  const thumbUrl = hasWm
-    ? designPreviewAuthorizedUrl(designPreviewThumbPath(designId), capability)
-    : null;
-  // Las páginas se rigen por su propio sello: llegan en un request posterior al
-  // finalize, así que su existencia es independiente de la del preview-wm global.
-  // preferClean (dueño) usa las páginas LIMPIAS (pages/NN.webp); el resto, las
-  // watermark (wm/pages/NN.webp).
+  // Las páginas limpias (pages/NN.webp) se rigen por su propio sello: llegan en
+  // un request posterior al finalize.
   const pageCount = (design.previewPagesCount ?? 0) > 1 ? Math.trunc(design.previewPagesCount!) : 0;
   const cleanPages =
-    opts?.preferClean && pageCount > 1
+    pageCount > 1
       ? Array.from({ length: Math.min(PREVIEW_PAGES_MAX, pageCount) }, (_, i) =>
           designPreviewAuthorizedUrl(designPreviewPagePath(designId, i + 1), capability)!,
         )
       : [];
-  const wmPages =
-    pageCount > 1
-      ? Array.from({ length: Math.min(PREVIEW_PAGES_MAX, pageCount) }, (_, i) =>
-          designPreviewAuthorizedUrl(designPreviewWmPagePath(designId, i + 1), capability)!,
-        )
-      : [];
-  if (opts?.preferClean) {
-    return {
-      displayUrl: cleanUrl,
-      // No hay thumb limpio dedicado: la primera página limpia (multi-unidad) o
-      // el preview global limpio hacen de miniatura.
-      thumbUrl: cleanPages[0] ?? cleanUrl,
-      pageUrls: cleanPages.length > 1 ? cleanPages : null,
-      watermarked: false,
-    };
-  }
   return {
-    displayUrl: wmUrl ?? cleanUrl,
-    thumbUrl: thumbUrl ?? wmUrl ?? cleanUrl,
-    pageUrls: wmPages.length > 1 ? wmPages : null,
-    watermarked: wmUrl !== null || wmPages.length > 1,
+    displayUrl: cleanUrl,
+    // No hay thumb limpio dedicado: la primera página limpia (multi-unidad) o
+    // el preview global limpio hacen de miniatura.
+    thumbUrl: cleanPages[0] ?? cleanUrl,
+    pageUrls: cleanPages.length > 1 ? cleanPages : null,
+    watermarked: false,
   };
 }

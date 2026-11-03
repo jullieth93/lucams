@@ -5,11 +5,11 @@
  * /api/design-preview/*, que delega TODA la decisión en canAccessDesignPreview
  * (función pura — la matriz completa se certifica acá, sin HTTP).
  *
- * Reglas:
+ * Reglas (actualizado 2026-11-03, ADR-191 — watermark anti-copia retirado):
  *   - Admin activo → todo.
  *   - Dueño (customerId autenticado o sessionId anónimo que coincide) → todo.
- *   - Capacidades por token (share /d/, quote, order) → SOLO variantes
- *     watermark: jamás el preview limpio, las páginas limpias ni borradores.
+ *   - Capacidades por token (share /d/, quote, order) → variantes de EXHIBICIÓN
+ *     (preview limpio, páginas, artefactos watermark legacy) — jamás borradores.
  *   - Cualquier otro caso → denegado (el handler responde 404, sin oráculo).
  */
 
@@ -36,7 +36,7 @@ describe("parsePreviewStoragePath — allowlist estricta de paths", () => {
     ["ckdesign1/preview.jpg", "clean"],
     ["ckdesign1/preview.webp", "clean"],
     ["ckdesign1/pages/01.webp", "clean"],
-    ["ckdesign1/draft-preview.webp", "clean"],
+    ["ckdesign1/draft-preview.webp", "draft"],
     ["ckdesign1/preview-wm.webp", "watermark"],
     ["ckdesign1/thumb.webp", "watermark"],
     ["ckdesign1/wm/pages/03.webp", "watermark"],
@@ -123,7 +123,7 @@ describe("canAccessDesignPreview — matriz completa", () => {
     expect(canAccessDesignPreview({ design: DESIGN, variantClass: "clean", caller })).toBe(true);
   });
 
-  it("share token válido → SOLO watermark; el limpio y borradores quedan fuera", () => {
+  it("share token válido → exhibición (limpio + watermark legacy); los borradores quedan fuera", () => {
     expect(
       canAccessDesignPreview({
         design: DESIGN,
@@ -132,10 +132,20 @@ describe("canAccessDesignPreview — matriz completa", () => {
         shareToken: "share-token-valido",
       }),
     ).toBe(true);
+    // ADR-191 (2026-11-03): el limpio también abre por token (anti-copia retirado).
     expect(
       canAccessDesignPreview({
         design: DESIGN,
         variantClass: "clean",
+        caller: NOBODY,
+        shareToken: "share-token-valido",
+      }),
+    ).toBe(true);
+    // …pero el borrador (trabajo en curso del dueño) JAMÁS por token.
+    expect(
+      canAccessDesignPreview({
+        design: DESIGN,
+        variantClass: "draft",
         caller: NOBODY,
         shareToken: "share-token-valido",
       }),
@@ -161,7 +171,7 @@ describe("canAccessDesignPreview — matriz completa", () => {
     ).toBe(false);
   });
 
-  it("quote/order token válidos → solo watermark", () => {
+  it("quote/order token válidos → exhibición (limpio incluido), nunca borradores", () => {
     expect(
       canAccessDesignPreview({
         design: DESIGN,
@@ -170,6 +180,7 @@ describe("canAccessDesignPreview — matriz completa", () => {
         quoteTokenOk: true,
       }),
     ).toBe(true);
+    // ADR-191 (2026-11-03): el limpio también abre por token.
     expect(
       canAccessDesignPreview({
         design: DESIGN,
@@ -177,10 +188,18 @@ describe("canAccessDesignPreview — matriz completa", () => {
         caller: NOBODY,
         orderTokenOk: true,
       }),
+    ).toBe(true);
+    expect(
+      canAccessDesignPreview({
+        design: DESIGN,
+        variantClass: "draft",
+        caller: NOBODY,
+        orderTokenOk: true,
+      }),
     ).toBe(false);
   });
 
-  it("diseño huérfano (sin customerId/sessionId) solo lo abre admin o token watermark", () => {
+  it("diseño huérfano (sin customerId/sessionId) lo abre admin o un token (exhibición)", () => {
     const huesrfano = { customerId: null, sessionId: null, shareTokenHash: null };
     expect(
       canAccessDesignPreview({ design: huesrfano, variantClass: "clean", caller: NOBODY }),
@@ -188,10 +207,18 @@ describe("canAccessDesignPreview — matriz completa", () => {
     expect(
       canAccessDesignPreview({
         design: huesrfano,
-        variantClass: "watermark",
+        variantClass: "clean",
         caller: NOBODY,
         orderTokenOk: true,
       }),
     ).toBe(true);
+    expect(
+      canAccessDesignPreview({
+        design: huesrfano,
+        variantClass: "draft",
+        caller: NOBODY,
+        orderTokenOk: true,
+      }),
+    ).toBe(false);
   });
 });

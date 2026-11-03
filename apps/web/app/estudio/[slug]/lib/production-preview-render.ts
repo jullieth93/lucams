@@ -404,8 +404,14 @@ export async function buildBookmarkStripPreview(
         // Cara B vacía → patrón de marca «Lucams» (decisión owner 2026-11-03 —
         // supersede el blanco del 2026-10-07): el MISMO dibujo que imprenta
         // recibe (default-back-face.ts) y que muestra el 3D (book-view-3d).
+        // CLIP al rect de la cara: la grilla del patrón siembra wordmarks con
+        // margen de cobertura MÁS ALLÁ del lienzo — sin clip, el texto se
+        // desbordaba sobre la cara A del montaje (bug STG 2026-11-03).
         ctx.save();
         ctx.translate(fx, fy);
+        ctx.beginPath();
+        ctx.rect(0, 0, fw, fh);
+        ctx.clip();
         drawBrandBackFace(ctx, fw, fh, brandBackFont);
         ctx.restore();
         continue;

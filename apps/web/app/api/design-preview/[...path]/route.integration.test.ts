@@ -8,8 +8,9 @@
  *   - Sesión anónima A ≠ dueño B → 404 aun conociendo el designId.
  *   - Dueño (cookie cart_session o customerId autenticado) → 200 + bytes.
  *   - Admin → 200, incluido el preview limpio.
- *   - Token de compartir /d/ y tokens de quote/order → SOLO variantes
- *     watermark; el preview limpio y el borrador responden 404.
+ *   - Token de compartir /d/ y tokens de quote/order → las variantes de
+ *     EXHIBICIÓN (limpio incluido — ADR-191 2026-11-03, anti-copia retirado);
+ *     el borrador responde 404.
  *   - Path traversal / shape inválido → 404 sin tocar DB ni Storage.
  *   - El bucket design-previews quedó PRIVADO (migración 046) — flag en DB.
  *
@@ -248,13 +249,15 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
     }
   });
 
-  it("share token /d/ → watermark 200, pero preview limpio y borrador 404", async () => {
+  it("share token /d/ → exhibición 200 (limpio incluido — ADR-191), borrador 404", async () => {
     expect(
       (await call(`${designId}/preview-wm.webp`, { query: `?st=${SHARE_TOKEN}` })).status,
     ).toBe(200);
+    // ADR-191 (2026-11-03): el preview limpio también abre por token (anti-copia retirado).
     expect((await call(`${designId}/preview.png`, { query: `?st=${SHARE_TOKEN}` })).status).toBe(
-      404,
+      200,
     );
+    // El borrador (trabajo en curso del dueño) JAMÁS por token.
     expect(
       (await call(`${designId}/draft-preview.webp`, { query: `?st=${SHARE_TOKEN}` })).status,
     ).toBe(404);
@@ -266,18 +269,18 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
     );
   });
 
-  it("order token → solo watermark; quote token → solo watermark", async () => {
+  it("order/quote token → exhibición 200, incluido el preview limpio (ADR-191)", async () => {
     expect(
       (await call(`${designId}/preview-wm.webp`, { query: `?ot=${ORDER_TOKEN}` })).status,
     ).toBe(200);
     expect((await call(`${designId}/preview.png`, { query: `?ot=${ORDER_TOKEN}` })).status).toBe(
-      404,
+      200,
     );
     expect(
       (await call(`${designId}/preview-wm.webp`, { query: `?qt=${QUOTE_TOKEN}` })).status,
     ).toBe(200);
     expect((await call(`${designId}/preview.png`, { query: `?qt=${QUOTE_TOKEN}` })).status).toBe(
-      404,
+      200,
     );
   });
 

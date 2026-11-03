@@ -1,10 +1,10 @@
 /*
- * preview-artifacts (2026-10-13, actualizado LUC-SEC-001 2026-10-30) —
- * convención de paths de los artefactos watermark del preview y selección de
- * exhibición (fallbacks):
- *   - preview-wm.webp / thumb.webp solo se exhiben con el sello
- *     previewWatermarkedAt; las páginas (wm/pages/NN.webp) con previewPagesCount.
- *   - Sin artefactos, las superficies caen al preview LIMPIO.
+ * preview-artifacts (2026-10-13; LUC-SEC-001 2026-10-30; ADR-191 2026-11-03) —
+ * convención de paths de los artefactos del preview y selección de exhibición:
+ *   - TODAS las superficies exhiben las versiones LIMPIAS (preview.<ext> y
+ *     pages/NN.webp por unidad) — el watermark anti-copia se retiró (ADR-191);
+ *     los paths wm/preview-wm/thumb persisten en la convención SOLO para que la
+ *     purga de retención borre los artefactos históricos (designPreviewDerivedPaths).
  *   - TODAS las URLs de exhibición salen por el handler autorizado
  *     /api/design-preview/* (el bucket ya no es público); las refs públicas
  *     legacy se convierten, y una ref fuera de convención → null (fail-closed).
@@ -90,7 +90,7 @@ describe("URLs autorizadas (handler /api/design-preview/*)", () => {
   });
 });
 
-describe("designPreviewDisplay — selección con fallback", () => {
+describe("designPreviewDisplay — exhibición LIMPIA siempre (ADR-191, 2026-11-03)", () => {
   it("sin previewUrl → null", () => {
     expect(
       designPreviewDisplay({
@@ -114,76 +114,50 @@ describe("designPreviewDisplay — selección con fallback", () => {
   it.each([
     ["nueva", REF_NEW],
     ["legacy", REF_LEGACY],
-  ] as const)(
-    "sin artefactos (ref %s): cae al preview limpio AUTORIZADO, sin pager",
-    (_label, ref) => {
-      const d = designPreviewDisplay({
-        previewUrl: ref,
-        previewWatermarkedAt: null,
-        previewPagesCount: null,
-      });
-      expect(d).toEqual({
-        displayUrl: "/api/design-preview/abc123/preview.webp",
-        thumbUrl: "/api/design-preview/abc123/preview.webp",
-        pageUrls: null,
-        watermarked: false,
-      });
-    },
-  );
-
-  it("con sello watermark: exhibe preview-wm y thumb watermark por el handler", () => {
+  ] as const)("sin páginas (ref %s): preview limpio autorizado, sin pager", (_label, ref) => {
     const d = designPreviewDisplay({
-      previewUrl: REF_NEW,
-      previewWatermarkedAt: new Date(),
+      previewUrl: ref,
+      previewWatermarkedAt: null,
       previewPagesCount: null,
     });
-    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview-wm.webp");
-    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/thumb.webp");
-    expect(d?.pageUrls).toBeNull();
-    expect(d?.watermarked).toBe(true);
+    expect(d).toEqual({
+      displayUrl: "/api/design-preview/abc123/preview.webp",
+      thumbUrl: "/api/design-preview/abc123/preview.webp",
+      pageUrls: null,
+      watermarked: false,
+    });
   });
 
-  it("con páginas: el pager usa las wm/pages; 1 sola página no pagina", () => {
+  it("con páginas: el pager usa las páginas LIMPIAS (pages/) y la primera hace de miniatura", () => {
     const d = designPreviewDisplay({
       previewUrl: REF_NEW,
-      previewWatermarkedAt: new Date(),
+      previewWatermarkedAt: new Date(), // sello legacy: ya no cambia nada
       previewPagesCount: 3,
     });
+    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp");
+    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/pages/01.webp");
     expect(d?.pageUrls).toHaveLength(3);
-    expect(d?.pageUrls?.[0]).toBe("/api/design-preview/abc123/wm/pages/01.webp");
-
-    const una = designPreviewDisplay({
-      previewUrl: REF_NEW,
-      previewWatermarkedAt: new Date(),
-      previewPagesCount: 1,
-    });
-    expect(una?.pageUrls).toBeNull();
+    expect(d?.pageUrls?.[0]).toBe("/api/design-preview/abc123/pages/01.webp");
+    expect(d?.watermarked).toBe(false);
   });
 
-  it("páginas sin sello global (edge: finalize wm falló, páginas llegaron): paginan watermark pero el display cae al limpio", () => {
+  it("1 sola página no pagina", () => {
     const d = designPreviewDisplay({
       previewUrl: REF_NEW,
       previewWatermarkedAt: null,
-      previewPagesCount: 2,
+      previewPagesCount: 1,
     });
-    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp");
+    expect(d?.pageUrls).toBeNull();
     expect(d?.thumbUrl).toBe("/api/design-preview/abc123/preview.webp");
-    expect(d?.pageUrls).toHaveLength(2);
-    expect(d?.watermarked).toBe(true); // las páginas sí llevan marca
   });
 
   it("con capability (superficie pública por token): TODAS las URLs la llevan", () => {
     const d = designPreviewDisplay(
-      {
-        previewUrl: REF_LEGACY,
-        previewWatermarkedAt: new Date(),
-        previewPagesCount: 2,
-      },
+      { previewUrl: REF_LEGACY, previewWatermarkedAt: null, previewPagesCount: 2 },
       { name: "st", value: "token32hex" },
     );
-    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview-wm.webp?st=token32hex");
-    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/thumb.webp?st=token32hex");
-    expect(d?.pageUrls?.[0]).toBe("/api/design-preview/abc123/wm/pages/01.webp?st=token32hex");
+    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp?st=token32hex");
+    expect(d?.pageUrls?.[0]).toBe("/api/design-preview/abc123/pages/01.webp?st=token32hex");
   });
 });
 
@@ -201,44 +175,5 @@ describe("isPreviewHandlerUrl — gate del `unoptimized` en next/image", () => {
       isPreviewHandlerUrl("https://ref.supabase.co/storage/v1/object/public/product-images/x.webp"),
     ).toBe(false);
     expect(isPreviewHandlerUrl("/_next/static/media/logo.png")).toBe(false);
-  });
-});
-
-describe("designPreviewDisplay — preferClean (vista del DUEÑO, owner 2026-11-03)", () => {
-  it("con artefactos: exhibe el preview LIMPIO y las páginas limpias (pages/), watermarked=false", () => {
-    const d = designPreviewDisplay(
-      { previewUrl: REF_NEW, previewWatermarkedAt: new Date(), previewPagesCount: 3 },
-      undefined,
-      { preferClean: true },
-    );
-    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp");
-    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/pages/01.webp"); // 1ª página limpia
-    expect(d?.pageUrls).toHaveLength(3);
-    expect(d?.pageUrls?.[0]).toBe("/api/design-preview/abc123/pages/01.webp");
-    expect(d?.watermarked).toBe(false);
-  });
-
-  it("sin páginas: el preview global limpio hace también de miniatura", () => {
-    const d = designPreviewDisplay(
-      { previewUrl: REF_NEW, previewWatermarkedAt: new Date(), previewPagesCount: null },
-      undefined,
-      { preferClean: true },
-    );
-    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp");
-    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/preview.webp");
-    expect(d?.pageUrls).toBeNull();
-  });
-
-  it("preferClean NO se honra con capability pública… pero el handler fail-closed protege el byte limpio", () => {
-    // La UI nunca combina preferClean + capability (las públicas no conocen al
-    // dueño); si ocurriera, las URLs limpias con ?st= las rechaza la matriz de
-    // preview-access (tokens solo abren watermark) — defensa en profundidad.
-    const d = designPreviewDisplay(
-      { previewUrl: REF_NEW, previewWatermarkedAt: new Date(), previewPagesCount: null },
-      { name: "st", value: "token32hex" },
-      { preferClean: true },
-    );
-    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp?st=token32hex");
-    expect(d?.watermarked).toBe(false);
   });
 });
