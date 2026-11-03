@@ -34,7 +34,13 @@ overrides:
   # qs ≥6.16.0 (2026-09-30): GHSA-x5fp-wj9c-mxmx / CVE-2026-82562 (array-limit bypass
   # vía bracket-key comma) y GHSA-4mjr-xmp4-gh2g / CVE-2026-82417 (DoS isBuffer).
   # Consumidor: express 4 (body-parser) vía @lhci/cli — solo dev/CI.
-  qs: ^6.16.0
+  # Piso →6.16.1 (2026-11-02): GHSA-6pq8-jhm2-2vcw (moderate) — qs.stringify con
+  # arrayFormat 'comma' lanza TypeError no capturado (DoS); afecta ≤6.16.0.
+  qs: ^6.16.1
+  # body-parser 1.20.6→1.20.9 (2026-11-02): GHSA-27r3-jxmh-p828 (high) — DoS por
+  # bytes extra tras un body comprimido. Cadena @lhci/cli→express 4 (declara
+  # ~1.20.5, el pin queda EN rango) — DEV-ONLY (Lighthouse CI), nada se despliega.
+  body-parser: 1.20.9
   # Gate dev-tooling 2026-08-29 — todas las cadenas siguientes son DEV-ONLY
   # (vitest/jsdom en tests, eslint en lint, @lhci/cli en CI local); nada se
   # despliega a Vercel. Rangos verificados contra los package.json de los consumidores.
@@ -43,10 +49,11 @@ overrides:
   # dependabot lo marcó security_update_not_possible con el pin exacto en 8.2.2.
   # vitest/@vitest/mocker 4.1.x declaran peer ^6||^7||^8.
   vite: 8.2.4
-  # undici 7.29.0→7.29.1 (2026-09-30): GHSA-3wwx-pv8p-q78v / CVE-2026-85024 (DoS en
-  # WebSocket permessage-deflate). Sobre el pin anterior: 12 advisories resueltos en
-  # 7.29.0 (ver gate 2026-08-29 abajo). jsdom ^7.25.0 lo admite.
-  undici: 7.29.1
+  # undici 7.29.1→7.30.1 (2026-11-02, Dependabot #32/#33/#34): DoS por content-encodings
+  # excesivos (high), DoS por memoria no acotada en el parser EventSource (medium) y bypass
+  # de Subresource Integrity por tokens de algoritmo no minúsculos (medium), todos <7.30.1.
+  # Pin previo 7.29.1: GHSA-3wwx-pv8p-q78v / CVE-2026-85024. jsdom ^7.25.0 lo admite (DEV-only).
+  undici: 7.30.1
   # ip-address 10.7.0→10.7.4 (2026-10-23): GHSA-rxp7-6hxx-x8q5 (moderate) se suma a
   # GHSA-j6r3-76f7-8jcv y GHSA-h3mg-xc3c-68pw (medium; primera versión parchada
   # 10.7.1). Pin previo: GHSA-22jq-vg5j-6vgg / GHSA-4xrf-jv44-h6hh / GHSA-mwp4-54f8-5fhr
@@ -113,3 +120,18 @@ auditConfig:
     # (fast-glob vía eslint-config-next): nada se despliega y
     # los consumidores no procesan globs de usuario. Revisar cuando exista 3.0.4.
     - GHSA-vfj7-8cjw-p6xm
+    # GHSA-mrhx-c7xc-m3w5 (zod <4.6.6, high, 2026-11-02): la app ya va en zod
+    # ^4.6.7 (parcheado); el hallazgo es SOLO la copia anidada zod@3.25.76 de
+    # chromium-bidi@14 (declara ^3.24.1, sin patch en la línea 3.x) vía
+    # @lhci/cli→lighthouse→puppeteer-core — DEV-ONLY. El exploit exige validar
+    # colecciones gigantes de un atacante; aquí zod valida mensajes CDP del
+    # Chrome local que la propia corrida de Lighthouse controla. Override a zod 4
+    # descartado: salto de major con breaking changes en tooling ajeno.
+    - GHSA-mrhx-c7xc-m3w5
+    # GHSA-g3hv-75wg-m249 (minimatch <11.0.1, moderate, 2026-11-02): solo está
+    # parchado en 11.0.1 y los consumidores declaran líneas viejas sin patch
+    # (@eslint/config-array y @eslint/eslintrc ^3.x; glob/rimraf vía @lhci/cli
+    # en 3.x/10.x) — forzar 11 rompería los rangos declarados. Todo DEV-ONLY:
+    # eslint procesa nuestros propios globs de config y lhci corre en CI local;
+    # el DoS (globparts amplification) exige patrones hostiles que aquí no hay.
+    - GHSA-g3hv-75wg-m249
