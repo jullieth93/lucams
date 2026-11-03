@@ -805,8 +805,8 @@ El cliente gestiona sus datos desde `/mi-cuenta`:
 ### Reglas
 
 1. **`pnpm-lock.yaml`** versionado, integridad sub-resource verificada.
-2. **`pnpm audit --prod --audit-level=high`** corre en CI en cada PR (job `dep-audit`; el gate es sobre deps de producción — los advisories dev-only se triagean con overrides dirigidos en `pnpm-workspace.yaml`, auditoría F-5).
-3. **Dependabot** automatiza PRs de actualización (`.github/dependabot.yml`, semanal, agrupado; majors bloqueados — se evalúan a mano). **Las GitHub Actions están pineadas por SHA** en los 4 workflows (auditoría A-1).
+2. **`pnpm audit --prod --audit-level=high`** corre en CI en cada PR dentro del job `quality` (`Typecheck + Lint + Build`, incluso cuando aplica el fast-path documental; el gate es sobre deps de producción — los advisories dev-only se triagean con overrides dirigidos en `pnpm-workspace.yaml`, auditoría F-5).
+3. **Dependabot** automatiza PRs de actualización (`.github/dependabot.yml`, semanal, agrupado; majors bloqueados — se evalúan a mano). **Las GitHub Actions están pineadas por SHA** en los 6 workflows (auditoría A-1).
 4. **`pnpm dlx` para tooling de un solo uso** (no agregar a deps si solo es script).
 5. **Allowlist de licencias** (bloquear GPL/AGPL en código propietario) — **pendiente de automatizar** en CI (no hay `license-checker` hoy).
 6. **No usar paquetes con < 30 días en npm** (evita typosquatting reciente).
@@ -826,7 +826,7 @@ El cliente gestiona sus datos desde `/mi-cuenta`:
 - **Secrets** declarados en repo Settings → Secrets, **nunca hardcodeados**.
 - **Permisos mínimos** del `GITHUB_TOKEN` (read-only por defecto, escalar solo donde se necesite).
 - **`pull_request_target`** evitado salvo necesidad — el patrón seguro es `pull_request` + `permissions: contents: read`.
-- **Branch protection** en `production` (verificado en vivo vía `gh api` 2026-09-26; endurecido con ADR-105, 2026-09-27): **pull request obligatorio** (0 approvals — flujo de owner única), **8 required checks** (incl. Gitleaks, Dependency audit y `RLS behavior` — rls-matrix contra Supabase local), `enforce_admins` activo (ni admins pueden saltarse el gate), historia lineal, no force push. No existe rama `main`: el flujo es PR `develop` → `production` → 8 checks verdes → merge ff → deploy.
+- **Ruleset `protect-ramas-criticas` (`id: 26248226`)** en `develop` y `production` (ADR-105; endurecido en LUC-SEC-003 y consolidado en 2026-11-03): **pull request obligatorio** (0 approvals — flujo de owner única), rama al día (`strict: true`), **5 required checks** consolidados (`Typecheck + Lint + Build` con `prettier` y `pnpm audit --prod`, `Vitest tests (unit + integración con Postgres)`, `RLS behavior (rls-matrix contra Supabase local)`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`), `bypass_actors: []` (ni admins pueden saltarse el gate), sin force-push ni borrado. No existe rama `main`: el flujo es rama corta → PR a `develop` (STG) → PR `develop` → `production` (PRD) → merge → deploy Vercel → `post-deploy-smoke.yml`.
 
 ### Steps mínimos del CI
 
@@ -909,7 +909,7 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7. Al
 
 #### Flujo 4: Background jobs (pg_cron → endpoints HTTP)
 
-Los jobs vivos son `pg_cron` en Supabase llamando endpoints `/api/cron/*` por HTTP (secretos en Supabase Vault, migraciones 015/016/021/023/032) + jobs SQL puros de limpieza (migración 012) + 3 endpoints cron alimentados desde fuera de pg_cron (backup-heartbeat vía GitHub Actions, domain-watch vía GitHub Actions mensual, monitor-heartbeat vía el job de uptime en Supabase STG). No hay cola pgmq ni Edge Functions consumer en producción.
+Los jobs vivos son `pg_cron` en Supabase llamando endpoints `/api/cron/*` por HTTP (secretos en Supabase Vault, migraciones 015–048, con idle-skip SQL previo en `process-render-jobs` y `cms-publish-scheduled`) + 3 jobs SQL puros de higiene/purga (migraciones 043/047; los legacy de 012 fueron retirados en 033 y 048) + 3 endpoints cron alimentados desde fuera de pg_cron (backup-heartbeat vía GitHub Actions, domain-watch vía GitHub Actions mensual, monitor-heartbeat vía el job de uptime en Supabase STG). No hay cola pgmq ni Edge Functions consumer en producción.
 
 | Vector STRIDE          | Amenaza                                  | Mitigación                                                                                                                                                           |
 | ---------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
