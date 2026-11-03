@@ -94,9 +94,14 @@ export type CartLineItem = {
   imageUrl: string | null;
   designId: string | null;
   /** Si designId está set, este es el previewUrl del Design (1080×1080 PNG público).
-   *  2026-10-13 — es la versión WATERMARK cuando existe (preview-wm.webp por
-   *  convención de paths; fallback al limpio para diseños sin artefactos). */
+   *  2026-11-03 (owner) — el carrito es la vista del DUEÑO: exhibe la versión
+   *  LIMPIA (preferClean; el anti-copia no aplica a uno mismo y el tiling dañaba
+   *  la lectura de diseños oscuros). El snapshot que viaja a cotizaciones
+   *  públicas usa `designPreviewWatermarkUrl`. */
   designPreviewUrl: string | null;
+  /** Versión WATERMARK de la línea, para snapshots que salen de la vista del
+   *  dueño (cotización pública por token — 2026-11-03). null si no hay diseño. */
+  designPreviewWatermarkUrl: string | null;
   /**
    * 2026-10-13 — páginas por unidad del preview (WATERMARK, wm/pages/NN.webp)
    * para el "Ver" paginado del carrito/pedidos; null = imagen única de siempre.
@@ -437,11 +442,12 @@ function toDetail(cart: RawCart): CartDetail {
       }),
     )
     .map((i) => {
-      // 2026-10-13 — exhibición con marca de agua: thumb representativa para la
-      // miniatura de la línea (el montaje completo de un set se veía como
-      // "punticos"), preview watermark para el "Ver" y las cotizaciones que lo
-      // snapshotan. Admin/producción siguen leyendo el preview LIMPIO.
-      const designDisp = i.design ? designPreviewDisplay(i.design) : null;
+      // 2026-11-03 (owner) — el carrito es la vista del DUEÑO: exhibe LIMPIO
+      // (preferClean). La versión watermark se sigue computando para el snapshot
+      // que viaja a la cotización PÚBLICA (designPreviewWatermarkUrl) — el
+      // anti-copia aplica a terceros, no al dueño. Admin/producción leen limpio.
+      const designDisp = i.design ? designPreviewDisplay(i.design, undefined, { preferClean: true }) : null;
+      const designDispWm = i.design ? designPreviewDisplay(i.design) : null;
       return {
         itemId: i.id,
         productId: i.variant.product.id,
@@ -472,6 +478,9 @@ function toDetail(cart: RawCart): CartDetail {
           designDisp?.thumbUrl ?? i.variant.images[0] ?? i.variant.product.images[0] ?? null,
         designId: i.designId,
         designPreviewUrl: designDisp?.displayUrl ?? null,
+        designPreviewWatermarkUrl: designDispWm?.watermarked
+          ? (designDispWm?.displayUrl ?? null)
+          : (designDisp?.displayUrl ?? null),
         designPreviewPages: designDisp?.pageUrls ?? null,
         designPreviewPageLabels: designPreviewPageLabels(
           i.design,

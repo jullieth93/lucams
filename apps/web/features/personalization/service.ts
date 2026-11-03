@@ -28,6 +28,7 @@ import crypto from "node:crypto";
 import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { captureServerError } from "@/lib/error-capture";
 import { withRetry } from "@/lib/retry";
 import {
   pathFromPublicUrl,
@@ -2091,6 +2092,11 @@ export async function finalizeDesign(opts: {
         calendarYear: opts.calendarYear,
       });
     } catch (err) {
+      // 2026-11-03 — el catch best-effort NO puede ser mudo: un job de mejora que
+      // no se encola deja al diseño con los PNG del cliente para siempre (caso real
+      // STG: abecedario con láminas y sin RenderJob por un fallo transitorio). El
+      // ErrorLog alimenta /admin/observability; el admin regenera a mano desde el
+      // pedido («Regenerar archivos por ficha»).
       logger.warn(
         {
           event: "design.finalize.upgrade_job_fail",
@@ -2099,6 +2105,12 @@ export async function finalizeDesign(opts: {
         },
         "No se pudo encolar el job de mejora de render — quedan los PNG del cliente",
       );
+      await captureServerError({
+        message: `finalize upgrade-job no encolado (design ${design.id}): ${err instanceof Error ? err.message : String(err)}`,
+        stack: err instanceof Error ? err.stack : undefined,
+        routePath: "finalizeDesign",
+        routeType: "server-action",
+      }).catch(() => undefined);
     }
   }
 

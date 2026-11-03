@@ -424,9 +424,10 @@ describe("toDetail — imagen por variante y desglose (Paquete F)", () => {
       },
     ]);
     const detail = await updateCartItemQty("sess_1", "ci_1", 1);
-    // El diseño del fixture lleva sello watermark (default del seed) → el carrito
-    // exhibe la miniatura watermark (thumb.webp) por el handler autorizado.
-    expect(detail.items[0].imageUrl).toBe("/api/design-preview/cdesign1/thumb.webp");
+    // 2026-11-03 (owner) — el carrito es la vista del DUEÑO: exhibe la miniatura
+    // LIMPIA (preferClean: preview global limpio autorizado; ya no thumb.webp
+    // watermark). El watermark queda para las vistas públicas/por token.
+    expect(detail.items[0].imageUrl).toBe("/api/design-preview/cdesign1/preview.png");
   });
 
   it("sin diseño ni fotos de variante ni de producto: imageUrl null (nunca undefined)", async () => {
