@@ -42,6 +42,8 @@ import {
 } from "@/features/products/variant-schemas";
 import { customerWaLink } from "@/lib/wa";
 import { OrderActions } from "./order-actions";
+import { RegenLettersetButton } from "./regen-letterset-button";
+import { ProductionPiecesGallery } from "./production-pieces-gallery";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 import {
   resolveProductionSpec,
@@ -102,14 +104,6 @@ type ShippingAddrSnapshot = {
   neighborhood?: string;
   notes?: string;
 };
-
-const TRANSPARENCY_GRID = {
-  backgroundColor: "#ffffff",
-  backgroundImage:
-    "linear-gradient(45deg, #e5e7eb 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)",
-  backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0px",
-  backgroundSize: "16px 16px",
-} as const;
 
 function jsonRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -323,75 +317,38 @@ export default async function AdminPedidoDetallePage({
                               : undefined,
                         })
                       : null;
-                  // Tarjeta de UNA pieza de impresión (índice global en productionUrls).
-                  const renderPieceCard = (pieceIndex: number, displayLabel: string) => {
-                    const path = it.design!.productionUrls[pieceIndex]!;
-                    const url = signedProduction.get(path);
-                    const label = `pieza-${String(pieceIndex + 1).padStart(2, "0")}`;
-                    const approved = it.design?.moderationStatus === "APPROVED";
-                    return url ? (
-                      <div
-                        key={path}
-                        className={`overflow-hidden rounded-lg border ${
-                          approved ? "border-brand-purple/15" : "border-amber-300"
-                        }`}
-                      >
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label={`Abrir ${displayLabel} a resolución completa`}
-                          className="relative block h-80 w-full overflow-hidden"
-                          style={TRANSPARENCY_GRID}
-                        >
-                          <Image
-                            src={url}
-                            alt={displayLabel}
-                            fill
-                            sizes="(min-width: 640px) 320px, 100vw"
-                            className="object-contain"
-                            unoptimized
-                          />
-                        </a>
-                        <div className="bg-white p-2">
-                          <p className="text-brand-purple-dark text-[11px] font-bold">
-                            {displayLabel}
-                          </p>
-                          <p className="text-brand-muted text-[10px]">
-                            Arte rectangular a sangre: el redondeo de esquinas lo hace el corte
-                            (troquel). Cuadrícula gris = transparencia (solo formas troqueladas:
-                            corazón/círculo).
-                          </p>
-                          {!approved && (
-                            <p className="mt-1 text-[10px] font-bold text-amber-800">
-                              ⚠️ No imprimir hasta aprobar en Moderación.
-                            </p>
-                          )}
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-brand-purple-dark text-[11px] font-semibold underline"
-                            >
-                              Ver completa
-                            </a>
-                            <a
-                              href={url}
-                              download={`${order.number}-${label}.png`}
-                              className="text-brand-purple-dark text-[11px] font-semibold underline"
-                            >
-                              Descargar PNG
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <span key={path} className="text-brand-muted text-[11px]">
-                        {label} (no disponible)
-                      </span>
-                    );
-                  };
+                  // W2 (owner 2026-11-03) — galería COMPACTA de piezas (grilla densa +
+                  // lightbox con ‹ ›), agrupada por set/unidad cuando aplica: 27–54
+                  // fichas ya no invaden el vertical del detalle.
+                  const galleryPieces = (it.design?.productionUrls ?? [])
+                    .map((path, i) => {
+                      const url = signedProduction.get(path);
+                      if (!url) return null;
+                      const groupLabel = productionGroups
+                        ?.flatMap((g) => g.pieces)
+                        .find((p) => p.index === i)?.label;
+                      const displayLabel =
+                        groupLabel ??
+                        (productionSpec
+                          ? productionPieceLabel(i, productionSpec)
+                          : `Pieza ${String(i + 1).padStart(2, "0")}`);
+                      return {
+                        index: i,
+                        label: displayLabel,
+                        url,
+                        downloadName: `${order.number}-pieza-${String(i + 1).padStart(2, "0")}.png`,
+                        approved: it.design?.moderationStatus === "APPROVED",
+                      };
+                    })
+                    .filter((p): p is NonNullable<typeof p> => p !== null);
+                  const galleryGroups = productionGroups
+                    ? productionGroups.map((g) => ({
+                        key: g.key,
+                        title: g.title,
+                        note: g.note,
+                        pieceIndexes: g.pieces.map((p) => p.index),
+                      }))
+                    : null;
                   return (
                     <li key={it.id} className="flex items-start gap-3 py-3">
                       <div className="bg-brand-purple/5 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg p-1">
@@ -477,36 +434,26 @@ export default async function AdminPedidoDetallePage({
                                     unidad(es) {productionSpec.reversosConMarcaAgua.join(", ")}.
                                   </p>
                                 )}
+                                {/* ADR-188 — el diseño quedó en LÁMINA por set (histórico o
+                                    fallo transitorio del encolado): regeneración manual a
+                                    fichas 300 DPI individuales. */}
+                                {productionSpec.formatoFisico.tipo === "lamina-fichas" &&
+                                  it.design && (
+                                    <RegenLettersetButton
+                                      designId={it.design.id}
+                                      orderNumber={order.number}
+                                    />
+                                  )}
                               </div>
                             )}
-                            {productionGroups ? (
-                              <div className="space-y-4">
-                                {productionGroups.map((group) => (
-                                  <section key={group.key}>
-                                    <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
-                                      <h4 className="text-brand-purple-dark text-xs font-bold">
-                                        {group.title}
-                                      </h4>
-                                      <span className="text-brand-muted text-[11px]">
-                                        {group.pieces.length} archivo(s)
-                                        {group.note ? ` · ${group.note}` : ""}
-                                      </span>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                      {group.pieces.map((p) => renderPieceCard(p.index, p.label))}
-                                    </div>
-                                  </section>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                {it.design.productionUrls.map((path, i) => {
-                                  const displayLabel = productionSpec
-                                    ? productionPieceLabel(i, productionSpec)
-                                    : `Pieza ${String(i + 1).padStart(2, "0")}`;
-                                  return renderPieceCard(i, displayLabel);
-                                })}
-                              </div>
+                            <ProductionPiecesGallery
+                              pieces={galleryPieces}
+                              groups={galleryGroups}
+                            />
+                            {galleryPieces.length === 0 && (
+                              <p className="text-brand-muted text-[11px]">
+                                Piezas no disponibles para firma en este momento.
+                              </p>
                             )}
                           </div>
                         ) : it.design ? (

@@ -432,7 +432,21 @@ export async function buildBookmarkStripPreview(
     // Filete del doblez (pliegue central de la tira) + borde sutil de la
     // silueta. Plegables: filete HORIZONTAL en la unión (a mitad de la tira
     // vertical). noFold (Alargados): pieza PLANA → sin filete.
+    // 2026-11-03 (owner) — delimitación POR CARA en noFold: A y B van pegadas
+    // sin filete y, con foto a sangre o el patrón de marca, la B no se leía
+    // como pieza — cada cara lleva su propio contorno redondeado sutil (misma
+    // familia visual del borde exterior, un punto más tenue).
     ctx.save();
+    if (noFold) {
+      ctx.strokeStyle = "rgba(124, 106, 173, 0.45)"; // brand-purple/45
+      ctx.lineWidth = 1.5;
+      for (const i of [0, 1]) {
+        const { fx, fy, fw, fh } = faceRect(i);
+        ctx.beginPath();
+        ctx.roundRect(fx + 0.75, fy + 0.75, fw - 1.5, fh - 1.5, Math.max(4, radius - 1));
+        ctx.stroke();
+      }
+    }
     if (!noFold) {
       ctx.strokeStyle = "rgba(124, 106, 173, 0.55)"; // brand-purple/55
       ctx.lineWidth = 1.5;

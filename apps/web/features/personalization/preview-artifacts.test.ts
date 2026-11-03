@@ -203,3 +203,42 @@ describe("isPreviewHandlerUrl — gate del `unoptimized` en next/image", () => {
     expect(isPreviewHandlerUrl("/_next/static/media/logo.png")).toBe(false);
   });
 });
+
+describe("designPreviewDisplay — preferClean (vista del DUEÑO, owner 2026-11-03)", () => {
+  it("con artefactos: exhibe el preview LIMPIO y las páginas limpias (pages/), watermarked=false", () => {
+    const d = designPreviewDisplay(
+      { previewUrl: REF_NEW, previewWatermarkedAt: new Date(), previewPagesCount: 3 },
+      undefined,
+      { preferClean: true },
+    );
+    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp");
+    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/pages/01.webp"); // 1ª página limpia
+    expect(d?.pageUrls).toHaveLength(3);
+    expect(d?.pageUrls?.[0]).toBe("/api/design-preview/abc123/pages/01.webp");
+    expect(d?.watermarked).toBe(false);
+  });
+
+  it("sin páginas: el preview global limpio hace también de miniatura", () => {
+    const d = designPreviewDisplay(
+      { previewUrl: REF_NEW, previewWatermarkedAt: new Date(), previewPagesCount: null },
+      undefined,
+      { preferClean: true },
+    );
+    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp");
+    expect(d?.thumbUrl).toBe("/api/design-preview/abc123/preview.webp");
+    expect(d?.pageUrls).toBeNull();
+  });
+
+  it("preferClean NO se honra con capability pública… pero el handler fail-closed protege el byte limpio", () => {
+    // La UI nunca combina preferClean + capability (las públicas no conocen al
+    // dueño); si ocurriera, las URLs limpias con ?st= las rechaza la matriz de
+    // preview-access (tokens solo abren watermark) — defensa en profundidad.
+    const d = designPreviewDisplay(
+      { previewUrl: REF_NEW, previewWatermarkedAt: new Date(), previewPagesCount: null },
+      { name: "st", value: "token32hex" },
+      { preferClean: true },
+    );
+    expect(d?.displayUrl).toBe("/api/design-preview/abc123/preview.webp?st=token32hex");
+    expect(d?.watermarked).toBe(false);
+  });
+});
