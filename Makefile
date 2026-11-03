@@ -264,10 +264,9 @@ audit-script-guards:
 audit-slugs:
 	pnpm --filter @lucams/db exec node scripts/audit-slugs.mjs
 
-# Auditoría de cobertura de contenido (roadmap D1): reporte local.
-# El gate vive en CI (job quality) corriendo el script con --check.
+# Gate de paridad exacta CMS v2 (código ↔ cms-site-map.mjs).
 audit-content:
-	pnpm --filter @lucams/db exec node scripts/audit-content-coverage.mjs
+	pnpm --filter web exec vitest run lib/cms-sitemap-parity.test.ts
 
 # Monitor de uptime (OPERATIONS § Plan de monitoreo): sondeo manual sin enviar.
 # El programado corre desde el crontab de la VM cada 12 min.

@@ -187,68 +187,142 @@ export function cachedCms<A extends unknown[], R>(
   };
 }
 
-type FieldWithVersion = {
+type FieldRow = {
   key: string;
+  kind: string;
   label: string;
   helpText: string | null;
   type: string;
   category: string;
+  isPublished: boolean;
   updatedAt: Date;
   publishedVersion: { title: string | null; body: string; version: number } | null;
 };
 
-function toBlockData(field: FieldWithVersion): CmsBlockData | null {
-  if (!field.publishedVersion) return null;
+/**
+ * Snapshot JSON-serializable de todo el contenido CMS publicado (~165 campos, <50 KB).
+ *
+ * IMPORTANTE (Next 16 `unstable_cache`): el valor cacheado pasa por `JSON.stringify` /
+ * `JSON.parse` en el Data Cache. Prohibido devolver `Map`, `Set` o instancias `Date`
+ * crudas adentro: usamos objetos planos y `updatedAtIso: string`, hidratando `new Date(...)`
+ * al salir del caché para que `CmsBlockData.updatedAt` siga siendo siempre un `Date` real.
+ */
+type SerializedBlock = Omit<CmsBlockData, "updatedAt"> & { updatedAtIso: string };
+type SerializedSetting = SiteSettingData & { isPublished: boolean };
+
+type CmsSnapshot = {
+  blocksByKey: Record<string, SerializedBlock>;
+  blocksAll: SerializedBlock[];
+  settingsByKey: Record<string, SerializedSetting>;
+  settingsAll: SerializedSetting[];
+  imageMediaIdByKey: Record<string, string>;
+};
+
+function hydrateBlock(raw: SerializedBlock): CmsBlockData {
   return {
-    key: field.key,
-    title: field.publishedVersion.title ?? field.label,
-    body: field.publishedVersion.body,
-    format: toBlockFormat(field.type),
-    category: field.category as CmsBlockCategory,
-    description: field.helpText,
-    version: field.publishedVersion.version,
-    updatedAt: field.updatedAt,
+    key: raw.key,
+    title: raw.title,
+    body: raw.body,
+    format: raw.format,
+    category: raw.category,
+    description: raw.description,
+    version: raw.version,
+    updatedAt: new Date(raw.updatedAtIso),
   };
 }
 
-function toSettingData(field: FieldWithVersion): SiteSettingData | null {
-  if (!field.publishedVersion) return null;
+function stripSettingInternal(raw: SerializedSetting): SiteSettingData {
   return {
-    key: field.key,
-    value: field.publishedVersion.body,
-    valueType: toSettingType(field.type),
-    category: field.category as SiteSettingCategory,
-    label: field.label,
-    description: field.helpText,
+    key: raw.key,
+    value: raw.value,
+    valueType: raw.valueType,
+    category: raw.category,
+    label: raw.label,
+    description: raw.description,
   };
+}
+
+const loadCmsSnapshotCached = cachedCms(
+  async (): Promise<CmsSnapshot> => {
+    const fields: FieldRow[] = await prisma.cmsField.findMany({
+      where: { deletedAt: null },
+      include: { publishedVersion: true },
+      orderBy: [{ category: "asc" }, { key: "asc" }],
+    });
+
+    const blocksByKey: Record<string, SerializedBlock> = {};
+    const blocksAll: SerializedBlock[] = [];
+    const settingsByKey: Record<string, SerializedSetting> = {};
+    const settingsAll: SerializedSetting[] = [];
+    const imageMediaIdByKey: Record<string, string> = {};
+
+    for (const f of fields) {
+      if (!f.publishedVersion) continue;
+
+      if (f.type === "IMAGE" && f.isPublished) {
+        const mediaId = f.publishedVersion.body.trim();
+        if (mediaId) imageMediaIdByKey[f.key] = mediaId;
+      }
+
+      if (f.kind === "BLOCK" && f.isPublished) {
+        const serialized: SerializedBlock = {
+          key: f.key,
+          title: f.publishedVersion.title ?? f.label,
+          body: f.publishedVersion.body,
+          format: toBlockFormat(f.type),
+          category: f.category as CmsBlockCategory,
+          description: f.helpText,
+          version: f.publishedVersion.version,
+          updatedAtIso:
+            f.updatedAt instanceof Date ? f.updatedAt.toISOString() : String(f.updatedAt),
+        };
+        blocksByKey[f.key] = serialized;
+        blocksAll.push(serialized);
+      } else if (f.kind === "SETTING") {
+        const serialized: SerializedSetting = {
+          key: f.key,
+          value: f.publishedVersion.body,
+          valueType: toSettingType(f.type),
+          category: f.category as SiteSettingCategory,
+          label: f.label,
+          description: f.helpText,
+          isPublished: f.isPublished,
+        };
+        settingsByKey[f.key] = serialized;
+        settingsAll.push(serialized);
+      }
+    }
+
+    return { blocksByKey, blocksAll, settingsByKey, settingsAll, imageMediaIdByKey };
+  },
+  ["cms-snapshot-v2"],
+  { tags: ["cms"], revalidate: 3600 },
+);
+
+/**
+ * Obtiene el snapshot CMS atrapando errores de conexión FUERA de `unstable_cache`
+ * para no cachear un snapshot vacío durante 1h ante un parpadeo de red/BD.
+ */
+async function getCmsSnapshot(): Promise<CmsSnapshot | null> {
+  try {
+    return await loadCmsSnapshotCached();
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Lee un bloque CMS por su key. Devuelve `null` si no existe o no
- * está publicado — el componente caller debería usar fallback
- * hardcoded en ese caso.
+ * Lee un bloque CMS por su key desde el snapshot compartido. Devuelve `null` si
+ * no existe o no está publicado — el componente caller usa su fallback hardcoded.
  *
- * Cache TTL 1h en background revalidate. Invalidación inmediata
- * cuando el admin publica via `updateTag("cms")` (Server Action).
+ * Cache TTL 1h en background revalidate (`cms-snapshot-v2`). Invalidación
+ * inmediata cuando el admin publica via `updateTag("cms")` (Server Action).
  */
-export const getCmsBlock = cachedCms(
-  async (key: string): Promise<CmsBlockData | null> => {
-    try {
-      const field = await prisma.cmsField.findFirst({
-        where: { key, kind: "BLOCK", isPublished: true, deletedAt: null },
-        include: { publishedVersion: true },
-      });
-      if (!field) return null;
-      return toBlockData(field);
-    } catch {
-      // DB unreachable (build time con placeholder, network blip, etc.)
-      // → null para que el componente caller use su fallback hardcoded.
-      return null;
-    }
-  },
-  ["cms-block"],
-  { tags: ["cms"], revalidate: 3600 },
-);
+export async function getCmsBlock(key: string): Promise<CmsBlockData | null> {
+  const snap = await getCmsSnapshot();
+  const raw = snap?.blocksByKey[key];
+  return raw ? hydrateBlock(raw) : null;
+}
 
 export type CmsImageData = {
   url: string;
@@ -256,6 +330,12 @@ export type CmsImageData = {
   width: number;
   height: number;
 };
+
+const loadCmsMediaByIdCached = cachedCms(
+  async (mediaId: string) => prisma.cmsMedia.findUnique({ where: { id: mediaId } }),
+  ["cms-media-by-id"],
+  { tags: ["cms"], revalidate: 3600 },
+);
 
 /**
  * Lee una imagen del CMS por la key de su campo (roadmap B5). El campo
@@ -272,32 +352,25 @@ export type CmsImageData = {
  * AdminShell). Sigue siendo el punto de lectura de los campos IMAGE "sueltos"
  * que el admin crea/edita/publica desde /admin/contenido.
  */
-export const getCmsImage = cachedCms(
-  async (key: string): Promise<CmsImageData | null> => {
-    try {
-      const field = await prisma.cmsField.findFirst({
-        where: { key, type: "IMAGE", isPublished: true, deletedAt: null },
-        include: { publishedVersion: true },
-      });
-      const mediaId = field?.publishedVersion?.body.trim();
-      if (!mediaId) return null;
-      const media = await prisma.cmsMedia.findUnique({ where: { id: mediaId } });
-      const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
-      if (!media || !base) return null;
-      return {
-        url: `${base}/storage/v1/object/public/${media.bucket}/${media.path}`,
-        alt: media.alt,
-        width: media.width,
-        height: media.height,
-      };
-    } catch {
-      // Misma degradación que getCmsBlock: cualquier fallo → fallback del caller.
-      return null;
-    }
-  },
-  ["cms-image"],
-  { tags: ["cms"], revalidate: 3600 },
-);
+export async function getCmsImage(key: string): Promise<CmsImageData | null> {
+  try {
+    const snap = await getCmsSnapshot();
+    const mediaId = snap?.imageMediaIdByKey[key];
+    if (!mediaId) return null;
+    const media = await loadCmsMediaByIdCached(mediaId);
+    const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+    if (!media || !base) return null;
+    return {
+      url: `${base}/storage/v1/object/public/${media.bucket}/${media.path}`,
+      alt: media.alt,
+      width: media.width,
+      height: media.height,
+    };
+  } catch {
+    // Misma degradación que getCmsBlock: cualquier fallo → fallback del caller.
+    return null;
+  }
+}
 
 export type CmsBannerItem = CmsImageData & {
   /** Texto visible del banner (overlay). */
@@ -305,6 +378,15 @@ export type CmsBannerItem = CmsImageData & {
   /** Destino del click (ruta interna o URL externa). */
   enlace: string;
 };
+
+const loadCmsMediaBatchCached = cachedCms(
+  async (idsKey: string) => {
+    const ids = idsKey.split(",").filter(Boolean);
+    return prisma.cmsMedia.findMany({ where: { id: { in: ids } } });
+  },
+  ["cms-media-batch"],
+  { tags: ["cms"], revalidate: 3600 },
+);
 
 /**
  * Lee un campo LISTA de banners (roadmap B6: `home.banners`, items
@@ -315,124 +397,87 @@ export type CmsBannerItem = CmsImageData & {
  * está publicado o la lista quedó vacía — el caller NO renderiza la sección
  * (fallback = el sitio como estaba antes de B6, REGLA DE ORO).
  */
-export const getCmsBanners = cachedCms(
-  async (key: string): Promise<CmsBannerItem[]> => {
-    try {
-      const field = await prisma.cmsField.findFirst({
-        where: { key, kind: "BLOCK", isPublished: true, deletedAt: null },
-        include: { publishedVersion: true },
-      });
-      const body = field?.publishedVersion?.body;
-      if (!body) return [];
-      const parsed: unknown = JSON.parse(body);
-      if (!Array.isArray(parsed) || parsed.length === 0) return [];
+export async function getCmsBanners(key: string): Promise<CmsBannerItem[]> {
+  try {
+    const block = await getCmsBlock(key);
+    const body = block?.body;
+    if (!body) return [];
+    const parsed: unknown = JSON.parse(body);
+    if (!Array.isArray(parsed) || parsed.length === 0) return [];
 
-      const rows = parsed
-        .filter(
-          (v): v is Record<string, unknown> =>
-            typeof v === "object" && v !== null && !Array.isArray(v),
-        )
-        .map((v) => ({
-          imagen: typeof v.imagen === "string" ? v.imagen.trim() : "",
-          titulo: typeof v.titulo === "string" ? v.titulo.trim() : "",
-          enlace: typeof v.enlace === "string" ? v.enlace.trim() : "",
-          activo: typeof v.activo === "string" ? v.activo.trim() : "",
-        }))
-        .filter((v) => v.imagen && v.titulo && v.enlace && v.activo !== "false");
-      if (rows.length === 0) return [];
+    const rows = parsed
+      .filter(
+        (v): v is Record<string, unknown> =>
+          typeof v === "object" && v !== null && !Array.isArray(v),
+      )
+      .map((v) => ({
+        imagen: typeof v.imagen === "string" ? v.imagen.trim() : "",
+        titulo: typeof v.titulo === "string" ? v.titulo.trim() : "",
+        enlace: typeof v.enlace === "string" ? v.enlace.trim() : "",
+        activo: typeof v.activo === "string" ? v.activo.trim() : "",
+      }))
+      .filter((v) => v.imagen && v.titulo && v.enlace && v.activo !== "false");
+    if (rows.length === 0) return [];
 
-      const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
-      if (!base) return [];
-      const media = await prisma.cmsMedia.findMany({
-        where: { id: { in: rows.map((r) => r.imagen) } },
-      });
-      const byId = new Map(media.map((m) => [m.id, m]));
-      return rows.flatMap((r) => {
-        const m = byId.get(r.imagen);
-        if (!m) return []; // asset borrado: el banner se omite, no rompe la franja
-        return [
-          {
-            url: `${base}/storage/v1/object/public/${m.bucket}/${m.path}`,
-            alt: m.alt,
-            width: m.width,
-            height: m.height,
-            titulo: r.titulo,
-            enlace: r.enlace,
-          },
-        ];
-      });
-    } catch {
-      // Misma degradación que getCmsBlock: cualquier fallo → sin sección.
-      return [];
-    }
-  },
-  ["cms-banners"],
-  { tags: ["cms"], revalidate: 3600 },
-);
+    const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+    if (!base) return [];
+    const uniqueIds = [...new Set(rows.map((r) => r.imagen))].sort().join(",");
+    const media = await loadCmsMediaBatchCached(uniqueIds);
+    const byId = new Map(media.map((m) => [m.id, m]));
+    return rows.flatMap((r) => {
+      const m = byId.get(r.imagen);
+      if (!m) return []; // asset borrado: el banner se omite, no rompe la franja
+      return [
+        {
+          url: `${base}/storage/v1/object/public/${m.bucket}/${m.path}`,
+          alt: m.alt,
+          width: m.width,
+          height: m.height,
+          titulo: r.titulo,
+          enlace: r.enlace,
+        },
+      ];
+    });
+  } catch {
+    // Misma degradación que getCmsBlock: cualquier fallo → sin sección.
+    return [];
+  }
+}
 
 /**
  * Lee todos los bloques publicados de una categoría. Usado por el
  * endpoint /api/cms/blocks?category=legal y por páginas que renderean
  * listas (ej. /ayuda mostrando todas las FAQ).
  */
-export const getCmsBlocksByCategory = cachedCms(
-  async (category: string): Promise<CmsBlockData[]> => {
-    try {
-      const fields = await prisma.cmsField.findMany({
-        where: { kind: "BLOCK", category, isPublished: true, deletedAt: null },
-        include: { publishedVersion: true },
-        orderBy: { key: "asc" },
-      });
-      return fields.map((f) => toBlockData(f)).filter((b) => b !== null);
-    } catch {
-      return [];
-    }
-  },
-  ["cms-blocks-by-category"],
-  { tags: ["cms"], revalidate: 3600 },
-);
+export async function getCmsBlocksByCategory(category: string): Promise<CmsBlockData[]> {
+  const snap = await getCmsSnapshot();
+  if (!snap) return [];
+  return snap.blocksAll
+    .filter((b) => b.category === category)
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map(hydrateBlock);
+}
 
 /**
- * Lee un setting atómico por su key. Devuelve `fallback` si no existe.
- * Pattern: `await getSiteSetting("CONTACT_EMAIL", "hola@lucamsshop.com")`.
+ * Lee un setting atómico por su key desde el snapshot compartido.
+ * Devuelve `null` si no existe o no está publicado.
  */
-export const getSiteSetting = cachedCms(
-  async (key: string): Promise<SiteSettingData | null> => {
-    try {
-      const field = await prisma.cmsField.findFirst({
-        where: { key, kind: "SETTING", isPublished: true, deletedAt: null },
-        include: { publishedVersion: true },
-      });
-      if (!field) return null;
-      return toSettingData(field);
-    } catch {
-      return null;
-    }
-  },
-  ["cms-setting"],
-  { tags: ["cms"], revalidate: 3600 },
-);
+export async function getSiteSetting(key: string): Promise<SiteSettingData | null> {
+  const snap = await getCmsSnapshot();
+  const raw = snap?.settingsByKey[key];
+  if (!raw || !raw.isPublished) return null;
+  return stripSettingInternal(raw);
+}
 
 /**
  * Lee todos los settings agrupados por categoría. Usado por
  * /admin/contenido/paginas/global + endpoint /api/cms/settings.
  */
-export const getAllSiteSettings = cachedCms(
-  async (): Promise<SiteSettingData[]> => {
-    try {
-      const fields = await prisma.cmsField.findMany({
-        where: { kind: "SETTING", deletedAt: null },
-        include: { publishedVersion: true },
-        orderBy: [{ category: "asc" }, { key: "asc" }],
-      });
-      return fields.map((f) => toSettingData(f)).filter((s) => s !== null);
-    } catch {
-      return [];
-    }
-  },
-  ["cms-settings-all"],
-  { tags: ["cms"], revalidate: 3600 },
-);
+export async function getAllSiteSettings(): Promise<SiteSettingData[]> {
+  const snap = await getCmsSnapshot();
+  if (!snap) return [];
+  return snap.settingsAll.map(stripSettingInternal);
+}
 
 /**
  * Helper directo para obtener el valor de un setting como string,
@@ -478,43 +523,25 @@ export async function getCmsList<T>(
  * Lee settings filtrados por categoría. Usado por endpoint
  * GET /api/cms/settings?category=contact.
  */
-export const getSettingsByCategory = cachedCms(
-  async (category: string): Promise<SiteSettingData[]> => {
-    try {
-      const fields = await prisma.cmsField.findMany({
-        where: { kind: "SETTING", category: category.toUpperCase(), deletedAt: null },
-        include: { publishedVersion: true },
-        orderBy: { key: "asc" },
-      });
-      return fields.map((f) => toSettingData(f)).filter((s) => s !== null);
-    } catch {
-      return [];
-    }
-  },
-  ["cms-settings-by-category"],
-  { tags: ["cms"], revalidate: 3600 },
-);
+export async function getSettingsByCategory(category: string): Promise<SiteSettingData[]> {
+  const snap = await getCmsSnapshot();
+  if (!snap) return [];
+  const upper = category.toUpperCase();
+  return snap.settingsAll
+    .filter((s) => s.category === upper)
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map(stripSettingInternal);
+}
 
 /**
  * Lista TODOS los bloques publicados (sin filtro). Usado por
  * GET /api/cms/blocks sin querystring.
  */
-export const getAllCmsBlocks = cachedCms(
-  async (): Promise<CmsBlockData[]> => {
-    try {
-      const fields = await prisma.cmsField.findMany({
-        where: { kind: "BLOCK", isPublished: true, deletedAt: null },
-        include: { publishedVersion: true },
-        orderBy: [{ category: "asc" }, { key: "asc" }],
-      });
-      return fields.map((f) => toBlockData(f)).filter((b) => b !== null);
-    } catch {
-      return [];
-    }
-  },
-  ["cms-blocks-all"],
-  { tags: ["cms"], revalidate: 3600 },
-);
+export async function getAllCmsBlocks(): Promise<CmsBlockData[]> {
+  const snap = await getCmsSnapshot();
+  if (!snap) return [];
+  return snap.blocksAll.map(hydrateBlock);
+}
 
 /**
  * Búsqueda full-text con pg_trgm. Matchea title + body con tolerancia

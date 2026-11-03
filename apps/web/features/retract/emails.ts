@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
+import { RETRACT_REFUND_MAX_CALENDAR_DAYS } from "@/lib/consumer-law";
 import {
   renderRetractReceivedEmail,
   renderRetractApprovedEmail,
@@ -90,9 +91,9 @@ export async function sendRetractRequested(id: string): Promise<void> {
     await sendEmail({
       to: contactEmail,
       replyTo: d.email,
-      subject: `⏱️ Nueva solicitud de retracto — pedido ${d.orderNumber} (reembolso ≤15 días)`,
-      html: `<p>Nueva solicitud de retracto de <strong>${escapeHtml(d.customerName)}</strong> (${escapeHtml(d.email)}) — pedido <strong>${escapeHtml(d.orderNumber)}</strong>, producto <strong>${escapeHtml(d.productName)}</strong>.</p><p><strong>El reembolso vence en 15 días calendario (Ley 2439/2024).</strong> Gestiónalo en /admin/retractos.</p>`,
-      text: `Nueva solicitud de retracto de ${d.customerName} (${d.email}) — pedido ${d.orderNumber}, producto ${d.productName}.\n\nEl reembolso vence en 15 días calendario (Ley 2439/2024). Gestiónalo en /admin/retractos.`,
+      subject: `⏱️ Nueva solicitud de retracto — pedido ${d.orderNumber} (reembolso ≤${RETRACT_REFUND_MAX_CALENDAR_DAYS} días)`,
+      html: `<p>Nueva solicitud de retracto de <strong>${escapeHtml(d.customerName)}</strong> (${escapeHtml(d.email)}) — pedido <strong>${escapeHtml(d.orderNumber)}</strong>, producto <strong>${escapeHtml(d.productName)}</strong>.</p><p><strong>El reembolso vence en ${RETRACT_REFUND_MAX_CALENDAR_DAYS} días calendario (Ley 2439/2024).</strong> Gestiónalo en /admin/retractos.</p>`,
+      text: `Nueva solicitud de retracto de ${d.customerName} (${d.email}) — pedido ${d.orderNumber}, producto ${d.productName}.\n\nEl reembolso vence en ${RETRACT_REFUND_MAX_CALENDAR_DAYS} días calendario (Ley 2439/2024). Gestiónalo en /admin/retractos.`,
       idempotencyKey: `retract-${id}-internal`,
       tags: [{ name: "type", value: "retract_internal" }],
     });

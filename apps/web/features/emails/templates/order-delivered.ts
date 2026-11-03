@@ -13,6 +13,7 @@
  */
 
 import { renderEmailLayout, ctaButton } from "../layout";
+import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
 
 export type OrderDeliveredData = {
   orderNumber: string;
@@ -50,7 +51,7 @@ ${ctaButton(data.fallbackUrl, "Ver mi pedido")}
 <p>Hola ${escapeHtml(data.customerName)}, ${deliveredBy} tu pedido <strong>${escapeHtml(data.orderNumber)}</strong> y ya está en tus manos.</p>
 <p>Esperamos que te enamore tanto como a nosotros nos enamora hacerlo.</p>
 ${cta}
-<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún inconveniente con el pedido? Responde este correo o escríbenos por WhatsApp. Los productos sin personalizar tienen 5 días hábiles de retracto (Ley 1480); los personalizados con tu foto/texto están excluidos por ley.</p>
+<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún inconveniente con el pedido? Responde este correo o escríbenos por WhatsApp. Los productos sin personalizar tienen ${RETRACT_WINDOW_BUSINESS_DAYS} días hábiles de retracto (Ley 1480); los personalizados con tu foto/texto están excluidos por ley.</p>
 `;
 
   const text = `¡Tu pedido llegó!

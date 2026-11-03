@@ -42,10 +42,12 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { refreshCustomerUploadSignedUrl } from "@/lib/storage";
 import type { CanvasData, StudioAsset } from "./types";
-import { getCmsBlock } from "@/lib/cms";
-import { getStudioTexts } from "./studio-texts.server";
-import { StudioTextsProvider } from "./studio-texts-provider";
-import { fillStudioText, splitStudioText, type StudioTexts } from "./studio-texts";
+import {
+  DEFAULT_STUDIO_TEXTS,
+  fillStudioText,
+  splitStudioText,
+  type StudioTexts,
+} from "./studio-texts";
 
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<{
@@ -77,23 +79,17 @@ type SearchParams = Promise<{
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
-  // Roadmap B1 — título/description del Estudio son campos CMS (seo.page.estudio.*,
-  // editables en /admin/contenido → SEO). {producto} se interpola acá; los fallbacks
-  // son los textos exactos pre-CMS.
-  const [product, titleBlock, descBlock, notFoundBlock] = await Promise.all([
-    getStorefrontProductBySlug(slug),
-    getCmsBlock("seo.page.estudio.title"),
-    getCmsBlock("seo.page.estudio.description"),
-    getCmsBlock("seo.page.estudio.not-found"),
-  ]);
-  if (!product) return { title: notFoundBlock?.body ?? "Producto no encontrado" };
+  const product = await getStorefrontProductBySlug(slug);
+  if (!product) return { title: "Producto no encontrado" };
   return {
-    title: fillStudioText(titleBlock?.body ?? "Personalizar — {producto}", {
+    title: fillStudioText("Personalizar — {producto}", {
       producto: product.name,
     }),
     description: fillStudioText(
-      descBlock?.body ?? "Diseña tu {producto} en vivo. Estudio de personalización Lucams.",
-      { producto: product.name.toLowerCase() },
+      "Diseña tu {producto} en vivo. Estudio de personalización Lucams.",
+      {
+        producto: product.name.toLowerCase(),
+      },
     ),
     robots: { index: false, follow: false },
   };
@@ -169,9 +165,10 @@ export default async function EstudioPage({
     mergedSchema as Record<string, unknown>,
   );
 
-  // Roadmap B1 — textos CMS del Estudio (UNA query por prefijo estudio.*, con
-  // fallback exacto pre-CMS por campo). Se inyectan al árbol client vía provider.
-  const texts = await getStudioTexts();
+  // Capa 3 (CMS v2): textos funcionales del Estudio tipados en código (cero round-trip a BD
+  // y cero serialización del diccionario en el payload RSC; los clientes consumen
+  // DEFAULT_STUDIO_TEXTS directamente vía StudioTextsContext).
+  const texts = DEFAULT_STUDIO_TEXTS;
 
   // Unidades a DISEÑAR vía ?copies=N (modelo multi-unidad 2026-09-09 — el nombre
   // del parámetro se conserva por compat; el significado es "N unidades, cada una
@@ -265,43 +262,41 @@ export default async function EstudioPage({
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
         <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
-          <StudioTextsProvider texts={texts}>
-            <NameEditor
-              product={{ id: product.id, slug: product.slug, name: product.name }}
-              // Ola 32 — mini avatar del header sticky unificado (fallback al mascote).
-              productImageUrl={product.images[0]}
-              variantId={selectedVariant.id}
-              // 2026-09-25 — flag Con/Sin imán de la variante para que la modal
-              // de confirmación nombre bien la pieza (imán vs ficha).
-              variantMagnet={parseVariantAttributes(selectedVariant.attributes).magnet}
-              // Paquete F (2026-10-02) — desglose de la variante (fija en esta
-              // superficie) para el resumen de la vista previa.
-              variantLabel={
-                describeVariantAttributes(parseVariantAttributes(selectedVariant.attributes)).join(
-                  " · ",
-                ) || undefined
-              }
-              config={surface.config}
-              pricePerTile={pricePerTile}
-              initialCount={initialCount}
-              styles={styles}
-              themeOptions={themeOptions}
-              // ?copies=N (stepper "Unidades" de la PDP) → la modal de
-              // "Vista previa" lo confirma tal cual (igual que letterset y el
-              // editor de foto).
-              initialCopies={initialCopies}
-              // ?designId= (re-apertura) → opción de borde guardada en el diseño.
-              initialWithBorder={initialWithBorder}
-              // ?designId= (re-apertura) → nombre, estilo y colores persistidos.
-              initialName={initialName}
-              initialStyleId={initialStyleId}
-              initialThemeId={initialThemeId}
-              initialColors={initialColors}
-              // Edición desde el carrito: la línea que apuntaba al diseño original se
-              // reemplaza en sitio al confirmar (no duplicar).
-              replacesCartDesignId={replacesCartDesignId}
-            />
-          </StudioTextsProvider>
+          <NameEditor
+            product={{ id: product.id, slug: product.slug, name: product.name }}
+            // Ola 32 — mini avatar del header sticky unificado (fallback al mascote).
+            productImageUrl={product.images[0]}
+            variantId={selectedVariant.id}
+            // 2026-09-25 — flag Con/Sin imán de la variante para que la modal
+            // de confirmación nombre bien la pieza (imán vs ficha).
+            variantMagnet={parseVariantAttributes(selectedVariant.attributes).magnet}
+            // Paquete F (2026-10-02) — desglose de la variante (fija en esta
+            // superficie) para el resumen de la vista previa.
+            variantLabel={
+              describeVariantAttributes(parseVariantAttributes(selectedVariant.attributes)).join(
+                " · ",
+              ) || undefined
+            }
+            config={surface.config}
+            pricePerTile={pricePerTile}
+            initialCount={initialCount}
+            styles={styles}
+            themeOptions={themeOptions}
+            // ?copies=N (stepper "Unidades" de la PDP) → la modal de
+            // "Vista previa" lo confirma tal cual (igual que letterset y el
+            // editor de foto).
+            initialCopies={initialCopies}
+            // ?designId= (re-apertura) → opción de borde guardada en el diseño.
+            initialWithBorder={initialWithBorder}
+            // ?designId= (re-apertura) → nombre, estilo y colores persistidos.
+            initialName={initialName}
+            initialStyleId={initialStyleId}
+            initialThemeId={initialThemeId}
+            initialColors={initialColors}
+            // Edición desde el carrito: la línea que apuntaba al diseño original se
+            // reemplaza en sitio al confirmar (no duplicar).
+            replacesCartDesignId={replacesCartDesignId}
+          />
         </main>
       </div>
     );
@@ -420,55 +415,53 @@ export default async function EstudioPage({
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
         <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
-          <StudioTextsProvider texts={texts}>
-            <LetterSetEditor
-              product={{ id: product.id, slug: product.slug, name: product.name }}
-              // Ola 32 — mini avatar del header sticky unificado (fallback al mascote).
-              productImageUrl={product.images[0]}
-              variantId={selectedVariant.id}
-              variants={selectable.map((v) => {
-                const a = parseVariantAttributes(v.attributes);
-                return {
-                  id: v.id,
-                  price: v.price,
-                  sizeCm: a.sizeCm,
-                  magnet: a.magnet,
-                  theme: a.theme,
-                  language: a.language,
-                };
-              })}
-              basePrice={product.basePrice}
-              letterSet={surface.config.letterSet}
-              alphabets={{ es: [...ALPHABET.es], en: [...ALPHABET.en] }}
-              initialLanguage={initialLanguage}
-              themeOptions={{ es: themeEs, en: themeEn }}
-              initialTheme={variantAttrs.theme ?? null}
-              stylesByLanguage={{ es: stylesEs, en: stylesEn }}
-              // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
-              // 2026-09-09) → N sets a diseñar, cada uno con sus colores. Al
-              // re-abrir (?designId=) manda el nº de sets GUARDADO en el diseño.
-              initialUnits={recoveredUnits ?? initialCopies}
-              // ?designId= (re-apertura) → selección persistida del diseño.
-              // 2026-10-19 — estilo y borde POR SET (metadata.units[u]); las
-              // claves raíz siguen llegando como default del set 1 / sets sin
-              // clave propia (diseños guardados antes del rediseño).
-              initialStyleId={recoveredStyleId}
-              initialUnitStyles={recoveredUnitStyles}
-              initialWithBorder={recoveredWithBorder}
-              initialUnitBorders={recoveredUnitBorders}
-              initialColorTheme={recoveredThemeId}
-              initialUnitColors={recoveredUnitColors}
-              // Edición desde el carrito: la línea que apuntaba al diseño original se
-              // reemplaza en sitio al confirmar (no duplicar).
-              replacesCartDesignId={replacesCartDesignId}
-              subtitle={letterSetSubtitle(
-                surface.config.letterSet,
-                letters.length,
-                stylesForSubtitle.length > 0,
-                texts,
-              )}
-            />
-          </StudioTextsProvider>
+          <LetterSetEditor
+            product={{ id: product.id, slug: product.slug, name: product.name }}
+            // Ola 32 — mini avatar del header sticky unificado (fallback al mascote).
+            productImageUrl={product.images[0]}
+            variantId={selectedVariant.id}
+            variants={selectable.map((v) => {
+              const a = parseVariantAttributes(v.attributes);
+              return {
+                id: v.id,
+                price: v.price,
+                sizeCm: a.sizeCm,
+                magnet: a.magnet,
+                theme: a.theme,
+                language: a.language,
+              };
+            })}
+            basePrice={product.basePrice}
+            letterSet={surface.config.letterSet}
+            alphabets={{ es: [...ALPHABET.es], en: [...ALPHABET.en] }}
+            initialLanguage={initialLanguage}
+            themeOptions={{ es: themeEs, en: themeEn }}
+            initialTheme={variantAttrs.theme ?? null}
+            stylesByLanguage={{ es: stylesEs, en: stylesEn }}
+            // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
+            // 2026-09-09) → N sets a diseñar, cada uno con sus colores. Al
+            // re-abrir (?designId=) manda el nº de sets GUARDADO en el diseño.
+            initialUnits={recoveredUnits ?? initialCopies}
+            // ?designId= (re-apertura) → selección persistida del diseño.
+            // 2026-10-19 — estilo y borde POR SET (metadata.units[u]); las
+            // claves raíz siguen llegando como default del set 1 / sets sin
+            // clave propia (diseños guardados antes del rediseño).
+            initialStyleId={recoveredStyleId}
+            initialUnitStyles={recoveredUnitStyles}
+            initialWithBorder={recoveredWithBorder}
+            initialUnitBorders={recoveredUnitBorders}
+            initialColorTheme={recoveredThemeId}
+            initialUnitColors={recoveredUnitColors}
+            // Edición desde el carrito: la línea que apuntaba al diseño original se
+            // reemplaza en sitio al confirmar (no duplicar).
+            replacesCartDesignId={replacesCartDesignId}
+            subtitle={letterSetSubtitle(
+              surface.config.letterSet,
+              letters.length,
+              stylesForSubtitle.length > 0,
+              texts,
+            )}
+          />
         </main>
       </div>
     );
@@ -751,63 +744,61 @@ export default async function EstudioPage({
       <SiteHeader />
 
       <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
-        <StudioTextsProvider texts={texts}>
-          <StudioEditorLoader
-            product={{
-              id: product.id,
-              slug: product.slug,
-              name: product.name,
-              sku: product.sku,
-              personalizationKind: product.personalizationKind,
-              // M.3.b.CAT.4 — pasar mergedSchema (variant attributes sobre base);
-              // Lucy 2026-09-05 — packs: photoSlots/sizeCm EFECTIVOS (del diseño
-              // recuperado si existe) para que el editor muestre el N y la medida
-              // correctos desde el primer paint.
-              personalizationSchema: {
-                ...mergedSchema,
-                ...(isPhotoPackStudio
-                  ? {
-                      photoSlots: effectivePhotoSlots,
-                      ...(effectiveSizeCm ? { sizeCm: effectiveSizeCm } : {}),
-                    }
-                  : {}),
-              },
-              images: product.images,
-            }}
-            // M.3.b.CAT — variant elegido en PDP, propagado al cart al finalizar
-            // (NO para packs: el carrito resuelve la variante desde el diseño).
-            variantId={selectedVariant?.id}
-            // Precio de la variante elegida (o base) → fallback de la vista previa.
-            unitPriceCents={selectedVariant?.price ?? product.basePrice}
-            // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
-            // 2026-09-09) → unidades A DISEÑAR: el Estudio abre con N unidades
-            // (cada una editable; la Vista previa las muestra todas; el carrito
-            // recibe 1 línea con el diseño completo). El editor las acota al
-            // máximo del producto (slotCount ≤ 50); sin parámetro = 1.
-            initialUnits={initialCopies}
-            // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
-            replacesCartDesignId={replacesCartDesignId}
-            templates={templates}
-            // N-08 — ?template=<slug> de la PDP: el draft nuevo arranca con ESA
-            // plantilla (el servidor la re-valida en createDraftDesign).
-            initialTemplateId={initialTemplateId}
-            initialDesignId={initialDesignId}
-            initialDesignCanvas={initialDesignCanvas}
-            initialDesignAssets={initialDesignAssets}
-            draftResumeEnabled={studioCustomer !== null}
-            initialDesignTemplateId={initialDesignTemplateId}
-            photoSlots={effectivePhotoSlots}
-            // Lucy 2026-09-05 — catálogo del stepper de N fotos (packs; vacío = no pack).
-            packVariants={packVariants}
-            // Lucy 2026-09-08 — "¿Con imán?" de la PDP (o del diseño recuperado):
-            // el Estudio lo persiste en el canvasData y lo muestra read-only.
-            initialMagnet={effectiveMagnet}
-            predesigned={predesigned}
-            slotLabels={slotLabels}
-            calendarYear={calendarYear}
-            cartAssetIdsInUse={cartAssetIdsInUse}
-          />
-        </StudioTextsProvider>
+        <StudioEditorLoader
+          product={{
+            id: product.id,
+            slug: product.slug,
+            name: product.name,
+            sku: product.sku,
+            personalizationKind: product.personalizationKind,
+            // M.3.b.CAT.4 — pasar mergedSchema (variant attributes sobre base);
+            // Lucy 2026-09-05 — packs: photoSlots/sizeCm EFECTIVOS (del diseño
+            // recuperado si existe) para que el editor muestre el N y la medida
+            // correctos desde el primer paint.
+            personalizationSchema: {
+              ...mergedSchema,
+              ...(isPhotoPackStudio
+                ? {
+                    photoSlots: effectivePhotoSlots,
+                    ...(effectiveSizeCm ? { sizeCm: effectiveSizeCm } : {}),
+                  }
+                : {}),
+            },
+            images: product.images,
+          }}
+          // M.3.b.CAT — variant elegido en PDP, propagado al cart al finalizar
+          // (NO para packs: el carrito resuelve la variante desde el diseño).
+          variantId={selectedVariant?.id}
+          // Precio de la variante elegida (o base) → fallback de la vista previa.
+          unitPriceCents={selectedVariant?.price ?? product.basePrice}
+          // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
+          // 2026-09-09) → unidades A DISEÑAR: el Estudio abre con N unidades
+          // (cada una editable; la Vista previa las muestra todas; el carrito
+          // recibe 1 línea con el diseño completo). El editor las acota al
+          // máximo del producto (slotCount ≤ 50); sin parámetro = 1.
+          initialUnits={initialCopies}
+          // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
+          replacesCartDesignId={replacesCartDesignId}
+          templates={templates}
+          // N-08 — ?template=<slug> de la PDP: el draft nuevo arranca con ESA
+          // plantilla (el servidor la re-valida en createDraftDesign).
+          initialTemplateId={initialTemplateId}
+          initialDesignId={initialDesignId}
+          initialDesignCanvas={initialDesignCanvas}
+          initialDesignAssets={initialDesignAssets}
+          draftResumeEnabled={studioCustomer !== null}
+          initialDesignTemplateId={initialDesignTemplateId}
+          photoSlots={effectivePhotoSlots}
+          // Lucy 2026-09-05 — catálogo del stepper de N fotos (packs; vacío = no pack).
+          packVariants={packVariants}
+          // Lucy 2026-09-08 — "¿Con imán?" de la PDP (o del diseño recuperado):
+          // el Estudio lo persiste en el canvasData y lo muestra read-only.
+          initialMagnet={effectiveMagnet}
+          predesigned={predesigned}
+          slotLabels={slotLabels}
+          calendarYear={calendarYear}
+          cartAssetIdsInUse={cartAssetIdsInUse}
+        />
       </main>
     </div>
   );

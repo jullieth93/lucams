@@ -52,6 +52,7 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/redirects",
   "/admin/retractos",
   "/admin/email-templates",
+  "/admin/contenido/paginas/global",
 ];
 
 describe("canAccessAdminPath — SUPERADMIN", () => {
@@ -171,9 +172,10 @@ describe("canAccessAdminPath — CMS_EDITOR", () => {
     );
   });
 
-  it("permite subrutas del CMS (editor de página/campo, ajustes globales) y query", () => {
-    expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido/paginas/global")).toBe(true);
-    expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido/paginas/emails")).toBe(true);
+  it("permite subrutas editoriales del CMS y NIEGA Ajustes del sitio (global = SUPERADMIN)", () => {
+    expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido/paginas/global")).toBe(false);
+    expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido/configuracion")).toBe(false);
+    expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido/paginas/inicio")).toBe(true);
     expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido/campos/abc123")).toBe(true);
     expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido?q=footer")).toBe(true);
   });
@@ -233,7 +235,7 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     ["/admin/resenas", true, true, false, false],
     ["/admin/clientes", true, true, false, false],
     ["/admin/contenido", true, false, false, true],
-    ["/admin/contenido/paginas/global", true, false, false, true],
+    ["/admin/contenido/paginas/global", true, false, false, false],
     // Fase 4 (2026-09-18): el módulo de plantillas es config sensible → SUPER.
     ["/admin/email-templates", true, false, false, false],
     ["/admin/finanzas", true, false, false, false],
@@ -455,13 +457,10 @@ describe("filterNavByRole — CMS_EDITOR", () => {
     expect(contenido?.items?.map((i) => i.href)).toEqual(["/admin/contenido"]);
   });
 
-  it("Configuración queda con 'Ajustes del sitio' y 'Seguridad' (B-1); 'Plantillas de correo' ya no (Fase 4: solo SUPERADMIN)", () => {
+  it("Configuración queda solo con 'Seguridad' (B-1); 'Ajustes del sitio' y 'Plantillas de correo' son solo SUPERADMIN", () => {
     const out = filterNavByRole(buildNavConContenido(), "CMS_EDITOR");
     const config = out.find((g) => g.label === "Configuración");
-    expect(config?.items?.map((i) => i.href)).toEqual([
-      "/admin/contenido/paginas/global",
-      "/admin/seguridad",
-    ]);
+    expect(config?.items?.map((i) => i.href)).toEqual(["/admin/seguridad"]);
   });
 
   it("con el nav genérico (sin rutas de contenido) solo ve Sistema > Seguridad (B-1)", () => {

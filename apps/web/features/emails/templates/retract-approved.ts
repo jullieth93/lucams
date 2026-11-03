@@ -6,6 +6,7 @@
 
 import { renderEmailLayout } from "../layout";
 import { getSettingValue } from "@/lib/cms";
+import { RETRACT_REFUND_MAX_CALENDAR_DAYS } from "@/lib/consumer-law";
 
 export type RetractApprovedData = {
   orderNumber: string;
@@ -25,7 +26,7 @@ export async function retractApprovedEmail(data: RetractApprovedData) {
 <ol style="padding-left:18px;color:#3D2E5C;">
   <li>Coordinamos contigo el <strong>envío de devolución</strong> del producto. El costo del envío corre por tu cuenta, salvo que el producto haya llegado defectuoso o equivocado.</li>
   <li>Cuando recibamos el producto en buen estado, procesamos tu reembolso.</li>
-  <li>El reembolso se hace en <strong>máximo 15 días calendario</strong> desde tu solicitud (Ley 2439/2024).</li>
+  <li>El reembolso se hace en <strong>máximo ${RETRACT_REFUND_MAX_CALENDAR_DAYS} días calendario</strong> desde tu solicitud (Ley 2439/2024).</li>
 </ol>
 <p style="margin-top:14px;">Escríbenos por WhatsApp para coordinar la devolución:</p>
 <p><a href="${waLink}" style="color:#C42B76;font-weight:600;">Coordinar por WhatsApp →</a></p>
@@ -41,7 +42,7 @@ Aprobamos tu solicitud de retracto de "${data.productName}" (pedido ${data.order
 Cómo sigue:
 1. Coordinamos el envío de devolución del producto (el costo del envío corre por tu cuenta, salvo que llegara defectuoso o equivocado).
 2. Al recibir el producto en buen estado, procesamos tu reembolso.
-3. Reembolso en máximo 15 días calendario desde tu solicitud (Ley 2439/2024).
+3. Reembolso en máximo ${RETRACT_REFUND_MAX_CALENDAR_DAYS} días calendario desde tu solicitud (Ley 2439/2024).
 
 Escríbenos por WhatsApp para coordinar: ${waLink}`;
 

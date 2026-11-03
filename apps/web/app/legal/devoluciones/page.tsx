@@ -27,16 +27,16 @@ En **Lucams Shop** queremos que ames lo que recibes. Aquí te contamos, en crist
 
 ## Tu derecho de retracto
 
-De acuerdo con la **Ley 1480 de 2011 (art. 47)**, tienes **5 días hábiles** contados desde la entrega del producto para **retractarte de tu compra sin darnos ninguna justificación**. Es tu derecho y lo respetamos.
+De acuerdo con la **Ley 1480 de 2011 (art. 47)**, tienes **{{retracto_dias}} días hábiles** contados desde la entrega del producto para **retractarte de tu compra sin darnos ninguna justificación**. Es tu derecho y lo respetamos.
 
 ## ¿Qué productos tienen retracto?
 
-| Producto                                                                       | ¿Aplica retracto?                           |
-| ------------------------------------------------------------------------------ | ------------------------------------------- |
-| **Catálogo estándar** (imanes y diseños pre-armados, sin personalización tuya) | ✅ **Sí** — 5 días hábiles desde la entrega |
-| **Productos del Estudio de Personalización** (con tu foto o tu texto)          | ❌ **No** — la ley los exceptúa             |
-| **Combos del catálogo estándar**                                               | ✅ **Sí**                                   |
-| **Combos que incluyen al menos un producto personalizado**                     | ❌ **No**                                   |
+| Producto                                                                       | ¿Aplica retracto?                                           |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| **Catálogo estándar** (imanes y diseños pre-armados, sin personalización tuya) | ✅ **Sí** — {{retracto_dias}} días hábiles desde la entrega |
+| **Productos del Estudio de Personalización** (con tu foto o tu texto)          | ❌ **No** — la ley los exceptúa                             |
+| **Combos del catálogo estándar**                                               | ✅ **Sí**                                                   |
+| **Combos que incluyen al menos un producto personalizado**                     | ❌ **No**                                                   |
 
 Los productos personalizados quedan por fuera del retracto porque la ley exceptúa los bienes _"confeccionados conforme a las especificaciones del consumidor o claramente personalizados"_ (Ley 1480, art. 47, numeral 3). Como los hacemos con tu foto o tu texto, no podemos revenderlos: por eso no tienen retracto. Esto también te lo avisamos en la página de cada producto antes de comprar.
 
@@ -44,11 +44,11 @@ Los productos personalizados quedan por fuera del retracto porque la ley except�
 
 Es sencillo, y estamos para ayudarte en cada paso:
 
-1. **Escríbenos dentro de los 5 días hábiles** siguientes a la entrega, a **{{email_retracto}}** o por **WhatsApp**. Cuéntanos tu número de pedido o de cotización.
+1. **Escríbenos dentro de los {{retracto_dias}} días hábiles** siguientes a la entrega, a **{{email_retracto}}** o por **WhatsApp**. Cuéntanos tu número de pedido o de cotización.
 2. Te confirmamos que tu retracto aplica y te damos las instrucciones para la **devolución del producto**.
 3. **Devuelves el producto** en las mismas condiciones en que lo recibiste (sin uso, con su empaque original y lo que venía incluido).
 4. Nos indicas los datos para hacerte el **reembolso**.
-5. Cuando recibimos el producto de vuelta te confirmamos; el **reembolso** se hace dentro del plazo legal (máximo **15 días calendario** contados **desde que ejerciste el retracto**, como se explica más abajo).
+5. Cuando recibimos el producto de vuelta te confirmamos; el **reembolso** se hace dentro del plazo legal (máximo **{{retracto_reembolso_dias}} días calendario** contados **desde que ejerciste el retracto**, como se explica más abajo).
 
 ## ¿Quién paga el envío de la devolución?
 
@@ -58,7 +58,7 @@ Cuando te retractas (o sea, cambiaste de opinión, sin que el producto tenga nin
 
 ## Tu reembolso
 
-Una vez ejerces el retracto y devuelves el producto, te regresamos **todo el dinero que pagaste**, en un plazo máximo de **15 días calendario** contados **desde el día en que ejerciste el retracto** (Ley 1480, art. 47, modificado por la **Ley 2439 de 2024**).
+Una vez ejerces el retracto y devuelves el producto, te regresamos **todo el dinero que pagaste**, en un plazo máximo de **{{retracto_reembolso_dias}} días calendario** contados **desde el día en que ejerciste el retracto** (Ley 1480, art. 47, modificado por la **Ley 2439 de 2024**).
 
 - Si pagaste con **tarjeta o PSE**, el reembolso se hace al **mismo medio de pago**, a través de la pasarela de pagos (Wompi).
 - Si pagaste **contraentrega (en efectivo)**, o si acordamos el pago por **transferencia** al cerrar una cotización por WhatsApp, el reembolso se hace por **transferencia bancaria** a la cuenta que nos indiques.

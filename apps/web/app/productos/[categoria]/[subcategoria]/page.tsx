@@ -17,7 +17,6 @@ import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CategoryIntro } from "@/components/category-intro";
-import { CmsText } from "@/components/cms/cms-text";
 
 export async function generateMetadata(
   { params }: { params: Promise<{ categoria: string; subcategoria: string }> },
@@ -176,8 +175,8 @@ export default async function SubCategoryPage({
               <CategoryIntro
                 description={subCat.description}
                 useCase={subCat.useCase}
-                readMore={<CmsText blockKey="categoria.leer-mas" fallback="Leer más" />}
-                readLess={<CmsText blockKey="categoria.leer-menos" fallback="Leer menos" />}
+                readMore="Leer más"
+                readLess="Leer menos"
               />
             )}
             <p className="mt-3 text-sm text-slate-500">

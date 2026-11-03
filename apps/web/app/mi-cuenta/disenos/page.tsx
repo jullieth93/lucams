@@ -17,7 +17,6 @@ import { ChevronLeft, Palette } from "lucide-react";
 import { getCurrentCustomer } from "@/lib/auth";
 import { listCustomerDesigns } from "@/features/personalization/service";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
-import { CmsText } from "@/components/cms/cms-text";
 import { DesignGrid, type DesignCardData } from "./design-grid";
 import { getAccountTexts } from "../account-texts.server";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
@@ -79,10 +78,7 @@ export default async function DisenosPage() {
             por la decisión de producto del watermark. */}
         {rows.some((d) => d.status !== "DRAFT" && d.previewWatermarkedAt !== null) && (
           <p className="text-brand-muted mt-1 text-xs">
-            <CmsText
-              blockKey="account.designs.watermark-note"
-              fallback="Las vistas previas llevan marca de agua — tu impresión final no la lleva."
-            />
+            Las vistas previas llevan marca de agua — tu impresión final no la lleva.
           </p>
         )}
       </header>

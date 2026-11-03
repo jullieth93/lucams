@@ -16,10 +16,10 @@
  */
 
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { ArrowLeft, Image as ImageIcon } from "lucide-react";
 import { AdminButton, AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { getCmsMediaUsageDetail, listCmsMedia } from "@/lib/cms-media";
 import { MediaLibraryClient } from "./media-library-client";
 
@@ -28,8 +28,7 @@ export const metadata: Metadata = {
 };
 
 export default async function MediatecaPage() {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireRole(ADMIN_ROLE_SETS.CONTENT);
 
   const media = await listCmsMedia(120);
   const usage = await getCmsMediaUsageDetail(media.map((m) => m.id));

@@ -97,9 +97,12 @@ test("modo edición in-place: banner, anotación, click → editor del campo, sa
   await heroTitle.click();
   await page.waitForURL(/\/admin\/contenido\/campos\/(?!por-key)[^/]+$/, { timeout: 30_000 });
 
-  // De vuelta a la portada: «Salir» apaga el modo (banner y anotaciones fuera).
+  // De vuelta a la portada: «Salir» del overlay apaga el modo (banner y anotaciones fuera).
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: /^Salir$/i }).click();
+  await page
+    .locator('form[action="/api/admin/cms/edit-mode"]')
+    .getByRole("button", { name: /^Salir$/i })
+    .click();
   await page.waitForURL((url) => url.pathname === "/");
   await expect(page.getByText(/Modo edición:/i)).toHaveCount(0);
   await expect(page.locator("[data-cms-key]")).toHaveCount(0);

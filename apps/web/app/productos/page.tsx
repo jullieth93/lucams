@@ -52,7 +52,7 @@ import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
 import { TrackViewItemList } from "@/components/analytics-trackers";
 import { CategoryIntro } from "@/components/category-intro";
-import { CmsText } from "@/components/cms/cms-text";
+import { getPageSeo } from "@/lib/cms-tokens";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -84,13 +84,20 @@ export async function generateMetadata({
       };
     }
   }
-  const description =
-    "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos y más. Hechos a mano en Colombia.";
-  return {
+  const seo = await getPageSeo("seo.page.catalogo", {
     title: "Tienda",
-    description,
+    description:
+      "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos y más. Hechos a mano en Colombia.",
+  });
+  return {
+    title: seo.title,
+    description: seo.description,
     alternates: { canonical },
-    openGraph: { title: "Tienda · Lucams Shop", description, type: "website" },
+    openGraph: {
+      title: `${seo.title} · Lucams Shop`,
+      description: seo.description,
+      type: "website",
+    },
   };
 }
 
@@ -316,15 +323,13 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
               <CategoryIntro
                 description={activeCategory.description ?? ""}
                 useCase={activeCategory.useCase}
-                readMore={<CmsText blockKey="categoria.leer-mas" fallback="Leer más" />}
-                readLess={<CmsText blockKey="categoria.leer-menos" fallback="Leer menos" />}
+                readMore="Leer más"
+                readLess="Leer menos"
               />
             ) : (
               <p className="text-brand-purple-dark/70 mt-2 max-w-2xl text-base">
-                <CmsText
-                  blockKey="productos.intro-default"
-                  fallback="Productos que cuentan historias. Personalizables, hechos a mano, listos para llegar a tu espacio."
-                />
+                Productos que cuentan historias. Personalizables, hechos a mano, listos para llegar
+                a tu espacio.
               </p>
             )}
           </header>

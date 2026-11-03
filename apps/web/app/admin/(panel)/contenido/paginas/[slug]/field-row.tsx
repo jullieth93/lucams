@@ -15,10 +15,12 @@
  */
 
 import { useActionState, useEffect, useState } from "react";
-import { Check, Loader2, Save, Send } from "lucide-react";
+import Link from "next/link";
+import { Check, ExternalLink, History, Loader2, Save, Send } from "lucide-react";
 import { AdminBadge } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Hint } from "@/components/ui/tooltip";
 import { CustomColorPicker } from "@/components/color-picker";
 import {
@@ -58,23 +60,34 @@ export function FieldRow({
   field,
   latestVersionId,
   pageSlug,
+  publicPath,
 }: {
   field: InlineField;
   latestVersionId: string | null;
   pageSlug: string;
+  /** Ruta pública individual asociada al campo (ej. `/legal/garantias` o `/productos`). */
+  publicPath?: string | null;
 }) {
+  const isSeo = field.key.startsWith("seo.page.");
   const [value, setValue] = useState(field.value);
   const [savedValue, setSavedValue] = useState(field.value);
+  const [labelValue, setLabelValue] = useState(field.label);
+  const [savedLabelValue, setSavedLabelValue] = useState(field.label);
   const [state, formAction, pending] = useActionState<CmsActionState | null, FormData>(
     saveCmsFieldAction,
     null,
   );
 
-  const isDirty = value !== savedValue;
+  const isDirty = value !== savedValue || (isSeo && labelValue !== savedLabelValue);
 
   useEffect(() => {
     // Tras guardar OK, lo actual pasa a ser lo "guardado" (isDirty vuelve a false).
-    if (state?.ok) queueMicrotask(() => setSavedValue(value));
+    if (state?.ok) {
+      queueMicrotask(() => {
+        setSavedValue(value);
+        setSavedLabelValue(labelValue);
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
@@ -83,14 +96,20 @@ export function FieldRow({
     // misma fila, "Actualizar caché", o edición hecha en otra sesión) y no hay
     // una edición en curso, sincroniza el input — antes el useState inicial
     // quedaba congelado con el valor viejo (feedback Lucy 2026-09-18).
-    if (field.value !== savedValue && value === savedValue) {
+    if (
+      (field.value !== savedValue || field.label !== savedLabelValue) &&
+      value === savedValue &&
+      labelValue === savedLabelValue
+    ) {
       queueMicrotask(() => {
         setValue(field.value);
         setSavedValue(field.value);
+        setLabelValue(field.label);
+        setSavedLabelValue(field.label);
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [field.value]);
+  }, [field.value, field.label]);
 
   const canPublish = field.kind === "BLOCK" && field.hasDraft && latestVersionId;
 
@@ -147,7 +166,9 @@ export function FieldRow({
     <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-brand-purple-dark text-sm font-semibold">{field.label}</span>
+          <span className="text-brand-purple-dark text-sm font-semibold">
+            {isSeo ? `Página ${publicPath ?? field.key.replace("seo.page.", "/")}` : field.label}
+          </span>
           {field.isPublished && !field.hasDraft ? (
             <AdminBadge tone="emerald">Publicado</AdminBadge>
           ) : field.isPublished ? (
@@ -155,49 +176,139 @@ export function FieldRow({
           ) : (
             <AdminBadge tone="amber">Borrador</AdminBadge>
           )}
+          {publicPath && (
+            <a
+              href={publicPath}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold"
+            >
+              Ver {publicPath}
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
         </div>
         {field.helpText && <p className="text-brand-muted mt-0.5 text-xs">{field.helpText}</p>}
-        <p className="text-brand-muted mt-0.5 font-mono text-[10px]">{field.key}</p>
-        {/* Lucy 2026-09-18 — el «label» de campos como «Guardando...» ES el texto
-            original sembrado y no cambia al editar; esta línea muestra explícito
-            qué valor está VIVO en el sitio para que no se confunda con el label. */}
-        {field.publishedValue !== null && (
-          <p className="text-brand-muted mt-1 text-xs">
-            En el sitio ahora:{" "}
-            <span className="text-brand-purple-dark font-medium">
-              «
-              {field.publishedValue.length > 90
-                ? `${field.publishedValue.slice(0, 90)}…`
-                : field.publishedValue}
-              »
-            </span>
-          </p>
+        <div className="mt-0.5 flex flex-wrap items-center gap-3">
+          <p className="text-brand-muted font-mono text-[10px]">{field.key}</p>
+          {field.kind === "BLOCK" && (
+            <Link
+              href={`/admin/contenido/campos/${field.id}`}
+              className="text-brand-muted hover:text-brand-purple inline-flex items-center gap-1 text-[11px] font-medium"
+            >
+              <History className="h-3 w-3" />
+              Historial y opciones
+            </Link>
+          )}
+        </div>
+        {isSeo ? (
+          <div className="border-brand-purple/10 mt-3 max-w-lg rounded-lg border bg-slate-50/70 p-3">
+            <p className="text-[11px] font-medium text-slate-500">
+              Vista aproximada en Google · lucamsshop.com{publicPath === "/" ? "" : publicPath}
+            </p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-blue-700">
+              {labelValue.trim() || "Lucams Shop"}
+              {field.key === "seo.page.home" ? "" : " | Lucams Shop"}
+            </p>
+            <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-slate-600">
+              {value.trim() || "Sin meta description."}
+            </p>
+          </div>
+        ) : (
+          /* Lucy 2026-09-18 — el «label» de campos como «Guardando...» ES el texto
+             original sembrado y no cambia al editar; esta línea muestra explícito
+             qué valor está VIVO en el sitio para que no se confunda con el label. */
+          field.publishedValue !== null && (
+            <p className="text-brand-muted mt-1 text-xs">
+              En el sitio ahora:{" "}
+              <span className="text-brand-purple-dark font-medium">
+                «
+                {field.publishedValue.length > 90
+                  ? `${field.publishedValue.slice(0, 90)}…`
+                  : field.publishedValue}
+                »
+              </span>
+            </p>
+          )
         )}
       </div>
 
-      <div className="w-full max-w-md space-y-2">
-        <form action={formAction} className="flex items-start gap-2">
+      <div className={isSeo ? "w-full max-w-lg space-y-2" : "w-full max-w-md space-y-2"}>
+        <form action={formAction} className="space-y-2">
           <input type="hidden" name="id" value={field.id} />
-          <div className="flex-1">{input}</div>
-          <Hint content={isDirty ? "Guardar el cambio" : "No hay cambios para guardar"}>
-            <span tabIndex={0} className="inline-flex">
-              <Button
-                type="submit"
-                size="sm"
-                disabled={pending || !isDirty}
-                className="bg-gradient-brand text-white hover:brightness-110 disabled:opacity-50"
-              >
-                {pending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <>
-                    <Save className="mr-1 h-3.5 w-3.5" />
-                    Guardar
-                  </>
-                )}
-              </Button>
-            </span>
-          </Hint>
+          {isSeo ? (
+            <div className="space-y-2.5">
+              <div className="space-y-1">
+                <Label
+                  htmlFor={`seo-label-${field.id}`}
+                  className="text-brand-purple-dark text-xs font-semibold"
+                >
+                  Título en Google ({"<title>"})
+                </Label>
+                <Input
+                  id={`seo-label-${field.id}`}
+                  name="label"
+                  value={labelValue}
+                  onChange={(e) => setLabelValue(e.target.value)}
+                  disabled={pending}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor={`seo-body-${field.id}`}
+                  className="text-brand-purple-dark text-xs font-semibold"
+                >
+                  Descripción en Google (meta description)
+                </Label>
+                {input}
+              </div>
+              <div className="flex justify-end">
+                <Hint content={isDirty ? "Guardar el cambio" : "No hay cambios para guardar"}>
+                  <span tabIndex={0} className="inline-flex">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={pending || !isDirty}
+                      className="bg-gradient-brand text-white hover:brightness-110 disabled:opacity-50"
+                    >
+                      {pending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <>
+                          <Save className="mr-1 h-3.5 w-3.5" />
+                          Guardar
+                        </>
+                      )}
+                    </Button>
+                  </span>
+                </Hint>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2">
+              <div className="flex-1">{input}</div>
+              <Hint content={isDirty ? "Guardar el cambio" : "No hay cambios para guardar"}>
+                <span tabIndex={0} className="inline-flex">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={pending || !isDirty}
+                    className="bg-gradient-brand text-white hover:brightness-110 disabled:opacity-50"
+                  >
+                    {pending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Save className="mr-1 h-3.5 w-3.5" />
+                        Guardar
+                      </>
+                    )}
+                  </Button>
+                </span>
+              </Hint>
+            </div>
+          )}
         </form>
 
         {state?.error && <p className="text-xs text-rose-600">{state.error}</p>}

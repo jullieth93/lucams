@@ -12,12 +12,12 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getCmsList } from "./cms";
+import { getCmsBlock, getCmsList, getSettingValue } from "./cms";
 
-const findFirst = vi.hoisted(() => vi.fn());
+const findMany = vi.hoisted(() => vi.fn());
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/db", () => ({ prisma: { cmsField: { findFirst } } }));
+vi.mock("@/lib/db", () => ({ prisma: { cmsField: { findMany } } }));
 vi.mock("next/cache", () => ({ unstable_cache: (fn: unknown) => fn }));
 
 type Link = { label: string; href: string };
@@ -32,22 +32,26 @@ const validateLink = (v: unknown): Link | null => {
 };
 
 function mockPublishedBody(body: string) {
-  findFirst.mockResolvedValue({
-    key: "footer.legal.links",
-    label: "Enlaces legales",
-    helpText: null,
-    type: "JSON",
-    category: "FOOTER",
-    updatedAt: new Date("2026-07-30T00:00:00Z"),
-    publishedVersion: { title: null, body, version: 3 },
-  });
+  findMany.mockResolvedValue([
+    {
+      key: "footer.legal.links",
+      kind: "BLOCK",
+      label: "Enlaces legales",
+      helpText: null,
+      type: "JSON",
+      category: "FOOTER",
+      isPublished: true,
+      updatedAt: new Date("2026-07-30T00:00:00Z"),
+      publishedVersion: { title: null, body, version: 3 },
+    },
+  ]);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("getCmsList", () => {
+describe("getCmsList & snapshot CMS", () => {
   it("devuelve los items tipados cuando el body es un array válido", async () => {
     mockPublishedBody(
       JSON.stringify([
@@ -62,8 +66,39 @@ describe("getCmsList", () => {
     ]);
   });
 
+  it("hidrata updatedAt como instancia real de Date incluso tras serialización JSON", async () => {
+    findMany.mockResolvedValue([
+      {
+        key: "home.hero.badge",
+        kind: "BLOCK",
+        label: "Badge",
+        helpText: null,
+        type: "TEXT",
+        category: "HOME",
+        isPublished: true,
+        updatedAt: "2026-11-02T12:00:00.000Z" as unknown as Date,
+        publishedVersion: { title: "Badge", body: "Hecho a mano", version: 1 },
+      },
+      {
+        key: "CONTACT_EMAIL",
+        kind: "SETTING",
+        label: "Email",
+        helpText: null,
+        type: "EMAIL",
+        category: "CONTACT",
+        isPublished: true,
+        updatedAt: new Date("2026-11-02T12:00:00.000Z"),
+        publishedVersion: { title: null, body: "hola@lucamsshop.com", version: 1 },
+      },
+    ]);
+    const block = await getCmsBlock("home.hero.badge");
+    expect(block?.body).toBe("Hecho a mano");
+    expect(block?.updatedAt).toBeInstanceOf(Date);
+    expect(await getSettingValue("CONTACT_EMAIL", "fallback@x.co")).toBe("hola@lucamsshop.com");
+  });
+
   it("cae al fallback si el campo no existe o no está publicado", async () => {
-    findFirst.mockResolvedValue(null);
+    findMany.mockResolvedValue([]);
     expect(await getCmsList("footer.legal.links", validateLink, FALLBACK)).toEqual(FALLBACK);
   });
 
@@ -88,7 +123,7 @@ describe("getCmsList", () => {
   });
 
   it("cae al fallback si la base de datos falla", async () => {
-    findFirst.mockRejectedValue(new Error("db down"));
+    findMany.mockRejectedValue(new Error("db down"));
     expect(await getCmsList("footer.legal.links", validateLink, FALLBACK)).toEqual(FALLBACK);
   });
 });

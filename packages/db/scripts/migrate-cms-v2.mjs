@@ -2,21 +2,21 @@
  * Migración CMS v2 — site map → CmsPage/CmsSection/CmsField.
  *
  * ORIGEN: este script migró CmsBlock + SiteSetting (legacy) al modelo v2; tras
- * el drop de las tablas legacy (fase A2, 2026-07-31) queda como herramienta de
- * UPSERT del site map — es el paso 2 del flujo «agregar un campo CMS»
- * (docs/CONVENTIONS.md § CMS).
+ * el drop de las tablas legacy y el aterrizaje a la arquitectura de 3 capas,
+ * queda como herramienta canónica de UPSERT del site map (9 contenedores,
+ * 29 secciones, 166 campos reales: 105 BLOCK + 61 SETTING).
  *
  * Idempotente y SEGURO de re-ejecutar:
  *   - Estructura (páginas/secciones): upsert completo (títulos, orden…).
+ *   - Campos existentes: actualiza sección, orden, categoría y helpText sin
+ *     pisar nunca `body`, `publishedVersionId` ni el historial de versiones;
+ *     en `faq.*` y `seo.page.*` preserva `label` (que actúa como pregunta o
+ *     <title> editable), salvo el typo histórico `Lucams_shop`.
  *   - Campos nuevos declarados en el site map (`fields`): se crean con su
- *     valor por defecto + v1 publicada solo si NO existen — NUNCA pisa
- *     body/isPublished/versiones de campos ya editados desde el admin.
+ *     valor por defecto + v1 publicada (+ `defaultListItems` si aplica).
  *
  * N-06 (2026-09-12): DRY-RUN por defecto (`--apply` ejecuta) + env-guard
  * fail-closed (bloquea PRD/remotos no reconocidos).
- *
- * Cierra con un reporte de estado: conteos en destino, campos publicados sin
- * versión publicada, y keys caídas en la página "otros".
  *
  * Uso:
  *   make migrate-cms-v2          (el target pasa --apply)
@@ -47,9 +47,15 @@ const report = {
   pages: 0,
   sections: 0,
   mapFieldsCreated: 0,
-  inOtros: [],
+  mapFieldsUpdated: 0,
   anomalies: [],
 };
+
+function shouldPreserveExistingLabel(key, existingLabel) {
+  if (!existingLabel) return false;
+  if (existingLabel.startsWith("Lucams_shop")) return false;
+  return key.startsWith("faq.") || key.startsWith("seo.page.");
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Estructura: páginas + secciones del site map.
@@ -117,7 +123,7 @@ async function ensureStructure() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. Campos NUEVOS declarados en el site map (brechas de contenido).
+// 2. Campos declarados en el site map.
 // ─────────────────────────────────────────────────────────────────────────────
 async function upsertMapFields() {
   for (const page of SITE_MAP.pages) {
@@ -125,32 +131,51 @@ async function upsertMapFields() {
       if (!section.fields?.length) continue;
       const sectionId = sectionIdByPath.get(`${page.slug}/${section.key}`);
       for (const def of section.fields) {
-        // En dry-run la sección puede no existir aún (se crea en --apply): la
-        // key de CmsField es única global, así que el chequeo por key basta
-        // para el plan (crear vs actualizar).
         if (!sectionId && APPLY) {
-          console.warn(`  ⚠ Sección ${page.slug}/${section.key} sin id — campo ${def.key} omitido.`);
+          console.warn(
+            `  ⚠ Sección ${page.slug}/${section.key} sin id — campo ${def.key} omitido.`,
+          );
           continue;
         }
+        const existing = await prisma.cmsField.findUnique({ where: { key: def.key } });
+        const label =
+          existing && shouldPreserveExistingLabel(def.key, existing.label)
+            ? existing.label
+            : def.label;
+
         const structural = {
           ...(sectionId ? { sectionId } : {}),
           kind: def.kind,
-          label: def.label,
+          label,
           helpText: def.helpText ?? null,
           type: def.type,
           category: def.category,
           sortOrder: def.sortOrder ?? 0,
-          // metadata solo cuando el mapa la declara (ej. listSchema de los
-          // campos LISTA) — si no viene, se conserva la que ya tenga el campo.
           ...(def.metadata ? { metadata: def.metadata } : {}),
         };
-        const existing = await prisma.cmsField.findUnique({ where: { key: def.key } });
+
         if (existing) {
+          report.mapFieldsUpdated++;
           if (APPLY) {
             await prisma.cmsField.update({ where: { id: existing.id }, data: structural });
+            if (Array.isArray(def.defaultListItems) && def.defaultListItems.length > 0) {
+              const itemsCount = await prisma.cmsListItem.count({
+                where: { fieldId: existing.id },
+              });
+              if (itemsCount === 0 && existing.body === def.body) {
+                await prisma.cmsListItem.createMany({
+                  data: def.defaultListItems.map((values, position) => ({
+                    fieldId: existing.id,
+                    position,
+                    values,
+                  })),
+                });
+              }
+            }
           }
           continue;
         }
+
         report.mapFieldsCreated++;
         if (APPLY) {
           const field = await prisma.cmsField.create({
@@ -169,26 +194,39 @@ async function upsertMapFields() {
             where: { id: field.id },
             data: { publishedVersionId: v1.id },
           });
+          if (Array.isArray(def.defaultListItems) && def.defaultListItems.length > 0) {
+            await prisma.cmsListItem.createMany({
+              data: def.defaultListItems.map((values, position) => ({
+                fieldId: field.id,
+                position,
+                values,
+              })),
+            });
+          }
         }
       }
     }
   }
-  if (report.mapFieldsCreated > 0) {
-    console.log(
-      `Campos nuevos del site map: ${report.mapFieldsCreated} ${APPLY ? "creados" : "a crear (dry-run)"}.`,
-    );
-  }
+  console.log(
+    `Campos del site map: ${report.mapFieldsCreated} ${APPLY ? "creados" : "a crear"} · ${report.mapFieldsUpdated} ${APPLY ? "alineados" : "existentes"}.`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. Paridad: origen vs destino + publicación consistente.
+// 3. Estado y consistencia de publicación.
 // ─────────────────────────────────────────────────────────────────────────────
 async function parity() {
-  const [fieldBlocks, fieldSettings, publishedNoVersion] = await Promise.all([
+  const siteMapKeys = new Set(
+    SITE_MAP.pages.flatMap((p) => p.sections.flatMap((s) => (s.fields ?? []).map((f) => f.key))),
+  );
+  const [fieldBlocks, fieldSettings, publishedNoVersion, extraFields] = await Promise.all([
     prisma.cmsField.count({ where: { kind: "BLOCK", deletedAt: null } }),
     prisma.cmsField.count({ where: { kind: "SETTING", deletedAt: null } }),
     prisma.cmsField.count({
       where: { isPublished: true, publishedVersionId: null, deletedAt: null },
+    }),
+    prisma.cmsField.count({
+      where: { key: { notIn: [...siteMapKeys] } },
     }),
   ]);
 
@@ -197,12 +235,10 @@ async function parity() {
   console.log(
     `Campos publicados sin versión publicada: ${publishedNoVersion} ${publishedNoVersion === 0 ? "OK" : "✗ REVISAR"}`,
   );
-  if (report.inOtros.length > 0) {
-    console.log(`⚠️  Keys sin clasificar (página "otros"): ${report.inOtros.join(", ")}`);
-  }
-  if (report.anomalies.length > 0) {
-    console.log("⚠️  Anomalías:");
-    for (const a of report.anomalies) console.log(`   - ${a}`);
+  if (extraFields > 0) {
+    console.log(
+      `⚠️  Campos en DB fuera del site map: ${extraFields} (usa sync-and-prune-cms-v2.mjs para sanearlos).`,
+    );
   }
   if (!APPLY) {
     console.log("\nDRY-RUN (sin cambios). Para ejecutar: node scripts/migrate-cms-v2.mjs --apply");

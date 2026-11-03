@@ -235,9 +235,9 @@ apps/web/app/estudio/[slug]/
 ├── studio-style-toolbar.tsx           # Toolbar de estilo: marco, fondo, tipografía
 │                                      #   · bottom-sheet móvil con botón resumen
 ├── studio-photo-preview.tsx           # Preview de foto subida
-├── studio-texts.ts                    # Tipos + defaults del copy del Estudio
+├── studio-texts.ts                    # Tipos + copy funcional tipado del Estudio (Capa 3)
 ├── studio-texts-provider.tsx          # Context client del copy (useStudioTexts)
-├── studio-texts.server.ts             # getStudioTexts: 1 query por prefijo estudio.* (CMS B1)
+├── studio-texts.server.ts             # getStudioTexts: helper server sobre DEFAULT_STUDIO_TEXTS
 ├── name-editor.tsx                    # Editor de Nombre Personalizado (fichas de letras)
 ├── letter-set-editor.tsx              # Editor de sets de letras — Abecedario/Vocales (ADR-057)
 ├── letter-tile.tsx                    # Ficha de letra individual
@@ -700,11 +700,10 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   `features/ai/actions.ts → suggestDesignAction` (Google Gemini — `gemini-provider.ts`);
   `sanitizeOccasion` (`features/ai/schemas.ts`) remueve PII de la ocasión antes de llamar al
   LLM. Falla-seguro: si el asistente no está disponible, mensaje amable y nada se rompe.
-- **Copy 100% administrable (CMS v2, roadmap B1)**: `studio-texts.server.ts` resuelve UNA
-  query por prefijo `estudio.*` (cache tag `cms`) e inyecta con `<StudioTextsProvider>`; los
-  defaults de `studio-texts.ts` son el copy exacto pre-CMS (regla de oro). Incluye el panel IA
-  (`estudio.ia.*`, ej. la nota de privacidad `estudio.ia.nota-privacidad`) y los
-  nombres audibles (aria-label/alt/sr-only).
+- **Copy funcional tipado en código (Capa 3 CMS v2)**: todo el copy de interfaz, tooltips,
+  panel IA y nombres audibles (`aria-label`/`alt`/`sr-only`) vive centralizado y tipado en
+  `studio-texts.ts` (`DEFAULT_STUDIO_TEXTS`), consumido vía `useStudioTexts()` sin viajes a
+  base de datos ni serialización duplicada en el payload RSC.
 - **Vistas 3D «míralo en tu espacio» (ADR-063/ADR-172)**: nevera, tablero magnético, libro
   (separadores), calendario, repisa y regalo — TODAS react-three-fiber con entorno
   compartido (`studio-3d-environment.tsx`) y texturas procedurales (`lib/procedural-textures.ts`).

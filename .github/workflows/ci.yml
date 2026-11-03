@@ -68,12 +68,12 @@ jobs:
       - name: Lint
         run: pnpm -r lint
 
-      # Gate de cobertura de contenido (roadmap D1 — ratchet anti-regresión):
-      # falla si aparece copy nuevo en español fuera del CMS (literal no
-      # presente en el baseline) o si el % global de cobertura baja del umbral
-      # fijado en packages/db/scripts/content-coverage-baseline.json.
-      - name: Auditoría de cobertura de contenido (CMS)
-        run: pnpm --filter @lucams/db exec node scripts/audit-content-coverage.mjs --check
+      # Gate de paridad exacta CMS v2 (ADR-082 — modelo de 3 capas):
+      # verifica por AST que toda clave CMS leída en apps/web exista en
+      # packages/db/scripts/cms-site-map.mjs y que ningún campo declarado en el
+      # site-map quede huérfano sin lector en apps/web (<1s, sin BD).
+      - name: Paridad exacta CMS v2 (código ↔ cms-site-map.mjs)
+        run: pnpm --filter web exec vitest run lib/cms-sitemap-parity.test.ts
 
       # Lint de guards (N-06, 2026-09-12): todo script de packages/db/scripts que
       # escribe en DB debe importar lib/env-guard.mjs (fail-closed → PRD/remotos

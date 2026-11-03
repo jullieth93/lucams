@@ -8,7 +8,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LucamsLogo } from "@/components/lucams-logo";
-import { CmsText } from "@/components/cms/cms-text";
 
 export const metadata: Metadata = {
   title: "Página no encontrada",
@@ -26,13 +25,10 @@ export default function NotFound() {
       </div>
 
       <h1 className="font-display text-brand-purple-dark mt-8 text-3xl sm:text-5xl">
-        <CmsText blockKey="error.404.title" fallback="Esta página se nos perdió 👀" />
+        Esta página se nos perdió 👀
       </h1>
       <p className="text-brand-purple-dark/70 mt-3 max-w-md text-base">
-        <CmsText
-          blockKey="error.404.description"
-          fallback="Probablemente cambiamos algo de lugar o el link tiene un typo. Te ayudamos a volver:"
-        />
+        Probablemente cambiamos algo de lugar o el link tiene un typo. Te ayudamos a volver:
       </p>
 
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

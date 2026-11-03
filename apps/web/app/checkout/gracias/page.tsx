@@ -53,6 +53,7 @@ import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
+import { resolveCmsTokens } from "@/lib/cms-tokens";
 import {
   computeEarnedPoints,
   pointValueCents,
@@ -75,14 +76,11 @@ import {
   parseVariantAttributes,
 } from "@/features/products/variant-schemas";
 
-export async function generateMetadata(): Promise<Metadata> {
+export const metadata: Metadata = {
   // noindex: la URL trae el id de la transacción de Wompi.
-  const block = await getCmsBlock("checkout.gracias.meta-title");
-  return {
-    title: block?.body ?? "¡Gracias! · Checkout",
-    robots: { index: false, follow: false },
-  };
-}
+  title: "¡Gracias! · Checkout",
+  robots: { index: false, follow: false },
+};
 
 // Esta page corre el FALLBACK processPaidOrder (getTransaction ~16s + createShipment
 // 20s no-idempotente) cuando el webhook se demoró. Igual que el webhook, la función
@@ -523,9 +521,7 @@ async function ApprovedPage({
 
       <div className="from-brand-purple/10 to-brand-pink/10 mt-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-r px-5 py-2.5">
         <LucamsLogo className="h-6 w-6" />
-        <span className="text-brand-purple-dark text-sm font-medium">
-          <CmsText blockKey="checkout.gracias.order-label" fallback="Pedido" />
-        </span>
+        <span className="text-brand-purple-dark text-sm font-medium">Pedido</span>
         <code className="text-brand-purple-dark rounded bg-white/60 px-2 py-0.5 font-mono text-sm font-bold">
           {order?.number ?? "—"}
         </code>
@@ -539,9 +535,7 @@ async function ApprovedPage({
         variante + desglose, cantidad y badge «Tu diseño». */}
       {order?.items && order.items.length > 0 && (
         <div className="mt-7">
-          <p className="text-brand-muted mb-2 text-xs font-medium">
-            <CmsText blockKey="checkout.gracias.items-heading" fallback="Esto es lo que pediste" />
-          </p>
+          <p className="text-brand-muted mb-2 text-xs font-medium">Esto es lo que pediste</p>
           <ul className="mx-auto grid max-w-xl gap-2.5 text-left">
             {order.items.map((it) => {
               // 2026-10-13 — el diseño personalizado se exhibe CON marca de agua
@@ -557,7 +551,7 @@ async function ApprovedPage({
                 unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
               );
               // 2026-10-26 — sustantivo kind-aware del badge «N …» ("tiras",
-              // "sets"…); el bloque CMS publicado manda sobre este fallback.
+              // "sets"…).
               const unitNounPlural = unitCountNounForLine({
                 personalizationKind: it.variant.product.personalizationKind,
                 variantName: it.variant.name,
@@ -595,15 +589,7 @@ async function ApprovedPage({
                       <Sparkles className="text-brand-muted h-6 w-6" />
                     </div>
                   )}
-                  <DesignUnitsBadge
-                    count={disp?.pageUrls?.length ?? 0}
-                    label={
-                      <CmsText
-                        blockKey="checkout.gracias.unidades-badge"
-                        fallback={unitNounPlural}
-                      />
-                    }
-                  />
+                  <DesignUnitsBadge count={disp?.pageUrls?.length ?? 0} label={unitNounPlural} />
                 </>
               );
               return (
@@ -627,38 +613,20 @@ async function ApprovedPage({
                       badge={
                         <DesignUnitsBadge
                           count={disp?.pageUrls?.length ?? 0}
-                          label={
-                            <CmsText
-                              blockKey="checkout.gracias.unidades-badge"
-                              fallback={unitNounPlural}
-                            />
-                          }
+                          label={unitNounPlural}
                         />
                       }
                       sizeClassName="border-brand-purple/10 h-20 w-20 overflow-hidden rounded-lg border bg-white sm:h-24 sm:w-24"
                       previewUrl={disp.displayUrl}
                       pageLabels={pageLabels}
                       watermarkNote={
-                        disp.watermarked ? (
-                          <CmsText
-                            blockKey="cart.vista-previa-watermark-nota"
-                            fallback="Vista previa con marca de agua — tu impresión final no la lleva."
-                          />
-                        ) : null
+                        disp.watermarked
+                          ? "Vista previa con marca de agua — tu impresión final no la lleva."
+                          : null
                       }
                       productName={it.variant.product.name}
-                      title={
-                        <CmsText
-                          blockKey="cart.vista-previa-diseno-titulo"
-                          fallback="Tu diseño ·"
-                        />
-                      }
-                      description={
-                        <CmsText
-                          blockKey="cart.vista-previa-diseno-desc"
-                          fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
-                        />
-                      }
+                      title="Tu diseño ·"
+                      description="Vista previa ampliada del diseño personalizado de esta línea del pedido."
                     />
                   ) : (
                     <div className="border-brand-purple/10 relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border bg-white sm:h-24 sm:w-24">
@@ -681,7 +649,7 @@ async function ApprovedPage({
                       </span>
                       {personalized && (
                         <span className="bg-brand-purple/10 text-brand-purple inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold">
-                          <CmsText blockKey="checkout.gracias.custom-badge" fallback="Tu diseño" />
+                          Tu diseño
                         </span>
                       )}
                     </div>
@@ -695,29 +663,19 @@ async function ApprovedPage({
             it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
           ) && (
             <p className="text-brand-muted mx-auto mt-2 max-w-md text-[11px]">
-              <CmsText
-                blockKey="checkout.gracias.watermark-note"
-                fallback="Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva."
-              />
+              Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la
+              lleva.
             </p>
           )}
         </div>
       )}
 
       <div className="mx-auto mt-8 max-w-md space-y-3 text-left">
-        <DetailRow
-          icon={<Mail className="h-4 w-4" />}
-          label={
-            <CmsText blockKey="checkout.gracias.email-label" fallback="Confirmación enviada a" />
-          }
-        >
+        <DetailRow icon={<Mail className="h-4 w-4" />} label="Confirmación enviada a">
           {order?.email ?? "—"}
         </DetailRow>
         {addr && (
-          <DetailRow
-            icon={<MapPin className="h-4 w-4" />}
-            label={<CmsText blockKey="checkout.gracias.address-label" fallback="Enviamos a" />}
-          >
+          <DetailRow icon={<MapPin className="h-4 w-4" />} label="Enviamos a">
             <span className="block">{addr.fullName}</span>
             <span className="text-brand-muted block text-xs">
               {addr.addressLine1}
@@ -727,10 +685,7 @@ async function ApprovedPage({
           </DetailRow>
         )}
         {order?.shippingCarrier && (
-          <DetailRow
-            icon={<Package className="h-4 w-4" />}
-            label={<CmsText blockKey="checkout.gracias.carrier-label" fallback="Transportadora" />}
-          >
+          <DetailRow icon={<Package className="h-4 w-4" />} label="Transportadora">
             {order.shippingCarrier
               .split("-")
               .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -739,7 +694,7 @@ async function ApprovedPage({
         )}
         <DetailRow
           icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-          label={<CmsText blockKey="checkout.gracias.total-label" fallback="Total pagado" />}
+          label="Total pagado"
         >
           <strong className="text-brand-purple-dark">{formatCOP(order?.total ?? 0)}</strong>
         </DetailRow>
@@ -756,8 +711,7 @@ async function ApprovedPage({
         ))}
 
       <div className="text-brand-muted mt-8 text-xs">
-        <CmsText blockKey="checkout.gracias.receipt-label" fallback="Comprobante Wompi" />:{" "}
-        <code className="font-mono">{txId.slice(0, 16)}…</code>
+        Comprobante Wompi: <code className="font-mono">{txId.slice(0, 16)}…</code>
       </div>
 
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -767,18 +721,12 @@ async function ApprovedPage({
             variant="outline"
             className="border-brand-purple/30 text-brand-purple-dark"
           >
-            <CmsText blockKey="checkout.gracias.keep-shopping-cta" fallback="Seguir comprando" />
+            Seguir comprando
           </Button>
         </Link>
         <Button asChild size="lg" className="bg-gradient-brand text-white hover:brightness-110">
           <Link href={orderUrl}>
-            <LinkPendingLabel>
-              {isGuest ? (
-                <CmsText blockKey="checkout.gracias.order-cta-guest" fallback="Ver mi pedido" />
-              ) : (
-                <CmsText blockKey="checkout.gracias.order-cta-account" fallback="Ver mis pedidos" />
-              )}
-            </LinkPendingLabel>
+            <LinkPendingLabel>{isGuest ? "Ver mi pedido" : "Ver mis pedidos"}</LinkPendingLabel>
           </Link>
         </Button>
       </div>
@@ -799,17 +747,18 @@ async function GuestPointsBanner({ points, valueCents }: { points: number; value
     getCmsBlock("checkout.gracias.guest-points-cta"),
   ]);
   const puntos = points.toLocaleString("es-CO");
-  const title = (titleBlock?.body ?? "🎁 Ganaste {puntos} Puntos Lucams").replaceAll(
-    "{puntos}",
-    puntos,
-  );
+  const title = (
+    await resolveCmsTokens(titleBlock?.body ?? "🎁 Ganaste {puntos} Puntos Lucams")
+  ).replaceAll("{puntos}", puntos);
   const body = (
-    bodyBlock?.body ??
-    "Crea tu cuenta con este mismo correo en los próximos {dias} días y te los acreditamos: equivalen a {valor} para tu próxima compra."
+    await resolveCmsTokens(
+      bodyBlock?.body ??
+        "Crea tu cuenta con este mismo correo en los próximos {dias} días y te los acreditamos: equivalen a {valor} para tu próxima compra.",
+    )
   )
     .replaceAll("{dias}", String(RETROACTIVE_EARN_WINDOW_DAYS))
     .replaceAll("{valor}", formatCOP(valueCents));
-  const cta = ctaBlock?.body ?? "Crear mi cuenta y cobrar mis puntos";
+  const cta = await resolveCmsTokens(ctaBlock?.body ?? "Crear mi cuenta y cobrar mis puntos");
 
   return (
     <div className="border-brand-purple/15 from-brand-pink/10 to-brand-purple/10 mx-auto mt-6 max-w-md rounded-2xl border bg-gradient-to-br p-5 text-center shadow-sm">
@@ -825,10 +774,9 @@ async function GuestPointsBanner({ points, valueCents }: { points: number; value
 /** Línea de puntos ganados para el cliente CON sesión (la saga ya los acreditó). */
 async function PointsEarnedNote({ points }: { points: number }) {
   const block = await getCmsBlock("checkout.gracias.points-earned");
-  const text = (block?.body ?? "✨ Ganaste {puntos} Puntos Lucams con esta compra.").replaceAll(
-    "{puntos}",
-    points.toLocaleString("es-CO"),
-  );
+  const text = (
+    await resolveCmsTokens(block?.body ?? "✨ Ganaste {puntos} Puntos Lucams con esta compra.")
+  ).replaceAll("{puntos}", points.toLocaleString("es-CO"));
   return <p className="text-brand-purple mx-auto mt-6 max-w-md text-sm font-semibold">{text}</p>;
 }
 
@@ -842,25 +790,19 @@ function PendingPage({ orderNumber, txId }: { orderNumber: string; txId: string 
         <Clock className="h-12 w-12 text-amber-600" />
       </div>
       <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
-        <CmsText
-          blockKey="checkout.gracias.pending.title"
-          fallback="Estamos verificando tu pago ⏳"
-        />
+        Estamos verificando tu pago ⏳
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
-        <CmsText
-          blockKey="checkout.gracias.pending.body"
-          fallback="Algunos métodos (PSE / transferencia) tardan unos minutos en confirmarse. Te enviamos un email cuando esté todo OK."
-        />
+        Algunos métodos (PSE / transferencia) tardan unos minutos en confirmarse. Te enviamos un
+        email cuando esté todo OK.
       </p>
       <p className="text-brand-muted mt-4 text-xs">
-        <CmsText blockKey="checkout.gracias.order-label" fallback="Pedido" />{" "}
-        <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
+        Pedido <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
         <code className="font-mono">{txId.slice(0, 16)}…</code>
       </p>
       <Link href="/" className="mt-8 inline-block">
         <Button size="lg" variant="outline" className="border-brand-purple/30">
-          <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
+          Volver al inicio
         </Button>
       </Link>
     </div>
@@ -896,8 +838,7 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
         />
       </p>
       <p className="text-brand-muted mt-4 text-xs">
-        <CmsText blockKey="checkout.gracias.order-label" fallback="Pedido" />{" "}
-        <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
+        Pedido <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
         <code className="font-mono">{txId.slice(0, 16)}…</code>
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -907,14 +848,12 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
             variant="outline"
             className="border-brand-purple/30 text-brand-purple-dark"
           >
-            <CmsText blockKey="checkout.gracias.support-cta" fallback="Contactar soporte" />
+            Contactar soporte
           </Button>
         </Link>
         <Button asChild size="lg" className="bg-gradient-brand text-white hover:brightness-110">
           <Link href="/">
-            <LinkPendingLabel>
-              <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
-            </LinkPendingLabel>
+            <LinkPendingLabel>Volver al inicio</LinkPendingLabel>
           </Link>
         </Button>
       </div>
@@ -938,24 +877,19 @@ function VerifyingPage({ txId }: { txId: string }) {
         <Clock className="h-12 w-12 text-amber-600" />
       </div>
       <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
-        <CmsText
-          blockKey="checkout.gracias.pending.title"
-          fallback="Estamos verificando tu pago ⏳"
-        />
+        Estamos verificando tu pago ⏳
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
-        <CmsText
-          blockKey="checkout.gracias.verifying.body"
-          fallback="Hay muchas consultas en este momento y no pudimos mostrar el estado al instante. No te preocupes: si tu pago fue aprobado, tu pedido se confirma igual y te llega el correo con todos los detalles."
-        />
+        Hay muchas consultas en este momento y no pudimos mostrar el estado al instante. No te
+        preocupes: si tu pago fue aprobado, tu pedido se confirma igual y te llega el correo con
+        todos los detalles.
       </p>
       <p className="text-brand-muted mt-4 text-xs">
-        <CmsText blockKey="checkout.gracias.receipt-label" fallback="Comprobante Wompi" />{" "}
-        <code className="font-mono">{txId.slice(0, 16)}…</code>
+        Comprobante Wompi <code className="font-mono">{txId.slice(0, 16)}…</code>
       </p>
       <Link href="/" className="mt-8 inline-block">
         <Button size="lg" variant="outline" className="border-brand-purple/30">
-          <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
+          Volver al inicio
         </Button>
       </Link>
     </div>
@@ -977,20 +911,15 @@ function LookupRetryPage({ txId }: { txId: string }) {
         <Clock className="h-12 w-12 text-amber-600" />
       </div>
       <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
-        <CmsText
-          blockKey="checkout.gracias.pending.title"
-          fallback="Estamos verificando tu pago ⏳"
-        />
+        Estamos verificando tu pago ⏳
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
-        <CmsText
-          blockKey="checkout.gracias.lookup-retry.body"
-          fallback="No pudimos consultar el estado de tu pago en este momento. No te preocupes: si tu pago fue aprobado, tu pedido se confirma igual y te llega el correo con todos los detalles. Esta página se actualiza sola."
-        />
+        No pudimos consultar el estado de tu pago en este momento. No te preocupes: si tu pago fue
+        aprobado, tu pedido se confirma igual y te llega el correo con todos los detalles. Esta
+        página se actualiza sola.
       </p>
       <p className="text-brand-muted mt-4 text-xs">
-        <CmsText blockKey="checkout.gracias.receipt-label" fallback="Comprobante Wompi" />{" "}
-        <code className="font-mono">{txId.slice(0, 16)}…</code>
+        Comprobante Wompi <code className="font-mono">{txId.slice(0, 16)}…</code>
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
         <Link href="/contacto">
@@ -999,12 +928,12 @@ function LookupRetryPage({ txId }: { txId: string }) {
             variant="outline"
             className="border-brand-purple/30 text-brand-purple-dark"
           >
-            <CmsText blockKey="checkout.gracias.support-cta" fallback="Contactar soporte" />
+            Contactar soporte
           </Button>
         </Link>
         <Link href="/" className="inline-block">
           <Button size="lg" variant="outline" className="border-brand-purple/30">
-            <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
+            Volver al inicio
           </Button>
         </Link>
       </div>
@@ -1019,16 +948,14 @@ function FailedPage({ reason }: { reason: string }) {
         <XCircle className="h-12 w-12 text-rose-600" />
       </div>
       <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
-        <CmsText blockKey="checkout.gracias.failed.title" fallback="El pago no se completó" />
+        El pago no se completó
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
         {reason}
       </p>
       <p className="text-brand-muted mx-auto mt-4 max-w-md text-sm">
-        <CmsText
-          blockKey="checkout.gracias.failed.body"
-          fallback="Tu carrito sigue intacto. Puedes reintentar con otro método de pago o contactarnos si necesitas ayuda."
-        />
+        Tu carrito sigue intacto. Puedes reintentar con otro método de pago o contactarnos si
+        necesitas ayuda.
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
         <Link href="/contacto">
@@ -1037,16 +964,14 @@ function FailedPage({ reason }: { reason: string }) {
             variant="outline"
             className="border-brand-purple/30 text-brand-purple-dark"
           >
-            <CmsText blockKey="checkout.gracias.support-cta" fallback="Contactar soporte" />
+            Contactar soporte
           </Button>
         </Link>
         {/* #31 — Button asChild (un solo interactivo) + spinner de navegación:
             es el CTA de REINTENTO de pago, el más propenso al doble-click. */}
         <Button asChild size="lg" className="bg-gradient-brand text-white hover:brightness-110">
           <Link href="/carrito">
-            <LinkPendingLabel>
-              <CmsText blockKey="checkout.gracias.cart-cta" fallback="Volver al carrito" />
-            </LinkPendingLabel>
+            <LinkPendingLabel>Volver al carrito</LinkPendingLabel>
           </Link>
         </Button>
       </div>

@@ -1,15 +1,8 @@
 /*
- * Admin > Plantillas de correo — módulo real (Fase 4, feedback Lucy 2026-09-18).
- *
- * Antes esta ruta era un redirect legacy a /admin/contenido/paginas/emails (que
- * solo edita asunto+preheader del newsletter welcome vía CMS). Ahora es el
- * catálogo de TODAS las plantillas transaccionales (features/emails/registry.ts):
- * nombre, cuándo se envía, y cuántos textos tiene personalizados. El detalle
- * (/admin/email-templates/[id]) tiene preview renderizado, editor de textos
- * clave (overrides EmailTemplateOverride) y envío de prueba.
- *
- * La edición vieja del newsletter sigue viva en el CMS (Ruta A) — acá queda el
- * enlace de ida para no romper ese flujo.
+ * Admin > Plantillas de correo — catálogo de TODAS las plantillas transaccionales
+ * (features/emails/registry.ts): nombre, cuándo se envía, y cuántos textos tiene
+ * personalizados. El detalle (/admin/email-templates/[id]) tiene preview renderizado,
+ * editor de textos clave (overrides EmailTemplateOverride) y envío de prueba.
  *
  * RBAC: SUPERADMIN (misma barra que redirects/integraciones — ver
  * lib/admin-rbac.ts ROUTE_ROLES). El layout ya rebotó al resto de roles.
@@ -18,7 +11,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Mail, ChevronRight, ExternalLink } from "lucide-react";
+import { Mail, ChevronRight } from "lucide-react";
 import {
   AdminBadge,
   AdminCard,
@@ -89,14 +82,7 @@ export default async function EmailTemplatesPage() {
           >
             Ajustes del sitio
           </Link>
-          . El asunto y preheader de la bienvenida al newsletter también se pueden editar en la{" "}
-          <Link
-            href="/admin/contenido/paginas/emails"
-            className="font-semibold underline underline-offset-2"
-          >
-            página «emails» del CMS
-          </Link>{" "}
-          <ExternalLink className="inline h-3 w-3" />.
+          .
         </AdminNotice>
 
         {[...groups.entries()].map(([group, templates]) => (

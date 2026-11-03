@@ -28,7 +28,6 @@ import {
 } from "@/features/checkout/service";
 import { getSettingValue } from "@/lib/cms";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
-import { CmsText } from "@/components/cms/cms-text";
 import { formatCityDept } from "@/lib/format";
 import { getCheckoutTexts } from "../checkout-texts.server";
 import { resolveLucamsPromise } from "../checkout-texts";
@@ -259,7 +258,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
           <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
             <h2 className="text-brand-purple-dark font-display mb-4 flex items-center gap-2 text-lg font-bold">
               <CreditCard className="h-5 w-5" />
-              <CmsText blockKey="checkout.pago.heading" fallback="Método de pago" />
+              Método de pago
             </h2>
 
             <PaymentMethodChooser

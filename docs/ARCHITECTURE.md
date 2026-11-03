@@ -132,7 +132,7 @@ lucams_shop/
 │       │   └── migrations/               # prisma migrate (61 migraciones,
 │       │                                 #   schema de dominio)
 │       ├── scripts/                      # cms-site-map.mjs, migrate-cms-v2.mjs,
-│       │                                 # audit-content-coverage.mjs,
+│       │                                 # sync-and-prune-cms-v2.mjs,
 │       │                                 # audit-schema-drift.mjs (drift Prisma↔SQL
 │       │                                 #   gateado en CI), seeds…
 │       └── package.json
@@ -621,12 +621,15 @@ crear la orden si el cliente pidió factura. Enums de soporte: `DocumentType`,
 `TemplateMode` (además de `AdminRole`, `OrderStatus`, `PaymentMethod`, `CouponType`,
 `WebhookSource` mostrados arriba).
 
-## CMS v2 — contenido administrable (2026-07-30)
+## CMS v2 — arquitectura de 3 capas (ADR-082 / ADR-187)
 
-El 100% del contenido visible del sitio lo edita una persona NO técnica desde
-`/admin/contenido`. El modelo viejo (`CmsBlock` + `SiteSetting`, dropeado en la fase A2 —
-migración `20260731130000_drop_cms_legacy`) se reemplazó por una jerarquía de 4 tablas (migración
-`20260730120000_add_cms_v2`, RLS deny-by-default en `supabase/migrations/00000000000018`):
+El contenido del sitio se organiza en **3 capas** para que `/admin/contenido` sea rápido y manejable para una persona no técnica sin contaminar el panel con micro-UI funcional:
+
+1. **Capa 1 — Parámetros maestros y reglas estatutarias:** ajustes `CmsField` (`kind = SETTING`, contenedor `global` en Configuración → «Ajustes del sitio» solo `SUPERADMIN`, más los 21 ajustes delegados a sus módulos dueños `/admin/envios`, `/admin/fidelizacion` y `/admin/carritos/configuracion`), `Product.warrantyMonths` (`/admin/productos`, ADR-106) y constantes normativas en `apps/web/lib/consumer-law.ts` (retracto, garantía, entrega máxima legal, Habeas Data). Se interpolan en textos y legales vía `resolveCmsTokens()` (`apps/web/lib/cms-tokens.ts`).
+2. **Capa 2 — Contenido editorial, comercial, SEO y legal (`/admin/contenido`):** **8 páginas/colecciones editoriales en `/admin/contenido` + 1 contenedor `global` en Configuración = 9 `CmsPage`, 29 secciones y 166 campos** (`105 BLOCK + 61 SETTING`: `inicio`, `navegacion`, `ayuda`, `contacto`, `legales`, `checkout`, `sistema`, `seo` y `global`). Las 24 plantillas de correo (incluida `newsletter-welcome`) se administran unificadas en `/admin/email-templates` (`EmailTemplateOverride`).
+3. **Capa 3 — Micro-UI funcional tipada en código:** botones, `aria-label`, `placeholder`, validaciones, Estudio (`studio-texts.ts`), Auth (`auth-texts.ts`), Mi Cuenta (`account-texts.ts`), 404 y vistas transaccionales por token viven directo en TS/JSX, sin round-trip a DB ni payload RSC duplicado.
+
+El modelo en DB (migración `20260730120000_add_cms_v2`, RLS deny-by-default en `supabase/migrations/00000000000018`; legacy `CmsBlock` + `SiteSetting` dropeado en `20260731130000_drop_cms_legacy`) consta de 4 tablas:
 
 ```
 CmsPage ─┬─ CmsSection ─┬─ CmsField ───── CmsFieldVersion (append-only)
@@ -636,32 +639,39 @@ CmsPage ─┬─ CmsSection ─┬─ CmsField ───── CmsFieldVersion 
          │              │   sigue siendo el array serializado a JSON — lectura compatible)
          │              └─ fields type IMAGE (B5) → CmsMedia (metadata del asset;
          │                  el archivo vive en el bucket público `cms-media`)
-         └─ path (ruta pública — alimenta la vista previa en vivo del editor, C1)
+         └─ path (ruta pública 1:1 opcional — alimenta la vista previa en vivo C1 solo donde aplica)
 ```
 
-- **`CmsPage`**: una por sitio/página (`inicio`, `header`, `footer`, `estudio`, `emails`, `seo`,
-  `global`…). **`CmsSection`**: zonas dentro de la página. **`CmsField`**: un texto/ajuste con
-  `key` global única histórica (`home.hero.title`, `CONTACT_EMAIL`), `kind` (BLOCK = prosa con
-  publicación explícita · SETTING = valor atómico que publica al guardar), `type`
-  (TEXT…JSON, IMAGE desde B5), `label`/`helpText` para no-técnicos. **`CmsFieldVersion`**:
-  historial inmutable (revert + auditoría legal).
-- **Estructura declarativa**: `packages/db/scripts/cms-site-map.mjs` es la fuente de verdad de
-  páginas/secciones/campos; `make migrate-cms-v2` la aplica idempotente (nunca pisa body ni
-  publicación de campos existentes).
-- **Lectura** (`apps/web/lib/cms.ts`): `getCmsBlock`, `getSettingValue`, `getCmsList` (listas B4),
-  `getCmsImage` (B5), `getCmsBanners` (B6) — todas con `unstable_cache` tag `cms` (1h) y
-  **fallback** al valor hardcoded pre-CMS (regla de oro: si la DB cae, el sitio se ve idéntico).
-  Invalidación: `updateTag("cms")` desde las Server Actions del admin; tras scripts directos en
-  DB, botón «Actualizar caché de contenido» en `/admin/contenido`.
-- **Admin** (`app/admin/(panel)/contenido/`): índice por páginas con búsqueda global, editor de
-  página con edición inline + vista previa en vivo (C1), editor de campo con versiones,
-  date-picker de publicación programada (C3), editor de filas para listas (B4) con subcampos
-  IMAGE/BOOLEAN (B6), mediateca (B5), vista «Solo borradores» con publicar en lote, renombrar /
-  mover / duplicar (C4). Acceso: SUPERADMIN + CMS_EDITOR (C2, `ADMIN_ROLE_SETS.CONTENT`).
-- **Anti-regresión (D1)**: `packages/db/scripts/audit-content-coverage.mjs` escanea el JSX del
-  storefront con AST y gatea en CI que no aparezca copy nuevo en español fuera del CMS
-  (baseline ratchet en `content-coverage-baseline.json`).
-- ADRs: DECISIONS.md ADR-082 (modelo v2), ADR-083 (iconos en Category), ADR-084 (listas B4).
+- **`CmsPage`**: los 9 contenedores canónicos (`inicio`, `navegacion`, `ayuda`, `contacto`, `legales`,
+  `checkout`, `sistema`, `seo`, `global`). **`CmsSection`**: 29 zonas editoriales/de ajuste.
+  **`CmsField`**: 166 campos con `key` global única (`home.hero.title`, `CONTACT_EMAIL`), `kind`
+  (`BLOCK` = publicación explícita · `SETTING` = publica al guardar), `type` (`TEXT`…`JSON`, `IMAGE`),
+  `label`/`helpText` para no-técnicos. **`CmsFieldVersion`**: historial inmutable (revert + auditoría legal).
+- **Estructura declarativa**: `packages/db/scripts/cms-site-map.mjs` es la fuente única de verdad de
+  páginas/secciones/campos; `make migrate-cms-v2` la aplica de forma aditiva e idempotente (nunca pisa
+  `body` publicado) y `packages/db/scripts/sync-and-prune-cms-v2.mjs` sincroniza estructura, republica
+  semillas tokenizadas intactas (SHA-256) y poda claves retiradas en una transacción.
+- **Motor de lectura de snapshot único** (`apps/web/lib/cms.ts`): `loadCmsSnapshotCached`
+  (`["cms-snapshot-v2"]`, `tags: ["cms"]`, `revalidate: 3600`) ejecuta **1 sola query Prisma** con todos
+  los `CmsField` activos y su `publishedVersion`. `getCmsBlock`, `getSettingValue`, `getCmsList`,
+  `getCmsImage` y `getCmsBanners` leen en memoria desde ese snapshot, hidratan `Date` fuera del caché y
+  caen al **fallback** hardcoded si la DB falla (nunca se cachea un error transitorio). Invalidación:
+  `updateTag("cms")` desde las Server Actions del admin o botón «Actualizar caché de contenido» en
+  `/admin/contenido` tras scripts directos en DB.
+- **Admin** (`app/admin/(panel)/contenido/`): índice de las 8 páginas editoriales con búsqueda global,
+  edición inline + vista previa lateral en vivo únicamente en rutas públicas 1:1 (`inicio`, `ayuda`,
+  `contacto`, `sistema`) y enlaces directos por documento/ruta en `legales` y `seo` (con editor inline
+  `<title>` + `meta description` + vista previa Google SERP), historial de versiones, publicación
+  programada (C3), editor de filas para listas (B4) con subcampos IMAGE/BOOLEAN (B6), mediateca (B5) y
+  vista «Solo borradores» con publicar en lote (C4). Acceso: `SUPERADMIN` + `CMS_EDITOR` en contenido
+  editorial (`ADMIN_ROLE_SETS.CONTENT`) y **`SUPERADMIN` exclusivo** en `/admin/contenido/paginas/global`
+  («Ajustes del sitio», que además oculta en UI los 21 settings `MODULE_MANAGED_SETTING_KEYS` y enlaza a
+  sus módulos dueños). Los controles de falso page-builder (crear/archivar/mover/duplicar campos) están
+  retirados de la UI porque la estructura nace del código (`cms-site-map.mjs`).
+- **Gate de paridad exacta en CI**: `apps/web/lib/cms-sitemap-parity.test.ts` (`make audit-content`)
+  recorre el AST de `apps/web` y exige **0 diferencias bidireccionales** entre las claves CMS leídas en
+  código y las 166 declaradas en `cms-site-map.mjs` (reemplazó el antiguo ratchet `audit-content-coverage.mjs`).
+- ADRs: DECISIONS.md ADR-082 (modelo 4 tablas), ADR-083 (iconos en Category), ADR-084 (listas B4), ADR-187 (3 capas + snapshot único + paridad AST).
 
 ## Gate de visibilidad storefront y redirects (certificación 2026-09)
 

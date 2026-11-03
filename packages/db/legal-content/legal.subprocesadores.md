@@ -52,8 +52,8 @@ Todo esto se hace conforme al **artículo 26 de la Ley 1581 de 2012**, que regul
 
 Puedes **conocer, actualizar, rectificar y suprimir** tus datos, **revocar** la autorización y **pedir prueba** de la autorización otorgada. Escríbenos a **{{email_contacto}}** o usa el formulario de la página de [Habeas Data](/legal/habeas-data). Los plazos legales son:
 
-- **Consultas:** te respondemos en máximo **10 días hábiles** (Ley 1581, art. 14).
-- **Reclamos:** los resolvemos en máximo **15 días hábiles** (Ley 1581, art. 15).
+- **Consultas:** te respondemos en máximo **{{habeas_consulta_dias}} días hábiles** (Ley 1581, art. 14).
+- **Reclamos:** los resolvemos en máximo **{{habeas_reclamo_dias}} días hábiles** (Ley 1581, art. 15).
 
 Si consideras que no atendimos bien tu solicitud, puedes acudir a la **Superintendencia de Industria y Comercio (SIC)**.
 
