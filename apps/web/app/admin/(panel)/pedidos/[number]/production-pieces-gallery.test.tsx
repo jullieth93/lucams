@@ -8,10 +8,7 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import {
-  ProductionPiecesGallery,
-  type ProductionPieceItem,
-} from "./production-pieces-gallery";
+import { ProductionPiecesGallery, type ProductionPieceItem } from "./production-pieces-gallery";
 
 const piece = (index: number, label: string): ProductionPieceItem => ({
   index,
@@ -55,10 +52,7 @@ describe("ProductionPiecesGallery", () => {
 
   it("clic en una miniatura abre el lightbox con su rótulo y navegación", () => {
     render(
-      <ProductionPiecesGallery
-        pieces={[piece(0, "Ficha A"), piece(1, "Ficha E")]}
-        groups={null}
-      />,
+      <ProductionPiecesGallery pieces={[piece(0, "Ficha A"), piece(1, "Ficha E")]} groups={null} />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Ver Ficha E en grande" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();

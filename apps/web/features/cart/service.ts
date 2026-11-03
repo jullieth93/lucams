@@ -446,7 +446,9 @@ function toDetail(cart: RawCart): CartDetail {
       // (preferClean). La versión watermark se sigue computando para el snapshot
       // que viaja a la cotización PÚBLICA (designPreviewWatermarkUrl) — el
       // anti-copia aplica a terceros, no al dueño. Admin/producción leen limpio.
-      const designDisp = i.design ? designPreviewDisplay(i.design, undefined, { preferClean: true }) : null;
+      const designDisp = i.design
+        ? designPreviewDisplay(i.design, undefined, { preferClean: true })
+        : null;
       const designDispWm = i.design ? designPreviewDisplay(i.design) : null;
       return {
         itemId: i.id,

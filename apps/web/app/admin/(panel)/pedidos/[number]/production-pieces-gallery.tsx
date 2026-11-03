@@ -2,12 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, ExternalLink } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 /**
  * Galería compacta de las piezas de impresión de un ítem (owner 2026-11-03):
@@ -87,14 +82,9 @@ export function ProductionPiecesGallery({
       >
         <span className="relative block h-24 w-full" style={TRANSPARENCY_GRID}>
           {/* eslint-disable-next-line @next/next/no-img-element -- signed URL temporal; el optimizer no reenvía cookies al handler */}
-          <img
-            src={p.url}
-            alt={p.label}
-            loading="lazy"
-            className="h-full w-full object-contain"
-          />
+          <img src={p.url} alt={p.label} loading="lazy" className="h-full w-full object-contain" />
         </span>
-        <span className="block truncate bg-white px-1.5 py-1 text-[10px] font-semibold text-brand-purple-dark">
+        <span className="text-brand-purple-dark block truncate bg-white px-1.5 py-1 text-[10px] font-semibold">
           {p.label}
           {!p.approved && <span className="ml-1 text-amber-700">⚠️</span>}
         </span>
@@ -187,14 +177,14 @@ export function ProductionPiecesGallery({
                     href={current.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1 rounded-md border border-brand-purple/20 px-2 py-1.5 text-[11px] font-semibold"
+                    className="text-brand-purple-dark hover:bg-brand-purple/5 border-brand-purple/20 inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] font-semibold"
                   >
                     <ExternalLink className="h-3.5 w-3.5" /> Resolución completa
                   </a>
                   <a
                     href={current.url}
                     download={current.downloadName}
-                    className="text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1 rounded-md border border-brand-purple/20 px-2 py-1.5 text-[11px] font-semibold"
+                    className="text-brand-purple-dark hover:bg-brand-purple/5 border-brand-purple/20 inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] font-semibold"
                   >
                     <Download className="h-3.5 w-3.5" /> Descargar
                   </a>

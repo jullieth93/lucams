@@ -26,7 +26,7 @@ export function RegenLettersetButton({
         <button
           type="submit"
           disabled={pending}
-          className="text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border border-brand-purple/30 bg-white px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-60"
+          className="text-brand-purple-dark hover:bg-brand-purple/5 border-brand-purple/30 inline-flex items-center gap-1.5 rounded-md border bg-white px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-60"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${pending ? "animate-spin" : ""}`} />
           {pending ? "Regenerando…" : "Regenerar archivos por ficha"}
