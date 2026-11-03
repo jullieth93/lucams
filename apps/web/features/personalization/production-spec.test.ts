@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { resolveProductionSpec } from "./production-spec";
+import { resolveProductionSpec, productionPieceGroups } from "./production-spec";
 
 const vacio = {
   personalizationKind: null,
@@ -256,11 +256,12 @@ describe("lo que NO está horneado en el PNG y hay que escribir", () => {
       },
     });
 
-    expect(spec.reversosEnBlanco).toEqual([1]);
-    expect(spec.personalizacion.find((x) => x.etiqueta === "Reversos en blanco")?.valor).toMatch(
-      /unidad 1/i,
-    );
-    expect(spec.pasosArmado.join(" ")).toMatch(/no copies ni espejes/i);
+    expect(spec.reversosConMarcaAgua).toEqual([1]);
+    expect(
+      spec.personalizacion.find((x) => x.etiqueta === "Reversos con marca de agua")?.valor,
+    ).toMatch(/unidad 1/i);
+    // El patrón ya viene horneado en el archivo: NO hay paso extra de armado para el reverso.
+    expect(spec.pasosArmado.join(" ")).not.toMatch(/en BLANCO/i);
   });
 
   // Hay diseños de 2026 sobre un producto cuyo schema dice 2027: leer el del producto imprime mal.
@@ -340,5 +341,153 @@ describe("lo que NO está horneado en el PNG y hay que escribir", () => {
     expect(t).toContain('1: "Mamá"');
     expect(t).toContain('3: "Ñoño"');
     expect(t).not.toContain("2:");
+  });
+});
+
+describe("sets de letras POR FICHA (owner 2026-11-03) + agrupación de piezas (W2)", () => {
+  const metaVocales = {
+    surface: "letterset",
+    letters: ["A", "E", "I", "O", "U"],
+    colors: ["#111"],
+    withBorder: true,
+  };
+
+  it("5 fichas sueltas (1 set) → fichas-sueltas: un archivo por ficha, no lámina para recortar", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: metaVocales,
+      productionUrls: ["f1", "f2", "f3", "f4", "f5"],
+      variantAttrs: { sizeCm: "5×7" },
+    });
+    expect(spec.formatoFisico).toEqual({ tipo: "fichas-sueltas", fichas: 5, sets: 1 });
+    expect(spec.queEsCadaArchivo).toMatch(/UNA ficha por archivo/);
+    expect(spec.pasosArmado.join(" ")).toMatch(/troquel/);
+  });
+
+  it("2 sets × 27 letras (54 archivos) → fichas-sueltas con sets=2", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: {
+        ...metaVocales,
+        letters: Array.from("ABCDEFGHIJKLMNÑOPQRSTUVWXYZ"),
+        unitCount: 2,
+        units: [
+          { colors: ["#111"], styleSetId: "set_1", withBorder: true },
+          { colors: ["#222"], styleSetId: null, withBorder: false },
+        ],
+      },
+      productionUrls: Array.from({ length: 54 }, (_, i) => `f${i}`),
+    });
+    expect(spec.formatoFisico).toEqual({ tipo: "fichas-sueltas", fichas: 27, sets: 2 });
+    expect(spec.queEsCadaArchivo).toMatch(/2 sets de 27 fichas/);
+  });
+
+  it("diseño LEGACY (1 lámina por set) sigue siendo lamina-fichas", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: metaVocales,
+      productionUrls: ["lamina-1"],
+    });
+    expect(spec.formatoFisico).toEqual({ tipo: "lamina-fichas", fichas: 5 });
+  });
+
+  it("productionPieceGroups — fichas sueltas: grupos por set con rótulo de letra", () => {
+    const groups = productionPieceGroups({
+      personalizationKind: "LETTER_SET",
+      canvasData: null,
+      designMetadata: {
+        ...metaVocales,
+        unitCount: 2,
+        units: [
+          { colors: [], styleSetId: "set_1", withBorder: true },
+          { colors: [], styleSetId: null, withBorder: false },
+        ],
+      },
+      productionCount: 10,
+    });
+    expect(groups).toHaveLength(2);
+    expect(groups![0]!.title).toBe("Set 1 de 2");
+    expect(groups![0]!.note).toMatch(/Fichas ilustradas/);
+    expect(groups![0]!.pieces.map((p) => p.label)).toEqual([
+      "Ficha A",
+      "Ficha E",
+      "Ficha I",
+      "Ficha O",
+      "Ficha U",
+    ]);
+    expect(groups![1]!.pieces[0]!.index).toBe(5); // índice global continúa
+    expect(groups![1]!.note).toMatch(/Solo letra/);
+    expect(groups![1]!.note).toMatch(/sin borde/i);
+  });
+
+  it("productionPieceGroups — calendario ×2: grupos por calendario con páginas por mes", () => {
+    const groups = productionPieceGroups({
+      personalizationKind: "CALENDAR_PHOTO_MONTH",
+      canvasData: { version: 2, slotCount: 24, unitCount: 2, unitSlots: 12 },
+      designMetadata: { calendarYear: 2027 },
+      productionCount: 24,
+      startMonth: 0,
+    });
+    expect(groups).toHaveLength(2);
+    expect(groups![0]!.title).toBe("Calendario 1 de 2");
+    expect(groups![0]!.pieces.map((p) => p.label)).toEqual([
+      "Enero 2027",
+      "Febrero 2027",
+      "Marzo 2027",
+      "Abril 2027",
+      "Mayo 2027",
+      "Junio 2027",
+      "Julio 2027",
+      "Agosto 2027",
+      "Septiembre 2027",
+      "Octubre 2027",
+      "Noviembre 2027",
+      "Diciembre 2027",
+    ]);
+    expect(groups![1]!.pieces[0]!.index).toBe(12);
+  });
+
+  it("productionPieceGroups — calendario de UN set: un solo grupo «Calendario»", () => {
+    const groups = productionPieceGroups({
+      personalizationKind: "CALENDAR_PHOTO_MONTH",
+      canvasData: { version: 2, slotCount: 12 },
+      designMetadata: {},
+      productionCount: 12,
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups![0]!.title).toBe("Calendario");
+    expect(groups![0]!.pieces).toHaveLength(12);
+  });
+
+  it("productionPieceGroups — tiras ×2: grupos por tira con segmentos", () => {
+    const groups = productionPieceGroups({
+      personalizationKind: "PHOTO_STRIP",
+      canvasData: {
+        version: 2,
+        slotCount: 6,
+        unitCount: 2,
+        unitSlots: 3,
+        unitTemplate: { gridCols: 1, gridGap: 0 },
+      },
+      designMetadata: null,
+      productionCount: 6,
+    });
+    expect(groups).toHaveLength(2);
+    expect(groups![0]!.title).toBe("Tira 1 de 2");
+    expect(groups![0]!.pieces.map((p) => p.label)).toEqual([
+      "Segmento 1",
+      "Segmento 2",
+      "Segmento 3",
+    ]);
+  });
+
+  it("productionPieceGroups — producto plano (fotoimán suelto) → null (grilla histórica)", () => {
+    const groups = productionPieceGroups({
+      personalizationKind: "PHOTO_PACK",
+      canvasData: { version: 2, slotCount: 3 },
+      designMetadata: null,
+      productionCount: 3,
+    });
+    expect(groups).toBeNull();
   });
 });

@@ -148,7 +148,9 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
     propio estilo ilustrado, colores y borde); las claves raíz (`styleSetId` /
     `withBorder`) quedan como representante del set 1 y default de sets sin clave
     propia (retrocompat con diseños guardados antes del rediseño). El finalize espera
-    UNA lámina de producción por set (`production_i` posicional, `unitCount` exacto).
+    UNA lámina de producción por set (`production_i` posicional, `unitCount` exacto) —
+    la lámina queda como FALLBACK inmediato: el RenderJob la reemplaza con el render
+    server-side POR FICHA (owner 2026-11-03, ADR-188 — un PNG 300 DPI por letra).
 - **Variante del diseño (`metadata.variantId`)**: al crear el diseño desde
   cualquier superficie se persiste la variante (`createDraftDesign` —foto—,
   `createNameDesign`, `createLetterSetDesign`). **Packs de foto TAMBIÉN**:
@@ -659,7 +661,9 @@ unitSlots)` para composición fija) y de `metadata.unitCount` validado al crear 
   sus propios colores por ficha; tema/idioma/borde quedan a NIVEL DISEÑO (compartidos). Pager
   "Set 1 de N" + "Aplicar este diseño a todas" (clona colores). `metadata.units = [{colors}]`
   - `metadata.unitCount` (validados server-side al crear; el precio ×N sale de ahí).
-    Producción: 1 lámina PNG por set. Tope 10 sets.
+    Producción: **un PNG 300 DPI POR FICHA** (owner 2026-11-03, ADR-188 — el RenderJob los
+    genera server-side con el mismo `drawLetterTile` del editor; la lámina única por set que
+    sube el cliente queda solo como fallback inmediato). Tope 10 sets.
 - **Nombre personalizado**: superficie del agente hermano (name-editor.tsx); la modal soporta
   AMBOS mundos: `unitCount` (qty 1) y `initialCopies` (legacy, qty = copias).
 - **Carrito/checkout**: la línea describe las unidades ("2 tiras de 3 fotos", "2 calendarios

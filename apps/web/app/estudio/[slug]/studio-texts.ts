@@ -105,9 +105,9 @@ export type StudioTexts = {
      *  (separadores 2026-09-25): la cara B puede quedar sin diseñar. */
     slotCaraBOpcional: string;
     /** Paquete A (2026-10-02) — tooltip del badge «Opcional»: la regla única de
-     *  la cara B vacía. Decisión owner 2026-10-07: se imprime EN BLANCO (nunca
-     *  espejo de la cara A; producción: blank-back-face.ts en
-     *  features/personalization). */
+     *  la cara B vacía. Decisión owner 2026-11-03: se imprime con el PATRÓN DE
+     *  MARCA «Lucams» (nunca espejo de la cara A; producción: default-back-face.ts
+     *  en features/personalization). Supera la regla «en blanco» del 2026-10-07. */
     slotCaraBOpcionalTitle: string;
     /** Línea de doblez de la tira de separador (solo plegables, no noFold):
      *  "Doblez · Desplegado: {tamano}" — {tamano} = tamaño total desplegado. */
@@ -1009,7 +1009,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     unitCaraA: "Cara A",
     unitCaraB: "Cara B",
     slotCaraBOpcional: "Opcional",
-    slotCaraBOpcionalTitle: "Si no diseñas el respaldo, queda en blanco.",
+    slotCaraBOpcionalTitle:
+      "Si no diseñas el respaldo, lo imprimimos con la marca de agua de Lucams.",
     doblezDesplegado: "Doblez · Desplegado: {tamano}",
     doblezNotaRotacion:
       "La tira se imprime con las caras cabeza a cabeza hacia el doblez — al doblarla sobre la página ambas se leen derechas.",

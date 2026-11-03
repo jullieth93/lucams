@@ -9,8 +9,11 @@
  * están horneados en la imagen y que, si no se escriben, se producen mal. Los casos verificados
  * contra la base de datos real:
  *
- *   · `abecedario-completo` sube UN solo PNG que contiene las 27 fichas dibujadas juntas. Contar
- *     archivos diría "1 pieza"; la verdad es "1 lámina para recortar en 27 fichas".
+ *   · `abecedario-completo` llega de dos formas según su fecha: el render server-side POR FICHA
+ *     (2026-11-03, ADR-188 — 27 PNG, uno por letra) o, en pedidos históricos, UN solo PNG con
+ *     las 27 fichas dibujadas juntas ("1 lámina para recortar en 27 fichas"). Contar archivos
+ *     sin distinguir ambos mundos diría "1 pieza" o "27 piezas sueltas" — las dos lecturas
+ *     incompletas producen mal.
  *   · `tiras-magneticas-fotos` sube TRES PNG que son segmentos de UNA tira continua de 6.5×20 cm.
  *     Contar archivos diría "3 imanes". Serían tres piezas donde va una.
  *   · `separadores-libros` puede llegar de dos formas FÍSICAMENTE distintas y visualmente idénticas:
@@ -29,6 +32,7 @@
 
 import { frameColorById, isStripTemplate } from "./frame-palette";
 import { designUnitPriceMultiplier, letterSetUnitCount } from "./design-units";
+import { MONTH_NAMES_ES } from "./calendar-grid";
 
 /**
  * Qué es físicamente lo que sale de la impresora. Es una unión discriminada porque cada caso lleva
@@ -40,6 +44,7 @@ import { designUnitPriceMultiplier, letterSetUnitCount } from "./design-units";
  */
 export type FormatoFisico =
   | { tipo: "lamina-fichas"; fichas: number; laminas?: number }
+  | { tipo: "fichas-sueltas"; fichas: number; sets: number }
   | { tipo: "tira-continua"; segmentos: number; tiras?: number }
   | { tipo: "tira-desplegada"; tiras: number; plana?: boolean }
   | { tipo: "caras-sueltas"; unidades: number; plana?: boolean }
@@ -65,8 +70,8 @@ export type ProductionSpec = {
   especificaciones: DatoDeFicha[];
   /** Decisiones del CLIENTE que hay que respetar (colores, textos, año). */
   personalizacion: DatoDeFicha[];
-  /** Unidades 1-based cuyo reverso B opcional se imprime deliberadamente blanco. */
-  reversosEnBlanco: number[];
+  /** Unidades 1-based cuyo reverso B opcional se imprime con el patrón de marca «Lucams». */
+  reversosConMarcaAgua: number[];
 };
 
 type Entrada = {
@@ -107,9 +112,14 @@ const IMANES: Record<string, string> = {
 function resolverFormato(e: Entrada): FormatoFisico {
   const letters = e.designMetadata?.letters;
   if (Array.isArray(letters) && letters.length > 0) {
-    // El editor de nombre/abecedario dibuja TODAS las fichas en un solo canvas y sube un PNG.
-    // Multi-unidad (2026-09-09): con N sets el cliente sube N láminas (una por set).
+    // El editor de nombre/abecedario dibuja las fichas del set y sube UNA lámina PNG
+    // por set (fallback inmediato); el worker las REEMPLAZA por el render server-side
+    // POR FICHA (owner 2026-11-03 — un PNG 300 DPI por letra, medida de la variante).
+    // Se distinguen por conteo: fichas × sets = fichas sueltas; sets = láminas legacy.
     const laminas = letterSetUnitCount(e.designMetadata);
+    if (e.productionUrls.length === letters.length * laminas) {
+      return { tipo: "fichas-sueltas", fichas: letters.length, sets: laminas };
+    }
     return { tipo: "lamina-fichas", fichas: letters.length, ...(laminas > 1 ? { laminas } : {}) };
   }
 
@@ -213,6 +223,24 @@ function describirFormato(
         ],
       };
     }
+    case "fichas-sueltas": {
+      // 2026-11-03 (owner) — render server-side por ficha: cada archivo ES una ficha
+      // final (300 DPI, medida de corte exacta de la variante, rectangular a sangre).
+      const total = f.fichas * f.sets;
+      return {
+        frase:
+          f.sets > 1
+            ? `${total} archivos: UNA ficha por archivo, en orden — ${f.sets} sets de ${f.fichas} fichas cada uno (las primeras ${f.fichas} son el set 1, y así).`
+            : `${f.fichas} archivos: UNA ficha por archivo, ya a la medida de corte.`,
+        pasos: [
+          f.sets > 1
+            ? `Imprime los ${total} archivos (cada uno es una ficha final).`
+            : `Imprime las ${f.fichas} fichas (cada archivo es una ficha final).`,
+          `Recorta cada ficha por su contorno — las esquinas redondeadas las hace el troquel.`,
+          ...pegarImán,
+        ],
+      };
+    }
     case "tira-continua": {
       const tiras = f.tiras ?? 1;
       const porTira = tiras > 1 ? Math.round(f.segmentos / tiras) : f.segmentos;
@@ -312,7 +340,10 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   const { frase, pasos: pasosBase } = describirFormato(formato, llevaImán);
 
   const canvasSlots = Array.isArray(e.canvasData?.slots) ? e.canvasData.slots : [];
-  const reversosEnBlanco =
+  // Cara B por defecto con patrón de marca (owner 2026-11-03): la tira ya trae el
+  // reverso horneado en el archivo — la ficha solo lo ANOTA, ya no hay paso extra
+  // de «imprimir en blanco» (esa era la regla 2026-10-07, superada).
+  const reversosConMarcaAgua =
     n(e.productSchema?.facesPerUnit) === 2 && e.productSchema?.backOptional === true
       ? canvasSlots.flatMap((raw, index) => {
           if (!raw || typeof raw !== "object") return [];
@@ -323,13 +354,6 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
         })
       : [];
   const pasos = [...pasosBase];
-  if (reversosEnBlanco.length > 0) {
-    pasos.splice(
-      Math.min(1, pasos.length),
-      0,
-      `Imprime en BLANCO el reverso B de ${reversosEnBlanco.length === 1 ? "la unidad" : "las unidades"} ${reversosEnBlanco.join(", ")}; no copies ni espejes la cara A.`,
-    );
-  }
 
   const especificaciones: DatoDeFicha[] = [];
   // La medida sale de la VARIANTE. `physicalSpecs` describe el EMPAQUE y engaña: el abecedario dice
@@ -365,10 +389,10 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   }
 
   const personalizacion: DatoDeFicha[] = [];
-  if (reversosEnBlanco.length > 0) {
+  if (reversosConMarcaAgua.length > 0) {
     personalizacion.push({
-      etiqueta: "Reversos en blanco",
-      valor: `Cara B opcional en blanco: ${reversosEnBlanco.map((unit) => `unidad ${unit}`).join(", ")}`,
+      etiqueta: "Reversos con marca de agua",
+      valor: `Cara B opcional con el patrón «Lucams» (ya viene en el archivo): ${reversosConMarcaAgua.map((unit) => `unidad ${unit}`).join(", ")}`,
     });
   }
   // Multi-unidad (2026-09-09) — el diseño contiene N unidades y TODAS se fabrican
@@ -448,6 +472,137 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
     pasosArmado: pasos,
     especificaciones,
     personalizacion,
-    reversosEnBlanco,
+    reversosConMarcaAgua,
   };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Agrupación visual de las piezas de producción (owner 2026-11-03 — W2):
+// los productos AGRUPADOS (sets de letras, calendario multi-set, tiras ×N) se
+// presentan en el admin/ZIP organizados por set/unidad con rótulos reales
+// (letra de la ficha, mes del calendario, segmento de la tira), no como una
+// grilla plana «pieza-01…N». Módulo puro: lo consumen la pantalla del pedido
+// y el paquete descargable — una sola fuente de verdad.
+// ────────────────────────────────────────────────────────────────────────────
+
+export type ProductionPieceRef = {
+  /** Índice global dentro de productionUrls (0-based). */
+  index: number;
+  label: string;
+};
+
+export type ProductionPieceGroup = {
+  key: string;
+  title: string;
+  /** Nota corta bajo el título (tema/borde del set, conteo del calendario…). */
+  note?: string;
+  pieces: ProductionPieceRef[];
+};
+
+const lettersetUnitNote = (u: unknown): string | undefined => {
+  if (!u || typeof u !== "object") return undefined;
+  const unit = u as { styleSetId?: unknown; withBorder?: unknown };
+  const partes: string[] = [];
+  partes.push(typeof unit.styleSetId === "string" ? "Fichas ilustradas" : "Solo letra");
+  if (unit.withBorder === false) partes.push("sin borde — recortar a ras del contorno");
+  return partes.join(" · ");
+};
+
+/**
+ * Grupos de piezas para exhibición/empaque, o null si el producto es plano
+ * (una pieza suelta por archivo sin estructura de sets — comportamiento histórico).
+ */
+export function productionPieceGroups(e: {
+  personalizationKind: string | null;
+  canvasData: Record<string, unknown> | null;
+  designMetadata: Record<string, unknown> | null;
+  productionCount: number;
+  /** startMonth del schema del producto (calendario; default Enero). */
+  startMonth?: number;
+}): ProductionPieceGroup[] | null {
+  const meta = e.designMetadata ?? {};
+
+  // Sets de letras (Abecedario/Vocales/Nombre): fichas sueltas por set o láminas legacy.
+  const letters = Array.isArray(meta.letters)
+    ? meta.letters.filter((l): l is string => typeof l === "string")
+    : null;
+  if (letters && letters.length > 0) {
+    const sets = letterSetUnitCount(e.designMetadata);
+    const perSet = letters.length;
+    const rawUnits = Array.isArray(meta.units) ? meta.units : [];
+    if (e.productionCount === perSet * sets) {
+      return Array.from({ length: sets }, (_, s) => ({
+        key: `set-${s + 1}`,
+        title: sets > 1 ? `Set ${s + 1} de ${sets}` : "Set único",
+        note: lettersetUnitNote(rawUnits[s]) ?? lettersetUnitNote(meta),
+        pieces: letters.map((l, j) => ({ index: s * perSet + j, label: `Ficha ${l}` })),
+      }));
+    }
+    if (e.productionCount === sets && sets > 1) {
+      // Láminas legacy (pre 2026-11-03): una lámina por set para recortar.
+      return Array.from({ length: sets }, (_, s) => ({
+        key: `set-${s + 1}`,
+        title: `Set ${s + 1} de ${sets}`,
+        note: lettersetUnitNote(rawUnits[s]) ?? lettersetUnitNote(meta),
+        pieces: [
+          {
+            index: s,
+            label: `Lámina completa — recortar las ${perSet} fichas siguiendo la separación`,
+          },
+        ],
+      }));
+    }
+    return null;
+  }
+
+  // Calendario multi-set: grupos por calendario con las páginas por mes.
+  if (e.personalizationKind === "CALENDAR_PHOTO_MONTH") {
+    const cd = e.canvasData ?? {};
+    const unitCount =
+      typeof cd.unitCount === "number" && cd.unitCount > 1 ? Math.trunc(cd.unitCount) : 1;
+    const unitSlots =
+      typeof cd.unitSlots === "number" && cd.unitSlots >= 1 ? Math.trunc(cd.unitSlots) : 12;
+    if (e.productionCount !== unitCount * unitSlots) return null;
+    const startMonth = typeof e.startMonth === "number" ? e.startMonth : 0;
+    const year = typeof meta.calendarYear === "number" ? meta.calendarYear : null;
+    return Array.from({ length: unitCount }, (_, u) => ({
+      key: `calendario-${u + 1}`,
+      title: unitCount > 1 ? `Calendario ${u + 1} de ${unitCount}` : "Calendario",
+      note: `${unitSlots} tarjetas${year ? ` · ${year}` : ""}`,
+      pieces: Array.from({ length: unitSlots }, (_, j) => {
+        const monthIndex0 = (((startMonth + j) % 12) + 12) % 12;
+        return {
+          index: u * unitSlots + j,
+          label: `${MONTH_NAMES_ES[monthIndex0] ?? `Mes ${j + 1}`}${year ? ` ${year}` : ""}`,
+        };
+      }),
+    }));
+  }
+
+  // Tiras photobooth multi-unidad: grupos por tira con sus segmentos.
+  const formato = resolverFormato({
+    personalizationKind: e.personalizationKind,
+    productSchema: null,
+    variantAttrs: null,
+    physicalSpecs: null,
+    canvasData: e.canvasData,
+    designMetadata: e.designMetadata,
+    productionUrls: Array.from({ length: e.productionCount }, () => "x"),
+    lineQty: 1,
+  });
+  if (formato.tipo === "tira-continua" && (formato.tiras ?? 1) > 1) {
+    const tiras = formato.tiras ?? 1;
+    const porTira = Math.round(formato.segmentos / tiras);
+    return Array.from({ length: tiras }, (_, t) => ({
+      key: `tira-${t + 1}`,
+      title: `Tira ${t + 1} de ${tiras}`,
+      note: `${porTira} segmentos — unir a tope, en orden`,
+      pieces: Array.from({ length: porTira }, (_, j) => ({
+        index: t * porTira + j,
+        label: `Segmento ${j + 1}`,
+      })),
+    }));
+  }
+
+  return null;
 }

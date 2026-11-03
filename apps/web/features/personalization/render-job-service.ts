@@ -39,6 +39,9 @@ import { parsePhotoProductConfig, readBorderWidthConfig } from "./schemas";
 import { resolveBorderWidthFactor } from "./frame-palette";
 import { loadEffectiveProductConfig } from "./effective-variant-server";
 import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
+import { letterSetUnitCount } from "./design-units";
+import { LETTER_TILE_FALLBACK_COLOR } from "./letter-tile-draw";
+import { parseVariantAttributes } from "@/features/products/variant-schemas";
 import type { CanvasDataV2 } from "./schemas";
 import type { LoadAssetBytes } from "./production-render";
 
@@ -158,6 +161,21 @@ export async function getRenderJobProgress(designId: string) {
 
 // ─────────────────────────── Contexto de render ───────────────────────────
 
+/**
+ * Plan de render de un diseño de SET DE LETRAS (Abecedario/Vocales/Nombre —
+ * owner 2026-11-03): el servidor renderiza UN PNG por ficha a 300 DPI
+ * (letter-tile-render.ts), no la lámina única por set que sube el cliente.
+ * `units[i]` = config del set i (colores por ficha, estilo ilustrado, borde).
+ */
+type LettersetPlan = {
+  letters: string[];
+  units: { colors: string[]; styleSetId: string | null; withBorder: boolean }[];
+  /** Medida de corte de la VARIANTE (sizeCm); null → aspecto histórico 5×6.5. */
+  sizeCm: { wCm: number; hCm: number } | null;
+  /** Bytes del dibujo del tema para (setId, letra), con caché por job. null = ficha a «Solo letra». */
+  tileBytes: (styleSetId: string, char: string) => Promise<Buffer | null>;
+};
+
 type RenderContext = {
   designId: string;
   canvasData: CanvasDataV2;
@@ -166,15 +184,19 @@ type RenderContext = {
   emptyBackSlots: Set<number>;
   isCalendar: boolean;
   faces2: boolean;
+  /** Si viene, el diseño es de SET DE LETRAS (canvasData V1 stub): el render es
+   *  por ficha y los campos de slots/plantilla no aplican. */
+  letterset: LettersetPlan | null;
   productConfig: ReturnType<typeof parsePhotoProductConfig>;
   productSchema: Record<string, unknown> | undefined;
   calendarYear?: number;
   loadAsset: LoadAssetBytes;
+  /** null en diseños letterset: su renderer (letter-tile-render) carga sus propios motores. */
   engines: {
     renderProductionSlots: typeof import("./production-render").renderProductionSlots;
     renderProductionSlotsCanvas: typeof import("./production-render-canvas").renderProductionSlotsCanvas;
     renderCalendarMonthPagesCanvas: typeof import("./production-render-canvas").renderCalendarMonthPagesCanvas;
-  };
+  } | null;
   shape: string | undefined;
   borderColor: string | null;
   /**
@@ -200,6 +222,13 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
   if (!design) throw new Error(`RenderJob huérfano: el diseño ${designId} ya no existe`);
   const canvasData = design.canvasData as unknown as CanvasDataV2;
   if (canvasData?.version !== 2) {
+    // Sets de letras (canvasData V1 stub + metadata.surface letterset/name): el
+    // render es POR FICHA (owner 2026-11-03) — contexto dedicado, sin plantilla.
+    const meta = (design.metadata ?? null) as Record<string, unknown> | null;
+    const surface = typeof meta?.surface === "string" ? meta.surface : null;
+    if (surface === "letterset" || surface === "name") {
+      return buildLettersetRenderContext(designId, design, meta!);
+    }
     throw new Error(`El diseño ${designId} no tiene canvasData V2 renderizable`);
   }
   const { product, productSchema, productConfig } = await loadEffectiveProductConfig(design);
@@ -239,8 +268,8 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
   }
 
   // Caras B vacías (backOptional): se renderizan como copia de trabajo de la cara A y el
-  // upload las reemplaza por la cara EN BLANCO real (blankBackFacePng) — regla owner
-  // 2026-10-07, la misma que aplica el finalize síncrono.
+  // upload las reemplaza por la cara por defecto real con el patrón de marca «Lucams»
+  // (defaultBackFacePng) — regla owner 2026-11-03, la misma que aplica el finalize síncrono.
   const emptyBackSlots = new Set<number>(
     productConfig.facesPerUnit === 2 && productConfig.backOptional === true
       ? canvasData.slots.filter((s) => s.slotIndex % 2 === 1 && !s.assetUrl).map((s) => s.slotIndex)
@@ -275,6 +304,7 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
     emptyBackSlots,
     isCalendar,
     faces2: productConfig.facesPerUnit === 2 && canvasData.slotCount % 2 === 0,
+    letterset: null,
     productConfig,
     productSchema,
     calendarYear: undefined, // lo fija processOneJob desde el job (fallback: schema/metadata)
@@ -288,9 +318,107 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
   };
 }
 
+/** Error PERMANENTE local (misma marca que isNeedsKonva reconoce) sin cargar motores. */
+class LettersetNotRenderableError extends Error {
+  constructor(message: string) {
+    super(`NEEDS_KONVA: ${message}`);
+    this.name = "RenderNeedsKonvaError";
+  }
+}
+
+/**
+ * Contexto de render de un diseño de SET DE LETRAS (canvasData V1 stub): el plan sale de
+ * `metadata` (letters + units validados al crear el diseño) y la medida de corte de la
+ * variante efectiva. Los dibujos del tema se descargan bajo demanda con caché por job.
+ */
+async function buildLettersetRenderContext(
+  designId: string,
+  design: { productId: string; metadata: unknown; canvasData: unknown },
+  meta: Record<string, unknown>,
+): Promise<RenderContext> {
+  const letters = Array.isArray(meta.letters)
+    ? meta.letters.filter((l): l is string => typeof l === "string" && l.trim() !== "")
+    : [];
+  if (letters.length === 0) {
+    throw new LettersetNotRenderableError("set de letras sin letters en metadata");
+  }
+  const unitCount = letterSetUnitCount(meta);
+  const rootUnit = {
+    colors: Array.isArray(meta.colors)
+      ? meta.colors.filter((c): c is string => typeof c === "string")
+      : [],
+    styleSetId: typeof meta.styleSetId === "string" ? meta.styleSetId : null,
+    withBorder: meta.withBorder !== false,
+  };
+  const rawUnits = Array.isArray(meta.units) ? meta.units : [];
+  const units = Array.from({ length: unitCount }, (_, i) => {
+    const u = rawUnits[i] as
+      { colors?: unknown; styleSetId?: unknown; withBorder?: unknown } | undefined;
+    if (!u || typeof u !== "object") return rootUnit;
+    return {
+      colors: Array.isArray(u.colors)
+        ? u.colors.filter((c): c is string => typeof c === "string")
+        : rootUnit.colors,
+      styleSetId: typeof u.styleSetId === "string" ? u.styleSetId : null,
+      withBorder: u.withBorder !== false,
+    };
+  });
+
+  const { productSchema, effectiveVariant } = await loadEffectiveProductConfig(design);
+  const variantAttrs = effectiveVariant ? parseVariantAttributes(effectiveVariant.attributes) : {};
+  const { parseTileSizeCm } = await import("./letter-tile-render");
+  const sizeCm =
+    parseTileSizeCm(variantAttrs.sizeCm) ?? parseTileSizeCm(productSchema?.sizeCm) ?? null;
+
+  // Dibujos del tema: fetch bajo demanda con caché (setId|letra). Un set borrado
+  // o una ficha sin imagen/ilegible degrada a «Solo letra» — MISMO fallback del
+  // editor (loadCanvasImage devuelve null y la ficha sale con la letra en color).
+  const tileCache = new Map<string, Promise<Buffer | null>>();
+  const tileBytes = (styleSetId: string, char: string): Promise<Buffer | null> => {
+    const key = `${styleSetId}|${char.toUpperCase()}`;
+    let job = tileCache.get(key);
+    if (!job) {
+      job = (async () => {
+        const set = await prisma.letterTileSet.findFirst({
+          where: { id: styleSetId, deletedAt: null },
+          select: { tiles: { where: { char: char.toUpperCase() }, select: { imageUrl: true } } },
+        });
+        const url = set?.tiles[0]?.imageUrl;
+        if (!url) return null;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        return Buffer.from(await res.arrayBuffer());
+      })().catch(() => null);
+      tileCache.set(key, job);
+    }
+    return job;
+  };
+
+  return {
+    designId,
+    // Stub V1 — los campos de slots/plantilla no aplican en la rama letterset.
+    canvasData: design.canvasData as CanvasDataV2,
+    slots: [],
+    emptyBackSlots: new Set<number>(),
+    isCalendar: false,
+    faces2: false,
+    letterset: { letters, units, sizeCm, tileBytes },
+    productConfig: parsePhotoProductConfig(undefined),
+    productSchema: productSchema as Record<string, unknown> | undefined,
+    loadAsset: async () => null,
+    engines: null,
+    shape: undefined,
+    borderColor: null,
+    borderWidthFactor: 1,
+    includeText: true,
+    frameFullBleed: false,
+  };
+}
+
 /** Renderiza UN slot con el tier correcto (sharp primero cuando aplica; canvas con marco). */
 async function renderOneSlot(ctx: RenderContext, slot: CanvasDataV2["slots"][number]) {
   const { engines } = ctx;
+  if (!engines) throw new Error("renderOneSlot en contexto sin motores (letterset)"); // defensivo
   if (ctx.isCalendar) {
     // ADR-063 CAL1 — la PÁGINA del mes (foto + mes + año + grilla). Sin fallback al cliente:
     // el PNG del cliente no trae la grilla. Una sola página por llamada (progreso real).
@@ -343,30 +471,68 @@ function productionFileName(faces2: boolean, unitIndex: number): string {
   return faces2 ? `tira-${n}.png` : `slot-${n}.png`;
 }
 
-/** Renderiza y sube la unidad `unitIndex` (página de calendario, slot o tira 2-caras). */
+/**
+ * Renderiza UNA ficha de un set de letras (owner 2026-11-03 — un PNG por ficha a
+ * 300 DPI en vez de la lámina única por set). unitIndex recorre sets × letras en
+ * orden (set 0 completo, luego set 1…): progreso real por ficha en la UI.
+ */
+async function renderLettersetTile(ctx: RenderContext, unitIndex: number): Promise<Buffer> {
+  const plan = ctx.letterset;
+  if (!plan) throw new Error("renderLettersetTile sin plan letterset"); // defensivo
+  const perSet = plan.letters.length;
+  const unit = plan.units[Math.floor(unitIndex / perSet)] ?? plan.units[0];
+  const letterIdx = unitIndex % perSet;
+  const letter = plan.letters[letterIdx];
+  if (!unit || !letter) {
+    throw new Error(`ficha faltante en la unidad ${unitIndex + 1} del set de letras`);
+  }
+  const color =
+    unit.colors.length > 0
+      ? (unit.colors[letterIdx % unit.colors.length] ?? LETTER_TILE_FALLBACK_COLOR)
+      : LETTER_TILE_FALLBACK_COLOR;
+  // Set ilustrado sin imagen para esta letra → «Solo letra» (mismo fallback del editor).
+  const tileImage = unit.styleSetId ? await plan.tileBytes(unit.styleSetId, letter) : null;
+  const { renderLetterTileProduction } = await import("./letter-tile-render");
+  return renderLetterTileProduction({
+    letter,
+    color,
+    withBorder: unit.withBorder,
+    tileImage,
+    sizeCm: plan.sizeCm,
+  });
+}
+
+/** Renderiza y sube la unidad `unitIndex` (página de calendario, slot, tira 2-caras o ficha). */
 async function renderAndUploadUnit(ctx: RenderContext, unitIndex: number): Promise<string> {
   let buffer: Buffer;
-  if (ctx.faces2) {
+  let fileName: string;
+  if (ctx.letterset) {
+    buffer = await renderLettersetTile(ctx, unitIndex);
+    fileName = `ficha-${String(unitIndex + 1).padStart(2, "0")}.png`;
+  } else if (ctx.faces2) {
     const slotA = ctx.slots[unitIndex * 2];
     const slotB = ctx.slots[unitIndex * 2 + 1];
     if (!slotA || !slotB) throw new Error(`par de caras incompleto en la unidad ${unitIndex + 1}`);
     const bufA = await renderOneSlot(ctx, slotA);
     const bufB = ctx.emptyBackSlots.has(slotB.slotIndex)
-      ? await (await import("./blank-back-face")).blankBackFacePng(bufA)
+      ? await (await import("./default-back-face")).defaultBackFacePng(bufA)
       : await renderOneSlot(ctx, slotB);
     const { composeFaceStrips } = await import("./bookmark-strips");
+    // W3 (owner 2026-11-03): tira RECTANGULAR a sangre — sin radio de esquina
+    // (el redondeo lo resuelve el corte físico del troquel).
     const [strip] = await composeFaceStrips([bufA, bufB], {
-      cornerRadiusPx: (ctx.productConfig.cornerRadiusPx ?? 0) * 3,
       noFold: ctx.productConfig.noFold === true,
     });
     buffer = strip;
+    fileName = productionFileName(true, unitIndex);
   } else {
     const slot = ctx.slots[unitIndex];
     if (!slot) throw new Error(`slot faltante en la unidad ${unitIndex + 1}`);
     buffer = await renderOneSlot(ctx, slot);
+    fileName = productionFileName(false, unitIndex);
   }
 
-  const path = `${ctx.designId}/${productionFileName(ctx.faces2, unitIndex)}`;
+  const path = `${ctx.designId}/${fileName}`;
   const { error } = await supabaseService.storage.from(BUCKET_PRODUCTION).upload(path, buffer, {
     contentType: "image/png",
     // Mismo cache-control que el upload del finalize: el bucket es privado y los signed URLs

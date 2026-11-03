@@ -436,7 +436,7 @@ describe.skipIf(!hasDb)("finalizeDesign — orquestación (I/O de storage mockea
     expect((updated.metadata as { calendarYear?: number }).calendarYear).toBe(2027);
   }, 30000);
 
-  it("backOptional (owner 2026-10-07): cara B VACÍA se imprime EN BLANCO — la tira sube A|blanco, nunca espejo", async () => {
+  it("backOptional (owner 2026-11-03): cara B VACÍA se imprime con el patrón de marca «Lucams» — la tira sube A|patrón, nunca espejo", async () => {
     // Diseño de separador 2 caras: solo la cara A (slot 0) diseñada; la B (slot 1) vacía.
     const design = await prisma.design.create({
       data: {
@@ -511,11 +511,26 @@ describe.skipIf(!hasDb)("finalizeDesign — orquestación (I/O de storage mockea
         .toBuffer({ resolveWithObject: true });
       return [data[0], data[1], data[2]];
     };
-    // Mitad SUPERIOR (cara B) → BLANCO PURO: es la cara B en blanco de la
-    // regla nueva (antes: copia espejo de la cara A).
-    expect(await pixel(Math.floor(w / 2), Math.floor(h / 4))).toEqual([255, 255, 255]);
-    // Mitad INFERIOR (cara A) → la foto del cliente (azul del fixture), NO blanca:
-    // prueba de que el blanco de arriba no es "toda la tira vacía".
+    // Mitad SUPERIOR (cara B) → PATRÓN DE MARCA «Lucams» (owner 2026-11-03 —
+    // supersede el blanco de 2026-10-07): fondo blanco con wordmarks gris-lila,
+    // NUNCA copia espejo de la cara A.
+    // 1) No es la foto del cliente (azul): el centro de la mitad superior es
+    //    blanco o gris-lila neutro (|azul − rojo| < 10; la foto tendría azul ≫ rojo).
+    const [br, , bb] = await pixel(Math.floor(w / 2), Math.floor(h / 4));
+    expect(Math.abs((bb ?? 0) - (br ?? 0))).toBeLessThan(10);
+    // 2) El patrón está PRESENTE: algún pixel de la mitad superior es el gris
+    //    del wordmark (< 240 en algún canal).
+    const { data: topHalf } = await sharp(up!.bytes)
+      .extract({ left: 0, top: 0, width: w, height: Math.floor(h / 2) })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let patternPixels = 0;
+    for (let i = 0; i < topHalf.length; i += 3) {
+      if (topHalf[i]! < 240 || topHalf[i + 1]! < 240 || topHalf[i + 2]! < 240) patternPixels++;
+    }
+    expect(patternPixels).toBeGreaterThan(0);
+    // Mitad INFERIOR (cara A) → la foto del cliente (azul del fixture), NO el patrón:
+    // prueba de que el patrón de arriba no es "toda la tira vacía".
     const [r, g, b] = await pixel(Math.floor(w / 2), Math.floor((3 * h) / 4));
     expect(b).toBeGreaterThan(r);
     expect(g).toBeGreaterThan(r);

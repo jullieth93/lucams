@@ -281,8 +281,9 @@ export async function reopenDesignForEditAction(designId: string) {
 // server". El preview sí cabe de sobra: el mayor medido en Storage pesa 0.61 MB.
 //
 // Dos caminos siguen aceptando snapshots del cliente:
-//   · inline (`production_i`) — lo usan los editores de una sola ficha (nombre, abecedario), donde
-//     el blob es diminuto y no hay nada que renderizar en el servidor;
+//   · inline (`production_i`) — lo usan los editores de fichas (nombre, abecedario, vocales):
+//     la LÁMINA por set que suben queda como fallback inmediato y el RenderJob la reemplaza
+//     con el render server-side POR FICHA (owner 2026-11-03, ADR-188);
 //   · `useStagedSlots` — segunda pasada del fallback: el cliente ya los subió DIRECTO a Storage con
 //     una URL firmada, así que no pasan por el body y no tienen techo de tamaño.
 //

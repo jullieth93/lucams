@@ -24,6 +24,8 @@ import type { PreviewUnitRange } from "./preview-units";
 import { waitForSlotPhotosReady } from "./slot-photo-readiness";
 import { snapshotSlotForPreview, yieldToMain } from "./slot-snapshot-cache";
 import { MAGNET_TEXTURE_WIDTH_DEFAULT } from "./texture-resolution";
+import { drawBrandBackFace } from "@/features/personalization/brand-back-pattern";
+import { ensureCalendarTitleFontLoaded } from "./calendar-card-preview";
 
 /**
  * Construye un Path2D según el shape del imán físico (heart/circle/rectangle).
@@ -271,10 +273,12 @@ export async function buildCompositedPreview(
  *  - noFold (Alargados planos): la pieza no se pliega → caras lado a lado
  *    (frente | reverso, B SIN rotar — montaje espalda con espalda) y unidades
  *    apiladas, SIN filete de doblez.
- *  - backOptional: una cara B vacía se dibuja EN BLANCO (REGLA ÚNICA, decisión
- *    owner 2026-10-07 — revierte la regla espejo del Paquete A/D 2026-10-02;
- *    producción genera el PNG blanco en blank-back-face.ts; el slot efectivo lo
- *    resuelve previewFacePairOfUnit: faceB = null → rect blanco puro),
+ *  - backOptional: una cara B vacía se dibuja con el PATRÓN DE MARCA «Lucams»
+ *    (REGLA ÚNICA, decisión owner 2026-11-03 — supersede el blanco del
+ *    2026-10-07, que a su vez revirtió la regla espejo del Paquete A/D
+ *    2026-10-02; producción genera el PNG con el MISMO patrón en
+ *    default-back-face.ts; el slot efectivo lo resuelve
+ *    previewFacePairOfUnit: faceB = null → drawBrandBackFace),
  *    nunca espejo de la cara A ni con el placeholder del editor.
  *  - foldCaption: indicación del tamaño desplegado bajo cada tira (texto CMS
  *    ya resuelto por el caller, ej. "Doblez · Desplegado: 2×12 cm").
@@ -333,7 +337,8 @@ export async function buildBookmarkStripPreview(
   // Paquete J (2026-10-02) — snapshots cacheados por slot + decodificación EN
   // PARALELO antes de pintar (antes: toDataURL + decode secuencial por cara en
   // el mismo click). La cara B vacía (backOptional) NO se rasteriza: su rect se
-  // pinta en blanco puro (faceB = null — owner 2026-10-07).
+  // pinta con el patrón de marca «Lucams» (faceB = null — owner 2026-11-03,
+  // supersede el blanco del 2026-10-07).
   const unitFaces: Array<{ faceA: number; faceB: number | null }> = [];
   const faceSlotIndices = new Set<number>();
   for (const unit of unitIndexes) {
@@ -342,6 +347,11 @@ export async function buildBookmarkStripPreview(
     faceSlotIndices.add(pair.faceA);
     if (pair.faceB !== null) faceSlotIndices.add(pair.faceB);
   }
+  // Fuente script del patrón de la cara B por defecto: cargarla ANTES de pintar
+  // (anti-FOUT; misma vía del título del calendario — resolveCalendarTitleFont).
+  const brandBackFont = unitFaces.some((p) => p.faceB === null)
+    ? ((await ensureCalendarTitleFontLoaded("dancing")) ?? undefined)
+    : undefined;
   const faceImages = new Map<number, HTMLImageElement>();
   const faceJobs: Array<Promise<void>> = [];
   for (const slotIndex of faceSlotIndices) {
@@ -391,10 +401,13 @@ export async function buildBookmarkStripPreview(
     for (const [i, slotIndex] of [faceA, faceB].entries()) {
       const { fx, fy, fw, fh } = faceRect(i);
       if (slotIndex === null) {
-        // Cara B vacía → EN BLANCO puro (decisión owner 2026-10-07): es la cara
-        // blanca que imprenta recibe (blankBackFacePng) y la que muestra el 3D.
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillRect(fx, fy, fw, fh);
+        // Cara B vacía → patrón de marca «Lucams» (decisión owner 2026-11-03 —
+        // supersede el blanco del 2026-10-07): el MISMO dibujo que imprenta
+        // recibe (default-back-face.ts) y que muestra el 3D (book-view-3d).
+        ctx.save();
+        ctx.translate(fx, fy);
+        drawBrandBackFace(ctx, fw, fh, brandBackFont);
+        ctx.restore();
         continue;
       }
       const img = faceImages.get(slotIndex);

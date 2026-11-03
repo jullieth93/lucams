@@ -1320,3 +1320,102 @@ describe("renderProductionSlotsCanvas — grosor de borde persistido (owner 2026
     expect((await rgbaAt(bufs[0], 6 * 3, 6 * 3)).slice(0, 3)).toEqual(PINK);
   });
 });
+
+describe("renderProductionSlotsCanvas — W3 full-bleed rectangular (owner 2026-11-03)", () => {
+  // El redondeo de esquinas del BORDE de la pieza lo resuelve el corte físico
+  // (troquel): el PNG de imprenta es la imagen COMPLETA rectangular, sin
+  // esquinas transparentes horneadas. Las siluetas heart/circle se conservan.
+  it("placeholder a stage completo con cornerRadius → esquinas OPACAS (foto a sangre)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 200, height: 300 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        // separadores: la ventana cubre TODO el stage y declara el radio del troquel.
+        {
+          id: "ph",
+          type: "image-placeholder",
+          x: 0,
+          y: 0,
+          width: 200,
+          height: 300,
+          cornerRadius: 20,
+        },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [
+        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 900),
+    });
+    // Esquina (2,2) del stage: antes quedaba transparente por el clip redondeado;
+    // ahora llega la foto (a sangre) — el redondeo lo hace el troquel.
+    const [r, g, b, a] = await rgbaAt(bufs[0], 2, 2);
+    expect(a).toBe(255);
+    expect([r, g, b]).toEqual([0x3a, 0xa0, 0xff]);
+  });
+
+  it("frame-card con cornerRadius → la tarjeta llena las esquinas (el radio queda como spec de corte)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 200, height: 300 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 24 },
+        { id: "ph", type: "image-placeholder", x: 20, y: 20, width: 160, height: 160 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [
+        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#5DD9D1",
+    });
+    // Esquina de la tarjeta (1,1 del stage): el color llena hasta el borde (antes:
+    // transparente por el roundRect del frame-card).
+    const [r, g, b, a] = await rgbaAt(bufs[0], 3, 3);
+    expect(a).toBe(255);
+    expect([r, g, b]).toEqual([0x5d, 0xd9, 0xd1]);
+  });
+
+  it("ventana de foto INSERTA (diseño, ej. Polaroid) conserva su redondeo", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 200, height: 300 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        // Ventana inserta con radio de DISEÑO: no es el contorno de la tarjeta.
+        {
+          id: "ph",
+          type: "image-placeholder",
+          x: 40,
+          y: 40,
+          width: 120,
+          height: 120,
+          cornerRadius: 30,
+        },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [
+        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+    });
+    // Esquina interna de la ventana (41,41) → fuera del clip redondeado = fondo blanco.
+    const corner = await rgbaAt(bufs[0], 41 * 3 + 1, 41 * 3 + 1);
+    expect(corner.slice(0, 3)).toEqual([255, 255, 255]);
+    // Centro de la ventana → la foto.
+    expect((await rgbaAt(bufs[0], 100 * 3, 100 * 3)).slice(0, 3)).toEqual([0x3a, 0xa0, 0xff]);
+    // Y la tarjeta en sí va a sangre: esquina del stage = fondo blanco OPACO.
+    expect((await rgbaAt(bufs[0], 1, 1))[3]).toBe(255);
+  });
+});

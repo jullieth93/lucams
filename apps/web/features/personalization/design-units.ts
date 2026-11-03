@@ -181,7 +181,7 @@ export function maxUnitsForProduct(unitSlots: number): number {
   return Math.max(1, Math.floor(MAX_DESIGN_SLOTS / Math.max(1, unitSlots)));
 }
 
-/** Tope de sets de letras por diseño (cada set = 1 lámina de producción). */
+/** Tope de sets de letras por diseño (producción: un PNG por ficha vía RenderJob — ADR-188). */
 export const MAX_LETTER_SET_UNITS = 10;
 
 /**
