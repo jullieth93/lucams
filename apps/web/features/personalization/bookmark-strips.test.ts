@@ -4,7 +4,8 @@
  * (tête-bêche) — cara B ARRIBA rotada 180°, cara A ABAJO derecha (el separador
  * cuelga de la página con el doblez arriba; convención corregida por el owner
  * 2026-09-25). noFold (Alargados): HORIZONTAL A|B sin rotar (histórico).
- * Esquinas exteriores redondeadas (troquel) y transparencia fuera de la silueta.
+ * W3 (owner 2026-11-03): tira RECTANGULAR A SANGRE — el redondeo de esquinas
+ * lo hace el corte físico (troquel), no el PNG.
  */
 
 import { describe, expect, it } from "vitest";
@@ -129,23 +130,22 @@ describe("composeFaceStrips (separadores 2 caras — tira desplegada)", () => {
     expect(b).toBe(255);
   });
 
-  it("esquinas exteriores redondeadas (troquel): transparente en la esquina, opaco al centro", async () => {
+  it("W3 (owner 2026-11-03): tira RECTANGULAR a sangre — esquinas opacas, sin máscara de troquel", async () => {
     const a = await fakeFace(100, 100, "#221E25");
     const b = await fakeFace(100, 100, "#221E25");
-    const strips = await composeFaceStrips([a, b], { cornerRadiusPx: 30 });
-    // Esquina superior-izquierda de la tira → fuera del troquel redondeado.
+    const strips = await composeFaceStrips([a, b]);
+    // Esquina superior-izquierda de la tira → OPACA (el redondeo lo hace el corte físico).
     const [, , , alphaCorner] = await rgbaAt(strips[0], 2, 2);
-    expect(alphaCorner).toBe(0);
-    // Centro de la cara B (mitad superior) → dentro.
+    expect(alphaCorner).toBe(255);
+    // Centro de la cara B (mitad superior) → opaco.
     const [, , , alphaCenter] = await rgbaAt(strips[0], 50, 50);
     expect(alphaCenter).toBe(255);
-    // El pliegue central NO se redondea: el borde de la unión (horizontal, a
-    // mitad del alto) sigue opaco en el costado.
+    // El pliegue central sigue opaco en el costado (unión sin marca).
     const [, , , alphaFold] = await rgbaAt(strips[0], 1, 100);
     expect(alphaFold).toBe(255);
   });
 
-  it("sin radio → tira rectangular opaca hasta la esquina", async () => {
+  it("tira rectangular opaca hasta la esquina", async () => {
     const a = await fakeFace(50, 50, "#3D2E5C");
     const b = await fakeFace(50, 50, "#3D2E5C");
     const strips = await composeFaceStrips([a, b]);

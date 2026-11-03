@@ -190,7 +190,7 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     expect(units[1]!.back?.id).toBe("2B");
   });
 
-  it("unidad sin cara B (no debería con facesPerUnit=2): la trasera queda EN BLANCO (back = null)", () => {
+  it("unidad sin cara B (no debería con facesPerUnit=2): la trasera queda con el patrón de marca (back = null)", () => {
     const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")]);
     expect(units).toHaveLength(2);
     expect(units[1]!.back).toBeNull();
@@ -232,16 +232,16 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     ]);
   });
 
-  it("Decisión owner 2026-10-07 — REGLA ÚNICA: cara B vacía → EN BLANCO (back = null, nunca espejo)", () => {
-    // Pareo por pares: unidad sin cara B → trasera en blanco.
+  it("Decisión owner 2026-11-03 — REGLA ÚNICA: cara B vacía → patrón de marca «Lucams» (back = null, nunca espejo)", () => {
+    // Pareo por pares: unidad sin cara B → trasera con el patrón (el caller la pinta).
     const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2");
     expect(units.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
       ["1A", "1B"],
-      ["2A", null], // sin cara B → EN BLANCO (igual que producción)
+      ["2A", null], // sin cara B → patrón de marca «Lucams» (igual que producción)
     ]);
     // Pareo por slotIndex (facesPerUnit=2): la cara B existe como slot con su
     // textura de stage (dataUrl SIEMPRE llega) pero SIN assetUrl — la misma
-    // condición "vacía" que producción (blankBackFacePng, blank-back-face.ts).
+    // condición "vacía" que producción (defaultBackFacePng, default-back-face.ts).
     const slot = (id: string, slotIndex: number, assetUrl?: string) => ({
       id,
       wRatio: 600,
@@ -256,7 +256,7 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
       "6×2",
     );
     expect(bySlotUnits.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
-      ["1A", null], // B sin assetUrl → EN BLANCO (revierte el espejo del Paquete D)
+      ["1A", null], // B sin assetUrl → patrón de marca «Lucams» (owner 2026-11-03)
       ["2A", "2B"], // B diseñada → su propia textura
     ]);
   });

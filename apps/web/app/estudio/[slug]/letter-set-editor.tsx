@@ -248,12 +248,13 @@ function blobToImage(blob: Blob): Promise<HTMLImageElement> {
 }
 
 /**
- * 2026-10-19 — lámina de producción (PNG ×3, puede pasar de 2 MB con fichas
+ * 2026-10-19 — lámina del set (PNG ×3, puede pasar de 2 MB con fichas
  * ilustradas) → página de preview LIGERA (WebP, borde largo ≤1600 px) para el
  * pager de la Vista Previa y para el "Ver" paginado del carrito
  * (uploadDesignPreviewPagesAction acepta ≤2 MB por página; si el WebP queda
- * grande se reintenta más chico). El archivo de PRODUCCIÓN sigue siendo el PNG
- * original — esto es solo exhibición.
+ * grande se reintenta más chico). La lámina PNG original sube como fallback de
+ * producción (el RenderJob la reemplaza por el render por ficha — ADR-188);
+ * esta página WebP es solo exhibición.
  */
 async function laminaToPreviewPageDataUrl(blob: Blob): Promise<string> {
   const img = await blobToImage(blob);
@@ -423,7 +424,8 @@ export function LetterSetEditor({
   const [previewPagesGen, setPreviewPagesGen] = useState(0);
 
   // ── Multi-unidad (2026-09-09) — N sets, cada uno con SU DISEÑO ──
-  // Tope defensivo (cada set = 1 lámina de producción; validado también en el server).
+  // Tope defensivo (cada set = N fichas de producción vía RenderJob, ADR-188;
+  // validado también en el server).
   // 2026-10-12 — el N es ESTADO (stepper "¿Cuántos sets quieres?" en el panel):
   // se puede cambiar sin volver a la PDP; el precio (unitPriceCents × N), el
   // pager y la vista previa lo siguen en vivo.
@@ -824,8 +826,10 @@ export function LetterSetEditor({
       }
       const fd = new FormData();
       fd.set("designId", created.designId);
-      // Cada set se imprime como SU lámina (un archivo de producción POR SET),
-      // aunque la modal le cuente al cliente las fichas que va a recibir.
+      // La lámina de cada set sube como FALLBACK inmediato (un archivo POR SET);
+      // el RenderJob la reemplaza con el render server-side POR FICHA (300 DPI,
+      // owner 2026-11-03, ADR-188). La modal le cuenta al cliente las fichas
+      // que va a recibir.
       fd.set("slotCount", String(unitCount));
       // Preview = montaje de todas las láminas (el MISMO PNG que aprobó el cliente).
       fd.set("preview", dataUrlToBlob(previewDataUrl!), "preview.png");

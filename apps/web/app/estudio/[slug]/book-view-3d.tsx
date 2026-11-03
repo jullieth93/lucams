@@ -61,8 +61,9 @@
  *    ROLL sobre el eje largo y basculaba la cara impresa fuera de la vertical. Con la pose
  *    anidada la cara A mira EXACTA a +Y (lib/book-geometry.flatFrontNormalWorld, testeado).
  *  - Toggle "Ver respaldo / Ver frente": botón overlay (aria-pressed) que voltea TODAS las
- *    piezas 180° sobre su eje largo (FACE_FLIP_ROTATION) mostrando la cara B — en BLANCO si
- *    está vacía (misma regla que producción). Sirve para doblados (FoldedStripMesh) y planos
+ *    piezas 180° sobre su eje largo (FACE_FLIP_ROTATION) mostrando la cara B — con el PATRÓN
+ *    DE MARCA «Lucams» si está vacía (owner 2026-11-03, misma regla que producción;
+ *    brand-back-texture.ts). Sirve para doblados (FoldedStripMesh) y planos
  *    (flat); el estado es local del modal (cara A siempre al abrir).
  *    Textos CMS: estudio.escenas.libro-ver-respaldo/-frente (useStudioTexts).
  *
@@ -81,6 +82,7 @@ import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import { useStudioTexts } from "./studio-texts-provider";
 import { FoldedStripMesh, MagnetMesh, BLANK_FACE_COLOR, FACE_FLIP_ROTATION } from "./magnet-3d";
+import { useBrandBackTexture } from "./lib/brand-back-texture";
 import { getPageEdgesTexture, getPagePrintTexture } from "./lib/procedural-textures";
 import {
   BLOCK_T,
@@ -129,13 +131,17 @@ function Separators({
   sizeCm,
   facesPerUnit,
   showBack,
+  brandBack,
 }: {
   items: Magnet3D[];
   sizeCm?: string;
   facesPerUnit?: number;
   /** "Ver respaldo" (owner 2026-10-07): voltea cada tira 180° sobre su eje largo → la
-   *  cara B (o el blanco si está vacía) queda de frente. */
+   *  cara B (o el patrón de marca si está vacía) queda de frente. */
   showBack: boolean;
+  /** Textura del patrón «Lucams» para la cara B sin diseñar (owner 2026-11-03);
+   *  null mientras se genera → respaldo blanco ese instante. */
+  brandBack: string | null;
 }) {
   const layout = useMemo(() => {
     const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
@@ -177,7 +183,7 @@ function Separators({
           <group rotation={showBack ? FACE_FLIP_ROTATION : IDENTITY_ROTATION}>
             <FoldedStripMesh
               dataUrl={unit.front.dataUrl}
-              backDataUrl={unit.back?.dataUrl ?? undefined}
+              backDataUrl={unit.back?.dataUrl ?? brandBack ?? undefined}
               wRatio={unit.front.wRatio}
               hRatio={unit.front.hRatio}
               stripW={stripW}
@@ -232,7 +238,16 @@ type FlatBookmarkData = {
  * Con la composición anidada la cara A mira EXACTA a +Y para cualquier yaw (verificado
  * en book-geometry.test: flatFrontNormalWorld).
  */
-function FlatBookmarks({ data, showBack }: { data: FlatBookmarkData; showBack: boolean }) {
+function FlatBookmarks({
+  data,
+  showBack,
+  brandBack,
+}: {
+  data: FlatBookmarkData;
+  showBack: boolean;
+  /** Textura del patrón «Lucams» para la cara B sin diseñar (owner 2026-11-03). */
+  brandBack: string | null;
+}) {
   return (
     <>
       {data.units.map((unit, i) => {
@@ -253,13 +268,14 @@ function FlatBookmarks({ data, showBack }: { data: FlatBookmarkData; showBack: b
                   acostar → la cara B (o el blanco si está vacía) queda mirando +Y y la A
                   contra la página — como voltear físicamente el marcapáginas. */}
               <group rotation={showBack ? FACE_FLIP_ROTATION : IDENTITY_ROTATION}>
-                {/* Cara B vacía (REGLA ÚNICA, decisión owner 2026-10-07): bookmarkFaceUnits la
-                    resuelve EN BLANCO (back = null → tapa trasera blanca pura) — lo mismo que
-                    imprime producción, nunca espejo de la cara A. */}
+                {/* Cara B vacía (REGLA ÚNICA, decisión owner 2026-11-03): bookmarkFaceUnits la
+                    resuelve sin textura (back = null) y acá entra el PATRÓN DE MARCA «Lucams»
+                    (brandBack) — lo mismo que imprime producción, nunca espejo de la cara A.
+                    Mientras la textura se genera, respaldo blanco (BLANK_FACE_COLOR). */}
                 <MagnetMesh
                   dataUrl={unit.front.dataUrl}
-                  backDataUrl={unit.back?.dataUrl ?? undefined}
-                  backColor={unit.back ? undefined : BLANK_FACE_COLOR}
+                  backDataUrl={unit.back?.dataUrl ?? brandBack ?? undefined}
+                  backColor={unit.back || brandBack ? undefined : BLANK_FACE_COLOR}
                   width={w}
                   height={h}
                   shape="rectangle"
@@ -448,6 +464,9 @@ function Scene({
   }
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
+  // Cara B por defecto (owner 2026-11-03): textura del patrón de marca «Lucams»
+  // al aspecto real de la cara (mismo dibujo que producción y la Vista Previa).
+  const brandBack = useBrandBackTexture(bookmarks[0]?.wRatio, bookmarks[0]?.hRatio);
   // 2026-09-15 — layout de los Alargados planos calculado UNA vez acá: la separación entre
   // piezas es siempre ≥ ancho + gap y, si una fila no cabe en la hoja, se reparte en filas (z
   // distinta). El encuadre de cámara usa el ancho/alto REALES del conjunto (nunca se encoge).
@@ -559,7 +578,7 @@ function Scene({
       <PageSheet side={-1} />
       {flat ? (
         flatData ? (
-          <FlatBookmarks data={flatData} showBack={showBack} />
+          <FlatBookmarks data={flatData} showBack={showBack} brandBack={brandBack} />
         ) : null
       ) : (
         <Separators
@@ -567,6 +586,7 @@ function Scene({
           sizeCm={sizeCm}
           facesPerUnit={facesPerUnit}
           showBack={showBack}
+          brandBack={brandBack}
         />
       )}
 

@@ -37,9 +37,11 @@
  *
  * Entrada: 2N buffers de caras ya renderizadas a resolución de producción (stage ×3,
  * convención slots 2k=cara A y 2k+1=cara B del Estudio). Salida: N buffers de tiras
- * PNG. Las esquinas EXTERIORES de la tira quedan redondeadas con transparencia (el
- * troquel real de los separadores es redondo, no puntiagudo); la unión central NO se
- * redondea: ahí va el doblez (plegables) o la unión espalda con espalda (noFold).
+ * PNG RECTANGULARES A SANGRE (W3, owner 2026-11-03): las esquinas ya NO se recortan
+ * con transparencia — el redondeo del separador lo hace el corte físico (troquel) y la
+ * imprenta necesita el arte completo hasta las 4 esquinas (sin franjas blancas si el
+ * corte se desvía un milímetro). La unión central tampoco se marca: ahí va el doblez
+ * (plegables) o la unión espalda con espalda (noFold).
  *
  * sharp (sin deps nativas) — misma línea de producción que production-render.ts.
  */
@@ -48,12 +50,6 @@ import "server-only";
 import sharp, { type OverlayOptions } from "./sharp-safe";
 
 export type ComposeFaceStripsOptions = {
-  /**
-   * Radio de esquina de la tira EN PÍXELES DEL BUFFER DE SALIDA (el caller escala el
-   * cornerRadius lógico de la plantilla × el factor de producción). 0/undefined = tira
-   * rectangular sin redondeo.
-   */
-  cornerRadiusPx?: number;
   /**
    * `true` (Alargados, personalizationSchema.noFold): la pieza es PLANA → composición
    * HORIZONTAL A|B histórica, cara B SIN rotar. `false`/undefined (separadores
@@ -79,7 +75,6 @@ export async function composeFaceStrips(
     );
   }
 
-  const radius = Math.max(0, Math.round(opts?.cornerRadiusPx ?? 0));
   const noFold = opts?.noFold === true;
   const strips: Buffer[] = [];
 
@@ -124,17 +119,8 @@ export async function composeFaceStrips(
           { input: faceA, left: 0, top: h },
         ];
 
-    // Esquinas exteriores redondeadas (troquel redondo del separador): máscara SVG
-    // dest-in recorta el alpha de las 4 esquinas; la unión central queda intacta.
-    if (radius > 0) {
-      const mask = Buffer.from(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${stripW}" height="${stripH}">` +
-          `<rect x="0" y="0" width="${stripW}" height="${stripH}" rx="${radius}" ry="${radius}" fill="#ffffff"/>` +
-          `</svg>`,
-      );
-      composites.push({ input: mask, blend: "dest-in" });
-    }
-
+    // W3 (owner 2026-11-03): SIN máscara de esquinas — la tira sale RECTANGULAR a
+    // sangre; el redondeo del separador lo hace el troquel en el corte físico.
     const strip = await sharp({
       create: {
         width: stripW,

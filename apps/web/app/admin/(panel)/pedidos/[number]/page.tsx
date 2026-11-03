@@ -45,6 +45,7 @@ import { OrderActions } from "./order-actions";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 import {
   resolveProductionSpec,
+  productionPieceGroups,
   type ProductionSpec,
 } from "@/features/personalization/production-spec";
 
@@ -119,8 +120,8 @@ function jsonRecord(value: unknown): Record<string, unknown> | null {
 function productionPieceLabel(index: number, spec: ProductionSpec): string {
   const base = `Pieza ${String(index + 1).padStart(2, "0")}`;
   if (spec.formatoFisico.tipo === "tira-desplegada" && spec.formatoFisico.plana) {
-    return spec.reversosEnBlanco.includes(index + 1)
-      ? `${base} · frente A + reverso B en blanco`
+    return spec.reversosConMarcaAgua.includes(index + 1)
+      ? `${base} · frente A + reverso B con marca de agua Lucams`
       : `${base} · frente A + reverso B`;
   }
   return base;
@@ -304,6 +305,93 @@ export default async function AdminPedidoDetallePage({
                         lineQty: it.qty,
                       })
                     : null;
+                  // W2 (owner 2026-11-03) — productos AGRUPADOS (sets de letras por ficha,
+                  // calendario multi-set, tiras ×N): las piezas se exhiben organizadas por
+                  // set/unidad con rótulos reales (letra, mes, segmento), no en grilla plana.
+                  const productionGroups =
+                    it.design && it.design.productionUrls.length > 0
+                      ? productionPieceGroups({
+                          personalizationKind: it.variant.product.personalizationKind,
+                          canvasData: jsonRecord(it.design.canvasData),
+                          designMetadata: jsonRecord(it.design.metadata),
+                          productionCount: it.design.productionUrls.length,
+                          startMonth:
+                            typeof jsonRecord(it.variant.product.personalizationSchema)
+                              ?.startMonth === "number"
+                              ? (jsonRecord(it.variant.product.personalizationSchema)!
+                                  .startMonth as number)
+                              : undefined,
+                        })
+                      : null;
+                  // Tarjeta de UNA pieza de impresión (índice global en productionUrls).
+                  const renderPieceCard = (pieceIndex: number, displayLabel: string) => {
+                    const path = it.design!.productionUrls[pieceIndex]!;
+                    const url = signedProduction.get(path);
+                    const label = `pieza-${String(pieceIndex + 1).padStart(2, "0")}`;
+                    const approved = it.design?.moderationStatus === "APPROVED";
+                    return url ? (
+                      <div
+                        key={path}
+                        className={`overflow-hidden rounded-lg border ${
+                          approved ? "border-brand-purple/15" : "border-amber-300"
+                        }`}
+                      >
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`Abrir ${displayLabel} a resolución completa`}
+                          className="relative block h-80 w-full overflow-hidden"
+                          style={TRANSPARENCY_GRID}
+                        >
+                          <Image
+                            src={url}
+                            alt={displayLabel}
+                            fill
+                            sizes="(min-width: 640px) 320px, 100vw"
+                            className="object-contain"
+                            unoptimized
+                          />
+                        </a>
+                        <div className="bg-white p-2">
+                          <p className="text-brand-purple-dark text-[11px] font-bold">
+                            {displayLabel}
+                          </p>
+                          <p className="text-brand-muted text-[10px]">
+                            Arte rectangular a sangre: el redondeo de esquinas lo hace el corte
+                            (troquel). Cuadrícula gris = transparencia (solo formas troqueladas:
+                            corazón/círculo).
+                          </p>
+                          {!approved && (
+                            <p className="mt-1 text-[10px] font-bold text-amber-800">
+                              ⚠️ No imprimir hasta aprobar en Moderación.
+                            </p>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-brand-purple-dark text-[11px] font-semibold underline"
+                            >
+                              Ver completa
+                            </a>
+                            <a
+                              href={url}
+                              download={`${order.number}-${label}.png`}
+                              className="text-brand-purple-dark text-[11px] font-semibold underline"
+                            >
+                              Descargar PNG
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <span key={path} className="text-brand-muted text-[11px]">
+                        {label} (no disponible)
+                      </span>
+                    );
+                  };
                   return (
                     <li key={it.id} className="flex items-start gap-3 py-3">
                       <div className="bg-brand-purple/5 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg p-1">
@@ -383,85 +471,43 @@ export default async function AdminPedidoDetallePage({
                                 <p className="text-brand-purple-dark font-semibold">
                                   {productionSpec.queEsCadaArchivo}
                                 </p>
-                                {productionSpec.reversosEnBlanco.length > 0 && (
+                                {productionSpec.reversosConMarcaAgua.length > 0 && (
                                   <p className="mt-1 font-bold text-amber-800">
-                                    Reverso B en blanco: unidad(es){" "}
-                                    {productionSpec.reversosEnBlanco.join(", ")}. No copiar ni
-                                    espejar la cara A.
+                                    Reverso B con marca de agua Lucams (ya viene en el archivo):
+                                    unidad(es) {productionSpec.reversosConMarcaAgua.join(", ")}.
                                   </p>
                                 )}
                               </div>
                             )}
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              {it.design.productionUrls.map((path, i) => {
-                                const url = signedProduction.get(path);
-                                const label = `pieza-${String(i + 1).padStart(2, "0")}`;
-                                const displayLabel = productionSpec
-                                  ? productionPieceLabel(i, productionSpec)
-                                  : `Pieza ${String(i + 1).padStart(2, "0")}`;
-                                const approved = it.design?.moderationStatus === "APPROVED";
-                                return url ? (
-                                  <div
-                                    key={path}
-                                    className={`overflow-hidden rounded-lg border ${
-                                      approved ? "border-brand-purple/15" : "border-amber-300"
-                                    }`}
-                                  >
-                                    <a
-                                      href={url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      aria-label={`Abrir ${displayLabel} a resolución completa`}
-                                      className="relative block h-80 w-full overflow-hidden"
-                                      style={TRANSPARENCY_GRID}
-                                    >
-                                      <Image
-                                        src={url}
-                                        alt={displayLabel}
-                                        fill
-                                        sizes="(min-width: 640px) 320px, 100vw"
-                                        className="object-contain"
-                                        unoptimized
-                                      />
-                                    </a>
-                                    <div className="bg-white p-2">
-                                      <p className="text-brand-purple-dark text-[11px] font-bold">
-                                        {displayLabel}
-                                      </p>
-                                      <p className="text-brand-muted text-[10px]">
-                                        Cuadrícula gris = transparencia exterior del troquel.
-                                      </p>
-                                      {!approved && (
-                                        <p className="mt-1 text-[10px] font-bold text-amber-800">
-                                          ⚠️ No imprimir hasta aprobar en Moderación.
-                                        </p>
-                                      )}
-                                      <div className="mt-2 flex flex-wrap gap-2">
-                                        <a
-                                          href={url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="text-brand-purple-dark text-[11px] font-semibold underline"
-                                        >
-                                          Ver completa
-                                        </a>
-                                        <a
-                                          href={url}
-                                          download={`${order.number}-${label}.png`}
-                                          className="text-brand-purple-dark text-[11px] font-semibold underline"
-                                        >
-                                          Descargar PNG
-                                        </a>
-                                      </div>
+                            {productionGroups ? (
+                              <div className="space-y-4">
+                                {productionGroups.map((group) => (
+                                  <section key={group.key}>
+                                    <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
+                                      <h4 className="text-brand-purple-dark text-xs font-bold">
+                                        {group.title}
+                                      </h4>
+                                      <span className="text-brand-muted text-[11px]">
+                                        {group.pieces.length} archivo(s)
+                                        {group.note ? ` · ${group.note}` : ""}
+                                      </span>
                                     </div>
-                                  </div>
-                                ) : (
-                                  <span key={path} className="text-brand-muted text-[11px]">
-                                    {label} (no disponible)
-                                  </span>
-                                );
-                              })}
-                            </div>
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                      {group.pieces.map((p) => renderPieceCard(p.index, p.label))}
+                                    </div>
+                                  </section>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                {it.design.productionUrls.map((path, i) => {
+                                  const displayLabel = productionSpec
+                                    ? productionPieceLabel(i, productionSpec)
+                                    : `Pieza ${String(i + 1).padStart(2, "0")}`;
+                                  return renderPieceCard(i, displayLabel);
+                                })}
+                              </div>
+                            )}
                           </div>
                         ) : it.design ? (
                           <div className="text-brand-muted mt-1 text-[11px]">

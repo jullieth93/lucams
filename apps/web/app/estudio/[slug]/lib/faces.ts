@@ -47,16 +47,17 @@ export function facePairOfUnit(unitIndex: number): { faceA: number; faceB: numbe
 }
 
 /**
- * REGLA ÚNICA de la cara B vacía (decisión owner 2026-10-07 — REVIERTE la regla
- * espejo del Paquete A/D, 2026-10-02): una cara B SIN diseñar (slot impar sin
- * assetUrl, solo productos backOptional) se imprime EN BLANCO — nunca espejo de
- * la cara A. Vale para TODOS los renders: preview del Estudio, libro 3D y
- * producción física (`blankBackFacePng` en features/personalization).
+ * REGLA ÚNICA de la cara B vacía (decisión owner 2026-11-03 — SUPERSEDE el
+ * blanco de 2026-10-07, que a su vez revirtió la regla espejo del Paquete
+ * A/D, 2026-10-02): una cara B SIN diseñar (slot impar sin assetUrl, solo
+ * productos backOptional) se imprime con el PATRÓN DE MARCA «Lucams» — nunca
+ * espejo de la cara A. Vale para TODOS los renders: preview del Estudio,
+ * libro 3D y producción física (`defaultBackFacePng` en features/personalization).
  *
  * Devuelve el par de slots A PINTAR en los previews de la unidad: si la cara B
- * está vacía, `faceB` es null — el caller pinta ese rect EN BLANCO (con la
- * rotación propia del montaje). Con cara B diseñada o producto sin backOptional,
- * el par es el real.
+ * está vacía, `faceB` es null — el caller pinta ese rect con el patrón de marca
+ * (drawBrandBackFace; con la rotación propia del montaje). Con cara B diseñada
+ * o producto sin backOptional, el par es el real.
  */
 export function previewFacePairOfUnit(
   slots: ReadonlyArray<{ slotIndex: number; assetUrl?: string | null }>,

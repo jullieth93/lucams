@@ -1792,9 +1792,9 @@ export function StudioEditor({
       // noFold: frente | reverso lado a lado), no una grilla de caras sueltas —
       // es la pieza física que el cliente va a recibir.
       // 2026-09-22 — noFold (Alargados): sin doblez ni "desplegado"; backOptional:
-      // cara B vacía se pinta EN BLANCO (REGLA ÚNICA, decisión owner 2026-10-07 —
-      // revierte la regla espejo del Paquete A 2026-10-02; producción:
-      // blank-back-face.ts, features/personalization), igual que en el libro 3D.
+      // cara B vacía se pinta con el PATRÓN DE MARCA «Lucams» (REGLA ÚNICA,
+      // decisión owner 2026-11-03 — supersede el blanco de 2026-10-07; producción:
+      // default-back-face.ts, features/personalization), igual que en el libro 3D.
       // Lo resuelve previewFacePairOfUnit dentro del compositor (faceB = null).
       const foldCaption = (() => {
         if (facesPerUnit !== 2 || productConfig.noFold) return undefined;

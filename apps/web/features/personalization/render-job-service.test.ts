@@ -65,6 +65,16 @@ const { state, MockNeedsKonva } = vi.hoisted(() => {
       renderMode: "none" as "none" | "konva" | "generic",
       renderedSlotIndexes: [] as number[],
       capturedErrors: [] as string[],
+      /** Letterset (owner 2026-11-03): set de fichas mockeado y modo del renderer por ficha. */
+      letterTileSet: null as null | { tiles: { imageUrl: string }[] },
+      tileRenderMode: "ok" as "ok" | "konva",
+      renderedTiles: [] as {
+        letter: string;
+        color: string;
+        withBorder: boolean;
+        hasImage: boolean;
+      }[],
+      productVariants: [] as { id: string; price: number; stock: number; attributes: unknown }[],
     },
   };
 });
@@ -179,8 +189,11 @@ vi.mock("@/lib/db", () => ({
       findUnique: async () => ({
         personalizationSchema: state.productSchema,
         personalizationKind: "PHOTO_PACK",
-        variants: [],
+        variants: state.productVariants,
       }),
+    },
+    letterTileSet: {
+      findFirst: async () => state.letterTileSet,
     },
   },
 }));
@@ -224,10 +237,33 @@ vi.mock("./bookmark-strips", () => ({
     // 1 tira por par de caras, como el módulo real.
     Array.from({ length: Math.floor(buffers.length / 2) }, (_, i) => Buffer.from(`strip-${i}`)),
 }));
-vi.mock("./blank-back-face", () => ({
-  blankBackFacePng: async () => Buffer.from("blank-back"),
+vi.mock("./default-back-face", () => ({
+  defaultBackFacePng: async () => Buffer.from("brand-back"),
   expandMissingBackFaces: async (buffers: Buffer[]) => buffers,
-  blankOutEmptyBackFaces: async (buffers: Buffer[]) => buffers,
+  fillEmptyBackFaces: async (buffers: Buffer[]) => buffers,
+}));
+vi.mock("./letter-tile-render", () => ({
+  // Misma gramática que el parser real (sizeCm "5×7" → cm).
+  parseTileSizeCm: (v: unknown) => {
+    if (typeof v !== "string") return null;
+    const m = v.trim().match(/^(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)$/i);
+    return m ? { wCm: Number.parseFloat(m[1]!), hCm: Number.parseFloat(m[2]!) } : null;
+  },
+  renderLetterTileProduction: async (opts: {
+    letter: string;
+    color: string;
+    withBorder: boolean;
+    tileImage: Buffer | null;
+  }) => {
+    if (state.tileRenderMode === "konva") throw new MockNeedsKonva("forzado por el test (ficha)");
+    state.renderedTiles.push({
+      letter: opts.letter,
+      color: opts.color,
+      withBorder: opts.withBorder,
+      hasImage: opts.tileImage !== null,
+    });
+    return Buffer.from(`ficha-${opts.letter}-${opts.color}`);
+  },
 }));
 
 import {
@@ -304,6 +340,10 @@ beforeEach(() => {
   state.renderMode = "none";
   state.renderedSlotIndexes = [];
   state.capturedErrors = [];
+  state.letterTileSet = null;
+  state.tileRenderMode = "ok";
+  state.renderedTiles = [];
+  state.productVariants = [];
 });
 
 describe("staticClientFallbackReason", () => {
@@ -487,5 +527,96 @@ describe("getRenderJobProgress", () => {
     const progress = await getRenderJobProgress("design_1");
     expect(progress).toMatchObject({ status: "PENDING", doneUnits: 1, totalUnits: 3 });
     expect(await getRenderJobProgress("otro")).toBeNull();
+  });
+});
+
+describe("processRenderJobs — sets de letras POR FICHA (owner 2026-11-03)", () => {
+  /** Diseño letterset V1 stub multi-set listo para el worker (con lámina del cliente como fallback). */
+  function seedLettersetDesign(opts?: { productionUrls?: string[] }) {
+    state.productSchema = undefined;
+    state.productVariants = [
+      { id: "var_1", price: 39900, stock: 10, attributes: { sizeCm: "5×7" } },
+    ];
+    state.design = {
+      id: "design_1",
+      productId: "prod_1",
+      metadata: {
+        surface: "letterset",
+        schemaVersion: 2,
+        letterSet: "vowels",
+        language: "es",
+        variantId: "var_1",
+        letters: ["A", "E"],
+        colors: ["#111111", "#222222"],
+        styleSetId: "set_1",
+        withBorder: true,
+        unitCount: 2,
+        units: [
+          { colors: ["#111111", "#222222"], styleSetId: "set_1", withBorder: true },
+          { colors: ["#333333"], styleSetId: null, withBorder: false },
+        ],
+      },
+      canvasData: { version: 1, stage: { width: 1080, height: 1080 }, layers: [] },
+      productionUrls: opts?.productionUrls ?? ["design_1/lamina-cliente.png"],
+    };
+    state.letterTileSet = { tiles: [{ imageUrl: "https://cdn.test/tile.png" }] };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new Uint8Array([9, 9, 9]).buffer,
+      })),
+    );
+  }
+
+  it("renderiza UN PNG por ficha (sets × letras), ficha-NN.png, y reemplaza la lámina del cliente al DONE", async () => {
+    seedLettersetDesign();
+    seedJob({ totalUnits: 4 }); // 2 letras × 2 sets
+    const res = await processRenderJobs({ onlyDesignId: "design_1" });
+    expect(res).toMatchObject({ claimed: 1, done: 1, failed: 0 });
+    expect(state.job).toMatchObject({ status: "DONE", doneUnits: 4 });
+    expect(state.uploads.map((u) => u.path)).toEqual([
+      "design_1/ficha-01.png",
+      "design_1/ficha-02.png",
+      "design_1/ficha-03.png",
+      "design_1/ficha-04.png",
+    ]);
+    expect(state.design?.productionUrls).toEqual([
+      "design_1/ficha-01.png",
+      "design_1/ficha-02.png",
+      "design_1/ficha-03.png",
+      "design_1/ficha-04.png",
+    ]);
+    // Orden: set 0 completo (A, E con SU estilo/colores/borde), luego set 1.
+    expect(state.renderedTiles).toEqual([
+      { letter: "A", color: "#111111", withBorder: true, hasImage: true },
+      { letter: "E", color: "#222222", withBorder: true, hasImage: true },
+      // Set 1 sin estilo ilustrado → «Solo letra» (hasImage false), sin borde.
+      { letter: "A", color: "#333333", withBorder: false, hasImage: false },
+      { letter: "E", color: "#333333", withBorder: false, hasImage: false },
+    ]);
+    vi.unstubAllGlobals();
+  });
+
+  it("NEEDS_KONVA conserva la lámina del cliente (DONE, nada se pisa)", async () => {
+    seedLettersetDesign();
+    seedJob({ totalUnits: 4 });
+    state.tileRenderMode = "konva";
+    const res = await processRenderJobs({ onlyDesignId: "design_1" });
+    expect(res.done).toBe(1);
+    expect(state.job?.status).toBe("DONE");
+    expect(state.uploads).toHaveLength(0);
+    expect(state.design?.productionUrls).toEqual(["design_1/lamina-cliente.png"]);
+    vi.unstubAllGlobals();
+  });
+
+  it("NEEDS_KONVA sin lámina del cliente → FAILED terminal", async () => {
+    seedLettersetDesign({ productionUrls: [] });
+    seedJob({ totalUnits: 4 });
+    state.tileRenderMode = "konva";
+    const res = await processRenderJobs({ onlyDesignId: "design_1" });
+    expect(res.failed).toBe(1);
+    expect(state.job?.status).toBe("FAILED");
+    vi.unstubAllGlobals();
   });
 });

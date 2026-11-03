@@ -69,11 +69,11 @@ describe("faces (Ola 3 — separadores 2 caras)", () => {
     expect(previewFacePairOfUnit(slots, 0, false)).toEqual({ faceA: 0, faceB: 1 });
   });
 
-  // Concordancia con producción (2026-10-07): la cara B vacía NO usa ningún
-  // slot — producción genera un PNG blanco del tamaño de la cara A
-  // (blankBackFacePng, blank-back-face.ts) y el preview pinta el rect blanco.
-  // Cualquier unidad, sin importar su índice, resuelve faceB = null.
-  it("la B vacía se pinta EN BLANCO en cualquier unidad (faceB = null, mismo blanco que producción)", () => {
+  // Concordancia con producción (2026-11-03): la cara B vacía NO usa ningún
+  // slot — producción genera un PNG con el patrón de marca «Lucams» del tamaño
+  // de la cara A (defaultBackFacePng, default-back-face.ts) y el preview pinta
+  // el MISMO patrón (drawBrandBackFace). Cualquier unidad resuelve faceB = null.
+  it("la B vacía se pinta con el patrón de marca en cualquier unidad (faceB = null, mismo dibujo que producción)", () => {
     for (let unit = 0; unit < 5; unit++) {
       const { faceA, faceB } = facePairOfUnit(unit);
       const slots = [

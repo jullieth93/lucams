@@ -703,8 +703,9 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
 
         <p className="text-brand-muted text-xs">
           Recomendado: imagen en la proporción del producto. Para separadores puedes subir también
-          la cara B; si no, el respaldo se imprime en blanco. Con «Una sola imagen» la tira debe ser
-          vertical: cara A abajo y cara B arriba cabeza abajo (formato doblez de imprenta).
+          la cara B; si no, el respaldo se imprime con la marca de agua de Lucams. Con «Una sola
+          imagen» la tira debe ser vertical: cara A abajo y cara B arriba cabeza abajo (formato
+          doblez de imprenta).
         </p>
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </div>

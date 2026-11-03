@@ -1313,8 +1313,9 @@ export async function createClientSlotUploadTickets(opts: {
 
   // Cara B opcional (backOptional, 2026-09-22): las caras B sin diseñar (slot
   // impar sin assetUrl) NO reciben ticket — el cliente solo sube caras A y las
-  // B que sí diseñó; finalize genera una cara B EN BLANCO para cada B vacía
-  // (blank-back-face.ts — decisión owner 2026-10-07, nunca espejo de la A).
+  // B que sí diseñó; finalize genera para cada B vacía la cara B por defecto con
+  // el PATRÓN DE MARCA «Lucams» (default-back-face.ts — decisión owner
+  // 2026-11-03, supersede el blanco de 2026-10-07; nunca espejo de la A).
   const skipBackSlots = new Set<number>(
     productConfig.facesPerUnit === 2 &&
       productConfig.backOptional === true &&
@@ -1390,24 +1391,26 @@ async function readStagedClientSlots(designId: string, slotIndexes: number[]): P
 }
 
 /**
- * Cara B EN BLANCO (decisión owner 2026-10-07 — revierte la regla espejo del
- * Paquete D): carga perezosa del generador (sharp nativo — ver nota en imports).
- * Si el binario no carga NO caemos a la regla espejo vieja: imprenta recibiría
- * un producto distinto del que el cliente aprobó. El finalize falla con mensaje
- * claro y el diseño queda DRAFT para reintentar.
+ * Cara B por defecto con el PATRÓN DE MARCA «Lucams» (decisión owner
+ * 2026-11-03 — supersede el blanco de 2026-10-07, que a su vez revirtió la
+ * regla espejo del Paquete D): carga perezosa del generador (sharp +
+ * @napi-rs/canvas nativos — ver nota en imports). Si el binario no carga NO
+ * caemos a la regla espejo vieja: imprenta recibiría un producto distinto del
+ * que el cliente aprobó. El finalize falla con mensaje claro y el diseño
+ * queda DRAFT para reintentar.
  */
-async function loadBlankBackFace(): Promise<typeof import("./blank-back-face")> {
+async function loadDefaultBackFace(): Promise<typeof import("./default-back-face")> {
   try {
-    return await import("./blank-back-face");
+    return await import("./default-back-face");
   } catch (err) {
     logger.error(
       {
-        event: "design.finalize.blank_back_face_error",
+        event: "design.finalize.default_back_face_error",
         err: err instanceof Error ? err.message : String(err),
       },
-      "No se pudo cargar el generador de cara B en blanco (sharp nativo)",
+      "No se pudo cargar el generador de cara B por defecto (motores nativos)",
     );
-    throw new Error("No pudimos preparar la cara B en blanco del separador. Intenta de nuevo.");
+    throw new Error("No pudimos preparar la cara B del separador. Intenta de nuevo.");
   }
 }
 
@@ -1545,8 +1548,9 @@ export async function finalizeDesign(opts: {
   // y alargados): cuando el schema del producto lo declara, las caras B (slots
   // impares 2k+1 — convención de lib/faces.ts) pueden quedar SIN diseñar. Solo
   // se exige snapshot de las caras A y de las B que sí tienen asset; producción
-  // genera una cara B EN BLANCO para cada B vacía (blank-back-face.ts — decisión
-  // owner 2026-10-07, revierte la regla espejo: nunca copia de la cara A).
+  // genera para cada B vacía la cara por defecto con el PATRÓN DE MARCA «Lucams»
+  // (default-back-face.ts — decisión owner 2026-11-03, supersede el blanco de
+  // 2026-10-07: nunca copia de la cara A).
   const { productConfig } = await loadEffectiveProductConfig(design);
   const backOptional = productConfig.facesPerUnit === 2 && productConfig.backOptional === true;
   const emptyBackSlots = new Set<number>(
@@ -1617,8 +1621,8 @@ export async function finalizeDesign(opts: {
   // Para el render server-side, las caras B vacías se alimentan al motor como
   // COPIA DE TRABAJO de la cara A de su pareja (mismo asset/encuadre): el motor
   // exige un asset por slot. Esa copia se DESCARTA después del render y se
-  // reemplaza por la cara BLANCA real (blankOutEmptyBackFaces, más abajo) — es
-  // lo que imprenta imprime (owner 2026-10-07).
+  // reemplaza por la cara B por defecto real con el patrón de marca «Lucams»
+  // (fillEmptyBackFaces, más abajo) — es lo que imprenta imprime (owner 2026-11-03).
   const canvasForRender =
     v2 && emptyBackSlots.size > 0
       ? {
@@ -1651,14 +1655,15 @@ export async function finalizeDesign(opts: {
   // 2026-07-25). Resolver primero los PNG deja el efecto de red recién cuando el finalize va a salir.
   let productionBuffers: Buffer[] | undefined;
   if (opts.productionBuffers) {
-    // Caras B vacías → cara BLANCA del tamaño/DPI de su cara A (owner 2026-10-07).
+    // Caras B vacías → cara por defecto con patrón de marca, del tamaño/DPI de
+    // su cara A (owner 2026-11-03).
     // LUC-SEC-004: los buffers del CLIENTE se normalizan ANTES de expandir (las
-    // caras blancas son sharp server-side, ya nacen canónicas).
+    // caras por defecto son sharp server-side, ya nacen canónicas).
     const normalized = await normalizeClientProductionBuffers(design.id, opts.productionBuffers);
     productionBuffers =
       emptyBackSlots.size > 0
         ? await (
-            await loadBlankBackFace()
+            await loadDefaultBackFace()
           ).expandMissingBackFaces(normalized, requiredSlotIndexes, expectedSlotCount)
         : normalized;
   }
@@ -1683,11 +1688,12 @@ export async function finalizeDesign(opts: {
       stagedRaw,
       requiredSlotIndexes.map((i) => stagedSlotPath(design.id, i)),
     );
-    // Caras B vacías → cara BLANCA del tamaño/DPI de su cara A (owner 2026-10-07).
+    // Caras B vacías → cara por defecto con patrón de marca, del tamaño/DPI de
+    // su cara A (owner 2026-11-03).
     productionBuffers =
       emptyBackSlots.size > 0
         ? await (
-            await loadBlankBackFace()
+            await loadDefaultBackFace()
           ).expandMissingBackFaces(staged, requiredSlotIndexes, expectedSlotCount)
         : staged;
     logger.info(
@@ -1702,11 +1708,11 @@ export async function finalizeDesign(opts: {
   if (productionBuffers && emptyBackSlots.size > 0) {
     logger.info(
       {
-        event: "design.finalize.back_faces_blank",
+        event: "design.finalize.back_faces_default",
         designId: design.id,
         backs: [...emptyBackSlots],
       },
-      "Caras B vacías resueltas EN BLANCO (backOptional, owner 2026-10-07)",
+      "Caras B vacías resueltas con el patrón de marca «Lucams» (backOptional, owner 2026-11-03)",
     );
   }
   // ADR-131 — sin PNG del cliente, el render pasa al RenderJob ASÍNCRONO: se crea/resetea el
@@ -1849,7 +1855,7 @@ export async function finalizeDesign(opts: {
   // convención anterior —A arriba, B abajo rotada— dejaba ambas cabeza-abajo).
   // Desplegado: 2×12 / 4×8.4 cm. El cliente sube 2N snapshots (uno por slot cara A/B,
   // espejo del canvas); acá se componen N tiras (slot 2k = cara A, slot 2k+1 = cara B)
-  // con las esquinas exteriores redondeadas del troquel.
+  // RECTANGULARES a sangre (W3, owner 2026-11-03: el redondeo lo hace el troquel).
   // noFold (Alargados planos): composición horizontal A|B sin rotar (histórico).
   // Solo aplica a buffers resueltos EN ESTE REQUEST (inline/staged del cliente);
   // en la vía asíncrona (ADR-131) las tiras las compone el worker, par por par.
@@ -1858,12 +1864,11 @@ export async function finalizeDesign(opts: {
     // productConfig ya se cargó arriba (validación de slots / backOptional).
     if (productConfig.facesPerUnit === 2 && productionBuffers.length % 2 === 0) {
       try {
-        // cornerRadiusPx del schema es en px LÓGICOS del stage de la cara; los buffers
-        // están a escala de producción (×3, mismo factor que el snapshot del cliente).
         // composeFaceStrips carga sharp (nativo) — import perezoso: ver nota en imports.
+        // W3 (owner 2026-11-03): tiras RECTANGULARES a sangre — ya no se pasa radio
+        // de esquina (el redondeo lo resuelve el corte físico del troquel).
         const { composeFaceStrips } = await import("./bookmark-strips");
         productionBuffers = await composeFaceStrips(productionBuffers, {
-          cornerRadiusPx: (productConfig.cornerRadiusPx ?? 0) * 3,
           noFold: productConfig.noFold === true,
         });
         facesComposed = true;
@@ -2066,12 +2071,23 @@ export async function finalizeDesign(opts: {
   // archivos con la calidad garantizada (sin adornos de pantalla). Si el diseño no es
   // reproducible server-side, el job cierra DONE y los PNG del cliente quedan vigentes —
   // exactamente el fallback de antes. Best-effort: los archivos del cliente ya quedaron.
-  if (!asyncRenderJob && v2) {
+  //
+  // 2026-11-03 (owner) — SETS DE LETRAS (canvasData V1 stub, metadata.letters): la
+  // lámina única por set que sube el cliente queda como fallback inmediato y el job
+  // la REEMPLAZA con el render server-side POR FICHA (un PNG 300 DPI por letra a la
+  // medida de corte de la variante) — como el calendario con sus 12 meses.
+  const lettersetLetterCount =
+    !v2 && Array.isArray((design.metadata as Record<string, unknown> | null)?.letters)
+      ? ((design.metadata as { letters: unknown[] }).letters ?? []).length
+      : 0;
+  if (!asyncRenderJob && (v2 || lettersetLetterCount > 0)) {
     try {
       await createOrResetRenderJob({
         designId: design.id,
         productId: design.productId,
-        slotCount: expectedSlotCount,
+        slotCount: v2
+          ? expectedSlotCount
+          : lettersetLetterCount * letterSetUnitCount(design.metadata),
         calendarYear: opts.calendarYear,
       });
     } catch (err) {

@@ -8,9 +8,10 @@
  * soft-delete restaurable; la eliminación permanente vive en la sección
  * Archivados). Sigue mostrando el ORIGINAL (es admin, no cliente; la
  * miniatura watermark de 3.10 es para el Estudio). Sin cara B muestra solo
- * la A con la nota de la regla única: el respaldo se imprime EN BLANCO
- * (decisión owner 2026-10-07; producción: blank-back-face.ts — misma promesa
- * del texto de ayuda del upload).
+ * la A con la nota de la regla única: el respaldo se imprime con el PATRÓN
+ * DE MARCA «Lucams» (decisión owner 2026-11-03 — supersede el blanco del
+ * 2026-10-07; producción: default-back-face.ts — misma promesa del texto de
+ * ayuda del upload).
  * Fase 5b (2026-10-02) — edición del "Aplica a": la ficha muestra el
  * variantFilter actual y un selector lo persiste (updateGalleryVariantFilterAction).
  * B-5 (2026-10-02) — toggle de visibilidad ("Visible en el Estudio"/"Pausada"):
@@ -182,7 +183,7 @@ export function GalleryDetailModal({
               </div>
               {!item.imageUrlB && (
                 <p className="text-brand-muted mt-2 text-xs italic">
-                  Sin cara B — el respaldo se imprime en blanco.
+                  Sin cara B — el respaldo se imprime con la marca de agua de Lucams.
                 </p>
               )}
 

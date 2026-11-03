@@ -68,10 +68,11 @@ describe("CALENDAR_CARD_THICKNESS_CM (2026-10-12 — tarjetas del calendario = c
   });
 });
 
-describe("BLANK_FACE_COLOR (decisión owner 2026-10-07 — cara B vacía EN BLANCO)", () => {
-  it("es blanco PURO (#FFFFFF): el mismo blanco que imprenta recibe (blankBackFacePng)", () => {
-    // La regla espejo del Paquete D quedó revertida: una cara B sin diseñar se
-    // muestra/imprime en blanco puro en 3D, Vista Previa y producción física.
+describe("BLANK_FACE_COLOR (respaldo de carga de la cara B sin diseñar)", () => {
+  it("es blanco PURO (#FFFFFF): base del patrón de marca «Lucams» (defaultBackFacePng)", () => {
+    // Owner 2026-11-03: la cara B vacía se muestra/imprime con el patrón de marca
+    // (supersede el blanco de 2026-10-07); el blanco queda como respaldo del
+    // instante en que la textura del patrón aún se genera en el 3D.
     expect(BLANK_FACE_COLOR).toBe("#FFFFFF");
   });
 });

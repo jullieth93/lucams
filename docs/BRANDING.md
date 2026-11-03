@@ -14,6 +14,10 @@ Insignia circular con:
 
 > **Recibido (2026-05-11):** la versión oficial en PNG con transparencia vive en `apps/web/public/brand/` (`lucams-logo.png` 468×468 y `lucams-mascot.png` 370×355) y está en uso en producción vía `components/lucams-logo.tsx`. Sigue pendiente la versión **SVG** vectorial de alta resolución (hoy el componente usa el PNG; el SVG kawaii de `components/brand-mark.tsx` queda como fallback).
 
+### Patrón de marca «Lucams» (reverso de separadores)
+
+Decisión owner 2026-11-03 (ADR-190): la cara B sin diseñar de los separadores de 2 caras se imprime con un **patrón de marca de agua**: el wordmark script «Lucams» tileado en diagonal (−24°, patrón ladrillo) en gris-lila `#E9E6F0` sobre blanco. Se **genera en código** (no hay asset de archivo): el módulo puro `apps/web/features/personalization/brand-back-pattern.ts` dibuja el mismo patrón en el canvas del Estudio (fuente Dancing Script de `app/estudio/fonts.ts`) y en el render de producción 300 DPI (TTF vendorizado). Si la owner entrega el lettering oficial del wordmark como arte vectorial, este patrón puede migrar a ese trazo sin cambiar el cableado.
+
 ## Paleta de colores
 
 ### Tabla de tokens
