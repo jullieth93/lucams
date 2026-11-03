@@ -291,7 +291,7 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
   );
 
   it.each(["full", "catalog"] as const)(
-    "modo %s: ve exactamente Páginas del sitio, Ajustes del sitio y Seguridad (Plantillas de correo subió a SUPERADMIN en Fase 4)",
+    "modo %s: ve exactamente Páginas del sitio, Mediateca y Seguridad (Ajustes del sitio y Plantillas de correo son SUPERADMIN)",
     async (mode) => {
       const { nav } = await getNavForMode(mode);
       const visible = filterNavByRole(nav, "CMS_EDITOR");
@@ -304,12 +304,9 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
 
       const config = visible.find((g) => g.title === "Configuración");
       // Seguridad (autoservicio MFA) quedó abierta a todos los roles en B-1.
-      // /admin/email-templates ya NO aparece acá: Fase 4 (2026-09-18) lo subió
-      // a solo-SUPERADMIN (módulo real con overrides y envío de prueba).
-      expect(config?.items?.map((it) => it.href)).toEqual([
-        "/admin/contenido/paginas/global",
-        "/admin/seguridad",
-      ]);
+      // Ajustes del sitio (/admin/contenido/paginas/global) y /admin/email-templates
+      // son solo-SUPERADMIN.
+      expect(config?.items?.map((it) => it.href)).toEqual(["/admin/seguridad"]);
     },
   );
 

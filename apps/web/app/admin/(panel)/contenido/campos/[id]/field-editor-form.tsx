@@ -313,16 +313,14 @@ export function FieldEditorForm({
       {/* MarkdownEditor es no-controlado (defaultValue): el valor viaja en su
           textarea name="body"; para los demás tipos el control ya tiene name. */}
 
-      {/* Mostrar en admin: nombre y ayuda (colapsable) */}
-      <details className="border-brand-purple/10 group rounded-xl border bg-white shadow-sm">
-        <summary className="text-brand-purple-dark hover:bg-brand-purple/5 flex cursor-pointer items-center justify-between gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors">
-          <span>Mostrar en admin: nombre y texto de ayuda</span>
-          <ChevronDown className="text-brand-muted h-4 w-4 transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="border-brand-purple/10 grid grid-cols-1 gap-4 border-t px-5 py-4 md:grid-cols-2">
+      {/* Si `label` es contenido público (pregunta FAQ o <title> SEO), va abierto y explícito arriba */}
+      {field.key.startsWith("faq.") || field.key.startsWith("seo.page.") ? (
+        <div className="border-brand-purple/10 space-y-4 rounded-xl border bg-white p-5 shadow-sm">
           <div className="space-y-1.5">
-            <Label htmlFor="label" className="text-brand-purple-dark font-semibold">
-              Nombre visible
+            <Label htmlFor="label" className="text-brand-purple-dark text-base font-semibold">
+              {field.key.startsWith("faq.")
+                ? "Pregunta visible en /ayuda"
+                : "Título en Google (<title>)"}
             </Label>
             <Input
               id="label"
@@ -333,27 +331,56 @@ export function FieldEditorForm({
               disabled={pending}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
-            <p className="text-brand-muted text-xs">El nombre que ves en este panel.</p>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="helpText" className="text-brand-purple-dark font-semibold">
-              Texto de ayuda
-            </Label>
-            <Input
-              id="helpText"
-              name="helpText"
-              placeholder="Ej. Aparece en la portada, máx ~60 caracteres"
-              value={helpText}
-              onChange={(e) => setHelpText(e.target.value)}
-              disabled={pending}
-              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-            />
             <p className="text-brand-muted text-xs">
-              Una pista para acordarte dónde se usa este texto.
+              {field.key.startsWith("faq.")
+                ? "Este título es la pregunta exacta que leen tus clientes en /ayuda."
+                : "Este texto se publica como el <title> de la página en buscadores y pestañas."}
             </p>
           </div>
+          <input type="hidden" name="helpText" value={helpText} />
         </div>
-      </details>
+      ) : (
+        <details className="border-brand-purple/10 group rounded-xl border bg-white shadow-sm">
+          <summary className="text-brand-purple-dark hover:bg-brand-purple/5 flex cursor-pointer items-center justify-between gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors">
+            <span>Mostrar en admin: nombre y texto de ayuda</span>
+            <ChevronDown className="text-brand-muted h-4 w-4 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-brand-purple/10 grid grid-cols-1 gap-4 border-t px-5 py-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="label" className="text-brand-purple-dark font-semibold">
+                Nombre visible
+              </Label>
+              <Input
+                id="label"
+                name="label"
+                required
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                disabled={pending}
+                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+              />
+              <p className="text-brand-muted text-xs">El nombre que ves en este panel.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="helpText" className="text-brand-purple-dark font-semibold">
+                Texto de ayuda
+              </Label>
+              <Input
+                id="helpText"
+                name="helpText"
+                placeholder="Ej. Aparece en la portada, máx ~60 caracteres"
+                value={helpText}
+                onChange={(e) => setHelpText(e.target.value)}
+                disabled={pending}
+                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+              />
+              <p className="text-brand-muted text-xs">
+                Una pista para acordarte dónde se usa este texto.
+              </p>
+            </div>
+          </div>
+        </details>
+      )}
 
       {bodyEditor}
 

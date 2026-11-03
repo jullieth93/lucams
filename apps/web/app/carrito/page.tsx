@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { getCartDetail } from "@/features/cart/service";
 import { physicalUnitPriceCents } from "@/features/cart/physical-unit-price";
 import { CartCrossSell } from "@/components/cart-cross-sell";
-import { CmsText } from "@/components/cms/cms-text";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -119,13 +118,10 @@ export default async function CarritoPage() {
                       )}
                       {/* 2026-10-13 — «N <sustantivo>» sobre la miniatura cuando el
                           diseño trae varias piezas (el «Ver» pagina por unidad).
-                          2026-10-26 — el fallback es kind-aware ("tiras", "sets"…);
-                          el bloque CMS publicado manda sobre él cuando existe. */}
+                          2026-10-26 — sustantivo kind-aware ("tiras", "sets"…). */}
                       <DesignUnitsBadge
                         count={item.designPreviewPages?.length ?? 0}
-                        label={
-                          <CmsText blockKey="cart.unidades-badge" fallback={item.unitNoun.plural} />
-                        }
+                        label={item.unitNoun.plural}
                       />
                     </>
                   );
@@ -148,38 +144,20 @@ export default async function CarritoPage() {
                           badge={
                             <DesignUnitsBadge
                               count={item.designPreviewPages?.length ?? 0}
-                              label={
-                                <CmsText
-                                  blockKey="cart.unidades-badge"
-                                  fallback={item.unitNoun.plural}
-                                />
-                              }
+                              label={item.unitNoun.plural}
                             />
                           }
                           sizeClassName="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 aspect-square h-24 w-24 overflow-hidden rounded-md bg-gradient-to-br"
                           previewUrl={item.designPreviewUrl}
                           pageLabels={item.designPreviewPageLabels}
                           watermarkNote={
-                            item.designWatermarked ? (
-                              <CmsText
-                                blockKey="cart.vista-previa-watermark-nota"
-                                fallback="Vista previa con marca de agua — tu impresión final no la lleva."
-                              />
-                            ) : null
+                            item.designWatermarked
+                              ? "Vista previa con marca de agua — tu impresión final no la lleva."
+                              : null
                           }
                           productName={item.productName}
-                          title={
-                            <CmsText
-                              blockKey="cart.vista-previa-diseno-titulo"
-                              fallback="Tu diseño ·"
-                            />
-                          }
-                          description={
-                            <CmsText
-                              blockKey="cart.vista-previa-diseno-desc"
-                              fallback="Vista previa ampliada del diseño personalizado de esta línea del carrito."
-                            />
-                          }
+                          title="Tu diseño ·"
+                          description="Vista previa ampliada del diseño personalizado de esta línea del carrito."
                         />
                       ) : (
                         <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square h-24 w-24 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br">
@@ -206,20 +184,18 @@ export default async function CarritoPage() {
                             )}
                             {item.templateName && (
                               <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
-                                <CmsText blockKey="cart.plantilla-label" fallback="Plantilla" />:{" "}
-                                {item.templateName}
+                                Plantilla: {item.templateName}
                               </p>
                             )}
                             {item.designId ? (
                               <div className="mt-1 flex flex-col gap-1.5">
                                 <p className="text-brand-purple/80 text-xs font-medium">
-                                  <CmsText blockKey="cart.diseno-badge" fallback="✨ Tu diseño" />
+                                  ✨ Tu diseño
                                 </p>
                                 {/* QA owner 2026-09-25 — "Editar" era un texto con forma
                                   de enlace; ahora es un botón outline real (mismo href
                                   al Estudio). "Ver" abre el lightbox con el preview del
-                                  diseño (DesignPreviewDialog, client — sus textos bajan
-                                  resueltos por props porque el client no lee el CMS). */}
+                                  diseño (DesignPreviewDialog). */}
                                 <div className="flex flex-wrap items-center gap-2">
                                   <Button
                                     asChild
@@ -243,29 +219,14 @@ export default async function CarritoPage() {
                                       pages={item.designPreviewPages}
                                       pageLabels={item.designPreviewPageLabels}
                                       watermarkNote={
-                                        item.designWatermarked ? (
-                                          <CmsText
-                                            blockKey="cart.vista-previa-watermark-nota"
-                                            fallback="Vista previa con marca de agua — tu impresión final no la lleva."
-                                          />
-                                        ) : null
+                                        item.designWatermarked
+                                          ? "Vista previa con marca de agua — tu impresión final no la lleva."
+                                          : null
                                       }
                                       productName={item.productName}
-                                      triggerLabel={
-                                        <CmsText blockKey="cart.ver-diseno" fallback="Ver" />
-                                      }
-                                      title={
-                                        <CmsText
-                                          blockKey="cart.vista-previa-diseno-titulo"
-                                          fallback="Tu diseño ·"
-                                        />
-                                      }
-                                      description={
-                                        <CmsText
-                                          blockKey="cart.vista-previa-diseno-desc"
-                                          fallback="Vista previa ampliada del diseño personalizado de esta línea del carrito."
-                                        />
-                                      }
+                                      triggerLabel="Ver"
+                                      title="Tu diseño ·"
+                                      description="Vista previa ampliada del diseño personalizado de esta línea del carrito."
                                     />
                                   )}
                                 </div>
@@ -338,10 +299,8 @@ export default async function CarritoPage() {
                   cliente: su impresión final no la lleva (decisión de producto). */}
               {cart.items.some((i) => i.designWatermarked) && (
                 <p className="text-brand-muted mt-2 text-xs">
-                  <CmsText
-                    blockKey="cart.watermark-nota"
-                    fallback="Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva."
-                  />
+                  Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la
+                  lleva.
                 </p>
               )}
 
@@ -414,14 +373,9 @@ function EmptyCart() {
   return (
     <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-16 text-center">
       <Sparkles className="text-brand-muted mx-auto h-10 w-10" />
-      <p className="text-brand-purple-dark mt-4 text-lg font-semibold">
-        <CmsText blockKey="cart.empty.title" fallback="Tu carrito está vacío" />
-      </p>
+      <p className="text-brand-purple-dark mt-4 text-lg font-semibold">Tu carrito está vacío</p>
       <p className="text-brand-muted mt-1 text-sm">
-        <CmsText
-          blockKey="cart.empty.description"
-          fallback="Encuentra el producto perfecto para tu espacio."
-        />
+        Encuentra el producto perfecto para tu espacio.
       </p>
       <Link
         href="/productos"
@@ -492,14 +446,14 @@ function LowStockBadge({ qty, stock }: { qty: number; stock: number }) {
   if (stock <= 0) {
     return (
       <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
-        <CmsText blockKey="cart.stock-badge-agotado" fallback="Agotado" />
+        Agotado
       </span>
     );
   }
   if (stock < qty * 2 || stock <= 5) {
     return (
       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
-        <CmsText blockKey="cart.stock-badge-bajo" fallback="Solo quedan" /> {stock}
+        Solo quedan {stock}
       </span>
     );
   }

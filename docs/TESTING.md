@@ -769,10 +769,10 @@ test.describe.parallel("Smoke", () => {
 > **Estado real (verificado 2026-09-03; actualizado 2026-09-26 con la remediación R3):** el CI real es `.github/workflows/ci.yml` (ramas
 > `develop`/`production`/`catalogo-whatsapp` — `main` NO existe) con estos jobs:
 >
-> - **`quality`** — typecheck + lint + build, más cuatro gates propios: la **auditoría de cobertura
->   de contenido** (`packages/db/scripts/audit-content-coverage.mjs --check` — falla si aparece
->   copy nuevo en español fuera del CMS o si el % global baja del baseline
->   `content-coverage-baseline.json`; reporte local con `make audit-content`), el **lint de
+> - **`quality`** — typecheck + lint + build, más cuatro gates propios: la **paridad exacta
+>   CMS↔código** (`apps/web/lib/cms-sitemap-parity.test.ts`, ADR-187 — recorre el AST de `apps/web`
+>   y falla si una clave CMS se consume sin estar en `packages/db/scripts/cms-site-map.mjs` o si se
+>   declara sin consumidor; local con `make audit-content`), el **lint de
 >   guards de scripts de DB** (`check-script-guards.mjs`, N-06 2026-09-12 — todo script que
 >   escribe en DB debe importar `env-guard.mjs`; local con `make audit-script-guards`), los
 >   **tests de los guards** (`pnpm --filter @lucams/db test` — env-guard/zombie-settings/

@@ -64,7 +64,7 @@ export async function HomeHero() {
           <p className="text-brand-purple-dark/80 mx-auto max-w-lg text-base leading-relaxed sm:text-lg md:mx-0">
             <CmsText
               blockKey="home.hero.description"
-              fallback="Fotoimanes, recuerdos para eventos, calendarios y planners magnéticos personalizables. Entrega a {{cobertura}} destinos de Colombia."
+              fallback="Foto-imanes, recuerdos para eventos, calendarios, marcapáginas y planners magnéticos personalizables. Entrega a {{cobertura}} destinos de Colombia."
             />
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 md:justify-start">

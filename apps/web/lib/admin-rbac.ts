@@ -108,9 +108,15 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   // económico directo — misma barra que Cupones. Declarado explícito (equivale al
   // deny-by-default, pero queda visible en la matriz — criterio N-21).
   { prefix: "/admin/fidelizacion", roles: ["SUPERADMIN"] },
-  // Contenido del sitio (CMS v2): "Páginas del sitio" (/admin/contenido, incluye
-  // /admin/contenido/paginas/global = "Ajustes del sitio"). La página "emails"
-  // (asunto/preheader del newsletter welcome, Ruta A) sigue acá con CONTENT.
+  // Ajustes del sitio (/admin/contenido/paginas/global y el redirect legacy
+  // /admin/contenido/configuracion): son Capa 1 maestra (NIT, origen de
+  // despachos, contraentrega, correos oficiales y versión legal). Sube a
+  // SUPERADMIN — misma barra que /admin/fidelizacion, /admin/carritos/configuracion
+  // y /admin/email-templates. Longest-prefix match gana sobre /admin/contenido.
+  { prefix: "/admin/contenido/paginas/global", roles: ["SUPERADMIN"] },
+  { prefix: "/admin/contenido/configuracion", roles: ["SUPERADMIN"] },
+  // Contenido editorial del sitio (CMS v2): "Páginas del sitio" (/admin/contenido,
+  // mediateca, borradores y páginas editoriales) para SUPERADMIN + CMS_EDITOR.
   { prefix: "/admin/contenido", roles: CONTENT },
   // Fase 4 (2026-09-18): /admin/email-templates dejó de ser redirect al CMS y
   // es el módulo real de plantillas transaccionales (preview + overrides +

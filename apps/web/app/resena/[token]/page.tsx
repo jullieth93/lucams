@@ -19,11 +19,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PackageSearch, Star } from "lucide-react";
-import { CmsText } from "@/components/cms/cms-text";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
-import { getCmsBlock } from "@/lib/cms";
-import { resolveCmsTokens } from "@/lib/cms-tokens";
 import { prisma } from "@/lib/db";
 import { verifyReviewToken } from "@/features/reviews/review-token";
 import { REVIEWABLE_ORDER_STATUSES } from "@/features/reviews/constants";
@@ -31,21 +28,21 @@ import { TokenReviewForm, type TokenReviewTexts } from "./review-token-form";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const block = await getCmsBlock("review.page.meta-title");
-  return {
-    title: block?.body ?? "Dejar mi reseña",
-    robots: { index: false, follow: false },
-  };
-}
+export const metadata: Metadata = {
+  title: "Dejar mi reseña",
+  robots: { index: false, follow: false },
+};
 
-// <TokenReviewForm> es client component ("use client") y no puede leer el CMS:
-// sus textos se resuelven acá en el server y se pasan por props (mismo patrón
-// que /rastrear).
-async function cmsReviewText(key: string, fallback: string): Promise<string> {
-  const block = await getCmsBlock(key);
-  return resolveCmsTokens(block?.body ?? fallback);
-}
+const FORM_TEXTS: TokenReviewTexts = {
+  productLabel: "¿Sobre cuál producto opinas?",
+  ratingLabel: "Tu calificación",
+  commentLabel: "Tu reseña",
+  commentPlaceholder: "¿Qué te pareció el producto? ¿Cómo llegó? ¿Lo recomiendas?",
+  submit: "Enviar reseña",
+  success:
+    "¡Gracias por tu reseña! Queda pendiente de moderación: la publicamos después de revisarla.",
+  pendingNote: "Tu reseña se publica después de una revisión. ¡Gracias por tomarte el tiempo!",
+};
 
 export default async function ReviewTokenPage({
   params,
@@ -74,16 +71,11 @@ export default async function ReviewTokenPage({
               <Star className="text-brand-purple h-8 w-8" />
             </div>
             <h1 className="font-display text-brand-purple-dark mt-4 text-3xl font-bold">
-              <CmsText
-                blockKey="review.page.invalid-title"
-                fallback="Este link de reseña no está disponible"
-              />
+              Este link de reseña no está disponible
             </h1>
             <p className="text-brand-purple/80 mt-2 text-sm">
-              <CmsText
-                blockKey="review.page.invalid-text"
-                fallback="El link venció o ya no es válido. Si quieres, puedes rastrear tu pedido o seguir explorando el catálogo."
-              />
+              El link venció o ya no es válido. Si quieres, puedes rastrear tu pedido o seguir
+              explorando el catálogo.
             </p>
             <div className="mt-6 flex flex-col items-center gap-3">
               <Link
@@ -91,13 +83,13 @@ export default async function ReviewTokenPage({
                 className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
               >
                 <PackageSearch className="h-4 w-4" />
-                <CmsText blockKey="review.page.invalid-cta-track" fallback="Rastrear mi pedido" />
+                Rastrear mi pedido
               </Link>
               <Link
                 href="/productos"
                 className="text-brand-purple-dark text-sm font-semibold underline"
               >
-                <CmsText blockKey="review.page.invalid-cta-catalog" fallback="Ver el catálogo" />
+                Ver el catálogo
               </Link>
             </div>
           </div>
@@ -135,25 +127,6 @@ export default async function ReviewTokenPage({
   const initialProductId =
     (p && pending.some((prod) => prod.id === p) ? p : null) ?? pending[0]?.id ?? null;
 
-  const texts: TokenReviewTexts = {
-    productLabel: await cmsReviewText("review.page.product-label", "¿Sobre cuál producto opinas?"),
-    ratingLabel: await cmsReviewText("review.page.rating-label", "Tu calificación"),
-    commentLabel: await cmsReviewText("review.page.comment-label", "Tu reseña"),
-    commentPlaceholder: await cmsReviewText(
-      "review.page.comment-placeholder",
-      "¿Qué te pareció el producto? ¿Cómo llegó? ¿Lo recomiendas?",
-    ),
-    submit: await cmsReviewText("review.page.submit", "Enviar reseña"),
-    success: await cmsReviewText(
-      "review.page.success",
-      "¡Gracias por tu reseña! Queda pendiente de moderación: la publicamos después de revisarla.",
-    ),
-    pendingNote: await cmsReviewText(
-      "review.page.pending-note",
-      "Tu reseña se publica después de una revisión. ¡Gracias por tomarte el tiempo!",
-    ),
-  };
-
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
@@ -165,16 +138,11 @@ export default async function ReviewTokenPage({
               <Star className="text-brand-purple h-8 w-8" />
             </div>
             <h1 className="font-display text-brand-purple-dark mt-4 text-3xl font-bold">
-              <CmsText blockKey="review.page.heading" fallback="Cuéntanos cómo te fue" />
+              Cuéntanos cómo te fue
             </h1>
             <p className="text-brand-purple/80 mt-2 text-sm">
-              <CmsText
-                blockKey="review.page.subtext"
-                fallback="Tu opinión nos ayuda un montón — y a otras personas a decidir."
-              />{" "}
-              <span className="text-brand-purple-dark font-semibold">
-                <CmsText blockKey="review.page.order-label" fallback="Pedido" /> {order.number}
-              </span>
+              Tu opinión nos ayuda un montón — y a otras personas a decidir.{" "}
+              <span className="text-brand-purple-dark font-semibold">Pedido {order.number}</span>
             </p>
           </div>
 
@@ -188,11 +156,8 @@ export default async function ReviewTokenPage({
                     key={prod.id}
                     className="border-brand-purple/10 text-brand-purple-dark/80 rounded-xl border bg-white px-4 py-3 text-sm"
                   >
-                    <strong>{prod.name}</strong> —{" "}
-                    <CmsText
-                      blockKey="review.page.already"
-                      fallback="ya nos dejaste tu reseña de este producto ✨ ¡Gracias!"
-                    />
+                    <strong>{prod.name}</strong> — ya nos dejaste tu reseña de este producto ✨
+                    ¡Gracias!
                   </li>
                 ))}
             </ul>
@@ -209,7 +174,7 @@ export default async function ReviewTokenPage({
                   imageUrl: prod.images[0] ?? null,
                 }))}
                 initialProductId={initialProductId}
-                texts={texts}
+                texts={FORM_TEXTS}
               />
             </div>
           )}

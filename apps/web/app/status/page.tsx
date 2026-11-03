@@ -14,10 +14,8 @@
  */
 
 import type { Metadata } from "next";
-import { CmsText } from "@/components/cms/cms-text";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { getCmsBlock } from "@/lib/cms";
 import { getTrustedSelfBaseUrl, vercelBypassHeaders } from "@/lib/origin";
 import {
   aveonlinePublicVerdict,
@@ -156,18 +154,11 @@ export default async function StatusPage() {
   const allOk = services.every((s) => s.status === "ok" || s.status === "pending");
   const anyDown = services.some((s) => s.status === "down");
 
-  // Pastilla de resumen: textos editables desde /admin/contenido (página
-  // "Errores y estados", sección "Estado del sitio").
-  const [summaryOk, summaryDown, summaryChecking] = await Promise.all([
-    getCmsBlock("status.summary.ok"),
-    getCmsBlock("status.summary.down"),
-    getCmsBlock("status.summary.checking"),
-  ]);
   const summaryText = anyDown
-    ? (summaryDown?.body ?? "Algunos servicios con problemas")
+    ? "Algunos servicios con problemas"
     : allOk
-      ? (summaryOk?.body ?? "Todos los servicios operativos")
-      : (summaryChecking?.body ?? "Verificando...");
+      ? "Todos los servicios operativos"
+      : "Verificando...";
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -177,7 +168,7 @@ export default async function StatusPage() {
         <div className="mx-auto max-w-2xl">
           <header className="mb-8 text-center">
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-              <CmsText blockKey="status.heading" fallback="Estado de Lucams Shop" />
+              Estado de Lucams Shop
             </h1>
             <div
               className={
@@ -244,7 +235,7 @@ export default async function StatusPage() {
           </div>
 
           <p className="text-brand-muted mt-6 text-center text-xs">
-            <CmsText blockKey="status.verified-note" fallback="Verificado en tiempo real" /> ·{" "}
+            Verificado en tiempo real ·{" "}
             {new Date().toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" })}
           </p>
         </div>

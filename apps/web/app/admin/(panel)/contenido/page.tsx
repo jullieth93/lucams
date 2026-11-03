@@ -10,7 +10,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import {
   BookOpen,
   ExternalLink,
@@ -35,10 +34,11 @@ import {
   AdminTableRow,
 } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { cmsFieldHasDraft, listCmsPages, searchCmsFields } from "@/features/cms/service";
 import { refreshCmsCacheAction } from "./actions";
-import { CMS_PAGE_ICONS } from "./page-icons";
+import { CMS_PAGE_ICONS, MODULE_MANAGED_SETTING_KEYS } from "./page-icons";
 
 export const metadata: Metadata = {
   title: "Páginas del sitio",
@@ -47,16 +47,25 @@ export const metadata: Metadata = {
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 export default async function ContenidoIndexPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireRole(ADMIN_ROLE_SETS.CONTENT);
+  const isSuperadmin = session.admin.role === "SUPERADMIN";
 
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
   const cacheRefreshed = sp.cache === "refreshed";
-  const justArchived = sp.archived === "1";
 
-  const pages = await listCmsPages();
-  const results = q ? await searchCmsFields(q) : null;
+  // «Ajustes del sitio» (`global`) vive en Configuración → Ajustes del sitio;
+  // acá se muestran únicamente las páginas y bloques editoriales del storefront.
+  const allPages = await listCmsPages();
+  const pages = allPages.filter((p) => p.slug !== "global");
+  const rawResults = q ? await searchCmsFields(q) : null;
+  const results = rawResults
+    ? rawResults.filter(
+        (f) =>
+          !MODULE_MANAGED_SETTING_KEYS.has(f.key) &&
+          (isSuperadmin || f.section.page.slug !== "global"),
+      )
+    : null;
   // Total de cambios sin publicar (roadmap C4 — enlace a la vista «Solo borradores»).
   const totalPending = pages.reduce(
     (acc, p) =>
@@ -109,11 +118,6 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
         {cacheRefreshed && (
           <AdminNotice tone="success">
             Caché de contenido actualizado. El sitio público ya sirve la versión más reciente.
-          </AdminNotice>
-        )}
-        {justArchived && (
-          <AdminNotice tone="warning">
-            Campo archivado. El sitio público dejará de mostrarlo (cae al texto por defecto).
           </AdminNotice>
         )}
 

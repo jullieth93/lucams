@@ -37,43 +37,19 @@ async function cmsMenuText(key: string, fallback: string): Promise<string> {
 // <ShopMegaMenu> es client component ("use client") y no puede leer el CMS:
 // sus textos se resuelven acá en el server y se pasan por props.
 async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
-  const [
-    catalog,
-    helpCta,
-    helpChip,
-    occasionsTitle,
-    viewAll,
-    viewAllMobile,
-    accountTitle,
-    accountMobile,
-    admin,
-    login,
-    signup,
-  ] = await Promise.all([
-    cmsMenuText("header.menu.catalog", "Catálogo"),
-    cmsMenuText("header.menu.help-cta", "¿Te ayudamos a elegir?"),
-    cmsMenuText("header.menu.help-chip", "¿Te ayudamos?"),
-    cmsMenuText("header.menu.occasions-title", "Por ocasión"),
-    cmsMenuText("header.menu.view-all", "Ver todo el catálogo →"),
-    cmsMenuText("header.menu.view-all-mobile", "Ver todo el catálogo"),
-    cmsMenuText("header.menu.account", "Tu cuenta"),
-    cmsMenuText("header.menu.account-mobile", "Mi cuenta"),
-    cmsMenuText("header.menu.admin", "Panel admin"),
-    cmsMenuText("header.menu.login", "Ingresar"),
-    cmsMenuText("header.menu.signup", "Crear cuenta"),
-  ]);
+  const helpCta = await cmsMenuText("header.menu.help-cta", "¿Te ayudamos a elegir?");
   return {
-    catalog,
+    catalog: "Catálogo",
     helpCta,
-    helpChip,
-    occasionsTitle,
-    viewAll,
-    viewAllMobile,
-    accountTitle,
-    accountMobile,
-    admin,
-    login,
-    signup,
+    helpChip: "¿Te ayudamos?",
+    occasionsTitle: "Por ocasión",
+    viewAll: "Ver todo el catálogo →",
+    viewAllMobile: "Ver todo el catálogo",
+    accountTitle: "Tu cuenta",
+    accountMobile: "Mi cuenta",
+    admin: "Panel admin",
+    login: "Ingresar",
+    signup: "Crear cuenta",
   };
 }
 
@@ -187,7 +163,7 @@ export async function SiteHeader() {
               prefetch={false}
               className="text-brand-purple-dark bg-brand-yellow/30 hover:bg-brand-yellow/50 hidden rounded-md px-2.5 py-1 text-[11px] font-semibold tracking-wider uppercase transition-colors sm:inline-flex"
             >
-              <CmsText blockKey="header.menu.admin" fallback="Panel admin" />
+              Panel admin
             </Link>
           )}
 
@@ -206,7 +182,7 @@ export async function SiteHeader() {
                   size="sm"
                   className="text-brand-purple-dark hover:text-brand-purple"
                 >
-                  <CmsText blockKey="header.menu.logout" fallback="Salir" />
+                  Salir
                 </Button>
               </form>
             </>
@@ -216,13 +192,13 @@ export async function SiteHeader() {
                 href="/login"
                 className="text-brand-purple-dark hover:text-brand-purple -my-2 hidden min-h-10 items-center text-sm font-medium sm:inline-flex"
               >
-                <CmsText blockKey="header.menu.login" fallback="Ingresar" />
+                Ingresar
               </Link>
               <Link
                 href="/registro"
                 className="bg-brand-purple hover:bg-brand-purple-dark hidden rounded-md px-3 py-1.5 text-sm font-semibold text-white transition-colors sm:inline-flex"
               >
-                <CmsText blockKey="header.menu.signup" fallback="Crear cuenta" />
+                Crear cuenta
               </Link>
             </>
           )}

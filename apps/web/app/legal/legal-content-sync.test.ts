@@ -75,6 +75,31 @@ describe("contenido legal — el fallback renderizado coincide con la fuente can
     expect(canonicalMarkdown(name)).not.toContain("@lucamsshop.com");
   });
 
+  it("los plazos legales maestros usan tokens {{*}} y no literales sueltos", () => {
+    for (const name of LEGAL_DOCS) {
+      const text = canonicalMarkdown(name);
+      expect(text, `legal.${name}.md`).not.toMatch(/\b15 días calendario\b/i);
+      expect(text, `legal.${name}.md`).not.toMatch(/\bquince \(15\) días calendario\b/i);
+      expect(text, `legal.${name}.md`).not.toMatch(/\b30 días calendario\b/i);
+      expect(text, `legal.${name}.md`).not.toMatch(/\btreinta \(30\) días calendario\b/i);
+      expect(text, `legal.${name}.md`).not.toMatch(/\b10 días hábiles\b/i);
+      expect(text, `legal.${name}.md`).not.toMatch(/\bdiez \(10\) días hábiles\b/i);
+      expect(text, `legal.${name}.md`).not.toMatch(/\b15 días hábiles\b/i);
+      expect(text, `legal.${name}.md`).not.toMatch(/inicia con \*\*(?:1|un \(1\)) mes\*\*/i);
+    }
+    expect(canonicalMarkdown("garantias")).toContain("{{garantia_base}}");
+    expect(canonicalMarkdown("garantias")).toContain("{{garantia_respuesta_dias}}");
+    expect(canonicalMarkdown("devoluciones")).toContain("{{retracto_dias}}");
+    expect(canonicalMarkdown("devoluciones")).toContain("{{retracto_reembolso_dias}}");
+    expect(canonicalMarkdown("devoluciones")).not.toMatch(/\b5 días hábiles\b/i);
+    expect(canonicalMarkdown("terminos")).toContain("{{retracto_dias}}");
+    expect(canonicalMarkdown("terminos")).toContain("{{retracto_reembolso_dias}}");
+    expect(canonicalMarkdown("terminos")).toContain("{{entrega_max_legal_dias}}");
+    expect(canonicalMarkdown("terminos")).toContain("{{garantia_base}}");
+    expect(canonicalMarkdown("terminos")).toContain("{{habeas_consulta_dias}}");
+    expect(canonicalMarkdown("terminos")).toContain("{{habeas_reclamo_dias}}");
+  });
+
   // Guardas de veracidad para el modo FULL (auditoría 2026-09-04, hallazgo F-01): la tienda YA
   // cobra en línea (decisión de la dueña del 2026-09-03: Wompi, Aveonline y asistente IA activos),
   // así que el encuadre de la Etapa 1 ("todavía no cobramos", "cuando activemos…") quedó

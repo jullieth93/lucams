@@ -22,7 +22,6 @@ import {
   sealShippingOffers,
 } from "@/features/checkout/service";
 import { logger } from "@/lib/logger";
-import { getCmsBlock } from "@/lib/cms";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCityDept, splitCityTemplate } from "@/lib/format";
 import { RetryQuoteButton } from "./retry-quote-button";
@@ -113,15 +112,8 @@ export default async function CheckoutEnvioPage({
   const offersToken =
     quotes && quotes.length > 0 ? await sealShippingOffers({ offers: quotes, ctx }) : null;
 
-  // Ruta A (2026-07-29) — microcopy del step editable por Lucy desde
-  // /admin/contenido/paginas/checkout (checkout.envio.heading / checkout.envio.subtext);
-  // el subtexto admite el token {{ciudad}} que se reemplaza por el destino real.
-  const [headingBlock, subtextBlock] = await Promise.all([
-    getCmsBlock("checkout.envio.heading"),
-    getCmsBlock("checkout.envio.subtext"),
-  ]);
-  const headingText = headingBlock?.body ?? "Elige cómo te lo enviamos";
-  const subtextTemplate = subtextBlock?.body ?? "Cotizamos con Aveonline para {{ciudad}}.";
+  const headingText = "Elige cómo te lo enviamos";
+  const subtextTemplate = "Cotizamos con Aveonline para {{ciudad}}.";
   const cityLabel = formatCityDept(ctx.state.address.city, ctx.state.address.department);
   const sub = splitCityTemplate(subtextTemplate);
   // Roadmap B8 — textos CMS del paso de envío (errores, lista, resumen).

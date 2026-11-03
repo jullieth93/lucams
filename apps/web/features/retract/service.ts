@@ -19,8 +19,9 @@ import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { RetractStatus } from "@lucams/db";
 import { sendRetractApproved, sendRetractRejected, sendRetractRefunded } from "./emails";
+import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
 
-export const RETRACT_WINDOW_BUSINESS_DAYS = 5;
+export { RETRACT_WINDOW_BUSINESS_DAYS };
 
 // Colombia es UTC-5 SIN horario de verano (fijo). El cómputo de días hábiles y el
 // cierre de ventana deben ser en hora colombiana (COT), no en la del servidor

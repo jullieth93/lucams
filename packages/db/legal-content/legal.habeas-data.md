@@ -100,8 +100,8 @@ Tienes dos caminos:
 
 **Plazos de respuesta (Ley 1581, art. 14 y 15):**
 
-- **Consultas:** respondemos en máximo **10 días hábiles**. Si no alcanzamos, te avisamos el motivo y la fecha en que responderemos, que no pasará de **5 días hábiles** adicionales.
-- **Reclamos:** los atendemos en máximo **15 días hábiles**. Si necesitamos más, te informamos el motivo y la nueva fecha, que no superará **8 días hábiles** adicionales.
+- **Consultas:** respondemos en máximo **{{habeas_consulta_dias}} días hábiles**. Si no alcanzamos, te avisamos el motivo y la fecha en que responderemos, que no pasará de **5 días hábiles** adicionales.
+- **Reclamos:** los atendemos en máximo **{{habeas_reclamo_dias}} días hábiles**. Si necesitamos más, te informamos el motivo y la nueva fecha, que no superará **8 días hábiles** adicionales.
 - Si tu reclamo llega incompleto, te pediremos completarlo dentro de los **5 días** siguientes; si pasan **2 meses** sin tu respuesta, se entenderá que desististe.
 
 > **Sobre los respaldos:** cuando pides la supresión de tus datos, los eliminamos de la base de datos activa. Esa supresión **no se propaga retroactivamente** a los respaldos cifrados que ya se hayan creado (existen para recuperar la tienda ante un desastre); esos respaldos se eliminan solos por **rotación, en aproximadamente 30 días**.

@@ -19,8 +19,9 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, adminHomePath } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
+import { MODULE_MANAGED_SETTING_KEYS } from "./page-icons";
 import {
   CmsFieldCreateSchema,
   CmsFieldItemsSaveSchema,
@@ -72,6 +73,38 @@ function revalidateCmsPaths(fieldId: string, pageSlug?: string | null) {
   if (pageSlug) revalidatePath(`/admin/contenido/paginas/${pageSlug}`);
 }
 
+/**
+ * Defensa RBAC por campo:
+ *   - Los 21 settings con módulo propio (/admin/envios, /admin/fidelizacion,
+ *     /admin/carritos/configuracion) solo se editan desde sus acciones validadas.
+ *   - Cualquier campo de `global` («Ajustes del sitio») exige SUPERADMIN.
+ */
+async function checkFieldMutationAccess(
+  fieldId: string,
+  role: string,
+): Promise<
+  { allowed: true; pageSlug: string } | { allowed: false; error: string; denied?: boolean }
+> {
+  const target = await getCmsFieldById(fieldId);
+  if (!target) {
+    return { allowed: false, error: "Campo no encontrado." };
+  }
+  if (MODULE_MANAGED_SETTING_KEYS.has(target.key)) {
+    return {
+      allowed: false,
+      error: "Este parámetro se configura desde su propio módulo en el panel Admin.",
+    };
+  }
+  if (target.section.page.slug === "global" && role !== "SUPERADMIN") {
+    return {
+      allowed: false,
+      denied: true,
+      error: "Solo Superadmin puede modificar los Ajustes del sitio.",
+    };
+  }
+  return { allowed: true, pageSlug: target.section.page.slug };
+}
+
 // ─────────────────── Guardar (borrador BLOCK / save+publish SETTING) ───────────────────
 
 /**
@@ -105,6 +138,9 @@ export async function saveCmsFieldAction(
   }
 
   try {
+    const access = await checkFieldMutationAccess(parsed.data.id, session.admin.role);
+    if (!access.allowed) return { error: access.error };
+
     await saveCmsFieldDraft(parsed.data, session.admin.id);
     await recordAdminAction({
       actorId: session.admin.id,
@@ -159,6 +195,9 @@ export async function saveCmsFieldItemsAction(
   }
 
   try {
+    const access = await checkFieldMutationAccess(parsed.data.id, session.admin.role);
+    if (!access.allowed) return { error: access.error };
+
     await saveCmsFieldItems(parsed.data.id, parsed.data.items, session.admin.id);
     await recordAdminAction({
       actorId: session.admin.id,
@@ -191,7 +230,7 @@ export async function createCmsFieldAction(
   _prev: CmsActionState | null,
   formData: FormData,
 ): Promise<CmsActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const parsed = CmsFieldCreateSchema.safeParse({
     sectionId: String(formData.get("sectionId") ?? ""),
@@ -250,6 +289,11 @@ export async function publishCmsFieldAction(formData: FormData): Promise<void> {
   const versionId = String(formData.get("versionId") ?? "");
   if (!fieldId || !versionId) redirect("/admin/contenido");
   const back = safeBackPath(formData.get("redirectTo"), `/admin/contenido/campos/${fieldId}`);
+  const access = await checkFieldMutationAccess(fieldId, session.admin.role);
+  if (!access.allowed) {
+    if (access.denied) redirect(`${adminHomePath(session.admin.role)}?denied=1`);
+    redirect(`${back}?error=${encodeURIComponent(access.error)}`);
+  }
 
   try {
     await publishCmsFieldVersion(fieldId, versionId, session.admin.id);
@@ -283,6 +327,11 @@ export async function unpublishCmsFieldAction(formData: FormData): Promise<void>
   const fieldId = String(formData.get("fieldId") ?? "");
   if (!fieldId) redirect("/admin/contenido");
   const back = safeBackPath(formData.get("redirectTo"), `/admin/contenido/campos/${fieldId}`);
+  const access = await checkFieldMutationAccess(fieldId, session.admin.role);
+  if (!access.allowed) {
+    if (access.denied) redirect(`${adminHomePath(session.admin.role)}?denied=1`);
+    redirect(`${back}?error=${encodeURIComponent(access.error)}`);
+  }
 
   try {
     await unpublishCmsField(fieldId, session.admin.id);
@@ -315,7 +364,7 @@ export async function unpublishCmsFieldAction(formData: FormData): Promise<void>
 }
 
 export async function deleteCmsFieldAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const fieldId = String(formData.get("fieldId") ?? "");
   if (!fieldId) redirect("/admin/contenido");
@@ -357,6 +406,11 @@ export async function scheduleCmsPublishAction(formData: FormData): Promise<void
   const versionId = String(formData.get("versionId") ?? "");
   if (!fieldId || !versionId) redirect("/admin/contenido");
   const back = safeBackPath(formData.get("redirectTo"), `/admin/contenido/campos/${fieldId}`);
+  const access = await checkFieldMutationAccess(fieldId, session.admin.role);
+  if (!access.allowed) {
+    if (access.denied) redirect(`${adminHomePath(session.admin.role)}?denied=1`);
+    redirect(`${back}?error=${encodeURIComponent(access.error)}`);
+  }
 
   const publishAt = parseBogotaDateTimeLocal(String(formData.get("publishAt") ?? ""));
   if (!publishAt) {
@@ -401,6 +455,11 @@ export async function unscheduleCmsPublishAction(formData: FormData): Promise<vo
   const versionId = String(formData.get("versionId") ?? "");
   if (!fieldId || !versionId) redirect("/admin/contenido");
   const back = safeBackPath(formData.get("redirectTo"), `/admin/contenido/campos/${fieldId}`);
+  const access = await checkFieldMutationAccess(fieldId, session.admin.role);
+  if (!access.allowed) {
+    if (access.denied) redirect(`${adminHomePath(session.admin.role)}?denied=1`);
+    redirect(`${back}?error=${encodeURIComponent(access.error)}`);
+  }
 
   try {
     await unscheduleCmsFieldPublish(fieldId, versionId);
@@ -434,7 +493,7 @@ export async function unscheduleCmsPublishAction(formData: FormData): Promise<vo
 // ─────────────────── Utilidades de estructura (roadmap C4) ───────────────────
 
 export async function updateCmsPageAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const parsed = CmsPageUpdateSchema.safeParse({
     id: String(formData.get("id") ?? ""),
@@ -470,7 +529,7 @@ export async function updateCmsPageAction(formData: FormData): Promise<void> {
 }
 
 export async function updateCmsSectionAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const parsed = CmsSectionUpdateSchema.safeParse({
     id: String(formData.get("id") ?? ""),
@@ -507,7 +566,7 @@ export async function updateCmsSectionAction(formData: FormData): Promise<void> 
 
 /** Mueve un campo a otra sección (de esta u otra página). */
 export async function moveCmsFieldAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const fieldId = String(formData.get("fieldId") ?? "");
   const sectionId = String(formData.get("sectionId") ?? "");
@@ -544,7 +603,7 @@ export async function moveCmsFieldAction(formData: FormData): Promise<void> {
 
 /** Duplica un campo como borrador sin publicar y lleva a su editor. */
 export async function duplicateCmsFieldAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const fieldId = String(formData.get("fieldId") ?? "");
   const newKey = String(formData.get("newKey") ?? "");
@@ -579,12 +638,15 @@ export async function duplicateCmsFieldAction(formData: FormData): Promise<void>
 /** Publica en lote TODOS los borradores del sitio (vista «Solo borradores»). */
 export async function publishAllCmsDraftsAction(formData: FormData): Promise<void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+  const isSuperadmin = session.admin.role === "SUPERADMIN";
   const back = safeBackPath(formData.get("redirectTo"), "/admin/contenido/borradores");
 
   try {
     const drafts = await listCmsDraftFields();
     let published = 0;
     for (const field of drafts) {
+      if (MODULE_MANAGED_SETTING_KEYS.has(field.key)) continue;
+      if (field.section.page.slug === "global" && !isSuperadmin) continue;
       const latest = field.versions[0];
       if (!latest) continue;
       await publishCmsFieldVersion(field.id, latest.id, session.admin.id);

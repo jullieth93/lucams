@@ -20,14 +20,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MapPin, Package, Truck, Wallet } from "lucide-react";
-import { CmsText } from "@/components/cms/cms-text";
 import {
   designPreviewDisplay,
   previewRefToAuthorizedUrl,
 } from "@/features/personalization/preview-artifacts";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { SITE_NAME } from "@/lib/site";
-import { getCmsBlock } from "@/lib/cms";
 import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
 import { hashBearerToken } from "@/lib/token-hash";
@@ -50,14 +48,11 @@ import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { reorderGuestAction } from "./actions";
 import { ReorderControl, type ReorderTexts } from "@/components/orders/reorder-control";
 
-export async function generateMetadata(): Promise<Metadata> {
+export const metadata: Metadata = {
   // noindex: la URL es de un solo uso y trae un token opaco.
-  const block = await getCmsBlock("order.status.meta-title");
-  return {
-    title: block?.body ?? "Mi pedido",
-    robots: { index: false, follow: false },
-  };
-}
+  title: "Mi pedido",
+  robots: { index: false, follow: false },
+};
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Esperando pago",
@@ -196,54 +191,27 @@ export default async function PublicOrderPage({
       ? await buildWhatsAppUrl({ kind: "order", orderNumber: order.number })
       : null;
 
-  // Textos con interpolación propia ({total}, {cantidad}, {email}) se leen con
-  // getCmsBlock y se reemplazan a mano; el resto va con <CmsText>.
-  const [itemsHeadingBlock, accountCtaBodyBlock, codBannerBlock] = await Promise.all([
-    getCmsBlock("order.status.items-heading"),
-    getCmsBlock("order.status.account-cta-body"),
-    showCodBanner ? getCmsBlock("order.status.cod-banner") : Promise.resolve(null),
-  ]);
-  const itemsHeading = (itemsHeadingBlock?.body ?? "Lo que pediste ({cantidad})").replaceAll(
-    "{cantidad}",
-    String(order.items.length),
-  );
+  const itemsHeading = `Lo que pediste (${order.items.length})`;
   const accountCtaBody =
-    accountCtaBodyBlock?.body ??
     "Crea una cuenta con el email {email} y vas a tener historial, direcciones guardadas y descuentos exclusivos.";
-  const codBanner =
-    codBannerBlock?.body ?? "Pagas {total} en efectivo cuando el mensajero te entregue el pedido.";
+  const codBanner = "Pagas {total} en efectivo cuando el mensajero te entregue el pedido.";
 
-  // Paquete I — textos del "Volver a pedir" (CMS order.status.reorder-*; mismos
-  // defaults es-CO que account.reorder.* de mi-cuenta).
+  // Paquete I — textos del "Volver a pedir" (mismos defaults es-CO que mi-cuenta).
   const showReorder = !isCancelled && !isPending;
   const reorderTexts: ReorderTexts | null = showReorder
-    ? await (async () => {
-        const keys = {
-          cta: ["order.status.reorder-cta", "Volver a pedir"],
-          pending: ["order.status.reorder-pending", "Armando tu carrito…"],
-          addedTitle: ["order.status.reorder-added-title", "Agregamos a tu carrito:"],
-          needsPhotosTitle: [
-            "order.status.reorder-needs-photos-title",
-            "Para repetir estos, sube las fotos de nuevo:",
-          ],
-          needsPhotosNote: [
-            "order.status.reorder-needs-photos-note",
-            "Por privacidad borramos las fotos de los pedidos entregados hace más de 90 días.",
-          ],
-          photosCta: ["order.status.reorder-photos-cta", "Crearlo de nuevo"],
-          unavailableTitle: ["order.status.reorder-unavailable-title", "Ya no pudimos agregar:"],
-          goToCart: ["order.status.reorder-go-to-cart", "Ir al carrito"],
-          priceNow: ["order.status.reorder-price-now", "ahora {precio}"],
-          priceWas: ["order.status.reorder-price-was", "antes {precio}"],
-        } as const;
-        const blocks = await Promise.all(Object.values(keys).map(([key]) => getCmsBlock(key)));
-        const out = {} as Record<keyof typeof keys, string>;
-        Object.keys(keys).forEach((k, i) => {
-          const field = k as keyof typeof keys;
-          out[field] = blocks[i]?.body ?? keys[field][1];
-        });
-        return out as ReorderTexts;
-      })()
+    ? {
+        cta: "Volver a pedir",
+        pending: "Armando tu carrito…",
+        addedTitle: "Agregamos a tu carrito:",
+        needsPhotosTitle: "Para repetir estos, sube las fotos de nuevo:",
+        needsPhotosNote:
+          "Por privacidad borramos las fotos de los pedidos entregados hace más de 90 días.",
+        photosCta: "Crearlo de nuevo",
+        unavailableTitle: "Ya no pudimos agregar:",
+        goToCart: "Ir al carrito",
+        priceNow: "ahora {precio}",
+        priceWas: "antes {precio}",
+      }
     : null;
 
   return (
@@ -260,7 +228,7 @@ export default async function PublicOrderPage({
             href="/productos"
             className="text-brand-purple-dark/70 hover:text-brand-purple text-xs font-medium"
           >
-            <CmsText blockKey="order.status.catalog-cta" fallback="Ver catálogo →" />
+            Ver catálogo →
           </Link>
         </div>
       </header>
@@ -270,17 +238,11 @@ export default async function PublicOrderPage({
           {nueva === "1" && !isCancelled && (
             <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="font-display text-lg font-bold text-emerald-900">
-                <CmsText
-                  blockKey="order.status.confirmed-title"
-                  fallback="🎉 ¡Pedido confirmado!"
-                />
+                🎉 ¡Pedido confirmado!
               </p>
               <p className="mt-0.5 text-sm text-emerald-800">
                 {/* #2 — el detalle COD lo lleva el aviso persistente de abajo; aquí solo el saludo. */}
-                <CmsText
-                  blockKey="order.status.confirmed-body"
-                  fallback="Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!"
-                />
+                Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
               </p>
             </div>
           )}
@@ -289,17 +251,10 @@ export default async function PublicOrderPage({
             salida a WhatsApp, en vez de dejar el timeline gris mudo. */}
           {isPending && (
             <div role="note" className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-semibold text-amber-900">
-                <CmsText
-                  blockKey="order.status.pending-title"
-                  fallback="Estamos confirmando tu pago"
-                />
-              </p>
+              <p className="text-sm font-semibold text-amber-900">Estamos confirmando tu pago</p>
               <p className="mt-1 text-xs text-amber-800">
-                <CmsText
-                  blockKey="order.status.pending-body"
-                  fallback="Esto puede tardar unos minutos (algunos métodos como PSE o transferencia son así). Cuando lo confirmemos te llega un correo y aquí verás el avance. ¿Tienes dudas?"
-                />
+                Esto puede tardar unos minutos (algunos métodos como PSE o transferencia son así).
+                Cuando lo confirmemos te llega un correo y aquí verás el avance. ¿Tienes dudas?
               </p>
               {waUrl && (
                 <a
@@ -308,10 +263,7 @@ export default async function PublicOrderPage({
                   rel="noreferrer"
                   className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
                 >
-                  <CmsText
-                    blockKey="order.status.pending-wa-cta"
-                    fallback="Escríbenos por WhatsApp"
-                  />
+                  Escríbenos por WhatsApp
                 </a>
               )}
             </div>
@@ -332,9 +284,7 @@ export default async function PublicOrderPage({
           )}
 
           <header className="mb-6">
-            <p className="text-brand-muted text-xs tracking-wider uppercase">
-              <CmsText blockKey="order.status.eyebrow" fallback="Tu pedido" />
-            </p>
+            <p className="text-brand-muted text-xs tracking-wider uppercase">Tu pedido</p>
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
               {order.number}
             </h1>
@@ -345,9 +295,7 @@ export default async function PublicOrderPage({
 
           {!isCancelled && !isPending && (
             <div className="border-brand-purple/15 mb-6 rounded-2xl border bg-white p-5 shadow-sm">
-              <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">
-                <CmsText blockKey="order.status.timeline-heading" fallback="Estado de tu pedido" />
-              </h2>
+              <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">Estado de tu pedido</h2>
               {/* Novedad/devolución del carrier (revalidación 2026-10-20): el timeline
                   no retrocede, pero el cliente debe VER que hay un problema logístico
                   en vez de un "En camino" eterno. */}
@@ -357,23 +305,13 @@ export default async function PublicOrderPage({
                   className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4"
                 >
                   <p className="text-sm font-semibold text-amber-900">
-                    {shippingIssue === "returned" ? (
-                      <CmsText
-                        blockKey="order.status.shipping-returned-title"
-                        fallback="Tu pedido viene de vuelta con nosotros"
-                      />
-                    ) : (
-                      <CmsText
-                        blockKey="order.status.shipping-issue-title"
-                        fallback="Tu envío tiene una novedad"
-                      />
-                    )}
+                    {shippingIssue === "returned"
+                      ? "Tu pedido viene de vuelta con nosotros"
+                      : "Tu envío tiene una novedad"}
                   </p>
                   <p className="mt-1 text-xs text-amber-800">
-                    <CmsText
-                      blockKey="order.status.shipping-issue-body"
-                      fallback="La transportadora reportó un inconveniente con la entrega. Ya lo estamos gestionando y te contactaremos; si quieres escribirnos antes, estamos atentos."
-                    />
+                    La transportadora reportó un inconveniente con la entrega. Ya lo estamos
+                    gestionando y te contactaremos; si quieres escribirnos antes, estamos atentos.
                   </p>
                   {waUrl && (
                     <a
@@ -382,10 +320,7 @@ export default async function PublicOrderPage({
                       rel="noreferrer"
                       className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
                     >
-                      <CmsText
-                        blockKey="order.status.pending-wa-cta"
-                        fallback="Escríbenos por WhatsApp"
-                      />
+                      Escríbenos por WhatsApp
                     </a>
                   )}
                 </div>
@@ -422,24 +357,11 @@ export default async function PublicOrderPage({
           {isCancelled && (
             <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4">
               <p className="text-sm font-semibold text-rose-900">
-                {order.status === "REFUNDED" ? (
-                  <CmsText
-                    blockKey="order.status.refunded-title"
-                    fallback="Este pedido fue reembolsado."
-                  />
-                ) : (
-                  <CmsText
-                    blockKey="order.status.cancelled-title"
-                    fallback="Este pedido fue cancelado."
-                  />
-                )}
+                {order.status === "REFUNDED"
+                  ? "Este pedido fue reembolsado."
+                  : "Este pedido fue cancelado."}
               </p>
-              <p className="mt-1 text-xs text-rose-800">
-                <CmsText
-                  blockKey="order.status.cancelled-note"
-                  fallback="Si tienes dudas escríbenos por WhatsApp."
-                />
-              </p>
+              <p className="mt-1 text-xs text-rose-800">Si tienes dudas escríbenos por WhatsApp.</p>
             </div>
           )}
 
@@ -495,12 +417,9 @@ export default async function PublicOrderPage({
                         pages={disp?.pageUrls ?? null}
                         pageLabels={pageLabels}
                         watermarkNote={
-                          disp?.watermarked ? (
-                            <CmsText
-                              blockKey="cart.vista-previa-watermark-nota"
-                              fallback="Vista previa con marca de agua — tu impresión final no la lleva."
-                            />
-                          ) : null
+                          disp?.watermarked
+                            ? "Vista previa con marca de agua — tu impresión final no la lleva."
+                            : null
                         }
                         productName={it.variant.product.name}
                         trigger={
@@ -520,27 +439,12 @@ export default async function PublicOrderPage({
                             {/* 2026-10-13 — «N <sustantivo>» cuando el diseño pagina. */}
                             <DesignUnitsBadge
                               count={disp?.pageUrls?.length ?? 0}
-                              label={
-                                <CmsText
-                                  blockKey="order.status.unidades-badge"
-                                  fallback={unitNounPlural}
-                                />
-                              }
+                              label={unitNounPlural}
                             />
                           </button>
                         }
-                        title={
-                          <CmsText
-                            blockKey="cart.vista-previa-diseno-titulo"
-                            fallback="Tu diseño ·"
-                          />
-                        }
-                        description={
-                          <CmsText
-                            blockKey="cart.vista-previa-diseno-desc"
-                            fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
-                          />
-                        }
+                        title="Tu diseño ·"
+                        description="Vista previa ampliada del diseño personalizado de esta línea del pedido."
                       />
                     ) : (
                       <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
@@ -565,8 +469,7 @@ export default async function PublicOrderPage({
                       {/* Zoom del diseño (fix QA STG 2026-10): la miniatura de
                           56px no deja revisar el diseño — el botón abre el MISMO
                           lightbox con zoom del carrito (DesignPreviewDialog:
-                          rueda anclada, pinch, doble-tap, botones +/−). Se
-                          reusan las keys CMS del carrito (cart.ver-diseno…). */}
+                          rueda anclada, pinch, doble-tap, botones +/−). */}
                       {previewUrl && (
                         <div className="mt-1.5">
                           <DesignPreviewDialog
@@ -576,27 +479,14 @@ export default async function PublicOrderPage({
                             pages={disp?.pageUrls ?? null}
                             pageLabels={pageLabels}
                             watermarkNote={
-                              disp?.watermarked ? (
-                                <CmsText
-                                  blockKey="cart.vista-previa-watermark-nota"
-                                  fallback="Vista previa con marca de agua — tu impresión final no la lleva."
-                                />
-                              ) : null
+                              disp?.watermarked
+                                ? "Vista previa con marca de agua — tu impresión final no la lleva."
+                                : null
                             }
                             productName={it.variant.product.name}
-                            triggerLabel={<CmsText blockKey="cart.ver-diseno" fallback="Ver" />}
-                            title={
-                              <CmsText
-                                blockKey="cart.vista-previa-diseno-titulo"
-                                fallback="Tu diseño ·"
-                              />
-                            }
-                            description={
-                              <CmsText
-                                blockKey="cart.vista-previa-diseno-desc"
-                                fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
-                              />
-                            }
+                            triggerLabel="Ver"
+                            title="Tu diseño ·"
+                            description="Vista previa ampliada del diseño personalizado de esta línea del pedido."
                           />
                         </div>
                       )}
@@ -613,24 +503,16 @@ export default async function PublicOrderPage({
               it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
             ) && (
               <p className="text-brand-muted mt-2 text-[11px]">
-                <CmsText
-                  blockKey="order.status.watermark-note"
-                  fallback="Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva."
-                />
+                Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la
+                lleva.
               </p>
             )}
             <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">
-              <Row
-                label={<CmsText blockKey="order.status.subtotal-label" fallback="Subtotal" />}
-                value={formatCOP(order.subtotal)}
-              />
-              <Row
-                label={<CmsText blockKey="order.status.shipping-label" fallback="Envío" />}
-                value={formatCOP(order.shipping)}
-              />
+              <Row label="Subtotal" value={formatCOP(order.subtotal)} />
+              <Row label="Envío" value={formatCOP(order.shipping)} />
               {order.discount > 0 && (
                 <Row
-                  label={<CmsText blockKey="order.status.discount-label" fallback="Descuento" />}
+                  label="Descuento"
                   value={<span className="text-emerald-700">−{formatCOP(order.discount)}</span>}
                 />
               )}
@@ -645,9 +527,7 @@ export default async function PublicOrderPage({
                 />
               )}
               <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">
-                <dt className="text-brand-purple-dark font-bold">
-                  <CmsText blockKey="order.status.total-label" fallback="Total" />
-                </dt>
+                <dt className="text-brand-purple-dark font-bold">Total</dt>
                 <dd className="text-brand-purple-dark font-bold tabular-nums">
                   {formatCOP(order.total)}
                 </dd>
@@ -655,12 +535,7 @@ export default async function PublicOrderPage({
             </dl>
           </Card>
 
-          <Card
-            icon={<MapPin className="h-4 w-4" />}
-            title={
-              <CmsText blockKey="order.status.address-heading" fallback="Dirección de envío" />
-            }
-          >
+          <Card icon={<MapPin className="h-4 w-4" />} title="Dirección de envío">
             {/* #16 — esta vista es pública por token (link reenviable). Minimización PII
                 (Ley 1581) PERO con certeza para el comprador: nombre + ciudad visibles y la
                 dirección completa bajo un desplegable "Ver dirección exacta" (feedback Lucy
@@ -698,22 +573,10 @@ export default async function PublicOrderPage({
           </Card>
 
           {order.trackingNumber && (
-            <Card
-              icon={<Truck className="h-4 w-4" />}
-              title={<CmsText blockKey="order.status.shipping-label" fallback="Envío" />}
-            >
+            <Card icon={<Truck className="h-4 w-4" />} title="Envío">
+              <Row label="Transportadora" value={carrierDisplayName(order.shippingCarrier)} />
               <Row
-                label={<CmsText blockKey="order.status.carrier-label" fallback="Transportadora" />}
-                value={carrierDisplayName(order.shippingCarrier)}
-              />
-              <Row
-                label={
-                  isInternalDelivery ? (
-                    "Referencia"
-                  ) : (
-                    <CmsText blockKey="order.status.tracking-label" fallback="Número de guía" />
-                  )
-                }
+                label={isInternalDelivery ? "Referencia" : "Número de guía"}
                 value={
                   <span className="text-brand-purple-dark/85 font-mono text-xs">
                     {order.trackingNumber}
@@ -723,8 +586,8 @@ export default async function PublicOrderPage({
               {isInternalDelivery && (
                 <p className="text-brand-muted mt-2 text-xs">
                   {order.status === "DELIVERED"
-                    ? "Tu pedido fue entregado por nuestro equipo Lucam&apos;s."
-                    : "Tu pedido va con nuestro equipo Lucam&apos;s — la entrega se estima para el mismo día del despacho, sujeta a las condiciones de la ruta."}
+                    ? "Tu pedido fue entregado por nuestro equipo Lucams."
+                    : "Tu pedido va con nuestro equipo Lucams — la entrega se estima para el mismo día del despacho, sujeta a las condiciones de la ruta."}
                 </p>
               )}
               {/* Rastreo (feedback owner 2026-10-20): esta vista YA es el
@@ -743,10 +606,7 @@ export default async function PublicOrderPage({
                     className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
                   >
                     <Truck aria-hidden className="h-3.5 w-3.5" />
-                    <CmsText
-                      blockKey="order.status.tracking-cta"
-                      fallback="Rastrear en el portal de la transportadora"
-                    />
+                    Rastrear en el portal de la transportadora
                   </a>
                 )}
                 {order.trackingUrl && (
@@ -757,7 +617,7 @@ export default async function PublicOrderPage({
                     className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
                   >
                     <Package aria-hidden className="h-3.5 w-3.5" />
-                    <CmsText blockKey="order.status.label-cta" fallback="Documento de guía (PDF)" />
+                    Documento de guía (PDF)
                   </a>
                 )}
               </div>
@@ -778,10 +638,7 @@ export default async function PublicOrderPage({
 
           <div className="border-brand-purple/15 from-brand-pink/10 to-brand-purple/10 rounded-2xl border bg-gradient-to-br p-5 text-center shadow-sm">
             <p className="text-brand-purple-dark text-sm font-semibold">
-              <CmsText
-                blockKey="order.status.account-cta-heading"
-                fallback="¿Quieres ver todos tus pedidos?"
-              />
+              ¿Quieres ver todos tus pedidos?
             </p>
             <p className="text-brand-muted mt-1 text-xs">
               {/* #13/#16 — email ENMASCARADO (link público reenviable) y NO viaja en el href del CTA
@@ -792,7 +649,7 @@ export default async function PublicOrderPage({
               href="/registro"
               className="bg-brand-purple hover:bg-brand-purple-dark mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-sm"
             >
-              <CmsText blockKey="order.status.account-cta-button" fallback="Crear cuenta" />
+              Crear cuenta
             </Link>
           </div>
         </div>

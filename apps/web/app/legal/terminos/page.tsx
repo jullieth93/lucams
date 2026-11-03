@@ -66,13 +66,13 @@ Despachamos a través de **transportadoras aliadas** (ver [Subprocesadores](/leg
 
 El costo del envío se **calcula en el sitio durante el checkout**, a través de nuestro operador logístico (**Aveonline**). Donde ofrezcamos **contraentrega**, el recaudo del pago lo gestiona ese operador al momento de la entrega. Si tu pedido se cierra por WhatsApp, el envío se cotiza y se coordina por ese canal.
 
-**Plazo máximo de entrega.** Tu pedido se entrega en el plazo que te informamos antes de pagar y, en cualquier caso, en un máximo de **treinta (30) días calendario**. Si no cumplimos, puedes **terminar el pedido** y te devolvemos la totalidad del dinero en máximo **quince (15) días calendario** (Ley 1480 de 2011, art. 50, adicionado por la Ley 2439 de 2024).
+**Plazo máximo de entrega.** Tu pedido se entrega en el plazo que te informamos antes de pagar y, en cualquier caso, en un máximo de **{{entrega_max_legal_dias}} días calendario**. Si no cumplimos, puedes **terminar el pedido** y te devolvemos la totalidad del dinero en máximo **{{retracto_reembolso_dias}} días calendario** (Ley 1480 de 2011, art. 50, adicionado por la Ley 2439 de 2024).
 
 ## Derecho de retracto
 
-Como consumidor tienes **derecho de retracto** (Ley 1480 de 2011, art. 47): dentro de los **cinco (5) días hábiles** siguientes a la entrega puedes retractarte de la compra **sin dar explicaciones**, siempre que devuelvas el producto en las mismas condiciones en que lo recibiste. Es un derecho de las **ventas a distancia**, así que también cubre los pedidos que cerramos contigo por WhatsApp a partir de una cotización del sitio.
+Como consumidor tienes **derecho de retracto** (Ley 1480 de 2011, art. 47): dentro de los **{{retracto_dias}} días hábiles** siguientes a la entrega puedes retractarte de la compra **sin dar explicaciones**, siempre que devuelvas el producto en las mismas condiciones en que lo recibiste. Es un derecho de las **ventas a distancia**, así que también cubre los pedidos que cerramos contigo por WhatsApp a partir de una cotización del sitio.
 
-Cuando ejerces el retracto, te **devolvemos el dinero en un máximo de quince (15) días calendario** contados desde que ejerces el derecho (plazo de la **Ley 2439 de 2024**, que modificó el art. 47).
+Cuando ejerces el retracto, te **devolvemos el dinero en un máximo de {{retracto_reembolso_dias}} días calendario** contados desde que ejerces el derecho (plazo de la **Ley 2439 de 2024**, que modificó el art. 47).
 
 **Excepción — productos personalizados:** conforme al mismo art. 47 (numeral 3), los productos **claramente personalizados o confeccionados según tus especificaciones** —los que llevan tu foto, tu texto o tu diseño hecho en el Estudio— **no admiten retracto**, porque se elaboran solo para ti. Los productos del **catálogo estándar** (sin personalización tuya) **sí tienen retracto**.
 
@@ -80,7 +80,7 @@ Para ejercerlo, escríbenos a **{{email_retracto}}** o por WhatsApp. Más detall
 
 ## Garantía legal
 
-Todos los productos cuentan con **garantía legal** (Ley 1480 de 2011, arts. 7 a 11 y 16) frente a defectos de fabricación, de materiales o de impresión. El plazo aplicable es el que informamos expresamente en la ficha de cada producto antes de la compra y confirmamos en tu pedido; el catálogo inicia con **un (1) mes** como plazo predeterminado, sin perjuicio de que un producto anuncie uno mayor. Conforme al art. 8 de esa ley —que fija como término el **anunciado por el productor** a falta de disposición de la autoridad competente— ese es el plazo que se cuenta desde la entrega.
+Todos los productos cuentan con **garantía legal** (Ley 1480 de 2011, arts. 7 a 11 y 16) frente a defectos de fabricación, de materiales o de impresión. El plazo aplicable es el que informamos expresamente en la ficha de cada producto antes de la compra y confirmamos en tu pedido; el catálogo inicia con **{{garantia_base}}** como plazo predeterminado, sin perjuicio de que un producto anuncie uno mayor. Conforme al art. 8 de esa ley —que fija como término el **anunciado por el productor** a falta de disposición de la autoridad competente— ese es el plazo que se cuenta desde la entrega.
 
 El plazo se **suspende** mientras tu producto esté en reparación por garantía y, si te reponemos el producto completo, **corre de nuevo desde cero** (art. 9). Ante un defecto cubierto, primero lo **reparamos totalmente gratis** —el transporte corre por nuestra cuenta—; si el producto **no admite reparación**, te lo reponemos por uno nuevo o te devolvemos el dinero; y si **la falla se repite**, tú eliges entre una nueva reparación, la devolución total o parcial del precio, o el cambio por otro producto de iguales o mejores características (art. 11). La garantía no cubre el daño por mal uso, fuerza mayor o caso fortuito, hecho de un tercero, o el incumplimiento de las instrucciones de uso y conservación (art. 16) —y probar esas causales nos corresponde a nosotros.
 
@@ -127,8 +127,8 @@ Algunos de nuestros proveedores tecnológicos están fuera de Colombia (por ejem
 Estamos para ayudarte. Escríbenos a **{{email_contacto}}**, por WhatsApp, o —para temas de datos— a **{{email_habeas_data}}**.
 
 - Toda **petición, queja o reclamo (PQR)** que presentes la radicamos con **número y fecha-hora** y te confirmamos la radicación por el mismo canal; puedes pedir seguimiento en cualquier momento (Ley 1480 de 2011, art. 50, adicionado por la Ley 2439 de 2024).
-- Respondemos tus **consultas** en máximo **diez (10) días hábiles**.
-- Respondemos tus **reclamos** en máximo **quince (15) días hábiles** (Ley 1480 de 2011, art. 58; Ley 1581 de 2012, arts. 14 y 15).
+- Respondemos tus **consultas** en máximo **{{habeas_consulta_dias}} días hábiles**.
+- Respondemos tus **reclamos** en máximo **{{habeas_reclamo_dias}} días hábiles** (Ley 1480 de 2011, art. 58; Ley 1581 de 2012, arts. 14 y 15).
 
 ## Ley aplicable y solución de controversias
 

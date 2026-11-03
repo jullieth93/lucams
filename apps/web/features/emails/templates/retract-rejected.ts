@@ -9,6 +9,7 @@
 
 import { renderEmailLayout } from "../layout";
 import { getSettingValue } from "@/lib/cms";
+import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
 
 export type RetractRejectedData = {
   orderNumber: string;
@@ -33,7 +34,7 @@ ocasión <strong>no podemos aprobarla</strong>.</p>
 <p style="margin-top:14px;">Tu pedido sigue siendo tuyo — no cambia nada en tu compra. Si algo llegó
 defectuoso o tienes cualquier duda sobre esta decisión, escríbenos y lo revisamos juntos. 💜</p>
 <p><a href="${waLink}" style="color:#C42B76;font-weight:600;">Escríbenos por WhatsApp →</a></p>
-<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">Recuerda que los productos personalizados (con tu foto o texto) no tienen derecho de retracto por ley, y el plazo para ejercerlo es de 5 días hábiles desde la entrega.</p>
+<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">Recuerda que los productos personalizados (con tu foto o texto) no tienen derecho de retracto por ley, y el plazo para ejercerlo es de ${RETRACT_WINDOW_BUSINESS_DAYS} días hábiles desde la entrega.</p>
 `;
 
   const text = `Sobre tu solicitud de retracto
@@ -48,7 +49,7 @@ Tu pedido sigue siendo tuyo — no cambia nada en tu compra. Si algo llegó defe
 
 Escríbenos por WhatsApp: ${waLink}
 
-Recuerda que los productos personalizados (con tu foto o texto) no tienen derecho de retracto por ley, y el plazo para ejercerlo es de 5 días hábiles desde la entrega.`;
+Recuerda que los productos personalizados (con tu foto o texto) no tienen derecho de retracto por ley, y el plazo para ejercerlo es de ${RETRACT_WINDOW_BUSINESS_DAYS} días hábiles desde la entrega.`;
 
   return {
     subject: `Sobre tu solicitud de retracto — pedido ${data.orderNumber}`,

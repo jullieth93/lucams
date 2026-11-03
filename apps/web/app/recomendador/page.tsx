@@ -15,15 +15,22 @@ import {
   PRICE_RANGES,
   type WizardInitial,
 } from "@/lib/recomendador-options";
+import { getPageSeo } from "@/lib/cms-tokens";
 import { WizardRecomendador } from "@/components/wizard-recomendador";
 
-export const metadata: Metadata = {
+export async function generateMetadata(): Promise<Metadata> {
   // #27 — el template global añade "· Lucams Shop"; keyword al frente.
-  title: "Recomendador de imanes",
-  description:
-    "¿No sabes qué elegir? Te ayudamos en 4 preguntas a encontrar el imán perfecto para tu ocasión.",
-  alternates: { canonical: "/recomendador" },
-};
+  const seo = await getPageSeo("seo.page.recomendador", {
+    title: "Recomendador de imanes",
+    description:
+      "¿No sabes qué elegir? Te ayudamos en 4 preguntas a encontrar el imán perfecto para tu ocasión.",
+  });
+  return {
+    title: seo.title,
+    description: seo.description,
+    alternates: { canonical: "/recomendador" },
+  };
+}
 
 // CSP por nonce (C3): requiere render dinámico (los scripts necesitan el nonce).
 export const dynamic = "force-dynamic";

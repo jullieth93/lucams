@@ -21,7 +21,7 @@ import { SiteHeader } from "@/components/site-header";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
 import { getCmsBlocksByCategory, getSettingValue } from "@/lib/cms";
-import { getPageSeo } from "@/lib/cms-tokens";
+import { getPageSeo, resolveCmsTokens } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -49,16 +49,13 @@ export const dynamic = "force-dynamic";
 // `codEnabled`: el toggle COD del admin (SiteSetting COD_ENABLED) también
 // gobierna la mención de contraentrega — apagarlo quita la promesa (2026-07-22).
 // FAIL-CLOSED (CF-35): setting ausente/despublicada = no se promete contraentrega.
-// La FAQ `envio-mismo-dia` (Envío Lucams, en construcción paralela en
-// features/shipping) NO se publica aquí sin más: AyudaPage la filtra salvo que
-// la setting SAME_DAY_DELIVERY_ENABLED sea "true" y el modo sea full — mismo
-// patrón fail-closed que COD_ENABLED (ningún texto público promete lo que la
-// tienda no opera hoy).
+// La FAQ `envio-mismo-dia` (Envío Lucams, administrado en /admin/envios) NO se
+// muestra sin más: AyudaPage la filtra salvo que la setting LUCAMS_SHIPPING_ENABLED
+// sea "true" y el modo sea full — mismo patrón fail-closed que COD_ENABLED
+// (ningún texto público promete lo que la tienda no opera hoy).
 function buildFallbackFaqs(
   catalog: boolean,
   codEnabled: boolean,
-  contactEmail: string,
-  cutoffHour: string,
 ): { slug: string; question: string; answer: string }[] {
   const codCatalog = codEnabled
     ? " Además tienes **contraentrega disponible**: pagas en efectivo al recibir tu pedido."
@@ -68,93 +65,92 @@ function buildFallbackFaqs(
     : "";
   return [
     {
-      slug: "como-personalizo",
+      slug: "01-como-personalizo",
       question: "¿Cómo personalizo un producto?",
       answer: catalog
         ? "Elige el producto, haz clic en **Personalizar** y lo diseñas en vivo en nuestro Estudio: subes tus fotos, agregas texto y plantillas, y lo ves con vista previa 3D. Al terminar, lo agregas al carrito y confirmas tu pedido por WhatsApp."
         : "Elige el producto, haz clic en **Personalizar** y lo diseñas en vivo en nuestro Estudio: subes tus fotos, agregas texto y plantillas, y lo ves con vista previa 3D. Al terminar, lo agregas al carrito.",
     },
     {
-      slug: "cuanto-demora",
+      slug: "02-cuanto-demora",
       question: "¿Cuánto demora mi pedido?",
       answer: catalog
         ? "La **preparación toma alrededor de {{fab}} días hábiles antes del despacho**. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas (tránsito estimado: ~{{entrega}} días después del despacho, según tu ciudad) y te pasamos el número de guía para que sigas tu pedido."
         : "La **preparación toma alrededor de {{fab}} días hábiles antes del despacho**. Desde ahí, el tránsito estimado de la transportadora es de ~{{entrega}} días según tu ciudad; al despachar te enviamos el número de guía para que sigas tu pedido.",
     },
     {
-      slug: "metodos-pago",
+      slug: "03-metodos-pago",
       question: "¿Qué métodos de pago aceptan?",
       answer: catalog
         ? `Los medios de pago se acuerdan por **WhatsApp** al confirmar tu cotización.${codCatalog}`
         : `Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada).${codFull}`,
     },
     {
-      slug: "envios-cobertura",
+      slug: "04-envios-cobertura",
       question: "¿Hacen envíos a mi ciudad?",
       answer: catalog
         ? "Llegamos a **{{cobertura}} destinos** en Colombia a través de nuestras transportadoras aliadas. El costo del envío y el tiempo estimado te los confirmamos por **WhatsApp** al cotizar tu pedido."
         : "Llegamos a **{{cobertura}} destinos** en Colombia a través de nuestras transportadoras aliadas. Al hacer el pedido calculamos automáticamente el costo, el tiempo estimado y qué transportadora llega a tu ciudad.",
     },
     {
-      slug: "envio-mismo-dia",
-      question: "¿Tienen envío el mismo día en Bogotá?",
-      answer: `Sí: **Envío Lucams**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá**, con **tarifa fija** que ves antes de pagar. La ruta local se estima para el **mismo día del despacho**, sujeta a disponibilidad y condiciones de la ruta. Si el producto está **listo (sin fabricación pendiente)** y tu pedido queda confirmado **antes de las ${cutoffHour}:00**, la entrega se estima para ese mismo día; si hay que fabricarlo a mano, primero corre el tiempo de preparación. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.`,
-    },
-    {
-      slug: "cambios-devoluciones",
+      slug: "05-cambios-devoluciones",
       question: "¿Cómo cambio o devuelvo un producto?",
       answer:
-        "Tienes **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: aplica el plazo que ves en la ficha del producto y que confirmamos en tu pedido (el catálogo inicia con **1 mes**); el plazo **se suspende** mientras tu producto esté en reparación. [Más detalles](/legal/devoluciones) y [Garantías](/legal/garantias).",
+        "Tienes **{{retracto_dias}} días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: aplica el plazo que ves en la ficha del producto y que confirmamos en tu pedido (el catálogo inicia con **{{garantia_base}}**); el plazo **se suspende** mientras tu producto esté en reparación. [Más detalles](/legal/devoluciones) y [Garantías](/legal/garantias).",
     },
     {
-      slug: "cuidado-imanes",
-      question: "¿Cómo cuido mis imanes?",
-      answer:
-        "Para que duren: **nada de agua ni humedad**; lejos del **calor extremo y del sol prolongado**; límpialos con **paño suave y seco** (sin químicos ni abrasivos); úsalos sobre superficies limpias, lisas y ferromagnéticas; y **no los dobles** ni los golpees. Las piezas pequeñas, lejos de niños **menores de 3 años**. Estas son las instrucciones de uso y conservación que rigen la [garantía](/legal/garantias).",
-    },
-    {
-      slug: "comprobante-venta",
+      slug: "06-comprobante-venta",
       question: "¿Puedo pedir comprobante de venta de mi compra?",
       answer:
         "Claro. Cuéntanos tus datos de facturación (nombre o razón social, cédula o NIT, y correo) al confirmar tu pedido y te enviamos el comprobante de tu compra a tu correo. Hoy no emitimos factura electrónica de la DIAN; te entregamos el documento equivalente que corresponda según nuestro régimen tributario.",
     },
     {
-      slug: "datos-personales",
+      slug: "07-datos-personales",
       question: "¿Cómo manejan mis datos personales?",
       answer:
         "Tratamos tus datos según la **Ley 1581 de 2012** y nuestro [Aviso de Privacidad](/legal/privacidad). Puedes ejercer hábeas data (acceso, rectificación, supresión, revocación) escribiéndonos.",
     },
     {
-      slug: "borrar-mis-datos",
+      slug: "08-borrar-mis-datos",
       question: "¿Cómo borro mi cuenta y mis datos?",
-      answer: `Puedes hacerlo tú misma de inmediato desde **[Mi cuenta → Eliminar cuenta](/mi-cuenta/eliminar)**: tus datos se anonimizan al momento. Si prefieres que lo tramitemos por ti, escríbenos a **${contactEmail}** desde el email registrado y procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).`,
+      answer:
+        "Puedes hacerlo tú misma de inmediato desde **[Mi cuenta → Eliminar cuenta](/mi-cuenta/eliminar)**: tus datos se anonimizan al momento. Si prefieres que lo tramitemos por ti, escríbenos a **{{email_contacto}}** desde el email registrado y procesamos la supresión en máximo **{{habeas_reclamo_dias}} días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).",
     },
     {
-      slug: "newsletter-unsuscripcion",
+      slug: "09-newsletter-unsuscripcion",
       question: "¿Cómo me suscribo o desuscribo del newsletter?",
-      answer: `Suscripción: form en el footer. Desuscripción: link **Cancelar suscripción** al final de cada email que te enviemos, o escríbenos a ${contactEmail}.`,
+      answer:
+        "Suscripción: form en el footer. Desuscripción: link **Cancelar suscripción** al final de cada email que te enviemos, o escríbenos a {{email_contacto}}.",
     },
     {
-      slug: "regalos-eventos",
+      slug: "10-regalos-eventos",
       question: "¿Hacen pedidos al por mayor o para eventos corporativos?",
       answer:
         "¡Sí! Bodas, baby showers, eventos corporativos, recordatorios para regalos. Escríbenos por WhatsApp con tu idea y volumen y te pasamos cotización personalizada.",
+    },
+    {
+      slug: "11-envio-mismo-dia",
+      question: "¿Tienen envío el mismo día en Bogotá?",
+      answer:
+        "Sí: **Envío Lucams**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá**, con **tarifa fija** que ves antes de pagar. La ruta local se estima para el **mismo día del despacho**, sujeta a disponibilidad y condiciones de la ruta. Si el producto está **listo (sin fabricación pendiente)** y tu pedido queda confirmado **antes de las {{cutoff_lucams}}:00**, la entrega se estima para ese mismo día; si hay que fabricarlo a mano, primero corre el tiempo de preparación. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.",
+    },
+    {
+      slug: "12-cuidado-imanes",
+      question: "¿Cómo cuido mis imanes?",
+      answer:
+        "Para que duren: **nada de agua ni humedad**; lejos del **calor extremo y del sol prolongado**; límpialos con **paño suave y seco** (sin químicos ni abrasivos); úsalos sobre superficies limpias, lisas y ferromagnéticas; y **no los dobles** ni los golpees. Las piezas pequeñas, lejos de niños **menores de 3 años**. Estas son las instrucciones de uso y conservación que rigen la [garantía](/legal/garantias).",
     },
   ];
 }
 
 export default async function AyudaPage() {
-  const [faqs, waSupportUrl, contactEmail, codSetting, sameDaySetting, cutoffSetting] =
-    await Promise.all([
-      getCmsBlocksByCategory("FAQ"),
-      buildWhatsAppUrl({ kind: "support" }),
-      getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
-      getSettingValue("COD_ENABLED", "false"),
-      getSettingValue("SAME_DAY_DELIVERY_ENABLED", "false"),
-      // Hora límite del envío propio (misma setting del checkout) para que el
-      // fallback de la FAQ `envio-mismo-dia` nunca cite una hora desactualizada.
-      getSettingValue("LUCAMS_SHIPPING_CUTOFF_HOUR", "12"),
-    ]);
+  const [faqs, waSupportUrl, contactEmail, codSetting, sameDaySetting] = await Promise.all([
+    getCmsBlocksByCategory("FAQ"),
+    buildWhatsAppUrl({ kind: "support" }),
+    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
+    getSettingValue("COD_ENABLED", "false"),
+    getSettingValue("LUCAMS_SHIPPING_ENABLED", "false"),
+  ]);
   const catalog = isCatalogMode();
   const codEnabled = codSetting === "true";
   // Envío Lucams (mismo día, Bogotá) — feature en construcción paralela. Gate
@@ -173,11 +169,13 @@ export default async function AyudaPage() {
     "metodos-pago",
     "envios-cobertura",
   ]);
-  const fallbackSet = buildFallbackFaqs(catalog, codEnabled, contactEmail, cutoffSetting);
-  const catalogBodyBySlug = new Map(fallbackSet.map((f) => [f.slug, f.answer]));
+  const fallbackSet = buildFallbackFaqs(catalog, codEnabled);
+  const catalogBodyBySlug = new Map(
+    fallbackSet.map((f) => [f.slug.replace(/^\d+-/, ""), f.answer]),
+  );
 
   // Si hay FAQs en CMS, las usamos. Si no, fallback editorial.
-  const items =
+  const rawItems =
     faqs.length > 0
       ? faqs.map((b) => {
           const slug = b.key.replace(/^faq\./, "");
@@ -189,21 +187,25 @@ export default async function AyudaPage() {
             question: b.title ?? b.key,
             answer: forced ? override : b.body,
             forced,
-            fromCms: true as const,
           };
         })
       : fallbackSet.map((f) => ({
           ...f,
           forced: false,
-          fromCms: false as const,
         }));
 
   // Gate del Envío Lucams: la FAQ `envio-mismo-dia` se oculta (venga del CMS o del
-  // fallback) mientras la setting SAME_DAY_DELIVERY_ENABLED no sea "true" en modo full
-  // — la feature se construye en paralelo y ningún texto público puede prometerla antes.
-  const visibleItems = sameDayEnabled
-    ? items
-    : items.filter((it) => it.slug.replace(/^\d+-/, "") !== "envio-mismo-dia");
+  // fallback) mientras la setting LUCAMS_SHIPPING_ENABLED no sea "true" en modo full
+  // — ningún texto público promete lo que la tienda no tiene activo hoy.
+  const filteredItems = sameDayEnabled
+    ? rawItems
+    : rawItems.filter((it) => it.slug.replace(/^\d+-/, "") !== "envio-mismo-dia");
+  const visibleItems = await Promise.all(
+    filteredItems.map(async (it) => ({
+      ...it,
+      question: await resolveCmsTokens(it.question),
+    })),
+  );
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -230,13 +232,7 @@ export default async function AyudaPage() {
                 className="group [&_summary]:list-none [&_summary::-webkit-details-marker]:hidden"
               >
                 <summary className="text-brand-purple-dark flex cursor-pointer items-center justify-between gap-3 px-5 py-4 text-sm font-semibold sm:text-base">
-                  <span className="flex-1">
-                    {it.fromCms ? (
-                      <CmsText blockKey={`faq.${it.slug}.title`} fallback={it.question} />
-                    ) : (
-                      it.question
-                    )}
-                  </span>
+                  <span className="flex-1">{it.question}</span>
                   <ChevronDown className="text-brand-purple h-4 w-4 transition-transform group-open:rotate-180" />
                 </summary>
                 <div className="text-brand-purple-dark/80 px-5 pb-4 text-sm leading-relaxed">

@@ -15,7 +15,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronLeft, LifeBuoy, Mail } from "lucide-react";
-import { CmsText } from "@/components/cms/cms-text";
 import { getCurrentCustomer } from "@/lib/auth";
 import { listTicketsForCustomer } from "@/features/support/customer-service";
 import { SUBJECT_LABELS, type SUPPORT_SUBJECTS } from "@/features/support/schemas";
@@ -78,13 +77,10 @@ export default async function MiCuentaSoportePage() {
 
       <header className="mb-6">
         <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-          <CmsText blockKey="account.support.heading" fallback="Mis solicitudes de soporte" />
+          Mis solicitudes de soporte
         </h1>
         <p className="text-brand-muted mt-1 text-sm">
-          <CmsText
-            blockKey="account.support.subtext"
-            fallback="Te respondemos por correo, a tu email. Aquí puedes ver en qué va cada solicitud."
-          />
+          Te respondemos por correo, a tu email. Aquí puedes ver en qué va cada solicitud.
         </p>
       </header>
 
@@ -95,15 +91,13 @@ export default async function MiCuentaSoportePage() {
           <Mail className="h-4 w-4" aria-hidden />
         </span>
         <p className="text-brand-muted text-sm leading-snug">
-          <CmsText
-            blockKey="account.support.email-note"
-            fallback="Cuando tengamos respuesta te escribimos a tu correo (revisa también spam). ¿Necesitas algo más? Escríbenos desde"
-          />{" "}
+          Cuando tengamos respuesta te escribimos a tu correo (revisa también spam). ¿Necesitas algo
+          más? Escríbenos desde{" "}
           <Link
             href="/contacto"
             className="text-brand-pink-ink hover:text-brand-coral-ink font-semibold"
           >
-            <CmsText blockKey="account.support.contact-cta" fallback="contacto" />
+            contacto
           </Link>
           .
         </p>
@@ -112,21 +106,17 @@ export default async function MiCuentaSoportePage() {
       {tickets.length === 0 ? (
         <div className="border-brand-purple/15 flex flex-col items-center gap-3 rounded-2xl border border-dashed bg-white px-6 py-12 text-center">
           <LifeBuoy className="text-brand-pink/50 h-10 w-10" />
-          <p className="text-brand-purple-dark font-semibold">
-            <CmsText blockKey="account.support.empty.title" fallback="Aún no tienes solicitudes" />
-          </p>
+          <p className="text-brand-purple-dark font-semibold">Aún no tienes solicitudes</p>
           <p className="text-brand-muted max-w-sm text-sm">
-            <CmsText
-              blockKey="account.support.empty.subtext"
-              fallback="Cuando nos escribas desde el formulario de contacto, tu solicitud aparecerá aquí con su estado ✨"
-            />
+            Cuando nos escribas desde el formulario de contacto, tu solicitud aparecerá aquí con su
+            estado ✨
           </p>
           <Link
             href="/contacto"
             className="bg-brand-purple hover:bg-brand-purple-dark mt-1 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
           >
             <LifeBuoy className="h-4 w-4" />
-            <CmsText blockKey="account.support.empty.cta" fallback="Ir a contacto" />
+            Ir a contacto
           </Link>
         </div>
       ) : (
@@ -159,7 +149,7 @@ export default async function MiCuentaSoportePage() {
                     href={`/mi-cuenta/pedidos/${t.ownOrderNumber}`}
                     className="text-brand-pink-ink hover:text-brand-coral-ink font-semibold"
                   >
-                    <CmsText blockKey="account.support.order.link" fallback="Ver mi pedido" />
+                    Ver mi pedido
                   </Link>{" "}
                   <span className="text-brand-muted font-mono">{t.ownOrderNumber}</span>
                 </p>
@@ -167,10 +157,7 @@ export default async function MiCuentaSoportePage() {
               {t.replies.length > 0 && (
                 <div className="border-brand-purple/15 mt-3 rounded-xl border bg-white/60 p-3">
                   <p className="text-brand-purple-dark text-xs font-semibold">
-                    <CmsText
-                      blockKey="account.support.replies.title"
-                      fallback="Respuestas del equipo"
-                    />
+                    Respuestas del equipo
                   </p>
                   <ul className="mt-2 space-y-2">
                     {t.replies.map((r, i) => (
@@ -188,12 +175,7 @@ export default async function MiCuentaSoportePage() {
               )}
               {t.resolvedAt && (
                 <p className="text-brand-muted mt-2 text-xs">
-                  <CmsText blockKey="account.support.resolvedLabel" fallback="Resuelta el" />{" "}
-                  {dateFmt.format(t.resolvedAt)}{" "}
-                  <CmsText
-                    blockKey="account.support.resolvedNotice"
-                    fallback="— te avisamos por correo."
-                  />
+                  Resuelta el {dateFmt.format(t.resolvedAt)} — te avisamos por correo.
                 </p>
               )}
             </li>

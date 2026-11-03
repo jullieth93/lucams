@@ -408,7 +408,7 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
     name: "Bienvenida al newsletter",
     group: "Reactivación y marketing",
     description:
-      "Tras la suscripción al boletín (single opt-in). Su asunto/preheader también son editables desde el CMS (página «emails»); si hay override en ESTE módulo, el override tiene prioridad sobre el bloque CMS.",
+      "Tras la suscripción al boletín (single opt-in). Asunto, preheader y titular editables en este módulo como el resto de plantillas.",
     render: newsletterWelcomeEmail,
     sampleData: { email: "camila@example.com", unsubscribeToken: TOKEN },
   }),

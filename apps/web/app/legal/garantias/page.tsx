@@ -27,7 +27,7 @@ Si necesitas nuestros datos completos de identificación, te los damos con gusto
 
 ## Cuánto dura (art. 8)
 
-El **plazo de garantía de cada producto** se informa de forma expresa en su ficha, **antes de que compres**, y se confirma en el correo y el detalle de tu pedido. Se cuenta desde el día en que recibes el producto. El catálogo inicia con **1 mes** como plazo predeterminado; un producto puede anunciar un plazo mayor y, en ese caso, aplica el mayor que viste al comprar. La ley (art. 8) dice que, a falta de un término fijado por la autoridad competente, la garantía dura **lo que el productor anuncie** —y solo si no se anuncia nada, un año—. Aplica a compras en línea y a pedidos cerrados por WhatsApp a partir de una cotización del sitio.
+El **plazo de garantía de cada producto** se informa de forma expresa en su ficha, **antes de que compres**, y se confirma en el correo y el detalle de tu pedido. Se cuenta desde el día en que recibes el producto. El catálogo inicia con **{{garantia_base}}** como plazo predeterminado; un producto puede anunciar un plazo mayor y, en ese caso, aplica el mayor que viste al comprar. La ley (art. 8) dice que, a falta de un término fijado por la autoridad competente, la garantía dura **lo que el productor anuncie** —y solo si no se anuncia nada, un año—. Aplica a compras en línea y a pedidos cerrados por WhatsApp a partir de una cotización del sitio.
 
 ## Cómo se cuenta el plazo (art. 9)
 
@@ -91,7 +91,7 @@ Si tu producto sale con defecto dentro del **plazo de garantía informado para t
    - tu número de pedido o de cotización,
    - una foto o un video del defecto,
    - una breve descripción de qué pasó.
-2. Revisamos tu caso y te respondemos en el **menor tiempo posible**. En todo caso, la ley nos da un máximo de **15 días hábiles** para responder tu reclamación (art. 58).
+2. Revisamos tu caso y te respondemos en el **menor tiempo posible**. En todo caso, la ley nos da un máximo de **{{garantia_respuesta_dias}} días hábiles** para responder tu reclamación (art. 58).
 3. Si la garantía procede, coordinamos contigo la reparación, el cambio o la devolución del dinero, **sin ningún costo de envío para ti**.
 
 ## Si no llegamos a un acuerdo

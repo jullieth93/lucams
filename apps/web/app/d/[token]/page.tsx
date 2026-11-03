@@ -17,7 +17,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
-import { CmsText } from "@/components/cms/cms-text";
 import { SITE_NAME } from "@/lib/site";
 import { getCanonicalSiteUrl } from "@/lib/origin";
 import { getSharedDesign } from "@/features/personalization/service";
@@ -100,10 +99,7 @@ export default async function SharedDesignPage({ params }: { params: Params }) {
 
           {display?.watermarked && (
             <p className="text-brand-muted mt-3 text-xs">
-              <CmsText
-                blockKey="share.watermark-note"
-                fallback="Vista previa con marca de agua — la impresión final no la lleva."
-              />
+              Vista previa con marca de agua — la impresión final no la lleva.
             </p>
           )}
 

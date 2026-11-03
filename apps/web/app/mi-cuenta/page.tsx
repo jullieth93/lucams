@@ -24,21 +24,12 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
-import { getCmsBlock } from "@/lib/cms";
-import { resolveCmsTokens } from "@/lib/cms-tokens";
 import { getSiteUrl } from "@/features/emails/layout";
 import { formatCOP } from "@/lib/format";
 import { getReferralSettings } from "@/features/loyalty/settings";
 import { getLoyaltyAccountSummary, LOYALTY_REASON_LABELS } from "@/features/loyalty/service";
 import { getAccountTexts } from "./account-texts.server";
 import { ReferralCopyButton } from "./referral-copy-button";
-
-// Resuelve un bloque CMS a string plano: mismo patrón que cmsMenuText del
-// site-header, para textos que se usan como strings (props, rótulos).
-async function cmsAccountText(key: string, fallback: string): Promise<string> {
-  const block = await getCmsBlock(key);
-  return resolveCmsTokens(block?.body ?? fallback);
-}
 
 /** Enmascara un email para listarlo sin exponerlo completo (privacidad). */
 function maskEmail(email: string): string {
@@ -54,60 +45,42 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-// Textos de las tarjetas: editables desde /admin/contenido (página "Mi cuenta",
-// sección "Resumen de cuenta"). Los fallback son el texto exacto anterior.
 const SECTIONS = [
   {
     href: "/mi-cuenta/pedidos",
     icon: Package,
-    titleKey: "account.hub.section.pedidos.title",
-    titleFallback: "Mis pedidos",
-    descKey: "account.hub.section.pedidos.desc",
-    descFallback: "Historial de compras y seguimiento de tus envíos.",
+    title: "Mis pedidos",
+    desc: "Historial de compras y seguimiento de tus envíos.",
   },
   {
     href: "/mi-cuenta/direcciones",
     icon: MapPin,
-    titleKey: "account.hub.section.direcciones.title",
-    titleFallback: "Mis direcciones",
-    descKey: "account.hub.section.direcciones.desc",
-    descFallback: "Guárdalas para un checkout más rápido.",
+    title: "Mis direcciones",
+    desc: "Guárdalas para un checkout más rápido.",
   },
   {
     href: "/mi-cuenta/resenas",
     icon: Star,
-    titleKey: "account.hub.section.resenas.title",
-    titleFallback: "Mis reseñas",
-    descKey: "account.hub.section.resenas.desc",
-    descFallback: "Los productos que has calificado.",
+    title: "Mis reseñas",
+    desc: "Los productos que has calificado.",
   },
   {
-    // Referidos v2 (2026-10-05) — cupones personales (bienvenida de referido,
-    // premio del referente) + cupones públicos vigentes.
     href: "/mi-cuenta/cupones",
     icon: Ticket,
-    titleKey: "account.hub.section.cupones.title",
-    titleFallback: "Mis cupones",
-    descKey: "account.hub.section.cupones.desc",
-    descFallback: "Tus cupones personales y los descuentos vigentes.",
+    title: "Mis cupones",
+    desc: "Tus cupones personales y los descuentos vigentes.",
   },
   {
-    // 5.3 (2026-09-13) — bandeja de tickets del cliente (ADR-092 la difería;
-    // aprobada en la remediación 360°). La respuesta sigue siendo por correo.
     href: "/mi-cuenta/soporte",
     icon: LifeBuoy,
-    titleKey: "account.hub.section.soporte.title",
-    titleFallback: "Soporte",
-    descKey: "account.hub.section.soporte.desc",
-    descFallback: "El estado de tus solicitudes de ayuda.",
+    title: "Soporte",
+    desc: "El estado de tus solicitudes de ayuda.",
   },
   {
     href: "/mi-cuenta/seguridad",
     icon: ShieldCheck,
-    titleKey: "account.hub.section.seguridad.title",
-    titleFallback: "Seguridad",
-    descKey: "account.hub.section.seguridad.desc",
-    descFallback: "Cambia tu contraseña o elimina tu cuenta.",
+    title: "Seguridad",
+    desc: "Cambia tu contraseña o elimina tu cuenta.",
   },
 ] as const;
 
@@ -144,28 +117,14 @@ export default async function MiCuentaPage() {
   // (redirect 307 a /registro?ref=<codigo>, ver app/r/[codigo]/route.ts).
   const referralUrl = `${siteUrl}/r/${encodeURIComponent(customer.referralCode)}`;
 
-  // Textos del hub: editables desde /admin/contenido (página "Mi cuenta",
-  // sección "Resumen de cuenta"). Fallback = texto exacto anterior.
-  const [greetingRaw, subtext, profileHeading, profileEdit, labelName, labelEmail, labelPhone] =
-    await Promise.all([
-      cmsAccountText("account.hub.greeting", "Hola, {nombre} 👋"),
-      cmsAccountText("account.hub.subtext", "Este es tu espacio Lucams."),
-      cmsAccountText("account.hub.profile-heading", "Tu perfil"),
-      cmsAccountText("account.hub.profile-edit", "Editar"),
-      cmsAccountText("account.hub.profile-name", "Nombre"),
-      cmsAccountText("account.hub.profile-email", "Correo"),
-      cmsAccountText("account.hub.profile-phone", "Teléfono"),
-    ]);
-  const sections = await Promise.all(
-    SECTIONS.map(async (s) => ({
-      href: s.href,
-      icon: s.icon,
-      title: await cmsAccountText(s.titleKey, s.titleFallback),
-      desc: await cmsAccountText(s.descKey, s.descFallback),
-    })),
-  );
-  // {nombre} se interpola a mano (mismo patrón que quote.confirmation.title).
-  const greeting = greetingRaw.replaceAll("{nombre}", displayName);
+  const greeting = `Hola, ${displayName} 👋`;
+  const subtext = "Este es tu espacio Lucams.";
+  const sections = SECTIONS;
+  const profileHeading = "Tu perfil";
+  const profileEdit = "Editar";
+  const labelName = "Nombre";
+  const labelEmail = "Correo";
+  const labelPhone = "Teléfono";
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">

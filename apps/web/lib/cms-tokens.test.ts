@@ -85,4 +85,17 @@ describe("resolveCmsTokens", () => {
     await resolveCmsTokens("texto sin tokens");
     expect(getSettingValue).not.toHaveBeenCalled();
   });
+
+  it("resuelve los tokens legales y operativos maestros desde consumer-law y settings", async () => {
+    const { getSettingValue } = await import("@/lib/cms");
+    vi.mocked(getSettingValue).mockImplementation(async (key: string, fallback: string) =>
+      key === "LUCAMS_SHIPPING_CUTOFF_HOUR" ? "9" : fallback,
+    );
+    const out = await resolveCmsTokens(
+      "Garantía {{garantia_base}} (resp {{garantia_respuesta_dias}}d), retracto {{retracto_dias}}d / reembolso {{retracto_reembolso_dias}}d, entrega máx {{entrega_max_legal_dias}}d, habeas {{habeas_consulta_dias}}d/{{habeas_reclamo_dias}}d, corte {{cutoff_lucams}}:00",
+    );
+    expect(out).toBe(
+      "Garantía 1 mes (resp 15d), retracto 5d / reembolso 15d, entrega máx 30d, habeas 10d/15d, corte 09:00",
+    );
+  });
 });

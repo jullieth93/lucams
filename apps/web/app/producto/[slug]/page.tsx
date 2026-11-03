@@ -23,7 +23,6 @@ import { ChevronRight, RotateCcw, Truck, Wallet, ShieldCheck } from "lucide-reac
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { CmsText } from "@/components/cms/cms-text";
 import { WishlistButton } from "@/components/wishlist-button";
 import { BackInStockButton } from "@/components/back-in-stock-button";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -40,6 +39,11 @@ import {
   CartSubmitButton,
 } from "./variant-actions";
 import { computeDiscountPct, formatCOP } from "@/lib/format";
+import {
+  RETRACT_REFUND_MAX_CALENDAR_DAYS,
+  RETRACT_WINDOW_BUSINESS_DAYS,
+  formatWarrantyTerm,
+} from "@/lib/consumer-law";
 import { isCatalogMode } from "@/lib/store-mode";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
@@ -290,7 +294,7 @@ export default async function ProductoDetallePage({
   // Garantía: el término es configurable por producto y se informa en esta
   // ficha antes de comprar. La DB y el schema lo restringen a 1..120 meses.
   const warrantyMonths = product.warrantyMonths;
-  const warrantyTerm = `${warrantyMonths} ${warrantyMonths === 1 ? "mes" : "meses"}`;
+  const warrantyTerm = formatWarrantyTerm(warrantyMonths);
 
   // JSON-LD Product structured data — Google rich results.
   // priceValidUntil usa la updatedAt + 1 año (no Date.now() para evitar
@@ -677,62 +681,24 @@ export default async function ProductoDetallePage({
                       {catalog ? (
                         <>
                           <strong>
-                            <CmsText
-                              blockKey="pdp.envio.preparacion-prefix"
-                              fallback="Preparación estimada: alrededor de"
-                            />{" "}
-                            {product.productionDays}{" "}
-                            <CmsText
-                              blockKey="pdp.envio.preparacion-suffix"
-                              fallback="días hábiles antes del despacho"
-                            />
+                            Preparación estimada: alrededor de {product.productionDays} días hábiles
+                            antes del despacho
                           </strong>
-                          <CmsText
-                            blockKey="pdp.envio.transito-prefix"
-                            fallback=". Después, las transportadoras aliadas estiman"
-                          />{" "}
-                          {product.shippingDaysMin}–{product.shippingDaysMax}{" "}
-                          <CmsText
-                            blockKey="pdp.envio.catalog-transito-suffix"
-                            fallback="días de tránsito según tu ciudad; el envío lo coordinamos por WhatsApp."
-                          />
+                          . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
+                          {product.shippingDaysMax} días de tránsito según tu ciudad; el envío lo
+                          coordinamos por WhatsApp.
                         </>
                       ) : (
                         <>
                           Hecho a pedido.{" "}
                           <strong>
-                            <CmsText
-                              blockKey="pdp.envio.preparacion-prefix"
-                              fallback="Preparación estimada: alrededor de"
-                            />{" "}
-                            {product.productionDays}{" "}
-                            <CmsText
-                              blockKey="pdp.envio.preparacion-suffix"
-                              fallback="días hábiles antes del despacho"
-                            />
+                            Preparación estimada: alrededor de {product.productionDays} días hábiles
+                            antes del despacho
                           </strong>
-                          <CmsText
-                            blockKey="pdp.envio.transito-prefix"
-                            fallback=". Después, las transportadoras aliadas estiman"
-                          />{" "}
-                          {product.shippingDaysMin}–{product.shippingDaysMax}{" "}
-                          <CmsText
-                            blockKey="pdp.envio.lucams-ciudades"
-                            fallback="días de tránsito según tu ciudad. En Bogotá, con"
-                          />{" "}
-                          <strong>
-                            <CmsText blockKey="pdp.envio.lucams-nombre" fallback="Envío Lucams" />
-                          </strong>{" "}
-                          <CmsText
-                            blockKey="pdp.envio.lucams-entrega"
-                            fallback="(localidades habilitadas), la ruta se estima para el"
-                          />{" "}
-                          <strong>
-                            <CmsText
-                              blockKey="pdp.envio.lucams-mismo-dia"
-                              fallback="mismo día del despacho, sujeta a disponibilidad"
-                            />
-                          </strong>
+                          . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
+                          {product.shippingDaysMax} días de tránsito según tu ciudad. En Bogotá, con{" "}
+                          <strong>Envío Lucams</strong> (localidades habilitadas), la ruta se estima
+                          para el <strong>mismo día del despacho, sujeta a disponibilidad</strong>
                           {product.productionDays === 0
                             ? " — si pides antes de la hora límite, se estima para hoy"
                             : ""}
@@ -779,8 +745,9 @@ export default async function ProductoDetallePage({
                         </>
                       ) : (
                         <>
-                          Tienes 5 días hábiles desde que recibes para retractarte sin dar razones
-                          (Ley 1480, art. 47); te devolvemos el dinero en máximo 15 días calendario.
+                          Tienes {RETRACT_WINDOW_BUSINESS_DAYS} días hábiles desde que recibes para
+                          retractarte sin dar razones (Ley 1480, art. 47); te devolvemos el dinero
+                          en máximo {RETRACT_REFUND_MAX_CALENDAR_DAYS} días calendario.
                         </>
                       )}
                     </span>
