@@ -7,6 +7,7 @@
 
 import { renderEmailLayout, ctaButton, getSiteUrl } from "../layout";
 import { formatCOP } from "@/lib/format";
+import { RETRACT_WINDOW_BUSINESS_DAYS, formatWarrantyTerm } from "@/lib/consumer-law";
 
 export type OrderConfirmationData = {
   orderNumber: string;
@@ -69,7 +70,7 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
   // campo en OrderConfirmationData): las filas de items van sin precio y la
   // tabla de totales se omite completa.
   const hidePrices = data.isGift === true;
-  const warrantyLabel = (months: number) => `${months} ${months === 1 ? "mes" : "meses"}`;
+  const warrantyLabel = formatWarrantyTerm;
   const itemsRows = data.items
     .map(
       (it) => `
@@ -171,8 +172,8 @@ ${ctaButton(orderCtaUrl, "Ver mi pedido →")}
 
 <p style="font-size:12px;color:#3D2E5C;opacity:0.6;margin-top:16px;">${
     hidePrices
-      ? `Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía informada para cada producto</a>.`
-      : `Los valores están en pesos colombianos (COP) y son el total que pagas. Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía informada para cada producto</a>.`
+      ? `Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (${RETRACT_WINDOW_BUSINESS_DAYS} días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía informada para cada producto</a>.`
+      : `Los valores están en pesos colombianos (COP) y son el total que pagas. Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (${RETRACT_WINDOW_BUSINESS_DAYS} días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía informada para cada producto</a>.`
   }</p>
 
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:14px;">¿Algún cambio? Escríbenos por WhatsApp o responde este correo.</p>
@@ -223,7 +224,7 @@ ${
     : `
 Los valores están en pesos colombianos (COP) y son el total que pagas.`
 }
-Retracto (5 días hábiles, catálogo estándar): ${siteUrl}/legal/devoluciones
+Retracto (${RETRACT_WINDOW_BUSINESS_DAYS} días hábiles, catálogo estándar): ${siteUrl}/legal/devoluciones
 Garantía (plazo informado para cada producto): ${siteUrl}/legal/garantias`;
 
   return {

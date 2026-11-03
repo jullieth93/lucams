@@ -20,8 +20,17 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, ArrowRight, ExternalLink, FileText, RefreshCw } from "lucide-react";
+import { notFound } from "next/navigation";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Award,
+  ExternalLink,
+  FileText,
+  RefreshCw,
+  ShoppingCart,
+  Truck,
+} from "lucide-react";
 import {
   AdminBadge,
   AdminButton,
@@ -31,14 +40,18 @@ import {
   AdminPageBody,
   AdminPageHeader,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
+import { isCatalogMode } from "@/lib/store-mode";
 import { cmsFieldHasDraft, getCmsPageBySlug } from "@/features/cms/service";
 import { refreshCmsCacheAction } from "../../actions";
-import { CMS_PAGE_ICONS } from "../../page-icons";
-import { CreateFieldForm } from "./create-field-form";
+import {
+  CMS_PAGE_ICONS,
+  MODULE_MANAGED_SETTING_KEYS,
+  publicPathForCmsFieldKey,
+} from "../../page-icons";
 import { FieldRow, type InlineField } from "./field-row";
 import { PagePreviewPanel } from "./page-preview-panel";
-import { PageRenameForm, SectionRenameForm } from "./rename-forms";
 
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -47,39 +60,8 @@ export const metadata: Metadata = {
   title: "Editar página",
 };
 
-/** Tipos con edición inline; MARKDOWN/HTML/JSON/IMAGE van al editor completo. */
+/** Tipos cuyo contenido requiere el editor dedicado (Markdown/HTML/JSON/IMAGE). */
 const RICH_TYPES = new Set(["MARKDOWN", "HTML", "JSON", "IMAGE"]);
-
-/** Prefijo de key sugerido para campos nuevos: el prefijo común de la sección. */
-function suggestKeyPrefix(keys: string[], pageSlug: string, sectionKey: string): string {
-  const fallback = `${pageSlug}.${sectionKey}.`;
-  if (keys.length === 0) return fallback;
-  let prefix = keys[0];
-  for (const k of keys.slice(1)) {
-    while (!k.startsWith(prefix) && prefix.length > 0) prefix = prefix.slice(0, -1);
-  }
-  // Corta en el último separador ("." o "_") conservándolo: "home.hero.x" → "home.hero."
-  const cut = Math.max(prefix.lastIndexOf("."), prefix.lastIndexOf("_"));
-  if (cut > 0) return prefix.slice(0, cut + 1);
-  const first = keys[0];
-  const cutFirst = Math.max(first.lastIndexOf("."), first.lastIndexOf("_"));
-  return cutFirst > 0 ? first.slice(0, cutFirst + 1) : fallback;
-}
-
-/** Categoría legacy por defecto para campos nuevos: la más usada en la sección. */
-function defaultCategory(categories: string[]): string {
-  const counts = new Map<string, number>();
-  for (const c of categories) counts.set(c, (counts.get(c) ?? 0) + 1);
-  let best = "GENERAL";
-  let bestCount = 0;
-  for (const [cat, n] of counts) {
-    if (n > bestCount) {
-      best = cat;
-      bestCount = n;
-    }
-  }
-  return best;
-}
 
 /** Preview plano de un contenido rico (misma limpieza que el historial viejo). */
 function plainPreview(body: string, max = 180): string {
@@ -97,20 +79,20 @@ export default async function EditarPaginaCmsPage({
   params: Params;
   searchParams: SearchParams;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-
   const { slug } = await params;
+  const isGlobalSettings = slug === "global";
+  await requireRole(isGlobalSettings ? ADMIN_ROLE_SETS.SUPER : ADMIN_ROLE_SETS.CONTENT);
+
   const sp = await searchParams;
   const justPublished = sp.published === "1";
   const justUnpublished = sp.unpublished === "1";
-  const justArchived = sp.archived === "1";
-  const justRenamed = sp.renamed === "1";
   const cacheRefreshed = sp.cache === "refreshed";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
   const page = await getCmsPageBySlug(slug);
   if (!page) notFound();
+
+  const catalogMode = isCatalogMode();
 
   // Señal de recarga de la vista previa (C1): cualquier guardar/publicar
   // actualiza el updatedAt de un campo → el servidor re-renderiza con una
@@ -127,17 +109,27 @@ export default async function EditarPaginaCmsPage({
         icon={<Icon className="h-5 w-5" />}
         title={page.title}
         subtitle={page.description ?? "Edita los textos de esta página."}
-        breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
-          { label: "Contenido", href: "/admin/contenido" },
-          { label: page.title },
-        ]}
+        breadcrumbs={
+          isGlobalSettings
+            ? [
+                { label: "Admin", href: "/admin/dashboard" },
+                { label: "Configuración" },
+                { label: page.title },
+              ]
+            : [
+                { label: "Admin", href: "/admin/dashboard" },
+                { label: "Contenido", href: "/admin/contenido" },
+                { label: page.title },
+              ]
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <AdminButton href="/admin/contenido" variant="secondary">
-              <ArrowLeft className="h-4 w-4" />
-              Volver
-            </AdminButton>
+            {!isGlobalSettings && (
+              <AdminButton href="/admin/contenido" variant="secondary">
+                <ArrowLeft className="h-4 w-4" />
+                Volver
+              </AdminButton>
+            )}
             <form action={refreshCmsCacheAction}>
               <input type="hidden" name="from" value={`/admin/contenido/paginas/${page.slug}`} />
               <AdminButton type="submit" variant="secondary">
@@ -161,25 +153,6 @@ export default async function EditarPaginaCmsPage({
       />
 
       <AdminPageBody>
-        {/* Fase 4 (feedback Lucy 2026-09-18): la página "emails" del CMS solo
-            edita asunto/preheader del newsletter welcome (Ruta A). El módulo
-            nuevo /admin/email-templates cubre TODAS las plantillas con preview
-            y overrides — se enlaza acá para que quien llegue por el camino
-            viejo lo encuentre. Este editor sigue funcionando igual. */}
-        {page.slug === "emails" && (
-          <AdminNotice tone="info">
-            Acá editas el asunto y preheader de la <strong>bienvenida al newsletter</strong>. Para
-            ver y editar <strong>todas</strong> las plantillas de correo (con vista previa y envío
-            de prueba), ve a{" "}
-            <Link
-              href="/admin/email-templates"
-              className="font-semibold underline underline-offset-2"
-            >
-              Plantillas de correo
-            </Link>
-            .
-          </AdminNotice>
-        )}
         {justPublished && (
           <AdminNotice tone="success">Publicado. Los cambios ya se ven en el sitio.</AdminNotice>
         )}
@@ -188,12 +161,6 @@ export default async function EditarPaginaCmsPage({
             Despublicado. El sitio dejará de mostrar ese texto (cae al texto por defecto).
           </AdminNotice>
         )}
-        {justArchived && (
-          <AdminNotice tone="warning">
-            Campo archivado. El sitio público dejará de mostrarlo (cae al texto por defecto).
-          </AdminNotice>
-        )}
-        {justRenamed && <AdminNotice tone="success">Nombre actualizado.</AdminNotice>}
         {cacheRefreshed && (
           <AdminNotice tone="success">
             Caché de contenido actualizado. El sitio público ya sirve la versión más reciente.
@@ -201,16 +168,7 @@ export default async function EditarPaginaCmsPage({
         )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
 
-        {/* C4 — renombrar la página (título/descripción visibles en el admin) */}
-        <PageRenameForm
-          pageId={page.id}
-          title={page.title}
-          description={page.description}
-          redirectTo={`/admin/contenido/paginas/${page.slug}`}
-        />
-
-        {/* C1: con ruta pública, el editor va a la izquierda y la vista
-            previa en vivo a la derecha (apilada en pantallas < xl). */}
+        {/* C1: solo las páginas con URL pública 1:1 abren la vista previa en vivo. */}
         <div
           className={
             page.path
@@ -220,44 +178,32 @@ export default async function EditarPaginaCmsPage({
         >
           <div className="space-y-6">
             {page.sections.map((section) => {
-              const keyPrefix = suggestKeyPrefix(
-                section.fields.map((f) => f.key),
-                page.slug,
-                section.key,
-              );
-              const category = defaultCategory(section.fields.map((f) => f.category));
+              const visibleFields = isGlobalSettings
+                ? section.fields.filter((f) => !MODULE_MANAGED_SETTING_KEYS.has(f.key))
+                : section.fields;
               return (
                 <section key={section.id}>
                   <div className="mb-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <h2 className="text-brand-purple-dark font-display text-base font-bold">
-                        {section.title}
-                      </h2>
-                      {/* C4 — renombrar la sección (despliegue nativo, sin JS) */}
-                      <SectionRenameForm
-                        sectionId={section.id}
-                        title={section.title}
-                        description={section.description}
-                        redirectTo={`/admin/contenido/paginas/${page.slug}`}
-                      />
-                    </div>
+                    <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                      {section.title}
+                    </h2>
                     {section.description && (
                       <p className="text-brand-muted text-xs">{section.description}</p>
                     )}
                   </div>
                   <AdminCard className="overflow-hidden">
-                    {section.fields.length === 0 ? (
+                    {visibleFields.length === 0 ? (
                       <p className="text-brand-muted px-4 py-6 text-center text-sm">
-                        Esta sección todavía no tiene campos.
+                        Esta sección no tiene campos visibles.
                       </p>
                     ) : (
                       <ul className="divide-brand-purple/10 divide-y">
-                        {section.fields.map((f) => {
+                        {visibleFields.map((f) => {
                           const hasDraft = cmsFieldHasDraft(f) || !f.isPublished;
                           const publishedBody = f.publishedVersion?.body ?? null;
+                          const fieldPublicPath = publicPathForCmsFieldKey(f.key);
                           if (RICH_TYPES.has(f.type)) {
-                            // Contenido rico (Markdown/HTML/JSON): no se edita inline —
-                            // preview truncado + acceso al editor completo.
+                            // Contenido rico (Markdown/HTML/JSON/IMAGE): preview truncado + editor dedicado.
                             return (
                               <li
                                 key={f.id}
@@ -274,6 +220,17 @@ export default async function EditarPaginaCmsPage({
                                       <AdminBadge tone="amber">Cambios sin publicar</AdminBadge>
                                     ) : (
                                       <AdminBadge tone="amber">Borrador</AdminBadge>
+                                    )}
+                                    {fieldPublicPath && (
+                                      <a
+                                        href={fieldPublicPath}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold"
+                                      >
+                                        Ver {fieldPublicPath}
+                                        <ExternalLink className="h-3 w-3" />
+                                      </a>
                                     )}
                                   </div>
                                   {f.helpText && (
@@ -307,7 +264,7 @@ export default async function EditarPaginaCmsPage({
                             key: f.key,
                             kind: f.kind,
                             type: f.type as InlineField["type"],
-                            label: f.label,
+                            label: f.publishedVersion?.title ?? f.label,
                             helpText: f.helpText,
                             value: publishedBody ?? f.body,
                             publishedValue: publishedBody,
@@ -321,16 +278,98 @@ export default async function EditarPaginaCmsPage({
                               field={inline}
                               latestVersionId={f.versions[0]?.id ?? null}
                               pageSlug={page.slug}
+                              publicPath={fieldPublicPath}
                             />
                           );
                         })}
                       </ul>
                     )}
-                    <CreateFieldForm
-                      sectionId={section.id}
-                      suggestedKeyPrefix={keyPrefix}
-                      defaultCategory={category}
-                    />
+
+                    {isGlobalSettings && section.key === "comercio" && (
+                      <div className="border-brand-purple/10 bg-brand-purple/[0.03] border-t p-4">
+                        <p className="text-brand-purple-dark text-xs font-semibold">
+                          Reglas operativas con módulo propio (sin editar JSON a mano)
+                        </p>
+                        <p className="text-brand-muted mt-0.5 text-xs">
+                          Envíos, fidelización y recuperación de carritos tienen su propia pantalla
+                          con validaciones de negocio:
+                        </p>
+                        <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                          {catalogMode ? (
+                            <div className="border-brand-purple/15 rounded-lg border bg-white/70 p-3 opacity-75">
+                              <div className="text-brand-purple-dark flex items-center gap-1.5 text-xs font-semibold">
+                                <Truck className="text-brand-purple h-4 w-4" />
+                                Envíos y transportadoras
+                              </div>
+                              <p className="text-brand-muted mt-1 text-[11px]">
+                                Envío propio Lucams, corte horario, zonas y transportadoras (activo
+                                en modo tienda completa).
+                              </p>
+                            </div>
+                          ) : (
+                            <Link
+                              href="/admin/envios"
+                              className="border-brand-purple/15 hover:border-brand-purple/40 group rounded-lg border bg-white p-3 transition-colors"
+                            >
+                              <div className="text-brand-purple-dark group-hover:text-brand-purple flex items-center justify-between text-xs font-semibold">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <Truck className="text-brand-purple h-4 w-4" />
+                                  Envíos
+                                </span>
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </div>
+                              <p className="text-brand-muted mt-1 text-[11px]">
+                                Envío propio Lucams, precio, hora límite, zonas y transportadoras.
+                              </p>
+                            </Link>
+                          )}
+
+                          {catalogMode ? (
+                            <div className="border-brand-purple/15 rounded-lg border bg-white/70 p-3 opacity-75">
+                              <div className="text-brand-purple-dark flex items-center gap-1.5 text-xs font-semibold">
+                                <Award className="text-brand-purple h-4 w-4" />
+                                Fidelización y referidos
+                              </div>
+                              <p className="text-brand-muted mt-1 text-[11px]">
+                                Puntos Lucams e «Invita y gana» (activo en modo tienda completa).
+                              </p>
+                            </div>
+                          ) : (
+                            <Link
+                              href="/admin/fidelizacion"
+                              className="border-brand-purple/15 hover:border-brand-purple/40 group rounded-lg border bg-white p-3 transition-colors"
+                            >
+                              <div className="text-brand-purple-dark group-hover:text-brand-purple flex items-center justify-between text-xs font-semibold">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <Award className="text-brand-purple h-4 w-4" />
+                                  Fidelización
+                                </span>
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </div>
+                              <p className="text-brand-muted mt-1 text-[11px]">
+                                Tasas de Puntos Lucams y cupones de «Invita y gana».
+                              </p>
+                            </Link>
+                          )}
+
+                          <Link
+                            href="/admin/carritos/configuracion"
+                            className="border-brand-purple/15 hover:border-brand-purple/40 group rounded-lg border bg-white p-3 transition-colors"
+                          >
+                            <div className="text-brand-purple-dark group-hover:text-brand-purple flex items-center justify-between text-xs font-semibold">
+                              <span className="inline-flex items-center gap-1.5">
+                                <ShoppingCart className="text-brand-purple h-4 w-4" />
+                                Carritos abandonados
+                              </span>
+                              <ArrowRight className="h-3.5 w-3.5" />
+                            </div>
+                            <p className="text-brand-muted mt-1 text-[11px]">
+                              Activación, modo manual/automático y tiempos de recordatorio.
+                            </p>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
                   </AdminCard>
                 </section>
               );

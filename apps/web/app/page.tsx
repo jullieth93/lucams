@@ -151,7 +151,7 @@ export default async function Home() {
             <p className="text-brand-purple-dark/70 mt-2">
               <CmsText
                 blockKey="home.categories.subtext"
-                fallback="Imanes para cada rincón de tu vida."
+                fallback="Productos para cada rincón de tu vida."
               />
             </p>
           </header>

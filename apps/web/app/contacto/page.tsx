@@ -67,7 +67,7 @@ export default async function ContactoPage() {
               <div className="border-brand-purple/15 to-brand-turquoise/10 rounded-2xl border bg-gradient-to-br from-emerald-50 p-6">
                 <h2 className="font-display text-brand-purple-dark flex items-center gap-2 text-xl">
                   <WhatsAppIcon className="h-5 w-5 text-emerald-600" />
-                  <CmsText blockKey="support.contacto.wa-card-title" fallback="WhatsApp" />
+                  WhatsApp
                 </h2>
                 <p className="text-brand-purple-dark/75 mt-2 text-sm">
                   <CmsText
@@ -82,14 +82,14 @@ export default async function ContactoPage() {
                   className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
                 >
                   <WhatsAppIcon className="h-4 w-4" />
-                  <CmsText blockKey="support.contacto.wa-cta" fallback="Háblanos por WhatsApp →" />
+                  Háblanos por WhatsApp →
                 </a>
               </div>
 
               <div className="border-brand-purple/15 rounded-2xl border bg-white p-6">
                 <h2 className="font-display text-brand-purple-dark flex items-center gap-2 text-xl">
                   <Mail className="text-brand-purple h-5 w-5" />
-                  <CmsText blockKey="support.contacto.email-card-title" fallback="Email" />
+                  Email
                 </h2>
                 <a
                   href={`mailto:${contactEmail}`}
@@ -111,7 +111,7 @@ export default async function ContactoPage() {
               <div className="border-brand-purple/15 rounded-2xl border bg-white p-6">
                 <h2 className="font-display text-brand-purple-dark flex items-center gap-2 text-xl">
                   <Clock className="text-brand-purple h-5 w-5" />
-                  <CmsText blockKey="support.contacto.hours-card-title" fallback="Horario" />
+                  Horario
                 </h2>
                 <p className="text-brand-purple-dark/75 mt-2 text-sm">
                   <CmsSetting settingKey="BUSINESS_HOURS" fallback="Lun-Sáb 9am – 7pm COT" />

@@ -842,7 +842,7 @@ logger.info({ event: "order.created", orderId, customerId });
 ## Code style
 
 - **Prettier** (`pnpm format` / `format:check`, gate `format-check` en CI) + **ESLint** flat config (`eslint-config-next` core-web-vitals + typescript, más `no-restricted-imports` para sharp — F-4). Pre-commit hook versionado en `scripts/git-hooks/pre-commit` = scan de secretos con **gitleaks** (activar una vez por clone: `git config core.hooksPath scripts/git-hooks`); la capa forzosa es GitHub Push Protection + el job `secrets-scan` de CI.
-- **Gates ANTES de cada push (lección CI 2026-09-15):** `pnpm typecheck && pnpm lint && pnpm format:check && node packages/db/scripts/audit-content-coverage.mjs --check` + la suite de tests que aplique. El ratchet de cobertura CMS solo se regenera con `--write-baseline` cuando el cambio es legítimo (y se commitean juntos).
+- **Gates ANTES de cada push (lección CI 2026-09-15):** `pnpm typecheck && pnpm lint && pnpm format:check && make audit-content` + la suite de tests que aplique (`make audit-content` corre `apps/web/lib/cms-sitemap-parity.test.ts` y verifica paridad bidireccional exacta entre `apps/web` y `cms-site-map.mjs`).
 - **Verificar CI DESPUÉS de cada push (lección CI 2026-10-06 — un push quedó rojo 4 min por prettier + ratchet CMS sin correr):** los gates locales no reemplazan la confirmación remota. Tras `git push`, vigilar el run con `gh run list --branch <rama> --limit 1` (o `gh run watch`) hasta verlo en verde; si falla, `gh run view <id> --log-failed`, corregir y re-pushear de inmediato — ningún trabajo se da por terminado con el CI en rojo, y el deploy de Vercel NO valida prettier/lint/tests por sí solo.
 - **TypeScript estricto:** `"strict": true` en `apps/web/tsconfig.json`.
 - **No usar `any`.** Si no hay tipo, usar `unknown` y narrow.
@@ -853,43 +853,38 @@ logger.info({ event: "order.created", orderId, customerId });
 
 ---
 
-## CMS — agregar un campo de contenido administrable
+## CMS — regla de las 3 capas y cómo agregar un campo administrable
 
-El contenido visible del storefront NO va hardcodeado: vive en el CMS v2 (ver
-`docs/ARCHITECTURE.md` § CMS v2) y se edita desde `/admin/contenido`. Flujo para un campo nuevo:
+El texto y la configuración del sitio siguen la **arquitectura de 3 capas** (ver `docs/ARCHITECTURE.md` § CMS v2 y ADR-187):
+
+- **Capa 1 (parámetros maestros y ley):** settings `SCREAMING_SNAKE` en `global` / módulos admin dedicados y plazos normativos en `apps/web/lib/consumer-law.ts`, interpolados vía `resolveCmsTokens()` (`apps/web/lib/cms-tokens.ts`).
+- **Capa 2 (contenido editorial, comercial, SEO y legal):** vive en `/admin/contenido` (`packages/db/scripts/cms-site-map.mjs`). Plantillas de email viven en `/admin/email-templates` (`EmailTemplateOverride`).
+- **Capa 3 (micro-UI funcional):** botones, `aria-label`, `placeholder`, validaciones, Estudio (`studio-texts.ts`), Auth (`auth-texts.ts`) y vistas por token van tipados directo en TS/JSX — **no** se crean claves CMS para controles funcionales.
+
+Flujo para un campo nuevo de Capa 1 o Capa 2:
 
 1. **Declararlo en el site map** (`packages/db/scripts/cms-site-map.mjs`): en la sección de la
    página que corresponda, con `key` única (convención `pagina.seccion.nombre`, o `SCREAMING_SNAKE`
-   para ajustes globales), `kind` (BLOCK si tiene flujo borrador→publicar · SETTING si aplica al
+   para ajustes globales), `kind` (`BLOCK` si tiene flujo borrador→publicar · `SETTING` si aplica al
    guardar), `type`, `label` y `helpText` pensados para una persona no técnica, y `body` =
-   **el texto exacto que hoy está hardcodeado** (el fallback).
-2. **Aplicarlo:** `make migrate-cms-v2` (idempotente; crea el campo publicado con v1 si no existe,
-   nunca pisa ediciones). En producción se aplica en el deploy como cualquier script de contenido.
-3. **Consumirlo** con la API de `apps/web/lib/cms.ts` conservando el fallback hardcoded:
+   **el texto exacto del fallback en código** (con `{{tokens}}` si incluye datos de contacto o plazos legales).
+2. **Consumirlo** en `apps/web` con la API de `apps/web/lib/cms.ts` conservando el fallback hardcoded:
    - JSX: `<CmsText blockKey="home.ejemplo" fallback="Texto actual" />` (o `CmsMarkdown`).
-   - Server: `getSettingValue("MI_SETTING", "valor actual")`, `getCmsList(key, validate, fallback)`
-     para listas (B4), `getCmsImage(key)` para imágenes (B5), `getCmsBanners(key)` para banners (B6).
-4. **Invalidar el caché:** las ediciones desde el admin invalidan solas (`updateTag("cms")`); tras
-   correr scripts que escriben directo en DB, botón «Actualizar caché de contenido» en
-   `/admin/contenido` (runbook: `docs/OPERATIONS.md`).
+   - Server: `getCmsBlock`, `getSettingValue("MI_SETTING", "valor actual")`, `getCmsList(key, validate, fallback)`,
+     `getCmsImage(key)` o `getCmsBanners(key)` — pasando por `resolveCmsTokens(texto, tokenValues)` cuando el bloque admita `{{tokens}}`.
+3. **Verificar paridad exacta:** correr `make audit-content` (`apps/web/lib/cms-sitemap-parity.test.ts`). El test falla si una clave se lee en `apps/web` sin estar en `SITE_MAP` o si se declara en `SITE_MAP` sin consumidor en `apps/web`.
+4. **Aplicarlo en DB e invalidar caché:** `make migrate-cms-v2` (aditivo, nunca pisa ediciones; o `sync-and-prune-cms-v2.mjs --apply` cuando además se retiran claves). Las ediciones desde el admin invalidan solas (`updateTag("cms")`); tras correr scripts directos en DB, usar «Actualizar caché de contenido» en `/admin/contenido` (`docs/OPERATIONS.md`).
 
 Reglas asociadas:
 
-- **Regla de oro:** todo fallback es el texto exacto pre-CMS — si la DB cae, el sitio se ve igual.
-- **Ratchet de cobertura (D1):** CI falla si aparece un literal nuevo en español en el JSX del
-  storefront fuera del CMS. Si el hardcode es legítimo (dato de diseño, copy de infraestructura),
-  regenerar el baseline: `pnpm --filter @lucams/db exec node scripts/audit-content-coverage.mjs
---write-baseline` y commitearlo en el mismo PR, con la justificación en el mensaje del commit.
+- **Regla de oro:** todo fallback en código coincide con la semilla canónica — si la DB falla, el sitio responde idéntico sin cachear el error.
 - **Campos lista** (B4): declarar `metadata.listSchema` en el site map (subcampos TEXT/URL/
-  TEXTAREA/BOOLEAN/IMAGE); el admin los edita como filas y el body público sigue siendo el JSON
-  serializado — la lectura no cambia.
+  TEXTAREA/BOOLEAN/IMAGE) y opcionalmente `defaultListItems`; el admin los edita como filas y el body público sigue siendo el JSON serializado.
 - **Imágenes** (B5): `type: IMAGE` guarda el `CmsMedia.id`; el admin sube al bucket `cms-media`
   desde el editor del campo o la mediateca. `alt` siempre obligatorio (WCAG 1.1.1).
 - **Publicación programada** (C3): cualquier versión borrador puede programarse con «Programar»
   en el editor del campo (hora de Colombia); la publica el cron `lucams-cms-publish-scheduled`.
-- **`CmsText` no interpola:** un valor dinámico (contador, número de unidades) NUNCA va dentro
-  del `fallback` ni del `body` del campo — va fuera del componente (`{count} <CmsText … />`).
-  Precedente: `components/design-units-badge.tsx` (badge «N unidades», ADR-150).
+- **Contadores de runtime fuera de `CmsText`:** los `{{tokens}}` de `cms-tokens.ts` son solo para parámetros maestros/legales resueltos en servidor; un contador dinámico por ítem (`{count}`) va fuera del componente (`{count} <CmsText … />`, ej. `components/design-units-badge.tsx`, ADR-150).
 
 ---
 

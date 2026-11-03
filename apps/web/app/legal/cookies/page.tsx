@@ -61,7 +61,7 @@ Cambiar tus preferencias o revocar tu consentimiento no tiene ningún costo y no
 
 ## Tus derechos
 
-Como titular de tus datos puedes conocer, actualizar, rectificar y suprimir tu información, pedir prueba de la autorización que nos diste y revocarla. Atendemos tus **consultas** en máximo **10 días hábiles** y tus **reclamos** en máximo **15 días hábiles** (arts. 14 y 15 de la Ley 1581). También puedes acudir a la **Superintendencia de Industria y Comercio (SIC)**. Todo el detalle está en el **Aviso de Privacidad** y en **Hábeas Data**.
+Como titular de tus datos puedes conocer, actualizar, rectificar y suprimir tu información, pedir prueba de la autorización que nos diste y revocarla. Atendemos tus **consultas** en máximo **{{habeas_consulta_dias}} días hábiles** y tus **reclamos** en máximo **{{habeas_reclamo_dias}} días hábiles** (arts. 14 y 15 de la Ley 1581). También puedes acudir a la **Superintendencia de Industria y Comercio (SIC)**. Todo el detalle está en el **Aviso de Privacidad** y en **Hábeas Data**.
 
 ## Cambios en esta política
 

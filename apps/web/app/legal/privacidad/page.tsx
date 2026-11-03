@@ -77,8 +77,8 @@ De acuerdo con la Ley 1581 de 2012 (art. 8), tienes derecho a:
 
 Escríbenos a **{{email_habeas_data}}** (o a {{email_contacto}}, o por WhatsApp). Según la ley:
 
-- Respondemos tus **consultas** en máximo **10 días hábiles**.
-- Respondemos tus **reclamos** en máximo **15 días hábiles**.
+- Respondemos tus **consultas** en máximo **{{habeas_consulta_dias}} días hábiles**.
+- Respondemos tus **reclamos** en máximo **{{habeas_reclamo_dias}} días hábiles**.
 
 Si quieres el detalle completo de cómo ejercerlos, visita nuestra página de **[Hábeas Data](/legal/habeas-data)**.
 

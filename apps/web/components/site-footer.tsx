@@ -177,7 +177,7 @@ export async function SiteFooter() {
           {/* Col 2 — Tienda */}
           <div>
             <h3 className="mb-3 text-sm font-semibold tracking-wider text-white uppercase">
-              <CmsText blockKey="footer.column.shop" fallback="Tienda" />
+              Tienda
             </h3>
             <ul className="space-y-2 text-sm text-white/80">
               {/* Máximo 6 categorías + "Ver todo" (antes salían TODAS, incluidas
@@ -199,7 +199,7 @@ export async function SiteFooter() {
                   href="/productos"
                   className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
-                  <CmsText blockKey="footer.shop.cta-all" fallback="Ver todo →" />
+                  Ver todo →
                 </Link>
               </li>
             </ul>
@@ -208,7 +208,7 @@ export async function SiteFooter() {
           {/* Col 3 — Información (legal) */}
           <div>
             <h3 className="mb-3 text-sm font-semibold tracking-wider text-white uppercase">
-              <CmsText blockKey="footer.column.info" fallback="Información" />
+              Información
             </h3>
             <ul className="space-y-2 text-sm text-white/80">
               {legalLinks.map((l) => (
@@ -227,7 +227,7 @@ export async function SiteFooter() {
           {/* Col 4 — Atención cliente */}
           <div>
             <h3 className="mb-3 text-sm font-semibold tracking-wider text-white uppercase">
-              <CmsText blockKey="footer.column.support" fallback="Atención cliente" />
+              Atención cliente
             </h3>
             <ul className="space-y-3 text-sm text-white/80">
               <li>
@@ -258,7 +258,7 @@ export async function SiteFooter() {
                   href="/ayuda"
                   className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
-                  <CmsText blockKey="footer.help.cta" fallback="Centro de ayuda →" />
+                  Centro de ayuda →
                 </Link>
               </li>
               <li>
@@ -266,7 +266,7 @@ export async function SiteFooter() {
                   href="/contacto"
                   className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
-                  <CmsText blockKey="footer.contact.cta" fallback="Contacto →" />
+                  Contacto →
                 </Link>
               </li>
               <li>
@@ -274,7 +274,7 @@ export async function SiteFooter() {
                   href="/rastrear"
                   className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
-                  <CmsText blockKey="footer.track.cta" fallback="Rastrear pedido →" />
+                  Rastrear pedido →
                 </Link>
               </li>
             </ul>
@@ -315,10 +315,7 @@ export async function SiteFooter() {
               rel="noreferrer"
               className={`underline hover:text-white/80 ${FOCUS_VISIBLE}`}
             >
-              <CmsText
-                blockKey="footer.legal.sic-label"
-                fallback="SIC (protección al consumidor)"
-              />
+              SIC (protección al consumidor)
             </a>
           </p>
           <div className="flex flex-col items-center justify-between gap-3 md:flex-row">

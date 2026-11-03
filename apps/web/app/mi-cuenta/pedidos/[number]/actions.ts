@@ -7,6 +7,7 @@ import { getOrCreateCartSession } from "@/lib/cart-session";
 import { rateLimit } from "@/lib/rate-limit";
 import { ownerKey } from "@/lib/rate-limit-keys";
 import { createRetractRequest, RetractError } from "@/features/retract/service";
+import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
 import { sendRetractRequested } from "@/features/retract/emails";
 import { createWarrantyClaim, WarrantyError } from "@/features/warranty/service";
 import { notifyWarrantyClaimCreated } from "@/features/warranty/notify";
@@ -17,7 +18,7 @@ const REASON_MESSAGES: Record<string, string> = {
   FORBIDDEN: "Ese pedido no es tuyo.",
   ALREADY_REQUESTED: "Ya solicitaste el retracto de este producto.",
   NOT_DELIVERED: "Solo puedes retractarte de pedidos ya entregados.",
-  OUT_OF_WINDOW: "Pasaron los 5 días hábiles para retractarte de este producto.",
+  OUT_OF_WINDOW: `Pasaron los ${RETRACT_WINDOW_BUSINESS_DAYS} días hábiles para retractarte de este producto.`,
   PERSONALIZED: "Los productos personalizados no tienen derecho de retracto (ley).",
 };
 

@@ -30,12 +30,33 @@
  *   {{email_retracto}}    → RETRACTO_EMAIL     (retracto@lucamsshop.com)
  *   {{email_security}}    → SECURITY_EMAIL     (security@lucamsshop.com)
  *
+ * Reglas legales y operativas maestras (unificación CMS v2, 3 capas):
+ *
+ *   {{garantia_base}}           → formatWarrantyTerm(DEFAULT_CATALOG_WARRANTY_MONTHS) ("1 mes")
+ *   {{garantia_respuesta_dias}} → WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS ("15")
+ *   {{retracto_dias}}           → RETRACT_WINDOW_BUSINESS_DAYS ("5")
+ *   {{retracto_reembolso_dias}} → RETRACT_REFUND_MAX_CALENDAR_DAYS ("15")
+ *   {{entrega_max_legal_dias}}  → MAX_LEGAL_DELIVERY_CALENDAR_DAYS ("30")
+ *   {{habeas_consulta_dias}}    → HABEAS_DATA_CONSULTATION_BUSINESS_DAYS ("10")
+ *   {{habeas_reclamo_dias}}     → HABEAS_DATA_CLAIM_BUSINESS_DAYS ("15")
+ *   {{cutoff_lucams}}           → LUCAMS_SHIPPING_CUTOFF_HOUR (2 dígitos, ej. "12")
+ *
  * Se aplica en <CmsText>/<CmsMarkdown> sobre body Y fallback (los fallbacks
  * de código también pueden usar tokens). Tokens desconocidos quedan intactos.
  */
 
 import "server-only";
 import { getSettingValue, getCmsBlock } from "@/lib/cms";
+import {
+  DEFAULT_CATALOG_WARRANTY_MONTHS,
+  HABEAS_DATA_CLAIM_BUSINESS_DAYS,
+  HABEAS_DATA_CONSULTATION_BUSINESS_DAYS,
+  MAX_LEGAL_DELIVERY_CALENDAR_DAYS,
+  RETRACT_REFUND_MAX_CALENDAR_DAYS,
+  RETRACT_WINDOW_BUSINESS_DAYS,
+  WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS,
+  formatWarrantyTerm,
+} from "@/lib/consumer-law";
 
 export async function resolveCmsTokens(text: string, ctx?: { city?: string }): Promise<string> {
   if (!text.includes("{{")) return text;
@@ -47,6 +68,7 @@ export async function resolveCmsTokens(text: string, ctx?: { city?: string }): P
     emailHabeasData,
     emailRetracto,
     emailSecurity,
+    cutoffRaw,
   ] = await Promise.all([
     getSettingValue("PRODUCTION_DAYS_DEFAULT", "2"),
     getSettingValue("DELIVERY_DAYS_ESTIMATE", "2 a 5"),
@@ -55,10 +77,13 @@ export async function resolveCmsTokens(text: string, ctx?: { city?: string }): P
     getSettingValue("HABEAS_DATA_EMAIL", "habeas-data@lucamsshop.com"),
     getSettingValue("RETRACTO_EMAIL", "retracto@lucamsshop.com"),
     getSettingValue("SECURITY_EMAIL", "security@lucamsshop.com"),
+    getSettingValue("LUCAMS_SHIPPING_CUTOFF_HOUR", "12"),
   ]);
   const fab = Number.parseInt(fabRaw, 10);
   const entrega = Number.parseInt(entregaRaw, 10);
   const total = String((Number.isNaN(fab) ? 2 : fab) + (Number.isNaN(entrega) ? 2 : entrega));
+  const cutoffParsed = Number.parseInt(cutoffRaw, 10);
+  const cutoffLucams = String(Number.isNaN(cutoffParsed) ? 12 : cutoffParsed).padStart(2, "0");
   const out = text
     .replaceAll("{{total}}", total)
     .replaceAll("{{fab}}", fabRaw)
@@ -67,7 +92,15 @@ export async function resolveCmsTokens(text: string, ctx?: { city?: string }): P
     .replaceAll("{{email_contacto}}", emailContacto)
     .replaceAll("{{email_habeas_data}}", emailHabeasData)
     .replaceAll("{{email_retracto}}", emailRetracto)
-    .replaceAll("{{email_security}}", emailSecurity);
+    .replaceAll("{{email_security}}", emailSecurity)
+    .replaceAll("{{garantia_base}}", formatWarrantyTerm(DEFAULT_CATALOG_WARRANTY_MONTHS))
+    .replaceAll("{{garantia_respuesta_dias}}", String(WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS))
+    .replaceAll("{{retracto_dias}}", String(RETRACT_WINDOW_BUSINESS_DAYS))
+    .replaceAll("{{retracto_reembolso_dias}}", String(RETRACT_REFUND_MAX_CALENDAR_DAYS))
+    .replaceAll("{{entrega_max_legal_dias}}", String(MAX_LEGAL_DELIVERY_CALENDAR_DAYS))
+    .replaceAll("{{habeas_consulta_dias}}", String(HABEAS_DATA_CONSULTATION_BUSINESS_DAYS))
+    .replaceAll("{{habeas_reclamo_dias}}", String(HABEAS_DATA_CLAIM_BUSINESS_DAYS))
+    .replaceAll("{{cutoff_lucams}}", cutoffLucams);
   return ctx?.city ? out.replaceAll("{{ciudad}}", ctx.city) : out;
 }
 

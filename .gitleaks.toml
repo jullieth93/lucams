@@ -91,6 +91,10 @@ regexes = [
     # de contenido CMS, no credenciales. Rompió CI en todos los push desde el
     # run 30499078411 hasta este fix.
     '''faq\.\d{2}-[a-z-]+''',
+    # Falso positivo (2026-11-03): `key: "LOYALTY_REDEEM_POINTS_PER_1000"` en
+    # packages/db/scripts/cms-site-map.mjs — identificador público de CmsField
+    # (setting numérico de fidelización), no una credencial.
+    '''LOYALTY_REDEEM_POINTS_PER_1000''',
     # Falso positivo (2026-07-31): contraseñas de admins TEMPORALES que crean y
     # borran las specs e2e (tests/e2e/*audit*.spec.ts, release-check-a1.spec.ts)
     # contra la Supabase de dev — no son credenciales reales, viven minutos en

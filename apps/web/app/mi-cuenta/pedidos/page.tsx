@@ -10,7 +10,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronRight, Package, ShoppingBag } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
-import { CmsText } from "@/components/cms/cms-text";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
@@ -57,9 +56,7 @@ export default async function MisPedidosPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-8">
-        <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-          <CmsText blockKey="account.orders.heading" fallback="Mis pedidos" />
-        </h1>
+        <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">Mis pedidos</h1>
         {total > 0 && (
           <p className="text-brand-muted mt-1 text-sm">
             {(total === 1 ? texts.orders.countSingle : texts.orders.countMany).replace(
@@ -76,13 +73,10 @@ export default async function MisPedidosPage() {
         <div className="border-brand-purple/15 rounded-2xl border bg-white p-10 text-center">
           <LucamsLogo variant="full" size={110} className="mx-auto opacity-80" />
           <p className="text-brand-purple-dark mt-4 text-lg font-semibold">
-            <CmsText blockKey="account.orders.empty.title" fallback="Aún no has hecho un pedido" />
+            Aún no has hecho un pedido
           </p>
           <p className="text-brand-muted mt-2 text-sm">
-            <CmsText
-              blockKey="account.orders.empty.subtext"
-              fallback="Cuando hagas tu primer pedido aparecerá aquí con todos los detalles ✨"
-            />
+            Cuando hagas tu primer pedido aparecerá aquí con todos los detalles ✨
           </p>
           <Link
             href="/productos"

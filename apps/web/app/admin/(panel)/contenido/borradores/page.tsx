@@ -9,7 +9,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { ArrowLeft, BookOpen, Send, SendHorizonal } from "lucide-react";
 import {
   AdminBadge,
@@ -28,9 +27,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { cmsFieldHasDraft, listCmsDraftFields } from "@/features/cms/service";
 import { publishAllCmsDraftsAction, publishCmsFieldAction } from "../actions";
+import { MODULE_MANAGED_SETTING_KEYS } from "../page-icons";
 
 export const metadata: Metadata = {
   title: "Solo borradores",
@@ -39,14 +40,18 @@ export const metadata: Metadata = {
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 export default async function BorradoresPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireRole(ADMIN_ROLE_SETS.CONTENT);
+  const isSuperadmin = session.admin.role === "SUPERADMIN";
 
   const sp = await searchParams;
   const publishedCount = typeof sp.published === "string" ? Number(sp.published) : null;
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
-  const drafts = await listCmsDraftFields();
+  const rawDrafts = await listCmsDraftFields();
+  const drafts = rawDrafts.filter(
+    (f) =>
+      !MODULE_MANAGED_SETTING_KEYS.has(f.key) && (isSuperadmin || f.section.page.slug !== "global"),
+  );
 
   return (
     <AdminPage>

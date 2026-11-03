@@ -17,7 +17,6 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft, MapPin, Package, Star, Truck, Wallet } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { CmsText } from "@/components/cms/cms-text";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 import {
   designPreviewPageLabels,
@@ -284,12 +283,9 @@ export default async function CustomerPedidoDetallePage({
                     pages={disp?.pageUrls ?? null}
                     pageLabels={pageLabels}
                     watermarkNote={
-                      disp?.watermarked ? (
-                        <CmsText
-                          blockKey="cart.vista-previa-watermark-nota"
-                          fallback="Vista previa con marca de agua — tu impresión final no la lleva."
-                        />
-                      ) : null
+                      disp?.watermarked
+                        ? "Vista previa con marca de agua — tu impresión final no la lleva."
+                        : null
                     }
                     productName={it.variant.product.name}
                     trigger={
@@ -309,24 +305,12 @@ export default async function CustomerPedidoDetallePage({
                         {/* 2026-10-13 — «N <sustantivo>» cuando el diseño pagina. */}
                         <DesignUnitsBadge
                           count={disp?.pageUrls?.length ?? 0}
-                          label={
-                            <CmsText
-                              blockKey="order.status.unidades-badge"
-                              fallback={unitNounPlural}
-                            />
-                          }
+                          label={unitNounPlural}
                         />
                       </button>
                     }
-                    title={
-                      <CmsText blockKey="cart.vista-previa-diseno-titulo" fallback="Tu diseño ·" />
-                    }
-                    description={
-                      <CmsText
-                        blockKey="cart.vista-previa-diseno-desc"
-                        fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
-                      />
-                    }
+                    title="Tu diseño ·"
+                    description="Vista previa ampliada del diseño personalizado de esta línea del pedido."
                   />
                 ) : (
                   <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
@@ -358,27 +342,14 @@ export default async function CustomerPedidoDetallePage({
                         pages={disp?.pageUrls ?? null}
                         pageLabels={pageLabels}
                         watermarkNote={
-                          disp?.watermarked ? (
-                            <CmsText
-                              blockKey="cart.vista-previa-watermark-nota"
-                              fallback="Vista previa con marca de agua — tu impresión final no la lleva."
-                            />
-                          ) : null
+                          disp?.watermarked
+                            ? "Vista previa con marca de agua — tu impresión final no la lleva."
+                            : null
                         }
                         productName={it.variant.product.name}
-                        triggerLabel={<CmsText blockKey="cart.ver-diseno" fallback="Ver" />}
-                        title={
-                          <CmsText
-                            blockKey="cart.vista-previa-diseno-titulo"
-                            fallback="Tu diseño ·"
-                          />
-                        }
-                        description={
-                          <CmsText
-                            blockKey="cart.vista-previa-diseno-desc"
-                            fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
-                          />
-                        }
+                        triggerLabel="Ver"
+                        title="Tu diseño ·"
+                        description="Vista previa ampliada del diseño personalizado de esta línea del pedido."
                       />
                     </div>
                   )}
@@ -401,10 +372,7 @@ export default async function CustomerPedidoDetallePage({
           it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
         ) && (
           <p className="text-brand-muted mt-2 text-[11px]">
-            <CmsText
-              blockKey="order.status.watermark-note"
-              fallback="Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva."
-            />
+            Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva.
           </p>
         )}
         <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">

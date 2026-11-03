@@ -99,7 +99,7 @@ No hay endpoints REST públicos de consentimiento: el registro lo hacen **Server
 
 - Publica la Política de Tratamiento (texto en `packages/db/legal-content/legal.habeas-data.md`) y los canales para PQR.
 - Canal formal: email `habeas-data@lucamsshop.com` (además del formulario general de `/contacto`, que crea `SupportTicket`).
-- SLA: respuesta inicial 5 días hábiles, resolución 15 días hábiles.
+- Plazos legales (Ley 1581 arts. 14 y 15, centralizados en `apps/web/lib/consumer-law.ts`): consultas **10 días hábiles** (`HABEAS_DATA_CONSULTATION_BUSINESS_DAYS` → `{{habeas_consulta_dias}}`) y reclamos/supresión **15 días hábiles** (`HABEAS_DATA_CLAIM_BUSINESS_DAYS` → `{{habeas_reclamo_dias}}`); SLA operativo de respuesta inicial 5 días hábiles.
 
 ### Aviso de Privacidad — texto base
 
@@ -345,16 +345,30 @@ Antes de la compra, el sitio debe mostrar:
 7. **Política de garantía** y condiciones de devolución.
 8. **Términos y condiciones** del contrato.
 
+### Fuente única de plazos estatutarios en código (`consumer-law.ts` + `{{tokens}}`)
+
+Para impedir contradicciones entre lógica de negocio, emails transaccionales, UI, FAQs y los 8 documentos de `packages/db/legal-content/*.md` (ADR-187), todos los plazos legales y operativos transversales viven en `apps/web/lib/consumer-law.ts` y se interpolan vía `resolveCmsTokens()` (`apps/web/lib/cms-tokens.ts`):
+
+- `RETRACT_WINDOW_BUSINESS_DAYS = 5` → `{{retracto_dias}}` (Ley 1480 art. 47)
+- `RETRACT_REFUND_MAX_CALENDAR_DAYS = 15` → `{{retracto_reembolso_dias}}` (Ley 2439/2024 art. 3)
+- `MAX_LEGAL_DELIVERY_CALENDAR_DAYS = 30` → `{{entrega_max_legal_dias}}` (Ley 1480 art. 50 lit. h)
+- `DEFAULT_CATALOG_WARRANTY_MONTHS = 1` → `{{garantia_base}}` (`formatWarrantyTerm`, Ley 1480 art. 8; el término específico del producto vive en `Product.warrantyMonths` y se sella en `OrderItem.warrantyMonths`, ADR-106)
+- `WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS = 15` → `{{garantia_respuesta_dias}}` (Decreto 1074/2015)
+- `HABEAS_DATA_CONSULTATION_BUSINESS_DAYS = 10` / `HABEAS_DATA_CLAIM_BUSINESS_DAYS = 15` → `{{habeas_consulta_dias}}` / `{{habeas_reclamo_dias}}` (Ley 1581 arts. 14–15)
+- `LUCAMS_SHIPPING_CUTOFF_HOUR` (setting CMS) → `{{cutoff_lucams}}`
+
+El test `apps/web/app/legal/legal-content-sync.test.ts` verifica que el `FALLBACK` de cada página `/legal/*` sea idéntico al `.md` canónico y `apps/web/lib/cms-tokens.test.ts` cubre la resolución de todos los tokens.
+
 ### Información de entrega: estimado operativo vs plazo legal
 
 - Storefront, checkout, correos, seguimiento, guía y Admin muestran por separado la
   **preparación estimada antes del despacho** y el **tránsito estimado después del despacho**.
 - «Alrededor de X días» y «estimado» no sustituyen el plazo informado antes del pago ni se
   presentan como fecha garantizada. Envío Lucams del mismo día siempre queda sujeto a
-  disponibilidad y condiciones de la ruta.
-- Los Términos conservan el límite de **treinta (30) días calendario** y el remedio legal por
-  incumplimiento. Los defaults de código, el site map CMS y el body publicado deben permanecer
-  alineados; `republish-delivery-estimates-20261101.mjs` hace la transición con versión reversible.
+  disponibilidad y condiciones de la ruta (`{{cutoff_lucams}}:00`).
+- Los Términos conservan el límite de **treinta (`{{entrega_max_legal_dias}}`) días calendario** y el remedio legal por
+  incumplimiento. Los defaults de código, el site map CMS y el body publicado permanecen
+  alineados (`sync-and-prune-cms-v2.mjs` republica con versión reversible sin pisar ediciones manuales).
 
 ### Derecho de retracto (art. 47) — verificado
 
