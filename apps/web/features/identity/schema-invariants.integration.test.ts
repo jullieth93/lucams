@@ -229,4 +229,3 @@ describe.skipIf(!hasDb)("Grafo de Identidad DDL — índices parciales y CHECKs 
     expect(reloadedTicket?.contactId).toBeNull();
   });
 });
-

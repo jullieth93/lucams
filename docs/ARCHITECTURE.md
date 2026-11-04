@@ -619,9 +619,9 @@ electrónica DIAN** (`billingDocumentType/Number/Name`, `dianStatus`, `dianCufe`
 `dianXmlUrl` — schema ready, el envío a la DIAN es Fase 7) y `dianStatus` se setea al
 crear la orden si el cliente pidió factura.
 
-### Arquitectura de Identidad Canónica (`Contact`) y Frontera SSoT (ADR-193 — DDL Fase 6 aplicado)
+### Arquitectura de Identidad Canónica (`Contact`) y Frontera SSoT (ADR-193 — Fases 6 y 7 activas)
 
-> **Estado:** Esquema aditivo _expand-only_ (`20261104160000_expand_contact_identity_graph` + RLS `051`) aplicado y verificado en `schema.prisma` con `0` drift y `5/5` invariantes de postura RLS/grants.
+> **Estado:** Esquema aditivo _expand-only_ (`20261104160000_expand_contact_identity_graph` + RLS `051`), servicio determinista de resolución y _dual-write_ (`apps/web/features/identity/resolution-service.ts`), cascada Ley 1581 (`scrubContactOnErasureTx`) y motor progresivo de backfill por cursor (`packages/db/scripts/backfill-contacts.mjs`, `batchSize = 200`, `--dry-run` `READ ONLY` + `--apply` idempotente) activos y certificados en integración.
 
 1. **Separación estructural Persona (`Contact`) vs Credencial (`Customer`):**
    - `Contact` representa a toda contraparte humana comercial o posventa en Lucams (comprador registrado, comprador invitado `Order.customerId IS NULL`, solicitante `Quote`, remitente `SupportTicket`, prospecto `AbandonedCart`, suscriptor `Consent`).
