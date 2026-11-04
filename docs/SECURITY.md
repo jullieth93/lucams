@@ -167,7 +167,7 @@ CREATE POLICY "order_read_own_or_admin" ON public."Order"
 
 **Postura verificada en vivo (auditoría 2026-08-24, re-verificada tras la remediación del 2026-08-29):**
 
-- **62/62 tablas de `public` con RLS habilitado** en prod y stg (62 modelos Prisma + `_prisma_migrations` + `rate_limit_buckets`, según ambiente). 14 políticas activas sobre 13 tablas; el resto es deny-by-default (RLS sin políticas). El event trigger `enforce_rls_on_new_table_trg` (migración 014, endurecido en migración 049) auto-habilita RLS y ejecuta `REVOKE ALL` para `anon`/`authenticated` + `REVOKE SELECT, INSERT, UPDATE, DELETE` para `service_role` sobre toda tabla nueva en `public`; las migraciones llevan verificación inline (`RAISE EXCEPTION` si queda alguna sin RLS) y la postura completa es auditable en solo-lectura con `packages/db/scripts/verify-security-posture.mjs`.
+- **63/63 tablas de `public` con RLS habilitado** en prod y stg (63 modelos Prisma + `_prisma_migrations` + `rate_limit_buckets`, según ambiente). 14 políticas activas sobre 13 tablas; el resto es deny-by-default (RLS sin políticas). El event trigger `enforce_rls_on_new_table_trg` (migración 014, endurecido en migración 049) auto-habilita RLS y ejecuta `REVOKE ALL` para `anon`/`authenticated` + `REVOKE SELECT, INSERT, UPDATE, DELETE` para `service_role` sobre toda tabla nueva en `public`; las migraciones llevan verificación inline (`RAISE EXCEPTION` si queda alguna sin RLS) y la postura completa es auditable en solo-lectura con `packages/db/scripts/verify-security-posture.mjs`.
 - **0 grants de tabla para `anon`/`authenticated`** en prod (migración 026: revoca incluso REFERENCES/TRIGGER/TRUNCATE residuales + default privileges). La publishable key no puede leer ni una tabla pública — verificado en vivo: `/rest/v1/` y un `SELECT` directo devuelven 401/42501.
 - **`service_role` sin DML** sobre tablas de `public` (migración 026): solo REFERENCES/TRIGGER/TRUNCATE. La app opera con Prisma como rol `postgres`, no vía PostgREST con service_role.
 - Funciones de `public` endurecidas (migración 027): `search_path` fijado, `is_active_admin` sin EXECUTE para anon/PUBLIC, `rate_limit_check` solo owner.
@@ -200,6 +200,16 @@ describe('RLS', () => {
   });
 });
 ```
+
+### Invariantes de Seguridad del Grafo de Identidad (`Contact` / `ContactIdentity`, ADR-193 — especificación Fase 4)
+
+Al introducir en Fase 6 las entidades `Contact`, `ContactIdentity`, `Organization` e `IdentityMergeCandidate`, rigen sin excepción estos cinco mandatos:
+
+1. **Separación entre observación y posesión criptográfica (`UNVERIFIED_OBSERVED` vs `VERIFIED`):** un email o teléfono digitado libremente en checkout invitado, `/contacto`, `/cotizar` o newsletter se registra como `UNVERIFIED_OBSERVED` y puede asociar `contactId` **exclusivamente para lectura interna del backoffice (`Contacto 360`)**. Jamás vincula `Order.customerId` sin prueba de posesión (OTP, OAuth con `email_verified = true` o enlace HMAC), jamás habilita redención ni lectura de Puntos Lucams y jamás devuelve historial previo al navegador no autenticado.
+2. **Inmunidad ante secuestro en checkout autenticado (`[ID-01]`):** si existe sesión autenticada (`Customer A`), `Order.customerId` y `Order.contactId` apuntan siempre a `Customer A` aunque `Order.email` contenga el correo de un tercero `B`; el correo alterno nunca se anexa como `ContactIdentity` de `A` (como máximo genera `IdentityMergeCandidate` para revisión humana).
+3. **Aislamiento total del destinatario de regalo (`Order.isGift = true`):** `recipientName`, `recipientPhone` y `shippingAddress` pertenecen al homenajeado; queda prohibido crear filas `Contact`, `ContactIdentity` o `IdentityMergeCandidate` a partir de datos del destinatario, así como ejecutar auto-merge por nombre, dirección física o similitud difusa (`pg_trgm`).
+4. **Defensa explícita en migraciones SQL (cero suposiciones):** toda tabla nueva de identidad/CRM debe incluir en su migración `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, `REVOKE ALL ON TABLE ... FROM anon, authenticated`, `REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE ... FROM service_role` y bloque `DO $$ ... RAISE EXCEPTION $$` de verificación inline, sin confiar únicamente en el event trigger `014`/`049`. Toda fusión humana de `IdentityMergeCandidate` exige `requireRecentMfa` (`<= 10 min`) + `AdminActionLog` + snapshot previo reversible.
+5. **Cascada de supresión Ley 1581:** al ejercer supresión de cuenta o solicitud Habeas Data sobre un `Contact`, se anonimizan `primaryEmail`, `primaryPhoneE164`, `displayName`, `documentType` y `documentNumber`, se sellan `anonymizedAt`/`deletedAt`, se eliminan/revocan sus `ContactIdentity`, se purgan los `IdentityMergeCandidate` en `PENDING` y se conservan solo las órdenes pagadas ya anonimizadas por deber contable/tributario.
 
 ---
 

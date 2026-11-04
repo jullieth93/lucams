@@ -617,12 +617,35 @@ presentan con `object-contain` sobre cuadrícula de alpha: la visualización no 
 Campos (no modelos) que conviene conocer: `Order` lleva los datos de **facturación
 electrónica DIAN** (`billingDocumentType/Number/Name`, `dianStatus`, `dianCufe`,
 `dianXmlUrl` — schema ready, el envío a la DIAN es Fase 7) y `dianStatus` se setea al
-crear la orden si el cliente pidió factura. Enums de soporte: `DocumentType`,
-`TaxResponsibility`, `DianStatus`, `CodReconciliationStatus`, `RetractStatus`,
-`WarrantyStatus`, `QuoteStatus`, `DesignStatus`, `ModerationStatus`, `ConsentScope`,
-`BlockedIdentityKind`, `CmsFieldType`, `CmsFieldKind`, `PersonalizationKind`,
-`TemplateMode` (además de `AdminRole`, `OrderStatus`, `PaymentMethod`, `CouponType`,
-`WebhookSource` mostrados arriba).
+crear la orden si el cliente pidió factura.
+
+### Arquitectura Objetivo de Identidad Canónica (`Contact`) y Frontera SSoT (ADR-193 — especificada en Fase 4, pendiente DDL Fase 6)
+
+> **Estado:** Contrato técnico vinculante aprobado en diseño (`ADR-193`). Las tablas aún **no** existen en `schema.prisma` hasta cruzar el perfilamiento `READ ONLY` (Fase 5) y la puerta de revisión humana previa a Fase 6 (`S14`).
+
+1. **Separación estructural Persona (`Contact`) vs Credencial (`Customer`):**
+   - `Contact` representa a toda contraparte humana comercial o posventa en Lucams (comprador registrado, comprador invitado `Order.customerId IS NULL`, solicitante `Quote`, remitente `SupportTicket`, prospecto `AbandonedCart`, suscriptor `Consent`).
+   - `Customer` permanece intacto como cuenta autenticada de autoservicio (`supabaseUserId String @unique`, `loyaltyPoints`, `referralCode`, `addresses`, `/mi-cuenta`), vinculándose 1:1 opcional mediante `Customer.contactId String? @unique` (`onDelete: SetNull`).
+   - FKs anulables (_expand-only_, `onDelete: SetNull`, indexadas) previstas en Fase 6 sobre las 8 entidades relacionales: `Customer` (`@unique`), `Order`, `SupportTicket`, `Quote`, `AbandonedCart`, `Consent`, `WarrantyClaim` y `RetractRequest`.
+
+2. **Modelos, enums e índices parciales planeados para Fase 6 (`S14`):**
+   - Enums:
+     - `ContactIdentityType`: `SUPABASE_USER` | `EMAIL` | `PHONE` | `WHATSAPP`
+     - `IdentityVerificationStatus`: `VERIFIED` | `UNVERIFIED_OBSERVED` | `REVOKED`
+     - `MergeCandidateStatus`: `PENDING` | `APPROVED` | `REJECTED`
+   - `Contact`: `id`, `primaryEmail` (`lower(trim())`, índice único parcial SQL `WHERE "primaryEmail" IS NOT NULL AND "deletedAt" IS NULL`), `primaryPhoneE164` (`+573XXXXXXXXX`, indexado y **nunca `@unique`**), `displayName`, `documentType?`, `documentNumber?` (`@@index([documentType, documentNumber])`), `organizationId?`, `ownerAdminId?`, `source`, `anonymizedAt?`, `deletedAt?`, timestamps.
+   - `ContactIdentity`: `id`, `contactId` (`onDelete: Cascade`), `type`, `normalizedValue`, `verificationStatus`, `verifiedAt?`, `verificationSource?`, `firstSeenAt`, `lastSeenAt`; `@@unique([contactId, type, normalizedValue])`, `@@index([type, normalizedValue])` e índice único parcial SQL `"ContactIdentity_unique_owner_key"` exclusivamente para `type IN ('SUPABASE_USER', 'EMAIL') AND "verificationStatus" <> 'REVOKED'`.
+   - `Organization` (ligera y opcional B2B/eventos): `id`, `name`, `taxIdType?`, `taxIdNumber?` (único parcial cuando no es nulo ni borrado), `city?`, `department?`, `notes?`, `deletedAt?`, timestamps.
+   - `IdentityMergeCandidate`: `id`, par canónico ordenado `(primaryContactId, secondaryContactId)` con `@@unique([primaryContactId, secondaryContactId])` y `CHECK ("primaryContactId" <> "secondaryContactId")`, `reasonCode`, `status`, `evidenceJson`, `reviewedByAdminId?`, `reviewedAt?`, `reviewNote?`, `mergeSnapshotJson?`, timestamps.
+
+3. **Frontera SSoT y exclusiones del CRM Operacional Mínimo:**
+   - **Lucams Postgres** es la Fuente Única de Verdad (SSoT) en los 10 dominios (`Contact`, `Order`, pagos Wompi/COD, inventario, diseños privados, renders 300 DPI, oportunidades B2B/eventos, actividades/tareas, posventa y ledger `Consent` Ley 1581).
+   - Los pedidos B2C de autoservicio web, carritos abandonados, reservas/decrementos de stock, cálculo de precios/puntos y activos gráficos privados (`customer-uploads`, `design-previews`, `production-assets`) quedan **estrictamente fuera** de cualquier pipeline comercial `Opportunity` o sincronización a SaaS externos. Enums de soporte: `DocumentType`,
+     `TaxResponsibility`, `DianStatus`, `CodReconciliationStatus`, `RetractStatus`,
+     `WarrantyStatus`, `QuoteStatus`, `DesignStatus`, `ModerationStatus`, `ConsentScope`,
+     `BlockedIdentityKind`, `CmsFieldType`, `CmsFieldKind`, `PersonalizationKind`,
+     `TemplateMode` (además de `AdminRole`, `OrderStatus`, `PaymentMethod`, `CouponType`,
+     `WebhookSource` mostrados arriba).
 
 ## CMS v2 — arquitectura de 3 capas (ADR-082 / ADR-187)
 
