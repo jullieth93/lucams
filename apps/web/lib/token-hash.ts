@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 /**
  * F-11 (security audit 2026-08-24): public bearer tokens — Order/Quote
@@ -16,4 +16,35 @@ import { createHash } from "node:crypto";
  */
 export function hashBearerToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+/**
+ * Comparación en tiempo constante de dos hashes hex SHA-256 (64 chars).
+ */
+export function verifyTokenHashTimingSafe(
+  candidateToken: string,
+  expectedHashHex: string | null | undefined,
+): boolean {
+  if (!expectedHashHex || !/^[a-f0-9]{64}$/i.test(expectedHashHex)) return false;
+  const candidateBuf = createHash("sha256").update(candidateToken).digest();
+  const expectedBuf = Buffer.from(expectedHashHex.toLowerCase(), "hex");
+  if (candidateBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(candidateBuf, expectedBuf);
+}
+
+/**
+ * Comparación en tiempo constante de correo electrónico normalizado (`trim().toLowerCase()`),
+ * usando digest SHA-256 de longitud fija para no filtrar ni longitud ni prefijos del comprador
+ * cuando un tercero (p.ej. destinatario de regalo con acceso a `/pedido/[token]`) intenta adivinarlo.
+ */
+export function verifyEmailMatchesTimingSafe(
+  candidateEmail: string,
+  expectedEmail: string | null | undefined,
+): boolean {
+  const normCandidate = candidateEmail.trim().toLowerCase();
+  const normExpected = (expectedEmail ?? "").trim().toLowerCase();
+  if (!normCandidate || !normExpected) return false;
+  const digestA = createHash("sha256").update(normCandidate).digest();
+  const digestB = createHash("sha256").update(normExpected).digest();
+  return timingSafeEqual(digestA, digestB);
 }

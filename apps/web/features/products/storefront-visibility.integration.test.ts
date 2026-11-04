@@ -34,7 +34,11 @@ vi.mock("next/cache", () => ({
 }));
 
 import { prisma } from "@/lib/db";
-import { getStorefrontProductBySlug, listStorefrontProducts } from "./public-service";
+import {
+  getStorefrontProductBySlug,
+  listStorefrontProducts,
+  searchStorefrontProducts,
+} from "./public-service";
 import {
   getCatalogProductDetail,
   getCategoryBySlug,
@@ -101,6 +105,9 @@ describe.skipIf(!hasDb)("storefront visibility gate — ambos stacks (F-04)", { 
     await prisma.productOcasionTag.deleteMany({ where: { ocasionTagId: ocasionId } });
     await prisma.product.deleteMany({ where: { slug: { startsWith: RUN } } });
     await prisma.ocasionTag.deleteMany({ where: { slug: { startsWith: RUN } } });
+    await prisma.category.deleteMany({
+      where: { slug: { startsWith: RUN }, parentId: { not: null } },
+    });
     await prisma.category.deleteMany({ where: { slug: { startsWith: RUN } } });
   }, T);
 
@@ -116,6 +123,45 @@ describe.skipIf(!hasDb)("storefront visibility gate — ambos stacks (F-04)", { 
       expect(await getStorefrontProductBySlug(okSlug)).not.toBeNull();
       expect(await getStorefrontProductBySlug(ghostInactiveSlug)).toBeNull();
       expect(await getStorefrontProductBySlug(ghostArchivedSlug)).toBeNull();
+    });
+
+    it("[CX-01] searchStorefrontProducts incluye subcategorías hijas de una categoría padre y filtra por ocasión", async () => {
+      const childCat = await prisma.category.create({
+        data: {
+          slug: `${RUN}-subcat`,
+          name: `Subcategoría ${RUN}`,
+          parentId: activeCatId,
+        },
+      });
+      const childProd = await prisma.product.create({
+        data: {
+          slug: `${RUN}-child-prod`,
+          name: `Polaroid Subhija ${RUN}`,
+          description: `fixture hija ${RUN}`,
+          basePrice: 15_000,
+          sku: `${RUN}-CHILD`.toUpperCase(),
+          categoryId: childCat.id,
+        },
+        select: { slug: true },
+      });
+
+      const byParent = await searchStorefrontProducts(RUN, {
+        limit: 50,
+        categorySlug: activeCatSlug,
+      });
+      const parentSlugs = byParent.map((r) => r.slug);
+      expect(parentSlugs).toContain(okSlug);
+      expect(parentSlugs).toContain(childProd.slug);
+      expect(parentSlugs).not.toContain(ghostInactiveSlug);
+
+      const byOcasion = await searchStorefrontProducts(RUN, {
+        limit: 50,
+        categorySlug: activeCatSlug,
+        ocasionSlug: `${RUN}-oc`,
+      });
+      const ocasionSlugs = byOcasion.map((r) => r.slug);
+      expect(ocasionSlugs).toContain(okSlug);
+      expect(ocasionSlugs).not.toContain(childProd.slug);
     });
   });
 

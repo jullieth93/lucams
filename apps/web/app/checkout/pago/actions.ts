@@ -227,8 +227,9 @@ export async function payCodAction(formData: FormData): Promise<void> {
 
   await savePaymentMethodStep("COD");
 
-  // #3 caso A — ver payWompiAction: cupón ya inválido al render → quitarlo antes de finalizar.
+  // #3 caso A — ver payWompiAction: cupón o redención de puntos ya inválidos al render → quitarlos antes de finalizar.
   if (formData.get("couponInvalidAtRender") === "1") await removeCoupon();
+  if (formData.get("loyaltyInvalidAtRender") === "1") await removeLoyaltyPoints();
 
   // finalizeCheckout exige un redirectUrl (lo usa Wompi); en COD no se usa.
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";

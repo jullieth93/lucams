@@ -13,6 +13,7 @@
  */
 
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Minus, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
@@ -27,7 +28,7 @@ import { isCatalogMode } from "@/lib/store-mode";
 import { getCurrentCustomer } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
-import { TrackViewCart } from "@/components/analytics-trackers";
+import { TrackPersonalizedAddToCart, TrackViewCart } from "@/components/analytics-trackers";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { LinkPendingLabel } from "@/components/ui/link-pending-label";
 import { IconSubmitButton } from "./qty-button";
@@ -53,18 +54,34 @@ export default async function CarritoPage() {
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
-      {/* GA4 view_cart (E09) — solo cuando hay ítems; no-op sin env/consent. */}
+      {/* GA4 view_cart + add_to_cart personalizado ([ANA-01]) — no-op sin env/consent. */}
       {cart && cart.items.length > 0 && (
-        <TrackViewCart
-          valueCents={cart.subtotal}
-          items={cart.items.map((i) => ({
-            sku: i.variantSku,
-            name: i.productName,
-            variantName: i.variantName,
-            priceCents: i.unitPrice,
-            quantity: i.qty,
-          }))}
-        />
+        <>
+          <TrackViewCart
+            valueCents={cart.subtotal}
+            items={cart.items.map((i) => ({
+              sku: i.variantSku,
+              name: i.productName,
+              variantName: i.variantName,
+              priceCents: i.unitPrice,
+              quantity: i.qty,
+            }))}
+          />
+          <Suspense fallback={null}>
+            <TrackPersonalizedAddToCart
+              fallbackItems={cart.items.map((i) => ({
+                designId: i.designId,
+                sku: i.variantSku,
+                name: i.productName,
+                variantName: i.variantName,
+                priceCents: i.unitPrice,
+                quantity: i.qty,
+                productSlug: i.productSlug,
+                editorKind: i.editorKind,
+              }))}
+            />
+          </Suspense>
+        </>
       )}
       <SiteHeader />
 

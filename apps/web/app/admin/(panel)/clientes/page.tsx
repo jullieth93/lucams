@@ -1,14 +1,15 @@
 /*
- * Admin > Clientes — Listado con búsqueda + filtros + paginación.
+ * Admin > Clientes y Contactos — Directorio unificado sobre `Contact` (Fase 9 · S19).
  *
- * Schema Customer ya existe (Supabase Auth + Prisma). Ley 1581:
- * admin solo LEE, no edita perfil ajeno. Click en fila → Customer 360.
+ * Unifica cuentas autenticadas (`Customer`) con compradores invitados, cotizaciones
+ * WhatsApp, tickets de soporte, carritos abandonados y suscriptores bajo la entidad
+ * canónica `Contact` (ADR-193), respetando RBAC por capacidades y enmascaramiento
+ * determinista de PII en servidor.
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { ChevronRight, Users } from "lucide-react";
+import { ChevronRight, GitMerge, ShieldCheck, Users } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -22,12 +23,23 @@ import {
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getCurrentAdmin } from "@/lib/auth";
-import { listCustomers } from "@/features/customers/service";
+import { hasCapability } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
+import {
+  isContactSegmentFilter,
+  isContactSortOption,
+  listContactsForActor,
+  type ContactSegmentFilter,
+  type ContactSortOption,
+} from "@/features/identity/contact-360-service";
+import { formatCOP, formatRelativeTime } from "@/lib/format";
 
 export const metadata: Metadata = {
-  title: "Clientes",
+  title: "Clientes y contactos",
+  robots: { index: false, follow: false },
 };
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -36,37 +48,61 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
   return typeof v === "string" ? v : undefined;
 }
 
+const SEGMENT_PILLS: ReadonlyArray<{ key: ContactSegmentFilter; label: string }> = [
+  { key: "all", label: "Todos" },
+  { key: "registered", label: "Con cuenta" },
+  { key: "guest", label: "Invitados sin cuenta" },
+  { key: "paid", label: "Con compras pagadas" },
+  { key: "vip", label: "VIP (≥ 3 compras)" },
+  { key: "open-care", label: "Con posventa abierta" },
+  { key: "marketing-optin", label: "Opt-in comercial" },
+];
+
+const SOURCE_LABEL: Record<string, string> = {
+  CUSTOMER_AUTH: "Cuenta web",
+  GUEST_ORDER: "Compra invitado",
+  SUPPORT_TICKET: "Soporte",
+  QUOTE: "Cotización WA",
+  ABANDONED_CART: "Carrito",
+  NEWSLETTER: "Newsletter",
+  B2B_INQUIRY: "Empresas / Eventos",
+  MANUAL: "Manual",
+};
+
 export default async function AdminClientesPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireCapability("contacts:read_360");
+  const canMerge = hasCapability(session.admin.role, "contacts:merge");
 
   const sp = await searchParams;
   const q = pickString(sp, "q");
-  const statusRaw = pickString(sp, "status");
-  const status = (["with-orders", "no-orders"].includes(statusRaw ?? "") ? statusRaw : "all") as
-    "all" | "with-orders" | "no-orders";
+  const segmentRaw = pickString(sp, "segment") ?? pickString(sp, "status");
+  const legacyMappedSegment = segmentRaw === "with-orders" ? "paid" : segmentRaw;
+  const segment: ContactSegmentFilter = isContactSegmentFilter(legacyMappedSegment)
+    ? legacyMappedSegment
+    : "all";
+
   const sortRaw = pickString(sp, "sort");
-  const sort = (["name", "orders"].includes(sortRaw ?? "") ? sortRaw : "recent") as
-    "recent" | "name" | "orders";
-  const page = Number(sp.page) || 1;
+  const legacyMappedSort = sortRaw === "spent" ? "ltv" : sortRaw;
+  const sort: ContactSortOption = isContactSortOption(legacyMappedSort)
+    ? legacyMappedSort
+    : "recent";
+  const page = Math.max(1, Number(sp.page) || 1);
 
-  const { items, total, totalPages } = await listCustomers({ q, status, sort, page });
-  const hasActiveFilters = !!q || status !== "all" || sort !== "recent";
-
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  const { items, total, totalPages, pendingMergesCount, piiMasked } = await listContactsForActor(
+    { q, segment, sort, page },
+    session.admin.role,
+  );
+  const hasActiveFilters = Boolean(q) || segment !== "all" || sort !== "recent";
 
   return (
     <AdminPage>
       <AdminPageHeader
         icon={<Users className="h-5 w-5" />}
-        title="Clientes"
+        title="Clientes y contactos"
         subtitle={
           <>
-            {total} {total === 1 ? "cliente" : "clientes"}
+            {total.toLocaleString("es-CO")} {total === 1 ? "persona" : "personas"} en el grafo
+            unificado (cuentas + invitados + posventa)
             {hasActiveFilters && " · con filtros aplicados"}
           </>
         }
@@ -75,15 +111,56 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
           { label: "Ventas" },
           { label: "Clientes" },
         ]}
+        actions={
+          canMerge ? (
+            <Link
+              href="/admin/clientes/duplicados"
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-11 items-center gap-2 rounded-lg border bg-white px-3.5 py-2 text-sm font-semibold transition-colors"
+            >
+              <GitMerge className="h-4 w-4" />
+              Posibles duplicados
+              {pendingMergesCount > 0 && <AdminBadge tone="amber">{pendingMergesCount}</AdminBadge>}
+            </Link>
+          ) : undefined
+        }
       />
 
       <AdminPageBody>
-        {/* Toolbar */}
+        {/* Píldoras interactivas de segmento */}
+        <div className="flex flex-wrap gap-2" role="navigation" aria-label="Segmentos de contactos">
+          {SEGMENT_PILLS.map((pill) => {
+            const active = pill.key === segment;
+            const params = new URLSearchParams();
+            if (q) params.set("q", q);
+            if (pill.key !== "all") params.set("segment", pill.key);
+            if (sort !== "recent") params.set("sort", sort);
+            const href = params.toString()
+              ? `/admin/clientes?${params.toString()}`
+              : "/admin/clientes";
+            return (
+              <Link
+                key={pill.key}
+                href={href}
+                aria-current={active ? "page" : undefined}
+                className={
+                  active
+                    ? "bg-brand-purple inline-flex min-h-10 items-center rounded-full px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors"
+                    : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/50 hover:bg-brand-purple/5 inline-flex min-h-10 items-center rounded-full border bg-white px-3.5 py-1.5 text-xs font-semibold transition-colors"
+                }
+              >
+                {pill.label}
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Toolbar de búsqueda y ordenamiento */}
         <form
           method="GET"
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
         >
-          <div className="sm:col-span-5">
+          {segment !== "all" && <input type="hidden" name="segment" value={segment} />}
+          <div className="sm:col-span-7">
             <label
               htmlFor="f-q"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -95,29 +172,15 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
               name="q"
               type="search"
               defaultValue={q ?? ""}
-              placeholder="Email, nombre, documento o teléfono…"
+              placeholder={
+                piiMasked
+                  ? "ID de contacto u organización…"
+                  : "Nombre, email, celular, documento DIAN u organización…"
+              }
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>
-          <div className="sm:col-span-3">
-            <label
-              htmlFor="f-status"
-              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
-            >
-              Estado
-            </label>
-            <select
-              id="f-status"
-              name="status"
-              defaultValue={status}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
-            >
-              <option value="all">Todos</option>
-              <option value="with-orders">Con pedidos</option>
-              <option value="no-orders">Sin pedidos aún</option>
-            </select>
-          </div>
-          <div className="sm:col-span-3">
+          <div className="sm:col-span-4">
             <label
               htmlFor="f-sort"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -128,11 +191,12 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
               id="f-sort"
               name="sort"
               defaultValue={sort}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
-              <option value="recent">Registro más reciente</option>
-              <option value="name">Nombre A-Z</option>
-              <option value="orders">Más pedidos primero</option>
+              <option value="recent">Actividad más reciente</option>
+              <option value="ltv">Mayor LTV neto ($)</option>
+              <option value="orders">Más pedidos pagados</option>
+              <option value="name">Nombre A–Z</option>
             </select>
           </div>
           <div className="flex items-end gap-2 sm:col-span-1">
@@ -159,24 +223,25 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
         {items.length === 0 ? (
           <AdminEmpty
             icon={<Users className="h-5 w-5" />}
-            title={hasActiveFilters ? "Sin resultados" : "Aún no hay clientes registrados"}
+            title={hasActiveFilters ? "Sin resultados" : "Aún no hay contactos registrados"}
             description={
               hasActiveFilters
                 ? "Prueba quitar algún filtro o cambiar el texto de búsqueda."
-                : "Cuando el primer cliente se registre, aparecerá acá."
+                : "Cuando ingrese el primer pedido, cotización o registro, aparecerá acá."
             }
           />
         ) : (
           <AdminTable>
             <AdminTableHead>
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Cliente</th>
-                <th className="px-4 py-3 text-left font-semibold">Email</th>
-                <th className="px-4 py-3 text-left font-semibold">Documento</th>
-                <th className="px-4 py-3 text-center font-semibold">Pedidos</th>
-                <th className="px-4 py-3 text-center font-semibold">Reseñas</th>
-                <th className="px-4 py-3 text-right font-semibold">Puntos</th>
-                <th className="px-4 py-3 text-left font-semibold">Registro</th>
+                <th className="px-4 py-3 text-left font-semibold">Contacto</th>
+                <th className="px-4 py-3 text-left font-semibold">Tipo / Origen</th>
+                <th className="px-4 py-3 text-left font-semibold">Email y teléfono</th>
+                <th className="px-4 py-3 text-center font-semibold">Pedidos pagados</th>
+                <th className="px-4 py-3 text-right font-semibold">LTV neto</th>
+                <th className="px-4 py-3 text-center font-semibold">Posventa</th>
+                <th className="px-4 py-3 text-center font-semibold">Marketing</th>
+                <th className="px-4 py-3 text-left font-semibold">Última actividad</th>
                 <th className="px-4 py-3" />
               </tr>
             </AdminTableHead>
@@ -184,43 +249,74 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
               {items.map((c) => (
                 <AdminTableRow key={c.id}>
                   <td className="px-4 py-3">
-                    <div className="text-brand-purple-dark font-medium">{c.fullName}</div>
-                    {c.phone && <div className="text-brand-muted text-xs">{c.phone}</div>}
+                    <div className="text-brand-purple-dark font-medium">{c.displayName}</div>
+                    <div className="text-brand-muted flex flex-wrap items-center gap-1.5 text-xs">
+                      {c.organizationName && <span>{c.organizationName}</span>}
+                      {c.documentLabel && <span>· {c.documentLabel}</span>}
+                    </div>
                   </td>
-                  <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">{c.email}</td>
-                  <td className="text-brand-purple-dark/75 px-4 py-3 text-xs">
-                    {c.documentType && c.documentNumber
-                      ? `${c.documentType} ${c.documentNumber}`
-                      : "—"}
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col items-start gap-1">
+                      {c.hasCustomerAccount ? (
+                        <AdminBadge tone="purple">Con cuenta</AdminBadge>
+                      ) : (
+                        <AdminBadge tone="slate">Invitado</AdminBadge>
+                      )}
+                      <span className="text-brand-muted text-[11px]">
+                        {SOURCE_LABEL[c.source] ?? c.source}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    <div className="text-brand-purple-dark/85">{c.primaryEmail ?? "—"}</div>
+                    {c.primaryPhoneE164 && (
+                      <div className="text-brand-muted mt-0.5">{c.primaryPhoneE164}</div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {c.ordersCount > 0 ? (
-                      <AdminBadge tone="emerald">{c.ordersCount}</AdminBadge>
+                    {c.paidOrdersCount >= 3 ? (
+                      <AdminBadge tone="purple">VIP · {c.paidOrdersCount}</AdminBadge>
+                    ) : c.paidOrdersCount > 0 ? (
+                      <AdminBadge tone="emerald">{c.paidOrdersCount}</AdminBadge>
                     ) : (
                       <span className="text-brand-muted text-xs">0</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    {c.reviewsCount > 0 ? (
-                      <span className="text-brand-purple-dark/85 text-xs tabular-nums">
-                        {c.reviewsCount}
+                  <td className="px-4 py-3 text-right">
+                    {c.netLtvCents > 0 ? (
+                      <span className="text-brand-purple-dark text-xs font-semibold tabular-nums">
+                        {formatCOP(c.netLtvCents)}
                       </span>
                     ) : (
                       <span className="text-brand-muted text-xs">—</span>
                     )}
                   </td>
-                  <td className="text-brand-purple-dark/85 px-4 py-3 text-right text-xs tabular-nums">
-                    {c.loyaltyPoints.toLocaleString("es-CO")}
+                  <td className="px-4 py-3 text-center">
+                    {c.openCareCount > 0 ? (
+                      <AdminBadge tone="amber">{c.openCareCount} abierto(s)</AdminBadge>
+                    ) : (
+                      <span className="text-brand-muted text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {c.marketingOptIn ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Opt-in
+                      </span>
+                    ) : (
+                      <span className="text-brand-muted text-xs">No</span>
+                    )}
                   </td>
                   <td className="text-brand-muted px-4 py-3 text-xs">
-                    {dateFmt.format(c.createdAt)}
+                    {formatRelativeTime(c.lastActivityAt)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`/admin/clientes/${c.id}`}
-                      className="text-brand-purple-dark hover:text-brand-purple -my-2 inline-flex min-h-10 items-center gap-1 text-xs font-medium"
+                      className="text-brand-purple-dark hover:text-brand-purple -my-2 inline-flex min-h-11 items-center gap-1 text-xs font-semibold"
                     >
-                      Ver perfil
+                      Contacto 360
                       <ChevronRight className="h-3.5 w-3.5" />
                     </Link>
                   </td>
@@ -233,16 +329,16 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
         {totalPages > 1 && (
           <div className="text-brand-purple-dark/70 flex items-center justify-between text-sm">
             <span>
-              {total} clientes · página {page} de {totalPages}
+              {total.toLocaleString("es-CO")} contactos · página {page} de {totalPages}
             </span>
             <div className="flex gap-1">
               {page > 1 && (
-                <PaginationLink page={page - 1} q={q} status={status} sort={sort}>
+                <PaginationLink page={page - 1} q={q} segment={segment} sort={sort}>
                   ← Anterior
                 </PaginationLink>
               )}
               {page < totalPages && (
-                <PaginationLink page={page + 1} q={q} status={status} sort={sort}>
+                <PaginationLink page={page + 1} q={q} segment={segment} sort={sort}>
                   Siguiente →
                 </PaginationLink>
               )}
@@ -257,25 +353,25 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
 function PaginationLink({
   page,
   q,
-  status,
+  segment,
   sort,
   children,
 }: {
   page: number;
   q?: string;
-  status?: string;
-  sort?: string;
+  segment?: ContactSegmentFilter;
+  sort?: ContactSortOption;
   children: React.ReactNode;
 }) {
   const params = new URLSearchParams();
   params.set("page", String(page));
   if (q) params.set("q", q);
-  if (status && status !== "all") params.set("status", status);
+  if (segment && segment !== "all") params.set("segment", segment);
   if (sort && sort !== "recent") params.set("sort", sort);
   return (
     <Link
       href={`/admin/clientes?${params.toString()}`}
-      className="border-brand-purple/20 hover:bg-brand-purple/5 text-brand-purple-dark rounded-md border bg-white px-3 py-1.5 text-xs font-medium"
+      className="border-brand-purple/20 hover:bg-brand-purple/5 text-brand-purple-dark inline-flex min-h-10 items-center rounded-md border bg-white px-3 py-1.5 text-xs font-medium"
     >
       {children}
     </Link>

@@ -80,3 +80,45 @@ export function applyVolumePricing(
   if (tierPrice === null || tierPrice >= baseUnitPrice) return baseUnitPrice;
   return tierPrice;
 }
+
+export type VisibleVolumeTier = {
+  minQty: number;
+  unitPrice: number;
+  savingsPct: number;
+};
+
+/**
+ * Escala efectiva de descuentos por volumen para exhibir en la PDP ([CX-01]):
+ *  - Respeta exactamente la misma precedencia (niveles propios del producto > globales).
+ *  - Excluye niveles >= `baseUnitPrice` (nunca anuncia un "descuento" que no rebaja).
+ *  - Si un umbral mayor está mal configurado con precio igual o más caro que un umbral
+ *    menor ya activo, se omite para no prometer una escala incoherente.
+ */
+export function resolveVisibleVolumeTiers(
+  tiers: readonly VolumeTierInput[],
+  productId: string,
+  baseUnitPrice: number,
+): VisibleVolumeTier[] {
+  if (baseUnitPrice <= 0) return [];
+  const elegibles = tiers.filter((t) => t.isActive && t.deletedAt === null && t.minQty > 0);
+  const propios = elegibles.filter((t) => t.productId === productId);
+  const pool = propios.length > 0 ? propios : elegibles.filter((t) => t.productId === null);
+  const sorted = [...pool].sort((a, b) => a.minQty - b.minQty || a.unitPrice - b.unitPrice);
+
+  const out: VisibleVolumeTier[] = [];
+  let runningCeiling = baseUnitPrice;
+  let lastMinQty = -1;
+  for (const t of sorted) {
+    if (t.minQty === lastMinQty) continue;
+    lastMinQty = t.minQty;
+    if (t.unitPrice < runningCeiling && t.unitPrice >= 0) {
+      const savingsPct = Math.max(
+        1,
+        Math.round(((baseUnitPrice - t.unitPrice) / baseUnitPrice) * 100),
+      );
+      out.push({ minQty: t.minQty, unitPrice: t.unitPrice, savingsPct });
+      runningCeiling = t.unitPrice;
+    }
+  }
+  return out;
+}

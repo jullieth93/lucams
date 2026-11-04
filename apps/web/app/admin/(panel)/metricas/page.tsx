@@ -13,15 +13,23 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { FileText, TrendingUp, Trophy } from "lucide-react";
+import { TrendingUp, Trophy } from "lucide-react";
 import type { OrderStatus, QuoteStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS, canAccessAdminPath } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
-import { getCmsObservabilityStats } from "@/features/cms/service";
+import { COLLECTED_REVENUE_ORDER_WHERE } from "@/features/finanzas/service";
+import {
+  getFunnelDashboardReport,
+  type FunnelReportFilters,
+} from "@/features/analytics/funnel-service";
+import { getCrmBehavioralIntelligence } from "@/features/crm/intelligence-service";
+import { PRODUCT_SLUG_OR_ALL_REGEX } from "@/features/analytics/funnel-schema";
 import { ORDER_STATUS_LABEL } from "@/features/orders/order-status-display";
+import { FunnelPanel } from "./funnel-panel";
+import { CrmIntelligencePanel } from "./crm-intelligence-panel";
 import {
   AdminBadge,
   AdminCard,
@@ -73,9 +81,45 @@ const QUOTE_STATUS_TONE: Record<QuoteStatus, "amber" | "purple" | "emerald" | "s
 };
 const QUOTE_STATUSES: QuoteStatus[] = ["PENDING", "CONTACTED", "CLOSED", "DISCARDED"];
 
-export default async function AdminMetricasPage() {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+type RawSearchParams = Record<string, string | string[] | undefined>;
+
+function firstParam(raw: RawSearchParams, key: string): string | undefined {
+  const val = raw[key];
+  return Array.isArray(val) ? val[0] : val;
+}
+
+export default async function AdminMetricasPage({
+  searchParams,
+}: {
+  searchParams?: Promise<RawSearchParams>;
+}) {
+  const session = await requireRole(ADMIN_ROLE_SETS.METRICS);
+  const role = session.admin.role;
+  const sp = (await searchParams) ?? {};
+
+  const rawWindow = firstParam(sp, "ventana");
+  const rawDevice = firstParam(sp, "dispositivo");
+  const rawEditor = firstParam(sp, "editor");
+  const rawProduct = firstParam(sp, "producto");
+
+  const funnelFilters: Required<FunnelReportFilters> = {
+    days: rawWindow === "7" || rawWindow === "7d" ? 7 : 30,
+    deviceCategory:
+      rawDevice === "mobile" || rawDevice === "tablet" || rawDevice === "desktop"
+        ? rawDevice
+        : "all",
+    editorKind:
+      rawEditor === "photo" ||
+      rawEditor === "name" ||
+      rawEditor === "letterset" ||
+      rawEditor === "catalog"
+        ? rawEditor
+        : "all",
+    productSlug:
+      rawProduct && rawProduct !== "_all" && PRODUCT_SLUG_OR_ALL_REGEX.test(rawProduct)
+        ? rawProduct
+        : "all",
+  };
 
   // Modo catálogo (Etapa 1): sin pagos en línea NO se generan Orders — los KPIs
   // basados en Order (pedidos pagados, ingresos, top productos) serían ceros
@@ -93,7 +137,10 @@ export default async function AdminMetricasPage() {
 
   // Consultas independientes → Promise.all para no serializar round-trips a DB.
   // En modo catálogo las queries de Order ni siquiera se disparan (orderData=null).
-  const [quotesByStatus, orderData, cmsStats] = await Promise.all([
+  // [FIN-01] — todas las consultas de Order/OrderItem filtran `deletedAt: null` y los
+  // ingresos del mes usan el mismo criterio de caja real que `/admin/finanzas`
+  // (Wompi confirmado + COD entregado − retractos reembolsados en el mes).
+  const [quotesByStatus, orderData, funnelReport, crmReport] = await Promise.all([
     prisma.quote.groupBy({
       by: ["status"],
       where: { deletedAt: null },
@@ -104,46 +151,51 @@ export default async function AdminMetricasPage() {
       : Promise.all([
           prisma.order.groupBy({
             by: ["status"],
+            where: { deletedAt: null },
             _count: { _all: true },
           }),
           // Se excluyen los DRAFT: son carritos abandonados, no pedidos reales, e
           // inflarían el conteo que Lucy usa como pulso del negocio.
           prisma.order.count({
-            where: { createdAt: { gte: thirtyDaysAgo }, status: { not: "DRAFT" } },
+            where: {
+              deletedAt: null,
+              createdAt: { gte: thirtyDaysAgo },
+              status: { not: "DRAFT" },
+            },
           }),
           prisma.order.aggregate({
-            where: { status: { in: PAID_STATUSES }, createdAt: { gte: startOfMonth } },
+            where: {
+              ...COLLECTED_REVENUE_ORDER_WHERE,
+              createdAt: { gte: startOfMonth },
+            },
             _sum: { total: true },
           }),
-          // Top 10 variantes por unidades vendidas en pedidos pagados.
+          prisma.retractRequest.aggregate({
+            where: {
+              status: "REFUNDED",
+              refundedAt: { gte: startOfMonth },
+              orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+            },
+            _sum: { refundAmount: true },
+          }),
+          // Top 10 variantes por unidades vendidas en pedidos confirmados activos.
           prisma.orderItem.groupBy({
             by: ["variantId"],
-            where: { order: { status: { in: PAID_STATUSES } } },
+            where: { order: { deletedAt: null, status: { in: PAID_STATUSES } } },
             _sum: { qty: true },
             orderBy: { _sum: { qty: "desc" } },
             take: 10,
           }),
         ]),
-    getCmsObservabilityStats(),
+    getFunnelDashboardReport(funnelFilters, now),
+    catalog ? Promise.resolve(null) : getCrmBehavioralIntelligence(funnelFilters.days),
   ]);
   const ordersByStatus = orderData?.[0] ?? [];
   const ordersLast30 = orderData?.[1] ?? 0;
-  const revenueCents = orderData?.[2]._sum.total ?? 0;
-  const topByVariant = orderData?.[3] ?? [];
-
-  // Fecha corta para el KPI de caché: hora local; el año solo si no es el actual.
-  const cacheRefreshLabel = cmsStats.lastCacheRefresh
-    ? new Intl.DateTimeFormat("es-CO", {
-        day: "numeric",
-        month: "short",
-        ...(cmsStats.lastCacheRefresh.getFullYear() !== now.getFullYear()
-          ? { year: "numeric" as const }
-          : {}),
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(cmsStats.lastCacheRefresh)
-    : "Nunca";
+  const grossMonthRevenueCents = orderData?.[2]._sum.total ?? 0;
+  const monthRetractRefundCents = orderData?.[3]._sum.refundAmount ?? 0;
+  const revenueCents = Math.max(0, grossMonthRevenueCents - monthRetractRefundCents);
+  const topByVariant = orderData?.[4] ?? [];
 
   const orderCount = new Map<OrderStatus, number>(
     ordersByStatus.map((g) => [g.status, g._count._all]),
@@ -211,10 +263,10 @@ export default async function AdminMetricasPage() {
               trendLabel="Sin contar borradores (carritos abandonados)"
             />
             <KpiCard
-              label="Ingresos del mes"
+              label="Ingresos netos del mes"
               value={formatCOP(revenueCents)}
               trend="up"
-              trendLabel={`Pedidos pagados en ${monthLabel}`}
+              trendLabel={`Caja cobrada en ${monthLabel} (Wompi + COD entregado − retractos)`}
             />
           </div>
         )}
@@ -223,18 +275,66 @@ export default async function AdminMetricasPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {!catalog && (
             <AdminCard className="p-5">
-              <h2 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
-                Pedidos por estado
-              </h2>
-              <ul className="space-y-2.5">
-                {(Object.keys(ORDER_STATUS_LABEL) as OrderStatus[]).map((s) => (
-                  <li key={s} className="flex items-center justify-between gap-3">
-                    <AdminBadge tone={ORDER_STATUS_TONE[s]}>{ORDER_STATUS_LABEL[s]}</AdminBadge>
-                    <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-                      {(orderCount.get(s) ?? 0).toLocaleString("es-CO")}
-                    </span>
-                  </li>
-                ))}
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                  Pedidos por estado
+                </h2>
+                <Link
+                  href="/admin/pedidos"
+                  className="text-brand-purple text-xs font-semibold hover:underline"
+                >
+                  Ver todos →
+                </Link>
+              </div>
+              <ul className="space-y-3">
+                {(() => {
+                  const statusKeys = Object.keys(ORDER_STATUS_LABEL) as OrderStatus[];
+                  const totalOrdersAll = statusKeys.reduce(
+                    (acc, s) => acc + (orderCount.get(s) ?? 0),
+                    0,
+                  );
+                  return statusKeys.map((s) => {
+                    const count = orderCount.get(s) ?? 0;
+                    const pct = totalOrdersAll > 0 ? Math.round((count / totalOrdersAll) * 100) : 0;
+                    const rowContent = (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <AdminBadge tone={ORDER_STATUS_TONE[s]}>
+                            {ORDER_STATUS_LABEL[s]}
+                          </AdminBadge>
+                          <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
+                            {count.toLocaleString("es-CO")}
+                            {totalOrdersAll > 0 && (
+                              <span className="text-brand-muted ml-1.5 text-xs font-normal">
+                                ({pct}%)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="bg-brand-purple/10 mt-1.5 h-1.5 overflow-hidden rounded-full">
+                          <div
+                            className="bg-brand-purple/75 h-full rounded-full transition-all"
+                            style={{ width: `${count > 0 ? Math.max(3, pct) : 0}%` }}
+                          />
+                        </div>
+                      </>
+                    );
+                    return (
+                      <li key={s}>
+                        {s === "DRAFT" ? (
+                          <div>{rowContent}</div>
+                        ) : (
+                          <Link
+                            href={`/admin/pedidos?status=${s}`}
+                            className="hover:bg-brand-purple/5 -mx-2 block rounded-lg px-2 py-1 transition-colors"
+                          >
+                            {rowContent}
+                          </Link>
+                        )}
+                      </li>
+                    );
+                  });
+                })()}
               </ul>
             </AdminCard>
           )}
@@ -243,15 +343,32 @@ export default async function AdminMetricasPage() {
             <h2 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
               Cotizaciones por estado
             </h2>
-            <ul className="space-y-2.5">
-              {QUOTE_STATUSES.map((s) => (
-                <li key={s} className="flex items-center justify-between gap-3">
-                  <AdminBadge tone={QUOTE_STATUS_TONE[s]}>{QUOTE_STATUS_LABEL[s]}</AdminBadge>
-                  <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-                    {(quoteCount.get(s) ?? 0).toLocaleString("es-CO")}
-                  </span>
-                </li>
-              ))}
+            <ul className="space-y-3">
+              {QUOTE_STATUSES.map((s) => {
+                const count = quoteCount.get(s) ?? 0;
+                const pct = totalQuotes > 0 ? Math.round((count / totalQuotes) * 100) : 0;
+                return (
+                  <li key={s}>
+                    <div className="flex items-center justify-between gap-3">
+                      <AdminBadge tone={QUOTE_STATUS_TONE[s]}>{QUOTE_STATUS_LABEL[s]}</AdminBadge>
+                      <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
+                        {count.toLocaleString("es-CO")}
+                        {totalQuotes > 0 && (
+                          <span className="text-brand-muted ml-1.5 text-xs font-normal">
+                            ({pct}%)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="bg-brand-purple/10 mt-1.5 h-1.5 overflow-hidden rounded-full">
+                      <div
+                        className="bg-brand-purple/75 h-full rounded-full transition-all"
+                        style={{ width: `${count > 0 ? Math.max(3, pct) : 0}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
             <p className="text-brand-muted border-brand-purple/10 mt-4 border-t pt-3 text-xs">
               Total: <strong>{totalQuotes.toLocaleString("es-CO")}</strong> cotizaciones activas (no
@@ -312,69 +429,38 @@ export default async function AdminMetricasPage() {
           </section>
         )}
 
-        {!catalog && (
-          <AdminNotice tone="info">
-            <strong>¿Cómo se calcula?</strong> “Pagados” incluye pedidos pagados, en preparación,
-            enviados y entregados (la plata ya entró). No suma cancelados ni reembolsados. El top de
-            productos cuenta solo unidades de pedidos pagados.
-          </AdminNotice>
+        {/* Embudo vivo tienda + Estudio ([ANA-01], Fase 2): interactivo por ventana,
+            dispositivo, superficie y producto. Sin PII ni cookies. */}
+        <FunnelPanel report={funnelReport} filters={funnelFilters} />
+
+        {/* Inteligencia conductual CRM, RFM, margen neto y atribución (Fase 12 · S27) */}
+        {!catalog && crmReport && (
+          <CrmIntelligencePanel
+            report={crmReport}
+            canAccessSegments={canAccessAdminPath(role, "/admin/marketing/segmentos")}
+            canAccessCarts={canAccessAdminPath(role, "/admin/carritos")}
+            canAccessOpportunities={canAccessAdminPath(role, "/admin/oportunidades")}
+          />
         )}
 
-        {/* Observabilidad del CMS (roadmap D2): pulso del contenido administrable.
-            Aplica también en modo catálogo — el CMS existe en las dos etapas. */}
-        <section>
-          <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-base font-bold">
-            <FileText className="h-5 w-5" />
-            Contenido del sitio (CMS)
-          </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard
-              label="Campos administrables"
-              value={cmsStats.totalFields}
-              trendLabel="Textos, imágenes y ajustes editables del sitio"
-            />
-            <KpiCard
-              label="Cambios sin publicar"
-              value={cmsStats.draftsPending}
-              trend={
-                cmsStats.staleDrafts > 0 ? "down" : cmsStats.draftsPending === 0 ? "up" : "neutral"
-              }
-              trendLabel={
-                cmsStats.draftsPending === 0
-                  ? "Todo el contenido está publicado"
-                  : cmsStats.staleDrafts > 0
-                    ? `${cmsStats.staleDrafts.toLocaleString("es-CO")} llevan más de 7 días sin publicar`
-                    : "Ninguno lleva más de 7 días"
-              }
-            />
-            <KpiCard
-              label="Sin editar desde su carga inicial"
-              value={cmsStats.neverEdited}
-              trendLabel="Candidatos a revisar si el texto aún aplica"
-            />
-            <KpiCard
-              label="Última actualización de caché"
-              value={cacheRefreshLabel}
-              trendLabel="Botón «Actualizar caché de contenido» del índice"
-            />
-          </div>
-          <p className="text-brand-muted mt-3 text-xs">
-            Ver el detalle en{" "}
-            <Link
-              href="/admin/contenido"
-              className="text-brand-purple font-semibold hover:underline"
-            >
-              Páginas del sitio
+        {!catalog && (
+          <AdminNotice tone="info">
+            <strong>¿Cómo se calcula?</strong> Los ingresos netos del mes usan el mismo criterio de{" "}
+            <Link href="/admin/finanzas" className="font-semibold underline">
+              Finanzas
             </Link>
-            {" · "}
-            <Link
-              href="/admin/contenido/borradores"
-              className="text-brand-purple font-semibold hover:underline"
-            >
-              Cambios sin publicar
-            </Link>
-          </p>
-        </section>
+            : suman pagos en línea confirmados (Wompi) y contra entrega ya entregados, y restan las
+            devoluciones reembolsadas por retracto. Nunca se cuentan borradores ni pedidos
+            eliminados.{" "}
+            <span className="text-brand-purple-dark/80">
+              Para gestionar textos y borradores del sitio ir a{" "}
+              <Link href="/admin/contenido" className="font-semibold underline">
+                Páginas del sitio
+              </Link>
+              .
+            </span>
+          </AdminNotice>
+        )}
       </AdminPageBody>
     </AdminPage>
   );

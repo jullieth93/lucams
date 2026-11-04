@@ -76,7 +76,7 @@ export function CarriersSection({
             <CarrierLogoMark carrier="lucams" />
             <div className="min-w-0">
               <p className="text-brand-purple-dark text-sm font-semibold">
-                Envío Lucam&apos;s{" "}
+                Envío Lucams{" "}
                 <span className="bg-brand-turquoise/40 ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold text-teal-900">
                   Propio
                 </span>

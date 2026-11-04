@@ -13,6 +13,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight, FileText } from "lucide-react";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { listQuotes } from "@/features/quotes/admin-service";
@@ -76,7 +77,7 @@ export default async function AdminCotizacionesPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
 
   const sp = await searchParams;
   const q = pickString(sp, "q");

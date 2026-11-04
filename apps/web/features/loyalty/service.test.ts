@@ -9,7 +9,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { computeEarnedPoints, pointValueCents, quoteRedemption } from "./service";
+import {
+  computeEarnedPoints,
+  formatLoyaltyReason,
+  pointValueCents,
+  quoteRedemption,
+  retractRefundReason,
+} from "./service";
 
 // Config por defecto del negocio: 1 punto por cada $1.000 pagados,
 // 100 puntos = $1.000 de descuento, mínimo 100, tope 50% del subtotal.
@@ -120,5 +126,17 @@ describe("quoteRedemption", () => {
       settings: { ...SETTINGS, redeemMaxPercent: 0 },
     });
     expect(q.ok).toBe(false);
+  });
+});
+
+describe("formatLoyaltyReason", () => {
+  it("traduce razones estándar y retractos parciales sin exponer IDs internos", () => {
+    expect(formatLoyaltyReason("EARN")).toBe("Puntos ganados por tu compra");
+    expect(formatLoyaltyReason("REFUND")).toBe(
+      "Puntos restaurados (pedido cancelado o reembolsado)",
+    );
+    expect(formatLoyaltyReason(retractRefundReason("cma123xyz"))).toBe(
+      "Puntos restaurados por devolución (retracto)",
+    );
   });
 });

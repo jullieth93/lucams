@@ -15,6 +15,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  MasterPhotoLoadError,
   isPrintMasterMode,
   runWithPrintMasters,
   waitForMasterPhotosReady,
@@ -126,6 +127,74 @@ describe("runWithPrintMasters", () => {
         throw new Error("toDataURL falló");
       }),
     ).rejects.toThrow("toDataURL falló");
+    expect(isPrintMasterMode()).toBe(false);
+  });
+
+  it("[STU-01] auto-renueva signed URLs vencidas (>1h) vía refreshMasters y exporta el master fresco", async () => {
+    const EXPIRED_MASTER = "https://signed.example/master.jpg?token=expired";
+    const FRESH_MASTER = "https://signed.example/master.jpg?token=fresh";
+
+    vi.stubGlobal(
+      "Image",
+      class {
+        crossOrigin = "";
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(v: string) {
+          setTimeout(() => {
+            if (v.includes("expired")) this.onerror?.();
+            else this.onload?.();
+          }, 0);
+        }
+      },
+    );
+
+    const stage = fakeStage({ ".slot-photo": DERIVATIVE });
+    const stages = new Map<number, FakeStage | null>([[0, stage]]);
+    const refreshMasters = vi.fn(async () => {
+      // Simula que el store/stage re-mapea al master recién firmado.
+      setTimeout(() => stage.set(".slot-photo", FRESH_MASTER), 10);
+      return [{ slotIndex: 0, assetUrl: FRESH_MASTER }];
+    });
+
+    const exported = await runWithPrintMasters(
+      [{ slotIndex: 0, assetUrl: EXPIRED_MASTER }],
+      stages,
+      async () => stage.findOne(".slot-photo")?.image().src,
+      { refreshMasters, timeoutMs: 1000 },
+    );
+
+    expect(refreshMasters).toHaveBeenCalledTimes(1);
+    expect(exported).toBe(FRESH_MASTER);
+    expect(isPrintMasterMode()).toBe(false);
+  });
+
+  it("[STU-01] fail-closed: lanza MasterPhotoLoadError si el master sigue fallando tras refresh (jamás hornea #F4ECFF)", async () => {
+    const BROKEN_MASTER = "https://signed.example/master.jpg?token=broken";
+    vi.stubGlobal(
+      "Image",
+      class {
+        crossOrigin = "";
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(_v: string) {
+          setTimeout(() => this.onerror?.(), 0);
+        }
+      },
+    );
+
+    const stage = fakeStage({ ".slot-photo": DERIVATIVE });
+    const stages = new Map<number, FakeStage | null>([[0, stage]]);
+    const fn = vi.fn(async () => "never-called");
+
+    await expect(
+      runWithPrintMasters([{ slotIndex: 0, assetUrl: BROKEN_MASTER }], stages, fn, {
+        refreshMasters: async () => [{ slotIndex: 0, assetUrl: BROKEN_MASTER }],
+        timeoutMs: 200,
+      }),
+    ).rejects.toBeInstanceOf(MasterPhotoLoadError);
+
+    expect(fn).not.toHaveBeenCalled();
     expect(isPrintMasterMode()).toBe(false);
   });
 });

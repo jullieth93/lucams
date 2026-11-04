@@ -28,6 +28,7 @@ import {
   AdminTableBody,
   AdminTableRow,
 } from "@/components/admin-page";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getSettingValue } from "@/lib/cms";
 import { formatCOP } from "@/lib/format";
@@ -74,7 +75,8 @@ export default async function ConciliacionCodPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireRole(["SUPERADMIN"]);
+  const session = await requireRole(ADMIN_ROLE_SETS.FINANCE_COD);
+  const isSuperadmin = session.admin.role === "SUPERADMIN";
   // Modo catálogo (Etapa 1): no hay pedidos contra entrega (sin checkout) —
   // el nav oculta Finanzas; esto cierra el acceso por URL directa.
   if (isCatalogMode()) redirect("/admin/dashboard");
@@ -116,27 +118,38 @@ export default async function ConciliacionCodPage({
         {codEnabled ? (
           <AdminNotice tone="success">
             <strong>Contraentrega activa:</strong> los clientes pueden elegir «pago contra entrega»
-            en el checkout. Se apaga en{" "}
-            <Link
-              href="/admin/contenido/paginas/global"
-              className="font-semibold underline hover:text-emerald-900"
-            >
-              Contenido › Ajustes del sitio › Comercio
-            </Link>{" "}
-            (ajuste COD_ENABLED).
+            en el checkout.
+            {isSuperadmin && (
+              <>
+                {" "}
+                Se apaga en{" "}
+                <Link
+                  href="/admin/contenido/paginas/global"
+                  className="font-semibold underline hover:text-emerald-900"
+                >
+                  Contenido › Ajustes del sitio › Comercio
+                </Link>{" "}
+                (ajuste COD_ENABLED).
+              </>
+            )}
           </AdminNotice>
         ) : (
           <AdminNotice tone="warning">
             <strong>Contraentrega DESACTIVADA:</strong> este módulo no tendrá movimientos nuevos —
             la tabla de abajo es solo el histórico. El checkout no ofrece «pago contra entrega» (el
-            ajuste COD_ENABLED está apagado o no existe).{" "}
-            <Link
-              href="/admin/contenido/paginas/global"
-              className="font-semibold underline hover:text-amber-900"
-            >
-              Editar en Ajustes del sitio › Comercio
-            </Link>
-            <CodEnableButton />
+            ajuste COD_ENABLED está apagado o no existe).
+            {isSuperadmin && (
+              <>
+                {" "}
+                <Link
+                  href="/admin/contenido/paginas/global"
+                  className="font-semibold underline hover:text-amber-900"
+                >
+                  Editar en Ajustes del sitio › Comercio
+                </Link>
+                <CodEnableButton />
+              </>
+            )}
           </AdminNotice>
         )}
 

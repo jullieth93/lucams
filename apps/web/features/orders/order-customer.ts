@@ -1,23 +1,31 @@
 /*
- * Resolución del Customer EFECTIVO de un pedido (bug STG 2026-10, pedido
- * LCM-2026-0010: se digitó el contacto crittan01@gmail.com pero la Order
- * quedó amarrada al Customer de la sesión activa, r.julliethhr@gmail.com).
+ * Resolución determinista del Customer propietario de un pedido ([ID-01],
+ * auditoría 2026-11 · SUPERSEDE la mitad de atribución por email de ADR-127,
+ * alineándose con ADR-155 «la identidad del cliente la deriva la SESIÓN»).
  *
- * Regla: el customerId que llega del checkout es el del Customer de SESIÓN.
- * Si el email del contacto digitado difiere (case-insensitive) del email de
- * ese Customer, el pedido NO es de esa cuenta — se re-vincula al Customer
- * dueño del email digitado (si existe) o queda como guest (customerId null).
+ * Por qué NO re-vincular `Order.customerId` al dueño del `contactEmail`:
+ *   1. Robo de Puntos Lucams: si `Customer A` (autenticado) digita el correo de
+ *      `Customer B` en `/checkout/datos`, reasignar `orderCustomerId = B.id`
+ *      hacía que `quoteRedemptionForOrder` / `reserveRedeemedPoints` descontaran
+ *      los Puntos Lucams de `B` para pagar el pedido de `A`.
+ *   2. Fuga de datos personales y diseños privados (Ley 1581): el pedido con
+ *      fotos del Estudio de `A`, dirección y documento aparecía en
+ *      `/mi-cuenta/pedidos` de `B` (y si quedara con `customerId = null`,
+ *      `claimGuestOrdersForCustomer` también se lo adjudicaría a `B` al iniciar
+ *      sesión).
+ *   3. El bug original de perfil de `LCM-2026-0010` (no pisar el documento
+ *      tributario del perfil cuando el correo difiere) ya está cubierto por el
+ *      guard explícito de `ADR-155` en `features/checkout/service.ts`.
  *
- * ¿Por qué no CREAR el Customer cuando no existe? El schema exige
- * Customer.supabaseUserId NOT NULL (la fila nace del registro/login Supabase),
- * así que no hay forma válida de crear un Customer "solo email" desde el
- * checkout. El pedido guest conserva el email en Order.email y, si esa
- * persona se registra después, claimGuestOrdersForCustomer
- * (features/orders/claim-guest-orders.ts, E2) le atribuye esos pedidos al
- * verificar el OTP del signup o en su primer login.
- *
- * Módulo sin "server-only" (mismo patrón que checkout/address-key.ts) para
- * poder testearlo directo con un client stub.
+ * Regla vigente:
+ *   - Sin sesión (`sessionCustomerId === null`) → `null` (pedido invitado; el
+ *     correo viaja en `Order.email` y solo se reclama tras verificar posesión
+ *     del buzón vía OTP/login en `claimGuestOrdersForCustomer`).
+ *   - Con sesión (`sessionCustomerId` activo y no borrado) → `sessionCustomer.id`,
+ *     incluso si el comprador indicó un correo de contacto secundario/laboral
+ *     en `Order.email`.
+ *   - Si el `Customer` de la sesión fue eliminado (`deletedAt != null`) → `null`
+ *     (jamás cae a buscar otro `Customer` por email sin prueba de posesión).
  */
 
 import type { Prisma } from "@/lib/db";
@@ -31,32 +39,19 @@ export function emailsEqual(a: string | null | undefined, b: string | null | und
 type CustomerClient = Pick<Prisma.TransactionClient, "customer">;
 
 /**
- * Devuelve el customerId con el que debe nacer el pedido:
- *  - guest sin sesión (sessionCustomerId null) → null, sin cambios.
- *  - el email del contacto coincide con el del Customer de sesión → ese id.
- *  - difiere → el Customer (no borrado) dueño del email digitado, o null si
- *    no existe (pedido guest; el email viaja en Order.email).
+ * Devuelve el `customerId` propietario del pedido derivado exclusivamente de la
+ * sesión autenticada verificada (nunca de `contactEmail` sin autenticar).
  */
 export async function resolveOrderCustomerId(
   client: CustomerClient,
   sessionCustomerId: string | null,
-  contactEmail: string,
+  _contactEmail?: string,
 ): Promise<string | null> {
   if (!sessionCustomerId) return null;
 
   const sessionCustomer = await client.customer.findFirst({
     where: { id: sessionCustomerId, deletedAt: null },
-    select: { id: true, email: true },
-  });
-  if (sessionCustomer && emailsEqual(sessionCustomer.email, contactEmail)) {
-    return sessionCustomer.id;
-  }
-
-  // El contacto digitado no es la cuenta de la sesión (o ese Customer ya no
-  // existe): el pedido pertenece al dueño del email digitado, si lo hay.
-  const byEmail = await client.customer.findFirst({
-    where: { email: { equals: contactEmail.trim(), mode: "insensitive" }, deletedAt: null },
     select: { id: true },
   });
-  return byEmail?.id ?? null;
+  return sessionCustomer?.id ?? null;
 }

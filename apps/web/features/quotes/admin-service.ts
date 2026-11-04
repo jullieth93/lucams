@@ -179,7 +179,7 @@ export async function getQuoteProductionBundle(id: string) {
 // ─────────────────────────────────────────────────────────────────────
 
 export async function updateQuoteStatus(id: string, status: QuoteStatus) {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.OPPORTUNITIES });
 
   const existing = await prisma.quote.findFirst({
     where: { id, deletedAt: null },
@@ -219,7 +219,7 @@ export async function updateQuoteStatus(id: string, status: QuoteStatus) {
  * campo guarda solo el texto acumulado.
  */
 export async function addQuoteInternalNote(id: string, note: string) {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.OPPORTUNITIES });
 
   const trimmed = note.trim();
   if (!trimmed) {

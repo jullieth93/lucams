@@ -1,111 +1,97 @@
-.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores seed-admin admin-mfa-reset seed-clean audit-script-guards audit-slugs audit-content uptime-monitor test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean clean-tmp fix-fotoimanes
+.PHONY: help local-up local-down local-status db-local-start db-local-stop db-local-setup db-local-on db-local-off db-local-seed db-local-reset web-start web-stop check verify-db audit-script-guards audit-content test-local test-rls test-e2e test-e2e-fullmode test-load build migrate-cms-v2 seed-products seed-letter-sets seed-admin admin-mfa-reset db-stg-setup db-stg-seed clean clean-tmp
 
-# Makefile del repo — build/test para CI y devs, más el runtime del entorno
-# local completo: Supabase local en podman (grupo db-local-*) y app Next
-# (grupos web-* / local-*), con state/log/pid en tmp/ (gitignored).
-
-help:
-	@echo "Lucams_shop — build/test + entorno local (DB podman + app Next)"
-	@echo ""
-	@echo "  make install      pnpm install --frozen-lockfile"
-	@echo "  make build        Next.js production build"
-	@echo "  make typecheck    tsc --noEmit en apps/web"
-	@echo "  make lint         ESLint"
-	@echo "  make format       Prettier --write"
-	@echo "  make migrate      pnpm prisma migrate deploy"
-	@echo "  make seed-products    Catálogo canónico (seed-catalog-canonical, --apply)"
-	@echo "  make seed-templates   Pobla plantillas Estudio Personalización"
-	@echo "  make seed-ocasiones   Pobla 15 OcasionTag (PLAN_CATALOG_V2 1.5)"
-	@echo "  make seed-catalog-v2  Delta PLAN_CATALOG_V2 (sub-cats + placeholders + links)"
-	@echo "  make migrate-cms-v2   Upsert del site map CMS v2 (idempotente)"
-	@echo "  make seed-abecedario  Abecedario a 3 productos (ADR-057, idempotente)"
-	@echo "  make seed-admin       Crea/reactiva AdminUser (dry-run sin --apply; pide confirmación)"
-	@echo "  make admin-mfa-reset  Reset MFA de un admin (EMAIL=...; pide confirmación)"
-	@echo ""
-	@echo "  Entorno local (Supabase local en podman, espejo de la nube):"
-	@echo "    make db-local-start   Levanta el stack (reanuda si ya existe)"
-	@echo "    make db-local-stop    Apaga conservando contenedores y datos"
-	@echo "    make db-local-reset   Reset TOTAL: borra volúmenes y rehace todo"
-	@echo "    make db-local-status  Estado y keys del stack local"
-	@echo "    make db-local-setup   Extensiones + migraciones en el stack local"
-	@echo "    make db-local-on/off  .env.local ↔ stack local / nube compartida"
-	@echo "    make db-local-seed    Catálogo + plantillas + CMS en el stack local"
-	@echo ""
-	@echo "  App Next y entorno completo:"
-	@echo "    make web-start/stop   App en :4000 (nohup; log en tmp/logs/)"
-	@echo "    make local-up/down    Sube/baja TODO (DB + GUIs + app)"
-	@echo "    make local-status     Estado del entorno completo"
-	@echo "    make test-local       Suite vitest contra el stack local"
-	@echo ""
-	@echo "  Staging (nube Free — requiere .env.stg):"
-	@echo "    make db-stg-setup     Esquema completo en lucams-stg"
-	@echo "    make db-stg-seed      Catálogo + plantillas + CMS en lucams-stg"
-	@echo ""
-	@echo "  Tests (Vitest/Playwright se setean en sub-bloques siguientes):"
-	@echo "    make test         Todos los tests"
-	@echo "    make test-unit    Vitest"
-	@echo "    make test-e2e     Playwright"
-	@echo "    make test-rls     Tests RLS (rls-coverage + rls-matrix, vía vitest)"
-	@echo "    make clean-tmp    Depura tmp/ (efímero): conserva bin/ + pids/ + logs/"
-
-install:
-	pnpm install --frozen-lockfile
-
-build:
-	pnpm --filter web build
-
-typecheck:
-	pnpm --filter web typecheck
-
-lint:
-	pnpm --filter web lint
-
-format:
-	pnpm format
-
-migrate:
-	pnpm --filter @lucams/db db:migrate:deploy
-
-# ─── Supabase LOCAL para dev diario (espejo de la nube, podman rootless) ───
-# Flujo: make db-local-start → make db-local-setup → make db-local-on →
-#        make db-local-seed → (trabajar) → make db-local-off / db-local-stop.
-# El CLI (2.111.0, la misma de CI) vive en tmp/bin/supabase (herramienta local
-# gitignored); el socket es el de podman del usuario.
+# Makefile operativo — Lucams Shop
+# Orquesta únicamente lo que aporta valor real sobre `pnpm`:
+#   1. Entorno local en Podman rootless + Next.js en :4000 (protegiendo volúmenes).
+#   2. Gates compuestos de calidad, esquema/RLS y suites contra el stack local.
+#   3. Operaciones puntuales de datos/break-glass con carga explícita de .env.local / .env.stg.
 
 SB_LOCAL_SOCK := unix:///run/user/$(shell id -u)/podman/podman.sock
+WEB_PID := tmp/pids/web-dev.pid
+WEB_LOG := tmp/logs/web-dev.log
 
-db-local-start: ## Levanta el stack Supabase local (reanuda si ya existe; lo crea si no)
+help:
+	@echo "Lucams Shop — Comandos operativos reales"
+	@echo ""
+	@echo "  1. Día a día en LOCAL (Podman + Next :4000):"
+	@echo "    make local-up         Sube DB local + app Next (:4000)"
+	@echo "    make local-down       Baja app + DB local (conserva datos)"
+	@echo "    make local-status     Estado de contenedores, keys y PID de :4000"
+	@echo "    make web-start/stop   Arranca o detiene solo Next dev (:4000)"
+	@echo ""
+	@echo "  2. Base de datos LOCAL (Supabase en Podman):"
+	@echo "    make db-local-start   Levanta/reanuda contenedores sin perder volúmenes"
+	@echo "    make db-local-stop    Apaga contenedores con podman stop nativo"
+	@echo "    make db-local-setup   Extensiones + migraciones Prisma y SQL RLS"
+	@echo "    make db-local-on/off  Apunta .env.local al stack local o restaura nube"
+	@echo "    make db-local-seed    Catálogo + plantillas + ocasiones + fichas + CMS + Contact backfill"
+	@echo "    make db-local-reset   Reset TOTAL: borra volúmenes y rehace start+setup+seed"
+	@echo ""
+	@echo "  3. Verificación, Seguridad y Build:"
+	@echo "    make check            Gate rápido pre-push (format:check + typecheck + lint + db tests + guards + CMS)"
+	@echo "    make verify-db        Verifica 0 drift Prisma↔SQL y 5/5 invariantes RLS/grants"
+	@echo "    make test-local       Suite Vitest completa contra el stack local"
+	@echo "    make test-rls         Suite RLS real (rls-coverage + rls-matrix)"
+	@echo "    make test-e2e         Playwright E2E"
+	@echo "    make test-e2e-fullmode Suite E2E modo full aislada en :4100 (solo LOCAL)"
+	@echo "    make test-load        Carga k6 del storefront contra BASE_URL (default :4000)"
+	@echo "    make build            Build de producción Next.js (en 4 GB RAM: correr antes make db-local-stop)"
+	@echo ""
+	@echo "  4. Operaciones puntuales y Staging:"
+	@echo "    make migrate-cms-v2   Upsert aditivo del site map CMS v2 en LOCAL"
+	@echo "    make seed-products    Catálogo canónico idempotente (seed-catalog-canonical --apply) en LOCAL"
+	@echo "    make seed-letter-sets Sets base de fichas (es/en) en LOCAL"
+	@echo "    make seed-admin       Alta/reactivación break-glass de AdminUser (EMAIL=...)"
+	@echo "    make admin-mfa-reset  Reset MFA break-glass de un admin (EMAIL=...)"
+	@echo "    make db-stg-setup     Aplica esquema completo en lucams-stg (.env.stg)"
+	@echo "    make db-stg-seed      Siembra catálogo + plantillas + CMS + backfill en lucams-stg"
+	@echo ""
+	@echo "  5. Higiene:"
+	@echo "    make clean            Borra .next y cachés de compilación"
+	@echo "    make clean-tmp        Depura tmp/ conservando solo bin/, pids/ y logs/"
+
+# ─── 1. Entorno local completo (Podman rootless + Next dev :4000) ───────────
+
+db-local-start:
 	systemctl --user enable --now podman.socket
 	# Si los contenedores ya existen (apagados con `db-local-stop`), los reanuda
-	# con podman nativo CONSERVANDO los datos. Solo si no existen crea el stack
-	# con el CLI (que en podman falla si el volumen ya existe — ver db-local-stop).
-	# Si faltan contenedores (ej. uno borrado a mano), el CLI tampoco puede
-	# recrearlo sin chocar con el bug del volumen → toca db-local-reset.
+	# con podman nativo CONSERVANDO los datos. Solo si no existen los crea con CLI.
 	@N=$$(podman ps -aq --filter name=supabase_ | wc -l); \
 	if [ "$$N" -ge 10 ]; then \
 		echo "→ Contenedores existentes: reanudando con podman start (datos conservados)"; \
 		podman start $$(podman ps -aq --filter name=supabase_); \
 	elif [ "$$N" -gt 0 ]; then \
-		echo "✗ Stack INCOMPLETO ($$N contenedores — falta alguno). El CLI no puede recrearlo en podman (bug del volumen)."; \
-		echo "  Solución: make db-local-reset (rehace todo conservando el esquema del repo; los datos se resiembran)."; \
+		echo "✗ Stack INCOMPLETO ($$N contenedores). El CLI no puede recrearlo sobre volumen existente en podman."; \
+		echo "  Solución: make db-local-reset (rehace el esquema y resiembra datos)."; \
 		exit 1; \
 	else \
 		DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase start --workdir supabase-local -x imgproxy,edge-runtime,realtime; \
 	fi
 
-db-local-stop: ## Apaga el stack CONSERVANDO contenedores y datos (podman stop nativo)
-	# OJO: NO usar `supabase stop` (CLI) para el apagado diario — esa vía BORRA los
-	# contenedores, y al volver (`db-local-start`) el CLI intenta crear el volumen
-	# ya existente y falla en podman ("volume already exists") → fuerza un reset
-	# con pérdida de datos. Con `podman stop` los contenedores quedan y
-	# `db-local-start` los reanuda tal cual.
+db-local-stop:
+	# NO usar `supabase stop`: borra contenedores y choca con volúmenes existentes en podman.
 	podman stop $$(podman ps -q --filter name=supabase_) || true
 
-db-local-restart: ## Reinicia el stack CONSERVANDO datos (podman stop/start nativo)
-	podman stop $$(podman ps -q --filter name=supabase_) || true
-	podman start $$(podman ps -aq --filter name=supabase_)
+db-local-setup:
+	bash scripts/db-local-setup.sh
 
-db-local-reset: ## Reset TOTAL: borra los volúmenes y rehace todo (start+setup+seed)
+db-local-on:
+	bash scripts/db-local-env.sh on
+
+db-local-off:
+	bash scripts/db-local-env.sh off
+
+# Todos los scripts de DB se ejecutan desde packages/db inyectando .env.local explícitamente.
+db-local-seed:
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-canonical.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-templates.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-ocasiones.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-v2.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-letter-sets.mjs
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/backfill-contacts.mjs --apply
+
+db-local-reset:
 	podman stop $$(podman ps -q --filter name=supabase_) || true
 	podman rm $$(podman ps -aq --filter name=supabase_) || true
 	podman volume rm -f supabase_db_lucams-local supabase_storage_lucams-local || true
@@ -113,28 +99,17 @@ db-local-reset: ## Reset TOTAL: borra los volúmenes y rehace todo (start+setup+
 	$(MAKE) db-local-setup
 	$(MAKE) db-local-seed
 
-db-local-status: ## Estado y keys del stack local
-	DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase status --workdir supabase-local
-
-# ─── App web (Next dev) y entorno local COMPLETO (DB + app) ─────────────────
-# La app corre con nohup + setsid (grupo de procesos propio → el stop mata el
-# grupo entero: pnpm → next → workers). PID en tmp/pids, log en tmp/logs
-# (tmp/ está gitignored). El PORT sale de .env.local exportado al shell (un
-# `pnpm dev` pelado arranca en :3000 — Next NO lee PORT del .env).
-
-WEB_PID := tmp/pids/web-dev.pid
-WEB_LOG := tmp/logs/web-dev.log
-
-web-start: ## Levanta la app Next en :4000 (nohup; log en tmp/logs/web-dev.log)
+web-start:
 	@mkdir -p tmp/pids tmp/logs
 	@if [ -f "$(WEB_PID)" ] && kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
 		echo "web: ya corriendo (pid $$(cat $(WEB_PID))) → http://localhost:4000"; \
 	else \
+		rm -f $(WEB_PID); \
 		nohup setsid bash -c 'set -a && source .env.local && set +a && exec pnpm --filter web dev' > "$(WEB_LOG)" 2>&1 & echo $$! > $(WEB_PID); \
 		echo "web: arrancando (pid $$(cat $(WEB_PID))) — log: $(WEB_LOG)"; \
 	fi
 
-web-stop: ## Apaga la app Next (mata el grupo de procesos completo)
+web-stop:
 	@if [ -f "$(WEB_PID)" ] && kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
 		kill -- -$$(cat $(WEB_PID)) 2>/dev/null || kill $$(cat $(WEB_PID)); \
 		echo "web: detenida"; \
@@ -143,176 +118,96 @@ web-stop: ## Apaga la app Next (mata el grupo de procesos completo)
 	fi
 	@rm -f $(WEB_PID)
 
-web-restart: web-stop web-start ## Reinicia la app Next
+local-up: db-local-start web-start
+	@echo "✓ Entorno completo arriba: app http://localhost:4000 · Studio :54323 · Mailpit :54324"
 
-local-up: db-local-start web-start ## Sube TODO el entorno local (DB + GUIs + app)
-	@echo "✓ Entorno completo: app http://localhost:4000 · Studio :54323 · Mailpit :54324"
-
-local-down: web-stop db-local-stop ## Baja TODO el entorno local (los datos de la DB persisten)
+local-down: web-stop db-local-stop
 	@echo "✓ Entorno local abajo (los datos de la DB persisten)"
 
-local-restart: db-local-restart web-restart ## Reinicia TODO el entorno local conservando datos
-
-local-status: ## Estado del entorno completo (DB + app)
-	@$(MAKE) db-local-status || true
+local-status:
+	@DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase status --workdir supabase-local || true
 	@if [ -f "$(WEB_PID)" ] && kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
 		echo "web: corriendo (pid $$(cat $(WEB_PID))) → http://localhost:4000"; \
 	else \
+		rm -f $(WEB_PID); \
 		echo "web: detenida"; \
 	fi
 
-db-local-setup: ## Extensiones + prisma migrate + supabase/migrations (orden CI)
-	bash scripts/db-local-setup.sh
+# ─── 2. Verificación, Seguridad y Build ─────────────────────────────────────
 
-db-local-on: ## .env.local → stack local (respaldo en .env.local.nube-backup)
-	bash scripts/db-local-env.sh on
+audit-script-guards:
+	pnpm --filter @lucams/db exec node scripts/lib/check-script-guards.mjs
 
-db-local-off: ## .env.local → nube compartida (restaura el respaldo)
-	bash scripts/db-local-env.sh off
+audit-content:
+	pnpm --filter web exec vitest run lib/cms-sitemap-parity.test.ts
 
-# N-06 (2026-09-12): los 5 canónicos son DRY-RUN por defecto a partir de hoy;
-# estos targets pasan --apply a propósito — correr `make db-local-seed` ES la
-# acción explícita del operador (el dry-run protege la invocación directa
-# `node scripts/<seed>.mjs` con un env equivocado, no el target deliberado).
-db-local-seed: ## Catálogo + plantillas + ocasiones + CMS en el stack local
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-canonical.mjs --apply
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-templates.mjs --apply
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-ocasiones.mjs --apply
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-v2.mjs --apply
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs --apply
+check:
+	pnpm format:check
+	pnpm -r typecheck
+	pnpm -r lint
+	pnpm --filter @lucams/db test
+	$(MAKE) audit-script-guards
+	$(MAKE) audit-content
+	@if git grep -niE '\b(para vos|a vos|con vos|tenés|podés|querés|hacés|respondé|escribinos|mandanos|elegí|contá|contanos|contás|usás|generá|creá|marcá|completá|dejala|registrate|corré|ingresá|revisá|configurá|seleccioná)\b' -- 'apps/web/**/*.ts' 'apps/web/**/*.tsx' 'packages/db/scripts/**/*.mjs' | grep -vE '\.test\.|\.integration\.|fix-voseo|check-voseo'; then echo "✗ Se encontró VOSEO en el copy (mandato es-CO tuteo)"; exit 1; fi
 
-db-stg-setup: ## Esquema completo en lucams-stg (nube Free) — requiere .env.stg
-	bash scripts/db-stg-setup.sh
+verify-db:
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/audit-schema-drift.mjs check
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/verify-security-posture.mjs
 
-db-stg-seed: ## Catálogo + plantillas + ocasiones + CMS en lucams-stg
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-canonical.mjs --apply
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-templates.mjs --apply
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-ocasiones.mjs --apply
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-v2.mjs --apply
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/migrate-cms-v2.mjs --apply
+test-local:
+	pnpm --filter web test
 
-test-local: ## Suite vitest contra el stack local (excluye las 2 suites de la DB compartida)
-	NIGHTLY_LOCALSTACK=1 pnpm --filter web test
+test-rls:
+	pnpm --filter web exec vitest run features/security/rls-coverage.integration.test.ts features/security/rls-matrix.integration.test.ts
 
-# N-06 (2026-09-12): seed-products.mjs se dividió — el catálogo canónico es
-# seed-catalog-canonical.mjs (sin pisar precios/imágenes/estados; --prune opt-in
-# para archivar no-declarados) y las reseñas demo viven en seed-demo-reviews.mjs.
-# El target pasa --apply (acción explícita del operador; el dry-run es para la
-# invocación directa). seed-products.mjs queda como wrapper de compatibilidad.
-seed-products:
-	pnpm --filter @lucams/db exec node scripts/seed-catalog-canonical.mjs --apply
+test-e2e:
+	pnpm --filter web test:e2e
 
-seed-templates:
-	pnpm --filter @lucams/db exec node scripts/seed-templates.mjs --apply
+test-e2e-fullmode:
+	scripts/e2e-fullmode.sh
 
-# PLAN_CATALOG_V2 decisión 1.5 + 2.10 + 3.4 — 15 OcasionTag.
-seed-ocasiones:
-	pnpm --filter @lucams/db exec node scripts/seed-ocasiones.mjs --apply
+test-load:
+	@command -v k6 >/dev/null 2>&1 || { echo "k6 no instalado. https://k6.io/docs/get-started/installation/"; exit 1; }
+	k6 run -e BASE_URL=$${BASE_URL:-http://localhost:4000} tests/load/storefront-browsing.js
 
-# PLAN_CATALOG_V2 delta — sub-categorías jerárquicas + categoría Separadores +
-# productos placeholder + ProductOcasionTag default links + enriquecimiento
-# productos existentes (physicalSpecs / idealFor / productionDays). Idempotente.
-seed-catalog-v2:
-	pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
+build:
+	pnpm --filter web build
 
-# CMS v2 — upsert del site map (páginas/secciones/campos nuevos) al modelo
-# Página→Sección→Campo. Idempotente; no pisa ediciones hechas en v2.
-# (Tras A2 las tablas legacy ya no existen: el paso de migración vieja→nueva
-# se salta solo — solo queda el upsert del mapa.)
+# ─── 3. Operaciones puntuales y Staging ─────────────────────────────────────
+
 migrate-cms-v2:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs --apply
 
-# ADR-057 — Abecedario a 3 productos (Completo / Pack Vocales / Nombre Personalizado)
-# con variantes idioma × tamaño × imantado. Reproducible; no pisa precios editados en
-# admin; archiva los productos viejos. Idempotente.
-seed-abecedario:
-	pnpm --filter @lucams/db exec node scripts/restructure-abecedario.mjs
+seed-products:
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-canonical.mjs --apply
 
-# Limpieza de fixtures de tests filtrados a la BD (categorías "Cat …" etc.). Dry-run por
-# defecto; APPLY=1 ejecuta. Seguro y scoped: nunca toca categorías reales; soft-delete si
-# hay órdenes de por medio.
-cleanup-test-junk:
-	pnpm --filter @lucams/db exec node scripts/cleanup-test-junk.mjs $(if $(APPLY),--apply,)
-
-# ADR-057 — Sets de fichas por defecto (es/en), vacíos y listos para subir en el admin.
 seed-letter-sets:
-	pnpm --filter @lucams/db exec node scripts/seed-letter-sets.mjs
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-letter-sets.mjs
 
-# Break-glass / bootstrap de administración (N-06, 2026-09-12 — los scripts ya
-# existían pero el target no; los headers los invocaban). El target pasa
-# --apply: correr `make seed-admin`/`make admin-mfa-reset` ES la acción
-# deliberada; el script igual pide confirmación interactiva del destino
-# (teclear el host) antes de escribir. Sin --apply quedan en dry-run:
-#   pnpm --filter @lucams/db exec node scripts/seed-admin.mjs
 seed-admin:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-admin.mjs --apply
 
 admin-mfa-reset:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/admin-mfa-reset.mjs --apply
 
-# Reset de testing: borra Customer + AdminUser + auth.users del destino.
-# Dry-run por defecto dentro del script; FORCE=1 ejecuta el borrado real.
-seed-clean:
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-clean.mjs
+db-stg-setup:
+	bash scripts/db-stg-setup.sh
 
-# Lint de guards (N-06): falla si algún script que escribe en DB no importa
-# env-guard. Es gate del job quality en CI (.github/workflows/ci.yml).
-audit-script-guards:
-	pnpm --filter @lucams/db exec node scripts/lib/check-script-guards.mjs
+db-stg-seed:
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-canonical.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-templates.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-ocasiones.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-v2.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-letter-sets.mjs
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/migrate-cms-v2.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/backfill-contacts.mjs --apply
 
-# Dump de slugs activos (productos + categorías) para auditoría.
-audit-slugs:
-	pnpm --filter @lucams/db exec node scripts/audit-slugs.mjs
-
-# Gate de paridad exacta CMS v2 (código ↔ cms-site-map.mjs).
-audit-content:
-	pnpm --filter web exec vitest run lib/cms-sitemap-parity.test.ts
-
-# Monitor de uptime (OPERATIONS § Plan de monitoreo): sondeo manual sin enviar.
-# El programado corre desde el crontab de la VM cada 12 min.
-uptime-monitor:
-	node apps/web/scripts/uptime-monitor.mjs --dry-run
-
-test: test-unit test-e2e
-
-test-unit:
-	pnpm --filter web test
-
-test-e2e:
-	pnpm --filter web test:e2e
-
-test-e2e-fullmode: ## Suite E2E modo FULL (Etapa 2, §7.5) — server dedicado en :4100, LOCAL only
-	scripts/e2e-fullmode.sh
-
-test-coverage:
-	pnpm --filter web test:coverage
-
-# Tests RLS reales vía vitest: rls-coverage (toda tabla de public con RLS — gate por-PR)
-# + rls-matrix (comportamiento de las policies — nightly; se salta limpio sin Supabase real).
-test-rls:
-	pnpm --filter web exec vitest run features/security/rls-coverage.integration.test.ts features/security/rls-matrix.integration.test.ts
-
-test-load:
-	@command -v k6 >/dev/null 2>&1 || { echo "k6 no instalado. https://k6.io/docs/get-started/installation/"; exit 1; }
-	k6 run tests/load/storefront-browsing.js
+# ─── 4. Higiene ─────────────────────────────────────────────────────────────
 
 clean:
 	rm -rf apps/web/.next apps/web/node_modules/.cache
 
-# Higiene de tmp/ (gitignored): auditorías/incidentes/artifacts son EFÍMEROS
-# (política de documentación, CLAUDE.md §4). Conserva solo la tooling viva
-# (tmp/bin = CLI supabase/gitleaks usado por este Makefile) y la estructura
-# pids/logs que web-start recrea. Correr al cerrar una auditoría o cuando
-# tmp/ crezca (2026-10-20: acumuló 3 GB de artifacts de sesiones viejas).
-clean-tmp: ## Depura tmp/ (efímero): conserva solo bin/ (tooling) y pids/ + logs/
+clean-tmp:
 	@du -sh tmp 2>/dev/null || true
 	cd tmp && ls -A | grep -vE '^(bin|pids|logs)$$' | xargs rm -rf
 	@echo "✓ tmp/ depurado (conservados: bin/, pids/, logs/)"
-
-seed-separadores:
-	pnpm --filter @lucams/db exec node scripts/restructure-separadores.mjs
-
-# ONE-SHOT aplicado 2026-07 (ola fotoimanes) — archivado en scripts/one-shot/
-# (N-06, 2026-09-12); el target queda solo para rerun deliberado.
-fix-fotoimanes:
-	pnpm --filter @lucams/db exec node scripts/one-shot/fix-fotoimanes-aspects.mjs

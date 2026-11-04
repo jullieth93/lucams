@@ -15,14 +15,25 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { notFound, redirect } from "next/navigation";
-import { Box, User, MapPin, CreditCard, Truck, Package, Undo2, History } from "lucide-react";
+import { notFound } from "next/navigation";
+import {
+  Box,
+  User,
+  MapPin,
+  CreditCard,
+  Truck,
+  Package,
+  Undo2,
+  History,
+  ShieldCheck,
+} from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
-import { getOrder } from "@/features/orders/service";
+import { getOrderForActor } from "@/features/orders/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
 import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
 import {
@@ -41,8 +52,15 @@ import {
   parseVariantAttributes,
 } from "@/features/products/variant-schemas";
 import { customerWaLink } from "@/lib/wa";
+import { CrmWorkspacePanel } from "@/components/admin/crm-workspace-panel";
+import {
+  listActivitiesForEntity,
+  listAssignableCrmAdmins,
+  listTasksForEntity,
+} from "@/features/crm/service";
 import { OrderActions } from "./order-actions";
 import { RegenLettersetButton } from "./regen-letterset-button";
+import { RetryRenderJobButton } from "./retry-render-job-button";
 import { ProductionPiecesGallery } from "./production-pieces-gallery";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 import {
@@ -126,12 +144,31 @@ export default async function AdminPedidoDetallePage({
 }: {
   params: Promise<{ number: string }>;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireRole(ADMIN_ROLE_SETS.ALL);
+  const role = session.admin.role;
+  const canReadPii = hasCapability(role, "orders:read_pii");
+  const canRead360 = hasCapability(role, "contacts:read_360");
+  const canDownloadProduction = hasCapability(role, "production:download_assets");
+  const canModerate = hasCapability(role, "production:moderate");
+  const canTransition = hasCapability(role, "orders:transition");
+  const canReconcile = hasCapability(role, "orders:reconcile");
+  const canRefund = role === "SUPERADMIN";
+  const canPrintGuide = canReadPii || role === "FULFILLMENT";
+  const canManageTasks = hasCapability(role, "crm:manage_tasks");
+  const canManageActivities = hasCapability(role, "crm:manage_activities");
+  const canViewActivities = canRead360 && canReadPii;
 
   const { number } = await params;
-  const order = await getOrder(decodeURIComponent(number));
+  const order = await getOrderForActor(decodeURIComponent(number), role);
   if (!order) notFound();
+
+  const [crmTasks, crmActivities, assignableAdmins] = await Promise.all([
+    listTasksForEntity({ orderId: order.id }),
+    canViewActivities && order.contactId
+      ? listActivitiesForEntity({ orderId: order.id })
+      : Promise.resolve([]),
+    canManageTasks ? listAssignableCrmAdmins() : Promise.resolve([]),
+  ]);
 
   // Historial de transiciones (OrderStatusEvent — lo escribe transitionOrder en
   // la misma tx del cambio de estado + el evento inicial de createOrderFromCart).
@@ -140,17 +177,18 @@ export default async function AdminPedidoDetallePage({
     orderBy: { createdAt: "asc" },
   });
 
-  // ADR-063 T1 — firmar todos los PNGs de producción (bucket privado) para que el admin los
-  // descargue e imprima. Antes esto era imposible desde la UI. TTL 1h → refrescar la página si expira.
+  // ADR-063 T1 — firmar los PNGs 300 DPI de producción SOLO si el actor posee
+  // `production:download_assets` (principio de mínimo privilegio).
   const productionPaths = order.items.flatMap((it) => it.design?.productionUrls ?? []);
-  const signedProduction = await getProductionAssetSignedUrls(productionPaths);
-  // Fix 1.8 (2026-10-07) — copia PROPIA del PDF de la etiqueta (bucket privado
-  // production-assets, Order.labelPath). Signed URL de TTL corto (15 min): si
-  // expira, recargar la página la renueva. Las URLs externas de Aveonline quedan
-  // solo como respaldo (pueden expirar o pedir sesión según transportadora).
-  const labelSignedUrl = order.labelPath
-    ? ((await getProductionAssetSignedUrls([order.labelPath], 900)).get(order.labelPath) ?? null)
-    : null;
+  const signedProduction = canDownloadProduction
+    ? await getProductionAssetSignedUrls(productionPaths)
+    : new Map<string, string>();
+  // Fix 1.8 (2026-10-07) + S17: la etiqueta PDF contiene dirección exacta y teléfono;
+  // nunca se firma para PRINT_WORKSHOP (solo roles con orders:read_pii o FULFILLMENT).
+  const labelSignedUrl =
+    canPrintGuide && order.labelPath
+      ? ((await getProductionAssetSignedUrls([order.labelPath], 900)).get(order.labelPath) ?? null)
+      : null;
   // ADR-063 T7 — ¿hay piezas finalizadas? → ofrecer el ZIP completo (piezas + hoja de armado).
   const hasProduction = productionPaths.length > 0;
   const productionItems = order.items.filter((it) => (it.design?.productionUrls?.length ?? 0) > 0);
@@ -208,13 +246,14 @@ export default async function AdminPedidoDetallePage({
     !isInternalDelivery &&
     (order.status === "PAID" || (order.status === "FULFILLING" && !order.trackingNumber));
 
-  // Contacto directo: wa.me con el teléfono del comprador (normalizado con
-  // indicativo 57 — lib/wa) y mensaje pre-armado con el número de pedido
-  // (Lucy 2026-08-11). null = teléfono no parseable → se oculta el botón.
-  const customerWa = customerWaLink(
-    order.phone,
-    `Hola ${ship.fullName ?? ""}, te escribo de Lucams por tu pedido ${order.number}. `,
-  );
+  // Contacto directo: wa.me con el teléfono del comprador SOLO si el rol tiene `orders:read_pii`
+  // (enmascarado para taller/despachos).
+  const customerWa = canReadPii
+    ? customerWaLink(
+        order.phone,
+        `Hola ${ship.fullName ?? ""}, te escribo de Lucams por tu pedido ${order.number}. `,
+      )
+    : null;
 
   return (
     <AdminPage>
@@ -222,9 +261,17 @@ export default async function AdminPedidoDetallePage({
         icon={<Box className="h-5 w-5" />}
         title={order.number}
         subtitle={
-          <span className="flex items-center gap-2">
+          <span className="flex flex-wrap items-center gap-2">
             <AdminBadge tone={STATUS_TONE[order.status] ?? "slate"}>{statusLabel}</AdminBadge>
             <span>· creado {dateFmt.format(order.createdAt)}</span>
+            {!canReadPii && (
+              <Hint content="Por privacidad (Ley 1581), los datos de contacto y dirección exacta vienen protegidos desde el servidor para tu rol.">
+                <span className="border-brand-purple/20 bg-brand-cream text-brand-purple-dark inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  Datos personales protegidos
+                </span>
+              </Hint>
+            )}
           </span>
         }
         breadcrumbs={[
@@ -240,7 +287,7 @@ export default async function AdminPedidoDetallePage({
           <div className="space-y-4 lg:col-span-2">
             {/* Items */}
             <Card icon={<Package className="h-4 w-4" />} title={`Items (${order.items.length})`}>
-              {hasProduction && (
+              {hasProduction && canDownloadProduction && (
                 <div className="border-brand-purple/10 bg-brand-cream/40 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
                   <div className="min-w-0">
                     <div className="text-brand-purple-dark text-xs font-bold">
@@ -257,7 +304,7 @@ export default async function AdminPedidoDetallePage({
                         </span>
                       )}
                     </div>
-                    {hasUnapproved && (
+                    {hasUnapproved && canModerate && (
                       <div className="text-[11px] text-amber-800">
                         ⚠️ Revisa los diseños en{" "}
                         <Link
@@ -437,7 +484,8 @@ export default async function AdminPedidoDetallePage({
                                 {/* ADR-188 — el diseño quedó en LÁMINA por set (histórico o
                                     fallo transitorio del encolado): regeneración manual a
                                     fichas 300 DPI individuales. */}
-                                {productionSpec.formatoFisico.tipo === "lamina-fichas" &&
+                                {canTransition &&
+                                  productionSpec.formatoFisico.tipo === "lamina-fichas" &&
                                   it.design && (
                                     <RegenLettersetButton
                                       designId={it.design.id}
@@ -446,14 +494,25 @@ export default async function AdminPedidoDetallePage({
                                   )}
                               </div>
                             )}
-                            <ProductionPiecesGallery
-                              pieces={galleryPieces}
-                              groups={galleryGroups}
-                            />
-                            {galleryPieces.length === 0 && (
-                              <p className="text-brand-muted text-[11px]">
-                                Piezas no disponibles para firma en este momento.
-                              </p>
+                            {canDownloadProduction && (
+                              <>
+                                <ProductionPiecesGallery
+                                  pieces={galleryPieces}
+                                  groups={galleryGroups}
+                                />
+                                {galleryPieces.length === 0 && (
+                                  <p className="text-brand-muted text-[11px]">
+                                    Piezas no disponibles para firma en este momento.
+                                  </p>
+                                )}
+                              </>
+                            )}
+                            {canTransition && it.design.renderJob?.status === "FAILED" && (
+                              <RetryRenderJobButton
+                                designId={it.design.id}
+                                orderNumber={order.number}
+                                lastError={it.design.renderJob.error}
+                              />
                             )}
                           </div>
                         ) : it.design ? (
@@ -468,10 +527,15 @@ export default async function AdminPedidoDetallePage({
                                 Preparando archivos de impresión… {it.design.renderJob.doneUnits} de{" "}
                                 {it.design.renderJob.totalUnits} piezas (render en background).
                               </span>
+                            ) : it.design.renderJob?.status === "FAILED" && canTransition ? (
+                              <RetryRenderJobButton
+                                designId={it.design.id}
+                                orderNumber={order.number}
+                                lastError={it.design.renderJob.error}
+                              />
                             ) : it.design.renderJob?.status === "FAILED" ? (
-                              <span className="font-semibold text-rose-600">
-                                ⚠️ El render de imprenta falló — revisar ErrorLog y reprocesar el
-                                RenderJob del diseño antes de producir.
+                              <span className="font-semibold text-rose-700">
+                                Render 300 DPI con error pendiente de reintento por taller.
                               </span>
                             ) : (
                               "Sin archivos de producción todavía (el diseño no está finalizado)."
@@ -505,13 +569,15 @@ export default async function AdminPedidoDetallePage({
                 <Row
                   label="Cliente"
                   value={
-                    order.customer ? (
+                    canRead360 && (order.contactId || order.customer) ? (
                       <Link
-                        href={`/admin/clientes/${order.customer.id}`}
+                        href={`/admin/clientes/${order.contactId ?? order.customer?.id}`}
                         className="text-brand-purple-dark hover:text-brand-purple underline"
                       >
-                        Ver perfil
+                        Ver perfil 360
                       </Link>
+                    ) : order.customer ? (
+                      <span className="text-brand-muted">Con cuenta registrada</span>
                     ) : (
                       <span className="text-brand-muted">Compra sin cuenta</span>
                     )
@@ -759,14 +825,16 @@ export default async function AdminPedidoDetallePage({
                         Entrega interna (mensajería propia): no hay guía de transportadora. Marca la
                         salida en ruta y la entrega a mano con las acciones de abajo.
                       </p>
-                      <a
-                        href={`/admin/pedidos/${encodeURIComponent(order.number)}/guia`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors"
-                      >
-                        🖨 Imprimir guía de entrega
-                      </a>
+                      {canPrintGuide && (
+                        <a
+                          href={`/admin/pedidos/${encodeURIComponent(order.number)}/guia`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors"
+                        >
+                          🖨 Imprimir guía de entrega
+                        </a>
+                      )}
                     </>
                   )}
                   {isSimulatedTracking && (
@@ -858,7 +926,7 @@ export default async function AdminPedidoDetallePage({
                       )}
                     </div>
                   )}
-                  {isInternalDelivery && (
+                  {isInternalDelivery && canPrintGuide && (
                     <a
                       href={`/admin/pedidos/${encodeURIComponent(order.number)}/guia`}
                       target="_blank"
@@ -915,6 +983,22 @@ export default async function AdminPedidoDetallePage({
               </Card>
             )}
 
+            {/* Tareas operativas y seguimiento CRM del pedido */}
+            <CrmWorkspacePanel
+              title="Tareas y seguimiento del pedido"
+              contactId={canViewActivities ? order.contactId : null}
+              orderId={order.id}
+              orderNumber={order.number}
+              currentAdminId={session.admin.id}
+              canManageTasks={canManageTasks}
+              canViewActivities={canViewActivities && Boolean(order.contactId)}
+              canManageActivities={canManageActivities && Boolean(order.contactId)}
+              tasks={crmTasks}
+              activities={crmActivities}
+              assignableAdmins={assignableAdmins}
+              compact
+            />
+
             {/* Acciones */}
             <OrderActions
               orderId={order.id}
@@ -925,6 +1009,9 @@ export default async function AdminPedidoDetallePage({
               hasAddressKey={!!order.shippingAddressKey}
               isInternalDelivery={isInternalDelivery}
               needsReconciliation={order.needsReconciliation}
+              canTransition={canTransition}
+              canReconcile={canReconcile}
+              canRefund={canRefund}
             />
           </div>
         </div>

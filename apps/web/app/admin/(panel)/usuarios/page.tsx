@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
-import { ADMIN_ROLE_LABEL } from "@/lib/admin-roles";
+import { ADMIN_ROLES_ALL, ADMIN_ROLE_LABEL, isValidAdminRole } from "@/lib/admin-roles";
 import { listAdminUsers } from "@/features/admin-users/service";
 import { changeAdminRoleAction, toggleAdminActiveAction } from "./actions";
 import { PromoteForm } from "./promote-form";
@@ -57,8 +57,12 @@ const STATUS_LABEL: Record<(typeof STATUS_OPTIONS)[number], string> = {
   all: "Todos",
 };
 
-const ROLE_TONE: Record<string, "purple" | "blue" | "amber" | "emerald"> = {
+const ROLE_TONE: Record<string, "purple" | "blue" | "amber" | "emerald" | "slate"> = {
   SUPERADMIN: "purple",
+  OPERATIONS_MANAGER: "blue",
+  CUSTOMER_SUPPORT: "emerald",
+  PRINT_WORKSHOP: "amber",
+  FINANCE_ANALYST: "purple",
   MANAGER: "blue",
   FULFILLMENT: "amber",
   CMS_EDITOR: "emerald",
@@ -121,10 +125,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
     ? (statusRaw as (typeof STATUS_OPTIONS)[number])
     : "active";
   const roleFilter = pickString(sp, "role");
-  const role =
-    roleFilter && ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"].includes(roleFilter)
-      ? (roleFilter as "SUPERADMIN" | "MANAGER" | "FULFILLMENT" | "CMS_EDITOR")
-      : undefined;
+  const role = roleFilter && isValidAdminRole(roleFilter) ? roleFilter : undefined;
   const sortRaw = pickString(sp, "sort");
   const sort = (["recent", "email", "role"] as const).includes(sortRaw as "recent")
     ? (sortRaw as "recent" | "email" | "role")
@@ -167,30 +168,34 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
 
       <AdminPageBody>
         <AdminNotice tone="info">
-          <strong>¿Cómo funciona?</strong> Para sumar un admin nuevo: la persona se registra primero
-          como cliente en{" "}
-          <Link href="/registro" className="underline" target="_blank">
-            /registro
-          </Link>{" "}
-          y luego usa el form de abajo para promoverla. Roles: <strong>Superadmin</strong> (control
-          total), <strong>Manager</strong> (operación + contenido), <strong>Fulfillment</strong>{" "}
-          (solo pedidos + envíos) y <strong>Editor de contenido</strong> (solo páginas y textos del
-          sitio).
+          <strong>¿Cómo funciona el alta de equipo?</strong> Escribe el correo de la persona y elige
+          su rol operativo. Si aún no tiene cuenta de acceso, Lucams crea su identidad de equipo
+          automáticamente <strong>sin registrarla como cliente de la tienda</strong> (tus métricas
+          de clientes y CRM quedan limpias). En su primer ingreso a{" "}
+          <span className="font-mono text-xs">/admin/login</span> deberá configurar su código TOTP
+          de doble factor (MFA obligatorio para todos los roles).
         </AdminNotice>
 
         {sp.promoted === "1" && (
-          <AdminNotice tone="success">Admin promovido correctamente.</AdminNotice>
+          <AdminNotice tone="success">
+            Miembro del equipo dado de alta correctamente. Ya puede definir su contraseña desde el
+            enlace de invitación o en{" "}
+            <Link href="/recuperar-password" className="underline" target="_blank">
+              Recuperar contraseña
+            </Link>{" "}
+            e iniciar sesión en <span className="font-mono text-xs">/admin/login</span>.
+          </AdminNotice>
         )}
         {sp.role_changed === "1" && <AdminNotice tone="success">Rol actualizado.</AdminNotice>}
         {sp.activated === "1" && <AdminNotice tone="success">Admin reactivado.</AdminNotice>}
         {sp.deactivated === "1" && <AdminNotice tone="warning">Admin desactivado.</AdminNotice>}
         {typeof sp.error === "string" && <AdminNotice tone="error">{sp.error}</AdminNotice>}
 
-        {/* Form promover */}
+        {/* Form alta limpia de staff */}
         <AdminCard className="p-5">
           <h2 className="text-brand-purple-dark font-display mb-4 flex items-center gap-2 text-base font-bold">
             <UserPlus className="h-5 w-5" />
-            Promover cliente a admin
+            Dar de alta miembro del equipo
           </h2>
           <PromoteForm />
         </AdminCard>
@@ -250,10 +255,11 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
               <option value="">Todos</option>
-              <option value="SUPERADMIN">Superadmin</option>
-              <option value="MANAGER">Manager</option>
-              <option value="FULFILLMENT">Fulfillment</option>
-              <option value="CMS_EDITOR">Editor de contenido</option>
+              {ADMIN_ROLES_ALL.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABEL[r] ?? r}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex items-end gap-2 sm:col-span-1">
@@ -335,10 +341,11 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                               defaultValue={a.role}
                               className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 rounded-md border bg-white px-2 py-1 text-[11px] focus:ring-1 focus:outline-none"
                             >
-                              <option value="SUPERADMIN">Superadmin</option>
-                              <option value="MANAGER">Manager</option>
-                              <option value="FULFILLMENT">Fulfillment</option>
-                              <option value="CMS_EDITOR">Editor de contenido</option>
+                              {ADMIN_ROLES_ALL.map((r) => (
+                                <option key={r} value={r}>
+                                  {ROLE_LABEL[r] ?? r}
+                                </option>
+                              ))}
                             </select>
                             <Hint content="Cambiar rol">
                               <button

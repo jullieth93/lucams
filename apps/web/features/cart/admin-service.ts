@@ -234,7 +234,7 @@ export type CartRecoveryMetrics = {
 /** Tarjetas de métricas del módulo (/admin/carritos). */
 export async function getCartRecoveryMetrics(): Promise<CartRecoveryMetrics> {
   const alive = { cart: { deletedAt: null } };
-  const [pending, reminded, recovered, pendingValue, recoveredValue] = await Promise.all([
+  const [pending, reminded, recovered, pendingSumRows, recoveredSumRows] = await Promise.all([
     prisma.abandonedCart.count({
       where: { recoveredAt: null, lastReminderSentAt: null, ...alive },
     }),
@@ -245,28 +245,31 @@ export async function getCartRecoveryMetrics(): Promise<CartRecoveryMetrics> {
     prisma.abandonedCart.count({
       where: { OR: [{ recoveredAt: { not: null } }, { cart: { deletedAt: { not: null } } }] },
     }),
-    prisma.abandonedCart.findMany({
-      where: { recoveredAt: null, lastReminderSentAt: null, ...alive },
-      select: { cart: { select: { items: { select: { qty: true, unitPrice: true } } } } },
-    }),
-    prisma.abandonedCart.findMany({
-      where: { OR: [{ recoveredAt: { not: null } }, { cart: { deletedAt: { not: null } } }] },
-      select: { cart: { select: { items: { select: { qty: true, unitPrice: true } } } } },
-    }),
+    prisma.$queryRaw<Array<{ total: bigint }>>`
+      SELECT COALESCE(SUM(ci."qty" * ci."unitPrice"), 0)::bigint AS total
+      FROM "AbandonedCart" ac
+      INNER JOIN "Cart" c ON c."id" = ac."cartId"
+      INNER JOIN "CartItem" ci ON ci."cartId" = c."id"
+      WHERE ac."recoveredAt" IS NULL
+        AND ac."lastReminderSentAt" IS NULL
+        AND c."deletedAt" IS NULL
+    `,
+    prisma.$queryRaw<Array<{ total: bigint }>>`
+      SELECT COALESCE(SUM(ci."qty" * ci."unitPrice"), 0)::bigint AS total
+      FROM "AbandonedCart" ac
+      INNER JOIN "Cart" c ON c."id" = ac."cartId"
+      INNER JOIN "CartItem" ci ON ci."cartId" = c."id"
+      WHERE ac."recoveredAt" IS NOT NULL
+        OR c."deletedAt" IS NOT NULL
+    `,
   ]);
   const contacted = reminded + recovered;
   return {
     pendingCount: pending,
-    pendingValueCents: pendingValue.reduce(
-      (acc, r) => acc + r.cart.items.reduce((a, i) => a + i.qty * i.unitPrice, 0),
-      0,
-    ),
+    pendingValueCents: Number(pendingSumRows[0]?.total ?? BigInt(0)),
     remindedCount: reminded,
     recoveredCount: recovered,
     recoveryRatePct: contacted > 0 ? Math.round((recovered / contacted) * 100) : null,
-    recoveredValueCents: recoveredValue.reduce(
-      (acc, r) => acc + r.cart.items.reduce((a, i) => a + i.qty * i.unitPrice, 0),
-      0,
-    ),
+    recoveredValueCents: Number(recoveredSumRows[0]?.total ?? BigInt(0)),
   };
 }

@@ -49,6 +49,7 @@ const { state, MockStorageError } = vi.hoisted(() => {
       saveCanvasArgs: [] as Array<Record<string, unknown>>,
       createDraftArgs: [] as Array<Record<string, unknown>>,
       finalizeArgs: [] as Array<Record<string, unknown>>,
+      productBySlug: null as Record<string, unknown> | null,
     },
   };
 });
@@ -108,7 +109,10 @@ vi.mock("@/lib/db", () => ({
       },
       findMany: async () => state.galleryAssets,
     },
-    product: { findUnique: async () => null },
+    product: {
+      findUnique: async () => null,
+      findFirst: async () => state.productBySlug,
+    },
   },
 }));
 vi.mock("./design-gallery", () => ({ getGalleryImageById: vi.fn(async () => null) }));
@@ -750,5 +754,49 @@ describe("reopenDesignForEditAction · READY→DRAFT misma sesión (fix F1.1, 20
       expect(res.message).not.toContain("referenced");
       expect(res.message).toContain("WhatsApp");
     }
+  });
+});
+
+describe("uploadDesignAssetAction · validación 300 DPI en primer upload sin designId ([STU-02])", () => {
+  beforeEach(() => {
+    state.uploadCalls = 0;
+    state.uploadArgs = [];
+    state.assetCreateCalls = 0;
+    state.assetCreateArgs = [];
+    state.uploadError = null;
+    state.assetCreateError = null;
+    state.rateLimitCalls = [];
+    state.rateLimitDeny = [];
+    state.productBySlug = null;
+  });
+
+  it("resuelve productSizeCm de la variante activa cuando designId aún es null", async () => {
+    state.productBySlug = {
+      personalizationSchema: { sizeCm: "6x6" },
+      variants: [{ attributes: { sizeCm: "6x6" } }, { attributes: { sizeCm: "9x9" } }],
+    };
+    const fd = makeUploadForm();
+    fd.set("productSlug", "set-fotoimanes-cuadrados");
+    fd.set("productSizeCm", "9x9");
+
+    const res = await uploadDesignAssetAction(fd);
+    expect(res.ok).toBe(true);
+    expect(state.uploadCalls).toBe(1);
+    expect(state.uploadArgs[0]?.productSizeCm).toBe("9x9");
+  });
+
+  it("ignora un productSizeCm arbitrario que no pertenezca al producto ni sus variantes activas", async () => {
+    state.productBySlug = {
+      personalizationSchema: { sizeCm: "7x9" },
+      variants: [{ attributes: { sizeCm: "7x9" } }],
+    };
+    const fd = makeUploadForm();
+    fd.set("productSlug", "fotoimanes-polaroid");
+    fd.set("productSizeCm", "999x999");
+
+    const res = await uploadDesignAssetAction(fd);
+    expect(res.ok).toBe(true);
+    expect(state.uploadCalls).toBe(1);
+    expect(state.uploadArgs[0]?.productSizeCm).toBe("7x9");
   });
 });

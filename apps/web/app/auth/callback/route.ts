@@ -20,6 +20,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { recoverCustomerCartSessionId } from "@/features/cart/service";
+import { ensureCustomerContact } from "@/features/identity/resolution-service";
 import { CART_SESSION_COOKIE, cartSessionCookieOptions, peekCartSession } from "@/lib/cart-session";
 import {
   CUSTOMER_ACTIVITY_COOKIE,
@@ -78,12 +79,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // Best-effort: un fallo acá NUNCA rompe el callback de auth.
   if (type !== "recovery" && data.user) {
     try {
+      const customer = await prisma.customer.findFirst({
+        where: { supabaseUserId: data.user.id, deletedAt: null },
+        select: { id: true },
+      });
+      if (customer) {
+        await ensureCustomerContact(prisma, {
+          customerId: customer.id,
+          emailVerified: Boolean(data.user.email_confirmed_at),
+          verificationSource: "SUPABASE_PKCE",
+        });
+      }
       const anonSessionId = await peekCartSession();
       if (!anonSessionId) {
-        const customer = await prisma.customer.findFirst({
-          where: { supabaseUserId: data.user.id, deletedAt: null },
-          select: { id: true },
-        });
         const cartSessionId = customer ? await recoverCustomerCartSessionId(customer.id) : null;
         if (cartSessionId) {
           response.cookies.set(CART_SESSION_COOKIE, cartSessionId, cartSessionCookieOptions());

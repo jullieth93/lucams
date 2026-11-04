@@ -13,16 +13,22 @@
  */
 
 import "server-only";
+import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 
 const PAGE_SIZE = 20;
 
+/** Estados de orden efectivamente pagados/confirmados para métricas y conteos comerciales. */
+export const PAID_ORDER_STATUSES = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] as const;
+
+export type CustomerSortOption = "recent" | "name" | "orders" | "spent";
+
 export type CustomerListOpts = {
   q?: string;
-  /** "all" (default) | "with-orders" (>=1 order) | "no-orders" */
+  /** "all" (default) | "with-orders" (>=1 orden pagada activa) | "no-orders" */
   status?: "all" | "with-orders" | "no-orders";
-  /** "recent" (default) | "name" | "orders" (más pedidos primero) */
-  sort?: "recent" | "name" | "orders";
+  /** "recent" (default) | "name" | "orders" (más pedidos pagados) | "spent" (más compras $) */
+  sort?: CustomerSortOption;
   page?: number;
   pageSize?: number;
 };
@@ -35,6 +41,7 @@ export type CustomerListItem = {
   documentType: string | null;
   documentNumber: string | null;
   ordersCount: number;
+  totalSpent: number;
   reviewsCount: number;
   loyaltyPoints: number;
   createdAt: Date;
@@ -48,66 +55,160 @@ export type CustomerListResult = {
   totalPages: number;
 };
 
+function escapeLikePattern(raw: string): string {
+  return raw.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 export async function listCustomers(opts: CustomerListOpts = {}): Promise<CustomerListResult> {
   const q = opts.q?.trim();
+  const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = opts.pageSize ?? PAGE_SIZE;
 
-  const orderBy = (() => {
-    switch (opts.sort) {
-      case "name":
-        return [{ firstName: "asc" as const }, { lastName: "asc" as const }];
-      case "orders":
-        // Prisma no soporta orderBy directo sobre _count, fallback a recent.
-        // Si la lista crece, esto podría llevar a un raw SQL — TODO si Lucy lo pide.
-        return [{ createdAt: "desc" as const }];
-      case "recent":
-      default:
-        return [{ createdAt: "desc" as const }];
-    }
-  })();
-
-  const where = {
+  const paidOrdersWhere: Prisma.OrderWhereInput = {
     deletedAt: null,
-    ...(q
+    status: { in: [...PAID_ORDER_STATUSES] },
+  };
+
+  const where: Prisma.CustomerWhereInput = {
+    deletedAt: null,
+    ...(tokens.length > 0
       ? {
-          OR: [
-            { email: { contains: q, mode: "insensitive" as const } },
-            { firstName: { contains: q, mode: "insensitive" as const } },
-            { lastName: { contains: q, mode: "insensitive" as const } },
-            { documentNumber: { contains: q } },
-            { phone: { contains: q } },
-          ],
+          AND: tokens.map((token) => ({
+            OR: [
+              { email: { contains: token, mode: "insensitive" as const } },
+              { firstName: { contains: token, mode: "insensitive" as const } },
+              { lastName: { contains: token, mode: "insensitive" as const } },
+              { documentNumber: { contains: token } },
+              { phone: { contains: token } },
+            ],
+          })),
         }
       : {}),
     ...(opts.status === "with-orders"
-      ? { orders: { some: { deletedAt: null } } }
+      ? { orders: { some: paidOrdersWhere } }
       : opts.status === "no-orders"
-        ? { orders: { none: { deletedAt: null } } }
+        ? { orders: { none: paidOrdersWhere } }
         : {}),
   };
 
-  const [rawItems, total] = await Promise.all([
-    prisma.customer.findMany({
-      where,
-      orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+  const selectFields = {
+    id: true,
+    email: true,
+    firstName: true,
+    lastName: true,
+    phone: true,
+    documentType: true,
+    documentNumber: true,
+    loyaltyPoints: true,
+    createdAt: true,
+    _count: {
       select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        phone: true,
-        documentType: true,
-        documentNumber: true,
-        loyaltyPoints: true,
-        createdAt: true,
-        _count: { select: { orders: true, reviews: true } },
+        orders: { where: paidOrdersWhere },
+        reviews: true,
       },
-    }),
-    prisma.customer.count({ where }),
-  ]);
+    },
+  } satisfies Prisma.CustomerSelect;
+
+  let rawItems: Array<Prisma.CustomerGetPayload<{ select: typeof selectFields }>>;
+  let total: number;
+
+  if (opts.sort === "orders" || opts.sort === "spent") {
+    const sqlConditions: Prisma.Sql[] = [Prisma.sql`c."deletedAt" IS NULL`];
+    for (const token of tokens) {
+      const pattern = `%${escapeLikePattern(token)}%`;
+      sqlConditions.push(
+        Prisma.sql`(
+          c."email" ILIKE ${pattern} ESCAPE '\\'
+          OR COALESCE(c."firstName", '') ILIKE ${pattern} ESCAPE '\\'
+          OR COALESCE(c."lastName", '') ILIKE ${pattern} ESCAPE '\\'
+          OR COALESCE(c."documentNumber", '') LIKE ${pattern} ESCAPE '\\'
+          OR COALESCE(c."phone", '') LIKE ${pattern} ESCAPE '\\'
+        )`,
+      );
+    }
+    if (opts.status === "with-orders") {
+      sqlConditions.push(Prisma.sql`COALESCE(ord.paid_orders, 0) > 0`);
+    } else if (opts.status === "no-orders") {
+      sqlConditions.push(Prisma.sql`COALESCE(ord.paid_orders, 0) = 0`);
+    }
+
+    const orderClause =
+      opts.sort === "orders"
+        ? Prisma.sql`COALESCE(ord.paid_orders, 0) DESC, c."createdAt" DESC, c."id" ASC`
+        : Prisma.sql`COALESCE(ord.total_spent, 0) DESC, c."createdAt" DESC, c."id" ASC`;
+
+    const [orderedIds, countRes] = await Promise.all([
+      prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT c."id"
+        FROM "Customer" c
+        LEFT JOIN (
+          SELECT
+            "customerId",
+            COUNT(*)::int AS paid_orders,
+            COALESCE(SUM("total"), 0)::bigint AS total_spent
+          FROM "Order"
+          WHERE "deletedAt" IS NULL
+            AND "status"::text IN ('PAID', 'FULFILLING', 'SHIPPED', 'DELIVERED')
+            AND "customerId" IS NOT NULL
+          GROUP BY "customerId"
+        ) ord ON ord."customerId" = c."id"
+        WHERE ${Prisma.join(sqlConditions, " AND ")}
+        ORDER BY ${orderClause}
+        LIMIT ${pageSize}
+        OFFSET ${(page - 1) * pageSize}
+      `,
+      prisma.customer.count({ where }),
+    ]);
+
+    total = countRes;
+    if (orderedIds.length === 0) {
+      rawItems = [];
+    } else {
+      const pageIds = orderedIds.map((r) => r.id);
+      const fetched = await prisma.customer.findMany({
+        where: { id: { in: pageIds } },
+        select: selectFields,
+      });
+      const byId = new Map(fetched.map((row) => [row.id, row]));
+      rawItems = pageIds
+        .map((id) => byId.get(id))
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
+    }
+  } else {
+    const orderBy =
+      opts.sort === "name"
+        ? [{ firstName: "asc" as const }, { lastName: "asc" as const }]
+        : [{ createdAt: "desc" as const }];
+
+    [rawItems, total] = await Promise.all([
+      prisma.customer.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: selectFields,
+      }),
+      prisma.customer.count({ where }),
+    ]);
+  }
+
+  const spentByCustomer = new Map<string, number>();
+  if (rawItems.length > 0) {
+    const sums = await prisma.order.groupBy({
+      by: ["customerId"],
+      where: {
+        customerId: { in: rawItems.map((c) => c.id) },
+        ...paidOrdersWhere,
+      },
+      _sum: { total: true },
+    });
+    for (const row of sums) {
+      if (row.customerId) {
+        spentByCustomer.set(row.customerId, row._sum.total ?? 0);
+      }
+    }
+  }
 
   const items: CustomerListItem[] = rawItems.map((c) => ({
     id: c.id,
@@ -117,6 +218,7 @@ export async function listCustomers(opts: CustomerListOpts = {}): Promise<Custom
     documentType: c.documentType,
     documentNumber: c.documentNumber,
     ordersCount: c._count.orders,
+    totalSpent: spentByCustomer.get(c.id) ?? 0,
     reviewsCount: c._count.reviews,
     loyaltyPoints: c.loyaltyPoints,
     createdAt: c.createdAt,

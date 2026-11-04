@@ -13,6 +13,7 @@ import {
 import { renderCartRecoveryEmail } from "@/features/emails/registry";
 import { designDisplayUnits } from "@/features/personalization/design-units";
 import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
+import { resolveAbandonedCartContact } from "@/features/identity/resolution-service";
 
 /*
  * Recuperación de carrito abandonado (palanca de ingreso, auditoría 2026-07-13).
@@ -81,9 +82,13 @@ export async function recordAbandonedCartEmail(email: string): Promise<void> {
     if (!sessionId) return;
     const cart = await prisma.cart.findFirst({
       where: { sessionId, deletedAt: null },
-      select: { id: true, _count: { select: { items: true } } },
+      select: { id: true, customerId: true, _count: { select: { items: true } } },
     });
     if (!cart || cart._count.items === 0) return;
+    const contactId = await resolveAbandonedCartContact(prisma, {
+      cartCustomerId: cart.customerId ?? null,
+      email,
+    });
     // F-11: el token de recuperación NO se genera acá sino al enviar el
     // recordatorio (solo su hash toca la DB).
     await prisma.abandonedCart.upsert({
@@ -91,9 +96,13 @@ export async function recordAbandonedCartEmail(email: string): Promise<void> {
       create: {
         cartId: cart.id,
         email,
+        ...(contactId ? { contactId } : {}),
       },
       // Solo refresca el email si cambió; NO toca token/recovered/reminder (idempotente).
-      update: { email },
+      update: {
+        email,
+        ...(contactId ? { contactId } : {}),
+      },
     });
   } catch (err) {
     logger.error({

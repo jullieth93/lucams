@@ -43,10 +43,23 @@ import {
   parseVariantAttributes,
 } from "@/features/products/variant-schemas";
 import { buildWhatsAppUrl } from "@/lib/wa";
+import { resolveFunnelEditorKind } from "@/features/analytics/funnel-schema";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
-import { reorderGuestAction } from "./actions";
+import { TrackPurchase } from "@/components/analytics-trackers";
+import {
+  reorderGuestAction,
+  requestGuestRetractAction,
+  requestGuestWarrantyAction,
+  submitGuestOrderSupportAction,
+} from "./actions";
 import { ReorderControl, type ReorderTexts } from "@/components/orders/reorder-control";
+import { GuestOrderSupportCard } from "@/components/orders/guest-order-support";
+import { getRetractableItemsByOrderToken } from "@/features/retract/service";
+import { getWarrantyItemsByOrderToken } from "@/features/warranty/service";
+import { RetractControl } from "@/app/mi-cuenta/pedidos/[number]/retract-control";
+import { WarrantyControl } from "@/app/mi-cuenta/pedidos/[number]/warranty-control";
+import { getAccountTexts } from "@/app/mi-cuenta/account-texts.server";
 
 export const metadata: Metadata = {
   // noindex: la URL es de un solo uso y trae un token opaco.
@@ -133,9 +146,19 @@ export default async function PublicOrderPage({
             select: {
               id: true,
               name: true,
+              sku: true,
               // Paquete F (2026-10-02) — attributes: desglose estructurado de la variante.
               attributes: true,
-              product: { select: { slug: true, name: true, personalizationKind: true } },
+              product: {
+                select: {
+                  slug: true,
+                  sku: true,
+                  name: true,
+                  isPersonalizable: true,
+                  personalizationKind: true,
+                  personalizationSchema: true,
+                },
+              },
             },
           },
           design: {
@@ -186,10 +209,16 @@ export default async function PublicOrderPage({
   // la saga) pero el cliente SÍ debe ver que algo pasa — banner honesto con salida
   // a WhatsApp, al lado del timeline que de otro modo quedaría "En camino" eterno.
   const shippingIssue = shippingIssueKind(order);
-  const waUrl =
-    isPending || shippingIssue
-      ? await buildWhatsAppUrl({ kind: "order", orderNumber: order.number })
-      : null;
+  // [CX-01] — mantener canal de ayuda activo en todos los estados no cancelados (incluido
+  // `DELIVERED`, donde antes `waUrl` era null y el comprador invitado quedaba sin salida posventa).
+  const [waUrl, retractable, warrantyItems, accountTexts] = await Promise.all([
+    !isCancelled ? buildWhatsAppUrl({ kind: "order", orderNumber: order.number }) : null,
+    order.status === "DELIVERED" ? getRetractableItemsByOrderToken(token) : [],
+    order.status === "DELIVERED" ? getWarrantyItemsByOrderToken(token) : [],
+    order.status === "DELIVERED" ? getAccountTexts() : null,
+  ]);
+  const retractByItem = new Map(retractable.map((r) => [r.orderItemId, r]));
+  const warrantyByItem = new Map(warrantyItems.map((w) => [w.orderItemId, w]));
 
   const itemsHeading = `Lo que pediste (${order.items.length})`;
   const accountCtaBody =
@@ -236,15 +265,45 @@ export default async function PublicOrderPage({
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-3xl">
           {nueva === "1" && !isCancelled && (
-            <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-              <p className="font-display text-lg font-bold text-emerald-900">
-                🎉 ¡Pedido confirmado!
-              </p>
-              <p className="mt-0.5 text-sm text-emerald-800">
-                {/* #2 — el detalle COD lo lleva el aviso persistente de abajo; aquí solo el saludo. */}
-                Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
-              </p>
-            </div>
+            <>
+              {/* GA4 purchase ([ANA-01] / S06): las compras COD redirigen acá con ?nueva=1
+                  y nunca pasan por /checkout/gracias. Idempotente por order.number en
+                  localStorage y sin un solo dato personal ni token en el evento. */}
+              {!isPending && (
+                <TrackPurchase
+                  transactionId={order.number}
+                  valueCents={order.total}
+                  shippingCents={order.shipping}
+                  taxCents={order.tax}
+                  items={order.items.map((it) => ({
+                    sku: it.variant.sku || it.variant.product.sku,
+                    name: it.variant.product.name,
+                    variantName: it.variant.name,
+                    priceCents: it.unitPrice,
+                    quantity: it.qty,
+                  }))}
+                  funnelLines={order.items.map((it) => ({
+                    productSlug: it.variant.product.slug,
+                    editorKind: resolveFunnelEditorKind({
+                      isPersonalizable: it.variant.product.isPersonalizable,
+                      personalizationKind: it.variant.product.personalizationKind,
+                      productSchema: it.variant.product.personalizationSchema,
+                      variantAttrs: it.variant.attributes,
+                      designMetadata: it.design?.metadata,
+                    }),
+                  }))}
+                />
+              )}
+              <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="font-display text-lg font-bold text-emerald-900">
+                  🎉 ¡Pedido confirmado!
+                </p>
+                <p className="mt-0.5 text-sm text-emerald-800">
+                  {/* #2 — el detalle COD lo lleva el aviso persistente de abajo; aquí solo el saludo. */}
+                  Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
+                </p>
+              </div>
+            </>
           )}
 
           {/* #5 — pago en verificación (PSE/transferencia async, o webhook demorado): explica y da
@@ -490,6 +549,22 @@ export default async function PublicOrderPage({
                           />
                         </div>
                       )}
+                      {accountTexts && retractByItem.has(it.id) && (
+                        <RetractControl
+                          item={retractByItem.get(it.id)!}
+                          texts={accountTexts.retract}
+                          guestToken={token}
+                          actionOverride={requestGuestRetractAction}
+                        />
+                      )}
+                      {accountTexts && warrantyByItem.has(it.id) && (
+                        <WarrantyControl
+                          item={warrantyByItem.get(it.id)!}
+                          texts={accountTexts.warranty}
+                          guestToken={token}
+                          actionOverride={requestGuestWarrantyAction}
+                        />
+                      )}
                     </div>
                     <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
                       {formatCOP(it.unitPrice * it.qty)}
@@ -622,6 +697,17 @@ export default async function PublicOrderPage({
                 )}
               </div>
             </Card>
+          )}
+
+          {!isCancelled && (
+            <GuestOrderSupportCard
+              token={token}
+              orderNumber={order.number}
+              maskedEmail={maskEmail(order.email)}
+              waUrl={waUrl}
+              isDelivered={order.status === "DELIVERED"}
+              action={submitGuestOrderSupportAction}
+            />
           )}
 
           {/* Paquete I — "Volver a pedir" (invitado): el token del link autoriza el reorder;

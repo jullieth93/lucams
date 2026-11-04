@@ -38,7 +38,12 @@ export const LOYALTY_REASONS = {
   earn: "EARN",
   redeem: "REDEEM",
   refund: "REFUND",
+  retractRefundPrefix: "RETRACT_REFUND:",
 } as const;
+
+export function retractRefundReason(retractId: string): string {
+  return `${LOYALTY_REASONS.retractRefundPrefix}${retractId}`;
+}
 
 /** Etiquetas de cliente para el historial de /mi-cuenta. */
 export const LOYALTY_REASON_LABELS: Record<string, string> = {
@@ -46,6 +51,14 @@ export const LOYALTY_REASON_LABELS: Record<string, string> = {
   REDEEM: "Puntos redimidos en tu compra",
   REFUND: "Puntos restaurados (pedido cancelado o reembolsado)",
 };
+
+/** Etiqueta legible en español para cualquier `LoyaltyTxn.reason` (incl. retractos por ítem). */
+export function formatLoyaltyReason(reason: string): string {
+  if (reason.startsWith(LOYALTY_REASONS.retractRefundPrefix)) {
+    return "Puntos restaurados por devolución (retracto)";
+  }
+  return LOYALTY_REASON_LABELS[reason] ?? reason;
+}
 
 /**
  * El cliente redimió puntos que al crear la orden ya no cubren su balance (los
@@ -408,22 +421,47 @@ export async function releaseRedeemedPoints(
 }
 
 /**
+ * Suma de puntos ya restaurados sobre una orden (reembolso completo `REFUND` o
+ * retractos parciales `RETRACT_REFUND:<retractId>`). Garantiza que la suma de
+ * restauraciones parciales + totales nunca supere `Order.loyaltyPointsRedeemed`.
+ */
+async function sumRestoredPointsForOrder(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+): Promise<number> {
+  const agg = await tx.loyaltyTxn.aggregate({
+    where: {
+      orderId,
+      OR: [
+        { reason: LOYALTY_REASONS.refund },
+        { reason: { startsWith: LOYALTY_REASONS.retractRefundPrefix } },
+      ],
+    },
+    _sum: { delta: true },
+  });
+  return Math.max(0, agg._sum.delta ?? 0);
+}
+
+/**
  * Restauración al CANCELAR/REEMBOLSAR (la llama transitionOrder dentro de su tx,
- * simétrica a la liberación del cupón — F2): devuelve los puntos redimidos con
- * una fila REFUND. Idempotente por el índice único (orderId, "REFUND"): el P2002
- * se traduce a no-op (la transición ya es no-op si el estado no cambia, así que
- * esto es solo defensa ante una doble corrida en carrera).
+ * simétrica a la liberación del cupón — F2): devuelve los puntos redimidos
+ * restantes (descontando los que ya se hubieran restaurado por retractos
+ * parciales) con una fila REFUND. Idempotente por el índice único
+ * (orderId, "REFUND"): el P2002 se traduce a no-op.
  */
 export async function restoreRedeemedPoints(
   tx: Prisma.TransactionClient,
   input: { orderId: string; customerId: string; points: number },
 ): Promise<void> {
   if (input.points <= 0) return;
+  const alreadyRestored = await sumRestoredPointsForOrder(tx, input.orderId);
+  const remaining = Math.max(0, input.points - alreadyRestored);
+  if (remaining <= 0) return;
   try {
     await tx.loyaltyTxn.create({
       data: {
         customerId: input.customerId,
-        delta: input.points,
+        delta: remaining,
         reason: LOYALTY_REASONS.refund,
         orderId: input.orderId,
       },
@@ -434,8 +472,50 @@ export async function restoreRedeemedPoints(
   }
   await tx.customer.updateMany({
     where: { id: input.customerId },
-    data: { loyaltyPoints: { increment: input.points } },
+    data: { loyaltyPoints: { increment: remaining } },
   });
+}
+
+/**
+ * Restauración proporcional al REEMBOLSAR un retracto de ítem (`RECEIVED → REFUNDED`).
+ * Usa `reason = "RETRACT_REFUND:<retractId>"` para aprovechar el índice único parcial
+ * `LoyaltyTxn(orderId, reason)` sin colisionar entre múltiples ítems retractados de
+ * la misma orden ni con `REFUND` de orden completa, y acota contra
+ * `orderPointsRedeemed - alreadyRestored` para evitar sobrecrédito por redondeo.
+ */
+export async function restoreRedeemedPointsForRetract(
+  tx: Prisma.TransactionClient,
+  input: {
+    retractId: string;
+    orderId: string;
+    customerId: string;
+    proportionalPoints: number;
+    orderPointsRedeemed: number;
+  },
+): Promise<number> {
+  if (input.proportionalPoints <= 0 || input.orderPointsRedeemed <= 0) return 0;
+  const alreadyRestored = await sumRestoredPointsForOrder(tx, input.orderId);
+  const remaining = Math.max(0, input.orderPointsRedeemed - alreadyRestored);
+  const toRestore = Math.min(input.proportionalPoints, remaining);
+  if (toRestore <= 0) return 0;
+  try {
+    await tx.loyaltyTxn.create({
+      data: {
+        customerId: input.customerId,
+        delta: toRestore,
+        reason: retractRefundReason(input.retractId),
+        orderId: input.orderId,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return 0;
+    throw err;
+  }
+  await tx.customer.updateMany({
+    where: { id: input.customerId },
+    data: { loyaltyPoints: { increment: toRestore } },
+  });
+  return toRestore;
 }
 
 // ─────────────────────── Lecturas de cliente (mi-cuenta / checkout) ───────────────────────

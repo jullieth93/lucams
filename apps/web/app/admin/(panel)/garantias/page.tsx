@@ -6,6 +6,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BadgeCheck, ShieldCheck } from "lucide-react";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatRelativeTime } from "@/lib/format";
 import {
@@ -61,7 +62,7 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 });
 
 export default async function AdminGarantiasPage({ searchParams }: { searchParams: SearchParams }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  await requireRole(ADMIN_ROLE_SETS.SUPPORT_CARE);
   const sp = await searchParams;
   const statusRaw = sp.status;
   const validStatus = (["PENDING", "IN_REVIEW", "APPROVED", "RESOLVED", "REJECTED"] as const).find(

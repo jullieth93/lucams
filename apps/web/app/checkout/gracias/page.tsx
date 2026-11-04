@@ -28,6 +28,7 @@
  */
 
 import type { Metadata } from "next";
+import type { PersonalizationKind } from "@lucams/db";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -43,6 +44,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isCatalogMode } from "@/lib/store-mode";
 import { ClearCheckoutSession } from "./clear-checkout-session";
 import { AutoRefresh } from "./auto-refresh";
+import { resolveFunnelEditorKind } from "@/features/analytics/funnel-schema";
 import { TrackPurchase } from "@/components/analytics-trackers";
 import { processPaidOrder, flagForeignApprovedPayment } from "@/features/orders/saga";
 import {
@@ -211,7 +213,9 @@ export default async function CheckoutGraciasPage({
                       sku: true,
                       slug: true,
                       images: true,
+                      isPersonalizable: true,
                       personalizationKind: true,
+                      personalizationSchema: true,
                     },
                   },
                 },
@@ -345,7 +349,9 @@ export default async function CheckoutGraciasPage({
                         sku: true,
                         slug: true,
                         images: true,
+                        isPersonalizable: true,
                         personalizationKind: true,
+                        personalizationSchema: true,
                       },
                     },
                   },
@@ -458,7 +464,9 @@ async function ApprovedPage({
           sku: string;
           slug: string;
           images: string[];
-          personalizationKind: string | null;
+          isPersonalizable: boolean;
+          personalizationKind: PersonalizationKind;
+          personalizationSchema: unknown;
         };
       };
       design: {
@@ -500,6 +508,16 @@ async function ApprovedPage({
             variantName: it.variant.name,
             priceCents: it.unitPrice,
             quantity: it.qty,
+          }))}
+          funnelLines={order.items.map((it) => ({
+            productSlug: it.variant.product.slug,
+            editorKind: resolveFunnelEditorKind({
+              isPersonalizable: it.variant.product.isPersonalizable,
+              personalizationKind: it.variant.product.personalizationKind,
+              productSchema: it.variant.product.personalizationSchema,
+              variantAttrs: it.variant.attributes,
+              designMetadata: it.design?.metadata,
+            }),
           }))}
         />
       )}

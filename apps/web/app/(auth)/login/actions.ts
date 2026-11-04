@@ -22,6 +22,7 @@ import { redirect } from "next/navigation";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { mergeAnonCartIntoCustomer, recoverCustomerCartSessionId } from "@/features/cart/service";
+import { ensureCustomerContact } from "@/features/identity/resolution-service";
 import { claimGuestOrdersForCustomer } from "@/features/orders/claim-guest-orders";
 import { awardRetroactivePointsForNewCustomer } from "@/features/loyalty/service";
 import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
@@ -172,7 +173,7 @@ async function ensureCustomerForAuthUser(user: {
           ? (meta.full_name.split(" ")[0] ?? null)
           : null;
     const lastName = typeof meta.lastName === "string" ? meta.lastName : null;
-    await prisma.customer.upsert({
+    const customer = await prisma.customer.upsert({
       where: { email: user.email },
       create: {
         email: user.email,
@@ -184,6 +185,13 @@ async function ensureCustomerForAuthUser(user: {
       },
       update: { supabaseUserId: user.id, deletedAt: null },
     });
+    if (customer?.id) {
+      await ensureCustomerContact(prisma, {
+        customerId: customer.id,
+        emailVerified: true,
+        verificationSource: "SUPABASE_PASSWORD",
+      });
+    }
   } catch (err) {
     logger.error({
       event: "auth.login.customer_jit_fail",

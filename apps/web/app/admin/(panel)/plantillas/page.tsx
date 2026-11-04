@@ -12,6 +12,7 @@
 
 import type { Metadata } from "next";
 import { Shapes } from "lucide-react";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import {
   listTemplatesForAdmin,
@@ -125,7 +126,7 @@ function TemplateCard({ t }: { t: AdminTemplate }) {
 }
 
 export default async function AdminPlantillasPage() {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  await requireRole(ADMIN_ROLE_SETS.MANAGER_UP);
   const templates = await listTemplatesForAdmin();
 
   const approved = templates.filter((t) => templateStatus(t) === "aprobada").length;

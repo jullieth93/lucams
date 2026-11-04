@@ -22,6 +22,7 @@
  */
 
 import "server-only";
+import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 
 const PAGE_SIZE = 20;
@@ -99,59 +100,136 @@ export function groupNewsletterConsents(rows: NewsletterConsentRow[]): Newslette
   return out;
 }
 
+function escapeLikePattern(raw: string): string {
+  return raw.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+const DEDUPED_NEWSLETTER_CTE = Prisma.sql`
+  WITH latest_state AS (
+    SELECT DISTINCT ON (LOWER("email"))
+      LOWER("email") AS email,
+      "accepted",
+      "acceptedAt"
+    FROM "Consent"
+    WHERE "scope" = 'NEWSLETTER' AND "email" IS NOT NULL
+    ORDER BY LOWER("email"), "acceptedAt" DESC, "id" DESC
+  ),
+  latest_accepted AS (
+    SELECT DISTINCT ON (LOWER("email"))
+      LOWER("email") AS email,
+      "acceptedAt" AS subscribed_at,
+      "version"
+    FROM "Consent"
+    WHERE "scope" = 'NEWSLETTER' AND "email" IS NOT NULL AND "accepted" = true
+    ORDER BY LOWER("email"), "acceptedAt" DESC, "id" DESC
+  ),
+  deduped AS (
+    SELECT
+      ls.email,
+      CASE WHEN ls."accepted" THEN 'active' ELSE 'unsubscribed' END AS status,
+      ls."acceptedAt" AS last_event_at,
+      la.subscribed_at AS "subscribedAt",
+      CASE WHEN ls."accepted" THEN NULL ELSE ls."acceptedAt" END AS "unsubscribedAt",
+      la."version"
+    FROM latest_state ls
+    LEFT JOIN latest_accepted la ON la.email = ls.email
+  )
+`;
+
 /**
- * Listado paginado para /admin/marketing/suscriptores.
+ * Listado paginado en SQL para /admin/marketing/suscriptores (S11).
  *
- * El dedupe se hace en memoria: Prisma no expresa "última fila por email" sin
- * raw SQL y la audiencia de newsletter es chica (cientos, no millones) — una
- * proyección de 4 columnas ordenada por índice (scope, acceptedAt) es barata.
- * Si algún día crece, esto migra a un DISTINCT ON crudo sin cambiar la firma.
+ * Deduplica directamente en Postgres mediante `DISTINCT ON (LOWER("email"))`
+ * para no cargar todo el historial de `Consent` en memoria del servidor.
  */
 export async function listNewsletterSubscribers(
   opts: NewsletterListOpts = {},
 ): Promise<NewsletterListResult> {
-  const rows = await prisma.consent.findMany({
-    where: { scope: "NEWSLETTER", email: { not: null } },
-    orderBy: { acceptedAt: "desc" },
-    select: { email: true, accepted: true, acceptedAt: true, version: true },
-  });
-
-  const all = groupNewsletterConsents(rows);
-  const counters: NewsletterSubscriberCounters = {
-    active: all.filter((s) => s.status === "active").length,
-    unsubscribed: all.filter((s) => s.status === "unsubscribed").length,
-    total: all.length,
-  };
-
-  const q = opts.q?.trim().toLowerCase();
-  const filtered = all.filter(
-    (s) =>
-      (!q || s.email.includes(q)) &&
-      (!opts.status || opts.status === "all" || s.status === opts.status),
-  );
-
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = opts.pageSize ?? PAGE_SIZE;
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const q = opts.q?.trim().toLowerCase();
+
+  const filterClauses: Prisma.Sql[] = [Prisma.sql`TRUE`];
+  if (q) {
+    const pattern = `%${escapeLikePattern(q)}%`;
+    filterClauses.push(Prisma.sql`email LIKE ${pattern} ESCAPE '\\'`);
+  }
+  if (opts.status && opts.status !== "all") {
+    filterClauses.push(Prisma.sql`status = ${opts.status}`);
+  }
+  const whereSql = Prisma.join(filterClauses, " AND ");
+
+  type CounterRow = {
+    active: number;
+    unsubscribed: number;
+    total: number;
+    filtered_total: number;
+  };
+  type ItemRow = {
+    email: string;
+    status: NewsletterSubscriberStatus;
+    subscribedAt: Date | null;
+    unsubscribedAt: Date | null;
+    version: string | null;
+  };
+
+  const [counterRows, items] = await Promise.all([
+    prisma.$queryRaw<CounterRow[]>`
+      ${DEDUPED_NEWSLETTER_CTE}
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+        COUNT(*) FILTER (WHERE status = 'unsubscribed')::int AS unsubscribed,
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE ${whereSql})::int AS filtered_total
+      FROM deduped
+    `,
+    prisma.$queryRaw<ItemRow[]>`
+      ${DEDUPED_NEWSLETTER_CTE}
+      SELECT
+        email,
+        status,
+        "subscribedAt",
+        "unsubscribedAt",
+        "version"
+      FROM deduped
+      WHERE ${whereSql}
+      ORDER BY last_event_at DESC, email ASC
+      LIMIT ${pageSize}
+      OFFSET ${(page - 1) * pageSize}
+    `,
+  ]);
+
+  const summary = counterRows[0] ?? { active: 0, unsubscribed: 0, total: 0, filtered_total: 0 };
+  const total = Number(summary.filtered_total ?? 0);
+  const counters: NewsletterSubscriberCounters = {
+    active: Number(summary.active ?? 0),
+    unsubscribed: Number(summary.unsubscribed ?? 0),
+    total: Number(summary.total ?? 0),
+  };
 
   return {
-    items: filtered.slice((page - 1) * pageSize, page * pageSize),
+    items,
     counters,
-    total: filtered.length,
+    total,
     page,
     pageSize,
-    totalPages,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
 }
 
-/** Todos los suscriptores deduplicados (para el export CSV, sin paginar). */
+/** Todos los suscriptores deduplicados en SQL (para el export CSV, sin paginar). */
 export async function listAllNewsletterSubscribers(): Promise<NewsletterSubscriber[]> {
-  const rows = await prisma.consent.findMany({
-    where: { scope: "NEWSLETTER", email: { not: null } },
-    orderBy: { acceptedAt: "desc" },
-    select: { email: true, accepted: true, acceptedAt: true, version: true },
-  });
-  return groupNewsletterConsents(rows);
+  return prisma.$queryRaw<NewsletterSubscriber[]>`
+    ${DEDUPED_NEWSLETTER_CTE}
+    SELECT
+      email,
+      status,
+      "subscribedAt",
+      "unsubscribedAt",
+      "version"
+    FROM deduped
+    ORDER BY last_event_at DESC, email ASC
+  `;
 }
 
 /**

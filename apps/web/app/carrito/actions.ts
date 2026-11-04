@@ -206,7 +206,21 @@ const AddPersonalizedSchema = z.object({
 });
 
 export type AddPersonalizedResult =
-  | { ok: true; itemCount: number }
+  | {
+      ok: true;
+      itemCount: number;
+      /** Metadatos sin PII para emitir GA4 `add_to_cart` al llegar a `/carrito?personalized=1`. */
+      addedItem?: {
+        designId: string;
+        sku: string;
+        name: string;
+        variantName: string;
+        priceCents: number;
+        quantity: number;
+        productSlug: string;
+        editorKind: "photo" | "name" | "letterset" | "catalog";
+      };
+    }
   | {
       ok: false;
       code: "VALIDATION" | "FORBIDDEN" | "DESIGN_NOT_READY" | "INTERNAL";
@@ -283,7 +297,27 @@ export async function addPersonalizedToCartAction(input: {
     });
     revalidatePath("/carrito");
     revalidatePath("/", "layout");
-    return { ok: true, itemCount: cart.itemCount };
+    const items = Array.isArray(cart.items) ? cart.items : [];
+    const matchedLine =
+      items.find((i) => i.designId === parsed.data.designId) ?? items[items.length - 1];
+    return {
+      ok: true,
+      itemCount: cart.itemCount,
+      ...(matchedLine
+        ? {
+            addedItem: {
+              designId: parsed.data.designId,
+              sku: matchedLine.variantSku,
+              name: matchedLine.productName,
+              variantName: matchedLine.variantName,
+              priceCents: matchedLine.unitPrice,
+              quantity: parsed.data.qty,
+              productSlug: matchedLine.productSlug,
+              editorKind: matchedLine.editorKind,
+            },
+          }
+        : {}),
+    };
   } catch (err) {
     logger.warn({
       event: "cart.add_personalized.fail",

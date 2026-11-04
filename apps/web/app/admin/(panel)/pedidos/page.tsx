@@ -8,8 +8,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { Box, ChevronRight } from "lucide-react";
+import { Box, ChevronRight, ShieldCheck } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -25,9 +24,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import {
-  listOrders,
+  listOrdersForActor,
   countOrdersNeedingReconciliation,
   type OrderListOpts,
 } from "@/features/orders/service";
@@ -76,8 +76,9 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
 }
 
 export default async function AdminPedidosPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireRole(ADMIN_ROLE_SETS.ALL);
+  const canReadPii = hasCapability(session.admin.role, "orders:read_pii");
+  const canReconcile = hasCapability(session.admin.role, "orders:reconcile");
 
   const sp = await searchParams;
   const q = pickString(sp, "q");
@@ -94,17 +95,20 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
   // Wompi cobró pero el stock se agotó (reconciliación admin pendiente).
   const needsReconFilter = pickString(sp, "atencion") === "1";
 
-  const { items, total, totalPages } = await listOrders({
-    q,
-    status,
-    sort,
-    page,
-    needsReconciliation: needsReconFilter || undefined,
-  });
+  const { items, total, totalPages } = await listOrdersForActor(
+    {
+      q,
+      status,
+      sort,
+      page,
+      needsReconciliation: needsReconFilter || undefined,
+    },
+    session.admin.role,
+  );
   const hasActiveFilters = !!q || status !== "all" || sort !== "recent" || needsReconFilter;
 
   // Contador global de órdenes que necesitan reconciliación (para el banner).
-  const reconCount = await countOrdersNeedingReconciliation();
+  const reconCount = canReconcile ? await countOrdersNeedingReconciliation() : 0;
 
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
@@ -120,10 +124,20 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
         icon={<Box className="h-5 w-5" />}
         title="Pedidos"
         subtitle={
-          <>
-            {total} {total === 1 ? "pedido" : "pedidos"}
-            {hasActiveFilters && " · con filtros aplicados"}
-          </>
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <span>
+              {total} {total === 1 ? "pedido" : "pedidos"}
+              {hasActiveFilters && " · con filtros aplicados"}
+            </span>
+            {!canReadPii && (
+              <Hint content="Por privacidad (Ley 1581), tu rol operativo visualiza datos personales enmascarados desde el servidor.">
+                <span className="border-brand-purple/20 bg-brand-cream text-brand-purple-dark inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  Privacidad activa
+                </span>
+              </Hint>
+            )}
+          </span>
         }
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
@@ -174,7 +188,11 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
               name="q"
               type="search"
               defaultValue={q ?? ""}
-              placeholder="Número (LCM-2026-0001), email, teléfono o nombre…"
+              placeholder={
+                canReadPii
+                  ? "Número (LCM-2026-0001), email, teléfono o nombre…"
+                  : "Número de pedido (LCM-2026-0001) o guía…"
+              }
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>

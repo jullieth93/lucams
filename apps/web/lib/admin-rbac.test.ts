@@ -9,7 +9,15 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AdminRole } from "@lucams/db";
-import { canAccessAdminPath, filterNavByRole, adminHomePath } from "./admin-rbac";
+import {
+  ADMIN_CAPABILITIES,
+  ADMIN_ROLE_SETS,
+  canAccessAdminPath,
+  filterNavByRole,
+  adminHomePath,
+  hasCapability,
+  rolesWithCapability,
+} from "./admin-rbac";
 
 // Rutas representativas por categoría (derivadas de ROUTE_ROLES en la fuente).
 const CATALOG_PATHS = [
@@ -23,18 +31,17 @@ const CATALOG_PATHS = [
 // Compartidas por los tres roles operativos (N-21, 2026-09-11: garantías y
 // retractos ya NO están acá — la ruta replica lo que su página exige).
 const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos"];
-// Garantías: SUPER+MANAGER — la página y sus actions piden MANAGER_UP; antes la
-// ruta era ALL y FULFILLMENT rebotaba con ?denied=1 (N-21).
-const MANAGER_UP_PATHS = ["/admin/garantias"];
+// Garantías y Retractos: SUPER+MANAGER — la página y las acciones operativas piden
+// MANAGER_UP (refundRetractAction exige SUPERADMIN + requireRecentMfa).
+const MANAGER_UP_PATHS = ["/admin/garantias", "/admin/retractos"];
 // Contenido del sitio: SUPERADMIN + CMS_EDITOR (set CONTENT). La página
 // "emails" del CMS (newsletter welcome, Ruta A) sigue acá; el módulo NUEVO
 // /admin/email-templates (Fase 4, 2026-09-18) subió a solo-SUPERADMIN.
 const CONTENT_PATHS = ["/admin/contenido"];
 // Autoservicio de cuenta (MFA obligatorio, B-1): los cuatro roles.
 const ACCOUNT_PATHS = ["/admin/seguridad"];
-// Rutas solo-SUPERADMIN: las NO listadas (deny-by-default) + /admin/retractos,
-// declarada explícita SUPER en la matriz (página y actions piden SUPER — N-21)
-// + /admin/email-templates (Fase 4: módulo real de plantillas — preview,
+// Rutas solo-SUPERADMIN: las NO listadas (deny-by-default) +
+// /admin/email-templates (Fase 4: módulo real de plantillas — preview,
 // overrides y envío de prueba; ya no es el redirect legacy al CMS).
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
@@ -50,7 +57,6 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/metricas",
   "/admin/performance",
   "/admin/redirects",
-  "/admin/retractos",
   "/admin/email-templates",
   "/admin/contenido/paginas/global",
 ];
@@ -226,7 +232,7 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     // N-21: garantías = SUPER+MANAGER (la página exige MANAGER_UP); retractos = SUPER
     // (página y actions SUPER). Antes ambas eran ALL y el rol rebotaba con ?denied=1.
     ["/admin/garantias", true, true, false, false],
-    ["/admin/retractos", true, false, false, false],
+    ["/admin/retractos", true, true, false, false],
     ["/admin/soporte", true, true, false, false],
     ["/admin/productos", true, true, false, false],
     ["/admin/inventario", true, true, false, false],
@@ -553,9 +559,98 @@ describe("adminHomePath — home del panel por rol", () => {
   });
 
   it("la home devuelta SIEMPRE es una ruta accesible para ese rol (anti-loop)", () => {
-    const roles: AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"];
+    const roles: AdminRole[] = [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "CUSTOMER_SUPPORT",
+      "PRINT_WORKSHOP",
+      "FINANCE_ANALYST",
+      "MANAGER",
+      "FULFILLMENT",
+      "CMS_EDITOR",
+    ];
     for (const role of roles) {
       expect(canAccessAdminPath(role, adminHomePath(role))).toBe(true);
     }
+  });
+});
+
+describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles operativos", () => {
+  it("SUPERADMIN posee el 100 % de ADMIN_CAPABILITIES", () => {
+    for (const cap of ADMIN_CAPABILITIES) {
+      expect(hasCapability("SUPERADMIN", cap)).toBe(true);
+    }
+  });
+
+  it("PRINT_WORKSHOP puede preparar pedidos, descargar ZIP y moderar, pero NO leer PII ni Contacto 360", () => {
+    expect(hasCapability("PRINT_WORKSHOP", "orders:read_operational")).toBe(true);
+    expect(hasCapability("PRINT_WORKSHOP", "orders:transition")).toBe(true);
+    expect(hasCapability("PRINT_WORKSHOP", "production:download_assets")).toBe(true);
+    expect(hasCapability("PRINT_WORKSHOP", "production:moderate")).toBe(true);
+    expect(hasCapability("PRINT_WORKSHOP", "orders:read_pii")).toBe(false);
+    expect(hasCapability("PRINT_WORKSHOP", "contacts:read_360")).toBe(false);
+    expect(hasCapability("PRINT_WORKSHOP", "contacts:read_pii")).toBe(false);
+    expect(hasCapability("PRINT_WORKSHOP", "finance:read")).toBe(false);
+
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/pedidos")).toBe(true);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/moderacion")).toBe(true);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/clientes")).toBe(false);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/finanzas")).toBe(false);
+    expect(ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT).not.toContain("PRINT_WORKSHOP");
+  });
+
+  it("CUSTOMER_SUPPORT atiende tickets, garantías, retractos y Contacto 360, pero NO fusiona duplicados, NO reembolsa ni exporta CSV", () => {
+    expect(hasCapability("CUSTOMER_SUPPORT", "support:manage")).toBe(true);
+    expect(hasCapability("CUSTOMER_SUPPORT", "warranty:manage")).toBe(true);
+    expect(hasCapability("CUSTOMER_SUPPORT", "warranty:refund")).toBe(false);
+    expect(hasCapability("CUSTOMER_SUPPORT", "retract:manage")).toBe(true);
+    expect(hasCapability("CUSTOMER_SUPPORT", "retract:refund")).toBe(false);
+    expect(hasCapability("CUSTOMER_SUPPORT", "contacts:read_360")).toBe(true);
+    expect(hasCapability("CUSTOMER_SUPPORT", "contacts:read_pii")).toBe(true);
+    expect(hasCapability("CUSTOMER_SUPPORT", "contacts:merge")).toBe(false);
+    expect(hasCapability("CUSTOMER_SUPPORT", "orders:transition")).toBe(false);
+    expect(hasCapability("CUSTOMER_SUPPORT", "marketing:export_csv")).toBe(false);
+    expect(hasCapability("CUSTOMER_SUPPORT", "catalog:write")).toBe(false);
+
+    // Longest-prefix match: /admin/clientes permitido, /admin/clientes/duplicados bloqueado
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/clientes")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/clientes/ck_123")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/clientes/duplicados")).toBe(false);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/soporte")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/garantias")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/retractos")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/carritos")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/carritos/configuracion")).toBe(false);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/productos")).toBe(false);
+  });
+
+  it("FINANCE_ANALYST opera finanzas, conciliación COD, costos, métricas y export contable sin poder tocar catálogo ni staff", () => {
+    expect(hasCapability("FINANCE_ANALYST", "finance:read")).toBe(true);
+    expect(hasCapability("FINANCE_ANALYST", "finance:reconcile_cod")).toBe(true);
+    expect(hasCapability("FINANCE_ANALYST", "finance:export_csv")).toBe(true);
+    expect(hasCapability("FINANCE_ANALYST", "metrics:read")).toBe(true);
+    expect(hasCapability("FINANCE_ANALYST", "orders:read_pii")).toBe(true);
+    expect(hasCapability("FINANCE_ANALYST", "orders:transition")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "catalog:write")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "staff:manage")).toBe(false);
+
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/conciliacion")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/bloqueos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/export")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/costos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/metricas")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/clientes")).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/productos")).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/usuarios")).toBe(false);
+  });
+
+  it("OPERATIONS_MANAGER equivale funcionalmente a gerencia operativa (incluye fusión de duplicados y marketing)", () => {
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/clientes")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/clientes/duplicados")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/marketing/suscriptores")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/finanzas")).toBe(false);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/usuarios")).toBe(false);
+    expect(rolesWithCapability("staff:manage")).toEqual(["SUPERADMIN"]);
   });
 });

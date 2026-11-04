@@ -107,6 +107,33 @@ describe.skipIf(!hasDb)("assessCodRisk — anti-abuso COD (integración)", { tim
     if (!res.allowed) expect(res.code).toBe("prior_return");
   });
 
+  it("mantiene el bloqueo prior_return incluso después de marcar la reconciliación como gestionada", async () => {
+    const returnedId = await makeOrder({
+      ident: "retrec",
+      status: "DELIVERED",
+      ageHours: 100,
+      returnedReason: "Envío DEVUELTO (novedad) — revisar stock y reembolso",
+    });
+    await prisma.order.update({
+      where: { id: returnedId },
+      data: {
+        needsReconciliation: false,
+        reconciledAt: new Date(),
+        reconciledBy: "admin-test",
+        reconciliationNote: "Stock revisado y cerrado",
+      },
+    });
+
+    const id = await makeOrder({ ident: "retrec" });
+    const res = await assessCodRisk(id);
+    expect(res.allowed).toBe(false);
+    if (!res.allowed) expect(res.code).toBe("prior_return");
+
+    // Y no contamina a otra identidad limpia.
+    const cleanId = await makeOrder({ ident: "retclean", total: 60_000_00 });
+    expect(await assessCodRisk(cleanId)).toEqual({ allowed: true });
+  });
+
   it("(a) bloquea por VELOCIDAD DE DIRECCIÓN (mismo domicilio, teléfonos/emails distintos)", async () => {
     // 3 COD recientes que comparten la MISMA dirección pero con identidades DISTINTAS (rotan
     // phone/email). El 4º, con otra identidad pero misma dirección, supera el tope vía addressKey.

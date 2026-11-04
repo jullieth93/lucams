@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { buildPublicShareUrl } from "@/lib/public-url";
 import { sendEmail } from "@/lib/resend";
 import { renderSupportTicketReplyEmail } from "@/features/emails/registry";
 import { createWarrantyClaimAsAdmin, WarrantyError } from "@/features/warranty/service";
@@ -36,14 +37,21 @@ export type SupportTicketDetail = {
   subject: string;
   message: string;
   status: string;
+  priority: string;
   customerId: string | null;
+  contactId: string | null;
   orderNumber: string | null;
   /** Order.number exacto si el pedido existe (para el link a /admin/pedidos/[number]). */
   resolvedOrderNumber: string | null;
   linkedCaseType: string | null;
   linkedCaseId: string | null;
+  assignedToAdminId: string | null;
+  assignedToAdmin: { id: string; email: string; role: string } | null;
+  firstRespondedAt: Date | null;
+  slaDueAt: Date | null;
   resolvedAt: Date | null;
   createdAt: Date;
+  updatedAt: Date;
   messages: SupportTicketMessageRow[];
 };
 
@@ -80,12 +88,19 @@ export async function getSupportTicketDetail(id: string): Promise<SupportTicketD
       subject: true,
       message: true,
       status: true,
+      priority: true,
       customerId: true,
+      contactId: true,
       orderNumber: true,
       linkedCaseType: true,
       linkedCaseId: true,
+      assignedToAdminId: true,
+      assignedToAdmin: { select: { id: true, email: true, role: true } },
+      firstRespondedAt: true,
+      slaDueAt: true,
       resolvedAt: true,
       createdAt: true,
+      updatedAt: true,
       messages: {
         orderBy: { createdAt: "asc" },
         select: { id: true, authorKind: true, body: true, isInternal: true, createdAt: true },
@@ -100,7 +115,7 @@ export async function getSupportTicketDetail(id: string): Promise<SupportTicketD
 /** Email de respuesta al cliente — best-effort (patrón sendTicketClosedEmail). */
 async function sendTicketReplyEmail(input: {
   messageId: string;
-  ticket: { id: string; name: string; email: string; subject: string };
+  ticket: { id: string; name: string; email: string; subject: string; customerId?: string | null };
   body: string;
 }): Promise<void> {
   try {
@@ -109,6 +124,7 @@ async function sendTicketReplyEmail(input: {
       ticketId: input.ticket.id,
       subject: input.ticket.subject as keyof typeof SUBJECT_LABELS,
       replyBody: input.body,
+      ...(input.ticket.customerId ? { threadUrl: buildPublicShareUrl("/mi-cuenta/soporte") } : {}),
     });
     const result = await sendEmail({
       to: input.ticket.email,
@@ -138,7 +154,8 @@ async function sendTicketReplyEmail(input: {
 /**
  * Agrega un mensaje del equipo al hilo del ticket.
  *  - internal = false: respuesta al cliente → email best-effort con
- *    idempotencyKey `support:reply:<messageId>`; el ticket pasa OPEN → IN_PROGRESS.
+ *    idempotencyKey `support:reply:<messageId>`; el ticket pasa OPEN → IN_PROGRESS
+ *    y sella `firstRespondedAt` en la primera respuesta pública.
  *  - internal = true: nota interna → NO se envía ni se muestra al cliente; el
  *    estado del ticket no cambia.
  */
@@ -153,7 +170,16 @@ export async function addTicketMessage(input: {
   if (body.length > 2000) throw new Error("El mensaje supera el máximo (2000 caracteres)");
   const ticket = await prisma.supportTicket.findUnique({
     where: { id: input.ticketId },
-    select: { id: true, status: true, name: true, email: true, subject: true },
+    select: {
+      id: true,
+      status: true,
+      name: true,
+      email: true,
+      subject: true,
+      customerId: true,
+      firstRespondedAt: true,
+      assignedToAdminId: true,
+    },
   });
   if (!ticket) throw new Error(`Ticket ${input.ticketId} no encontrado`);
 
@@ -169,10 +195,20 @@ export async function addTicketMessage(input: {
   });
 
   if (!input.internal) {
-    if (ticket.status === "OPEN") {
+    const needsStatusAdvance = ticket.status === "OPEN";
+    const needsFirstResponseStamp =
+      "firstRespondedAt" in ticket && ticket.firstRespondedAt === null;
+    const needsAutoAssign =
+      "assignedToAdminId" in ticket && ticket.assignedToAdminId === null && needsStatusAdvance;
+
+    if (needsStatusAdvance || needsFirstResponseStamp) {
       await prisma.supportTicket.update({
         where: { id: ticket.id },
-        data: { status: "IN_PROGRESS" },
+        data: {
+          ...(needsStatusAdvance ? { status: "IN_PROGRESS" } : {}),
+          ...(needsFirstResponseStamp ? { firstRespondedAt: new Date() } : {}),
+          ...(needsAutoAssign ? { assignedToAdminId: input.adminId } : {}),
+        },
       });
     }
     await sendTicketReplyEmail({ messageId: message.id, ticket, body });

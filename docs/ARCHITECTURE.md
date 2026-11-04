@@ -51,6 +51,8 @@ lucams_shop/
 │       │   ├── carrito/
 │       │   ├── checkout/                 # Multi-step: datos/ → envio/ → pago/ → gracias/
 │       │   ├── pedido/[token]/           # Vista guest por token (hash en DB)
+│       │   ├── empresas-y-eventos/       # Captación consultiva B2B y eventos sociales
+│       │   │                             #   (crea Contact + Organization? + Opportunity)
 │       │   ├── cotizacion/[token]/       # Confirmación guest de cotización B2B
 │       │   │                             #   (el formulario vive en checkout/datos
 │       │   │                             #   cuando NEXT_PUBLIC_STORE_MODE=catalog)
@@ -65,12 +67,13 @@ lucams_shop/
 │       │   ├── legal/                    # terminos, privacidad, habeas-data…
 │       │   ├── admin/
 │       │   │   ├── login/                # Login + MFA challenge
-│       │   │   └── (panel)/              # Backoffice (69 páginas: productos,
-│       │   │                             #   pedidos, inventario, contenido (CMS),
-│       │   │                             #   cupones, clientes, cotizaciones,
+│       │   │   └── (panel)/              # Backoffice + CRM nativo (hoy, pedidos,
+│       │   │                             #   productos, inventario, contenido (CMS),
+│       │   │                             #   cupones, clientes + duplicados,
+│       │   │                             #   oportunidades B2B, soporte, garantías,
+│       │   │                             #   retractos, marketing/segmentos,
 │       │   │                             #   mayorista, materiales/costos, finanzas,
-│       │   │                             #   carritos (abandonados, ADR-153),
-│       │   │                             #   redirects, seguridad…)
+│       │   │                             #   metricas, carritos, seguridad…)
 │       │   ├── api/
 │       │   │   ├── webhooks/             # wompi/, aveonline/, resend/
 │       │   │   ├── cron/                 # 13 handlers (x-cron-secret vía
@@ -79,7 +82,7 @@ lucams_shop/
 │       │   │   ├── catalog/              # products, search, filters, categories…
 │       │   │   ├── coupons/public/
 │       │   │   ├── cms/
-│       │   │   └── health/, vitals/, log-error/, unsubscribe/, admin/
+│       │   │   └── health/, vitals/, funnel/, log-error/, unsubscribe/, admin/
 │       │   ├── error.tsx                 # Error boundary global
 │       │   ├── not-found.tsx             # 404
 │       │   ├── global-error.tsx          # Catch-all (root)
@@ -87,10 +90,11 @@ lucams_shop/
 │       │   └── layout.tsx
 │       ├── components/                   # ui/ (shadcn), admin/, cms/, home/,
 │       │                                 # product-detail/, address/, legal/ + sueltos
-│       ├── features/                     # 35 features: checkout, orders, cart,
+│       ├── features/                     # Dominios de negocio: checkout, orders, cart,
 │       │                                 # payments, shipping, personalization, cms,
-│       │                                 # coupons, quotes, redirects, moderation,
-│       │                                 # ai, emails, observability…
+│       │                                 # identity, contacts, crm, opportunities,
+│       │                                 # analytics, coupons, quotes, redirects,
+│       │                                 # moderation, ai, emails, observability…
 │       │                                 # (actions.ts + service.ts + schemas.ts)
 │       │                                 # OJO: features/security/ NO tiene código
 │       │                                 # productivo — solo los 2 tests RLS de
@@ -129,16 +133,17 @@ lucams_shop/
 │   └── db/
 │       ├── prisma/
 │       │   ├── schema.prisma
-│       │   └── migrations/               # prisma migrate (61 migraciones,
-│       │                                 #   schema de dominio)
+│       │   └── migrations/               # prisma migrate (91 migraciones,
+│       │                                 #   70 modelos de dominio)
 │       ├── scripts/                      # cms-site-map.mjs, migrate-cms-v2.mjs,
 │       │                                 # sync-and-prune-cms-v2.mjs,
+│       │                                 # backfill-contacts.mjs,
 │       │                                 # audit-schema-drift.mjs (drift Prisma↔SQL
 │       │                                 #   gateado en CI), seeds…
 │       └── package.json
 ├── supabase/
 │   └── migrations/                       # SQL no-Prisma (RLS, grants, storage,
-│                                         #   funciones, pg_cron) 00000000000002…48
+│                                         #   funciones, pg_cron) 00000000000002…53
 ├── .github/workflows/
 │   ├── ci.yml                            # Gate de PR: changes (fast-path docs) +
 │   │                                     #   secrets-scan + quality (fmt/audit/lint/
@@ -565,30 +570,31 @@ model AdminActionLog {
 }
 ```
 
-### Inventario completo de modelos (57 modelos, 20 enums)
+### Inventario completo de modelos (67 modelos, 26 enums)
 
 El schema ilustrativo de arriba es la base lógica; la fuente de verdad es
-`packages/db/prisma/schema.prisma` (57 modelos, 20 enums — verificado en la
-certificación 2026-09-26). Inventario agrupado por módulo:
+`packages/db/prisma/schema.prisma` (67 modelos, 26 enums — verificado contra el
+schema vigente). Inventario agrupado por módulo:
 
-| Módulo                      | Modelos                                                                                                 |
-| --------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Identidad cliente           | `Customer`, `Address`                                                                                   |
-| RBAC admin                  | `AdminUser`, `AdminRecoveryCode` (códigos MFA hasheados HMAC-SHA256)                                    |
-| Catálogo                    | `Category`, `Product`, `ProductVariant`, `InventoryLog`, `OcasionTag`, `ProductOcasionTag`              |
-| Carrito y órdenes           | `Cart`, `CartItem`, `AbandonedCart`, `Order`, `OrderItem`                                               |
-| Anti-abuso COD              | `BlockedIdentity`, `CodReconciliation`                                                                  |
-| Cupones                     | `Coupon`, `CouponUsage`                                                                                 |
-| Post-venta                  | `Review`, `RetractRequest`, `WarrantyClaim`                                                             |
-| Marketing (FUTURO_APROBADO) | `LoyaltyTxn`, `Referral`, `BlogPost` (persistidos sin feature pública)                                  |
-| Idempotencia webhooks       | `WebhookEvent`                                                                                          |
-| Auditoría y seguridad       | `AdminActionLog`, `SecurityEvent` (login fallido / firma inválida, IP hasheada; `/admin/seguridad`)     |
-| Consentimientos (Ley 1581)  | `Consent`                                                                                               |
-| Observabilidad              | `WebVital`, `ErrorLog`, `ErrorReport`, `AlertState`, `Notification`, `EmailEvent`                       |
-| Soporte                     | `SupportTicket`                                                                                         |
-| CMS v2                      | `CmsPage`, `CmsSection`, `CmsField`, `CmsFieldVersion`, `CmsListItem`, `CmsMedia` (ver § CMS v2)        |
-| Emails                      | `EmailTemplateOverride` (overrides de copy de las 27 plantillas, `/admin/email-templates`)              |
-| Personalización             | `Design`, `DesignAsset`, `PersonalizationTemplate`, `LetterTileSet`, `LetterTile`, `DesignGalleryImage` |
+| Módulo                       | Modelos                                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Identidad cliente / contacto | `Customer`, `Address`, `Organization`, `Contact`, `ContactIdentity`, `IdentityMergeCandidate`                                            |
+| RBAC admin                   | `AdminUser`, `AdminRecoveryCode` (códigos MFA hasheados HMAC-SHA256)                                                                     |
+| Catálogo y SEO               | `Category`, `Product`, `ProductVariant`, `InventoryLog`, `OcasionTag`, `ProductOcasionTag`, `Material`, `ProductMaterial`, `UrlRedirect` |
+| Carrito, órdenes y pagos     | `Cart`, `CartItem`, `AbandonedCart`, `Order`, `OrderItem`, `OrderStatusEvent`, `WompiPaymentAttempt`, `WompiPaymentTransaction`          |
+| Anti-abuso COD               | `BlockedIdentity`, `CodReconciliation`                                                                                                   |
+| Cupones                      | `Coupon`, `CouponUsage`                                                                                                                  |
+| Post-venta                   | `Review`, `RetractRequest`, `WarrantyClaim`                                                                                              |
+| Fidelización, señales y blog | `LoyaltyTxn`, `Referral`, `WishlistItem`, `BackInStockSubscription`, `BlogPost` (`BlogPost` persiste como `FUTURO_APROBADO`)             |
+| Mayorista / cotizaciones B2B | `Quote`, `QuoteItem`, `WholesaleTier`                                                                                                    |
+| Idempotencia webhooks        | `WebhookEvent`                                                                                                                           |
+| Auditoría y seguridad        | `AdminActionLog`, `SecurityEvent` (login fallido / firma inválida, IP hasheada; `/admin/seguridad`)                                      |
+| Consentimientos (Ley 1581)   | `Consent`                                                                                                                                |
+| Observabilidad               | `WebVital`, `FunnelEventDaily`, `ErrorLog`, `ErrorReport`, `AlertState`, `Notification`, `EmailEvent`                                    |
+| Soporte                      | `SupportTicket`, `SupportTicketMessage`                                                                                                  |
+| CMS v2                       | `CmsPage`, `CmsSection`, `CmsField`, `CmsFieldVersion`, `CmsListItem`, `CmsMedia` (ver § CMS v2)                                         |
+| Emails                       | `EmailTemplateOverride` (overrides de copy de las plantillas de correo, `/admin/email-templates`)                                        |
+| Personalización              | `Design`, `RenderJob`, `DesignAsset`, `PersonalizationTemplate`, `LetterTileSet`, `LetterTile`, `DesignGalleryImage`                     |
 
 `DesignGalleryImage` (diseños prediseñados, `/admin/disenos`) se agrupa por `tag`
 (= `personalizationSchema.galleryTag` o, por fallback, el slug del producto) y, desde
@@ -616,12 +622,37 @@ presentan con `object-contain` sobre cuadrícula de alpha: la visualización no 
 Campos (no modelos) que conviene conocer: `Order` lleva los datos de **facturación
 electrónica DIAN** (`billingDocumentType/Number/Name`, `dianStatus`, `dianCufe`,
 `dianXmlUrl` — schema ready, el envío a la DIAN es Fase 7) y `dianStatus` se setea al
-crear la orden si el cliente pidió factura. Enums de soporte: `DocumentType`,
-`TaxResponsibility`, `DianStatus`, `CodReconciliationStatus`, `RetractStatus`,
-`WarrantyStatus`, `QuoteStatus`, `DesignStatus`, `ModerationStatus`, `ConsentScope`,
-`BlockedIdentityKind`, `CmsFieldType`, `CmsFieldKind`, `PersonalizationKind`,
-`TemplateMode` (además de `AdminRole`, `OrderStatus`, `PaymentMethod`, `CouponType`,
-`WebhookSource` mostrados arriba).
+crear la orden si el cliente pidió factura.
+
+### Arquitectura de Identidad Canónica (`Contact`), CRM Operacional Nativo y Frontera SSoT (ADR-193)
+
+> **Estado:** Activa end-to-end en Fases 6–12 (`20261104160000_expand_contact_identity_graph` + RLS `051`, `20261104170000_expand_admin_role_capabilities`, `20261104180000_support_sla_ownership_and_guest_thread`, `20261104190000_add_crm_activities_and_tasks` + RLS `052`, `20261104200000_add_b2b_opportunities` + RLS `053`, `20261104210000_order_utm_attribution`), servicio determinista de resolución y _dual-write_ (`apps/web/features/identity/resolution-service.ts`), cascada Ley 1581 (`scrubContactOnErasureTx`), motor progresivo de backfill por cursor (`packages/db/scripts/backfill-contacts.mjs`), `Contacto 360` (`/admin/clientes/[id]`), cola de fusión humana (`/admin/clientes/duplicados`), bandeja operativa `/admin/hoy`, soporte con SLA hábil colombiano + copiloto cero-PII, pipeline B2B `/empresas-y-eventos` → `/admin/oportunidades`, segmentos Ley 1581 (`/admin/marketing/segmentos`) e inteligencia conductual CRM/RFM (`/admin/metricas`).
+
+1. **Separación estructural Persona (`Contact`) vs Credencial (`Customer`):**
+   - `Contact` representa a toda contraparte humana comercial o posventa en Lucams (comprador registrado, comprador invitado `Order.customerId IS NULL`, solicitante `Quote` / `Opportunity`, remitente `SupportTicket`, prospecto `AbandonedCart`, suscriptor `Consent`).
+   - `Customer` permanece intacto como cuenta autenticada de autoservicio (`supabaseUserId String @unique`, `loyaltyPoints`, `referralCode`, `addresses`, `/mi-cuenta`), vinculándose 1:1 opcional mediante `Customer.contactId String? @unique` (`onDelete: SetNull`).
+   - FKs anulables (_expand-only_, `onDelete: SetNull`, indexadas) activas sobre las 8 entidades relacionales: `Customer` (`@unique`), `Order`, `SupportTicket`, `Quote`, `AbandonedCart`, `Consent`, `WarrantyClaim` y `RetractRequest`.
+
+2. **Modelos, enums e índices parciales activos:**
+   - Enums de identidad y CRM:
+     - `ContactIdentityType`: `SUPABASE_USER` | `EMAIL` | `PHONE` | `WHATSAPP`
+     - `IdentityVerificationStatus`: `VERIFIED` | `UNVERIFIED_OBSERVED` | `REVOKED`
+     - `MergeCandidateStatus`: `PENDING` | `APPROVED` | `REJECTED`
+     - `TaskStatus`: `OPEN` | `IN_PROGRESS` | `DONE` | `CANCELLED`; `TaskPriority`: `LOW` | `NORMAL` | `HIGH` | `URGENT`
+     - `OpportunityKind`: `CORPORATE` | `SOCIAL_EVENT` | `EDUCATIONAL` | `WHOLESALE`; `OpportunityStage`: `NEW` | `QUALIFYING` | `PROPOSAL_SENT` | `DESIGN_APPROVAL` | `WON` | `LOST`
+   - `Contact`, `ContactIdentity`, `Organization` e `IdentityMergeCandidate` con unicidad parcial SQL anti-`P2002` exclusivamente en `SUPABASE_USER` y `EMAIL` no revocados (nunca `@unique` global en teléfonos E.164).
+   - `ContactActivity` (timeline manual y sistémico con restricción `CHECK` `kind IN ('NOTE', 'CALL', 'WHATSAPP', 'EMAIL_MANUAL', 'SYSTEM')`) y `Task` (compromisos operativos transversales anclables a `contactId`, `orderId`, `supportTicketId`, `warrantyClaimId`, `retractRequestId` u `opportunityId`).
+   - `Opportunity`: pipeline consultivo para compras corporativas y eventos sociales (`/empresas-y-eventos` + conversión 1-clic desde `Quote`), con enlace opcional a `Order` ganada (`convertedOrderId`).
+   - `Order` incorpora atribución first-party sin PII (`utmSource`, `utmMedium`, `utmCampaign`, `landingPath`) alimentada por cookie `lucams_utm` estrictamente condicionada a `COOKIES_ANALYTICS`.
+
+3. **Frontera SSoT y exclusiones del CRM Operacional Mínimo:**
+   - **Lucams Postgres** es la Fuente Única de Verdad (SSoT) en los 10 dominios (`Contact`, `Order`, pagos Wompi/COD, inventario, diseños privados, renders 300 DPI, oportunidades B2B/eventos, actividades/tareas, posventa y ledger `Consent` Ley 1581).
+   - Los pedidos B2C de autoservicio web, carritos abandonados, reservas/decrementos de stock, cálculo de precios/puntos y activos gráficos privados (`customer-uploads`, `design-previews`, `production-assets`) quedan **estrictamente fuera** de cualquier pipeline comercial `Opportunity` o sincronización a SaaS externos. Enums de soporte: `DocumentType`,
+     `TaxResponsibility`, `DianStatus`, `CodReconciliationStatus`, `RetractStatus`,
+     `WarrantyStatus`, `QuoteStatus`, `DesignStatus`, `ModerationStatus`, `ConsentScope`,
+     `BlockedIdentityKind`, `CmsFieldType`, `CmsFieldKind`, `PersonalizationKind`,
+     `TemplateMode` (además de `AdminRole`, `OrderStatus`, `PaymentMethod`, `CouponType`,
+     `WebhookSource` mostrados arriba).
 
 ## CMS v2 — arquitectura de 3 capas (ADR-082 / ADR-187)
 
@@ -795,13 +826,13 @@ El mismo patrón se usa para envíos: `features/shipping/provider.ts` (`getShipp
 
 Cinco buckets con políticas distintas (detalle exhaustivo en [`SECURITY.md` § File upload](./SECURITY.md#file-upload-y-storage); buckets creados en `supabase/migrations/00000000000005/006/020`):
 
-| Bucket              | Visibilidad               | Uso                                                                                                                                                                                                                                                                 | TTL URL firmada       |
-| ------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `product-images`    | Público (lectura abierta) | Imágenes oficiales del catálogo (`<productId>/<uuid>.webp`, cacheControl 1 año; máx 5 MB)                                                                                                                                                                           | —                     |
-| `customer-uploads`  | Privado                   | Fotos que sube el cliente al estudio de personalización (máx 10 MB)                                                                                                                                                                                                 | 1 hora                |
-| `design-previews`   | Privado                   | Previews renderizados de diseños (limpio + watermark + borradores; máx 3 MB, png/webp/jpeg). Lectura solo vía Route Handler autorizado `/api/design-preview/*` (LUC-SEC-001, migración 046): dueño/admin todo; tokens de compartir/cotización/pedido solo watermark | —                     |
-| `production-assets` | Privado                   | Renders de producción generados al confirmar orden, descargables por admin (máx 30 MB, png/tiff/pdf, ADR-063)                                                                                                                                                       | 1 hora (configurable) |
-| `cms-media`         | Público                   | Assets de campos IMAGE del CMS v2 (máx 5 MB)                                                                                                                                                                                                                        | —                     |
+| Bucket              | Visibilidad               | Uso                                                                                                                                                                                                                                                                                                                                           | TTL URL firmada       |
+| ------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `product-images`    | Público (lectura abierta) | Imágenes oficiales del catálogo (`<productId>/<uuid>.webp`, cacheControl 1 año; máx 5 MB)                                                                                                                                                                                                                                                     | —                     |
+| `customer-uploads`  | Privado                   | Fotos que sube el cliente al estudio de personalización (máx 10 MB)                                                                                                                                                                                                                                                                           | 1 hora                |
+| `design-previews`   | Privado                   | Previews renderizados de diseños (exhibición limpia + páginas por unidad + borradores; máx 3 MB, png/webp/jpeg). Lectura solo vía Route Handler autorizado `/api/design-preview/*` (LUC-SEC-001, migración 046; ADR-191): borradores solo dueño/admin autenticados; exhibición limpia también por token válido de compartir/cotización/pedido | —                     |
+| `production-assets` | Privado                   | Renders de producción generados al confirmar orden, descargables por admin (máx 30 MB, png/tiff/pdf, ADR-063)                                                                                                                                                                                                                                 | 1 hora (configurable) |
+| `cms-media`         | Público                   | Assets de campos IMAGE del CMS v2 (máx 5 MB)                                                                                                                                                                                                                                                                                                  | —                     |
 
 **Reglas:**
 

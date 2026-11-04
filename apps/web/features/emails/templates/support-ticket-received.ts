@@ -13,10 +13,18 @@ export type SupportTicketReceivedData = {
   ticketId: string;
   subject: keyof typeof SUBJECT_LABELS;
   message: string;
+  /** Enlace autenticado por token (`/soporte/<token>`) para ver y responder el hilo sin depender del correo. */
+  threadUrl?: string;
 };
 
 export async function supportTicketReceivedEmail(data: SupportTicketReceivedData) {
   const ticketShort = data.ticketId.slice(0, 8).toUpperCase();
+  const threadCtaHtml = data.threadUrl
+    ? `\n<p style="margin:18px 0;"><a href="${escapeHtml(data.threadUrl)}" style="display:inline-block;background:#7C6AAD;color:#ffffff;text-decoration:none;font-weight:600;padding:11px 20px;border-radius:999px;font-size:14px;">Ver y responder mi solicitud</a></p>`
+    : "";
+  const threadCtaText = data.threadUrl
+    ? `\nPuedes consultar el estado y responder directamente en este enlace:\n${data.threadUrl}\n`
+    : "";
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¡Recibimos tu mensaje! ✨</h1>
 <p>Hola <strong>${escapeHtml(data.customerName)}</strong>,</p>
@@ -25,7 +33,7 @@ export async function supportTicketReceivedEmail(data: SupportTicketReceivedData
   <strong>Asunto:</strong> ${escapeHtml(SUBJECT_LABELS[data.subject])}<br>
   <strong>Tu mensaje:</strong><br>
   <span style="white-space:pre-wrap;color:#3D2E5C;opacity:0.85;">${escapeHtml(data.message)}</span>
-</p>
+</p>${threadCtaHtml}
 <p>Si es urgente, también nos puedes escribir por WhatsApp.</p>
 <p>Un abrazo,<br>El equipo de Lucams Shop</p>
 `;
@@ -39,7 +47,7 @@ Gracias por escribirnos. Tu ticket es #${ticketShort} y te respondemos por corre
 Asunto: ${SUBJECT_LABELS[data.subject]}
 Tu mensaje:
 ${data.message}
-
+${threadCtaText}
 Si es urgente, también nos puedes escribir por WhatsApp.
 
 Un abrazo,

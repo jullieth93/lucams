@@ -23,6 +23,7 @@
 
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { ensureCustomerContact } from "@/features/identity/resolution-service";
 
 /**
  * Vincula al Customer las órdenes guest hechas con su email. Devuelve cuántas
@@ -33,13 +34,22 @@ export async function claimGuestOrdersForCustomer(
   customerId: string,
   email: string,
 ): Promise<number> {
+  const contactId = await ensureCustomerContact(prisma, {
+    customerId,
+    emailVerified: true,
+    verificationSource: "GUEST_ORDER_CLAIM",
+  });
+
   const claimed = await prisma.order.updateMany({
     where: {
       customerId: null,
       email: { equals: email.trim(), mode: "insensitive" },
       deletedAt: null,
     },
-    data: { customerId },
+    data: {
+      customerId,
+      ...(contactId ? { contactId } : {}),
+    },
   });
 
   if (claimed.count === 0) return 0;

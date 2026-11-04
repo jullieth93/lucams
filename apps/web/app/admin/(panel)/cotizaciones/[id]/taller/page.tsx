@@ -23,6 +23,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Hammer } from "lucide-react";
 import { AdminPage, AdminPageHeader } from "@/components/admin-page";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getQuoteProductionBundle } from "@/features/quotes/admin-service";
 import { resolveProductionSpec } from "@/features/personalization/production-spec";
@@ -43,7 +44,7 @@ const asRecord = (v: unknown): Record<string, unknown> | null =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 
 export default async function HojaDeTallerPage({ params }: { params: Params }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
 
   const { id } = await params;
   const quote = await getQuoteProductionBundle(id);

@@ -12,23 +12,28 @@
  * el corazón va por ENCIMA del overlay con z-10 y su click no navega.
  */
 
-import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { computeDiscountPct, formatCOP } from "@/lib/format";
 import { WishlistButton } from "@/components/wishlist-button";
 import { ProductCardImage } from "@/components/product-card-image";
+import { ProductCardSelectLink } from "@/components/analytics-trackers";
 import type { StorefrontProductCard } from "@/features/products/public-service";
 
 export function ProductCard({
   product,
   wishlisted,
   priority = false,
+  listId,
+  listName,
 }: {
   product: StorefrontProductCard;
   /** Si se pasa (cliente logueado), muestra el corazón de favoritos con este estado inicial. */
   wishlisted?: boolean;
   /** Cards above-the-fold (primera fila del grid / primeras del carrusel) — ver ProductCardImage. */
   priority?: boolean;
+  /** Identificador opcional del listado para GA4 `select_item` ([ANA-01]). */
+  listId?: string;
+  listName?: string;
 }) {
   // #20 — el descuento se basa en el precio REALMENTE mostrado (minVariantPrice si aplica), no en el
   // basePrice, para que el tachado y el % coincidan con la cifra visible.
@@ -133,10 +138,18 @@ export function ProductCard({
           clickeable que cuando el Link envolvía el contenido). Va de último para
           pintar encima; el WishlistButton lo supera con z-10. ring-inset: el foco
           visible (WCAG 2.4.7) se dibuja DENTRO de la card, no por fuera. */}
-      <Link
+      <ProductCardSelectLink
         href={`/producto/${product.slug}`}
-        aria-label={product.name}
+        ariaLabel={product.name}
         className="focus-visible:ring-brand-purple absolute inset-0 focus-visible:ring-2 focus-visible:ring-inset"
+        listId={listId ?? `category:${product.category.slug}`}
+        listName={listName ?? product.category.name}
+        item={{
+          sku: product.sku,
+          name: product.name,
+          categoryName: product.category.name,
+          priceCents: displayPrice,
+        }}
       />
     </div>
   );

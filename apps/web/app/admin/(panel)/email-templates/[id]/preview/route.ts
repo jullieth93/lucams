@@ -10,17 +10,27 @@
  * EmailTemplateOverride ya aplicados (renderSample pasa por withOverrides).
  */
 
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
+import { EMAIL_PREVIEW_SANDBOX_CSP } from "@/lib/security-headers";
 import { getEmailTemplate } from "@/features/emails/registry";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getCurrentAdmin();
-  if (!session || session.admin.role !== "SUPERADMIN") {
-    return new Response("Solo SUPERADMIN puede previsualizar plantillas.", {
-      status: 403,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const access = await verifyAdminRouteAccess({
+    roles: ADMIN_ROLE_SETS.SUPER,
+    req,
+    checkIdle: true,
+  });
+  if (!access.ok) {
+    return new Response("Solo SUPERADMIN con MFA verificado puede previsualizar plantillas.", {
+      status: access.status,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   }
 
@@ -29,7 +39,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!tpl) {
     return new Response("Plantilla desconocida.", {
       status: 404,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   }
 
@@ -37,7 +51,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return new Response(rendered.html, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store",
+      "Cache-Control": "private, no-store",
+      "Content-Security-Policy": EMAIL_PREVIEW_SANDBOX_CSP,
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

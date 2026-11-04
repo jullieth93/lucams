@@ -20,7 +20,6 @@
  */
 
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { Calculator } from "lucide-react";
 import {
   AdminBadge,
@@ -36,7 +35,8 @@ import {
   AdminTableRow,
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { computeRecipeCost } from "@/features/products/recipe-cost";
@@ -73,8 +73,7 @@ function marginTone(pct: number): "rose" | "amber" | "emerald" {
 }
 
 export default async function AdminCostosPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireRole(ADMIN_ROLE_SETS.FINANCE);
 
   const sp = await searchParams;
 

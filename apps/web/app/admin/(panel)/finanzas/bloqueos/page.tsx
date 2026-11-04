@@ -22,6 +22,7 @@ import {
   AdminTableBody,
   AdminTableRow,
 } from "@/components/admin-page";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { isCatalogMode } from "@/lib/store-mode";
 import { listBlockedIdentities } from "@/features/anti-abuse/blocklist-service";
@@ -47,7 +48,7 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 });
 
 export default async function BloqueosCodPage() {
-  await requireRole(["SUPERADMIN"]);
+  await requireRole(ADMIN_ROLE_SETS.FINANCE_COD);
   // Modo catálogo (Etapa 1): no hay pago contra entrega (sin checkout) —
   // el nav oculta Finanzas; esto cierra el acceso por URL directa.
   if (isCatalogMode()) redirect("/admin/dashboard");

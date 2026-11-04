@@ -39,6 +39,9 @@ const mock = vi.hoisted(() => {
 const authState = vi.hoisted(() => ({
   customerId: null as string | null,
   isAdmin: false,
+  adminRole: "SUPERADMIN" as "SUPERADMIN" | "MANAGER" | "FULFILLMENT" | "CMS_EDITOR",
+  adminAal: "aal2" as "aal1" | "aal2",
+  adminTotpVerified: true,
 }));
 
 vi.mock("server-only", () => ({}));
@@ -48,7 +51,24 @@ vi.mock("@/lib/supabase/service", () => ({
 vi.mock("@/lib/auth", () => ({
   getCurrentCustomer: async () =>
     authState.customerId ? { customer: { id: authState.customerId } } : null,
-  getCurrentAdmin: async () => (authState.isAdmin ? { admin: { id: "admin-1" } } : null),
+  getCurrentAdmin: async () =>
+    authState.isAdmin ? { admin: { id: "admin-1", role: authState.adminRole } } : null,
+}));
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseServerClient: async () => ({
+    auth: {
+      mfa: {
+        listFactors: async () => ({
+          data: {
+            all: authState.adminTotpVerified ? [{ factor_type: "totp", status: "verified" }] : [],
+          },
+        }),
+        getAuthenticatorAssuranceLevel: async () => ({
+          data: { currentLevel: authState.adminAal, nextLevel: "aal2" },
+        }),
+      },
+    },
+  }),
 }));
 
 import { prisma } from "@/lib/db";
@@ -240,12 +260,34 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
     }
   });
 
-  it("admin → 200 incluso en preview limpio ajeno", async () => {
+  it("admin operativo con MFA aal2 → 200 incluso en preview limpio o borrador ajeno", async () => {
     authState.isAdmin = true;
     try {
       expect((await call(`${designId}/preview.png`)).status).toBe(200);
+      expect((await call(`${designId}/draft-preview.webp`)).status).toBe(200);
     } finally {
       authState.isAdmin = false;
+    }
+  });
+
+  it("admin en aal1, sin TOTP verificado o con rol CMS_EDITOR → 404 (sin oráculo, [SEC-01])", async () => {
+    authState.isAdmin = true;
+    try {
+      authState.adminAal = "aal1";
+      expect((await call(`${designId}/draft-preview.webp`)).status).toBe(404);
+
+      authState.adminAal = "aal2";
+      authState.adminTotpVerified = false;
+      expect((await call(`${designId}/draft-preview.webp`)).status).toBe(404);
+
+      authState.adminTotpVerified = true;
+      authState.adminRole = "CMS_EDITOR";
+      expect((await call(`${designId}/draft-preview.webp`)).status).toBe(404);
+    } finally {
+      authState.isAdmin = false;
+      authState.adminRole = "SUPERADMIN";
+      authState.adminAal = "aal2";
+      authState.adminTotpVerified = true;
     }
   });
 

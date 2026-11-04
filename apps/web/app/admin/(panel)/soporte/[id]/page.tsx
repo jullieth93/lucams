@@ -1,31 +1,45 @@
 /*
- * Admin — detalle de ticket de soporte con hilo (flujo de solución, 2026-09-29).
- *
- * Antes el admin solo cambiaba el estado y respondía por fuera (mailto). Acá:
- *  - Hilo SupportTicketMessage: mensaje original + respuestas del equipo + notas
- *    internas (isInternal, solo visibles en el panel).
- *  - "Responder": guarda en el hilo y envía email al cliente (support-ticket-reply).
- *  - "Convertir a caso" (subject GARANTIA_DEVOLUCION): crea el WarrantyClaim o
- *    RetractRequest enlazado (linkedCaseType/linkedCaseId) con referencia cruzada.
+ * Admin — detalle de ticket de soporte con hilo bidireccional, SLA legal colombiano,
+ * asignación de responsable, prioridad y enlace a Contacto 360 (`Fase 10 · S21`).
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, LifeBuoy, Package, Scale } from "lucide-react";
-import { requireRole } from "@/lib/admin-rbac-guard";
+import { ChevronLeft, Clock, LifeBuoy, Package, Scale, User, UserCheck } from "lucide-react";
+import { requireCapability } from "@/lib/admin-rbac-guard";
+import { hasCapability } from "@/lib/admin-rbac";
+import { evaluateSlaStatus } from "@/lib/colombian-sla";
+import { CrmWorkspacePanel } from "@/components/admin/crm-workspace-panel";
+import {
+  listActivitiesForEntity,
+  listAssignableCrmAdmins,
+  listTasksForEntity,
+} from "@/features/crm/service";
 import {
   getSupportTicketDetail,
   getOrderItemsForCaseConversion,
 } from "@/features/support/thread-service";
-import type { SupportTicketStatus } from "@/features/support/admin-service";
+import {
+  isSupportPriority,
+  listAssignableSupportAdmins,
+  SUPPORT_PRIORITY_LABELS,
+  type SupportTicketPriority,
+  type SupportTicketStatus,
+} from "@/features/support/admin-service";
 import { SUBJECT_LABELS } from "@/features/support/schemas";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
 import { TicketActions } from "../ticket-actions";
 import { ReplyForm } from "./reply-form";
 import { ConvertCaseForm } from "./convert-case-form";
+import { TicketAssignmentForm } from "./ticket-assignment-form";
 
-export const metadata: Metadata = { title: "Ticket de soporte" };
+export const metadata: Metadata = {
+  title: "Ticket de soporte",
+  robots: { index: false, follow: false },
+};
+
+export const dynamic = "force-dynamic";
 
 const STATUS_TONE: Record<SupportTicketStatus, "amber" | "blue" | "emerald"> = {
   OPEN: "amber",
@@ -55,13 +69,28 @@ export default async function AdminSoporteTicketPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  const session = await requireCapability("support:manage");
+  const canManageTasks = hasCapability(session.admin.role, "crm:manage_tasks");
+  const canManageActivities = hasCapability(session.admin.role, "crm:manage_activities");
+  const canViewActivities =
+    hasCapability(session.admin.role, "contacts:read_360") &&
+    hasCapability(session.admin.role, "contacts:read_pii");
   const { id } = await params;
-  const ticket = await getSupportTicketDetail(id);
+
+  const [ticket, assignableAdmins, crmAssignableAdmins] = await Promise.all([
+    getSupportTicketDetail(id),
+    listAssignableSupportAdmins(),
+    canManageTasks ? listAssignableCrmAdmins() : Promise.resolve([]),
+  ]);
   if (!ticket) notFound();
 
-  // Solo se cargan los items del pedido cuando la conversión aplica (ticket de
-  // garantía/devolución sin caso enlazado y con número de pedido).
+  const [crmTasks, crmActivities] = await Promise.all([
+    listTasksForEntity({ supportTicketId: ticket.id }),
+    canViewActivities && ticket.contactId
+      ? listActivitiesForEntity({ supportTicketId: ticket.id })
+      : Promise.resolve([]),
+  ]);
+
   const canConvert = ticket.subject === "GARANTIA_DEVOLUCION" && !ticket.linkedCaseId;
   const conversionOrder =
     canConvert && ticket.orderNumber
@@ -69,18 +98,29 @@ export default async function AdminSoporteTicketPage({
       : null;
 
   const status = ticket.status as SupportTicketStatus;
+  const priority: SupportTicketPriority = isSupportPriority(ticket.priority)
+    ? ticket.priority
+    : "NORMAL";
+  const sla = evaluateSlaStatus(ticket.slaDueAt, {
+    isClosed: status === "CLOSED",
+  });
 
   return (
     <AdminPage>
       <AdminPageHeader
         icon={<LifeBuoy className="h-5 w-5" />}
         title={`Ticket #${ticket.id.slice(0, 8).toUpperCase()} — ${subjectLabel(ticket.subject)}`}
-        subtitle={`${ticket.name} · ${ticket.email} · ${dateFmt.format(ticket.createdAt)}`}
+        subtitle={`${ticket.name} · ${ticket.email} · abierto ${dateFmt.format(ticket.createdAt)}`}
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Soporte", href: "/admin/soporte" },
+          { label: `#${ticket.id.slice(0, 8).toUpperCase()}` },
+        ]}
       />
       <AdminPageBody>
         <Link
           href="/admin/soporte"
-          className="text-brand-purple-dark hover:text-brand-purple mb-4 inline-flex items-center gap-1 text-sm font-semibold"
+          className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-sm font-semibold"
         >
           <ChevronLeft className="h-4 w-4" /> Volver a soporte
         </Link>
@@ -93,9 +133,25 @@ export default async function AdminSoporteTicketPage({
                 <AdminBadge tone={STATUS_TONE[status]}>
                   {STATUS_LABEL[status] ?? ticket.status}
                 </AdminBadge>
+                <AdminBadge tone={sla.badgeTone}>
+                  <Clock className="mr-1 inline h-3 w-3" />
+                  {sla.label}
+                </AdminBadge>
+                <AdminBadge tone="purple">Prioridad {SUPPORT_PRIORITY_LABELS[priority]}</AdminBadge>
+                {ticket.firstRespondedAt ? (
+                  <span className="text-brand-muted text-xs">
+                    1ª respuesta: {dateFmt.format(ticket.firstRespondedAt)}
+                  </span>
+                ) : (
+                  status !== "CLOSED" && (
+                    <span className="text-xs font-semibold text-amber-700">
+                      Pendiente de primera respuesta
+                    </span>
+                  )
+                )}
                 {ticket.resolvedAt && (
                   <span className="text-brand-muted text-xs">
-                    cerrado {dateFmt.format(ticket.resolvedAt)}
+                    · cerrado {dateFmt.format(ticket.resolvedAt)}
                   </span>
                 )}
               </div>
@@ -106,7 +162,9 @@ export default async function AdminSoporteTicketPage({
 
             {ticket.messages.length > 0 && (
               <section className="space-y-2">
-                <h2 className="text-brand-purple-dark text-sm font-semibold">Hilo</h2>
+                <h2 className="text-brand-purple-dark text-sm font-semibold">
+                  Conversación ({ticket.messages.length})
+                </h2>
                 <ul className="space-y-2">
                   {ticket.messages.map((m) => (
                     <li
@@ -114,15 +172,17 @@ export default async function AdminSoporteTicketPage({
                       className={`rounded-xl border p-3 text-sm shadow-sm ${
                         m.isInternal
                           ? "border-amber-200 bg-amber-50"
-                          : "border-brand-purple/10 bg-white"
+                          : m.authorKind === "CUSTOMER"
+                            ? "border-brand-turquoise/40 bg-brand-turquoise/5"
+                            : "border-brand-purple/10 bg-white"
                       }`}
                     >
-                      <p className="text-brand-muted text-xs">
+                      <p className="text-brand-muted text-xs font-medium">
                         {m.isInternal
-                          ? "Nota interna (no visible para el cliente)"
+                          ? "Nota interna (solo equipo)"
                           : m.authorKind === "ADMIN"
-                            ? "Respuesta del equipo — enviada por correo"
-                            : "Cliente"}{" "}
+                            ? "Respuesta del equipo — enviada por correo y visible en hilo"
+                            : "Respuesta del cliente"}{" "}
                         · {dateFmt.format(m.createdAt)}
                       </p>
                       <p className="text-brand-purple-dark/90 mt-1 whitespace-pre-wrap">{m.body}</p>
@@ -135,15 +195,70 @@ export default async function AdminSoporteTicketPage({
             <section className="border-brand-purple/10 rounded-xl border bg-white p-4 shadow-sm">
               <h2 className="text-brand-purple-dark text-sm font-semibold">Responder</h2>
               <p className="text-brand-muted mt-1 text-xs">
-                La respuesta se guarda en el hilo y llega al correo del cliente. Marca «nota
-                interna» para dejar un comentario solo para el equipo.
+                La respuesta pública queda en el hilo y llega al correo del cliente. Marca «nota
+                interna» para dejar contexto privado solo para el equipo.
               </p>
               <ReplyForm ticketId={ticket.id} disabled={status === "CLOSED"} />
             </section>
+
+            <CrmWorkspacePanel
+              title="Tareas de seguimiento del ticket"
+              subtitle="Crea tareas internas con vencimiento y responsable para que aparezcan en la Bandeja Hoy."
+              contactId={canViewActivities ? ticket.contactId : null}
+              supportTicketId={ticket.id}
+              currentAdminId={session.admin.id}
+              canManageTasks={canManageTasks}
+              canViewActivities={canViewActivities && Boolean(ticket.contactId)}
+              canManageActivities={canManageActivities && Boolean(ticket.contactId)}
+              tasks={crmTasks}
+              activities={crmActivities}
+              assignableAdmins={crmAssignableAdmins}
+              compact
+            />
           </div>
 
-          {/* Columna lateral: datos + pedido + caso + estado */}
+          {/* Columna lateral: Contacto 360 + responsable/SLA + pedido + caso + estado */}
           <aside className="space-y-4">
+            <section className="border-brand-purple/10 rounded-xl border bg-white p-4 shadow-sm">
+              <h2 className="text-brand-purple-dark flex items-center gap-1.5 text-sm font-semibold">
+                <User className="h-4 w-4" /> Perfil del cliente
+              </h2>
+              <p className="text-brand-purple-dark mt-2 text-sm font-semibold">{ticket.name}</p>
+              <p className="text-brand-muted text-xs">{ticket.email}</p>
+              {ticket.contactId && (
+                <Link
+                  href={`/admin/clientes/${ticket.contactId}`}
+                  className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-block text-xs font-semibold underline underline-offset-2"
+                >
+                  Abrir Contacto 360 completo →
+                </Link>
+              )}
+            </section>
+
+            <section className="border-brand-purple/10 rounded-xl border bg-white p-4 shadow-sm">
+              <h2 className="text-brand-purple-dark flex items-center gap-1.5 text-sm font-semibold">
+                <UserCheck className="h-4 w-4" /> Responsable y SLA legal
+              </h2>
+              {ticket.slaDueAt && (
+                <p className="text-brand-muted mt-1.5 text-xs">
+                  Vencimiento legal:{" "}
+                  <strong className="text-brand-purple-dark">
+                    {dateFmt.format(ticket.slaDueAt)}
+                  </strong>
+                </p>
+              )}
+              <div className="mt-3">
+                <TicketAssignmentForm
+                  ticketId={ticket.id}
+                  currentAssignedAdminId={ticket.assignedToAdminId}
+                  currentPriority={priority}
+                  currentActorAdminId={session.admin.id}
+                  assignableAdmins={assignableAdmins}
+                  updatedAtIso={ticket.updatedAt.toISOString()}
+                />
+              </div>
+            </section>
+
             <section className="border-brand-purple/10 rounded-xl border bg-white p-4 shadow-sm">
               <h2 className="text-brand-purple-dark flex items-center gap-1.5 text-sm font-semibold">
                 <Package className="h-4 w-4" /> Pedido relacionado
@@ -213,7 +328,12 @@ export default async function AdminSoporteTicketPage({
             <section className="border-brand-purple/10 rounded-xl border bg-white p-4 shadow-sm">
               <h2 className="text-brand-purple-dark text-sm font-semibold">Estado</h2>
               <div className="mt-2">
-                <TicketActions id={ticket.id} status={ticket.status} />
+                <TicketActions
+                  id={ticket.id}
+                  status={ticket.status}
+                  updatedAtIso={ticket.updatedAt.toISOString()}
+                  hideThreadLink
+                />
               </div>
             </section>
           </aside>

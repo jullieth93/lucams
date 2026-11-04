@@ -12,7 +12,9 @@
  */
 
 import JSZip from "jszip";
-import { requireRole } from "@/lib/admin-rbac-guard";
+import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { recordAdminAction } from "@/lib/admin-audit";
 import { getOrderProductionBundle } from "@/features/orders/service";
 import { downloadProductionAsset } from "@/lib/storage";
 import {
@@ -61,8 +63,18 @@ function jsonRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-export async function GET(_req: Request, ctx: { params: Promise<{ number: string }> }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+export async function GET(req: Request, ctx: { params: Promise<{ number: string }> }) {
+  const auth = await verifyAdminRouteAccess({
+    roles: ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD,
+    req,
+    checkIdle: true,
+  });
+  if (!auth.ok) {
+    return Response.json(
+      { error: "No autorizado.", reason: auth.reason },
+      { status: auth.status, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   const { number } = await ctx.params;
   const bundle = await getOrderProductionBundle(decodeURIComponent(number));
 
@@ -260,6 +272,20 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
 
   const content = await zip.generateAsync({ type: "nodebuffer" });
   const filename = `pedido-${slug(bundle.number)}-produccion.zip`;
+
+  await recordAdminAction({
+    actorId: auth.session.admin.id,
+    action: "order.design_zip_download",
+    entityType: "Order",
+    entityId: bundle.id,
+    metadata: {
+      orderNumber: bundle.number,
+      totalPieces,
+      unapprovedPieces,
+      missingPieces: missing,
+    },
+  });
+
   return new Response(new Uint8Array(content), {
     status: 200,
     headers: {

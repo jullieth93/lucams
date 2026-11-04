@@ -19,6 +19,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { phoneIdentityVariants } from "@/features/anti-abuse/blocklist-service";
 
 // Política anti-abuso COD (constantes documentadas; conservadoras para lanzamiento).
 const COD_MAX_PER_IDENTITY_24H = 3; // pedidos COD por teléfono/email en 24h
@@ -43,13 +44,13 @@ export async function assessCodRisk(orderId: string): Promise<CodRiskResult> {
     if (!order) return { allowed: true };
 
     const email = order.email?.trim().toLowerCase() || null;
-    const phone = order.phone?.trim() || null;
+    const phoneVariants = order.phone ? phoneIdentityVariants(order.phone) : [];
     const addressKey = order.shippingAddressKey || null;
     // Sin identidad no se puede evaluar (no debería pasar: checkout exige contacto) → permitir.
-    if (!email && !phone && !addressKey) return { allowed: true };
+    if (!email && phoneVariants.length === 0 && !addressKey) return { allowed: true };
 
     const identity: Prisma.OrderWhereInput["OR"] = [];
-    if (phone) identity.push({ phone });
+    if (phoneVariants.length > 0) identity.push({ phone: { in: phoneVariants } });
     if (email) identity.push({ email });
     // (a) Velocity por DIRECCIÓN: cuenta también pedidos que comparten la dirección de envío,
     // aunque el abusador rote teléfono/email.
@@ -58,8 +59,11 @@ export async function assessCodRisk(orderId: string): Promise<CodRiskResult> {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     // (b) Block-list persistente: Lucy vetó a mano un teléfono/email/dirección abusivos.
+    // Compara todas las variantes telefónicas equivalentes (+57300..., 300..., crudo) para
+    // impedir evasión por prefijo/espacios/guiones ([SEC-03]).
     const blockClauses: Prisma.BlockedIdentityWhereInput[] = [];
-    if (phone) blockClauses.push({ kind: "PHONE", value: phone });
+    if (phoneVariants.length > 0)
+      blockClauses.push({ kind: "PHONE", value: { in: phoneVariants } });
     if (email) blockClauses.push({ kind: "EMAIL", value: email });
     if (addressKey) blockClauses.push({ kind: "ADDRESS", value: addressKey });
 
@@ -84,12 +88,18 @@ export async function assessCodRisk(orderId: string): Promise<CodRiskResult> {
         // 3. Historial: ¿algún pedido ENTREGADO antes? (cualquier método) → cliente "conocido".
         prisma.order.count({ where: { ...byIdentity, status: "DELIVERED" } }),
         // 4. Devolución previa: un COD que el courier devolvió (RETURNED/EXCEPTION marca el motivo).
+        // Se conserva la señal aunque el admin ya haya cerrado la reconciliación manual
+        // (`needsReconciliation = false`, `reconciledAt != null`) para no borrar la memoria antifraude.
         prisma.order.count({
           where: {
-            ...byIdentity,
-            paymentMethod: "COD",
-            needsReconciliation: true,
-            reconciliationReason: { contains: "DEVUELTO" },
+            AND: [
+              byIdentity,
+              {
+                paymentMethod: "COD",
+                reconciliationReason: { contains: "DEVUELTO" },
+                OR: [{ needsReconciliation: true }, { reconciledAt: { not: null } }],
+              },
+            ],
           },
         }),
         // 5. (c) No-show: un admin marcó a esta identidad como NO RECIBIDO en un pedido previo.

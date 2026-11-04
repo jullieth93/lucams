@@ -21,7 +21,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
+import { recordAdminAction } from "@/lib/admin-audit";
 import { getOrder } from "@/features/orders/service";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
@@ -56,14 +57,23 @@ type ShippingAddrSnapshot = {
 };
 
 export default async function GuiaEntregaPage({ params }: { params: Promise<{ number: string }> }) {
-  // Guard propio: esta ruta vive fuera del layout (panel) que aplica el RBAC
-  // por ruta — cualquier admin activo puede imprimir guías de entrega (mismo
-  // set que las acciones operativas del pedido).
-  await requireRole(ADMIN_ROLE_SETS.ALL);
+  // Guard propio (fuera del layout panel): PRINT_WORKSHOP queda bloqueado para
+  // no sortear el enmascaramiento server-side de PII vía la guía física.
+  const session = await requireRole(ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT);
 
   const { number } = await params;
   const order = await getOrder(decodeURIComponent(number));
   if (!order) notFound();
+
+  if (!hasCapability(session.admin.role, "orders:read_pii")) {
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "order.print_shipping_guide",
+      entityType: "Order",
+      entityId: order.id,
+      metadata: { orderNumber: order.number, role: session.admin.role },
+    });
+  }
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
   const isInternal = order.shippingCarrier === LUCAMS_CARRIER;
@@ -129,7 +139,7 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
         <header className="flex items-start justify-between border-b-2 border-black pb-1">
           <div>
             <p className="text-[11px] font-bold tracking-wide">GUÍA DE ENTREGA INTERNA</p>
-            <p className="text-[8px]">Lucam&apos;s — mensajería propia</p>
+            <p className="text-[8px]">Lucams — mensajería propia</p>
           </div>
           <div className="text-right">
             <p className="font-mono text-[11px] font-bold">{order.number}</p>
@@ -209,7 +219,7 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
 
         {/* Firmas — líneas simples */}
         <section className="space-y-3 pt-3 text-[8px]">
-          <p>Entregó (Lucam&apos;s): ______________________ Firma: ______________</p>
+          <p>Entregó (Lucams): ______________________ Firma: ______________</p>
           <p>Recibí a satisfacción: ______________________ CC: __________ Firma: __________</p>
         </section>
       </article>

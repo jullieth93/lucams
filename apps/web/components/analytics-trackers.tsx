@@ -29,22 +29,32 @@
  * correctos (por eso los eslint-disable de exhaustive-deps — las props NO
  * deben re-disparar el evento por sí solas, solo la URL/clave).
  *
- * Cableados: view_item (PDP), add_to_cart (PDP post-redirect ?added=1),
- * view_cart (/carrito), begin_checkout (/checkout/datos), purchase
- * (/checkout/gracias), view_item_list (/productos).
- *
- * PENDIENTES (decisión 2026-10-28 — no cableados por costo/beneficio):
- *  - select_item: exigiría envolver cada card de los listados con un
- *    handler client (ProductCard es RSC y se reusa en home/categorías/
- *    relacionados); el click-through ya es medible vía page_view de la PDP.
- *  - add_shipping_info / add_payment_info: el checkout es redirect al
- *    hosted checkout de Wompi — el cliente no elige transportadora ni
- *    método de pago en UI propia, así que no hay interacción que medir.
+ * Cableados: view_item (PDP), select_item (ProductCard), add_to_cart (PDP
+ * post-redirect ?added=1 y Estudio post-redirect /carrito?personalized=1),
+ * view_cart (/carrito), begin_checkout (/checkout/datos), add_shipping_info
+ * (/checkout/pago tras validar oferta HMAC), add_payment_info (/checkout/pago
+ * al confirmar Wompi o COD), purchase (/checkout/gracias y /pedido/[token]?nueva=1
+ * para COD), view_item_list (/productos).
  */
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { centsToCOP, toGa4Item, trackEvent, type Ga4ItemInput } from "@/lib/analytics";
+import {
+  centsToCOP,
+  claimAnalyticsOnceKey,
+  consumePersonalizedAddToCart,
+  toGa4Item,
+  trackEvent,
+  type AnalyticsEditorKind,
+  type Ga4ItemInput,
+} from "@/lib/analytics";
+import { emitFunnelEvent, emitSessionFunnelStep } from "@/lib/funnel-client";
+
+export type FunnelLineAttribution = {
+  productSlug: string;
+  editorKind: AnalyticsEditorKind;
+};
 
 /** URL actual completa (path + query) — clave de "vista" para los trackers. */
 function useCurrentUrl(): string {
@@ -72,7 +82,15 @@ function useTrackOnViewChange(viewKey: string, fire: () => void) {
  *  (variante elegida si la hay, fallback al producto). Se clavea por pathname:
  *  elegir otra variante (?variant=) es una interacción intra-página, no otra
  *  vista del producto. */
-export function TrackViewItem({ item }: { item: Ga4ItemInput }) {
+export function TrackViewItem({
+  item,
+  productSlug,
+  editorKind,
+}: {
+  item: Ga4ItemInput;
+  productSlug?: string;
+  editorKind?: AnalyticsEditorKind;
+}) {
   const pathname = usePathname();
   useTrackOnViewChange(pathname, () => {
     trackEvent("view_item", {
@@ -80,6 +98,13 @@ export function TrackViewItem({ item }: { item: Ga4ItemInput }) {
       value: centsToCOP(item.priceCents),
       items: [toGa4Item({ ...item, quantity: item.quantity ?? 1 })],
     });
+    if (productSlug) {
+      emitFunnelEvent({
+        eventName: "product_view",
+        productSlug,
+        editorKind: editorKind ?? "all",
+      });
+    }
   });
   return null;
 }
@@ -98,11 +123,15 @@ export function TrackViewItem({ item }: { item: Ga4ItemInput }) {
 export function TrackAddToCartSuccess({
   itemsByVariantId,
   fallbackItem,
+  productSlug,
+  editorKind,
 }: {
   /** Variante elegida → ítem GA4 (precio de ESA variante en centavos). */
   itemsByVariantId: Record<string, Ga4ItemInput>;
   /** Producto sin selector de variantes (o id no resuelto): ítem de producto. */
   fallbackItem: Ga4ItemInput;
+  productSlug?: string;
+  editorKind?: AnalyticsEditorKind;
 }) {
   const searchParams = useSearchParams();
   const wasAddedRef = useRef(false);
@@ -118,6 +147,13 @@ export function TrackAddToCartSuccess({
         value: centsToCOP(item.priceCents * quantity),
         items: [toGa4Item({ ...item, quantity })],
       });
+      if (productSlug) {
+        emitFunnelEvent({
+          eventName: "cart_add",
+          productSlug,
+          editorKind: editorKind ?? "catalog",
+        });
+      }
     }
     wasAddedRef.current = isAdded;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,9 +186,11 @@ export function TrackViewCart({
 export function TrackBeginCheckout({
   items,
   valueCents,
+  funnelLines = [],
 }: {
   items: Ga4ItemInput[];
   valueCents: number;
+  funnelLines?: ReadonlyArray<FunnelLineAttribution>;
 }) {
   const url = useCurrentUrl();
   useTrackOnViewChange(url, () => {
@@ -162,12 +200,157 @@ export function TrackBeginCheckout({
       value: centsToCOP(valueCents),
       items: items.map(toGa4Item),
     });
+    emitSessionFunnelStep("checkout_begin", funnelLines);
   });
   return null;
 }
 
 /**
- * purchase — /checkout/gracias (solo cuando la orden quedó CONFIRMADA).
+ * add_to_cart para ítems personalizados creados en el Estudio ([ANA-01] / S06).
+ *
+ * Los 3 editores (`StudioEditor`, `NameEditor`, `LetterSetEditor`) depositan el
+ * ítem en `sessionStorage` vía `stashPersonalizedAddToCart` y redirigen a
+ * `/carrito?personalized=1`. Cuando el carrito monta con `personalized=1`, este
+ * tracker consume ese ítem (o cae al último ítem personalizado del carrito si
+ * `sessionStorage` estuvo bloqueado) y emite `add_to_cart` una sola vez por alta.
+ *
+ * Requiere `<Suspense>` en el call site (`useSearchParams`).
+ */
+export function TrackPersonalizedAddToCart({
+  fallbackItems,
+}: {
+  fallbackItems: Array<
+    Ga4ItemInput & {
+      designId?: string | null;
+      productSlug?: string;
+      editorKind?: AnalyticsEditorKind;
+    }
+  >;
+}) {
+  const searchParams = useSearchParams();
+  const wasPersonalizedRef = useRef(false);
+  useEffect(() => {
+    const isPersonalized = searchParams.get("personalized") === "1";
+    if (isPersonalized && !wasPersonalizedRef.current) {
+      const stashed = consumePersonalizedAddToCart();
+      if (stashed) {
+        const qty = stashed.quantity ?? 1;
+        trackEvent("add_to_cart", {
+          currency: "COP",
+          value: centsToCOP(stashed.priceCents * qty),
+          items: [toGa4Item({ ...stashed, quantity: qty })],
+        });
+        if (stashed.productSlug) {
+          emitFunnelEvent({
+            eventName: "cart_add",
+            productSlug: stashed.productSlug,
+            editorKind: stashed.editorKind ?? "photo",
+          });
+        }
+      } else {
+        const personalizedLines = fallbackItems.filter((i) => Boolean(i.designId));
+        const candidate = personalizedLines[personalizedLines.length - 1];
+        if (candidate) {
+          const qty = candidate.quantity ?? 1;
+          const dedupKey = `ga4:personalized:${candidate.designId ?? candidate.sku}:${qty}`;
+          if (claimAnalyticsOnceKey("session", dedupKey)) {
+            trackEvent("add_to_cart", {
+              currency: "COP",
+              value: centsToCOP(candidate.priceCents * qty),
+              items: [toGa4Item({ ...candidate, quantity: qty })],
+            });
+            if (candidate.productSlug) {
+              emitFunnelEvent({
+                eventName: "cart_add",
+                productSlug: candidate.productSlug,
+                editorKind: candidate.editorKind ?? "photo",
+              });
+            }
+          }
+        }
+      }
+    }
+    wasPersonalizedRef.current = isPersonalized;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+  return null;
+}
+
+/**
+ * add_shipping_info — `/checkout/pago` una vez validada la selección HMAC de
+ * transportadora ([ANA-01] / S06). Deduplicado en `sessionStorage` por
+ * transportadora + subtotal para que recargas o cambios de cupón en el paso 3
+ * no inflen el conteo, pero volver al paso 2 y elegir otra tarifa sí emita.
+ */
+export function TrackAddShippingInfo({
+  shippingTier,
+  valueCents,
+  coupon,
+  items,
+  funnelLines = [],
+}: {
+  shippingTier: string;
+  valueCents: number;
+  coupon?: string;
+  items: Ga4ItemInput[];
+  funnelLines?: ReadonlyArray<FunnelLineAttribution>;
+}) {
+  const firedTierRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (items.length === 0 || !shippingTier) return;
+    const sig = `${shippingTier}:${valueCents}`;
+    if (firedTierRef.current === sig) return;
+    firedTierRef.current = sig;
+    if (!claimAnalyticsOnceKey("session", `ga4:shipping:${sig}`)) return;
+    trackEvent("add_shipping_info", {
+      currency: "COP",
+      value: centsToCOP(valueCents),
+      shipping_tier: shippingTier,
+      ...(coupon ? { coupon } : {}),
+      items: items.map(toGa4Item),
+    });
+    emitSessionFunnelStep("checkout_shipping_selected", funnelLines);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shippingTier, valueCents]);
+  return null;
+}
+
+/**
+ * select_item — enlace stretched-link mínimo para `ProductCard` ([ANA-01] / S06).
+ * Mantiene `ProductCard` 100% Server Component: solo este `<Link>` hoja es client.
+ */
+export function ProductCardSelectLink({
+  href,
+  ariaLabel,
+  className,
+  item,
+  listId,
+  listName,
+}: {
+  href: string;
+  ariaLabel: string;
+  className?: string;
+  item: Ga4ItemInput;
+  listId?: string;
+  listName?: string;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-label={ariaLabel}
+      className={className}
+      onClick={() => {
+        trackEvent("select_item", {
+          ...(listId ? { item_list_id: listId } : {}),
+          ...(listName ? { item_list_name: listName } : {}),
+          items: [toGa4Item(item)],
+        });
+      }}
+    />
+  );
+}
+/**
+ * purchase — /checkout/gracias (Wompi aprobado) y /pedido/[token]?nueva=1 (COD).
  *
  * IDEMPOTENTE por transaction_id: flag en localStorage
  * `ga4:purchase:<transaction_id>` — sobrevive reloads, el auto-refresh de
@@ -185,6 +368,7 @@ export function TrackPurchase({
   shippingCents,
   taxCents,
   items,
+  funnelLines = [],
 }: {
   /** Número de orden (LCM-YYYY-NNNN) — estable ante recargas y reintentos
    *  de pago (un segundo cobro sobre la misma orden NO debe re-contar). */
@@ -193,18 +377,13 @@ export function TrackPurchase({
   shippingCents: number;
   taxCents: number;
   items: Ga4ItemInput[];
+  funnelLines?: ReadonlyArray<FunnelLineAttribution>;
 }) {
   const firedRef = useRef(false);
   useEffect(() => {
     if (firedRef.current) return;
     firedRef.current = true;
-    const key = `ga4:purchase:${transactionId}`;
-    try {
-      if (window.localStorage.getItem(key)) return;
-      window.localStorage.setItem(key, new Date().toISOString());
-    } catch {
-      // Sin storage: el ref por instancia es la única defensa que queda.
-    }
+    if (!claimAnalyticsOnceKey("local", `ga4:purchase:${transactionId}`)) return;
     trackEvent("purchase", {
       transaction_id: transactionId,
       currency: "COP",
@@ -213,6 +392,7 @@ export function TrackPurchase({
       tax: centsToCOP(taxCents),
       items: items.map(toGa4Item),
     });
+    emitSessionFunnelStep("purchase_completed", funnelLines);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactionId]);
   return null;

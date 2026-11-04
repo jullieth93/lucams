@@ -1,31 +1,26 @@
 /*
- * Admin > Clientes > [id] — Customer 360.
+ * Admin > Clientes > [id] — Ficha unificada `Contacto 360` (Fase 9 · S19).
  *
- * Información completa del cliente para soporte y operación:
- *   - Header con datos personales + DIAN + métricas (total gastado,
- *     pedidos, puntos, referidos)
- *   - Tabs: Pedidos / Reseñas / Direcciones / Puntos / Diseños
- *
- * Ley 1581: admin solo LEE. Si necesita modificar datos, debe pedir
- * al cliente que lo haga desde /mi-cuenta. Excepción: anonimización
- * por solicitud de hábeas data (no implementado acá).
+ * Acepta tanto `Contact.id` como `Customer.id` legacy (redirigiendo al `Contact.id`
+ * canónico). Registra lectura sensible en `AdminActionLog` (`contact.view_360`) y
+ * respeta enmascaramiento determinista de PII en servidor.
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
-  Users,
+  AlertTriangle,
   ArrowLeft,
+  Building2,
+  CreditCard,
+  Hash,
   Mail,
   Phone,
-  Hash,
-  ShoppingBag,
-  Star,
-  MapPin,
-  Sparkles,
-  Award,
-  UserPlus,
+  ShieldAlert,
+  ShieldCheck,
+  TrendingUp,
+  Users,
 } from "lucide-react";
 import {
   AdminPage,
@@ -33,127 +28,124 @@ import {
   AdminPageBody,
   AdminCard,
   AdminBadge,
-  AdminEmpty,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { recordAdminAction } from "@/lib/admin-audit";
+import { hasCapability } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import {
-  getCustomerDetail,
-  getCustomerReferralRows,
-  getCustomerTotalSpent,
-} from "@/features/customers/service";
+  getContact360ForActor,
+  resolveContactRouteParam,
+} from "@/features/identity/contact-360-service";
 import { customerWaLink } from "@/lib/wa";
 import { WhatsAppIcon } from "@/components/icons/brand";
-import { formatCOP } from "@/lib/format";
+import { formatCOP, formatRelativeTime } from "@/lib/format";
+import { CrmWorkspacePanel } from "@/components/admin/crm-workspace-panel";
+import {
+  listActivitiesForEntity,
+  listAssignableCrmAdmins,
+  listTasksForEntity,
+} from "@/features/crm/service";
+import { Contact360Tabs } from "./contact-360-tabs";
 
 export const metadata: Metadata = {
-  title: "Cliente",
+  title: "Contacto 360",
   robots: { index: false, follow: false },
 };
 
+export const dynamic = "force-dynamic";
+
 type RouteParams = Promise<{ id: string }>;
 
-const ORDER_STATUS_TONE: Record<string, "emerald" | "amber" | "rose" | "slate" | "blue"> = {
-  DRAFT: "slate",
-  PENDING_PAYMENT: "amber",
-  PAID: "emerald",
-  FULFILLING: "blue",
-  SHIPPED: "blue",
-  DELIVERED: "emerald",
-  CANCELLED: "slate",
-  REFUNDED: "rose",
-};
-
-const ORDER_STATUS_LABEL: Record<string, string> = {
-  DRAFT: "Borrador",
-  PENDING_PAYMENT: "Esperando pago",
-  PAID: "Pagada",
-  FULFILLING: "En producción",
-  SHIPPED: "Enviada",
-  DELIVERED: "Entregada",
-  CANCELLED: "Cancelada",
-  REFUNDED: "Reembolsada",
-};
-
-const REFERRAL_STATUS_TONE: Record<string, "emerald" | "amber" | "slate"> = {
-  PENDING: "amber",
-  REWARDED: "emerald",
-  EXPIRED: "slate",
-};
-
-const REFERRAL_STATUS_LABEL: Record<string, string> = {
-  PENDING: "Pendiente",
-  REWARDED: "Cupón entregado",
-  EXPIRED: "Sin recompensa",
+const DROP_OFF_BADGE: Record<
+  "PAYMENT_DECLINED" | "CART_ABANDONED" | "STUDIO_DRAFT",
+  { label: string; tone: "rose" | "amber" | "purple" }
+> = {
+  PAYMENT_DECLINED: { label: "Pago rechazado", tone: "rose" },
+  CART_ABANDONED: { label: "Carrito abandonado", tone: "amber" },
+  STUDIO_DRAFT: { label: "Borrador Estudio", tone: "purple" },
 };
 
 export default async function ClienteDetailPage({ params }: { params: RouteParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireCapability("contacts:read_360");
+  const canMerge = hasCapability(session.admin.role, "contacts:merge");
+  const canManageTasks = hasCapability(session.admin.role, "crm:manage_tasks");
+  const canManageActivities = hasCapability(session.admin.role, "crm:manage_activities");
 
   const { id } = await params;
-  const [customer, totalSpent, referralRows] = await Promise.all([
-    getCustomerDetail(id),
-    getCustomerTotalSpent(id),
-    getCustomerReferralRows(id),
+  const resolved = await resolveContactRouteParam(id);
+  if (resolved.kind === "not_found") notFound();
+  if (resolved.kind === "redirect") {
+    redirect(`/admin/clientes/${encodeURIComponent(resolved.contactId)}`);
+  }
+
+  const [data, crmTasks, crmActivities, assignableAdmins] = await Promise.all([
+    getContact360ForActor(resolved.contactId, session.admin.role),
+    listTasksForEntity({ contactId: resolved.contactId }),
+    listActivitiesForEntity({ contactId: resolved.contactId }),
+    canManageTasks ? listAssignableCrmAdmins() : Promise.resolve([]),
   ]);
+  if (!data) notFound();
 
-  if (!customer) notFound();
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "contact.view_360",
+    entityType: "Contact",
+    entityId: data.id,
+    metadata: {
+      hasCustomerAccount: Boolean(data.customer),
+      piiMasked: data.piiMasked,
+    },
+  });
 
-  const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(" ") || "Cliente";
-  // wa.me con mensaje pre-armado (mismo patrón del detalle de pedido; null =
-  // teléfono no parseable → se oculta el botón).
-  const waLink = customer.phone
-    ? customerWaLink(
-        customer.phone,
-        `Hola ${customer.firstName ?? fullName}, te escribo de Lucams Shop. `,
-      )
+  const waLink = data.waPhoneRaw
+    ? customerWaLink(data.waPhoneRaw, `Hola ${data.displayName}, te escribo de Lucams Shop. `)
     : null;
+
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  });
-  const dateTimeFmt = new Intl.DateTimeFormat("es-CO", {
-    dateStyle: "medium",
-    timeStyle: "short",
   });
 
   return (
     <AdminPage>
       <AdminPageHeader
         icon={<Users className="h-5 w-5" />}
-        title={fullName}
+        title={data.displayName}
         subtitle={
-          <>
-            Cliente desde {dateFmt.format(customer.createdAt)} · Código de referido{" "}
-            <code className="bg-brand-purple/10 text-brand-purple-dark rounded px-1.5 py-0.5 font-mono text-[11px]">
-              {customer.referralCode}
-            </code>
-          </>
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <span>Contacto desde {dateFmt.format(data.createdAt)}</span>
+            {data.customer ? (
+              <AdminBadge tone="purple">Cuenta verificada</AdminBadge>
+            ) : (
+              <AdminBadge tone="slate">Invitado / sin cuenta</AdminBadge>
+            )}
+            {data.anonymizedAt && <AdminBadge tone="rose">Anonimizado Ley 1581</AdminBadge>}
+            {data.kpis.paidOrdersCount >= 3 && <AdminBadge tone="emerald">Cliente VIP</AdminBadge>}
+          </span>
         }
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Ventas" },
           { label: "Clientes", href: "/admin/clientes" },
-          { label: fullName },
+          { label: data.displayName },
         ]}
         actions={
-          <div className="flex items-center gap-2">
-            {/* Mismo patrón del detalle de pedido: wa.me con mensaje pre-armado. */}
+          <div className="flex flex-wrap items-center gap-2">
             {waLink && (
               <a
                 href={waLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-3.5 py-2 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
               >
-                <WhatsAppIcon className="h-3.5 w-3.5 text-emerald-700" />
+                <WhatsAppIcon className="h-4 w-4 text-emerald-700" />
                 WhatsApp
               </a>
             )}
             <Link
               href="/admin/clientes"
-              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-11 items-center gap-1.5 rounded-lg border bg-white px-3.5 py-2 text-sm font-semibold transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
               Volver
@@ -163,319 +155,189 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
       />
 
       <AdminPageBody>
-        {/* ─────────── Datos personales + métricas ─────────── */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <AdminCard className="p-5 lg:col-span-2">
-            <h3 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
-              Datos del cliente
-            </h3>
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field
-                icon={<Mail className="h-3.5 w-3.5" />}
-                label="Email"
-                value={
-                  <a
-                    href={`mailto:${customer.email}`}
-                    className="text-brand-purple-dark hover:text-brand-purple"
-                  >
-                    {customer.email}
-                  </a>
-                }
-              />
-              <Field
-                icon={<Phone className="h-3.5 w-3.5" />}
-                label="Teléfono"
-                value={
-                  customer.phone ? (
-                    <a
-                      href={`tel:${customer.phone}`}
-                      className="text-brand-purple-dark hover:text-brand-purple"
-                    >
-                      {customer.phone}
-                    </a>
-                  ) : (
-                    "—"
-                  )
-                }
-              />
-              <Field
-                icon={<Hash className="h-3.5 w-3.5" />}
-                label="Documento (DIAN)"
-                value={
-                  customer.documentType && customer.documentNumber
-                    ? `${customer.documentType} ${customer.documentNumber}`
-                    : "Sin completar"
-                }
-              />
-              <Field
-                icon={<Hash className="h-3.5 w-3.5" />}
-                label="Responsabilidad tributaria"
-                value={customer.taxResponsibility ?? "—"}
-              />
-            </dl>
-          </AdminCard>
-
-          <AdminCard className="p-5">
-            <h3 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
-              Métricas
-            </h3>
-            <div className="space-y-3">
-              <Stat label="Total gastado" value={formatCOP(totalSpent)} highlight />
-              <Stat label="Pedidos" value={customer._count.orders.toLocaleString("es-CO")} />
-              <Stat label="Puntos Lucams" value={customer.loyaltyPoints.toLocaleString("es-CO")} />
-              <Stat label="Referidos" value={customer._count.referrals.toLocaleString("es-CO")} />
+        {/* Banner interactivo de embudo / abandono individual */}
+        {data.dropOffSignals.length > 0 && (
+          <AdminCard className="border-brand-purple/25 bg-gradient-to-r from-[#FFF8F0] to-white p-4">
+            <div className="mb-2.5 flex items-center gap-2">
+              <AlertTriangle className="text-brand-purple h-4 w-4" />
+              <h2 className="text-brand-purple-dark text-xs font-bold tracking-wide uppercase">
+                ¿Dónde quedó esta persona en su recorrido de compra?
+              </h2>
             </div>
-          </AdminCard>
-        </div>
-
-        {/* ─────────── Pedidos ─────────── */}
-        <section>
-          <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
-            <ShoppingBag className="h-5 w-5" />
-            Pedidos
-            <span className="text-brand-muted text-sm font-normal">({customer._count.orders})</span>
-          </h2>
-          {customer.orders.length === 0 ? (
-            <AdminEmpty
-              icon={<ShoppingBag className="h-5 w-5" />}
-              title="Sin pedidos aún"
-              description="Cuando este cliente haga su primera compra, aparecerá acá."
-            />
-          ) : (
-            <AdminCard className="overflow-hidden p-0">
-              <ul className="divide-brand-purple/10 divide-y">
-                {customer.orders.map((order) => (
+            <ul className="space-y-2.5">
+              {data.dropOffSignals.map((sig, idx) => {
+                const badge = DROP_OFF_BADGE[sig.stage];
+                return (
                   <li
-                    key={order.id}
-                    className="hover:bg-brand-purple/[0.03] flex items-center justify-between gap-4 p-4 transition-colors"
+                    key={`${sig.stage}-${idx}`}
+                    className="border-brand-purple/10 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-3"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="text-brand-purple-dark font-mono text-sm font-bold">
-                        {order.number}
-                      </div>
-                      <div className="text-brand-muted text-xs">
-                        {dateTimeFmt.format(order.createdAt)}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-                        {formatCOP(order.total)}
-                      </div>
-                      <AdminBadge tone={ORDER_STATUS_TONE[order.status] ?? "slate"}>
-                        {ORDER_STATUS_LABEL[order.status] ?? order.status}
-                      </AdminBadge>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </AdminCard>
-          )}
-        </section>
-
-        {/* ─────────── Reseñas ─────────── */}
-        <section>
-          <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
-            <Star className="h-5 w-5" />
-            Reseñas
-            <span className="text-brand-muted text-sm font-normal">
-              ({customer._count.reviews})
-            </span>
-          </h2>
-          {customer.reviews.length === 0 ? (
-            <AdminEmpty
-              icon={<Star className="h-5 w-5" />}
-              title="Sin reseñas aún"
-              description="Las reseñas que escriba aparecerán acá con su estado de moderación."
-            />
-          ) : (
-            <AdminCard className="overflow-hidden p-0">
-              <ul className="divide-brand-purple/10 divide-y">
-                {customer.reviews.map((review) => (
-                  <li key={review.id} className="p-4">
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <div className="text-brand-purple-dark font-medium">
-                        <Link
-                          href={`/producto/${review.product.slug}`}
-                          target="_blank"
-                          rel="noopener"
-                          className="hover:text-brand-purple"
-                        >
-                          {review.product.name}
-                        </Link>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-amber-500">
-                          {"★".repeat(review.rating)}
-                          <span className="text-brand-purple-dark/20">
-                            {"★".repeat(5 - review.rating)}
-                          </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <AdminBadge tone={badge.tone}>{badge.label}</AdminBadge>
+                        <span className="text-brand-purple-dark text-sm font-semibold">
+                          {sig.title}
                         </span>
-                        {review.isApproved ? (
-                          <AdminBadge tone="emerald">Aprobada</AdminBadge>
-                        ) : (
-                          <AdminBadge tone="amber">Pendiente</AdminBadge>
-                        )}
+                        <span className="text-brand-muted text-xs">
+                          · {formatRelativeTime(sig.occurredAt)}
+                        </span>
                       </div>
+                      <p className="text-brand-purple-dark/80 mt-1 text-xs">{sig.detail}</p>
                     </div>
-                    <p className="text-brand-purple-dark/85 line-clamp-2 text-sm">
-                      {review.comment}
-                    </p>
-                    <p className="text-brand-muted mt-1 text-[11px]">
-                      {dateTimeFmt.format(review.createdAt)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </AdminCard>
-          )}
-        </section>
-
-        {/* ─────────── Direcciones ─────────── */}
-        <section>
-          <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
-            <MapPin className="h-5 w-5" />
-            Direcciones
-            <span className="text-brand-muted text-sm font-normal">
-              ({customer.addresses.length})
-            </span>
-          </h2>
-          {customer.addresses.length === 0 ? (
-            <AdminEmpty
-              icon={<MapPin className="h-5 w-5" />}
-              title="Sin direcciones guardadas"
-              description="El cliente las completará al hacer su primer envío."
-            />
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {customer.addresses.map((addr) => (
-                <AdminCard key={addr.id} className="p-4">
-                  <div className="text-brand-purple-dark text-sm font-semibold">{addr.name}</div>
-                  <div className="text-brand-purple-dark/75 mt-1 text-xs">
-                    {addr.line1}
-                    {addr.line2 && `, ${addr.line2}`}
-                  </div>
-                  <div className="text-brand-purple-dark/75 text-xs">
-                    {addr.city}, {addr.department}
-                    {addr.zip && ` · ${addr.zip}`}
-                  </div>
-                  <div className="text-brand-muted mt-1 text-[11px]">Tel: {addr.phone}</div>
-                </AdminCard>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* ─────────── Diseños del Estudio + Referidos ─────────── */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <section>
-            <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
-              <Sparkles className="h-5 w-5" />
-              Diseños del Estudio
-              <span className="text-brand-muted text-sm font-normal">
-                ({customer._count.designs})
-              </span>
-            </h2>
-            {customer.designs.length === 0 ? (
-              <AdminEmpty
-                icon={<Sparkles className="h-5 w-5" />}
-                title="Sin diseños guardados"
-                description="Cuando use el Estudio de Personalización, sus diseños quedan acá."
-              />
-            ) : (
-              <AdminCard className="overflow-hidden p-0">
-                <ul className="divide-brand-purple/10 divide-y">
-                  {customer.designs.map((d) => (
-                    <li key={d.id} className="flex items-center justify-between gap-2 p-3 text-sm">
-                      <span className="text-brand-purple-dark/85 font-mono text-xs">
-                        {d.id.slice(0, 12)}…
-                      </span>
-                      <AdminBadge
-                        tone={
-                          d.status === "READY" || d.status === "USED_IN_ORDER" ? "emerald" : "slate"
-                        }
+                    {sig.actionHref && sig.actionLabel && (
+                      <Link
+                        href={sig.actionHref}
+                        className="bg-brand-purple inline-flex min-h-10 items-center rounded-lg px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
                       >
-                        {d.status}
-                      </AdminBadge>
-                    </li>
-                  ))}
-                </ul>
-              </AdminCard>
-            )}
-          </section>
+                        {sig.actionLabel}
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </AdminCard>
+        )}
 
-          <section>
-            <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
-              <UserPlus className="h-5 w-5" />
-              Referidos
-              <span className="text-brand-muted text-sm font-normal">
-                ({customer._count.referrals})
-              </span>
-            </h2>
-            {customer.referrals.length === 0 && referralRows.length === 0 ? (
-              <AdminEmpty
-                icon={<Award className="h-5 w-5" />}
-                title="Sin referidos aún"
-                description={`Si comparte su código ${customer.referralCode} y alguien se registra con él, aparecerá acá.`}
-              />
-            ) : (
-              <div className="space-y-3">
-                {customer.referrals.length > 0 && (
-                  <AdminCard className="overflow-hidden p-0">
-                    <ul className="divide-brand-purple/10 divide-y">
-                      {customer.referrals.map((r) => {
-                        const refName =
-                          [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email;
-                        return (
-                          <li
-                            key={r.id}
-                            className="flex items-center justify-between gap-2 p-3 text-sm"
-                          >
-                            <Link
-                              href={`/admin/clientes/${r.id}`}
-                              className="text-brand-purple-dark hover:text-brand-purple truncate"
-                            >
-                              {refName}
-                            </Link>
-                            <span className="text-brand-muted text-[11px]">
-                              {dateFmt.format(r.createdAt)}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </AdminCard>
-                )}
-                {/* T7 — filas del modelo Referral: el admin ve si la recompensa
-                    (cupón 10%) se entregó, no solo quiénes se registraron. */}
-                {referralRows.length > 0 && (
-                  <AdminCard className="overflow-hidden p-0">
-                    <ul className="divide-brand-purple/10 divide-y">
-                      {referralRows.map((row) => (
-                        <li
-                          key={row.id}
-                          className="flex items-center justify-between gap-2 p-3 text-sm"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="text-brand-purple-dark truncate">
-                              {row.referredEmail}
-                            </div>
-                            <div className="text-brand-muted text-[11px]">
-                              {dateFmt.format(row.createdAt)}
-                              {row.rewardedAt ? ` · cupón ${dateFmt.format(row.rewardedAt)}` : ""}
-                            </div>
-                          </div>
-                          <AdminBadge tone={REFERRAL_STATUS_TONE[row.status] ?? "slate"}>
-                            {REFERRAL_STATUS_LABEL[row.status] ?? row.status}
-                          </AdminBadge>
-                        </li>
-                      ))}
-                    </ul>
-                  </AdminCard>
-                )}
-              </div>
-            )}
-          </section>
+        {/* KPIs financieros + riesgo COD + cumplimiento Ley 1581 */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <AdminCard className="p-4">
+            <div className="text-brand-muted flex items-center gap-1.5 text-xs font-semibold uppercase">
+              <TrendingUp className="h-4 w-4" />
+              LTV neto cobrado
+            </div>
+            <div className="text-brand-purple font-display mt-1 text-2xl font-bold tabular-nums">
+              {formatCOP(data.kpis.netLtvCents)}
+            </div>
+            <p className="text-brand-muted mt-1 text-xs">
+              {data.kpis.paidOrdersCount} compra{data.kpis.paidOrdersCount === 1 ? "" : "s"} · AOV{" "}
+              {data.kpis.aovCents > 0 ? formatCOP(data.kpis.aovCents) : "—"}
+            </p>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <div className="text-brand-muted flex items-center gap-1.5 text-xs font-semibold uppercase">
+              <CreditCard className="h-4 w-4" />
+              Semáforo contra entrega
+            </div>
+            <div className="mt-1.5">
+              {data.kpis.codRiskLevel === "CLEAN" ? (
+                <AdminBadge tone="emerald">Habilitado · Sin incidentes</AdminBadge>
+              ) : data.kpis.codRiskLevel === "WATCH" ? (
+                <AdminBadge tone="amber">En observación (no-show previo)</AdminBadge>
+              ) : (
+                <AdminBadge tone="rose">Bloqueado para COD</AdminBadge>
+              )}
+            </div>
+            <p className="text-brand-muted mt-1.5 text-xs">{data.kpis.codRiskReason}</p>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <div className="text-brand-muted flex items-center gap-1.5 text-xs font-semibold uppercase">
+              <ShieldCheck className="h-4 w-4" />
+              Comunicaciones comerciales
+            </div>
+            <div className="mt-1.5">
+              {data.kpis.marketingOptIn ? (
+                <AdminBadge tone="emerald">Opt-in vigente (Ley 1581)</AdminBadge>
+              ) : (
+                <AdminBadge tone="slate">Sin opt-in comercial activo</AdminBadge>
+              )}
+            </div>
+            <p className="text-brand-muted mt-1.5 text-xs">
+              {data.kpis.marketingOptIn && data.kpis.marketingOptInAt
+                ? `Autorizado el ${dateFmt.format(data.kpis.marketingOptInAt)}`
+                : "Solo recibe notificaciones transaccionales de sus pedidos."}
+            </p>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <div className="text-brand-muted flex items-center gap-1.5 text-xs font-semibold uppercase">
+              <ShieldAlert className="h-4 w-4" />
+              Posventa activa
+            </div>
+            <div className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+              {data.kpis.openCareCount}
+            </div>
+            <p className="text-brand-muted mt-1 text-xs">
+              {data.kpis.openCareCount === 0
+                ? "Sin tickets, garantías ni retractos abiertos"
+                : "Caso(s) abierto(s) pendientes de gestión"}
+            </p>
+          </AdminCard>
         </div>
+
+        {/* Datos de contacto + Organización B2B */}
+        <AdminCard className="p-5">
+          <h3 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
+            Ficha de identidad canónica
+          </h3>
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Field
+              icon={<Mail className="h-3.5 w-3.5" />}
+              label="Email principal"
+              value={
+                data.primaryEmail && !data.piiMasked ? (
+                  <a
+                    href={`mailto:${data.primaryEmail}`}
+                    className="text-brand-purple-dark hover:text-brand-purple"
+                  >
+                    {data.primaryEmail}
+                  </a>
+                ) : (
+                  (data.primaryEmail ?? "—")
+                )
+              }
+            />
+            <Field
+              icon={<Phone className="h-3.5 w-3.5" />}
+              label="Celular principal"
+              value={
+                data.primaryPhoneE164 && !data.piiMasked ? (
+                  <a
+                    href={`tel:${data.primaryPhoneE164}`}
+                    className="text-brand-purple-dark hover:text-brand-purple"
+                  >
+                    {data.primaryPhoneE164}
+                  </a>
+                ) : (
+                  (data.primaryPhoneE164 ?? "—")
+                )
+              }
+            />
+            <Field
+              icon={<Hash className="h-3.5 w-3.5" />}
+              label="Documento tributario"
+              value={data.documentLabel ?? "Sin registrar"}
+            />
+            <Field
+              icon={<Building2 className="h-3.5 w-3.5" />}
+              label="Organización / Responsable"
+              value={
+                data.organization
+                  ? `${data.organization.name}${data.organization.taxLabel ? ` (${data.organization.taxLabel})` : ""}`
+                  : data.ownerAdminEmail
+                    ? `Asignado a ${data.ownerAdminEmail}`
+                    : "Persona natural (B2C)"
+              }
+            />
+          </dl>
+        </AdminCard>
+
+        {/* Seguimiento CRM: tareas operativas + bitácora transversal */}
+        <CrmWorkspacePanel
+          contactId={data.id}
+          currentAdminId={session.admin.id}
+          canManageTasks={canManageTasks}
+          canViewActivities={!data.piiMasked}
+          canManageActivities={canManageActivities && !data.piiMasked}
+          tasks={crmTasks}
+          activities={data.piiMasked ? [] : crmActivities}
+          assignableAdmins={assignableAdmins}
+        />
+
+        {/* Pestañas interactivas 360 */}
+        <Contact360Tabs data={data} canMerge={canMerge} />
       </AdminPageBody>
     </AdminPage>
   );
@@ -497,21 +359,6 @@ function Field({
         {label}
       </dt>
       <dd className="text-brand-purple-dark text-sm font-medium break-all">{value}</dd>
-    </div>
-  );
-}
-
-function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="border-brand-purple/8 flex items-center justify-between border-b pb-2 last:border-b-0 last:pb-0">
-      <span className="text-brand-purple-dark/70 text-xs">{label}</span>
-      <span
-        className={`text-sm font-bold tabular-nums ${
-          highlight ? "text-brand-purple font-display text-base" : "text-brand-purple-dark"
-        }`}
-      >
-        {value}
-      </span>
     </div>
   );
 }

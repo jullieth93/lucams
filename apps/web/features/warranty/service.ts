@@ -1,5 +1,12 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { resolvePostSaleContact } from "@/features/identity/resolution-service";
+import { computeWarrantySlaDueAt } from "@/lib/colombian-sla";
+import {
+  hashBearerToken,
+  verifyEmailMatchesTimingSafe,
+  verifyTokenHashTimingSafe,
+} from "@/lib/token-hash";
 
 /*
  * Garantía legal (Ley 1480 art. 7-15). Un cliente reporta un defecto de un producto comprado;
@@ -70,7 +77,58 @@ export async function getWarrantyItems(
     },
   });
   if (!order) return [];
-  const now = new Date();
+  return mapOrderToWarrantyItems(order, new Date());
+}
+
+/**
+ * [CX-01] — Elegibilidad de garantía para `/pedido/[token]` (invitados y compradores con link
+ * de seguimiento autenticado por `publicAccessTokenHash`).
+ */
+export async function getWarrantyItemsByOrderToken(
+  token: string,
+  now: Date = new Date(),
+): Promise<WarrantyItem[]> {
+  if (!/^[a-f0-9]{32}$/.test(token)) return [];
+  const tokenHash = hashBearerToken(token);
+  const order = await prisma.order.findFirst({
+    where: { publicAccessTokenHash: tokenHash, deletedAt: null },
+    select: {
+      publicAccessTokenHash: true,
+      status: true,
+      deliveredAt: true,
+      items: {
+        select: {
+          id: true,
+          qty: true,
+          warrantyMonths: true,
+          variant: { select: { product: { select: { name: true } } } },
+          warrantyClaims: {
+            where: { status: { in: ACTIVE_STATUSES } },
+            select: { status: true },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+  if (!order || !verifyTokenHashTimingSafe(token, order.publicAccessTokenHash)) return [];
+  return mapOrderToWarrantyItems(order, now);
+}
+
+function mapOrderToWarrantyItems(
+  order: {
+    status: string;
+    deliveredAt: Date | null;
+    items: Array<{
+      id: string;
+      qty: number;
+      warrantyMonths: number;
+      variant: { product: { name: string } };
+      warrantyClaims: Array<{ status: string }>;
+    }>;
+  },
+  now: Date,
+): WarrantyItem[] {
   const delivered = order.status === "DELIVERED" && !!order.deliveredAt;
   return order.items.map((it) => {
     const wm = it.warrantyMonths;
@@ -115,7 +173,16 @@ export async function createWarrantyClaim(input: {
     select: {
       id: true,
       warrantyMonths: true,
-      order: { select: { customerId: true, status: true, deliveredAt: true, deletedAt: true } },
+      order: {
+        select: {
+          customerId: true,
+          contactId: true,
+          email: true,
+          status: true,
+          deliveredAt: true,
+          deletedAt: true,
+        },
+      },
       warrantyClaims: { where: { status: { in: ACTIVE_STATUSES } }, select: { id: true }, take: 1 },
     },
   });
@@ -130,13 +197,95 @@ export async function createWarrantyClaim(input: {
   if (item.warrantyClaims.length > 0) throw new WarrantyError("ACTIVE_CLAIM");
   const description = input.description.trim();
   if (description.length < 10) throw new WarrantyError("INVALID");
+  const contactId = await resolvePostSaleContact(prisma, {
+    orderContactId: item.order.contactId,
+    customerId: input.customerId,
+    orderEmail: item.order.email,
+  });
   return prisma.warrantyClaim.create({
     data: {
       orderItemId: item.id,
       customerId: input.customerId,
+      ...(contactId ? { contactId } : {}),
       description: description.slice(0, 2000),
       evidenceUrls: (input.evidenceUrls ?? []).slice(0, 5),
       status: "PENDING",
+      slaDueAt: computeWarrantySlaDueAt(new Date()),
+    },
+    select: { id: true },
+  });
+}
+
+/**
+ * [CX-01] — Crea un reclamo de garantía desde `/pedido/[token]` para compradores sin cuenta.
+ * Exige:
+ *  1. `token` de 32 hex válido cuyo SHA-256 coincida timing-safely con `order.publicAccessTokenHash`.
+ *  2. Confirmación timing-safe del correo del comprador (`order.email`) para evitar que un
+ *     destinatario de regalo con solo el enlace dispare reclamos a nombre del comprador.
+ *  3. Mismas reglas legales de entrega, ventana `warrantyMonths` y ausencia de reclamo activo.
+ */
+export async function createGuestWarrantyClaim(input: {
+  token: string;
+  email: string;
+  orderItemId: string;
+  description: string;
+  evidenceUrls?: string[];
+  now?: Date;
+}): Promise<{ id: string }> {
+  if (!/^[a-f0-9]{32}$/.test(input.token)) throw new WarrantyError("NOT_FOUND");
+  const item = await prisma.orderItem.findUnique({
+    where: { id: input.orderItemId },
+    select: {
+      id: true,
+      warrantyMonths: true,
+      order: {
+        select: {
+          customerId: true,
+          contactId: true,
+          email: true,
+          publicAccessTokenHash: true,
+          status: true,
+          deliveredAt: true,
+          deletedAt: true,
+        },
+      },
+      warrantyClaims: { where: { status: { in: ACTIVE_STATUSES } }, select: { id: true }, take: 1 },
+    },
+  });
+  if (
+    !item ||
+    item.order.deletedAt ||
+    !verifyTokenHashTimingSafe(input.token, item.order.publicAccessTokenHash)
+  ) {
+    throw new WarrantyError("NOT_FOUND");
+  }
+  if (!verifyEmailMatchesTimingSafe(input.email, item.order.email)) {
+    throw new WarrantyError("FORBIDDEN");
+  }
+  if (item.order.status !== "DELIVERED" || !item.order.deliveredAt) {
+    throw new WarrantyError("NOT_DELIVERED");
+  }
+  const now = input.now ?? new Date();
+  if (!isWithinWarranty(item.order.deliveredAt, item.warrantyMonths, now)) {
+    throw new WarrantyError("OUT_OF_WARRANTY");
+  }
+  if (item.warrantyClaims.length > 0) throw new WarrantyError("ACTIVE_CLAIM");
+  const description = input.description.trim();
+  if (description.length < 10) throw new WarrantyError("INVALID");
+  const contactId = await resolvePostSaleContact(prisma, {
+    orderContactId: item.order.contactId,
+    customerId: item.order.customerId,
+    orderEmail: item.order.email,
+  });
+  return prisma.warrantyClaim.create({
+    data: {
+      orderItemId: item.id,
+      customerId: item.order.customerId,
+      ...(contactId ? { contactId } : {}),
+      description: description.slice(0, 2000),
+      evidenceUrls: (input.evidenceUrls ?? []).slice(0, 5),
+      status: "PENDING",
+      slaDueAt: computeWarrantySlaDueAt(now),
     },
     select: { id: true },
   });
@@ -166,7 +315,9 @@ export async function createWarrantyClaimAsAdmin(input: {
     where: { id: input.orderItemId },
     select: {
       id: true,
-      order: { select: { customerId: true, status: true, deletedAt: true } },
+      order: {
+        select: { customerId: true, contactId: true, email: true, status: true, deletedAt: true },
+      },
       warrantyClaims: { where: { status: { in: ACTIVE_STATUSES } }, select: { id: true }, take: 1 },
     },
   });
@@ -175,13 +326,20 @@ export async function createWarrantyClaimAsAdmin(input: {
   if (item.warrantyClaims.length > 0) throw new WarrantyError("ACTIVE_CLAIM");
   const description = input.description.trim();
   if (description.length < 10) throw new WarrantyError("INVALID");
+  const contactId = await resolvePostSaleContact(prisma, {
+    orderContactId: item.order.contactId,
+    customerId: item.order.customerId,
+    orderEmail: item.order.email,
+  });
   return prisma.warrantyClaim.create({
     data: {
       orderItemId: item.id,
       customerId: item.order.customerId,
+      ...(contactId ? { contactId } : {}),
       description: description.slice(0, 2000),
       status: "PENDING",
       processedBy: input.adminId,
+      slaDueAt: computeWarrantySlaDueAt(new Date()),
     },
     select: { id: true },
   });
@@ -222,28 +380,33 @@ export async function listWarrantyClaims(filter?: {
       orderItem: {
         select: {
           qty: true,
-          order: { select: { number: true } },
+          order: { select: { number: true, email: true, shippingAddress: true } },
           variant: { select: { product: { select: { name: true } } } },
         },
       },
     },
   });
-  return rows.map((r) => ({
-    id: r.id,
-    status: r.status as WarrantyStatus,
-    description: r.description,
-    evidenceUrls: r.evidenceUrls,
-    resolutionType: (r.resolutionType as WarrantyResolution | null) ?? null,
-    resolutionNote: r.resolutionNote,
-    requestedAt: r.requestedAt,
-    resolvedAt: r.resolvedAt,
-    customerEmail: r.customer?.email ?? "—",
-    customerName:
-      [r.customer?.firstName, r.customer?.lastName].filter(Boolean).join(" ") || "Cliente",
-    orderNumber: r.orderItem.order.number,
-    productName: r.orderItem.variant.product.name,
-    qty: r.orderItem.qty,
-  }));
+  return rows.map((r) => {
+    const ship = r.orderItem.order.shippingAddress as { fullName?: string } | null;
+    const customerFullName = [r.customer?.firstName, r.customer?.lastName]
+      .filter(Boolean)
+      .join(" ");
+    return {
+      id: r.id,
+      status: r.status as WarrantyStatus,
+      description: r.description,
+      evidenceUrls: r.evidenceUrls,
+      resolutionType: (r.resolutionType as WarrantyResolution | null) ?? null,
+      resolutionNote: r.resolutionNote,
+      requestedAt: r.requestedAt,
+      resolvedAt: r.resolvedAt,
+      customerEmail: r.customer?.email ?? r.orderItem.order.email ?? "—",
+      customerName: customerFullName || ship?.fullName?.trim() || "Cliente",
+      orderNumber: r.orderItem.order.number,
+      productName: r.orderItem.variant.product.name,
+      qty: r.orderItem.qty,
+    };
+  });
 }
 
 /** Nº de reclamos activos (para el badge del dashboard). */

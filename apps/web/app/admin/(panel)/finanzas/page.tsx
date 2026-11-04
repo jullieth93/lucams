@@ -23,17 +23,21 @@ import {
   AdminPageHeader,
 } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
+import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
 import {
+  COLLECTED_REVENUE_ORDER_WHERE,
+  computeNetCollectedRevenue,
   DEFAULT_PERIOD,
   FINANZAS_PERIODS,
   getPeriodAggregates,
   isFinanzasPeriod,
 } from "@/features/finanzas/service";
+import { ExportFinanzasCsvButton } from "./export-csv-button";
 
 export const metadata: Metadata = {
   title: "Finanzas",
@@ -55,7 +59,7 @@ const PAYMENT_METHOD_HINT: Record<PaymentMethod, string> = {
 };
 
 export default async function AdminFinanzasPage({ searchParams }: { searchParams: SearchParams }) {
-  const _session = await requireRole(["SUPERADMIN"]);
+  const session = await requireRole(ADMIN_ROLE_SETS.FINANCE);
   // Modo catálogo (Etapa 1): sin pagos en línea no hay finanzas que mostrar.
   // El nav ya oculta el módulo; esto cierra también el acceso por URL directa.
   if (isCatalogMode()) redirect("/admin/dashboard");
@@ -63,6 +67,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
   const sp = await searchParams;
   const periodoRaw = typeof sp.periodo === "string" ? sp.periodo : undefined;
   const periodo = isFinanzasPeriod(periodoRaw) ? periodoRaw : DEFAULT_PERIOD;
+  const canExportCsv = hasCapability(session.admin.role, "finance:export_csv");
 
   // Probar contadores reales: si hay alguna orden pagada en DB ya, los
   // mostramos; si no, mantenemos los placeholders educativos.
@@ -72,6 +77,8 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
     codDeliveredRevenue,
     codToCollect,
     totalRefunded,
+    retractRefundSummary,
+    warrantyRefundResolvedCount,
     ordersThisMonth,
     dianPending,
   ] = await Promise.all([
@@ -108,6 +115,28 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
       })
       .then((r) => r._sum?.total ?? 0),
     prisma.order.count({ where: { deletedAt: null, status: "REFUNDED" } }),
+    // [FIN-01] — retractos reembolsados sobre órdenes que siguen en estado cobrado (DELIVERED):
+    // se restan una sola vez sin doble conteo si la orden completa pasara a REFUNDED.
+    prisma.retractRequest
+      .aggregate({
+        where: {
+          status: "REFUNDED",
+          orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+        },
+        _sum: { refundAmount: true },
+        _count: { _all: true },
+      })
+      .then((r) => ({
+        totalCents: r._sum?.refundAmount ?? 0,
+        count: r._count?._all ?? 0,
+      })),
+    prisma.warrantyClaim.count({
+      where: {
+        status: "RESOLVED",
+        resolutionType: "REFUND",
+        orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+      },
+    }),
     prisma.order.count({
       where: {
         deletedAt: null,
@@ -123,13 +152,18 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
   // ADR-064 — efectivo COD entregado pendiente de remesa del mensajero + discrepancias.
   const codRecon = await getCodReconciliationTotals();
 
-  // Serie del período seleccionado + comparativa (mismo criterio de ingreso
-  // que los KPIs, menos el faltante COD que no tiene fecha para repartir).
+  // Serie del período seleccionado + comparativa.
   const periodoData = await getPeriodAggregates(periodo);
 
-  // El COD entregado se reconoce como cobrado, PERO el faltante confirmado por discrepancias (efectivo
-  // que el mensajero no remitió / se perdió) NO es caja real → se resta de "Ingresos" (review ADR-064).
-  const totalRevenue = wompiRevenue + codDeliveredRevenue - codRecon.shortfallCop;
+  // [FIN-01] — ingreso neto real = cobrado bruto (Wompi + COD entregado)
+  // menos discrepancias COD confirmadas y retractos reembolsados en efectivo.
+  const netBreakdown = computeNetCollectedRevenue({
+    wompiCollectedCents: wompiRevenue,
+    codDeliveredCents: codDeliveredRevenue,
+    codShortfallCents: codRecon.shortfallCop,
+    retractRefundedCents: retractRefundSummary.totalCents,
+  });
+  const totalRevenue = netBreakdown.netCollectedCents;
   const hasRealData = totalPaidOrders > 0;
 
   return (
@@ -143,6 +177,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
             : "Aún sin ventas registradas"
         }
         breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Finanzas" }]}
+        actions={canExportCsv ? <ExportFinanzasCsvButton periodo={periodo} /> : undefined}
       />
 
       <AdminPageBody>
@@ -158,11 +193,11 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi
             icon={<TrendingUp className="h-5 w-5" />}
-            label="Ingresos totales"
+            label="Ingresos netos"
             value={hasRealData ? formatCOP(totalRevenue) : "—"}
             hint={
               hasRealData
-                ? "Efectivo cobrado: Wompi + contra entrega ya entregado"
+                ? "Caja real: Wompi + contra entrega entregado − devoluciones y faltantes"
                 : "Disponible cuando haya ventas"
             }
             highlight={hasRealData}
@@ -229,6 +264,79 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
           </AdminNotice>
         )}
 
+        {hasRealData && netBreakdown.totalDeductionsCents > 0 && (
+          <AdminCard className="border-brand-purple/15 bg-gradient-to-r from-white to-purple-50/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-brand-purple-dark text-xs font-bold tracking-wide uppercase">
+                Puente de caja real (acumulado)
+              </h2>
+              <span className="text-brand-muted text-xs">
+                Cómo se calcula tu ingreso neto después de posventa y remesas
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="border-brand-purple/10 rounded-lg border bg-white p-3">
+                <span className="text-brand-muted block text-[11px] font-medium">
+                  Cobrado bruto (Wompi + COD entregado)
+                </span>
+                <span className="text-brand-purple-dark mt-0.5 block text-base font-bold tabular-nums">
+                  {formatCOP(netBreakdown.grossCollectedCents)}
+                </span>
+              </div>
+              <div className="border-brand-purple/10 rounded-lg border bg-white p-3">
+                <span className="text-brand-muted block text-[11px] font-medium">
+                  Deducciones en efectivo
+                </span>
+                <span className="mt-0.5 block text-base font-bold text-rose-700 tabular-nums">
+                  −{formatCOP(netBreakdown.totalDeductionsCents)}
+                </span>
+                <div className="text-brand-muted mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px]">
+                  {retractRefundSummary.count > 0 && (
+                    <Link
+                      href="/admin/retractos?status=REFUNDED"
+                      className="hover:text-brand-purple underline"
+                    >
+                      {retractRefundSummary.count} retracto
+                      {retractRefundSummary.count === 1 ? "" : "s"} (
+                      {formatCOP(retractRefundSummary.totalCents)})
+                    </Link>
+                  )}
+                  {codRecon.shortfallCop > 0 && (
+                    <Link
+                      href="/admin/finanzas/conciliacion"
+                      className="hover:text-brand-purple underline"
+                    >
+                      Faltante COD ({formatCOP(codRecon.shortfallCop)})
+                    </Link>
+                  )}
+                </div>
+              </div>
+              <div className="border-brand-purple/20 bg-brand-purple/5 rounded-lg border p-3">
+                <span className="text-brand-purple-dark/80 block text-[11px] font-semibold">
+                  Ingreso neto en caja
+                </span>
+                <span className="text-brand-purple-dark mt-0.5 block text-base font-bold tabular-nums">
+                  {formatCOP(netBreakdown.netCollectedCents)}
+                </span>
+              </div>
+            </div>
+          </AdminCard>
+        )}
+
+        {warrantyRefundResolvedCount > 0 && (
+          <AdminNotice tone="warning">
+            Hay <strong>{warrantyRefundResolvedCount}</strong> garantía
+            {warrantyRefundResolvedCount === 1 ? "" : "s"} resuelta
+            {warrantyRefundResolvedCount === 1 ? "" : "s"} con devolución de dinero cuyo pedido aún
+            figura como entregado. Si devolviste el total del pedido, márcalo como{" "}
+            <strong>Reembolsada</strong> en{" "}
+            <Link href="/admin/garantias?status=RESOLVED" className="font-semibold underline">
+              /admin/garantias
+            </Link>{" "}
+            para mantener la caja al día.
+          </AdminNotice>
+        )}
+
         {totalRefunded > 0 && (
           <AdminNotice tone="warning">
             Hay {totalRefunded} pedido{totalRefunded === 1 ? "" : "s"} reembolsado
@@ -279,10 +387,18 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
               <>
                 <p className="text-brand-muted mb-4 text-xs">
                   <strong className="text-brand-purple-dark">
-                    {formatCOP(periodoData.totalCents)}
+                    {formatCOP(periodoData.netTotalCents)}
                   </strong>{" "}
-                  cobrados en {periodoData.orderCount} pedido
-                  {periodoData.orderCount === 1 ? "" : "s"} ·{" "}
+                  netos en {periodoData.orderCount} pedido
+                  {periodoData.orderCount === 1 ? "" : "s"}
+                  {periodoData.retractRefundedCents > 0 ? (
+                    <>
+                      {" "}
+                      ({formatCOP(periodoData.totalCents)} brutos −{" "}
+                      {formatCOP(periodoData.retractRefundedCents)} en retractos)
+                    </>
+                  ) : null}{" "}
+                  ·{" "}
                   {periodoData.range.bucket === "day"
                     ? "una barra por día"
                     : "una barra por semana"}
@@ -422,33 +538,35 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
           </div>
         </section>
 
-        <AdminCard className="p-5">
-          <h3 className="text-brand-purple-dark font-display mb-2 text-base font-bold">
-            ¿Mientras tanto, qué puedo hacer?
-          </h3>
-          <p className="text-brand-purple-dark/75 mb-3 text-sm">
-            Mientras tanto, puedes ir dejando todo listo:
-          </p>
-          <ul className="text-brand-purple-dark/75 list-inside list-disc space-y-1.5 text-sm">
-            <li>
-              Crear cupones promocionales en{" "}
-              <Link href="/admin/cupones" className="text-brand-purple underline">
-                /admin/cupones
-              </Link>
-              .
-            </li>
-            <li>
-              Revisar pedidos por WhatsApp manual (los clientes pueden hacer wa.me directos hoy).
-            </li>
-            <li>
-              Tener listo el catálogo en{" "}
-              <Link href="/admin/productos" className="text-brand-purple underline">
-                /admin/productos
-              </Link>{" "}
-              con fotos reales y precios definitivos.
-            </li>
-          </ul>
-        </AdminCard>
+        {!hasRealData && (
+          <AdminCard className="p-5">
+            <h3 className="text-brand-purple-dark font-display mb-2 text-base font-bold">
+              ¿Mientras tanto, qué puedo hacer?
+            </h3>
+            <p className="text-brand-purple-dark/75 mb-3 text-sm">
+              Mientras tanto, puedes ir dejando todo listo:
+            </p>
+            <ul className="text-brand-purple-dark/75 list-inside list-disc space-y-1.5 text-sm">
+              <li>
+                Crear cupones promocionales en{" "}
+                <Link href="/admin/cupones" className="text-brand-purple underline">
+                  /admin/cupones
+                </Link>
+                .
+              </li>
+              <li>
+                Revisar pedidos por WhatsApp manual (los clientes pueden hacer wa.me directos hoy).
+              </li>
+              <li>
+                Tener listo el catálogo en{" "}
+                <Link href="/admin/productos" className="text-brand-purple underline">
+                  /admin/productos
+                </Link>{" "}
+                con fotos reales y precios definitivos.
+              </li>
+            </ul>
+          </AdminCard>
+        )}
       </AdminPageBody>
     </AdminPage>
   );

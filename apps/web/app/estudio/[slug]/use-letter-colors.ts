@@ -101,6 +101,17 @@ export function useLetterColors(count: number, initial?: LetterColorsSnapshot) {
     setSelectedIndexRaw(null);
   }
 
+  /** Restaura un snapshot serializado (p. ej. borrador local retomado en NameEditor). */
+  function restoreSnapshot(snapshot: LetterColorsSnapshot) {
+    const fallbackTheme = getNameTileTheme(snapshot.themeId || NAME_TILE_THEMES[0].id);
+    setThemeId(fallbackTheme.id);
+    setActiveColors(
+      snapshot.activeColors.length > 0 ? [...snapshot.activeColors] : [...fallbackTheme.colors],
+    );
+    setLetterColors({ ...snapshot.letterColors });
+    setSelectedIndexRaw(null);
+  }
+
   // ¿El tema sigue "limpio" (sin overrides por ficha)? Para el aria-pressed del picker.
   const customized = Object.keys(letterColors).length > 0;
 
@@ -113,6 +124,7 @@ export function useLetterColors(count: number, initial?: LetterColorsSnapshot) {
     selectedIndex,
     toggleSelected,
     clearSelected,
+    restoreSnapshot,
     applyTheme,
     setColorForSelected,
     customized,

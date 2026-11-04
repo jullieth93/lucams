@@ -100,6 +100,7 @@ export function GlobalSearch() {
       <CommandDialog
         open={open}
         onOpenChange={setOpen}
+        shouldFilter={false}
         title="Buscar productos"
         description="Escribe parte del nombre o SKU"
       >

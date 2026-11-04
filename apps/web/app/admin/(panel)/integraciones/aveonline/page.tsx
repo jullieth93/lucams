@@ -82,7 +82,7 @@ export default async function AveonlineIntegrationPage({
         {/* La configuración de transporte es de negocio → vive en /admin/envios. */}
         <AdminNotice tone="info">
           <Truck className="mr-1 inline h-4 w-4" />
-          Las transportadoras del checkout y el envío propio Lucam&apos;s ahora se configuran en{" "}
+          Las transportadoras del checkout y el envío propio Lucams ahora se configuran en{" "}
           <Link href="/admin/envios" className="font-semibold underline">
             Envíos →
           </Link>

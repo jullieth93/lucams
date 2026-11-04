@@ -37,6 +37,7 @@ import type Konva from "konva";
 import {
   createDraftDesignAction,
   finalizeDesignAction,
+  refreshDesignAssetUrlsAction,
   reopenDesignForEditAction,
   saveCanvasAction,
 } from "@/features/personalization/actions";
@@ -47,6 +48,8 @@ import {
   CALENDAR_FONT_OPTIONS,
 } from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
+import { stashPersonalizedAddToCart } from "@/lib/analytics";
+import { trackStudioFunnelStep } from "@/lib/funnel-client";
 import { StudioCanvasGrid, StudioStageZoomControl } from "./studio-canvas-grid";
 import { stepStageZoom } from "./studio-canvas-grid-size";
 import { StudioSidebar } from "./studio-sidebar";
@@ -153,7 +156,7 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
 import { createStudioStore } from "./lib/store";
 import { createSerialTaskQueue } from "./lib/serial-task-queue";
 import { waitForSlotPhotosReady } from "./lib/slot-photo-readiness";
-import { runWithPrintMasters } from "./lib/print-master-mode";
+import { MasterPhotoLoadError, runWithPrintMasters } from "./lib/print-master-mode";
 import { resolveSlotNoun, type SlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
 import { collectQualityWarnings, qualityWarningsKey } from "./lib/quality-warnings";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
@@ -345,6 +348,16 @@ export function StudioEditor({
   cartAssetIdsInUse,
 }: StudioEditorProps) {
   const router = useRouter();
+  const studioOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (studioOpenedRef.current === product.slug) return;
+    studioOpenedRef.current = product.slug;
+    trackStudioFunnelStep({
+      eventName: "studio_open",
+      productSlug: product.slug,
+      editorKind: "photo",
+    });
+  }, [product.slug]);
   const store = useMemo(() => createStudioStore(), []);
   // Roadmap B1 — textos CMS del Estudio (fallback exacto pre-CMS vía contexto).
   const texts = useStudioTexts();
@@ -472,6 +485,14 @@ export function StudioEditor({
   const previewPageLoaderRef = useRef<((unitIndex: number) => Promise<string>) | null>(null);
   const previewPageInflightRef = useRef<Set<number>>(new Set());
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // [STU-01] Marca de frescura de las signed URLs de esta sesión (TTL 60 min en Storage;
+  // pasados 40 min el export 300 DPI renueva proactivamente antes de componer).
+  const assetUrlsRefreshedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (assetUrlsRefreshedAtRef.current === null) {
+      assetUrlsRefreshedAtRef.current = Date.now();
+    }
+  }, []);
   // ADR-131 — progreso real del RenderJob durante el confirmar (polling de
   // /api/designs/<id>/render-status mientras finalize + add-to-cart completan).
   const [renderProgress, setRenderProgress] = useState<{ done: number; total: number } | null>(
@@ -1216,15 +1237,14 @@ export function StudioEditor({
         //    entonces se limpia; no se pisa con el id del draft vacío (eso
         //    rearmaba la mentira).
         if (initialDesignId) {
-          // 2026-10-21 — el marcador solo se toca con el retomador habilitado
-          // (cliente autenticado); el invitado recupera por ?designId= sin
-          // rearmar nada en localStorage.
-          if (draftResumeEnabled) {
-            if (studioDraftHasRealProgress(canvasData)) {
-              writeStudioDraftId(initialDraftScope, initialDesignId);
-            } else {
-              clearStudioDraftId(initialDraftScope);
-            }
+          // [STU-02]: tanto autenticados como invitados escriben/limpian el marcador
+          // tras progreso real persistido en servidor (la primera acción ya fijó
+          // `cart_session` si era visitante nuevo, así que al recargar `draftResumeEnabled`
+          // será true mientras conserve su cookie).
+          if (studioDraftHasRealProgress(canvasData)) {
+            writeStudioDraftId(initialDraftScope, initialDesignId);
+          } else {
+            clearStudioDraftId(initialDraftScope);
           }
         } else if (typeof window !== "undefined") {
           const bootParams = new URLSearchParams(window.location.search);
@@ -1396,22 +1416,18 @@ export function StudioEditor({
           lastChangeRev === savedRev;
 
         if (result.ok) {
-          // 2026-10-21 — marcador del retomador SOLO con `draftResumeEnabled`
-          // (cliente autenticado): el invitado no rearma ni limpia marcadores.
-          if (draftResumeEnabled) {
-            const savedScope = studioDraftScope(product.slug, saveVariantId);
-            if (savedScope !== initialDraftScope) clearStudioDraftId(initialDraftScope);
-            // 2026-10-19 — el marcador del retomador solo vive con CONTENIDO REAL:
-            // si el canvas guardado quedó vacío (cambio deshecho: asignar y quitar
-            // la única foto, o solo cambiar la plantilla), el marcador se RETIRA en
-            // vez de quedar apuntando a un borrador vacío (el interstitial ya no lo
-            // ofrece — studioDraftHasRealProgress ignora el atajo clientRev>0 de
-            // designHasMeaningfulProgress, que cuenta "se guardó algo alguna vez").
-            if (studioDraftHasRealProgress(canvasData)) {
-              writeStudioDraftId(savedScope, designId);
-            } else {
-              clearStudioDraftId(savedScope);
-            }
+          // [STU-02]: escribir/limpiar siempre el marcador tras persistir en servidor.
+          // Aunque un visitante nuevo haya montado con `draftResumeEnabled=false`
+          // (aún no tenía cookie `cart_session`), `createDraftDesignAction`/`saveCanvasAction`
+          // ya emitieron su cookie HttpOnly → al recargar `draftResumeEnabled` será true
+          // y podrá retomar su avance sin perder fotos. Si borra cookies, el gate de
+          // `resumeOffer` (`!draftResumeEnabled`) suprime el prompt roto.
+          const savedScope = studioDraftScope(product.slug, saveVariantId);
+          if (savedScope !== initialDraftScope) clearStudioDraftId(initialDraftScope);
+          if (studioDraftHasRealProgress(canvasData)) {
+            writeStudioDraftId(savedScope, designId);
+          } else {
+            clearStudioDraftId(savedScope);
           }
           const snapshot = readStudioCanvasSnapshot(designId);
           if (snapshot && snapshot.rev <= savedRev) clearStudioCanvasSnapshot(designId);
@@ -1780,6 +1796,11 @@ export function StudioEditor({
           setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
         }
         setPreviewModalOpen(true);
+        trackStudioFunnelStep({
+          eventName: "studio_preview_open",
+          productSlug: product.slug,
+          editorKind: "photo",
+        });
         return;
       }
       await ensureAllStagesMounted(); // T5: montar todos los slots antes del snapshot compositado
@@ -1846,6 +1867,11 @@ export function StudioEditor({
         setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
       }
       setPreviewModalOpen(true);
+      trackStudioFunnelStep({
+        eventName: "studio_preview_open",
+        productSlug: product.slug,
+        editorKind: "photo",
+      });
     } catch (err) {
       // #14 — detalle técnico al log; al cliente un mensaje claro es-CO.
       console.error("[studio.preview]", err);
@@ -1870,6 +1896,7 @@ export function StudioEditor({
     selectedYear,
     calendarLayout,
     liveCalendarFont,
+    product.slug,
     product.personalizationSchema,
     packUnitsPerGroup,
     unitNoun,
@@ -2183,68 +2210,104 @@ export function StudioEditor({
           // preload + espera determinista por src del nodo slot-photo).
           // (capturado antes del wrapper: el narrowing de `result` no cruza el async)
           const stagedUploads = result.uploads;
-          await runWithPrintMasters(canvasData.slots, slotStagesRef.current, async () => {
-            // Misma espera de decodificación que los previews/3D (slot-photo-readiness):
-            // el PNG de imprenta NO puede hornear el placeholder lila — el stage
-            // montado no implica foto decodificada (useImage es async).
-            await waitForSlotPhotosReady(canvasData.slots, slotStagesRef.current);
-            // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
-            // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
-            // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
-            // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
-            const logicalStageW = canvasData.unitTemplate.stage.width;
-            // Los snapshots se generan 1 a 1 (Konva exporta en el main thread) pero
-            // las SUBIDAS van en paralelo (tope 3) con retry+timeout — ver
-            // lib/upload-with-retry.ts. Antes eran PUTs secuenciales sin retry y un
-            // micro-corte de red tumbaba el confirmar con el error crudo del
-            // navegador en pantalla (fix STG 2026-10-05).
-            const uploadRequests: StoragePutRequest[] = [];
-            for (const { slotIndex, url } of stagedUploads) {
-              const stage = slotStagesRef.current.get(slotIndex);
-              if (!stage) {
-                throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
+          const refreshExpiredStudioMasters = async () => {
+            const snap = store.getState();
+            if (!snap.canvasData) return null;
+            const referencedIds = snap.canvasData.slots.flatMap((s) =>
+              [s.assetId, s.profileAssetId].filter((id): id is string => Boolean(id)),
+            );
+            const refreshed = await refreshDesignAssetUrlsAction({
+              designId,
+              assetIds: referencedIds,
+            });
+            if (!refreshed.ok) return null;
+            const freshById = new Map(refreshed.assets.map((a) => [a.id, a]));
+            const mergedAssets: StudioAsset[] = snap.assets.map((existing) => {
+              const fresh = freshById.get(existing.id);
+              return fresh
+                ? { ...existing, signedUrl: fresh.signedUrl, canvasUrl: fresh.canvasUrl }
+                : existing;
+            });
+            for (const a of refreshed.assets) {
+              if (!mergedAssets.some((m) => m.id === a.id)) mergedAssets.push(a);
+            }
+            const remapped = remapCanvasAssetUrls(snap.canvasData, mergedAssets);
+            store.setState({ assets: mergedAssets });
+            store.getState().setCanvasData(remapped.canvasData, { skipUndo: true });
+            assetUrlsRefreshedAtRef.current = Date.now();
+            void saveCanvasAction({
+              designId,
+              canvasData: remapped.canvasData as unknown as Record<string, unknown>,
+            }).catch(() => {});
+            return remapped.canvasData.slots;
+          };
+
+          const activeSlotsForExport = () => store.getState().canvasData?.slots ?? canvasData.slots;
+
+          await runWithPrintMasters(
+            activeSlotsForExport(),
+            slotStagesRef.current,
+            async () => {
+              // Misma espera de decodificación que los previews/3D (slot-photo-readiness):
+              // el PNG de imprenta NO puede hornear el placeholder lila — el stage
+              // montado no implica foto decodificada (useImage es async).
+              await waitForSlotPhotosReady(activeSlotsForExport(), slotStagesRef.current);
+              // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
+              // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
+              // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
+              // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
+              const logicalStageW = canvasData.unitTemplate.stage.width;
+              const uploadRequests: StoragePutRequest[] = [];
+              for (const { slotIndex, url } of stagedUploads) {
+                const stage = slotStagesRef.current.get(slotIndex);
+                if (!stage) {
+                  throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
+                }
+                const hiddenForSnapshot = [
+                  ...stage.find(".realism"),
+                  ...stage.find(".edit-indicator"),
+                ];
+                hiddenForSnapshot.forEach((l) => l.hide());
+                let dataUrl: string;
+                try {
+                  const displayW = stage.width() || logicalStageW;
+                  const pixelRatio = (logicalStageW * 3) / displayW;
+                  dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
+                } finally {
+                  hiddenForSnapshot.forEach((l) => l.show());
+                }
+                dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
+                uploadRequests.push({
+                  url,
+                  body: dataUrlToBlob(dataUrl),
+                  contentType: "image/png",
+                });
               }
-              // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y
-              // los indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos
-              // de PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y
-              // se restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
-              // indicadores — se ocultan también allá.)
-              const hiddenForSnapshot = [
-                ...stage.find(".realism"),
-                ...stage.find(".edit-indicator"),
-              ];
-              hiddenForSnapshot.forEach((l) => l.hide());
-              let dataUrl: string;
               try {
-                const displayW = stage.width() || logicalStageW;
-                const pixelRatio = (logicalStageW * 3) / displayW;
-                dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
-              } finally {
-                hiddenForSnapshot.forEach((l) => l.show());
+                await uploadAllWithRetry(uploadRequests);
+              } catch {
+                throw new Error(texts.exportar.errorSubidaArchivos);
               }
-              // FOTO1: heart/circle → recortar a la silueta (transparente afuera).
-              dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
-              uploadRequests.push({
-                url,
-                body: dataUrlToBlob(dataUrl),
-                contentType: "image/png",
-              });
-            }
-            try {
-              await uploadAllWithRetry(uploadRequests);
-            } catch {
-              // Mensaje amigable orientado a acción — el error crudo del motor
-              // ("NetworkError when attempting to fetch resource") no le dice
-              // nada al cliente.
-              throw new Error(texts.exportar.errorSubidaArchivos);
-            }
-          });
+            },
+            {
+              forceRefreshFirst:
+                assetUrlsRefreshedAtRef.current !== null &&
+                Date.now() - assetUrlsRefreshedAtRef.current >= 40 * 60 * 1000,
+              refreshMasters: refreshExpiredStudioMasters,
+            },
+          );
           const retry = buildFinalizeForm();
           retry.set("useStagedSlots", "1");
           result = await finalizeDesignAction(retry);
         }
 
         if (!result.ok) {
+          trackStudioFunnelStep({
+            eventName: "studio_finalize_failed",
+            productSlug: product.slug,
+            editorKind: "photo",
+            errorCode: "validation",
+          });
           state.setIsFinalizing(false);
           setPreviewError(result.message);
           return;
@@ -2299,12 +2362,35 @@ export function StudioEditor({
           replaceDesignId: replacesCartDesignId ?? undefined,
         });
         if (!addResult.ok) {
+          trackStudioFunnelStep({
+            eventName: "studio_finalize_failed",
+            productSlug: product.slug,
+            editorKind: "photo",
+            errorCode: "cart_add_failed",
+          });
           state.setIsFinalizing(false);
           setPreviewError(
             fillStudioText(texts.exportar.errorCarrito, { error: addResult.message }),
           );
           return;
         }
+
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_succeeded",
+          productSlug: product.slug,
+          editorKind: "photo",
+        });
+        stashPersonalizedAddToCart({
+          ...(addResult.addedItem ?? {
+            designId,
+            sku: product.sku,
+            name: product.name,
+            priceCents: unitPriceCents,
+            quantity: 1,
+          }),
+          productSlug: product.slug,
+          editorKind: "photo",
+        });
 
         // Item 2.4 — el diseño quedó en el carrito (READY): su lugar ahora es
         // "Mis diseños", no el retomador. Limpiar el marcador del producto+variante.
@@ -2321,6 +2407,20 @@ export function StudioEditor({
         router.push("/carrito?personalized=1");
       } catch (err) {
         state.setIsFinalizing(false);
+        const finalizeErrorCode =
+          err instanceof MasterPhotoLoadError
+            ? "master_expired"
+            : isServerActionCrash(err)
+              ? "server_crash"
+              : isNetworkError(err)
+                ? "network"
+                : "validation";
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_failed",
+          productSlug: product.slug,
+          editorKind: "photo",
+          errorCode: finalizeErrorCode,
+        });
         // 2026-10-05 (fix STG) — errores de RED (TypeError "Failed to fetch" /
         // "NetworkError when attempting to fetch resource", AbortError de
         // timeout) se traducen al mensaje amigable; el texto crudo del navegador
@@ -2356,6 +2456,9 @@ export function StudioEditor({
       replacesCartDesignId,
       productConfig.shape,
       product.slug,
+      product.sku,
+      product.name,
+      unitPriceCents,
       isCalendarMonth,
       selectedYear,
       ensureAllStagesMounted,
@@ -2597,6 +2700,7 @@ export function StudioEditor({
         >
           <StudioSidebar
             store={store}
+            productSlug={product.slug}
             productName={product.name}
             productSku={product.sku}
             productSizeCm={productConfig.sizeCm}
@@ -3041,6 +3145,7 @@ export function StudioEditor({
           <div className="pb-6">
             <StudioSidebar
               store={store}
+              productSlug={product.slug}
               productName={product.name}
               productSku={product.sku}
               productSizeCm={productConfig.sizeCm}
@@ -3082,6 +3187,7 @@ export function StudioEditor({
         ensureDesignId={ensureDesignIdForPicker}
         predesigned={predesigned}
         productSizeCm={productConfig.sizeCm}
+        productSlug={product.slug}
         facesPerUnit={facesPerUnit}
         onClose={() => setPickerRequest(null)}
         onSelectAsset={handleAssetSelected}

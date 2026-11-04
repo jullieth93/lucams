@@ -7,6 +7,7 @@
  */
 
 import { useActionState, useEffect, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,16 @@ export function ContactForm({
           {successNote}{" "}
           <span className="font-mono text-xs">{state.ticketId.slice(0, 8).toUpperCase()}</span>.
         </p>
+        {state.threadPath && (
+          <div className="mt-4">
+            <Link
+              href={state.threadPath}
+              className="bg-brand-purple hover:bg-brand-purple-dark inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors"
+            >
+              Seguir y responder mi solicitud →
+            </Link>
+          </div>
+        )}
         <p className="text-brand-muted mt-3 text-xs">Si es urgente, escríbenos por WhatsApp.</p>
       </div>
     );
