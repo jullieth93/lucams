@@ -1001,7 +1001,7 @@ export async function removeCartItem(
  * un CartItem solo puede transferir diseños de ESTA sesión anónima, nunca ajenos.
  */
 async function adoptSessionDesigns(
-  tx: Pick<typeof prisma, "design">,
+  tx: Pick<typeof prisma, "design"> & Partial<Pick<typeof prisma, "designAsset">>,
   opts: { designIds: (string | null)[]; anonSessionId: string; customerId: string },
 ): Promise<void> {
   const ids = opts.designIds.filter((id): id is string => typeof id === "string");
@@ -1010,6 +1010,18 @@ async function adoptSessionDesigns(
     where: { id: { in: ids }, sessionId: opts.anonSessionId, customerId: null },
     data: { customerId: opts.customerId, sessionId: null },
   });
+  // [PRI-01] (S08): adoptar también los DesignAsset subidos como invitado en esa misma sesión
+  // para que Mis fotos y la supresión de cuenta (Ley 1581) no dejen fotos huérfanas con customerId null.
+  if (tx.designAsset) {
+    await tx.designAsset.updateMany({
+      where: {
+        sessionId: opts.anonSessionId,
+        customerId: null,
+        OR: [{ designId: { in: ids } }, { designId: null }],
+      },
+      data: { customerId: opts.customerId, sessionId: null },
+    });
+  }
 }
 
 /**
@@ -1023,7 +1035,7 @@ async function adoptSessionDesigns(
  * se loguea después, mergeAnonCartIntoCustomer lo adopta por la vía de siempre.
  */
 async function retargetSessionDesigns(
-  tx: Pick<typeof prisma, "design">,
+  tx: Pick<typeof prisma, "design"> & Partial<Pick<typeof prisma, "designAsset">>,
   opts: { designIds: (string | null)[]; fromSessionId: string; toSessionId: string },
 ): Promise<void> {
   const ids = opts.designIds.filter((id): id is string => typeof id === "string");
@@ -1032,6 +1044,12 @@ async function retargetSessionDesigns(
     where: { id: { in: ids }, sessionId: opts.fromSessionId, customerId: null },
     data: { sessionId: opts.toSessionId },
   });
+  if (tx.designAsset) {
+    await tx.designAsset.updateMany({
+      where: { designId: { in: ids }, sessionId: opts.fromSessionId, customerId: null },
+      data: { sessionId: opts.toSessionId },
+    });
+  }
 }
 
 /**
@@ -1049,7 +1067,7 @@ async function retargetSessionDesigns(
  * assets ni bytes compartidos (ADR-152).
  */
 async function adoptAnonDraftDesigns(
-  tx: Pick<typeof prisma, "design">,
+  tx: Pick<typeof prisma, "design"> & Partial<Pick<typeof prisma, "designAsset">>,
   opts: { anonSessionId: string; customerId: string },
 ): Promise<void> {
   const drafts = await tx.design.findMany({
@@ -1064,6 +1082,17 @@ async function adoptAnonDraftDesigns(
     where: { id: { in: ids }, sessionId: opts.anonSessionId, customerId: null },
     data: { customerId: opts.customerId, sessionId: null },
   });
+  // [PRI-01] (S08): arrastrar ownership de los DesignAsset subidos en esta sesión anónima.
+  if (tx.designAsset) {
+    await tx.designAsset.updateMany({
+      where: {
+        sessionId: opts.anonSessionId,
+        customerId: null,
+        OR: [{ designId: { in: ids } }, { designId: null }],
+      },
+      data: { customerId: opts.customerId, sessionId: null },
+    });
+  }
 }
 
 export async function mergeAnonCartIntoCustomer(

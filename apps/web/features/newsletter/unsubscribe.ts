@@ -167,6 +167,11 @@ export async function unsubscribeNewsletter(
   return { ok: true, alreadyUnsubscribed: false };
 }
 
+/** Marca el contacto como unsubscribed=true en Resend (best-effort). Reusado por deleteCustomerAccount ([PRI-01]). */
+export async function markResendContactUnsubscribed(email: string): Promise<void> {
+  return updateResendUnsubscribed(email.trim().toLowerCase());
+}
+
 /** Marca el contacto como unsubscribed=true en Resend (best-effort). */
 async function updateResendUnsubscribed(email: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
