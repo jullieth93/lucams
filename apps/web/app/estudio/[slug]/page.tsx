@@ -786,7 +786,12 @@ export default async function EstudioPage({
           initialDesignId={initialDesignId}
           initialDesignCanvas={initialDesignCanvas}
           initialDesignAssets={initialDesignAssets}
-          draftResumeEnabled={studioCustomer !== null}
+          // [STU-02]: habilitado tanto para clientes autenticados como para invitados
+          // con cookie HttpOnly `cart_session` activa (el servidor verifica
+          // `Design.sessionId === cartSessionId && Design.customerId === null`).
+          // Sin sesión ni cookie (navegador limpio o cookies borradas) queda en false
+          // para no prometer un borrador huérfano en localStorage.
+          draftResumeEnabled={studioCustomer !== null || cartSessionId !== null}
           initialDesignTemplateId={initialDesignTemplateId}
           photoSlots={effectivePhotoSlots}
           // Lucy 2026-09-05 — catálogo del stepper de N fotos (packs; vacío = no pack).

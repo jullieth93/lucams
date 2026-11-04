@@ -32,6 +32,12 @@ import { loadCanvasImage } from "./lib/canvas-image";
 import { dataUrlToBlob } from "./lib/image-utils";
 import { buildLetterTileTextures } from "./lib/letter-tile-textures";
 import { useLetterColors } from "./use-letter-colors";
+import {
+  clearNameStudioDraft,
+  readNameStudioDraft,
+  writeNameStudioDraft,
+  type NameStudioLocalDraft,
+} from "./lib/draft-marker";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
 import { StudioPreviewModal } from "./studio-preview-modal";
@@ -363,9 +369,12 @@ export function NameEditor({
   // (mismo orden, índice a índice) sin depender del barajado aleatorio del tema.
   const {
     themeId,
+    activeColors,
+    letterColors,
     effectiveColors,
     selectedIndex,
     toggleSelected,
+    restoreSnapshot,
     applyTheme,
     setColorForSelected,
     customized,
@@ -379,6 +388,70 @@ export function NameEditor({
         }
       : undefined,
   );
+
+  // [STU-02]: borrador local no bloqueante (7d en localStorage) cuando abre fresco sin ?designId=.
+  const [savedLocalDraft, setSavedLocalDraft] = useState<NameStudioLocalDraft | null>(() => {
+    if (initialName || replacesCartDesignId) return null;
+    if (
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).has("designId")
+    ) {
+      return null;
+    }
+    return readNameStudioDraft(product.slug, variantId);
+  });
+
+  useEffect(() => {
+    if (replacesCartDesignId) return;
+    if (raw.trim().length > 0) {
+      writeNameStudioDraft(product.slug, variantId, {
+        raw,
+        count,
+        styleId,
+        withBorder,
+        themeId,
+        activeColors: [...activeColors],
+        letterColors,
+      });
+    }
+  }, [
+    product.slug,
+    variantId,
+    replacesCartDesignId,
+    raw,
+    count,
+    styleId,
+    withBorder,
+    themeId,
+    activeColors,
+    letterColors,
+  ]);
+
+  function handleRestoreLocalDraft() {
+    if (!savedLocalDraft) return;
+    const restoredCount = Math.min(config.max, Math.max(config.min, savedLocalDraft.count));
+    setCount(restoredCount);
+    setRaw(savedLocalDraft.raw.slice(0, restoredCount));
+    setStyleId(
+      savedLocalDraft.styleId !== null && styles.some((s) => s.id === savedLocalDraft.styleId)
+        ? savedLocalDraft.styleId
+        : savedLocalDraft.styleId === null
+          ? null
+          : (styles[0]?.id ?? null),
+    );
+    setWithBorder(savedLocalDraft.withBorder);
+    restoreSnapshot({
+      themeId: savedLocalDraft.themeId,
+      activeColors: savedLocalDraft.activeColors,
+      letterColors: savedLocalDraft.letterColors,
+    });
+    setSavedLocalDraft(null);
+  }
+
+  function handleDiscardLocalDraft() {
+    clearNameStudioDraft(product.slug, variantId);
+    setSavedLocalDraft(null);
+  }
 
   // Letras repetidas → transparencia sobre cuántas fichas iguales lleva.
   const repeats = useMemo(() => {
@@ -538,6 +611,7 @@ export function NameEditor({
       });
 
       // Cerramos la modal antes de navegar para que no parpadee sobre el carrito.
+      clearNameStudioDraft(product.slug, variantId);
       setPreviewOpen(false);
       router.push("/carrito?personalized=1");
     } catch (err) {
@@ -662,6 +736,32 @@ export function NameEditor({
         className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8"
         style={{ maxWidth: STUDIO_MAX_WIDTH }}
       >
+        {savedLocalDraft && raw.trim().length === 0 && (
+          <div
+            role="status"
+            className="border-brand-purple/20 bg-brand-purple/5 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm"
+          >
+            <p className="text-brand-purple-dark">
+              Guardamos tu avance anterior (<strong>{savedLocalDraft.raw.toUpperCase()}</strong>).
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRestoreLocalDraft}
+                className="bg-brand-purple hover:bg-brand-purple-dark inline-flex min-h-10 items-center rounded-full px-4 py-2 text-xs font-semibold text-white transition-colors"
+              >
+                Retomar avance
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardLocalDraft}
+                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-10 items-center rounded-full border bg-white px-4 py-2 text-xs font-semibold transition-colors"
+              >
+                Empezar de nuevo
+              </button>
+            </div>
+          </div>
+        )}
         {/* h1 visible (WCAG): el eyebrow "Personalizar · {producto}" ya vive en el
             header sticky (md+), no se repite acá. */}
         <header className="mb-5 text-center">

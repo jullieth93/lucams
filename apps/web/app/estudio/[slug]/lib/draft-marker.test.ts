@@ -21,6 +21,13 @@ import {
   writeStudioCanvasSnapshot,
   clearStudioCanvasSnapshot,
   shouldUseCanvasSnapshot,
+  SIMPLE_STUDIO_DRAFT_MAX_AGE_MS,
+  writeNameStudioDraft,
+  readNameStudioDraft,
+  clearNameStudioDraft,
+  writeLetterSetStudioDraft,
+  readLetterSetStudioDraft,
+  clearLetterSetStudioDraft,
 } from "./draft-marker";
 
 beforeEach(() => window.localStorage.clear());
@@ -445,5 +452,86 @@ describe("studioDraftHasRealProgress — guardia de contenido REAL del retomador
     const snapshot = marker ? readStudioCanvasSnapshot(marker.designId) : null;
     expect(snapshot).not.toBeNull();
     expect(studioDraftHasRealProgress(snapshot?.canvasData)).toBe(false);
+  });
+});
+
+describe("borradores locales de NameEditor y LetterSetEditor ([STU-02])", () => {
+  it("persiste, recupera, expira a los 7 días y limpia el borrador de NameEditor por slug+variante", () => {
+    const now = Date.now();
+    writeNameStudioDraft(
+      "nombre-magnetico",
+      "var-1",
+      {
+        raw: "Sofía",
+        count: 5,
+        styleId: "set-animales",
+        withBorder: true,
+        themeId: "pastel",
+        activeColors: ["#7C6AAD", "#5DD9D1"],
+        letterColors: { 0: "#E85B9F" },
+      },
+      now,
+    );
+    expect(readNameStudioDraft("nombre-magnetico", "var-2", now)).toBeNull();
+    const recovered = readNameStudioDraft("nombre-magnetico", "var-1", now + 1000);
+    expect(recovered?.raw).toBe("Sofía");
+    expect(recovered?.letterColors).toEqual({ 0: "#E85B9F" });
+
+    // Expirado tras SIMPLE_STUDIO_DRAFT_MAX_AGE_MS
+    expect(
+      readNameStudioDraft("nombre-magnetico", "var-1", now + SIMPLE_STUDIO_DRAFT_MAX_AGE_MS + 1),
+    ).toBeNull();
+
+    writeNameStudioDraft(
+      "nombre-magnetico",
+      "var-1",
+      {
+        raw: "Lucas",
+        count: 5,
+        styleId: null,
+        withBorder: false,
+        themeId: "arcoiris",
+        activeColors: ["#7C6AAD"],
+        letterColors: {},
+      },
+      now,
+    );
+    clearNameStudioDraft("nombre-magnetico", "var-1");
+    expect(readNameStudioDraft("nombre-magnetico", "var-1", now)).toBeNull();
+  });
+
+  it("persiste, recupera, expira y limpia el borrador de LetterSetEditor por slug+variante", () => {
+    const now = Date.now();
+    writeLetterSetStudioDraft(
+      "abecedario-magnetico",
+      "var-es",
+      {
+        unitCount: 2,
+        units: {
+          0: {
+            styleId: "set-frutas",
+            withBorder: true,
+            colors: {
+              themeId: "pastel",
+              activeColors: ["#7C6AAD", "#5DD9D1"],
+              letterColors: { 2: "#E85B9F" },
+            },
+          },
+        },
+      },
+      now,
+    );
+    const recovered = readLetterSetStudioDraft("abecedario-magnetico", "var-es", now + 500);
+    expect(recovered?.unitCount).toBe(2);
+    expect(recovered?.units[0]?.styleId).toBe("set-frutas");
+    expect(
+      readLetterSetStudioDraft(
+        "abecedario-magnetico",
+        "var-es",
+        now + SIMPLE_STUDIO_DRAFT_MAX_AGE_MS + 10,
+      ),
+    ).toBeNull();
+    clearLetterSetStudioDraft("abecedario-magnetico", "var-es");
+    expect(readLetterSetStudioDraft("abecedario-magnetico", "var-es", now)).toBeNull();
   });
 });

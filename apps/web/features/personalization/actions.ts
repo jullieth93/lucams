@@ -782,18 +782,107 @@ export async function uploadDesignAssetAction(formData: FormData) {
     }
   }
 
-  // M.3.b.B.2 — Buscar productSizeCm del product asociado al Design para DPI check.
-  // Si no hay Design (upload sin draft creado aún) → sin sizeCm, validation
-  // solo evalúa brillo + blur.
+  // M.3.b.B.2 + [STU-02] — Resolver `productSizeCm` para validación 300 DPI desde la
+  // PRIMERA foto (incluso antes de crear el `Design` lazy en servidor):
+  //   1. Si ya existe `design`, toma el `sizeCm` efectivo de su variante (`metadata.variantId`)
+  //      sobre `product.personalizationSchema.sizeCm`.
+  //   2. Si aún no existe `design` (`designId === null`), consulta el producto activo por
+  //      `productSlug` y solo acepta un `productSizeCm` declarado en el producto o en sus
+  //      variantes activas (nunca un string arbitrario del cliente).
   let productSizeCm: string | undefined;
+  const rawSlug = formData.get("productSlug");
+  const requestedSlug =
+    typeof rawSlug === "string" && /^[a-z0-9-]{1,120}$/.test(rawSlug.trim())
+      ? rawSlug.trim()
+      : null;
+  const rawSizeHint = formData.get("productSizeCm");
+  const requestedSizeHint =
+    typeof rawSizeHint === "string" && rawSizeHint.trim().length > 0
+      ? rawSizeHint.trim().slice(0, 32)
+      : null;
+
   if (design) {
     const product = await prisma.product.findUnique({
       where: { id: design.productId },
-      select: { personalizationSchema: true },
+      select: {
+        personalizationSchema: true,
+        variants: {
+          where: { deletedAt: null, isActive: true },
+          select: { id: true, attributes: true },
+        },
+      },
     });
-    if (product?.personalizationSchema && typeof product.personalizationSchema === "object") {
-      const cfg = product.personalizationSchema as { sizeCm?: unknown };
-      if (typeof cfg.sizeCm === "string") productSizeCm = cfg.sizeCm;
+    if (product) {
+      const baseCfg =
+        product.personalizationSchema && typeof product.personalizationSchema === "object"
+          ? (product.personalizationSchema as { sizeCm?: unknown })
+          : null;
+      const metaVariantId =
+        design.metadata && typeof design.metadata === "object"
+          ? (design.metadata as { variantId?: unknown }).variantId
+          : undefined;
+      const matchedVariant =
+        typeof metaVariantId === "string"
+          ? product.variants.find((v) => v.id === metaVariantId)
+          : undefined;
+      const variantSizeCm =
+        matchedVariant?.attributes && typeof matchedVariant.attributes === "object"
+          ? (matchedVariant.attributes as { sizeCm?: unknown }).sizeCm
+          : undefined;
+      if (typeof variantSizeCm === "string" && variantSizeCm.trim().length > 0) {
+        productSizeCm = variantSizeCm.trim();
+      } else if (
+        baseCfg &&
+        typeof baseCfg.sizeCm === "string" &&
+        baseCfg.sizeCm.trim().length > 0
+      ) {
+        productSizeCm = baseCfg.sizeCm.trim();
+      } else if (requestedSizeHint) {
+        const validSizes = new Set<string>();
+        for (const v of product.variants) {
+          const s =
+            v.attributes && typeof v.attributes === "object"
+              ? (v.attributes as { sizeCm?: unknown }).sizeCm
+              : undefined;
+          if (typeof s === "string" && s.trim().length > 0) validSizes.add(s.trim());
+        }
+        if (validSizes.has(requestedSizeHint)) productSizeCm = requestedSizeHint;
+      }
+    }
+  } else if (requestedSlug) {
+    const product = await prisma.product.findFirst({
+      where: { slug: requestedSlug, deletedAt: null, isActive: true },
+      select: {
+        personalizationSchema: true,
+        variants: {
+          where: { deletedAt: null, isActive: true },
+          select: { attributes: true },
+        },
+      },
+    });
+    if (product) {
+      const baseSizeCm =
+        product.personalizationSchema && typeof product.personalizationSchema === "object"
+          ? (product.personalizationSchema as { sizeCm?: unknown }).sizeCm
+          : undefined;
+      const validSizes = new Set<string>();
+      if (typeof baseSizeCm === "string" && baseSizeCm.trim().length > 0) {
+        validSizes.add(baseSizeCm.trim());
+      }
+      for (const v of product.variants) {
+        const s =
+          v.attributes && typeof v.attributes === "object"
+            ? (v.attributes as { sizeCm?: unknown }).sizeCm
+            : undefined;
+        if (typeof s === "string" && s.trim().length > 0) validSizes.add(s.trim());
+      }
+      if (requestedSizeHint && validSizes.has(requestedSizeHint)) {
+        productSizeCm = requestedSizeHint;
+      } else if (typeof baseSizeCm === "string" && baseSizeCm.trim().length > 0) {
+        productSizeCm = baseSizeCm.trim();
+      } else if (validSizes.size === 1) {
+        productSizeCm = [...validSizes][0];
+      }
     }
   }
 

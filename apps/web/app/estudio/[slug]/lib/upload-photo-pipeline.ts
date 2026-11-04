@@ -147,11 +147,18 @@ export async function preparePhotoForUpload(
 /** FormData de la Server Action de subida (mismos campos en ambos caminos). */
 export function buildAssetFormData(
   file: File,
-  opts: { designId: string | null; rightsAccepted: boolean },
+  opts: {
+    designId: string | null;
+    rightsAccepted: boolean;
+    productSlug?: string;
+    productSizeCm?: string;
+  },
 ): FormData {
   const formData = new FormData();
   formData.append("file", file);
   if (opts.designId) formData.append("designId", opts.designId);
+  if (opts.productSlug) formData.append("productSlug", opts.productSlug);
+  if (opts.productSizeCm) formData.append("productSizeCm", opts.productSizeCm);
   formData.append("rightsAccepted", opts.rightsAccepted ? "true" : "false");
   return formData;
 }
@@ -220,6 +227,8 @@ async function processOne(file: File, opts: ProcessPhotoFilesOptions): Promise<P
       buildAssetFormData(prepared.file, {
         designId: opts.designId,
         rightsAccepted: opts.rightsAccepted,
+        productSlug: opts.productSlug,
+        productSizeCm: opts.productSizeCm,
       }),
     );
   } catch (err) {

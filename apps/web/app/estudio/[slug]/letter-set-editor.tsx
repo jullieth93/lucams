@@ -66,6 +66,13 @@ import {
   effectiveColorsFromSnapshot,
   type LetterColorsSnapshot,
 } from "./use-letter-colors";
+import {
+  clearLetterSetStudioDraft,
+  readLetterSetStudioDraft,
+  writeLetterSetStudioDraft,
+  type LetterSetStudioLocalDraft,
+  type LetterSetUnitLocalDraft,
+} from "./lib/draft-marker";
 import { MAX_LETTER_SET_UNITS } from "@/features/personalization/design-units";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { StudioPreviewModal } from "./studio-preview-modal";
@@ -510,6 +517,114 @@ export function LetterSetEditor({
     });
   }, []);
 
+  const initialResolvedUnits = Math.min(
+    MAX_LETTER_SET_UNITS,
+    Math.max(1, Math.trunc(initialUnits ?? 1) || 1),
+  );
+  // [STU-02]: borrador local (7d en localStorage) cuando abre fresco sin ?designId=.
+  const [savedLocalDraft, setSavedLocalDraft] = useState<LetterSetStudioLocalDraft | null>(() => {
+    if (replacesCartDesignId || initialUnitColors) return null;
+    if (
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).has("designId")
+    ) {
+      return null;
+    }
+    return readLetterSetStudioDraft(product.slug, variantId);
+  });
+
+  const hasMeaningfulLocalChange = useMemo(() => {
+    const defaultColors = NAME_TILE_THEMES[0].colors;
+    if (unitCount !== initialResolvedUnits) return true;
+    for (let u = 0; u < unitCount; u++) {
+      const snap = snapshots.get(u);
+      if (!snap) continue;
+      if (snap.styleId !== undefined && snap.styleId !== defaultStyleId) return true;
+      if (snap.withBorder !== undefined && snap.withBorder !== defaultWithBorder) return true;
+      if (snap.colors) {
+        if (
+          snap.colors.themeId !== NAME_TILE_THEMES[0].id ||
+          Object.keys(snap.colors.letterColors).length > 0 ||
+          snap.colors.activeColors.length !== defaultColors.length ||
+          snap.colors.activeColors.some((c, idx) => c !== defaultColors[idx])
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [unitCount, initialResolvedUnits, snapshots, defaultStyleId, defaultWithBorder]);
+
+  useEffect(() => {
+    if (replacesCartDesignId || initialUnitColors || !hasMeaningfulLocalChange) return;
+    const serializedUnits: Record<number, LetterSetUnitLocalDraft> = {};
+    for (let u = 0; u < unitCount; u++) {
+      const snap = snapshots.get(u);
+      if (!snap) continue;
+      serializedUnits[u] = {
+        ...(snap.styleId !== undefined ? { styleId: snap.styleId } : {}),
+        ...(snap.withBorder !== undefined ? { withBorder: snap.withBorder } : {}),
+        ...(snap.colors
+          ? {
+              colors: {
+                themeId: snap.colors.themeId,
+                activeColors: [...snap.colors.activeColors],
+                letterColors: { ...snap.colors.letterColors },
+              },
+            }
+          : {}),
+      };
+    }
+    writeLetterSetStudioDraft(product.slug, variantId, {
+      unitCount,
+      units: serializedUnits,
+    });
+  }, [
+    product.slug,
+    variantId,
+    replacesCartDesignId,
+    initialUnitColors,
+    hasMeaningfulLocalChange,
+    unitCount,
+    snapshots,
+  ]);
+
+  function handleRestoreLocalDraft() {
+    if (!savedLocalDraft) return;
+    const restoredCount = Math.min(
+      MAX_LETTER_SET_UNITS,
+      Math.max(1, Math.trunc(savedLocalDraft.unitCount) || 1),
+    );
+    const nextMap = new Map<number, LetterSetUnitSnapshot>();
+    for (let u = 0; u < restoredCount; u++) {
+      const uDraft = savedLocalDraft.units[u];
+      if (!uDraft) continue;
+      nextMap.set(u, {
+        ...(uDraft.styleId !== undefined ? { styleId: uDraft.styleId } : {}),
+        ...(uDraft.withBorder !== undefined ? { withBorder: uDraft.withBorder } : {}),
+        ...(uDraft.colors
+          ? {
+              colors: {
+                themeId: uDraft.colors.themeId,
+                activeColors: [...uDraft.colors.activeColors],
+                letterColors: { ...uDraft.colors.letterColors },
+              },
+            }
+          : {}),
+      });
+    }
+    setUnitCount(restoredCount);
+    setActiveUnit(0);
+    setSnapshots(nextMap);
+    setApplyTick((t) => t + 1);
+    setSavedLocalDraft(null);
+  }
+
+  function handleDiscardLocalDraft() {
+    clearLetterSetStudioDraft(product.slug, variantId);
+    setSavedLocalDraft(null);
+  }
+
   /**
    * Stepper de cantidad de sets (2026-10-12). Misma regla del stepper de
    * unidades del estudio de foto (store.setUnitCount): al REDUCIR se recortan
@@ -932,6 +1047,10 @@ export function LetterSetEditor({
         editorKind: "letterset",
       });
       // Cerramos la modal antes de navegar para que no quede parpadeando sobre el carrito.
+      clearLetterSetStudioDraft(product.slug, variantId);
+      if (currentVariantId !== variantId) {
+        clearLetterSetStudioDraft(product.slug, currentVariantId);
+      }
       setPreviewDataUrl(null);
       router.push("/carrito?personalized=1");
     } catch (err) {
@@ -1014,6 +1133,36 @@ export function LetterSetEditor({
         className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8"
         style={{ maxWidth: STUDIO_MAX_WIDTH }}
       >
+        {savedLocalDraft && !hasMeaningfulLocalChange && (
+          <div
+            role="status"
+            className="border-brand-purple/20 bg-brand-purple/5 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm"
+          >
+            <p className="text-brand-purple-dark">
+              Guardamos tu avance anterior (
+              <strong>
+                {savedLocalDraft.unitCount === 1 ? "1 set" : `${savedLocalDraft.unitCount} sets`}
+              </strong>
+              ).
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRestoreLocalDraft}
+                className="bg-brand-purple hover:bg-brand-purple-dark inline-flex min-h-10 items-center rounded-full px-4 py-2 text-xs font-semibold text-white transition-colors"
+              >
+                Retomar avance
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardLocalDraft}
+                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-10 items-center rounded-full border bg-white px-4 py-2 text-xs font-semibold transition-colors"
+              >
+                Empezar de nuevo
+              </button>
+            </div>
+          </div>
+        )}
         {/* h1 visible (WCAG): el eyebrow "Personalizar · {producto}" ya vive en el
             header sticky (md+), no se repite acá. */}
         <header className="mb-5 text-center">

@@ -1237,15 +1237,14 @@ export function StudioEditor({
         //    entonces se limpia; no se pisa con el id del draft vacío (eso
         //    rearmaba la mentira).
         if (initialDesignId) {
-          // 2026-10-21 — el marcador solo se toca con el retomador habilitado
-          // (cliente autenticado); el invitado recupera por ?designId= sin
-          // rearmar nada en localStorage.
-          if (draftResumeEnabled) {
-            if (studioDraftHasRealProgress(canvasData)) {
-              writeStudioDraftId(initialDraftScope, initialDesignId);
-            } else {
-              clearStudioDraftId(initialDraftScope);
-            }
+          // [STU-02]: tanto autenticados como invitados escriben/limpian el marcador
+          // tras progreso real persistido en servidor (la primera acción ya fijó
+          // `cart_session` si era visitante nuevo, así que al recargar `draftResumeEnabled`
+          // será true mientras conserve su cookie).
+          if (studioDraftHasRealProgress(canvasData)) {
+            writeStudioDraftId(initialDraftScope, initialDesignId);
+          } else {
+            clearStudioDraftId(initialDraftScope);
           }
         } else if (typeof window !== "undefined") {
           const bootParams = new URLSearchParams(window.location.search);
@@ -1417,22 +1416,18 @@ export function StudioEditor({
           lastChangeRev === savedRev;
 
         if (result.ok) {
-          // 2026-10-21 — marcador del retomador SOLO con `draftResumeEnabled`
-          // (cliente autenticado): el invitado no rearma ni limpia marcadores.
-          if (draftResumeEnabled) {
-            const savedScope = studioDraftScope(product.slug, saveVariantId);
-            if (savedScope !== initialDraftScope) clearStudioDraftId(initialDraftScope);
-            // 2026-10-19 — el marcador del retomador solo vive con CONTENIDO REAL:
-            // si el canvas guardado quedó vacío (cambio deshecho: asignar y quitar
-            // la única foto, o solo cambiar la plantilla), el marcador se RETIRA en
-            // vez de quedar apuntando a un borrador vacío (el interstitial ya no lo
-            // ofrece — studioDraftHasRealProgress ignora el atajo clientRev>0 de
-            // designHasMeaningfulProgress, que cuenta "se guardó algo alguna vez").
-            if (studioDraftHasRealProgress(canvasData)) {
-              writeStudioDraftId(savedScope, designId);
-            } else {
-              clearStudioDraftId(savedScope);
-            }
+          // [STU-02]: escribir/limpiar siempre el marcador tras persistir en servidor.
+          // Aunque un visitante nuevo haya montado con `draftResumeEnabled=false`
+          // (aún no tenía cookie `cart_session`), `createDraftDesignAction`/`saveCanvasAction`
+          // ya emitieron su cookie HttpOnly → al recargar `draftResumeEnabled` será true
+          // y podrá retomar su avance sin perder fotos. Si borra cookies, el gate de
+          // `resumeOffer` (`!draftResumeEnabled`) suprime el prompt roto.
+          const savedScope = studioDraftScope(product.slug, saveVariantId);
+          if (savedScope !== initialDraftScope) clearStudioDraftId(initialDraftScope);
+          if (studioDraftHasRealProgress(canvasData)) {
+            writeStudioDraftId(savedScope, designId);
+          } else {
+            clearStudioDraftId(savedScope);
           }
           const snapshot = readStudioCanvasSnapshot(designId);
           if (snapshot && snapshot.rev <= savedRev) clearStudioCanvasSnapshot(designId);

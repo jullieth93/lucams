@@ -406,3 +406,192 @@ export function shouldUseCanvasSnapshot(opts: {
   if (opts.snapshotRev === null) return false;
   return opts.snapshotRev > (opts.serverClientRev ?? 0);
 }
+
+// ───────────────────── Borradores locales de Nombre y Set de Letras ([STU-02]) ─────────────────────
+//
+// `NameEditor` y `LetterSetEditor` solo crean el `Design` en servidor al confirmar la
+// Vista Previa (para no inundar la BD con borradores por cada tecla). Para que ni
+// autenticados ni invitados pierdan su palabra o combinación de colores ante una
+// recarga accidental en móvil, persistimos un snapshot ligero en localStorage (7 días)
+// acotado por `slug` + `variantId` y lo ofrecemos como banner no bloqueante al reentrar
+// sin `?designId=`. Al agregar al carrito se limpia.
+
+export const SIMPLE_STUDIO_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const FUTURE_CLOCK_SKEW_MS = 60_000;
+
+export interface NameStudioLocalDraft {
+  savedAt: number;
+  raw: string;
+  count: number;
+  styleId: string | null;
+  withBorder: boolean;
+  themeId: string;
+  activeColors: string[];
+  letterColors: Record<number, string>;
+}
+
+export interface LetterSetUnitLocalDraft {
+  styleId?: string | null;
+  withBorder?: boolean;
+  colors?: {
+    themeId: string;
+    activeColors: string[];
+    letterColors: Record<number, string>;
+  };
+}
+
+export interface LetterSetStudioLocalDraft {
+  savedAt: number;
+  unitCount: number;
+  units: Record<number, LetterSetUnitLocalDraft>;
+}
+
+export function nameStudioDraftKey(productSlug: string, variantId: string): string {
+  return `lucams_studio_name_draft_${productSlug}:${variantId}`;
+}
+
+export function letterSetStudioDraftKey(productSlug: string, variantId: string): string {
+  return `lucams_studio_letterset_draft_${productSlug}:${variantId}`;
+}
+
+export function writeNameStudioDraft(
+  productSlug: string,
+  variantId: string,
+  draft: Omit<NameStudioLocalDraft, "savedAt">,
+  now: number = Date.now(),
+): void {
+  const storage = storageOrNull();
+  if (!storage || !productSlug || !variantId) return;
+  try {
+    const payload: NameStudioLocalDraft = { ...draft, savedAt: now };
+    storage.setItem(nameStudioDraftKey(productSlug, variantId), JSON.stringify(payload));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+export function readNameStudioDraft(
+  productSlug: string,
+  variantId: string,
+  now: number = Date.now(),
+): NameStudioLocalDraft | null {
+  const storage = storageOrNull();
+  if (!storage || !productSlug || !variantId) return null;
+  const key = nameStudioDraftKey(productSlug, variantId);
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<NameStudioLocalDraft>;
+    if (
+      typeof parsed.savedAt !== "number" ||
+      !Number.isFinite(parsed.savedAt) ||
+      parsed.savedAt > now + FUTURE_CLOCK_SKEW_MS ||
+      now - parsed.savedAt > SIMPLE_STUDIO_DRAFT_MAX_AGE_MS ||
+      typeof parsed.raw !== "string" ||
+      parsed.raw.trim() === "" ||
+      typeof parsed.count !== "number" ||
+      typeof parsed.withBorder !== "boolean" ||
+      typeof parsed.themeId !== "string" ||
+      !Array.isArray(parsed.activeColors)
+    ) {
+      storage.removeItem(key);
+      return null;
+    }
+    return {
+      savedAt: parsed.savedAt,
+      raw: parsed.raw,
+      count: parsed.count,
+      styleId: typeof parsed.styleId === "string" ? parsed.styleId : null,
+      withBorder: parsed.withBorder,
+      themeId: parsed.themeId,
+      activeColors: parsed.activeColors.filter((c): c is string => typeof c === "string"),
+      letterColors:
+        parsed.letterColors && typeof parsed.letterColors === "object"
+          ? (parsed.letterColors as Record<number, string>)
+          : {},
+    };
+  } catch {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+}
+
+export function clearNameStudioDraft(productSlug: string, variantId: string): void {
+  const storage = storageOrNull();
+  if (!storage || !productSlug || !variantId) return;
+  try {
+    storage.removeItem(nameStudioDraftKey(productSlug, variantId));
+  } catch {
+    // ignore
+  }
+}
+
+export function writeLetterSetStudioDraft(
+  productSlug: string,
+  variantId: string,
+  draft: Omit<LetterSetStudioLocalDraft, "savedAt">,
+  now: number = Date.now(),
+): void {
+  const storage = storageOrNull();
+  if (!storage || !productSlug || !variantId) return;
+  try {
+    const payload: LetterSetStudioLocalDraft = { ...draft, savedAt: now };
+    storage.setItem(letterSetStudioDraftKey(productSlug, variantId), JSON.stringify(payload));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+export function readLetterSetStudioDraft(
+  productSlug: string,
+  variantId: string,
+  now: number = Date.now(),
+): LetterSetStudioLocalDraft | null {
+  const storage = storageOrNull();
+  if (!storage || !productSlug || !variantId) return null;
+  const key = letterSetStudioDraftKey(productSlug, variantId);
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<LetterSetStudioLocalDraft>;
+    if (
+      typeof parsed.savedAt !== "number" ||
+      !Number.isFinite(parsed.savedAt) ||
+      parsed.savedAt > now + FUTURE_CLOCK_SKEW_MS ||
+      now - parsed.savedAt > SIMPLE_STUDIO_DRAFT_MAX_AGE_MS ||
+      typeof parsed.unitCount !== "number" ||
+      parsed.unitCount < 1 ||
+      !parsed.units ||
+      typeof parsed.units !== "object"
+    ) {
+      storage.removeItem(key);
+      return null;
+    }
+    return {
+      savedAt: parsed.savedAt,
+      unitCount: Math.trunc(parsed.unitCount),
+      units: parsed.units as Record<number, LetterSetUnitLocalDraft>,
+    };
+  } catch {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+}
+
+export function clearLetterSetStudioDraft(productSlug: string, variantId: string): void {
+  const storage = storageOrNull();
+  if (!storage || !productSlug || !variantId) return;
+  try {
+    storage.removeItem(letterSetStudioDraftKey(productSlug, variantId));
+  } catch {
+    // ignore
+  }
+}

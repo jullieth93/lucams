@@ -19,6 +19,7 @@ import {
   ensureDesignShareToken,
   archiveCustomerDesign,
   getSharedDesign,
+  getOwnedDesign,
   finalizeDesign,
 } from "./service";
 import { processRenderJobs } from "./render-job-service";
@@ -439,3 +440,75 @@ describe.skipIf(!canRunStorage)(
     }, 30000);
   },
 );
+
+describe("getOwnedDesign · aislamiento anti-IDOR invitado vs registrado ([STU-02])", () => {
+  it("autoriza un borrador invitado solo con la misma cart_session no vacía y bloquea terceros", async () => {
+    const guestSession = `${RUN}-guest-sess-a`;
+    const guestDraft = await prisma.design.create({
+      data: {
+        customerId: null,
+        sessionId: guestSession,
+        productId,
+        status: "DRAFT",
+        canvasData: { version: 2, clientRev: 1, slots: [] },
+      },
+      select: { id: true },
+    });
+
+    const okOwner = await getOwnedDesign(guestDraft.id, {
+      customerId: null,
+      sessionId: guestSession,
+    });
+    expect(okOwner?.id).toBe(guestDraft.id);
+
+    const otherGuest = await getOwnedDesign(guestDraft.id, {
+      customerId: null,
+      sessionId: `${RUN}-guest-sess-b`,
+    });
+    expect(otherGuest).toBeNull();
+
+    const cookieless = await getOwnedDesign(guestDraft.id, {
+      customerId: null,
+      sessionId: null,
+    });
+    expect(cookieless).toBeNull();
+
+    const unrelatedCustomer = await getOwnedDesign(guestDraft.id, {
+      customerId: strangerId,
+      sessionId: null,
+    });
+    expect(unrelatedCustomer).toBeNull();
+  });
+
+  it("nunca autoriza por sessionId residual un diseño que ya pertenece a un Customer", async () => {
+    const sharedSession = `${RUN}-residual-sess`;
+    const customerDraft = await prisma.design.create({
+      data: {
+        customerId: ownerId,
+        sessionId: sharedSession,
+        productId,
+        status: "DRAFT",
+        canvasData: { version: 2, clientRev: 1, slots: [] },
+      },
+      select: { id: true },
+    });
+
+    const byOwner = await getOwnedDesign(customerDraft.id, {
+      customerId: ownerId,
+      sessionId: null,
+    });
+    expect(byOwner?.id).toBe(customerDraft.id);
+
+    const byResidualSessionAnon = await getOwnedDesign(customerDraft.id, {
+      customerId: null,
+      sessionId: sharedSession,
+    });
+    expect(byResidualSessionAnon).toBeNull();
+
+    const byStrangerWithSameSession = await getOwnedDesign(customerDraft.id, {
+      customerId: strangerId,
+      sessionId: sharedSession,
+    });
+    expect(byStrangerWithSameSession).toBeNull();
+  });
+});
