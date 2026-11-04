@@ -31,11 +31,7 @@ assertDestructiveAllowed("archive-prd-archived-products-local-20261103.mjs");
 const APPLY = process.argv.includes("--apply");
 const prisma = new PrismaClient();
 
-const SLUGS = [
-  "set-fotoimanes-circulares",
-  "set-fotoimanes-corazon",
-  "pack-separadores-libros",
-];
+const SLUGS = ["set-fotoimanes-circulares", "set-fotoimanes-corazon", "pack-separadores-libros"];
 
 async function main() {
   console.log(APPLY ? "=== APPLY ===" : "=== DRY-RUN (sin cambios; --apply ejecuta) ===\n");

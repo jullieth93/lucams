@@ -535,7 +535,13 @@ const productsData = [
         sku: "FI-TIRA-01-DEFAULT",
         name: "Tira de 3 fotos · 5×15 cm",
         price: 1900000,
-        attributes: { magnet: true, sizeCm: "5×15", quantity: 1, photoSlots: 3, aspectRatio: "1:1" },
+        attributes: {
+          magnet: true,
+          sizeCm: "5×15",
+          quantity: 1,
+          photoSlots: 3,
+          aspectRatio: "1:1",
+        },
       },
       {
         sku: "FI-TIRA-4FOTOS",
@@ -826,7 +832,13 @@ const productsData = [
     physicalSpecs: { weightGrams: 12, widthCm: 2, heightCm: 6, depthCm: 1 },
     images: [UNSPLASH("1544716278-ca5e3f4abd8c")],
     variants: [
-      ...sepMagVariants("2×6", "2x6", "1:3", 18, [300000, 600000, 800000, 1200000, 1400000, 1600000]),
+      ...sepMagVariants(
+        "2×6",
+        "2x6",
+        "1:3",
+        18,
+        [300000, 600000, 800000, 1200000, 1400000, 1600000],
+      ),
       ...sepMagVariants(
         "4×4.2",
         "4x4-2",

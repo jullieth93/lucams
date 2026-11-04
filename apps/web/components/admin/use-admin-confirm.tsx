@@ -105,7 +105,12 @@ export function useAdminConfirm(): {
           <Button type="button" variant="outline" onClick={() => settle(false)}>
             {state?.cancelLabel ?? "Cancelar"}
           </Button>
-          <Button type="button" variant="destructive" disabled={!typedOk} onClick={() => settle(true)}>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={!typedOk}
+            onClick={() => settle(true)}
+          >
             {state?.confirmLabel ?? "Confirmar"}
           </Button>
         </DialogFooter>

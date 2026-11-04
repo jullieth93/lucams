@@ -447,9 +447,7 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
         .poll(async () => Math.abs((await rowY(1)) - (await rowY(0))), { timeout: 15_000 })
         .toBeLessThan(4);
       await expect.poll(async () => (await rowY(2)) - (await rowY(0))).toBeGreaterThan(50);
-      await expect
-        .poll(async () => Math.abs((await rowY(3)) - (await rowY(2))))
-        .toBeLessThan(4);
+      await expect.poll(async () => Math.abs((await rowY(3)) - (await rowY(2)))).toBeLessThan(4);
     } else {
       // 1 por fila: las 4 apiladas (cada una debajo de la anterior).
       await expect

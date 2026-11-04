@@ -160,10 +160,7 @@ export function EditOcasionForm({ ocasion }: Props) {
         className="mt-6 border-t border-slate-200 pt-6"
       >
         <input type="hidden" name="id" value={ocasion.id} />
-        <button
-          type="submit"
-          className="text-sm font-medium text-red-700 hover:text-red-900"
-        >
+        <button type="submit" className="text-sm font-medium text-red-700 hover:text-red-900">
           🗑 Archivar ocasión
         </button>
       </ConfirmAction>

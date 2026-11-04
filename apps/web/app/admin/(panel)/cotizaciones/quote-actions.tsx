@@ -47,7 +47,10 @@ function StatusButton({
   pending: boolean;
 }) {
   return (
-    <ConfirmAction action={action} message={`¿${NEXT_STATUS_LABEL[status]} la cotización ${number}?`}>
+    <ConfirmAction
+      action={action}
+      message={`¿${NEXT_STATUS_LABEL[status]} la cotización ${number}?`}
+    >
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="status" value={status} />
       <button

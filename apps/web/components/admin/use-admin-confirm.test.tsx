@@ -18,7 +18,13 @@ import { ConfirmAction } from "./confirm-action";
 
 afterEach(cleanup);
 
-function Harness({ onResult, requireTyped }: { onResult: (ok: boolean) => void; requireTyped?: string }) {
+function Harness({
+  onResult,
+  requireTyped,
+}: {
+  onResult: (ok: boolean) => void;
+  requireTyped?: string;
+}) {
   const { confirm, confirmDialog } = useAdminConfirm();
   return (
     <>
@@ -77,9 +83,7 @@ describe("ConfirmAction", () => {
     // Cancelar → no submit.
     fireEvent.click(screen.getByRole("button", { name: "Archivar" }));
     fireEvent.click(await screen.findByRole("button", { name: "Cancelar" }));
-    await waitFor(() =>
-      expect(screen.queryByText("¿Archivar?")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText("¿Archivar?")).not.toBeInTheDocument());
     expect(action).not.toHaveBeenCalled();
 
     // Confirmar → requestSubmit dispara el action con el FormData.

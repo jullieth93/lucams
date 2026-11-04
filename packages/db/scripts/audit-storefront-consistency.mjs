@@ -30,7 +30,8 @@ const prisma = new PrismaClient();
 const pesos = (c) => `$${(c / 100).toLocaleString("es-CO")}`;
 
 function parseAspect(s) {
-  const m = typeof s === "string" ? s.trim().match(/^(\d+(?:\.\d+)?)\s*[:×x]\s*(\d+(?:\.\d+)?)$/i) : null;
+  const m =
+    typeof s === "string" ? s.trim().match(/^(\d+(?:\.\d+)?)\s*[:×x]\s*(\d+(?:\.\d+)?)$/i) : null;
   if (!m) return null;
   const h = parseFloat(m[2]);
   return h === 0 ? null : parseFloat(m[1]) / h;
@@ -82,9 +83,7 @@ for (const p of products) {
   }
 
   // 2. Promo: denormalizado vs variantes
-  const cheapest = p.variants
-    .filter((v) => v.price != null)
-    .sort((a, b) => a.price - b.price)[0];
+  const cheapest = p.variants.filter((v) => v.price != null).sort((a, b) => a.price - b.price)[0];
   const denorm = p.compareAtPrice ?? null;
   const variantPromos = p.variants.filter(
     (v) => v.compareAtPrice != null && v.compareAtPrice > (v.price ?? p.basePrice),
@@ -98,7 +97,9 @@ for (const p of products) {
     );
   }
   if (denorm == null && variantPromos.length > 0) {
-    flag(`${variantPromos.length} variante(s) con promo pero product.compareAtPrice es null (correr syncProductBasePrice)`);
+    flag(
+      `${variantPromos.length} variante(s) con promo pero product.compareAtPrice es null (correr syncProductBasePrice)`,
+    );
   }
   if (cheapest && denorm != null && cheapest.compareAtPrice !== denorm) {
     console.log(
@@ -127,7 +128,8 @@ for (const p of products) {
         if (!st?.width || !st?.height) return true; // sin stage parseable → permitida (curaduría manda)
         return Math.abs(st.width / st.height - target) <= 0.05;
       });
-      if (!match) flag(`aspect ${a} SIN plantilla activa que matchee → Estudio cae al canvas cuadrado`);
+      if (!match)
+        flag(`aspect ${a} SIN plantilla activa que matchee → Estudio cae al canvas cuadrado`);
     }
 
     // 3b. Consistencia FÍSICA de la celda (bug 2026-09-15 — tira 4 fotos: aspectRatio
@@ -166,6 +168,8 @@ for (const p of products) {
   console.log("");
 }
 
-console.log(issues === 0 ? "✓ Sin inconsistencias." : `✗ ${issues} inconsistencia(s) encontrada(s).`);
+console.log(
+  issues === 0 ? "✓ Sin inconsistencias." : `✗ ${issues} inconsistencia(s) encontrada(s).`,
+);
 process.exitCode = issues === 0 ? 0 : 1;
 await prisma.$disconnect();

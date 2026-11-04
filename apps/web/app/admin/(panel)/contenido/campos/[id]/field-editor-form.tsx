@@ -141,7 +141,9 @@ export function FieldEditorForm({
 
   async function discardChanges() {
     if (!isDirty) return;
-    if (!(await confirm("¿Descartar los cambios? Volverá al contenido que tenía guardado antes."))) {
+    if (
+      !(await confirm("¿Descartar los cambios? Volverá al contenido que tenía guardado antes."))
+    ) {
       return;
     }
     setBody(original.body);
