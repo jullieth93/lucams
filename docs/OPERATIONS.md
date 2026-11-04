@@ -682,68 +682,31 @@ El único `vercel.json` versionado es [`apps/web/vercel.json`](../apps/web/verce
 
 ---
 
-## Entorno local con Make (símil-Vercel)
+## Entorno local con Make (raíz del repositorio)
 
-> Patrón inspirado en `commerce-ops-platform`. Centraliza todos los comandos del entorno de desarrollo local en un Makefile en `/home/ansible/workspaces/lucams-shop-local/Makefile` para que la VM se sienta como un símil-Vercel sin necesidad de memorizar comandos pnpm largos.
+> El [`Makefile`](../Makefile) en la raíz del repo concentra únicamente lo que agrega valor operativo real sobre `pnpm`: orquestación segura de Supabase local en Podman rootless, arranque/parada de Next.js en `:4000` con seguimiento de PID en `tmp/` (gitignored), gates compuestos de calidad/RLS y scripts administrativos con carga explícita de `.env.local` / `.env.stg`.
 
-### Estructura
+### Comandos principales (`make help`)
 
-```
-/home/ansible/workspaces/lucams-shop-local/
-├── Makefile          ← orquestador
-├── logs/             ← un .log por servicio (web.log, etc.)
-└── pids/             ← un .pid por servicio (track/kill)
-```
-
-> Vive en `/home/ansible/workspaces/lucams-shop-local/` (paralelo al repo, no dentro) para **persistir entre reinicios** de la VM. La operadora rechazó la ubicación inicial `/tmp/` precisamente para que el histórico de logs no se pierda por antigüedad o reboot. Al ser paralelo (no adentro del repo) tampoco contamina el árbol git.
-
-### Comandos disponibles
-
-```bash
-cd /home/ansible/workspaces/lucams-shop-local && make help
-```
-
-#### Stack
-
-| Comando                 | Acción                                                                              |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| `make up`               | Inicia Next.js dev server (background, log a `logs/web.log`, pid en `pids/web.pid`) |
-| `make down`             | Mata el dev server                                                                  |
-| `make restart`          | down + up                                                                           |
-| `make status`           | Lista procesos vivos con su PID                                                     |
-| `make logs SERVICE=web` | `tail -f logs/web.log`                                                              |
-| `make clean`            | Borra logs/ y pids/                                                                 |
-
-#### Quality gates (sin levantar dev server)
-
-| Comando          | Acción                                                 |
-| ---------------- | ------------------------------------------------------ |
-| `make build`     | Build de producción (mismo comando que Vercel ejecuta) |
-| `make typecheck` | `tsc --noEmit`                                         |
-| `make lint`      | ESLint                                                 |
-| `make format`    | Prettier --write                                       |
-
-#### Validación local-cloud
-
-| Comando              | Acción                                                                                           |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
-| `make env-check`     | Lista vars de `.env.local` con su estado (loaded / missing / placeholder). **No expone valores** |
-| `make health`        | Healthchecks: Supabase Auth, Supabase REST, web local (si está arriba)                           |
-| `make vercel-parity` | Reproduce el build EXACTO que Vercel ejecuta. Si funciona local, funciona en Vercel              |
+| Comando               | Acción                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `make local-up`       | Reanuda Supabase local en Podman + inicia Next dev en `http://localhost:4000` (`tmp/logs/web-dev.log`)             |
+| `make local-down`     | Detiene Next dev y apaga contenedores Podman **conservando los volúmenes y datos**                                 |
+| `make local-status`   | Muestra el estado de Supabase local y el PID vivo de `:4000` (limpiando PID huérfano si aplica)                    |
+| `make db-local-setup` | Aplica extensiones + `prisma migrate deploy` + `supabase/migrations/*.sql` en orden CI                             |
+| `make db-local-seed`  | Siembra catálogo, plantillas, ocasiones, fichas, CMS v2 y backfill de `Contact` cargando `.env.local`              |
+| `make check`          | Gate rápido pre-push (`pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint`, tests DB, guards y paridad CMS v2) |
+| `make verify-db`      | Verifica 0 deriva Prisma↔SQL (`audit-schema-drift.mjs`) y 5/5 invariantes RLS/grants (`verify-security-posture`)   |
+| `make test-local`     | Ejecuta la suite Vitest completa contra el stack local (`NIGHTLY_LOCALSTACK=1`)                                    |
+| `make test-rls`       | Ejecuta `rls-coverage` + `rls-matrix` contra PostgREST/GoTrue del stack local                                      |
+| `make build`          | Build de producción Next.js 16 (en máquinas de 4 GB de RAM: correr antes `make db-local-stop`)                     |
+| `make clean-tmp`      | Depura `tmp/` conservando únicamente `tmp/bin/`, `tmp/pids/` y `tmp/logs/`                                         |
 
 ### Convenciones del Makefile
 
-- **No usa Read/cat sobre `.env.local`.** Carga las vars con `set -a && source .env.local && set +a` en una subshell, evitando exposure al transcript.
-- **`env-check` solo muestra nombres + length**, nunca valores. Detecta placeholders como `[YOUR-PASSWORD]` o `PLACEHOLDER` y los marca con ❌.
-- **PID tracking robusto**: si un proceso muere fuera del control de make, `make status` detecta y limpia el PID huérfano.
-- **No expone secretos en stdout**, solo HTTP codes y nombres de variables.
-
-### Cuándo lo usás
-
-- **Día a día de desarrollo:** `make up` por la mañana, `make logs SERVICE=web` mientras codeás, `make down` al final.
-- **Antes de pushear:** `make typecheck && make lint && make build` para verificar que todos los gates pasan.
-- **Si algo en Vercel falla:** `make vercel-parity` para reproducir el problema localmente con los mismos comandos.
-- **Onboarding de un dev nuevo:** `make help` da todo el panorama en 30 segundos.
+- **Carga explícita de entorno en scripts de DB:** todo target que invoca `packages/db/scripts/*` carga `dotenv -e ../../.env.local` (o `.env.stg`), evitando depender de variables sueltas en la terminal.
+- **Protección de volúmenes en Podman rootless:** `db-local-stop` usa `podman stop` nativo (nunca `supabase stop`, que elimina contenedores y choca al recrear volúmenes existentes).
+- **Sin exposición de secretos:** `web-start` exporta `.env.local` en una subshell aislada (`setsid`) sin imprimir valores en consola.
 
 ---
 
@@ -1150,7 +1113,7 @@ NO depende del email (es best-effort): la orden ya quedó REFUNDED aunque el cor
 > - **Secretos en el Vault de STG** (nunca en el SQL): `monitor_prd_base_url`,
 >   `monitor_resend_api_key`, `monitor_email_from`, `monitor_alert_email`,
 >   `monitor_cron_secret`.
-> - **Respaldo manual:** `node apps/web/scripts/uptime-monitor.mjs` (o `make uptime-monitor`)
+> - **Respaldo manual:** `node apps/web/scripts/uptime-monitor.mjs --dry-run`
 >   sondea desde cualquier máquina con `~/.config/lucams/uptime.env` — útil si STG está
 >   en mantenimiento.
 >
