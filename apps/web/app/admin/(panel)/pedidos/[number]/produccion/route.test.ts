@@ -100,4 +100,3 @@ describe("GET /admin/pedidos/[number]/produccion (S11 · [OPS-01] / [SEC-02])", 
     expect(recordAdminAction).not.toHaveBeenCalled();
   });
 });
-

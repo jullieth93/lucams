@@ -148,4 +148,3 @@ describe.skipIf(!hasDb)("newsletter/cart admin SQL pagination & aggregates (S11)
     expect(after.recoveredValueCents - before.recoveredValueCents).toBe(60_000);
   });
 });
-

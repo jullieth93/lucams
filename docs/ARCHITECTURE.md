@@ -619,9 +619,9 @@ electrónica DIAN** (`billingDocumentType/Number/Name`, `dianStatus`, `dianCufe`
 `dianXmlUrl` — schema ready, el envío a la DIAN es Fase 7) y `dianStatus` se setea al
 crear la orden si el cliente pidió factura.
 
-### Arquitectura Objetivo de Identidad Canónica (`Contact`) y Frontera SSoT (ADR-193 — especificada en Fase 4, pendiente DDL Fase 6)
+### Arquitectura Objetivo de Identidad Canónica (`Contact`) y Frontera SSoT (ADR-193 — Fases 4 y 5 completadas, pendiente aprobación humana para DDL Fase 6)
 
-> **Estado:** Contrato técnico vinculante aprobado en diseño (`ADR-193`). Las tablas aún **no** existen en `schema.prisma` hasta cruzar el perfilamiento `READ ONLY` (Fase 5) y la puerta de revisión humana previa a Fase 6 (`S14`).
+> **Estado:** Contrato técnico vinculante especificado (`ADR-193`) y perfilador `READ ONLY` sin PII (`packages/db/scripts/identity-dry-run.mjs`, `transaction_read_only = on` verificado) implementado y certificado en integración. Las tablas aún **no** existen en `schema.prisma` hasta cruzar la puerta de revisión humana previa a Fase 6 (`S14`).
 
 1. **Separación estructural Persona (`Contact`) vs Credencial (`Customer`):**
    - `Contact` representa a toda contraparte humana comercial o posventa en Lucams (comprador registrado, comprador invitado `Order.customerId IS NULL`, solicitante `Quote`, remitente `SupportTicket`, prospecto `AbandonedCart`, suscriptor `Consent`).
