@@ -828,12 +828,13 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
   });
 
   // ════════════════════════════════════════════════════════════════════════
-  // Customer EFECTIVO del pedido (bug STG LCM-2026-0010 — order-customer.ts):
-  // el customerId de la sesión NO se reusa cuando el email del contacto
-  // digitado es de otra persona.
+  // Customer propietario del pedido ([ID-01], auditoría 2026-11 — order-customer.ts):
+  // la atribución de `Order.customerId` depende exclusivamente de la sesión
+  // autenticada verificada; digitar el correo de otra cuenta JAMÁS reasigna el
+  // pedido ni drena sus Puntos Lucams.
   // ════════════════════════════════════════════════════════════════════════
 
-  describe("customer efectivo por email de contacto (bug STG LCM-2026-0010)", () => {
+  describe("customer propietario por sesión verificada ([ID-01])", () => {
     async function customerIdOf(orderId: string): Promise<string | null> {
       const row = await prisma.order.findUnique({
         where: { id: orderId },
@@ -857,7 +858,7 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(await customerIdOf(result.id)).toBe(customer.id);
     });
 
-    it("sesión con email A + contacto B (B existe) → el pedido queda con el customer de B", async () => {
+    it("BLOCKER [ID-01]: sesión de A + contacto B (B existe) → conserva customerId de A y NO toca a B", async () => {
       const sessionCustomer = await makeCustomer();
       const contactCustomer = await makeCustomer();
       const { cartId } = await makeCartWithItems(
@@ -870,12 +871,12 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
           shipping: { email: contactCustomer.email },
         }),
       );
-      expect(await customerIdOf(result.id)).toBe(contactCustomer.id);
+      expect(await customerIdOf(result.id)).toBe(sessionCustomer.id);
     });
 
-    it("sesión con email A + contacto B (B NO existe) → customerId null (guest), email intacto", async () => {
+    it("sesión de A + contacto secundario sin Customer → conserva customerId de A y guarda el email en Order.email", async () => {
       const sessionCustomer = await makeCustomer();
-      const guestEmail = email("ghost");
+      const secondaryEmail = email("secondary");
       const { cartId } = await makeCartWithItems(
         [{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }],
         { customerId: sessionCustomer.id },
@@ -883,20 +884,18 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       const result = await createOrderFromCart(
         baseInput(cartId, {
           customerId: sessionCustomer.id,
-          shipping: { email: guestEmail },
+          shipping: { email: secondaryEmail },
         }),
       );
       const row = await prisma.order.findUnique({
         where: { id: result.id },
         select: { customerId: true, email: true },
       });
-      expect(row!.customerId).toBeNull();
-      expect(row!.email).toBe(guestEmail);
+      expect(row!.customerId).toBe(sessionCustomer.id);
+      expect(row!.email).toBe(secondaryEmail);
     });
 
     it("guest sin sesión (customerId null) → sigue null aunque el email tenga Customer", async () => {
-      // No hay sesión que corregir: el checkout guest nunca amarra el pedido a
-      // una cuenta (la atribución por email ocurre cuando la persona se registra).
       const contactCustomer = await makeCustomer();
       const { cartId } = await makeCartWithItems([
         { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
@@ -907,14 +906,13 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(await customerIdOf(result.id)).toBeNull();
     });
 
-    it("la RECONCILIACIÓN de una PENDING existente también corrige el customerId", async () => {
+    it("la RECONCILIACIÓN de una PENDING existente actualiza el email sin transferir el customerId a B", async () => {
       const sessionCustomer = await makeCustomer();
       const contactCustomer = await makeCustomer();
       const { cartId } = await makeCartWithItems(
         [{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }],
         { customerId: sessionCustomer.id },
       );
-      // Primer intento: contacto = sesión (orden PENDING con customerId de A).
       const first = await createOrderFromCart(
         baseInput(cartId, {
           customerId: sessionCustomer.id,
@@ -922,8 +920,7 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         }),
       );
       expect(await customerIdOf(first.id)).toBe(sessionCustomer.id);
-      // El cliente corrige el contacto al email de B y re-paga: MISMA orden,
-      // customerId re-vinculado a B.
+
       const second = await createOrderFromCart(
         baseInput(cartId, {
           customerId: sessionCustomer.id,
@@ -932,7 +929,7 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       );
       expect(second.id).toBe(first.id);
       expect(second.number).toBe(first.number);
-      expect(await customerIdOf(first.id)).toBe(contactCustomer.id);
+      expect(await customerIdOf(first.id)).toBe(sessionCustomer.id);
     });
   });
 

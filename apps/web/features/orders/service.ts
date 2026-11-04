@@ -457,10 +457,17 @@ async function createOrderFromCartTx(
     // re-valida DENTRO de la tx (config/balance vigentes): si dejó de ser válida,
     // LoyaltyRedemptionError aborta — el checkout limpia los puntos del state y
     // el cliente re-confirma viendo el total real (mismo criterio que #8).
+    // Defensa en profundidad ([ID-01]): los Puntos Lucams SOLO pueden cotizarse y
+    // debitarse contra el `Customer` autenticado de la sesión (`input.customerId`),
+    // jamás contra una cuenta distinta.
+    const loyaltyCustomerId =
+      orderCustomerId && input.customerId && orderCustomerId === input.customerId
+        ? orderCustomerId
+        : null;
     let loyaltyPointsRedeemed = 0;
     let loyaltyDiscount = 0;
     const loyaltyQuote = await quoteRedemptionForOrder({
-      customerId: orderCustomerId,
+      customerId: loyaltyCustomerId,
       requestedPoints: input.loyaltyPointsToRedeem,
       merchandiseAfterCouponCents: subtotal - discount,
     });
@@ -682,10 +689,10 @@ async function createOrderFromCartTx(
           points: existing.loyaltyPointsRedeemed,
         });
       }
-      if (loyaltyPointsRedeemed > 0 && orderCustomerId) {
+      if (loyaltyPointsRedeemed > 0 && loyaltyCustomerId) {
         await reserveRedeemedPoints(tx, {
           orderId: existing.id,
-          customerId: orderCustomerId,
+          customerId: loyaltyCustomerId,
           points: loyaltyPointsRedeemed,
         });
       }
@@ -728,10 +735,10 @@ async function createOrderFromCartTx(
     // Puntos Lucams — reserva atómica dentro de la tx: decremento gateado del
     // balance (LoyaltyRedemptionError si ya no alcanza → rollback completo) +
     // LoyaltyTxn REDEEM ligada a la orden recién creada.
-    if (loyaltyPointsRedeemed > 0 && orderCustomerId) {
+    if (loyaltyPointsRedeemed > 0 && loyaltyCustomerId) {
       await reserveRedeemedPoints(tx, {
         orderId: order.id,
-        customerId: orderCustomerId,
+        customerId: loyaltyCustomerId,
         points: loyaltyPointsRedeemed,
       });
     }
