@@ -3,11 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import {
+  isSupportPriority,
   setSupportTicketStatus,
+  SupportConcurrencyError,
   SUPPORT_STATUSES,
+  updateSupportTicketGovernance,
+  type SupportTicketPriority,
   type SupportTicketStatus,
 } from "@/features/support/admin-service";
 import {
@@ -22,17 +25,29 @@ type St = { error?: string; success?: string } | null;
 function revalidateTicket(id: string) {
   revalidatePath("/admin/soporte");
   revalidatePath(`/admin/soporte/${id}`);
+  revalidatePath("/admin/hoy");
+}
+
+function parseExpectedUpdatedAt(raw: FormDataEntryValue | null): Date | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const d = new Date(raw.trim());
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 export async function setTicketStatusAction(_p: St, fd: FormData): Promise<St> {
-  // Soporte al cliente: SUPERADMIN o MANAGER (no es dinero, no exige SUPERADMIN).
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPPORT_CARE });
-  const id = String(fd.get("id") ?? "");
+  const s = await requireAdminAction({ capability: "support:manage" });
+  const id = String(fd.get("id") ?? "").trim();
   const status = String(fd.get("status") ?? "") as SupportTicketStatus;
+  const expectedUpdatedAt = parseExpectedUpdatedAt(fd.get("expectedUpdatedAt"));
+
   if (!id) return { error: "Falta id" };
   if (!SUPPORT_STATUSES.includes(status)) return { error: "Estado inválido" };
+
   try {
-    await setSupportTicketStatus(id, status, s.admin.id);
+    await setSupportTicketStatus(id, status, s.admin.id, {
+      expectedUpdatedAt,
+      autoAssignIfUnassigned: status === "IN_PROGRESS",
+    });
     await recordAdminAction({
       actorId: s.admin.id,
       action: "support.status",
@@ -45,10 +60,13 @@ export async function setTicketStatusAction(_p: St, fd: FormData): Promise<St> {
       status === "CLOSED"
         ? "cerrado — cliente avisado por correo"
         : status === "IN_PROGRESS"
-          ? "marcado en progreso"
+          ? "tomado en progreso"
           : "reabierto";
     return { success: `Ticket ${label}.` };
   } catch (err) {
+    if (err instanceof SupportConcurrencyError) {
+      return { error: err.message };
+    }
     logger.warn({
       event: "admin.support.status_fail",
       id,
@@ -58,15 +76,57 @@ export async function setTicketStatusAction(_p: St, fd: FormData): Promise<St> {
   }
 }
 
+export async function updateTicketGovernanceAction(_p: St, fd: FormData): Promise<St> {
+  const s = await requireAdminAction({ capability: "support:manage" });
+  const id = String(fd.get("id") ?? "").trim();
+  const priorityRaw = String(fd.get("priority") ?? "NORMAL").trim();
+  const assignedRaw = String(fd.get("assignedToAdminId") ?? "").trim();
+  const expectedUpdatedAt = parseExpectedUpdatedAt(fd.get("expectedUpdatedAt"));
+
+  if (!id) return { error: "Falta id" };
+  if (!isSupportPriority(priorityRaw)) return { error: "Prioridad inválida" };
+
+  const assignedToAdminId = assignedRaw === "" || assignedRaw === "UNASSIGNED" ? null : assignedRaw;
+  const priority: SupportTicketPriority = priorityRaw;
+
+  try {
+    await updateSupportTicketGovernance({
+      id,
+      assignedToAdminId,
+      priority,
+      expectedUpdatedAt,
+    });
+    await recordAdminAction({
+      actorId: s.admin.id,
+      action: "support.assign",
+      entityType: "SupportTicket",
+      entityId: id,
+      metadata: { assignedToAdminId, priority },
+    });
+    revalidateTicket(id);
+    return { success: "Responsable y prioridad actualizados." };
+  } catch (err) {
+    if (err instanceof SupportConcurrencyError) {
+      return { error: err.message };
+    }
+    return {
+      error: err instanceof Error ? err.message : "No se pudo guardar la asignación.",
+    };
+  }
+}
+
 /**
  * Respuesta pública (va al hilo + email al cliente) o nota interna (solo panel).
- * El checkbox `internal` del form decide; ambos casos quedan auditados.
+ * Si la respuesta provino del borrador sugerido por el copiloto (`aiAssisted = "1"`),
+ * registra `aiAssisted: true` en `AdminActionLog`.
  */
 export async function replyTicketAction(_p: St, fd: FormData): Promise<St> {
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPPORT_CARE });
-  const id = String(fd.get("id") ?? "");
+  const s = await requireAdminAction({ capability: "support:manage" });
+  const id = String(fd.get("id") ?? "").trim();
   const body = String(fd.get("body") ?? "");
   const internal = fd.get("internal") === "on";
+  const aiAssisted = fd.get("aiAssisted") === "1";
+
   if (!id) return { error: "Falta id" };
   try {
     const message = await addTicketMessage({
@@ -80,7 +140,7 @@ export async function replyTicketAction(_p: St, fd: FormData): Promise<St> {
       action: internal ? "support.note" : "support.reply",
       entityType: "SupportTicket",
       entityId: id,
-      metadata: { messageId: message.id },
+      metadata: { messageId: message.id, ...(aiAssisted ? { aiAssisted: true } : {}) },
     });
     revalidateTicket(id);
     return {
@@ -100,10 +160,10 @@ export async function replyTicketAction(_p: St, fd: FormData): Promise<St> {
 
 /** Convierte el ticket GARANTIA_DEVOLUCION en WarrantyClaim o RetractRequest enlazado. */
 export async function convertTicketToCaseAction(_p: St, fd: FormData): Promise<St> {
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPPORT_CARE });
-  const id = String(fd.get("id") ?? "");
+  const s = await requireAdminAction({ capability: "support:manage" });
+  const id = String(fd.get("id") ?? "").trim();
   const kind = String(fd.get("kind") ?? "") as LinkedCaseKind;
-  const orderItemId = String(fd.get("orderItemId") ?? "");
+  const orderItemId = String(fd.get("orderItemId") ?? "").trim();
   if (!id) return { error: "Falta id" };
   if (kind !== "warranty" && kind !== "retract") return { error: "Tipo de caso inválido" };
   if (!orderItemId) return { error: "Elige el item del pedido" };

@@ -1,14 +1,10 @@
 /*
- * /mi-cuenta/soporte — Bandeja de tickets del cliente (5.3, 2026-09-13),
- * con hilo de respuestas del equipo (flujo de solución, 2026-09-29).
+ * `/mi-cuenta/soporte` — Bandeja bidireccional de solicitudes del cliente (`S21`).
  *
- * ADR-092 difería esta bandeja; aprobada en la remediación 360°. La respuesta
- * sigue llegando TAMBIÉN por correo (cada reply dispara support-ticket-reply);
- * acá el cliente ve las respuestas públicas del equipo. Las notas internas del
- * panel NUNCA llegan a esta vista (filtro en la query de customer-service).
- *
- * Solo tickets con customerId (creados logueado desde /contacto); los de
- * invitado no tienen dueño y quedan fuera. Aislamiento por customerId.
+ * Evoluciona la bandeja de solo lectura a conversación bidireccional completa:
+ * el cliente ve tanto sus mensajes como las respuestas públicas del equipo, y
+ * puede responder directamente desde aquí (reabriendo el ticket si estaba cerrado).
+ * Las notas internas (`isInternal: true`) están excluidas en SQL.
  */
 
 import type { Metadata } from "next";
@@ -16,8 +12,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronLeft, LifeBuoy, Mail } from "lucide-react";
 import { getCurrentCustomer } from "@/lib/auth";
-import { listTicketsForCustomer } from "@/features/support/customer-service";
+import { listBidirectionalTicketsForCustomer } from "@/features/support/public-thread-service";
 import { SUBJECT_LABELS, type SUPPORT_SUBJECTS } from "@/features/support/schemas";
+import { CustomerTicketReplyForm } from "@/components/support/customer-ticket-reply-form";
 import { getAccountTexts } from "../account-texts.server";
 
 export const metadata: Metadata = {
@@ -56,7 +53,7 @@ export default async function MiCuentaSoportePage() {
   if (!session) redirect("/login?next=/mi-cuenta/soporte");
 
   const [tickets, texts] = await Promise.all([
-    listTicketsForCustomer(session.customer.id),
+    listBidirectionalTicketsForCustomer(session.customer.id),
     getAccountTexts(),
   ]);
 
@@ -80,19 +77,17 @@ export default async function MiCuentaSoportePage() {
           Mis solicitudes de soporte
         </h1>
         <p className="text-brand-muted mt-1 text-sm">
-          Te respondemos por correo, a tu email. Aquí puedes ver en qué va cada solicitud.
+          Consulta nuestras respuestas por correo o continúa la conversación directamente aquí.
         </p>
       </header>
 
-      {/* Copy honesto (ADR-092): la respuesta es humana y llega por email — esta
-          bandeja es solo consulta, no un chat. */}
       <div className="border-brand-purple/15 mb-6 flex items-start gap-3 rounded-2xl border bg-white p-4 shadow-sm">
         <span className="bg-brand-purple/10 text-brand-purple flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full">
           <Mail className="h-4 w-4" aria-hidden />
         </span>
         <p className="text-brand-muted text-sm leading-snug">
-          Cuando tengamos respuesta te escribimos a tu correo (revisa también spam). ¿Necesitas algo
-          más? Escríbenos desde{" "}
+          Cada respuesta del equipo llega también a tu correo. ¿Tienes un tema nuevo? Abre una
+          solicitud en{" "}
           <Link
             href="/contacto"
             className="text-brand-pink-ink hover:text-brand-coral-ink font-semibold"
@@ -120,10 +115,10 @@ export default async function MiCuentaSoportePage() {
           </Link>
         </div>
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-4">
           {tickets.map((t) => (
             <li
-              key={t.shortId}
+              key={t.id}
               className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm"
             >
               <div className="flex flex-wrap items-center gap-2">
@@ -154,19 +149,27 @@ export default async function MiCuentaSoportePage() {
                   <span className="text-brand-muted font-mono">{t.ownOrderNumber}</span>
                 </p>
               )}
-              {t.replies.length > 0 && (
+              {t.messages.length > 0 && (
                 <div className="border-brand-purple/15 mt-3 rounded-xl border bg-white/60 p-3">
-                  <p className="text-brand-purple-dark text-xs font-semibold">
-                    Respuestas del equipo
-                  </p>
+                  <p className="text-brand-purple-dark text-xs font-semibold">Conversación</p>
                   <ul className="mt-2 space-y-2">
-                    {t.replies.map((r, i) => (
-                      <li key={i} className="border-brand-purple/10 border-l-2 pl-3">
-                        <p className="text-brand-purple-dark/90 text-sm whitespace-pre-line">
-                          {r.body}
+                    {t.messages.map((m) => (
+                      <li
+                        key={m.id}
+                        className={`border-l-2 pl-3 ${
+                          m.authorKind === "ADMIN"
+                            ? "border-brand-purple"
+                            : "border-brand-turquoise"
+                        }`}
+                      >
+                        <p className="text-brand-purple-dark text-[11px] font-semibold">
+                          {m.authorKind === "ADMIN" ? "Equipo Lucams" : "Tú"} ·{" "}
+                          <span className="text-brand-muted font-normal">
+                            {dateFmt.format(m.createdAt)}
+                          </span>
                         </p>
-                        <p className="text-brand-muted mt-0.5 text-xs">
-                          {dateFmt.format(r.createdAt)}
+                        <p className="text-brand-purple-dark/90 mt-0.5 text-sm whitespace-pre-line">
+                          {m.body}
                         </p>
                       </li>
                     ))}
@@ -178,6 +181,8 @@ export default async function MiCuentaSoportePage() {
                   Resuelta el {dateFmt.format(t.resolvedAt)} — te avisamos por correo.
                 </p>
               )}
+
+              <CustomerTicketReplyForm mode="account" ticketId={t.id} ticketStatus={t.status} />
             </li>
           ))}
         </ul>

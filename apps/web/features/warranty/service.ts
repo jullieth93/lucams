@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { resolvePostSaleContact } from "@/features/identity/resolution-service";
+import { computeWarrantySlaDueAt } from "@/lib/colombian-sla";
 import {
   hashBearerToken,
   verifyEmailMatchesTimingSafe,
@@ -209,6 +210,7 @@ export async function createWarrantyClaim(input: {
       description: description.slice(0, 2000),
       evidenceUrls: (input.evidenceUrls ?? []).slice(0, 5),
       status: "PENDING",
+      slaDueAt: computeWarrantySlaDueAt(new Date()),
     },
     select: { id: true },
   });
@@ -283,6 +285,7 @@ export async function createGuestWarrantyClaim(input: {
       description: description.slice(0, 2000),
       evidenceUrls: (input.evidenceUrls ?? []).slice(0, 5),
       status: "PENDING",
+      slaDueAt: computeWarrantySlaDueAt(now),
     },
     select: { id: true },
   });
@@ -336,6 +339,7 @@ export async function createWarrantyClaimAsAdmin(input: {
       description: description.slice(0, 2000),
       status: "PENDING",
       processedBy: input.adminId,
+      slaDueAt: computeWarrantySlaDueAt(new Date()),
     },
     select: { id: true },
   });

@@ -20,6 +20,7 @@ import { logger } from "@/lib/logger";
 import type { RetractStatus } from "@lucams/db";
 import { sendRetractApproved, sendRetractRejected, sendRetractRefunded } from "./emails";
 import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
+import { computeRetractSlaDueAt } from "@/lib/colombian-sla";
 import { restoreRedeemedPointsForRetract } from "@/features/loyalty/service";
 import { resolvePostSaleContact } from "@/features/identity/resolution-service";
 import {
@@ -398,6 +399,7 @@ export async function createRetractRequest(
         reason: opts.reason?.trim().slice(0, 500) || null,
         refundAmount,
         status: "PENDING",
+        slaDueAt: computeRetractSlaDueAt(now),
       },
       select: { id: true },
     });
@@ -508,6 +510,7 @@ export async function createGuestRetractRequest(
         reason: opts.reason?.trim().slice(0, 500) || null,
         refundAmount,
         status: "PENDING",
+        slaDueAt: computeRetractSlaDueAt(now),
       },
       select: { id: true },
     });
@@ -610,6 +613,7 @@ export async function createRetractRequestAsAdmin(
         refundAmount,
         status: "PENDING",
         processedBy: opts.adminId,
+        slaDueAt: computeRetractSlaDueAt(new Date()),
       },
       select: { id: true },
     });

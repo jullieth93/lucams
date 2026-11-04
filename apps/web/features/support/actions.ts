@@ -16,6 +16,7 @@
  *     CONTACT_EMAIL (default hola@lucamsshop.com) con Reply-To al cliente.
  */
 
+import { randomBytes } from "node:crypto";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { z } from "zod";
@@ -25,6 +26,9 @@ import { emailKey, hashEmail, ipKey } from "@/lib/rate-limit-keys";
 import { logger } from "@/lib/logger";
 import { getCurrentCustomer } from "@/lib/auth";
 import { resolveSupportTicketContact } from "@/features/identity/resolution-service";
+import { computeSupportTicketSlaDueAt } from "@/lib/colombian-sla";
+import { hashBearerToken } from "@/lib/token-hash";
+import { buildPublicShareUrl } from "@/lib/public-url";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
@@ -36,7 +40,7 @@ import { SupportTicketSchema, ORDER_RELATED_SUBJECTS, type SupportTicketInput } 
 import { getClientIp } from "@/lib/client-ip";
 
 export type SupportActionState =
-  | { ok: true; ticketId: string }
+  | { ok: true; ticketId: string; threadPath: string }
   | { ok: false; error: string; fieldErrors?: Partial<Record<keyof SupportTicketInput, string[]>> }
   | null;
 
@@ -105,6 +109,11 @@ export async function submitContactAction(
       email: parsed.data.email,
       name: parsed.data.name,
     });
+    const now = new Date();
+    const plainThreadToken = randomBytes(16).toString("hex");
+    const threadPath = `/soporte/${plainThreadToken}`;
+    const threadUrl = buildPublicShareUrl(threadPath);
+
     const ticket = await prisma.supportTicket.create({
       data: {
         name: parsed.data.name,
@@ -117,6 +126,8 @@ export async function submitContactAction(
           ? (parsed.data.orderNumber ?? null)
           : null,
         status: "OPEN",
+        publicAccessTokenHash: hashBearerToken(plainThreadToken),
+        slaDueAt: computeSupportTicketSlaDueAt(now, parsed.data.subject),
         ip,
         userAgent,
         customerId: session?.customer.id ?? null,
@@ -133,7 +144,7 @@ export async function submitContactAction(
     });
 
     // Emails fire-and-forget (no bloquean response). 2 templates:
-    //   - received: confirmación al cliente con su mensaje
+    //   - received: confirmación al cliente con su mensaje + enlace seguro /soporte/<token>
     //   - internal: notificación a hola@lucamsshop.com con Reply-To
     // after(): en Vercel la función serverless puede congelarse al devolver la respuesta y matar un
     // `void (async …)()` antes de que corra. after() difiere el trabajo para DESPUÉS de responder,
@@ -150,6 +161,7 @@ export async function submitContactAction(
             ticketId: ticket.id,
             subject: parsed.data.subject,
             message: parsed.data.message,
+            threadUrl,
           }),
           renderSupportTicketInternalEmail({
             customerName: parsed.data.name,
@@ -188,7 +200,7 @@ export async function submitContactAction(
       }
     });
 
-    return { ok: true, ticketId: ticket.id };
+    return { ok: true, ticketId: ticket.id, threadPath };
   } catch (err) {
     logger.error({
       event: "support.ticket.create_failed",
