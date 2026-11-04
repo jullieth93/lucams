@@ -67,22 +67,56 @@ export type PrintMasterSlot = {
 /** Vista estructural mínima del stage (misma que slot-photo-readiness). */
 export type PrintMasterStage = { findOne(selector: string): unknown };
 
-function preloadImages(urls: readonly string[], timeoutMs: number): Promise<unknown> {
-  return Promise.allSettled(
+/**
+ * Error tipado fail-closed ([STU-01], auditoría 2026-11): impide que un PNG 300 DPI
+ * de imprenta se exporte con el placeholder lila `#F4ECFF` cuando una signed URL
+ * maestra caducó (>1 h) o falló por red incluso tras el intento de auto-renovación.
+ */
+export class MasterPhotoLoadError extends Error {
+  readonly failedUrls: readonly string[];
+
+  constructor(
+    failedUrls: readonly string[],
+    message = "Necesitamos refrescar tus fotos en alta definición antes de enviarlas a taller. Toca «Reintentar ahora» — tu diseño y tus ajustes siguen guardados.",
+  ) {
+    super(message);
+    this.name = "MasterPhotoLoadError";
+    this.failedUrls = failedUrls;
+  }
+}
+
+async function preloadImages(
+  urls: readonly string[],
+  timeoutMs: number,
+): Promise<{ failedUrls: string[] }> {
+  const failedUrls: string[] = [];
+  await Promise.all(
     urls.map(
       (url) =>
         new Promise<void>((resolve) => {
           const img = new Image();
           img.crossOrigin = "anonymous";
-          const timer = setTimeout(() => resolve(), timeoutMs);
-          img.onload = img.onerror = () => {
-            clearTimeout(timer);
+          let settled = false;
+          const finish = (ok: boolean) => {
+            if (settled) return;
+            settled = true;
+            if (!ok) failedUrls.push(url);
             resolve();
+          };
+          const timer = setTimeout(() => finish(false), timeoutMs);
+          img.onload = () => {
+            clearTimeout(timer);
+            finish(true);
+          };
+          img.onerror = () => {
+            clearTimeout(timer);
+            finish(false);
           };
           img.src = url;
         }),
     ),
   );
+  return { failedUrls };
 }
 
 /** src de la imagen de un nodo Konva.Image (defensivo: cualquier nodo/falso). */
@@ -95,58 +129,121 @@ function nodeImageSrc(node: unknown): string | null {
   }
 }
 
+function collectPendingMasterUrls(
+  slots: readonly PrintMasterSlot[],
+  stages: Map<number, PrintMasterStage | null>,
+): string[] {
+  const missing: string[] = [];
+  for (const s of slots) {
+    const stage = stages.get(s.slotIndex);
+    if (s.assetUrl) {
+      const node = stage?.findOne(".slot-photo");
+      if (!node || nodeImageSrc(node) !== s.assetUrl) missing.push(s.assetUrl);
+    }
+    if (s.profileAssetUrl) {
+      const node = stage?.findOne(".slot-profile-photo");
+      if (!node || nodeImageSrc(node) !== s.profileAssetUrl) missing.push(s.profileAssetUrl);
+    }
+  }
+  return missing;
+}
+
 /**
  * Espera a que TODOS los slots con foto muestren el MASTER decodificado en su
- * stage (no basta "hay nodo": debe ser la imagen del master). rAF + deadline,
- * mismo patrón que waitForSlotPhotosReady.
+ * stage (no basta "hay nodo": debe ser la imagen del master).
+ * Con `opts.strict = true` (activo en `runWithPrintMasters`), lanza
+ * `MasterPhotoLoadError` si al vencer el deadline algún slot sigue sin su master.
  */
 export async function waitForMasterPhotosReady(
   slots: readonly PrintMasterSlot[],
   stages: Map<number, PrintMasterStage | null>,
   timeoutMs = 15000,
+  opts?: { strict?: boolean },
 ): Promise<void> {
-  const pending = () =>
-    slots.some((s) => {
-      const stage = stages.get(s.slotIndex);
-      if (s.assetUrl) {
-        const node = stage?.findOne(".slot-photo");
-        if (!node || nodeImageSrc(node) !== s.assetUrl) return true;
-      }
-      if (s.profileAssetUrl && stage) {
-        const node = stage.findOne(".slot-profile-photo");
-        if (!node || nodeImageSrc(node) !== s.profileAssetUrl) return true;
-      }
-      return false;
-    });
-  if (!pending()) return;
+  if (collectPendingMasterUrls(slots, stages).length === 0) return;
   const deadline = performance.now() + timeoutMs;
   await new Promise<void>((resolve) => {
     const tick = () => {
-      if (!pending() || performance.now() > deadline) resolve();
-      else requestAnimationFrame(tick);
+      if (collectPendingMasterUrls(slots, stages).length === 0 || performance.now() > deadline) {
+        resolve();
+      } else {
+        requestAnimationFrame(tick);
+      }
     };
     requestAnimationFrame(tick);
   });
+  if (opts?.strict) {
+    const stillMissing = collectPendingMasterUrls(slots, stages);
+    if (stillMissing.length > 0) {
+      throw new MasterPhotoLoadError(stillMissing);
+    }
+  }
 }
 
-/**
- * Corre `fn` (los snapshots de imprenta del finalize, ADR-081) con los stages
- * cargando los MASTERS de las fotos en vez de los derivados de lienzo.
- */
-export async function runWithPrintMasters<T>(
-  slots: readonly PrintMasterSlot[],
-  stages: Map<number, PrintMasterStage | null>,
-  fn: () => Promise<T>,
-): Promise<T> {
+export type RunWithPrintMastersOptions = {
+  /** Por defecto `true`: jamás permite exportar placeholders `#F4ECFF` a imprenta ([STU-01]). */
+  strict?: boolean;
+  /** Timeout de precarga/montaje por pasada (default 15 s). */
+  timeoutMs?: number;
+  /** Si la sesión lleva ≥40 min abierta, renueva proactivamente antes del primer intento. */
+  forceRefreshFirst?: boolean;
+  /** Callback que pide nuevas signed URLs al servidor, actualiza el store y devuelve los slots nuevos. */
+  refreshMasters?: () => Promise<readonly PrintMasterSlot[] | null>;
+};
+
+function collectMasterUrlSet(slots: readonly PrintMasterSlot[]): string[] {
   const masters = new Set<string>();
   for (const s of slots) {
     if (s.assetUrl) masters.add(s.assetUrl);
     if (s.profileAssetUrl) masters.add(s.profileAssetUrl);
   }
-  await preloadImages([...masters], 15000);
+  return [...masters];
+}
+
+/**
+ * Corre `fn` (los snapshots de imprenta del finalize, ADR-081) con los stages
+ * cargando los MASTERS de las fotos en vez de los derivados de lienzo.
+ *
+ * [STU-01]: Si la sesión superó el umbral preventivo o una URL firmada caducó
+ * (>1 h), invoca `refreshMasters()` automáticamente una vez; si aun así alguna
+ * foto maestra falla, aborta en modo fail-closed con `MasterPhotoLoadError`.
+ */
+export async function runWithPrintMasters<T>(
+  slots: readonly PrintMasterSlot[],
+  stages: Map<number, PrintMasterStage | null>,
+  fn: () => Promise<T>,
+  opts?: RunWithPrintMastersOptions,
+): Promise<T> {
+  const strict = opts?.strict !== false;
+  const timeoutMs = opts?.timeoutMs ?? 15000;
+  let activeSlots = slots;
+  let refreshedAlready = false;
+
+  if (opts?.forceRefreshFirst && opts.refreshMasters) {
+    const refreshed = await opts.refreshMasters().catch(() => null);
+    if (refreshed) {
+      activeSlots = refreshed;
+      refreshedAlready = true;
+    }
+  }
+
+  let preload = await preloadImages(collectMasterUrlSet(activeSlots), timeoutMs);
+  if (preload.failedUrls.length > 0 && !refreshedAlready && opts?.refreshMasters) {
+    const refreshed = await opts.refreshMasters().catch(() => null);
+    if (refreshed) {
+      activeSlots = refreshed;
+      refreshedAlready = true;
+      preload = await preloadImages(collectMasterUrlSet(activeSlots), timeoutMs);
+    }
+  }
+
+  if (strict && preload.failedUrls.length > 0) {
+    throw new MasterPhotoLoadError(preload.failedUrls);
+  }
+
   setPrintMasterMode(true);
   try {
-    await waitForMasterPhotosReady(slots, stages);
+    await waitForMasterPhotosReady(activeSlots, stages, timeoutMs, { strict });
     return await fn();
   } finally {
     setPrintMasterMode(false);

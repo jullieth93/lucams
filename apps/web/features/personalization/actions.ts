@@ -1166,3 +1166,107 @@ export async function assignPredesignedToDesignAction(input: {
     return { ok: false, message: "No pudimos aplicar el diseño." };
   }
 }
+
+// ──────────── [STU-01] Renovación de signed URLs para sesiones largas (>1 h) ────────────
+
+const RefreshDesignAssetsSchema = z.object({
+  designId: z.string().min(1).max(64),
+  assetIds: z.array(z.string().min(1).max(64)).max(120).optional(),
+});
+
+/**
+ * Re-firma las URLs privadas (`signedUrl` master + `canvasUrl` ≤800 px) de todas las
+ * fotos pertenecientes al diseño/dueño actual ([STU-01], auditoría 2026-11).
+ *
+ * Resuelve la expiración del TTL de 1 h de `customer-uploads` cuando el comprador
+ * permanece >40–60 min editando en el Estudio antes de confirmar para imprenta.
+ */
+export async function refreshDesignAssetUrlsAction(input: {
+  designId: string;
+  assetIds?: string[];
+}) {
+  const parsed = RefreshDesignAssetsSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      code: "VALIDATION" as const,
+      message: "Solicitud de renovación inválida.",
+    };
+  }
+
+  const isProd = process.env.VERCEL_ENV === "production";
+  const ip = getClientIp(await headers());
+  const ipRl = await rateLimit(ipKey("refresh_design_assets_ip", ip), isProd ? 40 : 200, 600);
+  if (!ipRl.allowed) {
+    return {
+      ok: false as const,
+      code: "RATE_LIMIT" as const,
+      message: "Espera unos segundos antes de volver a intentar.",
+    };
+  }
+
+  const { customerId, sessionId } = await resolveOwner();
+  if (!customerId && !sessionId) {
+    return {
+      ok: false as const,
+      code: "FORBIDDEN" as const,
+      message: "Tu sesión expiró. Recarga la página para continuar con tu diseño.",
+    };
+  }
+
+  const design = await getOwnedDesign(parsed.data.designId, { customerId, sessionId });
+  if (!design) {
+    return {
+      ok: false as const,
+      code: "FORBIDDEN" as const,
+      message: "No encontramos tu diseño activo. Recarga la página para retomarlo.",
+    };
+  }
+
+  const extraIds = [...new Set(parsed.data.assetIds ?? [])];
+  const ownerFilter = customerId ? { customerId } : { sessionId, customerId: null };
+
+  try {
+    const dbAssets = await prisma.designAsset.findMany({
+      where: {
+        OR: [
+          { designId: design.id },
+          ...(extraIds.length > 0 ? [{ id: { in: extraIds }, ...ownerFilter }] : []),
+        ],
+      },
+      select: { id: true, storageUrl: true, canvasPath: true, width: true, height: true },
+    });
+
+    const assets = await Promise.all(
+      dbAssets.map(async (a) => ({
+        id: a.id,
+        signedUrl: await refreshCustomerUploadSignedUrl(a.storageUrl),
+        canvasUrl: a.canvasPath ? await refreshCustomerUploadSignedUrl(a.canvasPath) : null,
+        width: a.width,
+        height: a.height,
+      })),
+    );
+
+    logger.info({
+      event: "design.assets.urls_refreshed",
+      designId: design.id,
+      count: assets.length,
+    });
+
+    return { ok: true as const, assets };
+  } catch (err) {
+    logger.warn(
+      {
+        event: "design.assets.urls_refresh_fail",
+        designId: design.id,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "refreshDesignAssetUrlsAction failed",
+    );
+    return {
+      ok: false as const,
+      code: "INTERNAL" as const,
+      message: "No pudimos refrescar tus fotos en este momento. Toca «Reintentar ahora».",
+    };
+  }
+}

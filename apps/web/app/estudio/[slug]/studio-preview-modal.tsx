@@ -1129,8 +1129,38 @@ export function StudioPreviewModal({
         )}
 
         {errorMessage && (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            ⚠️ {errorMessage}
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="border-brand-purple/25 bg-brand-cream/90 flex flex-col gap-2.5 rounded-xl border p-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-start gap-2.5">
+              <span className="bg-brand-purple/15 text-brand-purple-dark mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
+                <AlertTriangle className="h-4 w-4" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <p className="text-brand-purple-dark text-xs font-bold">
+                  Tu diseño sigue guardado y seguro
+                </p>
+                <p className="text-brand-purple-dark/85 mt-0.5 text-xs leading-relaxed">
+                  {errorMessage}
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={isFinalizing || (ackRequired && !qualityAccepted)}
+              onClick={() =>
+                onConfirm(confirmQty, {
+                  qualityAcknowledged: ackRequired && qualityAccepted,
+                })
+              }
+              className="bg-brand-purple hover:bg-brand-purple-dark shrink-0 text-xs font-semibold text-white shadow-sm"
+            >
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              Reintentar ahora
+            </Button>
           </div>
         )}
 
