@@ -13,15 +13,20 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FileText, TrendingUp, Trophy } from "lucide-react";
+import { TrendingUp, Trophy } from "lucide-react";
 import type { OrderStatus, QuoteStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import { COLLECTED_REVENUE_ORDER_WHERE } from "@/features/finanzas/service";
-import { getCmsObservabilityStats } from "@/features/cms/service";
+import {
+  getFunnelDashboardReport,
+  type FunnelReportFilters,
+} from "@/features/analytics/funnel-service";
+import { PRODUCT_SLUG_OR_ALL_REGEX } from "@/features/analytics/funnel-schema";
 import { ORDER_STATUS_LABEL } from "@/features/orders/order-status-display";
+import { FunnelPanel } from "./funnel-panel";
 import {
   AdminBadge,
   AdminCard,
@@ -73,8 +78,44 @@ const QUOTE_STATUS_TONE: Record<QuoteStatus, "amber" | "purple" | "emerald" | "s
 };
 const QUOTE_STATUSES: QuoteStatus[] = ["PENDING", "CONTACTED", "CLOSED", "DISCARDED"];
 
-export default async function AdminMetricasPage() {
+type RawSearchParams = Record<string, string | string[] | undefined>;
+
+function firstParam(raw: RawSearchParams, key: string): string | undefined {
+  const val = raw[key];
+  return Array.isArray(val) ? val[0] : val;
+}
+
+export default async function AdminMetricasPage({
+  searchParams,
+}: {
+  searchParams?: Promise<RawSearchParams>;
+}) {
   await requireRole(["SUPERADMIN"]);
+  const sp = (await searchParams) ?? {};
+
+  const rawWindow = firstParam(sp, "ventana");
+  const rawDevice = firstParam(sp, "dispositivo");
+  const rawEditor = firstParam(sp, "editor");
+  const rawProduct = firstParam(sp, "producto");
+
+  const funnelFilters: Required<FunnelReportFilters> = {
+    days: rawWindow === "7" || rawWindow === "7d" ? 7 : 30,
+    deviceCategory:
+      rawDevice === "mobile" || rawDevice === "tablet" || rawDevice === "desktop"
+        ? rawDevice
+        : "all",
+    editorKind:
+      rawEditor === "photo" ||
+      rawEditor === "name" ||
+      rawEditor === "letterset" ||
+      rawEditor === "catalog"
+        ? rawEditor
+        : "all",
+    productSlug:
+      rawProduct && rawProduct !== "_all" && PRODUCT_SLUG_OR_ALL_REGEX.test(rawProduct)
+        ? rawProduct
+        : "all",
+  };
 
   // Modo catálogo (Etapa 1): sin pagos en línea NO se generan Orders — los KPIs
   // basados en Order (pedidos pagados, ingresos, top productos) serían ceros
@@ -95,7 +136,7 @@ export default async function AdminMetricasPage() {
   // [FIN-01] — todas las consultas de Order/OrderItem filtran `deletedAt: null` y los
   // ingresos del mes usan el mismo criterio de caja real que `/admin/finanzas`
   // (Wompi confirmado + COD entregado − retractos reembolsados en el mes).
-  const [quotesByStatus, orderData, cmsStats] = await Promise.all([
+  const [quotesByStatus, orderData, funnelReport] = await Promise.all([
     prisma.quote.groupBy({
       by: ["status"],
       where: { deletedAt: null },
@@ -142,7 +183,7 @@ export default async function AdminMetricasPage() {
             take: 10,
           }),
         ]),
-    getCmsObservabilityStats(),
+    getFunnelDashboardReport(funnelFilters, now),
   ]);
   const ordersByStatus = orderData?.[0] ?? [];
   const ordersLast30 = orderData?.[1] ?? 0;
@@ -150,20 +191,6 @@ export default async function AdminMetricasPage() {
   const monthRetractRefundCents = orderData?.[3]._sum.refundAmount ?? 0;
   const revenueCents = Math.max(0, grossMonthRevenueCents - monthRetractRefundCents);
   const topByVariant = orderData?.[4] ?? [];
-
-  // Fecha corta para el KPI de caché: hora local; el año solo si no es el actual.
-  const cacheRefreshLabel = cmsStats.lastCacheRefresh
-    ? new Intl.DateTimeFormat("es-CO", {
-        day: "numeric",
-        month: "short",
-        ...(cmsStats.lastCacheRefresh.getFullYear() !== now.getFullYear()
-          ? { year: "numeric" as const }
-          : {}),
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(cmsStats.lastCacheRefresh)
-    : "Nunca";
 
   const orderCount = new Map<OrderStatus, number>(
     ordersByStatus.map((g) => [g.status, g._count._all]),
@@ -397,6 +424,10 @@ export default async function AdminMetricasPage() {
           </section>
         )}
 
+        {/* Embudo vivo tienda + Estudio ([ANA-01], Fase 2): interactivo por ventana,
+            dispositivo, superficie y producto. Sin PII ni cookies. */}
+        <FunnelPanel report={funnelReport} filters={funnelFilters} />
+
         {!catalog && (
           <AdminNotice tone="info">
             <strong>¿Cómo se calcula?</strong> Los ingresos netos del mes usan el mismo criterio de{" "}
@@ -405,65 +436,16 @@ export default async function AdminMetricasPage() {
             </Link>
             : suman pagos en línea confirmados (Wompi) y contra entrega ya entregados, y restan las
             devoluciones reembolsadas por retracto. Nunca se cuentan borradores ni pedidos
-            eliminados.
+            eliminados.{" "}
+            <span className="text-brand-purple-dark/80">
+              Para gestionar textos y borradores del sitio ir a{" "}
+              <Link href="/admin/contenido" className="font-semibold underline">
+                Páginas del sitio
+              </Link>
+              .
+            </span>
           </AdminNotice>
         )}
-
-        {/* Observabilidad del CMS (roadmap D2): pulso del contenido administrable.
-            Aplica también en modo catálogo — el CMS existe en las dos etapas. */}
-        <section>
-          <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-base font-bold">
-            <FileText className="h-5 w-5" />
-            Contenido del sitio (CMS)
-          </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard
-              label="Campos administrables"
-              value={cmsStats.totalFields}
-              trendLabel="Textos, imágenes y ajustes editables del sitio"
-            />
-            <KpiCard
-              label="Cambios sin publicar"
-              value={cmsStats.draftsPending}
-              trend={
-                cmsStats.staleDrafts > 0 ? "down" : cmsStats.draftsPending === 0 ? "up" : "neutral"
-              }
-              trendLabel={
-                cmsStats.draftsPending === 0
-                  ? "Todo el contenido está publicado"
-                  : cmsStats.staleDrafts > 0
-                    ? `${cmsStats.staleDrafts.toLocaleString("es-CO")} llevan más de 7 días sin publicar`
-                    : "Ninguno lleva más de 7 días"
-              }
-            />
-            <KpiCard
-              label="Sin editar desde su carga inicial"
-              value={cmsStats.neverEdited}
-              trendLabel="Candidatos a revisar si el texto aún aplica"
-            />
-            <KpiCard
-              label="Última actualización de caché"
-              value={cacheRefreshLabel}
-              trendLabel="Botón «Actualizar caché de contenido» del índice"
-            />
-          </div>
-          <p className="text-brand-muted mt-3 text-xs">
-            Ver el detalle en{" "}
-            <Link
-              href="/admin/contenido"
-              className="text-brand-purple font-semibold hover:underline"
-            >
-              Páginas del sitio
-            </Link>
-            {" · "}
-            <Link
-              href="/admin/contenido/borradores"
-              className="text-brand-purple font-semibold hover:underline"
-            >
-              Cambios sin publicar
-            </Link>
-          </p>
-        </section>
       </AdminPageBody>
     </AdminPage>
   );

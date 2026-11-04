@@ -103,6 +103,8 @@ type StudioAssetPickerModalProps = {
   predesigned?: PredesignedItem[];
   /** Ola 4 — tamaño físico del producto para la recomendación de resolución del uploader. */
   productSizeCm?: string;
+  /** Slug del producto para telemetría anónima del embudo ([ANA-01]). */
+  productSlug?: string;
   /** Ola 21 — separadores de 2 caras: permite aplicar el par A/B a la unidad. */
   facesPerUnit?: number;
   /**
@@ -141,6 +143,7 @@ export function StudioAssetPickerModal({
   ensureDesignId,
   predesigned = [],
   productSizeCm,
+  productSlug,
   facesPerUnit,
   mode = "photo",
   onClose,
@@ -335,6 +338,7 @@ export function StudioAssetPickerModal({
     try {
       await processPhotoFiles(list, {
         productSizeCm,
+        productSlug,
         designId,
         rightsAccepted,
         upload: uploadDesignAssetAction,

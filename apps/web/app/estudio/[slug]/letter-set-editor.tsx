@@ -58,6 +58,8 @@ import {
 } from "@/features/personalization/actions";
 import { uploadPreviewPagesWithRetry } from "./preview-pages-upload";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
+import { stashPersonalizedAddToCart } from "@/lib/analytics";
+import { trackStudioFunnelStep } from "@/lib/funnel-client";
 import { formatCOP } from "@/lib/format";
 import {
   useLetterColors,
@@ -403,6 +405,16 @@ export function LetterSetEditor({
   subtitle?: string;
 }) {
   const router = useRouter();
+  const studioOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (studioOpenedRef.current === product.slug) return;
+    studioOpenedRef.current = product.slug;
+    trackStudioFunnelStep({
+      eventName: "studio_open",
+      productSlug: product.slug,
+      editorKind: "letterset",
+    });
+  }, [product.slug]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Vista previa pre-carrito: `preparing` cubre el dibujo del PNG (puede tardar si hay que bajar
@@ -706,6 +718,11 @@ export function LetterSetEditor({
     nextId: string | null,
   ) {
     unitState.setStyleId(nextId);
+    trackStudioFunnelStep({
+      eventName: "studio_template_select",
+      productSlug: product.slug,
+      editorKind: "letterset",
+    });
     if (unitIndex !== 0) return;
     const themeKey = nextId
       ? (optionsForLanguage.find((o) => o.id === nextId)?.theme ?? null)
@@ -757,6 +774,11 @@ export function LetterSetEditor({
           ? await blobToDataUrl(blobs[0])
           : await montageLaminaBlobs(blobs),
       );
+      trackStudioFunnelStep({
+        eventName: "studio_preview_open",
+        productSlug: product.slug,
+        editorKind: "letterset",
+      });
       if (blobs.length > 1) {
         setPreviewPages(
           await Promise.all(
@@ -820,6 +842,12 @@ export function LetterSetEditor({
         withBorder: borderForUnit(0),
       });
       if (!created.ok) {
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_failed",
+          productSlug: product.slug,
+          editorKind: "letterset",
+          errorCode: "validation",
+        });
         setPreviewError(created.message);
         setSubmitting(false);
         return;
@@ -838,6 +866,12 @@ export function LetterSetEditor({
       });
       const finalized = await finalizeDesignAction(fd);
       if (!finalized.ok) {
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_failed",
+          productSlug: product.slug,
+          editorKind: "letterset",
+          errorCode: "validation",
+        });
         setPreviewError(finalized.message);
         setSubmitting(false);
         return;
@@ -871,16 +905,44 @@ export function LetterSetEditor({
         replaceDesignId: replacesCartDesignId ?? undefined,
       });
       if (!added.ok) {
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_failed",
+          productSlug: product.slug,
+          editorKind: "letterset",
+          errorCode: "cart_add_failed",
+        });
         setPreviewError(fillStudioText(texts.exportar.errorCarritoSet, { error: added.message }));
         setSubmitting(false);
         return;
       }
-      // Cerramos la modal antes de redirigir para que no quede parpadeando sobre el carrito.
+      trackStudioFunnelStep({
+        eventName: "studio_finalize_succeeded",
+        productSlug: product.slug,
+        editorKind: "letterset",
+      });
+      stashPersonalizedAddToCart({
+        ...(added.addedItem ?? {
+          designId: created.designId,
+          sku: product.slug,
+          name: product.name,
+          priceCents: basePrice * unitCount,
+          quantity: 1,
+        }),
+        productSlug: product.slug,
+        editorKind: "letterset",
+      });
+      // Cerramos la modal antes de navegar para que no quede parpadeando sobre el carrito.
       setPreviewDataUrl(null);
       router.push("/carrito?personalized=1");
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.letter-set]", err);
+      trackStudioFunnelStep({
+        eventName: "studio_finalize_failed",
+        productSlug: product.slug,
+        editorKind: "letterset",
+        errorCode: "network",
+      });
       setPreviewError(texts.errores.generico);
       setSubmitting(false);
     }

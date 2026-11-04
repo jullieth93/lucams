@@ -60,6 +60,7 @@ import {
 } from "@/features/personalization/preview-page-labels";
 import { designHasMeaningfulProgress } from "@/features/personalization/design-progress";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
+import { resolveFunnelEditorKind, type FunnelEditorKind } from "@/features/analytics/funnel-schema";
 import { applyVolumePricing, type VolumeTierInput } from "./volume-pricing";
 
 export type CartLineItem = {
@@ -138,6 +139,8 @@ export type CartLineItem = {
    *  Clásica», «Polaroid Instagram»…). null en líneas de catálogo simple o
    *  diseños legacy sin templateId. */
   templateName: string | null;
+  /** Superficie del Estudio o catálogo directo para atribución del embudo ([ANA-01]). */
+  editorKind: Exclude<FunnelEditorKind, "all">;
 };
 
 export type CartDetail = {
@@ -489,6 +492,13 @@ function toDetail(cart: RawCart): CartDetail {
         pieceSummary: describeLine(i),
         borderNote: letterSetBorderNote(i.design?.metadata),
         templateName: i.design?.template?.name ?? null,
+        editorKind: resolveFunnelEditorKind({
+          isPersonalizable: i.variant.product.isPersonalizable,
+          personalizationKind: i.variant.product.personalizationKind,
+          productSchema: i.variant.product.personalizationSchema,
+          variantAttrs: i.variant.attributes,
+          designMetadata: i.design?.metadata,
+        }),
       };
     });
   return {

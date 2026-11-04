@@ -43,8 +43,10 @@ import {
   parseVariantAttributes,
 } from "@/features/products/variant-schemas";
 import { buildWhatsAppUrl } from "@/lib/wa";
+import { resolveFunnelEditorKind } from "@/features/analytics/funnel-schema";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
+import { TrackPurchase } from "@/components/analytics-trackers";
 import { reorderGuestAction } from "./actions";
 import { ReorderControl, type ReorderTexts } from "@/components/orders/reorder-control";
 
@@ -133,9 +135,19 @@ export default async function PublicOrderPage({
             select: {
               id: true,
               name: true,
+              sku: true,
               // Paquete F (2026-10-02) — attributes: desglose estructurado de la variante.
               attributes: true,
-              product: { select: { slug: true, name: true, personalizationKind: true } },
+              product: {
+                select: {
+                  slug: true,
+                  sku: true,
+                  name: true,
+                  isPersonalizable: true,
+                  personalizationKind: true,
+                  personalizationSchema: true,
+                },
+              },
             },
           },
           design: {
@@ -236,15 +248,45 @@ export default async function PublicOrderPage({
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-3xl">
           {nueva === "1" && !isCancelled && (
-            <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-              <p className="font-display text-lg font-bold text-emerald-900">
-                🎉 ¡Pedido confirmado!
-              </p>
-              <p className="mt-0.5 text-sm text-emerald-800">
-                {/* #2 — el detalle COD lo lleva el aviso persistente de abajo; aquí solo el saludo. */}
-                Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
-              </p>
-            </div>
+            <>
+              {/* GA4 purchase ([ANA-01] / S06): las compras COD redirigen acá con ?nueva=1
+                  y nunca pasan por /checkout/gracias. Idempotente por order.number en
+                  localStorage y sin un solo dato personal ni token en el evento. */}
+              {!isPending && (
+                <TrackPurchase
+                  transactionId={order.number}
+                  valueCents={order.total}
+                  shippingCents={order.shipping}
+                  taxCents={order.tax}
+                  items={order.items.map((it) => ({
+                    sku: it.variant.sku || it.variant.product.sku,
+                    name: it.variant.product.name,
+                    variantName: it.variant.name,
+                    priceCents: it.unitPrice,
+                    quantity: it.qty,
+                  }))}
+                  funnelLines={order.items.map((it) => ({
+                    productSlug: it.variant.product.slug,
+                    editorKind: resolveFunnelEditorKind({
+                      isPersonalizable: it.variant.product.isPersonalizable,
+                      personalizationKind: it.variant.product.personalizationKind,
+                      productSchema: it.variant.product.personalizationSchema,
+                      variantAttrs: it.variant.attributes,
+                      designMetadata: it.design?.metadata,
+                    }),
+                  }))}
+                />
+              )}
+              <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="font-display text-lg font-bold text-emerald-900">
+                  🎉 ¡Pedido confirmado!
+                </p>
+                <p className="mt-0.5 text-sm text-emerald-800">
+                  {/* #2 — el detalle COD lo lleva el aviso persistente de abajo; aquí solo el saludo. */}
+                  Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
+                </p>
+              </div>
+            </>
           )}
 
           {/* #5 — pago en verificación (PSE/transferencia async, o webhook demorado): explica y da

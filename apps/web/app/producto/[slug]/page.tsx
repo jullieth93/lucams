@@ -336,6 +336,13 @@ export default async function ProductoDetallePage({
     { name: product.category.name, path: `/productos?categoria=${product.category.slug}` },
     { name: product.name, path: `/producto/${product.slug}` },
   ]);
+  const pdpEditorKind = isLetterSetProduct
+    ? "letterset"
+    : isNamePerTile
+      ? "name"
+      : product.isPersonalizable
+        ? "photo"
+        : "catalog";
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -345,6 +352,8 @@ export default async function ProductoDetallePage({
           éxito de la action (?added=1&cartQty&cartVariant). No-ops sin env o
           sin consentimiento de analíticas (lib/analytics.ts). */}
       <TrackViewItem
+        productSlug={product.slug}
+        editorKind={pdpEditorKind}
         item={{
           sku: selectedVariant?.sku ?? product.sku,
           name: product.name,
@@ -356,6 +365,8 @@ export default async function ProductoDetallePage({
       />
       <Suspense fallback={null}>
         <TrackAddToCartSuccess
+          productSlug={product.slug}
+          editorKind="catalog"
           itemsByVariantId={Object.fromEntries(
             selectable.map((v) => [
               v.id,

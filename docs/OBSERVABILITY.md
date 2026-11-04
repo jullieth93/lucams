@@ -162,6 +162,13 @@ Panel para el dev/Claude:
 - **Panel `/admin/performance`:** cards por métrica con **p75** (estándar web.dev — antes promedio), filtros por **dispositivo** (userAgent → móvil/desktop) y **navType**, tabla p75 por ruta (LCP/INP/CLS/TTFB/LONGTASK/PAGEWEIGHT), secciones "por elemento" para INP/CLS/LCP (mínimo 3 muestras) y errores del servidor con digest.
 - **Alertas de latencia:** NO existen aún (las alertas cubren errores/crons/webhooks, no percentiles de vitals — pieza futura si el RUM lo justifica).
 
+### Embudo anónimo Tienda + Estudio — tubería y panel `/admin/metricas`
+
+**Tubería:** `lib/funnel-client.ts` (`fetch("/api/funnel", { credentials: "omit", keepalive: true })`, no bloqueante) → `POST /api/funnel` (techo 4 KB, rate-limit 180/min por IP hasheada + backstop global 6000/5 min, esquema cerrado Zod `FunnelPayloadSchema`) → tabla `FunnelEventDaily` (incremento atómico `ON CONFLICT DO UPDATE`, retención 365 días en `purge-event-logs`).
+
+- **Privacidad por diseño (Ley 1581, cero PII y cero cookies):** solo persiste contadores enteros diarios agrupados por `(day, eventName, productSlug, editorKind, deviceCategory, errorCode)`. No lee ni guarda cookies (`cart_session`, Auth), IP, `userAgent` crudo, `sessionId`, `designId` ni `customerId`, por lo que mide la salud operativa incluso cuando el visitante rechaza las cookies analíticas de terceros.
+- **Panel interactivo `/admin/metricas` (`FunnelPanel`):** cascada de 11 etapas (`product_view` → `studio_open` → `studio_template_select` → `studio_asset_upload_succeeded` → `studio_preview_open` → `studio_finalize_succeeded` → `cart_add` → `checkout_begin` → `checkout_shipping_selected` → `checkout_payment_submitted` → `purchase_completed`), detección automática de la principal fuga con recomendación accionable, tarjetas de salud de subida de fotos y exportación 300 DPI con desglose por código de fallo (`too_big`, `network`, `server_rejected`, `low_quality`, `master_expired`, `server_crash`, `validation`, `cart_add_failed`), comparativa por equipo y tabla por producto/superficie (`photo`, `name`, `letterset`, `catalog`), filtrable por ventana (`7`/`30` días), dispositivo, superficie y producto.
+
 ### Dashboard "SLOs"
 
 - Cada SLO con: % cumplimiento ventana actual, error budget remaining, tendencia 30 días.
@@ -232,15 +239,16 @@ Panel para el dev/Claude:
 El cron diario `purge-event-logs` (pg_cron → `/api/cron/purge-event-logs`, código en
 `features/observability/event-log-retention.ts`) borra:
 
-| Tabla           | Retención | Criterio de borrado                                                                                        |
-| --------------- | --------- | ---------------------------------------------------------------------------------------------------------- |
-| `EmailEvent`    | 180 días  | `createdAt` (deliverability)                                                                               |
-| `WebhookEvent`  | 180 días  | `createdAt` y ya procesado (`processedAt` no nulo — no borra eventos en reintento)                         |
-| `ErrorLog`      | 90 días   | `createdAt` (auditoría 2026-08-24 · F-6)                                                                   |
-| `ErrorReport`   | 90 días   | `lastSeenAt` — un error que sigue ocurriendo NO se borra aunque sea viejo                                  |
-| `Notification`  | 90 días   | solo las **leídas** con `createdAt` > 90 días (N-13, 2026-09-11 — el histórico durable ya vive en logs)    |
-| `WebVital`      | 35 días   | `createdAt` (N-13 — serie RUM de alta frecuencia; su uso es el diagnóstico reciente en /admin/performance) |
-| `SecurityEvent` | 180 días  | `createdAt` (F-07, 2026-09-19 — eventos de seguridad rechazados; la IP ya va como `ipHash`)                |
+| Tabla              | Retención | Criterio de borrado                                                                                        |
+| ------------------ | --------- | ---------------------------------------------------------------------------------------------------------- |
+| `EmailEvent`       | 180 días  | `createdAt` (deliverability)                                                                               |
+| `WebhookEvent`     | 180 días  | `createdAt` y ya procesado (`processedAt` no nulo — no borra eventos en reintento)                         |
+| `ErrorLog`         | 90 días   | `createdAt` (auditoría 2026-08-24 · F-6)                                                                   |
+| `ErrorReport`      | 90 días   | `lastSeenAt` — un error que sigue ocurriendo NO se borra aunque sea viejo                                  |
+| `Notification`     | 90 días   | solo las **leídas** con `createdAt` > 90 días (N-13, 2026-09-11 — el histórico durable ya vive en logs)    |
+| `WebVital`         | 35 días   | `createdAt` (N-13 — serie RUM de alta frecuencia; su uso es el diagnóstico reciente en /admin/performance) |
+| `SecurityEvent`    | 180 días  | `createdAt` (F-07, 2026-09-19 — eventos de seguridad rechazados; la IP ya va como `ipHash`)                |
+| `FunnelEventDaily` | 365 días  | `day` (contadores diarios agregados sin cookies ni PII del embudo tienda + Estudio en `/admin/metricas`)   |
 
 Todo message/stack pasa por `scrubPii` (emails → `[EMAIL]`, teléfonos → `[PHONE]`) ANTES del
 insert (F-6): la PII no queda en claro ni en DB. Además el cron `purge-anon-designs` borra los

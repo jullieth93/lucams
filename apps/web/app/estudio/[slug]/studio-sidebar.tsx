@@ -71,6 +71,7 @@ import {
 } from "./lib/store";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 import { processPhotoFiles } from "./lib/upload-photo-pipeline";
+import { trackStudioFunnelStep } from "@/lib/funnel-client";
 import type { StudioAsset, StudioTemplate } from "./types";
 import { PhotoQualityModal } from "./photo-quality-modal";
 import { Hint } from "@/components/ui/tooltip";
@@ -83,6 +84,7 @@ const PREDESIGNED_COLLAPSE_THRESHOLD = 6;
 
 type StudioSidebarProps = {
   store: StoreApi<StudioStoreState>;
+  productSlug?: string;
   productName: string;
   productSku: string;
   /** P0.7 — tamaño físico del producto para mostrar bajo cada plantilla. */
@@ -116,6 +118,7 @@ type StudioSidebarProps = {
 
 export function StudioSidebar({
   store,
+  productSlug,
   productName,
   productSku,
   productSizeCm,
@@ -472,6 +475,7 @@ export function StudioSidebar({
     try {
       await processPhotoFiles(Array.from(files), {
         productSizeCm,
+        productSlug,
         designId,
         rightsAccepted,
         upload: uploadDesignAssetAction,
@@ -637,6 +641,13 @@ export function StudioSidebar({
                 onClick={() => {
                   if (tpl.id === selectedTemplateId) return; // no-op si ya está
                   applyTemplate(tpl);
+                  if (productSlug) {
+                    trackStudioFunnelStep({
+                      eventName: "studio_template_select",
+                      productSlug,
+                      editorKind: "photo",
+                    });
+                  }
                   // A2.7 — Toast premium feedback
                   toast.success(
                     fillStudioText(texts.plantillas.toastAplicada, { nombre: tpl.name }),

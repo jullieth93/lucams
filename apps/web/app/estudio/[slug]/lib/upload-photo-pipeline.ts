@@ -64,6 +64,7 @@ import {
 import { isStillBelowMinimum, upscalePhotoForPrint } from "../client-photo-upscale";
 import { parseSizeCm, PX_PER_CM_300DPI } from "../client-photo-upscale-core";
 import { mapWithConcurrency } from "./upload-with-retry";
+import { trackStudioFunnelStep } from "@/lib/funnel-client";
 import type { StudioAsset } from "../types";
 
 /** Shape estructural del resultado de `uploadDesignAssetAction` (inyectada). */
@@ -189,6 +190,8 @@ export type ProcessedPhoto =
 
 export type ProcessPhotoFilesOptions = {
   productSizeCm?: string;
+  /** Slug del producto para emitir telemetría anónima del embudo ([ANA-01]). */
+  productSlug?: string;
   designId: string | null;
   rightsAccepted: boolean;
   /** Server Action de subida, inyectada (testeable + sin import de servidor). */
@@ -271,7 +274,36 @@ export async function processPhotoFiles(
   let nextFlush = 0;
   const flush = () => {
     while (nextFlush < outcomes.length && outcomes[nextFlush] !== undefined) {
-      opts.onReady(outcomes[nextFlush]!);
+      const outcome = outcomes[nextFlush]!;
+      if (opts.productSlug) {
+        if (!outcome.ok) {
+          trackStudioFunnelStep({
+            eventName: "studio_asset_upload_failed",
+            productSlug: opts.productSlug,
+            editorKind: "photo",
+            errorCode:
+              outcome.kind === "too-big"
+                ? "too_big"
+                : outcome.kind === "network"
+                  ? "network"
+                  : "server_rejected",
+          });
+        } else if (outcome.asset.validationLevel === "error") {
+          trackStudioFunnelStep({
+            eventName: "studio_asset_upload_failed",
+            productSlug: opts.productSlug,
+            editorKind: "photo",
+            errorCode: "low_quality",
+          });
+        } else {
+          trackStudioFunnelStep({
+            eventName: "studio_asset_upload_succeeded",
+            productSlug: opts.productSlug,
+            editorKind: "photo",
+          });
+        }
+      }
+      opts.onReady(outcome);
       nextFlush++;
     }
   };

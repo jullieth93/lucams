@@ -48,6 +48,8 @@ import {
   CALENDAR_FONT_OPTIONS,
 } from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
+import { stashPersonalizedAddToCart } from "@/lib/analytics";
+import { trackStudioFunnelStep } from "@/lib/funnel-client";
 import { StudioCanvasGrid, StudioStageZoomControl } from "./studio-canvas-grid";
 import { stepStageZoom } from "./studio-canvas-grid-size";
 import { StudioSidebar } from "./studio-sidebar";
@@ -154,7 +156,7 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
 import { createStudioStore } from "./lib/store";
 import { createSerialTaskQueue } from "./lib/serial-task-queue";
 import { waitForSlotPhotosReady } from "./lib/slot-photo-readiness";
-import { runWithPrintMasters } from "./lib/print-master-mode";
+import { MasterPhotoLoadError, runWithPrintMasters } from "./lib/print-master-mode";
 import { resolveSlotNoun, type SlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
 import { collectQualityWarnings, qualityWarningsKey } from "./lib/quality-warnings";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
@@ -346,6 +348,16 @@ export function StudioEditor({
   cartAssetIdsInUse,
 }: StudioEditorProps) {
   const router = useRouter();
+  const studioOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (studioOpenedRef.current === product.slug) return;
+    studioOpenedRef.current = product.slug;
+    trackStudioFunnelStep({
+      eventName: "studio_open",
+      productSlug: product.slug,
+      editorKind: "photo",
+    });
+  }, [product.slug]);
   const store = useMemo(() => createStudioStore(), []);
   // Roadmap B1 — textos CMS del Estudio (fallback exacto pre-CMS vía contexto).
   const texts = useStudioTexts();
@@ -1789,6 +1801,11 @@ export function StudioEditor({
           setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
         }
         setPreviewModalOpen(true);
+        trackStudioFunnelStep({
+          eventName: "studio_preview_open",
+          productSlug: product.slug,
+          editorKind: "photo",
+        });
         return;
       }
       await ensureAllStagesMounted(); // T5: montar todos los slots antes del snapshot compositado
@@ -1855,6 +1872,11 @@ export function StudioEditor({
         setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
       }
       setPreviewModalOpen(true);
+      trackStudioFunnelStep({
+        eventName: "studio_preview_open",
+        productSlug: product.slug,
+        editorKind: "photo",
+      });
     } catch (err) {
       // #14 — detalle técnico al log; al cliente un mensaje claro es-CO.
       console.error("[studio.preview]", err);
@@ -1879,6 +1901,7 @@ export function StudioEditor({
     selectedYear,
     calendarLayout,
     liveCalendarFont,
+    product.slug,
     product.personalizationSchema,
     packUnitsPerGroup,
     unitNoun,
@@ -2284,6 +2307,12 @@ export function StudioEditor({
         }
 
         if (!result.ok) {
+          trackStudioFunnelStep({
+            eventName: "studio_finalize_failed",
+            productSlug: product.slug,
+            editorKind: "photo",
+            errorCode: "validation",
+          });
           state.setIsFinalizing(false);
           setPreviewError(result.message);
           return;
@@ -2338,12 +2367,35 @@ export function StudioEditor({
           replaceDesignId: replacesCartDesignId ?? undefined,
         });
         if (!addResult.ok) {
+          trackStudioFunnelStep({
+            eventName: "studio_finalize_failed",
+            productSlug: product.slug,
+            editorKind: "photo",
+            errorCode: "cart_add_failed",
+          });
           state.setIsFinalizing(false);
           setPreviewError(
             fillStudioText(texts.exportar.errorCarrito, { error: addResult.message }),
           );
           return;
         }
+
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_succeeded",
+          productSlug: product.slug,
+          editorKind: "photo",
+        });
+        stashPersonalizedAddToCart({
+          ...(addResult.addedItem ?? {
+            designId,
+            sku: product.sku,
+            name: product.name,
+            priceCents: unitPriceCents,
+            quantity: 1,
+          }),
+          productSlug: product.slug,
+          editorKind: "photo",
+        });
 
         // Item 2.4 — el diseño quedó en el carrito (READY): su lugar ahora es
         // "Mis diseños", no el retomador. Limpiar el marcador del producto+variante.
@@ -2360,6 +2412,20 @@ export function StudioEditor({
         router.push("/carrito?personalized=1");
       } catch (err) {
         state.setIsFinalizing(false);
+        const finalizeErrorCode =
+          err instanceof MasterPhotoLoadError
+            ? "master_expired"
+            : isServerActionCrash(err)
+              ? "server_crash"
+              : isNetworkError(err)
+                ? "network"
+                : "validation";
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_failed",
+          productSlug: product.slug,
+          editorKind: "photo",
+          errorCode: finalizeErrorCode,
+        });
         // 2026-10-05 (fix STG) — errores de RED (TypeError "Failed to fetch" /
         // "NetworkError when attempting to fetch resource", AbortError de
         // timeout) se traducen al mensaje amigable; el texto crudo del navegador
@@ -2395,6 +2461,9 @@ export function StudioEditor({
       replacesCartDesignId,
       productConfig.shape,
       product.slug,
+      product.sku,
+      product.name,
+      unitPriceCents,
       isCalendarMonth,
       selectedYear,
       ensureAllStagesMounted,
@@ -2636,6 +2705,7 @@ export function StudioEditor({
         >
           <StudioSidebar
             store={store}
+            productSlug={product.slug}
             productName={product.name}
             productSku={product.sku}
             productSizeCm={productConfig.sizeCm}
@@ -3080,6 +3150,7 @@ export function StudioEditor({
           <div className="pb-6">
             <StudioSidebar
               store={store}
+              productSlug={product.slug}
               productName={product.name}
               productSku={product.sku}
               productSizeCm={productConfig.sizeCm}
@@ -3121,6 +3192,7 @@ export function StudioEditor({
         ensureDesignId={ensureDesignIdForPicker}
         predesigned={predesigned}
         productSizeCm={productConfig.sizeCm}
+        productSlug={product.slug}
         facesPerUnit={facesPerUnit}
         onClose={() => setPickerRequest(null)}
         onSelectAsset={handleAssetSelected}

@@ -18,6 +18,7 @@ import { OrderSummary } from "../_components/order-summary";
 import { PaymentMethodChooser } from "./pay-button";
 import { CouponField } from "./coupon-field";
 import { LoyaltyField } from "./loyalty-field";
+import { TrackAddShippingInfo } from "@/components/analytics-trackers";
 import {
   CheckoutError,
   getAppliedCoupon,
@@ -121,9 +122,35 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
         )
       : null;
 
+  const activeCouponCode = applied && !applied.error ? applied.code : undefined;
+  const activeCouponDiscount = applied && !applied.error ? applied.discount : 0;
+  const activeLoyaltyDiscount = loyalty?.applied?.discountCents ?? 0;
+  const payableValueCents = Math.max(
+    0,
+    ctx.cart.subtotal - activeCouponDiscount - activeLoyaltyDiscount + shippingSelection.fleteCop,
+  );
+  const ga4Items = ctx.cart.items.map((i) => ({
+    sku: i.variantSku,
+    name: i.productName,
+    variantName: i.variantName,
+    priceCents: i.unitPrice,
+    quantity: i.qty,
+  }));
+  const funnelLines = ctx.cart.items.map((i) => ({
+    productSlug: i.productSlug,
+    editorKind: i.editorKind,
+  }));
+
   return (
     <div className="mx-auto max-w-6xl">
       <CheckoutStepper current={3} />
+      <TrackAddShippingInfo
+        shippingTier={shippingSelection.carrierName}
+        valueCents={ctx.cart.subtotal}
+        coupon={activeCouponCode}
+        items={ga4Items}
+        funnelLines={funnelLines}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* #22 — en móvil: avisos full-width arriba, luego el resumen+total (order-1, sidebar) y por
@@ -266,6 +293,12 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               codEnabled={codEnabled}
               couponInvalidAtRender={Boolean(applied?.error)}
               loyaltyInvalidAtRender={Boolean(loyalty?.error)}
+              analyticsCheckout={{
+                valueCents: payableValueCents,
+                coupon: activeCouponCode,
+                items: ga4Items,
+                funnelLines,
+              }}
               texts={texts.pay}
             />
           </section>

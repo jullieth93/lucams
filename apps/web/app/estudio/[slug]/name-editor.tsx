@@ -24,6 +24,8 @@ import type { Magnet3D } from "./fridge-3d-view";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
+import { stashPersonalizedAddToCart } from "@/lib/analytics";
+import { trackStudioFunnelStep } from "@/lib/funnel-client";
 import { formatCOP } from "@/lib/format";
 import { LetterTile, NAME_TILE_THEMES } from "./letter-tile";
 import { loadCanvasImage } from "./lib/canvas-image";
@@ -271,6 +273,16 @@ export function NameEditor({
   replacesCartDesignId,
 }: NameEditorProps) {
   const router = useRouter();
+  const studioOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (studioOpenedRef.current === product.slug) return;
+    studioOpenedRef.current = product.slug;
+    trackStudioFunnelStep({
+      eventName: "studio_open",
+      productSlug: product.slug,
+      editorKind: "name",
+    });
+  }, [product.slug]);
   const [raw, setRaw] = useState(initialName ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -414,6 +426,11 @@ export function NameEditor({
       }
       setPreviewDataUrl(dataUrl);
       setPreviewOpen(true);
+      trackStudioFunnelStep({
+        eventName: "studio_preview_open",
+        productSlug: product.slug,
+        editorKind: "name",
+      });
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.name.preview]", err);
@@ -444,6 +461,12 @@ export function NameEditor({
           withBorder,
         });
         if (!created.ok) {
+          trackStudioFunnelStep({
+            eventName: "studio_finalize_failed",
+            productSlug: product.slug,
+            editorKind: "name",
+            errorCode: "validation",
+          });
           setPreviewError(created.message);
           setSubmitting(false);
           return;
@@ -463,6 +486,12 @@ export function NameEditor({
       if (!finalizedRef.current) {
         const finalized = await finalizeDesignAction(fd);
         if (!finalized.ok) {
+          trackStudioFunnelStep({
+            eventName: "studio_finalize_failed",
+            productSlug: product.slug,
+            editorKind: "name",
+            errorCode: "validation",
+          });
           setPreviewError(finalized.message);
           setSubmitting(false);
           return;
@@ -478,6 +507,12 @@ export function NameEditor({
         replaceDesignId: replacesCartDesignId ?? undefined,
       });
       if (!added.ok) {
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_failed",
+          productSlug: product.slug,
+          editorKind: "name",
+          errorCode: "cart_add_failed",
+        });
         setPreviewError(
           fillStudioText(texts.exportar.errorCarritoNombre, { error: added.message }),
         );
@@ -485,12 +520,35 @@ export function NameEditor({
         return;
       }
 
+      trackStudioFunnelStep({
+        eventName: "studio_finalize_succeeded",
+        productSlug: product.slug,
+        editorKind: "name",
+      });
+      stashPersonalizedAddToCart({
+        ...(added.addedItem ?? {
+          designId,
+          sku: product.slug,
+          name: product.name,
+          priceCents: pricePerTile * Math.max(1, letters.length),
+          quantity: copies,
+        }),
+        productSlug: product.slug,
+        editorKind: "name",
+      });
+
       // Cerramos la modal antes de navegar para que no parpadee sobre el carrito.
       setPreviewOpen(false);
       router.push("/carrito?personalized=1");
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.name]", err);
+      trackStudioFunnelStep({
+        eventName: "studio_finalize_failed",
+        productSlug: product.slug,
+        editorKind: "name",
+        errorCode: "network",
+      });
       setPreviewError(texts.errores.generico);
       setSubmitting(false);
     }
@@ -863,7 +921,16 @@ export function NameEditor({
                   <LetterStylePicker
                     styles={(themeOptions ?? styles).map((s) => ({ id: s.id, name: s.name }))}
                     selectedId={styleId}
-                    onSelect={setStyleId}
+                    onSelect={(nextId) => {
+                      if (nextId !== styleId) {
+                        trackStudioFunnelStep({
+                          eventName: "studio_template_select",
+                          productSlug: product.slug,
+                          editorKind: "name",
+                        });
+                      }
+                      setStyleId(nextId);
+                    }}
                   />
                   {themeOptions &&
                     styleId &&

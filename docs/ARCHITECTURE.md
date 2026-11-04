@@ -79,7 +79,7 @@ lucams_shop/
 │       │   │   ├── catalog/              # products, search, filters, categories…
 │       │   │   ├── coupons/public/
 │       │   │   ├── cms/
-│       │   │   └── health/, vitals/, log-error/, unsubscribe/, admin/
+│       │   │   └── health/, vitals/, funnel/, log-error/, unsubscribe/, admin/
 │       │   ├── error.tsx                 # Error boundary global
 │       │   ├── not-found.tsx             # 404
 │       │   ├── global-error.tsx          # Catch-all (root)
@@ -138,7 +138,7 @@ lucams_shop/
 │       └── package.json
 ├── supabase/
 │   └── migrations/                       # SQL no-Prisma (RLS, grants, storage,
-│                                         #   funciones, pg_cron) 00000000000002…48
+│                                         #   funciones, pg_cron) 00000000000002…50
 ├── .github/workflows/
 │   ├── ci.yml                            # Gate de PR: changes (fast-path docs) +
 │   │                                     #   secrets-scan + quality (fmt/audit/lint/
@@ -565,31 +565,31 @@ model AdminActionLog {
 }
 ```
 
-### Inventario completo de modelos (62 modelos, 23 enums)
+### Inventario completo de modelos (63 modelos, 23 enums)
 
 El schema ilustrativo de arriba es la base lógica; la fuente de verdad es
-`packages/db/prisma/schema.prisma` (62 modelos, 23 enums — verificado contra el
+`packages/db/prisma/schema.prisma` (63 modelos, 23 enums — verificado contra el
 schema vigente). Inventario agrupado por módulo:
 
-| Módulo                        | Modelos                                                                                                                     |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Identidad cliente             | `Customer`, `Address`                                                                                                       |
-| RBAC admin                    | `AdminUser`, `AdminRecoveryCode` (códigos MFA hasheados HMAC-SHA256)                                                        |
-| Catálogo y SEO                | `Category`, `Product`, `ProductVariant`, `InventoryLog`, `OcasionTag`, `ProductOcasionTag`, `Material`, `ProductMaterial`, `UrlRedirect` |
-| Carrito, órdenes y pagos      | `Cart`, `CartItem`, `AbandonedCart`, `Order`, `OrderItem`, `OrderStatusEvent`, `WompiPaymentAttempt`, `WompiPaymentTransaction` |
-| Anti-abuso COD                | `BlockedIdentity`, `CodReconciliation`                                                                                      |
-| Cupones                       | `Coupon`, `CouponUsage`                                                                                                     |
-| Post-venta                    | `Review`, `RetractRequest`, `WarrantyClaim`                                                                                 |
-| Fidelización, señales y blog  | `LoyaltyTxn`, `Referral`, `WishlistItem`, `BackInStockSubscription`, `BlogPost` (`BlogPost` persiste como `FUTURO_APROBADO`) |
-| Mayorista / cotizaciones B2B  | `Quote`, `QuoteItem`, `WholesaleTier`                                                                                       |
-| Idempotencia webhooks         | `WebhookEvent`                                                                                                              |
-| Auditoría y seguridad         | `AdminActionLog`, `SecurityEvent` (login fallido / firma inválida, IP hasheada; `/admin/seguridad`)                         |
-| Consentimientos (Ley 1581)    | `Consent`                                                                                                                   |
-| Observabilidad                | `WebVital`, `ErrorLog`, `ErrorReport`, `AlertState`, `Notification`, `EmailEvent`                                           |
-| Soporte                       | `SupportTicket`, `SupportTicketMessage`                                                                                     |
-| CMS v2                        | `CmsPage`, `CmsSection`, `CmsField`, `CmsFieldVersion`, `CmsListItem`, `CmsMedia` (ver § CMS v2)                            |
-| Emails                        | `EmailTemplateOverride` (overrides de copy de las plantillas de correo, `/admin/email-templates`)                           |
-| Personalización               | `Design`, `RenderJob`, `DesignAsset`, `PersonalizationTemplate`, `LetterTileSet`, `LetterTile`, `DesignGalleryImage`        |
+| Módulo                       | Modelos                                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Identidad cliente            | `Customer`, `Address`                                                                                                                    |
+| RBAC admin                   | `AdminUser`, `AdminRecoveryCode` (códigos MFA hasheados HMAC-SHA256)                                                                     |
+| Catálogo y SEO               | `Category`, `Product`, `ProductVariant`, `InventoryLog`, `OcasionTag`, `ProductOcasionTag`, `Material`, `ProductMaterial`, `UrlRedirect` |
+| Carrito, órdenes y pagos     | `Cart`, `CartItem`, `AbandonedCart`, `Order`, `OrderItem`, `OrderStatusEvent`, `WompiPaymentAttempt`, `WompiPaymentTransaction`          |
+| Anti-abuso COD               | `BlockedIdentity`, `CodReconciliation`                                                                                                   |
+| Cupones                      | `Coupon`, `CouponUsage`                                                                                                                  |
+| Post-venta                   | `Review`, `RetractRequest`, `WarrantyClaim`                                                                                              |
+| Fidelización, señales y blog | `LoyaltyTxn`, `Referral`, `WishlistItem`, `BackInStockSubscription`, `BlogPost` (`BlogPost` persiste como `FUTURO_APROBADO`)             |
+| Mayorista / cotizaciones B2B | `Quote`, `QuoteItem`, `WholesaleTier`                                                                                                    |
+| Idempotencia webhooks        | `WebhookEvent`                                                                                                                           |
+| Auditoría y seguridad        | `AdminActionLog`, `SecurityEvent` (login fallido / firma inválida, IP hasheada; `/admin/seguridad`)                                      |
+| Consentimientos (Ley 1581)   | `Consent`                                                                                                                                |
+| Observabilidad               | `WebVital`, `FunnelEventDaily`, `ErrorLog`, `ErrorReport`, `AlertState`, `Notification`, `EmailEvent`                                    |
+| Soporte                      | `SupportTicket`, `SupportTicketMessage`                                                                                                  |
+| CMS v2                       | `CmsPage`, `CmsSection`, `CmsField`, `CmsFieldVersion`, `CmsListItem`, `CmsMedia` (ver § CMS v2)                                         |
+| Emails                       | `EmailTemplateOverride` (overrides de copy de las plantillas de correo, `/admin/email-templates`)                                        |
+| Personalización              | `Design`, `RenderJob`, `DesignAsset`, `PersonalizationTemplate`, `LetterTileSet`, `LetterTile`, `DesignGalleryImage`                     |
 
 `DesignGalleryImage` (diseños prediseñados, `/admin/disenos`) se agrupa por `tag`
 (= `personalizationSchema.galleryTag` o, por fallback, el slug del producto) y, desde
@@ -796,13 +796,13 @@ El mismo patrón se usa para envíos: `features/shipping/provider.ts` (`getShipp
 
 Cinco buckets con políticas distintas (detalle exhaustivo en [`SECURITY.md` § File upload](./SECURITY.md#file-upload-y-storage); buckets creados en `supabase/migrations/00000000000005/006/020`):
 
-| Bucket              | Visibilidad               | Uso                                                                                                                                                                                                                                                                 | TTL URL firmada       |
-| ------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `product-images`    | Público (lectura abierta) | Imágenes oficiales del catálogo (`<productId>/<uuid>.webp`, cacheControl 1 año; máx 5 MB)                                                                                                                                                                           | —                     |
-| `customer-uploads`  | Privado                   | Fotos que sube el cliente al estudio de personalización (máx 10 MB)                                                                                                                                                                                                 | 1 hora                |
+| Bucket              | Visibilidad               | Uso                                                                                                                                                                                                                                                                                                                                           | TTL URL firmada       |
+| ------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `product-images`    | Público (lectura abierta) | Imágenes oficiales del catálogo (`<productId>/<uuid>.webp`, cacheControl 1 año; máx 5 MB)                                                                                                                                                                                                                                                     | —                     |
+| `customer-uploads`  | Privado                   | Fotos que sube el cliente al estudio de personalización (máx 10 MB)                                                                                                                                                                                                                                                                           | 1 hora                |
 | `design-previews`   | Privado                   | Previews renderizados de diseños (exhibición limpia + páginas por unidad + borradores; máx 3 MB, png/webp/jpeg). Lectura solo vía Route Handler autorizado `/api/design-preview/*` (LUC-SEC-001, migración 046; ADR-191): borradores solo dueño/admin autenticados; exhibición limpia también por token válido de compartir/cotización/pedido | —                     |
-| `production-assets` | Privado                   | Renders de producción generados al confirmar orden, descargables por admin (máx 30 MB, png/tiff/pdf, ADR-063)                                                                                                                                                       | 1 hora (configurable) |
-| `cms-media`         | Público                   | Assets de campos IMAGE del CMS v2 (máx 5 MB)                                                                                                                                                                                                                        | —                     |
+| `production-assets` | Privado                   | Renders de producción generados al confirmar orden, descargables por admin (máx 30 MB, png/tiff/pdf, ADR-063)                                                                                                                                                                                                                                 | 1 hora (configurable) |
+| `cms-media`         | Público                   | Assets de campos IMAGE del CMS v2 (máx 5 MB)                                                                                                                                                                                                                                                                                                  | —                     |
 
 **Reglas:**
 
