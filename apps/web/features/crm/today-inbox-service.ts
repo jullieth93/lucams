@@ -165,6 +165,7 @@ export async function getTodayOperationalInbox(
             contact: { select: { id: true, displayName: true } },
             order: { select: { id: true, number: true } },
             supportTicket: { select: { id: true } },
+            opportunity: { select: { id: true, number: true } },
             ownerAdmin: { select: { email: true } },
           },
         })
@@ -365,7 +366,10 @@ export async function getTodayOperationalInbox(
 
     let actionHref = "/admin/hoy";
     let actionLabel = "Revisar";
-    if (t.order?.number && canAccessAdminPath(role, "/admin/pedidos")) {
+    if (t.opportunity?.id && canAccessAdminPath(role, "/admin/oportunidades")) {
+      actionHref = `/admin/oportunidades/${encodeURIComponent(t.opportunity.id)}`;
+      actionLabel = `Abrir ${t.opportunity.number}`;
+    } else if (t.order?.number && canAccessAdminPath(role, "/admin/pedidos")) {
       actionHref = `/admin/pedidos/${encodeURIComponent(t.order.number)}`;
       actionLabel = `Abrir ${t.order.number}`;
     } else if (t.supportTicket?.id && canAccessAdminPath(role, "/admin/soporte")) {

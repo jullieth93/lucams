@@ -253,6 +253,7 @@ export async function listTasksForEntity(filter: {
   supportTicketId?: string | null;
   warrantyClaimId?: string | null;
   retractRequestId?: string | null;
+  opportunityId?: string | null;
   includeDone?: boolean;
   limit?: number;
 }): Promise<CrmTaskView[]> {
@@ -266,6 +267,9 @@ export async function listTasksForEntity(filter: {
   }
   if (filter.retractRequestId?.trim()) {
     clauses.push({ retractRequestId: filter.retractRequestId.trim() });
+  }
+  if (filter.opportunityId?.trim()) {
+    clauses.push({ opportunityId: filter.opportunityId.trim() });
   }
   if (filter.contactId?.trim() && clauses.length === 0) {
     clauses.push({ contactId: filter.contactId.trim() });

@@ -138,6 +138,13 @@ export const ADMIN_NAV: NavGroup[] = [
           "Customer 360: listado con filtros + perfil completo con pedidos, reseñas, direcciones, diseños, referidos y puntos de fidelidad.",
       },
       {
+        label: "Oportunidades B2B",
+        href: "/admin/oportunidades",
+        icon: Building2,
+        description:
+          "Pipeline consultivo para empresas, bodas, grados y pedidos por volumen captados en /empresas-y-eventos.",
+      },
+      {
         label: "Reseñas",
         href: "/admin/resenas",
         icon: Star,

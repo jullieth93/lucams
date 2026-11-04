@@ -277,6 +277,14 @@ export async function SiteFooter() {
                   Rastrear pedido →
                 </Link>
               </li>
+              <li>
+                <Link
+                  href="/empresas-y-eventos"
+                  className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
+                >
+                  Empresas y eventos →
+                </Link>
+              </li>
             </ul>
           </div>
         </div>

@@ -71,6 +71,8 @@ const SENSITIVE = [
   // Fase 10 (S22) — Actividades y tareas del CRM operativo (notas internas, seguimientos, PII).
   "ContactActivity",
   "Task",
+  // Fase 12 (S24) — Pipeline consultivo B2B / Eventos (presupuestos, organizaciones, PII comercial).
+  "Opportunity",
 ] as const;
 
 describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sensibles", () => {

@@ -161,6 +161,8 @@ export async function teardown() {
         OR "primaryEmail" ~ ${RUN_ID}`,
       prisma.$executeRaw`DELETE FROM "Task" WHERE
         title ~ ${RUN_ID} OR title ILIKE 'itest%'`,
+      prisma.$executeRaw`DELETE FROM "Opportunity" WHERE
+        title ~ ${RUN_ID} OR title ILIKE 'itest%'`,
     ]);
 
     console.log(

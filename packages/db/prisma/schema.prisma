@@ -143,14 +143,15 @@ enum MergeCandidateStatus {
 
 /// Entidad ligera opcional B2B / Eventos (ADR-193). Nunca se crea para compras B2C de autoservicio.
 model Organization {
-  id          String        @id @default(cuid())
-  name        String
-  taxIdType   DocumentType?
-  taxIdNumber String?
-  city        String?
-  department  String?
-  notes       String?
-  contacts    Contact[]
+  id            String        @id @default(cuid())
+  name          String
+  taxIdType     DocumentType?
+  taxIdNumber   String?
+  city          String?
+  department    String?
+  notes         String?
+  contacts      Contact[]
+  opportunities Opportunity[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -199,6 +200,7 @@ model Contact {
   mergeCandidatesAsSecondary IdentityMergeCandidate[] @relation("MergeSecondaryContact")
   activities                 ContactActivity[]
   tasks                      Task[]
+  opportunities              Opportunity[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -369,6 +371,7 @@ model AdminUser {
   authoredActivities      ContactActivity[]        @relation("ContactActivityAuthor")
   ownedTasks              Task[]                   @relation("TaskOwner")
   createdTasks            Task[]                   @relation("TaskCreator")
+  ownedOpportunities      Opportunity[]            @relation("OpportunityOwner")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -848,8 +851,9 @@ model Order {
   // Order PENDING_PAYMENT activa, retornamos esa en vez de crear otra.
   cartId String?
 
-  contactActivities ContactActivity[]
-  tasks             Task[]
+  contactActivities      ContactActivity[]
+  tasks                  Task[]
+  convertedOpportunities Opportunity[]     @relation("OpportunityConvertedOrder")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2316,40 +2320,41 @@ enum QuoteStatus {
 }
 
 model Quote {
-  id                    String      @id @default(cuid())
+  id                     String        @id @default(cuid())
   // Número humano "COT-XXXXXX" (6 chars alfanuméricos sin ambiguos, generado en
   // app — ver features/quotes/service.ts). Único; el create reintenta ante P2002.
-  number                String      @unique
-  contactId             String?
-  contact               Contact?    @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  status                QuoteStatus @default(PENDING)
-  customerName          String
+  number                 String        @unique
+  contactId              String?
+  contact                Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  status                 QuoteStatus   @default(PENDING)
+  customerName           String
   // Móvil colombiano normalizado a 10 dígitos (sin +57 ni espacios).
-  customerWhatsapp      String
-  customerEmail         String?
-  city                  String
-  department            String
-  notes                 String? // notas DEL CLIENTE (formulario público)
+  customerWhatsapp       String
+  customerEmail          String?
+  city                   String
+  department             String
+  notes                  String? // notas DEL CLIENTE (formulario público)
   // Notas internas del admin — NUNCA exponer en la vista pública por token
   // (getQuoteByToken las excluye con select explícito).
-  internalNotes         String?
+  internalNotes          String?
   // Centavos COP (mandato CLAUDE.md — nunca float). En Etapa 1 total == subtotal:
   // no hay envío calculado, cupones ni impuestos en la cotización.
-  subtotal              Int
-  total                 Int
+  subtotal               Int
+  total                  Int
   // Token para vista pública /cotizacion/[token] (guest sin login, mismo patrón
   // que Order): 32 chars hex = crypto.randomBytes(16).
   // F-11 (security audit 2026-08-24): at rest only the SHA-256 hex digest of
   // the token (lookups hash the presented token).
-  publicAccessTokenHash String      @unique
+  publicAccessTokenHash  String        @unique
   // Prueba de la autorización de tratamiento (Ley 1581 art. 9) SOBRE el registro que contiene la
   // PII: quién autorizó, cuándo y qué versión del aviso vio. Se guarda aquí además de en Consent
   // porque es la cotización la que materializa el dato personal; el ledger central puede depurarse
   // y el vínculo con la PII no debe perderse. Nullable: las cotizaciones anteriores a la casilla
   // (2026-07-21) no la tienen.
-  dataConsentAt         DateTime?
-  dataConsentVersion    String?
-  items                 QuoteItem[]
+  dataConsentAt          DateTime?
+  dataConsentVersion     String?
+  items                  QuoteItem[]
+  convertedOpportunities Opportunity[] @relation("OpportunityConvertedQuote")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2591,6 +2596,8 @@ model Task {
   warrantyClaim    WarrantyClaim?  @relation(fields: [warrantyClaimId], references: [id], onDelete: SetNull)
   retractRequestId String?
   retractRequest   RetractRequest? @relation(fields: [retractRequestId], references: [id], onDelete: SetNull)
+  opportunityId    String?
+  opportunity      Opportunity?    @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -2602,4 +2609,57 @@ model Task {
   @@index([contactId, status])
   @@index([orderId, status])
   @@index([supportTicketId, status])
+  @@index([opportunityId, status])
+}
+
+/// Pipeline consultivo B2B / Eventos y recordatorios al por mayor (`Fase 12 · S24`).
+/// Estrictamente separado del checkout B2C self-service: jamás se crea desde un carrito normal.
+model Opportunity {
+  id                 String        @id @default(cuid())
+  // Identificador humano "OP-XXXXXX"
+  number             String        @unique
+  contactId          String
+  contact            Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  organizationId     String?
+  organization       Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  ownerAdminId       String?
+  ownerAdmin         AdminUser?    @relation("OpportunityOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
+  title              String
+  // "CORPORATE_GIFT" | "WEDDING_SOCIAL" | "SCHOOL_GRADUATION" | "BRAND_MERCH" | "OTHER"
+  eventType          String        @default("CORPORATE_GIFT")
+  // "NEW" | "QUALIFYING" | "PROPOSAL_SENT" | "WON" | "LOST"
+  stage              String        @default("NEW")
+  expectedUnits      Int?
+  // Centavos COP (Int >= 0 con CHECK SQL; jamás float)
+  expectedAmountCop  Int           @default(0)
+  eventDate          DateTime?
+  city               String?
+  department         String?
+  notes              String?
+  internalNotes      String?
+  lostReason         String?
+  convertedQuoteId   String?
+  convertedQuote     Quote?        @relation("OpportunityConvertedQuote", fields: [convertedQuoteId], references: [id], onDelete: SetNull)
+  convertedOrderId   String?
+  convertedOrder     Order?        @relation("OpportunityConvertedOrder", fields: [convertedOrderId], references: [id], onDelete: SetNull)
+  dataConsentAt      DateTime?
+  dataConsentVersion String?
+  utmSource          String?
+  utmMedium          String?
+  utmCampaign        String?
+  landingPath        String?
+  tasks              Task[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  deletedBy String?
+
+  // NOTA: CHECK ("stage", "expectedUnits >= 0", "expectedAmountCop >= 0") + ENABLE ROW LEVEL SECURITY
+  // + REVOKE ALL viven en 20261104200000_add_b2b_opportunities y supabase/migrations/00000000000053_opportunities_rls.sql.
+
+  @@index([stage, deletedAt, createdAt])
+  @@index([contactId, deletedAt])
+  @@index([organizationId, deletedAt])
+  @@index([ownerAdminId, stage])
 }
