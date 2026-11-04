@@ -8,10 +8,16 @@
  *      `opportunities:manage` + MFA `aal2` + `AdminActionLog`.
  */
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import {
+  parseUtmCookie,
+  sanitizeLandingPath,
+  sanitizeUtmValue,
+  UTM_COOKIE_NAME,
+} from "@/lib/utm-attribution";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, hashEmail, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
@@ -104,20 +110,34 @@ export async function submitB2bInquiryAction(
   }
 
   try {
-    const [customerSession, privacyPolicyVersion] = await Promise.all([
+    const [customerSession, privacyPolicyVersion, cookieJar] = await Promise.all([
       getCurrentCustomer().catch(() => null),
       getSettingValue("PRIVACY_POLICY_VERSION", "v1 · 2026-09-29"),
+      cookies().catch(() => null),
     ]);
+    const cookieUtm = parseUtmCookie(cookieJar?.get(UTM_COOKIE_NAME)?.value);
 
     const created = await createPublicB2bOpportunity(parsed.data, {
       customerId: customerSession?.customer.id ?? null,
       ip,
       userAgent,
       privacyPolicyVersion,
-      utmSource: String(formData.get("utmSource") ?? "") || null,
-      utmMedium: String(formData.get("utmMedium") ?? "") || null,
-      utmCampaign: String(formData.get("utmCampaign") ?? "") || null,
-      landingPath: String(formData.get("landingPath") ?? "") || "/empresas-y-eventos",
+      utmSource:
+        sanitizeUtmValue(String(formData.get("utmSource") ?? ""), 80) ??
+        cookieUtm?.utmSource ??
+        null,
+      utmMedium:
+        sanitizeUtmValue(String(formData.get("utmMedium") ?? ""), 80) ??
+        cookieUtm?.utmMedium ??
+        null,
+      utmCampaign:
+        sanitizeUtmValue(String(formData.get("utmCampaign") ?? ""), 120) ??
+        cookieUtm?.utmCampaign ??
+        null,
+      landingPath:
+        sanitizeLandingPath(String(formData.get("landingPath") ?? ""), 160) ??
+        cookieUtm?.landingPath ??
+        "/empresas-y-eventos",
     });
 
     revalidatePath("/admin/oportunidades");

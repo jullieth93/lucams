@@ -851,6 +851,12 @@ model Order {
   // Order PENDING_PAYMENT activa, retornamos esa en vez de crear otra.
   cartId String?
 
+  // Atribución first-party sin PII (`Fase 12 · S25`): canal/campaña de origen para LTV por fuente.
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  landingPath String?
+
   contactActivities      ContactActivity[]
   tasks                  Task[]
   convertedOpportunities Opportunity[]     @relation("OpportunityConvertedOrder")
@@ -878,6 +884,7 @@ model Order {
   @@index([cartId, status])
   @@index([couponId])
   @@index([needsReconciliation])
+  @@index([utmSource, status, createdAt])
   @@index([shippingAddressKey])
 }
 

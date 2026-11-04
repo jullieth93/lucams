@@ -250,6 +250,14 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/clientes", roles: rolesWithCapability("contacts:read_360") },
 
   // Marketing y carritos abandonados
+  {
+    prefix: "/admin/marketing/suscriptores/export",
+    roles: rolesWithCapability("marketing:export_csv"),
+  },
+  {
+    prefix: "/admin/marketing/segmentos/export",
+    roles: rolesWithCapability("marketing:export_csv"),
+  },
   { prefix: "/admin/marketing", roles: rolesWithCapability("marketing:read") },
   { prefix: "/admin/carritos/configuracion", roles: ["SUPERADMIN"] },
   { prefix: "/admin/carritos", roles: rolesWithCapability("carts:recover") },

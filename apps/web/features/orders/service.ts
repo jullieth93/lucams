@@ -150,6 +150,13 @@ export type CreateOrderFromCartInput = {
    */
   loyaltyPointsToRedeem?: number;
   notes?: string;
+  /** Atribución first-party sin PII (`Fase 12 · S25`, capturada con consentimiento de analíticas). */
+  attribution?: {
+    utmSource?: string | null;
+    utmMedium?: string | null;
+    utmCampaign?: string | null;
+    landingPath?: string | null;
+  } | null;
 };
 
 export type CreateOrderFromCartResult = {
@@ -581,6 +588,12 @@ async function createOrderFromCartTx(
       isGift: giftScalars.isGift,
       hasThirdPartyRecipient: Boolean(giftScalars.recipientName || giftScalars.recipientPhone),
     });
+    const attributionScalars = {
+      ...(input.attribution?.utmSource ? { utmSource: input.attribution.utmSource } : {}),
+      ...(input.attribution?.utmMedium ? { utmMedium: input.attribution.utmMedium } : {}),
+      ...(input.attribution?.utmCampaign ? { utmCampaign: input.attribution.utmCampaign } : {}),
+      ...(input.attribution?.landingPath ? { landingPath: input.attribution.landingPath } : {}),
+    };
     const orderScalars = {
       couponId, // F1 — null si no hubo cupón válido
       // Customer efectivo (resuelto por email de contacto arriba): también va en
@@ -588,6 +601,7 @@ async function createOrderFromCartTx(
       // obsoleto (p. ej. órdenes creadas antes del fix del bug STG LCM-2026-0010).
       customerId: orderCustomerId,
       ...(orderContactId ? { contactId: orderContactId } : {}),
+      ...attributionScalars,
       // Consentimiento de derechos de imagen (ADR-062 P0-2, Ley 1581): confirmar el pedido implica
       // aceptar las condiciones (titularidad/uso de las imágenes + autorización de impresión).
       contentRightsAcceptedAt: new Date(),

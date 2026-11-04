@@ -280,6 +280,13 @@ export const ADMIN_NAV: NavGroup[] = [
           "Audiencia del newsletter: emails suscritos (y dados de baja) con fecha y versión del aviso de privacidad. Exportable a CSV.",
       },
       {
+        label: "Segmentos CRM",
+        href: "/admin/marketing/segmentos",
+        icon: Users,
+        description:
+          "Audiencias comerciales (VIP, regalos, reactivación 90d, ocasión anual y alta intención sin compra) filtradas estrictamente por opt-in Ley 1581 vigente.",
+      },
+      {
         // Fase 4 (2026-10-13): bandeja del módulo de recuperación (antes el
         // recordatorio solo lo mandaba el cron a ciegas). Listado con estado,
         // envío manual a voluntad (con preview del correo) y config del módulo

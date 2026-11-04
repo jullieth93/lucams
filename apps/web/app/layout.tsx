@@ -16,6 +16,7 @@ import { WebVitalsReporter } from "@/components/web-vitals";
 import { CookiesBanner } from "@/components/cookies-banner";
 import { RouteToasts } from "@/components/route-toasts";
 import { AnalyticsGa4 } from "@/components/analytics-ga4";
+import { UtmTracker } from "@/components/utm-tracker";
 import { getCanonicalSiteUrl } from "@/lib/origin";
 import { SITE_NAME, SITE_TITLE } from "@/lib/site";
 import { isCatalogMode } from "@/lib/store-mode";
@@ -150,6 +151,7 @@ export default async function RootLayout({
                 consentimiento de analíticas — ver components/analytics-ga4.tsx.
                 Mismo Suspense que RouteToasts: usa useSearchParams. */}
             <AnalyticsGa4 />
+            <UtmTracker />
           </Suspense>
           <CookiesBanner policyVersion={privacyPolicy?.value ?? null} />
           {editMode ? <CmsEditOverlay /> : null}
