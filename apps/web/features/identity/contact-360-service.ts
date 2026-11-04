@@ -117,6 +117,48 @@ export async function resolveContactRouteParam(
   });
   if (contact) return { kind: "contact", contactId: contact.id };
 
+  // Si `cleanId` era un `Contact` absorbido en una fusión aprobada (`S20`),
+  // seguimos hasta 4 saltos hacia el contacto sobreviviente activo.
+  let cursorId = cleanId;
+  for (let hop = 0; hop < 4; hop += 1) {
+    const approvedMerge = await prisma.identityMergeCandidate.findFirst({
+      where: {
+        status: "APPROVED",
+        OR: [{ primaryContactId: cursorId }, { secondaryContactId: cursorId }],
+      },
+      orderBy: { reviewedAt: "desc" },
+      select: {
+        primaryContactId: true,
+        secondaryContactId: true,
+        mergeSnapshotJson: true,
+      },
+    });
+    if (!approvedMerge) break;
+
+    const snapshot =
+      approvedMerge.mergeSnapshotJson &&
+      typeof approvedMerge.mergeSnapshotJson === "object" &&
+      !Array.isArray(approvedMerge.mergeSnapshotJson)
+        ? (approvedMerge.mergeSnapshotJson as Record<string, unknown>)
+        : null;
+    const survivorId =
+      typeof snapshot?.survivorContactId === "string"
+        ? snapshot.survivorContactId
+        : approvedMerge.primaryContactId === cursorId
+          ? approvedMerge.secondaryContactId
+          : approvedMerge.primaryContactId;
+
+    if (!survivorId || survivorId === cursorId) break;
+    const activeSurvivor = await prisma.contact.findFirst({
+      where: { id: survivorId, deletedAt: null },
+      select: { id: true },
+    });
+    if (activeSurvivor) {
+      return { kind: "redirect", contactId: activeSurvivor.id };
+    }
+    cursorId = survivorId;
+  }
+
   const legacyCustomer = await prisma.customer.findFirst({
     where: { id: cleanId, deletedAt: null },
     select: {
