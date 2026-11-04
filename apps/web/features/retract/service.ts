@@ -21,6 +21,11 @@ import type { RetractStatus } from "@lucams/db";
 import { sendRetractApproved, sendRetractRejected, sendRetractRefunded } from "./emails";
 import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
 import { restoreRedeemedPointsForRetract } from "@/features/loyalty/service";
+import {
+  hashBearerToken,
+  verifyEmailMatchesTimingSafe,
+  verifyTokenHashTimingSafe,
+} from "@/lib/token-hash";
 
 export { RETRACT_WINDOW_BUSINESS_DAYS };
 
@@ -190,6 +195,68 @@ export async function getRetractableItems(
   // customerId null (guest / deleted customer) never belongs to a logged-in customer.
   if (order.customerId !== opts.customerId) return [];
 
+  return mapOrderToRetractableItems(order, now);
+}
+
+/**
+ * [CX-01] — Elegibilidad de retracto (Ley 1480 art. 47 / Ley 2439) para `/pedido/[token]`,
+ * autenticada mediante `publicAccessTokenHash`.
+ */
+export async function getRetractableItemsByOrderToken(
+  token: string,
+  opts?: { now?: Date },
+): Promise<RetractableItem[]> {
+  if (!/^[a-f0-9]{32}$/.test(token)) return [];
+  const now = opts?.now ?? new Date();
+  const order = await prisma.order.findFirst({
+    where: { publicAccessTokenHash: hashBearerToken(token), deletedAt: null },
+    select: {
+      publicAccessTokenHash: true,
+      status: true,
+      deliveredAt: true,
+      subtotal: true,
+      discount: true,
+      loyaltyDiscount: true,
+      loyaltyPointsRedeemed: true,
+      coupon: { select: { type: true } },
+      items: {
+        select: {
+          id: true,
+          qty: true,
+          unitPrice: true,
+          customDesign: true,
+          designId: true,
+          variant: { select: { product: { select: { name: true } } } },
+          retractRequest: { select: { status: true, refundAmount: true } },
+        },
+      },
+    },
+  });
+  if (!order || !verifyTokenHashTimingSafe(token, order.publicAccessTokenHash)) return [];
+  return mapOrderToRetractableItems(order, now);
+}
+
+function mapOrderToRetractableItems(
+  order: {
+    status: string;
+    deliveredAt: Date | null;
+    subtotal: number;
+    discount: number;
+    loyaltyDiscount: number;
+    loyaltyPointsRedeemed: number;
+    coupon: { type: string } | null;
+    items: Array<{
+      id: string;
+      qty: number;
+      unitPrice: number;
+      customDesign: unknown | null;
+      designId: string | null;
+      variant: { product: { name: string } };
+      retractRequest: { status: string; refundAmount: number } | null;
+    }>;
+  },
+  now: Date,
+): RetractableItem[] {
   const delivered = order.status === "DELIVERED" && !!order.deliveredAt;
   const withinWindow = order.deliveredAt ? isWithinRetractWindow(order.deliveredAt, now) : false;
   const activeRefundedCents = order.items.reduce((acc, it) => {
@@ -329,6 +396,106 @@ export async function createRetractRequest(
   } catch (err) {
     // Carrera: dos solicitudes del mismo item a la vez. El @unique(orderItemId)
     // deja pasar solo una; la otra recibe P2002 → ya existe la solicitud.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new RetractError("ALREADY_REQUESTED");
+    }
+    throw err;
+  }
+}
+
+/**
+ * [CX-01] — Crea una solicitud de retracto desde `/pedido/[token]` para compradores invitados.
+ * Protegida por `publicAccessTokenHash` (timing-safe) + confirmación timing-safe de `order.email`,
+ * aplicando exactamente la misma ventana de días hábiles, exclusión de personalizados y
+ * prorrateo de descuentos/puntos (`computeRetractRefundBreakdown`).
+ */
+export async function createGuestRetractRequest(
+  orderItemId: string,
+  opts: { token: string; email: string; reason?: string; now?: Date },
+): Promise<{ id: string; refundAmount: number }> {
+  if (!/^[a-f0-9]{32}$/.test(opts.token)) throw new RetractError("NOT_FOUND");
+  const now = opts.now ?? new Date();
+  const item = await prisma.orderItem.findUnique({
+    where: { id: orderItemId },
+    select: {
+      id: true,
+      qty: true,
+      unitPrice: true,
+      customDesign: true,
+      designId: true,
+      retractRequest: { select: { id: true } },
+      order: {
+        select: {
+          email: true,
+          publicAccessTokenHash: true,
+          status: true,
+          deliveredAt: true,
+          deletedAt: true,
+          subtotal: true,
+          discount: true,
+          loyaltyDiscount: true,
+          loyaltyPointsRedeemed: true,
+          coupon: { select: { type: true } },
+          items: {
+            select: {
+              id: true,
+              retractRequest: { select: { status: true, refundAmount: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (
+    !item ||
+    item.order.deletedAt ||
+    !verifyTokenHashTimingSafe(opts.token, item.order.publicAccessTokenHash)
+  ) {
+    throw new RetractError("NOT_FOUND");
+  }
+  if (!verifyEmailMatchesTimingSafe(opts.email, item.order.email)) {
+    throw new RetractError("FORBIDDEN");
+  }
+  if (item.retractRequest) throw new RetractError("ALREADY_REQUESTED");
+  if (item.order.status !== "DELIVERED" || !item.order.deliveredAt) {
+    throw new RetractError("NOT_DELIVERED");
+  }
+  if (!isWithinRetractWindow(item.order.deliveredAt, now)) throw new RetractError("OUT_OF_WINDOW");
+  if (isItemPersonalized(item)) throw new RetractError("PERSONALIZED");
+
+  const lineTotal = item.unitPrice * item.qty;
+  const ord = item.order;
+  const alreadyRefundedCents = ord.items.reduce((acc, sibling) => {
+    if (
+      sibling.id !== item.id &&
+      sibling.retractRequest &&
+      sibling.retractRequest.status !== "REJECTED"
+    ) {
+      return acc + sibling.retractRequest.refundAmount;
+    }
+    return acc;
+  }, 0);
+  const { cashRefundCents: refundAmount } = computeRetractRefundBreakdown({
+    lineTotal,
+    orderSubtotal: ord.subtotal,
+    couponDiscount: ord.discount,
+    couponType: ord.coupon?.type ?? null,
+    loyaltyDiscount: ord.loyaltyDiscount,
+    loyaltyPointsRedeemed: ord.loyaltyPointsRedeemed,
+    alreadyRefundedCents,
+  });
+  try {
+    const created = await prisma.retractRequest.create({
+      data: {
+        orderItemId,
+        reason: opts.reason?.trim().slice(0, 500) || null,
+        refundAmount,
+        status: "PENDING",
+      },
+      select: { id: true },
+    });
+    return { id: created.id, refundAmount };
+  } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new RetractError("ALREADY_REQUESTED");
     }
@@ -665,5 +832,12 @@ export async function listRetractRequests(
       qty: r.orderItem.qty,
       customerEmail: ord.email,
     };
+  });
+}
+
+/** Conteo de retractos abiertos (pendientes de revisión, recepción o reembolso) para el Dashboard. */
+export async function countOpenRetractRequests(): Promise<number> {
+  return prisma.retractRequest.count({
+    where: { status: { in: ["PENDING", "APPROVED", "RECEIVED"] } },
   });
 }

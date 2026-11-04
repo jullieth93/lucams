@@ -17,9 +17,17 @@ vi.mock("./emails", () => ({
 }));
 
 import { prisma } from "@/lib/db";
+import { hashBearerToken } from "@/lib/token-hash";
+import {
+  createGuestWarrantyClaim,
+  getWarrantyItemsByOrderToken,
+  listWarrantyClaims,
+} from "@/features/warranty/service";
 import {
   getRetractableItems,
+  getRetractableItemsByOrderToken,
   createRetractRequest,
+  createGuestRetractRequest,
   approveRetract,
   markRetractReceived,
   refundRetract,
@@ -134,6 +142,11 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
         /* best-effort */
       }
     };
+    await safe(() =>
+      prisma.warrantyClaim.deleteMany({
+        where: { orderItem: { order: { number: { startsWith: `RTR-${RUN}`.toUpperCase() } } } },
+      }),
+    );
     await safe(() =>
       prisma.retractRequest.deleteMany({
         where: { orderItem: { order: { number: { startsWith: `RTR-${RUN}`.toUpperCase() } } } },
@@ -345,5 +358,107 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       where: { orderId: order.id, reason: `RETRACT_REFUND:${id}` },
     });
     expect(txn?.delta).toBe(200);
+  });
+
+  it("[CX-01] posventa invitado por token: autoriza garantía y retracto con token+email válidos y rechaza token o email inválido", async () => {
+    const validToken = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
+    const wrongToken = "ffffffffffffffffffffffffffffffff";
+    const guestEmail = `${RUN}-guest-token@lucams.test`;
+
+    const order = await prisma.order.create({
+      data: {
+        number: `RTR-${RUN}-GUEST-TOK`.toUpperCase(),
+        email: guestEmail,
+        phone: "+573009998877",
+        shippingAddress: { fullName: "Camila Invitada", city: "Medellín" },
+        subtotal: 40_000,
+        shipping: 0,
+        discount: 0,
+        total: 40_000,
+        currency: "COP",
+        paymentMethod: "COD",
+        status: "DELIVERED",
+        deliveredAt: new Date(),
+        customerId: null,
+        publicAccessTokenHash: hashBearerToken(validToken),
+        items: {
+          create: [
+            { variantId, qty: 1, unitPrice: 20_000, warrantyMonths: 6 },
+            {
+              variantId,
+              qty: 1,
+              unitPrice: 20_000,
+              warrantyMonths: 6,
+              customDesign: { layers: ["foto"] },
+            },
+          ],
+        },
+      },
+      select: { id: true, items: { select: { id: true }, orderBy: { createdAt: "asc" } } },
+    });
+
+    const standardItemId = order.items[0]!.id;
+    const customItemId = order.items[1]!.id;
+
+    // 1. Token inválido → vacío / NOT_FOUND
+    expect(await getRetractableItemsByOrderToken(wrongToken)).toHaveLength(0);
+    expect(await getWarrantyItemsByOrderToken(wrongToken)).toHaveLength(0);
+    await expect(
+      createGuestRetractRequest(standardItemId, {
+        token: wrongToken,
+        email: guestEmail,
+        reason: "Cambio de opinión",
+      }),
+    ).rejects.toMatchObject({ reason: "NOT_FOUND" });
+    await expect(
+      createGuestWarrantyClaim({
+        token: wrongToken,
+        email: guestEmail,
+        orderItemId: customItemId,
+        description: "Llegó con una esquina despegada del imán.",
+      }),
+    ).rejects.toMatchObject({ reason: "NOT_FOUND" });
+
+    // 2. Token válido pero email distinto (p.ej. destinatario de regalo) → FORBIDDEN
+    await expect(
+      createGuestRetractRequest(standardItemId, {
+        token: validToken,
+        email: "destinatario@otro.co",
+        reason: "Intento tercero",
+      }),
+    ).rejects.toMatchObject({ reason: "FORBIDDEN" });
+    await expect(
+      createGuestWarrantyClaim({
+        token: validToken,
+        email: "destinatario@otro.co",
+        orderItemId: customItemId,
+        description: "Intento de reclamo por tercero sin ser comprador.",
+      }),
+    ).rejects.toMatchObject({ reason: "FORBIDDEN" });
+
+    // 3. Token válido + email del comprador (case-insensitive) → crea retracto y garantía
+    const retractItems = await getRetractableItemsByOrderToken(validToken);
+    expect(retractItems.find((i) => i.orderItemId === standardItemId)?.eligible).toBe(true);
+    expect(retractItems.find((i) => i.orderItemId === customItemId)?.reason).toBe("PERSONALIZED");
+
+    const retractCreated = await createGuestRetractRequest(standardItemId, {
+      token: validToken,
+      email: `  ${guestEmail.toUpperCase()} `,
+      reason: "Prefiero otro tamaño",
+    });
+    expect(retractCreated.refundAmount).toBe(20_000);
+
+    const warrantyCreated = await createGuestWarrantyClaim({
+      token: validToken,
+      email: guestEmail,
+      orderItemId: customItemId,
+      description: "El laminado presenta una burbuja visible en el borde.",
+    });
+    expect(warrantyCreated.id).toBeTruthy();
+
+    const adminList = await listWarrantyClaims({ status: "PENDING" });
+    const row = adminList.find((r) => r.id === warrantyCreated.id);
+    expect(row?.customerEmail).toBe(guestEmail);
+    expect(row?.customerName).toBe("Camila Invitada");
   });
 });

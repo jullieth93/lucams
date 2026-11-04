@@ -29,6 +29,7 @@ import {
 } from "@/features/checkout/service";
 import { getSettingValue } from "@/lib/cms";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
+import { composeAddressLine } from "@/features/checkout/schemas";
 import { formatCityDept } from "@/lib/format";
 import { getCheckoutTexts } from "../checkout-texts.server";
 import { resolveLucamsPromise } from "../checkout-texts";
@@ -97,10 +98,12 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   // programa está apagado o la compra no alcanza ni 1 punto.
   const guestIncentive = await getGuestLoyaltyIncentive(ctx);
 
-  // Toggle de negocio: ¿se ofrece contra entrega? (editable en /admin/contenido/paginas/global).
-  // FAIL-CLOSED (CF-35): setting ausente/despublicada = COD deshabilitado — nunca se
-  // ofrece en silencio un método de pago que el negocio no confirmó explícitamente.
-  const codEnabled = (await getSettingValue("COD_ENABLED", "false")) === "true";
+  // Toggle de negocio + cobertura de la tarifa elegida ([CX-01]): contraentrega solo se
+  // ofrece cuando el negocio activó COD_ENABLED Y la opción de envío seleccionada la admite
+  // (`contraentrega !== false`), alineado con `finalizeCheckout` en servidor.
+  const codEnabled =
+    (await getSettingValue("COD_ENABLED", "false")) === "true" &&
+    shippingSelection.contraentrega !== false;
 
   // Roadmap B8 — textos CMS del paso de pago (revisión, cupón, métodos, legales).
   const texts = await getCheckoutTexts();
@@ -211,24 +214,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
             href="/checkout/datos"
             editLabel={texts.payment.edit}
           >
-            <p className="text-brand-purple-dark text-sm">
-              {address.kind === "urban" ? (
-                <>
-                  {address.viaType} {address.viaNumber}
-                  {address.viaBis && " Bis"}
-                  {address.viaCardinal && ` ${address.viaCardinal}`} # {address.cruceNumber}
-                  {address.cruceCardinal && ` ${address.cruceCardinal}`}
-                  {address.detail && ` (${address.detail})`}
-                </>
-              ) : (
-                <>
-                  Vereda {address.vereda}
-                  {address.finca && ` · Finca ${address.finca}`}
-                </>
-              )}
-            </p>
-            {address.kind === "rural" && (
-              <p className="text-brand-purple-dark/70 text-xs italic">Ref: {address.referencia}</p>
+            <p className="text-brand-purple-dark text-sm">{composeAddressLine(address)}</p>
+            {address.kind === "urban" && address.neighborhood && (
+              <p className="text-brand-purple-dark/70 text-xs">Barrio {address.neighborhood}</p>
             )}
             <p className="text-brand-purple-dark/70 text-xs">
               {/* #30 — sin duplicar ciudad/departamento (Bogotá D.C.). */}
@@ -292,7 +280,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               backHref="/checkout/envio"
               codEnabled={codEnabled}
               couponInvalidAtRender={Boolean(applied?.error)}
-              loyaltyInvalidAtRender={Boolean(loyalty?.error)}
+              loyaltyInvalidAtRender={Boolean(
+                loyalty?.error || (Boolean(ctx.state.loyaltyPoints) && !loyalty),
+              )}
               analyticsCheckout={{
                 valueCents: payableValueCents,
                 coupon: activeCouponCode,

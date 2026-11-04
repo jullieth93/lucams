@@ -183,13 +183,16 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
   let totalPages: number;
 
   if (q && q.length >= 2) {
-    // #1 — traer hasta 100 (cubre el catálogo activo) para que el filtro/orden/paginación operen
-    // sobre TODO el set matcheado, no sobre un LIMIT 8 truncado (conteo real + sin "0 productos" falso).
-    const results = await searchStorefrontProducts(q, { limit: 100 });
+    // #1 + [CX-01] — traer hasta 100 honrando en SQL tanto la jerarquía padre→hijas de
+    // `categoria` como el tag `ocasion`, antes de filtrar/ordenar/paginar sobre el set completo.
+    const results = await searchStorefrontProducts(q, {
+      limit: 100,
+      categorySlug: categoria,
+      ocasionSlug: ocasion,
+    });
     // #8 — filtrar y ordenar sobre los results (que ahora traen isFeatured) ANTES de mapear a cards:
     // con búsqueda activa, "Destacados" y "Ordenar por" antes se ignoraban en silencio.
     const filtered = results.filter((r) => {
-      if (categoria && r.category.slug !== categoria) return false;
       if (personalizable && !r.isPersonalizable) return false;
       if (descuento && r.compareAtPrice == null) return false;
       if (destacados && !r.isFeatured) return false; // ← filtro que faltaba

@@ -47,8 +47,19 @@ import { resolveFunnelEditorKind } from "@/features/analytics/funnel-schema";
 import { DesignPreviewDialog } from "@/components/design-preview-dialog";
 import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { TrackPurchase } from "@/components/analytics-trackers";
-import { reorderGuestAction } from "./actions";
+import {
+  reorderGuestAction,
+  requestGuestRetractAction,
+  requestGuestWarrantyAction,
+  submitGuestOrderSupportAction,
+} from "./actions";
 import { ReorderControl, type ReorderTexts } from "@/components/orders/reorder-control";
+import { GuestOrderSupportCard } from "@/components/orders/guest-order-support";
+import { getRetractableItemsByOrderToken } from "@/features/retract/service";
+import { getWarrantyItemsByOrderToken } from "@/features/warranty/service";
+import { RetractControl } from "@/app/mi-cuenta/pedidos/[number]/retract-control";
+import { WarrantyControl } from "@/app/mi-cuenta/pedidos/[number]/warranty-control";
+import { getAccountTexts } from "@/app/mi-cuenta/account-texts.server";
 
 export const metadata: Metadata = {
   // noindex: la URL es de un solo uso y trae un token opaco.
@@ -198,10 +209,16 @@ export default async function PublicOrderPage({
   // la saga) pero el cliente SÍ debe ver que algo pasa — banner honesto con salida
   // a WhatsApp, al lado del timeline que de otro modo quedaría "En camino" eterno.
   const shippingIssue = shippingIssueKind(order);
-  const waUrl =
-    isPending || shippingIssue
-      ? await buildWhatsAppUrl({ kind: "order", orderNumber: order.number })
-      : null;
+  // [CX-01] — mantener canal de ayuda activo en todos los estados no cancelados (incluido
+  // `DELIVERED`, donde antes `waUrl` era null y el comprador invitado quedaba sin salida posventa).
+  const [waUrl, retractable, warrantyItems, accountTexts] = await Promise.all([
+    !isCancelled ? buildWhatsAppUrl({ kind: "order", orderNumber: order.number }) : null,
+    order.status === "DELIVERED" ? getRetractableItemsByOrderToken(token) : [],
+    order.status === "DELIVERED" ? getWarrantyItemsByOrderToken(token) : [],
+    order.status === "DELIVERED" ? getAccountTexts() : null,
+  ]);
+  const retractByItem = new Map(retractable.map((r) => [r.orderItemId, r]));
+  const warrantyByItem = new Map(warrantyItems.map((w) => [w.orderItemId, w]));
 
   const itemsHeading = `Lo que pediste (${order.items.length})`;
   const accountCtaBody =
@@ -532,6 +549,22 @@ export default async function PublicOrderPage({
                           />
                         </div>
                       )}
+                      {accountTexts && retractByItem.has(it.id) && (
+                        <RetractControl
+                          item={retractByItem.get(it.id)!}
+                          texts={accountTexts.retract}
+                          guestToken={token}
+                          actionOverride={requestGuestRetractAction}
+                        />
+                      )}
+                      {accountTexts && warrantyByItem.has(it.id) && (
+                        <WarrantyControl
+                          item={warrantyByItem.get(it.id)!}
+                          texts={accountTexts.warranty}
+                          guestToken={token}
+                          actionOverride={requestGuestWarrantyAction}
+                        />
+                      )}
                     </div>
                     <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
                       {formatCOP(it.unitPrice * it.qty)}
@@ -664,6 +697,17 @@ export default async function PublicOrderPage({
                 )}
               </div>
             </Card>
+          )}
+
+          {!isCancelled && (
+            <GuestOrderSupportCard
+              token={token}
+              orderNumber={order.number}
+              maskedEmail={maskEmail(order.email)}
+              waUrl={waUrl}
+              isDelivered={order.status === "DELIVERED"}
+              action={submitGuestOrderSupportAction}
+            />
           )}
 
           {/* Paquete I — "Volver a pedir" (invitado): el token del link autoriza el reorder;

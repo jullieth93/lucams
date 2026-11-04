@@ -37,11 +37,18 @@ const STATUS_LABEL: Record<string, string> = {
 export function RetractControl({
   item,
   texts,
+  guestToken,
+  actionOverride,
 }: {
   item: RetractItem;
   texts: AccountTexts["retract"];
+  guestToken?: string;
+  actionOverride?: (
+    prev: { error?: string; success?: string } | null,
+    formData: FormData,
+  ) => Promise<{ error?: string; success?: string }>;
 }) {
-  const [state, action, pending] = useActionState(requestRetractAction, null);
+  const [state, action, pending] = useActionState(actionOverride ?? requestRetractAction, null);
 
   if (item.existingStatus) {
     return (
@@ -78,6 +85,26 @@ export function RetractControl({
       </summary>
       <form action={action} className="mt-2 space-y-2">
         <input type="hidden" name="orderItemId" value={item.orderItemId} />
+        {guestToken && <input type="hidden" name="token" value={guestToken} />}
+        {guestToken && (
+          <div>
+            <label
+              htmlFor={`retract-email-${item.orderItemId}`}
+              className="text-brand-muted block text-[11px]"
+            >
+              Confirma el correo con el que hiciste la compra
+            </label>
+            <input
+              id={`retract-email-${item.orderItemId}`}
+              type="email"
+              name="email"
+              required
+              autoComplete="email"
+              placeholder="tu@correo.com"
+              className="border-brand-purple/20 focus:ring-brand-purple/30 mt-1 w-full rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+            />
+          </div>
+        )}
         {typeof item.estimatedRefundCents === "number" && (
           <div className="border-brand-purple/15 bg-brand-purple/5 rounded-lg border px-2.5 py-2 text-[11px]">
             <p className="text-brand-purple-dark font-medium">

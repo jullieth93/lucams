@@ -19,7 +19,7 @@ import { TrackAddToCartSuccess, TrackViewItem } from "@/components/analytics-tra
 import { breadcrumbList } from "@/lib/seo/structured-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, RotateCcw, Truck, Wallet, ShieldCheck } from "lucide-react";
+import { ChevronRight, RotateCcw, Sparkles, Truck, Wallet, ShieldCheck } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -45,7 +45,9 @@ import {
   formatWarrantyTerm,
 } from "@/lib/consumer-law";
 import { isCatalogMode } from "@/lib/store-mode";
+import { getSettingValue } from "@/lib/cms";
 import { buildWhatsAppUrl } from "@/lib/wa";
+import { resolveVisibleVolumeTiers } from "@/features/cart/volume-pricing";
 import { addToCartAction } from "@/app/carrito/actions";
 import {
   selectableVariants,
@@ -68,6 +70,7 @@ import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import {
   getStorefrontProductBySlug,
   listRelatedProducts,
+  listStorefrontVolumeTiers,
 } from "@/features/products/public-service";
 import { getProductRatingAggregate } from "@/features/reviews/public-service";
 
@@ -245,18 +248,25 @@ export default async function ProductoDetallePage({
 
   // #4 — cuatro operaciones INDEPENDIENTES en paralelo (antes eran awaits secuenciales); solo la
   // wishlist depende del customer, así que se encadena después.
-  const [related, ratingAggregate, waHref, customer] = await Promise.all([
-    listRelatedProducts({
-      productId: product.id,
-      categorySlug: product.category.slug,
-      limit: 4,
-    }),
-    // Rating real para el JSON-LD (auditoría 2026-07-16). null si no hay reseñas.
-    getProductRatingAggregate(product.id),
-    buildWhatsAppUrl({ kind: "product", productName: product.name, sku: product.sku }),
-    // Wishlist + "avísame cuando vuelva": cliente logueado para el estado del corazón + su email.
-    getCurrentCustomer(),
-  ]);
+  const [related, ratingAggregate, waHref, customer, rawVolumeTiers, codSetting] =
+    await Promise.all([
+      listRelatedProducts({
+        productId: product.id,
+        categorySlug: product.category.slug,
+        limit: 4,
+      }),
+      // Rating real para el JSON-LD (auditoría 2026-07-16). null si no hay reseñas.
+      getProductRatingAggregate(product.id),
+      buildWhatsAppUrl({ kind: "product", productName: product.name, sku: product.sku }),
+      // Wishlist + "avísame cuando vuelva": cliente logueado para el estado del corazón + su email.
+      getCurrentCustomer(),
+      listStorefrontVolumeTiers(product.id),
+      getSettingValue("COD_ENABLED", "false"),
+    ]);
+  const codEnabled = codSetting === "true";
+  const visibleVolumeTiers = isNamePerTile
+    ? []
+    : resolveVisibleVolumeTiers(rawVolumeTiers, product.id, displayPrice);
 
   // Precio tachado con REFLEJO TOTAL (owner 2026-09-14): la promo vive por
   // opción en el admin y el front la refleja SIEMPRE — tachado si la opción
@@ -506,6 +516,34 @@ export default async function ProductoDetallePage({
                 )}
               </div>
 
+              {visibleVolumeTiers.length > 0 && (
+                <div
+                  aria-label="Descuentos por cantidad"
+                  className="border-brand-purple/15 bg-brand-purple/5 order-2 rounded-xl border p-3"
+                >
+                  <p className="text-brand-purple-dark flex items-center gap-1.5 text-xs font-semibold">
+                    <Sparkles className="text-brand-purple h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+                    Ahorra llevando más unidades (se aplica solo en tu carrito)
+                  </p>
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    {visibleVolumeTiers.map((vt) => (
+                      <li
+                        key={vt.minQty}
+                        className="border-brand-purple/15 inline-flex items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs"
+                      >
+                        <span className="text-brand-muted font-medium">{vt.minQty}+ unid.</span>
+                        <span className="text-brand-purple-dark font-bold tabular-nums">
+                          {formatCOP(vt.unitPrice)} c/u
+                        </span>
+                        <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                          −{vt.savingsPct}%
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <p className="text-brand-purple-dark/80 order-4 text-base leading-relaxed whitespace-pre-line md:order-3">
                 {product.description}
               </p>
@@ -726,7 +764,9 @@ export default async function ProductoDetallePage({
                     <span>
                       {catalog
                         ? "Cierras la compra por WhatsApp: pides tu cotización y coordinamos pago y entrega contigo. Precios en pesos colombianos (COP)."
-                        : "Paga al recibir (contraentrega) o en línea con Wompi. Precios en pesos colombianos (COP): es el valor final que pagas."}
+                        : codEnabled
+                          ? "Contraentrega según cobertura de tu ciudad o pago en línea con Wompi. Precios en pesos colombianos (COP): es el valor final que pagas."
+                          : "Pago seguro en línea con Wompi (tarjeta, PSE, Nequi). Precios en pesos colombianos (COP): es el valor final que pagas."}
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">

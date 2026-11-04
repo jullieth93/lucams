@@ -9,7 +9,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { applyVolumePricing, resolveVolumeTierPrice, type VolumeTierInput } from "./volume-pricing";
+import {
+  applyVolumePricing,
+  resolveVisibleVolumeTiers,
+  resolveVolumeTierPrice,
+  type VolumeTierInput,
+} from "./volume-pricing";
 
 const PRODUCT = "prod_1";
 const OTRO = "prod_2";
@@ -140,5 +145,21 @@ describe("applyVolumePricing", () => {
     // Un tier por encima del base multiplicado no aplica.
     const caros = [tier({ minQty: 2, unitPrice: 45_000 })];
     expect(applyVolumePricing(40_000, caros, PRODUCT, 2)).toBe(40_000);
+  });
+});
+
+describe("resolveVisibleVolumeTiers ([CX-01] PDP)", () => {
+  it("ordena escalas válidas por minQty asc y calcula savingsPct con precedencia de producto", () => {
+    const tiers = [
+      tier({ minQty: 2, unitPrice: 6_000 }), // global ignorado porque hay propios
+      tier({ productId: PRODUCT, minQty: 10, unitPrice: 8_000 }),
+      tier({ productId: PRODUCT, minQty: 3, unitPrice: 9_000 }),
+      tier({ productId: PRODUCT, minQty: 20, unitPrice: 8_500 }), // incoherente (más caro que 10+) → omitido
+      tier({ productId: PRODUCT, minQty: 2, unitPrice: 12_000 }), // >= base → omitido
+    ];
+    expect(resolveVisibleVolumeTiers(tiers, PRODUCT, 10_000)).toEqual([
+      { minQty: 3, unitPrice: 9_000, savingsPct: 10 },
+      { minQty: 10, unitPrice: 8_000, savingsPct: 20 },
+    ]);
   });
 });

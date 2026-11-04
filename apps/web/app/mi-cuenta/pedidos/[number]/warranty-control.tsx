@@ -37,11 +37,18 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 export function WarrantyControl({
   item,
   texts,
+  guestToken,
+  actionOverride,
 }: {
   item: WarrantyItem;
   texts: AccountTexts["warranty"];
+  guestToken?: string;
+  actionOverride?: (
+    prev: { error?: string; success?: string } | null,
+    formData: FormData,
+  ) => Promise<{ error?: string; success?: string }>;
 }) {
-  const [state, action, pending] = useActionState(requestWarrantyAction, null);
+  const [state, action, pending] = useActionState(actionOverride ?? requestWarrantyAction, null);
 
   if (item.activeClaimStatus) {
     return (
@@ -80,6 +87,26 @@ export function WarrantyControl({
       </summary>
       <form action={action} className="mt-2 space-y-2">
         <input type="hidden" name="orderItemId" value={item.orderItemId} />
+        {guestToken && <input type="hidden" name="token" value={guestToken} />}
+        {guestToken && (
+          <div>
+            <label
+              htmlFor={`warranty-email-${item.orderItemId}`}
+              className="text-brand-muted block text-[11px]"
+            >
+              Confirma el correo con el que hiciste la compra
+            </label>
+            <input
+              id={`warranty-email-${item.orderItemId}`}
+              type="email"
+              name="email"
+              required
+              autoComplete="email"
+              placeholder="tu@correo.com"
+              className="border-brand-purple/20 focus:ring-brand-purple/30 mt-1 w-full rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+            />
+          </div>
+        )}
         <label
           htmlFor={`warranty-desc-${item.orderItemId}`}
           className="text-brand-muted block text-[11px]"
