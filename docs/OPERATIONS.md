@@ -697,7 +697,7 @@ El único `vercel.json` versionado es [`apps/web/vercel.json`](../apps/web/verce
 | `make db-local-seed`  | Siembra catálogo, plantillas, ocasiones, fichas, CMS v2 y backfill de `Contact` cargando `.env.local`              |
 | `make check`          | Gate rápido pre-push (`pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint`, tests DB, guards y paridad CMS v2) |
 | `make verify-db`      | Verifica 0 deriva Prisma↔SQL (`audit-schema-drift.mjs`) y 5/5 invariantes RLS/grants (`verify-security-posture`)   |
-| `make test-local`     | Ejecuta la suite Vitest completa contra el stack local (`NIGHTLY_LOCALSTACK=1`)                                    |
+| `make test-local`     | Ejecuta la suite Vitest completa contra el stack local (`pnpm --filter web test`)                                  |
 | `make test-rls`       | Ejecuta `rls-coverage` + `rls-matrix` contra PostgREST/GoTrue del stack local                                      |
 | `make build`          | Build de producción Next.js 16 (en máquinas de 4 GB de RAM: correr antes `make db-local-stop`)                     |
 | `make clean-tmp`      | Depura `tmp/` conservando únicamente `tmp/bin/`, `tmp/pids/` y `tmp/logs/`                                         |

@@ -34,7 +34,7 @@ help:
 	@echo "    make test-rls         Suite RLS real (rls-coverage + rls-matrix)"
 	@echo "    make test-e2e         Playwright E2E"
 	@echo "    make test-e2e-fullmode Suite E2E modo full aislada en :4100 (solo LOCAL)"
-	@echo "    make test-load        Carga k6 del storefront (requiere k6 instalado y app arriba)"
+	@echo "    make test-load        Carga k6 del storefront contra BASE_URL (default :4000)"
 	@echo "    make build            Build de producción Next.js (en 4 GB RAM: correr antes make db-local-stop)"
 	@echo ""
 	@echo "  4. Operaciones puntuales y Staging:"
@@ -154,7 +154,7 @@ verify-db:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/verify-security-posture.mjs
 
 test-local:
-	NIGHTLY_LOCALSTACK=1 pnpm --filter web test
+	pnpm --filter web test
 
 test-rls:
 	pnpm --filter web exec vitest run features/security/rls-coverage.integration.test.ts features/security/rls-matrix.integration.test.ts
@@ -167,7 +167,7 @@ test-e2e-fullmode:
 
 test-load:
 	@command -v k6 >/dev/null 2>&1 || { echo "k6 no instalado. https://k6.io/docs/get-started/installation/"; exit 1; }
-	k6 run tests/load/storefront-browsing.js
+	k6 run -e BASE_URL=$${BASE_URL:-http://localhost:4000} tests/load/storefront-browsing.js
 
 build:
 	pnpm --filter web build
