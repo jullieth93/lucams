@@ -2299,3 +2299,29 @@ model EmailTemplateOverride {
 
   @@unique([templateId, key])
 }
+
+/// Contadores diarios anónimos del embudo tienda + Estudio ([ANA-01], Fase 2).
+/// Estricto diseño privacy-by-default (Ley 1581): CERO PII, cero sessionId,
+/// cero customerId, cero IP/ipHash, cero cookies y cero userAgent crudo.
+/// Solo acumula enteros >= 0 por día calendario (America/Bogota), paso del
+/// embudo, slug de producto, superficie de editor, categoría gruesa de
+/// dispositivo y código cerrado de error. Purga anual (365d) en purgeExpiredEventLogs.
+model FunnelEventDaily {
+  id             String   @id @default(cuid())
+  day            DateTime @db.Date
+  eventName      String
+  productSlug    String   @default("")
+  editorKind     String   @default("all") // "photo" | "name" | "letterset" | "catalog" | "all"
+  deviceCategory String   @default("unknown") // "mobile" | "tablet" | "desktop" | "unknown"
+  errorCode      String   @default("")
+  count          Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  // NOTA: CHECK ("count" >= 0) + ENABLE ROW LEVEL SECURITY + REVOKE ALL viven en
+  // la migración Prisma 20261104140000_add_funnel_event_daily y en
+  // supabase/migrations/00000000000050_funnel_event_daily_rls.sql.
+
+  @@unique([day, eventName, productSlug, editorKind, deviceCategory, errorCode])
+  @@index([day, eventName])
+  @@index([productSlug, day])
+}

@@ -180,7 +180,8 @@ describe("requireAdminAction", () => {
 
 describe("verifyAdminRouteAccess ([SEC-01] — Route Handlers)", () => {
   beforeEach(() => {
-    process.env.CSRF_SECRET = process.env.CSRF_SECRET || "test-csrf-secret-at-least-32-chars-long!!";
+    process.env.CSRF_SECRET =
+      process.env.CSRF_SECRET || "test-csrf-secret-at-least-32-chars-long!!";
   });
 
   it("sin sesión → 401 UNAUTHENTICATED", async () => {

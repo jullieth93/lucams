@@ -560,23 +560,23 @@ export async function GET(req: Request) {
 
 > Mandato: **todo recurso temporal tiene TTL explícito.** Nada infinito.
 
-| Recurso                                   | TTL                          | Mecanismo                                                                 |
-| ----------------------------------------- | ---------------------------- | ------------------------------------------------------------------------- |
-| Access token Supabase                     | 1 h                          | Auto-rotation con refresh token                                           |
-| Refresh token Supabase                    | 30 días                      | Rotation en cada uso                                                      |
-| Session cookie del admin                  | 30 min idle                  | Marca HMAC + revocación server-side en `proxy.ts` (ver § Cookies)         |
-| Reset password (OTP)                      | Corta (config Supabase Auth) | OTP de 6-10 dígitos, no link                                              |
-| Email confirmation (OTP)                  | Corta (config Supabase Auth) | OTP de 6 dígitos, no link                                                 |
-| Reserva de stock (`StockReservation`)     | 15 min                       | `pg_cron` cleanup cada minuto (ADR-014)                                   |
-| Cache "última cotización buena" Aveonline | 10 min                       | Cache in-memory por proceso (`features/shipping/aveonline.ts`)            |
-| Rate limit buckets                        | 1 día (housekeeping)         | `pg_cron` cleanup cada 15 min                                             |
+| Recurso                                   | TTL                          | Mecanismo                                                                                              |
+| ----------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Access token Supabase                     | 1 h                          | Auto-rotation con refresh token                                                                        |
+| Refresh token Supabase                    | 30 días                      | Rotation en cada uso                                                                                   |
+| Session cookie del admin                  | 30 min idle                  | Marca HMAC + revocación server-side en `proxy.ts` (ver § Cookies)                                      |
+| Reset password (OTP)                      | Corta (config Supabase Auth) | OTP de 6-10 dígitos, no link                                                                           |
+| Email confirmation (OTP)                  | Corta (config Supabase Auth) | OTP de 6 dígitos, no link                                                                              |
+| Reserva de stock (`StockReservation`)     | 15 min                       | `pg_cron` cleanup cada minuto (ADR-014)                                                                |
+| Cache "última cotización buena" Aveonline | 10 min                       | Cache in-memory por proceso (`features/shipping/aveonline.ts`)                                         |
+| Rate limit buckets                        | 1 día (housekeeping)         | `pg_cron` cleanup cada 15 min                                                                          |
 | URL firmada `customer-uploads`            | 1 h (auto-refresh ≥40 min)   | Supabase Storage signed URL + `refreshDesignAssetUrlsAction` antes de exportar a imprenta (`[STU-01]`) |
-| URL firmada `production-assets`           | 1 h (default, configurable)  | Idem (acceso solo admin)                                                  |
-| `EmailEvent` / `WebhookEvent`             | 180 días                     | Cron `purge-event-logs` (`features/observability/event-log-retention.ts`) |
-| `ErrorLog` / `ErrorReport`                | 90 días                      | Idem (ErrorReport por `lastSeenAt`: lo que sigue ocurriendo no se purga)  |
-| `SecurityEvent`                           | 180 días                     | Idem (F-07 — IP solo como `ipHash`, nunca en claro)                       |
-| Audit logs admin                          | 2 años                       | Política legal                                                            |
-| Backups en R2                             | ~30 días (diarios)           | Pipeline `pg_dump → gzip → gpg AES256` diario + lifecycle rule en bucket  |
+| URL firmada `production-assets`           | 1 h (default, configurable)  | Idem (acceso solo admin)                                                                               |
+| `EmailEvent` / `WebhookEvent`             | 180 días                     | Cron `purge-event-logs` (`features/observability/event-log-retention.ts`)                              |
+| `ErrorLog` / `ErrorReport`                | 90 días                      | Idem (ErrorReport por `lastSeenAt`: lo que sigue ocurriendo no se purga)                               |
+| `SecurityEvent`                           | 180 días                     | Idem (F-07 — IP solo como `ipHash`, nunca en claro)                                                    |
+| Audit logs admin                          | 2 años                       | Política legal                                                                                         |
+| Backups en R2                             | ~30 días (diarios)           | Pipeline `pg_dump → gzip → gpg AES256` diario + lifecycle rule en bucket                               |
 
 ---
 

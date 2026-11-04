@@ -61,6 +61,8 @@ const SENSITIVE = [
   "BackInStockSubscription",
   // F-07 (2026-09-19) — rastro forense de seguridad (ipHash, intentos fallidos).
   "SecurityEvent",
+  // [ANA-01] (Fase 2) — contadores diarios internos de conversión (cerrados a PostgREST).
+  "FunnelEventDaily",
 ] as const;
 
 describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sensibles", () => {

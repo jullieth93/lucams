@@ -18,6 +18,7 @@ const { mockPrisma } = vi.hoisted(() => ({
     notification: { deleteMany: vi.fn() },
     webVital: { deleteMany: vi.fn() },
     securityEvent: { deleteMany: vi.fn() },
+    funnelEventDaily: { deleteMany: vi.fn() },
   },
 }));
 vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
@@ -26,6 +27,7 @@ import {
   EMAIL_EVENT_RETENTION_DAYS,
   ERROR_LOG_RETENTION_DAYS,
   ERROR_REPORT_RETENTION_DAYS,
+  FUNNEL_EVENT_DAILY_RETENTION_DAYS,
   NOTIFICATION_RETENTION_DAYS,
   SECURITY_EVENT_RETENTION_DAYS,
   WEBHOOK_EVENT_RETENTION_DAYS,
@@ -45,9 +47,10 @@ describe("purgeExpiredEventLogs", () => {
     mockPrisma.notification.deleteMany.mockResolvedValue({ count: 5 });
     mockPrisma.webVital.deleteMany.mockResolvedValue({ count: 6 });
     mockPrisma.securityEvent.deleteMany.mockResolvedValue({ count: 7 });
+    mockPrisma.funnelEventDaily.deleteMany.mockResolvedValue({ count: 8 });
   });
 
-  it("purga las 7 tablas y devuelve los conteos", async () => {
+  it("purga las 8 tablas y devuelve los conteos", async () => {
     const res = await purgeExpiredEventLogs();
     expect(mockPrisma.emailEvent.deleteMany).toHaveBeenCalledTimes(1);
     expect(mockPrisma.webhookEvent.deleteMany).toHaveBeenCalledTimes(1);
@@ -56,6 +59,7 @@ describe("purgeExpiredEventLogs", () => {
     expect(mockPrisma.notification.deleteMany).toHaveBeenCalledTimes(1);
     expect(mockPrisma.webVital.deleteMany).toHaveBeenCalledTimes(1);
     expect(mockPrisma.securityEvent.deleteMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.funnelEventDaily.deleteMany).toHaveBeenCalledTimes(1);
     expect(res).toEqual({
       emailEventsPurged: 1,
       webhookEventsPurged: 2,
@@ -64,6 +68,7 @@ describe("purgeExpiredEventLogs", () => {
       notificationsPurged: 5,
       webVitalsPurged: 6,
       securityEventsPurged: 7,
+      funnelEventsPurged: 8,
     });
   });
 
@@ -138,6 +143,18 @@ describe("purgeExpiredEventLogs", () => {
     const ageDays = (before - cutoff) / DAY_MS;
     expect(ageDays).toBeGreaterThanOrEqual(35);
     expect(ageDays).toBeLessThan(36);
+  });
+
+  it("[ANA-01]: purga FunnelEventDaily por day con retención de 365 días", async () => {
+    const before = Date.now();
+    await purgeExpiredEventLogs();
+
+    const where = mockPrisma.funnelEventDaily.deleteMany.mock.calls[0][0].where;
+    expect(Object.keys(where)).toEqual(["day"]);
+    const cutoff = (where.day.lt as Date).getTime();
+    const ageDays = (before - cutoff) / DAY_MS;
+    expect(ageDays).toBeGreaterThanOrEqual(FUNNEL_EVENT_DAILY_RETENTION_DAYS - 0.01);
+    expect(ageDays).toBeLessThan(FUNNEL_EVENT_DAILY_RETENTION_DAYS + 1);
   });
 
   it("los overrides de días aplican por tabla", async () => {
