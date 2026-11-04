@@ -29,7 +29,7 @@ Hitos de upgrade: Supabase Pro cuando se necesite PITR o se supere la cuota Free
 - **0a/0b — Documentación y cuentas:** ✅
 - **1 — Base sólida:** ✅ monorepo, Next.js 16, Prisma, Auth + RLS, CI/CD con gates (lint/typecheck/tests/RLS/gitleaks/Lighthouse).
 - **2 — Catálogo y carrito:** ✅ storefront completo + admin del catálogo.
-- **3 — Estudio de personalización:** ✅ canvas por tipo de producto, 3D, compartir, plantillas, render de producción asíncrono (RenderJob), watermark anti-copia.
+- **3 — Estudio de personalización:** ✅ canvas por tipo de producto, 3D, compartir, plantillas, render de producción asíncrono (`RenderJob`), galería de prediseñados con watermark propio (el watermark anti-copia sobre previews de diseños de cliente se retiró en ADR-191).
 - **4 — Checkout, pagos y logística:** ✅ certificada (Wompi + COD + Aveonline + saga + reconciliación + emails).
 - **5 — Marketing (parcial):** cupones, referidos, recuperación de carrito, Puntos Lucams ✅; el resto queda en «Futuro».
 - **6 — Backoffice:** ✅ construido y en operación (pedidos, inventario, clientes 360, moderación, garantías/retractos, soporte, dashboards, auditoría, MFA). Falta solo la parte B2B pública.
@@ -57,6 +57,6 @@ Hitos de upgrade: Supabase Pro cuando se necesite PITR o se supere la cuota Free
 - Monitoreo de errores externo (ADR-022, decisión pendiente; hoy la captura propia en DB + alertas cubre).
 - Pen test externo (proveedor + alcance) como complemento de las auditorías internas ya hechas.
 - Email lifecycle marketing (welcome series, recompra 30/60/90) + `List-Unsubscribe` en emails de marketing.
-- Feature flags/A-B testing básico (ADR-026 ya tiene la tabla; falta operación).
+- Feature flags/A-B testing básico (ADR-026 dejó el contrato conceptual; hoy los flags viven en variables de entorno y settings CMS, sin tabla `FeatureFlag` creada aún).
 - PWA instalable, realtime inventory, multi-idioma (es-CO base preparada).
 - Lighthouse ≥ 95 en todas las páginas críticas (gate móvil ya en CI; hoy los hotspots conocidos son el init del Estudio y el peso de la home).

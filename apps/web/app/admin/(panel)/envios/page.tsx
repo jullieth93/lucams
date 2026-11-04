@@ -117,7 +117,7 @@ export default async function EnviosAdminPage() {
           <div className="mb-3 flex items-center gap-2">
             <Bike className="text-brand-purple h-4 w-4" />
             <h2 className="text-brand-purple-dark text-sm font-bold">
-              Envío propio Lucam&apos;s — configuración
+              Envío propio Lucams — configuración
             </h2>
           </div>
           <p className="text-brand-muted mb-3 text-xs">

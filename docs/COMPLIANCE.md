@@ -237,21 +237,16 @@ cuyos bytes quedaron en Storage):
 Ambas corren en la misma corrida del cron `/api/cron/purge-anon-designs` (los carritos PRIMERO,
 para destrabar diseños en la misma pasada; el barrido de huérfanos al final, como red de fondo).
 
-### Previews derivados del diseño: thumbnails de borrador y versiones con marca de agua (2026-10-13)
+### Previews derivados del diseño: thumbnails de borrador y exhibición limpia bajo bucket privado (ADR-147 / ADR-191)
 
-Dos derivados nuevos del diseño viven en el bucket `design-previews` bajo el path del propio
-diseño, así que **ninguno introduce una nueva categoría de retención**: se borran con las purgas
+Los derivados del diseño viven en el bucket privado `design-previews` bajo el path del propio
+diseño, servidos únicamente a través de `/api/design-preview/*`, así que **ninguno introduce una nueva categoría de retención**: se borran con las purgas
 de siempre (por diseño) y los cubre el barrido de huérfanos.
 
 - **Thumbnail de borrador** (`Design.draftPreviewUrl`, ADR-147): snapshot WebP liviano
   (≤120 KB, 400 px) que el auto-save reescribe con upsert al MISMO path (`<designId>/thumb.webp`)
-  — no acumula versiones. Deriva del lienzo que el cliente ya ve en pantalla.
-- **Previews con marca de agua** (ADR-148): las vistas servidas de diseños (carrito, «Ver»
-  paginado, Mis diseños, `/d` + OG, cotización, gracias, pedido) muestran versiones con tiling
-  LUCAMS (`<designId>/preview-wm.webp`, `<designId>/wm/pages/NN.webp`); el lienzo del Estudio, el
-  3D, el admin y los archivos de producción quedan LIMPIOS. El motivo es anti-copia comercial, no
-  de privacidad: las versiones con marca no amplían el acceso a nada que la vista limpia no
-  mostrara ya. El CMS avisa al cliente que «tu impresión final no la lleva».
+  — no acumula versiones y solo es accesible al dueño o a staff autorizado con MFA `aal2`.
+- **Previews de exhibición limpios** (ADR-191, retiró el watermark tiling de ADR-148 el 2026-11-03): todas las superficies (carrito, «Ver» paginado, Mis diseños, `/d` + OG, cotización, gracias y pedido) exhiben las versiones limpias (`<designId>/preview.<ext>`, `<designId>/pages/NN.webp`) autorizadas al dueño, staff con rol permitido + MFA `aal2`, o portador del capability token correspondiente (`st`/`qt`/`ot`). Los artefactos `preview-wm.webp` / `wm/pages/*` históricos quedan huérfanos y los cubre la purga estándar de retención (`designPreviewDerivedPaths`).
 
 ### Retención POST-ENTREGA de fotos y renders de producción (2026-09-18)
 

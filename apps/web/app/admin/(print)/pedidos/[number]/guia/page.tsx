@@ -129,7 +129,7 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
         <header className="flex items-start justify-between border-b-2 border-black pb-1">
           <div>
             <p className="text-[11px] font-bold tracking-wide">GUÍA DE ENTREGA INTERNA</p>
-            <p className="text-[8px]">Lucam&apos;s — mensajería propia</p>
+            <p className="text-[8px]">Lucams — mensajería propia</p>
           </div>
           <div className="text-right">
             <p className="font-mono text-[11px] font-bold">{order.number}</p>
@@ -209,7 +209,7 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
 
         {/* Firmas — líneas simples */}
         <section className="space-y-3 pt-3 text-[8px]">
-          <p>Entregó (Lucam&apos;s): ______________________ Firma: ______________</p>
+          <p>Entregó (Lucams): ______________________ Firma: ______________</p>
           <p>Recibí a satisfacción: ______________________ CC: __________ Firma: __________</p>
         </section>
       </article>
