@@ -1,7 +1,8 @@
 import "server-only";
 
 /*
- * Guard de RBAC del servidor. Usar al INICIO de una página/acción admin sensible.
+ * Guard de RBAC del servidor por Rol y por Capacidad (`AdminCapability`) + MFA `aal2`.
+ * Usar al INICIO de toda página RSC, Server Action o Route Handler administrativo.
  */
 
 import { headers } from "next/headers";
@@ -13,7 +14,7 @@ import {
   ADMIN_IDLE_LIMIT_MS,
   readAdminActivityMark,
 } from "@/lib/admin-activity";
-import { adminHomePath } from "@/lib/admin-rbac";
+import { adminHomePath, hasCapability, type AdminCapability } from "@/lib/admin-rbac";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function readCookieFromRequest(req: Request, name: string): string | null {
@@ -39,22 +40,13 @@ export type AdminRouteAccessResult =
     };
 
 /**
- * Guard no-redirigente para Route Handlers (`route.ts`) que requieren privilegios
- * administrativos ([SEC-01], auditoría 2026-11).
- *
- * Los Route Handlers no pasan por `app/admin/(panel)/layout.tsx`, por lo que
- * llamar únicamente a `getCurrentAdmin()` dejaba afuera el segundo factor TOTP
- * (`aal2`), el enrolamiento obligatorio de MFA, el filtro explícito de rol y
- * (en rutas bajo `/admin/*` donde el navegador envía `admin_last_activity`) el
- * idle-timeout de 30 min.
- *
- * NOTA sobre `checkIdle`: la cookie `admin_last_activity` tiene `Path=/admin`,
- * así que SOLO debe activarse en Route Handlers servidos bajo `/admin/*`
- * (nunca en `/api/*`, donde el navegador no adjunta esa cookie).
+ * Guard no-redirigente para Route Handlers (`route.ts`) administrativos ([SEC-01] + S17).
+ * Acepta filtro por `roles` y/o por `capability` granular.
  */
 export async function verifyAdminRouteAccess(
   opts: {
     roles?: readonly AdminRole[];
+    capability?: AdminCapability;
     req?: Request;
     checkIdle?: boolean;
   } = {},
@@ -86,6 +78,10 @@ export async function verifyAdminRouteAccess(
     return { ok: false, status: 403, reason: "MFA_REQUIRED" };
   }
 
+  if (opts.capability && !hasCapability(session.admin.role, opts.capability)) {
+    return { ok: false, status: 403, reason: "FORBIDDEN_ROLE" };
+  }
+
   if (opts.roles && !opts.roles.includes(session.admin.role)) {
     return { ok: false, status: 403, reason: "FORBIDDEN_ROLE" };
   }
@@ -94,35 +90,20 @@ export async function verifyAdminRouteAccess(
 }
 
 /**
- * Guard central para Server Actions admin mutantes (auditoría 2026-07-16, ADR-062 P0-1).
+ * Guard central para Server Actions y páginas admin (ADR-062 P0-1 + S17 Capability RBAC).
  *
- * Valida, en orden y SIEMPRE en el servidor:
- *   1. Sesión admin activa (getCurrentAdmin). Si no → /admin/login.
- *   2. MFA ENROLADO (obligatorio, auditoría 2026-08-24 · B-1): si la cuenta NO tiene
- *      un factor TOTP verificado → /admin/seguridad?enroll=required. Sin este paso el
- *      candado aal2 de abajo era opt-in: Supabase solo reporta nextLevel="aal2" cuando
- *      YA existe un factor verificado, así que un admin sin MFA operaba el panel solo
- *      con contraseña (contra la política declarada en docs/SECURITY.md).
- *      Anti-loop: no se dispara si la request YA apunta a /admin/seguridad (la propia
- *      pantalla de enrolamiento) — el pathname lo setea el proxy (x-pathname,
- *      no spoofeable). El enrolamiento TOTP lo hace el SDK de Supabase en el cliente
- *      (le basta aal1), no Server Actions: ninguna acción necesita saltarse este check.
- *   3. MFA aal2 (por defecto): si la cuenta tiene 2 pasos activos (nextLevel="aal2")
- *      pero la sesión sigue en "aal1" (solo contraseña) → /admin/login/mfa. Cierra el
- *      hueco de que el candado MFA solo vivía en el render del layout, no en las
- *      acciones — que Next expone como endpoints POST invocables directo. Sin esto,
- *      una contraseña robada bastaba para invocar cualquier mutación (reembolsos,
- *      auto-promoción a SUPERADMIN vía promoteAdminAction) saltándose el 2º factor.
- *   4. Rol permitido (si se pasan `roles`). Si no → home del rol con ?denied=1
- *      (adminHomePath: dashboard para operativos, /admin/contenido para CMS_EDITOR).
- *
- * redirect() aborta la acción (lanza NEXT_REDIRECT), por eso DEBE invocarse al INICIO
- * de la acción, antes de cualquier try/catch que pudiera tragarse la excepción.
- *
- * Devuelve la misma sesión que getCurrentAdmin ({ user, admin }) ya validada.
+ * Verifica siempre en el servidor:
+ *   1. Sesión admin activa (`getCurrentAdmin`).
+ *   2. Factor TOTP verificado obligatorio (B-1).
+ *   3. Nivel MFA `aal2` activo (salvo `aal2: false` explícito).
+ *   4. `capability` granular y/o conjunto `roles` permitido.
  */
 export async function requireAdminAction(
-  opts: { roles?: readonly AdminRole[]; aal2?: boolean } = {},
+  opts: {
+    roles?: readonly AdminRole[];
+    capability?: AdminCapability;
+    aal2?: boolean;
+  } = {},
 ) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
@@ -147,18 +128,26 @@ export async function requireAdminAction(
     }
   }
 
-  if (opts.roles && !opts.roles.includes(session.admin.role)) {
-    // A SU home, no al dashboard fijo: CMS_EDITOR no tiene acceso a
-    // /admin/dashboard y caería en un loop de redirects (ver adminHomePath).
+  if (opts.capability && !hasCapability(session.admin.role, opts.capability)) {
     redirect(`${adminHomePath(session.admin.role)}?denied=1`);
   }
+
+  if (opts.roles && !opts.roles.includes(session.admin.role)) {
+    redirect(`${adminHomePath(session.admin.role)}?denied=1`);
+  }
+
   return session;
 }
 
 /**
- * Compat: verifica sesión + rol permitido. Ahora también exige MFA aal2 (delegando
- * en requireAdminAction), así que las pantallas/acciones que ya lo usaban ganan el
- * enforcement de 2º factor sin cambios.
+ * Guard declarativo por capacidad granular (`AdminCapability`) + MFA `aal2`.
+ */
+export async function requireCapability(capability: AdminCapability) {
+  return requireAdminAction({ capability });
+}
+
+/**
+ * Compat: verifica sesión + rol permitido + MFA `aal2`.
  */
 export async function requireRole(allowed: readonly AdminRole[]) {
   return requireAdminAction({ roles: allowed });

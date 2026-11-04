@@ -12,6 +12,7 @@
 
 import type { Metadata } from "next";
 import { LifeBuoy } from "lucide-react";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatRelativeTime } from "@/lib/format";
 import { listSupportTickets, type SupportTicketStatus } from "@/features/support/admin-service";
@@ -60,7 +61,7 @@ function subjectLabel(subject: string): string {
 }
 
 export default async function AdminSoportePage({ searchParams }: { searchParams: SearchParams }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  await requireRole(ADMIN_ROLE_SETS.SUPPORT_CARE);
   const sp = await searchParams;
   const statusRaw = sp.status;
   const validStatus = (["OPEN", "IN_PROGRESS", "CLOSED"] as const).find((s) => s === statusRaw);

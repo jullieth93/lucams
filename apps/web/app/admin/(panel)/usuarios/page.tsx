@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
-import { ADMIN_ROLE_LABEL } from "@/lib/admin-roles";
+import { ADMIN_ROLES_ALL, ADMIN_ROLE_LABEL, isValidAdminRole } from "@/lib/admin-roles";
 import { listAdminUsers } from "@/features/admin-users/service";
 import { changeAdminRoleAction, toggleAdminActiveAction } from "./actions";
 import { PromoteForm } from "./promote-form";
@@ -57,8 +57,12 @@ const STATUS_LABEL: Record<(typeof STATUS_OPTIONS)[number], string> = {
   all: "Todos",
 };
 
-const ROLE_TONE: Record<string, "purple" | "blue" | "amber" | "emerald"> = {
+const ROLE_TONE: Record<string, "purple" | "blue" | "amber" | "emerald" | "slate"> = {
   SUPERADMIN: "purple",
+  OPERATIONS_MANAGER: "blue",
+  CUSTOMER_SUPPORT: "emerald",
+  PRINT_WORKSHOP: "amber",
+  FINANCE_ANALYST: "purple",
   MANAGER: "blue",
   FULFILLMENT: "amber",
   CMS_EDITOR: "emerald",
@@ -121,10 +125,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
     ? (statusRaw as (typeof STATUS_OPTIONS)[number])
     : "active";
   const roleFilter = pickString(sp, "role");
-  const role =
-    roleFilter && ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"].includes(roleFilter)
-      ? (roleFilter as "SUPERADMIN" | "MANAGER" | "FULFILLMENT" | "CMS_EDITOR")
-      : undefined;
+  const role = roleFilter && isValidAdminRole(roleFilter) ? roleFilter : undefined;
   const sortRaw = pickString(sp, "sort");
   const sort = (["recent", "email", "role"] as const).includes(sortRaw as "recent")
     ? (sortRaw as "recent" | "email" | "role")
@@ -250,10 +251,11 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
               <option value="">Todos</option>
-              <option value="SUPERADMIN">Superadmin</option>
-              <option value="MANAGER">Manager</option>
-              <option value="FULFILLMENT">Fulfillment</option>
-              <option value="CMS_EDITOR">Editor de contenido</option>
+              {ADMIN_ROLES_ALL.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABEL[r] ?? r}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex items-end gap-2 sm:col-span-1">
@@ -335,10 +337,11 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                               defaultValue={a.role}
                               className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 rounded-md border bg-white px-2 py-1 text-[11px] focus:ring-1 focus:outline-none"
                             >
-                              <option value="SUPERADMIN">Superadmin</option>
-                              <option value="MANAGER">Manager</option>
-                              <option value="FULFILLMENT">Fulfillment</option>
-                              <option value="CMS_EDITOR">Editor de contenido</option>
+                              {ADMIN_ROLES_ALL.map((r) => (
+                                <option key={r} value={r}>
+                                  {ROLE_LABEL[r] ?? r}
+                                </option>
+                              ))}
                             </select>
                             <Hint content="Cambiar rol">
                               <button

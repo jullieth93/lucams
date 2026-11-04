@@ -65,7 +65,7 @@ function jsonRecord(value: unknown): Record<string, unknown> | null {
 
 export async function GET(req: Request, ctx: { params: Promise<{ number: string }> }) {
   const auth = await verifyAdminRouteAccess({
-    roles: ADMIN_ROLE_SETS.ALL,
+    roles: ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD,
     req,
     checkIdle: true,
   });

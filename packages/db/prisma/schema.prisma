@@ -33,6 +33,10 @@ datasource db {
 
 enum AdminRole {
   SUPERADMIN
+  OPERATIONS_MANAGER
+  CUSTOMER_SUPPORT
+  PRINT_WORKSHOP
+  FINANCE_ANALYST
   MANAGER
   FULFILLMENT
   CMS_EDITOR // puede editar contenido del sitio, nada más

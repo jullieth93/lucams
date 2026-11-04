@@ -16,6 +16,7 @@ import Link from "next/link";
 import { TrendingUp, Trophy } from "lucide-react";
 import type { OrderStatus, QuoteStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
@@ -90,7 +91,7 @@ export default async function AdminMetricasPage({
 }: {
   searchParams?: Promise<RawSearchParams>;
 }) {
-  await requireRole(["SUPERADMIN"]);
+  await requireRole(ADMIN_ROLE_SETS.METRICS);
   const sp = (await searchParams) ?? {};
 
   const rawWindow = firstParam(sp, "ventana");

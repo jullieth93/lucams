@@ -13,6 +13,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, FileText, Hammer, MapPin, Sparkles, StickyNote, User } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP, formatCityDept } from "@/lib/format";
 import { customerWaLink } from "@/lib/wa";
@@ -55,7 +56,7 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 });
 
 export default async function AdminCotizacionDetallePage({ params }: { params: Params }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
 
   const { id } = await params;
   const quote = await getQuoteById(id);

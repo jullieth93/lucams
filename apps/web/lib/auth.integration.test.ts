@@ -40,6 +40,7 @@
  */
 
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -114,7 +115,7 @@ async function makeAdmin(
   supabaseUserId: string,
   over: Partial<{
     email: string;
-    role: "SUPERADMIN" | "MANAGER" | "FULFILLMENT";
+    role: AdminRole;
     isActive: boolean;
     deletedAt: Date | null;
   }> = {},
@@ -272,8 +273,17 @@ describe.skipIf(!hasDb)("lib/auth — integración (sesión Supabase mockeada + 
       expect(result!.admin.deletedAt).toBeNull();
     });
 
-    it("resuelve cualquier rol activo (SUPERADMIN/MANAGER/FULFILLMENT) — no filtra por rol", async () => {
-      for (const role of ["SUPERADMIN", "MANAGER", "FULFILLMENT"] as const) {
+    it("resuelve los 8 roles del enum AdminRole (incluidos perfiles granulares S17) — no filtra por rol", async () => {
+      for (const role of [
+        "SUPERADMIN",
+        "OPERATIONS_MANAGER",
+        "CUSTOMER_SUPPORT",
+        "PRINT_WORKSHOP",
+        "FINANCE_ANALYST",
+        "MANAGER",
+        "FULFILLMENT",
+        "CMS_EDITOR",
+      ] as const) {
         const sub = newSub();
         const created = await makeAdmin(sub, { role });
         setSession({ id: sub });

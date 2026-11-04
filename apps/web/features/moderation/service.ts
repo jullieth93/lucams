@@ -13,7 +13,10 @@
  */
 
 import "server-only";
+import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { hasCapability } from "@/lib/admin-rbac";
+import { maskEmail, maskPhone } from "@/lib/pii-mask";
 
 // Estados de pedido en los que un diseño AÚN puede/deber moderarse antes de imprimir.
 const ACTIVE_ORDER_STATUSES = ["PAID", "FULFILLING"] as const;
@@ -114,6 +117,24 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
         contacto: q.quote.customerWhatsapp,
       })),
     ]),
+  }));
+}
+
+/**
+ * S17 (Fase 8) — Cola de moderación con enmascaramiento server-side de PII
+ * (`sources[].contacto`) cuando el actor carece de `orders:read_pii` (`PRINT_WORKSHOP`).
+ */
+export async function listPendingModerationForActor(
+  role: AdminRole,
+): Promise<PendingModerationDesign[]> {
+  const rows = await listPendingModeration();
+  if (hasCapability(role, "orders:read_pii")) return rows;
+  return rows.map((row) => ({
+    ...row,
+    sources: row.sources.map((s) => ({
+      ...s,
+      contacto: s.tipo === "pedido" ? maskEmail(s.contacto) : maskPhone(s.contacto),
+    })),
   }));
 }
 

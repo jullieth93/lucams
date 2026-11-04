@@ -54,7 +54,7 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 });
 
 export default async function AdminRetractosPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await requireRole(ADMIN_ROLE_SETS.MANAGER_UP);
+  const session = await requireRole(ADMIN_ROLE_SETS.SUPPORT_CARE);
   const canRefund = session.admin.role === "SUPERADMIN";
   const sp = await searchParams;
   const statusRaw = sp.status;

@@ -49,7 +49,7 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-import { requireAdminAction, verifyAdminRouteAccess } from "./admin-rbac-guard";
+import { requireAdminAction, requireCapability, verifyAdminRouteAccess } from "./admin-rbac-guard";
 import { ADMIN_ACTIVITY_COOKIE, sealAdminActivityMark } from "./admin-activity";
 
 const VERIFIED_TOTP = { all: [{ factor_type: "totp", status: "verified" }] };
@@ -175,6 +175,29 @@ describe("requireAdminAction", () => {
     state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
     const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
     expect(s.admin.id).toBe("c1");
+  });
+
+  it("S17: requireCapability permite CUSTOMER_SUPPORT en support:manage y bloquea contacts:merge", async () => {
+    state.session = { admin: { id: "cs1", role: "CUSTOMER_SUPPORT" } };
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    const s = await requireCapability("support:manage");
+    expect(s.admin.id).toBe("cs1");
+
+    await expectRedirect(() => requireCapability("contacts:merge"), "/admin/dashboard?denied=1");
+  });
+
+  it("S17: verifyAdminRouteAccess por capability permite FINANCE_ANALYST en finance:export_csv y bloquea MANAGER", async () => {
+    state.session = { admin: { id: "fin1", role: "FINANCE_ANALYST" } };
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    const okRes = await verifyAdminRouteAccess({ capability: "finance:export_csv" });
+    expect(okRes.ok).toBe(true);
+
+    state.session = { admin: { id: "mgr1", role: "MANAGER" } };
+    expect(await verifyAdminRouteAccess({ capability: "finance:export_csv" })).toEqual({
+      ok: false,
+      status: 403,
+      reason: "FORBIDDEN_ROLE",
+    });
   });
 });
 

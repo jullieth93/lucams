@@ -51,7 +51,7 @@ import {
   QuickLink,
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
-import { canAccessAdminPath } from "@/lib/admin-rbac";
+import { canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { getInventorySummary } from "@/features/products/inventory-service";
 import { countOpenSupportTickets } from "@/features/support/admin-service";
@@ -191,8 +191,8 @@ export default async function AdminDashboardPage({
       tone: "coral",
       urgent: reconciliationOrders > 0,
       countInHeaderAlert: true,
-      // Reconciliación manual exige MANAGER_UP en markOrderReconciledAction.
-      visible: role === "SUPERADMIN" || role === "MANAGER",
+      // Reconciliación manual exige orders:reconcile en markOrderReconciledAction.
+      visible: hasCapability(role, "orders:reconcile"),
     },
     {
       href: "/admin/moderacion",
@@ -215,6 +215,7 @@ export default async function AdminDashboardPage({
       tone: "coral",
       urgent: failedRenderJobs > 0,
       countInHeaderAlert: true,
+      visible: hasCapability(role, "orders:transition"),
     },
     {
       href: "/admin/soporte",

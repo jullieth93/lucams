@@ -60,12 +60,16 @@ describe("GET /admin/pedidos/[number]/produccion (S11 · [OPS-01] / [SEC-02])", 
     });
   });
 
-  it("permite descarga a FULFILLMENT (ADMIN_ROLE_SETS.ALL) y registra order.design_zip_download en AdminActionLog", async () => {
+  it("permite descarga a roles con production:download_assets (ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD) y registra order.design_zip_download en AdminActionLog", async () => {
     const req = new Request("http://localhost/admin/pedidos/LCM-2026-0099/produccion");
     const res = await GET(req, { params: Promise.resolve({ number: "LCM-2026-0099" }) });
 
+    expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).toContain("PRINT_WORKSHOP");
+    expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).toContain("FULFILLMENT");
+    expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).not.toContain("CUSTOMER_SUPPORT");
+    expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).not.toContain("FINANCE_ANALYST");
     expect(verifyAdminRouteAccess).toHaveBeenCalledWith({
-      roles: ADMIN_ROLE_SETS.ALL,
+      roles: ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD,
       req,
       checkIdle: true,
     });

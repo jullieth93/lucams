@@ -26,7 +26,7 @@ function revalidateTicket(id: string) {
 
 export async function setTicketStatusAction(_p: St, fd: FormData): Promise<St> {
   // Soporte al cliente: SUPERADMIN o MANAGER (no es dinero, no exige SUPERADMIN).
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPPORT_CARE });
   const id = String(fd.get("id") ?? "");
   const status = String(fd.get("status") ?? "") as SupportTicketStatus;
   if (!id) return { error: "Falta id" };
@@ -63,7 +63,7 @@ export async function setTicketStatusAction(_p: St, fd: FormData): Promise<St> {
  * El checkbox `internal` del form decide; ambos casos quedan auditados.
  */
 export async function replyTicketAction(_p: St, fd: FormData): Promise<St> {
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPPORT_CARE });
   const id = String(fd.get("id") ?? "");
   const body = String(fd.get("body") ?? "");
   const internal = fd.get("internal") === "on";
@@ -100,7 +100,7 @@ export async function replyTicketAction(_p: St, fd: FormData): Promise<St> {
 
 /** Convierte el ticket GARANTIA_DEVOLUCION en WarrantyClaim o RetractRequest enlazado. */
 export async function convertTicketToCaseAction(_p: St, fd: FormData): Promise<St> {
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPPORT_CARE });
   const id = String(fd.get("id") ?? "");
   const kind = String(fd.get("kind") ?? "") as LinkedCaseKind;
   const orderItemId = String(fd.get("orderItemId") ?? "");

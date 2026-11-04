@@ -9,9 +9,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ShieldAlert, Search } from "lucide-react";
+import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import {
-  listPendingModeration,
+  listPendingModerationForActor,
   type ModerationSource,
   type PendingModerationDesign,
 } from "@/features/moderation/service";
@@ -55,7 +56,15 @@ function sourceHref(s: ModerationSource): string {
  * (aprobar/rechazar) para que el redirect conserve el filtro activo — si no,
  * moderar un item dentro de una búsqueda te sacaba de ella.
  */
-function ModerationItem({ d, pedidoFilter }: { d: PendingModerationDesign; pedidoFilter: string }) {
+function ModerationItem({
+  d,
+  pedidoFilter,
+  canReadQuotes,
+}: {
+  d: PendingModerationDesign;
+  pedidoFilter: string;
+  canReadQuotes: boolean;
+}) {
   return (
     <li className="border-brand-purple/10 flex flex-col gap-4 rounded-xl border bg-white p-4 shadow-sm sm:flex-row sm:items-start">
       <div className="sm:w-64 sm:flex-shrink-0">
@@ -89,15 +98,21 @@ function ModerationItem({ d, pedidoFilter }: { d: PendingModerationDesign; pedid
             opera por cotización son todas de ese tipo, así que rotularlas "Pedido" sería
             mentir sobre lo que Lucy está a punto de aprobar. */}
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {d.sources.map((s) => (
-            <Link
-              key={s.numero}
-              href={sourceHref(s)}
-              className="text-brand-purple-dark hover:text-brand-purple text-xs font-semibold underline"
-            >
-              {s.tipo === "pedido" ? "Pedido" : "Cotización"} {s.numero}
-            </Link>
-          ))}
+          {d.sources.map((s) =>
+            s.tipo === "cotizacion" && !canReadQuotes ? (
+              <span key={s.numero} className="text-brand-purple-dark text-xs font-semibold">
+                Cotización {s.numero}
+              </span>
+            ) : (
+              <Link
+                key={s.numero}
+                href={sourceHref(s)}
+                className="text-brand-purple-dark hover:text-brand-purple text-xs font-semibold underline"
+              >
+                {s.tipo === "pedido" ? "Pedido" : "Cotización"} {s.numero}
+              </Link>
+            ),
+          )}
           {/* A4-01 — un diseño solo-compartido no tiene pedido/cotización:
               el badge explica por qué está en la cola (contenido público /d/<token>). */}
           {d.shared && (
@@ -130,9 +145,10 @@ export default async function AdminModeracionPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  const session = await requireRole(ADMIN_ROLE_SETS.PRODUCTION_MODERATE);
+  const canReadQuotes = hasCapability(session.admin.role, "opportunities:manage");
   const sp = await searchParams;
-  const rows = await listPendingModeration();
+  const rows = await listPendingModerationForActor(session.admin.role);
   // T4 (ADR-063 T2 revisitado) — la grilla muestra el previewUrl (mosaico público webp ~50-150 KB,
   // bucket design-previews cubierto por remotePatterns de next/image). Los PNGs reales de
   // producción (2-5 MB c/u, hasta 24 por diseño) ya NO se firman en lote acá: el modal
@@ -258,9 +274,16 @@ export default async function AdminModeracionPage({
               <section key={g.source ? `${g.source.tipo}:${g.source.numero}` : "__shared__"}>
                 <h2 className="text-brand-purple-dark mb-2 flex flex-wrap items-center gap-2 text-sm font-bold">
                   {g.source ? (
-                    <Link href={sourceHref(g.source)} className="hover:text-brand-purple underline">
-                      {g.source.tipo === "pedido" ? "Pedido" : "Cotización"} {g.source.numero}
-                    </Link>
+                    g.source.tipo === "cotizacion" && !canReadQuotes ? (
+                      <span>Cotización {g.source.numero}</span>
+                    ) : (
+                      <Link
+                        href={sourceHref(g.source)}
+                        className="hover:text-brand-purple underline"
+                      >
+                        {g.source.tipo === "pedido" ? "Pedido" : "Cotización"} {g.source.numero}
+                      </Link>
+                    )
                   ) : (
                     <span>Sin pedido ni cotización — solo link público</span>
                   )}
@@ -270,7 +293,12 @@ export default async function AdminModeracionPage({
                 </h2>
                 <ul className="space-y-3">
                   {g.items.map((d) => (
-                    <ModerationItem key={d.designId} d={d} pedidoFilter={pedidoFilter} />
+                    <ModerationItem
+                      key={d.designId}
+                      d={d}
+                      pedidoFilter={pedidoFilter}
+                      canReadQuotes={canReadQuotes}
+                    />
                   ))}
                 </ul>
               </section>

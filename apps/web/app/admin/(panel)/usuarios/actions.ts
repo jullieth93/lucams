@@ -7,6 +7,7 @@ import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { ADMIN_ROLES_ALL } from "@/lib/admin-roles";
 import {
   AdminUserValidationError,
   changeAdminRole,
@@ -15,7 +16,7 @@ import {
 } from "@/features/admin-users/service";
 import { logger } from "@/lib/logger";
 
-const ROLES: readonly AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"];
+const ROLES: readonly AdminRole[] = ADMIN_ROLES_ALL;
 
 /**
  * F-10 (auditoría 2026-09-04): gestionar admins (crear/elevar roles, desactivar)

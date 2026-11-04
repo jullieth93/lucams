@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/db";
+import type { AdminRole } from "@lucams/db";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import {
   reviewWarrantyClaim,
@@ -19,11 +20,10 @@ import { notifyWarrantyRejected, notifyWarrantyResolved } from "@/features/warra
 
 type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
-async function guard(): Promise<{ adminId: string } | { error: string }> {
-  // Sesión + MFA aal2 + rol (SUPERADMIN|MANAGER) server-side (ADR-062 P0-1). El guard
-  // redirige ante fallo; la rama {error} se conserva por tipo para los callers.
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
-  return { adminId: s.admin.id };
+async function guard(): Promise<{ adminId: string; role: AdminRole } | { error: string }> {
+  // Sesión + MFA aal2 + capacidad warranty:manage server-side (ADR-062 P0-1 + S17).
+  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPPORT_CARE });
+  return { adminId: s.admin.id, role: s.admin.role };
 }
 
 function fail(action: string, id: string, err: unknown): St {
@@ -73,6 +73,12 @@ export async function approveWarrantyAction(_p: St, fd: FormData): Promise<St> {
   if (!id) return { error: "Falta id" };
   if (!WARRANTY_RESOLUTIONS.includes(resolution)) return { error: "Elige un remedio." };
   if (resolution === "REFUND") {
+    if (!hasCapability(g.role, "warranty:refund")) {
+      return {
+        error:
+          "Tu rol no está autorizado para aprobar devoluciones de dinero en garantías. Escálalo a operaciones o administración.",
+      };
+    }
     try {
       await requireRecentMfa();
     } catch (err) {
@@ -101,6 +107,12 @@ export async function resolveWarrantyAction(_p: St, fd: FormData): Promise<St> {
     select: { resolutionType: true },
   });
   if (current?.resolutionType === "REFUND") {
+    if (!hasCapability(g.role, "warranty:refund")) {
+      return {
+        error:
+          "Tu rol no está autorizado para cerrar garantías con devolución de dinero. Escálalo a operaciones o administración.",
+      };
+    }
     try {
       await requireRecentMfa();
     } catch (err) {

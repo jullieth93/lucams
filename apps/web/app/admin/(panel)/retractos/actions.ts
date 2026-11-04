@@ -18,7 +18,7 @@ type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 async function guardOps(): Promise<{ adminId: string } | { error: string }> {
   // Ciclo operativo de retractos (aprobar devolución, rechazar con nota, marcar
   // producto recibido) disponible para SUPERADMIN + MANAGER (S11).
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPPORT_CARE });
   return { adminId: s.admin.id };
 }
 

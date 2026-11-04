@@ -13,6 +13,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, LifeBuoy, Package, Scale } from "lucide-react";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import {
   getSupportTicketDetail,
@@ -55,7 +56,7 @@ export default async function AdminSoporteTicketPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  await requireRole(ADMIN_ROLE_SETS.SUPPORT_CARE);
   const { id } = await params;
   const ticket = await getSupportTicketDetail(id);
   if (!ticket) notFound();

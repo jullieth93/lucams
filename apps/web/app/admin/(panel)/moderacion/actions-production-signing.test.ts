@@ -58,12 +58,16 @@ beforeEach(() => {
 });
 
 describe("getDesignProductionSignedUrlsAction (firma bajo demanda, T4)", () => {
-  it("exige rol MANAGER_UP antes de tocar Storage", async () => {
+  it("exige rol PRODUCTION_MODERATE (incluye PRINT_WORKSHOP y excluye soporte/finanzas) antes de tocar Storage", async () => {
     await getDesignProductionSignedUrlsAction("design-1");
     const roles = guardSpy.mock.calls[0]![0].roles as readonly string[];
     expect(roles).toContain("MANAGER");
+    expect(roles).toContain("OPERATIONS_MANAGER");
+    expect(roles).toContain("PRINT_WORKSHOP");
     expect(roles).toContain("SUPERADMIN");
     expect(roles).not.toContain("FULFILLMENT");
+    expect(roles).not.toContain("CUSTOMER_SUPPORT");
+    expect(roles).not.toContain("FINANCE_ANALYST");
   });
 
   it("firma SOLO los paths del designId pedido y devuelve {path, url} por pieza", async () => {

@@ -29,7 +29,7 @@ export async function retryShipmentAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_TRANSITION });
 
   const orderId = String(formData.get("orderId") ?? "");
   if (!orderId) return { error: "Falta orderId" };
@@ -100,7 +100,7 @@ export async function transitionOrderAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_TRANSITION });
 
   const orderId = String(formData.get("orderId") ?? "");
   const to = String(formData.get("to") ?? "");
@@ -401,7 +401,7 @@ export async function regenerateLettersetProductionAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_TRANSITION });
 
   const designId = String(formData.get("designId") ?? "");
   const orderNumber = String(formData.get("orderNumber") ?? "");
@@ -460,7 +460,7 @@ export async function retryRenderJobAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_TRANSITION });
 
   const designId = String(formData.get("designId") ?? "").trim();
   const orderNumber = String(formData.get("orderNumber") ?? "").trim();

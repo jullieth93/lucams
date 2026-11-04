@@ -23,6 +23,7 @@ import {
   AdminPageHeader,
 } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
@@ -57,7 +58,7 @@ const PAYMENT_METHOD_HINT: Record<PaymentMethod, string> = {
 };
 
 export default async function AdminFinanzasPage({ searchParams }: { searchParams: SearchParams }) {
-  const _session = await requireRole(["SUPERADMIN"]);
+  const _session = await requireRole(ADMIN_ROLE_SETS.FINANCE);
   // Modo catálogo (Etapa 1): sin pagos en línea no hay finanzas que mostrar.
   // El nav ya oculta el módulo; esto cierra también el acceso por URL directa.
   if (isCatalogMode()) redirect("/admin/dashboard");

@@ -1,30 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { ADMIN_ROLE_LABEL, adminRoleLabel } from "./admin-roles";
+import {
+  ADMIN_ROLES_ALL,
+  ADMIN_ROLE_DESCRIPTION,
+  ADMIN_ROLE_LABEL,
+  adminRoleLabel,
+  isValidAdminRole,
+} from "./admin-roles";
 
 /**
  * Roles reales del enum Prisma `AdminRole` (packages/db/prisma/schema.prisma):
- *   SUPERADMIN | MANAGER | FULFILLMENT | CMS_EDITOR
- *
- * Si alguien agrega/renombra un valor del enum sin actualizar el diccionario de
- * labels, los tests de exhaustividad de abajo deben romper a propósito.
+ *   SUPERADMIN | OPERATIONS_MANAGER | CUSTOMER_SUPPORT | PRINT_WORKSHOP |
+ *   FINANCE_ANALYST | MANAGER | FULFILLMENT | CMS_EDITOR
  */
-const ADMIN_ROLE_ENUM = ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"] as const;
+const ADMIN_ROLE_ENUM = [
+  "SUPERADMIN",
+  "OPERATIONS_MANAGER",
+  "CUSTOMER_SUPPORT",
+  "PRINT_WORKSHOP",
+  "FINANCE_ANALYST",
+  "MANAGER",
+  "FULFILLMENT",
+  "CMS_EDITOR",
+] as const;
 
 describe("ADMIN_ROLE_LABEL (diccionario)", () => {
   it("mapea cada rol del enum a su label en español", () => {
     expect(ADMIN_ROLE_LABEL.SUPERADMIN).toBe("Administradora");
+    expect(ADMIN_ROLE_LABEL.OPERATIONS_MANAGER).toBe("Jefa de operaciones");
+    expect(ADMIN_ROLE_LABEL.CUSTOMER_SUPPORT).toBe("Atención al cliente");
+    expect(ADMIN_ROLE_LABEL.PRINT_WORKSHOP).toBe("Taller e impresión");
+    expect(ADMIN_ROLE_LABEL.FINANCE_ANALYST).toBe("Analista financiera");
     expect(ADMIN_ROLE_LABEL.MANAGER).toBe("Gestora");
     expect(ADMIN_ROLE_LABEL.FULFILLMENT).toBe("Despachos");
     expect(ADMIN_ROLE_LABEL.CMS_EDITOR).toBe("Editor de contenido");
   });
 
   it("cubre exactamente los valores del enum AdminRole — ni más ni menos", () => {
-    // Sin claves faltantes...
+    expect([...ADMIN_ROLES_ALL].sort()).toEqual([...ADMIN_ROLE_ENUM].sort());
     for (const role of ADMIN_ROLE_ENUM) {
       expect(ADMIN_ROLE_LABEL).toHaveProperty(role);
+      expect(ADMIN_ROLE_DESCRIPTION[role].trim().length).toBeGreaterThan(10);
+      expect(isValidAdminRole(role)).toBe(true);
     }
-    // ...y sin claves de sobra (que delatarían enums fantasma como ADMIN/EDITOR/OPERATOR).
     expect(Object.keys(ADMIN_ROLE_LABEL).sort()).toEqual([...ADMIN_ROLE_ENUM].sort());
+    expect(isValidAdminRole("ADMIN")).toBe(false);
+    expect(isValidAdminRole("")).toBe(false);
   });
 
   it("no resucita los valores de enum inexistentes que el módulo dice haber eliminado", () => {

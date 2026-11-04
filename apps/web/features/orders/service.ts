@@ -18,7 +18,10 @@
 
 import "server-only";
 import crypto from "node:crypto";
+import type { AdminRole } from "@lucams/db";
 import { prisma, Prisma } from "@/lib/db";
+import { hasCapability } from "@/lib/admin-rbac";
+import { maskOrderForActor } from "@/lib/pii-mask";
 import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
 import { assertStockAvailable, revertStockForOrder, variantDisplayName } from "./stock";
@@ -1113,6 +1116,17 @@ export async function getOrder(idOrNumber: string) {
 }
 
 /**
+ * S17 (Fase 8) — Obtiene un pedido aplicando enmascaramiento server-side de PII
+ * ANTES de devolverlo al componente RSC cuando el actor carece de `orders:read_pii`
+ * (ej. `PRINT_WORKSHOP`, `FULFILLMENT`).
+ */
+export async function getOrderForActor(idOrNumber: string, role: AdminRole) {
+  const order = await getOrder(idOrNumber);
+  if (!order) return null;
+  return maskOrderForActor(order, role);
+}
+
+/**
  * ADR-063 T7 — datos ricos para el ZIP de impresión: nombre/kind del producto + año del calendario
  * (design.metadata) para nombrar cada pieza (meses del calendario, o "pieza-NN"). Solo items con
  * diseño finalizado (productionUrls no vacío). Server-only (rol privilegiado).
@@ -1212,12 +1226,15 @@ export type OrderListOpts = {
   sort?: "recent" | "oldest" | "total-desc";
   page?: number;
   pageSize?: number;
+  /** S17: cuando es `false`, restringe la búsqueda `q` a `number`/`trackingNumber` (anti-oráculo PII). */
+  allowPiiSearch?: boolean;
 };
 
 export async function listOrders(opts: OrderListOpts = {}) {
   const q = opts.q?.trim();
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = opts.pageSize ?? ORDER_PAGE_SIZE;
+  const allowPiiSearch = opts.allowPiiSearch !== false;
 
   const orderBy: Prisma.OrderOrderByWithRelationInput[] = (() => {
     switch (opts.sort) {
@@ -1237,23 +1254,29 @@ export async function listOrders(opts: OrderListOpts = {}) {
     ...(opts.needsReconciliation ? { needsReconciliation: true } : {}),
     ...(q
       ? {
-          OR: [
-            { number: { contains: q, mode: "insensitive" } },
-            { email: { contains: q, mode: "insensitive" } },
-            { phone: { contains: q } },
-            { customer: { firstName: { contains: q, mode: "insensitive" } } },
-            { customer: { lastName: { contains: q, mode: "insensitive" } } },
-            // Invitados (customerId null): el nombre vive en el snapshot JSON de
-            // envío — la tabla lo MUESTRA (fallback shipName) pero la búsqueda no
-            // lo encontraba; buscar a una invitada por su nombre devolvía 0 filas.
-            {
-              shippingAddress: {
-                path: ["fullName"],
-                string_contains: q,
-                mode: "insensitive",
-              },
-            },
-          ],
+          OR: allowPiiSearch
+            ? [
+                { number: { contains: q, mode: "insensitive" } },
+                { trackingNumber: { contains: q, mode: "insensitive" } },
+                { email: { contains: q, mode: "insensitive" } },
+                { phone: { contains: q } },
+                { customer: { firstName: { contains: q, mode: "insensitive" } } },
+                { customer: { lastName: { contains: q, mode: "insensitive" } } },
+                // Invitados (customerId null): el nombre vive en el snapshot JSON de
+                // envío — la tabla lo MUESTRA (fallback shipName) pero la búsqueda no
+                // lo encontraba; buscar a una invitada por su nombre devolvía 0 filas.
+                {
+                  shippingAddress: {
+                    path: ["fullName"],
+                    string_contains: q,
+                    mode: "insensitive",
+                  },
+                },
+              ]
+            : [
+                { number: { contains: q, mode: "insensitive" } },
+                { trackingNumber: { contains: q, mode: "insensitive" } },
+              ],
         }
       : {}),
   };
@@ -1278,6 +1301,22 @@ export async function listOrders(opts: OrderListOpts = {}) {
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+/**
+ * S17 (Fase 8) — Lista pedidos aplicando enmascaramiento server-side sobre email,
+ * teléfono, documento y dirección cuando el actor carece de `orders:read_pii`, y
+ * deshabilitando búsquedas por email/teléfono/nombre/dirección si no posee `orders:read_pii`
+ * (anti-oráculo de enumeración PII desde taller o despachos).
+ */
+export async function listOrdersForActor(opts: OrderListOpts, role: AdminRole) {
+  const canReadPii = hasCapability(role, "orders:read_pii");
+  const res = await listOrders({ ...opts, allowPiiSearch: canReadPii });
+  if (canReadPii) return res;
+  return {
+    ...res,
+    items: res.items.map((o) => maskOrderForActor(o, role)),
   };
 }
 

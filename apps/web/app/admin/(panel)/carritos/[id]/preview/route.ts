@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await verifyAdminRouteAccess({
-    roles: ADMIN_ROLE_SETS.MANAGER_UP,
+    roles: ADMIN_ROLE_SETS.CARTS_RECOVER,
     req,
     checkIdle: true,
   });

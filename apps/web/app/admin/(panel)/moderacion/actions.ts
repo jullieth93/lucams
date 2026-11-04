@@ -31,7 +31,7 @@ export type SignedProductionPiece = { path: string; url: string };
 export async function getDesignProductionSignedUrlsAction(
   designId: string,
 ): Promise<SignedProductionPiece[]> {
-  await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  await requireAdminAction({ roles: ADMIN_ROLE_SETS.PRODUCTION_MODERATE });
   const id = designId.trim();
   if (!id) return [];
   const paths = await getDesignProductionPaths(id);
@@ -43,7 +43,7 @@ export async function getDesignProductionSignedUrlsAction(
 }
 
 export async function approveDesignAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.PRODUCTION_MODERATE });
 
   const designId = String(formData.get("designId") ?? "").trim();
   if (!designId) redirect("/admin/moderacion?error=" + encodeURIComponent("Falta el diseño."));
@@ -63,7 +63,7 @@ export async function approveDesignAction(formData: FormData): Promise<void> {
 }
 
 export async function rejectDesignAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.PRODUCTION_MODERATE });
 
   const designId = String(formData.get("designId") ?? "").trim();
   const reason = String(formData.get("reason") ?? "")
