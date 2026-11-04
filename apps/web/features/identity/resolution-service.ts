@@ -30,6 +30,8 @@
  *    delegados de identidad (`contact` / `contactIdentity`), retorna `null` sin lanzar.
  */
 
+import "server-only";
+
 import type {
   ContactIdentityType,
   DocumentType,

@@ -105,6 +105,11 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
 
   // Quién llama: cookie anónima + sesión autenticada (cliente y/o staff operativo con MFA aal2).
   // CMS_EDITOR, sesiones aal1 o cuentas sin TOTP verificado NO obtienen acceso admin ([SEC-01]).
+  // Idle-timeout: NO se exige checkIdle acá a propósito — la marca `admin_last_activity`
+  // viaja con `path=/admin` (admin-activity.ts) y el browser jamás la envía a `/api/*`;
+  // exigirla dejaría 404 a TODA vista previa admin legítima. El idle se impone en la
+  // navegación del panel vía proxy.ts (con revocación global) y este endpoint mantiene
+  // fail-closed por sesión + TOTP + aal2 + rol en cada request.
   const sessionId = readCartSession(req);
   const [customer, adminAccess] = await Promise.all([
     getCurrentCustomer().catch(() => null),

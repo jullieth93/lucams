@@ -100,7 +100,7 @@ make db-local-setup   # extensiones + prisma migrate deploy + supabase/migration
 make db-local-on      # .env.local → stack local (respaldo en .env.local.nube-backup)
 make db-local-seed    # catálogo + plantillas Estudio + ocasiones + CMS (854 campos)
 pnpm --filter web dev # la app ya habla con el stack local
-make test-local       # suite vitest completa contra la DB local (excluye las 2 suites de la DB compartida)
+make test-local       # suite vitest completa contra la DB local (todas las suites son autocontenidas)
 make db-local-off     # .env.local → nube compartida (restaura el respaldo)
 make db-local-stop    # apaga el stack (los datos quedan en los volúmenes)
 ```

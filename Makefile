@@ -1,4 +1,4 @@
-.PHONY: help local-up local-down local-status db-local-start db-local-stop db-local-setup db-local-on db-local-off db-local-seed db-local-reset web-start web-stop check verify-db audit-script-guards audit-content test-local test-rls test-e2e test-e2e-fullmode build migrate-cms-v2 seed-letter-sets seed-admin admin-mfa-reset db-stg-setup db-stg-seed clean clean-tmp
+.PHONY: help local-up local-down local-status db-local-start db-local-stop db-local-setup db-local-on db-local-off db-local-seed db-local-reset web-start web-stop check verify-db audit-script-guards audit-content test-local test-rls test-e2e test-e2e-fullmode test-load build migrate-cms-v2 seed-products seed-letter-sets seed-admin admin-mfa-reset db-stg-setup db-stg-seed clean clean-tmp
 
 # Makefile operativo — Lucams Shop
 # Orquesta únicamente lo que aporta valor real sobre `pnpm`:
@@ -34,10 +34,12 @@ help:
 	@echo "    make test-rls         Suite RLS real (rls-coverage + rls-matrix)"
 	@echo "    make test-e2e         Playwright E2E"
 	@echo "    make test-e2e-fullmode Suite E2E modo full aislada en :4100 (solo LOCAL)"
+	@echo "    make test-load        Carga k6 del storefront (requiere k6 instalado y app arriba)"
 	@echo "    make build            Build de producción Next.js (en 4 GB RAM: correr antes make db-local-stop)"
 	@echo ""
 	@echo "  4. Operaciones puntuales y Staging:"
 	@echo "    make migrate-cms-v2   Upsert aditivo del site map CMS v2 en LOCAL"
+	@echo "    make seed-products    Catálogo canónico idempotente (seed-catalog-canonical --apply) en LOCAL"
 	@echo "    make seed-letter-sets Sets base de fichas (es/en) en LOCAL"
 	@echo "    make seed-admin       Alta/reactivación break-glass de AdminUser (EMAIL=...)"
 	@echo "    make admin-mfa-reset  Reset MFA break-glass de un admin (EMAIL=...)"
@@ -163,6 +165,10 @@ test-e2e:
 test-e2e-fullmode:
 	scripts/e2e-fullmode.sh
 
+test-load:
+	@command -v k6 >/dev/null 2>&1 || { echo "k6 no instalado. https://k6.io/docs/get-started/installation/"; exit 1; }
+	k6 run tests/load/storefront-browsing.js
+
 build:
 	pnpm --filter web build
 
@@ -170,6 +176,9 @@ build:
 
 migrate-cms-v2:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs --apply
+
+seed-products:
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-canonical.mjs --apply
 
 seed-letter-sets:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-letter-sets.mjs

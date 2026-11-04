@@ -209,8 +209,9 @@ describe("ProductCard", () => {
 > El stack local completo (Supabase en podman, espejo de la nube) se maneja con Make:
 > `make db-local-start` → `make db-local-setup` (extensiones + migraciones) → `make db-local-on`
 > (apunta `.env.local` al stack local) → `make db-local-seed`. Contra ese stack corre
-> `make test-local` (`NIGHTLY_LOCALSTACK=1 pnpm --filter web test`, que excluye las 2 suites que
-> exigen el universo de datos de la DB compartida de dev). En CI el Postgres es un service
+> `make test-local` (`NIGHTLY_LOCALSTACK=1 pnpm --filter web test`; la variable es hoy un no-op
+> histórico: desde A11-05 todas las suites son autocontenidas y siembran sus propios fixtures, sin
+> exclusiones). En CI el Postgres es un service
 > container pelado + compat SQL (ver § CI workflow). El sketch de abajo queda como referencia
 > conceptual del patrón (arranque + migraciones + seed).
 

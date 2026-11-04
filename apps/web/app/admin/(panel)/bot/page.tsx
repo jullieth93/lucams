@@ -5,9 +5,8 @@
  * Human-in-the-Loop integrado directamente en `/admin/soporte/[id]`.
  */
 
-import { permanentRedirect, redirect } from "next/navigation";
+import { permanentRedirect } from "next/navigation";
 
 export default function RetiredBotRedirectPage() {
   permanentRedirect("/admin/soporte");
-  redirect("/admin/soporte");
 }
