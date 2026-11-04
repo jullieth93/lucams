@@ -26,6 +26,7 @@ import {
   uploadCmsMediaAction,
   type CmsMediaActionState,
 } from "@/app/admin/(panel)/contenido/actions";
+import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 
 /** Referencia de uso (misma forma que CmsMediaUsageRef de lib/cms-media.ts). */
 export type MediaUsageRef = {
@@ -230,6 +231,7 @@ function MediaCard({ item }: { item: MediaLibraryItem }) {
     deleteCmsMediaAction,
     null,
   );
+  const { confirm, confirmDialog } = useAdminConfirm();
   const [alt, setAlt] = useState(item.alt);
   const [savedAlt, setSavedAlt] = useState(item.alt);
 
@@ -250,8 +252,8 @@ function MediaCard({ item }: { item: MediaLibraryItem }) {
     else if (delState?.ok) toast.success("Imagen borrada.");
   }, [delState]);
 
-  function handleDelete() {
-    if (!window.confirm("¿Borrar esta imagen de la mediateca? No se puede deshacer.")) return;
+  async function handleDelete() {
+    if (!(await confirm("¿Borrar esta imagen de la mediateca? No se puede deshacer."))) return;
     const fd = new FormData();
     fd.set("id", item.id);
     startTransition(() => delDispatch(fd));
@@ -366,6 +368,7 @@ function MediaCard({ item }: { item: MediaLibraryItem }) {
           </Hint>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

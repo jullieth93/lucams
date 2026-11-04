@@ -195,7 +195,7 @@ type StudioCanvasGridProps = {
   unitNoun?: string;
   /**
    * 4.5 (2026-10-22) — desglose CORTO de la variante/tamaño vigente para el
-   * header de cada tarjeta-unidad en modo secciones ("Tira 1 de 2 · 6.5×20 cm ·
+   * header de cada tarjeta-unidad en modo secciones ("Tira 1 de 2 · 5×15 cm ·
    * Con imán"): en multi-unidad cada sección enuncia QUÉ es. Lo construye el
    * editor con studioPreviewVariantLabel (misma fuente de la Vista Previa)
    * SIN omitir el tamaño. undefined = sin chip.
@@ -1713,7 +1713,7 @@ function UnitSectionHeader({
   unitSlots: number;
   unitCount: number;
   noun: string;
-  /** 4.5 (2026-10-22) — chip discreto de variante/tamaño ("6.5×20 cm · Con
+  /** 4.5 (2026-10-22) — chip discreto de variante/tamaño ("5×15 cm · Con
    *  imán"): cada sección enuncia QUÉ es la unidad que se está diseñando. */
   variantLabel?: string;
   onApplied: () => void;
@@ -2015,7 +2015,7 @@ export function StudioStageZoomControl({
 }) {
   const texts = useStudioTexts();
   const zoomButtonClass =
-    "text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent sm:h-9 sm:w-9";
+    "text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent sm:h-9 sm:w-9 pointer-coarse:min-h-11 pointer-coarse:min-w-11";
   return (
     <div
       role="group"

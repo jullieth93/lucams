@@ -130,7 +130,7 @@ test.beforeAll(async () => {
     ctx.sepProductId = sep.id;
   }
 
-  // Tiras Magnéticas + su variante de 3 fotos (tira clásica 6.5×20).
+  // Tiras Magnéticas + su variante de 3 fotos (tira clásica 5×15).
   const tiras = await withDbRetry(() =>
     prisma.product.findFirst({
       where: { slug: "tiras-magneticas-fotos", isActive: true, deletedAt: null },
@@ -291,7 +291,11 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     await expect(page.getByText("3A", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("3B", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("4A", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("3 fotos", { exact: true })).toBeVisible();
+    // El control de N muestra el sustantivo real del producto (ADR-171): para
+    // separadores dice "3 separadores" (la aserción pedía "3 fotos", copy
+    // genérica anterior a los sustantivos por tipo). Aparece en 2 lugares
+    // (chip de sección + valor aria-live del stepper) → .first().
+    await expect(page.getByText(/3 (separadores|fotos)/).first()).toBeVisible();
   });
 
   test("PDP tiras (híbrido 2026-09-09): 'Fotos por tira' (chips 3/4) + stepper 'Unidades' de copias + Tamaño", async ({
@@ -368,11 +372,12 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     // Regresión 2026-09-09 (reporte del owner en STG): la plantilla de la tira de
     // 4 fotos (photo-strip-4-fotos) nació en un script one-off y NO estaba en el
     // seed → el barrido de legacy del seed la archivaba en cada corrida, el filtro
-    // de aspect dejaba la lista de plantillas VACÍA para la variante 3:4 y el boot
+    // de aspect dejaba la lista de plantillas VACÍA para la variante y el boot
     // caía al template cuadrado genérico 1080×1080 (grilla 2×2). El canvas asociado
-    // a la variante es la TIRA: 4 celdas en UNA columna, cada una más alta que
-    // ancha (celda 390×530), no una grilla de cuadrados. Multi-unidad: CADA sección
-    // (unidad) es su propia tira de 4 celdas en 1 columna.
+    // a la variante es la TIRA: 4 celdas en UNA columna al aspect FÍSICO de la
+    // celda (400×330 = 5×4.125 cm, apaisada desde las medidas 2026-11-03), no una
+    // grilla de cuadrados. Multi-unidad: CADA sección (unidad) es su propia tira
+    // de 4 celdas en 1 columna.
     // Lazy-mount (ADR-063 T5: >6 slots → IntersectionObserver): los slots montan
     // al acercarse al viewport. Ola 29: con las secciones de tira EN FILA (2-3
     // por fila) ambas unidades pueden quedar ya cerca del tope y montar juntas
@@ -390,8 +395,9 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
         }),
       );
       for (const b of boxes) {
-        // Celda vertical de tira (390×530 → h > w); el fallback roto era cuadrado.
-        expect(b.h).toBeGreaterThan(b.w);
+        // Celda al aspect FÍSICO vigente (400×330 = 5×4.125 cm → w > h); el
+        // fallback roto era cuadrado (1080×1080 → w ≈ h). Tolerancia ±0.1.
+        expect(b.w / b.h).toBeCloseTo(400 / 330, 1);
         // UNA sola columna (tira continua); el fallback roto armaba 2 columnas.
         expect(Math.abs(b.x - boxes[0].x)).toBeLessThan(2);
       }
@@ -400,7 +406,7 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     await expect(page.locator("[data-slot-index]")).toHaveCount(8);
   });
 
-  test("Ola 29 (mejora visual owner): 4 unidades → secciones en grilla horizontal (3+1 desktop / 2+2 móvil)", async ({
+  test("Ola 29/34 (mejora visual owner): 4 unidades → secciones en grilla horizontal (2+2 desktop / apilado 1-por-fila en móvil)", async ({
     page,
   }) => {
     test.skip(
@@ -426,18 +432,33 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
         return (await section.boundingBox())!;
       }),
     );
+    // Comportamiento VIGENTE (unitSectionsPerRowFor — Ola 29/34): móvil
+    // (<640px de contenedor) 1 tira por fila full-width; desktop 2 por fila y
+    // la 3ª columna solo con contenedor ≥1400px (desktop-chrome 1280 →
+    // contenedor ~928px → 2+2). Las aserciones se miden con poll: las secciones
+    // montan lazy y la fila se reacomoda al montar (una lectura temprana puede
+    // pillar el apilado transitorio).
+    const rowY = async (u: number) =>
+      (await page.locator(`#studio-unit-${u}`).boundingBox())?.y ?? -1;
     const desktop = (page.viewportSize()?.width ?? 1280) >= 1024;
     if (desktop) {
-      // 3 por fila: unidades 1-3 comparten fila (mismo y) y la 4ª cae abajo.
-      expect(Math.abs(boxes[1]!.y - boxes[0]!.y)).toBeLessThan(4);
-      expect(Math.abs(boxes[2]!.y - boxes[0]!.y)).toBeLessThan(4);
-      expect(boxes[3]!.y).toBeGreaterThan(boxes[0]!.y + 50);
+      // 2 por fila: unidades 1-2 arriba, 3-4 abajo (2+2).
+      await expect
+        .poll(async () => Math.abs((await rowY(1)) - (await rowY(0))), { timeout: 15_000 })
+        .toBeLessThan(4);
+      await expect.poll(async () => (await rowY(2)) - (await rowY(0))).toBeGreaterThan(50);
+      await expect
+        .poll(async () => Math.abs((await rowY(3)) - (await rowY(2))))
+        .toBeLessThan(4);
     } else {
-      // 2 por fila: 1-2 arriba, 3-4 abajo.
-      expect(Math.abs(boxes[1]!.y - boxes[0]!.y)).toBeLessThan(4);
-      expect(boxes[2]!.y).toBeGreaterThan(boxes[0]!.y + 50);
-      expect(Math.abs(boxes[3]!.y - boxes[2]!.y)).toBeLessThan(4);
+      // 1 por fila: las 4 apiladas (cada una debajo de la anterior).
+      await expect
+        .poll(async () => (await rowY(1)) - (await rowY(0)), { timeout: 15_000 })
+        .toBeGreaterThan(50);
+      await expect.poll(async () => (await rowY(3)) - (await rowY(2))).toBeGreaterThan(50);
     }
+    // Sanidad: con 4 unidades los boxes existieron.
+    expect(boxes.every((b) => b && b.width > 0 && b.height > 0)).toBe(true);
   });
 });
 
@@ -564,13 +585,17 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
 
     // Multi-unidad 2026-09-09 — la Vista previa muestra TODAS las unidades y la
     // modal las describe como dato ("2 unidades — cada una con su propio diseño";
-    // el concepto "copias idénticas" desapareció). El gatillo es el botón "Vista
-    // previa" (renombrado; antes «¡Listo!»). Su NOMBRE ACCESIBLE es un aria-label
-    // CMS (estudio.lienzo.finalize-aria — en LOCAL sobreescrito a "Listo, generar
-    // diseño final"), así que el locator acepta ambas variantes y filtra al visible
-    // (inline en desktop / FAB en mobile).
+    // el concepto "copias idénticas" desapareció). El gatillo es el botón «Ver
+    // diseño». Su NOMBRE ACCESIBLE es un aria-label CMS (estudio.lienzo.finalize-aria;
+    // default vigente "Ver diseño de tu pedido" — antes "Vista previa" y en LOCAL
+    // hubo el override "Listo, generar diseño final"). El locator ancla al
+    // aria-label del gatillo y filtra al visible (inline en desktop / FAB en
+    // mobile). Ojo: /Listo/i a secas es ambiguo desde ADR-159 (la sidebar tiene
+    // «…Listo» de secciones) — nunca un match parcial.
     const vistaPrevia = page
-      .getByRole("button", { name: /Vista previa|Listo/i })
+      .getByRole("button", {
+        name: /Ver diseño de tu pedido|Vista previa|Listo, generar diseño final/i,
+      })
       .and(page.locator(":visible"))
       .first();
     await expect(vistaPrevia).toBeVisible({ timeout: 30_000 });
@@ -578,8 +603,11 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     await vistaPrevia.click();
     const previewDialog = page.getByRole("dialog", { name: /Así se verá/i });
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });
+    // Copy vigente para tiras (productKind "strips", sustantivo real por tipo):
+    // "…las 2 tiras que vas a recibir — cada una con 3 fotos." (antes decía
+    // "2 unidades — cada una con su propio diseño", copy genérica retirada).
     await expect(
-      previewDialog.getByText("2 unidades — cada una con su propio diseño"),
+      previewDialog.getByText(/las 2 tiras que vas a recibir — cada una con 3 fotos/),
     ).toBeVisible();
     await expect(previewDialog.getByText(/copias idénticas/)).toHaveCount(0);
     await expect(previewDialog.getByRole("group", { name: "Copias" })).toHaveCount(0);
@@ -595,7 +623,7 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     await vistaPrevia.click();
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });
     await expect(
-      previewDialog.getByText("2 unidades — cada una con su propio diseño"),
+      previewDialog.getByText(/las 2 tiras que vas a recibir — cada una con 3 fotos/),
     ).toBeVisible();
     await previewDialog.getByRole("button", { name: /agregar al carrito/i }).click();
 

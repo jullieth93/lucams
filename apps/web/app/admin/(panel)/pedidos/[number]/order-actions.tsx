@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { RefreshCw, ArrowRight, X, Undo2, Ban, PackageX, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import {
   blockOrderAddressAction,
@@ -409,18 +410,10 @@ export function OrderActions({
                 <Ban className="mr-1.5 inline h-3.5 w-3.5" />
                 Bloquear esta dirección…
               </summary>
-              <form
+              <ConfirmAction
                 action={blockAction}
+                message="¿Bloquear la dirección de este pedido para contra entrega? Cualquier pedido a esta dirección tendrá que pagarse en línea."
                 className="space-y-2 border-t border-rose-100 p-3"
-                onSubmit={(e) => {
-                  if (
-                    !confirm(
-                      "¿Bloquear la dirección de este pedido para contra entrega? Cualquier pedido a esta dirección tendrá que pagarse en línea.",
-                    )
-                  ) {
-                    e.preventDefault();
-                  }
-                }}
               >
                 <input type="hidden" name="orderId" value={orderId} />
                 <p className="text-[11px] text-rose-800">
@@ -435,7 +428,7 @@ export function OrderActions({
                 >
                   {blockPending ? "Bloqueando…" : "Confirmar bloqueo de dirección"}
                 </Button>
-              </form>
+              </ConfirmAction>
             </details>
           )}
         </div>

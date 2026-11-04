@@ -252,7 +252,7 @@
 - [ ] Safari iOS 18: idem
 - [ ] Touch targets ≥ 44×44px en mobile
 - [ ] Sin horizontal scroll en breakpoints 375/414/768/1024
-- [ ] Auditoría responsive automatizada en 6 perfiles (390×844, 844×390, 768×1024, 1024×768, 1280×800, 1920×1080) sin hallazgos critical: `pnpm --filter web test:audit-responsive` (ADR-154)
+- [x] Auditoría responsive automatizada en 6 perfiles (390×844, 844×390, 768×1024, 1024×768, 1280×800, 1920×1080) sin hallazgos critical: `pnpm --filter web test:audit-responsive` (ADR-154) — corrida 2026-11-03: 0 overflow crítico en los 6 perfiles; quedan warnings medium de tap targets <40 px en densidades compactas del sistema de diseño (chips, iconos de toolbar del Estudio, enlaces inline de auth) — los de mayor tráfico ya se reforzaron con `pointer-coarse:` (chips de ocasión, botón «Filtros», CTA «Ver catálogo»); el resto es decisión de design-system (elevar densidad base o no)
 - [ ] Inputs no trigger zoom iOS (font-size ≥ 16px)
 
 ## P. Load testing

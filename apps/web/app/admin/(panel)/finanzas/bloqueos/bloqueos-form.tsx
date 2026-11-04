@@ -6,6 +6,7 @@
  */
 
 import { useActionState } from "react";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { addBlockedIdentityAction, removeBlockedIdentityAction } from "./actions";
 
 type Result = { error?: string; success?: string } | null;
@@ -74,13 +75,9 @@ export function AddBlockForm() {
 export function RemoveBlockButton({ id, label }: { id: string; label: string }) {
   const [state, action, pending] = useActionState(removeBlockedIdentityAction, null);
   return (
-    <form
+    <ConfirmAction
       action={action}
-      onSubmit={(e) => {
-        if (!confirm(`¿Retirar el bloqueo de "${label}"? Podrá volver a pagar contra entrega.`)) {
-          e.preventDefault();
-        }
-      }}
+      message={`¿Retirar el bloqueo de "${label}"? Podrá volver a pagar contra entrega.`}
     >
       <input type="hidden" name="id" value={id} />
       <button
@@ -91,6 +88,6 @@ export function RemoveBlockButton({ id, label }: { id: string; label: string }) 
         {pending ? "…" : "Retirar"}
       </button>
       <Notice state={state} />
-    </form>
+    </ConfirmAction>
   );
 }

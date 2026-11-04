@@ -4,7 +4,7 @@
  * Acciones del detalle de cotización (admin, Etapa 1).
  *
  *   - Cambio de estado: un botón por cada estado DISTINTO al actual, con
- *     confirm() antes de enviar (mismo patrón que finanzas/bloqueos).
+ *     confirmación de marca (ConfirmAction / ADR-192) antes de enviar.
  *   - Nota interna: textarea controlado + useActionState; el service hace
  *     APPEND (las entradas se acumulan separadas por "---" y el rastro de
  *     quién/cuándo queda en AdminActionLog).
@@ -12,6 +12,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import type { QuoteStatus } from "@lucams/db";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { setQuoteStatusAction, addQuoteNoteAction } from "./actions";
 
 type St = { error?: string; success?: string } | null;
@@ -46,14 +47,7 @@ function StatusButton({
   pending: boolean;
 }) {
   return (
-    <form
-      action={action}
-      onSubmit={(e) => {
-        if (!confirm(`¿${NEXT_STATUS_LABEL[status]} la cotización ${number}?`)) {
-          e.preventDefault();
-        }
-      }}
-    >
+    <ConfirmAction action={action} message={`¿${NEXT_STATUS_LABEL[status]} la cotización ${number}?`}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="status" value={status} />
       <button
@@ -63,7 +57,7 @@ function StatusButton({
       >
         {pending ? "…" : NEXT_STATUS_LABEL[status]}
       </button>
-    </form>
+    </ConfirmAction>
   );
 }
 

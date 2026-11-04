@@ -20,6 +20,7 @@ import { useRef, useState, useTransition } from "react";
 import { Loader2, Plus, Trash2, ArrowUp, ArrowDown, Star, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
+import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import {
   uploadVariantImagesAction,
   reorderVariantImagesAction,
@@ -48,6 +49,7 @@ export function VariantImages({
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useAdminConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = (files: FileList | null) => {
@@ -78,8 +80,9 @@ export function VariantImages({
     });
   };
 
-  const handleDelete = (url: string) => {
-    if (!confirm("¿Borrar esta foto de la opción? Esta acción no se puede deshacer.")) return;
+  const handleDelete = async (url: string) => {
+    if (!(await confirm("¿Borrar esta foto de la opción? Esta acción no se puede deshacer.")))
+      return;
     setError(null);
     const formData = new FormData();
     formData.set("variantId", variantId);
@@ -90,14 +93,14 @@ export function VariantImages({
     });
   };
 
-  const handleUnify = () => {
+  const handleUnify = async () => {
     if (
-      !confirm(
+      !(await confirm(
         "¿Usar las fotos de ESTA opción en todas las opciones de este diseño? " +
           "Las fotos que tengan las otras opciones se reemplazan por estas, y los " +
           "archivos que ya no use nadie se borran del almacenamiento. Esta acción " +
           "no se puede deshacer.",
-      )
+      ))
     )
       return;
     setError(null);
@@ -282,6 +285,7 @@ export function VariantImages({
           ))}
         </ul>
       )}
+      {confirmDialog}
     </section>
   );
 }

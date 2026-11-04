@@ -49,7 +49,7 @@ export function OcasionFilterStrip({ ocasiones }: { ocasiones: OcasionData[] }) 
                 key={o.slug}
                 onClick={() => toggleOcasion(o.slug)}
                 aria-pressed={isActive}
-                className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
+                className={`inline-flex flex-shrink-0 items-center rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors pointer-coarse:min-h-10 ${
                   isActive
                     ? "bg-brand-purple text-white"
                     : "border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 border bg-white"

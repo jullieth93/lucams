@@ -24,7 +24,8 @@
  *    CRECE a un corcho de pared grande y realista, 120×80 cm (BOARD_SCENE en lib/cluster-layout,
  *    fuente única compartida con los tests de proporción; escala redonda 0.1 u/cm). El
  *    tablerito anterior de 45×33 cm era irreal para el producto: con su alto solo cabía UNA
- *    fila de tiras de 26.5 cm → 12 tiras abrían 12 columnas y desbordaban por ambos lados.
+ *    fila de tiras largas (entonces 26.5 cm, hoy 16.5) → 12 tiras abrían 12 columnas y
+ *    desbordaban por ambos lados.
  *    Ahora las 12 tiras quedan en una grilla 6×2 DENTRO del marco, con aire.
  *  - La pared queda a RAS del tablero (z −1.2 → −0.14): antes había ~1 u de AIRE entre el tablero
  *    y la pared (flotaba); ahora cuelga como un tablero real y la sombra se lee nítida.

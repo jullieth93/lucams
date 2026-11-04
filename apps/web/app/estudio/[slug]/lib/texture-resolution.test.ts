@@ -27,13 +27,14 @@ describe("magnetTextureWidth — ancho de textura por tamaño físico de la piez
   });
 
   it("piezas grandes (lado mayor ≥ 10 cm) → 2048", () => {
-    expect(magnetTextureWidth({ sizeCm: "6.5×20" })).toBe(2048); // tira photobooth
+    expect(magnetTextureWidth({ sizeCm: "5×15" })).toBe(2048); // tira photobooth 3 fotos
+    expect(magnetTextureWidth({ sizeCm: "5×16.5" })).toBe(2048); // tira photobooth 4 fotos
     expect(magnetTextureWidth({ sizeCm: "4×12" })).toBe(2048); // alargado
     expect(magnetTextureWidth({ sizeCm: "4×15" })).toBe(2048);
     expect(magnetTextureWidth({ sizeCm: "10×15" })).toBe(2048);
   });
 
-  it("mide por el lado MAYOR (una tira 6.5×20 es grande aunque sea angosta)", () => {
+  it("mide por el lado MAYOR (una tira 5×15 es grande aunque sea angosta)", () => {
     expect(magnetTextureWidth({ sizeCm: "2×12" })).toBe(2048);
     expect(magnetTextureWidth({ sizeCm: "9.9×2" })).toBe(1024);
   });
@@ -47,11 +48,11 @@ describe("magnetTextureWidth — ancho de textura por tamaño físico de la piez
   });
 
   it("acepta coma decimal y mayúsculas en la X", () => {
-    expect(magnetTextureWidth({ sizeCm: "6,5x20" })).toBe(2048);
+    expect(magnetTextureWidth({ sizeCm: "5x16,5" })).toBe(2048);
   });
 
   it("los anchos son parametrizables (p.ej. gama baja puede bajar el large)", () => {
-    expect(magnetTextureWidth({ sizeCm: "6.5×20", large: 1536 })).toBe(1536);
+    expect(magnetTextureWidth({ sizeCm: "5×15", large: 1536 })).toBe(1536);
     expect(magnetTextureWidth({ sizeCm: "5×5", base: 768 })).toBe(768);
     expect(magnetTextureWidth({ sizeCm: "8×8", largePieceCm: 8 })).toBe(2048);
   });

@@ -239,7 +239,7 @@ export default async function CarritoPage() {
                             {item.borderNote && (
                               <p className="text-brand-muted text-xs">{item.borderNote}</p>
                             )}
-                            {/* Resumen de pieza ("2 tiras de 3 fotos · 6.5×20 cm cada tira"):
+                            {/* Resumen de pieza ("2 tiras de 3 fotos · 5×15 cm cada tira"):
                               mismo dato que muestra el checkout (quote-form) — multi-unidad
                               2026-09-09: la línea describe las unidades del diseño. */}
                             {detail.pieceSummary && (
@@ -379,7 +379,7 @@ function EmptyCart() {
       </p>
       <Link
         href="/productos"
-        className="bg-brand-purple hover:bg-brand-purple-dark mt-4 inline-block rounded-full px-5 py-2 text-sm font-semibold text-white"
+        className="bg-brand-purple hover:bg-brand-purple-dark mt-4 inline-flex items-center rounded-full px-5 py-2 text-sm font-semibold text-white pointer-coarse:min-h-11"
       >
         Ver catálogo →
       </Link>

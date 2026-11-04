@@ -12,10 +12,10 @@ import {
 
 describe("recommendedPxForSizeCm", () => {
   it("usa el lado MENOR del tamaño físico × 118.11 px/cm (300 DPI), redondeado al alza", () => {
-    // 5 cm → 591px exactos → 600 amable; 7.5×10 → 886 → 900; 6.5 → 768 → 800.
+    // 5 cm → 591px exactos → 600 amable; 7.5×10 → 886 → 900; 8 → 945 → 1000.
     expect(recommendedPxForSizeCm("5×5")).toBe(600);
+    expect(recommendedPxForSizeCm("5×15")).toBe(600); // tira photobooth: manda el lado menor
     expect(recommendedPxForSizeCm("7.5×10")).toBe(900);
-    expect(recommendedPxForSizeCm("6.5×20")).toBe(800);
     expect(recommendedPxForSizeCm("8×8")).toBe(1000);
   });
 

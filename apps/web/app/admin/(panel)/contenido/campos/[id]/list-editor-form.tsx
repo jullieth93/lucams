@@ -20,6 +20,7 @@
  */
 
 import { useActionState, useEffect, useState } from "react";
+import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, ChevronDown, Loader2, Plus, Save, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,7 @@ export function ListEditorForm({
   mediaLibrary?: CmsMediaLite[];
 }) {
   const isSetting = field.kind === "SETTING";
+  const { confirm, confirmDialog } = useAdminConfirm();
 
   const toRows = (items: Record<string, unknown>[]): Row[] =>
     items.map((values) => ({ rowId: makeRowId(), values: toRowValues(field.listSchema, values) }));
@@ -146,12 +148,12 @@ export function ListEditorForm({
     setRows((prev) => [...prev, { rowId: makeRowId(), values: empty }]);
   }
 
-  function removeRow(index: number) {
+  async function removeRow(index: number) {
     const row = rows[index];
     const hasContent = Object.values(row.values).some((v) => v.trim() !== "");
     if (
       hasContent &&
-      !window.confirm(`¿Eliminar el elemento ${index + 1}? Esta acción se aplica al guardar.`)
+      !(await confirm(`¿Eliminar el elemento ${index + 1}? Esta acción se aplica al guardar.`))
     ) {
       return;
     }
@@ -168,9 +170,9 @@ export function ListEditorForm({
     });
   }
 
-  function discardChanges() {
+  async function discardChanges() {
     if (!isDirty) return;
-    if (!window.confirm("¿Descartar los cambios? La lista volverá a como estaba guardada.")) {
+    if (!(await confirm("¿Descartar los cambios? La lista volverá a como estaba guardada."))) {
       return;
     }
     setRows(original);
@@ -420,6 +422,7 @@ export function ListEditorForm({
           </Hint>
         </div>
       </div>
+      {confirmDialog}
     </form>
   );
 }

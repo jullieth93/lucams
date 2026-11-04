@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { Check, EyeOff, Trash2 } from "lucide-react";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { setTemplateApprovalAction, deleteTemplateAction } from "./actions";
 
 type St = { error?: string; success?: string } | null;
@@ -57,12 +58,7 @@ export function TemplateCardActions({
         {/* Eliminar (owner 2026-09-14): solo plantillas NO aprobadas; el servidor
             además exige 0 diseños referenciantes (con diseños solo se descarta). */}
         {!isApproved && (
-          <form
-            action={delAction}
-            onSubmit={(e) => {
-              if (!window.confirm("¿Eliminar esta plantilla definitivamente?")) e.preventDefault();
-            }}
-          >
+          <ConfirmAction action={delAction} message="¿Eliminar esta plantilla definitivamente?">
             <input type="hidden" name="id" value={id} />
             <button
               type="submit"
@@ -72,7 +68,7 @@ export function TemplateCardActions({
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
-          </form>
+          </ConfirmAction>
         )}
       </div>
       {state?.error && <p className="text-[11px] text-rose-700">{state.error}</p>}

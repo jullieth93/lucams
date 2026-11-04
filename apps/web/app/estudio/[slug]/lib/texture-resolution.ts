@@ -19,7 +19,7 @@ export const MAGNET_TEXTURE_WIDTH_LARGE = 2048;
 /** Lado mayor (cm) a partir del cual la pieza se considera grande. */
 export const LARGE_PIECE_CM = 10;
 
-/** Parser local de "6.5×20"/"4×12" → cm (misma gramática que book-geometry). */
+/** Parser local de "5×15"/"4×12" → cm (misma gramática que book-geometry). */
 function parseSizeCm(sizeCm: string | undefined | null): { wCm: number; hCm: number } | null {
   if (!sizeCm) return null;
   const m = sizeCm.match(/^(\d+(?:[.,]\d+)?)(?:\s*[×x]\s*(\d+(?:[.,]\d+)?))?$/i);
@@ -34,7 +34,7 @@ function parseSizeCm(sizeCm: string | undefined | null): { wCm: number; hCm: num
  * Ancho de textura recomendado para la cara de una pieza.
  *
  * Regla: si el lado MAYOR de la pieza física alcanza `largePieceCm` (default
- * 10 cm — tiras 6.5×20, alargados 4×12/15, tarjeta de calendario), la textura
+ * 10 cm — tiras 5×15/5×16.5, alargados 4×12/15, tarjeta de calendario), la textura
  * va a 2048 px de ancho; si no, a 1024. Sin sizeCm parseable → default (el
  * comportamiento más seguro: nunca menos que hoy, 512 → 1024 sube la nitidez
  * de todas las piezas chicas, que son las que más se acercan con el zoom).
@@ -44,7 +44,7 @@ function parseSizeCm(sizeCm: string | undefined | null): { wCm: number; hCm: num
  * profiler lo marca (no hay evidencia aún — validar en dispositivo real).
  */
 export function magnetTextureWidth(opts?: {
-  /** sizeCm de la variante (ej "6.5×20"). Si falta o no parsea → default. */
+  /** sizeCm de la variante (ej "5×15"). Si falta o no parsea → default. */
   sizeCm?: string | null;
   /** Ancho para piezas chicas/medianas. Default 1024. */
   base?: number;

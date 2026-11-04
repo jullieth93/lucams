@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { deleteOcasionAction, updateOcasionAction, type OcasionActionState } from "../actions";
 
 type Props = {
@@ -153,20 +154,19 @@ export function EditOcasionForm({ ocasion }: Props) {
         </button>
       </form>
 
-      <form action={deleteOcasionAction} className="mt-6 border-t border-slate-200 pt-6">
+      <ConfirmAction
+        action={deleteOcasionAction}
+        message="¿Archivar esta ocasión? Los productos asociados pierden el tag."
+        className="mt-6 border-t border-slate-200 pt-6"
+      >
         <input type="hidden" name="id" value={ocasion.id} />
         <button
           type="submit"
-          onClick={(e) => {
-            if (!confirm("¿Archivar esta ocasión? Los productos asociados pierden el tag.")) {
-              e.preventDefault();
-            }
-          }}
           className="text-sm font-medium text-red-700 hover:text-red-900"
         >
           🗑 Archivar ocasión
         </button>
-      </form>
+      </ConfirmAction>
     </>
   );
 }

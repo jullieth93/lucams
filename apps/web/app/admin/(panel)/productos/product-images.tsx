@@ -20,6 +20,7 @@ import { useRef, useState, useTransition } from "react";
 import { Loader2, Plus, Trash2, ArrowUp, ArrowDown, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
+import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import {
   uploadProductImagesAction,
   reorderProductImagesAction,
@@ -30,6 +31,7 @@ export function ProductImages({ productId, images }: { productId: string; images
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { confirm, confirmDialog } = useAdminConfirm();
 
   const handleUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -74,8 +76,8 @@ export function ProductImages({ productId, images }: { productId: string; images
     });
   };
 
-  const handleDelete = (url: string) => {
-    if (!confirm("¿Borrar esta imagen? Esta acción no se puede deshacer.")) return;
+  const handleDelete = async (url: string) => {
+    if (!(await confirm("¿Borrar esta imagen? Esta acción no se puede deshacer."))) return;
     setError(null);
     const formData = new FormData();
     formData.set("productId", productId);
@@ -217,6 +219,7 @@ export function ProductImages({ productId, images }: { productId: string; images
           ))}
         </ul>
       )}
+      {confirmDialog}
     </section>
   );
 }

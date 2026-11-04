@@ -37,6 +37,7 @@
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import {
   Upload,
   Trash2,
@@ -200,6 +201,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
   const [chipByTag, setChipByTag] = useState<Record<string, string>>({});
   const [bulkChoiceByTag, setBulkChoiceByTag] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useAdminConfirm();
   // Colapsable por producto (2026-10-05): override explícito por tag; sin
   // override, abierto solo el primer producto. Con búsqueda, todo abierto.
   const [openByTag, setOpenByTag] = useState<Record<string, boolean>>({});
@@ -271,14 +273,14 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
 
   /**
    * 3.6 (2026-10-07) — ARCHIVAR (antes "Borrar"): soft-delete restaurable.
-   * Confirmación ligera (es reversible desde la sección Archivados).
+   * Confirmación ligera de marca (es reversible desde la sección Archivados).
    */
-  function onArchive(id: string, name: string) {
+  async function onArchive(id: string, name: string) {
     setError(null);
     if (
-      !window.confirm(
+      !(await confirm(
         `¿Archivar «${name}»? Sale del Estudio y pasa a la sección Archivados; puedes restaurarlo después.`,
-      )
+      ))
     ) {
       return;
     }
@@ -293,19 +295,17 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
   /**
    * 3.6 — ELIMINAR PERMANENTEMENTE (solo desde Archivados): purga la fila y los
    * archivos del servidor. IRREVERSIBLE → confirmación FUERTE: escribir la
-   * palabra ELIMINAR (mismo patrón destructivo de mi-cuenta/eliminar).
+   * palabra ELIMINAR (mismo patrón destructivo de mi-cuenta/eliminar; diálogo
+   * de marca con requireTyped desde ADR-192 — antes window.prompt nativo).
    */
-  function onPurge(id: string, name: string) {
+  async function onPurge(id: string, name: string) {
     setError(null);
     setNotice(null);
-    const typed = window.prompt(
-      `Esta acción es IRREVERSIBLE: «${name}» y sus archivos se borrarán del servidor para siempre (no se puede restaurar).\n\nEscribe ELIMINAR para confirmar:`,
+    const ok = await confirm(
+      `«${name}» y sus archivos se borrarán del servidor para siempre (no se puede restaurar).`,
+      { requireTyped: "ELIMINAR", confirmLabel: "Eliminar definitivamente" },
     );
-    if (typed === null) return;
-    if (typed.trim().toUpperCase() !== "ELIMINAR") {
-      setError("Eliminación cancelada: debes escribir ELIMINAR para confirmar.");
-      return;
-    }
+    if (!ok) return;
     const fd = new FormData();
     fd.set("id", id);
     startTransition(async () => {
@@ -379,26 +379,28 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
     const label =
       group.variantFilterOptions.find((o) => JSON.stringify(o.filter) === filterJson)?.label ??
       filterJson;
-    if (
-      !window.confirm(
-        `Se asignará «${label}» a ${unassignedCount} diseño${unassignedCount === 1 ? "" : "s"} sin asignar de ${group.label}. ¿Continuar?`,
-      )
-    ) {
-      return;
-    }
-    setNotice(null);
-    setError(null);
-    const fd = new FormData();
-    fd.set("tag", group.tag);
-    fd.set("variantFilter", filterJson);
-    startTransition(async () => {
-      const res = await bulkAssignVariantFilterAction(fd);
-      if (res.error) setError(res.error);
-      else {
-        setNotice(`${res.count ?? 0} diseños de ${group.label} ahora aplican a «${label}».`);
-        setBulkChoiceByTag((m) => ({ ...m, [group.tag]: "" }));
+    void (async () => {
+      if (
+        !(await confirm(
+          `Se asignará «${label}» a ${unassignedCount} diseño${unassignedCount === 1 ? "" : "s"} sin asignar de ${group.label}. ¿Continuar?`,
+        ))
+      ) {
+        return;
       }
-    });
+      setNotice(null);
+      setError(null);
+      const fd = new FormData();
+      fd.set("tag", group.tag);
+      fd.set("variantFilter", filterJson);
+      startTransition(async () => {
+        const res = await bulkAssignVariantFilterAction(fd);
+        if (res.error) setError(res.error);
+        else {
+          setNotice(`${res.count ?? 0} diseños de ${group.label} ahora aplican a «${label}».`);
+          setBulkChoiceByTag((m) => ({ ...m, [group.tag]: "" }));
+        }
+      });
+    })();
   }
 
   const normalizedQuery = query.trim().toLocaleLowerCase("es");
@@ -1055,6 +1057,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
         onSaveVariantFilter={onSaveVariantFilter}
         onToggleActive={onToggleActive}
       />
+      {confirmDialog}
     </div>
   );
 }

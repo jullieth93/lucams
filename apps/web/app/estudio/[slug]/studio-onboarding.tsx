@@ -281,7 +281,7 @@ export function StudioOnboarding({
                   type="button"
                   onClick={skip}
                   aria-label={texts.comun.saltarTutorial}
-                  className={CLOSE_X_CLASS + " h-7 w-7"}
+                  className={CLOSE_X_CLASS + " h-7 w-7 pointer-coarse:min-h-10 pointer-coarse:min-w-10"}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -318,7 +318,7 @@ export function StudioOnboarding({
               <button
                 type="button"
                 onClick={skip}
-                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold underline"
+                className="text-brand-muted hover:text-brand-purple-dark pointer-coarse:min-h-10 text-xs font-semibold underline"
               >
                 {texts.lienzo.onboardingSaltar}
               </button>
@@ -327,7 +327,7 @@ export function StudioOnboarding({
                   <button
                     type="button"
                     onClick={prev}
-                    className="text-brand-purple-dark/70 hover:bg-brand-purple/10 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+                    className="text-brand-purple-dark/70 hover:bg-brand-purple/10 pointer-coarse:min-h-10 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
                   >
                     {texts.comun.anterior}
                   </button>
@@ -335,7 +335,7 @@ export function StudioOnboarding({
                 <button
                   type="button"
                   onClick={next}
-                  className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1 rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors"
+                  className="bg-brand-purple hover:bg-brand-purple-dark pointer-coarse:min-h-11 inline-flex items-center gap-1 rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors"
                 >
                   {step === STEPS.length - 1 ? (
                     <>

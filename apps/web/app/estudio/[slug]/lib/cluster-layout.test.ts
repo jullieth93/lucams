@@ -55,7 +55,10 @@ describe("clusterColumnCount — regla de cuándo se ABRE una columna nueva", ()
     ).toBe(2);
   });
 
-  it("ABRE columnas cuando una sola supera el alto útil (6 tiras 6.5×26.5 cm en una puerta: 3 por columna → 2 columnas)", () => {
+  it("ABRE columnas cuando una sola supera el alto útil (6 tiras de ESTRÉS de 26.5 cm en una puerta: 3 por columna → 2 columnas)", () => {
+    // 26.5 cm = caso de estrés deliberado: más larga que cualquier tira del
+    // catálogo vigente (máx 16.5 cm desde 2026-11-03) → la regla queda probada
+    // con holgura para cualquier pieza real.
     const w = 6.5 * FRIDGE_SCENE.uPerCm;
     const h = 26.5 * FRIDGE_SCENE.uPerCm; // ≈ 1.310 u
     // En el alto útil de la puerta derecha (5.0 u) caben ⌊5.06/1.370⌋ = 3 tiras por columna.
@@ -276,7 +279,7 @@ describe("clusterLayout — posiciones y bounds", () => {
 // ──────────────────────────────────────────────────────────────────
 
 describe("frenchDoorClusterLayout — reparto por puerta (regla física: nada sobre la junta)", () => {
-  it("12 tiras 6.5×26.5: 6 por puerta, grillas dentro de cada puerta, NINGUNA toca la junta", () => {
+  it("12 tiras de ESTRÉS (26.5 cm, más que el máx vigente de 16.5): 6 por puerta, grillas dentro de cada puerta, NINGUNA toca la junta", () => {
     const w = 6.5 * FRIDGE_SCENE.uPerCm;
     const h = 26.5 * FRIDGE_SCENE.uPerCm;
     const layout = frenchDoorClusterLayout(
@@ -390,7 +393,9 @@ describe("proporciones físicas de las escenas (Ola 30)", () => {
     expect(FDOOR.seamHalfW).toBeGreaterThanOrEqual(0.06);
   });
 
-  it("una tira de 26.5 cm se ve ~15% del alto del nevecón (ni miniatura ni dominante)", () => {
+  it("una tira de estrés de 26.5 cm se ve ~15% del alto del nevecón (ni miniatura ni dominante)", () => {
+    // 26.5 cm = la tira más larga que ha existido en el catálogo (hoy máx 16.5);
+    // la proporción de la escena se certifica contra el caso más exigente.
     const ratio = (26.5 * FRIDGE_SCENE.uPerCm) / FRIDGE_SCENE.hU;
     expect(ratio).toBeCloseTo(26.5 / 178, 9);
     expect(ratio).toBeGreaterThan(0.12);
@@ -418,7 +423,7 @@ describe("proporciones físicas de las escenas (Ola 30)", () => {
     expect(BOARD_SCENE.hU / BOARD_SCENE.uPerCm).toBeCloseTo(80, 6);
   });
 
-  it("12 tiras 6.5×26.5 en el mural: grilla de ≤ 2 filas DENTRO del tablero con márgenes (el bug del screenshot)", () => {
+  it("12 tiras de ESTRÉS (26.5 cm) en el mural: grilla de ≤ 2 filas DENTRO del tablero con márgenes (el bug del screenshot)", () => {
     const w = 6.5 * BOARD_SCENE.uPerCm;
     const h = 26.5 * BOARD_SCENE.uPerCm;
     const layout = clusterLayout(
@@ -510,7 +515,7 @@ describe("boardFitHalf — encuadre del mural ponderado al clúster (el tablero 
   });
 
   it("clúster que CASI llena el tablero: snap al tablero completo (crop del marco 'por poquito' se veía accidentado)", () => {
-    // 12 tiras 6.5×26.5 en grilla 6×2: halfW ≈ 4.95 → ponderado 5.7 ≥ 85% del tablero (5.1).
+    // 12 tiras de estrés (26.5 cm) en grilla 6×2: halfW ≈ 4.95 → ponderado 5.7 ≥ 85% del tablero (5.1).
     const fit = boardFitHalf(4.95, HALF_W);
     expect(fit).toBe(HALF_W);
   });

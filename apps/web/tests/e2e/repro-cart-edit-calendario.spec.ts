@@ -105,7 +105,11 @@ test("repro STG — editar set de calendario desde el carrito y agregar sets", a
   });
   await page.keyboard.press("Escape");
 
-  const listo = page.getByRole("button", { name: /Vista previa|Listo/i }).first();
+  const listo = page
+    .getByRole("button", {
+      name: /Ver diseño de tu pedido|Vista previa|Listo, generar diseño final/i,
+    })
+    .first();
   await expect(listo).toBeEnabled({ timeout: 30_000 });
   await listo.click();
   const agregar = page.getByRole("button", { name: /agregar al carrito/i }).first();
@@ -134,7 +138,11 @@ test("repro STG — editar set de calendario desde el carrito y agregar sets", a
   await page.waitForTimeout(4_000);
 
   // ── Paso 4: Vista Previa → confirmar (acá el owner ve el error) ──
-  const listo2 = page.getByRole("button", { name: /Vista previa|Listo/i }).first();
+  const listo2 = page
+    .getByRole("button", {
+      name: /Ver diseño de tu pedido|Vista previa|Listo, generar diseño final/i,
+    })
+    .first();
   await expect(listo2).toBeEnabled({ timeout: 30_000 });
   await listo2.click();
   const confirmar = page.getByRole("button", { name: /agregar al carrito|actualizar/i }).first();
