@@ -22,6 +22,7 @@ import {
 } from "./identity-dry-run.mjs";
 
 const ADVISORY_LOCK_NS = "lucams_contact_identity_v1";
+const BACKFILL_TX_OPTS = { maxWait: 15_000, timeout: 60_000 };
 
 /**
  * @param {string} a
@@ -776,7 +777,7 @@ export async function runContactsBackfill(prisma, options = {}) {
         throw new Error("Fallo de seguridad: PostgreSQL no activó transaction_read_only=on");
       }
       return countUnlinkedEligibleEntities(tx, scopePrefix);
-    });
+    }, BACKFILL_TX_OPTS);
 
     return {
       mode: /** @type {"DRY_RUN"} */ ("DRY_RUN"),
@@ -927,7 +928,7 @@ export async function runContactsBackfill(prisma, options = {}) {
               counters,
             });
           }
-        });
+        }, BACKFILL_TX_OPTS);
       }
     }
   }
@@ -1070,7 +1071,7 @@ export async function runContactsBackfill(prisma, options = {}) {
             });
             counters.entitiesLinked.orders += 1;
           }
-        });
+        }, BACKFILL_TX_OPTS);
       }
     }
   }
@@ -1135,7 +1136,7 @@ export async function runContactsBackfill(prisma, options = {}) {
             });
             counters.entitiesLinked.supportTickets += 1;
           }
-        });
+        }, BACKFILL_TX_OPTS);
       }
     }
   }
@@ -1210,7 +1211,7 @@ export async function runContactsBackfill(prisma, options = {}) {
             });
             counters.entitiesLinked.quotes += 1;
           }
-        });
+        }, BACKFILL_TX_OPTS);
       }
     }
   }
@@ -1288,7 +1289,7 @@ export async function runContactsBackfill(prisma, options = {}) {
             });
             counters.entitiesLinked.abandonedCarts += 1;
           }
-        });
+        }, BACKFILL_TX_OPTS);
       }
     }
   }
@@ -1374,7 +1375,7 @@ export async function runContactsBackfill(prisma, options = {}) {
             });
             counters.entitiesLinked.consents += 1;
           }
-        });
+        }, BACKFILL_TX_OPTS);
       }
     }
   }
@@ -1440,7 +1441,7 @@ export async function runContactsBackfill(prisma, options = {}) {
             });
             counters.entitiesLinked.warrantyClaims += 1;
           }
-        });
+        }, BACKFILL_TX_OPTS);
       }
     }
   }
@@ -1512,7 +1513,7 @@ export async function runContactsBackfill(prisma, options = {}) {
             });
             counters.entitiesLinked.retractRequests += 1;
           }
-        });
+        }, BACKFILL_TX_OPTS);
       }
     }
   }

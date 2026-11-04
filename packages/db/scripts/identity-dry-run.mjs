@@ -26,7 +26,8 @@ process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 
 const asJson = process.argv.includes("--json");
-const prisma = new PrismaClient();
+const dbUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+const prisma = new PrismaClient(dbUrl ? { datasources: { db: { url: dbUrl } } } : undefined);
 
 try {
   const report = await runIdentityDryRun(prisma);

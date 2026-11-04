@@ -148,6 +148,7 @@ check:
 	pnpm --filter @lucams/db test
 	$(MAKE) audit-script-guards
 	$(MAKE) audit-content
+	@if git grep -niE '\b(para vos|a vos|con vos|tenés|podés|querés|hacés|respondé|escribinos|mandanos|elegí|contá|contanos|contás|usás|generá|creá|marcá|completá|dejala|registrate|corré|ingresá|revisá|configurá|seleccioná)\b' -- 'apps/web/**/*.ts' 'apps/web/**/*.tsx' 'packages/db/scripts/**/*.mjs' | grep -vE '\.test\.|\.integration\.|fix-voseo|check-voseo'; then echo "✗ Se encontró VOSEO en el copy (mandato es-CO tuteo)"; exit 1; fi
 
 verify-db:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/audit-schema-drift.mjs check

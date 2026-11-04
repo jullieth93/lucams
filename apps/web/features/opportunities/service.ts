@@ -82,162 +82,165 @@ export async function createPublicB2bOpportunity(
       190,
     );
 
-  return prisma.$transaction(async (tx) => {
-    const contactId = await resolveQuoteContactTx(tx, {
-      customerId: context.customerId ?? null,
-      customerName: input.contactName,
-      customerWhatsapp: input.whatsapp,
-      customerEmail: input.email,
-    });
-
-    if (!contactId) {
-      throw new OpportunityValidationError(
-        "No pudimos registrar tus datos de contacto. Verifica tu correo y celular.",
-      );
-    }
-
-    // Vincular o crear `Organization` si indicó empresa o NIT.
-    let organizationId: string | null = null;
-    if (cleanOrgName) {
-      if (normalizedNit) {
-        const existingOrg = await tx.organization.findFirst({
-          where: {
-            deletedAt: null,
-            taxIdType: "NIT",
-            taxIdNumber: normalizedNit.documentNumber,
-          },
-          select: { id: true },
-        });
-        if (existingOrg) {
-          organizationId = existingOrg.id;
-        }
-      }
-
-      if (!organizationId) {
-        const createdOrg = await tx.organization.create({
-          data: {
-            name: cleanOrgName,
-            taxIdType: normalizedNit ? "NIT" : null,
-            taxIdNumber: normalizedNit ? normalizedNit.documentNumber : null,
-            city: input.city.trim(),
-            department: input.department?.trim() || null,
-          },
-          select: { id: true },
-        });
-        organizationId = createdOrg.id;
-      }
-
-      await tx.contact.updateMany({
-        where: { id: contactId, organizationId: null },
-        data: { organizationId },
-      });
-    }
-
-    // Reintentar hasta 5 veces si hubiera colisión P2002 en `OP-XXXXXX`.
-    let createdOpp: { id: string; number: string } | null = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const candidateNumber = generateOpportunityNumber();
-      try {
-        createdOpp = await tx.opportunity.create({
-          data: {
-            number: candidateNumber,
-            contactId,
-            organizationId,
-            title,
-            eventType: input.eventType,
-            stage: "NEW",
-            expectedUnits: input.expectedUnits,
-            expectedAmountCop: 0,
-            eventDate: eventDate && !Number.isNaN(eventDate.getTime()) ? eventDate : null,
-            city: input.city.trim(),
-            department: input.department?.trim() || null,
-            notes: input.notes.trim(),
-            dataConsentAt: now,
-            dataConsentVersion: context.privacyPolicyVersion,
-            utmSource: sanitizeUtmSlug(context.utmSource),
-            utmMedium: sanitizeUtmSlug(context.utmMedium),
-            utmCampaign: sanitizeUtmSlug(context.utmCampaign),
-            landingPath: sanitizeUtmSlug(context.landingPath, 160),
-          },
-          select: { id: true, number: true },
-        });
-        break;
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    if (!createdOpp) {
-      throw new OpportunityValidationError(
-        "No se pudo generar el radicado de tu oportunidad. Intenta nuevamente.",
-      );
-    }
-
-    // Evidencia inmutable Ley 1581 (`HABEAS_DATA` obligatoria + `NEWSLETTER` opcional).
-    await tx.consent.create({
-      data: {
-        contactId,
+  return prisma.$transaction(
+    async (tx) => {
+      const contactId = await resolveQuoteContactTx(tx, {
         customerId: context.customerId ?? null,
-        email: input.email.trim().toLowerCase(),
-        scope: "HABEAS_DATA",
-        accepted: true,
-        version: context.privacyPolicyVersion,
-        ipAddress: context.ip,
-        userAgent: context.userAgent,
-      },
-    });
+        customerName: input.contactName,
+        customerWhatsapp: input.whatsapp,
+        customerEmail: input.email,
+      });
 
-    if (input.acceptNewsletter) {
+      if (!contactId) {
+        throw new OpportunityValidationError(
+          "No pudimos registrar tus datos de contacto. Verifica tu correo y celular.",
+        );
+      }
+
+      // Vincular o crear `Organization` si indicó empresa o NIT.
+      let organizationId: string | null = null;
+      if (cleanOrgName) {
+        if (normalizedNit) {
+          const existingOrg = await tx.organization.findFirst({
+            where: {
+              deletedAt: null,
+              taxIdType: "NIT",
+              taxIdNumber: normalizedNit.documentNumber,
+            },
+            select: { id: true },
+          });
+          if (existingOrg) {
+            organizationId = existingOrg.id;
+          }
+        }
+
+        if (!organizationId) {
+          const createdOrg = await tx.organization.create({
+            data: {
+              name: cleanOrgName,
+              taxIdType: normalizedNit ? "NIT" : null,
+              taxIdNumber: normalizedNit ? normalizedNit.documentNumber : null,
+              city: input.city.trim(),
+              department: input.department?.trim() || null,
+            },
+            select: { id: true },
+          });
+          organizationId = createdOrg.id;
+        }
+
+        await tx.contact.updateMany({
+          where: { id: contactId, organizationId: null },
+          data: { organizationId },
+        });
+      }
+
+      // Reintentar hasta 5 veces si hubiera colisión P2002 en `OP-XXXXXX`.
+      let createdOpp: { id: string; number: string } | null = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const candidateNumber = generateOpportunityNumber();
+        try {
+          createdOpp = await tx.opportunity.create({
+            data: {
+              number: candidateNumber,
+              contactId,
+              organizationId,
+              title,
+              eventType: input.eventType,
+              stage: "NEW",
+              expectedUnits: input.expectedUnits,
+              expectedAmountCop: 0,
+              eventDate: eventDate && !Number.isNaN(eventDate.getTime()) ? eventDate : null,
+              city: input.city.trim(),
+              department: input.department?.trim() || null,
+              notes: input.notes.trim(),
+              dataConsentAt: now,
+              dataConsentVersion: context.privacyPolicyVersion,
+              utmSource: sanitizeUtmSlug(context.utmSource),
+              utmMedium: sanitizeUtmSlug(context.utmMedium),
+              utmCampaign: sanitizeUtmSlug(context.utmCampaign),
+              landingPath: sanitizeUtmSlug(context.landingPath, 160),
+            },
+            select: { id: true, number: true },
+          });
+          break;
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!createdOpp) {
+        throw new OpportunityValidationError(
+          "No se pudo generar el radicado de tu oportunidad. Intenta nuevamente.",
+        );
+      }
+
+      // Evidencia inmutable Ley 1581 (`HABEAS_DATA` obligatoria + `NEWSLETTER` opcional).
       await tx.consent.create({
         data: {
           contactId,
           customerId: context.customerId ?? null,
           email: input.email.trim().toLowerCase(),
-          scope: "NEWSLETTER",
+          scope: "HABEAS_DATA",
           accepted: true,
           version: context.privacyPolicyVersion,
           ipAddress: context.ip,
           userAgent: context.userAgent,
         },
       });
-    }
 
-    // Tarea automática en Bandeja Hoy para respuesta comercial rápida (< 24h).
-    await tx.task.create({
-      data: {
-        title: `Contactar oportunidad ${createdOpp.number} (${titlePrefix})`,
-        description: `${input.expectedUnits} unidades · ${OPPORTUNITY_EVENT_LABELS[input.eventType]} · Ciudad: ${input.city}`,
-        status: "OPEN",
-        priority: input.expectedUnits >= 100 ? "URGENT" : "HIGH",
-        dueAt: dueIn24h,
-        contactId,
-        opportunityId: createdOpp.id,
-      },
-    });
+      if (input.acceptNewsletter) {
+        await tx.consent.create({
+          data: {
+            contactId,
+            customerId: context.customerId ?? null,
+            email: input.email.trim().toLowerCase(),
+            scope: "NEWSLETTER",
+            accepted: true,
+            version: context.privacyPolicyVersion,
+            ipAddress: context.ip,
+            userAgent: context.userAgent,
+          },
+        });
+      }
 
-    // Bitácora automática en Contacto 360.
-    await tx.contactActivity.create({
-      data: {
-        contactId,
-        kind: "SYSTEM",
-        body: `Solicitud B2B / Eventos ${createdOpp.number} recibida (${input.expectedUnits} unidades · ${OPPORTUNITY_EVENT_LABELS[input.eventType]}).`,
-        metadata: {
+      // Tarea automática en Bandeja Hoy para respuesta comercial rápida (< 24h).
+      await tx.task.create({
+        data: {
+          title: `Contactar oportunidad ${createdOpp.number} (${titlePrefix})`,
+          description: `${input.expectedUnits} unidades · ${OPPORTUNITY_EVENT_LABELS[input.eventType]} · Ciudad: ${input.city}`,
+          status: "OPEN",
+          priority: input.expectedUnits >= 100 ? "URGENT" : "HIGH",
+          dueAt: dueIn24h,
+          contactId,
           opportunityId: createdOpp.id,
-          opportunityNumber: createdOpp.number,
-          expectedUnits: input.expectedUnits,
         },
-      },
-    });
+      });
 
-    return {
-      id: createdOpp.id,
-      number: createdOpp.number,
-      contactId,
-    };
-  });
+      // Bitácora automática en Contacto 360.
+      await tx.contactActivity.create({
+        data: {
+          contactId,
+          kind: "SYSTEM",
+          body: `Solicitud B2B / Eventos ${createdOpp.number} recibida (${input.expectedUnits} unidades · ${OPPORTUNITY_EVENT_LABELS[input.eventType]}).`,
+          metadata: {
+            opportunityId: createdOpp.id,
+            opportunityNumber: createdOpp.number,
+            expectedUnits: input.expectedUnits,
+          },
+        },
+      });
+
+      return {
+        id: createdOpp.id,
+        number: createdOpp.number,
+        contactId,
+      };
+    },
+    { maxWait: 10_000, timeout: 25_000 },
+  );
 }
 
 export type OpportunityListItem = {

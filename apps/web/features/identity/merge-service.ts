@@ -639,368 +639,373 @@ export async function mergeContactsByHumanApproval(input: {
     );
   }
 
-  return prisma.$transaction(async (tx) => {
-    const candidate = await tx.identityMergeCandidate.findUnique({
-      where: { id: candidateId },
-      select: {
-        id: true,
-        primaryContactId: true,
-        secondaryContactId: true,
-        status: true,
-      },
-    });
-
-    if (!candidate) {
-      throw new MergeValidationError(
-        "NOT_FOUND",
-        "El candidato de fusión no existe o ya fue retirado.",
-      );
-    }
-
-    const sortedContactIds = [candidate.primaryContactId, candidate.secondaryContactId].sort();
-    for (const cid of sortedContactIds) {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${MERGE_LOCK_NS}), hashtext(${cid}))`;
-    }
-
-    // Relectura bajo lock para impedir doble fusión concurrente.
-    const lockedCandidate = await tx.identityMergeCandidate.findUnique({
-      where: { id: candidateId },
-      select: {
-        id: true,
-        primaryContactId: true,
-        secondaryContactId: true,
-        status: true,
-      },
-    });
-
-    if (!lockedCandidate || lockedCandidate.status !== "PENDING") {
-      throw new MergeValidationError(
-        "ALREADY_REVIEWED",
-        "Este candidato de fusión ya fue revisado por otro administrador.",
-      );
-    }
-
-    if (
-      requestedSurvivorId !== lockedCandidate.primaryContactId &&
-      requestedSurvivorId !== lockedCandidate.secondaryContactId
-    ) {
-      throw new MergeValidationError(
-        "INVALID_SURVIVOR",
-        "El contacto elegido no pertenece a este par candidato.",
-      );
-    }
-
-    const [primary, secondary] = await Promise.all([
-      tx.contact.findUnique({
-        where: { id: lockedCandidate.primaryContactId },
-        include: {
-          customer: { select: { id: true, deletedAt: true } },
-          identities: true,
+  return prisma.$transaction(
+    async (tx) => {
+      const candidate = await tx.identityMergeCandidate.findUnique({
+        where: { id: candidateId },
+        select: {
+          id: true,
+          primaryContactId: true,
+          secondaryContactId: true,
+          status: true,
         },
-      }),
-      tx.contact.findUnique({
-        where: { id: lockedCandidate.secondaryContactId },
-        include: {
-          customer: { select: { id: true, deletedAt: true } },
-          identities: true,
+      });
+
+      if (!candidate) {
+        throw new MergeValidationError(
+          "NOT_FOUND",
+          "El candidato de fusión no existe o ya fue retirado.",
+        );
+      }
+
+      const sortedContactIds = [candidate.primaryContactId, candidate.secondaryContactId].sort();
+      for (const cid of sortedContactIds) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${MERGE_LOCK_NS}), hashtext(${cid}))`;
+      }
+
+      // Relectura bajo lock para impedir doble fusión concurrente.
+      const lockedCandidate = await tx.identityMergeCandidate.findUnique({
+        where: { id: candidateId },
+        select: {
+          id: true,
+          primaryContactId: true,
+          secondaryContactId: true,
+          status: true,
         },
-      }),
-    ]);
-
-    if (
-      !primary ||
-      !secondary ||
-      primary.deletedAt !== null ||
-      secondary.deletedAt !== null ||
-      primary.anonymizedAt !== null ||
-      secondary.anonymizedAt !== null
-    ) {
-      throw new MergeValidationError(
-        "CONTACT_INACTIVE",
-        "Uno de los contactos ya fue archivado o anonimizado; no se puede fusionar.",
-      );
-    }
-
-    const primaryHasActiveCustomer = Boolean(
-      primary.customer && primary.customer.deletedAt === null,
-    );
-    const secondaryHasActiveCustomer = Boolean(
-      secondary.customer && secondary.customer.deletedAt === null,
-    );
-
-    if (primaryHasActiveCustomer && secondaryHasActiveCustomer) {
-      throw new MergeValidationError(
-        "BOTH_HAVE_CUSTOMER_ACCOUNTS",
-        "Ambos contactos tienen cuentas autenticadas independientes. Por seguridad de sesiones y Puntos Lucams, no se pueden fusionar automáticamente.",
-      );
-    }
-
-    if (primaryHasActiveCustomer && requestedSurvivorId !== primary.id) {
-      throw new MergeValidationError(
-        "INVALID_SURVIVOR",
-        "El contacto con cuenta autenticada debe mantenerse como contacto principal.",
-      );
-    }
-
-    if (secondaryHasActiveCustomer && requestedSurvivorId !== secondary.id) {
-      throw new MergeValidationError(
-        "INVALID_SURVIVOR",
-        "El contacto con cuenta autenticada debe mantenerse como contacto principal.",
-      );
-    }
-
-    const survivor = requestedSurvivorId === primary.id ? primary : secondary;
-    const absorbed = requestedSurvivorId === primary.id ? secondary : primary;
-    const now = new Date();
-
-    // Capturar IDs afectados para el snapshot reversible antes de mover FKs.
-    const [
-      ordersToMove,
-      ticketsToMove,
-      quotesToMove,
-      cartsToMove,
-      consentsToMove,
-      warrantiesToMove,
-      retractsToMove,
-    ] = await Promise.all([
-      tx.order.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
-      tx.supportTicket.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
-      tx.quote.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
-      tx.abandonedCart.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
-      tx.consent.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
-      tx.warrantyClaim.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
-      tx.retractRequest.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
-    ]);
-
-    await Promise.all([
-      tx.order.updateMany({
-        where: { contactId: absorbed.id },
-        data: { contactId: survivor.id },
-      }),
-      tx.supportTicket.updateMany({
-        where: { contactId: absorbed.id },
-        data: { contactId: survivor.id },
-      }),
-      tx.quote.updateMany({
-        where: { contactId: absorbed.id },
-        data: { contactId: survivor.id },
-      }),
-      tx.abandonedCart.updateMany({
-        where: { contactId: absorbed.id },
-        data: { contactId: survivor.id },
-      }),
-      tx.consent.updateMany({
-        where: { contactId: absorbed.id },
-        data: { contactId: survivor.id },
-      }),
-      tx.warrantyClaim.updateMany({
-        where: { contactId: absorbed.id },
-        data: { contactId: survivor.id },
-      }),
-      tx.retractRequest.updateMany({
-        where: { contactId: absorbed.id },
-        data: { contactId: survivor.id },
-      }),
-    ]);
-
-    const [movedActivities, movedTasks, movedOpportunities] = await Promise.all([
-      moveOptionalDelegateContactIdsTx(tx, "contactActivity", absorbed.id, survivor.id),
-      moveOptionalDelegateContactIdsTx(tx, "task", absorbed.id, survivor.id),
-      moveOptionalDelegateContactIdsTx(tx, "opportunity", absorbed.id, survivor.id),
-    ]);
-
-    // Si el absorbido tenía un Customer ya eliminado lógicamente, desacoplamos su FK única.
-    let detachedSoftDeletedCustomerId: string | null = null;
-    if (absorbed.customer && absorbed.customer.deletedAt !== null) {
-      detachedSoftDeletedCustomerId = absorbed.customer.id;
-      await tx.customer.update({
-        where: { id: absorbed.customer.id },
-        data: { contactId: null },
       });
-    }
 
-    // 1) Revocar primero las identidades del absorbido para liberar el índice único parcial
-    //    `ContactIdentity_unique_owner_key` antes de transferirlas al sobreviviente.
-    const absorbedIdentitiesSnapshot = absorbed.identities.map((ident) => ({
-      id: ident.id,
-      type: ident.type,
-      normalizedValue: ident.normalizedValue,
-      verificationStatus: ident.verificationStatus,
-      verifiedAt: ident.verifiedAt ? ident.verifiedAt.toISOString() : null,
-      verificationSource: ident.verificationSource,
-    }));
+      if (!lockedCandidate || lockedCandidate.status !== "PENDING") {
+        throw new MergeValidationError(
+          "ALREADY_REVIEWED",
+          "Este candidato de fusión ya fue revisado por otro administrador.",
+        );
+      }
 
-    if (absorbed.identities.length > 0) {
-      await tx.contactIdentity.updateMany({
-        where: { contactId: absorbed.id, verificationStatus: { not: "REVOKED" } },
-        data: { verificationStatus: "REVOKED" },
-      });
-    }
+      if (
+        requestedSurvivorId !== lockedCandidate.primaryContactId &&
+        requestedSurvivorId !== lockedCandidate.secondaryContactId
+      ) {
+        throw new MergeValidationError(
+          "INVALID_SURVIVOR",
+          "El contacto elegido no pertenece a este par candidato.",
+        );
+      }
 
-    for (const ident of absorbed.identities) {
-      if (ident.verificationStatus === "REVOKED") continue;
-      if (ident.type === "SUPABASE_USER") continue;
-      await upsertContactIdentityTx(tx, {
-        contactId: survivor.id,
+      const [primary, secondary] = await Promise.all([
+        tx.contact.findUnique({
+          where: { id: lockedCandidate.primaryContactId },
+          include: {
+            customer: { select: { id: true, deletedAt: true } },
+            identities: true,
+          },
+        }),
+        tx.contact.findUnique({
+          where: { id: lockedCandidate.secondaryContactId },
+          include: {
+            customer: { select: { id: true, deletedAt: true } },
+            identities: true,
+          },
+        }),
+      ]);
+
+      if (
+        !primary ||
+        !secondary ||
+        primary.deletedAt !== null ||
+        secondary.deletedAt !== null ||
+        primary.anonymizedAt !== null ||
+        secondary.anonymizedAt !== null
+      ) {
+        throw new MergeValidationError(
+          "CONTACT_INACTIVE",
+          "Uno de los contactos ya fue archivado o anonimizado; no se puede fusionar.",
+        );
+      }
+
+      const primaryHasActiveCustomer = Boolean(
+        primary.customer && primary.customer.deletedAt === null,
+      );
+      const secondaryHasActiveCustomer = Boolean(
+        secondary.customer && secondary.customer.deletedAt === null,
+      );
+
+      if (primaryHasActiveCustomer && secondaryHasActiveCustomer) {
+        throw new MergeValidationError(
+          "BOTH_HAVE_CUSTOMER_ACCOUNTS",
+          "Ambos contactos tienen cuentas autenticadas independientes. Por seguridad de sesiones y Puntos Lucams, no se pueden fusionar automáticamente.",
+        );
+      }
+
+      if (primaryHasActiveCustomer && requestedSurvivorId !== primary.id) {
+        throw new MergeValidationError(
+          "INVALID_SURVIVOR",
+          "El contacto con cuenta autenticada debe mantenerse como contacto principal.",
+        );
+      }
+
+      if (secondaryHasActiveCustomer && requestedSurvivorId !== secondary.id) {
+        throw new MergeValidationError(
+          "INVALID_SURVIVOR",
+          "El contacto con cuenta autenticada debe mantenerse como contacto principal.",
+        );
+      }
+
+      const survivor = requestedSurvivorId === primary.id ? primary : secondary;
+      const absorbed = requestedSurvivorId === primary.id ? secondary : primary;
+      const now = new Date();
+
+      // Capturar IDs afectados para el snapshot reversible antes de mover FKs.
+      const [
+        ordersToMove,
+        ticketsToMove,
+        quotesToMove,
+        cartsToMove,
+        consentsToMove,
+        warrantiesToMove,
+        retractsToMove,
+      ] = await Promise.all([
+        tx.order.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
+        tx.supportTicket.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
+        tx.quote.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
+        tx.abandonedCart.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
+        tx.consent.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
+        tx.warrantyClaim.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
+        tx.retractRequest.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
+      ]);
+
+      await Promise.all([
+        tx.order.updateMany({
+          where: { contactId: absorbed.id },
+          data: { contactId: survivor.id },
+        }),
+        tx.supportTicket.updateMany({
+          where: { contactId: absorbed.id },
+          data: { contactId: survivor.id },
+        }),
+        tx.quote.updateMany({
+          where: { contactId: absorbed.id },
+          data: { contactId: survivor.id },
+        }),
+        tx.abandonedCart.updateMany({
+          where: { contactId: absorbed.id },
+          data: { contactId: survivor.id },
+        }),
+        tx.consent.updateMany({
+          where: { contactId: absorbed.id },
+          data: { contactId: survivor.id },
+        }),
+        tx.warrantyClaim.updateMany({
+          where: { contactId: absorbed.id },
+          data: { contactId: survivor.id },
+        }),
+        tx.retractRequest.updateMany({
+          where: { contactId: absorbed.id },
+          data: { contactId: survivor.id },
+        }),
+      ]);
+
+      const [movedActivities, movedTasks, movedOpportunities] = await Promise.all([
+        moveOptionalDelegateContactIdsTx(tx, "contactActivity", absorbed.id, survivor.id),
+        moveOptionalDelegateContactIdsTx(tx, "task", absorbed.id, survivor.id),
+        moveOptionalDelegateContactIdsTx(tx, "opportunity", absorbed.id, survivor.id),
+      ]);
+
+      // Si el absorbido tenía un Customer ya eliminado lógicamente, desacoplamos su FK única.
+      let detachedSoftDeletedCustomerId: string | null = null;
+      if (absorbed.customer && absorbed.customer.deletedAt !== null) {
+        detachedSoftDeletedCustomerId = absorbed.customer.id;
+        await tx.customer.update({
+          where: { id: absorbed.customer.id },
+          data: { contactId: null },
+        });
+      }
+
+      // 1) Revocar primero las identidades del absorbido para liberar el índice único parcial
+      //    `ContactIdentity_unique_owner_key` antes de transferirlas al sobreviviente.
+      const absorbedIdentitiesSnapshot = absorbed.identities.map((ident) => ({
+        id: ident.id,
         type: ident.type,
         normalizedValue: ident.normalizedValue,
         verificationStatus: ident.verificationStatus,
-        verificationSource: ident.verificationSource ?? "CONTACT_MERGE",
-        now,
+        verifiedAt: ident.verifiedAt ? ident.verifiedAt.toISOString() : null,
+        verificationSource: ident.verificationSource,
+      }));
+
+      if (absorbed.identities.length > 0) {
+        await tx.contactIdentity.updateMany({
+          where: { contactId: absorbed.id, verificationStatus: { not: "REVOKED" } },
+          data: { verificationStatus: "REVOKED" },
+        });
+      }
+
+      for (const ident of absorbed.identities) {
+        if (ident.verificationStatus === "REVOKED") continue;
+        if (ident.type === "SUPABASE_USER") continue;
+        await upsertContactIdentityTx(tx, {
+          contactId: survivor.id,
+          type: ident.type,
+          normalizedValue: ident.normalizedValue,
+          verificationStatus: ident.verificationStatus,
+          verificationSource: ident.verificationSource ?? "CONTACT_MERGE",
+          now,
+        });
+      }
+
+      // 2) Archivar lógicamente (`deletedAt`) el contacto absorbido ANTES de enriquecer
+      //    `survivor.primaryEmail` para no chocar con `Contact_primaryEmail_active_key`.
+      await tx.contact.update({
+        where: { id: absorbed.id },
+        data: {
+          deletedAt: now,
+          deletedBy: input.actorAdminId,
+          updatedBy: input.actorAdminId,
+        },
       });
-    }
 
-    // 2) Archivar lógicamente (`deletedAt`) el contacto absorbido ANTES de enriquecer
-    //    `survivor.primaryEmail` para no chocar con `Contact_primaryEmail_active_key`.
-    await tx.contact.update({
-      where: { id: absorbed.id },
-      data: {
-        deletedAt: now,
-        deletedBy: input.actorAdminId,
+      // 3) Enriquecer campos faltantes en el sobreviviente sin sobrescribir valores ya presentes.
+      const survivorPatch: Prisma.ContactUncheckedUpdateInput = {
         updatedBy: input.actorAdminId,
-      },
-    });
+      };
+      if (!survivor.primaryEmail && absorbed.primaryEmail) {
+        survivorPatch.primaryEmail = absorbed.primaryEmail;
+      }
+      if (!survivor.primaryPhoneE164 && absorbed.primaryPhoneE164) {
+        survivorPatch.primaryPhoneE164 = absorbed.primaryPhoneE164;
+      }
+      if (!survivor.displayName && absorbed.displayName) {
+        survivorPatch.displayName = absorbed.displayName;
+      }
+      if (!survivor.documentNumber && absorbed.documentType && absorbed.documentNumber) {
+        survivorPatch.documentType = absorbed.documentType;
+        survivorPatch.documentNumber = absorbed.documentNumber;
+      }
+      if (!survivor.organizationId && absorbed.organizationId) {
+        survivorPatch.organizationId = absorbed.organizationId;
+      }
+      if (!survivor.ownerAdminId && absorbed.ownerAdminId) {
+        survivorPatch.ownerAdminId = absorbed.ownerAdminId;
+      }
 
-    // 3) Enriquecer campos faltantes en el sobreviviente sin sobrescribir valores ya presentes.
-    const survivorPatch: Prisma.ContactUncheckedUpdateInput = {
-      updatedBy: input.actorAdminId,
-    };
-    if (!survivor.primaryEmail && absorbed.primaryEmail) {
-      survivorPatch.primaryEmail = absorbed.primaryEmail;
-    }
-    if (!survivor.primaryPhoneE164 && absorbed.primaryPhoneE164) {
-      survivorPatch.primaryPhoneE164 = absorbed.primaryPhoneE164;
-    }
-    if (!survivor.displayName && absorbed.displayName) {
-      survivorPatch.displayName = absorbed.displayName;
-    }
-    if (!survivor.documentNumber && absorbed.documentType && absorbed.documentNumber) {
-      survivorPatch.documentType = absorbed.documentType;
-      survivorPatch.documentNumber = absorbed.documentNumber;
-    }
-    if (!survivor.organizationId && absorbed.organizationId) {
-      survivorPatch.organizationId = absorbed.organizationId;
-    }
-    if (!survivor.ownerAdminId && absorbed.ownerAdminId) {
-      survivorPatch.ownerAdminId = absorbed.ownerAdminId;
-    }
+      await tx.contact.update({
+        where: { id: survivor.id },
+        data: survivorPatch,
+      });
 
-    await tx.contact.update({
-      where: { id: survivor.id },
-      data: survivorPatch,
-    });
+      const snapshot: MergeSnapshotPayload = {
+        version: 1,
+        mergedAt: now.toISOString(),
+        actorAdminId: input.actorAdminId,
+        survivorContactId: survivor.id,
+        absorbedContactId: absorbed.id,
+        absorbedContactBefore: {
+          primaryEmail: absorbed.primaryEmail,
+          primaryPhoneE164: absorbed.primaryPhoneE164,
+          displayName: absorbed.displayName,
+          documentType: absorbed.documentType,
+          documentNumber: absorbed.documentNumber,
+          organizationId: absorbed.organizationId,
+          ownerAdminId: absorbed.ownerAdminId,
+          source: absorbed.source,
+          detachedSoftDeletedCustomerId,
+        },
+        survivorContactBefore: {
+          primaryEmail: survivor.primaryEmail,
+          primaryPhoneE164: survivor.primaryPhoneE164,
+          displayName: survivor.displayName,
+          documentType: survivor.documentType,
+          documentNumber: survivor.documentNumber,
+          organizationId: survivor.organizationId,
+          ownerAdminId: survivor.ownerAdminId,
+        },
+        absorbedIdentitiesBefore: absorbedIdentitiesSnapshot,
+        movedEntityIds: {
+          orders: ordersToMove.map((r) => r.id),
+          supportTickets: ticketsToMove.map((r) => r.id),
+          quotes: quotesToMove.map((r) => r.id),
+          abandonedCarts: cartsToMove.map((r) => r.id),
+          consents: consentsToMove.map((r) => r.id),
+          warrantyClaims: warrantiesToMove.map((r) => r.id),
+          retractRequests: retractsToMove.map((r) => r.id),
+          contactActivities: movedActivities,
+          tasks: movedTasks,
+          opportunities: movedOpportunities,
+        },
+      };
 
-    const snapshot: MergeSnapshotPayload = {
-      version: 1,
-      mergedAt: now.toISOString(),
-      actorAdminId: input.actorAdminId,
-      survivorContactId: survivor.id,
-      absorbedContactId: absorbed.id,
-      absorbedContactBefore: {
-        primaryEmail: absorbed.primaryEmail,
-        primaryPhoneE164: absorbed.primaryPhoneE164,
-        displayName: absorbed.displayName,
-        documentType: absorbed.documentType,
-        documentNumber: absorbed.documentNumber,
-        organizationId: absorbed.organizationId,
-        ownerAdminId: absorbed.ownerAdminId,
-        source: absorbed.source,
-        detachedSoftDeletedCustomerId,
-      },
-      survivorContactBefore: {
-        primaryEmail: survivor.primaryEmail,
-        primaryPhoneE164: survivor.primaryPhoneE164,
-        displayName: survivor.displayName,
-        documentType: survivor.documentType,
-        documentNumber: survivor.documentNumber,
-        organizationId: survivor.organizationId,
-        ownerAdminId: survivor.ownerAdminId,
-      },
-      absorbedIdentitiesBefore: absorbedIdentitiesSnapshot,
-      movedEntityIds: {
-        orders: ordersToMove.map((r) => r.id),
-        supportTickets: ticketsToMove.map((r) => r.id),
-        quotes: quotesToMove.map((r) => r.id),
-        abandonedCarts: cartsToMove.map((r) => r.id),
-        consents: consentsToMove.map((r) => r.id),
-        warrantyClaims: warrantiesToMove.map((r) => r.id),
-        retractRequests: retractsToMove.map((r) => r.id),
-        contactActivities: movedActivities,
-        tasks: movedTasks,
-        opportunities: movedOpportunities,
-      },
-    };
+      await tx.identityMergeCandidate.update({
+        where: { id: lockedCandidate.id },
+        data: {
+          status: "APPROVED",
+          reviewedByAdminId: input.actorAdminId,
+          reviewedAt: now,
+          reviewNote: cleanNote,
+          mergeSnapshotJson: snapshot as unknown as Prisma.InputJsonValue,
+        },
+      });
 
-    await tx.identityMergeCandidate.update({
-      where: { id: lockedCandidate.id },
-      data: {
-        status: "APPROVED",
-        reviewedByAdminId: input.actorAdminId,
-        reviewedAt: now,
-        reviewNote: cleanNote,
-        mergeSnapshotJson: snapshot as unknown as Prisma.InputJsonValue,
-      },
-    });
+      // Re-apuntar cualquier otro candidato PENDING que involucrara al absorbido hacia el sobreviviente.
+      const otherPendingCandidates = await tx.identityMergeCandidate.findMany({
+        where: {
+          id: { not: lockedCandidate.id },
+          status: "PENDING",
+          OR: [{ primaryContactId: absorbed.id }, { secondaryContactId: absorbed.id }],
+        },
+        select: {
+          id: true,
+          primaryContactId: true,
+          secondaryContactId: true,
+          reasonCode: true,
+          reasonCodes: true,
+          evidenceJson: true,
+        },
+      });
 
-    // Re-apuntar cualquier otro candidato PENDING que involucrara al absorbido hacia el sobreviviente.
-    const otherPendingCandidates = await tx.identityMergeCandidate.findMany({
-      where: {
-        id: { not: lockedCandidate.id },
-        status: "PENDING",
-        OR: [{ primaryContactId: absorbed.id }, { secondaryContactId: absorbed.id }],
-      },
-      select: {
-        id: true,
-        primaryContactId: true,
-        secondaryContactId: true,
-        reasonCode: true,
-        reasonCodes: true,
-        evidenceJson: true,
-      },
-    });
+      for (const other of otherPendingCandidates) {
+        const thirdContactId =
+          other.primaryContactId === absorbed.id
+            ? other.secondaryContactId
+            : other.primaryContactId;
 
-    for (const other of otherPendingCandidates) {
-      const thirdContactId =
-        other.primaryContactId === absorbed.id ? other.secondaryContactId : other.primaryContactId;
+        await tx.identityMergeCandidate.delete({ where: { id: other.id } });
 
-      await tx.identityMergeCandidate.delete({ where: { id: other.id } });
-
-      if (thirdContactId && thirdContactId !== survivor.id) {
-        const codes = other.reasonCodes.length > 0 ? other.reasonCodes : [other.reasonCode];
-        for (const code of codes) {
-          await enqueueMergeCandidateTx(tx, {
-            contactIdA: survivor.id,
-            contactIdB: thirdContactId,
-            reasonCode: code as MergeReasonCode,
-            evidence:
-              other.evidenceJson &&
-              typeof other.evidenceJson === "object" &&
-              !Array.isArray(other.evidenceJson)
-                ? (other.evidenceJson as Record<string, unknown>)
-                : undefined,
-          });
+        if (thirdContactId && thirdContactId !== survivor.id) {
+          const codes = other.reasonCodes.length > 0 ? other.reasonCodes : [other.reasonCode];
+          for (const code of codes) {
+            await enqueueMergeCandidateTx(tx, {
+              contactIdA: survivor.id,
+              contactIdB: thirdContactId,
+              reasonCode: code as MergeReasonCode,
+              evidence:
+                other.evidenceJson &&
+                typeof other.evidenceJson === "object" &&
+                !Array.isArray(other.evidenceJson)
+                  ? (other.evidenceJson as Record<string, unknown>)
+                  : undefined,
+            });
+          }
         }
       }
-    }
 
-    return {
-      candidateId: lockedCandidate.id,
-      survivorContactId: survivor.id,
-      absorbedContactId: absorbed.id,
-      movedCounts: {
-        orders: ordersToMove.length,
-        supportTickets: ticketsToMove.length,
-        quotes: quotesToMove.length,
-        abandonedCarts: cartsToMove.length,
-        consents: consentsToMove.length,
-        warrantyClaims: warrantiesToMove.length,
-        retractRequests: retractsToMove.length,
-        contactActivities: movedActivities.length,
-        tasks: movedTasks.length,
-        opportunities: movedOpportunities.length,
-      },
-    };
-  });
+      return {
+        candidateId: lockedCandidate.id,
+        survivorContactId: survivor.id,
+        absorbedContactId: absorbed.id,
+        movedCounts: {
+          orders: ordersToMove.length,
+          supportTickets: ticketsToMove.length,
+          quotes: quotesToMove.length,
+          abandonedCarts: cartsToMove.length,
+          consents: consentsToMove.length,
+          warrantyClaims: warrantiesToMove.length,
+          retractRequests: retractsToMove.length,
+          contactActivities: movedActivities.length,
+          tasks: movedTasks.length,
+          opportunities: movedOpportunities.length,
+        },
+      };
+    },
+    { maxWait: 10_000, timeout: 25_000 },
+  );
 }
 
 /**

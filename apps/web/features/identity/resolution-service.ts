@@ -161,7 +161,10 @@ async function withIdentityTx<T>(
 ): Promise<T> {
   const maybeRoot = db as PrismaClient;
   if (typeof maybeRoot.$transaction === "function") {
-    return maybeRoot.$transaction(async (tx) => fn(tx));
+    return maybeRoot.$transaction(async (tx) => fn(tx), {
+      maxWait: 10_000,
+      timeout: 25_000,
+    });
   }
   return fn(db as Prisma.TransactionClient);
 }

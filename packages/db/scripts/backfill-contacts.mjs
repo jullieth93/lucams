@@ -38,7 +38,8 @@ if (apply) {
   assertDestructiveAllowed("backfill-contacts.mjs --apply");
 }
 
-const prisma = new PrismaClient();
+const dbUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+const prisma = new PrismaClient(dbUrl ? { datasources: { db: { url: dbUrl } } } : undefined);
 
 try {
   const report = await runContactsBackfill(prisma, { apply, batchSize });
