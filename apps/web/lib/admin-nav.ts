@@ -38,7 +38,6 @@ import {
   Store,
   ShoppingBag,
   BookOpen,
-  Bot,
   TrendingUp,
   Gauge,
   Activity,
@@ -375,14 +374,6 @@ export const ADMIN_NAV: NavGroup[] = [
         description:
           "Biblioteca de imágenes del sitio (banners, hero, logos). Sube una vez y reutiliza en los campos de imagen.",
       },
-      {
-        label: "Bot WhatsApp",
-        href: "/admin/bot",
-        icon: Bot,
-        badge: { text: "Fase 5+", tone: "phase5" },
-        description:
-          "Asistente WhatsApp con IA (responder ¿qué le regalo a mi mamá? consultando base de conocimiento). Llega con Fase 5+.",
-      },
     ],
   },
   {
@@ -499,19 +490,15 @@ export const ADMIN_NAV: NavGroup[] = [
  * del sidebar (admin-shell.tsx) usa ESTA función.
  */
 export function getAdminNav(): NavGroup[] {
-  // Módulos futuros explícitamente descopeados: ocultos en TODOS los modos
-  // (decisión develop 5499161): Mercado Libre (Canales) y Bot WhatsApp IA.
+  // Módulo futuro explícitamente descopeado: oculto en TODOS los modos
+  // (decisión develop 5499161): Mercado Libre (Canales).
+  // Nota (`Fase 12 · S26`): `/admin/bot` ("Bot WhatsApp") se retiró definitivamente
+  // en favor del copiloto ARM Human-in-the-Loop integrado en `/admin/soporte/[id]`.
   const withoutFuture = ADMIN_NAV.map((group) => {
     if (group.title === "Canales" && group.items) {
       return {
         ...group,
         items: group.items.filter((it) => it.label !== "Mercado Libre"),
-      };
-    }
-    if (group.title === "Contenido" && group.items) {
-      return {
-        ...group,
-        items: group.items.filter((it) => it.label !== "Bot WhatsApp"),
       };
     }
     return group;

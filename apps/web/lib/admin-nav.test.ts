@@ -212,12 +212,12 @@ describe("getAdminNav", () => {
   it.each(["full", "catalog"] as const)("modo %s: el filtrado NO muta ADMIN_NAV", async (mode) => {
     const { mod } = await getNavForMode(mode);
 
-    // ADMIN_NAV conserva todos los módulos originales.
+    // ADMIN_NAV conserva los módulos originales activos y retira el placeholder /admin/bot (S26).
     expect(mod.ADMIN_NAV.some((g) => g.title === "Finanzas")).toBe(true);
     const canales = mod.ADMIN_NAV.find((g) => g.title === "Canales");
     expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
-    const ia = mod.ADMIN_NAV.find((g) => g.title === "Contenido");
-    expect(ia?.items?.some((it) => it.label === "Bot WhatsApp")).toBe(true);
+    const contenido = mod.ADMIN_NAV.find((g) => g.title === "Contenido");
+    expect(contenido?.items?.some((it) => it.label === "Bot WhatsApp")).toBe(false);
   });
 
   it("modo full: getAdminNav() filtra descopeados sin mutar ADMIN_NAV", async () => {

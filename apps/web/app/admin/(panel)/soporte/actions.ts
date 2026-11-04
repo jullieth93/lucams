@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
+import { rateLimit } from "@/lib/rate-limit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { generateSupportReplySuggestion } from "@/features/ai/support-copilot";
 import {
   isSupportPriority,
   setSupportTicketStatus,
@@ -196,5 +198,68 @@ export async function convertTicketToCaseAction(_p: St, fd: FormData): Promise<S
       err: err instanceof Error ? err.message : String(err),
     });
     return { error: caseConversionErrorMessage(err) };
+  }
+}
+
+export type CopilotSuggestResult =
+  | {
+      ok: true;
+      draftBody: string;
+      reasoningSummary: string;
+      source: "gemini" | "smart_template";
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+/**
+ * Copiloto ARM de soporte (`Fase 12 · S26`): sugiere un borrador editable sin PII
+ * enviada a terceros y sin ejecutar mutaciones sobre el ticket ni enviar correos.
+ */
+export async function suggestSupportReplyAction(ticketId: string): Promise<CopilotSuggestResult> {
+  const s = await requireAdminAction({ capability: "support:manage" });
+  const id = ticketId.trim();
+  if (!id) return { ok: false, error: "Ticket inválido." };
+
+  const rl = await rateLimit(`admin-support-copilot:${s.admin.id}`, 25, 60 * 60);
+  if (!rl.allowed) {
+    return {
+      ok: false,
+      error:
+        "Alcanzaste el límite de sugerencias por hora. Redacta directamente o intenta más tarde.",
+    };
+  }
+
+  try {
+    const suggestion = await generateSupportReplySuggestion(id);
+    if (!suggestion) {
+      return { ok: false, error: "No encontramos el ticket solicitado." };
+    }
+
+    await recordAdminAction({
+      actorId: s.admin.id,
+      action: "support.copilot_suggest",
+      entityType: "SupportTicket",
+      entityId: id,
+      metadata: { source: suggestion.source },
+    });
+
+    return {
+      ok: true,
+      draftBody: suggestion.draftBody,
+      reasoningSummary: suggestion.reasoningSummary,
+      source: suggestion.source,
+    };
+  } catch (err) {
+    logger.warn({
+      event: "admin.support.copilot_fail",
+      id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      ok: false,
+      error: "No pudimos generar el borrador en este momento. Intenta de nuevo.",
+    };
   }
 }
