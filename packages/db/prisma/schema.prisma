@@ -197,6 +197,8 @@ model Contact {
   retractRequests            RetractRequest[]
   mergeCandidatesAsPrimary   IdentityMergeCandidate[] @relation("MergePrimaryContact")
   mergeCandidatesAsSecondary IdentityMergeCandidate[] @relation("MergeSecondaryContact")
+  activities                 ContactActivity[]
+  tasks                      Task[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -364,6 +366,9 @@ model AdminUser {
   assignedSupportTickets  SupportTicket[]          @relation("SupportTicketAssignee")
   assignedWarrantyClaims  WarrantyClaim[]          @relation("WarrantyClaimAssignee")
   assignedRetractRequests RetractRequest[]         @relation("RetractRequestAssignee")
+  authoredActivities      ContactActivity[]        @relation("ContactActivityAuthor")
+  ownedTasks              Task[]                   @relation("TaskOwner")
+  createdTasks            Task[]                   @relation("TaskCreator")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -843,6 +848,9 @@ model Order {
   // Order PENDING_PAYMENT activa, retornamos esa en vez de crear otra.
   cartId String?
 
+  contactActivities ContactActivity[]
+  tasks             Task[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   createdBy String?
@@ -1173,6 +1181,7 @@ model RetractRequest {
   assignedToAdminId String?
   assignedToAdmin   AdminUser?    @relation("RetractRequestAssignee", fields: [assignedToAdminId], references: [id], onDelete: SetNull)
   slaDueAt          DateTime?
+  tasks             Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1224,6 +1233,7 @@ model WarrantyClaim {
   assignedToAdminId String?
   assignedToAdmin   AdminUser?     @relation("WarrantyClaimAssignee", fields: [assignedToAdminId], references: [id], onDelete: SetNull)
   slaDueAt          DateTime?
+  tasks             Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1619,6 +1629,8 @@ model SupportTicket {
   resolvedAt            DateTime?
   resolvedBy            String?
   messages              SupportTicketMessage[]
+  contactActivities     ContactActivity[]
+  tasks                 Task[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2525,4 +2537,69 @@ model FunnelEventDaily {
   @@unique([day, eventName, productSlug, editorKind, deviceCategory, errorCode])
   @@index([day, eventName])
   @@index([productSlug, day])
+}
+
+/// Bitácora transversal de interacciones humanas y de sistema sobre un `Contact` (`Fase 10 · S22`).
+/// Soporta notas internas, llamadas, seguimientos WhatsApp y correos manuales enlazables a pedidos o tickets.
+model ContactActivity {
+  id              String         @id @default(cuid())
+  contactId       String
+  contact         Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  orderId         String?
+  order           Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  supportTicketId String?
+  supportTicket   SupportTicket? @relation(fields: [supportTicketId], references: [id], onDelete: SetNull)
+  authorAdminId   String?
+  authorAdmin     AdminUser?     @relation("ContactActivityAuthor", fields: [authorAdminId], references: [id], onDelete: SetNull)
+  // "NOTE" | "CALL" | "WHATSAPP" | "EMAIL" | "SYSTEM"
+  kind            String         @default("NOTE")
+  body            String
+  metadata        Json           @default("{}")
+  createdAt       DateTime       @default(now())
+
+  // NOTA: CHECK ("kind" IN (...)) + ENABLE ROW LEVEL SECURITY + REVOKE ALL viven en
+  // 20261104190000_add_crm_activities_and_tasks y supabase/migrations/00000000000052_crm_activities_and_tasks_rls.sql.
+
+  @@index([contactId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([supportTicketId, createdAt])
+  @@index([authorAdminId])
+}
+
+/// Motor de tareas accionables del CRM operativo con responsable, fecha límite y vínculo multi-entidad (`Fase 10 · S22`).
+model Task {
+  id               String          @id @default(cuid())
+  title            String
+  description      String?
+  // "OPEN" | "IN_PROGRESS" | "DONE" | "CANCELLED"
+  status           String          @default("OPEN")
+  // "LOW" | "NORMAL" | "HIGH" | "URGENT"
+  priority         String          @default("NORMAL")
+  dueAt            DateTime?
+  completedAt      DateTime?
+  ownerAdminId     String?
+  ownerAdmin       AdminUser?      @relation("TaskOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
+  createdByAdminId String?
+  createdByAdmin   AdminUser?      @relation("TaskCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  contactId        String?
+  contact          Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  orderId          String?
+  order            Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  supportTicketId  String?
+  supportTicket    SupportTicket?  @relation(fields: [supportTicketId], references: [id], onDelete: SetNull)
+  warrantyClaimId  String?
+  warrantyClaim    WarrantyClaim?  @relation(fields: [warrantyClaimId], references: [id], onDelete: SetNull)
+  retractRequestId String?
+  retractRequest   RetractRequest? @relation(fields: [retractRequestId], references: [id], onDelete: SetNull)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // NOTA: CHECK ("status" / "priority") + ENABLE ROW LEVEL SECURITY + REVOKE ALL viven en
+  // 20261104190000_add_crm_activities_and_tasks y supabase/migrations/00000000000052_crm_activities_and_tasks_rls.sql.
+
+  @@index([status, dueAt])
+  @@index([ownerAdminId, status, dueAt])
+  @@index([contactId, status])
+  @@index([orderId, status])
+  @@index([supportTicketId, status])
 }

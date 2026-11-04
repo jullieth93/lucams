@@ -8,7 +8,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, Clock, LifeBuoy, Package, Scale, User, UserCheck } from "lucide-react";
 import { requireCapability } from "@/lib/admin-rbac-guard";
+import { hasCapability } from "@/lib/admin-rbac";
 import { evaluateSlaStatus } from "@/lib/colombian-sla";
+import { CrmWorkspacePanel } from "@/components/admin/crm-workspace-panel";
+import {
+  listActivitiesForEntity,
+  listAssignableCrmAdmins,
+  listTasksForEntity,
+} from "@/features/crm/service";
 import {
   getSupportTicketDetail,
   getOrderItemsForCaseConversion,
@@ -63,13 +70,26 @@ export default async function AdminSoporteTicketPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await requireCapability("support:manage");
+  const canManageTasks = hasCapability(session.admin.role, "crm:manage_tasks");
+  const canManageActivities = hasCapability(session.admin.role, "crm:manage_activities");
+  const canViewActivities =
+    hasCapability(session.admin.role, "contacts:read_360") &&
+    hasCapability(session.admin.role, "contacts:read_pii");
   const { id } = await params;
 
-  const [ticket, assignableAdmins] = await Promise.all([
+  const [ticket, assignableAdmins, crmAssignableAdmins] = await Promise.all([
     getSupportTicketDetail(id),
     listAssignableSupportAdmins(),
+    canManageTasks ? listAssignableCrmAdmins() : Promise.resolve([]),
   ]);
   if (!ticket) notFound();
+
+  const [crmTasks, crmActivities] = await Promise.all([
+    listTasksForEntity({ supportTicketId: ticket.id }),
+    canViewActivities && ticket.contactId
+      ? listActivitiesForEntity({ supportTicketId: ticket.id })
+      : Promise.resolve([]),
+  ]);
 
   const canConvert = ticket.subject === "GARANTIA_DEVOLUCION" && !ticket.linkedCaseId;
   const conversionOrder =
@@ -180,6 +200,21 @@ export default async function AdminSoporteTicketPage({
               </p>
               <ReplyForm ticketId={ticket.id} disabled={status === "CLOSED"} />
             </section>
+
+            <CrmWorkspacePanel
+              title="Tareas de seguimiento del ticket"
+              subtitle="Crea tareas internas con vencimiento y responsable para que aparezcan en la Bandeja Hoy."
+              contactId={canViewActivities ? ticket.contactId : null}
+              supportTicketId={ticket.id}
+              currentAdminId={session.admin.id}
+              canManageTasks={canManageTasks}
+              canViewActivities={canViewActivities && Boolean(ticket.contactId)}
+              canManageActivities={canManageActivities && Boolean(ticket.contactId)}
+              tasks={crmTasks}
+              activities={crmActivities}
+              assignableAdmins={crmAssignableAdmins}
+              compact
+            />
           </div>
 
           {/* Columna lateral: Contacto 360 + responsable/SLA + pedido + caso + estado */}

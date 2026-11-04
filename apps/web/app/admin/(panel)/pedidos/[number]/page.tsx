@@ -52,6 +52,12 @@ import {
   parseVariantAttributes,
 } from "@/features/products/variant-schemas";
 import { customerWaLink } from "@/lib/wa";
+import { CrmWorkspacePanel } from "@/components/admin/crm-workspace-panel";
+import {
+  listActivitiesForEntity,
+  listAssignableCrmAdmins,
+  listTasksForEntity,
+} from "@/features/crm/service";
 import { OrderActions } from "./order-actions";
 import { RegenLettersetButton } from "./regen-letterset-button";
 import { RetryRenderJobButton } from "./retry-render-job-button";
@@ -148,10 +154,21 @@ export default async function AdminPedidoDetallePage({
   const canReconcile = hasCapability(role, "orders:reconcile");
   const canRefund = role === "SUPERADMIN";
   const canPrintGuide = canReadPii || role === "FULFILLMENT";
+  const canManageTasks = hasCapability(role, "crm:manage_tasks");
+  const canManageActivities = hasCapability(role, "crm:manage_activities");
+  const canViewActivities = canRead360 && canReadPii;
 
   const { number } = await params;
   const order = await getOrderForActor(decodeURIComponent(number), role);
   if (!order) notFound();
+
+  const [crmTasks, crmActivities, assignableAdmins] = await Promise.all([
+    listTasksForEntity({ orderId: order.id }),
+    canViewActivities && order.contactId
+      ? listActivitiesForEntity({ orderId: order.id })
+      : Promise.resolve([]),
+    canManageTasks ? listAssignableCrmAdmins() : Promise.resolve([]),
+  ]);
 
   // Historial de transiciones (OrderStatusEvent — lo escribe transitionOrder en
   // la misma tx del cambio de estado + el evento inicial de createOrderFromCart).
@@ -965,6 +982,22 @@ export default async function AdminPedidoDetallePage({
                 </ol>
               </Card>
             )}
+
+            {/* Tareas operativas y seguimiento CRM del pedido */}
+            <CrmWorkspacePanel
+              title="Tareas y seguimiento del pedido"
+              contactId={canViewActivities ? order.contactId : null}
+              orderId={order.id}
+              orderNumber={order.number}
+              currentAdminId={session.admin.id}
+              canManageTasks={canManageTasks}
+              canViewActivities={canViewActivities && Boolean(order.contactId)}
+              canManageActivities={canManageActivities && Boolean(order.contactId)}
+              tasks={crmTasks}
+              activities={crmActivities}
+              assignableAdmins={assignableAdmins}
+              compact
+            />
 
             {/* Acciones */}
             <OrderActions

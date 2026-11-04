@@ -159,6 +159,8 @@ export async function teardown() {
         OR "primaryEmail" ILIKE '%@consent.test' OR "primaryEmail" ILIKE '%@test.local'
         OR "primaryEmail" ILIKE 'itest%' OR "primaryEmail" LIKE 'test+%@example.com'
         OR "primaryEmail" ~ ${RUN_ID}`,
+      prisma.$executeRaw`DELETE FROM "Task" WHERE
+        title ~ ${RUN_ID} OR title ILIKE 'itest%'`,
     ]);
 
     console.log(

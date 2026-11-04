@@ -39,6 +39,12 @@ import {
 import { customerWaLink } from "@/lib/wa";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { formatCOP, formatRelativeTime } from "@/lib/format";
+import { CrmWorkspacePanel } from "@/components/admin/crm-workspace-panel";
+import {
+  listActivitiesForEntity,
+  listAssignableCrmAdmins,
+  listTasksForEntity,
+} from "@/features/crm/service";
 import { Contact360Tabs } from "./contact-360-tabs";
 
 export const metadata: Metadata = {
@@ -62,6 +68,8 @@ const DROP_OFF_BADGE: Record<
 export default async function ClienteDetailPage({ params }: { params: RouteParams }) {
   const session = await requireCapability("contacts:read_360");
   const canMerge = hasCapability(session.admin.role, "contacts:merge");
+  const canManageTasks = hasCapability(session.admin.role, "crm:manage_tasks");
+  const canManageActivities = hasCapability(session.admin.role, "crm:manage_activities");
 
   const { id } = await params;
   const resolved = await resolveContactRouteParam(id);
@@ -70,7 +78,12 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
     redirect(`/admin/clientes/${encodeURIComponent(resolved.contactId)}`);
   }
 
-  const data = await getContact360ForActor(resolved.contactId, session.admin.role);
+  const [data, crmTasks, crmActivities, assignableAdmins] = await Promise.all([
+    getContact360ForActor(resolved.contactId, session.admin.role),
+    listTasksForEntity({ contactId: resolved.contactId }),
+    listActivitiesForEntity({ contactId: resolved.contactId }),
+    canManageTasks ? listAssignableCrmAdmins() : Promise.resolve([]),
+  ]);
   if (!data) notFound();
 
   await recordAdminAction({
@@ -310,6 +323,18 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
             />
           </dl>
         </AdminCard>
+
+        {/* Seguimiento CRM: tareas operativas + bitácora transversal */}
+        <CrmWorkspacePanel
+          contactId={data.id}
+          currentAdminId={session.admin.id}
+          canManageTasks={canManageTasks}
+          canViewActivities={!data.piiMasked}
+          canManageActivities={canManageActivities && !data.piiMasked}
+          tasks={crmTasks}
+          activities={data.piiMasked ? [] : crmActivities}
+          assignableAdmins={assignableAdmins}
+        />
 
         {/* Pestañas interactivas 360 */}
         <Contact360Tabs data={data} canMerge={canMerge} />

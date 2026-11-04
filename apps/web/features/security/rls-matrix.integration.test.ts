@@ -68,6 +68,9 @@ const SENSITIVE = [
   "Contact",
   "ContactIdentity",
   "IdentityMergeCandidate",
+  // Fase 10 (S22) — Actividades y tareas del CRM operativo (notas internas, seguimientos, PII).
+  "ContactActivity",
+  "Task",
 ] as const;
 
 describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sensibles", () => {
