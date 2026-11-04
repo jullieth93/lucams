@@ -15,7 +15,7 @@
  *     FormData. Devuelve [state, dispatch, pending, modal].
  *   - <ReauthForm>: wrapper de <form> para acciones estilo void+redirect (las
  *     que no usan useActionState, ej. cambiar rol / desactivar admin). Soporta
- *     confirmMessage (mismo window.confirm que <ConfirmAction>).
+ *     confirmMessage (mismo diálogo de marca que <ConfirmAction> — ADR-192).
  *
  * Patrón del input copiado de MfaChallenge (admin/login/mfa) para que el reto
  * se vea igual en todo el panel.
@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import {
   verifyAdminMfaReauthAction,
   type MfaReauthState,
@@ -163,7 +164,7 @@ export function ReauthForm({
   children,
 }: {
   action: (formData: FormData) => Promise<{ reauthRequired?: boolean } | void>;
-  /** Confirmación previa estilo <ConfirmAction> (window.confirm nativo). */
+  /** Confirmación previa estilo <ConfirmAction> (diálogo de marca, ADR-192). */
   confirmMessage?: string;
   className?: string;
   children: ReactNode;
@@ -174,19 +175,31 @@ export function ReauthForm({
       return res ?? null;
     },
   );
+  const { confirm, confirmDialog } = useAdminConfirm();
+  const formRef = useRef<HTMLFormElement>(null);
+  // requestSubmit() re-dispara onSubmit: la bandera deja pasar ese segundo
+  // submit (ya confirmado) sin reabrir el diálogo.
+  const confirmedRef = useRef(false);
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    if (confirmMessage && !window.confirm(confirmMessage)) {
-      e.preventDefault();
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    if (!confirmMessage || confirmedRef.current) {
+      confirmedRef.current = false;
+      return;
+    }
+    e.preventDefault();
+    if (await confirm(confirmMessage)) {
+      confirmedRef.current = true;
+      formRef.current?.requestSubmit();
     }
   }
 
   return (
     <>
-      <form action={formAction} onSubmit={handleSubmit} className={className}>
+      <form ref={formRef} action={formAction} onSubmit={handleSubmit} className={className}>
         {children}
       </form>
       {reauthModal}
+      {confirmDialog}
     </>
   );
 }

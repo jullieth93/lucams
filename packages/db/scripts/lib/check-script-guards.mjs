@@ -82,6 +82,11 @@ const ALLOWLIST_PRD_DELIBERADO = new Set([
   // owner: STG manda): zonas Envío Lucams sin «bosa», Cuadrados borderWidth
   // max 2, S-128 inactiva. Dry-run por defecto + --apply.
   "one-shot/homologate-prd-to-stg-20261029.mjs",
+  // 2026-11-03 — Tiras Magnéticas a sus medidas reales vigentes (decisión
+  // owner: 3 fotos 5×15, 4 fotos 5×16.5): variantes, schema, plantillas y copy.
+  // Su caso de uso ES correr en los 3 ambientes incl. PRD (dry-run por
+  // defecto + --apply, schemas fusionados).
+  "one-shot/tiras-nuevas-medidas-20261103.mjs",
 ]);
 
 const WRITE_RE =

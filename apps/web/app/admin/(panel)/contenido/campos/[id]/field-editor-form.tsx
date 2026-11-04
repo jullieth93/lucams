@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Hint } from "@/components/ui/tooltip";
 import { MarkdownEditor } from "@/components/admin/markdown-editor";
+import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import { saveCmsFieldAction, type CmsActionState } from "@/app/admin/(panel)/contenido/actions";
 import { CmsImageControl, type CmsMediaLite } from "./cms-image-control";
 
@@ -75,6 +76,7 @@ export function FieldEditorForm({
   imageLibrary?: CmsMediaLite[];
 }) {
   const isSetting = field.kind === "SETTING";
+  const { confirm, confirmDialog } = useAdminConfirm();
 
   // Snapshot del "original" para Descartar + isDirty (mismo patrón que el
   // viejo block-editor-form: se actualiza explícitamente tras guardar OK).
@@ -137,9 +139,11 @@ export function FieldEditorForm({
     }
   }
 
-  function discardChanges() {
+  async function discardChanges() {
     if (!isDirty) return;
-    if (!window.confirm("¿Descartar los cambios? Volverá al contenido que tenía guardado antes.")) {
+    if (
+      !(await confirm("¿Descartar los cambios? Volverá al contenido que tenía guardado antes."))
+    ) {
       return;
     }
     setBody(original.body);
@@ -467,6 +471,7 @@ export function FieldEditorForm({
           </Hint>
         </div>
       </div>
+      {confirmDialog}
     </form>
   );
 }

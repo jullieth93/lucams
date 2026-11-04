@@ -510,7 +510,7 @@ export default async function ProductoDetallePage({
                   {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+.
                       Lucy 2026-07-22: también con 1 sola variante — el selector
                       decide solo: sin dimensiones visibles devuelve null (Default
-                      vacía), con tamaño fijo pinta el chip "Tamaño: 6.5×20 cm".
+                      vacía), con tamaño fijo pinta el chip "Tamaño: 5×15 cm".
                       Ola 2A — algunas dimensiones (Estilo/Marco/Tema/Idioma) ya no van en la
                       ficha: se eligen como plantilla dentro del Estudio. */}
                   {selectable.length > 0 && (

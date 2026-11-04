@@ -545,14 +545,14 @@ const templatesData = [
   //
   // ════════════════════ Tira Magnética (photobooth) ════════════════════
   //
-  // Ola 3c (Lucy 2026-07-22) — Tira Magnética REDISEÑADA al tamaño real 6.5×20 cm
-  // (el producto lo actualiza el frente de datos). Referencia de Lucy: tira vertical
-  // con 3 fotos APILADAS CASI A SANGRE, el fondo del color elegido visible solo como
-  // margen fino y uniforme alrededor. UNA sola plantilla ("Clásica"), SIN texto.
+  // Tira Magnética a su tamaño real VIGENTE 5×15 cm (3 fotos — owner 2026-11-03;
+  // antes 6.5×20). Referencia de Lucy: tira vertical con 3 fotos APILADAS CASI A
+  // SANGRE, el fondo del color elegido visible solo como margen fino y uniforme
+  // alrededor. UNA sola plantilla ("Clásica"), SIN texto.
   //
   // Paradigma slot-por-foto (1 foto por slot, gridCols=1): cada celda es 1/3 de la
-  // tira → stage 390×400 (6.5 × 6.667 cm); las 3 celdas apiladas con gridGap=0 arman
-  // la tira 6.5×20 continua. La celda trae capa "frame-card" (fondo = borderColor,
+  // tira → stage 400×400 (5×5 cm exactos a 80 px/cm); las 3 celdas apiladas con
+  // gridGap=0 arman la tira 5×15 continua. La celda trae capa "frame-card" (fondo = borderColor,
   // mismo mecanismo de la Polaroid Clásica). Ola 4 (Lucy 2026-07-23): la foto va a
   // sangre VERTICAL en la plantilla y la geometría final la pone el CÓDIGO por
   // posición (stripPhotoRect): borde exterior first/last (12px) y —regla 2026-09-08,
@@ -570,7 +570,7 @@ const templatesData = [
           // 2026-09-14 — nombre y preview DISTINTOS por composición: ambas se
           // llamaban "Plantilla Tiras" con el mismo preview de 3 fotos y en el
           // admin ninguna parecía de 4 (reporte del owner).
-          name: "Tira 3 fotos (6.5×20 cm)",
+          name: "Tira 3 fotos (5×15 cm)",
           order: 1,
           previewUrl: "/templates/tira-clasica.svg",
           canvasData: {
@@ -579,7 +579,7 @@ const templatesData = [
             // con la variante de 4 fotos elegida, esta plantilla se oculta — cada
             // composición cobra su precio; bug 2026-09-15).
             photoSlots: 3,
-            stage: stage(390, 400), // 1/3 de la tira 6.5×20 cm (celda 6.5×6.667)
+            stage: stage(400, 400), // 1/3 de la tira 5×15 cm (celda 5×5 exacta)
             gridCols: 1, // apilar las 3 fotos en vertical (la tira física es 1 columna)
             gridGap: 0, // celdas pegadas → la tira se lee como UNA pieza continua
             layers: [
@@ -588,50 +588,49 @@ const templatesData = [
               // Sin esquinas redondeadas: la tira es una pieza continua (el troquel
               // exterior lo da el cornerRadiusPx del producto, no la plantilla).
               { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
-              // Ola 4 (Lucy 2026-07-23) — foto a sangre VERTICAL en la plantilla
-              // (y0, alto completo): el inserto final lo aplica el código por
-              // posición (stripPhotoRect: borde exterior first/last 12px + media
-              // canaleta de 8px entre fotos, regla 2026-09-08). Los lados llevan
-              // 12px (~2mm) de color.
+              // Foto a sangre VERTICAL en la plantilla (y0, alto completo): el
+              // inserto final lo aplica el código por posición (stripPhotoRect:
+              // borde exterior first/last + media canaleta entre fotos, regla
+              // 2026-09-08). Los lados llevan 16px (~2mm a 80 px/cm) de color.
               photoSlot({
                 id: "photo",
-                x: 12,
+                x: 16,
                 y: 0,
-                width: 366,
+                width: 368,
                 height: 400,
                 label: "Foto de la tira",
               }),
             ],
           },
         },
-        // Ola 18b (Lucy 2026-07-26) — celda de la TIRA DE 4 FOTOS (6.5×26.5 cm).
-        // Nació en el script one-off ola18b-cuadrados-tiras-fix.mjs y NO estaba en
-        // este seed → el barrido de legacy de abajo la soft-deleteaba en CADA corrida
-        // (bug 2026-09-09, reporte del dueño en STG: al elegir "4 fotos por tira" el
-        // Estudio no montaba el canvas de la tira: sin plantilla activa que matchee el
-        // aspectRatio "3:4" de la variante, el filtro de aspect dejaba la lista vacía
-        // y el boot caía al template cuadrado genérico 1080×1080). Al declararla acá
-        // el upsert la reactiva y el barrido la respeta (idempotente).
-        // FIX 2026-09-15 (bug "tiras se ven muy grandes en el 3D"): el stage era
-        // 390×530 (aspect 3:4) pero la celda FÍSICA de la tira 6.5×26.5 cm es
-        // 6.5×6.625 ≈ 1:1 (igual que la de 3 fotos y que el mockup tira-4-fotos.svg,
-        // 390×1590 = 4 celdas de 397.5). El 3D deriva el alto de la pieza del aspect
-        // de la textura → renderizaba la tira de 26.5 cm como si midiera ~35 cm.
-        // Stage corregido a 390×398 (aspect 0.98 ≈ la celda física; la variante
-        // pasa a aspectRatio "1:1", diff 0.02 < tolerancia 0.05 del ruteo) — mismo
-        // dibujo que la de 3 fotos.
+        // Celda de la TIRA DE 4 FOTOS (5×16.5 cm — owner 2026-11-03; antes
+        // 6.5×26.5). Nació en el script one-off ola18b-cuadrados-tiras-fix.mjs y
+        // NO estaba en este seed → el barrido de legacy de abajo la soft-deleteaba
+        // en CADA corrida (bug 2026-09-09, reporte del dueño en STG: al elegir
+        // "4 fotos por tira" el Estudio no montaba el canvas de la tira: sin
+        // plantilla activa que matchee el aspectRatio de la variante, el filtro
+        // de aspect dejaba la lista vacía y el boot caía al template cuadrado
+        // genérico 1080×1080). Al declararla acá el upsert la reactiva y el
+        // barrido la respeta (idempotente).
+        //
+        // Lección permanente (bug 2026-09-15, "tiras se ven muy grandes en el
+        // 3D"): el aspect del stage debe ser el de la CELDA FÍSICA, no un aspect
+        // "amable" — el 3D deriva el alto de la pieza del aspect de la textura y
+        // un stage 3:4 inflaba la tira ~1.3×. La celda física de 5×16.5 cm es
+        // 5×4.125 (aspect 1.2121): stage 400×330 (80 px/cm, diff 0 contra el
+        // aspectRatio "5:4.125" de la variante; tolerancia del ruteo 0.05).
         {
           slug: "photo-strip-4-fotos",
           productId: tirasProduct.id,
           kind: "PHOTO_PACK",
-          name: "Tira 4 fotos (6.5×26.5 cm)",
+          name: "Tira 4 fotos (5×16.5 cm)",
           order: 2,
           previewUrl: "/templates/tira-4-fotos.svg",
           canvasData: {
             version: 1,
             // Composición de la unidad que diseña (misma regla que la de 3 fotos).
             photoSlots: 4,
-            stage: stage(390, 398), // 1/4 de la tira 6.5×26.5 cm (celda 6.5×6.625 ≈ 1:1)
+            stage: stage(400, 330), // 1/4 de la tira 5×16.5 cm (celda 5×4.125)
             gridCols: 1, // apilar las 4 fotos en vertical (la tira física es 1 columna)
             gridGap: 0, // celdas pegadas → la tira se lee como UNA pieza continua
             layers: [
@@ -639,10 +638,10 @@ const templatesData = [
               { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
               photoSlot({
                 id: "photo",
-                x: 12,
+                x: 16,
                 y: 0,
-                width: 366,
-                height: 398,
+                width: 368,
+                height: 330,
                 label: "Foto de la tira",
               }),
             ],

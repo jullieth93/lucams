@@ -469,20 +469,21 @@ describe("VariantSelector — pack size 'Unidades' en la PDP (regla 2026-09-08b)
   });
 
   it("tiras (híbrido 2026-09-09): photoSlots visible con label 'Fotos por tira' (chips 3/4) y quantity oculta", () => {
-    // Catálogo real (fix-tiras 2026-09-07): 2 variantes de 1 unidad, 3 y 4 fotos
-    // (1:1 con el tamaño 6.5×20 / 6.5×26.5). quantity=1 en ambas → no es elección.
+    // Catálogo real: 2 variantes de 1 unidad, 3 y 4 fotos (1:1 con el tamaño
+    // 5×15 / 5×16.5 — medidas vigentes 2026-11-03). quantity=1 en ambas → no
+    // es elección.
     // 2026-09-09 (owner): photoSlots es COMPOSICIÓN → "Fotos por tira"; "Unidades"
     // pasa a ser el stepper de copias del buy-box (CopiesQtyInput, fuera de este
     // componente) → acá NO debe quedar ningún grupo "Unidades".
     const variants = [
       makeVariant(
         "v-tira-3",
-        { sizeCm: "6.5×20", quantity: 1, photoSlots: 3, aspectRatio: "1:1" },
+        { sizeCm: "5×15", quantity: 1, photoSlots: 3, aspectRatio: "1:1" },
         1_900_000,
       ),
       makeVariant(
         "v-tira-4",
-        { sizeCm: "6.5×26.5", quantity: 1, photoSlots: 4, aspectRatio: "3:4" },
+        { sizeCm: "5×16.5", quantity: 1, photoSlots: 4, aspectRatio: "5:4.125" },
         2_400_000,
       ),
     ];
@@ -888,15 +889,16 @@ describe("VariantSelector — stepper de cantidad", () => {
  * Forma/otras claves con 1 valor siguen ocultas por redundantes.
  */
 describe("VariantSelector — dimensión de 1 valor visible (Tamaño fijo)", () => {
-  it("muestra 'Tamaño: 6.5×20 cm' aunque el producto tenga 1 sola variante (tiras)", () => {
-    // Tiras Magnéticas (real 2026-07-22): UNA variante, tamaño único 6.5×20.
+  it("muestra 'Tamaño: 5×15 cm' aunque el producto tenga 1 sola variante (tiras)", () => {
+    // Tiras Magnéticas: variante con tamaño único (5×15, medida vigente
+    // 2026-11-03; antes 6.5×20).
     // Antes: variants.length < 2 → selector null (sin tamaño en la PDP).
     const variants = [
-      makeVariant("v-tira", { sizeCm: "6.5×20", photoSlots: 3, aspectRatio: "1:1" }, 1_900_000),
+      makeVariant("v-tira", { sizeCm: "5×15", photoSlots: 3, aspectRatio: "1:1" }, 1_900_000),
     ];
     render(<VariantSelector productBasePrice={1_900_000} variants={variants} />);
     const tamano = screen.getByRole("group", { name: "Tamaño" });
-    const chip = within(tamano).getByRole("button", { name: "6.5×20 cm" });
+    const chip = within(tamano).getByRole("button", { name: "5×15 cm" });
     // Preseleccionado y no clicable (dato, no opción).
     expect(chip).toHaveAttribute("aria-pressed", "true");
     expect(chip).toBeDisabled();

@@ -141,7 +141,7 @@ export function AdminShell({
       {/* Topbar mobile — barra superior fija con logo, sección actual (E1 P2:
           antes no había contexto en móvil) y botón hamburguesa. */}
       <div className="from-brand-purple-dark to-brand-purple sticky top-0 z-30 flex items-center justify-between gap-3 bg-gradient-to-r px-4 py-3 text-white shadow-md lg:hidden">
-        <Link href="/admin/dashboard" className="flex min-w-0 items-center gap-2.5">
+        <Link href="/admin/dashboard" className="flex min-h-11 min-w-0 items-center gap-2.5">
           <BrandIcon logo={logo} />
           <div className="min-w-0">
             <p className="text-[10px] font-semibold tracking-wider text-white/60 uppercase">
@@ -160,7 +160,7 @@ export function AdminShell({
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="flex-shrink-0 rounded-md p-2 text-white transition-colors hover:bg-white/10"
+          className="flex min-h-11 min-w-11 flex-shrink-0 items-center justify-center rounded-md p-2 text-white transition-colors hover:bg-white/10"
           aria-label="Abrir menú"
         >
           <Menu className="h-5 w-5" />

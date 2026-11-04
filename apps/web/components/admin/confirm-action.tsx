@@ -2,12 +2,8 @@
 
 /*
  * <ConfirmAction> — wrapper para forms admin con acciones destructivas
- * (archivar/eliminar). Muestra modal de confirmación nativo (window.confirm)
- * o un dialog Radix si la decisión requiere más explicación.
- *
- * Patrón shadcn AlertDialog tendría más UX pero requiere agregar la
- * primitive. Para ahora usamos window.confirm() que es 100% nativo,
- * accesible y satisface el caso: prevenir clicks accidentales.
+ * (archivar/eliminar). Muestra el diálogo de confirmación de MARCA
+ * (useAdminConfirm, ADR-192 — antes window.confirm nativo, patrón stopgap).
  *
  * Uso:
  *   <ConfirmAction
@@ -21,7 +17,8 @@
  *   </ConfirmAction>
  */
 
-import type { FormEvent, ReactNode } from "react";
+import { useRef, type FormEvent, type ReactNode } from "react";
+import { useAdminConfirm } from "./use-admin-confirm";
 
 export function ConfirmAction({
   action,
@@ -34,17 +31,30 @@ export function ConfirmAction({
   children: ReactNode;
   className?: string;
 }) {
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    // window.confirm es síncrono y bloquea hasta respuesta.
-    // Si cliente cancela, prevenimos el submit.
-    if (!window.confirm(message)) {
-      e.preventDefault();
+  const { confirm, confirmDialog } = useAdminConfirm();
+  const formRef = useRef<HTMLFormElement>(null);
+  // requestSubmit() re-dispara onSubmit: la bandera deja pasar ese segundo
+  // submit (ya confirmado) sin reabrir el diálogo.
+  const confirmedRef = useRef(false);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    if (confirmedRef.current) {
+      confirmedRef.current = false;
+      return;
+    }
+    e.preventDefault();
+    if (await confirm(message)) {
+      confirmedRef.current = true;
+      formRef.current?.requestSubmit();
     }
   }
 
   return (
-    <form action={action} onSubmit={handleSubmit} className={className}>
-      {children}
-    </form>
+    <>
+      <form ref={formRef} action={action} onSubmit={handleSubmit} className={className}>
+        {children}
+      </form>
+      {confirmDialog}
+    </>
   );
 }

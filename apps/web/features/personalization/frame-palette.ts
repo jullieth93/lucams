@@ -281,8 +281,8 @@ export function stripPositionOf(slotIndex: number, slotCount: number): StripPosi
 }
 
 /**
- * Grosor del borde exterior de la tira (px del stage). ≈2 mm a 300 DPI sobre una tira
- * de 6.5 cm de ancho (390 px → 12 px); proporcional al ancho del stage.
+ * Grosor del borde exterior de la tira (px del stage). ≈2 mm sobre una tira
+ * de 5 cm de ancho (400 px a 80 px/cm → 12 px = 1.5 mm); proporcional al ancho del stage.
  * `factor` (2026-10-26) escala el grosor sobre la base 3% (1 = histórico).
  */
 export function stripOuterInset(

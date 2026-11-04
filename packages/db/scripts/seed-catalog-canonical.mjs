@@ -41,6 +41,12 @@
  * (STG = referencia, "respect archived state"): el seed ahora declara solo el
  * catálogo vivo. Las filas archivadas existentes NO se tocan (sin --prune el
  * seed no barre; y nunca resucita).
+ * Misma regla aplicada el 2026-11-03: `set-fotoimanes-circulares` y
+ * `set-fotoimanes-corazon` salieron de la declaración (archivados en PRD desde
+ * 2026-08-11; el seed no debe recrearlos en ambientes frescos) y los separadores
+ * personalizables (`separadores-magneticos`, `separadores-alargados`) y las
+ * tiras quedaron declarados — antes solo nacían por one-shots y un ambiente
+ * fresco no los tenía.
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -83,6 +89,54 @@ const withDefaultDims = (p) => ({
   ...(p.physicalSpecs ?? {}),
 });
 
+// ── Generadores de matrices de separadores (espejo del dato vivo STG/PRD 2026-11-03) ──
+const sepSkuSize = (sizeCm) => sizeCm.replace("×", "X").replace(".", "");
+const sepLabel = (sizeCm, qty) => `${sizeCm} cm · ${qty} separador${qty === 1 ? "" : "es"}`;
+
+function sepMagVariants(sizeCm, variantShape, aspectRatio, cornerRadiusPx, prices) {
+  return prices.map((price, i) => {
+    const qty = i + 1;
+    return {
+      sku: `SEP-MAG-${sepSkuSize(sizeCm)}-${qty}`,
+      name: sepLabel(sizeCm, qty),
+      price,
+      attributes: {
+        shape: "rectangle",
+        magnet: true,
+        sizeCm,
+        quantity: qty,
+        photoSlots: qty,
+        aspectRatio,
+        variantShape,
+        cornerRadiusPx,
+      },
+    };
+  });
+}
+
+function sepAlrNomagVariants(sizeCm, variantShape, aspectRatio, prices, noFoldQtys) {
+  return prices.map((price, i) => {
+    const qty = i + 1;
+    return {
+      sku: `SEP-ALR-${sepSkuSize(sizeCm)}-${qty}-NOMAG`,
+      name: `${sepLabel(sizeCm, qty)} — Sin imán`,
+      price,
+      attributes: {
+        shape: "rectangle",
+        magnet: false,
+        sizeCm,
+        quantity: qty,
+        photoSlots: qty,
+        aspectRatio,
+        variantShape,
+        cornerRadiusPx: 24,
+        // Quirk del dato vivo: noFold + facesPerUnit solo en estas cantidades.
+        ...(noFoldQtys.includes(qty) ? { noFold: true, facesPerUnit: 2 } : {}),
+      },
+    };
+  });
+}
+
 // Campos que el update SÍ alinea (whitelist — todo lo demás es del admin).
 // Nunca incluir precio/imágenes/estado/merchandising acá (ver header).
 const PRODUCT_UPDATE_FIELDS = [
@@ -97,11 +151,26 @@ const CATEGORY_UPDATE_FIELDS = ["name", "description", "order"];
 const VARIANT_UPDATE_FIELDS = ["name", "attributes"];
 
 // Comparación tolerante a orden de llaves para diffs del dry-run.
+// 2026-11-03 — orden-insensible de verdad: Postgres jsonb REORDENA las llaves
+// al guardar (por longitud y luego lexicográfico), así que JSON.stringify
+// comparaba distinto en TODA corrida y el seed reportaba «alinea:
+// personalizationSchema» eternamente (falso positivo + escritura redundante).
+const sortDeep = (v) => {
+  if (Array.isArray(v)) return v.map(sortDeep);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(
+      Object.keys(v)
+        .sort()
+        .map((k) => [k, sortDeep(v[k])]),
+    );
+  }
+  return v;
+};
 const sameValue = (a, b) => {
   if (a === b) return true;
   if (a == null || b == null) return a == null && b == null;
   if (typeof a === "object" || typeof b === "object") {
-    return JSON.stringify(a) === JSON.stringify(b);
+    return JSON.stringify(sortDeep(a)) === JSON.stringify(sortDeep(b));
   }
   return false;
 };
@@ -167,6 +236,17 @@ const categoriesData = [
     description:
       "Planners semanales, mensuales y notas magnéticas borrables. Para tu día a día sobre la nevera.",
     order: 5,
+    isActive: true,
+  },
+  {
+    // Categoría de los separadores personalizables (Estudio) — nació por
+    // one-shots; declarada 2026-11-03 para que un ambiente fresco la tenga
+    // (los productos SEP-MAG/SEP-ALR cuelgan de ella). Espejo de STG/PRD.
+    slug: "separadores",
+    name: "Separadores de Libros (Marcapáginas)",
+    description:
+      "Marcapáginas personalizados con tus fotos o diseños: magnéticos doblables y alargados planos. Acabado durable (PET laminado), impresos en ambas caras. Ideales para lectores, estudiantes y regalos.",
+    order: 1,
     isActive: true,
   },
   {
@@ -421,158 +501,86 @@ const productsData = [
     ],
   },
   {
-    slug: "set-fotoimanes-circulares",
-    sku: "FI-CIRC-6",
-    name: "Fotoimanes Circulares",
+    // Tiras Magnéticas (photobooth). Nació por one-shots (2026-07-22) y no
+    // estaba declarada acá → un ambiente fresco no la tenía (gap detectado
+    // 2026-11-03: LOCAL sin el producto). Declaración espejo del dato vivo de
+    // STG/PRD con las medidas VIGENTES (owner 2026-11-03): 3 fotos 5×15 cm
+    // (celda 5×5 exacta → aspect "1:1") y 4 fotos 5×16.5 cm (celda apaisada
+    // 5×4.125 → aspectRatio "5:4.125"; con "1:1" el ruteo por aspect —
+    // tolerancia 0.05 — escondería la plantilla. Ver el one-shot
+    // tiras-nuevas-medidas-20261103.mjs). Gemelas -NOMAG al mismo precio
+    // (así viven en STG/PRD).
+    slug: "tiras-magneticas-fotos",
+    sku: "FI-TIRA-01",
+    name: "Tiras Magnéticas",
     description:
-      "Fotoimanes circulares 6 cm con tus fotos. Forma distinta para destacar entre los rectangulares clásicos. Elige la cantidad.",
-    basePrice: 3500000,
+      "Tira vertical estilo photobooth con 3 o 4 de tus fotos apiladas (5×15 cm o 5×16.5 cm) sobre un fondo de color a tu gusto (blanco o negro). La diseñas en el Estudio: subes tus fotos y eliges el color del marco.",
+    basePrice: 1900000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
     personalizationKind: "PHOTO_PACK",
-    personalizationSchema: { photoSlots: 6, aspectRatio: "1:1", shape: "circle", sizeCm: "6" },
-    images: [UNSPLASH("1551836022-d5d88e9218df")],
-    // Variants modulares: Cantidad (6/9/12) × Diámetro (5 / 6 / 8 cm).
+    personalizationSchema: {
+      photoSlots: 3,
+      aspectRatio: "1:1",
+      sizeCm: "5×15",
+      shape: "rectangle",
+      canvasBaseScale: 0.5,
+      frameOptions: ["blanco", "negro"],
+      borderWidth: { enabled: true, min: 1, max: 2.5, default: 1 },
+    },
+    physicalSpecs: { weightGrams: 43, widthCm: 6, heightCm: 17, depthCm: 1 },
+    images: [UNSPLASH("1530541930197-ff16ac917b0e")],
     variants: [
-      // ── 5 cm ──
       {
-        sku: "FI-CIRC-6-V11",
-        name: "6 unidades · 5 cm diámetro",
-        price: 3000000,
-        attributes: { photoSlots: 6, sizeCm: "5", aspectRatio: "1:1", shape: "circle" },
+        sku: "FI-TIRA-01-DEFAULT",
+        name: "Tira de 3 fotos · 5×15 cm",
+        price: 1900000,
+        attributes: {
+          magnet: true,
+          sizeCm: "5×15",
+          quantity: 1,
+          photoSlots: 3,
+          aspectRatio: "1:1",
+        },
       },
       {
-        sku: "FI-CIRC-6-V12",
-        name: "9 unidades · 5 cm diámetro",
-        price: 4200000,
-        attributes: { photoSlots: 9, sizeCm: "5", aspectRatio: "1:1", shape: "circle" },
+        sku: "FI-TIRA-4FOTOS",
+        name: "Tira de 4 fotos · 5×16.5 cm",
+        price: 2400000,
+        attributes: {
+          magnet: true,
+          sizeCm: "5×16.5",
+          quantity: 1,
+          photoSlots: 4,
+          aspectRatio: "5:4.125",
+        },
       },
       {
-        sku: "FI-CIRC-6-V13",
-        name: "12 unidades · 5 cm diámetro",
-        price: 5400000,
-        attributes: { photoSlots: 12, sizeCm: "5", aspectRatio: "1:1", shape: "circle" },
-      },
-      // ── 6 cm ──
-      {
-        sku: "FI-CIRC-6-V21",
-        name: "6 unidades · 6 cm diámetro",
-        price: 3500000,
-        attributes: { photoSlots: 6, sizeCm: "6", aspectRatio: "1:1", shape: "circle" },
-      },
-      {
-        sku: "FI-CIRC-6-V22",
-        name: "9 unidades · 6 cm diámetro",
-        price: 4800000,
-        attributes: { photoSlots: 9, sizeCm: "6", aspectRatio: "1:1", shape: "circle" },
+        sku: "FI-TIRA-01-DEFAULT-NOMAG",
+        name: "Tira de 3 fotos · 5×15 cm — Sin imán",
+        price: 1900000,
+        attributes: {
+          magnet: false,
+          sizeCm: "5×15",
+          quantity: 1,
+          photoSlots: 3,
+          aspectRatio: "1:1",
+        },
       },
       {
-        sku: "FI-CIRC-6-V23",
-        name: "12 unidades · 6 cm diámetro",
-        price: 6000000,
-        attributes: { photoSlots: 12, sizeCm: "6", aspectRatio: "1:1", shape: "circle" },
-      },
-      // ── 8 cm ──
-      {
-        sku: "FI-CIRC-6-V31",
-        name: "6 unidades · 8 cm diámetro",
-        price: 4500000,
-        attributes: { photoSlots: 6, sizeCm: "8", aspectRatio: "1:1", shape: "circle" },
-      },
-      {
-        sku: "FI-CIRC-6-V32",
-        name: "9 unidades · 8 cm diámetro",
-        price: 6300000,
-        attributes: { photoSlots: 9, sizeCm: "8", aspectRatio: "1:1", shape: "circle" },
-      },
-      {
-        sku: "FI-CIRC-6-V33",
-        name: "12 unidades · 8 cm diámetro",
-        price: 8000000,
-        attributes: { photoSlots: 12, sizeCm: "8", aspectRatio: "1:1", shape: "circle" },
+        sku: "FI-TIRA-4FOTOS-NOMAG",
+        name: "Tira de 4 fotos · 5×16.5 cm — Sin imán",
+        price: 2400000,
+        attributes: {
+          magnet: false,
+          sizeCm: "5×16.5",
+          quantity: 1,
+          photoSlots: 4,
+          aspectRatio: "5:4.125",
+        },
       },
     ],
   },
-  {
-    slug: "set-fotoimanes-corazon",
-    sku: "FI-COR-6",
-    name: "Fotoimanes Corazón",
-    description:
-      "Fotoimanes en forma de corazón con tus fotos. Súper kawaii para regalo de aniversario o día especial. Elige cantidad y tamaño.",
-    basePrice: 3500000,
-    categorySlug: "foto-imanes",
-    isPersonalizable: true,
-    isFeatured: true,
-    personalizationKind: "PHOTO_PACK",
-    personalizationSchema: { photoSlots: 6, shape: "heart", sizeCm: "6×6" },
-    images: [UNSPLASH("1518621736915-f3b1c41bfd00")],
-    // M.3.b.UX.v13 (Lucy 2026-05-15) — Variants modulares 2 dimensiones:
-    // Cantidad (4/6/9) × Tamaño (5×5 / 6×6 / 8×8) = 9 combinaciones.
-    // Pricing: precio_unitario × cantidad. Unitario por tamaño:
-    //   5×5: $5.500  → packs $22k / $33k / $50k
-    //   6×6: $6.500  → packs $26k / $39k / $58k
-    //   8×8: $8.500  → packs $34k / $51k / $76k
-    variants: [
-      // ── 5×5 cm ──
-      {
-        sku: "FI-COR-6-V11",
-        name: "4 corazones · 5×5 cm",
-        price: 2200000,
-        attributes: { photoSlots: 4, sizeCm: "5×5", shape: "heart" },
-      },
-      {
-        sku: "FI-COR-6-V12",
-        name: "6 corazones · 5×5 cm",
-        price: 3300000,
-        attributes: { photoSlots: 6, sizeCm: "5×5", shape: "heart" },
-      },
-      {
-        sku: "FI-COR-6-V13",
-        name: "9 corazones · 5×5 cm",
-        price: 5000000,
-        attributes: { photoSlots: 9, sizeCm: "5×5", shape: "heart" },
-      },
-      // ── 6×6 cm ──
-      {
-        sku: "FI-COR-6-V21",
-        name: "4 corazones · 6×6 cm",
-        price: 2600000,
-        attributes: { photoSlots: 4, sizeCm: "6×6", shape: "heart" },
-      },
-      {
-        sku: "FI-COR-6-V22",
-        name: "6 corazones · 6×6 cm",
-        price: 3900000,
-        attributes: { photoSlots: 6, sizeCm: "6×6", shape: "heart" },
-      },
-      {
-        sku: "FI-COR-6-V23",
-        name: "9 corazones · 6×6 cm",
-        price: 5800000,
-        attributes: { photoSlots: 9, sizeCm: "6×6", shape: "heart" },
-      },
-      // ── 8×8 cm ──
-      {
-        sku: "FI-COR-6-V31",
-        name: "4 corazones · 8×8 cm",
-        price: 3400000,
-        attributes: { photoSlots: 4, sizeCm: "8×8", shape: "heart" },
-      },
-      {
-        sku: "FI-COR-6-V32",
-        name: "6 corazones · 8×8 cm",
-        price: 5100000,
-        attributes: { photoSlots: 6, sizeCm: "8×8", shape: "heart" },
-      },
-      {
-        sku: "FI-COR-6-V33",
-        name: "9 corazones · 8×8 cm",
-        price: 7600000,
-        attributes: { photoSlots: 9, sizeCm: "8×8", shape: "heart" },
-      },
-    ],
-  },
-
   // ────────────────────── recuerdos (3) ──────────────────────
   {
     slug: "recuerdos-matrimonio",
@@ -792,36 +800,94 @@ const productsData = [
     personalizationSchema: { photoSlots: 1, layout: "header", plannerType: "monthly" },
     images: [UNSPLASH("1577563908411-5077b6dc7624")],
   },
+  // ── Separadores personalizables (Estudio) ──
+  // Estos dos productos nacieron por one-shots y no estaban declarados acá → un
+  // ambiente fresco no los tenía (gap detectado 2026-11-03: LOCAL sin ellos, y
+  // los specs e2e que los referencian se saltaban). Declaración espejo del dato
+  // vivo de STG/PRD. Las matrices de variantes se generan (2 tamaños × 1-6
+  // unidades); las quirks de atributos (noFold/facesPerUnit solo en ciertas
+  // cantidades) reflejan el dato vivo EXACTO.
   {
-    slug: "pack-separadores-libros",
-    sku: "ORG-SEP-6",
+    slug: "separadores-magneticos",
+    sku: "SEP-MAG",
     name: "Separadores Magnéticos",
     description:
-      "Separadores magnéticos para libros. Diseños mapache + frases kawaii. No se caen, no rompen páginas. Elige la cantidad.",
-    basePrice: 1800000,
-    categorySlug: "organizate",
-    isPersonalizable: false,
-    personalizationKind: "NONE",
+      "Separadores magnéticos para libros. Elige el tamaño y la cantidad; personalízalos con tus fotos en el estudio. Doble cara, doble imagen.",
+    basePrice: 300000,
+    categorySlug: "separadores",
+    isPersonalizable: true,
+    personalizationKind: "PHOTO_PACK",
+    personalizationSchema: {
+      shape: "rectangle",
+      noFold: false,
+      allowText: false,
+      galleryTag: "separadores-magneticos",
+      photoSlots: 1,
+      backOptional: true,
+      facesPerUnit: 2,
+      cornerRadiusPx: 20,
+      canvasBaseScale: 1,
+      gridColsOverride: 3,
+    },
+    physicalSpecs: { weightGrams: 12, widthCm: 2, heightCm: 6, depthCm: 1 },
     images: [UNSPLASH("1544716278-ca5e3f4abd8c")],
     variants: [
-      {
-        sku: "ORG-SEP-6-V1",
-        name: "Set 4 separadores",
-        price: 1300000,
-        attributes: { quantity: 4 },
-      },
-      {
-        sku: "ORG-SEP-6-V2",
-        name: "Set 6 separadores",
-        price: 1800000,
-        attributes: { quantity: 6 },
-      },
-      {
-        sku: "ORG-SEP-6-V3",
-        name: "Set 10 separadores",
-        price: 2800000,
-        attributes: { quantity: 10 },
-      },
+      ...sepMagVariants(
+        "2×6",
+        "2x6",
+        "1:3",
+        18,
+        [300000, 600000, 800000, 1200000, 1400000, 1600000],
+      ),
+      ...sepMagVariants(
+        "4×4.2",
+        "4x4-2",
+        "20:21",
+        24,
+        [300000, 600000, 800000, 1200000, 1400000, 1600000],
+      ),
+    ],
+  },
+  {
+    slug: "separadores-alargados",
+    sku: "SEP-ALR",
+    name: "Separadores Largos",
+    description:
+      "Marcapáginas alargados, ideales para regalar. Elige el tamaño y la cantidad; personalízalos con tus fotos en el estudio. Doble cara, doble imagen.",
+    basePrice: 400000,
+    categorySlug: "separadores",
+    isPersonalizable: true,
+    personalizationKind: "PHOTO_PACK",
+    personalizationSchema: {
+      shape: "rectangle",
+      noFold: true,
+      allowText: false,
+      galleryTag: "separadores-alargados",
+      photoSlots: 1,
+      backOptional: true,
+      facesPerUnit: 2,
+      cornerRadiusPx: 20,
+      canvasBaseScale: 0.75,
+      gridColsOverride: 3,
+    },
+    physicalSpecs: { weightGrams: 12, widthCm: 4, heightCm: 12, depthCm: 1 },
+    images: [UNSPLASH("1544716278-ca5e3f4abd8c")],
+    variants: [
+      // Solo gemelas NOMAG activas en STG/PRD (dato vivo 2026-11-03).
+      ...sepAlrNomagVariants(
+        "4×12",
+        "4x12",
+        "1:3",
+        [400000, 800000, 1000000, 1600000, 1800000, 2000000],
+        [2, 4], // noFold + facesPerUnit solo en estas cantidades (dato vivo)
+      ),
+      ...sepAlrNomagVariants(
+        "4×15",
+        "4x15",
+        "4:15",
+        [400000, 800000, 1000000, 1600000, 1800000, 2000000],
+        [1, 2, 4],
+      ),
     ],
   },
 

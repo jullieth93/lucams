@@ -268,7 +268,7 @@ function Scene({ magnets, sizeCm, thicknessCm, magnet }: GiftView3DProps) {
     const maxLeanH = Math.max(...leaningSizes.map((s) => s.h));
     // La caja CRECE con la fila (TAMAÑO REAL SIEMPRE): el ancho cubre la fila y el alto deja la
     // punta de la pieza recostada POR DEBAJO del tope — el apoyo es físicamente válido también
-    // con tiras largas (26.5 cm).
+    // con tiras largas (16.5 cm, la más larga del catálogo desde 2026-11-03).
     const boxW = Math.max(MIN_BOX_W, rowW + 2 * BOX_MARGIN_X);
     const boxH = Math.max(MIN_BOX_H, maxLeanH * Math.cos(LEAN_RAD) + BOX_TOP_CLEARANCE);
     const supportZ = BOX_D / 2 + FACE_EPS;
