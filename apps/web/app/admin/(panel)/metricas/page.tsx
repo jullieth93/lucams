@@ -13,13 +13,13 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { FileText, TrendingUp, Trophy } from "lucide-react";
 import type { OrderStatus, QuoteStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
+import { COLLECTED_REVENUE_ORDER_WHERE } from "@/features/finanzas/service";
 import { getCmsObservabilityStats } from "@/features/cms/service";
 import { ORDER_STATUS_LABEL } from "@/features/orders/order-status-display";
 import {
@@ -74,8 +74,7 @@ const QUOTE_STATUS_TONE: Record<QuoteStatus, "amber" | "purple" | "emerald" | "s
 const QUOTE_STATUSES: QuoteStatus[] = ["PENDING", "CONTACTED", "CLOSED", "DISCARDED"];
 
 export default async function AdminMetricasPage() {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireRole(["SUPERADMIN"]);
 
   // Modo catálogo (Etapa 1): sin pagos en línea NO se generan Orders — los KPIs
   // basados en Order (pedidos pagados, ingresos, top productos) serían ceros
@@ -93,6 +92,9 @@ export default async function AdminMetricasPage() {
 
   // Consultas independientes → Promise.all para no serializar round-trips a DB.
   // En modo catálogo las queries de Order ni siquiera se disparan (orderData=null).
+  // [FIN-01] — todas las consultas de Order/OrderItem filtran `deletedAt: null` y los
+  // ingresos del mes usan el mismo criterio de caja real que `/admin/finanzas`
+  // (Wompi confirmado + COD entregado − retractos reembolsados en el mes).
   const [quotesByStatus, orderData, cmsStats] = await Promise.all([
     prisma.quote.groupBy({
       by: ["status"],
@@ -104,21 +106,37 @@ export default async function AdminMetricasPage() {
       : Promise.all([
           prisma.order.groupBy({
             by: ["status"],
+            where: { deletedAt: null },
             _count: { _all: true },
           }),
           // Se excluyen los DRAFT: son carritos abandonados, no pedidos reales, e
           // inflarían el conteo que Lucy usa como pulso del negocio.
           prisma.order.count({
-            where: { createdAt: { gte: thirtyDaysAgo }, status: { not: "DRAFT" } },
+            where: {
+              deletedAt: null,
+              createdAt: { gte: thirtyDaysAgo },
+              status: { not: "DRAFT" },
+            },
           }),
           prisma.order.aggregate({
-            where: { status: { in: PAID_STATUSES }, createdAt: { gte: startOfMonth } },
+            where: {
+              ...COLLECTED_REVENUE_ORDER_WHERE,
+              createdAt: { gte: startOfMonth },
+            },
             _sum: { total: true },
           }),
-          // Top 10 variantes por unidades vendidas en pedidos pagados.
+          prisma.retractRequest.aggregate({
+            where: {
+              status: "REFUNDED",
+              refundedAt: { gte: startOfMonth },
+              orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+            },
+            _sum: { refundAmount: true },
+          }),
+          // Top 10 variantes por unidades vendidas en pedidos confirmados activos.
           prisma.orderItem.groupBy({
             by: ["variantId"],
-            where: { order: { status: { in: PAID_STATUSES } } },
+            where: { order: { deletedAt: null, status: { in: PAID_STATUSES } } },
             _sum: { qty: true },
             orderBy: { _sum: { qty: "desc" } },
             take: 10,
@@ -128,8 +146,10 @@ export default async function AdminMetricasPage() {
   ]);
   const ordersByStatus = orderData?.[0] ?? [];
   const ordersLast30 = orderData?.[1] ?? 0;
-  const revenueCents = orderData?.[2]._sum.total ?? 0;
-  const topByVariant = orderData?.[3] ?? [];
+  const grossMonthRevenueCents = orderData?.[2]._sum.total ?? 0;
+  const monthRetractRefundCents = orderData?.[3]._sum.refundAmount ?? 0;
+  const revenueCents = Math.max(0, grossMonthRevenueCents - monthRetractRefundCents);
+  const topByVariant = orderData?.[4] ?? [];
 
   // Fecha corta para el KPI de caché: hora local; el año solo si no es el actual.
   const cacheRefreshLabel = cmsStats.lastCacheRefresh
@@ -211,10 +231,10 @@ export default async function AdminMetricasPage() {
               trendLabel="Sin contar borradores (carritos abandonados)"
             />
             <KpiCard
-              label="Ingresos del mes"
+              label="Ingresos netos del mes"
               value={formatCOP(revenueCents)}
               trend="up"
-              trendLabel={`Pedidos pagados en ${monthLabel}`}
+              trendLabel={`Caja cobrada en ${monthLabel} (Wompi + COD entregado − retractos)`}
             />
           </div>
         )}
@@ -223,18 +243,66 @@ export default async function AdminMetricasPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {!catalog && (
             <AdminCard className="p-5">
-              <h2 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
-                Pedidos por estado
-              </h2>
-              <ul className="space-y-2.5">
-                {(Object.keys(ORDER_STATUS_LABEL) as OrderStatus[]).map((s) => (
-                  <li key={s} className="flex items-center justify-between gap-3">
-                    <AdminBadge tone={ORDER_STATUS_TONE[s]}>{ORDER_STATUS_LABEL[s]}</AdminBadge>
-                    <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-                      {(orderCount.get(s) ?? 0).toLocaleString("es-CO")}
-                    </span>
-                  </li>
-                ))}
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                  Pedidos por estado
+                </h2>
+                <Link
+                  href="/admin/pedidos"
+                  className="text-brand-purple text-xs font-semibold hover:underline"
+                >
+                  Ver todos →
+                </Link>
+              </div>
+              <ul className="space-y-3">
+                {(() => {
+                  const statusKeys = Object.keys(ORDER_STATUS_LABEL) as OrderStatus[];
+                  const totalOrdersAll = statusKeys.reduce(
+                    (acc, s) => acc + (orderCount.get(s) ?? 0),
+                    0,
+                  );
+                  return statusKeys.map((s) => {
+                    const count = orderCount.get(s) ?? 0;
+                    const pct = totalOrdersAll > 0 ? Math.round((count / totalOrdersAll) * 100) : 0;
+                    const rowContent = (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <AdminBadge tone={ORDER_STATUS_TONE[s]}>
+                            {ORDER_STATUS_LABEL[s]}
+                          </AdminBadge>
+                          <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
+                            {count.toLocaleString("es-CO")}
+                            {totalOrdersAll > 0 && (
+                              <span className="text-brand-muted ml-1.5 text-xs font-normal">
+                                ({pct}%)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="bg-brand-purple/10 mt-1.5 h-1.5 overflow-hidden rounded-full">
+                          <div
+                            className="bg-brand-purple/75 h-full rounded-full transition-all"
+                            style={{ width: `${count > 0 ? Math.max(3, pct) : 0}%` }}
+                          />
+                        </div>
+                      </>
+                    );
+                    return (
+                      <li key={s}>
+                        {s === "DRAFT" ? (
+                          <div>{rowContent}</div>
+                        ) : (
+                          <Link
+                            href={`/admin/pedidos?status=${s}`}
+                            className="hover:bg-brand-purple/5 -mx-2 block rounded-lg px-2 py-1 transition-colors"
+                          >
+                            {rowContent}
+                          </Link>
+                        )}
+                      </li>
+                    );
+                  });
+                })()}
               </ul>
             </AdminCard>
           )}
@@ -243,15 +311,32 @@ export default async function AdminMetricasPage() {
             <h2 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
               Cotizaciones por estado
             </h2>
-            <ul className="space-y-2.5">
-              {QUOTE_STATUSES.map((s) => (
-                <li key={s} className="flex items-center justify-between gap-3">
-                  <AdminBadge tone={QUOTE_STATUS_TONE[s]}>{QUOTE_STATUS_LABEL[s]}</AdminBadge>
-                  <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-                    {(quoteCount.get(s) ?? 0).toLocaleString("es-CO")}
-                  </span>
-                </li>
-              ))}
+            <ul className="space-y-3">
+              {QUOTE_STATUSES.map((s) => {
+                const count = quoteCount.get(s) ?? 0;
+                const pct = totalQuotes > 0 ? Math.round((count / totalQuotes) * 100) : 0;
+                return (
+                  <li key={s}>
+                    <div className="flex items-center justify-between gap-3">
+                      <AdminBadge tone={QUOTE_STATUS_TONE[s]}>{QUOTE_STATUS_LABEL[s]}</AdminBadge>
+                      <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
+                        {count.toLocaleString("es-CO")}
+                        {totalQuotes > 0 && (
+                          <span className="text-brand-muted ml-1.5 text-xs font-normal">
+                            ({pct}%)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="bg-brand-purple/10 mt-1.5 h-1.5 overflow-hidden rounded-full">
+                      <div
+                        className="bg-brand-purple/75 h-full rounded-full transition-all"
+                        style={{ width: `${count > 0 ? Math.max(3, pct) : 0}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
             <p className="text-brand-muted border-brand-purple/10 mt-4 border-t pt-3 text-xs">
               Total: <strong>{totalQuotes.toLocaleString("es-CO")}</strong> cotizaciones activas (no
@@ -314,9 +399,13 @@ export default async function AdminMetricasPage() {
 
         {!catalog && (
           <AdminNotice tone="info">
-            <strong>¿Cómo se calcula?</strong> “Pagados” incluye pedidos pagados, en preparación,
-            enviados y entregados (la plata ya entró). No suma cancelados ni reembolsados. El top de
-            productos cuenta solo unidades de pedidos pagados.
+            <strong>¿Cómo se calcula?</strong> Los ingresos netos del mes usan el mismo criterio de{" "}
+            <Link href="/admin/finanzas" className="font-semibold underline">
+              Finanzas
+            </Link>
+            : suman pagos en línea confirmados (Wompi) y contra entrega ya entregados, y restan las
+            devoluciones reembolsadas por retracto. Nunca se cuentan borradores ni pedidos
+            eliminados.
           </AdminNotice>
         )}
 

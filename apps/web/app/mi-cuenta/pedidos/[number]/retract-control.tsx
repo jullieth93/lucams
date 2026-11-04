@@ -12,7 +12,8 @@ import { useActionState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { Undo2, Loader2 } from "lucide-react";
+import { Undo2, Loader2, Sparkles } from "lucide-react";
+import { formatCOP } from "@/lib/format";
 import { requestRetractAction } from "./actions";
 import type { AccountTexts } from "../../account-texts";
 
@@ -21,6 +22,8 @@ type RetractItem = {
   eligible: boolean;
   reason: string | null;
   existingStatus: string | null;
+  estimatedRefundCents?: number;
+  estimatedPointsToRestore?: number;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -75,6 +78,23 @@ export function RetractControl({
       </summary>
       <form action={action} className="mt-2 space-y-2">
         <input type="hidden" name="orderItemId" value={item.orderItemId} />
+        {typeof item.estimatedRefundCents === "number" && (
+          <div className="border-brand-purple/15 bg-brand-purple/5 rounded-lg border px-2.5 py-2 text-[11px]">
+            <p className="text-brand-purple-dark font-medium">
+              Reembolso estimado en dinero:{" "}
+              <strong className="tabular-nums">{formatCOP(item.estimatedRefundCents)}</strong>
+            </p>
+            {(item.estimatedPointsToRestore ?? 0) > 0 && (
+              <p className="text-brand-purple mt-0.5 flex items-center gap-1 font-medium">
+                <Sparkles className="h-3 w-3 flex-shrink-0" aria-hidden />
+                <span>
+                  + {item.estimatedPointsToRestore!.toLocaleString("es-CO")} Puntos Lucams volverán
+                  a tu saldo al aprobarse el reembolso.
+                </span>
+              </p>
+            )}
+          </div>
+        )}
         <label
           htmlFor={`retract-reason-${item.orderItemId}`}
           className="text-brand-muted block text-[11px]"

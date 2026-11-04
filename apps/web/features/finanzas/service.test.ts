@@ -13,6 +13,7 @@ import {
   aggregateByPaymentMethod,
   aggregateRevenueBuckets,
   computeAov,
+  computeNetCollectedRevenue,
   pctChange,
   resolvePeriodRange,
 } from "./service";
@@ -108,5 +109,34 @@ describe("computeAov / pctChange", () => {
     expect(pctChange(110, 100)).toBe(10);
     expect(pctChange(90, 100)).toBe(-10);
     expect(pctChange(100, 0)).toBeNull();
+  });
+});
+
+describe("computeNetCollectedRevenue ([FIN-01])", () => {
+  it("resta retractos reembolsados y faltantes COD del bruto cobrado", () => {
+    expect(
+      computeNetCollectedRevenue({
+        wompiCollectedCents: 12_000_000,
+        codDeliveredCents: 4_000_000,
+        codShortfallCents: 500_000,
+        retractRefundedCents: 2_500_000,
+      }),
+    ).toEqual({
+      grossCollectedCents: 16_000_000,
+      codShortfallCents: 500_000,
+      retractRefundedCents: 2_500_000,
+      totalDeductionsCents: 3_000_000,
+      netCollectedCents: 13_000_000,
+    });
+  });
+
+  it("nunca produce un ingreso neto negativo", () => {
+    const res = computeNetCollectedRevenue({
+      wompiCollectedCents: 1_000_000,
+      codDeliveredCents: 0,
+      codShortfallCents: 0,
+      retractRefundedCents: 1_500_000,
+    });
+    expect(res.netCollectedCents).toBe(0);
   });
 });

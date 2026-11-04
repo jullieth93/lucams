@@ -27,7 +27,7 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { getSiteUrl } from "@/features/emails/layout";
 import { formatCOP } from "@/lib/format";
 import { getReferralSettings } from "@/features/loyalty/settings";
-import { getLoyaltyAccountSummary, LOYALTY_REASON_LABELS } from "@/features/loyalty/service";
+import { getLoyaltyAccountSummary, formatLoyaltyReason } from "@/features/loyalty/service";
 import { getAccountTexts } from "./account-texts.server";
 import { ReferralCopyButton } from "./referral-copy-button";
 
@@ -265,7 +265,7 @@ export default async function MiCuentaPage() {
                   {loyalty.txns.map((t) => (
                     <li key={t.id} className="flex items-center justify-between gap-2">
                       <span className="text-brand-muted">
-                        {LOYALTY_REASON_LABELS[t.reason] ?? t.reason}
+                        {formatLoyaltyReason(t.reason)}
                         <span className="text-brand-muted/70">
                           {" "}
                           ·{" "}

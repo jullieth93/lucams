@@ -118,8 +118,17 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
                   </div>
                   <p className="text-brand-purple-dark mt-1 text-sm">
                     {r.qty}× {r.productName} ·{" "}
-                    <span className="font-semibold">{formatCOP(r.refundAmount)}</span>
+                    <span className="font-semibold tabular-nums">{formatCOP(r.refundAmount)}</span>{" "}
+                    <span className="text-brand-muted text-xs">en efectivo</span>
                   </p>
+                  {r.pointsToRestore > 0 && r.status !== "REJECTED" && (
+                    <p className="text-brand-purple mt-1 inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium">
+                      💜{" "}
+                      {r.status === "REFUNDED"
+                        ? `${r.pointsToRestore.toLocaleString("es-CO")} Puntos Lucams restaurados al cliente`
+                        : `+${r.pointsToRestore.toLocaleString("es-CO")} Puntos Lucams se restauran al marcar reembolsado`}
+                    </p>
+                  )}
                   <p className="text-brand-muted text-xs">
                     {r.customerEmail} · solicitado{" "}
                     <span title={dateFmt.format(r.requestedAt)}>

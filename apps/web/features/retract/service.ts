@@ -20,6 +20,7 @@ import { logger } from "@/lib/logger";
 import type { RetractStatus } from "@lucams/db";
 import { sendRetractApproved, sendRetractRejected, sendRetractRefunded } from "./emails";
 import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
+import { restoreRedeemedPointsForRetract } from "@/features/loyalty/service";
 
 export { RETRACT_WINDOW_BUSINESS_DAYS };
 
@@ -66,6 +67,75 @@ export function isItemPersonalized(item: {
   return item.customDesign != null || item.designId != null;
 }
 
+export interface RetractRefundBreakdownInput {
+  lineTotal: number;
+  orderSubtotal: number;
+  couponDiscount: number;
+  couponType?: string | null;
+  loyaltyDiscount: number;
+  loyaltyPointsRedeemed: number;
+  /** Suma de `refundAmount` de otros retractos activos (no REJECTED) en la misma orden. */
+  alreadyRefundedCents?: number;
+}
+
+export interface RetractRefundBreakdown {
+  /** Efectivo en centavos COP a devolver por este ítem (acotado al efectivo realmente pagado). */
+  cashRefundCents: number;
+  /** Porción combinada de cupón + Puntos Lucams absorbida por esta línea (centavos COP). */
+  discountShareCents: number;
+  /** Puntos Lucams proporcionales a restaurar cuando el retracto pasa a REFUNDED. */
+  pointsToRestore: number;
+}
+
+/** División entera half-up con BigInt (sin floats ni riesgo de overflow sobre MAX_SAFE_INTEGER). */
+function roundMulDiv(a: number, b: number, denom: number): number {
+  if (a <= 0 || b <= 0 || denom <= 0) return 0;
+  const num = BigInt(a) * BigInt(b);
+  const d = BigInt(denom);
+  return Number((num + d / BigInt(2)) / d);
+}
+
+/**
+ * Calcula el desglose exacto de reembolso por línea (aritmética entera en centavos COP):
+ *  - Prorratea TANTO el descuento del cupón sobre mercancía (`FREE_SHIPPING` afecta flete, no ítems)
+ *    COMO `Order.loyaltyDiscount` (Puntos Lucams redimidos) sobre `orderSubtotal`.
+ *  - Acota `cashRefundCents` contra el efectivo de mercancía realmente pagado menos otros retractos
+ *    no rechazados de la misma orden (`[FIN-01]`: nunca devuelve más efectivo del que entró).
+ *  - Calcula `pointsToRestore` proporcionales a la línea cuando el pedido redimió Puntos Lucams.
+ */
+export function computeRetractRefundBreakdown(
+  input: RetractRefundBreakdownInput,
+): RetractRefundBreakdown {
+  const lineTotal = Math.max(0, Math.trunc(input.lineTotal));
+  const subtotal = Math.max(0, Math.trunc(input.orderSubtotal));
+  const subtotalCouponDiscount =
+    input.couponType === "FREE_SHIPPING" ? 0 : Math.max(0, Math.trunc(input.couponDiscount));
+  const loyaltyDiscount = Math.max(0, Math.trunc(input.loyaltyDiscount));
+  const totalMerchandiseDiscount = Math.min(subtotal, subtotalCouponDiscount + loyaltyDiscount);
+
+  const discountShareCents =
+    totalMerchandiseDiscount > 0 && subtotal > 0
+      ? Math.min(lineTotal, roundMulDiv(totalMerchandiseDiscount, lineTotal, subtotal))
+      : 0;
+  const rawCashRefund = Math.max(0, lineTotal - discountShareCents);
+  const maxOrderCashMerchandise = Math.max(0, subtotal - totalMerchandiseDiscount);
+  const alreadyRefunded = Math.max(0, Math.trunc(input.alreadyRefundedCents ?? 0));
+  const remainingOrderCash = Math.max(0, maxOrderCashMerchandise - alreadyRefunded);
+  const cashRefundCents = Math.min(rawCashRefund, remainingOrderCash);
+
+  const pointsRedeemed = Math.max(0, Math.trunc(input.loyaltyPointsRedeemed));
+  const pointsToRestore =
+    pointsRedeemed > 0 && subtotal > 0
+      ? Math.min(pointsRedeemed, roundMulDiv(pointsRedeemed, lineTotal, subtotal))
+      : 0;
+
+  return {
+    cashRefundCents,
+    discountShareCents,
+    pointsToRestore,
+  };
+}
+
 export type RetractIneligibleReason =
   "NOT_DELIVERED" | "OUT_OF_WINDOW" | "PERSONALIZED" | "ALREADY_REQUESTED";
 
@@ -74,6 +144,8 @@ export type RetractableItem = {
   productName: string;
   qty: number;
   lineTotal: number;
+  estimatedRefundCents: number;
+  estimatedPointsToRestore: number;
   eligible: boolean;
   reason: RetractIneligibleReason | null;
   existingStatus: string | null;
@@ -95,6 +167,11 @@ export async function getRetractableItems(
       customerId: true,
       status: true,
       deliveredAt: true,
+      subtotal: true,
+      discount: true,
+      loyaltyDiscount: true,
+      loyaltyPointsRedeemed: true,
+      coupon: { select: { type: true } },
       items: {
         select: {
           id: true,
@@ -103,7 +180,7 @@ export async function getRetractableItems(
           customDesign: true,
           designId: true,
           variant: { select: { product: { select: { name: true } } } },
-          retractRequest: { select: { status: true } },
+          retractRequest: { select: { status: true, refundAmount: true } },
         },
       },
     },
@@ -115,6 +192,12 @@ export async function getRetractableItems(
 
   const delivered = order.status === "DELIVERED" && !!order.deliveredAt;
   const withinWindow = order.deliveredAt ? isWithinRetractWindow(order.deliveredAt, now) : false;
+  const activeRefundedCents = order.items.reduce((acc, it) => {
+    if (it.retractRequest && it.retractRequest.status !== "REJECTED") {
+      return acc + it.retractRequest.refundAmount;
+    }
+    return acc;
+  }, 0);
 
   return order.items.map((it) => {
     let reason: RetractIneligibleReason | null = null;
@@ -122,11 +205,23 @@ export async function getRetractableItems(
     else if (!delivered) reason = "NOT_DELIVERED";
     else if (!withinWindow) reason = "OUT_OF_WINDOW";
     else if (isItemPersonalized(it)) reason = "PERSONALIZED";
+    const lineTotal = it.unitPrice * it.qty;
+    const breakdown = computeRetractRefundBreakdown({
+      lineTotal,
+      orderSubtotal: order.subtotal,
+      couponDiscount: order.discount,
+      couponType: order.coupon?.type ?? null,
+      loyaltyDiscount: order.loyaltyDiscount,
+      loyaltyPointsRedeemed: order.loyaltyPointsRedeemed,
+      alreadyRefundedCents: it.retractRequest ? 0 : activeRefundedCents,
+    });
     return {
       orderItemId: it.id,
       productName: it.variant.product.name,
       qty: it.qty,
-      lineTotal: it.unitPrice * it.qty,
+      lineTotal,
+      estimatedRefundCents: it.retractRequest?.refundAmount ?? breakdown.cashRefundCents,
+      estimatedPointsToRestore: breakdown.pointsToRestore,
       eligible: reason === null,
       reason,
       existingStatus: it.retractRequest?.status ?? null,
@@ -166,10 +261,17 @@ export async function createRetractRequest(
           status: true,
           deliveredAt: true,
           deletedAt: true,
-          // #2 — para prorratear el descuento del cupón en el reembolso (ver más abajo).
           subtotal: true,
           discount: true,
+          loyaltyDiscount: true,
+          loyaltyPointsRedeemed: true,
           coupon: { select: { type: true } },
+          items: {
+            select: {
+              id: true,
+              retractRequest: { select: { status: true, refundAmount: true } },
+            },
+          },
         },
       },
     },
@@ -187,17 +289,30 @@ export async function createRetractRequest(
   if (!isWithinRetractWindow(item.order.deliveredAt, now)) throw new RetractError("OUT_OF_WINDOW");
   if (isItemPersonalized(item)) throw new RetractError("PERSONALIZED");
 
-  // #2 — el reembolso NO puede ser el precio de lista si la orden llevaba cupón: el cliente pagó
-  // menos por ese item. Prorrateamos el descuento del cupón por línea. FREE_SHIPPING descuenta el
-  // flete (no el precio de los items) → no se prorratea. Aritmética entera en centavos COP.
+  // [FIN-01] — el reembolso en efectivo descuenta la parte proporcional TANTO del cupón de
+  // mercancía COMO de Puntos Lucams (`loyaltyDiscount`), y nunca supera el efectivo realmente
+  // pagado por los ítems menos otros retractos activos de la orden.
   const lineTotal = item.unitPrice * item.qty;
   const ord = item.order;
-  const subtotalDiscount = ord.coupon?.type === "FREE_SHIPPING" ? 0 : ord.discount;
-  const discountShare =
-    subtotalDiscount > 0 && ord.subtotal > 0
-      ? Math.round((subtotalDiscount * lineTotal) / ord.subtotal)
-      : 0;
-  const refundAmount = lineTotal - discountShare;
+  const alreadyRefundedCents = ord.items.reduce((acc, sibling) => {
+    if (
+      sibling.id !== item.id &&
+      sibling.retractRequest &&
+      sibling.retractRequest.status !== "REJECTED"
+    ) {
+      return acc + sibling.retractRequest.refundAmount;
+    }
+    return acc;
+  }, 0);
+  const { cashRefundCents: refundAmount } = computeRetractRefundBreakdown({
+    lineTotal,
+    orderSubtotal: ord.subtotal,
+    couponDiscount: ord.discount,
+    couponType: ord.coupon?.type ?? null,
+    loyaltyDiscount: ord.loyaltyDiscount,
+    loyaltyPointsRedeemed: ord.loyaltyPointsRedeemed,
+    alreadyRefundedCents,
+  });
   try {
     const created = await prisma.retractRequest.create({
       data: {
@@ -255,7 +370,15 @@ export async function createRetractRequestAsAdmin(
           deletedAt: true,
           subtotal: true,
           discount: true,
+          loyaltyDiscount: true,
+          loyaltyPointsRedeemed: true,
           coupon: { select: { type: true } },
+          items: {
+            select: {
+              id: true,
+              retractRequest: { select: { status: true, refundAmount: true } },
+            },
+          },
         },
       },
     },
@@ -267,12 +390,25 @@ export async function createRetractRequestAsAdmin(
 
   const lineTotal = item.unitPrice * item.qty;
   const ord = item.order;
-  const subtotalDiscount = ord.coupon?.type === "FREE_SHIPPING" ? 0 : ord.discount;
-  const discountShare =
-    subtotalDiscount > 0 && ord.subtotal > 0
-      ? Math.round((subtotalDiscount * lineTotal) / ord.subtotal)
-      : 0;
-  const refundAmount = lineTotal - discountShare;
+  const alreadyRefundedCents = ord.items.reduce((acc, sibling) => {
+    if (
+      sibling.id !== item.id &&
+      sibling.retractRequest &&
+      sibling.retractRequest.status !== "REJECTED"
+    ) {
+      return acc + sibling.retractRequest.refundAmount;
+    }
+    return acc;
+  }, 0);
+  const { cashRefundCents: refundAmount } = computeRetractRefundBreakdown({
+    lineTotal,
+    orderSubtotal: ord.subtotal,
+    couponDiscount: ord.discount,
+    couponType: ord.coupon?.type ?? null,
+    loyaltyDiscount: ord.loyaltyDiscount,
+    loyaltyPointsRedeemed: ord.loyaltyPointsRedeemed,
+    alreadyRefundedCents,
+  });
   try {
     const created = await prisma.retractRequest.create({
       data: {
@@ -370,30 +506,87 @@ export async function markRetractReceived(id: string, adminId: string): Promise<
 
 /**
  * RECEIVED → REFUNDED. El dinero se emite MANUALMENTE en Wompi/transferencia; esto
- * registra el método + fecha y avisa al cliente. NO restaura stock automáticamente
- * (un producto devuelto puede no ser revendible; el admin ajusta inventario a mano)
- * ni cambia el estado de la orden (fue entregada; el retracto es un evento aparte).
+ * registra el método + fecha, restaura proporcionalmente e idempotentemente los
+ * Puntos Lucams redimidos por esta línea (si la orden tenía cliente y redención),
+ * y avisa al cliente. NO restaura stock automáticamente (un producto devuelto puede
+ * no ser revendible; el admin ajusta inventario a mano) ni cambia el estado de la
+ * orden (fue entregada; el retracto es un evento aparte).
  */
 export async function refundRetract(
   id: string,
   adminId: string,
   method: "WOMPI_VOID" | "BANK_TRANSFER",
 ): Promise<void> {
-  const rr = await assertRetract(id);
+  const rr = await prisma.retractRequest.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      status: true,
+      orderItem: {
+        select: {
+          qty: true,
+          unitPrice: true,
+          order: {
+            select: {
+              id: true,
+              customerId: true,
+              subtotal: true,
+              discount: true,
+              loyaltyDiscount: true,
+              loyaltyPointsRedeemed: true,
+              coupon: { select: { type: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!rr) throw new RetractError("NOT_FOUND");
   if (!RETRACT_TRANSITIONS[rr.status].includes("REFUNDED")) {
     throw new RetractTransitionError(rr.status, "REFUNDED");
   }
-  await prisma.retractRequest.update({
-    where: { id },
-    data: {
-      status: "REFUNDED",
-      refundedAt: new Date(),
-      refundMethod: method,
-      processedBy: adminId,
-    },
+
+  const ord = rr.orderItem.order;
+  const breakdown = computeRetractRefundBreakdown({
+    lineTotal: rr.orderItem.unitPrice * rr.orderItem.qty,
+    orderSubtotal: ord.subtotal,
+    couponDiscount: ord.discount,
+    couponType: ord.coupon?.type ?? null,
+    loyaltyDiscount: ord.loyaltyDiscount,
+    loyaltyPointsRedeemed: ord.loyaltyPointsRedeemed,
   });
+
+  const pointsRestored = await prisma.$transaction(async (tx) => {
+    const updated = await tx.retractRequest.updateMany({
+      where: { id, status: "RECEIVED" },
+      data: {
+        status: "REFUNDED",
+        refundedAt: new Date(),
+        refundMethod: method,
+        processedBy: adminId,
+      },
+    });
+    if (updated.count !== 1) {
+      const fresh = await tx.retractRequest.findUnique({
+        where: { id },
+        select: { status: true },
+      });
+      throw new RetractTransitionError(fresh?.status ?? rr.status, "REFUNDED");
+    }
+    if (ord.customerId && ord.loyaltyPointsRedeemed > 0 && breakdown.pointsToRestore > 0) {
+      return restoreRedeemedPointsForRetract(tx, {
+        retractId: id,
+        orderId: ord.id,
+        customerId: ord.customerId,
+        proportionalPoints: breakdown.pointsToRestore,
+        orderPointsRedeemed: ord.loyaltyPointsRedeemed,
+      });
+    }
+    return 0;
+  });
+
   await sendRetractRefunded(id);
-  logger.info({ event: "retract.refunded", id, adminId, method });
+  logger.info({ event: "retract.refunded", id, adminId, method, pointsRestored });
 }
 
 export type AdminRetractRow = {
@@ -402,6 +595,7 @@ export type AdminRetractRow = {
   reason: string | null;
   rejectionNote: string | null;
   refundAmount: number;
+  pointsToRestore: number;
   refundMethod: string | null;
   requestedAt: Date;
   orderNumber: string;
@@ -429,23 +623,47 @@ export async function listRetractRequests(
       orderItem: {
         select: {
           qty: true,
+          unitPrice: true,
           variant: { select: { product: { select: { name: true } } } },
-          order: { select: { number: true, email: true } },
+          order: {
+            select: {
+              number: true,
+              email: true,
+              customerId: true,
+              subtotal: true,
+              discount: true,
+              loyaltyDiscount: true,
+              loyaltyPointsRedeemed: true,
+              coupon: { select: { type: true } },
+            },
+          },
         },
       },
     },
   });
-  return rows.map((r) => ({
-    id: r.id,
-    status: r.status,
-    reason: r.reason,
-    rejectionNote: r.rejectionNote,
-    refundAmount: r.refundAmount,
-    refundMethod: r.refundMethod,
-    requestedAt: r.requestedAt,
-    orderNumber: r.orderItem.order.number,
-    productName: r.orderItem.variant.product.name,
-    qty: r.orderItem.qty,
-    customerEmail: r.orderItem.order.email,
-  }));
+  return rows.map((r) => {
+    const ord = r.orderItem.order;
+    const breakdown = computeRetractRefundBreakdown({
+      lineTotal: r.orderItem.unitPrice * r.orderItem.qty,
+      orderSubtotal: ord.subtotal,
+      couponDiscount: ord.discount,
+      couponType: ord.coupon?.type ?? null,
+      loyaltyDiscount: ord.loyaltyDiscount,
+      loyaltyPointsRedeemed: ord.customerId ? ord.loyaltyPointsRedeemed : 0,
+    });
+    return {
+      id: r.id,
+      status: r.status,
+      reason: r.reason,
+      rejectionNote: r.rejectionNote,
+      refundAmount: r.refundAmount,
+      pointsToRestore: breakdown.pointsToRestore,
+      refundMethod: r.refundMethod,
+      requestedAt: r.requestedAt,
+      orderNumber: ord.number,
+      productName: r.orderItem.variant.product.name,
+      qty: r.orderItem.qty,
+      customerEmail: ord.email,
+    };
+  });
 }

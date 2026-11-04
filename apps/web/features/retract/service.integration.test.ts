@@ -42,11 +42,15 @@ async function makeDeliveredOrder(opts: {
   status?: string;
   items: Array<{ personalized: boolean }>;
   discount?: number;
+  loyaltyDiscount?: number;
+  loyaltyPointsRedeemed?: number;
   /** true → guest order (customerId null) for the IDOR cases. */
   guest?: boolean;
 }) {
   const subtotal = 20_000 * opts.items.length;
   const discount = opts.discount ?? 0;
+  const loyaltyDiscount = opts.loyaltyDiscount ?? 0;
+  const loyaltyPointsRedeemed = opts.loyaltyPointsRedeemed ?? 0;
   const order = await prisma.order.create({
     data: {
       number: `RTR-${RUN}-${opts.tag}`.toUpperCase(),
@@ -56,7 +60,9 @@ async function makeDeliveredOrder(opts: {
       subtotal,
       shipping: 0,
       discount,
-      total: subtotal - discount,
+      loyaltyDiscount,
+      loyaltyPointsRedeemed,
+      total: subtotal - discount - loyaltyDiscount,
       currency: "COP",
       paymentMethod: "WOMPI",
       status: (opts.status ?? "DELIVERED") as never,
@@ -138,6 +144,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       select: { id: true },
     });
     const ids = orders.map((o) => o.id);
+    await safe(() => prisma.loyaltyTxn.deleteMany({ where: { orderId: { in: ids } } }));
     await safe(() => prisma.orderItem.deleteMany({ where: { orderId: { in: ids } } }));
     await safe(() => prisma.order.deleteMany({ where: { id: { in: ids } } }));
     await safe(() => prisma.customer.deleteMany({ where: { id: customerId } }));
@@ -306,5 +313,37 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
     const rr = await prisma.retractRequest.findUnique({ where: { id } });
     expect(rr?.status).toBe("REJECTED");
     expect(rr?.rejectionNote).toBe("Fuera de política");
+  });
+
+  it("[FIN-01] prorratea Puntos Lucams en refundAmount y restaura puntos proporcionales al reembolsar", async () => {
+    await prisma.customer.update({ where: { id: customerId }, data: { loyaltyPoints: 0 } });
+    // 2 ítems de 20.000 (subtotal 40.000), cupón 4.000 + puntos 16.000 (400 pts) → pagó 20.000 cash.
+    // Retractar 1 ítem (50%): refundAmount = 10.000 cash + restaura 200 pts al pasar a REFUNDED.
+    const order = await makeDeliveredOrder({
+      tag: "loyalty-retract",
+      deliveredAt: new Date(),
+      items: [{ personalized: false }, { personalized: false }],
+      discount: 4_000,
+      loyaltyDiscount: 16_000,
+      loyaltyPointsRedeemed: 400,
+    });
+
+    const { id, refundAmount } = await createRetractRequest(order.items[0]!.id, { customerId });
+    expect(refundAmount).toBe(10_000);
+
+    await approveRetract(id, "admin-1");
+    await markRetractReceived(id, "admin-1");
+    await refundRetract(id, "admin-1", "WOMPI_VOID");
+
+    const customerAfter = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { loyaltyPoints: true },
+    });
+    expect(customerAfter?.loyaltyPoints).toBe(200);
+
+    const txn = await prisma.loyaltyTxn.findFirst({
+      where: { orderId: order.id, reason: `RETRACT_REFUND:${id}` },
+    });
+    expect(txn?.delta).toBe(200);
   });
 });

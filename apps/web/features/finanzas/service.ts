@@ -19,6 +19,56 @@ import { prisma } from "@/lib/db";
 
 export const REVENUE_STATUSES: OrderStatus[] = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"];
 
+/**
+ * Filtro Prisma canónico de pedidos cuyo dinero YA entró a caja:
+ *  - WOMPI: pago confirmado en línea (`PAID | FULFILLING | SHIPPED | DELIVERED`).
+ *  - COD:   solo cuando el pedido ya fue entregado (`DELIVERED`).
+ * Excluye siempre soft-deletes (`deletedAt: null`), `DRAFT`, `PENDING_PAYMENT`,
+ * `CANCELLED` y `REFUNDED` (orden reembolsada completa).
+ */
+export const COLLECTED_REVENUE_ORDER_WHERE = {
+  deletedAt: null,
+  OR: [
+    { paymentMethod: "WOMPI" as const, status: { in: REVENUE_STATUSES } },
+    { paymentMethod: "COD" as const, status: "DELIVERED" as const },
+  ],
+};
+
+export interface NetRevenueBreakdown {
+  grossCollectedCents: number;
+  codShortfallCents: number;
+  retractRefundedCents: number;
+  totalDeductionsCents: number;
+  netCollectedCents: number;
+}
+
+/**
+ * Conciliación pura del ingreso neto real en centavos COP (`[FIN-01]`):
+ *  `Cobrado bruto (Wompi + COD entregado) − Reembolsos por retracto − Faltante COD`.
+ */
+export function computeNetCollectedRevenue(input: {
+  wompiCollectedCents: number;
+  codDeliveredCents: number;
+  codShortfallCents: number;
+  retractRefundedCents: number;
+}): NetRevenueBreakdown {
+  const grossCollectedCents = Math.max(
+    0,
+    Math.trunc(input.wompiCollectedCents) + Math.trunc(input.codDeliveredCents),
+  );
+  const codShortfallCents = Math.max(0, Math.trunc(input.codShortfallCents));
+  const retractRefundedCents = Math.max(0, Math.trunc(input.retractRefundedCents));
+  const totalDeductionsCents = codShortfallCents + retractRefundedCents;
+  const netCollectedCents = Math.max(0, grossCollectedCents - totalDeductionsCents);
+  return {
+    grossCollectedCents,
+    codShortfallCents,
+    retractRefundedCents,
+    totalDeductionsCents,
+    netCollectedCents,
+  };
+}
+
 export type FinanzasPeriod = "7d" | "30d" | "90d" | "mes";
 
 export interface PeriodOption {
@@ -189,36 +239,49 @@ export interface PeriodAggregates {
   buckets: RevenueBucket[];
   byMethod: PaymentMethodAggregate[];
   totalCents: number;
+  retractRefundedCents: number;
+  netTotalCents: number;
   orderCount: number;
   aovCents: number;
   aovDeltaPct: number | null;
 }
 
 /**
- * Una sola query (ventana actual + anterior) y agregación en memoria —
- * mismo patrón que /admin/metricas (volumen bajo, no justifica analytics).
+ * Consulta ventana actual + anterior y agrega en memoria —
+ * incluye deducción de retractos reembolsados en la ventana sobre órdenes que
+ * permanecen en `COLLECTED_REVENUE_ORDER_WHERE` (sin doble resta si la orden pasó a REFUNDED).
  */
 export async function getPeriodAggregates(period: FinanzasPeriod): Promise<PeriodAggregates> {
   const range = resolvePeriodRange(period, new Date());
-  const rows = await prisma.order.findMany({
-    where: {
-      deletedAt: null,
-      createdAt: { gte: range.previousFrom, lte: range.to },
-      OR: [
-        { paymentMethod: "WOMPI", status: { in: REVENUE_STATUSES } },
-        { paymentMethod: "COD", status: "DELIVERED" },
-      ],
-    },
-    select: { total: true, paymentMethod: true, createdAt: true },
-  });
+  const [rows, retractAgg] = await Promise.all([
+    prisma.order.findMany({
+      where: {
+        ...COLLECTED_REVENUE_ORDER_WHERE,
+        createdAt: { gte: range.previousFrom, lte: range.to },
+      },
+      select: { total: true, paymentMethod: true, createdAt: true },
+    }),
+    prisma.retractRequest.aggregate({
+      where: {
+        status: "REFUNDED",
+        refundedAt: { gte: range.from, lte: range.to },
+        orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+      },
+      _sum: { refundAmount: true },
+    }),
+  ]);
   const current = rows.filter((r) => r.createdAt >= range.from);
   const previous = rows.filter((r) => r.createdAt < range.from);
+  const totalCents = current.reduce((acc, r) => acc + r.total, 0);
+  const retractRefundedCents = retractAgg._sum.refundAmount ?? 0;
   const aovCents = computeAov(current);
   return {
     range,
     buckets: aggregateRevenueBuckets(current, range),
     byMethod: aggregateByPaymentMethod(current),
-    totalCents: current.reduce((acc, r) => acc + r.total, 0),
+    totalCents,
+    retractRefundedCents,
+    netTotalCents: Math.max(0, totalCents - retractRefundedCents),
     orderCount: current.length,
     aovCents,
     aovDeltaPct: pctChange(aovCents, computeAov(previous)),
