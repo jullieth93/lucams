@@ -565,15 +565,15 @@ model AdminActionLog {
 }
 ```
 
-### Inventario completo de modelos (63 modelos, 23 enums)
+### Inventario completo de modelos (67 modelos, 26 enums)
 
 El schema ilustrativo de arriba es la base lógica; la fuente de verdad es
-`packages/db/prisma/schema.prisma` (63 modelos, 23 enums — verificado contra el
+`packages/db/prisma/schema.prisma` (67 modelos, 26 enums — verificado contra el
 schema vigente). Inventario agrupado por módulo:
 
 | Módulo                       | Modelos                                                                                                                                  |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Identidad cliente            | `Customer`, `Address`                                                                                                                    |
+| Identidad cliente / contacto | `Customer`, `Address`, `Organization`, `Contact`, `ContactIdentity`, `IdentityMergeCandidate`                                            |
 | RBAC admin                   | `AdminUser`, `AdminRecoveryCode` (códigos MFA hasheados HMAC-SHA256)                                                                     |
 | Catálogo y SEO               | `Category`, `Product`, `ProductVariant`, `InventoryLog`, `OcasionTag`, `ProductOcasionTag`, `Material`, `ProductMaterial`, `UrlRedirect` |
 | Carrito, órdenes y pagos     | `Cart`, `CartItem`, `AbandonedCart`, `Order`, `OrderItem`, `OrderStatusEvent`, `WompiPaymentAttempt`, `WompiPaymentTransaction`          |
@@ -619,16 +619,16 @@ electrónica DIAN** (`billingDocumentType/Number/Name`, `dianStatus`, `dianCufe`
 `dianXmlUrl` — schema ready, el envío a la DIAN es Fase 7) y `dianStatus` se setea al
 crear la orden si el cliente pidió factura.
 
-### Arquitectura Objetivo de Identidad Canónica (`Contact`) y Frontera SSoT (ADR-193 — Fases 4 y 5 completadas, pendiente aprobación humana para DDL Fase 6)
+### Arquitectura de Identidad Canónica (`Contact`) y Frontera SSoT (ADR-193 — DDL Fase 6 aplicado)
 
-> **Estado:** Contrato técnico vinculante especificado (`ADR-193`) y perfilador `READ ONLY` sin PII (`packages/db/scripts/identity-dry-run.mjs`, `transaction_read_only = on` verificado) implementado y certificado en integración. Las tablas aún **no** existen en `schema.prisma` hasta cruzar la puerta de revisión humana previa a Fase 6 (`S14`).
+> **Estado:** Esquema aditivo _expand-only_ (`20261104160000_expand_contact_identity_graph` + RLS `051`) aplicado y verificado en `schema.prisma` con `0` drift y `5/5` invariantes de postura RLS/grants.
 
 1. **Separación estructural Persona (`Contact`) vs Credencial (`Customer`):**
    - `Contact` representa a toda contraparte humana comercial o posventa en Lucams (comprador registrado, comprador invitado `Order.customerId IS NULL`, solicitante `Quote`, remitente `SupportTicket`, prospecto `AbandonedCart`, suscriptor `Consent`).
    - `Customer` permanece intacto como cuenta autenticada de autoservicio (`supabaseUserId String @unique`, `loyaltyPoints`, `referralCode`, `addresses`, `/mi-cuenta`), vinculándose 1:1 opcional mediante `Customer.contactId String? @unique` (`onDelete: SetNull`).
-   - FKs anulables (_expand-only_, `onDelete: SetNull`, indexadas) previstas en Fase 6 sobre las 8 entidades relacionales: `Customer` (`@unique`), `Order`, `SupportTicket`, `Quote`, `AbandonedCart`, `Consent`, `WarrantyClaim` y `RetractRequest`.
+   - FKs anulables (_expand-only_, `onDelete: SetNull`, indexadas) activas sobre las 8 entidades relacionales: `Customer` (`@unique`), `Order`, `SupportTicket`, `Quote`, `AbandonedCart`, `Consent`, `WarrantyClaim` y `RetractRequest`.
 
-2. **Modelos, enums e índices parciales planeados para Fase 6 (`S14`):**
+2. **Modelos, enums e índices parciales activos (`S14`):**
    - Enums:
      - `ContactIdentityType`: `SUPABASE_USER` | `EMAIL` | `PHONE` | `WHATSAPP`
      - `IdentityVerificationStatus`: `VERIFIED` | `UNVERIFIED_OBSERVED` | `REVOKED`

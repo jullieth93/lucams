@@ -116,10 +116,163 @@ enum ConsentScope {
 
 // ──────────────────────── CMS (sub-bloque J) ────────────────────────
 
-// ──────────────────────── IDENTIDAD ────────────────────────
+// ──────────────────────── IDENTIDAD (ADR-193) ────────────────────────
+
+enum ContactIdentityType {
+  SUPABASE_USER
+  EMAIL
+  PHONE
+  WHATSAPP
+}
+
+enum IdentityVerificationStatus {
+  VERIFIED
+  UNVERIFIED_OBSERVED
+  REVOKED
+}
+
+enum MergeCandidateStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Entidad ligera opcional B2B / Eventos (ADR-193). Nunca se crea para compras B2C de autoservicio.
+model Organization {
+  id          String        @id @default(cuid())
+  name        String
+  taxIdType   DocumentType?
+  taxIdNumber String?
+  city        String?
+  department  String?
+  notes       String?
+  contacts    Contact[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  // NOTA: índice único parcial SQL `"Organization_taxId_active_key"` sobre
+  // ("taxIdType", "taxIdNumber") WHERE NOT NULL AND "deletedAt" IS NULL vive en
+  // la migración 20261104160000_expand_contact_identity_graph.
+
+  @@index([deletedAt])
+  @@index([taxIdType, taxIdNumber])
+}
+
+/// Persona comercial / posventa canónica (ADR-193): desacopla la relación humana
+/// (invitados, cotizaciones, tickets, carritos, suscriptores y clientes con cuenta)
+/// de la credencial autenticada `Customer`.
+model Contact {
+  id               String        @id @default(cuid())
+  primaryEmail     String?
+  // E.164 estricto (+573XXXXXXXXX). Indexado y NUNCA @unique global (móviles compartidos/reciclados en CO).
+  primaryPhoneE164 String?
+  displayName      String?
+  documentType     DocumentType?
+  documentNumber   String?
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  ownerAdminId     String?
+  ownerAdmin       AdminUser?    @relation("ContactOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
+  // "CUSTOMER_AUTH" | "GUEST_ORDER" | "SUPPORT_TICKET" | "QUOTE" | "ABANDONED_CART" | "NEWSLETTER" | "B2B_INQUIRY" | "MANUAL"
+  source           String        @default("GUEST_ORDER")
+  anonymizedAt     DateTime?
+
+  customer                   Customer?
+  identities                 ContactIdentity[]
+  orders                     Order[]
+  supportTickets             SupportTicket[]
+  quotes                     Quote[]
+  abandonedCarts             AbandonedCart[]
+  consents                   Consent[]
+  warrantyClaims             WarrantyClaim[]
+  retractRequests            RetractRequest[]
+  mergeCandidatesAsPrimary   IdentityMergeCandidate[] @relation("MergePrimaryContact")
+  mergeCandidatesAsSecondary IdentityMergeCandidate[] @relation("MergeSecondaryContact")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  // NOTA: índice único parcial SQL `"Contact_primaryEmail_active_key"` sobre
+  // ("primaryEmail") WHERE "primaryEmail" IS NOT NULL AND "deletedAt" IS NULL
+  // + RLS/REVOKE explícitos viven en 20261104160000_expand_contact_identity_graph.
+
+  @@index([primaryEmail])
+  @@index([primaryPhoneE164])
+  @@index([documentType, documentNumber])
+  @@index([organizationId])
+  @@index([ownerAdminId])
+  @@index([source, createdAt])
+  @@index([deletedAt])
+}
+
+/// Identificadores observados o verificados asociados a un `Contact` (ADR-193).
+/// Solo `SUPABASE_USER` y `EMAIL` no revocados tienen unicidad parcial SQL global;
+/// `PHONE` y `WHATSAPP` se indexan sin `@unique` global.
+model ContactIdentity {
+  id                 String                     @id @default(cuid())
+  contactId          String
+  contact            Contact                    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  type               ContactIdentityType
+  normalizedValue    String
+  verificationStatus IdentityVerificationStatus @default(UNVERIFIED_OBSERVED)
+  verifiedAt         DateTime?
+  verificationSource String?
+  firstSeenAt        DateTime                   @default(now())
+  lastSeenAt         DateTime                   @default(now())
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  // NOTA: índice único parcial SQL `"ContactIdentity_unique_owner_key"` sobre
+  // ("type", "normalizedValue") WHERE "type" IN ('SUPABASE_USER', 'EMAIL')
+  // AND "verificationStatus" <> 'REVOKED' vive en 20261104160000_expand_contact_identity_graph.
+
+  @@unique([contactId, type, normalizedValue])
+  @@index([type, normalizedValue])
+  @@index([contactId, verificationStatus])
+}
+
+/// Cola de revisión humana para señales probables (teléfono comprador compartido,
+/// mismo documento DIAN, email alterno no-regalo) — CERO auto-merge (ADR-193 Nivel 3/4).
+model IdentityMergeCandidate {
+  id                 String               @id @default(cuid())
+  primaryContactId   String
+  primaryContact     Contact              @relation("MergePrimaryContact", fields: [primaryContactId], references: [id], onDelete: Cascade)
+  secondaryContactId String
+  secondaryContact   Contact              @relation("MergeSecondaryContact", fields: [secondaryContactId], references: [id], onDelete: Cascade)
+  reasonCode         String
+  reasonCodes        String[]             @default([])
+  status             MergeCandidateStatus @default(PENDING)
+  evidenceJson       Json                 @default("{}")
+  reviewedByAdminId  String?
+  reviewedByAdmin    AdminUser?           @relation("MergeReviewer", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+  reviewedAt         DateTime?
+  reviewNote         String?
+  mergeSnapshotJson  Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  // NOTA: CHECK ("primaryContactId" <> "secondaryContactId") vive en
+  // 20261104160000_expand_contact_identity_graph.
+
+  @@unique([primaryContactId, secondaryContactId])
+  @@index([status, createdAt])
+  @@index([secondaryContactId])
+  @@index([reviewedByAdminId])
+}
 
 model Customer {
   id                String                    @id @default(cuid())
+  contactId         String?                   @unique
+  contact           Contact?                  @relation(fields: [contactId], references: [id], onDelete: SetNull)
   email             String                    @unique
   phone             String?
   firstName         String?
@@ -201,7 +354,9 @@ model AdminUser {
   role           AdminRole
   isActive       Boolean   @default(true)
 
-  recoveryCodes AdminRecoveryCode[]
+  recoveryCodes      AdminRecoveryCode[]
+  ownedContacts      Contact[]                @relation("ContactOwner")
+  reviewedMergePairs IdentityMergeCandidate[] @relation("MergeReviewer")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -514,6 +669,8 @@ model Order {
   number                  String                @unique
   customerId              String?
   customer                Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contactId               String?
+  contact                 Contact?              @relation(fields: [contactId], references: [id], onDelete: SetNull)
   email                   String
   phone                   String
   shippingAddress         Json
@@ -693,6 +850,7 @@ model Order {
   // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([customerId, deletedAt])
+  @@index([contactId, deletedAt])
   @@index([status, createdAt])
   @@index([wompiTransactionId])
   @@index([wompiReference])
@@ -993,6 +1151,8 @@ model RetractRequest {
   id            String        @id @default(cuid())
   orderItemId   String        @unique
   orderItem     OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  contactId     String?
+  contact       Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
   status        RetractStatus @default(PENDING)
   reason        String? // texto libre del cliente
   rejectionNote String? // motivo si REJECTED
@@ -1014,6 +1174,7 @@ model RetractRequest {
   // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([status, requestedAt])
+  @@index([contactId])
 }
 
 // ──────────────────────── GARANTÍAS (Ley 1480 art. 7-15) ────────────────────────
@@ -1038,6 +1199,8 @@ model WarrantyClaim {
   orderItem      OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
   customerId     String?
   customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contactId      String?
+  contact        Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
   status         WarrantyStatus @default(PENDING)
   description    String // qué falla — texto del cliente
   evidenceUrls   String[]       @default([]) // fotos del defecto (opcional)
@@ -1053,6 +1216,7 @@ model WarrantyClaim {
   @@index([status, requestedAt])
   @@index([orderItemId])
   @@index([customerId])
+  @@index([contactId])
 }
 
 // ──────────────────────── RESEÑAS ────────────────────────
@@ -1093,6 +1257,8 @@ model AbandonedCart {
   id                 String    @id @default(cuid())
   cartId             String    @unique
   cart               Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  contactId          String?
+  contact            Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
   email              String
   // Token del link de recuperación (email → restaura la sesión del carrito anónimo). Único.
   // F-11 (security audit 2026-08-24): at rest only the SHA-256 hex digest of
@@ -1111,6 +1277,7 @@ model AbandonedCart {
   updatedAt DateTime @updatedAt
 
   @@index([recoveredAt, lastReminderSentAt])
+  @@index([contactId])
 }
 
 model LoyaltyTxn {
@@ -1242,6 +1409,8 @@ model Consent {
   id         String       @id @default(cuid())
   customerId String?
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contactId  String?
+  contact    Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
   // Para guests/newsletter sin cuenta: identificamos por email.
   email      String?
   // Anclaje alterno para titulares SIN email: la cotización por WhatsApp (Etapa 1) pide el móvil
@@ -1263,6 +1432,7 @@ model Consent {
   acceptedAt DateTime     @default(now())
 
   @@index([customerId, scope])
+  @@index([contactId, scope])
   @@index([email, scope])
   @@index([phone, scope])
   @@index([scope, acceptedAt])
@@ -1405,6 +1575,8 @@ model SupportTicket {
   id             String                 @id @default(cuid())
   customerId     String?
   customer       Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contactId      String?
+  contact        Contact?               @relation(fields: [contactId], references: [id], onDelete: SetNull)
   email          String
   name           String
   subject        String
@@ -1430,6 +1602,7 @@ model SupportTicket {
 
   @@index([status, createdAt])
   @@index([customerId])
+  @@index([contactId])
   @@index([email])
   @@index([orderNumber])
 }
@@ -2110,6 +2283,8 @@ model Quote {
   // Número humano "COT-XXXXXX" (6 chars alfanuméricos sin ambiguos, generado en
   // app — ver features/quotes/service.ts). Único; el create reintenta ante P2002.
   number                String      @unique
+  contactId             String?
+  contact               Contact?    @relation(fields: [contactId], references: [id], onDelete: SetNull)
   status                QuoteStatus @default(PENDING)
   customerName          String
   // Móvil colombiano normalizado a 10 dígitos (sin +57 ni espacios).
@@ -2153,6 +2328,7 @@ model Quote {
   // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([status, createdAt])
+  @@index([contactId, deletedAt])
   @@index([deletedAt])
 }
 

@@ -63,6 +63,11 @@ const SENSITIVE = [
   "SecurityEvent",
   // [ANA-01] (Fase 2) — contadores diarios internos de conversión (cerrados a PostgREST).
   "FunnelEventDaily",
+  // ADR-193 (Fase 6) — Grafo de Identidad Canónica (PII sensible cerrada a PostgREST).
+  "Organization",
+  "Contact",
+  "ContactIdentity",
+  "IdentityMergeCandidate",
 ] as const;
 
 describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sensibles", () => {
