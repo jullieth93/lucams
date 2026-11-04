@@ -409,7 +409,8 @@ packages/db/scripts/
 ### Tira photobooth
 
 - **Geometría de tira continua**: las plantillas de tira (`photo-strip-3-fotos` celda
-  390×400, `photo-strip-4-fotos` celda 390×530) fijan `gridCols: 1` + `gridGap: 0` (la
+  400×400 = 5×5 cm, `photo-strip-4-fotos` celda 400×330 = 5×4.125 cm — medidas vigentes
+  2026-11-03) fijan `gridCols: 1` + `gridGap: 0` (la
   plantilla puede fijar columnas y gap) → celdas pegadas = UNA pieza continua. Ambas viven
   declaradas en `seed-templates.mjs` (upsert idempotente; regresión E2E en
   `pdp-cantidad-tira.spec.ts`: 4 celdas verticales en UNA columna, no cuadrados 2×2). En modo
@@ -1059,7 +1060,8 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   derecha); cada sub-clúster usa `clusterLayout` dentro de SU región
   (`FRIDGE_SCENE.cluster.left/right`, `doorMaxW` 1.55 u; la gaveta NO lleva imanes; el
   clúster izquierdo queda SIEMPRE bajo el dispensador, `left.topY < dispenser.bottomY`).
-  Mural: corcho de pared 120×80 cm con marco de 5.5 cm (0.1 u/cm) — 12 tiras 6.5×26.5 en
+  Mural: corcho de pared 120×80 cm con marco de 5.5 cm (0.1 u/cm) — certificado con 12 tiras
+  de estrés de 26.5 cm (más largas que el máx vigente de 16.5) en
   grilla 6×2 dentro del marco; 24 fotoimanes 6×8 en grilla 4×6. Tests en
   `cluster-layout.test.ts`: ratios cm↔cm, grillas que caben con márgenes y aserción explícita
   de que ningún item intersecta la junta (`seamHalfW`) con 12 tiras, 24 fotoimanes, 1 y 2
@@ -1200,7 +1202,7 @@ No se regeneran automáticamente diseños/pedidos históricos aprobados.
   (H5: el pixelRatio del snapshot va relativo al tamaño LÓGICO del stage, no al display).
 - **`dpiProduction: 300` es una ETIQUETA** del `stage` del canvasData, no un remuestreo real:
   el DPI efectivo sale de (ancho del stage × 3 px) / (cm físicos / 2.54) y varía por plantilla
-  (los stages no son todos 1080 px: hay celdas 390×400, caras 600×200 / 400×420, etc.). El
+  (los stages no son todos 1080 px: hay celdas 400×400, caras 600×200 / 400×420, etc.). El
   rango efectivo medido del catálogo es ≈ **686–762 DPI** — sobra contra los 300 del estándar;
   el cuello de botella es la resolución de la FOTO del cliente, no el lienzo (de ahí el
   quality-check `checkPhotoQuality` a 118 px/cm y el upscale local).

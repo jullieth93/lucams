@@ -72,8 +72,9 @@ export const FRIDGE_SCENE = {
   },
 } as const;
 
-/** Mural de CORCHO de pared grande (12 tiras de 26.5 cm caben en grilla 6×2 CON márgenes —
- *  el tablerito anterior de 45×33 cm solo daba 1 fila de alto → desborde seguro). */
+/** Mural de CORCHO de pared grande (12 tiras largas caben en grilla 6×2 CON márgenes —
+ *  el tablerito anterior de 45×33 cm solo daba 1 fila de alto → desborde seguro; la tira
+ *  más larga del catálogo mide 16.5 cm desde 2026-11-03, antes 26.5). */
 export const BOARD_SCENE = {
   /** cm reales: 120 ancho × 80 alto (corcho de pared tipo moodboard grande). */
   cm: { w: 120, h: 80 },
@@ -106,8 +107,8 @@ export const BOARD_FIT = {
 
 /**
  * Medio-bound del encuadre inicial del mural (2026-10-12 — bug "vista 3D Mural muy gigante"):
- * el tablero creció deliberadamente a 120×80 cm (Ola 30: 12 tiras de 26.5 cm no cabían en el
- * tablerito), pero el FitCamera SIEMPRE encuadraba el tablero completo → con pocas piezas
+ * el tablero creció deliberadamente a 120×80 cm (Ola 30: 12 tiras largas no cabían en el
+ * tablerito — entonces 26.5 cm, hoy 16.5), pero el FitCamera SIEMPRE encuadraba el tablero
  * chicas el mural dominaba el viewport y las piezas se veían diminutas. Ahora el encuadre se
  * pondera al CLÚSTER: `layoutHalf + margen generoso`, con piso de contexto del tablero
  * (`minBoardFrac`) y snap al tablero completo cuando el ponderado ya lo cubre casi todo

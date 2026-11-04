@@ -76,7 +76,7 @@ export function ProductsFilters({
           <SheetTrigger asChild>
             <Button
               variant="outline"
-              className="border-brand-purple/30 text-brand-purple-dark gap-2"
+              className="border-brand-purple/30 text-brand-purple-dark min-h-11 gap-2"
             >
               <SlidersHorizontal className="h-4 w-4" />
               Filtros

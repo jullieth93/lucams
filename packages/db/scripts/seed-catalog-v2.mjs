@@ -937,6 +937,20 @@ const DEFAULT_PRODUCTION_DAYS_BY_KIND = {
 
 async function step1_NewCategory() {
   console.log("Paso 1 — Crear categoría Separadores Magnéticos...");
+  // 2026-11-03 — la categoría raíz `separadores` ya la declara el seed CANÓNICO
+  // (seed-catalog-canonical.mjs, espejo del dato curado de STG/PRD) y su
+  // contenido editorial lo cura el admin (fill-category-editorial 2026-10-29).
+  // Este paso queda CREATE-ONLY: si la categoría existe NO se pisa nada (antes
+  // el update sobrescribía name/description/richDescription/order con los
+  // valores viejos de este archivo en cada corrida de db-local-seed —
+  // ping-pong con el seed canónico detectado en LOCAL).
+  const existing = await prisma.category.findUnique({
+    where: { slug: SEPARADORES_CATEGORY.slug },
+  });
+  if (existing) {
+    console.log("  ~ Separadores ya existe — intacta (la cura el seed canónico/admin).\n");
+    return;
+  }
   const result = await upsertCategoryWithParent(
     SEPARADORES_CATEGORY.slug,
     SEPARADORES_CATEGORY.name,
@@ -1090,41 +1104,17 @@ async function step5_OcasionLinks() {
   );
 }
 
-async function step6_MoveSeparadoresProduct() {
-  console.log("Paso 6 — Migrar pack-separadores-libros a categoría Separadores...");
-  const product = await prisma.product.findUnique({ where: { slug: "pack-separadores-libros" } });
-  if (!product) {
-    console.log("  - pack-separadores-libros no existe; skip.");
-    return;
-  }
-  // Reasignar a sub-categoría "Frases" de Separadores (más representativa)
-  const frases = await prisma.category.findUnique({ where: { slug: "separadores-frases" } });
-  if (!frases) {
-    console.warn("  ⚠ Sub-cat separadores-frases no existe; skip.");
-    return;
-  }
-  if (product.categoryId !== frases.id) {
-    if (APPLY) {
-      await prisma.product.update({
-        where: { id: product.id },
-        data: { categoryId: frases.id },
-      });
-    }
-    console.log(
-      `  ✓ pack-separadores-libros ${APPLY ? "movido a" : "se movería a"} Separadores › Frases.\n`,
-    );
-  } else {
-    console.log("  - pack-separadores-libros ya está en Separadores › Frases.\n");
-  }
-}
-
 async function main() {
   await step1_NewCategory();
   await step2_SubCategories();
   await step3_PlaceholderProducts();
   await step4_EnrichExistingProducts();
   await step5_OcasionLinks();
-  await step6_MoveSeparadoresProduct();
+  // 2026-11-03 — step6 RETIRADO: movía `pack-separadores-libros` (ORG-SEP-6) a
+  // Separadores › Frases en cada corrida, en ping-pong con el seed canónico.
+  // Ese producto ya no existe en STG/PRD (PRD es la fuente de verdad — ADR-099)
+  // y salió del seed canónico el mismo día; la función queda sin llamar (si el
+  // producto histórico vive en alguna DB vieja, ya no se reasigna desde acá).
 
   // Resumen final
   const cats = await prisma.category.count({ where: { deletedAt: null } });

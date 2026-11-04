@@ -30,7 +30,8 @@ const prisma = new PrismaClient();
 const pesos = (c) => `$${(c / 100).toLocaleString("es-CO")}`;
 
 function parseAspect(s) {
-  const m = typeof s === "string" ? s.trim().match(/^(\d+(?:\.\d+)?)\s*[:×x]\s*(\d+(?:\.\d+)?)$/i) : null;
+  const m =
+    typeof s === "string" ? s.trim().match(/^(\d+(?:\.\d+)?)\s*[:×x]\s*(\d+(?:\.\d+)?)$/i) : null;
   if (!m) return null;
   const h = parseFloat(m[2]);
   return h === 0 ? null : parseFloat(m[1]) / h;
@@ -56,26 +57,33 @@ for (const p of products) {
   console.log(`── ${p.name} (/${p.slug}) [${p.personalizationKind}]`);
   const schema = p.personalizationSchema ?? {};
 
-  // 1. Escaleras (por imantado)
-  for (const magnet of [true, false]) {
-    const ladder = p.variants
-      .filter((v) => (v.attributes?.magnet ?? null) === magnet)
-      .map((v) => ({ n: v.attributes?.photoSlots ?? 0, price: v.price ?? p.basePrice, sku: v.sku }))
-      .filter((v) => v.n > 0)
-      .sort((a, b) => a.n - b.n);
+  // 1. Escaleras (por imantado Y TAMAÑO — 2026-11-03: agrupar solo por imán
+  // mezclaba tamaños en productos multi-tamaño (Cuadrados 4×4/5×5/7×7 × packs)
+  // y reportaba falsos positivos: 24 unid. de 4×4 cuestan menos que 18 de 7×7
+  // y eso es comercio legítimo, no una escalera rota. La clase de bug original
+  // (2026-09-14) es la escalera de packs DENTRO del mismo tamaño).
+  const ladders = new Map();
+  for (const v of p.variants) {
+    const n = v.attributes?.photoSlots ?? 0;
+    if (n <= 0) continue;
+    const key = `${v.attributes?.magnet ?? null}|${v.attributes?.sizeCm ?? ""}`;
+    if (!ladders.has(key)) ladders.set(key, []);
+    ladders.get(key).push({ n, price: v.price ?? p.basePrice, sku: v.sku });
+  }
+  for (const [key, ladder] of ladders) {
+    const [magnet, sizeCm] = key.split("|");
+    ladder.sort((a, b) => a.n - b.n);
     for (let i = 1; i < ladder.length; i++) {
       if (ladder[i].price < ladder[i - 1].price) {
         flag(
-          `escalera NO monótona (${magnet ? "Con" : "Sin"} imán): ${ladder[i - 1].n} unid. ${pesos(ladder[i - 1].price)} > ${ladder[i].n} unid. ${pesos(ladder[i].price)}`,
+          `escalera NO monótona (${magnet === "true" ? "Con" : "Sin"} imán${sizeCm ? `, ${sizeCm} cm` : ""}): ${ladder[i - 1].n} unid. ${pesos(ladder[i - 1].price)} > ${ladder[i].n} unid. ${pesos(ladder[i].price)}`,
         );
       }
     }
   }
 
   // 2. Promo: denormalizado vs variantes
-  const cheapest = p.variants
-    .filter((v) => v.price != null)
-    .sort((a, b) => a.price - b.price)[0];
+  const cheapest = p.variants.filter((v) => v.price != null).sort((a, b) => a.price - b.price)[0];
   const denorm = p.compareAtPrice ?? null;
   const variantPromos = p.variants.filter(
     (v) => v.compareAtPrice != null && v.compareAtPrice > (v.price ?? p.basePrice),
@@ -89,7 +97,9 @@ for (const p of products) {
     );
   }
   if (denorm == null && variantPromos.length > 0) {
-    flag(`${variantPromos.length} variante(s) con promo pero product.compareAtPrice es null (correr syncProductBasePrice)`);
+    flag(
+      `${variantPromos.length} variante(s) con promo pero product.compareAtPrice es null (correr syncProductBasePrice)`,
+    );
   }
   if (cheapest && denorm != null && cheapest.compareAtPrice !== denorm) {
     console.log(
@@ -118,7 +128,8 @@ for (const p of products) {
         if (!st?.width || !st?.height) return true; // sin stage parseable → permitida (curaduría manda)
         return Math.abs(st.width / st.height - target) <= 0.05;
       });
-      if (!match) flag(`aspect ${a} SIN plantilla activa que matchee → Estudio cae al canvas cuadrado`);
+      if (!match)
+        flag(`aspect ${a} SIN plantilla activa que matchee → Estudio cae al canvas cuadrado`);
     }
 
     // 3b. Consistencia FÍSICA de la celda (bug 2026-09-15 — tira 4 fotos: aspectRatio
@@ -157,6 +168,8 @@ for (const p of products) {
   console.log("");
 }
 
-console.log(issues === 0 ? "✓ Sin inconsistencias." : `✗ ${issues} inconsistencia(s) encontrada(s).`);
+console.log(
+  issues === 0 ? "✓ Sin inconsistencias." : `✗ ${issues} inconsistencia(s) encontrada(s).`,
+);
 process.exitCode = issues === 0 ? 0 : 1;
 await prisma.$disconnect();

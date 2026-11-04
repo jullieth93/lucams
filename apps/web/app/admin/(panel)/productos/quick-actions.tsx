@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Power, RotateCcw, Trash2, Loader2 } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
+import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import { purgeProductAction, restoreProductAction, toggleProductActiveAction } from "./actions";
 
 /** Botón submit que muestra spinner + se deshabilita mientras procesa. */
@@ -35,7 +36,8 @@ function ActionButton({
 }
 
 /** Botón ELIMINAR PERMANENTE (papelera) con confirmación fuerte: escribir
- * ELIMINAR — patrón de purgeGalleryImageAction (prediseñados) y mi-cuenta/eliminar. */
+ * ELIMINAR en el diálogo de marca (useAdminConfirm requireTyped, ADR-192 —
+ * antes window.prompt nativo). */
 function PurgeProductButton({
   productId,
   productName,
@@ -46,16 +48,14 @@ function PurgeProductButton({
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useAdminConfirm();
 
   const onPurge = async () => {
-    const typed = window.prompt(
-      `Esta acción es IRREVERSIBLE: «${productName}» y sus imágenes se borrarán para siempre (no se puede restaurar).\n\nEscribe ELIMINAR para confirmar:`,
+    const ok = await confirm(
+      `«${productName}» y sus imágenes se borrarán para siempre (no se puede restaurar).`,
+      { requireTyped: "ELIMINAR", confirmLabel: "Eliminar definitivamente" },
     );
-    if (typed === null) return;
-    if (typed.trim().toUpperCase() !== "ELIMINAR") {
-      setError("No escribiste ELIMINAR — el producto sigue archivado, no se borró nada.");
-      return;
-    }
+    if (!ok) return;
     setPending(true);
     setError(null);
     try {
@@ -92,6 +92,7 @@ function PurgeProductButton({
         </span>
       </Hint>
       {error && <span className="max-w-56 text-xs text-red-600">{error}</span>}
+      {confirmDialog}
     </span>
   );
 }

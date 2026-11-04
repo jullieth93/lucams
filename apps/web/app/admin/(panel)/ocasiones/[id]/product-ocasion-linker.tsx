@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { linkProductOcasionAction, unlinkProductOcasionAction } from "../actions";
 
 type LinkedProduct = {
@@ -55,19 +56,16 @@ export function ProductOcasionLinker({ ocasionTagId, linkedProducts, availablePr
                   </p>
                 )}
               </div>
-              <form action={unlinkProductOcasionAction}>
+              <ConfirmAction
+                action={unlinkProductOcasionAction}
+                message="¿Desasociar este producto de la ocasión?"
+              >
                 <input type="hidden" name="productId" value={link.productId} />
                 <input type="hidden" name="ocasionTagId" value={ocasionTagId} />
-                <button
-                  type="submit"
-                  className="text-red-600 hover:text-red-900"
-                  onClick={(e) => {
-                    if (!confirm("¿Desasociar este producto de la ocasión?")) e.preventDefault();
-                  }}
-                >
+                <button type="submit" className="text-red-600 hover:text-red-900">
                   <X className="h-4 w-4" />
                 </button>
-              </form>
+              </ConfirmAction>
             </li>
           ))}
         </ul>

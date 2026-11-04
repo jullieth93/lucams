@@ -118,7 +118,7 @@ function makeStripCanvas(units: number): CanvasDataV2 {
     photoSlots: 3,
     unitCount: units,
     unitSlots,
-    sizeCm: "6.5×20",
+    sizeCm: "5×15",
     slots: Array.from({ length: slotCount }, (_, i) => ({
       slotIndex: i,
       assetId: null,

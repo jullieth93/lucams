@@ -16,7 +16,7 @@
  *    DISPENSADOR de agua/hielo en la puerta izquierda (panel oscuro con receso, ~11×23 cm).
  *    La versión anterior (side-by-side de dos puertas full-height) se leía como armario alto;
  *    la gaveta inferior y el dispensador devuelven la lectura de nevera amplia. Una tira de
- *    26.5 cm es ~15% del ALTO (26.5/178) y un fotoimán de 6.5 cm ~7% del ancho de puerta.
+ *    16.5 cm es ~9% del ALTO (16.5/178) y un fotoimán de 6.5 cm ~7% del ancho de puerta.
  *  - Cuerpo GRIS SATINADO metálico (electrodoméstico real), cantos redondeados, paneles
  *    biselados, manijas verticales en los bordes de la junta central de las puertas top,
  *    patas en las 4 esquinas. Mismo estilo/materiales de siempre.
@@ -581,7 +581,7 @@ function Scene({ magnets, cols, sizeCm, thicknessCm, magnet }: FridgeView3DProps
         // (z ≈ 1.85 u), así que de frente la cámara queda a ~0.75 u de la pieza:
         // un fotoimán de 6.5 cm (0.32 u) ocupa ≈ 59% del alto (fov 40°: h/(2·d·tan
         // 20°) = 0.32/(2·0.75·0.364)) — el objetivo ≥50% para poder leerla; una
-        // tira de 26.5 cm (1.31 u) desborda con creces. Con 7 ocupaba ~6%.
+        // tira de 16.5 cm (0.82 u) se lee holgada. Con 7 ocupaba ~6%.
         // Piso físico: 2.6 > frente del nevecón (1.85) + manijas (~0.15) con
         // margen → la cámara nunca entra al mueble en ningún ángulo polar.
         minDistance={2.6}

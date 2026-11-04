@@ -115,7 +115,7 @@ export function StudioUnitCountControl({
           aria-label={texts.lienzo.unitsCountMinusAria}
           disabled={!canDecrease || busy}
           onClick={() => step(-1)}
-          className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent pointer-coarse:min-h-11 pointer-coarse:min-w-11"
         >
           <Minus className="h-4 w-4" aria-hidden />
         </button>
@@ -134,7 +134,7 @@ export function StudioUnitCountControl({
           aria-label={texts.lienzo.unitsCountPlusAria}
           disabled={!canIncrease || busy}
           onClick={() => step(1)}
-          className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent pointer-coarse:min-h-11 pointer-coarse:min-w-11"
         >
           <Plus className="h-4 w-4" aria-hidden />
         </button>

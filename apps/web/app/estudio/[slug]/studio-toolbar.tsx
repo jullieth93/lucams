@@ -268,7 +268,7 @@ export function StudioToolbar({
                 type="button"
                 onClick={onOpenGesturesHint}
                 aria-label={texts.lienzo.gestosAria}
-                className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+                className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               >
                 <HelpCircle className="h-4 w-4" aria-hidden />
               </button>

@@ -169,7 +169,7 @@ describe("StudioPhotoCountControl", () => {
   });
 
   it("modo fijo (min === max): stepper deshabilitado + hint de unidades fijas", () => {
-    // Réplica tiras-magneticas 6.5×20: ese tamaño lleva siempre 3 unidades.
+    // Réplica tiras-magneticas 5×15: ese tamaño lleva siempre 3 unidades.
     setup(3, { min: 3, max: 3 });
     expect(screen.getByLabelText("Agregar un separador")).toBeDisabled();
     expect(screen.getByLabelText("Quitar un separador")).toBeDisabled();

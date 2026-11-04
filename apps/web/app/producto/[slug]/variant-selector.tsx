@@ -40,7 +40,7 @@
  *     SINGLE_VALUE_VISIBLE_DIMS (`sizeCm` y, desde Fase 2.9 — owner
  *     2026-10-07 —, `magnet`) se muestran igual como chip único preseleccionado
  *     NO clicable — el tamaño físico y el imán son información de compra
- *     ("Tamaño: 7.5×10 cm" en polaroid, "6.5×20 cm" en tiras, "🧲 Con imán") y
+ *     ("Tamaño: 7.5×10 cm" en polaroid, "5×15 cm" en tiras, "🧲 Con imán") y
  *     dejan el grupo listo para cuando el producto acople más valores.
  *
  * Stock por variante (Fase 1): un valor de dimensión cuya combinación con la
@@ -213,7 +213,7 @@ function formatDimensionValue(key: string, value: unknown): string {
  * una dimensión se muestra si está en VISIBLE_DIMENSIONS y (tiene >1 valor
  * distinto O está en esta lista).
  *  - `sizeCm`: el tamaño físico es dato de compra ("Tamaño: 7.5×10 cm"
- *    polaroid · "6.5×20 cm" tiras) y el grupo queda listo para cuando el
+ *    polaroid · "5×15 cm" tiras) y el grupo queda listo para cuando el
  *    producto acople más tamaños.
  *  - `magnet` (Fase 2.9, owner 2026-10-07): "¿Con imán?" se muestra AUNQUE
  *    la variante tenga un solo valor — la presencia/ausencia del imán es un
@@ -550,7 +550,7 @@ export function VariantSelector({
 
   // Dimensión de 1 SOLO valor visible (Tamaño fijo, Lucy 2026-07-22): se pinta
   // como chip estático en el modo multi-dim; la lista vertical "Elige tu opción"
-  // no aplica porque no hay opción que elegir (tiras 6.5×20 con 1 sola variante).
+  // no aplica porque no hay opción que elegir (tiras 5×15 con 1 sola variante).
   const singleStaticDim =
     dimensions.length === 1 && firstDim !== undefined && firstDim.values.length === 1;
 

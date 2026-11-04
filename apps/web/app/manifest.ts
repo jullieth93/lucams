@@ -28,7 +28,9 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#FFF8F0",
     theme_color: "#7C6AAD",
     lang: "es-CO",
-    orientation: "portrait",
+    // Sin `orientation` (= "any"): la tienda se usa también en horizontal
+    // (escenas 3D, Estudio en tablet) — declarar "portrait" bloquearía la
+    // rotación cuando se instala como app (decisión 2026-11-03).
     // #31 — íconos con dimensiones REALES (antes el mismo PNG 468×468 se declaraba como 192 y 512).
     // La variante maskable lleva el logo a ~80% centrado sobre lavanda #7C6AAD (safe-zone) para que
     // Android no recorte la insignia al aplicar la máscara.

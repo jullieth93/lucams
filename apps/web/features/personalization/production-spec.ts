@@ -14,8 +14,10 @@
  *     las 27 fichas dibujadas juntas ("1 lámina para recortar en 27 fichas"). Contar archivos
  *     sin distinguir ambos mundos diría "1 pieza" o "27 piezas sueltas" — las dos lecturas
  *     incompletas producen mal.
- *   · `tiras-magneticas-fotos` sube TRES PNG que son segmentos de UNA tira continua de 6.5×20 cm.
- *     Contar archivos diría "3 imanes". Serían tres piezas donde va una.
+ *   · `tiras-magneticas-fotos` sube N PNG (3 ó 4 según la variante) que son
+ *     segmentos de UNA tira continua de 5×15 o 5×16.5 cm (medidas vigentes
+ *     2026-11-03). Contar archivos diría "3 imanes". Serían tres piezas donde
+ *     va una.
  *   · `separadores-libros` puede llegar de dos formas FÍSICAMENTE distintas y visualmente idénticas:
  *     la tira desplegada (se dobla por el centro) o las dos caras sueltas (se pegan espalda con
  *     espalda). Depende de si `composeFaceStrips` alcanzó a componerlas, que es best-effort.

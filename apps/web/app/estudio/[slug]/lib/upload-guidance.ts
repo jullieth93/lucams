@@ -25,7 +25,7 @@ export const PX_PER_CM_300DPI = 300 / 2.54;
 
 /**
  * px mínimos recomendados del lado MENOR de la foto para el tamaño físico dado
- * ("7.5×10", "5×5", "6.5×20"…), redondeado a una cifra amable. null si no parsea.
+ * ("7.5×10", "5×5", "5×15"…), redondeado a una cifra amable. null si no parsea.
  */
 export function recommendedPxForSizeCm(sizeCm?: string | null): number | null {
   if (!sizeCm) return null;

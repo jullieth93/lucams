@@ -433,6 +433,37 @@ Declaradas en `packages/db/scripts/cms-site-map.mjs`:
 `personalizationSchema.borderWidth` del Product y se configura por producto en
 `/admin/productos` (tab Personalización, SectionCard «Grosor del borde»).
 
+### One-shot de datos de la jornada 2026-11-03 (Tiras Magnéticas a 5×15 / 5×16.5 cm)
+
+Sin claves CMS nuevas. Un one-shot (dry-run por defecto, `--apply` ejecuta; allowlisted en
+`check-script-guards.mjs`), **aplicado en STG y PRD** (2026-11-03, idempotencia verificada con
+re-corrida dry-run «~ ya al día» en ambos) y cubierto en LOCAL vía seed canónico (ver abajo):
+
+- `packages/db/scripts/one-shot/tiras-nuevas-medidas-20261103.mjs` — medidas reales vigentes
+  (owner): tira de 3 fotos 5×15 cm (celda 5×5) y de 4 fotos 5×16.5 cm (celda apaisada 5×4.125 →
+  `aspectRatio: "5:4.125"` en las variantes de 4 fotos, incl. gemelas `-NOMAG`). Fusiona
+  `personalizationSchema.sizeCm`, renombra variantes, alinea las plantillas `photo-strip-3-fotos`
+  /`photo-strip-4-fotos` al canónico de `seed-templates.mjs` (stage 400×400 / 400×330 a 80 px/cm),
+  reemplaza las medidas viejas en `description`/copy de producto y `richDescription` de la
+  categoría, y ajusta `physicalSpecs` (empaque 7×20 → 6×17; `weightGrams` 43 **conservado** —
+  pendiente confirmar el gramaje real del material nuevo). Solo REPORTA ocurrencias en CMS.
+- **Seed canónico:** `tiras-magneticas-fotos` (SKU `FI-TIRA-01`) nació por one-shots y no estaba
+  declarado en `seed-catalog-canonical.mjs` → un ambiente fresco no lo tenía (LOCAL no lo tenía).
+  Ya está declarado con sus 4 variantes; LOCAL quedó sembrado con `make db-local-seed` (parcial:
+  `seed-catalog-canonical` + `seed-templates`). La misma brecha se cerró para
+  `separadores-magneticos` y `separadores-alargados` (+ su categoría `separadores`, declarada
+  también) — las matrices de variantes se generan con `sepMagVariants`/`sepAlrNomagVariants`,
+  espejo exacto del dato vivo STG/PRD (incl. la quirk `noFold`/`facesPerUnit` solo en ciertas
+  cantidades). Y al revés: `set-fotoimanes-circulares` / `set-fotoimanes-corazon` salieron de la
+  declaración (archivados en PRD desde 2026-08-11 — regla R5) y fueron archivados en LOCAL con
+  `one-shot/archive-prd-archived-products-local-20261103.mjs` (env-guarded, NO corre en PRD —
+  cubre también `pack-separadores-libros`, ausente en STG/PRD).
+
+**Cache:** las escrituras directas en DB se ven en tienda tras el TTL de la caché `catalog`
+(≤1 h) o la próxima escritura admin de catálogo — en PRD ya sirve las medidas nuevas (verificado
+2026-11-03). Los diseños/pedidos existentes conservan su snapshot con la medida vendida (igual
+que en el cambio 5×15→6.5×20 del 2026-07-22).
+
 ### One-shots de datos de la jornada 2026-10-27 (fixes Estudio Cuadrados — ADR-177 + extensión ADR-164)
 
 Sin claves CMS nuevas. Dos one-shots (dry-run por defecto, `--apply` ejecuta; allowlisted en

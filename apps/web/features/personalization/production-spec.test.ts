@@ -36,8 +36,9 @@ describe("formato físico — qué es realmente lo que sale de la impresora", ()
   });
 
   /*
-   * `tiras-magneticas-fotos`: 3 PNG que son segmentos de UNA tira de 6.5×20 cm. Contar archivos
-   * diría "3 imanes" — tres piezas donde va una.
+   * `tiras-magneticas-fotos`: N PNG (3 ó 4) que son segmentos de UNA tira (5×15 /
+   * 5×16.5 cm, medidas vigentes 2026-11-03). Contar archivos diría "3 imanes" —
+   * tres piezas donde va una.
    */
   it("una tira continua son segmentos de UNA pieza, no varias piezas", () => {
     const spec = resolveProductionSpec({
