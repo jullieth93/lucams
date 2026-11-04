@@ -52,10 +52,19 @@ const APPLY = process.argv.includes("--apply");
 const desiredEmail = process.env.EMAIL?.toLowerCase().trim();
 const desiredRole = process.env.ROLE ?? "SUPERADMIN";
 
-if (!["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"].includes(desiredRole)) {
-  console.error(
-    `ROLE inválido: ${desiredRole}. Use SUPERADMIN | MANAGER | FULFILLMENT | CMS_EDITOR.`,
-  );
+const VALID_ADMIN_ROLES = [
+  "SUPERADMIN",
+  "OPERATIONS_MANAGER",
+  "CUSTOMER_SUPPORT",
+  "PRINT_WORKSHOP",
+  "FINANCE_ANALYST",
+  "MANAGER",
+  "FULFILLMENT",
+  "CMS_EDITOR",
+];
+
+if (!VALID_ADMIN_ROLES.includes(desiredRole)) {
+  console.error(`ROLE inválido: ${desiredRole}. Use ${VALID_ADMIN_ROLES.join(" | ")}.`);
   process.exit(1);
 }
 

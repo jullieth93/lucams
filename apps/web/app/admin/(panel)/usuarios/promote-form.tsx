@@ -32,7 +32,8 @@ export function PromoteForm() {
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.email[0]}</p>
           )}
           <p className="text-brand-muted mt-1 text-xs">
-            La persona debe estar registrada como cliente primero (signup público).
+            No necesita registrarse como cliente: si el correo es nuevo, creamos su acceso de equipo
+            automáticamente.
           </p>
         </div>
         <div>
@@ -67,9 +68,9 @@ export function PromoteForm() {
       <button
         type="submit"
         disabled={isPending}
-        className="bg-gradient-brand inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+        className="bg-gradient-brand inline-flex min-h-11 items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isPending ? "Promoviendo…" : "Promover a admin"}
+        {isPending ? "Dando de alta…" : "Dar de alta miembro"}
       </button>
       {reauthModal}
     </form>

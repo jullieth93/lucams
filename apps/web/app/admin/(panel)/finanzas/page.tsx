@@ -23,7 +23,7 @@ import {
   AdminPageHeader,
 } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
@@ -37,6 +37,7 @@ import {
   getPeriodAggregates,
   isFinanzasPeriod,
 } from "@/features/finanzas/service";
+import { ExportFinanzasCsvButton } from "./export-csv-button";
 
 export const metadata: Metadata = {
   title: "Finanzas",
@@ -58,7 +59,7 @@ const PAYMENT_METHOD_HINT: Record<PaymentMethod, string> = {
 };
 
 export default async function AdminFinanzasPage({ searchParams }: { searchParams: SearchParams }) {
-  const _session = await requireRole(ADMIN_ROLE_SETS.FINANCE);
+  const session = await requireRole(ADMIN_ROLE_SETS.FINANCE);
   // Modo catálogo (Etapa 1): sin pagos en línea no hay finanzas que mostrar.
   // El nav ya oculta el módulo; esto cierra también el acceso por URL directa.
   if (isCatalogMode()) redirect("/admin/dashboard");
@@ -66,6 +67,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
   const sp = await searchParams;
   const periodoRaw = typeof sp.periodo === "string" ? sp.periodo : undefined;
   const periodo = isFinanzasPeriod(periodoRaw) ? periodoRaw : DEFAULT_PERIOD;
+  const canExportCsv = hasCapability(session.admin.role, "finance:export_csv");
 
   // Probar contadores reales: si hay alguna orden pagada en DB ya, los
   // mostramos; si no, mantenemos los placeholders educativos.
@@ -175,6 +177,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
             : "Aún sin ventas registradas"
         }
         breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Finanzas" }]}
+        actions={canExportCsv ? <ExportFinanzasCsvButton periodo={periodo} /> : undefined}
       />
 
       <AdminPageBody>

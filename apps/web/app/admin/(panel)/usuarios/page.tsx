@@ -168,30 +168,34 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
 
       <AdminPageBody>
         <AdminNotice tone="info">
-          <strong>¿Cómo funciona?</strong> Para sumar un admin nuevo: la persona se registra primero
-          como cliente en{" "}
-          <Link href="/registro" className="underline" target="_blank">
-            /registro
-          </Link>{" "}
-          y luego usa el form de abajo para promoverla. Roles: <strong>Superadmin</strong> (control
-          total), <strong>Manager</strong> (operación + contenido), <strong>Fulfillment</strong>{" "}
-          (solo pedidos + envíos) y <strong>Editor de contenido</strong> (solo páginas y textos del
-          sitio).
+          <strong>¿Cómo funciona el alta de equipo?</strong> Escribe el correo de la persona y elige
+          su rol operativo. Si aún no tiene cuenta de acceso, Lucams crea su identidad de equipo
+          automáticamente <strong>sin registrarla como cliente de la tienda</strong> (tus métricas
+          de clientes y CRM quedan limpias). En su primer ingreso a{" "}
+          <span className="font-mono text-xs">/admin/login</span> deberá configurar su código TOTP
+          de doble factor (MFA obligatorio para todos los roles).
         </AdminNotice>
 
         {sp.promoted === "1" && (
-          <AdminNotice tone="success">Admin promovido correctamente.</AdminNotice>
+          <AdminNotice tone="success">
+            Miembro del equipo dado de alta correctamente. Ya puede definir su contraseña desde el
+            enlace de invitación o en{" "}
+            <Link href="/recuperar-password" className="underline" target="_blank">
+              Recuperar contraseña
+            </Link>{" "}
+            e iniciar sesión en <span className="font-mono text-xs">/admin/login</span>.
+          </AdminNotice>
         )}
         {sp.role_changed === "1" && <AdminNotice tone="success">Rol actualizado.</AdminNotice>}
         {sp.activated === "1" && <AdminNotice tone="success">Admin reactivado.</AdminNotice>}
         {sp.deactivated === "1" && <AdminNotice tone="warning">Admin desactivado.</AdminNotice>}
         {typeof sp.error === "string" && <AdminNotice tone="error">{sp.error}</AdminNotice>}
 
-        {/* Form promover */}
+        {/* Form alta limpia de staff */}
         <AdminCard className="p-5">
           <h2 className="text-brand-purple-dark font-display mb-4 flex items-center gap-2 text-base font-bold">
             <UserPlus className="h-5 w-5" />
-            Promover cliente a admin
+            Dar de alta miembro del equipo
           </h2>
           <PromoteForm />
         </AdminCard>
