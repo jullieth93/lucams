@@ -37,6 +37,7 @@ import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { NAME_REGEX, capitalizeName } from "@/lib/colombia-validators";
 import { recordHabeasDataConsent } from "@/features/consent/service";
+import { ensureCustomerContact } from "@/features/identity/resolution-service";
 import { attachReferral, findReferrerByCode } from "@/features/referrals/service";
 import { renderAccountExistsNoticeEmail } from "@/features/emails/registry";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -292,6 +293,23 @@ export async function signupAction(
         createdBy: userId,
       },
     });
+
+    // ADR-193 (S15): dual-write de `Contact` + `ContactIdentity` al registrar cuenta.
+    // Si el signup aún requiere OTP (`!authData.session`), `EMAIL` permanece
+    // `UNVERIFIED_OBSERVED` hasta superar `confirmar-codigo` (nunca antes).
+    try {
+      await ensureCustomerContact(prisma, {
+        customerId: customer.id,
+        emailVerified: Boolean(authData.session),
+        verificationSource: authData.session ? "SUPABASE_SIGNUP_SESSION" : "SIGNUP_PENDING_OTP",
+      });
+    } catch (contactErr) {
+      logger.error({
+        event: "auth.signup.contact_sync_fail",
+        userId,
+        err: contactErr instanceof Error ? contactErr.message : String(contactErr),
+      });
+    }
 
     // Referidos v2 — ata del código (Referral PENDING + referredById + cupón
     // de bienvenida del referido, visible en /mi-cuenta/cupones). La

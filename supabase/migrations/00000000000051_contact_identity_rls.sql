@@ -50,3 +50,4 @@ BEGIN
 
   RAISE NOTICE 'OK: Organization, Contact, ContactIdentity e IdentityMergeCandidate con RLS activa y 0 grants en PostgREST.';
 END $$;
+

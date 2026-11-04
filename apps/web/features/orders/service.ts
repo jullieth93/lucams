@@ -42,6 +42,7 @@ import { consolidateIdenticalLines } from "@/features/cart/design-identity";
 import { isPurchasableVariant } from "@/features/products/storefront-visibility";
 import { inventoryUnitsForOrderItem } from "@/features/personalization/design-units";
 import { hashBearerToken } from "@/lib/token-hash";
+import { resolveOrderContactTx } from "@/features/identity/resolution-service";
 import { resolveOrderCustomerId } from "./order-customer";
 import { sendOrderRefunded } from "./emails";
 import { assertTransactionalAllowed } from "@/lib/stage-guard";
@@ -566,12 +567,24 @@ async function createOrderFromCartTx(
       isGift: input.gift?.isGift ?? false,
       giftMessage: input.gift?.isGift ? (input.gift?.giftMessage ?? null) : null,
     };
+    const orderContactId = await resolveOrderContactTx(tx, {
+      sessionCustomerId: orderCustomerId,
+      orderEmail: input.shipping.email,
+      buyerPhone: input.shipping.phone,
+      buyerFullName: input.shipping.fullName,
+      billingName: input.billing.name,
+      billingDocumentType: input.billing.documentType,
+      billingDocumentNumber: input.billing.documentNumber,
+      isGift: giftScalars.isGift,
+      hasThirdPartyRecipient: Boolean(giftScalars.recipientName || giftScalars.recipientPhone),
+    });
     const orderScalars = {
       couponId, // F1 — null si no hubo cupón válido
       // Customer efectivo (resuelto por email de contacto arriba): también va en
       // escalares para que la RECONCILIACIÓN de una PENDING corrija un customerId
       // obsoleto (p. ej. órdenes creadas antes del fix del bug STG LCM-2026-0010).
       customerId: orderCustomerId,
+      ...(orderContactId ? { contactId: orderContactId } : {}),
       // Consentimiento de derechos de imagen (ADR-062 P0-2, Ley 1581): confirmar el pedido implica
       // aceptar las condiciones (titularidad/uso de las imágenes + autorización de impresión).
       contentRightsAcceptedAt: new Date(),

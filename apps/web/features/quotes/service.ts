@@ -26,6 +26,7 @@ import { buildWhatsAppUrl } from "@/lib/wa";
 import { buildPublicShareUrl } from "@/lib/public-url";
 import { getCartDetail } from "@/features/cart/service";
 import { buildQuoteConsentRow } from "@/features/consent/service";
+import { resolveQuoteContactTx } from "@/features/identity/resolution-service";
 import { hashBearerToken } from "@/lib/token-hash";
 
 export class QuoteError extends Error {
@@ -144,6 +145,13 @@ export async function createQuoteFromCart(
           throw new QuoteError("DUPLICATE_SUBMIT", "El carrito ya fue cotizado por otro envío");
         }
 
+        const contactId = await resolveQuoteContactTx(tx, {
+          customerId,
+          customerName: input.customerName,
+          customerWhatsapp: input.customerWhatsapp,
+          customerEmail: input.customerEmail ?? null,
+        });
+
         const created = await tx.quote.create({
           data: {
             number,
@@ -151,6 +159,7 @@ export async function createQuoteFromCart(
             customerName: input.customerName,
             customerWhatsapp: input.customerWhatsapp,
             customerEmail: input.customerEmail ?? null,
+            ...(contactId ? { contactId } : {}),
             city: input.city,
             department: input.department,
             notes: input.notes ?? null,
@@ -174,7 +183,14 @@ export async function createQuoteFromCart(
         });
         // Ledger central de consentimientos, en la misma transacción: si algo falla, no queda
         // ni la cotización ni una autorización huérfana.
-        await tx.consent.create({ data: { ...consentRow, acceptedAt: consentAt } });
+        await tx.consent.create({
+          data: {
+            ...consentRow,
+            acceptedAt: consentAt,
+            ...(customerId ? { customerId } : {}),
+            ...(contactId ? { contactId } : {}),
+          },
+        });
         createdId = created.id;
       });
       logger.info({

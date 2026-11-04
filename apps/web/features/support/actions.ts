@@ -24,6 +24,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, hashEmail, ipKey } from "@/lib/rate-limit-keys";
 import { logger } from "@/lib/logger";
 import { getCurrentCustomer } from "@/lib/auth";
+import { resolveSupportTicketContact } from "@/features/identity/resolution-service";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
@@ -99,6 +100,11 @@ export async function submitContactAction(
 
   try {
     const session = await getCurrentCustomer();
+    const contactId = await resolveSupportTicketContact(prisma, {
+      customerId: session?.customer.id ?? null,
+      email: parsed.data.email,
+      name: parsed.data.name,
+    });
     const ticket = await prisma.supportTicket.create({
       data: {
         name: parsed.data.name,
@@ -114,6 +120,7 @@ export async function submitContactAction(
         ip,
         userAgent,
         customerId: session?.customer.id ?? null,
+        ...(contactId ? { contactId } : {}),
       },
       select: { id: true },
     });

@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getCurrentCustomer } from "@/lib/auth";
+import { resolveSupportTicketContact } from "@/features/identity/resolution-service";
 import { getOrCreateCartSession } from "@/lib/cart-session";
 import { getClientIp } from "@/lib/client-ip";
 import { rateLimit } from "@/lib/rate-limit";
@@ -256,8 +257,11 @@ export async function submitGuestOrderSupportAction(
         number: true,
         email: true,
         customerId: true,
+        contactId: true,
         publicAccessTokenHash: true,
         shippingAddress: true,
+        isGift: true,
+        recipientName: true,
       },
     });
     if (!order || !verifyTokenHashTimingSafe(token, order.publicAccessTokenHash)) {
@@ -272,6 +276,12 @@ export async function submitGuestOrderSupportAction(
 
     const ship = order.shippingAddress as { fullName?: string } | null;
     const customerName = ship?.fullName?.trim() || "Cliente";
+    const contactId = await resolveSupportTicketContact(prisma, {
+      customerId: order.customerId,
+      orderContactId: order.contactId,
+      email: order.email,
+      name: order.isGift || order.recipientName ? null : customerName,
+    });
 
     const ticket = await prisma.supportTicket.create({
       data: {
@@ -284,6 +294,7 @@ export async function submitGuestOrderSupportAction(
         ip,
         userAgent,
         customerId: order.customerId,
+        ...(contactId ? { contactId } : {}),
       },
       select: { id: true },
     });

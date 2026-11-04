@@ -31,6 +31,7 @@ import { logger } from "@/lib/logger";
 import { listStagedSlotPaths } from "@/features/personalization/staged-slots";
 import { previewStoragePathFromRef } from "@/features/personalization/preview-access";
 import { designPreviewDerivedPaths } from "@/features/personalization/preview-artifacts";
+import { scrubContactOnErasureTx } from "@/features/identity/resolution-service";
 import { markResendContactUnsubscribed } from "@/features/newsletter/unsubscribe";
 
 const CUSTOMER_UPLOADS_BUCKET = "customer-uploads";
@@ -98,10 +99,11 @@ export async function deleteCustomerAccount(
   // 0) Recolectar email/teléfono actuales y rutas de Storage ANTES de limpiar la DB.
   const custRow = await prisma.customer.findUnique({
     where: { id: customerId },
-    select: { email: true, phone: true },
+    select: { email: true, phone: true, contactId: true },
   });
   const customerEmail = custRow?.email?.trim().toLowerCase() ?? null;
   const customerPhone = custRow?.phone?.trim() ?? null;
+  const customerContactId = custRow?.contactId ?? null;
   // Placeholder de supresión para las columnas de contacto obligatorias (Order.email, tickets, referidos).
   const deletedEmail = `deleted-${customerId}@deleted.lucamsshop.com`;
 
@@ -180,9 +182,17 @@ export async function deleteCustomerAccount(
 
   // 1) Supresión + anonimización en DB (transacción).
   await prisma.$transaction(async (tx) => {
+    await scrubContactOnErasureTx(tx, {
+      customerId,
+      customerContactId,
+      customerEmail,
+      now,
+    });
+
     await tx.customer.update({
       where: { id: customerId },
       data: {
+        contactId: null,
         email: deletedEmail,
         firstName: null,
         lastName: null,

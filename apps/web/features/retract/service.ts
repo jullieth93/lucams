@@ -21,6 +21,7 @@ import type { RetractStatus } from "@lucams/db";
 import { sendRetractApproved, sendRetractRejected, sendRetractRefunded } from "./emails";
 import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
 import { restoreRedeemedPointsForRetract } from "@/features/loyalty/service";
+import { resolvePostSaleContact } from "@/features/identity/resolution-service";
 import {
   hashBearerToken,
   verifyEmailMatchesTimingSafe,
@@ -325,6 +326,8 @@ export async function createRetractRequest(
       order: {
         select: {
           customerId: true,
+          contactId: true,
+          email: true,
           status: true,
           deliveredAt: true,
           deletedAt: true,
@@ -380,10 +383,16 @@ export async function createRetractRequest(
     loyaltyPointsRedeemed: ord.loyaltyPointsRedeemed,
     alreadyRefundedCents,
   });
+  const contactId = await resolvePostSaleContact(prisma, {
+    orderContactId: ord.contactId,
+    customerId: opts.customerId,
+    orderEmail: ord.email,
+  });
   try {
     const created = await prisma.retractRequest.create({
       data: {
         orderItemId,
+        ...(contactId ? { contactId } : {}),
         // #5 — cap de 500 chars (defensa en profundidad, igual que warranty): protege a TODOS los
         // callers de un reason gigante (fila enorme / abuso), sin depender de la validación del form.
         reason: opts.reason?.trim().slice(0, 500) || null,
@@ -426,6 +435,8 @@ export async function createGuestRetractRequest(
       retractRequest: { select: { id: true } },
       order: {
         select: {
+          customerId: true,
+          contactId: true,
           email: true,
           publicAccessTokenHash: true,
           status: true,
@@ -484,10 +495,16 @@ export async function createGuestRetractRequest(
     loyaltyPointsRedeemed: ord.loyaltyPointsRedeemed,
     alreadyRefundedCents,
   });
+  const guestContactId = await resolvePostSaleContact(prisma, {
+    orderContactId: ord.contactId,
+    customerId: ord.customerId,
+    orderEmail: ord.email,
+  });
   try {
     const created = await prisma.retractRequest.create({
       data: {
         orderItemId,
+        ...(guestContactId ? { contactId: guestContactId } : {}),
         reason: opts.reason?.trim().slice(0, 500) || null,
         refundAmount,
         status: "PENDING",
@@ -533,6 +550,9 @@ export async function createRetractRequestAsAdmin(
       retractRequest: { select: { id: true } },
       order: {
         select: {
+          customerId: true,
+          contactId: true,
+          email: true,
           status: true,
           deletedAt: true,
           subtotal: true,
@@ -576,10 +596,16 @@ export async function createRetractRequestAsAdmin(
     loyaltyPointsRedeemed: ord.loyaltyPointsRedeemed,
     alreadyRefundedCents,
   });
+  const adminContactId = await resolvePostSaleContact(prisma, {
+    orderContactId: ord.contactId,
+    customerId: ord.customerId,
+    orderEmail: ord.email,
+  });
   try {
     const created = await prisma.retractRequest.create({
       data: {
         orderItemId,
+        ...(adminContactId ? { contactId: adminContactId } : {}),
         reason: opts.reason?.trim().slice(0, 500) || null,
         refundAmount,
         status: "PENDING",

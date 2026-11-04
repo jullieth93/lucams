@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { resolvePostSaleContact } from "@/features/identity/resolution-service";
 import {
   hashBearerToken,
   verifyEmailMatchesTimingSafe,
@@ -171,7 +172,16 @@ export async function createWarrantyClaim(input: {
     select: {
       id: true,
       warrantyMonths: true,
-      order: { select: { customerId: true, status: true, deliveredAt: true, deletedAt: true } },
+      order: {
+        select: {
+          customerId: true,
+          contactId: true,
+          email: true,
+          status: true,
+          deliveredAt: true,
+          deletedAt: true,
+        },
+      },
       warrantyClaims: { where: { status: { in: ACTIVE_STATUSES } }, select: { id: true }, take: 1 },
     },
   });
@@ -186,10 +196,16 @@ export async function createWarrantyClaim(input: {
   if (item.warrantyClaims.length > 0) throw new WarrantyError("ACTIVE_CLAIM");
   const description = input.description.trim();
   if (description.length < 10) throw new WarrantyError("INVALID");
+  const contactId = await resolvePostSaleContact(prisma, {
+    orderContactId: item.order.contactId,
+    customerId: input.customerId,
+    orderEmail: item.order.email,
+  });
   return prisma.warrantyClaim.create({
     data: {
       orderItemId: item.id,
       customerId: input.customerId,
+      ...(contactId ? { contactId } : {}),
       description: description.slice(0, 2000),
       evidenceUrls: (input.evidenceUrls ?? []).slice(0, 5),
       status: "PENDING",
@@ -223,6 +239,7 @@ export async function createGuestWarrantyClaim(input: {
       order: {
         select: {
           customerId: true,
+          contactId: true,
           email: true,
           publicAccessTokenHash: true,
           status: true,
@@ -253,10 +270,16 @@ export async function createGuestWarrantyClaim(input: {
   if (item.warrantyClaims.length > 0) throw new WarrantyError("ACTIVE_CLAIM");
   const description = input.description.trim();
   if (description.length < 10) throw new WarrantyError("INVALID");
+  const contactId = await resolvePostSaleContact(prisma, {
+    orderContactId: item.order.contactId,
+    customerId: item.order.customerId,
+    orderEmail: item.order.email,
+  });
   return prisma.warrantyClaim.create({
     data: {
       orderItemId: item.id,
       customerId: item.order.customerId,
+      ...(contactId ? { contactId } : {}),
       description: description.slice(0, 2000),
       evidenceUrls: (input.evidenceUrls ?? []).slice(0, 5),
       status: "PENDING",
@@ -289,7 +312,9 @@ export async function createWarrantyClaimAsAdmin(input: {
     where: { id: input.orderItemId },
     select: {
       id: true,
-      order: { select: { customerId: true, status: true, deletedAt: true } },
+      order: {
+        select: { customerId: true, contactId: true, email: true, status: true, deletedAt: true },
+      },
       warrantyClaims: { where: { status: { in: ACTIVE_STATUSES } }, select: { id: true }, take: 1 },
     },
   });
@@ -298,10 +323,16 @@ export async function createWarrantyClaimAsAdmin(input: {
   if (item.warrantyClaims.length > 0) throw new WarrantyError("ACTIVE_CLAIM");
   const description = input.description.trim();
   if (description.length < 10) throw new WarrantyError("INVALID");
+  const contactId = await resolvePostSaleContact(prisma, {
+    orderContactId: item.order.contactId,
+    customerId: item.order.customerId,
+    orderEmail: item.order.email,
+  });
   return prisma.warrantyClaim.create({
     data: {
       orderItemId: item.id,
       customerId: item.order.customerId,
+      ...(contactId ? { contactId } : {}),
       description: description.slice(0, 2000),
       status: "PENDING",
       processedBy: input.adminId,

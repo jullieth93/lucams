@@ -27,6 +27,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { resolveConsentContact } from "@/features/identity/resolution-service";
 
 const PRIVACY_VERSION = "v1-2026-05-12";
 
@@ -182,16 +183,23 @@ async function persistConsent(opts: {
   // accepted SIN revocación posterior); si sí, no duplicamos. Si lo había
   // revocado, SÍ creamos el nuevo accepted (antes solo se miraba accepted:true
   // y la re-suscripción tras una baja no dejaba fila nueva — parte de H9).
-  if (await isNewsletterSubscribed(opts.email.toLowerCase())) return;
+  const normalizedEmail = opts.email.toLowerCase();
+  if (await isNewsletterSubscribed(normalizedEmail)) return;
+  const contactId = await resolveConsentContact(prisma, {
+    email: normalizedEmail,
+    emailVerified: false,
+    verificationSource: "NEWSLETTER_SUBSCRIBE",
+  });
 
   await prisma.consent.create({
     data: {
-      email: opts.email.toLowerCase(),
+      email: normalizedEmail,
       scope: "NEWSLETTER",
       accepted: true,
       version: PRIVACY_VERSION,
       ipAddress: opts.ipAddress,
       userAgent: opts.userAgent,
+      ...(contactId ? { contactId } : {}),
     },
   });
 }

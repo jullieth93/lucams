@@ -17,6 +17,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { resolveConsentContact } from "@/features/identity/resolution-service";
 
 /**
  * Token de unsubscribe = SHA-256(email:CSRF_SECRET) truncado a 32 hex.
@@ -151,6 +152,15 @@ export async function unsubscribeNewsletter(
   }
 
   // Registrar la revocación (Consent accepted=false → revokesId).
+  // El enlace `/unsubscribe` superó `verifyUnsubscribeToken` (HMAC con CSRF_SECRET),
+  // lo que constituye prueba criptográfica de posesión del buzón.
+  const contactId =
+    lastAccepted.contactId ??
+    (await resolveConsentContact(prisma, {
+      email: normalized,
+      emailVerified: true,
+      verificationSource: "HMAC_UNSUBSCRIBE",
+    }));
   await prisma.consent.create({
     data: {
       email: normalized,
@@ -158,6 +168,7 @@ export async function unsubscribeNewsletter(
       accepted: false,
       version: lastAccepted.version,
       revokesId: lastAccepted.id,
+      ...(contactId ? { contactId } : {}),
     },
   });
 
