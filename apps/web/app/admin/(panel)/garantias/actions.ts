@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/db";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import {
@@ -16,7 +17,7 @@ import {
 } from "@/features/warranty/service";
 import { notifyWarrantyRejected, notifyWarrantyResolved } from "@/features/warranty/notify";
 
-type St = { error?: string; success?: string } | null;
+type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
 async function guard(): Promise<{ adminId: string } | { error: string }> {
   // Sesión + MFA aal2 + rol (SUPERADMIN|MANAGER) server-side (ADR-062 P0-1). El guard
@@ -71,6 +72,14 @@ export async function approveWarrantyAction(_p: St, fd: FormData): Promise<St> {
   const resolution = String(fd.get("resolution") ?? "") as WarrantyResolution;
   if (!id) return { error: "Falta id" };
   if (!WARRANTY_RESOLUTIONS.includes(resolution)) return { error: "Elige un remedio." };
+  if (resolution === "REFUND") {
+    try {
+      await requireRecentMfa();
+    } catch (err) {
+      if (isMfaReauthRequired(err)) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+      throw err;
+    }
+  }
   try {
     await approveWarrantyClaim(id, g.adminId, resolution);
     await audit(g.adminId, "warranty.approve", id, { resolution });
@@ -86,13 +95,29 @@ export async function resolveWarrantyAction(_p: St, fd: FormData): Promise<St> {
   const id = String(fd.get("id") ?? "");
   const note = String(fd.get("note") ?? "").trim();
   if (!id) return { error: "Falta id" };
+
+  const current = await prisma.warrantyClaim.findUnique({
+    where: { id },
+    select: { resolutionType: true },
+  });
+  if (current?.resolutionType === "REFUND") {
+    try {
+      await requireRecentMfa();
+    } catch (err) {
+      if (isMfaReauthRequired(err)) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+      throw err;
+    }
+  }
+
   try {
     await resolveWarrantyClaim(id, g.adminId, note || undefined);
     // Aviso al cliente con el remedio aplicado (best-effort).
     await notifyWarrantyResolved(id).catch((e) =>
       logger.warn({ event: "admin.warranty.notify_resolved_fail", id, err: String(e) }),
     );
-    await audit(g.adminId, "warranty.resolve", id);
+    await audit(g.adminId, "warranty.resolve", id, {
+      resolutionType: current?.resolutionType ?? null,
+    });
     // Remedio REFUND: el dinero se emite MANUAL en Wompi/transferencia y queda
     // fuera de todo tracking — el aviso en pantalla es el recordatorio operativo
     // (además del aviso persistente junto al estado en la lista).

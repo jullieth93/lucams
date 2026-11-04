@@ -250,9 +250,12 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                     className="hover:bg-brand-purple/[0.03] flex items-center justify-between gap-4 p-4 transition-colors"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="text-brand-purple-dark font-mono text-sm font-bold">
+                      <Link
+                        href={`/admin/pedidos/${encodeURIComponent(order.number)}`}
+                        className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-bold hover:underline"
+                      >
                         {order.number}
-                      </div>
+                      </Link>
                       <div className="text-brand-muted text-xs">
                         {dateTimeFmt.format(order.createdAt)}
                       </div>

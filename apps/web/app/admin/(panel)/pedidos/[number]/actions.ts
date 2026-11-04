@@ -450,3 +450,86 @@ export async function regenerateLettersetProductionAction(
     success: `Render por ficha encolado (${letters.length * sets} fichas). En unos minutos reemplazan la lámina.`,
   };
 }
+
+/**
+ * Reintento manual en un clic de un `RenderJob` en estado `FAILED` (S11 · [OPS-01]).
+ * Disponible para los roles operativos (`SUPERADMIN`, `MANAGER`, `FULFILLMENT`) para que
+ * el taller pueda destrabar impresiones 300 DPI caídas por fallas transitorias sin tocar SQL.
+ */
+export async function retryRenderJobAction(
+  _prev: { error?: string; success?: string } | null,
+  formData: FormData,
+): Promise<{ error?: string; success?: string }> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL });
+
+  const designId = String(formData.get("designId") ?? "").trim();
+  const orderNumber = String(formData.get("orderNumber") ?? "").trim();
+  if (!designId || !orderNumber) return { error: "Faltan datos del diseño." };
+
+  const job = await prisma.renderJob.findUnique({
+    where: { designId },
+    select: { id: true, status: true, totalUnits: true, doneUnits: true },
+  });
+  if (!job) {
+    return { error: "Este diseño no tiene un trabajo de render asociado." };
+  }
+  if (job.status !== "FAILED") {
+    return { success: "El render ya está en curso o completado." };
+  }
+
+  await prisma.renderJob.update({
+    where: { designId },
+    data: {
+      status: "PENDING",
+      attempts: 0,
+      error: null,
+      startedAt: null,
+      finishedAt: null,
+    },
+  });
+
+  const { processRenderJobs, RENDER_JOB_KICK_BUDGET_MS } =
+    await import("@/features/personalization/render-job-service");
+  await processRenderJobs({ onlyDesignId: designId, budgetMs: RENDER_JOB_KICK_BUDGET_MS });
+
+  const after = await prisma.renderJob.findUnique({
+    where: { designId },
+    select: { status: true, doneUnits: true, totalUnits: true, error: true },
+  });
+
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "order.render_job_retry",
+    entityType: "Design",
+    entityId: designId,
+    metadata: {
+      orderNumber,
+      resultStatus: after?.status ?? "PENDING",
+      doneUnits: after?.doneUnits ?? job.doneUnits,
+      totalUnits: after?.totalUnits ?? job.totalUnits,
+    },
+  });
+  logger.info({
+    event: "admin.order.render_job_retry",
+    adminId: session.admin.id,
+    designId,
+    orderNumber,
+    resultStatus: after?.status ?? "PENDING",
+  });
+  revalidatePath("/admin/pedidos");
+  revalidatePath(`/admin/pedidos/${encodeURIComponent(orderNumber)}`);
+
+  if (after?.status === "DONE") {
+    return {
+      success: `Archivos 300 DPI generados (${after.totalUnits} pieza${after.totalUnits === 1 ? "" : "s"}).`,
+    };
+  }
+  if (after?.status === "FAILED") {
+    return {
+      error: `El reintento volvió a fallar${after.error ? `: ${after.error}` : "."}`,
+    };
+  }
+  return {
+    success: `Render reencolado (${after?.doneUnits ?? 0} de ${after?.totalUnits ?? job.totalUnits} piezas listas). Terminará en unos minutos.`,
+  };
+}

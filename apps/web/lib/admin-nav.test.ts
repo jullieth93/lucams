@@ -248,7 +248,7 @@ describe("getAdminNav", () => {
 
 describe("filterNavByRole(getAdminNav()) — N-21: garantías y retractos según su página", () => {
   it.each(["full", "catalog"] as const)(
-    "modo %s: MANAGER ve Garantías pero NO Retractos (página SUPER) en Servicio al cliente",
+    "modo %s: MANAGER ve Garantías y Retractos (ciclo operativo MANAGER_UP) en Servicio al cliente",
     async (mode) => {
       const { nav } = await getNavForMode(mode);
       const visible = filterNavByRole(nav, "MANAGER");
@@ -256,7 +256,7 @@ describe("filterNavByRole(getAdminNav()) — N-21: garantías y retractos según
       const servicio = visible.find((g) => g.title === "Servicio al cliente");
       const hrefs = (servicio?.items ?? []).map((it) => it.href);
       expect(hrefs).toContain("/admin/garantias");
-      expect(hrefs).not.toContain("/admin/retractos");
+      expect(hrefs).toContain("/admin/retractos");
     },
   );
 

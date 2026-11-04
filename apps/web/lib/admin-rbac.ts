@@ -61,7 +61,10 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   // actions piden SUPER → declarado explícito (equivale al deny-by-default, pero
   // queda visible en la matriz).
   { prefix: "/admin/garantias", roles: CATALOG },
-  { prefix: "/admin/retractos", roles: ["SUPERADMIN"] },
+  // S11: MANAGER gestiona el ciclo operativo de retractos (aprobar, rechazar,
+  // marcar recibido); el registro de reembolso (refundRetractAction) sigue
+  // exigiendo SUPERADMIN + requireRecentMfa() en el servidor y en la UI.
+  { prefix: "/admin/retractos", roles: CATALOG },
   { prefix: "/admin/soporte", roles: CATALOG },
   // Cotizaciones (Etapa 1): las mutaciones del service exigen MANAGER_UP.
   // Oculto del nav (feedback Lucy 2026-09-18) pero la ruta sigue viva por URL

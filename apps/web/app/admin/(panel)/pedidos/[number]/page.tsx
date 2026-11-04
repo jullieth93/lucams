@@ -43,6 +43,7 @@ import {
 import { customerWaLink } from "@/lib/wa";
 import { OrderActions } from "./order-actions";
 import { RegenLettersetButton } from "./regen-letterset-button";
+import { RetryRenderJobButton } from "./retry-render-job-button";
 import { ProductionPiecesGallery } from "./production-pieces-gallery";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 import {
@@ -455,6 +456,13 @@ export default async function AdminPedidoDetallePage({
                                 Piezas no disponibles para firma en este momento.
                               </p>
                             )}
+                            {it.design.renderJob?.status === "FAILED" && (
+                              <RetryRenderJobButton
+                                designId={it.design.id}
+                                orderNumber={order.number}
+                                lastError={it.design.renderJob.error}
+                              />
+                            )}
                           </div>
                         ) : it.design ? (
                           <div className="text-brand-muted mt-1 text-[11px]">
@@ -469,10 +477,11 @@ export default async function AdminPedidoDetallePage({
                                 {it.design.renderJob.totalUnits} piezas (render en background).
                               </span>
                             ) : it.design.renderJob?.status === "FAILED" ? (
-                              <span className="font-semibold text-rose-600">
-                                ⚠️ El render de imprenta falló — revisar ErrorLog y reprocesar el
-                                RenderJob del diseño antes de producir.
-                              </span>
+                              <RetryRenderJobButton
+                                designId={it.design.id}
+                                orderNumber={order.number}
+                                lastError={it.design.renderJob.error}
+                              />
                             ) : (
                               "Sin archivos de producción todavía (el diseño no está finalizado)."
                             )}

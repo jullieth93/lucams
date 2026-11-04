@@ -15,10 +15,15 @@ import {
 
 type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
-async function guard(): Promise<{ adminId: string } | { error: string }> {
-  // Retractos incluye reembolsos → SUPERADMIN. Sesión + MFA aal2 + rol server-side
-  // (ADR-062 P0-1); las Server Actions son endpoints POST invocables directo. El guard
-  // redirige ante fallo; la rama {error} se conserva por tipo para los callers.
+async function guardOps(): Promise<{ adminId: string } | { error: string }> {
+  // Ciclo operativo de retractos (aprobar devolución, rechazar con nota, marcar
+  // producto recibido) disponible para SUPERADMIN + MANAGER (S11).
+  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  return { adminId: s.admin.id };
+}
+
+async function guardSuper(): Promise<{ adminId: string } | { error: string }> {
+  // Registrar reembolso es operación financiera → exclusivamente SUPERADMIN.
   const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
   return { adminId: s.admin.id };
 }
@@ -49,7 +54,7 @@ async function audit(
 }
 
 export async function approveRetractAction(_p: St, fd: FormData): Promise<St> {
-  const g = await guard();
+  const g = await guardOps();
   if ("error" in g) return g;
   const id = String(fd.get("id") ?? "");
   if (!id) return { error: "Falta id" };
@@ -63,7 +68,7 @@ export async function approveRetractAction(_p: St, fd: FormData): Promise<St> {
 }
 
 export async function rejectRetractAction(_p: St, fd: FormData): Promise<St> {
-  const g = await guard();
+  const g = await guardOps();
   if ("error" in g) return g;
   const id = String(fd.get("id") ?? "");
   const note = String(fd.get("note") ?? "").trim();
@@ -79,7 +84,7 @@ export async function rejectRetractAction(_p: St, fd: FormData): Promise<St> {
 }
 
 export async function receiveRetractAction(_p: St, fd: FormData): Promise<St> {
-  const g = await guard();
+  const g = await guardOps();
   if ("error" in g) return g;
   const id = String(fd.get("id") ?? "");
   if (!id) return { error: "Falta id" };
@@ -93,7 +98,7 @@ export async function receiveRetractAction(_p: St, fd: FormData): Promise<St> {
 }
 
 export async function refundRetractAction(_p: St, fd: FormData): Promise<St> {
-  const g = await guard();
+  const g = await guardSuper();
   if ("error" in g) return g;
   // F-10 (auditoría 2026-09-04): registrar un reembolso es operación de dinero →
   // aal2 RECIENTE (mismo estándar que refundOrderAction). La UI abre el modal

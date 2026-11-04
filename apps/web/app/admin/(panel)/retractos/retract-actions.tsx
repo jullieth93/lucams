@@ -17,7 +17,15 @@ import {
 
 type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
-export function RetractActions({ id, status }: { id: string; status: string }) {
+export function RetractActions({
+  id,
+  status,
+  canRefund = true,
+}: {
+  id: string;
+  status: string;
+  canRefund?: boolean;
+}) {
   const [approveSt, approve, approvePending] = useActionState<St, FormData>(
     approveRetractAction,
     null,
@@ -74,26 +82,31 @@ export function RetractActions({ id, status }: { id: string; status: string }) {
         </div>
       )}
 
-      {status === "RECEIVED" && (
-        <form action={refund} className="flex flex-wrap items-center gap-2">
-          <input type="hidden" name="id" value={id} />
-          <select
-            name="method"
-            aria-label="Método de reembolso"
-            className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
-          >
-            <option value="WOMPI_VOID">Reversa Wompi</option>
-            <option value="BANK_TRANSFER">Transferencia</option>
-          </select>
-          <button
-            type="submit"
-            disabled={refundPending}
-            className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
-          >
-            {refundPending ? "…" : "Registrar reembolso"}
-          </button>
-        </form>
-      )}
+      {status === "RECEIVED" &&
+        (canRefund ? (
+          <form action={refund} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="id" value={id} />
+            <select
+              name="method"
+              aria-label="Método de reembolso"
+              className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+            >
+              <option value="WOMPI_VOID">Reversa Wompi</option>
+              <option value="BANK_TRANSFER">Transferencia</option>
+            </select>
+            <button
+              type="submit"
+              disabled={refundPending}
+              className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+            >
+              {refundPending ? "…" : "Registrar reembolso"}
+            </button>
+          </form>
+        ) : (
+          <p className="text-[11px] font-medium text-amber-800">
+            Producto recibido — pendiente de reembolso por Superadmin.
+          </p>
+        ))}
 
       {status === "REFUNDED" && (
         <p className="text-[11px] text-amber-700">💡 Emite el dinero en Wompi/transferencia.</p>

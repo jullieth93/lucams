@@ -23,18 +23,17 @@ const CATALOG_PATHS = [
 // Compartidas por los tres roles operativos (N-21, 2026-09-11: garantías y
 // retractos ya NO están acá — la ruta replica lo que su página exige).
 const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos"];
-// Garantías: SUPER+MANAGER — la página y sus actions piden MANAGER_UP; antes la
-// ruta era ALL y FULFILLMENT rebotaba con ?denied=1 (N-21).
-const MANAGER_UP_PATHS = ["/admin/garantias"];
+// Garantías y Retractos: SUPER+MANAGER — la página y las acciones operativas piden
+// MANAGER_UP (refundRetractAction exige SUPERADMIN + requireRecentMfa).
+const MANAGER_UP_PATHS = ["/admin/garantias", "/admin/retractos"];
 // Contenido del sitio: SUPERADMIN + CMS_EDITOR (set CONTENT). La página
 // "emails" del CMS (newsletter welcome, Ruta A) sigue acá; el módulo NUEVO
 // /admin/email-templates (Fase 4, 2026-09-18) subió a solo-SUPERADMIN.
 const CONTENT_PATHS = ["/admin/contenido"];
 // Autoservicio de cuenta (MFA obligatorio, B-1): los cuatro roles.
 const ACCOUNT_PATHS = ["/admin/seguridad"];
-// Rutas solo-SUPERADMIN: las NO listadas (deny-by-default) + /admin/retractos,
-// declarada explícita SUPER en la matriz (página y actions piden SUPER — N-21)
-// + /admin/email-templates (Fase 4: módulo real de plantillas — preview,
+// Rutas solo-SUPERADMIN: las NO listadas (deny-by-default) +
+// /admin/email-templates (Fase 4: módulo real de plantillas — preview,
 // overrides y envío de prueba; ya no es el redirect legacy al CMS).
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
@@ -50,7 +49,6 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/metricas",
   "/admin/performance",
   "/admin/redirects",
-  "/admin/retractos",
   "/admin/email-templates",
   "/admin/contenido/paginas/global",
 ];
@@ -226,7 +224,7 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     // N-21: garantías = SUPER+MANAGER (la página exige MANAGER_UP); retractos = SUPER
     // (página y actions SUPER). Antes ambas eran ALL y el rol rebotaba con ?denied=1.
     ["/admin/garantias", true, true, false, false],
-    ["/admin/retractos", true, false, false, false],
+    ["/admin/retractos", true, true, false, false],
     ["/admin/soporte", true, true, false, false],
     ["/admin/productos", true, true, false, false],
     ["/admin/inventario", true, true, false, false],

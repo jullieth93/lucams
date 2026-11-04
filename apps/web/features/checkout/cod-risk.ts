@@ -88,12 +88,18 @@ export async function assessCodRisk(orderId: string): Promise<CodRiskResult> {
         // 3. Historial: ¿algún pedido ENTREGADO antes? (cualquier método) → cliente "conocido".
         prisma.order.count({ where: { ...byIdentity, status: "DELIVERED" } }),
         // 4. Devolución previa: un COD que el courier devolvió (RETURNED/EXCEPTION marca el motivo).
+        // Se conserva la señal aunque el admin ya haya cerrado la reconciliación manual
+        // (`needsReconciliation = false`, `reconciledAt != null`) para no borrar la memoria antifraude.
         prisma.order.count({
           where: {
-            ...byIdentity,
-            paymentMethod: "COD",
-            needsReconciliation: true,
-            reconciliationReason: { contains: "DEVUELTO" },
+            AND: [
+              byIdentity,
+              {
+                paymentMethod: "COD",
+                reconciliationReason: { contains: "DEVUELTO" },
+                OR: [{ needsReconciliation: true }, { reconciledAt: { not: null } }],
+              },
+            ],
           },
         }),
         // 5. (c) No-show: un admin marcó a esta identidad como NO RECIBIDO en un pedido previo.

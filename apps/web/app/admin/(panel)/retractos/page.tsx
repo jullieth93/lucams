@@ -7,6 +7,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Undo2 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { formatCOP, formatRelativeTime } from "@/lib/format";
 import { listRetractRequests } from "@/features/retract/service";
 import type { RetractStatus } from "@lucams/db";
@@ -53,7 +54,8 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 });
 
 export default async function AdminRetractosPage({ searchParams }: { searchParams: SearchParams }) {
-  await requireRole(["SUPERADMIN"]);
+  const session = await requireRole(ADMIN_ROLE_SETS.MANAGER_UP);
+  const canRefund = session.admin.role === "SUPERADMIN";
   const sp = await searchParams;
   const statusRaw = sp.status;
   const validStatus = (["PENDING", "APPROVED", "RECEIVED", "REFUNDED", "REJECTED"] as const).find(
@@ -149,7 +151,7 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
                   )}
                 </div>
                 <div className="sm:w-64 sm:flex-shrink-0">
-                  <RetractActions id={r.id} status={r.status} />
+                  <RetractActions id={r.id} status={r.status} canRefund={canRefund} />
                 </div>
               </li>
             ))}

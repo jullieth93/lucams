@@ -23,7 +23,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth";
-import { listCustomers } from "@/features/customers/service";
+import { listCustomers, type CustomerSortOption } from "@/features/customers/service";
+import { formatCOP } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Clientes",
@@ -46,8 +47,9 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
   const status = (["with-orders", "no-orders"].includes(statusRaw ?? "") ? statusRaw : "all") as
     "all" | "with-orders" | "no-orders";
   const sortRaw = pickString(sp, "sort");
-  const sort = (["name", "orders"].includes(sortRaw ?? "") ? sortRaw : "recent") as
-    "recent" | "name" | "orders";
+  const sort = (
+    ["name", "orders", "spent"].includes(sortRaw ?? "") ? sortRaw : "recent"
+  ) as CustomerSortOption;
   const page = Number(sp.page) || 1;
 
   const { items, total, totalPages } = await listCustomers({ q, status, sort, page });
@@ -132,7 +134,8 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
             >
               <option value="recent">Registro más reciente</option>
               <option value="name">Nombre A-Z</option>
-              <option value="orders">Más pedidos primero</option>
+              <option value="orders">Más pedidos pagados</option>
+              <option value="spent">Más compras ($)</option>
             </select>
           </div>
           <div className="flex items-end gap-2 sm:col-span-1">
@@ -174,6 +177,7 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
                 <th className="px-4 py-3 text-left font-semibold">Email</th>
                 <th className="px-4 py-3 text-left font-semibold">Documento</th>
                 <th className="px-4 py-3 text-center font-semibold">Pedidos</th>
+                <th className="px-4 py-3 text-right font-semibold">Total compras</th>
                 <th className="px-4 py-3 text-center font-semibold">Reseñas</th>
                 <th className="px-4 py-3 text-right font-semibold">Puntos</th>
                 <th className="px-4 py-3 text-left font-semibold">Registro</th>
@@ -198,6 +202,15 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
                       <AdminBadge tone="emerald">{c.ordersCount}</AdminBadge>
                     ) : (
                       <span className="text-brand-muted text-xs">0</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {c.totalSpent > 0 ? (
+                      <span className="text-brand-purple-dark text-xs font-semibold tabular-nums">
+                        {formatCOP(c.totalSpent)}
+                      </span>
+                    ) : (
+                      <span className="text-brand-muted text-xs">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">

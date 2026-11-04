@@ -1078,7 +1078,9 @@ export async function getOrder(idOrNumber: string) {
               // ADR-131 (2026-10-13) — el render 300 DPI corre en background tras el
               // finalize: con productionUrls vacío, el estado del RenderJob distingue
               // "en preparación" (PENDING/PROCESSING) de "falló" (FAILED) en el detalle.
-              renderJob: { select: { status: true, doneUnits: true, totalUnits: true } },
+              renderJob: {
+                select: { status: true, doneUnits: true, totalUnits: true, error: true },
+              },
               // Paquete C (2026-10-02) — aceptación explícita de calidad de fotos
               // (checkbox de la Vista Previa): evidencia ante reclamos de garantía.
               qualityAcknowledgedAt: true,

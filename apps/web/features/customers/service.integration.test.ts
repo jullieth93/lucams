@@ -303,6 +303,26 @@ describe.skipIf(!hasDb)("customers/service — integración DB (Customer 360, PI
       expect(res.items.map((i) => i.id)).toContain(c.id);
     });
 
+    it("búsqueda multi-palabra exige coincidencia de TODOS los tokens (ej. 'Nombre Apellido')", async () => {
+      const token = nextId();
+      const target = await makeCustomer({
+        firstName: `Camila${token}`,
+        lastName: `Restrepo${token}`,
+      });
+      const partial = await makeCustomer({
+        firstName: `Camila${token}`,
+        lastName: "OtroApellido",
+      });
+
+      const res = await listCustomers({
+        q: `Camila${token} Restrepo${token}`,
+        pageSize: 50,
+      });
+      const ids = res.items.map((i) => i.id);
+      expect(ids).toContain(target.id);
+      expect(ids).not.toContain(partial.id);
+    });
+
     it("no retorna nada para un q que no matchea ningún registro", async () => {
       const res = await listCustomers({ q: `${RUN}-NO-SUCH-FRAGMENT-ZZZ`, pageSize: 50 });
       expect(res.items).toHaveLength(0);
@@ -384,6 +404,20 @@ describe.skipIf(!hasDb)("customers/service — integración DB (Customer 360, PI
       expect(withOrders.items.map((i) => i.id)).not.toContain(cust.id);
     });
 
+    it("órdenes no pagadas (PENDING_PAYMENT, CANCELLED, REFUNDED) NO cuentan como 'with-orders'", async () => {
+      const token = nextId();
+      const unpaidOnly = await makeCustomer({ firstName: `Unpaid${token}` });
+      await makeOrder(unpaidOnly.id, { status: "PENDING_PAYMENT" });
+      await makeOrder(unpaidOnly.id, { status: "CANCELLED" });
+      await makeOrder(unpaidOnly.id, { status: "REFUNDED" });
+
+      const withOrders = await listCustomers({ q: token, status: "with-orders", pageSize: 50 });
+      expect(withOrders.items.map((i) => i.id)).not.toContain(unpaidOnly.id);
+
+      const noOrders = await listCustomers({ q: token, status: "no-orders", pageSize: 50 });
+      expect(noOrders.items.map((i) => i.id)).toContain(unpaidOnly.id);
+    });
+
     it("status 'all' (default) no filtra por orders", async () => {
       const token = nextId();
       const withOrders = await makeCustomer({ firstName: `All${token}` });
@@ -399,18 +433,20 @@ describe.skipIf(!hasDb)("customers/service — integración DB (Customer 360, PI
 
   // ───────────────────────── listCustomers — counts derivados ─────────────────────────
 
-  describe("listCustomers — ordersCount / reviewsCount / loyaltyPoints", () => {
-    it("ordersCount cuenta TODAS las orders (incluso soft-deleted: _count no filtra)", async () => {
+  describe("listCustomers — ordersCount / totalSpent / reviewsCount / loyaltyPoints", () => {
+    it("ordersCount y totalSpent cuentan SOLO órdenes pagadas activas (excluyen canceladas, impagas y soft-deleted)", async () => {
       const token = nextId();
       const cust = await makeCustomer({ firstName: `Counts${token}` });
-      await makeOrder(cust.id, { status: "PAID" });
-      await makeOrder(cust.id, { status: "CANCELLED" });
-      await makeOrder(cust.id, { status: "PAID", deletedAt: new Date() });
+      await makeOrder(cust.id, { status: "PAID", total: 80_000 });
+      await makeOrder(cust.id, { status: "DELIVERED", total: 45_000 });
+      await makeOrder(cust.id, { status: "PENDING_PAYMENT", total: 999_000 });
+      await makeOrder(cust.id, { status: "CANCELLED", total: 999_000 });
+      await makeOrder(cust.id, { status: "PAID", total: 999_000, deletedAt: new Date() });
 
       const res = await listCustomers({ q: `Counts${token}`, pageSize: 50 });
       const item = res.items.find((i) => i.id === cust.id);
-      // _count.orders del select NO lleva where → cuenta las 3 (comportamiento real).
-      expect(item?.ordersCount).toBe(3);
+      expect(item?.ordersCount).toBe(2);
+      expect(item?.totalSpent).toBe(125_000);
     }, 30000);
 
     it("reviewsCount cuenta reviews y refleja loyaltyPoints persistidos", async () => {
@@ -482,22 +518,48 @@ describe.skipIf(!hasDb)("customers/service — integración DB (Customer 360, PI
       expect(idx(newer.id)).toBeLessThan(idx(older.id));
     });
 
-    it("sort 'orders' usa el mismo orderBy que 'recent' (fallback documentado: createdAt desc)", async () => {
+    it("sort 'orders' ordena realmente por cantidad de pedidos pagados desc (excluyendo cancelados/impagos)", async () => {
       const token = nextId();
-      const older = await makeCustomer({
-        firstName: `Ord${token}`,
-        createdAt: new Date(Date.now() - 60_000),
-      });
-      const newer = await makeCustomer({
+      const oneOrderNewer = await makeCustomer({
         firstName: `Ord${token}`,
         createdAt: new Date(),
       });
+      const threeOrdersOlder = await makeCustomer({
+        firstName: `Ord${token}`,
+        createdAt: new Date(Date.now() - 120_000),
+      });
+      const zeroPaidManyCancelled = await makeCustomer({
+        firstName: `Ord${token}`,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+
+      await makeOrder(oneOrderNewer.id, { status: "PAID", total: 50_000 });
+      await makeOrder(threeOrdersOlder.id, { status: "PAID", total: 30_000 });
+      await makeOrder(threeOrdersOlder.id, { status: "SHIPPED", total: 30_000 });
+      await makeOrder(threeOrdersOlder.id, { status: "DELIVERED", total: 30_000 });
+      for (let i = 0; i < 4; i++) {
+        await makeOrder(zeroPaidManyCancelled.id, { status: "CANCELLED", total: 200_000 });
+      }
 
       const res = await listCustomers({ q: `Ord${token}`, sort: "orders", pageSize: 50 });
-      const idx = (id: string) => res.items.findIndex((i) => i.id === id);
-      // Fallback a recent: el más nuevo primero (NO ordena por # de orders).
-      expect(idx(newer.id)).toBeLessThan(idx(older.id));
-    });
+      const ids = res.items.map((i) => i.id);
+      expect(ids).toEqual([threeOrdersOlder.id, oneOrderNewer.id, zeroPaidManyCancelled.id]);
+    }, 30000);
+
+    it("sort 'spent' ordena realmente por suma total gastada en órdenes pagadas desc", async () => {
+      const token = nextId();
+      const lowSpender = await makeCustomer({ firstName: `Spent${token}` });
+      const topSpender = await makeCustomer({ firstName: `Spent${token}` });
+      const unpaidWhale = await makeCustomer({ firstName: `Spent${token}` });
+
+      await makeOrder(lowSpender.id, { status: "PAID", total: 60_000 });
+      await makeOrder(lowSpender.id, { status: "PAID", total: 60_000 }); // 120k
+      await makeOrder(topSpender.id, { status: "DELIVERED", total: 350_000 }); // 350k
+      await makeOrder(unpaidWhale.id, { status: "PENDING_PAYMENT", total: 999_000 }); // 0k pagado
+
+      const res = await listCustomers({ q: `Spent${token}`, sort: "spent", pageSize: 50 });
+      expect(res.items.map((i) => i.id)).toEqual([topSpender.id, lowSpender.id, unpaidWhale.id]);
+    }, 30000);
   });
 
   // ───────────────────────── listCustomers — paginación ─────────────────────────
