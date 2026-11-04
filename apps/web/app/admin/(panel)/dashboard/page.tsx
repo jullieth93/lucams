@@ -15,6 +15,7 @@
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -40,6 +41,8 @@ import {
   Scale,
   Shapes,
   LayoutTemplate,
+  HeartPulse,
+  ArrowRight,
 } from "lucide-react";
 import {
   AdminPage,
@@ -402,17 +405,29 @@ export default async function AdminDashboardPage({
           </>
         }
         actions={
-          hasAlerts ? (
-            <div className="bg-brand-coral/10 text-brand-coral ring-brand-coral/30 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold ring-1">
-              <Zap className="h-4 w-4" />
-              {opsAlerts} {opsAlerts === 1 ? "alerta" : "alertas"}
-            </div>
-          ) : (
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200/60">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Todo al día
-            </div>
-          )
+          <div className="flex flex-wrap items-center gap-2">
+            {canAccessAdminPath(role, "/admin/hoy") && (
+              <Link
+                href="/admin/hoy"
+                className="bg-brand-purple inline-flex min-h-10 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold text-white shadow-xs transition-all hover:brightness-110"
+              >
+                <HeartPulse className="h-4 w-4" />
+                Abrir Bandeja Hoy
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
+            {hasAlerts ? (
+              <div className="bg-brand-coral/10 text-brand-coral ring-brand-coral/30 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold ring-1">
+                <Zap className="h-4 w-4" />
+                {opsAlerts} {opsAlerts === 1 ? "alerta" : "alertas"}
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200/60">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                Todo al día
+              </div>
+            )}
+          </div>
         }
       />
 

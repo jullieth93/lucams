@@ -96,6 +96,13 @@ export const ADMIN_NAV: NavGroup[] = [
     href: "/admin/dashboard",
   },
   {
+    title: "Bandeja Hoy",
+    icon: HeartPulse,
+    href: "/admin/hoy",
+    description:
+      "Cola operativa priorizada por rol: tareas CRM vencidas, SLAs legales de retractos/garantías/soporte, bloqueos de taller y conciliación.",
+  },
+  {
     // Top-level (Lucy 2026-08-11): dentro del grupo colapsado "Analítica" la
     // campana no se veía — el negocio no se enteraba de los avisos. Ahora es
     // hoja visible con el pill de no-leídas siempre a la vista.
