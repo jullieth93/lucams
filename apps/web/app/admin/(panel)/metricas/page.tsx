@@ -16,7 +16,7 @@ import Link from "next/link";
 import { TrendingUp, Trophy } from "lucide-react";
 import type { OrderStatus, QuoteStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, canAccessAdminPath } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
@@ -25,9 +25,11 @@ import {
   getFunnelDashboardReport,
   type FunnelReportFilters,
 } from "@/features/analytics/funnel-service";
+import { getCrmBehavioralIntelligence } from "@/features/crm/intelligence-service";
 import { PRODUCT_SLUG_OR_ALL_REGEX } from "@/features/analytics/funnel-schema";
 import { ORDER_STATUS_LABEL } from "@/features/orders/order-status-display";
 import { FunnelPanel } from "./funnel-panel";
+import { CrmIntelligencePanel } from "./crm-intelligence-panel";
 import {
   AdminBadge,
   AdminCard,
@@ -91,7 +93,8 @@ export default async function AdminMetricasPage({
 }: {
   searchParams?: Promise<RawSearchParams>;
 }) {
-  await requireRole(ADMIN_ROLE_SETS.METRICS);
+  const session = await requireRole(ADMIN_ROLE_SETS.METRICS);
+  const role = session.admin.role;
   const sp = (await searchParams) ?? {};
 
   const rawWindow = firstParam(sp, "ventana");
@@ -137,7 +140,7 @@ export default async function AdminMetricasPage({
   // [FIN-01] — todas las consultas de Order/OrderItem filtran `deletedAt: null` y los
   // ingresos del mes usan el mismo criterio de caja real que `/admin/finanzas`
   // (Wompi confirmado + COD entregado − retractos reembolsados en el mes).
-  const [quotesByStatus, orderData, funnelReport] = await Promise.all([
+  const [quotesByStatus, orderData, funnelReport, crmReport] = await Promise.all([
     prisma.quote.groupBy({
       by: ["status"],
       where: { deletedAt: null },
@@ -185,6 +188,7 @@ export default async function AdminMetricasPage({
           }),
         ]),
     getFunnelDashboardReport(funnelFilters, now),
+    catalog ? Promise.resolve(null) : getCrmBehavioralIntelligence(funnelFilters.days),
   ]);
   const ordersByStatus = orderData?.[0] ?? [];
   const ordersLast30 = orderData?.[1] ?? 0;
@@ -428,6 +432,16 @@ export default async function AdminMetricasPage({
         {/* Embudo vivo tienda + Estudio ([ANA-01], Fase 2): interactivo por ventana,
             dispositivo, superficie y producto. Sin PII ni cookies. */}
         <FunnelPanel report={funnelReport} filters={funnelFilters} />
+
+        {/* Inteligencia conductual CRM, RFM, margen neto y atribución (Fase 12 · S27) */}
+        {!catalog && crmReport && (
+          <CrmIntelligencePanel
+            report={crmReport}
+            canAccessSegments={canAccessAdminPath(role, "/admin/marketing/segmentos")}
+            canAccessCarts={canAccessAdminPath(role, "/admin/carritos")}
+            canAccessOpportunities={canAccessAdminPath(role, "/admin/oportunidades")}
+          />
+        )}
 
         {!catalog && (
           <AdminNotice tone="info">

@@ -51,6 +51,8 @@ lucams_shop/
 │       │   ├── carrito/
 │       │   ├── checkout/                 # Multi-step: datos/ → envio/ → pago/ → gracias/
 │       │   ├── pedido/[token]/           # Vista guest por token (hash en DB)
+│       │   ├── empresas-y-eventos/       # Captación consultiva B2B y eventos sociales
+│       │   │                             #   (crea Contact + Organization? + Opportunity)
 │       │   ├── cotizacion/[token]/       # Confirmación guest de cotización B2B
 │       │   │                             #   (el formulario vive en checkout/datos
 │       │   │                             #   cuando NEXT_PUBLIC_STORE_MODE=catalog)
@@ -65,12 +67,13 @@ lucams_shop/
 │       │   ├── legal/                    # terminos, privacidad, habeas-data…
 │       │   ├── admin/
 │       │   │   ├── login/                # Login + MFA challenge
-│       │   │   └── (panel)/              # Backoffice (69 páginas: productos,
-│       │   │                             #   pedidos, inventario, contenido (CMS),
-│       │   │                             #   cupones, clientes, cotizaciones,
+│       │   │   └── (panel)/              # Backoffice + CRM nativo (hoy, pedidos,
+│       │   │                             #   productos, inventario, contenido (CMS),
+│       │   │                             #   cupones, clientes + duplicados,
+│       │   │                             #   oportunidades B2B, soporte, garantías,
+│       │   │                             #   retractos, marketing/segmentos,
 │       │   │                             #   mayorista, materiales/costos, finanzas,
-│       │   │                             #   carritos (abandonados, ADR-153),
-│       │   │                             #   redirects, seguridad…)
+│       │   │                             #   metricas, carritos, seguridad…)
 │       │   ├── api/
 │       │   │   ├── webhooks/             # wompi/, aveonline/, resend/
 │       │   │   ├── cron/                 # 13 handlers (x-cron-secret vía
@@ -87,10 +90,11 @@ lucams_shop/
 │       │   └── layout.tsx
 │       ├── components/                   # ui/ (shadcn), admin/, cms/, home/,
 │       │                                 # product-detail/, address/, legal/ + sueltos
-│       ├── features/                     # 35 features: checkout, orders, cart,
+│       ├── features/                     # Dominios de negocio: checkout, orders, cart,
 │       │                                 # payments, shipping, personalization, cms,
-│       │                                 # coupons, quotes, redirects, moderation,
-│       │                                 # ai, emails, observability…
+│       │                                 # identity, contacts, crm, opportunities,
+│       │                                 # analytics, coupons, quotes, redirects,
+│       │                                 # moderation, ai, emails, observability…
 │       │                                 # (actions.ts + service.ts + schemas.ts)
 │       │                                 # OJO: features/security/ NO tiene código
 │       │                                 # productivo — solo los 2 tests RLS de
@@ -129,16 +133,17 @@ lucams_shop/
 │   └── db/
 │       ├── prisma/
 │       │   ├── schema.prisma
-│       │   └── migrations/               # prisma migrate (61 migraciones,
-│       │                                 #   schema de dominio)
+│       │   └── migrations/               # prisma migrate (91 migraciones,
+│       │                                 #   70 modelos de dominio)
 │       ├── scripts/                      # cms-site-map.mjs, migrate-cms-v2.mjs,
 │       │                                 # sync-and-prune-cms-v2.mjs,
+│       │                                 # backfill-contacts.mjs,
 │       │                                 # audit-schema-drift.mjs (drift Prisma↔SQL
 │       │                                 #   gateado en CI), seeds…
 │       └── package.json
 ├── supabase/
 │   └── migrations/                       # SQL no-Prisma (RLS, grants, storage,
-│                                         #   funciones, pg_cron) 00000000000002…50
+│                                         #   funciones, pg_cron) 00000000000002…53
 ├── .github/workflows/
 │   ├── ci.yml                            # Gate de PR: changes (fast-path docs) +
 │   │                                     #   secrets-scan + quality (fmt/audit/lint/
@@ -619,24 +624,26 @@ electrónica DIAN** (`billingDocumentType/Number/Name`, `dianStatus`, `dianCufe`
 `dianXmlUrl` — schema ready, el envío a la DIAN es Fase 7) y `dianStatus` se setea al
 crear la orden si el cliente pidió factura.
 
-### Arquitectura de Identidad Canónica (`Contact`) y Frontera SSoT (ADR-193 — Fases 6 y 7 activas)
+### Arquitectura de Identidad Canónica (`Contact`), CRM Operacional Nativo y Frontera SSoT (ADR-193)
 
-> **Estado:** Esquema aditivo _expand-only_ (`20261104160000_expand_contact_identity_graph` + RLS `051`), servicio determinista de resolución y _dual-write_ (`apps/web/features/identity/resolution-service.ts`), cascada Ley 1581 (`scrubContactOnErasureTx`) y motor progresivo de backfill por cursor (`packages/db/scripts/backfill-contacts.mjs`, `batchSize = 200`, `--dry-run` `READ ONLY` + `--apply` idempotente) activos y certificados en integración.
+> **Estado:** Activa end-to-end en Fases 6–12 (`20261104160000_expand_contact_identity_graph` + RLS `051`, `20261104170000_expand_admin_role_capabilities`, `20261104180000_support_sla_ownership_and_guest_thread`, `20261104190000_add_crm_activities_and_tasks` + RLS `052`, `20261104200000_add_b2b_opportunities` + RLS `053`, `20261104210000_order_utm_attribution`), servicio determinista de resolución y _dual-write_ (`apps/web/features/identity/resolution-service.ts`), cascada Ley 1581 (`scrubContactOnErasureTx`), motor progresivo de backfill por cursor (`packages/db/scripts/backfill-contacts.mjs`), `Contacto 360` (`/admin/clientes/[id]`), cola de fusión humana (`/admin/clientes/duplicados`), bandeja operativa `/admin/hoy`, soporte con SLA hábil colombiano + copiloto cero-PII, pipeline B2B `/empresas-y-eventos` → `/admin/oportunidades`, segmentos Ley 1581 (`/admin/marketing/segmentos`) e inteligencia conductual CRM/RFM (`/admin/metricas`).
 
 1. **Separación estructural Persona (`Contact`) vs Credencial (`Customer`):**
-   - `Contact` representa a toda contraparte humana comercial o posventa en Lucams (comprador registrado, comprador invitado `Order.customerId IS NULL`, solicitante `Quote`, remitente `SupportTicket`, prospecto `AbandonedCart`, suscriptor `Consent`).
+   - `Contact` representa a toda contraparte humana comercial o posventa en Lucams (comprador registrado, comprador invitado `Order.customerId IS NULL`, solicitante `Quote` / `Opportunity`, remitente `SupportTicket`, prospecto `AbandonedCart`, suscriptor `Consent`).
    - `Customer` permanece intacto como cuenta autenticada de autoservicio (`supabaseUserId String @unique`, `loyaltyPoints`, `referralCode`, `addresses`, `/mi-cuenta`), vinculándose 1:1 opcional mediante `Customer.contactId String? @unique` (`onDelete: SetNull`).
    - FKs anulables (_expand-only_, `onDelete: SetNull`, indexadas) activas sobre las 8 entidades relacionales: `Customer` (`@unique`), `Order`, `SupportTicket`, `Quote`, `AbandonedCart`, `Consent`, `WarrantyClaim` y `RetractRequest`.
 
-2. **Modelos, enums e índices parciales activos (`S14`):**
-   - Enums:
+2. **Modelos, enums e índices parciales activos:**
+   - Enums de identidad y CRM:
      - `ContactIdentityType`: `SUPABASE_USER` | `EMAIL` | `PHONE` | `WHATSAPP`
      - `IdentityVerificationStatus`: `VERIFIED` | `UNVERIFIED_OBSERVED` | `REVOKED`
      - `MergeCandidateStatus`: `PENDING` | `APPROVED` | `REJECTED`
-   - `Contact`: `id`, `primaryEmail` (`lower(trim())`, índice único parcial SQL `WHERE "primaryEmail" IS NOT NULL AND "deletedAt" IS NULL`), `primaryPhoneE164` (`+573XXXXXXXXX`, indexado y **nunca `@unique`**), `displayName`, `documentType?`, `documentNumber?` (`@@index([documentType, documentNumber])`), `organizationId?`, `ownerAdminId?`, `source`, `anonymizedAt?`, `deletedAt?`, timestamps.
-   - `ContactIdentity`: `id`, `contactId` (`onDelete: Cascade`), `type`, `normalizedValue`, `verificationStatus`, `verifiedAt?`, `verificationSource?`, `firstSeenAt`, `lastSeenAt`; `@@unique([contactId, type, normalizedValue])`, `@@index([type, normalizedValue])` e índice único parcial SQL `"ContactIdentity_unique_owner_key"` exclusivamente para `type IN ('SUPABASE_USER', 'EMAIL') AND "verificationStatus" <> 'REVOKED'`.
-   - `Organization` (ligera y opcional B2B/eventos): `id`, `name`, `taxIdType?`, `taxIdNumber?` (único parcial cuando no es nulo ni borrado), `city?`, `department?`, `notes?`, `deletedAt?`, timestamps.
-   - `IdentityMergeCandidate`: `id`, par canónico ordenado `(primaryContactId, secondaryContactId)` con `@@unique([primaryContactId, secondaryContactId])` y `CHECK ("primaryContactId" <> "secondaryContactId")`, `reasonCode`, `status`, `evidenceJson`, `reviewedByAdminId?`, `reviewedAt?`, `reviewNote?`, `mergeSnapshotJson?`, timestamps.
+     - `TaskStatus`: `OPEN` | `IN_PROGRESS` | `DONE` | `CANCELLED`; `TaskPriority`: `LOW` | `NORMAL` | `HIGH` | `URGENT`
+     - `OpportunityKind`: `CORPORATE` | `SOCIAL_EVENT` | `EDUCATIONAL` | `WHOLESALE`; `OpportunityStage`: `NEW` | `QUALIFYING` | `PROPOSAL_SENT` | `DESIGN_APPROVAL` | `WON` | `LOST`
+   - `Contact`, `ContactIdentity`, `Organization` e `IdentityMergeCandidate` con unicidad parcial SQL anti-`P2002` exclusivamente en `SUPABASE_USER` y `EMAIL` no revocados (nunca `@unique` global en teléfonos E.164).
+   - `ContactActivity` (timeline manual y sistémico con restricción `CHECK` `kind IN ('NOTE', 'CALL', 'WHATSAPP', 'EMAIL_MANUAL', 'SYSTEM')`) y `Task` (compromisos operativos transversales anclables a `contactId`, `orderId`, `supportTicketId`, `warrantyClaimId`, `retractRequestId` u `opportunityId`).
+   - `Opportunity`: pipeline consultivo para compras corporativas y eventos sociales (`/empresas-y-eventos` + conversión 1-clic desde `Quote`), con enlace opcional a `Order` ganada (`convertedOrderId`).
+   - `Order` incorpora atribución first-party sin PII (`utmSource`, `utmMedium`, `utmCampaign`, `landingPath`) alimentada por cookie `lucams_utm` estrictamente condicionada a `COOKIES_ANALYTICS`.
 
 3. **Frontera SSoT y exclusiones del CRM Operacional Mínimo:**
    - **Lucams Postgres** es la Fuente Única de Verdad (SSoT) en los 10 dominios (`Contact`, `Order`, pagos Wompi/COD, inventario, diseños privados, renders 300 DPI, oportunidades B2B/eventos, actividades/tareas, posventa y ledger `Consent` Ley 1581).

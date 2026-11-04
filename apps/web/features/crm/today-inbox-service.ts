@@ -23,6 +23,7 @@ import { evaluateSlaStatus, type SlaSemaphoreState } from "@/lib/colombian-sla";
 import { maskEmail, maskPersonName } from "@/lib/pii-mask";
 import { formatCOP } from "@/lib/format";
 import { isCrmTaskPriority, type CrmTaskPriority } from "./constants";
+import { countConsentedAnnualOccasionContacts } from "./intelligence-service";
 
 export type TodayQueueCategory = "TASK" | "CARE_SLA" | "WORKSHOP" | "FINANCE" | "RECOVERY";
 
@@ -116,6 +117,7 @@ export async function getTodayOperationalInbox(
   const canReconcileOrders = hasCapability(role, "orders:reconcile");
   const canReconcileCod = hasCapability(role, "finance:reconcile_cod");
   const canRecoverCarts = hasCapability(role, "carts:recover") && canReadOrderPii;
+  const canReadMarketing = hasCapability(role, "marketing:read");
 
   const maskPii = !canReadOrderPii && !canReadContactPii;
   const nowMs = now.getTime();
@@ -135,6 +137,7 @@ export async function getTodayOperationalInbox(
     reconciliationOrders,
     codUnreconciled,
     declinedOrders,
+    annualOccasionCount,
   ] = await Promise.all([
     // 1. Tareas CRM (`Task`) abiertas o en curso
     canManageTasks
@@ -350,6 +353,9 @@ export async function getTodayOperationalInbox(
           },
         })
       : Promise.resolve([]),
+
+    // 10. Recordatorio anual de ocasiones especiales (320–370 días) con opt-in Ley 1581 vigente
+    canReadMarketing ? countConsentedAnnualOccasionContacts() : Promise.resolve(0),
   ]);
 
   // --- Mapear Tareas ---
@@ -616,6 +622,28 @@ export async function getTodayOperationalInbox(
         ? `/admin/clientes/${encodeURIComponent(dec.contactId!)}`
         : `/admin/pedidos/${encodeURIComponent(dec.number)}`,
       actionLabel: canGoToContact ? "Contactar cliente" : "Ver pedido",
+      completableTaskId: null,
+    });
+  }
+
+  // --- Señal proactiva: Ocasión anual con opt-in Ley 1581 ---
+  if (canReadMarketing && annualOccasionCount > 0) {
+    items.push({
+      id: "occasion:annual_segment",
+      sourceId: "annual_occasion",
+      category: "RECOVERY",
+      severity: "NORMAL",
+      title: `${annualOccasionCount} ${annualOccasionCount === 1 ? "cliente compró" : "clientes compraron"} hace 1 año (con opt-in comercial)`,
+      subtitle:
+        "Audiencia lista bajo Ley 1581 para recordar aniversario, cumpleaños o regalo anual.",
+      badgeLabel: "Ocasión anual",
+      badgeTone: "turquoise",
+      assignedToMe: false,
+      isOverdue: false,
+      dueAtIso: null,
+      createdAtIso: now.toISOString(),
+      actionHref: "/admin/marketing/segmentos?segment=annual_occasion",
+      actionLabel: "Abrir segmento",
       completableTaskId: null,
     });
   }

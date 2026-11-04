@@ -70,6 +70,7 @@ enum ConsentScope {
 model Consent {
   id         String       @id @default(cuid())
   customerId String?      // null para guests (newsletter, cookies, cotización)
+  contactId  String?      // ancla canónica ADR-193 (Contact)
   email      String?      // ancla para consentimientos sin cuenta
   phone      String?      // ancla alterna (cotización por WhatsApp, móvil a 10 dígitos)
   scope      ConsentScope
@@ -81,11 +82,14 @@ model Consent {
   acceptedAt DateTime     @default(now())
 
   @@index([customerId, scope])
+  @@index([contactId])
   @@index([email, scope])
   @@index([phone, scope])
   @@index([scope, acceptedAt])
 }
 ```
+
+- **Compuerta dura de segmentación comercial (`features/crm/segments-service.ts`, `/admin/marketing/segmentos`):** ninguna consulta ni exportación CSV de segmentos (`VIP_RECOMPRA`, `REGALO_ANUAL`, `CARRITO_ALTO_VALOR`, `REACTIVACION_90D`) puede listar contactos cuyo último registro `Consent(scope = 'NEWSLETTER')` por `contactId` o `email` no tenga `accepted = true` vigente. Un comprador VIP sin opt-in expreso o dado de baja queda excluido en SQL (certificado en `segments-service.integration.test.ts`).
 
 #### Registro y ejercicio de derechos
 
@@ -353,7 +357,7 @@ Para impedir contradicciones entre lógica de negocio, emails transaccionales, U
 - `HABEAS_DATA_CONSULTATION_BUSINESS_DAYS = 10` / `HABEAS_DATA_CLAIM_BUSINESS_DAYS = 15` → `{{habeas_consulta_dias}}` / `{{habeas_reclamo_dias}}` (Ley 1581 arts. 14–15)
 - `LUCAMS_SHIPPING_CUTOFF_HOUR` (setting CMS) → `{{cutoff_lucams}}`
 
-El test `apps/web/app/legal/legal-content-sync.test.ts` verifica que el `FALLBACK` de cada página `/legal/*` sea idéntico al `.md` canónico y `apps/web/lib/cms-tokens.test.ts` cubre la resolución de todos los tokens.
+El test `apps/web/app/legal/legal-content-sync.test.ts` verifica que el `FALLBACK` de cada página `/legal/*` sea idéntico al `.md` canónico y `apps/web/lib/cms-tokens.test.ts` cubre la resolución de todos los tokens. Además, el motor determinista `apps/web/lib/colombian-sla.ts` calcula los vencimientos legales en días hábiles colombianos (Ley 51 / Emiliani + festivos móviles de Pascua en `America/Bogota`) para `SupportTicket`, `WarrantyClaim` y `RetractRequest`, alimentando los relojes de `/admin/soporte` y la bandeja priorizada `/admin/hoy`.
 
 ### Información de entrega: estimado operativo vs plazo legal
 

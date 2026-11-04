@@ -11,7 +11,7 @@
 5. [Dashboards](#dashboards)
 6. [Alertas](#alertas)
 7. [Logs estructurados](#logs-estructurados)
-8. [Métricas custom](#métricas-custom)
+8. [Métricas custom e Inteligencia Conductual](#métricas-custom-e-inteligencia-conductual)
 9. [Tracing y correlation](#tracing-y-correlation)
 10. [Healthchecks](#healthchecks)
 11. [On-call (post-lanzamiento)](#on-call-post-lanzamiento)
@@ -67,19 +67,19 @@
 
 Las señales que medimos. Cada SLO se calcula a partir de SLIs.
 
-| SLI                         | Cómo se mide                                                                                                                | Fuente                                                                                                      |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Request count               | Total de requests por ruta y status                                                                                         | Vercel Logs (parsing); `/api/metrics` es objetivo (aún no implementado)                                     |
-| Latency p50/p95/p99         | Histograma por ruta                                                                                                         | Logs estructurados con `latencyMs`                                                                          |
-| 5xx rate                    | `count(status>=500) / count(*)`                                                                                             | Logs + tabla `ErrorLog` (conteo por ventana en `evaluateAlerts`)                                            |
-| Webhooks estancados         | `count(WebhookEvent where processedAt is null y createdAt < hace 1h)`                                                       | Tabla `WebhookEvent` (alerta `webhooks_stuck`)                                                              |
-| Órdenes a reconciliar       | `count(Order where needsReconciliation)`                                                                                    | Tabla `Order` (alerta `reconciliation`)                                                                     |
-| Stock oversold events       | Incidencias detectadas vía reconciliación + ledger `InventoryLog` (reasons `ORDER_PAID`/`ORDER_CANCELLED`/`ORDER_REFUNDED`) | Tabla `InventoryLog`                                                                                        |
-| Cart-to-checkout conversion | `count(orders) / count(carts created last 7 days)`                                                                          | Reporte diario                                                                                              |
-| AbandonedCart recovery rate | `count(abandonedCart.recovered) / count(abandonedCart created)`                                                             | Tabla `AbandonedCart` (visible en la bandeja `/admin/carritos` con valor recuperado y pendientes — ADR-153) |
-| Resend bounce rate          | Resend dashboard                                                                                                            | Panel oficial                                                                                               |
-| Cron lag (dead-man switch)  | Latido `recordCronHeartbeat` por job (clave `cron:<job>` en `AlertState`); overdue si no corrió en 2× su intervalo          | `getCronHealth` → `/api/health/crons`                                                                       |
-| pg_cron ejecuciones         | Historial de corridas de los jobs                                                                                           | `cron.job_run_details` (Supabase)                                                                           |
+| SLI                         | Cómo se mide                                                                                                                      | Fuente                                                                                     |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Request count               | Total de requests por ruta y status                                                                                               | Vercel Logs (parsing); `/api/metrics` es objetivo (aún no implementado)                    |
+| Latency p50/p95/p99         | Histograma por ruta                                                                                                               | Logs estructurados con `latencyMs`                                                         |
+| 5xx rate                    | `count(status>=500) / count(*)`                                                                                                   | Logs + tabla `ErrorLog` (conteo por ventana en `evaluateAlerts`)                           |
+| Webhooks estancados         | `count(WebhookEvent where processedAt is null y createdAt < hace 1h)`                                                             | Tabla `WebhookEvent` (alerta `webhooks_stuck`)                                             |
+| Órdenes a reconciliar       | `count(Order where needsReconciliation)`                                                                                          | Tabla `Order` (alerta `reconciliation`)                                                    |
+| Stock oversold events       | Incidencias detectadas vía reconciliación + ledger `InventoryLog` (reasons `ORDER_PAID`/`ORDER_CANCELLED`/`ORDER_REFUNDED`)       | Tabla `InventoryLog`                                                                       |
+| Cart-to-checkout conversion | Embudo propio de 11 etapas (`FunnelEventDaily` vía `POST /api/funnel`, 100 % sin cookies ni PII) + `count(orders) / count(carts)` | `/admin/metricas` (`features/analytics/funnel-service.ts`) + reporte diario                |
+| AbandonedCart recovery rate | `count(abandonedCart.recovered) / count(abandonedCart created)` + recuperación asistida atribuible a actividad CRM ≤14 días       | Tabla `AbandonedCart` (`/admin/carritos`, ADR-153) + Inteligencia CRM en `/admin/metricas` |
+| Resend bounce rate          | Resend dashboard                                                                                                                  | Panel oficial                                                                              |
+| Cron lag (dead-man switch)  | Latido `recordCronHeartbeat` por job (clave `cron:<job>` en `AlertState`); overdue si no corrió en 2× su intervalo                | `getCronHealth` → `/api/health/crons`                                                      |
+| pg_cron ejecuciones         | Historial de corridas de los jobs                                                                                                 | `cron.job_run_details` (Supabase)                                                          |
 
 ---
 
@@ -321,7 +321,14 @@ emergencia documentada.
 
 ---
 
-## Métricas custom
+## Métricas custom e Inteligencia Conductual
+
+### Embudo propio (`FunnelEventDaily`) e Inteligencia CRM (`/admin/metricas`)
+
+- **Embudo anónimo de 11 etapas (`POST /api/funnel` → `FunnelEventDaily`):** registra conteos diarios agregados (`step`, `deviceClass`, `surface`, `productSlug`, `reasonCode`) desde `view_product` y `studio_open` hasta `purchase` sin cookies ni PII (retención 365 días en `purge-event-logs`). Visible en `/admin/metricas` con cuello de botella automático y salud de subida/exportación del Estudio.
+- **Inteligencia Conductual CRM, Matriz RFM y Margen Neto (`features/crm/intelligence-service.ts`):** cruza `Contact`, `Order` (incl. `utmSource`/`utmMedium`/`utmCampaign`/`landingPath`), `Design`, `AbandonedCart`, `WompiPaymentTransaction`, `Product.cost`, `ContactActivity` y `Opportunity` en `/admin/metricas` para responder dónde se quedan los contactos identificables, qué pagos Wompi caen por medio de pago, qué productos concentran intención vs. stock vivo, cómo se distribuyen los 5 segmentos RFM con LTV de margen neto en centavos COP y cuánto recupera la gestión humana del CRM.
+
+### Endpoint Prometheus `/api/metrics` (objetivo futuro)
 
 > **Pendiente — NO implementado (verificado 2026-09-03):** no existe `app/api/metrics` en el
 > código. Lo de abajo es el diseño objetivo (la sección § Pre-lanzamiento vs post-lanzamiento ya
