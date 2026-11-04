@@ -445,8 +445,9 @@ re-corrida dry-run «~ ya al día» en ambos) y cubierto en LOCAL vía seed can�
   `personalizationSchema.sizeCm`, renombra variantes, alinea las plantillas `photo-strip-3-fotos`
   /`photo-strip-4-fotos` al canónico de `seed-templates.mjs` (stage 400×400 / 400×330 a 80 px/cm),
   reemplaza las medidas viejas en `description`/copy de producto y `richDescription` de la
-  categoría, y ajusta `physicalSpecs` (empaque 7×20 → 6×17; `weightGrams` 43 **conservado** —
-  pendiente confirmar el gramaje real del material nuevo). Solo REPORTA ocurrencias en CMS.
+  categoría, y ajusta `physicalSpecs` (empaque 7×20 → 6×17; `weightGrams` 43 **confirmado por la
+  owner** el 2026-11-03 — el valor conservador queda como el vigente). Solo REPORTA ocurrencias
+  en CMS.
 - **Seed canónico:** `tiras-magneticas-fotos` (SKU `FI-TIRA-01`) nació por one-shots y no estaba
   declarado en `seed-catalog-canonical.mjs` → un ambiente fresco no lo tenía (LOCAL no lo tenía).
   Ya está declarado con sus 4 variantes; LOCAL quedó sembrado con `make db-local-seed` (parcial:
