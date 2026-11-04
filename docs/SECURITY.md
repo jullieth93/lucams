@@ -135,7 +135,7 @@ rate-limit — nunca en claro). Los consume `evaluateAlerts` con dos reglas:
 
 - Tabla `AdminUser` con `role` y `isActive`.
 - El proxy (`apps/web/proxy.ts` — Next.js 16 renombró `middleware.ts` → `proxy.ts`) solo hace de gate anónimo: redirige a `/admin/login` toda request `/admin/*` sin sesión Supabase. **No corre Prisma ahí.**
-- La verificación real de `AdminUser` activo + rol la hace el servidor en cada página/acción: `getCurrentAdmin()` (`lib/auth.ts`) en las pages y `requireAdminAction({ roles })` (`lib/admin-rbac-guard.ts`) al inicio de toda Server Action admin mutante — incluye el gate de MFA (enrolamiento obligatorio + aal2, ver § MFA). **Cobertura verificada: 41/41 Server Actions admin bajo `app/admin/(panel)` invocan el guard con rol explícito** (certificación de release 2026-09-26/27); las únicas actions admin sin guard son `/admin/login` y `/admin/login/mfa` (públicas por diseño, con rate limit 5/15 min).
+- La verificación real de `AdminUser` activo + rol la hace el servidor en cada página/acción/ruta: `requireRole()` / `getCurrentAdmin()` en las pages, `requireAdminAction({ roles })` al inicio de toda Server Action admin mutante, y `verifyAdminRouteAccess({ roles, req, checkIdle })` (`lib/admin-rbac-guard.ts`) en los Route Handlers que sirven recursos sensibles a admins (`/api/design-preview/*` con `ADMIN_ROLE_SETS.ALL`, `/admin/carritos/[id]/preview` con `MANAGER_UP` y `/admin/email-templates/[id]/preview` con `SUPER`) — los tres caminos verifican enrolamiento TOTP + sesión `aal2` (ver § MFA), y los handlers bajo `/admin/*` verifican además la marca de inactividad `admin_last_activity` (`checkIdle: true`). **Cobertura verificada: 41/41 Server Actions admin bajo `app/admin/(panel)` invocan el guard con rol explícito**; las únicas actions admin sin guard son `/admin/login` y `/admin/login/mfa` (públicas por diseño, con rate limit 5/15 min).
 - **Defense in depth:** cada Server Action/API route verifica el rol explícitamente (no confiar solo en el gate del proxy).
 
 ### Row-Level Security (Supabase / Postgres RLS)
@@ -167,7 +167,7 @@ CREATE POLICY "order_read_own_or_admin" ON public."Order"
 
 **Postura verificada en vivo (auditoría 2026-08-24, re-verificada tras la remediación del 2026-08-29):**
 
-- **59/59 tablas de `public` con RLS habilitado** en prod y stg. 14 políticas activas sobre 13 tablas; el resto es deny-by-default (RLS sin políticas). Un event trigger (`enforce_rls_on_new_table_trg`, migración 014) auto-habilita RLS en tablas nuevas, y las migraciones llevan verificación inline (`RAISE EXCEPTION` si queda alguna sin RLS).
+- **62/62 tablas de `public` con RLS habilitado** en prod y stg (62 modelos Prisma + `_prisma_migrations` + `rate_limit_buckets`, según ambiente). 14 políticas activas sobre 13 tablas; el resto es deny-by-default (RLS sin políticas). El event trigger `enforce_rls_on_new_table_trg` (migración 014, endurecido en migración 049) auto-habilita RLS y ejecuta `REVOKE ALL` para `anon`/`authenticated` + `REVOKE SELECT, INSERT, UPDATE, DELETE` para `service_role` sobre toda tabla nueva en `public`; las migraciones llevan verificación inline (`RAISE EXCEPTION` si queda alguna sin RLS) y la postura completa es auditable en solo-lectura con `packages/db/scripts/verify-security-posture.mjs`.
 - **0 grants de tabla para `anon`/`authenticated`** en prod (migración 026: revoca incluso REFERENCES/TRIGGER/TRUNCATE residuales + default privileges). La publishable key no puede leer ni una tabla pública — verificado en vivo: `/rest/v1/` y un `SELECT` directo devuelven 401/42501.
 - **`service_role` sin DML** sobre tablas de `public` (migración 026): solo REFERENCES/TRIGGER/TRUNCATE. La app opera con Prisma como rol `postgres`, no vía PostgREST con service_role.
 - Funciones de `public` endurecidas (migración 027): `search_path` fijado, `is_active_admin` sin EXECUTE para anon/PUBLIC, `rate_limit_check` solo owner.
@@ -334,6 +334,7 @@ Notas sobre el bloque de producción:
 - El proxy genera un nonce nuevo por request, lo pone en el **request header** `x-nonce` + `Content-Security-Policy`, y en el **response header**. Next lo extrae del CSP y lo aplica automáticamente a TODOS sus `<script>` (framework, bundles, inline) durante el SSR. Integrado con el flujo `getAll/setAll` de Supabase (`nextWithNonce()` clona los headers actuales → preserva cookies refrescadas).
 - **`style-src` mantiene `'unsafe-inline'` a propósito:** los atributos `style=""` inline NO aceptan nonce (solo elementos `<style>`/`<script>`) → removerlo rompería toda la UI. El riesgo XSS por CSS es mucho menor que por script.
 - **`'unsafe-eval'` solo en dev** (HMR + reconstrucción de stacks de React); en prod no se usa.
+- **Rutas admin de preview HTML aislado (`EMAIL_PREVIEW_SANDBOX_CSP`):** `/admin/carritos/[id]/preview` y `/admin/email-templates/[id]/preview` sirven `text/html` de plantillas de correo con `Content-Security-Policy: sandbox; default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline'; font-src https: data:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'` + `<iframe sandbox="">`, y `proxy.ts` respeta ese header sin sobrescribirlo (`isSandboxedPreviewPath`) para que un HTML de correo jamás ejecute scripts en el origen del panel ni lea cookies.
 
 > ⚠️ **Regla de mantenimiento:** el nonce exige **render dinámico en toda página** — una página estática se prerenderea sin nonce y sus scripts quedan **bloqueados** en prod. La app ya es ~97% dinámica; las pocas estáticas llevan `export const dynamic = "force-dynamic"` (registro, recomendador, maintenance, recuperar-password, not-found). **Toda página nueva debe ser dinámica.** `/manifest.webmanifest` se deja estática (no tiene scripts).
 
@@ -569,7 +570,7 @@ export async function GET(req: Request) {
 | Reserva de stock (`StockReservation`)     | 15 min                       | `pg_cron` cleanup cada minuto (ADR-014)                                   |
 | Cache "última cotización buena" Aveonline | 10 min                       | Cache in-memory por proceso (`features/shipping/aveonline.ts`)            |
 | Rate limit buckets                        | 1 día (housekeeping)         | `pg_cron` cleanup cada 15 min                                             |
-| URL firmada `customer-uploads`            | 1 h                          | Supabase Storage signed URL                                               |
+| URL firmada `customer-uploads`            | 1 h (auto-refresh ≥40 min)   | Supabase Storage signed URL + `refreshDesignAssetUrlsAction` antes de exportar a imprenta (`[STU-01]`) |
 | URL firmada `production-assets`           | 1 h (default, configurable)  | Idem (acceso solo admin)                                                  |
 | `EmailEvent` / `WebhookEvent`             | 180 días                     | Cron `purge-event-logs` (`features/observability/event-log-retention.ts`) |
 | `ErrorLog` / `ErrorReport`                | 90 días                      | Idem (ErrorReport por `lastSeenAt`: lo que sigue ocurriendo no se purga)  |
@@ -589,7 +590,7 @@ Definidos en [`ARCHITECTURE.md` § Storage](./ARCHITECTURE.md#storage-supabase).
 
 `design-previews` es **privado** (migración 046): los bytes solo salen por el Route Handler `GET /api/design-preview/<designId>/<archivo>` (`app/api/design-preview/[...path]/route.ts`), que autoriza por request con la matriz pura de `features/personalization/preview-access.ts`:
 
-- **Dueño** (cookie `cart_session` == `Design.sessionId`, o `Customer` autenticado) y **admin activo** → cualquier variante (limpio, páginas, borradores, watermark legacy).
+- **Dueño** (cookie `cart_session` == `Design.sessionId`, o `Customer` autenticado) y **admin operativo con MFA `aal2`** (`verifyAdminRouteAccess` con `ADMIN_ROLE_SETS.ALL` — excluye `CMS_EDITOR` y sesiones `aal1`) → cualquier variante (limpio, páginas, borradores, watermark legacy).
 - **Capacidad por token** (`?st=` share `/d/`, `?qt=` cotización, `?ot=` pedido — el join exige que la orden/cotización incluya ESE diseño) → las variantes de EXHIBICIÓN (preview limpio, páginas y artefactos watermark legacy), **nunca borradores**. (2026-11-03, ADR-191: el anti-copia se retiró — los tokens abren el preview limpio como antes de 2026-10-13.)
 - Resto → 404 sin oráculo. Respuesta con `Cache-Control: private, max-age=300` (nada de caché pública para contenido personal).
 - `Design.previewUrl`/`draftPreviewUrl` y los snapshots (`OrderItem.designAssetUrl`, `QuoteItem.previewUrl`) persisten la URL del handler; las URLs públicas legacy se convierten al vuelo (`previewRefToAuthorizedUrl`) y un GET anónimo directo al bucket muere.

@@ -114,6 +114,33 @@ export function buildCsp(nonce: string, isProd: boolean): string {
   ].join("; ");
 }
 
+/**
+ * CSP estricta con `sandbox` para Route Handlers que sirven documentos HTML de
+ * previsualización de correos (`/admin/carritos/[id]/preview` y
+ * `/admin/email-templates/[id]/preview` · [SEC-01]).
+ *
+ * Incluso si alguien abre la URL en una pestaña de nivel superior fuera del
+ * `<iframe sandbox="">`, el navegador aísla el documento en un origen opaco y
+ * bloquea toda ejecución de scripts, formularios y navegación externa,
+ * permitiendo únicamente estilos inline e imágenes/fuentes estáticas del correo.
+ */
+export const EMAIL_PREVIEW_SANDBOX_CSP = [
+  "sandbox",
+  "default-src 'none'",
+  "img-src 'self' data: https: http:",
+  "style-src 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "frame-ancestors 'self'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join("; ");
+
+const SANDBOXED_PREVIEW_PATH_RE = /^\/admin\/(?:carritos|email-templates)\/[^/]+\/preview\/?$/;
+
+export function isSandboxedPreviewPath(pathname: string): boolean {
+  return SANDBOXED_PREVIEW_PATH_RE.test(pathname);
+}
+
 /** Allowlist de orígenes para CORS de las rutas API. */
 export function getAllowedOrigins(isDev: boolean): (string | RegExp)[] {
   return [

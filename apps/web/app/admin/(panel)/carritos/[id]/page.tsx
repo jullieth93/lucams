@@ -182,6 +182,7 @@ export default async function AdminCarritoDetallePage({
           </p>
           <iframe
             src={`/admin/carritos/${detail.id}/preview`}
+            sandbox=""
             title={`Preview del correo de recuperación para ${detail.email}`}
             className="border-brand-purple/10 h-[520px] w-full rounded-lg border bg-white"
           />

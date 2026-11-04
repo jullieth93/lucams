@@ -59,7 +59,13 @@ import {
   readAdminActivityMark,
   sealAdminActivityMark,
 } from "@/lib/admin-activity";
-import { buildCsp, isOriginAllowed, SECURITY_HEADERS } from "@/lib/security-headers";
+import {
+  EMAIL_PREVIEW_SANDBOX_CSP,
+  SECURITY_HEADERS,
+  buildCsp,
+  isOriginAllowed,
+  isSandboxedPreviewPath,
+} from "@/lib/security-headers";
 import {
   CUSTOMER_ACTIVITY_COOKIE,
   CUSTOMER_IDLE_LIMIT_MS,
@@ -523,7 +529,10 @@ export async function proxy(request: NextRequest) {
   }
 
   withSecurityHeaders(response, requestId);
-  response.headers.set("Content-Security-Policy", cspValue);
+  response.headers.set(
+    "Content-Security-Policy",
+    isSandboxedPreviewPath(path) ? EMAIL_PREVIEW_SANDBOX_CSP : cspValue,
+  );
 
   if (isPrivatePageGet(request.method, path, isApi)) {
     response.headers.set("Cache-Control", "private, no-store");

@@ -49,7 +49,8 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-import { requireAdminAction } from "./admin-rbac-guard";
+import { requireAdminAction, verifyAdminRouteAccess } from "./admin-rbac-guard";
+import { ADMIN_ACTIVITY_COOKIE, sealAdminActivityMark } from "./admin-activity";
 
 const VERIFIED_TOTP = { all: [{ factor_type: "totp", status: "verified" }] };
 
@@ -174,5 +175,100 @@ describe("requireAdminAction", () => {
     state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
     const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
     expect(s.admin.id).toBe("c1");
+  });
+});
+
+describe("verifyAdminRouteAccess ([SEC-01] — Route Handlers)", () => {
+  beforeEach(() => {
+    process.env.CSRF_SECRET = process.env.CSRF_SECRET || "test-csrf-secret-at-least-32-chars-long!!";
+  });
+
+  it("sin sesión → 401 UNAUTHENTICATED", async () => {
+    state.session = null;
+    expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
+      ok: false,
+      status: 401,
+      reason: "UNAUTHENTICATED",
+    });
+  });
+
+  it("sesión aal1 (solo contraseña, sin 2º factor) → 403 MFA_REQUIRED", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+    state.aal = { currentLevel: "aal1", nextLevel: "aal2" };
+    expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
+      ok: false,
+      status: 403,
+      reason: "MFA_REQUIRED",
+    });
+  });
+
+  it("cuenta admin sin factor TOTP verificado → 403 MFA_NOT_ENROLLED", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+    state.factors = { all: [] };
+    state.aal = { currentLevel: "aal1", nextLevel: "aal1" };
+    expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
+      ok: false,
+      status: 403,
+      reason: "MFA_NOT_ENROLLED",
+    });
+  });
+
+  it("CMS_EDITOR con aal2 → 403 FORBIDDEN_ROLE en rutas operativas (ALL)", async () => {
+    state.session = { admin: { id: "c1", role: "CMS_EDITOR" } };
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
+      ok: false,
+      status: 403,
+      reason: "FORBIDDEN_ROLE",
+    });
+  });
+
+  it("checkIdle:true rechaza request sin cookie admin_last_activity o vencida (>30m)", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+
+    const noCookieReq = new Request("http://localhost/admin/email-templates/order/preview");
+    expect(
+      await verifyAdminRouteAccess({
+        roles: ADMIN_ROLE_SETS.SUPER,
+        req: noCookieReq,
+        checkIdle: true,
+      }),
+    ).toEqual({
+      ok: false,
+      status: 401,
+      reason: "IDLE_EXPIRED",
+    });
+
+    const staleMark = sealAdminActivityMark(Date.now() - 35 * 60 * 1000);
+    const staleReq = new Request("http://localhost/admin/email-templates/order/preview", {
+      headers: { cookie: `${ADMIN_ACTIVITY_COOKIE}=${encodeURIComponent(staleMark)}` },
+    });
+    expect(
+      await verifyAdminRouteAccess({
+        roles: ADMIN_ROLE_SETS.SUPER,
+        req: staleReq,
+        checkIdle: true,
+      }),
+    ).toEqual({
+      ok: false,
+      status: 401,
+      reason: "IDLE_EXPIRED",
+    });
+  });
+
+  it("checkIdle:true permite sesión aal2 + rol válido + marca fresca", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    const freshMark = sealAdminActivityMark(Date.now() - 5 * 60 * 1000);
+    const req = new Request("http://localhost/admin/email-templates/order/preview", {
+      headers: { cookie: `${ADMIN_ACTIVITY_COOKIE}=${encodeURIComponent(freshMark)}` },
+    });
+    const res = await verifyAdminRouteAccess({
+      roles: ADMIN_ROLE_SETS.SUPER,
+      req,
+      checkIdle: true,
+    });
+    expect(res.ok).toBe(true);
   });
 });
