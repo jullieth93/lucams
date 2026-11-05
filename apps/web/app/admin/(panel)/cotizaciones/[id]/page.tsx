@@ -38,6 +38,7 @@ import {
 } from "@/components/admin-page";
 import { QuoteActions } from "../quote-actions";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Detalle cotización" };
 
@@ -56,14 +57,6 @@ const STATUS_TONE: Record<QuoteStatus, "amber" | "blue" | "emerald" | "slate"> =
   CLOSED: "emerald",
   DISCARDED: "slate",
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 export default async function AdminCotizacionDetallePage({ params }: { params: Params }) {
   const session = await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
@@ -91,7 +84,7 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
             <AdminBadge tone={STATUS_TONE[quote.status]}>{STATUS_LABEL[quote.status]}</AdminBadge>
           </span>
         }
-        subtitle={`Creada ${dateFmt.format(quote.createdAt)}`}
+        subtitle={`Creada ${formatDateTimeCO(quote.createdAt)}`}
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Ventas" },

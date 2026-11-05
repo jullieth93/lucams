@@ -33,6 +33,7 @@ import { TicketActions } from "../ticket-actions";
 import { ReplyForm } from "./reply-form";
 import { ConvertCaseForm } from "./convert-case-form";
 import { TicketAssignmentForm } from "./ticket-assignment-form";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Ticket de soporte",
@@ -51,14 +52,6 @@ const STATUS_LABEL: Record<SupportTicketStatus, string> = {
   IN_PROGRESS: "En progreso",
   CLOSED: "Cerrado",
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 function subjectLabel(subject: string): string {
   return (SUBJECT_LABELS as Record<string, string>)[subject] ?? subject;
@@ -110,7 +103,7 @@ export default async function AdminSoporteTicketPage({
       <AdminPageHeader
         icon={<LifeBuoy className="h-5 w-5" />}
         title={`Ticket #${ticket.id.slice(0, 8).toUpperCase()} — ${subjectLabel(ticket.subject)}`}
-        subtitle={`${ticket.name} · ${ticket.email} · abierto ${dateFmt.format(ticket.createdAt)}`}
+        subtitle={`${ticket.name} · ${ticket.email} · abierto ${formatDateTimeCO(ticket.createdAt)}`}
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Soporte", href: "/admin/soporte" },
@@ -140,7 +133,7 @@ export default async function AdminSoporteTicketPage({
                 <AdminBadge tone="purple">Prioridad {SUPPORT_PRIORITY_LABELS[priority]}</AdminBadge>
                 {ticket.firstRespondedAt ? (
                   <span className="text-brand-muted text-xs">
-                    1ª respuesta: {dateFmt.format(ticket.firstRespondedAt)}
+                    1ª respuesta: {formatDateTimeCO(ticket.firstRespondedAt)}
                   </span>
                 ) : (
                   status !== "CLOSED" && (
@@ -151,7 +144,7 @@ export default async function AdminSoporteTicketPage({
                 )}
                 {ticket.resolvedAt && (
                   <span className="text-brand-muted text-xs">
-                    · cerrado {dateFmt.format(ticket.resolvedAt)}
+                    · cerrado {formatDateTimeCO(ticket.resolvedAt)}
                   </span>
                 )}
               </div>
@@ -183,7 +176,7 @@ export default async function AdminSoporteTicketPage({
                           : m.authorKind === "ADMIN"
                             ? "Respuesta del equipo — enviada por correo y visible en hilo"
                             : "Respuesta del cliente"}{" "}
-                        · {dateFmt.format(m.createdAt)}
+                        · {formatDateTimeCO(m.createdAt)}
                       </p>
                       <p className="text-brand-purple-dark/90 mt-1 whitespace-pre-wrap">{m.body}</p>
                     </li>
@@ -243,7 +236,7 @@ export default async function AdminSoporteTicketPage({
                 <p className="text-brand-muted mt-1.5 text-xs">
                   Vencimiento legal:{" "}
                   <strong className="text-brand-purple-dark">
-                    {dateFmt.format(ticket.slaDueAt)}
+                    {formatDateTimeCO(ticket.slaDueAt)}
                   </strong>
                 </p>
               )}

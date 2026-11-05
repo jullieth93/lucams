@@ -35,6 +35,7 @@ import {
   OPPORTUNITY_STAGES,
 } from "@/features/opportunities/schemas";
 import { listOpportunitiesForAdmin } from "@/features/opportunities/service";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Oportunidades B2B y Eventos",
@@ -44,12 +45,6 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ stage?: string; q?: string }>;
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 export default async function AdminOportunidadesPage({
   searchParams,
@@ -297,7 +292,7 @@ export default async function AdminOportunidadesPage({
                         {opp.eventDate && (
                           <span className="inline-flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            Evento: {dateFmt.format(opp.eventDate)}
+                            Evento: {formatDateCO(opp.eventDate)}
                           </span>
                         )}
                         <span>

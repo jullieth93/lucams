@@ -39,6 +39,7 @@ import {
 } from "./actions";
 import { CreateRedirectForm } from "./create-redirect-form";
 import { EditRedirectForm } from "./edit-redirect-form";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Redirects",
@@ -84,12 +85,6 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
 
   const { items, total, totalPages } = await listRedirects({ q, status, sort, page });
   const hasActiveFilters = !!q || status !== "active" || sort !== "recent";
-
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 
   return (
     <AdminPage>
@@ -281,12 +276,12 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
                     {r.hitCount.toLocaleString("es-CO")}
                     {r.lastHitAt && (
                       <div className="text-brand-muted text-[10px]">
-                        último {dateFmt.format(r.lastHitAt)}
+                        último {formatDateCO(r.lastHitAt)}
                       </div>
                     )}
                   </td>
                   <td className="text-brand-muted px-4 py-3 align-top text-xs">
-                    {dateFmt.format(r.createdAt)}
+                    {formatDateCO(r.createdAt)}
                   </td>
                   <td className="px-4 py-3 align-top">
                     <div className="flex flex-wrap items-center justify-end gap-2">

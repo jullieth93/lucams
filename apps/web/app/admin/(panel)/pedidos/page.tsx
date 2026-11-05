@@ -32,6 +32,7 @@ import {
   type OrderListOpts,
 } from "@/features/orders/service";
 import { formatCOP } from "@/lib/format";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Pedidos" };
 
@@ -109,14 +110,6 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
 
   // Contador global de órdenes que necesitan reconciliación (para el banner).
   const reconCount = canReconcile ? await countOrdersNeedingReconciliation() : 0;
-
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 
   return (
     <AdminPage>
@@ -369,7 +362,7 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                       )}
                     </td>
                     <td className="text-brand-muted px-4 py-3 text-xs">
-                      {dateFmt.format(o.createdAt)}
+                      {formatDateTimeCO(o.createdAt)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link

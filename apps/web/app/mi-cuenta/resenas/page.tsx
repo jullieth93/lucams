@@ -12,6 +12,7 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { listReviewsByCustomer } from "@/features/reviews/customer-service";
 import { DeleteReviewButton } from "./delete-review-button";
 import { getAccountTexts } from "../account-texts.server";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Mis reseñas",
@@ -19,12 +20,6 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 export default async function ResenasPage() {
   const session = await getCurrentCustomer();
@@ -109,7 +104,7 @@ export default async function ResenasPage() {
                       />
                     ))}
                     <span className="text-brand-muted ml-2 text-xs">
-                      {dateFmt.format(r.createdAt)}
+                      {formatDateCO(r.createdAt)}
                     </span>
                   </div>
                   <p className="text-brand-purple-dark/85 mt-2 text-sm">{r.comment}</p>

@@ -11,6 +11,7 @@ import { useActionState } from "react";
 import { ShieldCheck, Loader2 } from "lucide-react";
 import { requestWarrantyAction } from "./actions";
 import type { AccountTexts } from "../../account-texts";
+import { formatDateCO } from "@/lib/datetime";
 
 type WarrantyItem = {
   orderItemId: string;
@@ -27,12 +28,6 @@ const STATUS_LABEL: Record<string, string> = {
   RESOLVED: "💜 Garantía resuelta",
   REJECTED: "❌ Garantía rechazada",
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 export function WarrantyControl({
   item,
@@ -125,7 +120,7 @@ export function WarrantyControl({
         />
         {endsAt && (
           <p className="text-brand-muted text-[10px]">
-            {texts.covered.replace("{fecha}", dateFmt.format(endsAt))}
+            {texts.covered.replace("{fecha}", formatDateCO(endsAt))}
           </p>
         )}
         {state?.error && <p className="text-[11px] text-red-700">{state.error}</p>}

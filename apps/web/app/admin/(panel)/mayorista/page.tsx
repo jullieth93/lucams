@@ -36,6 +36,7 @@ import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { deleteWholesaleTierAction, toggleWholesaleTierAction } from "./actions";
 import { CreateTierForm } from "./create-tier-form";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Precios mayoristas (B2B)",
@@ -43,12 +44,6 @@ export const metadata: Metadata = {
 };
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 export default async function AdminMayoristaPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
@@ -176,7 +171,7 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
                         )}
                       </td>
                       <td className="text-brand-muted px-4 py-3 align-top text-xs">
-                        {dateFmt.format(t.createdAt)}
+                        {formatDateCO(t.createdAt)}
                       </td>
                       <td className="px-4 py-3 align-top">
                         <div className="flex flex-wrap items-center justify-end gap-2">

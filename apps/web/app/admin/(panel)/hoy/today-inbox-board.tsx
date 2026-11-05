@@ -22,6 +22,7 @@ import {
 import { AdminBadge, AdminCard } from "@/components/admin-page";
 import { updateCrmTaskStatusAction, type CrmActionState } from "@/features/crm/actions";
 import type { TodayInboxItem, TodayQueueCategory } from "@/features/crm/today-inbox-service";
+import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
 type FilterKey = "ALL" | "MINE" | "URGENT" | TodayQueueCategory;
 
@@ -35,13 +36,6 @@ const CATEGORY_META: Record<
   FINANCE: { label: "Finanzas COD", icon: DollarSign },
   RECOVERY: { label: "Recuperación", icon: TrendingUp },
 };
-
-const shortDateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 type Props = {
   items: TodayInboxItem[];
@@ -228,8 +222,8 @@ function TodayRow({ item }: { item: TodayInboxItem }) {
             >
               <Clock className="h-3 w-3" />
               {item.isOverdue
-                ? `Plazo vencido (${shortDateFmt.format(dueDate)})`
-                : `Plazo objetivo: ${shortDateFmt.format(dueDate)}`}
+                ? `Plazo vencido (${formatDateTimeNoYearCO(dueDate)})`
+                : `Plazo objetivo: ${formatDateTimeNoYearCO(dueDate)}`}
             </p>
           )}
         </div>

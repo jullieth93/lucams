@@ -27,6 +27,7 @@ import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { secureEquals } from "@/lib/timing-safe";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { processTrackingUpdate } from "@/features/orders/saga";
+import { recordShipmentEvents } from "@/features/shipping/shipment-events";
 
 import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
 
@@ -207,6 +208,35 @@ export async function POST(req: Request) {
       orderNumber: result.orderNumber ?? null,
       transitionedTo: result.transitionedTo ?? null,
     });
+
+    // Historial granular del carrier → ShipmentEvent (timeline de /pedido/[token],
+    // 2026-11-04). Best-effort puro (recordShipmentEvents jamás lanza) y dedup
+    // cross-source por minuto, así que no altera la semántica del webhook.
+    if (result.orderNumber) {
+      const orderRow = await prisma.order.findFirst({
+        where: { trackingNumber: event.trackingNumber },
+        select: { id: true },
+      });
+      if (orderRow) {
+        const history =
+          event.history.length > 0
+            ? event.history
+            : [
+                {
+                  status: event.status,
+                  carrierStatusRaw: event.carrierStatusRaw,
+                  description: "",
+                  occurredAt: event.timestamp,
+                },
+              ];
+        await recordShipmentEvents({
+          orderId: orderRow.id,
+          trackingNumber: event.trackingNumber,
+          source: "WEBHOOK",
+          events: history,
+        });
+      }
+    }
   } catch (err) {
     logger.error({
       event: "webhook.aveonline.saga_unexpected_error",

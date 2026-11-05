@@ -43,6 +43,7 @@ import {
   restoreReviewAction,
   toggleFeaturedReviewAction,
 } from "./actions";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Reseñas",
@@ -123,12 +124,6 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
     sort !== "recent" ||
     rating !== undefined ||
     productId !== undefined;
-
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 
   return (
     <AdminPage>
@@ -441,7 +436,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                     </div>
                   </td>
                   <td className="text-brand-muted px-4 py-3 text-xs">
-                    {dateFmt.format(r.createdAt)}
+                    {formatDateCO(r.createdAt)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-end gap-1.5">

@@ -41,6 +41,7 @@ import {
 } from "@/features/orders/cod-reconciliation";
 import { CodRowActions } from "./conciliacion-actions";
 import { CodEnableButton } from "./cod-enable-button";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Conciliación contra entrega",
@@ -61,12 +62,6 @@ const STATUS_META: Record<CodReconStatus, { label: string; tone: "amber" | "emer
   REMITTED: { label: "Remitido", tone: "emerald" },
   DISCREPANCY: { label: "Discrepancia", tone: "rose" },
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 type SearchParams = Promise<{ filter?: string; page?: string }>;
 
@@ -293,7 +288,7 @@ export default async function ConciliacionCodPage({
                       )}
                     </td>
                     <td className="text-brand-muted px-4 py-3 align-top text-xs">
-                      {r.deliveredAt ? dateFmt.format(r.deliveredAt) : "—"}
+                      {r.deliveredAt ? formatDateCO(r.deliveredAt) : "—"}
                     </td>
                     <td className="text-brand-purple-dark px-4 py-3 text-right align-top text-sm font-semibold tabular-nums">
                       {formatCOP(r.expectedAmount)}
@@ -322,7 +317,7 @@ export default async function ConciliacionCodPage({
                       )}
                       {r.remittedAt && (
                         <div className="text-brand-muted text-[10px]">
-                          {dateFmt.format(r.remittedAt)}
+                          {formatDateCO(r.remittedAt)}
                         </div>
                       )}
                     </td>

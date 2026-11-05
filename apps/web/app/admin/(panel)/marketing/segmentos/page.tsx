@@ -35,19 +35,13 @@ import {
   type CrmSegmentKey,
 } from "@/features/crm/segments-service";
 import { ExportSegmentCsvButton } from "./export-segment-button";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Segmentos CRM · Admin",
 };
 
 export const dynamic = "force-dynamic";
-
-const BOGOTA_SHORT_DATE = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  timeZone: "America/Bogota",
-});
 
 const SEGMENT_ICON: Record<CrmSegmentKey, typeof Crown> = {
   vip: Crown,
@@ -320,7 +314,7 @@ export default async function AdminCrmSegmentsPage({
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-700">
                       {member.lastPaidOrderAt
-                        ? BOGOTA_SHORT_DATE.format(member.lastPaidOrderAt)
+                        ? formatDateCO(member.lastPaidOrderAt)
                         : "Sin compra aún"}
                     </td>
                     <td className="px-4 py-3">
@@ -337,7 +331,7 @@ export default async function AdminCrmSegmentsPage({
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-600">
                       <div className="font-medium text-emerald-800">
-                        Opt-in {BOGOTA_SHORT_DATE.format(member.consentAcceptedAt)}
+                        Opt-in {formatDateCO(member.consentAcceptedAt)}
                       </div>
                       <div className="text-[11px] text-slate-400">{member.consentVersion}</div>
                     </td>

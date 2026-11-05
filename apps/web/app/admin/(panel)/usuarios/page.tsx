@@ -37,6 +37,7 @@ import { ADMIN_ROLES_ALL, ADMIN_ROLE_LABEL, isValidAdminRole } from "@/lib/admin
 import { listAdminUsers } from "@/features/admin-users/service";
 import { changeAdminRoleAction, toggleAdminActiveAction } from "./actions";
 import { PromoteForm } from "./promote-form";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Usuarios y acceso",
@@ -140,12 +141,6 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
     page,
   });
   const hasActiveFilters = !!q || status !== "active" || sort !== "recent" || role !== undefined;
-
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 
   return (
     <AdminPage>
@@ -326,7 +321,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                       )}
                     </td>
                     <td className="text-brand-muted px-4 py-3 text-xs">
-                      {dateFmt.format(a.createdAt)}
+                      {formatDateCO(a.createdAt)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center justify-end gap-2">

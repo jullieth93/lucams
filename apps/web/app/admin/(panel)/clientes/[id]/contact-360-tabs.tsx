@@ -18,6 +18,7 @@ import {
 import { AdminBadge, AdminCard, AdminEmpty } from "@/components/admin-page";
 import { formatCOP } from "@/lib/format";
 import type { Contact360Data } from "@/features/identity/contact-360-service";
+import { formatDateCO, formatDateTimeCO } from "@/lib/datetime";
 
 type TabId = "orders" | "studio" | "aftersales" | "loyalty" | "privacy" | "identities";
 
@@ -71,17 +72,6 @@ const OPPORTUNITY_STAGE_TONE: Record<string, "purple" | "blue" | "amber" | "emer
   WON: "emerald",
   LOST: "slate",
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
-
-const dateTimeFmt = new Intl.DateTimeFormat("es-CO", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
@@ -213,7 +203,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                           )}
                         </div>
                         <div className="text-brand-muted mt-0.5 text-xs">
-                          {dateTimeFmt.format(toDate(order.createdAt))}
+                          {formatDateTimeCO(toDate(order.createdAt))}
                         </div>
                       </div>
                       <div className="text-right">
@@ -251,8 +241,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                           {quote.number}
                         </Link>
                         <div className="text-brand-muted text-xs">
-                          {quote.city}, {quote.department} ·{" "}
-                          {dateFmt.format(toDate(quote.createdAt))}
+                          {quote.city}, {quote.department} · {formatDateCO(toDate(quote.createdAt))}
                         </div>
                       </div>
                       <div className="text-right">
@@ -294,7 +283,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                         <div className="text-brand-muted mt-0.5 text-xs">
                           {opp.city ? `${opp.city} · ` : ""}
                           {opp.expectedUnits ? `${opp.expectedUnits} uds. · ` : ""}
-                          {dateFmt.format(toDate(opp.createdAt))}
+                          {formatDateCO(toDate(opp.createdAt))}
                         </div>
                       </div>
                       <div className="text-right">
@@ -346,7 +335,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                           {d.productName}
                         </div>
                         <div className="text-brand-muted font-mono text-[11px]">
-                          {d.id.slice(0, 12)}… · {dateFmt.format(toDate(d.updatedAt))}
+                          {d.id.slice(0, 12)}… · {formatDateCO(toDate(d.updatedAt))}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -389,7 +378,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                         Favorito: {w.productName}
                       </span>
                       <span className="text-brand-muted shrink-0">
-                        {dateFmt.format(toDate(w.createdAt))}
+                        {formatDateCO(toDate(w.createdAt))}
                       </span>
                     </div>
                   ))}
@@ -481,7 +470,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                       </div>
                       <div className="text-brand-muted mt-1 text-xs">
                         {item.orderNumber ? `Pedido ${item.orderNumber} · ` : ""}
-                        {dateTimeFmt.format(toDate(item.createdAt))}
+                        {formatDateTimeCO(toDate(item.createdAt))}
                       </div>
                     </div>
                     <AdminBadge tone="slate">{item.status}</AdminBadge>
@@ -619,7 +608,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                           {CONSENT_SCOPE_LABEL[c.scope] ?? c.scope}
                         </div>
                         <div className="text-brand-muted mt-0.5">
-                          Versión {c.version} · {dateTimeFmt.format(toDate(c.acceptedAt))}
+                          Versión {c.version} · {formatDateTimeCO(toDate(c.acceptedAt))}
                         </div>
                       </div>
                       <AdminBadge tone={!c.accepted || c.isRevoked ? "rose" : "emerald"}>
@@ -709,7 +698,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                       </div>
                       <div className="text-brand-muted mt-1">
                         Fuente: {ident.verificationSource ?? "observado"} · Visto{" "}
-                        {dateTimeFmt.format(toDate(ident.lastSeenAt))}
+                        {formatDateTimeCO(toDate(ident.lastSeenAt))}
                       </div>
                     </div>
                     {ident.verificationStatus === "VERIFIED" ? (

@@ -40,6 +40,7 @@ import {
   submitB2bInquiryAction,
   type B2bPublicActionState,
 } from "@/features/opportunities/actions";
+import { formatIsoDateCO } from "@/lib/datetime";
 
 type Props = {
   waSupportUrl: string;
@@ -81,16 +82,7 @@ export function B2bInquiryForm({
 
   const markTouched = (field: string) => setTouched((prev) => ({ ...prev, [field]: true }));
 
-  const todayIso = useMemo(
-    () =>
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: "America/Bogota",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date()),
-    [],
-  );
+  const todayIso = useMemo(() => formatIsoDateCO(new Date()), []);
 
   const cities = useMemo<DaneCity[]>(
     () => (deptCode ? getCitiesByDeptCode(deptCode) : []),

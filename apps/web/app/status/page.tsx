@@ -25,6 +25,7 @@ import {
   type PublicServiceState,
 } from "@/lib/public-status";
 import { isCatalogMode } from "@/lib/store-mode";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Estado del sitio",
@@ -235,8 +236,7 @@ export default async function StatusPage() {
           </div>
 
           <p className="text-brand-muted mt-6 text-center text-xs">
-            Verificado en tiempo real ·{" "}
-            {new Date().toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" })}
+            Verificado en tiempo real · {formatDateTimeCO(new Date())}
           </p>
         </div>
       </main>

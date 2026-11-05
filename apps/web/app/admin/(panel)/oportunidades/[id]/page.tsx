@@ -36,6 +36,7 @@ import {
   listAssignableOpportunityAdmins,
 } from "@/features/opportunities/service";
 import { OpportunityEditForm } from "./opportunity-edit-form";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Detalle Oportunidad B2B",
@@ -43,12 +44,6 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 export default async function AdminOpportunityDetailPage({
   params,
@@ -105,7 +100,7 @@ export default async function AdminOpportunityDetailPage({
               {OPPORTUNITY_STAGE_LABELS[stage]}
             </AdminBadge>
             <AdminBadge tone="slate">{OPPORTUNITY_EVENT_LABELS[eventType]}</AdminBadge>
-            <span>Creada el {dateFmt.format(opp.createdAt)}</span>
+            <span>Creada el {formatDateCO(opp.createdAt)}</span>
           </span>
         }
         breadcrumbs={[
@@ -160,7 +155,7 @@ export default async function AdminOpportunityDetailPage({
                 {opp.eventDate && (
                   <span className="inline-flex items-center gap-1">
                     <Calendar className="h-3.5 w-3.5" />
-                    Fecha ideal: {dateFmt.format(opp.eventDate)}
+                    Fecha ideal: {formatDateCO(opp.eventDate)}
                   </span>
                 )}
                 {opp.utmSource && (
@@ -276,7 +271,7 @@ export default async function AdminOpportunityDetailPage({
               </h2>
               <p className="text-brand-muted mt-1.5 text-xs">
                 {opp.dataConsentAt
-                  ? `Autorización otorgada el ${dateFmt.format(opp.dataConsentAt)} (${opp.dataConsentVersion ?? "vigente"}).`
+                  ? `Autorización otorgada el ${formatDateCO(opp.dataConsentAt)} (${opp.dataConsentVersion ?? "vigente"}).`
                   : "Registrada internamente."}
               </p>
             </AdminCard>

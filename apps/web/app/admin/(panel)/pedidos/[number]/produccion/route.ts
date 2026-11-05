@@ -28,6 +28,7 @@ import {
   productionPieceGroups,
 } from "@/features/personalization/production-spec";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
+import { formatDateCO } from "@/lib/datetime";
 
 // Descarga N archivos de storage + zip: dar presupuesto (no el default de 15s).
 export const maxDuration = 60;
@@ -245,11 +246,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
   }
 
   // Hoja de armado (armado.png) — no rompe la descarga si falla la composición.
-  const createdAtLabel = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(bundle.createdAt);
+  const createdAtLabel = formatDateCO(bundle.createdAt);
   try {
     const sheet = await composeAssemblySheet({
       orderNumber: bundle.number,

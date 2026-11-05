@@ -37,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listNewsletterSubscribers } from "@/features/newsletter/admin-service";
 import { ExportSubscribersCsvButton } from "./export-csv-button";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Suscriptores del newsletter",
@@ -74,12 +75,6 @@ export default async function AdminSuscriptoresPage({
     page,
   });
   const hasActiveFilters = !!q || status !== "all";
-
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 
   return (
     <AdminPage>
@@ -205,10 +200,10 @@ export default async function AdminSuscriptoresPage({
                     )}
                   </td>
                   <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">
-                    {s.subscribedAt ? dateFmt.format(s.subscribedAt) : "—"}
+                    {s.subscribedAt ? formatDateCO(s.subscribedAt) : "—"}
                   </td>
                   <td className="text-brand-muted px-4 py-3 text-xs">
-                    {s.unsubscribedAt ? dateFmt.format(s.unsubscribedAt) : "—"}
+                    {s.unsubscribedAt ? formatDateCO(s.unsubscribedAt) : "—"}
                   </td>
                   <td className="text-brand-muted px-4 py-3 text-xs">{s.version ?? "—"}</td>
                 </AdminTableRow>

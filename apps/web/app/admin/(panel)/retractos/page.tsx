@@ -19,6 +19,7 @@ import {
   AdminEmpty,
 } from "@/components/admin-page";
 import { RetractActions } from "./retract-actions";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Retractos" };
 
@@ -46,12 +47,6 @@ const FILTERS: Array<{ key: string; label: string }> = [
   { key: "REJECTED", label: "Rechazados" },
   { key: "all", label: "Todos" },
 ];
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 export default async function AdminRetractosPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await requireRole(ADMIN_ROLE_SETS.SUPPORT_CARE);
@@ -133,7 +128,7 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
                   )}
                   <p className="text-brand-muted text-xs">
                     {r.customerEmail} · solicitado{" "}
-                    <span title={dateFmt.format(r.requestedAt)}>
+                    <span title={formatDateCO(r.requestedAt)}>
                       {formatRelativeTime(r.requestedAt)}
                     </span>
                   </p>

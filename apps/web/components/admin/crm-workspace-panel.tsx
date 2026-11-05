@@ -51,6 +51,7 @@ import {
   updateCrmTaskStatusAction,
   type CrmActionState,
 } from "@/features/crm/actions";
+import { formatDateCO, formatDateTimeCO } from "@/lib/datetime";
 
 export type CrmActivityItemProps = {
   id: string;
@@ -99,20 +100,6 @@ type Props = {
   assignableAdmins: CrmAssignableAdminOption[];
   compact?: boolean;
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-const shortDateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 function toDate(val: Date | string | null | undefined): Date | null {
   if (!val) return null;
@@ -525,7 +512,7 @@ export function CrmWorkspacePanel({
                       </div>
                       {createdAt && (
                         <span className="text-brand-muted text-[11px]">
-                          {dateFmt.format(createdAt)}
+                          {formatDateTimeCO(createdAt)}
                         </span>
                       )}
                     </div>
@@ -617,8 +604,8 @@ function TaskRow({
                   <CalendarClock className="h-3 w-3" />
                 )}
                 {isOverdue
-                  ? `Vencida (${shortDateFmt.format(dueDate)})`
-                  : `Vence ${shortDateFmt.format(dueDate)}`}
+                  ? `Vencida (${formatDateCO(dueDate)})`
+                  : `Vence ${formatDateCO(dueDate)}`}
               </span>
             )}
             <span>
