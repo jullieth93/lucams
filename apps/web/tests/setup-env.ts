@@ -52,3 +52,12 @@ if (existsSync(envPath)) {
 if (shellStoreMode === undefined) {
   process.env.NEXT_PUBLIC_STORE_MODE = "full";
 }
+
+// Kill-switch de email (incidente 2026-11-05): `.env.local` trae RESEND_API_KEY viva y
+// la suite de integración enviaba correos REALES por Resend en cada corrida (pedidos de
+// test "Lucia Perez" + notificación admin "Nuevo pedido" al buzón real). La suite JAMÁS
+// debe emitir correo real; lib/resend.ts lo respeta. Un test puntual del path real lo
+// apaga con vi.stubEnv("EMAIL_SEND_DISABLED", undefined) (lib/resend.test.ts).
+if (process.env.EMAIL_SEND_DISABLED === undefined) {
+  process.env.EMAIL_SEND_DISABLED = "1";
+}

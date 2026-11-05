@@ -155,6 +155,22 @@ async function attemptSend(
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
+  // KILL-SWITCH de ambientes no productivos (incidente 2026-11-05 — spam "Nuevo pedido
+  // LCM-2026-0002 · Lucia Perez · $1.150" al buzón real): `.env.local` trae una
+  // RESEND_API_KEY VIVA, así que cada corrida de la suite de integración local enviaba
+  // correos REALES por Resend (confirmaciones de pedidos de test + notificación admin
+  // "Nuevo pedido"). La suite fija EMAIL_SEND_DISABLED=1 (tests/setup-env.ts); producción
+  // y el dev diario no la llevan. Un test que necesite el path real la desactiva con
+  // vi.stubEnv (ver lib/resend.test.ts).
+  if (process.env.EMAIL_SEND_DISABLED === "1") {
+    logger.info({
+      event: "email.send.disabled_by_env",
+      to: Array.isArray(input.to) ? input.to.join(",") : input.to,
+      subject: input.subject,
+    });
+    return { sent: false, reason: "disabled-by-env", skipped: true };
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const fromDefault = process.env.EMAIL_FROM ?? `${SITE_NAME} <onboarding@resend.dev>`;
   const from = input.from ?? fromDefault;
