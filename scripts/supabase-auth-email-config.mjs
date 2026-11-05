@@ -2,7 +2,7 @@
 /*
  * Configura los EMAILS DE AUTENTICACIÓN de un proyecto Supabase cloud (STG o PRD):
  *   1. SMTP custom vía Resend (para que los correos salgan de
- *      "Lucams_shop <hola@mail.lucamsshop.com>" y no de
+ *      "Lucams Shop <hola@mail.lucamsshop.com>" y no de
  *      "Supabase Auth <noreply@mail.app.supabase.io>").
  *   2. Plantillas branded en español con el código OTP visible
  *      (supabase/auth-templates/*.html) — antes llegaba la plantilla genérica
@@ -62,15 +62,15 @@ const body = {
   smtp_user: "resend",
   smtp_pass: resendKey,
   smtp_sender: "hola@mail.lucamsshop.com",
-  smtp_sender_name: "Lucams_shop",
+  smtp_sender_name: "Lucams Shop",
   // OJO: en gotrue el From real sale de AdminEmail, no de smtp_sender — debe ser
   // el buzón del dominio verificado (@mail.lucamsshop.com), si no Resend rechaza.
   smtp_admin_email: "hola@mail.lucamsshop.com",
   // Estaba en 2/hora (bloqueaba registros reales); 30/hora es el default sano.
   rate_limit_email_sent: 30,
-  mailer_subjects_confirmation: "Tu código de confirmación 💜 Lucams_shop",
+  mailer_subjects_confirmation: "Tu código de confirmación 💜 Lucams Shop",
   mailer_templates_confirmation_content: confirmation,
-  mailer_subjects_recovery: "Tu código para restablecer tu contraseña — Lucams_shop",
+  mailer_subjects_recovery: "Tu código para restablecer tu contraseña — Lucams Shop",
   mailer_templates_recovery_content: recovery,
 };
 

@@ -15,19 +15,15 @@
  *   - auth.admin.(createUser|deleteUser|updateUserById|mfa.deleteFactor)
  *     (escrituras vía Supabase Admin API, ej. admin-mfa-reset)
  *
- * Alcance: packages/db/scripts (raíz y one-shot/, recursivo). EXCEPTO:
+ * Alcance: packages/db/scripts (raíz y subcarpetas, recursivo). EXCEPTO:
  *   - lib/ (módulos importados por los entrypoints, no scripts ejecutables) y
  *   - *.test.mjs (tests del runner nativo).
  *
- * ALLOWLIST (PRD-deliberado — su caso de uso ES correr contra PRD; ya tienen
- * dry-run por defecto + `--apply` y la justificación en su header):
- *   - one-shot/update-public-content-20260911.mjs
- *   - one-shot/update-production-days-20260911.mjs
- *   - one-shot/publish-legal-v5-20260911.mjs
- *   - one-shot/publish-legal-v1-20260929.mjs
- *   - one-shot/publish-legal-v2-20261102.mjs
- * Agregar a la allowlist exige editar ESTE archivo (dif visible en PR) con la
- * misma justificación en el header del script exento.
+ * ALLOWLIST (PRD-deliberado — scripts cuyo único caso de uso sea correr contra
+ * PRD con dry-run por defecto + `--apply` y justificación explícita en su header).
+ * Vacía tras retirar `scripts/one-shot/`; los scripts permanentes que sincronizan
+ * hacia PRD (`sync-catalog-stg-to-prd.mjs`, `sync-gallery-stg-to-prd.mjs`) importan
+ * `env-guard.mjs` y exigen `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` en `--apply`.
  *
  * Uso:
  *   node scripts/lib/check-script-guards.mjs    # exit 1 lista los infractores
@@ -40,54 +36,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(HERE, "..");
 
-const ALLOWLIST_PRD_DELIBERADO = new Set([
-  "one-shot/update-public-content-20260911.mjs",
-  "one-shot/update-production-days-20260911.mjs",
-  "one-shot/publish-legal-v5-20260911.mjs",
-  "one-shot/publish-legal-v1-20260929.mjs",
-  // 2026-11-02 — publica la política de garantía modular, actualiza el CMS y
-  // deja el catálogo en su nuevo plazo predeterminado de 1 mes. Corre en los
-  // tres ambientes tras migrar el snapshot de las órdenes; dry-run + --apply.
-  "one-shot/publish-legal-v2-20261102.mjs",
-  // 2026-10-21 — republica la copia rural del checkout cuyo default cambió con la
-  // dirección estructurada (la copia vieja contradice la validación desplegada);
-  // su caso de uso ES correr en los 3 ambientes incl. PRD.
-  "one-shot/republish-checkout-rural-copy-20261021.mjs",
-  // 2026-10-22 — reduce frameOptions a blanco/negro en Polaroid y Tiras
-  // Magnéticas (decisión owner); su caso de uso ES correr en los 3 ambientes
-  // incl. PRD (dry-run por defecto + --apply, schema fusionado).
-  "one-shot/frame-options-binary-20261022.mjs",
-  "one-shot/shipping-carrier-rules-20261022.mjs",
-  // 2026-10-27 — Cuadrados: paleta binaria + descripción alineada, y plantilla
-  // sin capa de texto (decisión owner); mismo patrón PRD-deliberado de
-  // frame-options-binary-20261022 (dry-run por defecto + --apply).
-  "one-shot/frame-options-binary-cuadrados-20261027.mjs",
-  "one-shot/cuadrados-sin-texto-20261027.mjs",
-  // 2026-10-29 — habilita el slider «Grosor del borde» (ADR-173) en Tiras
-  // Magnéticas y lo deja canónico en Cuadrados (decisión owner); mismo patrón
-  // PRD-deliberado (dry-run por defecto + --apply, schema fusionado).
-  "one-shot/border-width-tiras-cuadrados-20261029.mjs",
-  // 2026-10-29 — republica 2 textos del Estudio cuyo default cambió con la
-  // jornada ADR-178 (cal-banner-hint sin «·» huérfano; thumb-arrastrar con el
-  // tap-to-assign); mismo patrón de republish-checkout-rural-copy-20261021.
-  "one-shot/republish-estudio-texts-20261029.mjs",
-  // 2026-11-01 — unifica preparación/tránsito como estimaciones en CMS y
-  // términos. Se ejecuta en STG ahora; queda preparado para PRD solo tras
-  // aprobación del owner (dry-run default + historial CMS reversible).
-  "one-shot/republish-delivery-estimates-20261101.mjs",
-  // 2026-10-29 — cierra el drift STG→PRD de la variante SEP-MAG-2X6-5
-  // (`magnet: true` ausente en PRD; sync de contenido ADR-126).
-  "one-shot/sync-variant-magnet-attr-20261029.mjs",
-  // 2026-10-29 — homologación STG→PRD de los 3 drifts de contenido (decisión
-  // owner: STG manda): zonas Envío Lucams sin «bosa», Cuadrados borderWidth
-  // max 2, S-128 inactiva. Dry-run por defecto + --apply.
-  "one-shot/homologate-prd-to-stg-20261029.mjs",
-  // 2026-11-03 — Tiras Magnéticas a sus medidas reales vigentes (decisión
-  // owner: 3 fotos 5×15, 4 fotos 5×16.5): variantes, schema, plantillas y copy.
-  // Su caso de uso ES correr en los 3 ambientes incl. PRD (dry-run por
-  // defecto + --apply, schemas fusionados).
-  "one-shot/tiras-nuevas-medidas-20261103.mjs",
-]);
+const ALLOWLIST_PRD_DELIBERADO = new Set();
 
 const WRITE_RE =
   /(?:prisma|tx|db)\.[a-zA-Z_$][\w$]*\.(?:create|update|delete|upsert|deleteMany|updateMany|createMany|createManyAndReturn)\b|\$executeRaw|auth\.admin\.(?:createUser|deleteUser|updateUserById|mfa\.deleteFactor)/;

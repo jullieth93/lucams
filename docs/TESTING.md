@@ -1,916 +1,776 @@
-# Testing — Lucams_shop
+# Estrategia y Suites de Pruebas — Lucams Shop
 
-> Estrategia de pruebas. Qué probamos, con qué herramienta, qué cubrimos manualmente y qué no probamos. Sin pruebas, no hay productivo.
+> **Documento vivo de Nivel 1 ([`README.md`](README.md)).** Define con exactitud la pirámide de pruebas, las guardas de seguridad e higiene del entorno (`EMAIL_SEND_DISABLED=1`, bloqueo duro anti-PRD y limpieza determinista), la regla Mock vs Real, los patrones con código real de cada capa (Vitest unit, RTL, `node --test`, integración PostgreSQL, matriz RLS y Playwright E2E), el inventario 1:1 de los **55 archivos `.spec.ts`**, las pruebas de carga/rendimiento y los workflows de certificación en GitHub Actions.
 
 ## Tabla de contenido
 
-1. [Pirámide de pruebas](#pirámide-de-pruebas)
-2. [Stack](#stack)
-3. [Convenciones](#convenciones)
-4. [Mock vs real](#mock-vs-real)
-5. [Tests unitarios (Vitest)](#tests-unitarios-vitest)
-6. [Tests de integración](#tests-de-integración)
-7. [Tests de RLS](#tests-de-rls)
-8. [Tests E2E (Playwright)](#tests-e2e-playwright)
-9. [Visual regression](#visual-regression)
-10. [Accesibilidad automatizada](#accesibilidad-automatizada)
-11. [Performance / load testing](#performance--load-testing)
-12. [Smoke tests post-deploy](#smoke-tests-post-deploy)
-13. [Tests de seguridad](#tests-de-seguridad)
-14. [CI workflow](#ci-workflow)
-15. [Coverage targets](#coverage-targets)
-16. [Tests que NO escribimos](#tests-que-no-escribimos)
+1. [Pirámide de pruebas, stack y convenciones](#1-pirámide-de-pruebas-stack-y-convenciones)
+2. [Guardas innegociables del entorno (`EMAIL_SEND_DISABLED=1`, anti-PRD y teardown)](#2-guardas-innegociables-del-entorno-email_send_disabled1-anti-prd-y-teardown)
+3. [Regla de oro Mock vs Real, suites `*.live.test.ts` y anti-patrones prohibidos](#3-regla-de-oro-mock-vs-real-suites-livetestts-y-anti-patrones-prohibidos)
+4. [Comandos maestros de verificación](#4-comandos-maestros-de-verificación)
+5. [Pruebas unitarias, componentes RTL y scripts de DB (ejemplos reales 1, 2 y 3)](#5-pruebas-unitarias-componentes-rtl-y-scripts-de-db-ejemplos-reales-1-2-y-3)
+6. [Pruebas de integración contra PostgreSQL real (ejemplo real 4)](#6-pruebas-de-integración-contra-postgresql-real-ejemplo-real-4)
+7. [Pruebas reales de cobertura y matriz de seguridad RLS (ejemplo real 5)](#7-pruebas-reales-de-cobertura-y-matriz-de-seguridad-rls-ejemplo-real-5)
+8. [Pruebas End-to-End con Playwright e inventario 55/55 (ejemplo real 6)](#8-pruebas-end-to-end-con-playwright-e-inventario-5555-ejemplo-real-6)
+9. [Carga k6, Lighthouse CI, perfilado CDP del Estudio y arquitectura CI/CD](#9-carga-k6-lighthouse-ci-perfilado-cdp-del-estudio-y-arquitectura-cicd)
 
 ---
 
-## Pirámide de pruebas
+## 1. Pirámide de pruebas, stack y convenciones
 
-```
-        ╱─────────╲
-       ╱   E2E    ╲     ~10% — caros, lentos, frágiles. Solo flujos críticos.
-      ╱  smoke +   ╲
-     ╱  visual reg.  ╲
-    ╱─────────────────╲
-   ╱  Integración +    ╲   ~30% — service ↔ DB real, RLS, webhook signature
-  ╱       RLS           ╲
- ╱───────────────────────╲
-╱   Unit (puros, fast)    ╲   ~60% — service.ts mockeado, formatters, validators
-─────────────────────────────
+```text
+          ╱─────────────────────────────╲
+         ╱  Playwright E2E (55 specs) +  ╲   Flujos críticos, MFA TOTP, a11y (axe),
+        ╱   k6 + Lighthouse + CDP Studio  ╲  responsive en 6 perfiles y sandbox Wompi
+       ╱───────────────────────────────────╲
+      ╱   Integración PostgreSQL real (83)  ╲  Sagas, concurrencia, webhooks, Storage,
+     ╱    + Cobertura y Matriz RLS real      ╲ GoTrue OTP/MFA y deriva Prisma ↔ SQL
+    ╱─────────────────────────────────────────╲
+   ╱  Unitarias, componentes RTL y gates AST   ╲ Reglas en centavos COP, Zod v4, HMAC,
+  ╱     (Vitest 4 en web + node --test en db)   ╲ paridad CMS 166/166, textos legales y guards
+ ╱───────────────────────────────────────────────╲
 ```
 
-**Principio:** la base es ancha (rápida, barata) y la cima es estrecha (lenta, valiosa). Si el unit cubre 90% de la lógica, los E2E solo necesitan validar flujos.
+### Stack vigente por capa
+
+| Capa                                  | Herramienta real en el monorepo                                         | Propósito técnico                                                                        |
+| ------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Unitarias e integración en `apps/web` | **Vitest 4** (`vitest@^4.1.12`) + `@vitest/coverage-v8`                 | Ejecución ESM/TS nativa en entorno `node` y umbrales por _ratchet_                       |
+| Componentes interactivos React 19     | **Vitest + `@testing-library/react`** (`jsdom` por archivo)             | Queries accesibles por rol/etiqueta sobre Client Components                              |
+| Guardas y utilidades de `@lucams/db`  | **Runner nativo `node --test`** (Node 22)                               | Certifica `env-guard.mjs` y helpers de `packages/db/scripts/lib/` sin dependencias extra |
+| Base de datos, Auth y RLS real        | **Supabase local en Podman** (local) / **Supabase CLI localstack** (CI) | Valida transacciones, triggers, índices parciales, GoTrue, Storage y RLS real            |
+| Interceptación HTTP de terceros       | **`vi.stubGlobal("fetch", ...)`** por prueba (sin MSW)                  | Aísla pasarelas y APIs externas sin alterar el código de producción                      |
+| Navegador End-to-End                  | **Playwright** (`apps/web/playwright.config.ts`)                        | Multi-viewport, multi-navegador, trazas en fallos y bypass de Staging                    |
+| Accesibilidad automatizada            | **`@axe-core/playwright`** + `apps/web/tests/a11y-contrast.test.ts`     | Gate estricto WCAG 2.1 A/AA (`0` violaciones `serious`/`critical`) y contraste de paleta |
+| Rendimiento, Web Vitals y carga       | **Lighthouse CI** (desktop + móvil), **k6** y **Playwright + CDP**      | Presupuestos sobre build productivo, rampa de 50 VUs y longtasks del Estudio             |
+
+### Convenciones de naming y estructura AAA
+
+| Patrón de archivo              | Ubicación                                                             | Qué prueba y dónde corre                                                                                                   |
+| ------------------------------ | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `<modulo>.test.ts`             | Junto al archivo bajo prueba en `apps/web/**`                         | Lógica pura, validadores Zod v4, firmas criptográficas, servicios con dependencias externas aisladas y gates estáticos AST |
+| `<componente>.test.tsx`        | Junto al componente (`// @vitest-environment jsdom` en línea 1)       | Renderizado, accesibilidad e interacciones de hojas `"use client"`                                                         |
+| `<modulo>.integration.test.ts` | Junto a la feature (`apps/web/**`) — **83 suites**                    | Consultas Prisma reales, sagas, concurrencia, webhooks, Storage y RLS contra PostgreSQL/Supabase                           |
+| `<proveedor>.live.test.ts`     | `lib/wompi.live.test.ts`, `features/shipping/aveonline*.live.test.ts` | Smokes no destructivos contra sandboxes externos reales (`skipIf` automático sin credenciales sandbox)                     |
+| `<helper>.test.mjs`            | `packages/db/scripts/lib/*.test.mjs` — **6 suites**                   | Guardas fail-closed de scripts operativos (`pnpm --filter @lucams/db test`)                                                |
+| `<flujo>.spec.ts`              | `apps/web/tests/e2e/` — **55 specs**                                  | Recorridos completos de navegador en local, `:4100`, Staging o smoke de solo lectura                                       |
+
+- **Estructura _Arrange – Act – Assert_ (AAA):** prepara datos explícitos sin magia compartida (_Arrange_), invoca una única acción observable (_Act_) y verifica el estado resultante o efecto persistido (_Assert_). Con `globals: false` en `vitest.config.ts`, importa siempre `describe`, `it`, `expect`, `vi`, `beforeEach` y `afterAll` explícitamente desde `"vitest"`.
+- **Qué pruebas NO escribimos:** no testeamos internals privados de Next.js, Prisma o Supabase; no escribimos snapshots de objetos JSON gigantes; no mockeamos funciones puras internas; y no duplicamos un spec E2E por cada producto del catálogo cuando las variantes están cubiertas en unit/integración.
 
 ---
 
-## Stack
+## 2. Guardas innegociables del entorno (`EMAIL_SEND_DISABLED=1`, anti-PRD y teardown)
 
-| Capa                      | Herramienta                                                                                                                     | Por qué                                                                  |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Unit + integración rápida | **Vitest**                                                                                                                      | Rápido, ESM-native, compatible con TS, mejor DX que Jest                 |
-| Component (React)         | **Vitest + Testing Library**                                                                                                    | Idem + RTL para query semántico                                          |
-| E2E navegador             | **Playwright**                                                                                                                  | Soporta multi-browser, autoespera, generación de codegen, paralelización |
-| Visual regression         | **Playwright screenshots** + comparación Pixelmatch                                                                             | Suficiente sin pagar Chromatic/Percy en MVP                              |
-| Performance               | **Lighthouse CI** + **k6** (load testing)                                                                                       | Lighthouse para web vitals, k6 para load API                             |
-| Accesibilidad             | **`@axe-core/playwright`** (helper `tests/e2e/_helpers/axe-scan.ts`) + test propio de contraste (`tests/a11y-contrast.test.ts`) | Automatiza WCAG 2.1 AA                                                   |
-| Mocking de red            | **`vi.stubGlobal("fetch", ...)`** por test (MSW no está instalado)                                                              | Intercepta fetch sin tocar el código bajo test                           |
-| DB tests (RLS)            | **Supabase local** + Vitest                                                                                                     | DB real, no mock, único modo de validar RLS                              |
+### Protecciones en `apps/web/tests/setup-env.ts`
 
----
+Vitest carga `apps/web/tests/setup-env.ts` antes de ejecutar cualquier worker e impone tres barreras obligatorias:
 
-## Convenciones
-
-### Naming
-
-- Archivos: `*.test.ts` o `*.test.tsx` al lado del archivo bajo test (vitest los recoge en cualquier ubicación de `apps/web` — ver `vitest.config.ts`).
-- E2E: `apps/web/tests/e2e/<flujo>.spec.ts` (helpers en `tests/e2e/_helpers/`, setup de ambiente en `tests/e2e/_setup/`).
-- Bloques: `describe('Service: createOrder', ...)`, `it('rejects invalid email', ...)`.
-- Mensajes en presente, en español es OK: `it('rechaza email inválido', ...)`.
-
-### Estructura
-
-```
-features/checkout/
-├── service.ts
-├── service.test.ts          # Unit (con repo mockeado)
-├── service.integration.test.ts  # Integración (DB real)
-├── repository.ts
-├── repository.test.ts       # DB real, transacciones rollbackeadas
-└── components/
-    └── checkout-form.tsx
-    └── checkout-form.test.tsx   # Component (RTL)
-```
-
-### Hooks comunes
-
-El setup real de la suite (no hay MSW):
-
-- `tests/setup-env.ts` (`setupFiles`): carga `.env.local` vía dotenv sin pisar vars de shell (la shell/CI manda) y fija `NEXT_PUBLIC_STORE_MODE=full` si la shell no la trae.
-- `tests/vitest-global-teardown.ts` (`globalSetup`): tras TODA la suite, purga suave por patrón de test (slugs/emails con run-id o prefijo conocido) sin tocar el catálogo sembrado.
-- Mocking de red: `vi.stubGlobal("fetch", ...)` dentro de cada test que pega a una API externa.
-
----
-
-## Mock vs real
-
-### Regla de oro
-
-> **Mock cuando el dependiente cuesta dinero, lentitud o flakiness. Real en todo lo demás.**
-
-| Dependencia                                             | Estrategia                                            | Razón                                                    |
-| ------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------- |
-| **Postgres**                                            | Real (Supabase local)                                 | RLS, transacciones y pg_cron solo se validan con DB real |
-| **Wompi API**                                           | `vi.stubGlobal("fetch", ...)` con respuestas grabadas | Cuenta de costo + sandbox lento                          |
-| **Aveonline API**                                       | `vi.stubGlobal("fetch", ...)`                         | Idem                                                     |
-| **Anthropic API**                                       | `vi.stubGlobal("fetch", ...)`                         | Costo + lentitud + variabilidad de respuesta IA          |
-| **Resend API**                                          | `vi.stubGlobal("fetch", ...)`                         | Costo del free tier                                      |
-| **Supabase Storage**                                    | Real (Supabase local)                                 | Validar URL firmada, MIME, etc.                          |
-| **Supabase Auth**                                       | Real (Supabase local)                                 | Sesiones, MFA, etc.                                      |
-| **Lib internas** (`lib/cart.ts`, `lib/format.ts`, etc.) | Sin mock — funciones puras                            | Mock de funciones puras es antipatrón                    |
-| **Repository**                                          | Mock en unit, real en integración                     | Permite separar lógica de dominio de infraestructura     |
-
-### Anti-patrones a evitar
-
-- **Mockear lo que estás probando.** Si `service.ts` llama a `repository.ts` y mockeas el repo en `service.test.ts`, OK. Si en `repository.test.ts` mockeas Prisma → no hay test real, hay test del mock.
-- **Mockear funciones puras.** No tiene sentido. Llámalas directo.
-- **Snapshots gigantes.** Frágiles y nadie los lee. Usar assertions explícitas en campos importantes.
-
----
-
-## Tests unitarios (Vitest)
-
-### Qué cubrimos
-
-- `lib/format.ts` (formatCOP, fechas, etc.)
-- `lib/wompi.ts` — cálculo de firma de integridad y verificación de webhook
-- Defensa CSRF por header `Origin` en `proxy.ts` (`isOriginAllowed` sobre `/api/*`; las Server Actions son inmunes por SameSite=Lax)
-- Idempotencia por feature (ej. `features/quotes/idempotency.test.ts`) — cache hit/miss/conflict
-- `lib/safe-redirect.ts` — `safeRedirectTarget` (open redirect prevention)
-- `lib/retry.ts`, `lib/circuit-breaker.ts`
-- `features/<feature>/schemas.ts` — schemas Zod (casos válidos e inválidos)
-- `features/<feature>/service.ts` — toda la lógica de dominio con repo mockeado
-- **Remediación 360° (2026-09-11/12):** `lib/integration-health.test.ts` + `lib/wompi-health.test.ts` + `lib/public-status.test.ts` (probes reales del panel `/admin/integraciones` y `/status`), `lib/cookie-consent.test.ts` (re-consent por `policyVersion`), `features/observability/alerts.test.ts` (`email_bounce_rate`, `backup_stale`, semántica `pending_payment_wompi_stale`), `features/orders/expire-pending.integration.test.ts` + `emails.integration.test.ts` + `webhook-seal.integration.test.ts` (expiración 24h, order-payment-declined con cooldown, order-returned, sello de WebhookEvent), `features/support/admin-service.test.ts` (support-ticket-closed), `features/personalization/template-visibility.test.ts` + `templates.integration.test.ts` (`?template=` y filtro EDITABLE)
-
-### Tests de los scripts de DB (`node --test`)
-
-Los helpers de `packages/db/scripts/lib/` se testean con el runner nativo de Node (no vitest):
-`pnpm --filter @lucams/db test` → `node --test "scripts/lib/*.test.mjs"` — cubre
-`env-guard.test.mjs` (clasificación fail-closed de hosts), `zombie-settings.test.mjs` (la lista de
-settings zombi es exacta y ninguna vuelve al site map) y `test-coupon-signal.test.mjs` (el regex de
-cupones de test atrapa todas las señales de suite). **Corren en CI** (A10-06, remediación R3
-2026-09-26): paso propio del job `quality` — antes estaban fuera de todo pipeline y una regresión
-del env-guard (lo que protege PRD de un script destructivo) pasaba invisible. El **lint de guards**
-se corre a mano con `make audit-script-guards` y también es gate del job `quality`
-(`scripts/lib/check-script-guards.mjs`: todo script que escribe en DB debe importar `env-guard.mjs`).
-
-### Ejemplo
+1. **`EMAIL_SEND_DISABLED=1` por defecto (cero spam hacia buzones reales):**
+   - Si la shell no define `EMAIL_SEND_DISABLED`, `setup-env.ts` lo fija en `"1"`, activando el kill-switch de `apps/web/lib/resend.ts`. Ninguna corrida local o de CI envía correos reales ni genera rebotes hacia `hola@lucamsshop.com`, aunque `.env.local` tenga una `RESEND_API_KEY` activa.
+   - Solo `apps/web/lib/resend.test.ts` limpia temporalmente la variable con `vi.stubEnv("EMAIL_SEND_DISABLED", undefined)` sobre un `fetch` interceptado para ejercitar el cliente HTTP. En paralelo, `scripts/e2e-fullmode.sh` levanta el servidor `:4100` con `RESEND_API_KEY=` vacío.
+2. **Bloqueo duro anti-Producción sin _escape hatch_:**
+   - Evalúa `checkDestructiveAllowed()` (`packages/db/scripts/lib/env-guard.mjs`) antes del primer test y **lanza excepción inmediata si `!guard.allowed || guard.bypassed`**.
+   - Aunque alguien exportara `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` en su terminal, Vitest rechaza correr contra `PRD` (`zxkucphbsfygakgxcnik`) o cualquier host remoto distinto de local/STG, impidiendo crear órdenes fantasma o consumir numeración `LCM-YYYY-NNNN` productiva.
+3. **Modo transaccional completo:** si la shell no define `NEXT_PUBLIC_STORE_MODE`, lo fuerza a `"full"` para ejercitar carrito, checkout, cupones, pagos y envíos sin bloqueos de `stage-guard.ts`.
 
 ```ts
-// lib/wompi.test.ts
-import { describe, it, expect } from "vitest";
-import { generateIntegritySignature } from "./wompi";
+// Extracto real de apps/web/tests/setup-env.ts
+import { checkDestructiveAllowed } from "../../../packages/db/scripts/lib/env-guard.mjs";
 
-describe("Wompi integrity signature", () => {
-  it("genera SHA256 correcto del concatenado", () => {
-    const sig = generateIntegritySignature({
-      reference: "REF-123",
-      amountInCents: 1500000,
-      currency: "COP",
-    });
-    expect(sig).toBe("e8a4f..."); // valor pre-calculado
-  });
+const guard = checkDestructiveAllowed();
+if (!guard.allowed || guard.bypassed) {
+  throw new Error(
+    `[setup-env] SUITE ABORTADA: las pruebas de vitest NO pueden correr contra este destino. ` +
+      `${guard.reason || "destino bloqueado"} ` +
+      `Apunta DATABASE_URL/DIRECT_URL al Supabase local (make db-local-start) o a STG.`,
+  );
+}
 
-  it("valor distinto si cambia un solo carácter", () => {
-    const a = generateIntegritySignature({
-      reference: "REF-123",
-      amountInCents: 1500000,
-      currency: "COP",
+if (process.env.NEXT_PUBLIC_STORE_MODE === undefined) {
+  process.env.NEXT_PUBLIC_STORE_MODE = "full";
+}
+
+if (process.env.EMAIL_SEND_DISABLED === undefined) {
+  process.env.EMAIL_SEND_DISABLED = "1";
+}
+```
+
+### Limpieza determinista en `apps/web/tests/vitest-global-teardown.ts` y regla `scrubPii`
+
+- **Cómo opera el teardown global:** cada suite `*.integration.test.ts` etiqueta sus registros con un `RUN` único y limpia sus propias filas en `afterAll`. Como red de seguridad ante timeouts o fallos a mitad de corrida, `vitest-global-teardown.ts` se ejecuta en el **proceso principal** de Vitest (cargando `.env.local` por su cuenta porque `setupFiles` solo corren en los workers), verifica `checkDestructiveAllowed()` y barre **únicamente patrones sintéticos de prueba**:
+  - Catálogo de test (`Product`, `Category`, `OcasionTag`, `ProductVariant`, `PersonalizationTemplate`): soft-delete (`deletedAt = NOW()`, `isActive = false`) solo cuando el `slug` o `sku` coincide con `[0-9]{13,}`, `test-%` o `itest%`. **El catálogo y el CMS sembrados jamás se tocan.**
+  - Datos transaccionales de test (`Order`, `Customer`, `Contact`, `Coupon`, `SupportTicket`, etc.): limpieza selectiva cuando el identificador/correo contiene un `run-id` numérico de 15+ dígitos (`[0-9]{15,}`) o dominios sintéticos de prueba.
+- **Regla obligatoria anti-colisión con `scrubPii`:** en suites que insertan en tablas sanitizadas por `scrubPii` (`ErrorLog` y `ErrorReport` vía `lib/error-capture.ts`), el identificador `RUN` **nunca debe contener secuencias de 10+ dígitos**, porque `scrubPii` las enmascara como teléfonos colombianos al guardar y el `DELETE` del `afterAll` ya no encuentra la fila. Convierte siempre los dígitos a letras (`String(Date.now()).replace(/[0-9]/g, (d) => String.fromCharCode(65 + Number(d)))`).
+
+---
+
+## 3. Regla de oro Mock vs Real, suites `*.live.test.ts` y anti-patrones prohibidos
+
+> **Regla de oro:** usa infraestructura **real** para todo lo que define integridad de datos, concurrencia y seguridad (PostgreSQL, constraints, triggers, Auth, Storage, RLS); intercepta **únicamente** proveedores HTTP externos que cuestan dinero, tienen efectos laterales fuera de nuestro control o introducen latencia/flakiness de terceros.
+
+| Dependencia                                                                                        | Estrategia obligatoria                                                                                            | Dónde y cómo se aplica                                                      |
+| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **PostgreSQL + Prisma (`@lucams/db`)**                                                             | Mock solo en unit puros de dominio; **100 % real** en `*.integration.test.ts`                                     | Stack local Podman (`make test-local`) y contenedor `postgres:15` en CI     |
+| **Políticas RLS, `REVOKE` y triggers DDL**                                                         | **100 % real (prohibido mockear)**                                                                                | `make test-rls` contra Supabase completo (PostgREST + GoTrue + Storage)     |
+| **Supabase Auth (OTP, sesiones, MFA `aal2`)**                                                      | **Real** en integración nocturna y E2E con `E2E_AUTH=1`                                                           | GoTrue + Mailpit (`:54324`) en local y en `nightly-full.yml`                |
+| **Supabase Storage (5 buckets)**                                                                   | **Real** en suites de renders, fichas y retención                                                                 | `finalize-server-render`, `letter-tiles` y `retention-service`              |
+| **Wompi, Aveonline, Gemini, HIBP**                                                                 | `vi.stubGlobal("fetch", ...)` en unit/integración; **real sandbox** en `*.live.test.ts` y `wompi-sandbox.spec.ts` | Restaura siempre con `vi.unstubAllGlobals()` en `afterEach`                 |
+| **Resend (correos)**                                                                               | Apagado globalmente por `EMAIL_SEND_DISABLED=1`                                                                   | Solo `lib/resend.test.ts` ejercita el adaptador HTTP sobre `fetch` mockeado |
+| **`next/cache` fuera de request Next 16**                                                          | Passthrough de `unstable_cache` + no-op en `revalidateTag`/`updateTag`                                            | En `*.integration.test.ts` que importan `lib/catalog.ts` o `service.ts`     |
+| **Utilidades puras internas** (`lib/money.ts`, `lib/datetime.ts`, `lib/format.ts`, `photo-fit.ts`) | **Cero mocks** — invocación directa                                                                               | Mockear funciones deterministas internas es un anti-patrón                  |
+
+### Cuándo corren las suites `*.live.test.ts`
+
+Los tres archivos `*.live.test.ts` (`apps/web/lib/wompi.live.test.ts`, `apps/web/features/shipping/aveonline.live.test.ts` y `apps/web/features/shipping/aveonline.coverage-probe.live.test.ts`) ejecutan sondas **de solo lectura y no facturables** contra los sandboxes reales de Wompi y Aveonline para detectar cambios de contrato del proveedor. Usan `describe.skipIf(...)` estricto para saltar limpiamente cuando hay placeholders de CI y **nunca** apuntar a producción:
+
+```ts
+// apps/web/lib/wompi.live.test.ts — guarda estricta solo-sandbox
+const cfg = (() => {
+  try {
+    return getWompiConfig();
+  } catch {
+    return null;
+  }
+})();
+
+const liveSandbox =
+  !!cfg &&
+  cfg.env === "sandbox" &&
+  cfg.publicKey.startsWith("pub_test_") &&
+  cfg.publicKey.length > 20;
+
+describe.skipIf(!liveSandbox)("Wompi — smoke LIVE sandbox (no-destructivo)", () => {
+  it("la public key obtiene el merchant y el acceptance_token real", async () => {
+    const res = await fetch(`${cfg!.apiUrl}/merchants/${cfg!.publicKey}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
     });
-    const b = generateIntegritySignature({
-      reference: "REF-124",
-      amountInCents: 1500000,
-      currency: "COP",
-    });
-    expect(a).not.toBe(b);
+    expect(res.status).toBe(200);
   });
 });
 ```
 
-### Componentes (React Testing Library)
+### Catálogo de anti-patrones prohibidos
+
+1. **Mockear Prisma para «probar» SQL, constraints o RLS:** un mock de `prisma.order.create` jamás detecta violaciones de FK, índices parciales únicos (`InventoryLog`), bloqueos `pg_advisory_xact_lock` ni deriva de columnas.
+2. **Usar `supabase.from(...)` como acceso administrativo de negocio:** en Lucams Shop el backend lee/escribe por `prisma` (`@/lib/db`); los clientes `@supabase/supabase-js` en tests de RLS se usan precisamente para demostrar que `anon` y `authenticated` **no pueden** leer ni mutar tablas por PostgREST.
+3. **Dejar `vi.stubGlobal` o `vi.stubEnv` sucios entre tests:** limpia siempre en `afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); })`.
+4. **Usar `page.waitForTimeout(...)` arbitrarios o selectores CSS frágiles en Playwright:** prioriza siempre `getByRole`, `getByLabel`, `getByText` y aserciones auto-reintentables (`await expect(...).toBeVisible()`, `expect.poll`, `toPass`).
+5. **Reintentos locales activados (`retry > 0` en local):** tanto `vitest.config.ts` como `playwright.config.ts` fijan `0` reintentos en local para exponer inmediatamente cualquier condición de carrera; `retry: 2` solo aplica cuando `CI=true`.
+
+---
+
+## 4. Comandos maestros de verificación
+
+| Comando                                   | Qué ejecuta exactamente                                                                                                                                                               | Cuándo debes correrlo                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `make check`                              | `pnpm format:check` + `pnpm -r typecheck` + `pnpm -r lint` + `pnpm --filter @lucams/db test` + `make audit-script-guards` + `make audit-content` + escaneo anti-voseo (`es-CO` tuteo) | **Siempre** antes de cada commit / push                 |
+| `pnpm test`                               | `pnpm -r test`: corre las **472 suites** Vitest de `apps/web` y las **6 suites** `node --test` de `@lucams/db`                                                                        | Antes de abrir o actualizar cualquier PR                |
+| `make test-local`                         | `pnpm --filter web test` contra el stack Supabase local en Podman                                                                                                                     | Validación integral con DB local arriba                 |
+| `pnpm --filter web test:coverage`         | Vitest con proveedor V8 verificando `coverage.thresholds` globales                                                                                                                    | Réplica local exacta del job `unit-tests`               |
+| `pnpm --filter @lucams/db test`           | `node --test "scripts/lib/*.test.mjs"` en `packages/db`                                                                                                                               | Al tocar scripts o helpers en `packages/db/scripts/`    |
+| `make audit-script-guards`                | `node scripts/lib/check-script-guards.mjs` (exige `env-guard.mjs` en scripts con escritura)                                                                                           | Al crear o modificar scripts `.mjs`                     |
+| `make audit-content`                      | `vitest run lib/cms-sitemap-parity.test.ts` (paridad AST `166/166` del CMS v2)                                                                                                        | Al tocar `<CmsText>`, `lib/cms.ts` o `cms-site-map.mjs` |
+| `make verify-db`                          | `audit-schema-drift.mjs check` + `verify-security-posture.mjs` (5/5 invariantes RLS/grants/buckets)                                                                                   | Al crear o editar migraciones Prisma o SQL              |
+| `make test-rls`                           | `vitest run` de `rls-coverage.integration.test.ts` + `rls-matrix.integration.test.ts`                                                                                                 | Al crear tablas, buckets o políticas RLS                |
+| `make test-e2e`                           | `pnpm --filter web test:e2e` (`playwright test` según `E2E_ENV=local\|stg\|prd`)                                                                                                      | Validación E2E sobre `:4000` o Staging                  |
+| `make test-e2e-fullmode`                  | `scripts/e2e-fullmode.sh`: servidor aislado en `:4100` (`full`, `RESEND_API_KEY=`) + `fullmode-*.spec.ts`                                                                             | Cambios en carrito, checkout, cupones, pagos o stock    |
+| `pnpm --filter web test:audit-responsive` | Ejecuta `audit-responsive.spec.ts` en los **6 perfiles de viewport**                                                                                                                  | Cambios visuales, de navegación o responsive            |
+| `make test-load`                          | `k6 run tests/load/storefront-browsing.js` contra `BASE_URL` (default `http://localhost:4000`)                                                                                        | Certificación de capacidad pre-release                  |
+
+---
+
+## 5. Pruebas unitarias, componentes RTL y scripts de DB (ejemplos reales 1, 2 y 3)
+
+### Configuración de Vitest 4 y cobertura por _ratchet_ (`apps/web/vitest.config.ts`)
+
+- **Entorno por defecto:** `environment: "node"` para máxima velocidad; el módulo virtual `"server-only"` de Next.js se redirige mediante alias al stub `apps/web/tests/stubs/server-only.ts`.
+- **Umbrales globales obligatorios (`coverage.thresholds` con V8):** **`lines: 71 %`**, **`statements: 69.5 %`**, **`functions: 68.5 %`** y **`branches: 62 %`**. Están calibrados sobre la medición real de CI y operan como _ratchet_ (cualquier regresión rompe `unit-tests`). Las metas orientativas por capa son: `lib/` utilitario `≥ 90 %`, `features/*/service.ts` `≥ 80 %`, `app/api/*/route.ts` `≥ 70 %` y `components/` `≥ 50 %`.
+- **Suites transversales de regresión crítica:**
+  - Paridad estática y cumplimiento: `lib/cms-sitemap-parity.test.ts` (`166/166`), `app/legal/legal-content-sync.test.ts` (paquete legal Versión 3 `2026-11-05` + uso obligatorio de `{{tokens}}`), `lib/datetime-convention.test.ts` (`America/Bogota`) y `tests/a11y-contrast.test.ts`.
+  - Artefactos de imprenta 300 DPI y promesas de entrega: `photo-fit.test.ts` (encuadre cover sin bordes blancos descubiertos, rotación 90° y topes de paneo), `production-spec.test.ts` (reverso B opcional vacío reportado como blanco y nunca espejo) y `delivery-estimate.test.ts` (corte horario y lenguaje estimado).
+
+### Ejemplo real 1 — Test unitario puro en Vitest (centavos COP y firmas SHA-256/HMAC)
+
+```ts
+// apps/web/lib/wompi.test.ts (extracto real adaptado)
+import crypto from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { generateIntegritySignature, verifyWebhookSignature } from "./wompi";
+
+const INTEGRITY_SECRET = "test_integrity_FIXED";
+const EVENTS_SECRET = "test_events_FIXED";
+
+describe("lib/wompi — firmas criptográficas en centavos COP", () => {
+  beforeEach(() => {
+    vi.stubEnv("WOMPI_ENV", "sandbox");
+    vi.stubEnv("WOMPI_INTEGRITY_SECRET", INTEGRITY_SECRET);
+    vi.stubEnv("WOMPI_EVENTS_SECRET", EVENTS_SECRET);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("calcula SHA-256 exacto sobre reference + amountInCents (Int) + currency + secret", () => {
+    // $15.000 COP representados estrictamente como entero en centavos (1_500_000)
+    const reference = "8b4e2f10-3a91-4d7c-9c12-001122334455";
+    const amountInCents = 1_500_000;
+    const expected = crypto
+      .createHash("sha256")
+      .update(`${reference}${amountInCents}COP${INTEGRITY_SECRET}`)
+      .digest("hex");
+
+    const sig = generateIntegritySignature({ reference, amountInCents, currency: "COP" });
+    expect(sig).toBe(expected);
+  });
+
+  it("rechaza un webhook cuya cantidad en centavos fue alterada después de firmar", () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const legitConcat = `txn_01APPROVED1500000${nowSec}${EVENTS_SECRET}`;
+    const checksum = crypto.createHash("sha256").update(legitConcat).digest("hex");
+
+    // Atacante intenta cambiar amount_in_cents de 1_500_000 ($15.000) a 100_000 ($1.000)
+    const tamperedBody = JSON.stringify({
+      event: "transaction.updated",
+      data: { transaction: { id: "txn_01", status: "APPROVED", amount_in_cents: 100_000 } },
+      signature: {
+        properties: ["transaction.id", "transaction.status", "transaction.amount_in_cents"],
+        checksum,
+      },
+      timestamp: nowSec,
+    });
+
+    const verification = verifyWebhookSignature(tamperedBody);
+    expect(verification.valid).toBe(false);
+  });
+});
+```
+
+### Ejemplo real 2 — Test de componente con React Testing Library (`*.test.tsx`)
+
+Todo test de componente declara `// @vitest-environment jsdom` en la primera línea y ejecuta `cleanup()` en `afterEach` (porque `globals: false` desactiva el auto-cleanup implícito):
 
 ```tsx
-// components/storefront/product-card.test.tsx
-import { render, screen } from "@testing-library/react";
-import { ProductCard } from "./product-card";
+// @vitest-environment jsdom
+// apps/web/app/producto/[slug]/copies-qty-input.test.tsx (patrón real)
+import "@testing-library/jest-dom/vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { CopiesQtyInput } from "./copies-qty-input";
+import { SelectedVariantProvider } from "./variant-actions";
 
-describe("ProductCard", () => {
-  const product = { id: "p1", name: "Imán de prueba", basePrice: 1500000, images: ["/p.jpg"] };
+const replace = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 
-  it("muestra el nombre y el precio formateado", () => {
-    render(<ProductCard product={product} />);
-    expect(screen.getByText("Imán de prueba")).toBeInTheDocument();
-    expect(screen.getByText("$15.000")).toBeInTheDocument();
-  });
+afterEach(() => cleanup());
+beforeEach(() => replace.mockClear());
 
-  it("tiene alt text descriptivo en la imagen", () => {
-    render(<ProductCard product={product} />);
-    expect(screen.getByRole("img")).toHaveAccessibleName(/imán de prueba/i);
-  });
-});
-```
-
----
-
-## Tests de integración
-
-### Setup
-
-> **Setup real (verificado 2026-09-03):** los tests de integración NO levantan Supabase solos —
-> corren contra la DB que apunte `DATABASE_URL` de `.env.local` (cargado por `tests/setup-env.ts`). Además `setup-env.ts` fija `EMAIL_SEND_DISABLED=1` (kill-switch de `lib/resend.ts`): la suite JAMÁS emite correo real aunque `.env.local` traiga una `RESEND_API_KEY` viva — incidente 2026-11-05 (spam «Nuevo pedido LCM-2026-000N · Lucia Perez» al buzón real en cada corrida local). `lib/resend.test.ts` lo apaga por test con `vi.stubEnv` para ejercer el path real.
-> El stack local completo (Supabase en podman, espejo de la nube) se maneja con Make:
-> `make db-local-start` → `make db-local-setup` (extensiones + migraciones) → `make db-local-on`
-> (apunta `.env.local` al stack local) → `make db-local-seed`. Contra ese stack corre
-> `make test-local` (`pnpm --filter web test`; desde A11-05 todas las suites son autocontenidas y
-> siembran sus propios fixtures, sin variables ni exclusiones especiales). En CI el Postgres es un service
-> container pelado + compat SQL (ver § CI workflow). El sketch de abajo queda como referencia
-> conceptual del patrón (arranque + migraciones + seed).
-
-```ts
-// __tests__/integration/setup.ts
-import { execSync } from "child_process";
-import { beforeAll, afterAll, beforeEach } from "vitest";
-
-beforeAll(() => {
-  execSync("supabase start", { stdio: "inherit" });
-  execSync("pnpm prisma migrate deploy", { stdio: "inherit" });
-  execSync("pnpm prisma db seed", { stdio: "inherit" });
-});
-
-beforeEach(async () => {
-  // Cada test corre en su propia transacción que se rollbackea
-  // (alternativa: TRUNCATE las tablas relevantes entre tests)
-});
-
-afterAll(() => {
-  // No detener supabase entre runs locales para no perder cache
-});
-```
-
-### Qué cubrimos
-
-- `repository.ts` directo contra Postgres real (transacciones, FK cascades, constraints).
-- `service.ts` con repository real (saga pattern, idempotencia, transacciones).
-- `lib/rate-limit.ts` — UPSERT atómico, TTL, cleanup (`lib/rate-limit.integration.test.ts`).
-- `features/observability/*` — alertas, resumen diario, retención y salud de crons contra DB real.
-- `features/identity/*`, `features/contacts/*`, `features/crm/*` y `features/opportunities/*` — resolución determinista `Contact`/`ContactIdentity` sin `P2002` en teléfonos compartidos, aislamiento de destinatario de regalo (`isGift`), cascada de supresión Ley 1581, `Contacto 360` + fusión asistida con snapshot reversible (`merge-service.integration.test.ts`), timeline `ContactActivity` + `Task` + bloqueo optimista de soporte (`crm/service.integration.test.ts`), bandeja `/admin/hoy` filtrada por rol (`today-inbox-service.integration.test.ts`), pipeline B2B (`opportunities/service.integration.test.ts`), compuerta SQL de opt-in `NEWSLETTER` en segmentos comerciales (`segments-service.integration.test.ts`), inteligencia conductual + RFM + margen neto (`intelligence-service.integration.test.ts`) y redacción cero-PII del copiloto de soporte (`features/ai/support-copilot.test.ts`).
-- Webhook handlers con request mock (firma válida e inválida) — `app/api/webhooks/*/route.integration.test.ts`.
-
-### Ejemplo
-
-```ts
-// features/checkout/service.integration.test.ts
-import { describe, it, expect } from "vitest";
-import { createOrder } from "./service";
-import { createTestCart, createTestCustomer } from "@/__tests__/factories";
-
-describe("createOrder (integration)", () => {
-  it("reserva stock al crear order PENDING_PAYMENT", async () => {
-    const customer = await createTestCustomer();
-    const cart = await createTestCart({
-      customerId: customer.id,
-      items: [{ variantId: "v1", qty: 2 }],
-    });
-
-    const result = await createOrder(
-      {
-        cartId: cart.id,
-        email: customer.email /* ... */,
-      },
-      "req-test-1",
+describe("CopiesQtyInput", () => {
+  it("arranca en 1 unidad, actualiza el hidden input qty y respeta el mínimo 1", () => {
+    render(
+      <SelectedVariantProvider variantIds={["v1"]} initialId="v1">
+        <CopiesQtyInput />
+      </SelectedVariantProvider>,
     );
 
-    const reservation = await prisma.stockReservation.findFirst({
-      where: { orderId: result.orderId },
-    });
-    expect(reservation).toBeTruthy();
-    expect(reservation!.qty).toBe(2);
-    expect(reservation!.expiresAt.getTime()).toBeGreaterThan(Date.now());
-  });
+    const group = screen.getByRole("group", { name: "Unidades" });
+    const hidden = document.querySelector<HTMLInputElement>('input[name="qty"]')!;
 
-  it("rechaza si no hay stock suficiente", async () => {
-    // Setup variant con stock = 0
-    // Llamar createOrder
-    // Esperar ConflictError
+    expect(within(group).getByText("1")).toBeInTheDocument();
+    expect(hidden.value).toBe("1");
+    expect(screen.getByLabelText("Disminuir unidades")).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText("Aumentar unidades"));
+    expect(within(group).getByText("2")).toBeInTheDocument();
+    expect(hidden.value).toBe("2");
   });
 });
 ```
 
-> **Cobertura del ciclo de reseñas (auditoría v3 · #21, 2026-07-19).** `features/reviews/` tiene
-> dos suites de integración contra la BD real (prefijo `RUN` + `afterAll` scoped):
-> `service.integration.test.ts` cubre `getProductRatingAggregate` (solo aprobadas de clientes
-> reales, ignora demo `customerId=null`), `listFeaturedReviews` (featured + producto activo, orden
-> y límite), `listReviewsAdmin` (estado/rating/productId/`pendingCount`) y las transiciones
-> approve/reject/toggleFeatured/archive/restore + bulk; `actions.integration.test.ts` cubre
-> `submitReviewAction` (gate de sesión, gate de compra, validación, creación pendiente y unicidad
-> por cliente/producto — respaldada por el índice único parcial `Review_productId_customerId_active_unique`).
+### Ejemplo real 3 — Test de scripts de DB con `node --test` (`packages/db/scripts/lib/*.test.mjs`)
 
-> **Convención del prefijo RUN — solo letras donde aplique `scrubPii` (fix 2026-08-29).** En los
-> tests que escriben en tablas cuyo contenido se persiste con `scrubPii` (ErrorLog/ErrorReport vía
-> `lib/error-capture.ts`), el RUN no puede llevar dígitos: `scrubPii` redacta ventanas de 10
-> dígitos tipo teléfono, así que un RUN con timestamp numérico podía quedar redactado al
-> persistirse y el query de limpieza ya no encontraba la fila (flake todo-o-nada por corrida).
-> `lib/error-capture.integration.test.ts` mapea cada dígito a una letra (`0-9` → `A-J`) justo por
-> esto: el RUN nunca es scrubbed y el almacenado coincide byte a byte con el consultado.
-
----
-
-## Tests de RLS
-
-> **Críticos.** Sin estos tests, RLS solo es un papel.
-
-> **Cobertura de CI (auditoría 2026-07-13; actualizado 2026-07-31 con A3).** El gate por-PR ENFORCEA
-> que _toda tabla tenga RLS habilitada_ (la migración `..._10_rls_sweep_new_tables.sql` hace
-> `RAISE EXCEPTION` si queda alguna destapada → un `CREATE TABLE` nuevo sin candado rompe la
-> migración). Además, `features/security/rls-coverage.integration.test.ts` corre en el vitest
-> por-PR y falla si cualquier tabla de `public` queda sin RLS habilitada. El COMPORTAMIENTO de
-> las políticas (que un anon no lea filas de otro) lo valida
-> `features/security/rls-matrix.integration.test.ts`, que requiere PostgREST/GoTrue reales y se
-> salta en el gate por-PR (Postgres pelado) → corre en **`.github/workflows/nightly-full.yml`**
-> (scheduled +
-> on-demand). **A3 (2026-07-31):** el "Supabase real" del nightly es el **stack LOCAL de Supabase
-> levantado en el propio runner** (`supabase start` desde `.github/ci/localstack`, + `prisma
-migrate deploy` + las SQL de `supabase/migrations` aplicadas con el rol `supabase_admin`) —
-> ya NO hacen falta un proyecto externo ni secrets `STAGING_*`: cada corrida es efímera y
-> reproducible. **F-06 (remediación R3 2026-09-26):** `rls-matrix` ADEMÁS corre en el gate por-PR
-> vía el job **`rls-behavior`** de `ci.yml` (mismo patrón localstack, solo las 2 suites RLS —
-> ~2s de tests; el stack tarda ~4-6 min en paralelo, sin inflar el camino crítico del gate).
-> Las suites `finalize-server-render` y `letter-tiles` ya NO se excluyen en el nightly
-> (A11-05, remediación R3): son autocontenidas — siembran sus propios fixtures (producto
-> efímero, diseños, PNG en Storage) en vez de depender del universo de la DB compartida de dev.
-> La postura de grants de prod (PostgREST cerrado para anon/authenticated) quedó codificada en
-> `supabase/migrations/00000000000022_revoke_anon_table_grants.sql` (más el event trigger `049` y
-> los espejos explícitos `050`–`053`, con `FunnelEventDaily`, `Contact`, `ContactIdentity`,
-> `Organization`, `IdentityMergeCandidate`, `ContactActivity`, `Task` y `Opportunity` incluidos en
-> `SENSITIVE` de `rls-matrix.integration.test.ts`) para que cualquier ambiente nuevo la reproduzca.
-
-```ts
-// __tests__/rls.test.ts
-import { describe, it, expect } from "vitest";
-import { createClient } from "@supabase/supabase-js";
-
-const URL = process.env.SUPABASE_TEST_URL!;
-const ANON = process.env.SUPABASE_TEST_ANON!;
-
-async function asUser(email: string, password: string) {
-  const sb = createClient(URL, ANON);
-  await sb.auth.signInWithPassword({ email, password });
-  return sb;
-}
-
-describe("RLS: Customer isolation", () => {
-  it("cliente A no ve órdenes de cliente B", async () => {
-    const sbA = await asUser("a@test.local", "pwdA");
-    const { data, error } = await sbA.from("Order").select("*").eq("customerId", "CUSTOMER_B_ID");
-    expect(error).toBeNull();
-    expect(data).toEqual([]);
-  });
-
-  it("cliente sin auth no lee Customer table", async () => {
-    const sb = createClient(URL, ANON);
-    const { data } = await sb.from("Customer").select("*");
-    expect(data).toEqual([]);
-  });
-
-  it("cliente normal no lee AdminActionLog", async () => {
-    const sbA = await asUser("a@test.local", "pwdA");
-    const { data } = await sbA.from("AdminActionLog").select("*");
-    expect(data).toEqual([]);
-  });
-
-  it("admin SÍ lee órdenes de cualquier cliente", async () => {
-    const sbAdmin = await asUser("admin@test.local", "pwdAdmin");
-    const { data, error } = await sbAdmin.from("Order").select("*").limit(5);
-    expect(error).toBeNull();
-    expect(data!.length).toBeGreaterThan(0);
-  });
-});
-```
-
-> **CI:** `rls-coverage` corre en cada PR y bloquea merge si falla; `rls-matrix` corre en cada PR
-> (job `rls-behavior`, desde 2026-09-26) y en el nightly. `make test-rls` corre ambos localmente
-> vía vitest.
-
----
-
-## Tests E2E (Playwright)
-
-> **⚠️ Estado real en CI (actualizado 2026-08-01).** La tabla de "Flujos críticos" de abajo es el
-> ESTADO OBJETIVO; la mayoría de esos flujos **no tiene E2E real todavía** (columna "Estado
-> real"). Lo que **sí se gatea en cada PR** hoy (job `e2e` en `.github/workflows/ci.yml`, contra
-> el build de producción + Postgres real):
->
-> - **`smoke`** — páginas públicas cargan (home, /productos, /ayuda, /contacto, /legal, /status,
->   health, sitemap, robots).
-> - **`a11y`** — invariantes por página (lang es-CO, `<main id=contenido>`, alt, ≥1 h1).
-> - **`axe`** — auditoría WCAG 2.1 A/AA (gate estricta: 0 serious/critical) en las páginas públicas.
-> - **`compra`** — núcleo del carrito → checkout de datos.
-> - **`estudio`** — el editor de personalización (canvas Konva), el diferenciador #1.
->
-> **Solo en nightly** (`.github/workflows/nightly-full.yml`, con el stack Supabase local levantado
-> en el propio runner): **`admin-login`/`admin-mfa`** y **`cms-editing-flow`** (crean usuarios vía
-> service role → necesitan GoTrue real). **F-05/F-10 (remediación R4 2026-09-26):** también en el
-> nightly, **`homolog-auth`** (registro → OTP Mailpit → login → recuperar → restablecer → login con
-> la clave nueva, de CLIENTE) y **`retracto-garantia-cliente`** (pedido DELIVERED → solicitar
-> retracto/garantía desde /mi-cuenta → acuse + fila PENDING en DB + casos de ventana vencida). El
-> localstack del nightly trae `enable_confirmations` + plantillas OTP `{{ .Token }}`
-> (`.github/ci/localstack/supabase/config.toml`) para que el flujo de email sea el real, y el job
-> corre con las llaves Turnstile always-pass de Cloudflare. Las **actions de auth** tienen además
-> unit tests (PR) e **integración contra GoTrue real**
-> (`app/(auth)/auth-actions.integration.test.ts` — anti-enumeración verificada contra el proveedor,
-> rate limit real que bloquea el intento 16, flujo OTP completo vía Mailpit) en el job
-> `vitest-supabase-real`.
-> **F-01 (remediación R3 2026-09-26):** el E2E de **compra
-> pagada real** (`wompi-sandbox.spec` — tarjeta 4242 en el checkout hospedado de Wompi sandbox →
-> webhook firmado → orden PAID + guía Aveonline sandbox) corre en el job **`e2e-wompi-sandbox`**
-> del nightly, gated por los secrets sandbox (`WOMPI_*` + `AVEONLINE_USUARIO/CLAVE`): si faltan,
-> el job se salta con warning (fail-suave) — pero su verde es **GATE DE RELEASE** (ver
-> § "Gate de release" abajo). Turnstile corre con las llaves de prueba públicas de Cloudflare
-> (always-pass) y el navegador es chromium completo (`PW_CHANNEL=chromium`: el anti-bot de Wompi
-> detecta el headless shell). **Sigue sin correr en CI:** la **regresión visual**
-> (`visual.spec`, snapshots por-píxel → requieren baseline en imagen pinneada para ser
-> deterministas cross-máquina).
-
-### Ambiente E2E (`E2E_ENV`)
-
-`tests/e2e/_setup/env.ts` resuelve el ambiente con `E2E_ENV=local|stg|prd` (default `local`,
-inválido = error ruidoso): qué `.env` carga el runner (`.env.local` o `.env.stg`, sin pisar vars
-de shell — la shell/CI siempre manda), el `baseURL` (STG sale de `NEXT_PUBLIC_SITE_URL`; PRD es
-solo-lectura contra lucamsshop.com; LOCAL del `PORT`, default :4000) y el header de bypass de
-Deployment Protection de Vercel (solo STG con `VERCEL_BYPASS_TOKEN`). `PLAYWRIGHT_BASE_URL`
-explícita siempre gana (corridas puntuales contra previews). El `_setup/global.setup.ts` crea
-usuarios efímeros por corrida vía service role y guarda el `storageState` por ambiente en
-`tests/e2e/.auth/<env>/` (gitignored).
-
-### MFA en los specs de admin
-
-El MFA es OBLIGATORIO para todo rol admin desde 2026-08-29 (auditoría 2026-08-24 · B-1): un admin
-sin factor TOTP ya no aterriza en el dashboard tras el login — el layout lo manda a
-`/admin/seguridad?enroll=required`. Los specs que crean su propio AdminUser deben enrolar TOTP con
-los helpers de `tests/e2e/_helpers/mfa.ts`: `enrollTotpFactor` (enrola + verifica el factor vía
-API GoTrue y devuelve el secret base32), `completeMfaChallengeIfNeeded` (resuelve el reto de
-`/admin/login/mfa` si aparece) y `loginAdminWithTotp` (login completo: credenciales → reto →
-dashboard). Los códigos TOTP se generan con `tests/e2e/_helpers/totp.ts`.
-
-### Flujos críticos (ESTADO OBJETIVO — no todos tienen E2E real)
-
-| Flujo                                 | Descripción                                                                          | Frecuencia objetivo         | Estado real (2026-08-01)                                                                                                              |
-| ------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **Compra Wompi sandbox completa**     | Catálogo → PDP → carrito → checkout → tarjeta `4242` → orden PAID                    | Cada PR + cada deploy       | **Nightly + release gate** (job `e2e-wompi-sandbox`, desde 2026-09-26; antes solo manual)                                             |
-| **Compra COD completa**               | Idem pero contraentrega                                                              | Cada PR                     | Objetivo — sin E2E dedicado                                                                                                           |
-| **Personalización + compra**          | Estudio canvas → guardar diseño → checkout                                           | Cada PR                     | Parcial — `estudio` corre por PR; el flujo combinado hasta checkout pagado no                                                         |
-| **Registro + login + reset password** | Auth completo                                                                        | Cada PR                     | **Nightly** (`homolog-auth`, desde 2026-09-26 R4) + unit (PR) + integración GoTrue real (nightly vitest)                              |
-| **Aplicar cupón**                     | Cupón válido, vencido, agotado                                                       | Cada PR                     | Objetivo — sin E2E                                                                                                                    |
-| **Admin: crear producto**             | Login admin → CRUD producto → revalidate                                             | Cada PR                     | Objetivo — los E2E de admin corren solo en nightly                                                                                    |
-| **Admin: cambiar estado de orden**    | Manual con razón → email notificación                                                | Cada PR                     | Objetivo — sin E2E                                                                                                                    |
-| **Retracto**                          | Solicitar retracto → aprobar → recibir → reembolsar                                  | Fase 4+                     | **Parcial** — cliente cubierto en nightly (`retracto-garantia-cliente`, R4 2026-09-26); el ciclo admin completo sigue siendo objetivo |
-| **Stock oversold (negative path)**    | Dos clientes compran último item simultáneamente → uno gana, otro recibe error claro | Cada PR (después de Fase 4) | Objetivo — sin E2E                                                                                                                    |
-
-### Estructura
-
-```ts
-// e2e/checkout-wompi.spec.ts
-import { test, expect } from "@playwright/test";
-
-test.describe("Compra Wompi sandbox", () => {
-  test("flujo completo aprobado", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("link", { name: /catálogo/i }).click();
-    await page.getByRole("link", { name: /imán/i }).first().click();
-    await page.getByRole("button", { name: /agregar al carrito/i }).click();
-    await page.getByRole("link", { name: /carrito/i }).click();
-    await page.getByRole("button", { name: /pagar/i }).click();
-
-    // Llenar formulario de checkout
-    await page.getByLabel("Email").fill("test@example.com");
-    await page.getByLabel("Nombre").fill("Test User");
-    // ... resto
-
-    await page.getByRole("button", { name: /pagar ahora/i }).click();
-
-    // Mock o sandbox real de Wompi: usar tarjeta 4242
-    // ... interactuar con widget
-
-    // Volver al sitio (Wompi redirige a /checkout/gracias?id=TX_ID — el estado
-    // real se verifica contra la API de Wompi, no contra el query param)
-    await expect(page).toHaveURL(/\/checkout\/gracias/);
-    await expect(page.getByText(/pedido confirmado/i)).toBeVisible();
-  });
-});
-```
-
-### Convenciones Playwright
-
-- **Selectores accesibles primero:** `getByRole`, `getByLabel`, `getByText`. Evitar CSS selectors frágiles.
-- **No usar `waitForTimeout`** salvo último recurso. Usar `waitForResponse`, `expect().toBeVisible()`.
-- **Una sola aserción crítica por test** cuando sea posible (otros chequeos como soft-asserts).
-- **Test data factory** en `tests/e2e/fixtures/` (`data-factory.ts` y compañía) para crear cuentas test, productos test, etc.
-
-### Auditoría responsive (harness 6 perfiles — ADR-154, 2026-10-13)
-
-`tests/e2e/audit-responsive.spec.ts` audita la app completa en **6 perfiles de viewport**:
-los 2 proyectos base (`desktop-chrome` 1280×800, `mobile-chrome` 390×844) más 4 dedicados
-(`mobile-landscape` 844×390, `tablet` 768×1024, `tablet-landscape` 1024×768,
-`desktop-large` 1920×1080). Los 4 proyectos nuevos tienen `testMatch` solo para esta spec,
-así que **CI queda inafectado** (los workflows fijan sus specs explícitas; ningún otro spec
-hereda los proyectos).
-
-- **Matriz:** cliente público (home, `/productos`, PDP, `/estudio/<slug>`, `/empresas-y-eventos`,
-  `/contacto`, `/soporte`, `/carrito`, `/checkout/datos`, login/registro), cliente autenticado
-  (`/mi-cuenta`, pedidos, diseños, perfil, soporte — se salta sin `storageState`) y admin
-  (dashboard, `/admin/hoy`, pedidos, productos, clientes, `/admin/clientes/duplicados`,
-  `/admin/oportunidades`, carritos, `/admin/marketing/segmentos`, cupones, contenido, métricas y
-  finanzas — idem).
-- **Chequeos por pantalla × perfil:** (a) overflow horizontal objetivo
-  (`scrollWidth > clientWidth`) → **critical** (falla el test) con el elemento culpable;
-  (b) tap targets <40px en perfiles táctiles → **medium** (solo se reporta; el scan excluye
-  elementos de ≤1×1px — decorativos colapsados que no son targets reales);
-  (c) screenshot full-page por pantalla en `tmp/audit-20261013/<perfil>/`.
-- **Fix del harness (2026-10-26):** los 4 perfiles táctiles dedicados usaban
-  `devices["Mobile Chrome"]`, que ya no existe en el Playwright instalado → el spread
-  `...devices[...]` era un no-op silencioso y los contextos quedaban sin `isMobile`/
-  `hasTouch`/user-agent móvil, así que **los tap targets nunca se medían**. Ahora usan
-  `devices["Pixel 5"]` (Chrome móvil vigente) con el viewport del proyecto encima
-  (`apps/web/playwright.config.ts`).
-- **Estado de tap targets:** corregidos en checkout, mi-cuenta, auth, PDP, admin y banner de
-  cookies (patrón `min-h-10` + margen negativo para no inflar el layout). Lo sistémico que
-  queda en 24–38px se acepta consciente: el gate AA es WCAG 2.5.8 (24px) — el umbral 40px del
-  harness es interno y más estricto, así que el reporte medium residual NO es una falla AA.
-- **Reporte consolidado:** cada worker escribe su parte en `tmp/audit-20261013/parts/` y el
-  `global.teardown` las fusiona en `tmp/audit-20261013/report.json` (evita escrituras
-  concurrentes del mismo archivo).
-- **Comando:** `pnpm --filter web test:audit-responsive` (corre los 6 proyectos). Para las
-  rutas autenticadas: `E2E_ENV=stg E2E_AUTH=1` (mismo `storageState` del `global.setup` que
-  los specs de homologación).
-- **OJO viewport:** los contextos de `fixtures/auth` (`adminPage`/`clientPage`) se crean con
-  `browser.newContext()` manual y NO heredan el viewport del proyecto — la spec lo fija
-  explícito desde `testInfo.project.use.viewport` (precedente: `mobile-admin-audit.spec.ts`).
-
-### Flujos nuevos por cubrir (jornadas de maduración 2026-10)
-
-Sin E2E dedicado todavía (cubiertos por unit/component tests + la auditoría responsive;
-candidatos a spec si alguno se vuelve crítico):
-
-- Preview paginado unificado en `/checkout/gracias`, `/carrito`, `/mi-cuenta/pedidos/[number]`
-  y `/pedido/[token]` (miniatura clicable, pager con `previewPagesCount > 1`, badge «N unidades»).
-- Bottom-sheet de estilo del Estudio en <sm (botón resumen → Sheet → «Listo») y «Listo» del
-  asset picker.
-- Ciclo de vida de borradores: retomador «Continuar donde quedaste» por marcador local (gates
-  de progreso real, vigencia 7 d/30 d y unidades vs `?copies=N`), SIN reuso silencioso al
-  entrar; poda «últimos 3 con progreso»; sección «Borradores» de Mis diseños (unit +
-  integración en `draft-lifecycle.*.test.ts` y `draft-marker.test.ts`).
-- Módulo `/admin/carritos`: bandeja, preview del email, envío manual/bulk y configuración
-  (integración en `cart-recovery-config.integration.test.ts` + unit de `actions.test.ts`).
-- Jornada fases 1-6 (2026-10-17/20): ledger Wompi por intento (referencias UUID,
-  reconciliación contra la API antes de reusar/rotar — `payment-reference`), identidad de
-  sesión en checkout/carrito, concurrencia optimista `clientRev` (`STALE_REVISION`),
-  lettersets multi-set (estilo por set, finalize que exige N láminas), prediseñados con
-  reemplazo explícito, «Listo» único del tab Texto, flag `BILLING_DOCUMENT_ENABLED`
-  (checkbox oculto y schema que no exige los campos).
-
----
-
-## Visual regression
-
-### Setup mínimo (sin Chromatic/Percy)
-
-```ts
-// tests/e2e/visual.spec.ts
-test("home se ve igual que el snapshot", async ({ page }) => {
-  await page.goto("/");
-  await expect(page).toHaveScreenshot("home.png", { maxDiffPixels: 100 });
-});
-```
-
-- **Máscaras** sobre regiones dinámicas (timestamps, contador de stock).
-- **Snapshots por viewport:** mobile-only y desktop-only se generan separados.
-- **Update workflow:** `pnpm --filter web test:e2e --update-snapshots` cuando UI cambia intencionalmente.
-
-### Páginas con visual regression obligatorio
-
-- Home
-- Catálogo
-- PDP (con/sin variantes, con/sin oferta)
-- Carrito (vacío y con items)
-- Checkout (cada paso)
-- Orden confirmada
-- 404
-- Error 500
-
----
-
-## Accesibilidad automatizada
-
-### En unit (RTL)
-
-No hay jest-axe/vitest-axe instalado. Lo que sí existe: `tests/a11y-contrast.test.ts`, test
-propio que congela el contraste WCAG 1.4.3/1.4.11 de la paleta de marca (los pares texto/fondo
-reales del storefront y el Estudio).
-
-### En E2E (Playwright)
-
-Con `@axe-core/playwright` vía el helper `tests/e2e/_helpers/axe-scan.ts` (tags WCAG 2.1 A/AA):
-
-```ts
-// tests/e2e/axe.spec.ts (real)
-import { scanA11y, formatViolations } from "./_helpers/axe-scan";
-
-test("home cumple WCAG 2.1 AA", async ({ page }) => {
-  await page.goto("/");
-  const violations = await scanA11y(page);
-  expect(violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
-});
-```
-
-> **Bloqueante en CI:** `axe.spec` corre en el job `e2e` por PR y falla con cualquier violación
-> `serious`/`critical` en las páginas públicas (las `moderate`/`minor` quedan en el log).
-
----
-
-## Performance / load testing
-
-### Profiling del Estudio (laboratorio, CDP — ADR-166/169)
-
-`apps/web/scripts/profile-studio-entry.mjs` mide la **entrada a `/estudio/<slug>`**
-con la metodología de ADR-166 (Chromium 390×844 dpr 3, CPU ×6 vía
-`Emulation.setCPUThrottlingRate`, contexto frío por corrida): segundos de JS del
-renderer (`ScriptDuration` del dominio Performance de CDP) hasta que el lienzo está
-montado y el hilo principal queda 1.5 s sin longtasks, conteo/ms de longtasks
-(PerformanceObserver inyectado pre-navegación) y top de funciones por self-time
-(Profiler de muestreo) para el análisis estructural. Reporta mediana de N corridas
-por slug y marca los que superen **+30 % de jsMs vs el control**
-(`set-fotoimanes-cuadrados`).
-
-```bash
-pnpm build                       # SIEMPRE contra build de producción (no next dev)
-cd apps/web && set -a && source ../../.env.local && set +a && pnpm exec next start -p 4000 &
-pnpm --filter web exec node scripts/profile-studio-entry.mjs --runs 3
-# opciones: --base-url, --slugs a,b,c, --runs n, --out path (default tmp/studio-perf-<ts>.json)
-```
-
-El JSON de salida (en `tmp/`, scratch gitignored) conserva corridas crudas,
-medianas y hotspots por slug — adjuntar las cifras al ADR correspondiente cuando
-la medición motive un cambio.
-
-### Lighthouse CI
-
-```yaml
-# .github/workflows/lighthouse.yml
-- uses: treosh/lighthouse-ci-action@v9
-  with:
-    urls: |
-      ${{ steps.deploy.outputs.preview-url }}
-      ${{ steps.deploy.outputs.preview-url }}/catalogo
-    budgetPath: ./lighthouse-budget.json
-    uploadArtifacts: true
-```
-
-```json
-// lighthouse-budget.json
-[
-  {
-    "path": "/*",
-    "timings": [
-      { "metric": "interactive", "budget": 3000 },
-      { "metric": "first-contentful-paint", "budget": 1500 }
-    ],
-    "resourceSizes": [
-      { "resourceType": "script", "budget": 250 },
-      { "resourceType": "total", "budget": 1000 }
-    ]
-  }
-]
-```
-
-### Load testing con k6
+El paquete `@lucams/db` certifica sus 6 módulos críticos de scripts (`env-guard.test.mjs`, `catalog-sync.test.mjs`, `gallery-sync.test.mjs`, `identity-dry-run.test.mjs`, `test-coupon-signal.test.mjs` y `zombie-settings.test.mjs`) con `node:test` y `node:assert/strict` dentro de `make check` y del job `quality`:
 
 ```js
-// tests/load/storefront-browsing.js — el script real del repo (ver nota abajo)
-import http from "k6/http";
-import { check, sleep } from "k6";
+// packages/db/scripts/lib/env-guard.test.mjs (extracto real)
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { checkDestructiveAllowed, classifyUrl } from "./env-guard.mjs";
 
-export const options = {
-  stages: [
-    { duration: "30s", target: 50 }, // ramp-up
-    { duration: "1m", target: 50 }, // sostenido 50 RPS
-    { duration: "30s", target: 100 }, // pico
-    { duration: "1m", target: 100 },
-    { duration: "30s", target: 0 }, // ramp-down
-  ],
-  thresholds: {
-    http_req_duration: ["p(95)<2000"], // p95 < 2s
-    http_req_failed: ["rate<0.01"], // < 1% errores
-  },
-};
+const LOCAL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+const STG =
+  "postgresql://postgres.mjbdiqdkykhsixvqlrrp:pw@aws-1-us-east-1.pooler.supabase.com:6543/postgres";
+const PRD =
+  "postgresql://postgres.zxkucphbsfygakgxcnik:pw@aws-1-us-east-1.pooler.supabase.com:6543/postgres";
 
-export default function () {
-  const res = http.post(`${__ENV.BASE_URL}/api/checkout/create`, JSON.stringify({/* ... */}));
-  check(res, { "status 200": (r) => r.status === 200 });
-  sleep(1);
-}
-```
-
-> **Cuándo:** antes de cada release de Fase 7. No en cada PR (caro).
-
-> **Script real (verificado 2026-09-03):** `tests/load/storefront-browsing.js` — escenario de
-> navegación con 50 VUs (70% home → catálogo → PDP, 20% búsqueda + `/api/cms/blocks`, 10%
-> carrito); thresholds `p(95)<500ms`, `p(99)<1000ms`, <1% errores. Se corre con `make test-load`
-> (exige k6 instalado) y acepta `-e BASE_URL=...` y `-e VERCEL_BYPASS_TOKEN=...` para previews.
-> El sketch de arriba (burst de POST /api/checkout/create) queda como referencia de un segundo
-> escenario a futuro.
-
----
-
-## Smoke tests post-deploy
-
-**Automatizado:** `.github/workflows/post-deploy-smoke.yml` corre `apps/web/scripts/post-deploy-smoke.mjs`
-contra PRD al completarse el evento nativo `deployment_status` de Vercel (`Production` + `success`)
-y on-demand (`workflow_dispatch`), haciendo checkout explícito de `ref: production` (nunca del
-default branch `develop`). Sonda `/api/health`, `/api/health/db`, `/api/health/crons`, `/` y
-`/productos` (GET público read-only) más el drift check de `_prisma_migrations` de `production`
-contra PRD y **falla el workflow** si algo no responde 200 o hay migraciones pendientes — un smoke
-rojo post-deploy es señal de evaluar rollback (docs/OPERATIONS.md § Release strategy). El monitoreo
-continuo entre deploys lo cubre `uptime-monitor-prd` cada 10 min desde Supabase STG (sin cron
-duplicado en GitHub Actions). Las sondas HTML (`/` y `/productos`) además asertan contenido mínimo:
-marcadores estructurales estables del layout (`lang="es-CO"`, skip-link `href="#contenido"`,
-`<main id="contenido">`) — un 200 con body vacío/degradado ya no sale verde. El set de abajo queda
-como referencia del smoke E2E manual profundo (`release-check-a1.spec.ts`).
-
-Set mínimo de tests E2E que correr **inmediatamente después de un deploy a producción**. Si fallan: rollback automático.
-
-```ts
-// e2e/smoke.spec.ts
-test.describe.parallel("Smoke", () => {
-  test("home carga en < 3s", async ({ page }) => {
-    const start = Date.now();
-    await page.goto("/");
-    expect(Date.now() - start).toBeLessThan(3000);
+describe("checkDestructiveAllowed (fail-closed)", () => {
+  it("permite local y STG sin fricción", () => {
+    assert.equal(checkDestructiveAllowed({ DIRECT_URL: LOCAL, DATABASE_URL: LOCAL }).allowed, true);
+    assert.equal(checkDestructiveAllowed({ DIRECT_URL: STG, DATABASE_URL: STG }).allowed, true);
   });
 
-  test("/api/health responde 200", async ({ request }) => {
-    const res = await request.get("/api/health");
-    expect(res.status()).toBe(200);
-  });
-
-  test("/api/health/db responde 200", async ({ request }) => {
-    const res = await request.get("/api/health/db");
-    expect(res.status()).toBe(200);
-  });
-
-  test("PDP de producto seed carga", async ({ page }) => {
-    await page.goto("/producto/iman-foto-personalizado");
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  });
-
-  test("checkout completo con tarjeta sandbox", async ({ page }) => {
-    // Variante reducida del E2E completo, solo el happy path
+  it("bloquea PRD, hosts desconocidos y URLs malformadas sin filtrar credenciales", () => {
+    const prdRes = checkDestructiveAllowed({ DIRECT_URL: PRD, DATABASE_URL: PRD });
+    assert.equal(prdRes.allowed, false);
+    assert.ok(!prdRes.reason.includes(":pw@"));
+    assert.equal(classifyUrl("postgresql://p:p@vps.example.com:5432/postgres"), "other");
+    assert.equal(checkDestructiveAllowed({ DATABASE_URL: "no-es-url" }).allowed, false);
   });
 });
 ```
 
 ---
 
-## Tests de seguridad
+## 6. Pruebas de integración contra PostgreSQL real (ejemplo real 4)
 
-| Test                                   | Herramienta                                        | Cuándo            |
-| -------------------------------------- | -------------------------------------------------- | ----------------- |
-| `pnpm audit --prod --audit-level=high` | pnpm audit (paso dentro del job `quality` de CI)   | Cada PR           |
-| `gitleaks detect` (secret scanning)    | gitleaks                                           | Cada PR           |
-| Headers de seguridad presentes         | Playwright (assertions sobre `response.headers()`) | Cada deploy       |
-| Rate limit funciona                    | Playwright (loop hasta 429)                        | Cada PR (Fase 1+) |
-| Webhook firma inválida es rechazada    | Vitest integration                                 | Cada PR (Fase 4+) |
-| RLS impostor falla                     | Vitest integration                                 | Cada PR           |
-| Pen test manual                        | Externo                                            | Pre-lanzamiento   |
+### Preparación del stack local y passthrough de `next/cache`
 
----
+Para correr las **83 suites `*.integration.test.ts`** localmente contra Supabase en Podman:
 
-## CI workflow
-
-> **Estado real:** el CI vigente es `.github/workflows/ci.yml`, disparado en `pull_request` hacia
-> `develop` y `production` + `workflow_dispatch` (sin trigger `push`: el ruleset `protect-ramas-criticas`
-> bloquea pushes directos y exige rama al día, evitando duplicar corridas post-merge). Incluye un
-> job preliminar `changes` (fast-path fail-closed para PRs exclusivos de documentación `docs/**`,
-> `README.md`, `CLAUDE.md`, `AGENTS.md` — excluyendo `packages/db/legal-content/*.md` que es
-> contenido servido al cliente) y **5 gates requeridos** en el ruleset:
->
-> - **`quality`** (`Typecheck + Lint + Build`) — `prettier --check`, `pnpm audit --prod --audit-level=high`,
->   typecheck, lint y `next build`, más cuatro gates propios: la **paridad exacta
->   CMS↔código** (`apps/web/lib/cms-sitemap-parity.test.ts`, ADR-187 — recorre el AST de `apps/web`
->   y falla si una clave CMS se consume sin estar en `packages/db/scripts/cms-site-map.mjs` o si se
->   declara sin consumidor; local con `make audit-content`), el **lint de
->   guards de scripts de DB** (`check-script-guards.mjs`, N-06 — todo script que
->   escribe en DB debe importar `env-guard.mjs`; local con `make audit-script-guards`), los
->   **tests de los guards** (`pnpm --filter @lucams/db test` — env-guard/zombie-settings/
->   coupon-signal con `node --test`) y el **lint de voseo** (el copy es-CO es tuteo).
-> - **`unit-tests`** — `pnpm --filter web test:coverage` contra un Postgres service container
->   (+ `supabase-compat.sql` y las SQL de `supabase/migrations`); incluye el gate de coverage y
->   `rls-coverage`. Los tests que exigen Supabase real saltan limpio. Entre las migraciones Prisma
->   y las SQL corre el **drift check Prisma ↔ Supabase** (`audit-schema-drift.mjs`):
->   snapshot post-Prisma + check post-SQL; falla el PR si las dos fuentes del schema divergen
->   (tolerancia documentada: `rate_limit_buckets`).
-> - **`rls-behavior`** — `rls-coverage` + `rls-matrix` de COMPORTAMIENTO contra un
->   Supabase localstack efímero en el runner.
-> - **`e2e`** (`E2E + a11y + Lighthouse — Playwright`) — unifica sobre el mismo Postgres seedeado y
->   el mismo build de producción los specs E2E públicos (`smoke`, `a11y`, `axe`, `compra`, `estudio`,
->   `mobile-storefront-audit`) seguidos de **Lighthouse CI** desktop y móvil (ADR-066).
-> - **`secrets-scan`** — `gitleaks` (corre siempre, incluso en PRs solo-docs).
->
-> El sketch de abajo queda como referencia de la estructura conceptual.
-
-### Gate de release (certificación)
-
-Además del gate por-PR, la certificación de un release exige **verde reciente del nightly**
-(`.github/workflows/nightly-full.yml`, que en `schedule` salta limpio si no hubo commits en 24 h y
-en `workflow_dispatch` corre siempre) en estos jobs exclusivos — su rojo bloquea la certificación:
-
-- **`e2e-supabase-real`** — corre únicamente los specs que exigen GoTrue/Mailpit o cross-browser
-  (`admin-login`, `admin-mfa`, `cms-editing-flow`, `responsive-admin-audit`, `audit-cliente`,
-  `homolog-auth`, `retracto-garantia-cliente` + Firefox/WebKit), sin repetir los 5 specs de `ci.yml`.
-- **`e2e-wompi-sandbox`** (F-01, R3 2026-09-26) — el journey de dinero E2E. Si el job se SALTA por
-  secrets sandbox ausentes, la certificación exige la **corrida manual equivalente**
-  (`scripts/e2e-fullmode.sh wompi-sandbox` con las llaves sandbox en `.env.local`) con artifacts
-  (`/tmp/e2e-tx-*.png`) archivados sobre el SHA del release — MANUAL_CONTROLLED.
-- **`vitest-supabase-real`** — corre las 6 suites de integración/live que exigen GoTrue/Storage
-  real o Wompi sandbox (`auth-actions`, `finalize-server-render`, `personalization/service`,
-  `letter-tiles`, `retention-service`, `wompi.live`).
-- **Post-deploy:** `post-deploy-smoke.yml` verde tras el `deployment_status` de Vercel `Production`
-  (o su corrida manual con `SMOKE_BASE_URL`).
-
-```yaml
-# .github/workflows/ci.yml (estructura propuesta)
-on: [pull_request, push]
-jobs:
-  install:
-    # Cache pnpm + node_modules
-  typecheck: [needs: install]
-  lint: [needs: install]
-  unit:
-    needs: install
-    run: pnpm test --coverage
-  integration:
-    needs: install
-    services:
-      supabase: # supabase local en GH Actions
-    run: pnpm test:integration
-  rls:
-    needs: install
-    services:
-      supabase:
-    run: pnpm test:rls
-  build: [needs: [typecheck, lint, unit, integration, rls]]
-  e2e:
-    needs: build
-    services:
-      supabase:
-    run: pnpm test:e2e
-  audit-deps:
-    needs: install
-    run: pnpm audit --audit-level=high
-  audit-secrets:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: gitleaks/gitleaks-action@v2
-  lighthouse:
-    needs: e2e
-    if: github.event_name == 'pull_request'
-    run: lhci autorun
+```bash
+make db-local-start   # Levanta/reanuda contenedores Podman conservando volúmenes
+make db-local-setup   # Aplica extensiones, migraciones Prisma y SQL de RLS/grants
+make db-local-on      # Apunta .env.local al stack local (:54321 / :54322)
+make db-local-seed    # Siembra catálogo canónico, plantillas, ocasiones, fichas y CMS v2
+make test-local       # Ejecuta toda la suite de apps/web contra PostgreSQL local
 ```
 
-> Total típico de CI por PR: ~6-10 minutos. Si crece más, paralelizar más fino o cachear más agresivo.
+**Por qué mockear `next/cache` como passthrough en integración:** módulos como `apps/web/lib/catalog.ts` o `features/products/service.ts` envuelven lecturas en `unstable_cache` e invalidan con `updateTag` / `revalidateTag`. Fuera de un request HTTP real de Next.js 16, `unstable_cache` lanza `Invariant: incrementalCache missing` y `updateTag` falla por ausencia de contexto de Server Action. Sustituir únicamente `next/cache` por un passthrough ejecuta el **100 % de las consultas Prisma reales** contra PostgreSQL:
+
+### Ejemplo real 4 — Suite `*.integration.test.ts` con `next/cache` passthrough y limpieza acotada
+
+```ts
+// Patrón real de apps/web/lib/catalog.integration.test.ts y features/products/service.integration.test.ts
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// 1) Passthrough de next/cache ANTES de importar el módulo bajo prueba
+vi.mock("next/cache", () => ({
+  unstable_cache:
+    <T extends (...args: never[]) => unknown>(fn: T) =>
+    (...args: Parameters<T>) =>
+      fn(...args),
+  revalidateTag: vi.fn(),
+  revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
+}));
+
+import { prisma } from "@/lib/db";
+import { getCategoryTree, listCatalogProducts } from "@/lib/catalog";
+
+const hasDb = Boolean(process.env.DATABASE_URL);
+// Prefijo único con timestamp de 15+ dígitos: aísla de datos reales y es compatible con global-teardown
+const RUN = `itest-${Date.now()}${Math.floor(Math.random() * 1_000_000)}`;
+
+describe.skipIf(!hasDb)("Catálogo contra PostgreSQL real", () => {
+  let categoryId = "";
+  let productId = "";
+
+  beforeAll(async () => {
+    const cat = await prisma.category.create({
+      data: { name: `Categoría ${RUN}`, slug: `cat-${RUN}`, isActive: true, sortOrder: 99 },
+    });
+    categoryId = cat.id;
+
+    const prod = await prisma.product.create({
+      data: {
+        name: `Imán ${RUN}`,
+        slug: `prod-${RUN}`,
+        description: "Imán personalizado de prueba",
+        categoryId: cat.id,
+        isActive: true,
+        variants: {
+          create: {
+            name: "Set x9",
+            sku: `SKU-${RUN}`,
+            price: 3_500_000,
+            stock: 15,
+            isActive: true,
+          },
+        },
+      },
+    });
+    productId = prod.id;
+  }, 30_000);
+
+  afterAll(async () => {
+    // Limpieza estrictamente acotada al RUN de esta corrida (en orden inverso de FK Restrict)
+    await prisma.productVariant.deleteMany({ where: { productId } });
+    await prisma.product.deleteMany({ where: { id: productId } });
+    await prisma.category.deleteMany({ where: { id: categoryId } });
+  });
+
+  it("incluye la categoría activa con conteo real y excluye variantes borradas", async () => {
+    const tree = await getCategoryTree();
+    const created = tree.find((c) => c.id === categoryId);
+    expect(created?.productCount).toBe(1);
+
+    const listing = await listCatalogProducts({ categorySlug: `cat-${RUN}` });
+    expect(listing.items).toHaveLength(1);
+    expect(listing.items[0]?.minPrice).toBe(3_500_000); // $35.000 COP en centavos
+  });
+});
+```
 
 ---
 
-## Coverage targets
+## 7. Pruebas reales de cobertura y matriz de seguridad RLS (ejemplo real 5)
 
-> Coverage no es la meta — es la consecuencia. Pero sirve como salud check.
+El comando **`make test-rls`** certifica en vivo contra Supabase real (tanto en local como en el check obligatorio **`rls-behavior`** de cada PR) que nuestra defensa de base de datos no tiene grietas ([`SECURITY.md`](SECURITY.md)):
 
-| Capa                            | Coverage mínimo (line)  |
-| ------------------------------- | ----------------------- |
-| `lib/` (utils puros)            | 90%                     |
-| `features/<feat>/service.ts`    | 80%                     |
-| `features/<feat>/repository.ts` | 70% (tests integración) |
-| `app/api/*/route.ts`            | 70%                     |
-| `components/`                   | 50% (rendering + a11y)  |
-| **Total proyecto**              | ≥ 70%                   |
+1. **`rls-coverage.integration.test.ts`:** consulta `pg_tables` y falla si cualquier tabla de `public` (excepto `_prisma_migrations`) tiene `rowsecurity = false`.
+2. **`rls-matrix.integration.test.ts`:** instancia clientes reales `@supabase/supabase-js` con los roles **`anon`**, **`authenticated`** (creando un usuario efímero real vía GoTrue con el cliente **`service_role`**) y contrasta contra **`prisma`** (conexión de servidor) para demostrar dos invariantes simultáneos:
+   - Que la tabla **sí contiene registros reales** leídos por `prisma` (evitando falsos positivos sobre tablas vacías).
+   - Que tanto `anon` como un usuario `authenticated` impostor reciben `42501 permission denied` o `0` filas en `SELECT`, y error explícito en `INSERT`, `UPDATE` y `DELETE` sobre todas las tablas sensibles (`Customer`, `Order`, `AdminUser`, `AdminActionLog`, `WompiPaymentAttempt`, `FunnelEventDaily`, `Organization`, `Contact`, `ContactIdentity`, `IdentityMergeCandidate`, `ContactActivity`, `Task`, `Opportunity`, etc.) y que los buckets privados de Storage (`customer-uploads`, `design-previews`, `production-assets`) rechazan lecturas anónimas.
 
-La tabla de arriba son las METAS por capa. **Estado real (actualizado 2026-08-01):** el coverage
-SÍ se mide y se enforza — `apps/web/vitest.config.ts` define `coverage.thresholds` globales
-(lines 71 / statements 69.5 / functions 68.5 / branches 62, calibrados por ratchet contra la
-medición real de CI) y el job de tests de CI corre `pnpm --filter web test:coverage`
-(`.github/workflows/ci.yml`), que falla si la cobertura cae por debajo del piso. Los thresholds
-se aprietan de nuevo a medida que sube la cobertura real (ratchet).
+### Ejemplo real 5 — `rls-coverage` y `rls-matrix` (`anon`, `authenticated` y `service_role`)
 
-**Tamaño de la suite al 2026-09-04:** ~3.148 tests en 203 archivos (`npx vitest list` en
-`apps/web`). Crece semana a semana — el gate de calidad es el coverage, no el conteo.
+```ts
+// 1) apps/web/features/security/rls-coverage.integration.test.ts (real)
+import { describe, expect, it } from "vitest";
+import { prisma } from "@/lib/db";
+
+describe.skipIf(!process.env.DATABASE_URL)(
+  "RLS coverage — toda tabla pública tiene candado",
+  () => {
+    it("ninguna tabla de public (excepto _prisma_*) está sin RLS", async () => {
+      const rows = await prisma.$queryRaw<Array<{ tablename: string }>>`
+      SELECT tablename FROM pg_tables
+      WHERE schemaname = 'public' AND rowsecurity = false AND tablename NOT LIKE '_prisma%'
+      ORDER BY tablename
+    `;
+      expect(rows.map((r) => r.tablename)).toEqual([]);
+    });
+  },
+);
+```
+
+```ts
+// 2) apps/web/features/security/rls-matrix.integration.test.ts (extracto real)
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { prisma } from "@/lib/db";
+
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const ANON = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SERVICE = process.env.SUPABASE_SECRET_KEY;
+const canRun = Boolean(process.env.DATABASE_URL && URL && ANON && SERVICE);
+
+const SENSITIVE = [
+  "Customer",
+  "Order",
+  "AdminUser",
+  "AdminActionLog",
+  "Contact",
+  "ContactIdentity",
+  "Opportunity",
+] as const;
+
+describe.skipIf(!canRun)("RLS matrix — PostgREST cerrado para anon y authenticated", () => {
+  let anon: SupabaseClient;
+  let authed: SupabaseClient;
+  let service: SupabaseClient;
+  let ephemeralUserId: string | undefined;
+  let fixtureAdminId: string | undefined;
+
+  beforeAll(async () => {
+    anon = createClient(URL!, ANON!, { auth: { persistSession: false } });
+    service = createClient(URL!, SERVICE!, { auth: { persistSession: false } });
+
+    // Aprovisiona sesión authenticated real en GoTrue usando service_role
+    const email = `rls-matrix-${Date.now()}@example.com`;
+    const password = "Rls-Matrix-Test-9182734650";
+    const { data } = await service.auth.admin.createUser({ email, password, email_confirm: true });
+    ephemeralUserId = data.user?.id;
+
+    authed = createClient(URL!, ANON!, { auth: { persistSession: false } });
+    await authed.auth.signInWithPassword({ email, password });
+
+    // Siembra fila real vía Prisma tipado (@lucams/db) para probar que el filtro no es tabla vacía
+    const adminAuth = await service.auth.admin.createUser({
+      email: `rls-admin-${Date.now()}@example.com`,
+      password,
+      email_confirm: true,
+    });
+    const admin = await prisma.adminUser.create({
+      data: {
+        supabaseUserId: adminAuth.data.user!.id,
+        email: adminAuth.data.user!.email!,
+        role: "SUPERADMIN",
+      },
+    });
+    fixtureAdminId = admin.id;
+  });
+
+  afterAll(async () => {
+    if (fixtureAdminId) {
+      const adm = await prisma.adminUser.findUnique({ where: { id: fixtureAdminId } });
+      await prisma.adminUser.deleteMany({ where: { id: fixtureAdminId } });
+      if (adm) await service.auth.admin.deleteUser(adm.supabaseUserId);
+    }
+    if (ephemeralUserId) await service.auth.admin.deleteUser(ephemeralUserId);
+  });
+
+  const leaked = (res: { data: unknown[] | null; error: unknown }) =>
+    !res.error && (res.data?.length ?? 0) > 0;
+
+  it.each(SENSITIVE)("anon NO puede leer %s", async (table) => {
+    expect(leaked(await anon.from(table).select("*").limit(1))).toBe(false);
+  });
+
+  it.each(SENSITIVE)("authenticated impostor NO puede leer %s", async (table) => {
+    expect(leaked(await authed.from(table).select("*").limit(1))).toBe(false);
+  });
+
+  it("AdminUser existe vía Prisma en servidor pero devuelve 0 filas vía anon y rechaza INSERT/UPDATE/DELETE", async () => {
+    expect(await prisma.adminUser.count()).toBeGreaterThan(0);
+    expect((await anon.from("AdminUser").select("id")).data ?? []).toHaveLength(0);
+    expect((await anon.from("Order").insert({ number: "EVIL-1", total: 1 })).error).not.toBeNull();
+    expect(
+      (await anon.from("Order").update({ total: 0 }).eq("number", "EVIL-1")).error,
+    ).not.toBeNull();
+    expect((await anon.from("Customer").delete().eq("email", "x@y.com")).error).not.toBeNull();
+  });
+});
+```
 
 ---
 
-## Regresiones críticas: entrega y archivos de imprenta
+## 8. Pruebas End-to-End con Playwright e inventario 55/55 (ejemplo real 6)
 
-- `photo-fit.test.ts`: reproduce el encuadre descubierto de LCM-2026-0003, rotación 90°, zoom
-  mínimo cover y límites de paneo.
-- `production-spec.test.ts`: un reverso B opcional vacío se anuncia como blanco y nunca como espejo.
-- `checkout-texts.test.ts` + `delivery-estimate.test.ts`: singular/plural, cutoff y lenguaje
-  explícitamente estimado.
-- Certificación manual STG: crear un separador plano, intentar zoom-out/pan hasta el borde,
-  confirmar que el editor no descubre blanco, finalizar, abrir Admin y revisar las cuatro esquinas
-  sobre la cuadrícula; descargar ZIP y cotejar PNG, `armado.png` y `LEEME.txt`.
-- Antes de promover a PRD: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`, smoke del
-  preview STG y evidencia visual del pedido de prueba. Los pedidos PRD históricos son solo lectura.
+### Resolución de ambientes (`E2E_ENV`), `:4100` fullmode, bypass de STG y MFA TOTP
 
-## Tests que NO escribimos
+1. **Selector explícito `E2E_ENV=local|stg|prd` (`apps/web/tests/e2e/_setup/env.ts`):**
+   - `local` (por defecto): carga `.env.local` sin pisar variables de la shell, apunta a `http://localhost:4000` (`PORT` configurable) y gestiona el `webServer` (`next dev` con `1` worker en local para evitar carreras en mutaciones de carrito; `next start` con `2` workers en CI). Si defines `PLAYWRIGHT_BASE_URL`, desactiva el arranque automático.
+   - `stg`: carga `.env.stg`, apunta a `NEXT_PUBLIC_SITE_URL` e inyecta automáticamente la cabecera `x-vercel-protection-bypass: <VERCEL_BYPASS_TOKEN>` en `extraHTTPHeaders` para atravesar **Vercel Deployment Protection** ([`integrations/vercel.md`](integrations/vercel.md)).
+   - `prd`: modo exclusivamente de solo lectura contra `https://lucamsshop.com`.
+2. **Servidor aislado `:4100` para modo `full` (`make test-e2e-fullmode` / `scripts/e2e-fullmode.sh`):**
+   - Como Next.js 16 permite un solo `next dev` activo por directorio, el script detiene limpiamente `:4000` si estaba corriendo, levanta un servidor dedicado en `:4100` con `NEXT_PUBLIC_STORE_MODE=full` y **`RESEND_API_KEY=` vacío** (cero correos salientes), y corre los specs `fullmode-*.spec.ts` (o un filtro puntual como `PW_CHANNEL=chromium scripts/e2e-fullmode.sh wompi-sandbox` contra el checkout hospedado de Wompi, que requiere Chromium completo y no headless shell).
+3. **MFA TOTP `aal2` obligatorio en specs de `/admin` (`_helpers/mfa.ts` y `_helpers/totp.ts`):**
+   - Ningún rol administrativo entra al panel sin factor TOTP verificado (`ADR-183`; sin factor es redirigido a `/admin/seguridad?enroll=required`).
+   - Cuando `E2E_AUTH=1`, `_setup/global.setup.ts` aprovisiona cuentas efímeras de cliente y administrador enrolando TOTP real y guarda su `storageState` en `apps/web/tests/e2e/.auth/<env>/`. Los specs que crean admins propios usan `enrollTotpFactor(email, password)`, `completeMfaChallengeIfNeeded(page, secret)` o `loginAdminWithTotp(page, { email, password, totpSecret })`.
+4. **Auditoría responsive en 6 perfiles de viewport (`audit-responsive.spec.ts`, `ADR-154`):**
+   - Corre sobre **`desktop-chrome`** (`1280×800`), **`mobile-chrome`** (`390×844`), **`mobile-landscape`** (`844×390`), **`tablet`** (`768×1024`), **`tablet-landscape`** (`1024×768`) y **`desktop-large`** (`1920×1080`). Los cuatro perfiles táctiles usan `devices["Pixel 5"]` (`isMobile: true`, `hasTouch: true`).
+   - Recorre rutas públicas, `/mi-cuenta/*` y `/admin/*`: **falla en rojo (`critical`)** si detecta cualquier desbordamiento horizontal (`document.documentElement.scrollWidth > clientWidth` identificando el nodo culpable) y reporta tap targets táctiles `< 40 px` (manteniendo cumplimiento estricto de WCAG 2.5.8 AA ≥ `24 px`). Como `adminPage` y `clientPage` abren contextos manuales, el spec les inyecta explícitamente `testInfo.project.use.viewport`.
 
-- **Tests de Prisma/Next.js/Supabase nativos.** Son librerías; sus mantenedores los testean.
-- **Tests de implementación interna privada** que no afecta comportamiento observable.
-- **Snapshots de objetos enteros.** Frágiles y no se leen.
-- **Mocks de funciones puras.** No hay nada que probar ahí.
-- **Tests E2E de cada PDP.** Uno solo es suficiente; lo demás es unit + integración.
-- **UI tests pixel-perfect en cada componente.** Solo páginas críticas tienen visual regression.
+### Ejemplo real 6 — Spec Playwright E2E (login `/admin` con MFA TOTP `aal2` + escaneo WCAG `axe`)
+
+```ts
+// Patrón real combinado de apps/web/tests/e2e/admin-mfa.spec.ts y axe.spec.ts
+import { test, expect } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
+import { prisma } from "@/lib/db";
+import { enrollTotpFactor, loginAdminWithTotp } from "./_helpers/mfa";
+import { scanA11y } from "./_helpers/axe-scan";
+
+const canProvisionAdmin = Boolean(
+  process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY,
+);
+
+test.describe("Acceso administrativo con MFA TOTP obligatorio y WCAG 2.1 AA", () => {
+  test.skip(!canProvisionAdmin, "Requiere SUPABASE_SECRET_KEY (GoTrue real)");
+
+  let authUserId = "";
+  let email = "";
+  const password = "Admin-E2E-Password-987654!";
+  let totpSecret = "";
+
+  test.beforeAll(async () => {
+    email = `e2e-admin-${Date.now()}@example.com`;
+    const service = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!,
+      { auth: { persistSession: false } },
+    );
+    const { data } = await service.auth.admin.createUser({ email, password, email_confirm: true });
+    authUserId = data.user!.id;
+
+    await prisma.adminUser.create({
+      data: { supabaseUserId: authUserId, email, role: "SUPERADMIN", isActive: true },
+    });
+    totpSecret = await enrollTotpFactor(email, password);
+  });
+
+  test.afterAll(async () => {
+    if (!authUserId) return;
+    await prisma.adminUser.deleteMany({ where: { supabaseUserId: authUserId } });
+    const service = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!,
+      { auth: { persistSession: false } },
+    );
+    await service.auth.admin.deleteUser(authUserId);
+  });
+
+  test("completa credenciales → reto TOTP aal2 → dashboard sin violaciones axe críticas", async ({
+    page,
+  }) => {
+    await loginAdminWithTotp(page, { email, password, totpSecret });
+    await expect(page).toHaveURL(/\/admin\/dashboard/);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+    const violations = await scanA11y(page);
+    const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(blocking).toEqual([]);
+  });
+});
+```
+
+### Inventario completo vigente de los 55 specs E2E (`apps/web/tests/e2e/*.spec.ts`)
+
+El directorio `apps/web/tests/e2e/` contiene exactamente **55 archivos `.spec.ts`** verificados 1:1 en el repositorio:
+
+#### A. Gates públicos por Pull Request en `ci.yml` (6 specs)
+
+- `smoke.spec.ts` — Salud de endpoints (`/api/health`, `/api/health/db`), home, `/productos`, `/ayuda`, `/contacto`, legales, `/status`, `sitemap.xml` y `robots.txt` (también en Firefox/WebKit en el nightly).
+- `a11y.spec.ts` — Invariantes estructurales de accesibilidad (`lang="es-CO"`, skip-link `#contenido`, `<main id="contenido">`, `<h1>` y atributos `alt`).
+- `axe.spec.ts` — Auditoría automatizada WCAG 2.1 A/AA con `@axe-core/playwright` (`0` violaciones `serious` o `critical`).
+- `compra.spec.ts` — Recorrido público de catálogo → PDP → carrito → paso inicial `/checkout/datos`.
+- `estudio.spec.ts` — Carga interactiva, edición sobre lienzo Konva y validaciones principales del Estudio.
+- `mobile-storefront-audit.spec.ts` — Gate anti-overflow horizontal y ergonomía móvil en el storefront público.
+
+#### B. Estudio 2D/3D, PDP y edición desde carrito (7 specs)
+
+- `cart-edit-calendario.spec.ts` — Clonación y edición desde `/carrito` de calendarios personalizados reemplazando la línea en sitio sin duplicarla.
+- `estudio-letterset.spec.ts` — Personalización de Abecedario y Vocales multi-set (estilos por set, bordes y láminas).
+- `estudio-studio-ux.spec.ts` — Selección explícita de plantilla, checklist guiado, bottom-sheet móvil «resumen + Listo» y barra de estilo.
+- `generate-template-previews.spec.ts` — Generación y verificación determinista de miniaturas de plantillas del Estudio.
+- `pdp-cantidad-tira.spec.ts` — Selector de variantes y cantidades en el producto híbrido de tiras fotográficas.
+- `pdp-unidades.spec.ts` — Propagación del stepper «Unidades» (`?copies=N`) desde la PDP hacia el Estudio y el carrito.
+- `studio-gestures.spec.ts` — Gestos táctiles y de puntero: zoom, paneo y encuadre fotográfico dentro del Estudio.
+
+#### C. Checkout transaccional en modo `full` y pasarela real (8 specs)
+
+- `catalog-mode.spec.ts` — Certifica que `NEXT_PUBLIC_STORE_MODE=catalog` oculte y bloquee cobros, fletes dinámicos e IA.
+- `fullmode-checkout-wompi.spec.ts` — Creación de orden, registro en ledger `WompiPaymentAttempt` y firma de integridad hacia Wompi.
+- `fullmode-cod.spec.ts` — Compra completa contraentrega (`COD`), reglas de riesgo y confirmación de pedido.
+- `fullmode-cupones.spec.ts` — Aplicación, exclusiones, vigencia y topes de uso de cupones en checkout.
+- `fullmode-envio.spec.ts` — Cotización de fletes, «Envío Lucams» en Bogotá y verificación del sello HMAC de tarifas.
+- `fullmode-pasarela.spec.ts` — Retorno en `/checkout/gracias`, reconciliación de estado contra Wompi y reintentos seguros.
+- `fullmode-stock.spec.ts` — Control de topes de inventario, quiebres de stock y mensajes nombrando el producto afectado.
+- `wompi-sandbox.spec.ts` — **Journey real de dinero** (`PW_CHANNEL=chromium`): pago aprobado con tarjeta `4242` en Wompi sandbox → webhook firmado → orden `PAID` + guía en Aveonline sandbox.
+
+#### D. Administración, MFA, CMS v2, posventa y auditorías responsive (13 specs)
+
+- `admin-inventory.spec.ts` — Ajustes de stock auditados y umbrales de alerta en `/admin/inventario`.
+- `admin-login.spec.ts` — Flujo de login administrativo separado en `/admin/login` y guardas de acceso.
+- `admin-mfa.spec.ts` — Enrolamiento obligatorio TOTP, reto `/admin/login/mfa` (`aal2`) y _step-up_ en acciones sensibles.
+- `admin-transactional.spec.ts` — Operación administrativa de pedidos, transiciones de estado, guías y conciliación.
+- `audit-admin.spec.ts` — Recorrido integral de salud y permisos RBAC en las secciones de `/admin`.
+- `audit-cliente.spec.ts` — Auditoría integral del portal autenticado de cliente.
+- `audit-responsive.spec.ts` — Auditoría responsive maestra en los **6 perfiles de viewport** sobre tienda pública, cliente y `/admin`.
+- `cms-edit-mode.spec.ts` — Overlay y edición contextual Live Edit sobre páginas públicas (`isCmsEditMode`).
+- `cms-editing-flow.spec.ts` — Ciclo completo borrador → vista previa → publicación e invalidación de caché en `/admin/contenido`.
+- `mobile-admin-audit.spec.ts` — Usabilidad móvil y ausencia de overflow en vistas operativas de `/admin` (`375×812`).
+- `mobile-admin-link.spec.ts` — Regresión `ADR-162`: navegar en tienda con sesión admin no cierra sesión por prefetch hacia `/admin`.
+- `responsive-admin-audit.spec.ts` — Auditoría responsive de tablas, filtros y cajones del backoffice.
+- `retracto-garantia-cliente.spec.ts` — Autoservicio posventa sobre pedidos `DELIVERED`: radicación de retracto y garantía, acuse y bloqueo de ventanas legales vencidas.
+
+#### E. Suite de homologación funcional punta a punta (`homolog-*.spec.ts` — 21 specs)
+
+- `homolog-3d.spec.ts` — Montaje WebGL sin errores y controles de las **7 escenas 3D** del Estudio.
+- `homolog-admin-cms.spec.ts` — Integridad de lectura/escritura de bloques y settings en CMS v2.
+- `homolog-admin-cruces.spec.ts` — Consistencia cruzada entre pedidos, clientes/contactos, inventario, finanzas y métricas en `/admin`.
+- `homolog-admin-modulos.spec.ts` — Verificación funcional de los módulos operativos del panel administrativo.
+- `homolog-auth.spec.ts` — Ciclo completo con GoTrue + Mailpit real: registro → código OTP → login → recuperación → cambio de clave.
+- `homolog-back-in-stock.spec.ts` — Suscripción y notificación de reposición en variantes agotadas.
+- `homolog-contacto.spec.ts` — Radicación pública en contacto/soporte con validación Turnstile.
+- `homolog-cookies.spec.ts` — Banner de consentimiento Ley 1581, preferencias por categoría y bloqueo previo de GA4 (`ADR-088`).
+- `homolog-cotizacion.spec.ts` — Solicitud y seguimiento comercial B2B/personalizado en `/cotizacion/[token]`.
+- `homolog-errores.spec.ts` — Páginas `404`, error boundaries y reporte hacia `/api/log-error`.
+- `homolog-estudio-uploads.spec.ts` — Subida firmada de fotos (JPEG/PNG/WebP/HEIC), derivados `.canvas.webp` y alertas DPI.
+- `homolog-mi-cuenta.spec.ts` — Perfil, direcciones estructuradas DANE/MinTIC, diseños, pedidos, soporte y seguridad en `/mi-cuenta`.
+- `homolog-newsletter.spec.ts` — Alta con consentimiento expreso y baja de comunicaciones comerciales.
+- `homolog-ocasion.spec.ts` — Landings dinámicas `/ocasion/[slug]` y filtrado en catálogo.
+- `homolog-rastrear.spec.ts` — Búsqueda en `/rastrear` y portal `/pedido/[token]` con doble factor para invitados.
+- `homolog-rate-limit.spec.ts` — Activación efectiva de respuestas HTTP `429` respaldadas por `rate_limit_check` en PostgreSQL.
+- `homolog-recomendador.spec.ts` — Recomendador interactivo de productos/regalos del storefront.
+- `homolog-resenas.spec.ts` — Envío de reseñas verificadas (`/resena/[token]`, solo `DELIVERED`) y moderación admin.
+- `homolog-seo.spec.ts` — Metadatos canónicos, Open Graph, JSON-LD, redirecciones CMS y feed `/merchant.xml`.
+- `homolog-webhooks.spec.ts` — Rechazo `401` ante firmas inválidas e idempotencia ante reintentos en `/api/webhooks/*`.
+- `homolog-wishlist.spec.ts` — Guardado y eliminación de favoritos en `/mi-cuenta/favoritos`.
+
+---
+
+## 9. Carga k6, Lighthouse CI, perfilado CDP del Estudio y arquitectura CI/CD
+
+### Pruebas de carga con k6 (`tests/load/storefront-browsing.js`)
+
+Simula una rampa de hasta **50 usuarios virtuales concurrentes** (70 % home → `/productos` → PDP aleatoria, 20 % búsqueda `/productos?q=` + `/api/cms/blocks`, 10 % `/carrito`) exigiendo **`p(95) < 500 ms`**, **`p(99) < 1000 ms`** y tasa de errores **`< 1 %`**:
+
+```js
+// Extracto real de tests/load/storefront-browsing.js
+export const options = {
+  scenarios: {
+    browsing: {
+      executor: "ramping-vus",
+      startVUs: 0,
+      stages: [
+        { duration: "30s", target: 10 },
+        { duration: "2m", target: 50 },
+        { duration: "30s", target: 0 },
+      ],
+      gracefulRampDown: "15s",
+    },
+  },
+  thresholds: {
+    http_req_duration: ["p(95)<500", "p(99)<1000"],
+    http_req_failed: ["rate<0.01"],
+    errors: ["rate<0.01"],
+  },
+};
+```
+
+```bash
+# Ejecución contra local (:4000) o contra preview STG protegido
+make test-load
+k6 run -e BASE_URL="https://<preview-stg>.vercel.app" \
+       -e VERCEL_BYPASS_TOKEN="<secreto_bypass>" \
+       tests/load/storefront-browsing.js
+```
+
+### Lighthouse CI (`lighthouserc.json` y `lighthouserc.mobile.js`) y profiler CDP del Estudio
+
+- **Lighthouse CI por PR:** dentro del job `e2e` corren `pnpm lhci` (preset `desktop`) y `pnpm lhci:mobile` (emulación móvil Moto G Power + 4G simulado) sobre `/` y `/productos` servidos con `next start`. Ambos bloquean con **`error`** si `categories:accessibility < 0.90` o `categories:seo < 0.90`, y emiten `warn` en `best-practices` (`0.85`) y `performance` (`0.50` desktop / `0.40` móvil).
+- **Profiler de entrada al Estudio (`apps/web/scripts/profile-studio-entry.mjs`, `ADR-166`/`ADR-169`):** conecta Playwright con los dominios **`Performance`** y **`Profiler`** de Chrome DevTools Protocol sobre los 8 productos con Estudio vivo en viewport `390×844` (`deviceScaleFactor: 3`) con estrangulamiento `CPU ×6` y contexto frío por corrida. Mide `ScriptDuration`, conteo/duración de _longtasks_ hasta lograr `1.5 s` de quietud del hilo principal y funciones calientes por _self-time_, alertando si algún producto supera **+30 % de JS** frente al control (`set-fotoimanes-cuadrados`):
+  ```bash
+  # Ejecutar SIEMPRE contra un build de producción (jamás contra next dev)
+  pnpm build
+  cd apps/web && set -a && source ../../.env.local && set +a && pnpm exec next start -p 4000 &
+  pnpm --filter web exec node scripts/profile-studio-entry.mjs --runs 3
+  ```
+
+### Arquitectura completa de los workflows en `.github/workflows/`
+
+#### 1. `.github/workflows/ci.yml` — Los 5 gates obligatorios por Pull Request
+
+Se dispara en `pull_request` hacia `develop` y `production` y en `workflow_dispatch` (con cancelación automática de runs previos de la misma rama). Abre con el job **`changes`**, que calcula `docs_only` en modo **fail-closed**: solo activa el fast-path (`~30 s`) cuando el diff modifica únicamente `docs/**`, `README.md`, `CLAUDE.md`, `AGENTS.md` o `apps/web/**/README.md` (**excluyendo siempre `packages/db/legal-content/*.md`**, que fuerza corrida completa).
+
+El ruleset **`protect-ramas-criticas`** exige en verde estos **5 checks** antes de habilitar el botón de merge ([`integrations/github-and-ops.md`](integrations/github-and-ops.md)):
+
+| #   | Check requerido en GitHub (`job id`)                                   | Infraestructura efímera                                      | Qué valida exactamente                                                                                                                                                                                                                                                            |
+| --- | ---------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **`Gitleaks secret scan`** (`secrets-scan`)                            | Ubuntu limpio (`fetch-depth: 0`)                             | Escaneo completo de commits del PR con `.gitleaks.toml` (corre **siempre**, aun con `docs_only=true`)                                                                                                                                                                             |
+| 2   | **`Typecheck + Lint + Build`** (`quality`)                             | Node 22 + `pnpm@11.0.9`                                      | **Siempre:** `pnpm format:check` y `pnpm audit --prod --audit-level=high`. **Con código:** `pnpm -r typecheck`, `pnpm -r lint`, `cms-sitemap-parity.test.ts` (`166/166`), `check-script-guards.mjs`, `pnpm --filter @lucams/db test`, lint anti-voseo y `pnpm --filter web build` |
+| 3   | **`Vitest tests (unit + integración con Postgres)`** (`unit-tests`)    | Service container `postgres:15` + `supabase-compat.sql`      | `prisma migrate deploy` → snapshot + `audit-schema-drift.mjs check` tras aplicar todas las `supabase/migrations/*.sql` → `pnpm --filter web test:coverage` validando los umbrales V8                                                                                              |
+| 4   | **`RLS behavior (rls-matrix contra Supabase local)`** (`rls-behavior`) | Stack Supabase CLI completo (`.github/ci/localstack`)        | Levanta GoTrue, PostgREST y Storage reales, aplica migraciones Prisma y SQL como `supabase_admin`, y certifica `rls-coverage` + `rls-matrix`                                                                                                                                      |
+| 5   | **`E2E + a11y + Lighthouse — Playwright`** (`e2e`)                     | `postgres:15` + semillas + `next build` / `next start :4000` | Corre `smoke`, `a11y`, `axe`, `compra`, `estudio` y `mobile-storefront-audit` en `desktop-chrome`, seguidos de `pnpm lhci` y `pnpm lhci:mobile` (sube `e2e-lighthouse-reports` por 7 días si falla)                                                                               |
+
+#### 2. `.github/workflows/nightly-full.yml` — Certificación nocturna y gate de release
+
+Corre diariamente a las `06:00 UTC` (`01:00 America/Bogota`, saltando limpio vía `gate-activity` si no hubo commits en las últimas 24 h) y siempre bajo demanda con `workflow_dispatch`:
+
+- **`vitest-supabase-real`:** levanta Supabase local completo y corre las 6 suites profundas de GoTrue/Storage/sandbox (`auth-actions.integration.test.ts`, `finalize-server-render.integration.test.ts`, `personalization/service.integration.test.ts`, `letter-tiles.integration.test.ts`, `retention-service.integration.test.ts` y `lib/wompi.live.test.ts`).
+- **`e2e-supabase-real`:** siembra catálogo completo + CMS v2 y ejecuta `admin-login.spec`, `admin-mfa.spec`, `cms-editing-flow.spec`, `responsive-admin-audit.spec`, `audit-cliente.spec`, `homolog-auth.spec` y `retracto-garantia-cliente.spec`, más el smoke cross-browser en Firefox y WebKit.
+- **`e2e-wompi-sandbox`:** ejecuta `wompi-sandbox.spec.ts` con `PW_CHANNEL=chromium` contra los sandboxes reales de Wompi y Aveonline y archiva `wompi-sandbox-evidence` durante 30 días. Antes de fusionar un release PR `develop → production`, `nightly-full.yml` debe estar en verde sobre `develop` (o haberse certificado manualmente `scripts/e2e-fullmode.sh wompi-sandbox` sobre el SHA candidato si faltaran secretos sandbox en el runner), acompañado del recorrido de [`QA_CHECKLIST.md`](QA_CHECKLIST.md).
+
+#### 3. `.github/workflows/post-deploy-smoke.yml` — Verificación automática post-deploy en PRD
+
+Se activa automáticamente al recibir el evento nativo `deployment_status` de Vercel (`environment == "Production"` y `state == "success"`) haciendo checkout explícito de **`ref: production`** (nunca `develop`):
+
+1. Ejecuta `node apps/web/scripts/post-deploy-smoke.mjs` (Node 22 puro sin dependencias) contra `https://lucamsshop.com`, exigiendo HTTP `200` en `/api/health`, `/api/health/db`, `/api/health/crons`, `/` y `/productos`, además de verificar los marcadores estructurales del HTML (`lang="es-CO"`, `href="#contenido"`, `<main id="contenido">`).
+2. Compara las carpetas de `packages/db/prisma/migrations/` en `production` contra `_prisma_migrations` en la base de PRD (`BACKUP_DATABASE_URL`) y falla en rojo si quedó alguna migración pendiente de aplicar ([`OPERATIONS.md`](OPERATIONS.md)).

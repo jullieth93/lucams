@@ -28,25 +28,26 @@ Es un tercero (una empresa proveedora) que trata algunos de tus datos **en nuest
 
 ## Proveedores que tratan tus datos
 
-> Esta lista refleja a los proveedores que **hoy** tratan datos para operar la tienda en línea (cobros con Wompi, envíos con Aveonline, asistente de diseño con IA y atención por WhatsApp, todos activos). Si agregamos o cambiamos un proveedor, actualizamos esta página.
+> Esta lista refleja a los proveedores que **hoy** participan en la operación de la tienda en línea (cobros con Wompi, envíos con Aveonline, correo con Resend, analítica opcional bajo tu consentimiento, asistente de IA sin datos personales y atención por WhatsApp). Si agregamos o cambiamos un proveedor, actualizamos esta página.
 
-| Proveedor               | País                             | Qué hace                                                                                                   | Qué datos tuyos trata                                                                             | DPA                                                        |
-| ----------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| **Supabase**            | EE.UU. (con opción de región EU) | Base de datos, autenticación y almacenamiento de archivos                                                  | Casi todos los datos de tu cuenta y pedidos (protegidos con RLS) y las fotos que subes al Estudio | [Ver](https://supabase.com/legal/dpa)                      |
-| **Vercel**              | EE.UU.                           | Hosting, despliegue y CDN del sitio                                                                        | Datos en tránsito durante tu visita y registros técnicos (incluida tu IP)                         | [Ver](https://vercel.com/legal/dpa)                        |
-| **Resend**              | EE.UU.                           | Envío de correos transaccionales y del boletín                                                             | Tu correo electrónico y el contenido del mensaje                                                  | [Ver](https://resend.com/legal/dpa)                        |
-| **Google (Gemini API)** | EE.UU.                           | Asistente de IA que sugiere ideas de diseño en el Estudio                                                  | Solo el texto de la ocasión que describes; no enviamos tus fotos ni tus datos de contacto         | [Ver](https://ai.google.dev/gemini-api/terms)              |
-| **Cloudflare**          | EE.UU. / global                  | Anti-bot (Turnstile) y protección contra ataques                                                           | Tu dirección IP y datos en tránsito                                                               | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/) |
-| **Cloudflare R2**       | EE.UU. / global                  | Respaldo cifrado de la base de datos, para continuidad del negocio (retención de ~30 días)                 | Una copia cifrada de la base completa (incluye datos de clientes y pedidos)                       | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/) |
-| **Meta / WhatsApp**     | EE.UU. / global                  | Canal de atención al cliente: dudas, cotizaciones y ejercicio de tus derechos                              | Tu nombre, tu número de teléfono y el contenido de los mensajes que nos escribes                  | [Ver](https://www.whatsapp.com/legal/)                     |
-| **Wompi**               | Colombia                         | Procesamiento de pagos en línea (tarjetas y PSE)                                                           | Datos de la transacción y datos para prevención de fraude                                         | [Ver](https://wompi.com/legal)                             |
-| **Aveonline**           | Colombia                         | Agregador de logística: cotiza el envío en el checkout, genera la guía y gestiona el recaudo contraentrega | Nombre, dirección y teléfono de entrega                                                           | [Ver](https://www.aveonline.co/)                           |
+| Proveedor                           | País                             | Qué hace                                                                                                                       | Qué datos tuyos trata                                                                                                | DPA                                                        |
+| ----------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Supabase**                        | EE.UU. (con opción de región EU) | Base de datos, autenticación y almacenamiento de archivos                                                                      | Los datos de tu cuenta, pedidos, soporte y las fotos que subes al Estudio (protegidos con control de acceso y RLS)   | [Ver](https://supabase.com/legal/dpa)                      |
+| **Vercel**                          | EE.UU.                           | Hosting, despliegue y CDN del sitio                                                                                            | Datos en tránsito durante tu visita y registros técnicos (incluida tu IP)                                            | [Ver](https://vercel.com/legal/dpa)                        |
+| **Resend**                          | EE.UU.                           | Envío de correos transaccionales y gestión de suscriptores del boletín                                                         | Tu correo electrónico, estado de entrega y el contenido del mensaje                                                  | [Ver](https://resend.com/legal/dpa)                        |
+| **Google (Gemini API)**             | EE.UU.                           | Asistente de ocasión en el Estudio y apoyo interno de redacción en soporte                                                     | Solo textos previamente depurados y anonimizados (sin fotos, nombres, correos, teléfonos, direcciones ni documentos) | [Ver](https://ai.google.dev/gemini-api/terms)              |
+| **Google LLC (Google Analytics 4)** | EE.UU.                           | Medición analítica agregada de páginas y campañas (**solo si aceptas cookies Analíticas**)                                     | Eventos de navegación con URLs depuradas (sin enlaces privados) e identificadores de cookie \`_ga\`                    | [Ver](https://business.safety.google/adsprocessorterms/)   |
+| **Cloudflare**                      | EE.UU. / global                  | Anti-bot (Turnstile), DNS, enrutamiento de correo entrante y protección contra ataques                                         | Tu dirección IP, datos en tránsito y correos que nos escribes a nuestro buzón de contacto                            | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/) |
+| **Cloudflare R2**                   | EE.UU. / global                  | Respaldo cifrado externo de la base de datos y de los archivos de almacenamiento (retención de ~30 días)                       | Una copia cifrada con AES-256 para continuidad del negocio ante desastres                                            | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/) |
+| **Meta / WhatsApp**                 | EE.UU. / global                  | Canal de atención al cliente: dudas, cotizaciones y ejercicio de tus derechos                                                  | Tu nombre, tu número de teléfono y el contenido de los mensajes que nos escribes                                     | [Ver](https://www.whatsapp.com/legal/)                     |
+| **Wompi**                           | Colombia                         | Procesamiento de pagos en línea (tarjetas y PSE)                                                                               | Datos de la transacción y datos para prevención de fraude                                                            | [Ver](https://wompi.com/legal)                             |
+| **Aveonline**                       | Colombia                         | Agregador de logística: cotiza el envío en el checkout, genera la guía, informa el rastreo y gestiona el recaudo contraentrega | Nombre, dirección, ciudad y teléfono de entrega                                                                      | [Ver](https://www.aveonline.co/)                           |
 
-> **Sobre el asistente de IA:** según el nivel (tier) de la Gemini API que tengamos activo, Google puede usar los textos enviados para mejorar sus productos. Por eso el asistente solo recibe el texto de la ocasión y, antes de enviarlo, reemplazamos por un texto neutro cualquier dato que parezca personal (documentos, correos o celulares).
+> **Sobre las herramientas de IA:** según el nivel (tier) de la Gemini API que tengamos activo, Google puede tratar los textos enviados conforme a sus términos del servicio. Por eso nunca enviamos fotos ni datos personales: tanto en el Estudio como en el apoyo interno de soporte aplicamos filtros deterministas en nuestro servidor que suprimen documentos, correos, teléfonos y direcciones antes de hacer cualquier consulta.
 
 ### Transportadoras
 
-Aveonline entrega tu pedido a través de **una** de estas transportadoras, según la cobertura y la tarifa de tu ciudad. La transportadora recibe tus datos de entrega (**nombre, dirección y teléfono**) únicamente para completar el envío:
+Aveonline entrega tu pedido a través de **una** de estas transportadoras aliadas (además de nuestra opción de mensajería local en Bogotá cuando aplica), según la cobertura y la tarifa de tu ciudad. La transportadora recibe tus datos de entrega (**nombre, dirección y teléfono**) únicamente para completar el envío:
 
 - Envía
 - Coordinadora
@@ -58,11 +59,11 @@ Aveonline entrega tu pedido a través de **una** de estas transportadoras, segú
 
 ## Transferencias internacionales
 
-Algunos de estos proveedores (Supabase, Vercel, Resend, Google/Gemini, Cloudflare y Meta/WhatsApp) están ubicados en **Estados Unidos** u operan de forma **global**, país al que la Superintendencia de Industria y Comercio (SIC) **no ha declarado como de nivel adecuado** de protección de datos. Que tus datos se traten allí es, por tanto, una **transferencia/transmisión internacional**, amparada en:
+Algunos de estos proveedores (Supabase, Vercel, Resend, Google, Cloudflare y Meta/WhatsApp) están ubicados en **Estados Unidos** u operan de forma **global**, país al que la Superintendencia de Industria y Comercio (SIC) **no ha declarado como de nivel adecuado** de protección de datos. Que tus datos se traten allí es, por tanto, una **transferencia/transmisión internacional**, amparada en:
 
-1. **Tu autorización previa, expresa e informada**, que recogemos en el [Aviso de Privacidad](/legal/privacidad) y la Política de Tratamiento de Datos.
+1. **Tu autorización previa, expresa e informada**, que recogemos en el [Aviso de Privacidad](/legal/privacidad), en el banner de cookies y en la Política de Tratamiento de Datos.
 2. El **contrato de transmisión / DPA** que tenemos con cada proveedor, con garantías de seguridad (artículo 2.2.2.25.5.2 del Decreto 1074 de 2015).
-3. **Medidas técnicas**: cifrado de tus datos en tránsito y en reposo.
+3. **Medidas técnicas**: cifrado de tus datos en tránsito y en reposo, y minimización previa de lo que se transmite.
 
 Todo esto se hace conforme al **artículo 26 de la Ley 1581 de 2012**, que regula las transferencias internacionales de datos personales.
 
@@ -70,7 +71,7 @@ Todo esto se hace conforme al **artículo 26 de la Ley 1581 de 2012**, que regul
 
 ## Cómo ejercer tus derechos
 
-Puedes **conocer, actualizar, rectificar y suprimir** tus datos, **revocar** la autorización y **pedir prueba** de la autorización otorgada. Escríbenos a **{{email_contacto}}** o usa el formulario de la página de [Habeas Data](/legal/habeas-data). Los plazos legales son:
+Puedes **conocer, actualizar, rectificar y suprimir** tus datos, **revocar** la autorización y **pedir prueba** de la autorización otorgada. Escríbenos a **{{email_habeas_data}}** (o a **{{email_contacto}}**) o revisa el detalle en [Hábeas Data](/legal/habeas-data). Los plazos legales son:
 
 - **Consultas:** te respondemos en máximo **{{habeas_consulta_dias}} días hábiles** (Ley 1581, art. 14).
 - **Reclamos:** los resolvemos en máximo **{{habeas_reclamo_dias}} días hábiles** (Ley 1581, art. 15).
@@ -83,7 +84,7 @@ Si vamos a **agregar o cambiar** un subprocesador, avisaremos por correo a los c
 
 ---
 
-_Versión 2 · vigente desde 2026-11-02_
+_Versión 3 · vigente desde 2026-11-05_
 `;
 
 export default function Page() {

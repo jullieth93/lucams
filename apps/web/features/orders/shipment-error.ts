@@ -6,7 +6,7 @@
  * el mensaje crudo solo quedaba en los logs y el admin veía un throw genérico.
  * Ahora la saga persiste el intento fallido en Order.shipmentLastError y el
  * detalle admin del pedido muestra la causa real + una sugerencia operativa
- * (tabla de errores: docs/INTEGRATIONS_AVEONLINE.md §4.4).
+ * (tabla de errores: docs/integrations/aveonline.md).
  *
  * Módulo puro (sin server-only): lo usa la saga (server) y la página admin
  * (server), y se testea sin mocks.
@@ -75,7 +75,7 @@ export function parseShipmentLastError(raw: unknown): ShipmentLastError | null {
 /**
  * Sugerencia operativa de causa según el mensaje de la transportadora, para el
  * detalle admin del pedido. Mapea los errores catalogados en
- * docs/INTEGRATIONS_AVEONLINE.md §4.4 ("Errores comunes generación guía").
+ * docs/integrations/aveonline.md ("Errores comunes en generación de guía").
  */
 export function suggestShipmentFailureCause(error: ShipmentLastError): string {
   if (error.timeout) {
@@ -125,5 +125,5 @@ export function suggestShipmentFailureCause(error: ShipmentLastError): string {
   if (msg.includes("no se pudo generar") || msg.includes("error al momento de iniciar")) {
     return "Falla entre Aveonline y la transportadora: suele ser temporal; reintenta en unos minutos.";
   }
-  return "Causa no catalogada: compara el mensaje con la tabla de errores de docs/INTEGRATIONS_AVEONLINE.md (§4.4).";
+  return "Causa no catalogada: compara el mensaje con la tabla de errores de docs/integrations/aveonline.md.";
 }

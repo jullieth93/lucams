@@ -714,7 +714,7 @@ export class AveonlineProvider implements ShippingProvider {
     // Aveonline 2026-05-21: usar `cotizarDoble` (multi-carrier) en vez de `cotizar2`
     // (single-carrier). cotizar2 devolvía numbererror=999 cuando idtransportador no
     // estaba habilitado para la cuenta. cotizarDoble cotiza TODAS las habilitadas y
-    // filtramos por numbererror='-0-' acá. Doc: docs/INTEGRATIONS_AVEONLINE.md §3.
+    // filtramos por numbererror='-0-' acá. Doc: docs/integrations/aveonline.md.
     // Ciudad UPPERCASE con formato `CIUDAD(DEPTO)` — sino numbererror=-1 o -2.
     const origenFmt = formatAveonlineCity(params.origin.city, params.origin.department);
     const destinoFmt = formatAveonlineCity(params.destination.city, params.destination.department);
@@ -1186,7 +1186,7 @@ export class AveonlineProvider implements ShippingProvider {
     const labelUrl = guia.rutasticker ?? guia.rutaguia ?? guia.rotulo ?? "";
     const trackingUrl = guia.rutaguia ?? labelUrl;
     // Fix 1.8 (2026-10-07) — PDF embebido en la respuesta (archivorotulo = base64 PDF
-    // del rótulo, INTEGRATIONS_AVEONLINE §4.3). Es la fuente MÁS confiable para la
+    // del rótulo, docs/integrations/aveonline.md). Es la fuente MÁS confiable para la
     // copia propia en Storage: no depende de que la URL externa siga viva ni de sesión.
     const labelPdfBase64 = guia.archivorotulo ?? guia.archivosticker ?? null;
 

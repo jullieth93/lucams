@@ -14,7 +14,7 @@
  *
  * Referencias:
  *   - ADR-033 CMS arquitectura + RAG endpoints
- *   - docs/INTEGRATIONS.md § CMS API
+ *   - docs/domains/catalog-and-cms.md
  */
 
 import { getAllCmsBlocks, getCmsBlocksByCategory, type CmsBlockCategory } from "@/lib/cms";

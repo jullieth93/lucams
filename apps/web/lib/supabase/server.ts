@@ -18,7 +18,7 @@
  * Referencias:
  *  - @supabase/ssr docs: https://supabase.com/docs/guides/auth/server-side
  *  - Next.js 16 async cookies: docs/CONVENTIONS.md (breaking changes)
- *  - docs/INTEGRATIONS.md § 3. Supabase
+ *  - docs/integrations/supabase.md
  */
 
 import { createServerClient } from "@supabase/ssr";

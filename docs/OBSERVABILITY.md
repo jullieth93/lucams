@@ -1,400 +1,78 @@
-# Observabilidad — Lucams_shop
+# Observabilidad, Monitoreo y Alertas — Lucams Shop
 
-> Cómo sabemos si el sitio está bien. Qué medimos, qué alertamos, qué hacemos cuando algo falla. Sin observabilidad no hay operación productiva — solo esperanza.
-
-## Tabla de contenido
-
-1. [Principios](#principios)
-2. [SLOs (Service Level Objectives)](#slos-service-level-objectives)
-3. [SLIs (Service Level Indicators)](#slis-service-level-indicators)
-4. [Error budgets](#error-budgets)
-5. [Dashboards](#dashboards)
-6. [Alertas](#alertas)
-7. [Logs estructurados](#logs-estructurados)
-8. [Métricas custom e Inteligencia Conductual](#métricas-custom-e-inteligencia-conductual)
-9. [Tracing y correlation](#tracing-y-correlation)
-10. [Healthchecks](#healthchecks)
-11. [On-call (post-lanzamiento)](#on-call-post-lanzamiento)
-12. [Process de postmortem](#process-de-postmortem)
-13. [Pre-lanzamiento vs post-lanzamiento](#pre-lanzamiento-vs-post-lanzamiento)
+> **Documento vivo (Nivel 1).** Especificación verificada contra el código real de la arquitectura de observabilidad sin SaaS externos de Lucams Shop: principios, desglose de los **7 tableros administrativos** y `/status`, sondas de salud (`/api/health/*`), monitor externo cruzado `uptime-monitor-prd` (Supabase STG → PRD), logging estructurado JSON (`lib/logger.ts` API-compatible con Pino + `scrubPii`), captura de errores (`ErrorLog` y `ErrorReport`), análisis del punto ciego de base de datos, monitoreo dead-man switch de los **14 crons** de `CRON_JOBS` (frente a los **18 procesos programados** totales), motor de **12 reglas de alerta** + alertas transaccionales inmediatas, **SLOs cuantitativos, SLIs y política de Error Budgets**, Web Vitals RUM (`ADR-135`), embudo sin cookies (`FunnelEventDaily`) vs GA4, inteligencia conductual CRM/RFM, políticas de retención de **12 fuentes** y proceso de postmortem _blameless_.
+>
+> **Documentos relacionados:** [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`OPERATIONS.md`](OPERATIONS.md) · [`SECURITY.md`](SECURITY.md) · [`COMPLIANCE.md`](COMPLIANCE.md) · [`CONVENTIONS.md`](CONVENTIONS.md) · [`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md) · [`integrations/supabase.md`](integrations/supabase.md) · [`integrations/github-and-ops.md`](integrations/github-and-ops.md)
 
 ---
 
-## Principios
+## 1. Principios, arquitectura sin SaaS externos y los 7 tableros de `/admin`
 
-1. **Si no se mide, no existe.** Toda capacidad crítica (checkout, pago, envío) tiene SLI.
-2. **Pocas alertas, todas accionables.** Alerta que no se actúa = ruido = se ignora la próxima.
-3. **Logs estructurados, no strings.** Todo loggear es JSON con campos.
-4. **Correlación obligatoria.** `requestId` propaga de HTTP → DB → jobs → emails.
-5. **Free-tier-first** (mandato #2). Vercel Logs + Supabase dashboard alcanza para arrancar; Sentry/BetterStack en Fase 7 si hace falta.
+### 1.1 Los 5 principios rectores
 
----
+1. **Si no se mide, no existe:** toda capacidad crítica (checkout, pagos Wompi, envíos Aveonline, renders 300 DPI, entregabilidad de correo y crons) expone un indicador verificable (SLI).
+2. **Pocas alertas, todas accionables:** cada regla de alerta describe **qué se rompió** y **qué acción concreta ejecutar**; una alerta sin acción genera fatiga y termina ignorándose.
+3. **Logs estructurados en JSON, jamás cadenas sueltas:** todo evento de servidor pasa por `apps/web/lib/logger.ts` con `event`, nivel, `requestId` y redacción automática de PII y secretos.
+4. **Correlación extremo a extremo:** cada petición recibe `X-Request-Id` en `proxy.ts`, y los errores de servidor guardan el `digest` de Next.js para cruzarlos con Vercel Runtime Logs.
+5. **Cero SaaS externos costosos (cero Sentry, Datadog ni UptimeRobot):** toda telemetría vive con retención acotada en nuestra propia instancia Postgres (Supabase), respaldada por monitoreo cruzado entre proyectos (`STG → PRD`) y flujos en GitHub Actions.
 
-## SLOs (Service Level Objectives)
+### 1.2 Mapa y desglose detallado de las 8 superficies de monitoreo (`7` en `/admin` + `/status`)
 
-> Compromisos cuantitativos. Si los rompemos, pausamos features y arreglamos.
+| #   | Superficie                     | Ruta real en `apps/web/app/`                        | Acceso RBAC (`AdminCapability`) | Propósito principal                                                                                                |
+| --- | ------------------------------ | --------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 1   | **Resumen general**            | `/admin/dashboard` (`dashboard/page.tsx`)           | Todos los roles operativos      | Pulso comercial del día: órdenes nuevas, ingresos, pendientes de despacho, stock crítico y accesos rápidos         |
+| 2   | **Bandeja operativa «Hoy»**    | `/admin/hoy` (`hoy/page.tsx`)                       | Filtrado por capacidad del rol  | Cola priorizada por semáforos SLA colombianos (PQR, garantías, retractos), reconciliaciones, moderación y CRM      |
+| 3   | **Salud técnica**              | `/admin/observability` (`observability/page.tsx`)   | `SUPERADMIN` (`system:read`)    | `ErrorLog`, `ErrorReport`, webhooks recientes, SLOs, 14 crons, backups R2, monitor STG→PRD, Resend y cuotas DB     |
+| 4   | **Rendimiento RUM**            | `/admin/performance` (`performance/page.tsx`)       | `SUPERADMIN` (`system:read`)    | Percentiles `p50`/`p75`/`p95` de 8 métricas Web Vitals, selectores CSS lentos y errores agrupados por `digest`     |
+| 5   | **Centro de notificaciones**   | `/admin/notificaciones` (`notificaciones/page.tsx`) | Roles admin según alcance       | Fuente única in-app de alertas (`Notification` deduplicada por `dedupKey`), fallos de cron, stock y resumen 8 a.m. |
+| 6   | **Estado de integraciones**    | `/admin/integraciones` (`integraciones/page.tsx`)   | `SUPERADMIN` (`system:read`)    | Diagnóstico interactivo de credenciales y conectividad de Supabase, Wompi, Aveonline, Resend, Cloudflare y Gemini  |
+| 7   | **Métricas, Embudo y CRM/RFM** | `/admin/metricas` (`metricas/page.tsx`)             | `metrics:read`                  | Ingresos cobrados, cotizaciones, embudo de 11 etapas (`FunnelEventDaily`), matriz RFM (5 niveles) y LTV neto COP   |
+| 8   | **Estado público**             | `/status` (`app/status/page.tsx`)                   | Público (`noindex`)             | Semáforo en tiempo real de servicios para compradores sin filtrar topología ni errores internos                    |
 
-| SLO                                                                           | Objetivo | Ventana         | Aplicable desde |
-| ----------------------------------------------------------------------------- | -------- | --------------- | --------------- |
-| **Disponibilidad storefront** (home, catálogo, PDP)                           | 99.5%    | 30 días rolling | Lanzamiento     |
-| **Disponibilidad checkout** (`/checkout`, `/api/checkout/create`)             | 99.9%    | 30 días         | Lanzamiento     |
-| **Disponibilidad webhooks** (`/api/wompi/webhook`, `/api/webhooks/aveonline`) | 99.9%    | 30 días         | Lanzamiento     |
-| **Latencia p95 home (TTFB)**                                                  | < 500 ms | 7 días          | Fase 1          |
-| **Latencia p95 PDP**                                                          | < 800 ms | 7 días          | Fase 2          |
-| **Latencia p95 `/api/checkout/create`**                                       | < 2 s    | 7 días          | Fase 4          |
-| **Latencia p95 `/api/ai/design-suggest`**                                     | < 5 s    | 7 días          | Fase 3          |
-| **Tasa de error 5xx global**                                                  | < 0.1%   | 24 h            | Fase 1          |
-| **Tasa de webhook fallido (Wompi/Aveonline)**                                 | < 0.5%   | 30 días         | Fase 4          |
-| **Tasa de saga fallida** (compensación ejecutada)                             | < 0.2%   | 30 días         | Fase 4          |
-| **Tasa de stock oversold**                                                    | 0        | siempre         | Fase 4          |
-| **Lighthouse Performance home**                                               | ≥ 95     | cada deploy     | Fase 1          |
-| **Lighthouse A11y**                                                           | ≥ 95     | cada deploy     | Fase 1          |
-| **Email transactional delivery rate**                                         | ≥ 98%    | 7 días          | Fase 4          |
+#### Detalle operativo de cada tablero administrativo
 
-> **Nota:** estos SLOs son iniciales. Tras 90 días de producción se revisan con datos reales y se ajustan.
-
-> **Medidos hoy (ADR-066, verificado 2026-09-03):** los SLOs de infra (disponibilidad, latencia
-> p95 por ruta) se miden con el monitor externo + instrumentación de tráfico post-lanzamiento. Lo
-> que SÍ se calcula hoy desde la DB (`features/observability/slos.ts`, visible en
-> `/admin/observability` y alertado en el resumen diario): **Web Vitals "good" ≥ 75%** (7 días),
-> **éxito de checkout ≥ 90%** (30 días) y **procesamiento de webhooks ≥ 99%** (30 días) — con
-> clasificación cumplido / en riesgo / incumplido, o "sin datos suficientes" si la muestra es
-> chica (pre-lanzamiento).
-
----
-
-## SLIs (Service Level Indicators)
-
-Las señales que medimos. Cada SLO se calcula a partir de SLIs.
-
-| SLI                         | Cómo se mide                                                                                                                      | Fuente                                                                                     |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Request count               | Total de requests por ruta y status                                                                                               | Vercel Logs (parsing); `/api/metrics` es objetivo (aún no implementado)                    |
-| Latency p50/p95/p99         | Histograma por ruta                                                                                                               | Logs estructurados con `latencyMs`                                                         |
-| 5xx rate                    | `count(status>=500) / count(*)`                                                                                                   | Logs + tabla `ErrorLog` (conteo por ventana en `evaluateAlerts`)                           |
-| Webhooks estancados         | `count(WebhookEvent where processedAt is null y createdAt < hace 1h)`                                                             | Tabla `WebhookEvent` (alerta `webhooks_stuck`)                                             |
-| Órdenes a reconciliar       | `count(Order where needsReconciliation)`                                                                                          | Tabla `Order` (alerta `reconciliation`)                                                    |
-| Stock oversold events       | Incidencias detectadas vía reconciliación + ledger `InventoryLog` (reasons `ORDER_PAID`/`ORDER_CANCELLED`/`ORDER_REFUNDED`)       | Tabla `InventoryLog`                                                                       |
-| Cart-to-checkout conversion | Embudo propio de 11 etapas (`FunnelEventDaily` vía `POST /api/funnel`, 100 % sin cookies ni PII) + `count(orders) / count(carts)` | `/admin/metricas` (`features/analytics/funnel-service.ts`) + reporte diario                |
-| AbandonedCart recovery rate | `count(abandonedCart.recovered) / count(abandonedCart created)` + recuperación asistida atribuible a actividad CRM ≤14 días       | Tabla `AbandonedCart` (`/admin/carritos`, ADR-153) + Inteligencia CRM en `/admin/metricas` |
-| Resend bounce rate          | Resend dashboard                                                                                                                  | Panel oficial                                                                              |
-| Cron lag (dead-man switch)  | Latido `recordCronHeartbeat` por job (clave `cron:<job>` en `AlertState`); overdue si no corrió en 2× su intervalo                | `getCronHealth` → `/api/health/crons`                                                      |
-| pg_cron ejecuciones         | Historial de corridas de los jobs                                                                                                 | `cron.job_run_details` (Supabase)                                                          |
+1. **`/admin/dashboard` (Operación comercial diaria):** muestra de un vistazo las órdenes creadas hoy, ingresos efectivamente cobrados, órdenes en `PENDING_PAYMENT`, pedidos pagados pendientes de despacho, variantes con stock crítico (`stock < 5`), cola de reseñas pendientes de moderación y carritos abandonados de las últimas 24 horas con su tasa de recuperación.
+2. **`/admin/hoy` (`getTodayOperationalInbox`):** bandeja accionable de primera hora construida por rol: oculta cualquier bloque para el que el operador no posea `AdminCapability` y aplica enmascaramiento de PII (`lib/pii-mask.ts`) a roles no privilegiados. Ordena por urgencia: (a) tickets PQR, garantías y retractos con reloj SLA colombiano en estado `OVERDUE` o `DUE_SOON` (`lib/colombian-sla.ts`), (b) órdenes marcadas con `needsReconciliation = true`, (c) diseños personalizados pendientes de moderación antes de taller, y (d) tareas/seguimientos vencidos de `ContactActivity` y `Opportunity`.
+3. **`/admin/observability` (Salud técnica — exclusivo `SUPERADMIN`):** consolida en una sola pantalla:
+   - Resumen operativo 24h y los **3 SLOs cuantitativos** de `slos.ts` (`met`, `at_risk`, `breached`, `insufficient_data`).
+   - Salud individual de los **14 crons** de `CRON_JOBS` (`getCronHealth`: último latido, detalle `idle (...)` y bandera `overdue`).
+   - Tile del **backup diario cifrado a R2** (`AlertState["backup:last-success"]`) y tile del **monitor externo cruzado** (`AlertState["uptime-monitor:last-run"]`).
+   - **Entregabilidad de correo a 7 días** (`features/observability/email-deliverability.ts`: enviados, entregados, rebotes y quejas sobre `EmailEvent`).
+   - **Cuotas físicas reales:** tamaño de Postgres (`pg_database_size(current_database())` frente a 500 MB) y ocupación de Storage (`SUM(metadata->>'size')` en `storage.objects` frente a 1 GB).
+   - Tabla **«Webhooks recientes»** (últimos 12 registros de `WebhookEvent` con proveedor, `externalId`, fecha y si ya tiene `processedAt`), conteo de órdenes a reconciliar, reversas de inventario y consola de triaje de **`ErrorLog`** (servidor) y **`ErrorReport`** (cliente deduplicado con cambio de estado `OPEN` / `RESOLVED` / `IGNORED`).
+4. **`/admin/performance` (`ADR-135` — exclusivo `SUPERADMIN`):** agrega `WebVital` sobre ventana móvil de 7 días (`MAX_VITAL_ROWS = 200 000`) presentando tarjetas **`p75`** (estándar oficial de Core Web Vitals) junto con `p50` y `p95`, selectores por dispositivo (`mobile` / `desktop`) y tipo de navegación (`navigate` / `reload` / `back-forward`), tabla comparativa por ruta normalizada, **atribución por elemento DOM (`target` selector CSS)** para `INP`, `CLS` y `LCP` (con mínimo de 3 muestras para filtrar ruido) y listado de errores de servidor agrupados por `digest` con stack expandible (complementado por CLI con `scripts/diag-stg/07-errores-recientes.sql`).
+5. **`/admin/notificaciones`:** bandeja persistente donde convergen las 12 reglas periódicas de `evaluateAlerts`, las alertas instantáneas (`notifyStockSaleLost`, `notifyCronFailure`), eventos relevantes de pedidos/cotizaciones y el resumen matutino de las 08:00 COT (`daily-summary`), cada una con severidad (`critical`, `warning`, `info`) y enlace directo a la pantalla que resuelve el problema.
+6. **`/admin/integraciones`:** panel interactivo para probar en vivo configuración, variables requeridas, latencia y conectividad hacia Supabase (DB + Storage), Wompi, Aveonline, Resend, Cloudflare Turnstile/R2 y Google Gemini.
+7. **`/admin/metricas` (Ventas, Embudo sin cookies e Inteligencia Conductual CRM / RFM):** combina tres módulos analíticos propios:
+   - **Pulso de ingresos y cotizaciones:** ventas cobradas, ticket promedio y conversión de cotizaciones.
+   - **`FunnelPanel` (11 etapas sin cookies):** cascada completa Tienda + Estudio sobre `FunnelEventDaily`, cuello de botella automático con recomendación accionable y salud de carga/exportación 300 DPI por código de fallo.
+   - **Inteligencia Conductual CRM, Matriz RFM y LTV de Margen Neto (`apps/web/features/crm/intelligence-service.ts`):** cruza `Contact`, `Order` (con `utmSource`, `utmMedium`, `utmCampaign` y `landingPath`), `Design`, `AbandonedCart`, `WompiPaymentTransaction`, `Product.cost`, `ContactActivity` y `Opportunity` en centavos COP (`Int`):
+     - **Fugas identificables (`dropOffs`):** diseños estancados en `DRAFT`, carritos no recuperados y su valor en centavos COP, órdenes en `PENDING_PAYMENT` sin pago y **transacciones Wompi rechazadas desglosadas por medio de pago** (`CARD`, `PSE`, `NEQUI`, etc.).
+     - **Señales de intención vs inventario vivo (`intentSignals`):** puntaje combinado de `WishlistItem` + suscripciones `BackInStockSubscription` pendientes cruzado contra stock real, clasificando cada producto en `RESTOCK_READY_TO_NOTIFY`, `LOW_STOCK_HIGH_INTENT`, `OUT_OF_STOCK_DEMAND` u `OK`.
+     - **Matriz RFM de 5 segmentos (`rfm`):** clasifica a todos los contactos con compras pagadas en **Campeones** (`3+` compras pagadas y última `≤ 90 d`), **Leales** (`2` compras pagadas y última `≤ 90 d`), **Nuevos prometedores** (`1.ª` compra en últimos `90 d`), **En riesgo** (`91–180 d` sin compra) e **Inactivos** (`> 180 d`), calculando ingresos brutos, **margen neto estimado en centavos COP** (descontando `Product.cost` e informando `productsWithCostConfiguredRatio`) y LTV promedio por contacto.
+     - **Atribución por canal (`channelAttribution`) y venta asistida (`assistedRecovery`):** compara LTV y margen neto por canal UTM y mide cuánto ingreso proviene de carritos recuperados, oportunidades corporativas B2B ganadas (`Opportunity`), pedidos pagados precedidos por acompañamiento humano en CRM/soporte (`ContactActivity` dentro de `≤ 14 días`) y ocasiones anuales con consentimiento comercial vigente.
 
 ---
 
-## Error budgets
-
-> Si el SLO es 99.9%, el error budget es 0.1% — para 30 días, ~43 minutos de downtime tolerados.
-
-### Política
-
-- **Budget consumido < 50%:** velocidad normal de features.
-- **Budget consumido 50-100%:** **freeze de features** que tocan la capa afectada. Solo bugfixes y mejoras de fiabilidad.
-- **Budget agotado:** rollback a estado estable conocido + postmortem obligatorio + plan de remediación antes de cualquier feature.
-
-### Tracking
-
-> **Pendiente — NO implementado (verificado 2026-08-01).** Lo de abajo es el diseño objetivo: hoy
-> no existe el cron de error budgets (ninguna migración en `supabase/migrations/` ni endpoint en
-> `app/api/cron/` lo calcula) ni la página `/admin/observability/slos`. El seguimiento del budget
-> es manual.
-
-- (Objetivo) Cron mensual (`pg_cron`) calcula error budgets a partir de los SLIs de los últimos 30 días.
-- (Objetivo) Resultado se publica en `/admin/observability/slos`.
-- (Objetivo) Cuando un budget consume > 50%, alerta automática (Resend al usuario operador).
-
----
-
-## Dashboards
-
-> Pre-lanzamiento: tabla simple en `/admin/observability`. Post-lanzamiento: evaluar Grafana Cloud Free, BetterStack, o Vercel Web Analytics (Pro).
-
-> **Estado real (verificado 2026-09-12):** `/admin/observability` YA existe (solo rol SUPERADMIN)
-> y muestra la salud técnica (ErrorLog de servidor + ErrorReport de cliente deduplicados,
-> webhooks, órdenes a reconciliar, reversas de stock, Web Vitals), el resumen de operación diaria,
-> los 3 SLOs medibles, la **entregabilidad de email (7 días)** (N-04), el **tile del backup diario
-> a R2** (latido vía `/api/cron/backup-heartbeat` desde GitHub Actions, N-19a) y la salud de los
-> **9 crons pg_cron**. Las alertas y el resumen diario aterrizan en el
-> centro de notificaciones `/admin/notificaciones`.
-
-### Dashboard "Operación diaria"
-
-Panel que el operador del negocio mira cada mañana:
-
-- **Hoy:** órdenes nuevas, ingresos, órdenes en `PENDING_PAYMENT`, órdenes pendientes de envío.
-- **Stock crítico:** variantes con `stock < 5`.
-- **Reseñas pendientes de aprobación:** queue size.
-- **Carritos abandonados últimas 24h:** count + tasa de recuperación.
-- **Errores 5xx últimas 24h:** count + ruta principal.
-
-### Dashboard "Salud técnica"
-
-Panel para el dev/Claude:
-
-- **Latencia p50/p95/p99** por ruta (top 10 rutas).
-- **5xx rate** por ruta.
-- **Salud de crons:** latido por job (`getCronHealth` — ya visible en `/admin/observability`).
-- **`pg_cron` últimos runs:** ¿están corriendo a tiempo?
-- **Órdenes a reconciliar** (pago vs stock inconsistente): count.
-- **Webhook events processed/failed last 7 days** + tabla **«Webhooks recientes»** (últimos 12 con fuente, ID externo y estado procesado/pendiente — implementada 2026-10-06 en `/admin/observability` tras feedback STG: la recepción ya no exige consultar la DB a mano).
-- **Errores del servidor** con `digest` y stack expandible en `/admin/performance` (2026-10-05: el digest permite cruzar con Vercel Logs y agrupar ocurrencias; en prod Next enmascara los mensajes) + script `scripts/diag-stg/07-errores-recientes.sql` para volcarlos por CLI (crudos, por digest, y `ErrorReport` de cliente sin resolver).
-- **DB connection pool saturation.**
-- **Storage usage:** % del free tier consumido.
-
-### RUM (Real User Monitoring) — tubería y panel `/admin/performance` (actualizado 2026-10-20, ADR-135)
-
-**Tubería:** `components/web-vitals.tsx` (handlers `onCLS/onINP/...` del build **con atribución** `next/dist/compiled/web-vitals-attribution`, registrados UNA vez en useEffect — ver nota abajo; gateado por consentimiento "Analíticas") → `POST /api/vitals` (rate-limit 120/min IP + backstop 3000/5min + **techo de valor por métrica, fail-closed**) → tabla `WebVital` (retención 35 días vía cron `lucams-purge-event-logs`).
-
-- **Atribución por elemento (fix 2026-10-20):** `useReportWebVitals` (next/web-vitals) usa el build estándar de web-vitals SIN atribución, así que `target` nunca llegó a la DB (0/8.992 filas INP en STG). El config `experimental.webVitalsAttribution` es un flag muerto en Next 16.3. El reporter ahora registra los handlers del build `web-vitals-attribution` (+1.6KB gzip, estático en el root layout: la atribución de INP exige handler previo a la primera interacción). Bonus: el registro único eliminó los beacons duplicados (el hook re-suscribía por render y re-reportaba métricas bufferadas).
-- **Validación de rango en ingesta (2026-10-20):** valores absurdos (p.ej. las 120 filas INP de 28680ms exactos del 2026-10-02) NO se persisten — techos generosos por métrica (`MAX_VALUE_BY_METRIC` en `app/api/vitals/route.ts`), descarte con `logger.warn` (`vitals.out_of_range`) y 200 `ok:false` para que el beacon no reintente.
-
-**Métricas capturadas** (columnas `name`/`value`/`delta`/`target`/`navType`/`sessionId`/`userAgent`/`route`):
-
-| Métrica                      | Qué es                                                                                                                                | Notas                                                                                                                                                                                                                                                  |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| LCP / INP / CLS / FCP / TTFB | Core Web Vitals estándar (FID retirada 2026-10-20: deprecada upstream, la reemplaza INP; web-vitals v5 de next ≥16.4 eliminó `onFID`) | `target` (selector CSS del elemento) para INP, **CLS y LCP también desde 2026-10-09** (attribution v5 de web-vitals: `largestShiftTarget` / `element`)                                                                                                 |
-| **LONGTASK** (2026-10-09)    | Bloqueo del hilo principal: `value` = duración total (ms) de long tasks (>50ms) en la visita, `delta` = cantidad                      | Agregada **por pageview** (1 fila/visita — nunca por entrada cruda); umbrales propios 200/600ms. **Solo se envía si el navegador soporta longtask** (2026-10-20): Firefox/Safari no lo soportan y las filas 0/0 sintéticas eran ruido (284/284 en STG) |
-| **PAGEWEIGHT** (2026-10-09)  | Peso de página: `value` = bytes transferidos totales, `delta` = recursos                                                              | Agregada por pageview; umbrales propios 2/5 MB; recursos cross-origin sin Timing-Allow-Origin subestiman transferSize (limitación documentada)                                                                                                         |
-
-- **`sessionId`**: la rellena el server desde la cookie HttpOnly `cart_session` cuando el payload no la trae (validada UUID; la del payload gana) — correlación por visita.
-- **`navType`**: navigate / reload / back-forward.
-- **Panel `/admin/performance`:** cards por métrica con **p75** (estándar web.dev — antes promedio), filtros por **dispositivo** (userAgent → móvil/desktop) y **navType**, tabla p75 por ruta (LCP/INP/CLS/TTFB/LONGTASK/PAGEWEIGHT), secciones "por elemento" para INP/CLS/LCP (mínimo 3 muestras) y errores del servidor con digest.
-- **Alertas de latencia:** NO existen aún (las alertas cubren errores/crons/webhooks, no percentiles de vitals — pieza futura si el RUM lo justifica).
-
-### Embudo anónimo Tienda + Estudio — tubería y panel `/admin/metricas`
-
-**Tubería:** `lib/funnel-client.ts` (`fetch("/api/funnel", { credentials: "omit", keepalive: true })`, no bloqueante) → `POST /api/funnel` (techo 4 KB, rate-limit 180/min por IP hasheada + backstop global 6000/5 min, esquema cerrado Zod `FunnelPayloadSchema`) → tabla `FunnelEventDaily` (incremento atómico `ON CONFLICT DO UPDATE`, retención 365 días en `purge-event-logs`).
-
-- **Privacidad por diseño (Ley 1581, cero PII y cero cookies):** solo persiste contadores enteros diarios agrupados por `(day, eventName, productSlug, editorKind, deviceCategory, errorCode)`. No lee ni guarda cookies (`cart_session`, Auth), IP, `userAgent` crudo, `sessionId`, `designId` ni `customerId`, por lo que mide la salud operativa incluso cuando el visitante rechaza las cookies analíticas de terceros.
-- **Panel interactivo `/admin/metricas` (`FunnelPanel`):** cascada de 11 etapas (`product_view` → `studio_open` → `studio_template_select` → `studio_asset_upload_succeeded` → `studio_preview_open` → `studio_finalize_succeeded` → `cart_add` → `checkout_begin` → `checkout_shipping_selected` → `checkout_payment_submitted` → `purchase_completed`), detección automática de la principal fuga con recomendación accionable, tarjetas de salud de subida de fotos y exportación 300 DPI con desglose por código de fallo (`too_big`, `network`, `server_rejected`, `low_quality`, `master_expired`, `server_crash`, `validation`, `cart_add_failed`), comparativa por equipo y tabla por producto/superficie (`photo`, `name`, `letterset`, `catalog`), filtrable por ventana (`7`/`30` días), dispositivo, superficie y producto.
-
-### Dashboard "SLOs"
-
-- Cada SLO con: % cumplimiento ventana actual, error budget remaining, tendencia 30 días.
-- Cuando un SLO se rompe: badge rojo + link al postmortem si existe.
-
----
-
-## Alertas
-
-> Mandato: cada alerta debe describir **qué se rompió + qué hay que hacer**. Si la alerta es solo "algo está mal", se mejora antes de habilitarse.
-
-### Canal
-
-- **Hoy (política 2026-08-05, verificado 2026-09-03):** el **centro de notificaciones in-app**
-  (`/admin/notificaciones`) es la fuente de verdad — TODA alerta que dispara deja notificación
-  ahí (dedup por `dedupKey`: una alerta que persiste actualiza la misma fila, no duplica). El
-  **email** vía Resend (al setting `ALERT_EMAIL`, default `hola@lucamsshop.com`) **solo sale si
-  alguna alerta del lote es crítica**; anti-spam de 30 min por key (`AlertState`). Si el envío
-  falla, no se sella `lastSentAt` → la alerta se reintenta en el próximo ciclo.
-- **Post-lanzamiento:** evaluar Discord webhook o Telegram bot — más inmediato que email.
-
-### Reglas de alerta
-
-> **Implementadas hoy** (`evaluateAlerts` en `features/observability/alerts.ts`, corre cada 5 min
-> vía pg_cron → `/api/cron/alerts`; verificado 2026-09-12): `errors_spike` (5+ `ErrorLog` en 5 min
-> **en una misma ruta** — `routePath`; N-33), `reconciliation`
-> (órdenes con `needsReconciliation`), `webhooks_stuck` (WebhookEvent sin procesar > 1h),
-> `pending_payment_wompi_stale` (**semántica nueva N-12b**: orden Wompi que supera la ventana de
-> expiración `PENDING_PAYMENT_EXPIRY_HOURS`=24h SIN auto-cancelarse — lo roto es el cron
-> `expire-pending-orders`, no el checkout abandonado; acción → `/admin/observability`),
-> `cron_stale_<job>` (dead-man switch — ver la fila pg_cron de la tabla), **`email_bounce_rate`**
-> (rebote > 5% en 7 días con ≥ 20 eventos terminales, severidad alta; N-04), **`backup_stale`**
-> (sin latido del backup diario en > 36h, severidad alta; N-19a) y las dos reglas de seguridad de
-> **F-07** (2026-09-19) sobre la tabla `SecurityEvent`: `security_admin_login_fails` (≥ 5 logins de
-> admin fallidos en 15 min, alta — umbral coherente con el rate limit del panel) y
-> `security_webhook_invalid` (≥ 3 firmas/secretos de webhook inválidos en 5 min, media). **El resto
-> de la tabla es objetivo** — se activa con el monitor externo y la instrumentación
-> post-lanzamiento. Nota: hoy no hay pgmq ni Edge Functions consumer; los jobs son crons HTTP +
-> tablas.
-
-| Disparador (objetivo salvo las marcadas como implementadas)                                                                              | Canal  | Severidad | Acción inmediata                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **(Implementada)** 5+ errores 500 en 5 min en una misma ruta (`errors_spike`)                                                            | Email  | Alta      | Ver Vercel Logs ruta afectada; rollback si reciente                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **(Implementada)** Webhooks sin procesar > 1h (`webhooks_stuck`)                                                                         | Email  | Media     | Verificar consumer de webhooks y estado de Wompi/Aveonline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **(Implementada)** Órdenes con `needsReconciliation` (`reconciliation`)                                                                  | Email  | Crítica   | Abrir /admin/pedidos (filtro "Necesitan atención"): reembolsar o reponer stock                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **(Implementada)** Orden Wompi > 24h en PENDING_PAYMENT sin auto-cancelar (`pending_payment_wompi_stale`)                                | Email  | Crítica   | Revisar el cron `expire-pending-orders` en /admin/observability (trabajos automáticos) y su último error; verificar cada orden contra el panel Wompi por la referencia (número de orden)                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **(Implementada)** Rebote de email > 5% en 7 días con ≥ 20 eventos terminales (`email_bounce_rate`)                                      | Email  | Alta      | Abrir /admin/observability (entregabilidad de email) + dashboard de Resend: DKIM/SPF/DMARC del dominio y direcciones rebotadas antes de seguir enviando                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **(Implementada)** Backup diario sin latido > 36h (`backup_stale`)                                                                       | Email  | Alta      | Revisar el workflow backup.yml en GitHub (Actions → Backup DB → R2): si el job falla o le faltan secrets (R2\_\*/BACKUP\_\*/CRON_SECRET) el backup diario no se está haciendo; el DR drill mensual también exige dump fresco                                                                                                                                                                                                                                                                                                                                                                                                |
-| (Objetivo) Webhook handler fallando > 3 veces consecutivas                                                                               | Email  | Alta      | Verificar payload + firma + Wompi/Aveonline status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| (Objetivo) Saga compensation fallida (estado inconsistente)                                                                              | Email  | Crítica   | Intervención manual; revisar órdenes `needsReconciliation` y reconciliar (no existe tabla `SagaLog` — la señal real vive en `Order`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| (Objetivo) `/api/health` devuelve 503 por > 3 min                                                                                        | Email  | Crítica   | Verificar Supabase status, Vercel status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| (Objetivo) Stock oversold detectado                                                                                                      | Email  | Crítica   | Contactar cliente afectado, ofrecer reembolso/sustituto                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **(Implementada — F-07, 2026-09-19)** Firma/secreto de webhook inválido 3+ en 5 min (`security_webhook_invalid`, fuente `SecurityEvent`) | In-app | Media     | Posible ataque de replay/sondeo (o secreto viejo tras rotación): revisar `SecurityEvent` (`webhook.invalid_signature`) agrupando por `ipHash` y `metadata.source` (wompi/aveonline/resend)                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **(Implementada — F-07, 2026-09-19)** 5+ logins de admin fallidos en 15 min (`security_admin_login_fails`, fuente `SecurityEvent`)       | In-app | Alta      | Password-spraying contra /admin/login (el rate limit 5/15 min ya lo frena): revisar `SecurityEvent` (`auth.admin_login.fail`) por `ipHash`; si la campaña sigue, bloqueo a nivel edge y rotación de claves admin                                                                                                                                                                                                                                                                                                                                                                                                            |
-| (Objetivo) Supabase Free DB > 80% capacity                                                                                               | Email  | Media     | Migrar a Pro                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| (Objetivo) Lag de cola de jobs > 30 min (hoy los jobs son crons HTTP + tablas, sin pgmq)                                                 | Email  | Media     | Verificar `/api/health/crons` y `cron.job_run_details`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| **(Implementada)** `pg_cron` job no ejecutado en su ventana (2× intervalo) (`cron_stale_<job>`)                                          | Email  | Media     | **Implementado (v3 #15):** dead-man switch. Capa interna: `evaluateAlerts` marca `cron_stale_<job>` vía `getCronHealth` (latido `recordCronHeartbeat` en cada cron). Capa externa: `GET /api/health/crons` → 503 → monitor de uptime externo (cubre la caída del propio cron de alertas). Revisar `cron.job_run_details` + secretos Vault. **F-04 (2026-09-19):** un cron recién agendado queda `pending` (sin primer latido) y NO degrada el health ni alerta; la migración que lo agenda siembra su latido inicial en `AlertState` (037) — si nunca corre, el latido sembrado se vence a los 2× intervalo y alerta igual. |
-| (Objetivo) Lighthouse Performance < 90 en deploy a producción                                                                            | Email  | Baja      | Revisar bundle size diff                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| (Objetivo) Error budget > 50% consumido en SLO crítico                                                                                   | Email  | Alta      | Activar feature freeze                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-
-### Anti-spam
-
-- **Deduplicación:** in-app por `dedupKey` (la alerta que persiste actualiza la misma notificación no leída); el email no se reenvía si salió hace < 30 min (`AlertState`).
-- **Resumen diario:** desde 2026-08-05 ya NO va por email — se publica SIEMPRE una vez al día como notificación in-app en `/admin/notificaciones` (cron `daily-summary` vía pg_cron → `/api/cron/daily-summary`, 8am America/Bogota; guarda anti-duplicado de 12h). Contenido de las últimas 24h: pedidos e ingresos cobrados (Wompi + COD entregado), COD por cobrar/remitir, por despachar, stock crítico, reseñas pendientes, retractos con reloj legal, carritos abandonados/recuperados, errores con ruta principal, órdenes a reconciliar, **pedidos Wompi expirados sin pago confirmado** (F-03, 2026-09-26: cancelaciones del cron `expire-pending-orders` con veredicto `no_txid` — cancelación a ciegas sin flag para no devaluar la alerta crítica, pero contadas acá para el cruce diario contra el panel Wompi), **línea de entregabilidad de email** (N-04, 2026-09-11: sale cuando el rebote a 7 días supera el umbral — `email-deliverability.ts` es la fuente única compartida con la alerta `email_bounce_rate`) y SLOs incumplidos (`features/observability/daily-summary.ts`).
-
-### Retención y purga (Ley 1581 — minimización)
-
-El cron diario `purge-event-logs` (pg_cron → `/api/cron/purge-event-logs`, código en
-`features/observability/event-log-retention.ts`) borra:
-
-| Tabla              | Retención | Criterio de borrado                                                                                        |
-| ------------------ | --------- | ---------------------------------------------------------------------------------------------------------- |
-| `EmailEvent`       | 180 días  | `createdAt` (deliverability)                                                                               |
-| `WebhookEvent`     | 180 días  | `createdAt` y ya procesado (`processedAt` no nulo — no borra eventos en reintento)                         |
-| `ErrorLog`         | 90 días   | `createdAt` (auditoría 2026-08-24 · F-6)                                                                   |
-| `ErrorReport`      | 90 días   | `lastSeenAt` — un error que sigue ocurriendo NO se borra aunque sea viejo                                  |
-| `Notification`     | 90 días   | solo las **leídas** con `createdAt` > 90 días (N-13, 2026-09-11 — el histórico durable ya vive en logs)    |
-| `WebVital`         | 35 días   | `createdAt` (N-13 — serie RUM de alta frecuencia; su uso es el diagnóstico reciente en /admin/performance) |
-| `SecurityEvent`    | 180 días  | `createdAt` (F-07, 2026-09-19 — eventos de seguridad rechazados; la IP ya va como `ipHash`)                |
-| `FunnelEventDaily` | 365 días  | `day` (contadores diarios agregados sin cookies ni PII del embudo tienda + Estudio en `/admin/metricas`)   |
-
-Todo message/stack pasa por `scrubPii` (emails → `[EMAIL]`, teléfonos → `[PHONE]`) ANTES del
-insert (F-6): la PII no queda en claro ni en DB. Además el cron `purge-anon-designs` borra los
-diseños DRAFT anónimos abandonados y sus fotos del bucket privado.
-
----
-
-## Logs estructurados
-
-Definidos en [`CONVENTIONS.md` § Logging](./CONVENTIONS.md#logging-y-request-id-correlation). Resumen:
-
-- JSON con `timestamp`, `level`, `requestId`, `event`, contexto.
-- PII redactada por key (`redact`: password/token/secret/email/phone/... → `[REDACTED]`) y por contenido (`scrubPii`: emails → `[EMAIL]`, teléfonos → `[PHONE]`).
-- Niveles: `debug` (default en dev), `info` (default en prod), `warn` (anómalo no roto), `error` (atención).
-
-> **Implementación real (verificado 2026-09-03):** `lib/logger.ts` es un logger PROPIO sobre
-> `console.log` con API compatible con pino (NO pino instalado — bug de bundling con turbopack de
-> Next 16). Los nombres de evento concretos en código siguen el namespace
-> `<dominio>.<evento>[.fail]` (ej. `security.admin_login.fail`, `alerts.sent`,
-> `retention.purge_event_logs`); la tabla de abajo es la convención de diseño de qué eventos
-> importan.
-
-### Eventos importantes a loggear
-
-| Evento                      | Campos                                                | Nivel         |
-| --------------------------- | ----------------------------------------------------- | ------------- |
-| `request.start`             | `method`, `path`, `requestId`, `userId?`              | `info`        |
-| `request.end`               | `method`, `path`, `status`, `latencyMs`, `requestId`  | `info`        |
-| `auth.login.success`        | `userId`, `requestId`                                 | `info`        |
-| `auth.login.fail`           | `email_hash`, `requestId`, `reason`                   | `warn`        |
-| `order.created`             | `orderId`, `customerId`, `total`, `requestId`         | `info`        |
-| `payment.approved`          | `orderId`, `wompiTransactionId`, `requestId`          | `info`        |
-| `payment.declined`          | `orderId`, `reason`, `requestId`                      | `warn`        |
-| `saga.start`                | `sagaName`, `sagaId`, `requestId`                     | `info`        |
-| `saga.step`                 | `sagaName`, `step`, `status`, `requestId`             | `info`/`warn` |
-| `saga.compensation`         | `sagaName`, `step`, `status`, `requestId`             | `error`       |
-| `webhook.received`          | `source`, `externalId`, `requestId`                   | `info`        |
-| `webhook.signature.invalid` | `source`, `requestId`, `reason`                       | `warn`        |
-| `rate_limit.exceeded`       | `key`, `limit`, `requestId`                           | `warn`        |
-| `circuit_breaker.open`      | `service` (`wompi`/`aveonline`), `failures`           | `warn`        |
-| `error.unhandled`           | `requestId`, `error.message`, `error.stack` (sin PII) | `error`       |
-
----
-
-## Punto ciego conocido: la observabilidad depende de la DB que monitorea (2026-10-08)
-
-`ErrorLog` (errores de servidor, vía `instrumentation.ts → onRequestError → captureServerError`),
-`ErrorReport` (errores de navegador, vía `/api/log-error`), `WebVital` y los heartbeats de cron
-(`AlertState`) **viven en la misma Postgres que miden**. Cuando el pooler de Supabase flapea
-(P1001) o el pool de Prisma se satura (P2024), `captureServerError`/`captureClientError` fallan en
-silencio por diseño (best-effort, `lib/error-capture.ts` — nunca rompen el flujo del error
-original) y `/admin/observability` queda ciego **exactamente durante el incidente**. Evidencia:
-ErrorLog sin filas desde 2026-09-20 mientras los logs de Vercel mostraban P1001/P2024 en vivo.
-
-Mitigaciones vigentes:
-
-1. **stdout siempre tiene la verdad**: `onRequestError` loguea `server.error` (y los fallos de
-   captura loguean `observability.capture_fail`) ANTES de intentar persistir — eso llega a los
-   logs de Vercel aunque la DB esté caída.
-2. **Escaneo sin DB**: `scripts/vercel-runtime-errors.sh <alias> <segundos>` captura el stream del
-   CLI y cuenta P1001/P2024/P1017/`server.error`/`capture_fail`/5xx por ventana. Úsalo cuando
-   /admin/observability sospeche de vacío o el sitio reporte degradación. (El CLI solo streamea
-   logs nuevos: la ventana debe cubrir tráfico real).
-3. **Retry de conexión** (ADR-131): los transitorios se reintentan en el cliente Prisma, así que
-   el volumen de errores que necesitan captura debería bajar sustancialmente.
-
-Limitación residual aceptada: sin Sentry (mandato #7) ni log drain configurado, la agregación
-histórica de errores de runtime sigue siendo DB-dependiente; el escaneo CLI es la vía de
-emergencia documentada.
-
----
-
-## Métricas custom e Inteligencia Conductual
-
-### Embudo propio (`FunnelEventDaily`) e Inteligencia CRM (`/admin/metricas`)
-
-- **Embudo anónimo de 11 etapas (`POST /api/funnel` → `FunnelEventDaily`):** registra conteos diarios agregados (`step`, `deviceClass`, `surface`, `productSlug`, `reasonCode`) desde `view_product` y `studio_open` hasta `purchase` sin cookies ni PII (retención 365 días en `purge-event-logs`). Visible en `/admin/metricas` con cuello de botella automático y salud de subida/exportación del Estudio.
-- **Inteligencia Conductual CRM, Matriz RFM y Margen Neto (`features/crm/intelligence-service.ts`):** cruza `Contact`, `Order` (incl. `utmSource`/`utmMedium`/`utmCampaign`/`landingPath`), `Design`, `AbandonedCart`, `WompiPaymentTransaction`, `Product.cost`, `ContactActivity` y `Opportunity` en `/admin/metricas` para responder dónde se quedan los contactos identificables, qué pagos Wompi caen por medio de pago, qué productos concentran intención vs. stock vivo, cómo se distribuyen los 5 segmentos RFM con LTV de margen neto en centavos COP y cuánto recupera la gestión humana del CRM.
-
-### Endpoint Prometheus `/api/metrics` (objetivo futuro)
-
-> **Pendiente — NO implementado (verificado 2026-09-03):** no existe `app/api/metrics` en el
-> código. Lo de abajo es el diseño objetivo (la sección § Pre-lanzamiento vs post-lanzamiento ya
-> lo ubica en Fase 7+).
-
-Endpoint `/api/metrics` (objetivo) que devuelve métricas mínimas en formato Prometheus o JSON simple:
-
-```
-# HELP lucams_orders_total Total de órdenes creadas
-# TYPE lucams_orders_total counter
-lucams_orders_total{status="paid"} 1234
-lucams_orders_total{status="cancelled"} 56
-
-# HELP lucams_request_duration_ms Histograma de latencia
-# TYPE lucams_request_duration_ms histogram
-lucams_request_duration_ms_bucket{route="/api/checkout/create",le="100"} 100
-lucams_request_duration_ms_bucket{route="/api/checkout/create",le="500"} 500
-...
-
-# HELP lucams_cron_overdue Crons pg_cron sin latido en 2× su intervalo (dead-man switch)
-# TYPE lucams_cron_overdue gauge
-lucams_cron_overdue{job="daily_summary"} 0
-```
-
-> **Acceso:** `/api/metrics` protegido por header `Authorization: Bearer <METRICS_TOKEN>` (token en env). Para que en el futuro Grafana o un scraper lo pueda consumir.
-
----
-
-## Tracing y correlation
-
-### Pre-lanzamiento (Fase 0–6)
-
-> **Estado real (verificado 2026-09-03):** hoy el `requestId` lo genera el proxy
-> (`crypto.randomUUID()` por request) y viaja en el response header `X-Request-Id`; un handler
-> puede loguearlo leyéndolo de los headers. La propagación server-side por `AsyncLocalStorage`
-> (`lib/request-id.ts`) y los headers salientes `X-Lucams-Request-Id` de abajo son OBJETIVO — no
-> implementados.
-
-- **`requestId`** propagado vía `AsyncLocalStorage` en server-side (`lib/request-id.ts`).
-- En logs: `requestId` en cada entry.
-- En jobs/colas: incluir `requestId` en el payload o detalle del job para que el consumer/cron lo loggee.
-- En emails: incluir `X-Lucams-Request-Id` header al enviar a Resend.
-- En llamadas a Wompi/Aveonline: incluir `X-Lucams-Request-Id` en el header (no es estándar; algunos APIs lo aceptan, otros lo ignoran — sin efecto adverso).
-
-### Post-lanzamiento (Fase 7+)
-
-Evaluar OpenTelemetry SDK con exporter a un backend gratuito (Honeycomb Free, Grafana Tempo). Decisión en ADR-024 cuando se tome.
-
----
-
-## Healthchecks
-
-| Endpoint                                                        | Qué verifica                                                                                                                                           | Timeout |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| `GET /api/health`                                               | App viva (devuelve `200 OK`; respuesta pública mínima, sin version/entorno)                                                                            | 1 s     |
-| `GET /api/health/db`                                            | Postgres responde un `SELECT 1` (Prisma)                                                                                                               | 2 s     |
-| `GET /api/health/wompi` · `/aveonline` · `/resend` · `/storage` | Cada integración por separado (bajo `/api/health/`)                                                                                                    | 5 s     |
-| `GET /api/health/all`                                           | Agrega todos los checks: 503 si falla uno crítico (db + storage); el resto warn/fail no tumba. `version`/`environment` solo con header `x-cron-secret` | 6 s     |
-| `GET /api/health/crons`                                         | Dead-man switch de los 9 crons pg_cron: 503 si alguno no corrió en 2× su intervalo. Detalle (jobs/lastRunAt/disabled) solo con `x-cron-secret`         | 2 s     |
-
-### Implementación
+## 2. Sondas de salud (`/api/health/*`), `/status`, monitor `uptime-monitor-prd` y GitHub Actions
+
+### 2.1 Inventario exacto de los 8 endpoints en `apps/web/app/api/health/`
+
+Todos los endpoints declaran `export const dynamic = "force-dynamic"` y aplican rate limiting atómico en Postgres (`30 / 1 min` por IP hasheada) con cabecera `Retry-After` en respuestas `429`:
+
+| Endpoint                    | Tipo de sonda                        | Semántica HTTP `200` vs `503` y controles de seguridad                                                                                                                                                                                                                                                                                                        |
+| --------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`           | **Liveness** de la app Next.js       | Devuelve `200 { status: "ok", service: "lucams-shop-web", timestamp }` en `< 1 s` sin tocar DB ni terceros. **No expone `version` ni `environment` en abierto** para impedir fingerprinting de commits                                                                                                                                                        |
+| `GET /api/health/db`        | **Readiness** de Postgres (Prisma)   | Ejecuta `SELECT 1` vía Prisma y devuelve `latencyMs`; si lanza excepción responde `503` en formato RFC 7807 sin filtrar cadenas de conexión                                                                                                                                                                                                                   |
+| `GET /api/health/storage`   | **Readiness** de Supabase Storage    | Verifica acceso a los buckets y devuelve `503` ante fallo                                                                                                                                                                                                                                                                                                     |
+| `GET /api/health/resend`    | Sonda de correo transaccional        | Verifica API de Resend y verificación DNS del remitente (`ok`, `warn` si falta verificación o `skipped` si no aplica)                                                                                                                                                                                                                                         |
+| `GET /api/health/wompi`     | Sonda de pasarela de pagos           | Consulta disponibilidad de `api.wompi.co` (timeout 5 s); distingue `skipped` si se operara en modo catálogo                                                                                                                                                                                                                                                   |
+| `GET /api/health/aveonline` | Sonda de operador logístico          | Verifica disponibilidad del servicio de Aveonline (timeout 5 s)                                                                                                                                                                                                                                                                                               |
+| `GET /api/health/crons`     | **Dead-man switch externo** de crons | Evalúa `getCronHealth()`: responde `200` si ningún job activo supera `2×` su intervalo (`pending` y `disabled` no degradan) y **`503`** si ≥ 1 cron está `overdue`. El desglose por job solo se entrega con header `x-cron-secret` válido                                                                                                                     |
+| `GET /api/health/all`       | **Agregador compuesto de readiness** | Sondea en paralelo `db`, `storage`, `resend`, `aveonline` y `wompi` usando `getTrustedSelfBaseUrl()` (anti-SSRF, jamás `Host` del cliente) + `vercelBypassHeaders()`, `redirect: "manual"` y timeout de 6 s. Devuelve **`200`** si `db` + `storage` están `ok` y **`503`** si alguno crítico cae; expone `version`/`environment` **solo con `x-cron-secret`** |
 
 ```ts
-// app/api/health/route.ts — respuesta pública mínima (auditoría 2026-08-24, C-3):
-// sin version/entorno (el repo es público; el SHA exacto es reconocimiento gratis).
-// Rate-limit 30/min por IP (misma auditoría). force-dynamic.
+// apps/web/app/api/health/route.ts — respuesta pública mínima sin SHA ni entorno
 export async function GET() {
   return Response.json({
     status: "ok",
@@ -402,14 +80,12 @@ export async function GET() {
     timestamp: new Date().toISOString(),
   });
 }
-```
 
-```ts
-// app/api/health/db/route.ts — real: Prisma directo, RFC 7807 si falla, rate-limit 30/min/IP
+// apps/web/app/api/health/db/route.ts — readiness real contra Postgres
 import { prisma } from "@/lib/db";
 export async function GET() {
   const start = Date.now();
-  await prisma.$queryRaw`SELECT 1`; // si lanza → 503 problemResponse (sin exponer creds)
+  await prisma.$queryRaw`SELECT 1`; // ante fallo devuelve 503 RFC 7807 sin exponer credenciales
   return Response.json({
     status: "ok",
     service: "lucams-shop-web",
@@ -419,109 +95,390 @@ export async function GET() {
 }
 ```
 
-### Monitoreo externo
+### 2.2 Página pública `/status` (`apps/web/app/status/page.tsx`)
 
-**Implementado (2026-09-14) sin SaaS, sin Actions y sin depender de la VM:** el job
-pg_cron `uptime-monitor-prd` en el proyecto **Supabase de STG** sondea los 5 healthchecks de
-PRD cada 10 min (lote asíncrono de 2 fases), alerta por email vía Resend solo en fallas
-persistentes (2+ corridas) y reporta cada corrida a `/api/cron/monitor-heartbeat` (tile en
-`/admin/observability` + reglas `uptime_monitor_stale/failing`) — ver `docs/OPERATIONS.md` §
-Plan de monitoreo y `scripts/monitor-uptime-stg.sql`. Respaldo manual:
-`apps/web/scripts/uptime-monitor.mjs`. Detalle de jobs en `/api/health/crons` y de
-versión/entorno en `/api/health/all` requiere el header `x-cron-secret` (auditoría 2026-08-24,
-C-3/C-4); la respuesta pública queda mínima (`status` + `timestamp`, 503 si degradado).
-~~Post-lanzamiento: configurar UptimeRobot o BetterStack (Free).~~ Descartado por Lucy
-(2026-09-13): sin dependencia de tiers gratuitos, de Actions y de la VM de desarrollo.
+- Consulta en vivo `/api/health`, `/api/health/db`, `/api/health/storage`, `/api/health/resend` y —en modo tienda completa (`!isCatalogMode()`)— `/api/health/wompi` y `/api/health/aveonline`.
+- `apps/web/lib/public-status.ts` traduce estados técnicos internos (`rate_limited`, `skipped`, `warn`) a estados legibles (`ok`, `warn`, `down`, `pending`) para que alcanzar el rate limit de una sonda jamás simule una caída falsa del proveedor.
+- Ante fallos de red muestra `"sin respuesta"` sin filtrar errores DNS ni hosts internos; el detalle técnico queda registrado server-side en `ErrorLog`.
+
+### 2.3 Monitor externo cruzado `uptime-monitor-prd` (Supabase STG → PRD)
+
+Ningún sistema puede alertar su propia caída total desde adentro. Para contar con vigilancia externa 24/7 sin depender de SaaS de terceros ni de máquinas de desarrollo, [`scripts/monitor-uptime-stg.sql`](../scripts/monitor-uptime-stg.sql) ejecuta el job `uptime-monitor-prd` en el `pg_cron` del **proyecto Supabase de STG** (dominio de fallo físicamente separado de Vercel PRD y Supabase PRD):
+
+1. **Cadencia:** cada **10 minutos** (`*/10 * * * *`) ejecutando `SELECT monitor_uptime_prd()`.
+2. **Arquitectura asíncrona de 2 fases sobre `pg_net`:** dado que `net.http_get` despacha peticiones en segundo plano cuyas respuestas se escriben en `net._http_response` fuera de la transacción llamante:
+   - **Fase 1 (Colecta):** evalúa las respuestas HTTP del lote lanzado 10 minutos antes (`uptime_monitor_requests`). Para eliminar falsos positivos por hipos de red, un endpoint solo se declara caído tras **2 corridas fallidas consecutivas (~20 minutos sostenidos)**.
+   - **Fase 2 (Disparo):** encola el nuevo lote contra los **5 endpoints de PRD** (`/api/health/all`, `/api/health/crons`, `/api/health/resend`, `/api/health/wompi` y `/api/health/aveonline`).
+3. **Alerta directa vía Resend y latido recíproco:** cuando persiste falla en ≥ 2 corridas, la función PL/pgSQL en STG llama **directamente a la API de Resend** hacia `ALERT_EMAIL` (con anti-spam de 30 min en `uptime_monitor_state`), entregando el correo incluso si Vercel PRD y Postgres PRD están totalmente fuera de línea. Además, en cada ciclo notifica `POST /api/cron/monitor-heartbeat` a PRD (`AlertState["uptime-monitor:last-run"]`: `"OK 5/5"` o `"FALLA n/5: ..."`), vigilado desde PRD por `uptime_monitor_stale` (`> 30 min`) y `uptime_monitor_failing`. Como utilidad manual de respaldo existe `apps/web/scripts/uptime-monitor.mjs`.
+
+```sql
+-- scripts/monitor-uptime-stg.sql (aplicado SOLO en Supabase STG, nunca en PRD)
+CREATE TABLE IF NOT EXISTS uptime_monitor_requests (
+  path text PRIMARY KEY,
+  request_id bigint NOT NULL,
+  consecutive_failures int NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS uptime_monitor_state (
+  key text PRIMARY KEY,
+  last_alert_at timestamptz,
+  last_detail text
+);
+-- Secretos leídos en runtime desde vault.decrypted_secrets de STG:
+-- monitor_prd_base_url, monitor_resend_api_key, monitor_email_from,
+-- monitor_alert_email y monitor_cron_secret.
+```
+
+### 2.4 Verificaciones externas desde GitHub Actions (`.github/workflows/`)
+
+- **`post-deploy-smoke.yml`:** prueba de humo automática tras cada despliegue verificando sondas de salud y rutas esenciales.
+- **`nightly-full.yml` (`0 6 * * *` UTC):** suite nocturna integral de regresión contra entorno real.
+- **`backup.yml` (`13 7 * * *` UTC):** respaldo diario cifrado con GPG `AES-256` de Postgres y Storage hacia Cloudflare R2; al concluir sella `POST /api/cron/backup-heartbeat` (`AlertState["backup:last-success"]`, fallando en HTTP `500` si no logra registrar el latido).
+- **`dr-drill.yml` (`27 8 2 * *` UTC):** simulacro mensual automatizado el día 2 de cada mes que descarga el último backup desde R2, lo descifra con GPG y lo restaura en un Postgres limpio verificando frescura (`< 36 h`) y conteos de tablas críticas (`ADR-059`).
+- **`domain-watch.yml` (`23 11 5 * *` UTC):** auditoría mensual RDAP del dominio `lucamsshop.com` reportada a `POST /api/cron/domain-watch` (alerta por correo si restan `≤ 45 días` de vigencia o cambian nameservers/estados EPP).
 
 ---
 
-## On-call (post-lanzamiento)
+## 3. Logging estructurado JSON (`lib/logger.ts`), correlación, captura de errores y punto ciego de BD
 
-Mientras el equipo es 1 persona, no hay rotación formal. Pero:
+### 3.1 Por qué `lib/logger.ts` implementa API Pino sobre `console`, redacción `scrubPii` y `X-Request-Id`
 
-- **Escalamiento documentado** en OPERATIONS.md (a quién avisar para Wompi caído, Aveonline caído, Vercel caído, Supabase caído).
-- **Runbook por incidente** en `OPERATIONS.md` (ya existe la base — expandir con cada incidente).
-- **Modo mantenimiento** activable con env var `NEXT_PUBLIC_MAINTENANCE_MODE=1` (ver `SECURITY.md` § Otros vectores y el runbook en `OPERATIONS.md`; al ser `NEXT_PUBLIC_*` se inliniza en build → **requiere redeploy**).
+- **Compatibilidad con Next.js 16 Turbopack:** [`apps/web/lib/logger.ts`](../apps/web/lib/logger.ts) expone la misma interfaz estructurada de Pino (`logger.debug`, `logger.info`, `logger.warn`, `logger.error` recibiendo `{ event, ...contexto }`) implementada sobre `console.log`/`console.error` con una línea JSON por evento. Esto evita el fallo de empaquetado de `pino` con Turbopack en Next.js 16 manteniendo compatibilidad nativa con Vercel Runtime Logs.
+- **Niveles (`LOG_LEVEL`):** `debug` (por defecto en desarrollo), `info` (por defecto en producción: transiciones normales de negocio, colas y webhooks), `warn` (condición anómala recuperada: rate limit alcanzado, firma inválida, reintento o fallback de caché) y `error` (fallo que requiere atención).
+- **Doble capa de redacción (`redact` + `scrubPii`):**
+  1. **Por nombre de clave (`REDACT_KEYS` y sufijos):** reemplaza por `"[REDACTED]"` cualquier propiedad o ruta que coincida con `password`, `token`, `secret`, `key`, `cookie`, `authorization`, `email`, `phone`, `documentNumber`, `to`, `ip`, `ipAddress`, `whatsapp` o sufijos `*Secret`, `*Token`, `*Key`, `*Email`, `*Phone`.
+  2. **Por contenido en textos y trazas (`scrubPii`):** aplica expresiones regulares sobre `Error.message` y `Error.stack` reemplazando correos por `"[EMAIL]"` y teléfonos colombianos/genéricos por `"[PHONE]"` antes de escribir en stdout o insertar en `ErrorLog`/`ErrorReport` (evitando filtrar PII en errores SQL como `Key (email)=(...) already exists`).
+- **Estado real de correlación (`X-Request-Id`) y trazado:** [`apps/web/proxy.ts`](../apps/web/proxy.ts) genera o propaga un UUID seguro en la cabecera `X-Request-Id` por cada petición HTTP para que los Route Handlers y Server Actions lo incluyan en sus logs. La propagación implícita mediante `AsyncLocalStorage`, el envío de `X-Lucams-Request-Id` hacia APIs externas y la adopción eventual de OpenTelemetry (`ADR-024`) se mantienen como evolución futura opcional cuando la escala lo justifique.
+
+```ts
+// apps/web/lib/logger.ts — redacción profunda de claves y PII embebida en errores
+function shouldRedactKey(key: string): boolean {
+  const k = key.toLowerCase();
+  if (REDACT_KEYS.has(k)) return true;
+  return /(secret|token|key|password|cookie|authorization|email|phone)$/i.test(k);
+}
+
+export function scrubPii(text: string): string {
+  return text.replace(EMAIL_RE, "[EMAIL]").replace(PHONE_RE, "[PHONE]");
+}
+```
+
+```json
+{
+  "timestamp": "2026-11-05T14:30:00.123Z",
+  "level": "info",
+  "event": "order.saga.paid.shipment_created",
+  "requestId": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "orderId": "cm9xyz1234567890",
+  "orderNumber": "LCM-2026-0142",
+  "carrier": "ENVIA",
+  "latencyMs": 412
+}
+```
+
+### 3.2 Catálogo de eventos estructurados (`event`) por dominio en `apps/web/`
+
+Todos los llamados siguen la convención `<dominio>.<acción>[.<resultado>]`:
+
+| Dominio              | Eventos reales representativos en código                                                                                                                                                     | Nivel típico     | Qué permiten auditar o diagnosticar                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
+| **Auth cliente**     | `auth.signup.success`, `auth.login.fail`, `auth.login.rate_limited`, `auth.verify_otp.success`, `auth.reset.sent`, `account.delete.success`, `account.delete.auth_user_banned_fallback`      | `info` / `warn`  | Registro, OTP, bloqueos por tasa y cascada de supresión Hábeas Data                       |
+| **Seguridad/Admin**  | `security.admin_login.success`, `security.admin_login.fail`, `security.admin_mfa_reauth.success`, `security.admin_recovery_code_used`, `security.pwned.signup_block`                         | `info` / `warn`  | Accesos `/admin`, step-up MFA `aal2`, uso de códigos de emergencia y contraseñas HIBP     |
+| **Carrito/Checkout** | `cart.add_personalized.success`, `checkout.step.datos.saved`, `checkout.cod_risk.blocked`, `checkout.finalize.success`, `checkout.pago.redirect_wompi`, `checkout.gracias.amount_mismatch`   | `info` / `warn`  | Embudo transaccional, bloqueos antifraude COD y validaciones de integridad antes de pagar |
+| **Pagos y Saga**     | `order.saga.paid.transitioned`, `order.saga.paid.no_stock`, `order.saga.flagged_reconciliation`, `order.expire_pending.healed`, `stock.decrement.applied`, `stock_sale_lost.notified`        | `info` / `error` | Transición `PAID`, descuento idempotente de stock, curación de pagos tardíos y colisiones |
+| **Webhooks**         | `webhook.wompi.received`, `webhook.wompi.processed_approved`, `webhook.wompi.invalid_signature`, `webhook.wompi.replay_rejected`, `webhook.aveonline.processed`, `email.bounce`              | `info` / `warn`  | Verificación de firmas, ventana anti-replay de 25 h, idempotencia y rebotes en Resend     |
+| **Envíos**           | `shipping.aveonline.quote.cache_fallback`, `shipping.aveonline.createshipment.success`, `shipping.aveonline.createshipment.fail`, `shipping.label_archive.ok`, `shipping.tracking_sync.done` | `info` / `warn`  | Cotizador multi-transportadora, archivo de guías PDF en Storage y convergencia logística  |
+| **Estudio e IA**     | `design.asset.upload.success`, `design.finalize.success`, `design.finalize.async_render_enqueued`, `design.render_job.done`, `design.reorder_clone.success`, `ai.gemini.model_fail`          | `info` / `warn`  | Subida de fotos con `sharp`, cola de renders 300 DPI, clones de _reorder_ y Gemini        |
+| **Crons y Purgas**   | `alerts.sent`, `daily_summary.sent`, `retention.purge_event_logs`, `retention.purge_anon_designs`, `retention.purge_delivered_designs`, `retention.orphan_sweep`, `cron.<job>.fail`          | `info` / `error` | Ejecución periódica de los 14 crons, conteos borrados por retención y fallos operativos   |
+| **Observabilidad**   | `server.error`, `observability.capture_fail`, `observability.client_capture.new_row_capped`, `vitals.out_of_range`, `rate_limit.empty_row`, `health.all.degraded`                            | `warn` / `error` | Salud del propio subsistema de captura, topes anti-DoS y degradación de sondas            |
+
+### 3.3 Captura de errores de servidor (`ErrorLog`) y de cliente (`ErrorReport`)
+
+Implementada en [`apps/web/lib/error-capture.ts`](../apps/web/lib/error-capture.ts) bajo contrato _best-effort_ (nunca lanza excepciones secundarias):
+
+1. **Servidor (`ErrorLog` ← `captureServerError`):** conectado al hook oficial `onRequestError` de `apps/web/instrumentation.ts` y a bloques `catch` de crons y sagas. Aplica `scrubPii` a `message` (`≤ 2 000` caracteres) y `stack` (`≤ 4 000` caracteres), almacena `digest`, `routePath`, `requestPath`, `method` y `routeType`, y alimenta la alerta `errors_spike`.
+2. **Cliente (`ErrorReport` ← `POST /api/log-error` → `captureClientError`):** alimentado desde `app/error.tsx`, `app/global-error.tsx` y `app/admin/(panel)/error.tsx` con tope de cuerpo (`readBodyWithLimit`), esquema Zod y rate limit `20 / 1 min` por IP:
+   - **Huella determinista (`fingerprint`):** ejecuta `scrubPii`, limpia partes volátiles (`normalizeForFingerprint`: query strings, `:línea:columna` minificadas y hashes de chunks) y calcula `SHA-1(message + top3StackLines + digest)`. Incluir `digest` impide que fallos distintos de Server Components en producción se mezclen bajo el texto genérico de React.
+   - **Detección automática de regresiones:** en `/admin/observability` cada grupo se gestiona como `OPEN`, `RESOLVED` o `IGNORED`. Si reaparece un error marcado como `RESOLVED`, `captureClientError` incrementa `count`/`lastSeenAt` y lo **reabre automáticamente a `OPEN`**; si estaba `IGNORED`, solo incrementa su contador sin reabrirlo.
+   - **Tope selectivo anti-inundación:** el bucket global `error-report:new` (`300` filas nuevas por cada `5 min`) limita exclusivamente _fingerprints_ inéditos; las ocurrencias adicionales de errores ya conocidos actualizan su contador siempre.
+
+### 3.4 Análisis arquitectónico del punto ciego conocido: «la observabilidad depende de la DB que monitorea»
+
+Por decisión de arquitectura sin SaaS externos, `ErrorLog`, `ErrorReport`, `WebVital`, `Notification` y los latidos `AlertState` residen en la **misma instancia Postgres de Supabase que el comercio utiliza para operar**. Cuando el pooler de Supabase sufre intermitencia (`P1001`) o el pool de conexiones de Prisma se agota (`P2024`), las escrituras _best-effort_ de `captureServerError` y `captureClientError` fallan de forma controlada y `/admin/observability` deja de recibir filas nuevas **justo durante la ventana del incidente de base de datos**.
+
+Este punto ciego está mitigado de forma deliberada mediante **cuatro capas independientes de la BD de PRD**:
+
+1. **`stdout` / `stderr` primero (antes de tocar Postgres):** `onRequestError` emite síncronamente `server.error` por el logger JSON antes de invocar Prisma, y si la inserción en `ErrorLog` falla emite además `observability.capture_fail`. Ambos registros quedan capturados en **Vercel Runtime Logs** aunque la base de datos esté caída al 100 %.
+2. **Detección y alerta externa desde otro proyecto (`uptime-monitor-prd` en Supabase STG):** como STG posee su propio Postgres, `pg_cron` y salida `pg_net`, detecta que `/api/health/all` de PRD responde `503` y despacha el correo de alerta directo por la API de Resend sin pasar por la infraestructura caída de PRD.
+3. **Sondas externas en GitHub Actions:** `post-deploy-smoke.yml` y `nightly-full.yml` verifican disponibilidad desde runners externos de GitHub.
+4. **Escáner CLI de emergencia sin base de datos (`scripts/vercel-runtime-errors.sh`) + retry Prisma (`ADR-131`):** el cliente Prisma reintenta errores transitorios de conexión (`ADR-131`) reduciendo hipos breves, y cuando se investiga degradación o ausencia sospechosa de filas en `ErrorLog`, el operador ejecuta en modo solo lectura:
+
+```bash
+# Captura en vivo el stream de Vercel Logs sin depender de Postgres y contabiliza
+# P1001, P2024, P1017, server.error, observability.capture_fail y respuestas 5xx:
+bash scripts/vercel-runtime-errors.sh lucamsshop.com 180
+```
 
 ---
 
-## Process de postmortem
+## 4. Tareas programadas: 14 crons en `CRON_JOBS` vs 18 procesos totales
 
-Para todo incidente de severidad alta o crítica.
+El proyecto **no usa Vercel Cron**; toda ejecución periódica corre sobre `pg_cron` + `pg_net` en Supabase leyendo secretos en tiempo de ejecución desde `vault.decrypted_secrets` (`cron_base_url`, `cron_secret` y, en STG, `cron_vercel_bypass`), más workflows específicos en GitHub Actions cuando se requiere CLI externo o protocolo RDAP.
 
-### Timing
+### 4.1 Mecanismo dead-man switch (`features/observability/cron-heartbeat.ts`)
 
-- **24 h post-resolución:** primera versión del postmortem en `tmp/incidentes/YYYY-MM-DD-<slug>.md` (efímero, gitignored — política de documentación).
-- **48 h post-resolución:** revisión y publicación final.
+1. **Latido solo tras éxito:** cada cron llama a `recordCronHeartbeat(job)` únicamente al completar sin error, actualizando `AlertState["cron:<job>"]`.
+2. **Doble vigilancia `2×` intervalo (`overdue`):** `getCronHealth(now)` declara `overdue: true` cuando `now - lastRunAt > 2 * intervalMs`. Internamente `evaluateAlerts` genera `cron_stale_<job>`, y externamente `GET /api/health/crons` devuelve **`503`** (vigilado cada 10 min desde STG por `uptime-monitor-prd`, cubriendo incluso una parada del propio cron `alerts`).
+3. **Siembra inicial verificada por tests:** toda migración SQL que registra un cron nuevo inserta su semilla en `AlertState` (validado automáticamente en `cron-heartbeat.test.ts`); si jamás llega a correr, la semilla vence a `2×` su intervalo y alerta.
+4. **Exclusión limpia en STG (`CRON_JOBS_DISABLED`):** los 5 crons que despachan correos comerciales/posventa se desactivan explícitamente en STG reportando `disabled: true` y `overdue: false`.
+5. **Optimización _idle-skip_ en SQL (`00000000000048_pgcron_dedup_and_idle_skip.sql`):** `process-render-jobs` (cada 1 min) y `cms-publish-scheduled` (cada 5 min) consultan primero por índice SQL (`< 1 ms`) si hay filas pendientes en `RenderJob` o `CmsFieldVersion`. Si no hay trabajo, actualizan el latido `idle (...)` directamente en `AlertState` sin despertar funciones en Vercel (~103 680 invocaciones HTTP ahorradas al mes), saliendo _fail-closed_ sin latido si faltara algún secreto en Vault.
 
-### Plantilla
+### 4.2 Los 14 crons monitoreados en `CRON_JOBS`
+
+| #   | Clave en `CRON_JOBS`      | Job agendado / Productor                               | Expresión UTC        | Intervalo | Umbral `overdue` (`2×`) | Endpoint / Acción ejecutada                                                                       |
+| --- | ------------------------- | ------------------------------------------------------ | -------------------- | --------- | ----------------------- | ------------------------------------------------------------------------------------------------- |
+| 1   | `process-render-jobs`     | `lucams-process-render-jobs` (`pg_cron` + idle-skip)   | `* * * * *`          | `1 min`   | **2 min**               | `GET /api/cron/process-render-jobs` (cola asíncrona de renders 300 DPI)                           |
+| 2   | `alerts`                  | `lucams-alerts` (`pg_cron`)                            | `*/5 * * * *`        | `5 min`   | **10 min**              | `GET /api/cron/alerts` (`dispatchAlerts`)                                                         |
+| 3   | `cms-publish-scheduled`   | `lucams-cms-publish-scheduled` (`pg_cron` + idle-skip) | `*/5 * * * *`        | `5 min`   | **10 min**              | `GET /api/cron/cms-publish-scheduled`                                                             |
+| 4   | `tracking-sync`           | `lucams-tracking-sync` (`pg_cron`)                     | `4,19,34,49 * * * *` | `15 min`  | **30 min**              | `GET /api/cron/tracking-sync` (convergencia activa de guías con Aveonline)                        |
+| 5   | `back-in-stock`           | `lucams-back-in-stock` (`pg_cron`)                     | `*/30 * * * *`       | `30 min`  | **60 min**              | `GET /api/cron/back-in-stock`                                                                     |
+| 6   | `cart-recovery`           | `lucams-cart-recovery` (`pg_cron`)                     | `0 * * * *`          | `60 min`  | **2 h**                 | `GET /api/cron/cart-recovery`                                                                     |
+| 7   | `expire-pending-orders`   | `lucams-expire-pending-orders` (`pg_cron`)             | `23 * * * *`         | `60 min`  | **2 h**                 | `GET /api/cron/expire-pending-orders` (`PENDING_PAYMENT` > 24 h tras consultar Wompi)             |
+| 8   | `purge-event-logs`        | `lucams-purge-event-logs` (`pg_cron`)                  | `0 3 * * *`          | `24 h`    | **48 h**                | `GET /api/cron/purge-event-logs` (purga por retención de 8 tablas de observabilidad)              |
+| 9   | `purge-rate-limits`       | `lucams-purge-rate-limits` (`pg_cron` SQL puro)        | `29 5 * * *`         | `24 h`    | **48 h**                | `SELECT public.purge_rate_limit_buckets()` (`> 7 días`, `LUC-SEC-010`)                            |
+| 10  | `purge-anon-designs`      | `lucams-purge-anon-designs` (`pg_cron`)                | `0 8 * * *`          | `24 h`    | **48 h**                | `GET /api/cron/purge-anon-designs` (carritos + diseños idle/READY + barrido de huérfanos Storage) |
+| 11  | `purge-delivered-designs` | `lucams-purge-delivered-designs` (`pg_cron`)           | `0 9 * * *`          | `24 h`    | **48 h**                | `GET /api/cron/purge-delivered-designs` (`DELIVERED` ≥ 90 d sin posventa abierta)                 |
+| 12  | `daily-summary`           | `lucams-daily-summary` (`pg_cron`)                     | `0 13 * * *`         | `24 h`    | **48 h**                | `GET /api/cron/daily-summary` (`08:00` COT en `/admin/notificaciones`)                            |
+| 13  | `review-request`          | `lucams-review-request` (`pg_cron`)                    | `0 17 * * *`         | `24 h`    | **48 h**                | `GET /api/cron/review-request` (`12:00` COT para órdenes `DELIVERED`)                             |
+| 14  | `domain-watch`            | `.github/workflows/domain-watch.yml` (GitHub Actions)  | `23 11 5 * *`        | `31 d`    | **62 d**                | `POST /api/cron/domain-watch` (auditoría mensual RDAP del dominio)                                |
+
+### 4.3 Conciliación exacta con los 18 procesos programados de la plataforma
+
+En [`integrations/supabase.md`](integrations/supabase.md) se inventarían **18 procesos programados** totales. Los **4 restantes** operan fuera del arreglo `CRON_JOBS` porque limpian tablas internas de extensiones Postgres o cuentan con sus propias claves y reglas de severidad alta en `AlertState`:
+
+| #   | Proceso programado                      | Ejecutor y horario UTC                                                                 | Por qué no va en `CRON_JOBS` y cómo se vigila                                                                                                                              |
+| --- | --------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 15  | `lucams-internal-cron-history-purge`    | `pg_cron` PRD/STG · `17 4 * * *` (`00000000000043`)                                    | SQL puro sobre esquema interno: `DELETE FROM cron.job_run_details WHERE end_time < now() - interval '14 days'`; cubierto por `capacity_db_high` (`> 400 MB`)               |
+| 16  | `lucams-internal-net-response-purge`    | `pg_cron` PRD/STG · `43 4 * * *` (`00000000000043`)                                    | SQL puro sobre cola efímera: `DELETE FROM net._http_response WHERE created < now() - interval '1 day'`; cubierto por `capacity_db_high`                                    |
+| 17  | `uptime-monitor-prd`                    | `pg_cron` **solo en Supabase STG** · `*/10 * * * *` (`scripts/monitor-uptime-stg.sql`) | Corre en otro proyecto y escribe `AlertState["uptime-monitor:last-run"]` vía `/api/cron/monitor-heartbeat`; vigilado por `uptime_monitor_stale` y `uptime_monitor_failing` |
+| 18  | `backup.yml` (Backup DB + Storage → R2) | GitHub Actions · `13 7 * * *` (`.github/workflows/backup.yml`)                         | Sella `AlertState["backup:last-success"]` vía `/api/cron/backup-heartbeat`; vigilado por `backup_stale` (`> 36 h`) y por el simulacro mensual `dr-drill.yml`               |
+
+_(Nota histórica: los jobs antiguos de migración `012` —`rate_limit_cleanup` y el extinto reservador temporal— fueron retirados definitivamente en las migraciones `033` y `048`)._
+
+---
+
+## 5. Motor de alertas (`alerts.ts`), alertas inmediatas y resumen matutino (`daily-summary.ts`)
+
+### 5.1 Política de canales y deduplicación (`dispatchAlerts`)
+
+[`apps/web/features/observability/alerts.ts`](../apps/web/features/observability/alerts.ts) corre cada **5 minutos** (`/api/cron/alerts`):
+
+1. **In-app como fuente de verdad (`Notification`):** toda alerta activa inserta o refresca su notificación no leída en `/admin/notificaciones` usando `dedupKey = key` (`crítica` → `critical`, `alta` → `warning`, `media` → `info`) sin duplicar filas mientras persista el incidente.
+2. **Email vía Resend reservado a severidad `crítica`:** `dispatchAlerts` solo despacha correo a `ALERT_EMAIL` (fallback `hola@lucamsshop.com`) cuando el lote contiene **al menos una alerta `crítica`** cuyo último envío en `AlertState` supere **`30 minutos`** (`DEDUP_WINDOW_MS = 30 min`). Si se abre ese correo crítico, adjunta las demás alertas activas no enviadas del mismo lote como contexto.
+3. **Reintento garantizado ante fallo de envío:** si `sendEmail` falla, `AlertState.lastSentAt` **no se actualiza**, forzando el reintento en el siguiente tick de 5 minutos.
+
+### 5.2 Las 12 reglas de `evaluateAlerts` y su acción operativa inmediata
+
+| #   | Clave (`key`)                                     | Severidad     | Condición exacta en `alerts.ts`                                                                                                             | Canal de salida                  | Acción operativa inmediata (runbook corto)                                                                                                |
+| --- | ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `reconciliation`                                  | **`crítica`** | `Order.count({ needsReconciliation: true, deletedAt: null }) > 0`                                                                           | **In-app + Email (`30 m`)**      | Abrir `/admin/pedidos` (filtro «Necesitan atención»): reponer unidad o reembolsar en Wompi y limpiar bandera tras conciliar               |
+| 2   | `pending_payment_wompi_stale`                     | **`crítica`** | `Order.count({ status: "PENDING_PAYMENT", paymentMethod: "WOMPI", deletedAt: null, createdAt < now - 24h }) > 0`                            | **In-app + Email (`30 m`)**      | Revisar el cron `expire-pending-orders` en `/admin/observability` y contrastar cada referencia `LCM-*` en el panel de Wompi               |
+| 3   | `errors_spike`                                    | `alta`        | `ErrorLog.groupBy(["routePath"])` en últimos `5 min` con `count >= 5` en una misma ruta                                                     | Solo in-app                      | Inspeccionar stack y `digest` en `/admin/observability` + Vercel Logs; ejecutar `vercel rollback` si coincide con un deploy recién subido |
+| 4   | `security_admin_login_fails`                      | `alta`        | `SecurityEvent` (`auth.admin_login.fail`) en últimos `15 min` con `SUM(count) >= 5` (`LUC-SEC-008`)                                         | Solo in-app                      | Revisar `ipHash` en `SecurityEvent`; si persiste campaña de password-spraying, bloquear en Cloudflare WAF y verificar cuentas `/admin`    |
+| 5   | `email_bounce_rate`                               | `alta`        | `EmailEvent` en `7 d` (sin dominios `*.test` RFC 2606): `bounced / (delivered + bounced) >= 5 %` con `>= 20` eventos terminales             | Solo in-app                      | Revisar DKIM/SPF/DMARC en Resend y direcciones rebotadas antes de despachar campañas comerciales                                          |
+| 6   | `backup_stale`                                    | `alta`        | `AlertState["backup:last-success"]` ausente o antigüedad `> 36 h` (`BACKUP_STALE_MS`)                                                       | Solo in-app                      | Abrir GitHub Actions → `backup.yml`, revisar credenciales `R2_*` / `BACKUP_GPG_PASSPHRASE` / `CRON_SECRET` y relanzar `workflow_dispatch` |
+| 7   | `uptime_monitor_failing` / `uptime_monitor_stale` | `alta`        | `AlertState["uptime-monitor:last-run"]`: `failing` si inicia con `"FALLA"`; `else if stale` si falta o supera `30 min` (`MONITOR_STALE_MS`) | Solo in-app (STG ya envía email) | Verificar qué sub-probe cayó en `/api/health/all` o revisar `cron.job_run_details` en el proyecto Supabase de STG                         |
+| 8   | `capacity_storage_high`                           | `alta`        | `getStorageQuota().measuredBytes > 800 MB` (80 % de 1 GB en `storage.objects`)                                                              | Solo in-app                      | Verificar corridas de `purge-anon-designs` y `purge-delivered-designs` o ampliar cuota del plan Supabase                                  |
+| 9   | `capacity_db_high`                                | `alta`        | `pg_database_size(current_database()) > 400 MB` (80 % de 500 MB)                                                                            | Solo in-app                      | Inspeccionar crecimiento por tabla, verificar `purge-event-logs` / `purge-rate-limits` o escalar plan de base de datos                    |
+| 10  | `webhooks_stuck`                                  | `media`       | `WebhookEvent.count({ processedAt: null, createdAt < now - 60 min }) > 0`                                                                   | Solo in-app                      | Revisar tabla «Webhooks recientes» en `/admin/observability` y errores de la saga correspondiente                                         |
+| 11  | `security_webhook_invalid`                        | `media`       | `SecurityEvent` (`webhook.invalid_signature`) en últimos `5 min` con `SUM(count) >= 3`                                                      | Solo in-app                      | Verificar si rotó `WOMPI_EVENTS_SECRET` / `AVEONLINE_WEBHOOK_SECRET` / `RESEND_WEBHOOK_SECRET` o si hay sondeo externo                    |
+| 12  | `cron_stale_<job>`                                | `media`       | Job activo de `CRON_JOBS` (excepto `alerts` y `CRON_JOBS_DISABLED`) con `lastRunAt != null` y `now - lastRunAt > 2 * intervalMs`            | Solo in-app                      | Revisar `cron.job_run_details`, secretos en `vault.decrypted_secrets` y logs del endpoint `/api/cron/<job>`                               |
+
+_(Nota: la regla #7 evalúa `if (monitor.failing) ... else if (monitor.stale)`, conformando exactamente los 12 bloques de evaluación y 13 claves posibles en `alerts.ts`)._
+
+### 5.3 Alertas transaccionales inmediatas y resumen diario de las 08:00 COT
+
+1. **Venta frenada o colisión de stock (`notifyStockSaleLost` en `apps/web/features/orders/stock-alerts.ts`):** se dispara al instante cuando ocurre `InsufficientStockError` en cualquiera de los 4 puntos de compra: `checkout_step`, `order_create`, `cod_finalize` y **`saga_paid`** (Wompi aprobó el pago pero otra orden concurrente tomó la última unidad). Inserta de inmediato una `Notification` in-app (`critical` en `saga_paid`, `warning` en los demás, con cooldown de **6 horas por variante** en `AlertState["stock_sale_lost:<variantId>"]`); además, en `saga_paid` la saga activa `Order.needsReconciliation = true`, disparando el correo crítico de `reconciliation`.
+2. **Fallo no controlado de cron (`notifyCronFailure`):** todo endpoint `/api/cron/*` que capture una excepción crea notificación inmediata en `/admin/notificaciones` además de persistir en `ErrorLog`.
+3. **Resumen operativo diario (`apps/web/features/observability/daily-summary.ts`):** ejecutado a las **`08:00` `America/Bogota`** (`13:00 UTC`, guarda anti-duplicado de 12 h) y entregado como notificación consolidada en `/admin/notificaciones` (sin ruido diario por correo). Resume las últimas 24 horas: pedidos e ingresos cobrados (Wompi + COD entregado), recaudo COD pendiente de remesa, órdenes por despachar, stock crítico, reseñas pendientes, retractos con reloj legal activo, carritos abandonados/recuperados, errores 5xx con ruta principal, órdenes a reconciliar, **órdenes Wompi expiradas sin `transactionId` confirmado (`no_txid`)** para cruce preventivo contra el panel de Wompi, línea de entregabilidad de email (compartiendo `email-deliverability.ts` con `email_bounce_rate`) y SLOs incumplidos.
+
+---
+
+## 6. SLOs cuantitativos (`slos.ts`), catálogo de SLIs y política de Error Budgets
+
+### 6.1 Los 3 SLOs calculados en vivo desde base de datos (`apps/web/features/observability/slos.ts`)
+
+`getSloStatus()` evalúa en tiempo real sobre Postgres y clasifica cada objetivo con `evaluateSlo` en `met` (cumplido), `at_risk` (dentro del margen de advertencia de `+2 %` sobre el umbral), `breached` (incumplido) o `insufficient_data` (debajo de la muestra mínima):
+
+| Clave SLO            | Indicador exacto (SLI)                                                                                                         | Meta (`targetPct`) | Ventana móvil | Muestra mínima |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------ | ------------- | -------------- |
+| `web_vitals_good`    | `%` de mediciones `WebVital` con calificación `rating = "good"`                                                                | **≥ 75 %**         | 7 días        | `30` muestras  |
+| `checkout_success`   | Órdenes en `PAID`/`FULFILLING`/`SHIPPED`/`DELIVERED`/`REFUNDED` sobre órdenes no `DRAFT` (excluyendo la última hora de gracia) | **≥ 90 %**         | 30 días       | `20` órdenes   |
+| `webhook_processing` | `%` de filas `WebhookEvent` con `processedAt != null` sobre el total recibido                                                  | **≥ 99 %**         | 30 días       | `20` eventos   |
+
+### 6.2 Catálogo completo de SLIs y metas operativas de referencia
+
+| Indicador / Compromiso operativo                          | Meta de referencia             | Cómo se mide hoy y fuente de verdad                                                                      |
+| --------------------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| **Disponibilidad del storefront** (`/`, catálogo, fichas) | **≥ 99,5 %** (30 d)            | Sondeos cada 10 min de `uptime-monitor-prd` (STG → `/api/health/all`) + `post-deploy-smoke.yml`          |
+| **Disponibilidad de checkout y receptores de webhooks**   | **≥ 99,9 %** (30 d)            | ~43 min/mes de presupuesto máximo; medido vía `uptime-monitor-prd`, `WebhookEvent` y `checkout_success`  |
+| **Latencia `p75` / `p95` por superficie**                 | `LCP ≤ 2,5 s`, `TTFB ≤ 800 ms` | Tabla `WebVital` en `/admin/performance` + `latencyMs` en logs estructurados                             |
+| **Tasa de errores 5xx y picos por ruta**                  | **`< 0,1 %`** (24 h)           | Tabla `ErrorLog`, alerta `errors_spike` (`>= 5` en 5 min por ruta) y Vercel Runtime Logs                 |
+| **Órdenes sobrevendidas sin conciliar (`oversold`)**      | **`0`** permanente             | Bloqueo `FOR UPDATE` + ledger idempotente `InventoryLog` + alerta crítica `reconciliation`               |
+| **Calidad en cada PR (Lighthouse Performance y A11y)**    | **≥ 95** por deploy            | Gate bloqueante `E2E + a11y + Lighthouse — Playwright` en CI sobre build de producción                   |
+| **Entregabilidad de correo transaccional**                | **≥ 98 %** (7 d)               | `email-deliverability.ts` sobre `EmailEvent` (alerta `email_bounce_rate` al llegar a `>= 5 %` de rebote) |
+| **Rezago de tareas programadas (`cron lag`)**             | **`< 2×` intervalo**           | `getCronHealth()` sobre `AlertState["cron:*"]` + `/api/health/crons` + `cron.job_run_details`            |
+
+_(Nota de hoja de ruta — diseño objetivo futuro de `/api/metrics`: hoy no existe `app/api/metrics` en el código; cuando la escala justifique conectar un scraper externo como Grafana Cloud o Prometheus, se expondrá protegido con `Authorization: Bearer <METRICS_TOKEN>` bajo este contrato mínimo):_
+
+```text
+# HELP lucams_orders_total Total de órdenes por estado
+# TYPE lucams_orders_total counter
+lucams_orders_total{status="paid"} 1234
+lucams_orders_total{status="cancelled"} 56
+
+# HELP lucams_request_duration_ms Histograma de latencia por ruta
+# TYPE lucams_request_duration_ms histogram
+lucams_request_duration_ms_bucket{route="/api/checkout/create",le="100"} 100
+lucams_request_duration_ms_bucket{route="/api/checkout/create",le="500"} 500
+
+# HELP lucams_cron_overdue Crons en CRON_JOBS sin latido en 2x su intervalo
+# TYPE lucams_cron_overdue gauge
+lucams_cron_overdue{job="daily-summary"} 0
+```
+
+```ts
+// apps/web/features/observability/slos.ts — clasificador puro con guarda estadística
+const AT_RISK_MARGIN_PCT = 2;
+
+export function evaluateSlo(
+  sliPct: number | null,
+  targetPct: number,
+  sampleSize: number,
+  minSample: number,
+): SloStatus {
+  if (sliPct === null || sampleSize < minSample) return "insufficient_data";
+  if (sliPct < targetPct) return "breached";
+  if (sliPct < targetPct + AT_RISK_MARGIN_PCT && sliPct < 100) return "at_risk";
+  return "met";
+}
+```
+
+### 6.3 Política formal de Error Budgets y congelación de despliegues (_deployment freeze_)
+
+Un SLO del `99,9 %` a 30 días equivale a un **presupuesto de error (_error budget_) del `0,1 %` (~43 minutos acumulados de indisponibilidad o degradación en el mes)**. La velocidad de cambios se gobierna por tres umbrales estrictos:
+
+1. **Presupuesto consumido `< 50 %` (Verde):** velocidad normal de entrega de funcionalidades y mejoras de producto.
+2. **Presupuesto consumido entre `50 %` y `100 %` (Amarillo — _Feature Freeze_ parcial):** **se congelan los despliegues de nuevas funcionalidades** que toquen la capa o flujo afectado (checkout, Estudio, pagos o base de datos). Solo se fusionan correcciones de errores, parches de seguridad y mejoras de estabilidad/observabilidad hasta recuperar margen.
+3. **Presupuesto agotado `100 %` o SLO `breached` sostenido (Rojo):** **rollback inmediato** al último deployment estable conocido (`vercel rollback`, seguro gracias a migraciones _expand-then-contract_), redacción obligatoria de **postmortem** y cierre de las acciones correctivas antes de retomar cualquier trabajo de features.
+
+> **Estado actual del seguimiento:** `slos.ts` automatiza hoy la detección `at_risk` / `breached` de los 3 SLOs de base de datos en `/admin/observability` y en el resumen diario; la evaluación del presupuesto mensual de disponibilidad HTTP y la activación del _feature freeze_ se aplican por gobierno operativo directo de la titular/equipo (sin subruta separada `/admin/observability/slos` ni cron mensual dedicado).
+
+---
+
+## 7. Rendimiento real de usuarios — RUM (`WebVital` y `/api/vitals`, `ADR-135`)
+
+`apps/web/components/web-vitals.tsx` registra una única vez los recolectores del paquete **`next/dist/compiled/web-vitals-attribution`** (evitando el flag inerte `experimental.webVitalsAttribution` y eliminando beacons duplicados por re-render) exclusivamente cuando el visitante ha otorgado consentimiento en **`COOKIES_ANALYTICS`**, enviando los datos a [`apps/web/app/api/vitals/route.ts`](../apps/web/app/api/vitals/route.ts):
+
+- **Blindaje de ingesta:** límite de cuerpo de **16 KB** (`readBodyWithLimit`), rate limit `120 / 1 min` por IP hasheada más tope global `vitals:new-row:global` (`3 000 / 5 min`), normalización de ruta por expresión regular (`/producto/[slug]`, sin tokens ni PII) y correlación por visita leyendo server-side el UUID de `cart_session` cuando existe.
+- **Las 8 métricas aceptadas, umbrales `good`/`poor` y techos de descarte (`MAX_VALUE_BY_METRIC`):**
+
+| Métrica      | Qué mide en navegador real                                                                                               | Umbral `good`   | Umbral `poor`   | Techo fail-closed (`MAX_VALUE_BY_METRIC`) |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------ | --------------- | --------------- | ----------------------------------------- |
+| `LCP`        | Pintado del elemento principal de contenido (incluye selector CSS `target`)                                              | `≤ 2 500 ms`    | `> 4 000 ms`    | `60 000 ms`                               |
+| `INP`        | Latencia de interacción a siguiente pintado (incluye selector CSS `target`)                                              | `≤ 200 ms`      | `> 500 ms`      | `10 000 ms`                               |
+| `CLS`        | Desplazamiento acumulado de diseño (incluye `largestShiftTarget` en `target`)                                            | `≤ 0.1`         | `> 0.25`        | `100`                                     |
+| `FCP`        | Primer pintado con contenido                                                                                             | `≤ 1 800 ms`    | `> 3 000 ms`    | `60 000 ms`                               |
+| `TTFB`       | Tiempo hasta el primer byte desde el borde/servidor                                                                      | `≤ 800 ms`      | `> 1 800 ms`    | `60 000 ms`                               |
+| `FID`        | Demora de primera entrada (aceptada en servidor por compatibilidad histórica)                                            | `≤ 100 ms`      | `> 300 ms`      | `60 000 ms`                               |
+| `LONGTASK`   | Suma de bloqueo del hilo principal (`> 50 ms`) por vista (solo si el navegador soporta `PerformanceObserver` `longtask`) | `≤ 200 ms`      | `> 600 ms`      | `300 000 ms`                              |
+| `PAGEWEIGHT` | Bytes transferidos totales (`value`) y conteo de recursos (`delta`) por vista                                            | `≤ 2 MB` (ref.) | `> 5 MB` (ref.) | `500 000 000 bytes`                       |
+
+Cualquier valor por encima de `MAX_VALUE_BY_METRIC` (típico de pestañas congeladas en segundo plano) se descarta registrando `vitals.out_of_range` y respondiendo HTTP `200 { ok: false }` para que `navigator.sendBeacon` no reintente en bucle.
+
+---
+
+## 8. Analítica propia del embudo (`FunnelEventDaily`) vs Google Analytics 4
+
+| Dimensión                     | Embudo operativo propio (`FunnelEventDaily` ← `POST /api/funnel`)                                                                                                                                                                                                                                                                                                                                                                                         | Google Analytics 4 (`apps/web/lib/analytics.ts`)                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Consentimiento de cookies** | **No requiere** (`credentials: "omit"`, cero cookies, cero IP, cero `sessionId`)                                                                                                                                                                                                                                                                                                                                                                          | **Obligatorio** (`COOKIES_ANALYTICS = true` en el banner)                                                                                    |
+| **Granularidad almacenada**   | Contadores enteros diarios `ON CONFLICT DO UPDATE` por `(day, step, productSlug, surface, deviceCategory, errorCode)` en Postgres                                                                                                                                                                                                                                                                                                                         | Eventos `gtag` (`view_item`, `begin_checkout`, `purchase`, etc.) enviados a Google                                                           |
+| **Límites y sanitización**    | Cuerpo máx. **4 KB**, rate limit `180 / 1 min` por IP hasheada + `6 000 / 5 min` global, esquema cerrado Zod `FunnelPayloadSchema`                                                                                                                                                                                                                                                                                                                        | Excluye `/admin*`; `sanitizeAnalyticsUrl` enmascara `/pedido/*`, `/cotizacion/*`, `/resena/*`, `/d/*`, `/carrito/recuperar/*` y `/soporte/*` |
+| **Etapas y fallos medidos**   | **11 etapas:** `product_view` → `studio_open` → `studio_template_select` → `studio_asset_upload_succeeded` → `studio_preview_open` → `studio_finalize_succeeded` → `cart_add` → `checkout_begin` → `checkout_shipping_selected` → `checkout_payment_submitted` → `purchase_completed`, más **8 códigos de fallo del Estudio** (`too_big`, `network`, `server_rejected`, `low_quality`, `master_expired`, `server_crash`, `validation`, `cart_add_failed`) | Eventos estándar de comercio electrónico de GA4                                                                                              |
+| **Consulta y retención**      | `/admin/metricas` (`FunnelPanel`) · **365 días** (`FUNNEL_EVENT_DAILY_RETENTION_DAYS`)                                                                                                                                                                                                                                                                                                                                                                    | Propiedad externa de GA4 (al revocar consentimiento se purgan `_ga*` y `lucams_utm`)                                                         |
+
+---
+
+## 9. Retención maestra de 12 fuentes, guardia on-call y proceso de postmortem _blameless_
+
+### 9.1 Tabla maestra de retención y purga automática de las 12 fuentes de observabilidad
+
+Ejecutada diariamente por `purgeExpiredEventLogs` ([`apps/web/features/observability/event-log-retention.ts`](../apps/web/features/observability/event-log-retention.ts) a las `03:00 UTC`), `purge_rate_limit_buckets()` (`05:29 UTC`) y los dos jobs SQL internos (`04:17` y `04:43 UTC`):
+
+| #   | Tabla / Almacén        | Plazo de retención                                 | Condición exacta de borrado                                                                          | Proceso responsable                  |
+| --- | ---------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| 1   | `ErrorLog`             | **90 días** (`ERROR_LOG_RETENTION_DAYS`)           | `createdAt < cutoff`                                                                                 | `lucams-purge-event-logs`            |
+| 2   | `ErrorReport`          | **90 días** (`ERROR_REPORT_RETENTION_DAYS`)        | `lastSeenAt < cutoff` (un error recurrente hoy **jamás** se purga aunque `firstSeenAt` sea antiguo)  | `lucams-purge-event-logs`            |
+| 3   | `WebVital`             | **35 días** (`WEB_VITAL_RETENTION_DAYS`)           | `createdAt < cutoff`                                                                                 | `lucams-purge-event-logs`            |
+| 4   | `WebhookEvent`         | **180 días** (`WEBHOOK_EVENT_RETENTION_DAYS`)      | `createdAt < cutoff AND processedAt IS NOT NULL` (nunca borra eventos pendientes)                    | `lucams-purge-event-logs`            |
+| 5   | `EmailEvent`           | **180 días** (`EMAIL_EVENT_RETENTION_DAYS`)        | `createdAt < cutoff`                                                                                 | `lucams-purge-event-logs`            |
+| 6   | `SecurityEvent`        | **180 días** (`SECURITY_EVENT_RETENTION_DAYS`)     | `createdAt < cutoff` (`ipHash` truncado, cero IP en claro)                                           | `lucams-purge-event-logs`            |
+| 7   | `FunnelEventDaily`     | **365 días** (`FUNNEL_EVENT_DAILY_RETENTION_DAYS`) | `day < cutoff`                                                                                       | `lucams-purge-event-logs`            |
+| 8   | `Notification`         | **90 días** (`NOTIFICATION_RETENTION_DAYS`)        | `createdAt < cutoff AND readAt IS NOT NULL` (las alertas **no leídas** se conservan siempre)         | `lucams-purge-event-logs`            |
+| 9   | `rate_limit_buckets`   | **7 días**                                         | `window_start < now() - interval '7 days'`                                                           | `lucams-purge-rate-limits`           |
+| 10  | `cron.job_run_details` | **14 días**                                        | `end_time < now() - interval '14 days'`                                                              | `lucams-internal-cron-history-purge` |
+| 11  | `net._http_response`   | **24 horas**                                       | `created < now() - interval '1 day'`                                                                 | `lucams-internal-net-response-purge` |
+| 12  | `AdminActionLog`       | **Conservación de auditoría**                      | Sin purga automática por tiempo; solo redacción puntual de correos al ejecutar supresión Hábeas Data | Conservación legal y de seguridad    |
+
+### 9.2 Guardia operativa (_on-call_) y modo mantenimiento
+
+Mientras la operación recae en un equipo compacto liderado por la titular, no existe rotación de turnos, pero rigen tres salvaguardas operativas documentadas en [`OPERATIONS.md`](OPERATIONS.md):
+
+1. **Matriz de escalamiento a proveedores** (Wompi, Aveonline, Supabase, Vercel, Resend y Cloudflare) lista en `OPERATIONS.md`.
+2. **Alertas activas 24/7 por dos vías independientes:** correo inmediato desde `dispatchAlerts` en PRD para anomalías críticas de negocio (`reconciliation`, `pending_payment_wompi_stale`) y correo directo desde `uptime-monitor-prd` en STG si cae la salud de PRD por ≥ 20 minutos.
+3. **Cortafuegos de emergencia (`NEXT_PUBLIC_MAINTENANCE_MODE=1`):** redirige en `proxy.ts` todo el tráfico público hacia `/maintenance` preservando `/admin/*` y `/api/health/*` para que el equipo opere y valide la recuperación antes de reabrir (al ser `NEXT_PUBLIC_*` requiere redespliegue en Vercel).
+
+### 9.3 Proceso formal de postmortem _blameless_
+
+Obligatorio tras cualquier incidente de severidad **`crítica` (`P0`)** o **`alta` (`P1`)**:
+
+1. **Plazos:** borrador inicial dentro de las **24 horas** posteriores a la mitigación en `tmp/incidentes/YYYY-MM-DD-<slug>.md` (directorio local gitignored — **jamás se versionan bitácoras de incidentes en el repositorio**); revisión definitiva a las **48 horas**.
+2. **Consolidación en documentación viva y limpieza:** las invariantes nuevas, tests de regresión o ajustes de runbook derivados del incidente se incorporan directamente en el documento vivo correspondiente (`SECURITY.md`, `OBSERVABILITY.md`, `OPERATIONS.md` o `domains/*.md`) y al cerrar se limpia el borrador con `make clean-tmp`.
+3. **Cultura sin culpas (_blameless_) y acciones verificables:** el análisis nunca señala personas («alguien olvidó revisar»), sino brechas de diseño o automatización («faltaba un check en CI o una guarda idempotente»), cerrando con tareas concretas con responsable y fecha.
 
 ```markdown
 # Incidente — YYYY-MM-DD — <título corto>
 
-## Resumen
+## Resumen ejecutivo
 
-Una frase ejecutiva.
+Una oración clara describiendo qué ocurrió, qué superficie afectó y cómo se resolvió.
 
-## Impacto
+## Impacto medido
 
-- Usuarios afectados: ~X
-- Duración: HH:MM – HH:MM (Z minutos)
-- Pérdida de datos: sí/no
-- Pérdida de ingresos: ~$X COP estimados
+- Usuarios o pedidos afectados: <cantidad exacta>
+- Ventana del incidente (COT): HH:MM – HH:MM (<duración en minutos>)
+- Integridad de datos / pagos comprometida: sí / no (detalle de reconciliación)
+- Ingresos afectados estimados: $<monto> COP
 
-## Cronología
+## Cronología (America/Bogota)
 
-- HH:MM — síntoma reportado por...
-- HH:MM — Claude/operador identificó causa...
-- HH:MM — fix aplicado...
-- HH:MM — verificación...
+- HH:MM — Detección inicial (alerta automática / monitor STG / reporte de usuario)
+- HH:MM — Contención aplicada (rollback / modo mantenimiento / rotación de credencial)
+- HH:MM — Causa raíz identificada y corrección desplegada
+- HH:MM — Verificación en `/api/health/all` y cierre del incidente
 
-## Causa raíz
+## Causa raíz (enfoque sistémico, cero culpas)
 
-Sin culpas. Sin "el dev se equivocó". Foco en sistema.
+Explicación técnica de la condición que permitió el fallo y por qué las defensas previas no la detuvieron.
 
-## Lo que estuvo bien
+## Qué funcionó bien / Qué falló en detección o respuesta
 
-- ...
+- Funcionó: ...
+- Falló o tardó: ...
 
-## Lo que estuvo mal
+## Plan de acción preventivo (con entregable verificable)
 
-- ...
-
-## Acciones (con responsable y fecha límite)
-
-- [ ] Acción 1 — [responsable] — fecha
-- [ ] Acción 2 — [responsable] — fecha
-
-## Lecciones aprendidas
-
-- ...
+- [ ] Test o invariante en código/CI que impide la recurrencia — Responsable — Fecha
+- [ ] Ajuste de alerta, runbook o documento vivo — Responsable — Fecha
 ```
-
-### Cultura
-
-- **Blameless.** Postmortem cero culpas.
-- **Acciones concretas.** "Mejorar tests" no, "agregar test E2E para caso X" sí.
-- **Compartir.** Al equipo, eventualmente al público (transparencia).
-
----
-
-## Pre-lanzamiento vs post-lanzamiento
-
-### Fase 0–6: lo mínimo viable
-
-- Logs estructurados (logger propio API-compatible con pino + `X-Request-Id` del proxy).
-- Vercel Logs como única vista.
-- Supabase dashboard para DB.
-- Alertas en el centro de notificaciones in-app (`/admin/notificaciones`); email vía Resend solo si hay crítica.
-- Healthchecks `/api/health/*`.
-- Dashboards en `/admin/observability` (queries SQL contra logs y tablas).
-
-### Fase 7+: upgrade
-
-- Decisión de monitoreo de errores (ADR-022): Sentry Free o alternativa.
-- Métricas custom expuestas (`/api/metrics`).
-- ~~UptimeRobot/BetterStack para healthchecks externos.~~ Resuelto con job pg_cron en Supabase
-  STG (`uptime-monitor-prd`, 2026-09-14 — sin SaaS, sin Actions y sin depender de la VM).
-- Eventualmente: distributed tracing si la arquitectura crece.

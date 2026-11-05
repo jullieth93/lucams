@@ -2,7 +2,7 @@
  * Unit tests del registro sanitizado del intento fallido de guía (Paquete G,
  * Order.shipmentLastError): construcción sin PII, parse defensivo del JSON
  * persistido y sugerencias operativas según el mensaje de la transportadora
- * (docs/INTEGRATIONS_AVEONLINE.md §4.4).
+ * (docs/integrations/aveonline.md).
  */
 
 import { describe, expect, it } from "vitest";
@@ -134,6 +134,6 @@ describe("suggestShipmentFailureCause", () => {
 
   it("mensaje desconocido → remite a la tabla de errores del doc", () => {
     const s = suggestShipmentFailureCause({ ...base, timeout: false, message: "algo exótico" });
-    expect(s).toContain("INTEGRATIONS_AVEONLINE");
+    expect(s).toContain("docs/integrations/aveonline.md");
   });
 });
