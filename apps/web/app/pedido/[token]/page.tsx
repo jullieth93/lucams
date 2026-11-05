@@ -61,7 +61,7 @@ import { RetractControl } from "@/app/mi-cuenta/pedidos/[number]/retract-control
 import { WarrantyControl } from "@/app/mi-cuenta/pedidos/[number]/warranty-control";
 import { getAccountTexts } from "@/app/mi-cuenta/account-texts.server";
 import { formatDateLongCO, formatDateTimeCO } from "@/lib/datetime";
-import { humanizeCarrierStatus, listShipmentEvents } from "@/features/shipping/shipment-events";
+import { friendlyCarrierEventLabel, listShipmentEvents } from "@/features/shipping/shipment-events";
 
 export const metadata: Metadata = {
   // noindex: la URL es de un solo uso y trae un token opaco.
@@ -454,12 +454,12 @@ export default async function PublicOrderPage({
                           <div className="min-w-0 flex-1">
                             <p className="text-brand-purple-dark text-xs leading-snug font-semibold">
                               {ev.description ||
-                                humanizeCarrierStatus(ev.carrierStatusRaw) ||
+                                friendlyCarrierEventLabel(ev.carrierStatusRaw) ||
                                 SHIPMENT_EVENT_LABEL[ev.status]}
                               {ev.description && ev.carrierStatusRaw ? (
                                 <span className="text-brand-muted font-normal">
                                   {" "}
-                                  · {humanizeCarrierStatus(ev.carrierStatusRaw)}
+                                  · {friendlyCarrierEventLabel(ev.carrierStatusRaw)}
                                 </span>
                               ) : null}
                             </p>

@@ -57,7 +57,7 @@ export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> 
       NOT: { trackingNumber: { startsWith: "INTERNO-" } },
       createdAt: { gte: new Date(Date.now() - TRACKING_SYNC_MAX_AGE_DAYS * 86_400_000) },
     },
-    select: { id: true, number: true, trackingNumber: true },
+    select: { id: true, number: true, trackingNumber: true, shipmentClaimedAt: true },
     orderBy: { updatedAt: "asc" }, // las que llevan más tiempo sin actualización, primero
     take: TRACKING_SYNC_BATCH,
   });
@@ -72,16 +72,19 @@ export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> 
       // Historial granular del carrier → ShipmentEvent (2026-11-04). El polling es la
       // fuente que trae DESCRIPCIONES (`historicos[].descripcion`) y hace backfill de
       // hitos que el webhook no entregó; dedup cross-source por minuto (best-effort).
-      if (tracking.history.length > 0) {
+      // `?? []`: proveedores/mocks sin historial son válidos (sin historial, sin hitos).
+      const history = tracking.history ?? [];
+      if (history.length > 0) {
         await recordShipmentEvents({
           orderId: order.id,
           trackingNumber,
           source: "POLL",
-          events: tracking.history.map((h) => ({
+          events: history.map((h) => ({
             carrierStatusRaw: h.status,
             description: h.description,
             occurredAt: h.timestamp,
           })),
+          guideCreatedAt: order.shipmentClaimedAt,
         });
       }
       if (tracking.status === "PENDING") continue; // sin novedad real del carrier
