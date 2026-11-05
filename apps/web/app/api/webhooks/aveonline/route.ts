@@ -215,7 +215,7 @@ export async function POST(req: Request) {
     if (result.orderNumber) {
       const orderRow = await prisma.order.findFirst({
         where: { trackingNumber: event.trackingNumber },
-        select: { id: true },
+        select: { id: true, shipmentClaimedAt: true },
       });
       if (orderRow) {
         const history =
@@ -234,6 +234,7 @@ export async function POST(req: Request) {
           trackingNumber: event.trackingNumber,
           source: "WEBHOOK",
           events: history,
+          guideCreatedAt: orderRow.shipmentClaimedAt,
         });
       }
     }

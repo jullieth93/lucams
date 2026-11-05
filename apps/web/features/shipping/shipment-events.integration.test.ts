@@ -132,6 +132,32 @@ describe.skipIf(!hasDb)("ShipmentEvent — persistencia e idempotencia cross-sou
     expect(await prisma.shipmentEvent.count({ where: { orderId } })).toBe(3);
   });
 
+  it("GENERADA se ancla a la hora real de creación de la guía y dedup estable sin minuto", async () => {
+    const claimed = new Date("2026-11-04T01:24:35.000Z"); // 8:24 p.m. COT (API real)
+    // El carrier reporta GENERADA 10 h después: debe anclarse a `claimed`.
+    const first = await recordShipmentEvents({
+      orderId,
+      trackingNumber,
+      source: "POLL",
+      events: [{ carrierStatusRaw: "GENERADA", occurredAt: new Date("2026-11-04T11:07:14.000Z") }],
+      guideCreatedAt: claimed,
+    });
+    expect(first).toBe(1);
+    // Re-reporte del MISMO hito a otra hora → dedup estable (clave sin minuto).
+    const second = await recordShipmentEvents({
+      orderId,
+      trackingNumber,
+      source: "POLL",
+      events: [{ carrierStatusRaw: "GENERADA", occurredAt: new Date("2026-11-05T12:00:00.000Z") }],
+      guideCreatedAt: claimed,
+    });
+    expect(second).toBe(0);
+    const events = await listShipmentEvents(orderId);
+    const generada = events.filter((e) => e.carrierStatusRaw === "GENERADA");
+    expect(generada).toHaveLength(1);
+    expect(generada[0].occurredAt.toISOString()).toBe("2026-11-04T01:24:35.000Z");
+  });
+
   it("la dedupKey es estable y cross-source por minuto", () => {
     const a = buildShipmentEventDedupKey({
       trackingNumber: "G1",
