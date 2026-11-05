@@ -782,18 +782,107 @@ export async function uploadDesignAssetAction(formData: FormData) {
     }
   }
 
-  // M.3.b.B.2 — Buscar productSizeCm del product asociado al Design para DPI check.
-  // Si no hay Design (upload sin draft creado aún) → sin sizeCm, validation
-  // solo evalúa brillo + blur.
+  // M.3.b.B.2 + [STU-02] — Resolver `productSizeCm` para validación 300 DPI desde la
+  // PRIMERA foto (incluso antes de crear el `Design` lazy en servidor):
+  //   1. Si ya existe `design`, toma el `sizeCm` efectivo de su variante (`metadata.variantId`)
+  //      sobre `product.personalizationSchema.sizeCm`.
+  //   2. Si aún no existe `design` (`designId === null`), consulta el producto activo por
+  //      `productSlug` y solo acepta un `productSizeCm` declarado en el producto o en sus
+  //      variantes activas (nunca un string arbitrario del cliente).
   let productSizeCm: string | undefined;
+  const rawSlug = formData.get("productSlug");
+  const requestedSlug =
+    typeof rawSlug === "string" && /^[a-z0-9-]{1,120}$/.test(rawSlug.trim())
+      ? rawSlug.trim()
+      : null;
+  const rawSizeHint = formData.get("productSizeCm");
+  const requestedSizeHint =
+    typeof rawSizeHint === "string" && rawSizeHint.trim().length > 0
+      ? rawSizeHint.trim().slice(0, 32)
+      : null;
+
   if (design) {
     const product = await prisma.product.findUnique({
       where: { id: design.productId },
-      select: { personalizationSchema: true },
+      select: {
+        personalizationSchema: true,
+        variants: {
+          where: { deletedAt: null, isActive: true },
+          select: { id: true, attributes: true },
+        },
+      },
     });
-    if (product?.personalizationSchema && typeof product.personalizationSchema === "object") {
-      const cfg = product.personalizationSchema as { sizeCm?: unknown };
-      if (typeof cfg.sizeCm === "string") productSizeCm = cfg.sizeCm;
+    if (product) {
+      const baseCfg =
+        product.personalizationSchema && typeof product.personalizationSchema === "object"
+          ? (product.personalizationSchema as { sizeCm?: unknown })
+          : null;
+      const metaVariantId =
+        design.metadata && typeof design.metadata === "object"
+          ? (design.metadata as { variantId?: unknown }).variantId
+          : undefined;
+      const matchedVariant =
+        typeof metaVariantId === "string"
+          ? product.variants.find((v) => v.id === metaVariantId)
+          : undefined;
+      const variantSizeCm =
+        matchedVariant?.attributes && typeof matchedVariant.attributes === "object"
+          ? (matchedVariant.attributes as { sizeCm?: unknown }).sizeCm
+          : undefined;
+      if (typeof variantSizeCm === "string" && variantSizeCm.trim().length > 0) {
+        productSizeCm = variantSizeCm.trim();
+      } else if (
+        baseCfg &&
+        typeof baseCfg.sizeCm === "string" &&
+        baseCfg.sizeCm.trim().length > 0
+      ) {
+        productSizeCm = baseCfg.sizeCm.trim();
+      } else if (requestedSizeHint) {
+        const validSizes = new Set<string>();
+        for (const v of product.variants) {
+          const s =
+            v.attributes && typeof v.attributes === "object"
+              ? (v.attributes as { sizeCm?: unknown }).sizeCm
+              : undefined;
+          if (typeof s === "string" && s.trim().length > 0) validSizes.add(s.trim());
+        }
+        if (validSizes.has(requestedSizeHint)) productSizeCm = requestedSizeHint;
+      }
+    }
+  } else if (requestedSlug) {
+    const product = await prisma.product.findFirst({
+      where: { slug: requestedSlug, deletedAt: null, isActive: true },
+      select: {
+        personalizationSchema: true,
+        variants: {
+          where: { deletedAt: null, isActive: true },
+          select: { attributes: true },
+        },
+      },
+    });
+    if (product) {
+      const baseSizeCm =
+        product.personalizationSchema && typeof product.personalizationSchema === "object"
+          ? (product.personalizationSchema as { sizeCm?: unknown }).sizeCm
+          : undefined;
+      const validSizes = new Set<string>();
+      if (typeof baseSizeCm === "string" && baseSizeCm.trim().length > 0) {
+        validSizes.add(baseSizeCm.trim());
+      }
+      for (const v of product.variants) {
+        const s =
+          v.attributes && typeof v.attributes === "object"
+            ? (v.attributes as { sizeCm?: unknown }).sizeCm
+            : undefined;
+        if (typeof s === "string" && s.trim().length > 0) validSizes.add(s.trim());
+      }
+      if (requestedSizeHint && validSizes.has(requestedSizeHint)) {
+        productSizeCm = requestedSizeHint;
+      } else if (typeof baseSizeCm === "string" && baseSizeCm.trim().length > 0) {
+        productSizeCm = baseSizeCm.trim();
+      } else if (validSizes.size === 1) {
+        productSizeCm = [...validSizes][0];
+      }
     }
   }
 
@@ -892,8 +981,15 @@ export async function uploadDesignAssetAction(formData: FormData) {
 //   - Si el remove de Storage falla, la fila se borra igual: los bytes huérfanos
 //     los recoge el barrido de retención (retention-service orphan sweep).
 
+const ASSET_ID_SCHEMA = z
+  .string()
+  .trim()
+  .min(10)
+  .max(64)
+  .regex(/^[a-zA-Z0-9_-]+$/);
+
 export async function deleteDesignAssetAction(assetId: string) {
-  const parsed = z.string().uuid().safeParse(assetId);
+  const parsed = ASSET_ID_SCHEMA.safeParse(assetId);
   if (!parsed.success) {
     return { ok: false as const, code: "VALIDATION" as const, message: "Asset inválido" };
   }
@@ -1164,5 +1260,109 @@ export async function assignPredesignedToDesignAction(input: {
       "assignPredesigned failed",
     );
     return { ok: false, message: "No pudimos aplicar el diseño." };
+  }
+}
+
+// ──────────── [STU-01] Renovación de signed URLs para sesiones largas (>1 h) ────────────
+
+const RefreshDesignAssetsSchema = z.object({
+  designId: z.string().min(1).max(64),
+  assetIds: z.array(z.string().min(1).max(64)).max(120).optional(),
+});
+
+/**
+ * Re-firma las URLs privadas (`signedUrl` master + `canvasUrl` ≤800 px) de todas las
+ * fotos pertenecientes al diseño/dueño actual ([STU-01], auditoría 2026-11).
+ *
+ * Resuelve la expiración del TTL de 1 h de `customer-uploads` cuando el comprador
+ * permanece >40–60 min editando en el Estudio antes de confirmar para imprenta.
+ */
+export async function refreshDesignAssetUrlsAction(input: {
+  designId: string;
+  assetIds?: string[];
+}) {
+  const parsed = RefreshDesignAssetsSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      code: "VALIDATION" as const,
+      message: "Solicitud de renovación inválida.",
+    };
+  }
+
+  const isProd = process.env.VERCEL_ENV === "production";
+  const ip = getClientIp(await headers());
+  const ipRl = await rateLimit(ipKey("refresh_design_assets_ip", ip), isProd ? 40 : 200, 600);
+  if (!ipRl.allowed) {
+    return {
+      ok: false as const,
+      code: "RATE_LIMIT" as const,
+      message: "Espera unos segundos antes de volver a intentar.",
+    };
+  }
+
+  const { customerId, sessionId } = await resolveOwner();
+  if (!customerId && !sessionId) {
+    return {
+      ok: false as const,
+      code: "FORBIDDEN" as const,
+      message: "Tu sesión expiró. Recarga la página para continuar con tu diseño.",
+    };
+  }
+
+  const design = await getOwnedDesign(parsed.data.designId, { customerId, sessionId });
+  if (!design) {
+    return {
+      ok: false as const,
+      code: "FORBIDDEN" as const,
+      message: "No encontramos tu diseño activo. Recarga la página para retomarlo.",
+    };
+  }
+
+  const extraIds = [...new Set(parsed.data.assetIds ?? [])];
+  const ownerFilter = customerId ? { customerId } : { sessionId, customerId: null };
+
+  try {
+    const dbAssets = await prisma.designAsset.findMany({
+      where: {
+        OR: [
+          { designId: design.id },
+          ...(extraIds.length > 0 ? [{ id: { in: extraIds }, ...ownerFilter }] : []),
+        ],
+      },
+      select: { id: true, storageUrl: true, canvasPath: true, width: true, height: true },
+    });
+
+    const assets = await Promise.all(
+      dbAssets.map(async (a) => ({
+        id: a.id,
+        signedUrl: await refreshCustomerUploadSignedUrl(a.storageUrl),
+        canvasUrl: a.canvasPath ? await refreshCustomerUploadSignedUrl(a.canvasPath) : null,
+        width: a.width,
+        height: a.height,
+      })),
+    );
+
+    logger.info({
+      event: "design.assets.urls_refreshed",
+      designId: design.id,
+      count: assets.length,
+    });
+
+    return { ok: true as const, assets };
+  } catch (err) {
+    logger.warn(
+      {
+        event: "design.assets.urls_refresh_fail",
+        designId: design.id,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "refreshDesignAssetUrlsAction failed",
+    );
+    return {
+      ok: false as const,
+      code: "INTERNAL" as const,
+      message: "No pudimos refrescar tus fotos en este momento. Toca «Reintentar ahora».",
+    };
   }
 }

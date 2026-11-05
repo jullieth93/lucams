@@ -11,6 +11,7 @@
 import type { Metadata } from "next";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { CmsText } from "@/components/cms/cms-text";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "En mantenimiento",
@@ -36,7 +37,7 @@ export default function MaintenancePage() {
         />
       </p>
       <p className="text-brand-muted mt-8 text-xs">
-        Mantenimiento programado · {new Date().toLocaleString("es-CO", { dateStyle: "medium" })}
+        Mantenimiento programado · {formatDateCO(new Date())}
       </p>
     </div>
   );

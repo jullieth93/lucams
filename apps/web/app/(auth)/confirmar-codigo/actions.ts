@@ -24,6 +24,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { mergeAnonCartIntoCustomer, recoverCustomerCartSessionId } from "@/features/cart/service";
+import { ensureCustomerContact } from "@/features/identity/resolution-service";
 import { claimGuestOrdersForCustomer } from "@/features/orders/claim-guest-orders";
 import { awardRetroactivePointsForNewCustomer } from "@/features/loyalty/service";
 import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
@@ -147,6 +148,11 @@ async function claimGuestOrdersSafely(supabaseUserId: string, email: string): Pr
       select: { id: true },
     });
     if (!customer) return;
+    await ensureCustomerContact(prisma, {
+      customerId: customer.id,
+      emailVerified: true,
+      verificationSource: "SUPABASE_OTP",
+    });
     await claimGuestOrdersForCustomer(customer.id, email);
   } catch (err) {
     logger.warn({

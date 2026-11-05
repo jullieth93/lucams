@@ -2,6 +2,7 @@
 
 import { promoteAdminAction, type PromoteAdminState } from "./actions";
 import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
+import { ADMIN_ROLES_ALL, ADMIN_ROLE_DESCRIPTION, ADMIN_ROLE_LABEL } from "@/lib/admin-roles";
 
 export function PromoteForm() {
   // F-10: promover exige aal2 reciente; si el server pide re-auth, el hook abre
@@ -31,7 +32,8 @@ export function PromoteForm() {
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.email[0]}</p>
           )}
           <p className="text-brand-muted mt-1 text-xs">
-            La persona debe estar registrada como cliente primero (signup público).
+            No necesita registrarse como cliente: si el correo es nuevo, creamos su acceso de equipo
+            automáticamente.
           </p>
         </div>
         <div>
@@ -44,13 +46,14 @@ export function PromoteForm() {
           <select
             id="promote-role"
             name="role"
-            defaultValue="MANAGER"
+            defaultValue="OPERATIONS_MANAGER"
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
           >
-            <option value="SUPERADMIN">SUPERADMIN — control total</option>
-            <option value="MANAGER">MANAGER — operación + contenido</option>
-            <option value="FULFILLMENT">FULFILLMENT — solo pedidos + envíos</option>
-            <option value="CMS_EDITOR">CMS_EDITOR — solo contenido del sitio</option>
+            {ADMIN_ROLES_ALL.map((r) => (
+              <option key={r} value={r}>
+                {ADMIN_ROLE_LABEL[r]} — {ADMIN_ROLE_DESCRIPTION[r]}
+              </option>
+            ))}
           </select>
           {state?.fieldErrors?.role && (
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.role[0]}</p>
@@ -65,9 +68,9 @@ export function PromoteForm() {
       <button
         type="submit"
         disabled={isPending}
-        className="bg-gradient-brand inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+        className="bg-gradient-brand inline-flex min-h-11 items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isPending ? "Promoviendo…" : "Promover a admin"}
+        {isPending ? "Dando de alta…" : "Dar de alta miembro"}
       </button>
       {reauthModal}
     </form>

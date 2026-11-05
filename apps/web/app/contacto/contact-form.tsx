@@ -2,18 +2,22 @@
 
 /*
  * <ContactForm> — form de /contacto con useActionState.
- * Validación cliente mínima (HTML5 + required) + Zod server-side.
- * Toast sonner al success/error.
+ * Validadores estandarizados Colombia (nombre máx 5 palabras + capitalización,
+ * EmailInput con sugerencia de dominios y corrección de typos en 1 clic,
+ * autorización expresa Ley 1581 y estado controlado para no perder lo escrito).
  */
 
 import { useActionState, useEffect, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { EmailInput } from "@/components/email-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
+import { capitalizeName, personNameError } from "@/lib/colombia-validators";
 import { submitContactAction } from "@/features/support/actions";
 import {
   SUBJECT_LABELS,
@@ -30,7 +34,13 @@ export function ContactForm({
   successNote?: string;
 }) {
   const [state, formAction, pending] = useActionState(submitContactAction, null);
+  const [name, setName] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
+  const [email, setEmail] = useState("");
   const [subject, setSubject] = useState<SupportSubject>("CONSULTA_PRODUCTO");
+  const [orderNumber, setOrderNumber] = useState("");
+  const [message, setMessage] = useState("");
+  const [dataConsent, setDataConsent] = useState(false);
   const asksOrderNumber = ORDER_RELATED_SUBJECTS.includes(subject);
 
   useEffect(() => {
@@ -52,22 +62,41 @@ export function ContactForm({
           {successNote}{" "}
           <span className="font-mono text-xs">{state.ticketId.slice(0, 8).toUpperCase()}</span>.
         </p>
+        {state.threadPath && (
+          <div className="mt-4">
+            <Link
+              href={state.threadPath}
+              className="bg-brand-purple hover:bg-brand-purple-dark inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors"
+            >
+              Seguir y responder mi solicitud →
+            </Link>
+          </div>
+        )}
         <p className="text-brand-muted mt-3 text-xs">Si es urgente, escríbenos por WhatsApp.</p>
       </div>
     );
   }
 
+  const nameErr =
+    (nameTouched ? personNameError(name, 5) : null) ??
+    (state && !state.ok ? state.fieldErrors?.name?.[0] : null);
+  const emailErr = state && !state.ok ? state.fieldErrors?.email?.[0] : null;
+  const consentErr = state && !state.ok ? state.fieldErrors?.dataConsent?.[0] : null;
+
   return (
     <form action={formAction} className="space-y-4">
-      {state?.error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+      {state && !state.ok && state.error && (
+        <div
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
           {state.error}
         </div>
       )}
 
       <div className="space-y-1.5">
         <Label htmlFor="contact-name" className="text-brand-purple-dark/80 text-sm">
-          Tu nombre
+          Tu nombre completo *
         </Label>
         <Input
           id="contact-name"
@@ -77,35 +106,52 @@ export function ContactForm({
           maxLength={120}
           autoComplete="name"
           placeholder="Lucía Rodríguez"
-          className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => {
+            if (name.trim()) setName(capitalizeName(name));
+            setNameTouched(true);
+          }}
+          aria-invalid={Boolean(nameErr)}
+          aria-describedby={nameErr ? "contact-name-error" : undefined}
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 bg-white"
         />
-        {state?.fieldErrors?.name && (
-          <p className="text-xs text-red-700">{state.fieldErrors.name[0]}</p>
+        {nameErr ? (
+          <p id="contact-name-error" className="text-xs text-red-700">
+            {nameErr}
+          </p>
+        ) : (
+          <p className="text-brand-muted text-[11px]">Solo letras, máximo 5 palabras.</p>
         )}
       </div>
 
       <div className="space-y-1.5">
         <Label htmlFor="contact-email" className="text-brand-purple-dark/80 text-sm">
-          Email
+          Correo electrónico *
         </Label>
-        <Input
+        <EmailInput
           id="contact-email"
           name="email"
-          type="email"
           required
           maxLength={200}
           autoComplete="email"
           placeholder="lucia@ejemplo.com"
-          className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+          value={email}
+          onValueChange={setEmail}
+          aria-invalid={Boolean(emailErr)}
+          aria-describedby={emailErr ? "contact-email-error" : undefined}
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 bg-white"
         />
-        {state?.fieldErrors?.email && (
-          <p className="text-xs text-red-700">{state.fieldErrors.email[0]}</p>
+        {emailErr && (
+          <p id="contact-email-error" className="text-xs text-red-700">
+            {emailErr}
+          </p>
         )}
       </div>
 
       <div className="space-y-1.5">
         <Label htmlFor="contact-subject" className="text-brand-purple-dark/80 text-sm">
-          Asunto
+          Asunto *
         </Label>
         <select
           id="contact-subject"
@@ -113,7 +159,7 @@ export function ContactForm({
           required
           value={subject}
           onChange={(e) => setSubject(e.target.value as SupportSubject)}
-          className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+          className="border-brand-purple/20 focus:ring-brand-purple/30 h-10 w-full rounded-md border bg-white px-3 text-sm focus:ring-2 focus:outline-none"
         >
           {SUPPORT_SUBJECTS.map((s) => (
             <option key={s} value={s}>
@@ -121,7 +167,7 @@ export function ContactForm({
             </option>
           ))}
         </select>
-        {state?.fieldErrors?.subject && (
+        {state && !state.ok && state.fieldErrors?.subject && (
           <p className="text-xs text-red-700">{state.fieldErrors.subject[0]}</p>
         )}
       </div>
@@ -138,12 +184,14 @@ export function ContactForm({
             inputMode="text"
             autoComplete="off"
             placeholder="LCM-2026-0001"
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+            value={orderNumber}
+            onChange={(e) => setOrderNumber(e.target.value.toUpperCase())}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 bg-white"
           />
           <p className="text-brand-muted text-xs">
             Lo encuentras en el correo de confirmación de tu compra.
           </p>
-          {state?.fieldErrors?.orderNumber && (
+          {state && !state.ok && state.fieldErrors?.orderNumber && (
             <p className="text-xs text-red-700">{state.fieldErrors.orderNumber[0]}</p>
           )}
         </div>
@@ -151,7 +199,7 @@ export function ContactForm({
 
       <div className="space-y-1.5">
         <Label htmlFor="contact-message" className="text-brand-purple-dark/80 text-sm">
-          Mensaje
+          Mensaje *
         </Label>
         <Textarea
           id="contact-message"
@@ -159,13 +207,41 @@ export function ContactForm({
           required
           minLength={10}
           maxLength={4000}
-          rows={6}
+          rows={5}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
           placeholder="Cuéntanos en qué te podemos ayudar..."
-          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 resize-y"
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 resize-y bg-white"
         />
-        {state?.fieldErrors?.message && (
+        {state && !state.ok && state.fieldErrors?.message && (
           <p className="text-xs text-red-700">{state.fieldErrors.message[0]}</p>
         )}
+      </div>
+
+      <div className="border-brand-purple/15 rounded-xl border bg-[#FFF8F0]/70 p-3.5">
+        <label className="flex cursor-pointer items-start gap-2.5 text-xs">
+          <input
+            type="checkbox"
+            name="dataConsent"
+            required
+            checked={dataConsent}
+            onChange={(e) => setDataConsent(e.target.checked)}
+            aria-invalid={Boolean(consentErr)}
+            className="accent-brand-purple mt-0.5 h-4 w-4 shrink-0 rounded"
+          />
+          <span className="text-brand-purple-dark/90">
+            Autorizo el tratamiento de mis datos personales para atender esta solicitud conforme al{" "}
+            <Link
+              href="/legal/privacidad"
+              target="_blank"
+              className="text-brand-purple-dark hover:text-brand-purple font-semibold underline underline-offset-2"
+            >
+              Aviso de Privacidad
+            </Link>{" "}
+            (Ley 1581 de 2012). *
+          </span>
+        </label>
+        {consentErr && <p className="mt-1.5 text-xs text-red-700">{consentErr}</p>}
       </div>
 
       <div className="pt-1">
@@ -190,14 +266,6 @@ export function ContactForm({
           </>
         )}
       </Button>
-
-      <p className="text-brand-muted text-center text-xs">
-        Tu información se trata según el{" "}
-        <a href="/legal/privacidad" className="text-brand-purple underline underline-offset-2">
-          Aviso de Privacidad
-        </a>
-        . Sin spam.
-      </p>
     </form>
   );
 }

@@ -37,15 +37,9 @@ import {
 } from "@/components/admin-page";
 import { markReadAction, markAllReadAction } from "./actions";
 import { formatRelativeTime } from "@/lib/format";
+import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Notificaciones" };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -232,7 +226,7 @@ export default async function AdminNotificacionesPage({
                         <span className="text-brand-muted text-xs">{typeMeta.label}</span>
                         <span
                           className="text-brand-muted text-xs"
-                          title={dateFmt.format(n.createdAt)}
+                          title={formatDateTimeNoYearCO(n.createdAt)}
                         >
                           {formatRelativeTime(n.createdAt)}
                         </span>

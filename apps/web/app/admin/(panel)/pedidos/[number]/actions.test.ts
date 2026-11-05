@@ -18,6 +18,9 @@ const {
   processPaidOrder,
   sealManuallyResolvedWebhookEvents,
   orderUpdateMany,
+  renderJobFindUnique,
+  renderJobUpdate,
+  processRenderJobs,
 } = vi.hoisted(() => ({
   state: {
     aal: null as {
@@ -31,13 +34,25 @@ const {
   processPaidOrder: vi.fn(async () => ({ status: "ok", trackingNumber: "TRK-1" })),
   sealManuallyResolvedWebhookEvents: vi.fn(async () => ({ sealed: 2 })),
   orderUpdateMany: vi.fn(async () => ({ count: 1 })),
+  renderJobFindUnique: vi.fn(),
+  renderJobUpdate: vi.fn(async () => ({})),
+  processRenderJobs: vi.fn(async () => ({ processed: 1 })),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("@/lib/db", () => ({ prisma: { order: { updateMany: orderUpdateMany } } }));
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    order: { updateMany: orderUpdateMany },
+    renderJob: { findUnique: renderJobFindUnique, update: renderJobUpdate },
+  },
+}));
+vi.mock("@/features/personalization/render-job-service", () => ({
+  processRenderJobs,
+  RENDER_JOB_KICK_BUDGET_MS: 8_000,
+}));
 vi.mock("@/lib/admin-rbac-guard", () => ({
   requireAdminAction: vi.fn(async () => ({
     user: { id: "sb_user_1" },
@@ -67,7 +82,12 @@ vi.mock("@/features/anti-abuse/blocklist-service", () => ({
   BlocklistError: class BlocklistError extends Error {},
 }));
 
-import { refundOrderAction, retryShipmentAction, markOrderReconciledAction } from "./actions";
+import {
+  refundOrderAction,
+  retryShipmentAction,
+  markOrderReconciledAction,
+  retryRenderJobAction,
+} from "./actions";
 
 const NOW = new Date("2026-09-04T15:00:00Z");
 const NOW_SEC = Math.floor(NOW.getTime() / 1000);
@@ -302,6 +322,63 @@ describe("markOrderReconciledAction — cierre manual de reconciliación (2026-1
     const res = await markOrderReconciledAction(null, reconForm());
 
     expect(res.error).toMatch(/no está marcado para reconciliar/);
+    expect(recordAdminAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("retryRenderJobAction — reintento 1-clic de RenderJob FAILED (S11)", () => {
+  function retryJobForm(designId = "des_1", orderNumber = "LCM-2026-0001") {
+    const fd = new FormData();
+    fd.set("designId", designId);
+    fd.set("orderNumber", orderNumber);
+    return fd;
+  }
+
+  it("resetea el job FAILED, dispara processRenderJobs y audita en AdminActionLog", async () => {
+    renderJobFindUnique
+      .mockResolvedValueOnce({ id: "job_1", status: "FAILED", totalUnits: 12, doneUnits: 4 })
+      .mockResolvedValueOnce({ status: "DONE", totalUnits: 12, doneUnits: 12, error: null });
+
+    const res = await retryRenderJobAction(null, retryJobForm());
+
+    expect(renderJobUpdate).toHaveBeenCalledWith({
+      where: { designId: "des_1" },
+      data: {
+        status: "PENDING",
+        attempts: 0,
+        error: null,
+        startedAt: null,
+        finishedAt: null,
+      },
+    });
+    expect(processRenderJobs).toHaveBeenCalledWith({ onlyDesignId: "des_1", budgetMs: 8_000 });
+    expect(recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "order.render_job_retry",
+        entityType: "Design",
+        entityId: "des_1",
+        metadata: expect.objectContaining({
+          orderNumber: "LCM-2026-0001",
+          resultStatus: "DONE",
+        }),
+      }),
+    );
+    expect(res.success).toMatch(/Archivos 300 DPI generados/);
+  });
+
+  it("no toca ni audita si el job NO está en estado FAILED", async () => {
+    renderJobFindUnique.mockResolvedValueOnce({
+      id: "job_1",
+      status: "DONE",
+      totalUnits: 4,
+      doneUnits: 4,
+    });
+
+    const res = await retryRenderJobAction(null, retryJobForm());
+
+    expect(res.success).toMatch(/ya está en curso o completado/);
+    expect(renderJobUpdate).not.toHaveBeenCalled();
+    expect(processRenderJobs).not.toHaveBeenCalled();
     expect(recordAdminAction).not.toHaveBeenCalled();
   });
 });

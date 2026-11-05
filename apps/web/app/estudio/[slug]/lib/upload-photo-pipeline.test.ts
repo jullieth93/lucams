@@ -63,15 +63,29 @@ describe("isTooBigUploadError — clasificación de errores del framework", () =
 
 describe("buildAssetFormData", () => {
   it("arma los mismos campos en ambos caminos (sidebar/picker)", () => {
-    const fd = buildAssetFormData(makeFile("a.jpg"), { designId: "d1", rightsAccepted: true });
+    const fd = buildAssetFormData(makeFile("a.jpg"), {
+      designId: "d1",
+      rightsAccepted: true,
+      productSlug: "fotoimanes-polaroid",
+      productSizeCm: "7x9",
+    });
     expect(fd.get("file")).toBeInstanceOf(File);
     expect(fd.get("designId")).toBe("d1");
+    expect(fd.get("productSlug")).toBe("fotoimanes-polaroid");
+    expect(fd.get("productSizeCm")).toBe("7x9");
     expect(fd.get("rightsAccepted")).toBe("true");
   });
 
-  it("sin designId no se adjunta el campo", () => {
-    const fd = buildAssetFormData(makeFile("a.jpg"), { designId: null, rightsAccepted: false });
+  it("sin designId no se adjunta designId pero sí propaga productSlug/productSizeCm para validar 300 DPI en el primer upload ([STU-02])", () => {
+    const fd = buildAssetFormData(makeFile("a.jpg"), {
+      designId: null,
+      rightsAccepted: false,
+      productSlug: "calendario-magnetico",
+      productSizeCm: "10x15",
+    });
     expect(fd.get("designId")).toBeNull();
+    expect(fd.get("productSlug")).toBe("calendario-magnetico");
+    expect(fd.get("productSizeCm")).toBe("10x15");
     expect(fd.get("rightsAccepted")).toBe("false");
   });
 });

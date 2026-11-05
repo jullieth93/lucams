@@ -70,6 +70,7 @@ enum ConsentScope {
 model Consent {
   id         String       @id @default(cuid())
   customerId String?      // null para guests (newsletter, cookies, cotización)
+  contactId  String?      // ancla canónica ADR-193 (Contact)
   email      String?      // ancla para consentimientos sin cuenta
   phone      String?      // ancla alterna (cotización por WhatsApp, móvil a 10 dígitos)
   scope      ConsentScope
@@ -81,15 +82,18 @@ model Consent {
   acceptedAt DateTime     @default(now())
 
   @@index([customerId, scope])
+  @@index([contactId])
   @@index([email, scope])
   @@index([phone, scope])
   @@index([scope, acceptedAt])
 }
 ```
 
+- **Compuerta dura de segmentación comercial (`features/crm/segments-service.ts`, `/admin/marketing/segmentos`):** ninguna consulta ni exportación CSV de segmentos (`vip`, `gift_buyers`, `winback_90d`, `annual_occasion`, `high_intent_no_order`) puede listar contactos cuyo último registro `Consent(scope = 'NEWSLETTER')` por `contactId` o `email` no tenga `accepted = true` vigente, y excluye además cuentas internas (`AdminUser`). Un comprador VIP sin opt-in expreso o dado de baja queda excluido en SQL (certificado en `segments-service.integration.test.ts`).
+
 #### Registro y ejercicio de derechos
 
-No hay endpoints REST públicos de consentimiento: el registro lo hacen **Server Actions** en `apps/web/features/consent/` (banner de cookies, newsletter, cotización por WhatsApp, checkout, back-in-stock — cada una escribe sus scopes con IP/UA).
+No hay endpoints REST públicos de consentimiento: el registro lo hacen **Server Actions** en `apps/web/features/consent/`, `/contacto` y `/empresas-y-eventos` (banner de cookies, registro, contacto/soporte, solicitud B2B/eventos, newsletter, cotización por WhatsApp, checkout, back-in-stock — cada una exige aceptación expresa y escribe sus scopes `HABEAS_DATA` / `NEWSLETTER` con versión de política + IP/UA).
 
 - **Consentimiento de cookies:** `persistCookieConsentAction` (una fila por scope, ver § Cookie consent).
 - **Supresión de cuenta (art. 8 lit. e):** self-service en `/mi-cuenta/seguridad → Eliminar mi cuenta` (ver § Derecho de supresión abajo).
@@ -141,19 +145,20 @@ ejercer el **derecho de supresión (art. 8 lit. e)** por sí mismo en `/mi-cuent
 cuenta` (`features/account/delete-service.ts`). El enfoque es **anonimizar + soft-delete**, NO borrado
 físico, para conciliar la supresión con la **retención fiscal de la DIAN**:
 
-| Dato                                          | Acción al eliminar                                                                                             | Motivo                                                                                                 |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Customer (nombre, teléfono, documento, email) | Scrub: nombre/tel/documento→null, email→placeholder único, `supabaseUserId`→placeholder, `deletedAt`           | Supresión de PII                                                                                       |
-| Auth user (Supabase)                          | `admin.deleteUser`; si falla → **baneo** (`ban_duration`) como fallback                                        | Cortar acceso garantizado (no basta el best-effort)                                                    |
-| Direcciones                                   | Scrub de columnas PII (nombre/dirección/teléfono) + soft-delete                                                | Contienen PII                                                                                          |
-| Reseñas                                       | `customerId`→null + `authorName`→"Cliente Lucams"                                                              | Conservar contenido público sin PII                                                                    |
-| **Fotos del Estudio** (DesignAsset, Design)   | **Borran archivos** de Storage (customer-uploads / design-previews / production-assets) + filas/URLs limpiadas | La PII más sensible (rostros); ninguna retención lo justifica                                          |
-| Tickets de soporte (SupportTicket)            | Desvincular + scrub (email/name/ip/userAgent/message)                                                          | Texto libre con PII                                                                                    |
-| Wishlist (WishlistItem)                       | **Borrar filas** (N-18, 2026-09-12)                                                                            | Historial de interés del titular; sin retención legal que la justifique                                |
-| Snapshot de envío en órdenes                  | Scrub PII (nombre/tel/dirección) en órdenes YA finalizadas                                                     | Las en curso conservan la dirección por finalidad legítima (completar la entrega)                      |
-| Logs (LoyaltyTxn, CouponUsage)                | `customerId`→null                                                                                              | Cortar el vínculo de perfilado con el titular (RecommendationLog salió del schema 2026-09-12, ADR-091) |
-| **Pedidos / facturas**                        | **SE CONSERVAN** (anonimizados)                                                                                | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión                              |
-| **Consentimientos**                           | **SE CONSERVAN**                                                                                               | Prueba de cumplimiento Ley 1581                                                                        |
+| Dato                                                                   | Acción al eliminar                                                                                                                                                                                                                                         | Motivo                                                                                                                         |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Customer (nombre, teléfono, documento, email)                          | Scrub: nombre/tel/documento→null, email→placeholder único, `supabaseUserId`→placeholder, `deletedAt`                                                                                                                                                       | Supresión de PII                                                                                                               |
+| Auth user (Supabase)                                                   | `admin.deleteUser`; si falla → **baneo** (`ban_duration`) como fallback                                                                                                                                                                                    | Cortar acceso garantizado (no basta el best-effort)                                                                            |
+| Direcciones                                                            | Scrub de columnas PII (nombre/dirección/teléfono) + soft-delete                                                                                                                                                                                            | Contienen PII                                                                                                                  |
+| Reseñas                                                                | `customerId`→null + `authorName`→"Cliente Lucams"                                                                                                                                                                                                          | Conservar contenido público sin PII                                                                                            |
+| **Fotos del Estudio** (DesignAsset, Design)                            | **Borran archivos** de Storage (`customer-uploads`, `design-previews` incl. derivados paginados, `production-assets` fuera de órdenes activas de taller) + filas `DesignAsset` tanto propias como adoptadas de sesión invitada                             | La PII más sensible (rostros); solo se retienen los archivos de imprenta de órdenes pagadas aún en curso (`PAID`/`FULFILLING`) |
+| Tickets de soporte (`SupportTicket` + mensajes)                        | Desvincular + scrub de `SupportTicket` (por `customerId` o `email`) y de todos sus `SupportTicketMessage` (`body` → `[Mensaje eliminado por solicitud de supresión de cuenta]`, `authorName` → `"Cliente eliminado"`)                                      | Hilos conversacionales con PII libre                                                                                           |
+| Garantías (`WarrantyClaim`) y Carrito (`Cart`)                         | Desvinculación `WarrantyClaim.customerId` → `null` y eliminación física del `Cart` activo (con cascada a `CartItem`/`AbandonedCart`)                                                                                                                       | Cortar vínculo posventa y eliminar carritos vivos sin finalidad                                                                |
+| Wishlist (`WishlistItem`) y Back-in-stock                              | **Borrar filas**                                                                                                                                                                                                                                           | Historial de interés del titular; sin retención legal que la justifique                                                        |
+| Snapshot de envío en órdenes                                           | Scrub PII (nombre/tel/dirección) en órdenes YA finalizadas                                                                                                                                                                                                 | Las en curso conservan la dirección por finalidad legítima (completar la entrega)                                              |
+| Logs y promociones (`LoyaltyTxn`, `CouponUsage`, `Coupon`, `Referral`) | `customerId`→`null`, scrub de `CouponUsage.email`, desactivación/anonimización de `Coupon` personales y scrub de `Referral.referredEmail`                                                                                                                  | Cortar el vínculo de perfilado y eliminar el email del titular en programas promocionales                                      |
+| **Pedidos / facturas**                                                 | **SE CONSERVAN** (anonimizados)                                                                                                                                                                                                                            | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión                                                      |
+| **Consentimientos y Newsletter**                                       | Se inserta fila append-only de revocación (`accepted=false`) para `NEWSLETTER`/`MARKETING_PROFILING`, se da de baja en Resend Contacts (`markResendContactUnsubscribed`) y se anonimizan `email`/`phone`/`ipAddress`/`userAgent` en el histórico `Consent` | Cese inmediato de envíos comerciales conservando trazabilidad probatoria sin PII activa (`[PRI-01]`)                           |
 
 **Confirmación fuerte:** escribir "ELIMINAR" + re-autenticación con contraseña + rate-limit
 (`ownerKey('delete-account')`, 5/15min). El alcance de supresión es **exhaustivo** (verificado por revisión
@@ -237,21 +242,16 @@ cuyos bytes quedaron en Storage):
 Ambas corren en la misma corrida del cron `/api/cron/purge-anon-designs` (los carritos PRIMERO,
 para destrabar diseños en la misma pasada; el barrido de huérfanos al final, como red de fondo).
 
-### Previews derivados del diseño: thumbnails de borrador y versiones con marca de agua (2026-10-13)
+### Previews derivados del diseño: thumbnails de borrador y exhibición limpia bajo bucket privado (ADR-147 / ADR-191)
 
-Dos derivados nuevos del diseño viven en el bucket `design-previews` bajo el path del propio
-diseño, así que **ninguno introduce una nueva categoría de retención**: se borran con las purgas
+Los derivados del diseño viven en el bucket privado `design-previews` bajo el path del propio
+diseño, servidos únicamente a través de `/api/design-preview/*`, así que **ninguno introduce una nueva categoría de retención**: se borran con las purgas
 de siempre (por diseño) y los cubre el barrido de huérfanos.
 
 - **Thumbnail de borrador** (`Design.draftPreviewUrl`, ADR-147): snapshot WebP liviano
   (≤120 KB, 400 px) que el auto-save reescribe con upsert al MISMO path (`<designId>/thumb.webp`)
-  — no acumula versiones. Deriva del lienzo que el cliente ya ve en pantalla.
-- **Previews con marca de agua** (ADR-148): las vistas servidas de diseños (carrito, «Ver»
-  paginado, Mis diseños, `/d` + OG, cotización, gracias, pedido) muestran versiones con tiling
-  LUCAMS (`<designId>/preview-wm.webp`, `<designId>/wm/pages/NN.webp`); el lienzo del Estudio, el
-  3D, el admin y los archivos de producción quedan LIMPIOS. El motivo es anti-copia comercial, no
-  de privacidad: las versiones con marca no amplían el acceso a nada que la vista limpia no
-  mostrara ya. El CMS avisa al cliente que «tu impresión final no la lleva».
+  — no acumula versiones y solo es accesible al dueño o a staff autorizado con MFA `aal2`.
+- **Previews de exhibición limpios** (ADR-191, retiró el watermark tiling de ADR-148 el 2026-11-03): todas las superficies (carrito, «Ver» paginado, Mis diseños, `/d` + OG, cotización, gracias y pedido) exhiben las versiones limpias (`<designId>/preview.<ext>`, `<designId>/pages/NN.webp`) autorizadas al dueño, staff con rol permitido + MFA `aal2`, o portador del capability token correspondiente (`st`/`qt`/`ot`). Los artefactos `preview-wm.webp` / `wm/pages/*` históricos quedan huérfanos y los cubre la purga estándar de retención (`designPreviewDerivedPaths`).
 
 ### Retención POST-ENTREGA de fotos y renders de producción (2026-09-18)
 
@@ -357,7 +357,7 @@ Para impedir contradicciones entre lógica de negocio, emails transaccionales, U
 - `HABEAS_DATA_CONSULTATION_BUSINESS_DAYS = 10` / `HABEAS_DATA_CLAIM_BUSINESS_DAYS = 15` → `{{habeas_consulta_dias}}` / `{{habeas_reclamo_dias}}` (Ley 1581 arts. 14–15)
 - `LUCAMS_SHIPPING_CUTOFF_HOUR` (setting CMS) → `{{cutoff_lucams}}`
 
-El test `apps/web/app/legal/legal-content-sync.test.ts` verifica que el `FALLBACK` de cada página `/legal/*` sea idéntico al `.md` canónico y `apps/web/lib/cms-tokens.test.ts` cubre la resolución de todos los tokens.
+El test `apps/web/app/legal/legal-content-sync.test.ts` verifica que el `FALLBACK` de cada página `/legal/*` sea idéntico al `.md` canónico y `apps/web/lib/cms-tokens.test.ts` cubre la resolución de todos los tokens. Además, el motor determinista `apps/web/lib/colombian-sla.ts` calcula los vencimientos legales en días hábiles colombianos (Ley 51 / Emiliani + festivos móviles de Pascua en `America/Bogota`) para `SupportTicket`, `WarrantyClaim` y `RetractRequest`, alimentando los relojes de `/admin/soporte` y la bandeja priorizada `/admin/hoy`.
 
 ### Información de entrega: estimado operativo vs plazo legal
 
@@ -698,7 +698,7 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 | -------------------------------------------------------------------- | ------------ | -------------------------------------- |
 | **Estrictamente necesarias**                                         | ON           | ❌ No (sin estas el sitio no funciona) |
 | **Funcionales** (idioma, dark mode, último carrito visto)            | OFF (opt-in) | ✅ Sí                                  |
-| **Analíticas** (Vercel Analytics si se activa, conteos agregados)    | OFF (opt-in) | ✅ Sí                                  |
+| **Analíticas** (Google Analytics 4 `gtag.js` y RUM `WebVital`)       | OFF (opt-in) | ✅ Sí                                  |
 | **Marketing** (remarketing, pixels de Facebook/Google si se activan) | OFF (opt-in) | ✅ Sí                                  |
 
 ### Implementación
@@ -720,7 +720,7 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 | `admin_last_activity`         | Marca de actividad admin (idle-timeout)         | Necesaria | 30 días                                                                                       | HttpOnly, firmada HMAC, `path=/admin` (solo admins)                                                                |
 | `lucams_cms_edit`             | Modo edición CMS en vivo                        | Necesaria | 8 h                                                                                           | HttpOnly, `Secure` en prod/preview (solo admins con rol CONTENT)                                                   |
 
-No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` va en headers). No hay cookies de terceros de analytics/marketing activas hoy.
+No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` va en headers). Sin consentimiento explícito en `COOKIES_ANALYTICS`, no se carga `gtag.js` ni se crean cookies `_ga*`; cuando el usuario acepta `COOKIES_ANALYTICS` y `NEXT_PUBLIC_GA_MEASUREMENT_ID` está configurado, GA4 opera con sanitización estricta de URL (`sanitizeAnalyticsUrl`: excluye `/admin*`, enmascara tokens de capacidad `/pedido/[token]`, `/carrito/recuperar/[token]`, `/resena/[token]`, `/d/[token]`, `/cotizacion/[token]`, `/soporte/[token]` y filtra query params por allowlist sin PII). En paralelo, el embudo operativo propio (`POST /api/funnel` → `FunnelEventDaily`) funciona 100 % sin cookies (`credentials: "omit"`) y sin PII (solo contadores enteros diarios por paso, producto, superficie, categoría de equipo y código de error cerrado).
 
 ---
 
@@ -738,6 +738,7 @@ No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` v
 | **Aveonline** (agregador) + Coordinadora/otras  | Logística                          | Colombia                           | Nombre, dirección, teléfono                                                                                                                                                                                                                                                                               | Necesidad contractual                   |
 | **Resend**                                      | Email transaccional                | EE.UU.                             | Email + contenido del mensaje                                                                                                                                                                                                                                                                             | Necesidad contractual                   |
 | **Google (Gemini API)**                         | Asistente IA del estudio           | EE.UU.                             | Solo el texto de la "ocasión" que escribe el cliente — pasa por un **filtro de PII** server-side (`sanitizeOccasion`, desde 2026-08-29: documentos, emails y celulares CO se reemplazan por texto neutro antes de llamar a Google) y la UI del Estudio muestra la nota "Evita escribir datos personales…" | Consentimiento explícito                |
+| **Google (Google Analytics 4)**                 | Analítica web de conversión        | EE.UU.                             | Eventos ecommerce y páginas públicas sanitizadas (`sanitizeAnalyticsUrl`: sin PII ni tokens de capacidad, `/admin*` excluido); bloqueado por completo salvo opt-in en `COOKIES_ANALYTICS`                                                                                                                 | Consentimiento explícito (opt-in)       |
 | **Cloudflare**                                  | DNS + CDN + Turnstile + R2 backups | Global                             | Datos en tránsito + IP + backups encriptados                                                                                                                                                                                                                                                              | Idem                                    |
 | **Mi.com.co**                                   | Registrador de dominio             | Colombia                           | Datos del registrante (operador, no cliente)                                                                                                                                                                                                                                                              | Necesidad contractual                   |
 | **GitHub**                                      | Repositorio de código              | EE.UU.                             | No procesa datos de clientes                                                                                                                                                                                                                                                                              | —                                       |
@@ -777,7 +778,7 @@ No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` v
 | Tabla `Consent` registrando cada autorización                       | ✅ Implementado                                                                                                   | ✅ Sí           |
 | Exportación de datos self-service                                   | Pendiente (hoy: canal manual `habeas-data@`)                                                                      | ✅ Sí           |
 | Eliminación de cuenta self-service (anonimización + soft-delete)    | ✅ Implementado en `/mi-cuenta/seguridad → Eliminar mi cuenta`                                                    | ✅ Sí           |
-| Purga por retención de logs con PII (`purge-event-logs`)            | ✅ Implementado (90/180 días; desde 2026-09-12 también Notification leídas >90d y WebVital >35d)                  | ✅ Sí           |
+| Purga por retención de logs con PII (`purge-event-logs`)            | ✅ Implementado (90/180 días; Notification leídas >90d, WebVital >35d y FunnelEventDaily >365d)                   | ✅ Sí           |
 | Purga de fotos anónimas abandonadas (`purge-anon-designs`)          | ✅ Implementado (DRAFT anónimos ≥30d; desde 2026-09-18 también DRAFT idle de logueados ≥90d)                      | ✅ Sí           |
 | Retención de carritos + huérfanos de Storage (`purge-anon-designs`) | ✅ Implementado (2026-10-12: AbandonedCart ≥90d, carts vivos idle ≥60d/vacíos ≥7d, barrido de objetos sin Design) | ✅ Sí           |
 | Purga post-entrega de fotos/renders (`purge-delivered-designs`)     | ✅ Implementado (DELIVERED ≥90d, excluye retracto/garantía abierta; conserva preview + snapshot)                  | ✅ Sí           |

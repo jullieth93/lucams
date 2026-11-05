@@ -23,6 +23,7 @@ import { AdminCard } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
+import { formatDayMonthCO } from "@/lib/datetime";
 
 export async function ProductCouponsWidget({
   productSlug,
@@ -144,7 +145,6 @@ function CouponRow({
     description: string | null;
   };
 }) {
-  const dateFmt = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short" });
   const isStoreWide =
     coupon.appliesToProductSlugs.length === 0 && coupon.appliesToCategories.length === 0;
   const scope = (() => {
@@ -185,7 +185,7 @@ function CouponRow({
           <p className="text-brand-muted mt-1 text-xs">{coupon.description}</p>
         )}
         <p className="text-brand-muted mt-0.5 text-[11px]">
-          {scope} · Vence el {dateFmt.format(coupon.validTo)}
+          {scope} · Vence el {formatDayMonthCO(coupon.validTo)}
           {coupon.maxUses !== null && (
             <>
               {" · "}

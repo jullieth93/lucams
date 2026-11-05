@@ -20,9 +20,9 @@ import type { AccountTexts } from "../account-texts";
 import { updateProfileAction, type ProfileActionState } from "./actions";
 
 // Topes de palabras acordados (misma regla en el server): nombre máx 3,
-// apellido máx 2. capitalizeName al blur respeta de/del/la/las…
+// apellido máx 3. capitalizeName al blur respeta de/del/la/las…
 const MAX_FIRST_NAME_WORDS = 3;
-const MAX_LAST_NAME_WORDS = 2;
+const MAX_LAST_NAME_WORDS = 3;
 
 export function ProfileForm({
   initial,

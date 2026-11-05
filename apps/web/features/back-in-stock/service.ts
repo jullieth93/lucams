@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
+import { resolveConsentContact } from "@/features/identity/resolution-service";
 import { getSiteUrl } from "@/features/emails/layout";
 import { renderBackInStockEmail } from "@/features/emails/registry";
 import {
@@ -47,6 +48,12 @@ export async function subscribeBackInStock(
     orderBy: { acceptedAt: "desc" },
   });
   if (!existing) {
+    const contactId = await resolveConsentContact(prisma, {
+      customerId,
+      email: normalizedEmail,
+      emailVerified: Boolean(customerId),
+      verificationSource: "BACK_IN_STOCK",
+    });
     await prisma.consent.create({
       data: {
         email: normalizedEmail,
@@ -54,6 +61,7 @@ export async function subscribeBackInStock(
         accepted: true,
         version,
         customerId,
+        ...(contactId ? { contactId } : {}),
         ipAddress: meta?.ipAddress ?? null,
         userAgent: meta?.userAgent ?? null,
       },

@@ -6,6 +6,7 @@ import { formatCOP } from "@/lib/format";
 import { Hint } from "@/components/ui/tooltip";
 import { SlugRestrictionSelect, type SlugOption } from "./slug-restriction-select";
 import type { CouponActionState } from "./actions";
+import { formatIsoDateCO } from "@/lib/datetime";
 
 export type EditableCoupon = {
   id: string;
@@ -72,7 +73,7 @@ export function CouponForm({
     coupon?.minOrder != null ? String(coupon.minOrder / 100) : "",
   );
 
-  const toDateInput = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
+  const toDateInput = (d: Date) => formatIsoDateCO(d);
   const today = toDateInput(new Date());
   const nextMonth = new Date();
   nextMonth.setMonth(nextMonth.getMonth() + 1);

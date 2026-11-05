@@ -10,6 +10,14 @@ import { Button } from "@/components/ui/button";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { WOMPI_METHODS_SHORT } from "@/lib/payment-methods";
 import { WOMPI_PAYMENT_LOGOS } from "@/lib/payment-logos";
+import {
+  centsToCOP,
+  toGa4Item,
+  trackEvent,
+  type AnalyticsEditorKind,
+  type Ga4ItemInput,
+} from "@/lib/analytics";
+import { emitSessionFunnelStep } from "@/lib/funnel-client";
 import { payWompiAction, payCodAction } from "./actions";
 import type { CheckoutTexts } from "../checkout-texts";
 
@@ -138,6 +146,7 @@ export function PaymentMethodChooser({
   codEnabled = true,
   couponInvalidAtRender = false,
   loyaltyInvalidAtRender = false,
+  analyticsCheckout,
   texts,
 }: {
   backHref: string;
@@ -151,6 +160,13 @@ export function PaymentMethodChooser({
   couponInvalidAtRender?: boolean;
   /** Ídem para la redención de Puntos Lucams guardada en el state (2026-10-12). */
   loyaltyInvalidAtRender?: boolean;
+  /** Datos sin PII para GA4 `add_payment_info` al confirmar pago ([ANA-01] / S06). */
+  analyticsCheckout?: {
+    valueCents: number;
+    coupon?: string;
+    items: Ga4ItemInput[];
+    funnelLines?: ReadonlyArray<{ productSlug: string; editorKind: AnalyticsEditorKind }>;
+  };
   /** Textos CMS de métodos de pago y legales (roadmap B8). */
   texts: CheckoutTexts["pay"];
 }) {
@@ -202,7 +218,23 @@ export function PaymentMethodChooser({
         >
           {texts.back}
         </Link>
-        <form action={activeMethod === "WOMPI" ? payWompiAction : payCodAction}>
+        <form
+          action={activeMethod === "WOMPI" ? payWompiAction : payCodAction}
+          onSubmit={() => {
+            if (!analyticsCheckout || analyticsCheckout.items.length === 0) return;
+            trackEvent("add_payment_info", {
+              currency: "COP",
+              value: centsToCOP(analyticsCheckout.valueCents),
+              payment_type: activeMethod,
+              ...(analyticsCheckout.coupon ? { coupon: analyticsCheckout.coupon } : {}),
+              items: analyticsCheckout.items.map(toGa4Item),
+            });
+            emitSessionFunnelStep(
+              "checkout_payment_submitted",
+              analyticsCheckout.funnelLines ?? [],
+            );
+          }}
+        >
           {/* Anti-bot: el widget inyecta el input cf-turnstile-response dentro del form;
               el server action lo verifica. En dev sin keys es un input vacío (fail-open). */}
           <TurnstileWidget size="flexible" />

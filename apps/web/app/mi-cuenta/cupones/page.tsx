@@ -23,6 +23,7 @@ import { listPublicCoupons } from "@/lib/catalog";
 import { formatCOP } from "@/lib/format";
 import { ReferralCopyButton } from "../referral-copy-button";
 import { getAccountTexts } from "../account-texts.server";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Mis cupones",
@@ -30,12 +31,6 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 const STATUS_LABEL = {
   AVAILABLE: "Disponible",
@@ -135,7 +130,7 @@ export default async function CuponesPage() {
                 )}
               </div>
               <p className="text-brand-muted mt-2 text-xs">
-                Válido hasta el {dateFmt.format(c.validTo)}
+                Válido hasta el {formatDateCO(c.validTo)}
               </p>
               {restrictionNotes(c).map((note) => (
                 <p key={note} className="text-brand-muted mt-0.5 text-xs">
@@ -170,7 +165,7 @@ export default async function CuponesPage() {
                 </div>
                 {c.description && <p className="text-brand-muted mt-2 text-xs">{c.description}</p>}
                 <p className="text-brand-muted mt-0.5 text-xs">
-                  Válido hasta el {dateFmt.format(c.validUntil)}
+                  Válido hasta el {formatDateCO(c.validUntil)}
                 </p>
                 {restrictionNotes(c).map((note) => (
                   <p key={note} className="text-brand-muted mt-0.5 text-xs">

@@ -209,8 +209,8 @@ describe("ProductCard", () => {
 > El stack local completo (Supabase en podman, espejo de la nube) se maneja con Make:
 > `make db-local-start` → `make db-local-setup` (extensiones + migraciones) → `make db-local-on`
 > (apunta `.env.local` al stack local) → `make db-local-seed`. Contra ese stack corre
-> `make test-local` (`NIGHTLY_LOCALSTACK=1 pnpm --filter web test`, que excluye las 2 suites que
-> exigen el universo de datos de la DB compartida de dev). En CI el Postgres es un service
+> `make test-local` (`pnpm --filter web test`; desde A11-05 todas las suites son autocontenidas y
+> siembran sus propios fixtures, sin variables ni exclusiones especiales). En CI el Postgres es un service
 > container pelado + compat SQL (ver § CI workflow). El sketch de abajo queda como referencia
 > conceptual del patrón (arranque + migraciones + seed).
 
@@ -241,6 +241,7 @@ afterAll(() => {
 - `service.ts` con repository real (saga pattern, idempotencia, transacciones).
 - `lib/rate-limit.ts` — UPSERT atómico, TTL, cleanup (`lib/rate-limit.integration.test.ts`).
 - `features/observability/*` — alertas, resumen diario, retención y salud de crons contra DB real.
+- `features/identity/*`, `features/contacts/*`, `features/crm/*` y `features/opportunities/*` — resolución determinista `Contact`/`ContactIdentity` sin `P2002` en teléfonos compartidos, aislamiento de destinatario de regalo (`isGift`), cascada de supresión Ley 1581, `Contacto 360` + fusión asistida con snapshot reversible (`merge-service.integration.test.ts`), timeline `ContactActivity` + `Task` + bloqueo optimista de soporte (`crm/service.integration.test.ts`), bandeja `/admin/hoy` filtrada por rol (`today-inbox-service.integration.test.ts`), pipeline B2B (`opportunities/service.integration.test.ts`), compuerta SQL de opt-in `NEWSLETTER` en segmentos comerciales (`segments-service.integration.test.ts`), inteligencia conductual + RFM + margen neto (`intelligence-service.integration.test.ts`) y redacción cero-PII del copiloto de soporte (`features/ai/support-copilot.test.ts`).
 - Webhook handlers con request mock (firma válida e inválida) — `app/api/webhooks/*/route.integration.test.ts`.
 
 ### Ejemplo
@@ -326,8 +327,10 @@ migrate deploy` + las SQL de `supabase/migrations` aplicadas con el rol `supabas
 > (A11-05, remediación R3): son autocontenidas — siembran sus propios fixtures (producto
 > efímero, diseños, PNG en Storage) en vez de depender del universo de la DB compartida de dev.
 > La postura de grants de prod (PostgREST cerrado para anon/authenticated) quedó codificada en
-> `supabase/migrations/00000000000022_revoke_anon_table_grants.sql` para que cualquier ambiente
-> nuevo la reproduzca.
+> `supabase/migrations/00000000000022_revoke_anon_table_grants.sql` (más el event trigger `049` y
+> los espejos explícitos `050`–`053`, con `FunnelEventDaily`, `Contact`, `ContactIdentity`,
+> `Organization`, `IdentityMergeCandidate`, `ContactActivity`, `Task` y `Opportunity` incluidos en
+> `SENSITIVE` de `rls-matrix.integration.test.ts`) para que cualquier ambiente nuevo la reproduzca.
 
 ```ts
 // __tests__/rls.test.ts
@@ -500,9 +503,12 @@ los 2 proyectos base (`desktop-chrome` 1280×800, `mobile-chrome` 390×844) más
 así que **CI queda inafectado** (los workflows fijan sus specs explícitas; ningún otro spec
 hereda los proyectos).
 
-- **Matriz:** cliente público (home, /productos, PDP, /carrito, /checkout, login/registro),
-  cliente autenticado (`/mi-cuenta` y subrutas — se salta sin `storageState`) y admin
-  (dashboard, pedidos, productos, clientes, carritos, cupones, contenido, métricas — idem).
+- **Matriz:** cliente público (home, `/productos`, PDP, `/estudio/<slug>`, `/empresas-y-eventos`,
+  `/contacto`, `/soporte`, `/carrito`, `/checkout/datos`, login/registro), cliente autenticado
+  (`/mi-cuenta`, pedidos, diseños, perfil, soporte — se salta sin `storageState`) y admin
+  (dashboard, `/admin/hoy`, pedidos, productos, clientes, `/admin/clientes/duplicados`,
+  `/admin/oportunidades`, carritos, `/admin/marketing/segmentos`, cupones, contenido, métricas y
+  finanzas — idem).
 - **Chequeos por pantalla × perfil:** (a) overflow horizontal objetivo
   (`scrollWidth > clientWidth`) → **critical** (falla el test) con el elemento culpable;
   (b) tap targets <40px en perfiles táctiles → **medium** (solo se reporta; el scan excluye

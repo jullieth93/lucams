@@ -12,7 +12,9 @@
  * solo se genera al enviar (F-11).
  */
 
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
+import { EMAIL_PREVIEW_SANDBOX_CSP } from "@/lib/security-headers";
 import { renderCartRecoveryEmail } from "@/features/emails/registry";
 import { getAbandonedCartDetail } from "@/features/cart/admin-service";
 import { getSiteUrl } from "@/features/emails/layout";
@@ -20,13 +22,24 @@ import { encodeUnsubscribeParam } from "@/features/newsletter/unsubscribe";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getCurrentAdmin();
-  if (!session || (session.admin.role !== "SUPERADMIN" && session.admin.role !== "MANAGER")) {
-    return new Response("Solo SUPERADMIN o MANAGER pueden previsualizar este correo.", {
-      status: 403,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-    });
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const access = await verifyAdminRouteAccess({
+    roles: ADMIN_ROLE_SETS.CARTS_RECOVER,
+    req,
+    checkIdle: true,
+  });
+  if (!access.ok) {
+    return new Response(
+      "Solo SUPERADMIN o MANAGER con MFA verificado pueden previsualizar este correo.",
+      {
+        status: access.status,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      },
+    );
   }
 
   const { id } = await params;
@@ -34,7 +47,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!detail) {
     return new Response("Carrito abandonado no encontrado.", {
       status: 404,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   }
 
@@ -47,7 +64,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return new Response(rendered.html, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store",
+      "Cache-Control": "private, no-store",
+      "Content-Security-Policy": EMAIL_PREVIEW_SANDBOX_CSP,
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

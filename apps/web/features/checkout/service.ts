@@ -12,7 +12,9 @@
  */
 
 import "server-only";
+import { cookies } from "next/headers";
 import { peekCartSession } from "@/lib/cart-session";
+import { parseUtmCookie, UTM_COOKIE_NAME } from "@/lib/utm-attribution";
 import { getCartDetail } from "@/features/cart/service";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -604,10 +606,20 @@ export async function finalizeCheckout(input: {
   // composeAddressLine recibe el discriminated union completo (kind + fields).
   const addressLine1 = composeAddressLine(state.address);
 
+  let utmAttribution: ReturnType<typeof parseUtmCookie> = null;
+  try {
+    const cookieJar = await cookies();
+    utmAttribution = parseUtmCookie(cookieJar.get(UTM_COOKIE_NAME)?.value);
+  } catch {
+    // Llamadas en tests fuera del contexto de request Next.js — atribución nula sin fallar.
+    utmAttribution = null;
+  }
+
   try {
     order = await createOrderFromCart({
       cartId: ctx.cart.cartId,
       customerId: ctx.customerId,
+      ...(utmAttribution ? { attribution: utmAttribution } : {}),
       shipping: {
         fullName: state.contact.fullName,
         email: state.contact.email,

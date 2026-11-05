@@ -6,6 +6,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BadgeCheck, ShieldCheck } from "lucide-react";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatRelativeTime } from "@/lib/format";
 import {
@@ -21,6 +22,7 @@ import {
   AdminEmpty,
 } from "@/components/admin-page";
 import { WarrantyActions } from "./warranty-actions";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Garantías" };
 
@@ -54,14 +56,8 @@ const FILTERS: Array<{ key: string; label: string }> = [
   { key: "all", label: "Todos" },
 ];
 
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
-
 export default async function AdminGarantiasPage({ searchParams }: { searchParams: SearchParams }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  await requireRole(ADMIN_ROLE_SETS.SUPPORT_CARE);
   const sp = await searchParams;
   const statusRaw = sp.status;
   const validStatus = (["PENDING", "IN_REVIEW", "APPROVED", "RESOLVED", "REJECTED"] as const).find(
@@ -151,7 +147,7 @@ export default async function AdminGarantiasPage({ searchParams }: { searchParam
                   )}
                   <p className="text-brand-muted mt-1 text-xs">
                     {c.customerName} · {c.customerEmail} ·{" "}
-                    <span title={dateFmt.format(c.requestedAt)}>
+                    <span title={formatDateCO(c.requestedAt)}>
                       {formatRelativeTime(c.requestedAt)}
                     </span>
                   </p>

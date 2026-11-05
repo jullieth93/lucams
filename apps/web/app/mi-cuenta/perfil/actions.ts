@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { DocumentType as PrismaDocumentType } from "@lucams/db";
 import { getCurrentCustomer } from "@/lib/auth";
+import { ensureCustomerContact } from "@/features/identity/resolution-service";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { DocumentTypeSchema, DocumentNumberSchema } from "@/features/checkout/schemas";
@@ -46,7 +47,7 @@ const OptionalNameSchema = (maxWords: number) =>
 const ProfileSchema = z
   .object({
     firstName: OptionalNameSchema(3),
-    lastName: OptionalNameSchema(2),
+    lastName: OptionalNameSchema(3),
     phone: z
       .string()
       .trim()
@@ -134,6 +135,20 @@ export async function updateProfileAction(
       updatedBy: session.customer.id,
     },
   });
+
+  try {
+    await ensureCustomerContact(prisma, {
+      customerId: session.customer.id,
+      emailVerified: true,
+      verificationSource: "CUSTOMER_PROFILE",
+    });
+  } catch (err) {
+    logger.warn({
+      event: "account.profile.contact_sync_fail",
+      customerId: session.customer.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   logger.info({ event: "account.profile.updated", customerId: session.customer.id });
   revalidatePath("/mi-cuenta");

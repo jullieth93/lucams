@@ -58,12 +58,21 @@ import {
 } from "@/features/personalization/actions";
 import { uploadPreviewPagesWithRetry } from "./preview-pages-upload";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
+import { stashPersonalizedAddToCart } from "@/lib/analytics";
+import { trackStudioFunnelStep } from "@/lib/funnel-client";
 import { formatCOP } from "@/lib/format";
 import {
   useLetterColors,
   effectiveColorsFromSnapshot,
   type LetterColorsSnapshot,
 } from "./use-letter-colors";
+import {
+  clearLetterSetStudioDraft,
+  readLetterSetStudioDraft,
+  writeLetterSetStudioDraft,
+  type LetterSetStudioLocalDraft,
+  type LetterSetUnitLocalDraft,
+} from "./lib/draft-marker";
 import { MAX_LETTER_SET_UNITS } from "@/features/personalization/design-units";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { StudioPreviewModal } from "./studio-preview-modal";
@@ -403,6 +412,16 @@ export function LetterSetEditor({
   subtitle?: string;
 }) {
   const router = useRouter();
+  const studioOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (studioOpenedRef.current === product.slug) return;
+    studioOpenedRef.current = product.slug;
+    trackStudioFunnelStep({
+      eventName: "studio_open",
+      productSlug: product.slug,
+      editorKind: "letterset",
+    });
+  }, [product.slug]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Vista previa pre-carrito: `preparing` cubre el dibujo del PNG (puede tardar si hay que bajar
@@ -497,6 +516,114 @@ export function LetterSetEditor({
       return next;
     });
   }, []);
+
+  const initialResolvedUnits = Math.min(
+    MAX_LETTER_SET_UNITS,
+    Math.max(1, Math.trunc(initialUnits ?? 1) || 1),
+  );
+  // [STU-02]: borrador local (7d en localStorage) cuando abre fresco sin ?designId=.
+  const [savedLocalDraft, setSavedLocalDraft] = useState<LetterSetStudioLocalDraft | null>(() => {
+    if (replacesCartDesignId || initialUnitColors) return null;
+    if (
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).has("designId")
+    ) {
+      return null;
+    }
+    return readLetterSetStudioDraft(product.slug, variantId);
+  });
+
+  const hasMeaningfulLocalChange = useMemo(() => {
+    const defaultColors = NAME_TILE_THEMES[0].colors;
+    if (unitCount !== initialResolvedUnits) return true;
+    for (let u = 0; u < unitCount; u++) {
+      const snap = snapshots.get(u);
+      if (!snap) continue;
+      if (snap.styleId !== undefined && snap.styleId !== defaultStyleId) return true;
+      if (snap.withBorder !== undefined && snap.withBorder !== defaultWithBorder) return true;
+      if (snap.colors) {
+        if (
+          snap.colors.themeId !== NAME_TILE_THEMES[0].id ||
+          Object.keys(snap.colors.letterColors).length > 0 ||
+          snap.colors.activeColors.length !== defaultColors.length ||
+          snap.colors.activeColors.some((c, idx) => c !== defaultColors[idx])
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [unitCount, initialResolvedUnits, snapshots, defaultStyleId, defaultWithBorder]);
+
+  useEffect(() => {
+    if (replacesCartDesignId || initialUnitColors || !hasMeaningfulLocalChange) return;
+    const serializedUnits: Record<number, LetterSetUnitLocalDraft> = {};
+    for (let u = 0; u < unitCount; u++) {
+      const snap = snapshots.get(u);
+      if (!snap) continue;
+      serializedUnits[u] = {
+        ...(snap.styleId !== undefined ? { styleId: snap.styleId } : {}),
+        ...(snap.withBorder !== undefined ? { withBorder: snap.withBorder } : {}),
+        ...(snap.colors
+          ? {
+              colors: {
+                themeId: snap.colors.themeId,
+                activeColors: [...snap.colors.activeColors],
+                letterColors: { ...snap.colors.letterColors },
+              },
+            }
+          : {}),
+      };
+    }
+    writeLetterSetStudioDraft(product.slug, variantId, {
+      unitCount,
+      units: serializedUnits,
+    });
+  }, [
+    product.slug,
+    variantId,
+    replacesCartDesignId,
+    initialUnitColors,
+    hasMeaningfulLocalChange,
+    unitCount,
+    snapshots,
+  ]);
+
+  function handleRestoreLocalDraft() {
+    if (!savedLocalDraft) return;
+    const restoredCount = Math.min(
+      MAX_LETTER_SET_UNITS,
+      Math.max(1, Math.trunc(savedLocalDraft.unitCount) || 1),
+    );
+    const nextMap = new Map<number, LetterSetUnitSnapshot>();
+    for (let u = 0; u < restoredCount; u++) {
+      const uDraft = savedLocalDraft.units[u];
+      if (!uDraft) continue;
+      nextMap.set(u, {
+        ...(uDraft.styleId !== undefined ? { styleId: uDraft.styleId } : {}),
+        ...(uDraft.withBorder !== undefined ? { withBorder: uDraft.withBorder } : {}),
+        ...(uDraft.colors
+          ? {
+              colors: {
+                themeId: uDraft.colors.themeId,
+                activeColors: [...uDraft.colors.activeColors],
+                letterColors: { ...uDraft.colors.letterColors },
+              },
+            }
+          : {}),
+      });
+    }
+    setUnitCount(restoredCount);
+    setActiveUnit(0);
+    setSnapshots(nextMap);
+    setApplyTick((t) => t + 1);
+    setSavedLocalDraft(null);
+  }
+
+  function handleDiscardLocalDraft() {
+    clearLetterSetStudioDraft(product.slug, variantId);
+    setSavedLocalDraft(null);
+  }
 
   /**
    * Stepper de cantidad de sets (2026-10-12). Misma regla del stepper de
@@ -706,6 +833,11 @@ export function LetterSetEditor({
     nextId: string | null,
   ) {
     unitState.setStyleId(nextId);
+    trackStudioFunnelStep({
+      eventName: "studio_template_select",
+      productSlug: product.slug,
+      editorKind: "letterset",
+    });
     if (unitIndex !== 0) return;
     const themeKey = nextId
       ? (optionsForLanguage.find((o) => o.id === nextId)?.theme ?? null)
@@ -757,6 +889,11 @@ export function LetterSetEditor({
           ? await blobToDataUrl(blobs[0])
           : await montageLaminaBlobs(blobs),
       );
+      trackStudioFunnelStep({
+        eventName: "studio_preview_open",
+        productSlug: product.slug,
+        editorKind: "letterset",
+      });
       if (blobs.length > 1) {
         setPreviewPages(
           await Promise.all(
@@ -820,6 +957,12 @@ export function LetterSetEditor({
         withBorder: borderForUnit(0),
       });
       if (!created.ok) {
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_failed",
+          productSlug: product.slug,
+          editorKind: "letterset",
+          errorCode: "validation",
+        });
         setPreviewError(created.message);
         setSubmitting(false);
         return;
@@ -838,6 +981,12 @@ export function LetterSetEditor({
       });
       const finalized = await finalizeDesignAction(fd);
       if (!finalized.ok) {
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_failed",
+          productSlug: product.slug,
+          editorKind: "letterset",
+          errorCode: "validation",
+        });
         setPreviewError(finalized.message);
         setSubmitting(false);
         return;
@@ -871,16 +1020,48 @@ export function LetterSetEditor({
         replaceDesignId: replacesCartDesignId ?? undefined,
       });
       if (!added.ok) {
+        trackStudioFunnelStep({
+          eventName: "studio_finalize_failed",
+          productSlug: product.slug,
+          editorKind: "letterset",
+          errorCode: "cart_add_failed",
+        });
         setPreviewError(fillStudioText(texts.exportar.errorCarritoSet, { error: added.message }));
         setSubmitting(false);
         return;
       }
-      // Cerramos la modal antes de redirigir para que no quede parpadeando sobre el carrito.
+      trackStudioFunnelStep({
+        eventName: "studio_finalize_succeeded",
+        productSlug: product.slug,
+        editorKind: "letterset",
+      });
+      stashPersonalizedAddToCart({
+        ...(added.addedItem ?? {
+          designId: created.designId,
+          sku: product.slug,
+          name: product.name,
+          priceCents: basePrice * unitCount,
+          quantity: 1,
+        }),
+        productSlug: product.slug,
+        editorKind: "letterset",
+      });
+      // Cerramos la modal antes de navegar para que no quede parpadeando sobre el carrito.
+      clearLetterSetStudioDraft(product.slug, variantId);
+      if (currentVariantId !== variantId) {
+        clearLetterSetStudioDraft(product.slug, currentVariantId);
+      }
       setPreviewDataUrl(null);
       router.push("/carrito?personalized=1");
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.letter-set]", err);
+      trackStudioFunnelStep({
+        eventName: "studio_finalize_failed",
+        productSlug: product.slug,
+        editorKind: "letterset",
+        errorCode: "network",
+      });
       setPreviewError(texts.errores.generico);
       setSubmitting(false);
     }
@@ -952,6 +1133,36 @@ export function LetterSetEditor({
         className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8"
         style={{ maxWidth: STUDIO_MAX_WIDTH }}
       >
+        {savedLocalDraft && !hasMeaningfulLocalChange && (
+          <div
+            role="status"
+            className="border-brand-purple/20 bg-brand-purple/5 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm"
+          >
+            <p className="text-brand-purple-dark">
+              Guardamos tu avance anterior (
+              <strong>
+                {savedLocalDraft.unitCount === 1 ? "1 set" : `${savedLocalDraft.unitCount} sets`}
+              </strong>
+              ).
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRestoreLocalDraft}
+                className="bg-brand-purple hover:bg-brand-purple-dark inline-flex min-h-10 items-center rounded-full px-4 py-2 text-xs font-semibold text-white transition-colors"
+              >
+                Retomar avance
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardLocalDraft}
+                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-10 items-center rounded-full border bg-white px-4 py-2 text-xs font-semibold transition-colors"
+              >
+                Empezar de nuevo
+              </button>
+            </div>
+          </div>
+        )}
         {/* h1 visible (WCAG): el eyebrow "Personalizar · {producto}" ya vive en el
             header sticky (md+), no se repite acá. */}
         <header className="mb-5 text-center">

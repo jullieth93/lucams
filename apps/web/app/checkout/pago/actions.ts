@@ -18,6 +18,7 @@ import {
   savePaymentMethodStep,
 } from "@/features/checkout/service";
 import { InsufficientStockError } from "@/features/orders/errors";
+import { advanceAbandonedCartCheckoutStep } from "@/features/cart/recovery-service";
 import { getClientIp } from "@/lib/client-ip";
 import { guardTransactionalAction } from "@/lib/stage-guard";
 
@@ -82,6 +83,7 @@ export async function payWompiAction(formData: FormData): Promise<void> {
   }
 
   await savePaymentMethodStep("WOMPI");
+  void advanceAbandonedCartCheckoutStep("PAGO");
 
   // #3 caso A — el cupón guardado ya estaba inválido al renderizar la página (el resumen mostró
   // precio LLENO). Lo quitamos ANTES de finalizar para no rebotar por un cupón que ya no cuenta:
@@ -226,9 +228,11 @@ export async function payCodAction(formData: FormData): Promise<void> {
   }
 
   await savePaymentMethodStep("COD");
+  void advanceAbandonedCartCheckoutStep("PAGO");
 
-  // #3 caso A — ver payWompiAction: cupón ya inválido al render → quitarlo antes de finalizar.
+  // #3 caso A — ver payWompiAction: cupón o redención de puntos ya inválidos al render → quitarlos antes de finalizar.
   if (formData.get("couponInvalidAtRender") === "1") await removeCoupon();
+  if (formData.get("loyaltyInvalidAtRender") === "1") await removeLoyaltyPoints();
 
   // finalizeCheckout exige un redirectUrl (lo usa Wompi); en COD no se usa.
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";

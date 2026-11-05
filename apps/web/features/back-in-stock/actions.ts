@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { z } from "zod";
-import { getCurrentCustomer } from "@/lib/auth";
+import { getStorefrontCustomerForForm } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
@@ -37,7 +37,7 @@ export async function subscribeBackInStockAction(input: {
     return { ok: false, message: "Demasiadas solicitudes. Intenta más tarde." };
   }
 
-  const customer = await getCurrentCustomer();
+  const customer = await getStorefrontCustomerForForm(parsed.data.email ?? null);
   const email = parsed.data.email ?? customer?.customer.email;
   if (!email) {
     return { ok: false, message: "Déjanos tu correo para avisarte." };

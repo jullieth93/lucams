@@ -43,22 +43,24 @@ Para agentes LLM: [`AGENTS.md`](AGENTS.md) (entrada canónica multi-herramienta)
 **Requisitos:** Node ≥ 22, pnpm ≥ 11 y (solo para la DB local) podman rootless. Detalle completo en [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ```bash
-pnpm install            # o `make install`
+pnpm install
 
-# Base de datos local (Supabase en podman, espejo de la nube)
+# Primera vez: preparar base de datos local (Supabase en podman, espejo de la nube)
 make db-local-start     # levanta el stack (los datos persisten en volúmenes)
-make db-local-setup     # extensiones + migraciones (mismo orden que CI)
+make db-local-setup     # extensiones + migraciones Prisma y SQL RLS (orden CI)
 make db-local-on        # apunta .env.local al stack local
-make db-local-seed      # catálogo + plantillas Estudio + ocasiones + CMS
+make db-local-seed      # catálogo + plantillas + ocasiones + fichas + CMS + Contact backfill
 
-# App
-make web-start          # Next dev en http://localhost:4000 (log en tmp/logs/)
-# o en primer plano:    pnpm dev
+# Día a día (levanta o apaga DB local + Next dev en http://localhost:4000)
+make local-up
+make local-status
+make local-down
 
-# Tests
-make test               # unit (vitest) + e2e (playwright)
-make test-local         # suite vitest contra el stack local
-make test-rls           # tests RLS reales (requieren Supabase)
+# Verificación antes de push
+make check              # format:check + typecheck + lint + db tests + guards + paridad CMS
+make verify-db          # 0 drift Prisma↔SQL + 5/5 invariantes RLS/grants
+make test-local         # suite Vitest completa contra el stack local
+make test-rls           # tests RLS reales contra Supabase local
 ```
 
 Sin stack local, `pnpm dev` corre contra la DB compartida de la nube si `.env.local` apunta allá (`make db-local-off` restaura ese estado). `make help` lista todos los targets.

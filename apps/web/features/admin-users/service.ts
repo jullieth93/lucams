@@ -17,6 +17,8 @@
 import "server-only";
 import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { supabaseService } from "@/lib/supabase/service";
 
 const PAGE_SIZE = 20;
 
@@ -191,22 +193,25 @@ export async function toggleAdminActive(id: string, actorAdminId: string) {
 }
 
 /**
- * Promueve un auth.user (Supabase) existente a AdminUser.
+ * Da de alta un miembro del equipo (`AdminUser`) de forma limpia sin contaminar
+ * la tabla `Customer` ni las métricas de clientes/CRM (`Contact`):
  *
- * Requisitos: el email debe corresponder a un auth.user ya creado en
- * Supabase (sea por signup público o por invitación admin via Supabase
- * dashboard). Lookup vía Customer.supabaseUserId — todo customer
- * registrado tiene supabaseUserId.
- *
- * Si el email no tiene cuenta Supabase → error pidiendo crearla primero.
+ *  1. Si el email ya corresponde a un `Customer` registrado o a un `auth.users`
+ *     existente en Supabase Auth, reutiliza su `supabaseUserId`.
+ *  2. Si no existe en `auth.users`, aprovisiona su identidad vía
+ *     `supabaseService.auth.admin.inviteUserByEmail` (con fallback a
+ *     `createUser({ email_confirm: true })` cuando el entorno local/offline no
+ *     tiene mailer externo configurado), dejando traza `service-role-write`.
+ *  3. Crea (o reactiva si estaba soft-deleted) únicamente la fila `AdminUser`.
+ *     El nuevo miembro define su contraseña y enrola TOTP en su primer ingreso
+ *     a `/admin/login`.
  */
-export async function promoteToAdmin(email: string, role: AdminRole, actorAdminId: string) {
+export async function provisionStaffAdmin(email: string, role: AdminRole, actorAdminId: string) {
   const normalizedEmail = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
     throw new AdminUserValidationError("email", "Email inválido.");
   }
 
-  // ¿Ya es admin?
   const existing = await prisma.adminUser.findFirst({
     where: { email: normalizedEmail, deletedAt: null },
   });
@@ -217,25 +222,106 @@ export async function promoteToAdmin(email: string, role: AdminRole, actorAdminI
     );
   }
 
-  // Lookup Supabase user via Customer.
+  let supabaseUserId: string | null = null;
+
   const customer = await prisma.customer.findUnique({
     where: { email: normalizedEmail },
     select: { supabaseUserId: true },
   });
-  if (!customer) {
-    throw new AdminUserValidationError(
-      "email",
-      "No hay cuenta Supabase con este email. Pídele que se registre primero como cliente.",
-    );
+  if (customer?.supabaseUserId) {
+    supabaseUserId = customer.supabaseUserId;
+  } else {
+    const authRows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id::text AS id
+      FROM auth.users
+      WHERE lower(email) = ${normalizedEmail}
+        AND deleted_at IS NULL
+      ORDER BY created_at ASC
+      LIMIT 1
+    `;
+    if (authRows[0]?.id) {
+      supabaseUserId = authRows[0].id;
+    }
+  }
+
+  if (!supabaseUserId) {
+    let mode: "invite" | "create" = "invite";
+    const invited = await supabaseService.auth.admin.inviteUserByEmail(normalizedEmail);
+    if (!invited.error && invited.data.user?.id) {
+      supabaseUserId = invited.data.user.id;
+    } else {
+      mode = "create";
+      const created = await supabaseService.auth.admin.createUser({
+        email: normalizedEmail,
+        email_confirm: true,
+      });
+      if (created.error || !created.data.user?.id) {
+        throw new AdminUserValidationError(
+          "email",
+          "No pudimos crear la identidad de acceso para este email. Verifica el correo e intenta de nuevo.",
+        );
+      }
+      supabaseUserId = created.data.user.id;
+    }
+
+    logger.info({
+      event: "service-role-write",
+      operation: "admin.provision_staff_auth_user",
+      actorAdminId,
+      authUserId: supabaseUserId,
+      role,
+      mode,
+    });
+  }
+
+  const softDeleted = await prisma.adminUser.findFirst({
+    where: {
+      deletedAt: { not: null },
+      OR: [{ email: normalizedEmail }, { supabaseUserId }],
+    },
+    select: { id: true },
+  });
+
+  // Guardrail staff=cliente (2026-11-04): todo Contact existente con este email queda
+  // marcado isStaff — el equipo puede comprar (dogfooding legítimo) pero sus compras
+  // no contaminan segmentos/RFM/LTV y sus auto-gestiones quedan auditadas. Los Contact
+  // que nazcan DESPUÉS con este email los marca el resolution-service en cada flujo vivo.
+  await prisma.contact
+    .updateMany({
+      where: { primaryEmail: normalizedEmail, deletedAt: null, isStaff: false },
+      data: { isStaff: true },
+    })
+    .catch(() => null); // best-effort: el alta del admin no puede fallar por la marca
+
+  if (softDeleted) {
+    return prisma.adminUser.update({
+      where: { id: softDeleted.id },
+      data: {
+        email: normalizedEmail,
+        supabaseUserId,
+        role,
+        isActive: true,
+        deletedAt: null,
+        deletedBy: null,
+        updatedBy: actorAdminId,
+      },
+    });
   }
 
   return prisma.adminUser.create({
     data: {
       email: normalizedEmail,
-      supabaseUserId: customer.supabaseUserId,
+      supabaseUserId,
       role,
       isActive: true,
       createdBy: actorAdminId,
     },
   });
+}
+
+/**
+ * Alias compatible hacia `provisionStaffAdmin` para callers existentes.
+ */
+export async function promoteToAdmin(email: string, role: AdminRole, actorAdminId: string) {
+  return provisionStaffAdmin(email, role, actorAdminId);
 }

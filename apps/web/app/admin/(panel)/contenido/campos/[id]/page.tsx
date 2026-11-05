@@ -61,6 +61,7 @@ import {
 import { FieldEditorForm } from "./field-editor-form";
 import { ListEditorForm } from "./list-editor-form";
 import { VersionHistory } from "./version-history";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Editar campo",
@@ -74,16 +75,9 @@ function nowBogotaLocal(): string {
   return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 16);
 }
 
-/** Fecha UTC → texto humano en hora de Colombia (es-CO). */
+/** Fecha UTC → texto humano en hora de Colombia (es-CO) vía helper compartido. */
 function formatBogotaHuman(d: Date): string {
-  return new Date(d).toLocaleString("es-CO", {
-    timeZone: "America/Bogota",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeCO(d);
 }
 
 export default async function EditarCampoPage({

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
 import { ShippingSelectionSchema } from "@/features/checkout/schemas";
 import { CheckoutError, saveShippingSelectionStep } from "@/features/checkout/service";
+import { advanceAbandonedCartCheckoutStep } from "@/features/cart/recovery-service";
 import { guardTransactionalAction } from "@/lib/stage-guard";
 
 export async function selectShippingAction(formData: FormData): Promise<void> {
@@ -29,6 +30,7 @@ export async function selectShippingAction(formData: FormData): Promise<void> {
   const offersToken = String(formData.get("offersToken") ?? "");
   try {
     await saveShippingSelectionStep(parsed.data, offersToken);
+    void advanceAbandonedCartCheckoutStep("ENVIO");
   } catch (err) {
     if (err instanceof CheckoutError && err.code === "SHIPPING_SELECTION_INVALID") {
       logger.warn({ event: "checkout.step.envio.selection_rejected" });

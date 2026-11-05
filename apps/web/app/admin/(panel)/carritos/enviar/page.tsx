@@ -63,8 +63,12 @@ export default async function AdminCarritosEnviarPage({
   const found = details.filter((d): d is AbandonedCartDetail => d !== null);
   if (found.length === 0) redirect("/admin/carritos?error=Ning%C3%BAn%20carrito%20v%C3%A1lido");
 
-  const sendable = found.filter((d) => d.status !== "recovered" && d.items.length > 0);
-  const notSendable = found.filter((d) => d.status === "recovered" || d.items.length === 0);
+  const sendable = found.filter(
+    (d) => d.status !== "recovered" && d.status !== "closed" && d.items.length > 0,
+  );
+  const notSendable = found.filter(
+    (d) => d.status === "recovered" || d.status === "closed" || d.items.length === 0,
+  );
   // Preview del primero enviable (cada correo sale personalizado con su carrito).
   const previewTarget = sendable[0] ?? null;
 
@@ -127,6 +131,8 @@ export default async function AdminCarritosEnviarPage({
                 </div>
                 {d.status === "recovered" ? (
                   <AdminBadge tone="emerald">{ABANDONED_STATUS_LABEL.recovered}</AdminBadge>
+                ) : d.status === "closed" ? (
+                  <AdminBadge tone="slate">{ABANDONED_STATUS_LABEL.closed}</AdminBadge>
                 ) : d.items.length === 0 ? (
                   <AdminBadge tone="slate">Sin productos</AdminBadge>
                 ) : d.status === "reminded" ? (
@@ -151,6 +157,7 @@ export default async function AdminCarritosEnviarPage({
             </p>
             <iframe
               src={`/admin/carritos/${previewTarget.id}/preview`}
+              sandbox=""
               title={`Preview del correo de recuperación para ${previewTarget.email}`}
               className="border-brand-purple/10 h-[520px] w-full rounded-lg border bg-white"
             />

@@ -17,9 +17,17 @@ vi.mock("./emails", () => ({
 }));
 
 import { prisma } from "@/lib/db";
+import { hashBearerToken } from "@/lib/token-hash";
+import {
+  createGuestWarrantyClaim,
+  getWarrantyItemsByOrderToken,
+  listWarrantyClaims,
+} from "@/features/warranty/service";
 import {
   getRetractableItems,
+  getRetractableItemsByOrderToken,
   createRetractRequest,
+  createGuestRetractRequest,
   approveRetract,
   markRetractReceived,
   refundRetract,
@@ -42,11 +50,15 @@ async function makeDeliveredOrder(opts: {
   status?: string;
   items: Array<{ personalized: boolean }>;
   discount?: number;
+  loyaltyDiscount?: number;
+  loyaltyPointsRedeemed?: number;
   /** true → guest order (customerId null) for the IDOR cases. */
   guest?: boolean;
 }) {
   const subtotal = 20_000 * opts.items.length;
   const discount = opts.discount ?? 0;
+  const loyaltyDiscount = opts.loyaltyDiscount ?? 0;
+  const loyaltyPointsRedeemed = opts.loyaltyPointsRedeemed ?? 0;
   const order = await prisma.order.create({
     data: {
       number: `RTR-${RUN}-${opts.tag}`.toUpperCase(),
@@ -56,7 +68,9 @@ async function makeDeliveredOrder(opts: {
       subtotal,
       shipping: 0,
       discount,
-      total: subtotal - discount,
+      loyaltyDiscount,
+      loyaltyPointsRedeemed,
+      total: subtotal - discount - loyaltyDiscount,
       currency: "COP",
       paymentMethod: "WOMPI",
       status: (opts.status ?? "DELIVERED") as never,
@@ -129,6 +143,11 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       }
     };
     await safe(() =>
+      prisma.warrantyClaim.deleteMany({
+        where: { orderItem: { order: { number: { startsWith: `RTR-${RUN}`.toUpperCase() } } } },
+      }),
+    );
+    await safe(() =>
       prisma.retractRequest.deleteMany({
         where: { orderItem: { order: { number: { startsWith: `RTR-${RUN}`.toUpperCase() } } } },
       }),
@@ -138,6 +157,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       select: { id: true },
     });
     const ids = orders.map((o) => o.id);
+    await safe(() => prisma.loyaltyTxn.deleteMany({ where: { orderId: { in: ids } } }));
     await safe(() => prisma.orderItem.deleteMany({ where: { orderId: { in: ids } } }));
     await safe(() => prisma.order.deleteMany({ where: { id: { in: ids } } }));
     await safe(() => prisma.customer.deleteMany({ where: { id: customerId } }));
@@ -306,5 +326,139 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
     const rr = await prisma.retractRequest.findUnique({ where: { id } });
     expect(rr?.status).toBe("REJECTED");
     expect(rr?.rejectionNote).toBe("Fuera de política");
+  });
+
+  it("[FIN-01] prorratea Puntos Lucams en refundAmount y restaura puntos proporcionales al reembolsar", async () => {
+    await prisma.customer.update({ where: { id: customerId }, data: { loyaltyPoints: 0 } });
+    // 2 ítems de 20.000 (subtotal 40.000), cupón 4.000 + puntos 16.000 (400 pts) → pagó 20.000 cash.
+    // Retractar 1 ítem (50%): refundAmount = 10.000 cash + restaura 200 pts al pasar a REFUNDED.
+    const order = await makeDeliveredOrder({
+      tag: "loyalty-retract",
+      deliveredAt: new Date(),
+      items: [{ personalized: false }, { personalized: false }],
+      discount: 4_000,
+      loyaltyDiscount: 16_000,
+      loyaltyPointsRedeemed: 400,
+    });
+
+    const { id, refundAmount } = await createRetractRequest(order.items[0]!.id, { customerId });
+    expect(refundAmount).toBe(10_000);
+
+    await approveRetract(id, "admin-1");
+    await markRetractReceived(id, "admin-1");
+    await refundRetract(id, "admin-1", "WOMPI_VOID");
+
+    const customerAfter = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { loyaltyPoints: true },
+    });
+    expect(customerAfter?.loyaltyPoints).toBe(200);
+
+    const txn = await prisma.loyaltyTxn.findFirst({
+      where: { orderId: order.id, reason: `RETRACT_REFUND:${id}` },
+    });
+    expect(txn?.delta).toBe(200);
+  });
+
+  it("[CX-01] posventa invitado por token: autoriza garantía y retracto con token+email válidos y rechaza token o email inválido", async () => {
+    const validToken = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
+    const wrongToken = "ffffffffffffffffffffffffffffffff";
+    const guestEmail = `${RUN}-guest-token@lucams.test`;
+
+    const order = await prisma.order.create({
+      data: {
+        number: `RTR-${RUN}-GUEST-TOK`.toUpperCase(),
+        email: guestEmail,
+        phone: "+573009998877",
+        shippingAddress: { fullName: "Camila Invitada", city: "Medellín" },
+        subtotal: 40_000,
+        shipping: 0,
+        discount: 0,
+        total: 40_000,
+        currency: "COP",
+        paymentMethod: "COD",
+        status: "DELIVERED",
+        deliveredAt: new Date(),
+        customerId: null,
+        publicAccessTokenHash: hashBearerToken(validToken),
+        items: {
+          create: [
+            { variantId, qty: 1, unitPrice: 20_000, warrantyMonths: 6 },
+            {
+              variantId,
+              qty: 1,
+              unitPrice: 20_000,
+              warrantyMonths: 6,
+              customDesign: { layers: ["foto"] },
+            },
+          ],
+        },
+      },
+      select: { id: true, items: { select: { id: true }, orderBy: { createdAt: "asc" } } },
+    });
+
+    const standardItemId = order.items[0]!.id;
+    const customItemId = order.items[1]!.id;
+
+    // 1. Token inválido → vacío / NOT_FOUND
+    expect(await getRetractableItemsByOrderToken(wrongToken)).toHaveLength(0);
+    expect(await getWarrantyItemsByOrderToken(wrongToken)).toHaveLength(0);
+    await expect(
+      createGuestRetractRequest(standardItemId, {
+        token: wrongToken,
+        email: guestEmail,
+        reason: "Cambio de opinión",
+      }),
+    ).rejects.toMatchObject({ reason: "NOT_FOUND" });
+    await expect(
+      createGuestWarrantyClaim({
+        token: wrongToken,
+        email: guestEmail,
+        orderItemId: customItemId,
+        description: "Llegó con una esquina despegada del imán.",
+      }),
+    ).rejects.toMatchObject({ reason: "NOT_FOUND" });
+
+    // 2. Token válido pero email distinto (p.ej. destinatario de regalo) → FORBIDDEN
+    await expect(
+      createGuestRetractRequest(standardItemId, {
+        token: validToken,
+        email: "destinatario@otro.co",
+        reason: "Intento tercero",
+      }),
+    ).rejects.toMatchObject({ reason: "FORBIDDEN" });
+    await expect(
+      createGuestWarrantyClaim({
+        token: validToken,
+        email: "destinatario@otro.co",
+        orderItemId: customItemId,
+        description: "Intento de reclamo por tercero sin ser comprador.",
+      }),
+    ).rejects.toMatchObject({ reason: "FORBIDDEN" });
+
+    // 3. Token válido + email del comprador (case-insensitive) → crea retracto y garantía
+    const retractItems = await getRetractableItemsByOrderToken(validToken);
+    expect(retractItems.find((i) => i.orderItemId === standardItemId)?.eligible).toBe(true);
+    expect(retractItems.find((i) => i.orderItemId === customItemId)?.reason).toBe("PERSONALIZED");
+
+    const retractCreated = await createGuestRetractRequest(standardItemId, {
+      token: validToken,
+      email: `  ${guestEmail.toUpperCase()} `,
+      reason: "Prefiero otro tamaño",
+    });
+    expect(retractCreated.refundAmount).toBe(20_000);
+
+    const warrantyCreated = await createGuestWarrantyClaim({
+      token: validToken,
+      email: guestEmail,
+      orderItemId: customItemId,
+      description: "El laminado presenta una burbuja visible en el borde.",
+    });
+    expect(warrantyCreated.id).toBeTruthy();
+
+    const adminList = await listWarrantyClaims({ status: "PENDING" });
+    const row = adminList.find((r) => r.id === warrantyCreated.id);
+    expect(row?.customerEmail).toBe(guestEmail);
+    expect(row?.customerName).toBe("Camila Invitada");
   });
 });

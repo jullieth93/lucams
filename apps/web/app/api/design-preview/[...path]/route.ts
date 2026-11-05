@@ -16,7 +16,9 @@
 
 import { prisma } from "@/lib/db";
 import { supabaseService } from "@/lib/supabase/service";
-import { getCurrentAdmin, getCurrentCustomer } from "@/lib/auth";
+import { getCurrentCustomer } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
 import { hashBearerToken } from "@/lib/token-hash";
 import { CART_SESSION_COOKIE } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
@@ -101,11 +103,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
     );
   }
 
-  // Quién llama: cookie anónima + sesión autenticada (cliente y/o admin).
+  // Quién llama: cookie anónima + sesión autenticada (cliente y/o staff operativo con MFA aal2).
+  // CMS_EDITOR, sesiones aal1 o cuentas sin TOTP verificado NO obtienen acceso admin ([SEC-01]).
+  // Idle-timeout: NO se exige checkIdle acá a propósito — la marca `admin_last_activity`
+  // viaja con `path=/admin` (admin-activity.ts) y el browser jamás la envía a `/api/*`;
+  // exigirla dejaría 404 a TODA vista previa admin legítima. El idle se impone en la
+  // navegación del panel vía proxy.ts (con revocación global) y este endpoint mantiene
+  // fail-closed por sesión + TOTP + aal2 + rol en cada request.
   const sessionId = readCartSession(req);
-  const [customer, admin] = await Promise.all([
+  const [customer, adminAccess] = await Promise.all([
     getCurrentCustomer().catch(() => null),
-    getCurrentAdmin().catch(() => null),
+    verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL }).catch(() => ({ ok: false as const })),
   ]);
 
   const allowed = canAccessDesignPreview({
@@ -114,7 +122,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
     caller: {
       customerId: customer?.customer.id ?? null,
       sessionId,
-      isAdmin: admin !== null,
+      isAdmin: adminAccess.ok,
     },
     shareToken: url.searchParams.get("st"),
     quoteTokenOk,

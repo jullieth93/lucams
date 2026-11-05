@@ -130,8 +130,16 @@ export async function getOwnedDesign(
     where: { id: designId },
   });
   if (!design) return null;
-  if (design.customerId && design.customerId === owner.customerId) return design;
-  if (design.sessionId && design.sessionId === owner.sessionId) return design;
+  // [STU-02] Anti-IDOR estricto:
+  //  - Si el diseño ya pertenece a un Customer, jamás se autoriza por sessionId.
+  //  - Si es un borrador de invitado (`customerId === null`), exige coincidencia
+  //    exacta y no vacía con `owner.sessionId` (cookie HttpOnly `cart_session`).
+  if (design.customerId) {
+    return owner.customerId === design.customerId ? design : null;
+  }
+  if (design.sessionId && owner.sessionId && design.sessionId === owner.sessionId) {
+    return design;
+  }
   return null;
 }
 
@@ -1049,7 +1057,13 @@ export async function saveCanvas(opts: {
 
   const referencedAssetIds =
     opts.canvasData.version === 2
-      ? opts.canvasData.slots.flatMap((slot) => (slot.assetId ? [slot.assetId] : []))
+      ? [
+          ...new Set(
+            opts.canvasData.slots.flatMap((slot) =>
+              [slot.assetId, slot.profileAssetId].filter((id): id is string => Boolean(id)),
+            ),
+          ),
+        ]
       : [];
   if (referencedAssetIds.length > 0) {
     await prisma.designAsset.updateMany({

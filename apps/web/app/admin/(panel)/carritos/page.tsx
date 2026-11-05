@@ -1,16 +1,12 @@
 /*
- * Admin > Carritos abandonados (Fase 4, 2026-10-13).
+ * Admin > Carritos abandonados.
  *
- * Bandeja del módulo de recuperación: listado de registros AbandonedCart con
- * estado (pendiente / recordatorio enviado / recuperado), resumen del carrito
- * (items, valor, productos), filtros por estado y búsqueda por email, métricas
- * del módulo y envío manual a voluntad (por fila → /admin/carritos/[id] con
- * preview del correo; por selección → /admin/carritos/enviar).
- *
- * La configuración del módulo (habilitar, modo manual/automático, horas de
- * inactividad, máximo de recordatorios, intervalo) vive en
- * /admin/carritos/configuracion (SUPERADMIN) y la leen el cron
- * (/api/cron/cart-recovery) y el envío manual.
+ * Bandeja diagnóstica y operativa del módulo de recuperación:
+ *   - Estado real de cada registro (`pending`, `reminded`, `recovered`, `closed`).
+ *   - Si no hay carritos pendientes y el usuario entra sin filtro explícito,
+ *     abre automáticamente en «Todos» con aviso contextual para que ningún enlace
+ *     del CRM aterrice en una pantalla vacía engañosa.
+ *   - Muestra cliente (`Contacto 360`), etapa de checkout alcanzada, valor y pedido recuperado.
  */
 
 import type { Metadata } from "next";
@@ -33,15 +29,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentAdmin } from "@/lib/auth";
+import { hasCapability } from "@/lib/admin-rbac";
 import { formatCOP, formatRelativeTime } from "@/lib/format";
 import {
   ABANDONED_STATUS_LABEL,
+  CHECKOUT_STEP_LABEL,
+  CLOSED_REASON_LABEL,
   getCartRecoveryMetrics,
   listAbandonedCartsAdmin,
   type AbandonedCartStatus,
 } from "@/features/cart/admin-service";
 import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
 import { BulkCartBar, BulkSelectAllCartsCheckbox } from "./bulk-cart-bar";
+import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Carritos abandonados" };
 
@@ -52,39 +52,56 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
   return typeof v === "string" ? v : undefined;
 }
 
-const STATUS_OPTIONS = ["pending", "reminded", "recovered", "all"] as const;
-const STATUS_FILTER_LABEL: Record<(typeof STATUS_OPTIONS)[number], string> = {
+const STATUS_OPTIONS = ["pending", "reminded", "recovered", "closed", "all"] as const;
+type StatusOption = (typeof STATUS_OPTIONS)[number];
+
+const STATUS_FILTER_LABEL: Record<StatusOption, string> = {
   pending: "Pendientes",
-  reminded: "Con recordatorio enviado",
+  reminded: "Recordados",
   recovered: "Recuperados",
+  closed: "Cotizados / Vaciados",
   all: "Todos",
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 export default async function AdminCarritosPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
 
   const sp = await searchParams;
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
-  const status = (STATUS_OPTIONS as readonly string[]).includes(statusRaw ?? "")
-    ? (statusRaw as (typeof STATUS_OPTIONS)[number])
-    : "pending";
   const page = Number(sp.page) || 1;
 
-  const [{ items, total, totalPages }, metrics, settings] = await Promise.all([
-    listAbandonedCartsAdmin({ q, status: status as AbandonedCartStatus | "all", page }),
+  const [metrics, settings] = await Promise.all([
     getCartRecoveryMetrics(),
     getCartRecoverySettings(),
   ]);
-  const hasActiveFilters = !!q || status !== "pending";
+
+  const hasExplicitStatus = (STATUS_OPTIONS as readonly string[]).includes(statusRaw ?? "");
+  const autoFallbackToAll =
+    !hasExplicitStatus && !q && metrics.pendingCount === 0 && metrics.totalCount > 0;
+  const status: StatusOption = hasExplicitStatus
+    ? (statusRaw as StatusOption)
+    : autoFallbackToAll
+      ? "all"
+      : "pending";
+
+  const { items, total, totalPages } = await listAbandonedCartsAdmin({
+    q,
+    status: status as AbandonedCartStatus | "all",
+    page,
+  });
+
+  const hasActiveFilters = !!q || (hasExplicitStatus && status !== "pending");
+
+  const tabCounts: Record<StatusOption, number> = {
+    pending: metrics.pendingCount,
+    reminded: metrics.remindedCount,
+    recovered: metrics.recoveredCount,
+    closed: metrics.closedCount,
+    all: metrics.totalCount,
+  };
 
   return (
     <AdminPage>
@@ -93,7 +110,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
         title="Carritos abandonados"
         subtitle={
           <>
-            {total} {total === 1 ? "carrito" : "carritos"}
+            {total} {total === 1 ? "registro" : "registros"} en vista
             {metrics.pendingCount > 0 && (
               <>
                 {" · "}
@@ -115,7 +132,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
           session.admin.role === "SUPERADMIN" ? (
             <Link
               href="/admin/carritos/configuracion"
-              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border bg-white px-3.5 py-2 text-sm font-semibold"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-10 items-center gap-1.5 rounded-md border bg-white px-3.5 py-2 text-sm font-semibold"
             >
               <Settings className="h-4 w-4" />
               Configuración
@@ -125,7 +142,6 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
       />
 
       <AdminPageBody>
-        {/* Estado del módulo (de la config) — visible para todos los roles con acceso. */}
         {!settings.enabled ? (
           <AdminNotice tone="warning">
             <strong>Módulo apagado:</strong> no se envía ningún recordatorio (ni automático ni
@@ -142,7 +158,15 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
             recordatorio{settings.maxReminders === 1 ? "" : "s"} a cada carrito con más de{" "}
             {settings.idleHours} h de inactividad
             {settings.maxReminders > 1 && `, con ${settings.intervalHours} h entre envíos`}. También
-            puedes enviar a voluntad desde cada fila.
+            puedes inspeccionar qué sucedió o enviar a voluntad desde cada fila.
+          </AdminNotice>
+        )}
+
+        {autoFallbackToAll && (
+          <AdminNotice tone="info">
+            No hay carritos pendientes de primer recordatorio en este momento; se muestra el{" "}
+            <strong>historial completo ({metrics.totalCount})</strong> para que puedas auditar
+            recordados, recuperados y cotizados.
           </AdminNotice>
         )}
 
@@ -153,7 +177,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
         {typeof sp.error === "string" && <AdminNotice tone="error">{sp.error}</AdminNotice>}
 
         {/* Métricas del módulo */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             label="Pendientes de contacto"
             value={metrics.pendingCount}
@@ -169,65 +193,76 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
             value={metrics.recoveryRatePct === null ? "—" : `${metrics.recoveryRatePct}%`}
             trendLabel={
               metrics.recoveredCount === 0
-                ? "Aún sin recuperaciones"
-                : `${metrics.recoveredCount.toLocaleString("es-CO")} carritos recuperados`
+                ? "Aún sin recuperaciones pagadas"
+                : `${metrics.recoveredCount.toLocaleString("es-CO")} pedidos pagados`
             }
           />
           <KpiCard
             label="Valor recuperado"
             value={formatCOP(metrics.recoveredValueCents)}
-            trendLabel="Aprox. — valor del carrito al recuperarse"
+            trendLabel="Pedidos pagados tras abandono"
           />
         </div>
 
-        {/* Toolbar de filtros */}
+        {/* Pestañas rápidas por estado con conteos reales */}
+        <div className="flex flex-wrap items-center gap-2">
+          {STATUS_OPTIONS.map((s) => {
+            const active = status === s;
+            const params = new URLSearchParams();
+            params.set("status", s);
+            if (q) params.set("q", q);
+            return (
+              <Link
+                key={s}
+                href={`/admin/carritos?${params.toString()}`}
+                className={`inline-flex min-h-10 items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  active
+                    ? "border-brand-purple bg-brand-purple text-white"
+                    : "border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/10 bg-white"
+                }`}
+              >
+                <span>{STATUS_FILTER_LABEL[s]}</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${
+                    active ? "bg-white/20 text-white" : "bg-brand-purple/10 text-brand-purple-dark"
+                  }`}
+                >
+                  {tabCounts[s]}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Toolbar de búsqueda */}
         <form
           method="GET"
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
         >
-          <div className="sm:col-span-7">
+          <input type="hidden" name="status" value={status} />
+          <div className="sm:col-span-9">
             <label
               htmlFor="f-q"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
             >
-              Buscar por email
+              Buscar por correo o nombre del cliente
             </label>
             <Input
               id="f-q"
               name="q"
               type="search"
               defaultValue={q ?? ""}
-              placeholder="cliente@correo.com"
+              placeholder="cliente@correo.com o nombre..."
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>
-          <div className="sm:col-span-3">
-            <label
-              htmlFor="f-status"
-              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
-            >
-              Estado
-            </label>
-            <select
-              id="f-status"
-              name="status"
-              defaultValue={status}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_FILTER_LABEL[s]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-end gap-2 sm:col-span-2">
+          <div className="flex items-end gap-2 sm:col-span-3">
             <Button
               type="submit"
               size="sm"
               className="bg-gradient-brand h-9 w-full text-white hover:brightness-110"
             >
-              Aplicar
+              Buscar
             </Button>
           </div>
           {hasActiveFilters && (
@@ -250,106 +285,141 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
                 ? "Sin resultados"
                 : status === "pending"
                   ? "No hay carritos pendientes ✨"
-                  : "Aún no hay carritos"
+                  : "Aún no hay carritos en este estado"
             }
             description={
               hasActiveFilters
-                ? "Prueba quitar algún filtro o cambiar el email buscado."
+                ? "Prueba quitar algún filtro o cambiar la búsqueda."
                 : status === "pending"
-                  ? "Cuando un cliente deje su email en el checkout sin pagar, su carrito aparecerá acá."
-                  : "Los carritos con este estado aparecerán en este listado."
+                  ? "Cuando un cliente deje su correo en el checkout sin completar el pago, aparecerá acá con el detalle de productos y etapa alcanzada."
+                  : "Los registros con este estado aparecerán en este listado."
             }
           />
         ) : (
-          <AdminTable minWidth={800}>
+          <AdminTable minWidth={860}>
             <AdminTableHead>
               <tr>
                 <th className="w-10 px-3 py-3 text-left">
                   <BulkSelectAllCartsCheckbox />
                 </th>
-                <th className="px-4 py-3 text-left font-semibold">Email</th>
-                <th className="px-4 py-3 text-left font-semibold">Carrito</th>
+                <th className="px-4 py-3 text-left font-semibold">Cliente</th>
+                <th className="px-4 py-3 text-left font-semibold">Productos y etapa</th>
                 <th className="px-4 py-3 text-right font-semibold">Valor</th>
-                <th className="px-4 py-3 text-left font-semibold">Antigüedad</th>
-                <th className="px-4 py-3 text-left font-semibold">Estado</th>
+                <th className="px-4 py-3 text-left font-semibold">Actividad</th>
+                <th className="px-4 py-3 text-left font-semibold">Diagnóstico / Estado</th>
                 <th className="px-4 py-3 text-right font-semibold">Acciones</th>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
-              {items.map((c) => (
-                <AdminTableRow key={c.id}>
-                  <td className="w-10 px-3 py-3 align-middle">
-                    {/* Bulk: los recuperados no se pueden seleccionar (nada que recordar). */}
-                    {c.status !== "recovered" && (
-                      <input
-                        type="checkbox"
-                        name="cartIds"
-                        value={c.id}
-                        aria-label={`Seleccionar carrito de ${c.email}`}
-                        className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
-                      />
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-brand-purple-dark text-xs font-medium">{c.email}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="text-brand-purple-dark/85 text-xs">
-                      {c.itemCount} {c.itemCount === 1 ? "ítem" : "ítems"}
-                    </p>
-                    <p className="text-brand-muted line-clamp-1 max-w-[220px] text-[10px]">
-                      {c.productNames.join(" · ") || "—"}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-brand-purple-dark text-xs font-semibold tabular-nums">
-                      {formatCOP(c.totalCents)}
-                    </span>
-                  </td>
-                  <td className="text-brand-muted px-4 py-3 text-xs">
-                    <span title={dateFmt.format(c.lastActivityAt)}>
-                      {formatRelativeTime(c.lastActivityAt)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      {c.status === "recovered" ? (
-                        <AdminBadge tone="emerald">{ABANDONED_STATUS_LABEL.recovered}</AdminBadge>
-                      ) : c.status === "reminded" ? (
-                        <AdminBadge tone="blue">
-                          {ABANDONED_STATUS_LABEL.reminded}
-                          {c.reminderCount > 1 ? ` ×${c.reminderCount}` : ""}
-                        </AdminBadge>
-                      ) : (
-                        <AdminBadge tone="amber">{ABANDONED_STATUS_LABEL.pending}</AdminBadge>
+              {items.map((c) => {
+                const canRemindRow = c.status === "pending" || c.status === "reminded";
+                return (
+                  <AdminTableRow key={c.id}>
+                    <td className="w-10 px-3 py-3 align-middle">
+                      {canRemindRow && (
+                        <input
+                          type="checkbox"
+                          name="cartIds"
+                          value={c.id}
+                          aria-label={`Seleccionar carrito de ${c.email}`}
+                          className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
+                        />
                       )}
-                      {c.lastReminderSentAt && (
-                        <span className="text-brand-muted text-[10px]">
-                          Último: {dateFmt.format(c.lastReminderSentAt)}
-                        </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.contactName && (
+                        <p className="text-brand-purple-dark text-xs font-bold">{c.contactName}</p>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-end gap-1.5">
-                      {c.status !== "recovered" && (
+                      <p className="text-brand-purple-dark/85 text-xs font-medium">{c.email}</p>
+                      {canRead360 && c.contactId && (
                         <Link
-                          href={`/admin/carritos/${c.id}`}
-                          className="-my-2 inline-flex min-h-10 items-center rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                          href={`/admin/clientes/${encodeURIComponent(c.contactId)}`}
+                          className="text-brand-purple text-[11px] font-semibold hover:underline"
                         >
-                          Recordar
+                          Ver Contacto 360 →
                         </Link>
                       )}
-                      <Link
-                        href={`/admin/carritos/${c.id}`}
-                        className="text-brand-purple-dark hover:text-brand-purple text-xs font-medium"
-                      >
-                        Ver
-                      </Link>
-                    </div>
-                  </td>
-                </AdminTableRow>
-              ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-brand-purple-dark/90 text-xs font-medium">
+                        {c.itemCount > 0
+                          ? `${c.itemCount} ${c.itemCount === 1 ? "ítem" : "ítems"}`
+                          : "Snapshot histórico"}
+                      </p>
+                      <p className="text-brand-muted line-clamp-1 max-w-[240px] text-[11px]">
+                        {c.productNames.join(" · ") || "Ver detalle del carrito"}
+                      </p>
+                      {c.checkoutStep && (
+                        <span className="text-brand-purple-dark/70 mt-0.5 inline-block text-[10px] font-semibold">
+                          {CHECKOUT_STEP_LABEL[c.checkoutStep] ?? c.checkoutStep}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-brand-purple-dark text-xs font-semibold tabular-nums">
+                        {formatCOP(c.totalCents)}
+                      </span>
+                    </td>
+                    <td className="text-brand-muted px-4 py-3 text-xs">
+                      <span title={formatDateTimeNoYearCO(c.lastActivityAt)}>
+                        {formatRelativeTime(c.lastActivityAt)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col items-start gap-1">
+                        {c.status === "recovered" ? (
+                          <AdminBadge tone="emerald">{ABANDONED_STATUS_LABEL.recovered}</AdminBadge>
+                        ) : c.status === "closed" ? (
+                          <AdminBadge tone="slate">{ABANDONED_STATUS_LABEL.closed}</AdminBadge>
+                        ) : c.status === "reminded" ? (
+                          <AdminBadge tone="blue">
+                            {ABANDONED_STATUS_LABEL.reminded}
+                            {c.reminderCount > 1 ? ` ×${c.reminderCount}` : ""}
+                          </AdminBadge>
+                        ) : (
+                          <AdminBadge tone="amber">{ABANDONED_STATUS_LABEL.pending}</AdminBadge>
+                        )}
+                        {c.recoveredOrderNumber && (
+                          <Link
+                            href={`/admin/pedidos/${encodeURIComponent(c.recoveredOrderNumber)}`}
+                            className="font-mono text-[11px] font-bold text-emerald-700 hover:underline"
+                          >
+                            Pedido {c.recoveredOrderNumber}
+                          </Link>
+                        )}
+                        {c.closedReason && c.closedReason !== "ORDER_PAID" && (
+                          <span className="text-brand-muted text-[10px]">
+                            {CLOSED_REASON_LABEL[c.closedReason] ?? c.closedReason}
+                          </span>
+                        )}
+                        {c.lastReminderSentAt && (
+                          <span className="text-brand-muted text-[10px]">
+                            Último correo: {formatDateTimeNoYearCO(c.lastReminderSentAt)}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        {canRemindRow && (
+                          <Link
+                            href={`/admin/carritos/${c.id}`}
+                            className="-my-2 inline-flex min-h-10 items-center rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                          >
+                            Recordar
+                          </Link>
+                        )}
+                        <Link
+                          href={`/admin/carritos/${c.id}`}
+                          className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-10 items-center rounded-md border bg-white px-2.5 py-1 text-xs font-semibold"
+                        >
+                          Ver qué pasó
+                        </Link>
+                      </div>
+                    </td>
+                  </AdminTableRow>
+                );
+              })}
             </AdminTableBody>
           </AdminTable>
         )}
@@ -357,7 +427,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
         {totalPages > 1 && (
           <div className="text-brand-purple-dark/70 flex items-center justify-between text-sm">
             <span>
-              {total} carritos · página {page} de {totalPages}
+              {total} registros · página {page} de {totalPages}
             </span>
             <div className="flex gap-1">
               {page > 1 && (
@@ -375,7 +445,6 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
         )}
       </AdminPageBody>
 
-      {/* Bar flotante de envío masivo (checkboxes de la tabla). */}
       <BulkCartBar />
     </AdminPage>
   );
@@ -395,7 +464,7 @@ function PaginationLink({
   const params = new URLSearchParams();
   params.set("page", String(page));
   if (q) params.set("q", q);
-  if (status && status !== "pending") params.set("status", status);
+  if (status) params.set("status", status);
   return (
     <Link
       href={`/admin/carritos?${params.toString()}`}

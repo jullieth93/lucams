@@ -114,11 +114,21 @@ export function AdminPageHeader({
   );
 }
 
-export function AdminPageBody({ children }: { children: ReactNode }) {
+export function AdminPageBody({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   // <div>, no <main>: el <main id="contenido"> único de la página lo renderiza
   // AdminShell — un <main> anidado es HTML inválido (a11y: dos landmarks).
   // admin-stagger: entrada escalonada de las secciones (globals.css).
-  return <div className="admin-stagger space-y-6 px-4 py-6 sm:px-6 sm:py-8">{children}</div>;
+  return (
+    <div className={`admin-stagger space-y-6 px-4 py-6 sm:px-6 sm:py-8 ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 // ─────────────────── Notice banners ───────────────────
@@ -549,5 +559,603 @@ export function AdminButton({
     <button type="button" className={cls} disabled={disabled}>
       {children}
     </button>
+  );
+}
+
+// ─────────────────── Visual Analytics Primitives (SVG, zero-deps) ───────────────────
+
+const CHART_PALETTE: Record<
+  "purple" | "pink" | "turquoise" | "coral" | "emerald" | "amber" | "rose" | "slate" | "blue",
+  string
+> = {
+  purple: "#7C6AAD",
+  pink: "#E85B9F",
+  turquoise: "#2BB8AF",
+  coral: "#F58A6F",
+  emerald: "#10B981",
+  amber: "#F59E0B",
+  rose: "#F43F5E",
+  slate: "#94A3B8",
+  blue: "#3B82F6",
+};
+
+export type ChartTone = keyof typeof CHART_PALETTE;
+
+export function AdminDeltaPill({
+  deltaPct,
+  comparisonLabel,
+  invertGood = false,
+}: {
+  deltaPct: number | null;
+  comparisonLabel?: string;
+  invertGood?: boolean;
+}) {
+  if (deltaPct === null) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
+        <Minus className="h-3 w-3" aria-hidden />
+        {comparisonLabel ? `Sin base en ${comparisonLabel}` : "Sin comparativa previa"}
+      </span>
+    );
+  }
+  const isPositive = deltaPct > 0;
+  const isNegative = deltaPct < 0;
+  const good = invertGood ? isNegative : isPositive;
+  const bad = invertGood ? isPositive : isNegative;
+  const Icon = isPositive ? TrendingUp : isNegative ? TrendingDown : Minus;
+  const cls = good
+    ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80"
+    : bad
+      ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200/80"
+      : "bg-slate-100 text-slate-600";
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums ${cls}`}
+    >
+      <Icon className="h-3 w-3" aria-hidden />
+      {deltaPct > 0 ? `+${deltaPct}%` : `${deltaPct}%`}
+      {comparisonLabel ? (
+        <span className="font-normal opacity-80">vs {comparisonLabel}</span>
+      ) : null}
+    </span>
+  );
+}
+
+export interface ComboChartDatum {
+  key: string;
+  /** Etiqueta completa para el tooltip ("18 oct"). */
+  label: string;
+  /** Etiqueta corta para el eje X ("18" o "18/10"). */
+  tickLabel: string;
+  /** Serie principal en barras (ej. ingresos en centavos o pesos). */
+  barValue: number;
+  /** Texto ya formateado de la barra para el tooltip (ej. "$120.000"). */
+  barFormatted: string;
+  /** Serie secundaria opcional en línea (ej. cantidad de pedidos). */
+  lineValue?: number;
+  lineFormatted?: string;
+}
+
+function decimateTickIndices(total: number, maxTicks: number): Set<number> {
+  const result = new Set<number>();
+  if (total <= 0) return result;
+  if (total <= maxTicks) {
+    for (let i = 0; i < total; i++) result.add(i);
+    return result;
+  }
+  result.add(0);
+  result.add(total - 1);
+  const innerSlots = Math.max(0, maxTicks - 2);
+  for (let s = 1; s <= innerSlots; s++) {
+    const idx = Math.round((s * (total - 1)) / (innerSlots + 1));
+    result.add(idx);
+  }
+  return result;
+}
+
+export function AdminComboBarLineChart({
+  data,
+  ariaLabel,
+  barLegend,
+  lineLegend,
+  maxAxisFormatted,
+  midAxisFormatted,
+  maxTicks = 7,
+}: {
+  data: ComboChartDatum[];
+  ariaLabel: string;
+  barLegend: string;
+  lineLegend?: string;
+  maxAxisFormatted?: string;
+  midAxisFormatted?: string;
+  maxTicks?: number;
+}) {
+  const n = data.length;
+  const hasLine = Boolean(lineLegend) && data.some((d) => typeof d.lineValue === "number");
+  const maxBar = Math.max(0, ...data.map((d) => d.barValue));
+  const maxLine = hasLine ? Math.max(0, ...data.map((d) => d.lineValue ?? 0)) : 0;
+
+  const width = 640;
+  const height = 216;
+  const padLeft = maxAxisFormatted ? 66 : 16;
+  const padRight = 14;
+  const padTop = 16;
+  const padBottom = 30;
+  const plotW = width - padLeft - padRight;
+  const plotH = height - padTop - padBottom;
+  const slotW = n > 0 ? plotW / n : plotW;
+  const barW = Math.max(4, Math.min(28, slotW * 0.62));
+  const visibleTicks = decimateTickIndices(n, maxTicks);
+
+  const linePoints =
+    hasLine && n > 0
+      ? data.map((d, i) => {
+          const cx = padLeft + i * slotW + slotW / 2;
+          const val = d.lineValue ?? 0;
+          const cy = maxLine > 0 ? padTop + plotH - (val / maxLine) * (plotH - 8) : padTop + plotH;
+          return { cx, cy, val, d };
+        })
+      : [];
+
+  const polylineAttr = linePoints.map((p) => `${p.cx.toFixed(1)},${p.cy.toFixed(1)}`).join(" ");
+
+  return (
+    <div className="w-full">
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-brand-purple-dark inline-flex items-center gap-1.5 font-medium">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-xs"
+              style={{ backgroundColor: CHART_PALETTE.purple }}
+              aria-hidden
+            />
+            {barLegend}
+          </span>
+          {hasLine && lineLegend ? (
+            <span className="text-brand-purple-dark inline-flex items-center gap-1.5 font-medium">
+              <span
+                className="inline-block h-0.5 w-3.5 rounded-full"
+                style={{ backgroundColor: CHART_PALETTE.pink }}
+                aria-hidden
+              />
+              {lineLegend}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={ariaLabel}
+        className="h-48 w-full overflow-visible select-none sm:h-56"
+      >
+        <title>{ariaLabel}</title>
+        <defs>
+          <linearGradient id="lucamsBarGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#7C6AAD" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="#5E4B8B" stopOpacity="0.72" />
+          </linearGradient>
+        </defs>
+
+        {/* Líneas guía horizontales */}
+        {[0, 0.5, 1].map((ratio) => {
+          const y = padTop + plotH * (1 - ratio);
+          return (
+            <line
+              key={ratio}
+              x1={padLeft}
+              y1={y}
+              x2={width - padRight}
+              y2={y}
+              stroke="#7C6AAD"
+              strokeOpacity={ratio === 0 ? 0.22 : 0.12}
+              strokeDasharray={ratio === 0 ? undefined : "4 4"}
+              strokeWidth={1}
+            />
+          );
+        })}
+
+        {/* Etiquetas del eje Y */}
+        {maxAxisFormatted ? (
+          <>
+            <text
+              x={padLeft - 8}
+              y={padTop + 4}
+              textAnchor="end"
+              className="fill-slate-500 text-[10px] tabular-nums"
+            >
+              {maxAxisFormatted}
+            </text>
+            {midAxisFormatted ? (
+              <text
+                x={padLeft - 8}
+                y={padTop + plotH * 0.5 + 3}
+                textAnchor="end"
+                className="fill-slate-400 text-[10px] tabular-nums"
+              >
+                {midAxisFormatted}
+              </text>
+            ) : null}
+            <text
+              x={padLeft - 8}
+              y={padTop + plotH + 3}
+              textAnchor="end"
+              className="fill-slate-400 text-[10px] tabular-nums"
+            >
+              $0
+            </text>
+          </>
+        ) : null}
+
+        {/* Barras */}
+        {data.map((d, i) => {
+          const cx = padLeft + i * slotW + slotW / 2;
+          const barH =
+            maxBar > 0 && d.barValue > 0 ? Math.max(4, (d.barValue / maxBar) * (plotH - 4)) : 2;
+          const x = cx - barW / 2;
+          const y = padTop + plotH - barH;
+          const tip = d.lineFormatted
+            ? `${d.label}: ${d.barFormatted} · ${d.lineFormatted}`
+            : `${d.label}: ${d.barFormatted}`;
+          return (
+            <g key={d.key}>
+              <rect
+                x={x}
+                y={y}
+                width={barW}
+                height={barH}
+                rx={Math.min(4, barW / 2)}
+                fill={d.barValue > 0 ? "url(#lucamsBarGrad)" : "#E2E8F0"}
+                className="transition-opacity hover:opacity-85"
+              >
+                <title>{tip}</title>
+              </rect>
+              {visibleTicks.has(i) ? (
+                <text
+                  x={cx}
+                  y={height - 8}
+                  textAnchor="middle"
+                  className="fill-slate-500 text-[10px] font-medium tabular-nums"
+                >
+                  {d.tickLabel}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+
+        {/* Línea secundaria superpuesta */}
+        {linePoints.length > 1 && maxLine > 0 ? (
+          <polyline
+            fill="none"
+            stroke={CHART_PALETTE.pink}
+            strokeWidth={2.25}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={polylineAttr}
+          />
+        ) : null}
+        {maxLine > 0
+          ? linePoints.map((p) => (
+              <circle
+                key={`pt-${p.d.key}`}
+                cx={p.cx}
+                cy={p.cy}
+                r={p.val > 0 ? 3.5 : 2}
+                fill={p.val > 0 ? CHART_PALETTE.pink : "#CBD5E1"}
+                stroke="#FFFFFF"
+                strokeWidth={1.5}
+              >
+                <title>
+                  {p.d.label}: {p.d.lineFormatted ?? p.val}
+                </title>
+              </circle>
+            ))
+          : null}
+      </svg>
+    </div>
+  );
+}
+
+export interface DonutSlice {
+  key: string;
+  label: string;
+  count: number;
+  formattedValue?: string;
+  tone: ChartTone;
+  href?: string;
+  hint?: string;
+}
+
+export function AdminDonutChart({
+  slices,
+  centerValue,
+  centerLabel,
+  ariaLabel,
+}: {
+  slices: DonutSlice[];
+  centerValue: string;
+  centerLabel: string;
+  ariaLabel: string;
+}) {
+  const total = slices.reduce((acc, s) => acc + Math.max(0, s.count), 0);
+  const radius = 50;
+  const circumference = 2 * Math.PI * radius;
+
+  const computedSlices = slices.reduce<{
+    offset: number;
+    items: Array<DonutSlice & { pct: number; dash: number; offset: number }>;
+  }>(
+    (acc, s) => {
+      const val = Math.max(0, s.count);
+      const ratio = total > 0 ? val / total : 0;
+      const dash = ratio * circumference;
+      const pct = total > 0 ? Math.round(ratio * 100) : 0;
+      acc.items.push({ ...s, pct, dash, offset: acc.offset });
+      acc.offset += dash;
+      return acc;
+    },
+    { offset: 0, items: [] },
+  ).items;
+
+  return (
+    <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
+      <div className="relative h-36 w-36 flex-shrink-0">
+        <svg viewBox="0 0 140 140" role="img" aria-label={ariaLabel} className="h-full w-full">
+          <title>{ariaLabel}</title>
+          <circle cx="70" cy="70" r={radius} fill="none" stroke="#F1F5F9" strokeWidth="16" />
+          {total > 0 &&
+            computedSlices
+              .filter((s) => s.count > 0)
+              .map((s) => (
+                <circle
+                  key={s.key}
+                  cx="70"
+                  cy="70"
+                  r={radius}
+                  fill="none"
+                  stroke={CHART_PALETTE[s.tone]}
+                  strokeWidth="16"
+                  strokeDasharray={`${Math.max(1.5, s.dash)} ${circumference}`}
+                  strokeDashoffset={-s.offset}
+                  transform="rotate(-90 70 70)"
+                  className="transition-all duration-300"
+                >
+                  <title>
+                    {s.label}: {s.formattedValue ?? s.count.toLocaleString("es-CO")} ({s.pct}%)
+                  </title>
+                </circle>
+              ))}
+        </svg>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-3 text-center">
+          <span className="text-brand-purple-dark font-display text-lg leading-tight font-bold tabular-nums">
+            {centerValue}
+          </span>
+          <span className="text-brand-muted mt-0.5 text-[10px] font-medium uppercase">
+            {centerLabel}
+          </span>
+        </div>
+      </div>
+
+      <ul className="w-full min-w-0 flex-1 space-y-2">
+        {computedSlices.map((s) => {
+          const inner = (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                  style={{ backgroundColor: CHART_PALETTE[s.tone] }}
+                  aria-hidden
+                />
+                <span className="text-brand-purple-dark truncate text-xs font-medium">
+                  {s.label}
+                </span>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-1.5 text-xs tabular-nums">
+                <span className="text-brand-purple-dark font-semibold">
+                  {s.formattedValue ?? s.count.toLocaleString("es-CO")}
+                </span>
+                <span className="text-brand-muted text-[11px]">({s.pct}%)</span>
+              </div>
+            </div>
+          );
+
+          return (
+            <li key={s.key}>
+              {s.href ? (
+                <Link
+                  href={s.href}
+                  className="hover:bg-brand-purple/5 -mx-2 block rounded-lg px-2 py-1 transition-colors"
+                >
+                  {inner}
+                  {s.hint ? (
+                    <p className="text-brand-muted mt-0.5 pl-4 text-[11px]">{s.hint}</p>
+                  ) : null}
+                </Link>
+              ) : (
+                <div className="py-0.5">
+                  {inner}
+                  {s.hint ? (
+                    <p className="text-brand-muted mt-0.5 pl-4 text-[11px]">{s.hint}</p>
+                  ) : null}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+export interface SegmentedBarItem {
+  key: string;
+  label: string;
+  count: number;
+  tone: ChartTone;
+  href?: string;
+  sublabel?: string;
+}
+
+export function AdminSegmentedBar({
+  items,
+  ariaLabel,
+}: {
+  items: SegmentedBarItem[];
+  ariaLabel: string;
+}) {
+  const total = items.reduce((acc, i) => acc + Math.max(0, i.count), 0);
+  return (
+    <div className="space-y-2.5">
+      <div
+        role="img"
+        aria-label={ariaLabel}
+        className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100"
+      >
+        {total > 0 ? (
+          items
+            .filter((i) => i.count > 0)
+            .map((item) => {
+              const pct = Math.max(2, (item.count / total) * 100);
+              return (
+                <div
+                  key={item.key}
+                  style={{
+                    width: `${pct}%`,
+                    backgroundColor: CHART_PALETTE[item.tone],
+                  }}
+                  title={`${item.label}: ${item.count.toLocaleString("es-CO")} (${Math.round((item.count / total) * 100)}%)`}
+                  className="h-full border-r border-white/60 last:border-r-0"
+                />
+              );
+            })
+        ) : (
+          <div className="h-full w-full bg-slate-200/70" />
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+        {items.map((item) => {
+          const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
+          const content = (
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                style={{ backgroundColor: CHART_PALETTE[item.tone] }}
+                aria-hidden
+              />
+              <span className="text-brand-purple-dark font-medium">{item.label}:</span>
+              <strong className="text-brand-purple-dark tabular-nums">
+                {item.count.toLocaleString("es-CO")}
+              </strong>
+              {total > 0 ? <span className="text-brand-muted tabular-nums">({pct}%)</span> : null}
+              {item.sublabel ? (
+                <span className="text-brand-muted text-[11px]">· {item.sublabel}</span>
+              ) : null}
+            </span>
+          );
+          return item.href ? (
+            <Link
+              key={item.key}
+              href={item.href}
+              className="hover:text-brand-purple rounded-md py-0.5 transition-colors hover:underline"
+            >
+              {content}
+            </Link>
+          ) : (
+            <span key={item.key} className="py-0.5">
+              {content}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export interface HorizontalBarItem {
+  key: string;
+  label: string;
+  sublabel?: string;
+  badgeText?: string;
+  value: number;
+  formattedValue: string;
+  secondaryText?: string;
+  tone?: ChartTone;
+  href?: string;
+}
+
+export function AdminHorizontalBars({ items }: { items: HorizontalBarItem[] }) {
+  const maxVal = Math.max(1, ...items.map((i) => i.value));
+  const totalVal = items.reduce((acc, i) => acc + Math.max(0, i.value), 0);
+
+  return (
+    <ol className="space-y-2.5">
+      {items.map((item, idx) => {
+        const widthPct = item.value > 0 ? Math.max(3, (item.value / maxVal) * 100) : 0;
+        const sharePct = totalVal > 0 ? Math.round((item.value / totalVal) * 100) : 0;
+        const color = CHART_PALETTE[item.tone ?? "purple"];
+
+        return (
+          <li
+            key={item.key}
+            className="border-brand-purple/10 rounded-xl border bg-slate-50/50 p-3 transition-colors hover:bg-white"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="bg-brand-purple/10 text-brand-purple-dark inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums">
+                  {idx + 1}
+                </span>
+                <div className="min-w-0">
+                  {item.href ? (
+                    <Link
+                      href={item.href}
+                      className="text-brand-purple-dark hover:text-brand-purple block truncate text-xs font-semibold hover:underline sm:text-sm"
+                    >
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <p className="text-brand-purple-dark truncate text-xs font-semibold sm:text-sm">
+                      {item.label}
+                    </p>
+                  )}
+                  {(item.sublabel || item.badgeText) && (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                      {item.sublabel ? <span>{item.sublabel}</span> : null}
+                      {item.badgeText ? (
+                        <code className="bg-brand-purple/5 text-brand-purple-dark rounded px-1.5 py-0.5 font-mono text-[10px]">
+                          {item.badgeText}
+                        </code>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-right tabular-nums">
+                <span className="text-brand-purple-dark text-sm font-bold">
+                  {item.formattedValue}
+                </span>
+                {totalVal > 0 ? (
+                  <span className="text-brand-muted ml-1.5 text-xs">({sharePct}%)</span>
+                ) : null}
+                {item.secondaryText ? (
+                  <p className="text-[11px] text-emerald-700">{item.secondaryText}</p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200/70">
+              <div
+                className="admin-bar-grow-x h-full rounded-full"
+                style={{ width: `${widthPct}%`, backgroundColor: color }}
+              />
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

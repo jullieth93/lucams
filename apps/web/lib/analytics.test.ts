@@ -27,6 +27,8 @@ afterEach(() => {
   delete process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
   // Limpiar la cookie de consentimiento y el estado global de gtag entre tests.
   document.cookie = "cookie_consent_v1=; Max-Age=0; Path=/";
+  window.localStorage.clear();
+  window.sessionStorage.clear();
   delete (window as { dataLayer?: unknown[] }).dataLayer;
   delete (window as { gtag?: unknown }).gtag;
 });
@@ -126,5 +128,91 @@ describe("trackEvent — gates de seguridad y consentimiento", () => {
     setConsent(false);
     mod.trackEvent("view_cart", { currency: "COP", value: 1, items: [] });
     expect(window.dataLayer).toHaveLength(1);
+  });
+});
+
+describe("sanitizeAnalyticsUrl — privacidad y cero fuga de tokens ([ANA-01])", () => {
+  it("excluye rutas del panel /admin*", async () => {
+    const mod = await loadAnalytics("G-ABC123XY");
+    expect(mod.sanitizeAnalyticsUrl("/admin")).toBeNull();
+    expect(mod.sanitizeAnalyticsUrl("/admin/pedidos/LCM-2026-0001", "tab=items")).toBeNull();
+  });
+
+  it("enmascara todos los segmentos dinámicos con capability/bearer tokens", async () => {
+    const mod = await loadAnalytics("G-ABC123XY");
+    expect(mod.sanitizeAnalyticsUrl("/pedido/a1b2c3d4e5f60718293a4b5c6d7e8f90")).toEqual({
+      pagePath: "/pedido/[token]",
+      pageUrl: "/pedido/[token]",
+    });
+    expect(mod.sanitizeAnalyticsUrl("/carrito/recuperar/secret-recover-tok")).toEqual({
+      pagePath: "/carrito/recuperar/[token]",
+      pageUrl: "/carrito/recuperar/[token]",
+    });
+    expect(mod.sanitizeAnalyticsUrl("/resena/signed-review-token")).toEqual({
+      pagePath: "/resena/[token]",
+      pageUrl: "/resena/[token]",
+    });
+    expect(mod.sanitizeAnalyticsUrl("/d/share-token-xyz")).toEqual({
+      pagePath: "/d/[token]",
+      pageUrl: "/d/[token]",
+    });
+    expect(mod.sanitizeAnalyticsUrl("/cotizacion/quote-token-xyz")).toEqual({
+      pagePath: "/cotizacion/[token]",
+      pageUrl: "/cotizacion/[token]",
+    });
+    expect(mod.sanitizeAnalyticsUrl("/soporte/support-token-xyz")).toEqual({
+      pagePath: "/soporte/[token]",
+      pageUrl: "/soporte/[token]",
+    });
+  });
+
+  it("descarta PII y tokens en query params y conserva solo la allowlist segura", async () => {
+    const mod = await loadAnalytics("G-ABC123XY");
+    const res = mod.sanitizeAnalyticsUrl(
+      "/productos",
+      "categoria=fotoimanes&email=ana%40test.com&phone=3001234567&token=abc&id=wompi-tx&q=secreto&utm_source=ig",
+    );
+    expect(res).toEqual({
+      pagePath: "/productos",
+      pageUrl: "/productos?categoria=fotoimanes&utm_source=ig",
+    });
+  });
+});
+
+describe("stashPersonalizedAddToCart / consumePersonalizedAddToCart / claimAnalyticsOnceKey", () => {
+  it("consume de forma atómica el ítem personalizado guardado desde el Estudio", async () => {
+    const mod = await loadAnalytics("G-ABC123XY");
+    mod.stashPersonalizedAddToCart({
+      sku: "POL-PACK6",
+      name: "Fotoimanes Polaroid",
+      variantName: "Pack × 6",
+      categoryName: "Fotoimanes",
+      priceCents: 3800000,
+      quantity: 2,
+      designId: "des_123",
+      productSlug: "fotoimanes-polaroid",
+      editorKind: "photo",
+    });
+
+    const first = mod.consumePersonalizedAddToCart();
+    expect(first).toMatchObject({
+      sku: "POL-PACK6",
+      name: "Fotoimanes Polaroid",
+      priceCents: 3800000,
+      quantity: 2,
+      designId: "des_123",
+      productSlug: "fotoimanes-polaroid",
+      editorKind: "photo",
+    });
+    expect(mod.consumePersonalizedAddToCart()).toBeNull();
+  });
+
+  it("claimAnalyticsOnceKey evita emisiones duplicadas en localStorage y sessionStorage", async () => {
+    const mod = await loadAnalytics("G-ABC123XY");
+    expect(mod.claimAnalyticsOnceKey("local", "ga4:purchase:LCM-2026-0099")).toBe(true);
+    expect(mod.claimAnalyticsOnceKey("local", "ga4:purchase:LCM-2026-0099")).toBe(false);
+
+    expect(mod.claimAnalyticsOnceKey("session", "ga4:shipping:Envía:3800000")).toBe(true);
+    expect(mod.claimAnalyticsOnceKey("session", "ga4:shipping:Envía:3800000")).toBe(false);
   });
 });

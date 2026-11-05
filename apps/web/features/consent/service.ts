@@ -22,6 +22,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { getSettingValue } from "@/lib/cms";
+import { resolveConsentContact } from "@/features/identity/resolution-service";
 import type { CookiePreferences } from "@/lib/cookie-consent";
 import { CONSENT_SCOPES } from "@/lib/cookie-consent";
 
@@ -33,6 +34,15 @@ export async function recordCookieConsent(input: {
   userAgent?: string | null;
 }) {
   const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1 · 2026-09-29");
+  const contactId =
+    input.customerId || input.email
+      ? await resolveConsentContact(prisma, {
+          customerId: input.customerId ?? null,
+          email: input.email ?? null,
+          emailVerified: Boolean(input.customerId),
+          verificationSource: "COOKIE_CONSENT",
+        })
+      : null;
 
   const rows = CONSENT_SCOPES.map((s) => ({
     scope: s.scope,
@@ -42,6 +52,7 @@ export async function recordCookieConsent(input: {
     userAgent: input.userAgent ?? null,
     customerId: input.customerId ?? null,
     email: input.email ?? null,
+    ...(contactId ? { contactId } : {}),
   }));
 
   await prisma.consent.createMany({ data: rows });
@@ -55,12 +66,23 @@ export async function recordCookieConsent(input: {
  * versión vigente del aviso de privacidad + IP/UA para el audit trail.
  */
 export async function recordHabeasDataConsent(input: {
-  customerId: string;
+  customerId?: string | null;
+  contactId?: string | null;
   email: string;
+  emailVerified?: boolean;
   ip?: string | null;
   userAgent?: string | null;
+  verificationSource?: string;
 }) {
   const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1 · 2026-09-29");
+  const contactId =
+    input.contactId ??
+    (await resolveConsentContact(prisma, {
+      customerId: input.customerId ?? null,
+      email: input.email,
+      emailVerified: input.emailVerified ?? false,
+      verificationSource: input.verificationSource ?? "SIGNUP_HABEAS_DATA",
+    }));
   await prisma.consent.create({
     data: {
       scope: "HABEAS_DATA",
@@ -68,8 +90,9 @@ export async function recordHabeasDataConsent(input: {
       version,
       ipAddress: input.ip ?? null,
       userAgent: input.userAgent ?? null,
-      customerId: input.customerId,
+      customerId: input.customerId ?? null,
       email: input.email,
+      ...(contactId ? { contactId } : {}),
     },
   });
 }
@@ -118,6 +141,12 @@ export async function recordCheckoutDataConsent(input: {
   userAgent?: string | null;
 }) {
   const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1 · 2026-09-29");
+  const contactId = await resolveConsentContact(prisma, {
+    customerId: input.customerId ?? null,
+    email: input.email,
+    emailVerified: Boolean(input.customerId),
+    verificationSource: "CHECKOUT_HABEAS_DATA",
+  });
   await prisma.consent.create({
     data: {
       scope: "HABEAS_DATA",
@@ -127,6 +156,7 @@ export async function recordCheckoutDataConsent(input: {
       userAgent: input.userAgent ?? null,
       customerId: input.customerId ?? null,
       email: input.email,
+      ...(contactId ? { contactId } : {}),
     },
   });
 }

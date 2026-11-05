@@ -14,6 +14,9 @@ const customerUpdate = vi.hoisted(() => vi.fn(async () => ({})));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ getCurrentCustomer }));
 vi.mock("@/lib/db", () => ({ prisma: { customer: { update: customerUpdate } } }));
+vi.mock("@/features/identity/resolution-service", () => ({
+  ensureCustomerContact: vi.fn(async () => ({ contactId: "ct-1" })),
+}));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -67,9 +70,19 @@ describe("updateProfileAction — nombre/apellido estandarizados", () => {
     expect(customerUpdate).not.toHaveBeenCalled();
   });
 
-  it("apellido de 3 palabras → error (máx 2)", async () => {
-    const res = await updateProfileAction(null, profileForm({ lastName: "García De León" }));
-    expect(res.fieldErrors?.lastName?.[0]).toContain("2 palabras");
+  it("apellido de 3 palabras compuesto (ej. García De León) → aceptado y normalizado", async () => {
+    const res = await updateProfileAction(null, profileForm({ lastName: "GARCÍA DE LEÓN" }));
+    expect(res.success).toBeDefined();
+    expect(customerUpdate).toHaveBeenCalledWith({
+      where: { id: "cust-1" },
+      data: expect.objectContaining({ lastName: "García de León" }),
+    });
+  });
+
+  it("apellido de 4 palabras → error (máx 3)", async () => {
+    const res = await updateProfileAction(null, profileForm({ lastName: "García De La Cruz" }));
+    expect(res.fieldErrors?.lastName?.[0]).toContain("3 palabras");
+    expect(customerUpdate).not.toHaveBeenCalled();
   });
 
   it("nombre con dígitos → error solo letras", async () => {

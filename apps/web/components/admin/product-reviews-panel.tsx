@@ -28,6 +28,7 @@ import {
   toggleFeaturedReviewAction,
   archiveReviewAction,
 } from "@/app/admin/(panel)/resenas/actions";
+import { formatDateLongCO } from "@/lib/datetime";
 
 type ReviewSubTab = "pending" | "approved" | "archived";
 
@@ -225,11 +226,6 @@ function ReviewCard({
   showArchiveAction: boolean;
   showRestoreAction: boolean;
 }) {
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
   const author = review.authorName ?? "Cliente anónimo";
   const city = review.authorCity ? ` · ${review.authorCity}` : "";
 
@@ -248,7 +244,7 @@ function ReviewCard({
               {author}
             </span>
             <span className="text-brand-muted text-xs">
-              {city} · {dateFmt.format(review.createdAt)}
+              {city} · {formatDateLongCO(review.createdAt)}
             </span>
             {review.featured && (
               <AdminBadge tone="amber">

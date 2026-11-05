@@ -40,6 +40,7 @@ const POPULAR_DOMAINS = [
   "gmail.com",
   "hotmail.com",
   "outlook.com",
+  "outlook.es",
   "yahoo.com",
   "icloud.com",
   "live.com",
@@ -75,7 +76,6 @@ const DOMAIN_TYPOS: Record<string, string> = {
   "hotmail.con": "hotmail.com",
   "outlok.com": "outlook.com",
   "outloook.com": "outlook.com",
-  "outlook.es": "outlook.com",
   "outlook.con": "outlook.com",
   "yaho.com": "yahoo.com",
   "yahooo.com": "yahoo.com",
@@ -217,7 +217,21 @@ export function EmailInput({
           className={showFormatError ? "text-destructive mt-1.5 text-sm" : "mt-1.5 text-xs"}
           style={showFormatError ? undefined : { color: "var(--warning)" }}
         >
-          {liveMessage}
+          {showFormatError || !typoSuggestion ? (
+            liveMessage
+          ) : (
+            <>
+              ¿Quisiste decir{" "}
+              <button
+                type="button"
+                onClick={() => setValue(typoSuggestion)}
+                className="font-semibold underline underline-offset-2 hover:opacity-80"
+              >
+                {typoSuggestion}
+              </button>
+              ?
+            </>
+          )}
         </p>
       )}
 

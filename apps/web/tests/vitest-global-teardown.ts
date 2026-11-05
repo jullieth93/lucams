@@ -127,6 +127,7 @@ export async function teardown() {
       setsTest,
       codTest,
       retractsTest,
+      contactsTest,
     ] = await Promise.all([
       prisma.$executeRaw`UPDATE "Order" SET "deletedAt" = NOW(), "updatedAt" = NOW()
         WHERE "deletedAt" IS NULL AND (number ~ ${RUN_ID} OR number LIKE 'TEST%')`,
@@ -153,11 +154,20 @@ export async function teardown() {
       prisma.$executeRaw`DELETE FROM "RetractRequest" WHERE "orderItemId" IN
         (SELECT oi.id FROM "OrderItem" oi JOIN "Order" o ON o.id = oi."orderId"
          WHERE o.number ~ ${RUN_ID})`,
+      prisma.$executeRaw`DELETE FROM "Contact" WHERE
+        "primaryEmail" ILIKE '%@lucams.test' OR "primaryEmail" ILIKE '%@cust.test'
+        OR "primaryEmail" ILIKE '%@consent.test' OR "primaryEmail" ILIKE '%@test.local'
+        OR "primaryEmail" ILIKE 'itest%' OR "primaryEmail" LIKE 'test+%@example.com'
+        OR "primaryEmail" ~ ${RUN_ID}`,
+      prisma.$executeRaw`DELETE FROM "Task" WHERE
+        title ~ ${RUN_ID} OR title ILIKE 'itest%'`,
+      prisma.$executeRaw`DELETE FROM "Opportunity" WHERE
+        title ~ ${RUN_ID} OR title ILIKE 'itest%'`,
     ]);
 
     console.log(
       `[vitest teardown] Limpieza (solo patrones de test): ${products} productos, ${categories} categorías, ${ocasiones} ocasiones, ${variants} variantes, ${templates} plantillas. ` +
-        `Transaccional: ${ordersTest} pedidos, ${customersTest} clientes, ${couponsTest} cupones, ` +
+        `Transaccional: ${ordersTest} pedidos, ${customersTest} clientes, ${contactsTest} contactos, ${couponsTest} cupones, ` +
         `${reviewsTest} reseñas, ${quotesTest} cotizaciones, ${designsTest} diseños, ` +
         `${setsTest} sets fichas (+${tilesTest} fichas), ${codTest} ledger COD, ${retractsTest} retractos.`,
     );

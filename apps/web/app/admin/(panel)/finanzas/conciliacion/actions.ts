@@ -109,7 +109,7 @@ export async function markCodRemittedAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.FINANCE_COD });
 
   const reauth = await requireRecentMfaOrMarker();
   if (reauth) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
@@ -158,7 +158,7 @@ export async function flagCodDiscrepancyAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.FINANCE_COD });
 
   const reauth = await requireRecentMfaOrMarker();
   if (reauth) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };

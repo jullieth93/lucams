@@ -14,10 +14,12 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Activity, ChevronLeft, ChevronRight } from "lucide-react";
+import { Activity, ChevronLeft, ChevronRight, ShieldAlert } from "lucide-react";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { formatDateTimeCO } from "@/lib/datetime";
 import {
   AdminPage,
   AdminPageHeader,
@@ -39,6 +41,58 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 30;
 
+type AuditPresetKey = "all" | "pii" | "finance" | "staff" | "crm";
+
+const AUDIT_PRESETS: ReadonlyArray<{
+  key: AuditPresetKey;
+  label: string;
+  description: string;
+  prefixes: readonly string[];
+}> = [
+  {
+    key: "all",
+    label: "Todos",
+    description: "Todas las acciones administrativas registradas.",
+    prefixes: [],
+  },
+  {
+    key: "pii",
+    label: "Accesos y exportaciones PII",
+    description:
+      "Vistas de Contacto 360, impresión de guías, descargas ZIP de taller y exportaciones CSV.",
+    prefixes: [
+      "contact.view_360",
+      "order.print_shipping_guide",
+      "order.design_zip_download",
+      "newsletter.export_csv",
+      "marketing.export_segment_csv",
+      "finance.export_orders_csv",
+    ],
+  },
+  {
+    key: "finance",
+    label: "Reembolsos y finanzas",
+    description: "Reembolsos de pedidos, retractos, garantías, conciliación COD y costos.",
+    prefixes: ["order.refund", "retract.", "warranty.", "finance.", "cod.", "cost."],
+  },
+  {
+    key: "staff",
+    label: "Usuarios y roles",
+    description: "Altas de equipo, cambios de rol, desactivaciones y seguridad MFA.",
+    prefixes: ["admin.", "security."],
+  },
+  {
+    key: "crm",
+    label: "Fusiones CRM",
+    description: "Fusiones aprobadas o descartadas en la cola de duplicados de Contact.",
+    prefixes: ["contact.merge"],
+  },
+];
+
+function isAuditPresetKey(value: string | undefined): value is AuditPresetKey {
+  return AUDIT_PRESETS.some((p) => p.key === value);
+}
+
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 function pickString(sp: Record<string, string | string[] | undefined>, key: string) {
@@ -47,9 +101,12 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
 }
 
 export default async function AuditoriaPage({ searchParams }: { searchParams: SearchParams }) {
-  const _session = await requireRole(["SUPERADMIN"]);
+  const _session = await requireRole(ADMIN_ROLE_SETS.SUPER);
 
   const sp = await searchParams;
+  const presetRaw = pickString(sp, "preset");
+  const preset: AuditPresetKey = isAuditPresetKey(presetRaw) ? presetRaw : "all";
+  const activePreset = AUDIT_PRESETS.find((p) => p.key === preset) ?? AUDIT_PRESETS[0]!;
   const filterAdmin = pickString(sp, "admin");
   const filterAction = pickString(sp, "action");
   const filterEntity = pickString(sp, "entity");
@@ -57,10 +114,22 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
   const toDate = pickString(sp, "to");
   const page = Math.max(1, Number.parseInt(pickString(sp, "page") ?? "1", 10) || 1);
 
+  const andConditions: Prisma.AdminActionLogWhereInput[] = [];
+  if (activePreset.prefixes.length > 0) {
+    andConditions.push({
+      OR: activePreset.prefixes.map((prefix) => ({
+        action: { startsWith: prefix },
+      })),
+    });
+  }
+  if (filterAction) {
+    andConditions.push({ action: { startsWith: filterAction } });
+  }
+
   const where: Prisma.AdminActionLogWhereInput = {
     ...(filterAdmin ? { actorId: filterAdmin } : {}),
-    ...(filterAction ? { action: { startsWith: filterAction } } : {}),
     ...(filterEntity ? { entityType: filterEntity } : {}),
+    ...(andConditions.length > 0 ? { AND: andConditions } : {}),
     ...(fromDate || toDate
       ? {
           createdAt: {
@@ -108,11 +177,52 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
       />
 
       <AdminPageBody>
+        {/* Filtros rápidos por familia de seguridad */}
+        <div className="border-brand-purple/10 rounded-xl border bg-white p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2">
+            <ShieldAlert className="text-brand-purple h-4 w-4" />
+            <span className="text-brand-purple-dark text-xs font-bold tracking-wide uppercase">
+              Vistas rápidas de cumplimiento y seguridad
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2" role="navigation" aria-label="Filtros rápidos">
+            {AUDIT_PRESETS.map((item) => {
+              const isSelected = item.key === preset;
+              const nextParams = new URLSearchParams(buildParamsObject(sp));
+              nextParams.delete("page");
+              if (item.key === "all") {
+                nextParams.delete("preset");
+              } else {
+                nextParams.set("preset", item.key);
+              }
+              const href = nextParams.toString()
+                ? `/admin/auditoria?${nextParams.toString()}`
+                : "/admin/auditoria";
+              return (
+                <Link
+                  key={item.key}
+                  href={href}
+                  aria-current={isSelected ? "page" : undefined}
+                  className={
+                    isSelected
+                      ? "bg-brand-purple inline-flex min-h-9 items-center rounded-full px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors"
+                      : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/50 hover:bg-brand-purple/5 inline-flex min-h-9 items-center rounded-full border bg-white px-3.5 py-1.5 text-xs font-semibold transition-colors"
+                  }
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+          <p className="text-brand-muted mt-2 text-xs">{activePreset.description}</p>
+        </div>
+
         {/* Filtros */}
         <form
           method="GET"
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-5"
         >
+          {preset !== "all" && <input type="hidden" name="preset" value={preset} />}
           <div>
             <label
               htmlFor="f-admin"
@@ -231,10 +341,7 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
                 logs.map((row) => (
                   <AdminTableRow key={row.id}>
                     <td className="text-brand-purple-dark/75 px-4 py-2 text-xs">
-                      {row.createdAt.toLocaleString("es-CO", {
-                        dateStyle: "short",
-                        timeStyle: "short",
-                      })}
+                      {formatDateTimeCO(row.createdAt)}
                     </td>
                     <td className="text-brand-purple-dark px-4 py-2 text-xs">
                       {adminMap.get(row.actorId) ?? (
@@ -247,6 +354,11 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
                       <span className="bg-brand-purple/10 text-brand-purple-dark rounded px-1.5 py-0.5">
                         {row.action}
                       </span>
+                      {(row.metadata as Record<string, unknown> | null)?.selfDealing === true && (
+                        <span className="ml-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-sans text-[10px] font-bold text-amber-800">
+                          auto-gestión staff
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-xs">
                       <span className="text-brand-purple-dark/85">{row.entityType}</span>

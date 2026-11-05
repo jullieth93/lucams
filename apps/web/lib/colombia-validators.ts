@@ -18,9 +18,8 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
 };
 
 /**
- * Regex por tipo. Solo validan estructura básica, NO ejecutan el dígito
- * de verificación NIT (eso requiere algoritmo módulo-11). El courier
- * Aveonline tampoco valida DV, así que es suficiente.
+ * Regex por tipo. Para NIT además verificamos el dígito de verificación DIAN
+ * (módulo 11) cuando el usuario ingresa el décimo dígito (ver `documentNumberMatchesType`).
  */
 const DOC_REGEX: Record<DocumentType, RegExp> = {
   CC: /^\d{6,10}$/, // 6-10 dígitos
@@ -33,7 +32,7 @@ const DOC_REGEX: Record<DocumentType, RegExp> = {
 const DOC_HELP_TEXT: Record<DocumentType, string> = {
   CC: "6 a 10 dígitos sin puntos ni espacios. Ej: 1234567890",
   CE: "6 a 7 dígitos. Ej: 1234567",
-  NIT: "9 dígitos + dígito verificación opcional. Ej: 900123456-7",
+  NIT: "9 dígitos + dígito verificación DIAN opcional. Ej: 900123456-8",
   PP: "Alfanumérico 6-12 caracteres. Ej: AB123456",
   TI: "8 a 11 dígitos. Ej: 1029384756",
 };
@@ -41,12 +40,26 @@ const DOC_HELP_TEXT: Record<DocumentType, string> = {
 /**
  * ¿El número cumple el formato de su tipo? Fuente ÚNICA de la regla — la
  * usan la validación cliente del checkout, el superRefine server del
- * ContactSchema (features/checkout/schemas.ts) y el perfil de /mi-cuenta.
+ * ContactSchema (features/checkout/schemas.ts), B2B y el perfil de /mi-cuenta.
+ *
+ * Para NIT:
+ *  - 9 dígitos (`900123456` o `900123456-`): válido; el DV se calcula al persistir.
+ *  - 9 dígitos + DV (`900123456-8` o `9001234568`): válido SOLO si el décimo
+ *    dígito coincide con `calculateNitDV(base9)` (algoritmo oficial DIAN módulo 11).
  */
 export function documentNumberMatchesType(type: DocumentType, value: string): boolean {
   const cleaned = value.trim();
   if (!cleaned) return false;
-  return DOC_REGEX[type].test(cleaned);
+  if (!DOC_REGEX[type].test(cleaned)) return false;
+  if (type === "NIT") {
+    const nitMatch = /^(\d{9})-?(\d)?$/.exec(cleaned);
+    if (!nitMatch) return false;
+    const [, base9, providedDv] = nitMatch;
+    if (providedDv !== undefined && providedDv !== calculateNitDV(base9)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function validateDocument(type: DocumentType, value: string): boolean {
@@ -77,6 +90,67 @@ export function calculateNitDV(nit: string): string {
   if (mod === 0) return "0";
   if (mod === 1) return "1";
   return String(11 - mod);
+}
+
+export type NitValidationResult = {
+  valid: boolean;
+  base9: string;
+  expectedDv: string;
+  providedDv: string | null;
+  normalized: string;
+  error: string | null;
+};
+
+/**
+ * Valida y normaliza un NIT colombiano (tolera puntos de miles y espacios al pegar,
+ * ej. `900.123.456-8` o `900123456`). Si se ingresa sin DV, calcula el DV DIAN
+ * oficial y devuelve `normalized = "900123456-8"`; si se ingresa con DV, exige
+ * que coincida con el módulo 11 DIAN.
+ */
+export function normalizeAndValidateNit(raw: string): NitValidationResult {
+  const compact = raw.trim().replace(/[.\s]/g, "");
+  if (!compact) {
+    return {
+      valid: false,
+      base9: "",
+      expectedDv: "",
+      providedDv: null,
+      normalized: "",
+      error: "Ingresa los 9 dígitos del NIT.",
+    };
+  }
+  const match = /^(\d{9})-?(\d)?$/.exec(compact);
+  if (!match) {
+    return {
+      valid: false,
+      base9: "",
+      expectedDv: "",
+      providedDv: null,
+      normalized: "",
+      error: "El NIT debe tener 9 dígitos (ej. 900123456 o 900123456-8).",
+    };
+  }
+  const [, base9, dvRaw] = match;
+  const expectedDv = calculateNitDV(base9);
+  const providedDv = dvRaw ?? null;
+  if (providedDv !== null && providedDv !== expectedDv) {
+    return {
+      valid: false,
+      base9,
+      expectedDv,
+      providedDv,
+      normalized: "",
+      error: `El dígito de verificación no coincide (para ${base9} el DV DIAN es ${expectedDv}).`,
+    };
+  }
+  return {
+    valid: true,
+    base9,
+    expectedDv,
+    providedDv,
+    normalized: `${base9}-${expectedDv}`,
+    error: null,
+  };
 }
 
 // ─── Teléfono ───
@@ -155,9 +229,22 @@ export function validateName(value: string): boolean {
 }
 
 /** Palabras separadas por espacio (colapsa múltiples). Sirve para los topes
- *  "máx 3 palabras de nombre / 2 de apellido" del perfil. */
+ *  "máx 5 palabras en nombre completo" y "máx 3 en nombres / 3 en apellidos". */
 export function countWords(value: string): number {
   return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Mensaje de error en vivo para campos de nombre/apellido, o `null` si es válido
+ * (o está vacío — la obligatoriedad se maneja aparte).
+ */
+export function personNameError(value: string, maxWords = 5): string | null {
+  const cleaned = value.trim();
+  if (!cleaned) return null;
+  if (cleaned.length < 2) return "Escribe al menos 2 letras.";
+  if (!NAME_REGEX.test(cleaned)) return "Solo puede tener letras (sin números ni símbolos).";
+  if (countWords(cleaned) > maxWords) return `Máximo ${maxWords} palabras.`;
+  return null;
 }
 
 /**

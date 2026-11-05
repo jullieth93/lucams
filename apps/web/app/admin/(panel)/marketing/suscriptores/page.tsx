@@ -19,7 +19,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Download, MailCheck } from "lucide-react";
+import { MailCheck } from "lucide-react";
 import {
   AdminBadge,
   AdminEmpty,
@@ -30,13 +30,14 @@ import {
   AdminTableBody,
   AdminTableHead,
   AdminTableRow,
-  AdminButton,
   KpiCard,
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listNewsletterSubscribers } from "@/features/newsletter/admin-service";
+import { ExportSubscribersCsvButton } from "./export-csv-button";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Suscriptores del newsletter",
@@ -75,12 +76,6 @@ export default async function AdminSuscriptoresPage({
   });
   const hasActiveFilters = !!q || status !== "all";
 
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-
   return (
     <AdminPage>
       <AdminPageHeader
@@ -97,12 +92,7 @@ export default async function AdminSuscriptoresPage({
           { label: "Marketing" },
           { label: "Suscriptores" },
         ]}
-        actions={
-          <AdminButton href="/admin/marketing/suscriptores/export" variant="secondary">
-            <Download className="h-4 w-4" />
-            Exportar CSV
-          </AdminButton>
-        }
+        actions={<ExportSubscribersCsvButton />}
       />
 
       <AdminPageBody>
@@ -210,10 +200,10 @@ export default async function AdminSuscriptoresPage({
                     )}
                   </td>
                   <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">
-                    {s.subscribedAt ? dateFmt.format(s.subscribedAt) : "—"}
+                    {s.subscribedAt ? formatDateCO(s.subscribedAt) : "—"}
                   </td>
                   <td className="text-brand-muted px-4 py-3 text-xs">
-                    {s.unsubscribedAt ? dateFmt.format(s.unsubscribedAt) : "—"}
+                    {s.unsubscribedAt ? formatDateCO(s.unsubscribedAt) : "—"}
                   </td>
                   <td className="text-brand-muted px-4 py-3 text-xs">{s.version ?? "—"}</td>
                 </AdminTableRow>

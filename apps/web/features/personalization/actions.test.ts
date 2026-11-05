@@ -49,6 +49,10 @@ const { state, MockStorageError } = vi.hoisted(() => {
       saveCanvasArgs: [] as Array<Record<string, unknown>>,
       createDraftArgs: [] as Array<Record<string, unknown>>,
       finalizeArgs: [] as Array<Record<string, unknown>>,
+      productBySlug: null as Record<string, unknown> | null,
+      assetById: null as Record<string, unknown> | null,
+      deletedAssetIds: [] as string[],
+      storageRemovedPaths: [] as string[][],
     },
   };
 });
@@ -97,6 +101,18 @@ vi.mock("@/lib/storage", () => ({
   },
   refreshCustomerUploadSignedUrl: async (path: string) => `https://signed.example/fresh/${path}`,
 }));
+vi.mock("@/lib/supabase/service", () => ({
+  supabaseService: {
+    storage: {
+      from: () => ({
+        remove: async (paths: string[]) => {
+          state.storageRemovedPaths.push(paths);
+          return { error: null };
+        },
+      }),
+    },
+  },
+}));
 vi.mock("@/lib/db", () => ({
   prisma: {
     designAsset: {
@@ -106,9 +122,17 @@ vi.mock("@/lib/db", () => ({
         if (state.assetCreateError) throw state.assetCreateError;
         return { id: "asset_1" };
       },
+      findUnique: async () => state.assetById,
       findMany: async () => state.galleryAssets,
+      delete: async (args: { where: { id: string } }) => {
+        state.deletedAssetIds.push(args.where.id);
+        return { id: args.where.id };
+      },
     },
-    product: { findUnique: async () => null },
+    product: {
+      findUnique: async () => null,
+      findFirst: async () => state.productBySlug,
+    },
   },
 }));
 vi.mock("./design-gallery", () => ({ getGalleryImageById: vi.fn(async () => null) }));
@@ -151,6 +175,7 @@ import {
   createDraftDesignAction,
   createLetterSetDesignAction,
   createNameDesignAction,
+  deleteDesignAssetAction,
   finalizeDesignAction,
   reopenDesignForEditAction,
   saveCanvasAction,
@@ -750,5 +775,111 @@ describe("reopenDesignForEditAction · READY→DRAFT misma sesión (fix F1.1, 20
       expect(res.message).not.toContain("referenced");
       expect(res.message).toContain("WhatsApp");
     }
+  });
+});
+
+describe("uploadDesignAssetAction · validación 300 DPI en primer upload sin designId ([STU-02])", () => {
+  beforeEach(() => {
+    state.uploadCalls = 0;
+    state.uploadArgs = [];
+    state.assetCreateCalls = 0;
+    state.assetCreateArgs = [];
+    state.uploadError = null;
+    state.assetCreateError = null;
+    state.rateLimitCalls = [];
+    state.rateLimitDeny = [];
+    state.productBySlug = null;
+  });
+
+  it("resuelve productSizeCm de la variante activa cuando designId aún es null", async () => {
+    state.productBySlug = {
+      personalizationSchema: { sizeCm: "6x6" },
+      variants: [{ attributes: { sizeCm: "6x6" } }, { attributes: { sizeCm: "9x9" } }],
+    };
+    const fd = makeUploadForm();
+    fd.set("productSlug", "set-fotoimanes-cuadrados");
+    fd.set("productSizeCm", "9x9");
+
+    const res = await uploadDesignAssetAction(fd);
+    expect(res.ok).toBe(true);
+    expect(state.uploadCalls).toBe(1);
+    expect(state.uploadArgs[0]?.productSizeCm).toBe("9x9");
+  });
+
+  it("ignora un productSizeCm arbitrario que no pertenezca al producto ni sus variantes activas", async () => {
+    state.productBySlug = {
+      personalizationSchema: { sizeCm: "7x9" },
+      variants: [{ attributes: { sizeCm: "7x9" } }],
+    };
+    const fd = makeUploadForm();
+    fd.set("productSlug", "fotoimanes-polaroid");
+    fd.set("productSizeCm", "999x999");
+
+    const res = await uploadDesignAssetAction(fd);
+    expect(res.ok).toBe(true);
+    expect(state.uploadCalls).toBe(1);
+    expect(state.uploadArgs[0]?.productSizeCm).toBe("7x9");
+  });
+});
+
+describe("deleteDesignAssetAction · acepta CUID real de Prisma y valida ownership", () => {
+  beforeEach(() => {
+    state.assetById = null;
+    state.deletedAssetIds = [];
+    state.storageRemovedPaths = [];
+    state.galleryAssets = [];
+    state.rateLimitCalls = [];
+    state.rateLimitDeny = [];
+  });
+
+  it("elimina un DesignAsset con id CUID (cm...) perteneciente a la sesión actual", async () => {
+    const cuid = "cmw2ujwk50026jyvqult49u2z";
+    state.assetById = {
+      id: cuid,
+      customerId: null,
+      sessionId: "sess_test",
+      storageUrl: "sess_test/pending/master.jpg",
+      canvasPath: "sess_test/pending/master.canvas.webp",
+      designId: null,
+      design: null,
+    };
+
+    const res = await deleteDesignAssetAction(cuid);
+    expect(res).toEqual({ ok: true });
+    expect(state.deletedAssetIds).toEqual([cuid]);
+    expect(state.storageRemovedPaths).toEqual([
+      ["sess_test/pending/master.jpg", "sess_test/pending/master.canvas.webp"],
+    ]);
+  });
+
+  it("rechaza con VALIDATION si el id es corto o contiene caracteres inválidos", async () => {
+    expect(await deleteDesignAssetAction("abc")).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Asset inválido",
+    });
+    expect(await deleteDesignAssetAction("cmw2ujwk50026/../../etc")).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Asset inválido",
+    });
+    expect(state.deletedAssetIds).toEqual([]);
+  });
+
+  it("bloquea con FORBIDDEN si pertenece a otra sesión o cliente", async () => {
+    const cuid = "cmw2ujwk50026jyvqult99999";
+    state.assetById = {
+      id: cuid,
+      customerId: null,
+      sessionId: "other_session",
+      storageUrl: "other/master.jpg",
+      canvasPath: null,
+      designId: null,
+      design: null,
+    };
+
+    const res = await deleteDesignAssetAction(cuid);
+    expect(res).toEqual({ ok: false, code: "FORBIDDEN", message: "No autorizado" });
+    expect(state.deletedAssetIds).toEqual([]);
   });
 });

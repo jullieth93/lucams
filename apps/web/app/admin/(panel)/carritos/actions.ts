@@ -123,7 +123,7 @@ function manualResultRedirect(id: string, email: string, r: ManualReminderResult
 
 /** Envío manual desde la pantalla de detalle (con preview). */
 export async function sendReminderAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CARTS_RECOVER });
   const id = String(formData.get("id") ?? "").trim();
   if (!CUID_RE.test(id)) redirect("/admin/carritos?error=Identificador%20inv%C3%A1lido");
 
@@ -157,7 +157,7 @@ const BulkCartIdsSchema = z
 
 /** Envío masivo desde la pantalla de confirmación (preview incluido). */
 export async function bulkSendRemindersAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CARTS_RECOVER });
 
   const ids = formData
     .getAll("ids")

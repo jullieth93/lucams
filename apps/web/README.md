@@ -9,12 +9,13 @@ el ORM y los seeds viven en `packages/db`.
 Desde la **raíz del repo** (recomendado — ver `Makefile`):
 
 ```bash
-make web-start     # dev server en http://localhost:4000 (nohup; log en tmp/logs/)
-make build         # build de producción (genera el cliente Prisma primero)
-make test-unit     # vitest
-make test-e2e      # playwright
-make typecheck     # tsc --noEmit
-make lint          # eslint --max-warnings 0
+make local-up      # levanta DB local + dev server en http://localhost:4000
+make web-start     # arranca solo el dev server en :4000 (nohup; log en tmp/logs/)
+make check         # gate rápido pre-push (format:check + typecheck + lint + guards + CMS)
+make test-local    # suite Vitest contra el stack local
+make test-rls      # suite RLS real contra Supabase local
+make test-e2e      # Playwright E2E
+make build         # build de producción (en host de 4 GB RAM: correr antes make db-local-stop)
 ```
 
 Equivalentes directos (desde la raíz con `--filter`, o parado en `apps/web`):

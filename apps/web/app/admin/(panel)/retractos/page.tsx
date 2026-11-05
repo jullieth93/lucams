@@ -7,6 +7,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Undo2 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { formatCOP, formatRelativeTime } from "@/lib/format";
 import { listRetractRequests } from "@/features/retract/service";
 import type { RetractStatus } from "@lucams/db";
@@ -18,6 +19,7 @@ import {
   AdminEmpty,
 } from "@/components/admin-page";
 import { RetractActions } from "./retract-actions";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Retractos" };
 
@@ -46,14 +48,9 @@ const FILTERS: Array<{ key: string; label: string }> = [
   { key: "all", label: "Todos" },
 ];
 
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
-
 export default async function AdminRetractosPage({ searchParams }: { searchParams: SearchParams }) {
-  await requireRole(["SUPERADMIN"]);
+  const session = await requireRole(ADMIN_ROLE_SETS.SUPPORT_CARE);
+  const canRefund = session.admin.role === "SUPERADMIN";
   const sp = await searchParams;
   const statusRaw = sp.status;
   const validStatus = (["PENDING", "APPROVED", "RECEIVED", "REFUNDED", "REJECTED"] as const).find(
@@ -118,11 +115,20 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
                   </div>
                   <p className="text-brand-purple-dark mt-1 text-sm">
                     {r.qty}× {r.productName} ·{" "}
-                    <span className="font-semibold">{formatCOP(r.refundAmount)}</span>
+                    <span className="font-semibold tabular-nums">{formatCOP(r.refundAmount)}</span>{" "}
+                    <span className="text-brand-muted text-xs">en efectivo</span>
                   </p>
+                  {r.pointsToRestore > 0 && r.status !== "REJECTED" && (
+                    <p className="text-brand-purple mt-1 inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium">
+                      💜{" "}
+                      {r.status === "REFUNDED"
+                        ? `${r.pointsToRestore.toLocaleString("es-CO")} Puntos Lucams restaurados al cliente`
+                        : `+${r.pointsToRestore.toLocaleString("es-CO")} Puntos Lucams se restauran al marcar reembolsado`}
+                    </p>
+                  )}
                   <p className="text-brand-muted text-xs">
                     {r.customerEmail} · solicitado{" "}
-                    <span title={dateFmt.format(r.requestedAt)}>
+                    <span title={formatDateCO(r.requestedAt)}>
                       {formatRelativeTime(r.requestedAt)}
                     </span>
                   </p>
@@ -140,7 +146,7 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
                   )}
                 </div>
                 <div className="sm:w-64 sm:flex-shrink-0">
-                  <RetractActions id={r.id} status={r.status} />
+                  <RetractActions id={r.id} status={r.status} canRefund={canRefund} />
                 </div>
               </li>
             ))}

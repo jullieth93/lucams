@@ -27,6 +27,9 @@ export function OrderActions({
   hasAddressKey = false,
   isInternalDelivery = false,
   needsReconciliation = false,
+  canTransition = true,
+  canReconcile = true,
+  canRefund: canRefundRole = true,
 }: {
   orderId: string;
   orderStatus: string;
@@ -40,6 +43,12 @@ export function OrderActions({
   isInternalDelivery?: boolean;
   /** Reconciliación pendiente: habilita "Marcar como gestionado" (2026-10-05). */
   needsReconciliation?: boolean;
+  /** S17: capacidad `orders:transition` (transiciones logísticas y guía). */
+  canTransition?: boolean;
+  /** S17: capacidad `orders:reconcile` (reconciliación manual y no-show). */
+  canReconcile?: boolean;
+  /** S17: rol `SUPERADMIN` (reembolso final y bloqueo de dirección COD). */
+  canRefund?: boolean;
 }) {
   const [retryState, retryAction, retryPending] = useActionState(retryShipmentAction, null);
   const [transState, transAction, transPending] = useActionState(transitionOrderAction, null);
@@ -52,28 +61,30 @@ export function OrderActions({
   const [reconState, reconAction, reconPending] = useActionState(markOrderReconciledAction, null);
   const isCod = paymentMethod === "COD";
   // Anti-abuso COD: no-show para pedidos COD no entregados; bloquear dirección si hay clave.
-  const showNoShow = isCod && !isNoShow && orderStatus !== "DELIVERED";
-  const showBlockAddr = isCod && hasAddressKey;
-  const showAntiAbuse = isCod && (showNoShow || showBlockAddr || isNoShow);
+  const showNoShow = canReconcile && isCod && !isNoShow && orderStatus !== "DELIVERED";
+  const showBlockAddr = canRefundRole && isCod && hasAddressKey;
+  const showAntiAbuse = isCod && (showNoShow || showBlockAddr || (canReconcile && isNoShow));
 
   const showRetry =
+    canTransition &&
     !isInternalDelivery &&
     (orderStatus === "PAID" || (orderStatus === "FULFILLING" && !hasTracking));
-  const showMarkShipped = orderStatus === "FULFILLING";
-  const showMarkDelivered = orderStatus === "SHIPPED";
+  const showMarkShipped = canTransition && orderStatus === "FULFILLING";
+  const showMarkDelivered = canTransition && orderStatus === "SHIPPED";
   // Cancelar (revierte stock, SIN reembolso). Para Wompi excluimos PAID: ahí el dinero
   // SÍ se capturó, así que la vía correcta es "Reembolsar" (REFUNDED). Para COD, PAID es
   // cancelable (efectivo nunca cobrado). (revisión adversarial COD)
   const cancelStates = isCod
     ? ["PENDING_PAYMENT", "PAID", "FULFILLING", "SHIPPED"]
     : ["PENDING_PAYMENT", "FULFILLING", "SHIPPED"];
-  const canCancel = cancelStates.includes(orderStatus);
+  const canCancel = canTransition && cancelStates.includes(orderStatus);
   // Reembolso = devolver dinero. Solo tiene sentido con dinero capturado: Wompi PAID/
   // DELIVERED, o COD DELIVERED (efectivo ya cobrado al entregar). COD no-entregado NO
   // se "reembolsa" (nunca se cobró) → se cancela.
-  const canRefund = isCod
-    ? orderStatus === "DELIVERED"
-    : ["PAID", "DELIVERED"].includes(orderStatus);
+  const canRefund =
+    canRefundRole &&
+    (isCod ? orderStatus === "DELIVERED" : ["PAID", "DELIVERED"].includes(orderStatus));
+  const showReconAction = canReconcile && needsReconciliation;
 
   if (
     !showRetry &&
@@ -82,12 +93,16 @@ export function OrderActions({
     !canCancel &&
     !canRefund &&
     !showAntiAbuse &&
-    !needsReconciliation
+    !showReconAction
   ) {
     return (
       <section className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
         <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones</h2>
-        <p className="text-brand-muted text-xs">Sin acciones disponibles para este estado.</p>
+        <p className="text-brand-muted text-xs">
+          {!canTransition && !canReconcile && !canRefundRole
+            ? "Vista de consulta (tu rol no ejecuta cambios de estado sobre pedidos)."
+            : "Sin acciones disponibles para este estado."}
+        </p>
       </section>
     );
   }
@@ -128,7 +143,7 @@ export function OrderActions({
       {/* Reconciliación pendiente (2026-10-05) — cierre manual del caso con nota
           OBLIGATORIA de resolución (queda en Order.reconciliationNote + auditoría).
           Va de primero: es la alerta más urgente del pedido. */}
-      {needsReconciliation && (
+      {showReconAction && (
         <>
           {(reconState?.success || reconState?.error) && (
             <div

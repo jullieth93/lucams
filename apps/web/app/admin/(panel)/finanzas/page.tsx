@@ -17,23 +17,29 @@ import type { PaymentMethod } from "@lucams/db";
 import {
   AdminBadge,
   AdminCard,
+  AdminComboBarLineChart,
+  AdminDeltaPill,
+  AdminDonutChart,
   AdminNotice,
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
 } from "@/components/admin-page";
-import { Hint } from "@/components/ui/tooltip";
+import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
 import {
+  COLLECTED_REVENUE_ORDER_WHERE,
+  computeNetCollectedRevenue,
   DEFAULT_PERIOD,
   FINANZAS_PERIODS,
   getPeriodAggregates,
   isFinanzasPeriod,
 } from "@/features/finanzas/service";
+import { ExportFinanzasCsvButton } from "./export-csv-button";
 
 export const metadata: Metadata = {
   title: "Finanzas",
@@ -55,7 +61,7 @@ const PAYMENT_METHOD_HINT: Record<PaymentMethod, string> = {
 };
 
 export default async function AdminFinanzasPage({ searchParams }: { searchParams: SearchParams }) {
-  const _session = await requireRole(["SUPERADMIN"]);
+  const session = await requireRole(ADMIN_ROLE_SETS.FINANCE);
   // Modo catálogo (Etapa 1): sin pagos en línea no hay finanzas que mostrar.
   // El nav ya oculta el módulo; esto cierra también el acceso por URL directa.
   if (isCatalogMode()) redirect("/admin/dashboard");
@@ -63,6 +69,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
   const sp = await searchParams;
   const periodoRaw = typeof sp.periodo === "string" ? sp.periodo : undefined;
   const periodo = isFinanzasPeriod(periodoRaw) ? periodoRaw : DEFAULT_PERIOD;
+  const canExportCsv = hasCapability(session.admin.role, "finance:export_csv");
 
   // Probar contadores reales: si hay alguna orden pagada en DB ya, los
   // mostramos; si no, mantenemos los placeholders educativos.
@@ -72,6 +79,8 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
     codDeliveredRevenue,
     codToCollect,
     totalRefunded,
+    retractRefundSummary,
+    warrantyRefundResolvedCount,
     ordersThisMonth,
     dianPending,
   ] = await Promise.all([
@@ -108,6 +117,28 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
       })
       .then((r) => r._sum?.total ?? 0),
     prisma.order.count({ where: { deletedAt: null, status: "REFUNDED" } }),
+    // [FIN-01] — retractos reembolsados sobre órdenes que siguen en estado cobrado (DELIVERED):
+    // se restan una sola vez sin doble conteo si la orden completa pasara a REFUNDED.
+    prisma.retractRequest
+      .aggregate({
+        where: {
+          status: "REFUNDED",
+          orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+        },
+        _sum: { refundAmount: true },
+        _count: { _all: true },
+      })
+      .then((r) => ({
+        totalCents: r._sum?.refundAmount ?? 0,
+        count: r._count?._all ?? 0,
+      })),
+    prisma.warrantyClaim.count({
+      where: {
+        status: "RESOLVED",
+        resolutionType: "REFUND",
+        orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+      },
+    }),
     prisma.order.count({
       where: {
         deletedAt: null,
@@ -123,13 +154,18 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
   // ADR-064 — efectivo COD entregado pendiente de remesa del mensajero + discrepancias.
   const codRecon = await getCodReconciliationTotals();
 
-  // Serie del período seleccionado + comparativa (mismo criterio de ingreso
-  // que los KPIs, menos el faltante COD que no tiene fecha para repartir).
+  // Serie del período seleccionado + comparativa.
   const periodoData = await getPeriodAggregates(periodo);
 
-  // El COD entregado se reconoce como cobrado, PERO el faltante confirmado por discrepancias (efectivo
-  // que el mensajero no remitió / se perdió) NO es caja real → se resta de "Ingresos" (review ADR-064).
-  const totalRevenue = wompiRevenue + codDeliveredRevenue - codRecon.shortfallCop;
+  // [FIN-01] — ingreso neto real = cobrado bruto (Wompi + COD entregado)
+  // menos discrepancias COD confirmadas y retractos reembolsados en efectivo.
+  const netBreakdown = computeNetCollectedRevenue({
+    wompiCollectedCents: wompiRevenue,
+    codDeliveredCents: codDeliveredRevenue,
+    codShortfallCents: codRecon.shortfallCop,
+    retractRefundedCents: retractRefundSummary.totalCents,
+  });
+  const totalRevenue = netBreakdown.netCollectedCents;
   const hasRealData = totalPaidOrders > 0;
 
   return (
@@ -143,6 +179,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
             : "Aún sin ventas registradas"
         }
         breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Finanzas" }]}
+        actions={canExportCsv ? <ExportFinanzasCsvButton periodo={periodo} /> : undefined}
       />
 
       <AdminPageBody>
@@ -158,11 +195,11 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi
             icon={<TrendingUp className="h-5 w-5" />}
-            label="Ingresos totales"
+            label="Ingresos netos"
             value={hasRealData ? formatCOP(totalRevenue) : "—"}
             hint={
               hasRealData
-                ? "Efectivo cobrado: Wompi + contra entrega ya entregado"
+                ? "Caja real: Wompi + contra entrega entregado − devoluciones y faltantes"
                 : "Disponible cuando haya ventas"
             }
             highlight={hasRealData}
@@ -229,6 +266,79 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
           </AdminNotice>
         )}
 
+        {hasRealData && netBreakdown.totalDeductionsCents > 0 && (
+          <AdminCard className="border-brand-purple/15 bg-gradient-to-r from-white to-purple-50/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-brand-purple-dark text-xs font-bold tracking-wide uppercase">
+                Puente de caja real (acumulado)
+              </h2>
+              <span className="text-brand-muted text-xs">
+                Cómo se calcula tu ingreso neto después de posventa y remesas
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="border-brand-purple/10 rounded-lg border bg-white p-3">
+                <span className="text-brand-muted block text-[11px] font-medium">
+                  Cobrado bruto (Wompi + COD entregado)
+                </span>
+                <span className="text-brand-purple-dark mt-0.5 block text-base font-bold tabular-nums">
+                  {formatCOP(netBreakdown.grossCollectedCents)}
+                </span>
+              </div>
+              <div className="border-brand-purple/10 rounded-lg border bg-white p-3">
+                <span className="text-brand-muted block text-[11px] font-medium">
+                  Deducciones en efectivo
+                </span>
+                <span className="mt-0.5 block text-base font-bold text-rose-700 tabular-nums">
+                  −{formatCOP(netBreakdown.totalDeductionsCents)}
+                </span>
+                <div className="text-brand-muted mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px]">
+                  {retractRefundSummary.count > 0 && (
+                    <Link
+                      href="/admin/retractos?status=REFUNDED"
+                      className="hover:text-brand-purple underline"
+                    >
+                      {retractRefundSummary.count} retracto
+                      {retractRefundSummary.count === 1 ? "" : "s"} (
+                      {formatCOP(retractRefundSummary.totalCents)})
+                    </Link>
+                  )}
+                  {codRecon.shortfallCop > 0 && (
+                    <Link
+                      href="/admin/finanzas/conciliacion"
+                      className="hover:text-brand-purple underline"
+                    >
+                      Faltante COD ({formatCOP(codRecon.shortfallCop)})
+                    </Link>
+                  )}
+                </div>
+              </div>
+              <div className="border-brand-purple/20 bg-brand-purple/5 rounded-lg border p-3">
+                <span className="text-brand-purple-dark/80 block text-[11px] font-semibold">
+                  Ingreso neto en caja
+                </span>
+                <span className="text-brand-purple-dark mt-0.5 block text-base font-bold tabular-nums">
+                  {formatCOP(netBreakdown.netCollectedCents)}
+                </span>
+              </div>
+            </div>
+          </AdminCard>
+        )}
+
+        {warrantyRefundResolvedCount > 0 && (
+          <AdminNotice tone="warning">
+            Hay <strong>{warrantyRefundResolvedCount}</strong> garantía
+            {warrantyRefundResolvedCount === 1 ? "" : "s"} resuelta
+            {warrantyRefundResolvedCount === 1 ? "" : "s"} con devolución de dinero cuyo pedido aún
+            figura como entregado. Si devolviste el total del pedido, márcalo como{" "}
+            <strong>Reembolsada</strong> en{" "}
+            <Link href="/admin/garantias?status=RESOLVED" className="font-semibold underline">
+              /admin/garantias
+            </Link>{" "}
+            para mantener la caja al día.
+          </AdminNotice>
+        )}
+
         {totalRefunded > 0 && (
           <AdminNotice tone="warning">
             Hay {totalRefunded} pedido{totalRefunded === 1 ? "" : "s"} reembolsado
@@ -260,8 +370,8 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                   aria-current={p.key === periodo ? "true" : undefined}
                   className={
                     p.key === periodo
-                      ? "bg-brand-purple rounded-full px-3 py-1 text-xs font-semibold text-white"
-                      : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/50 rounded-full border bg-white px-3 py-1 text-xs font-semibold transition-colors"
+                      ? "bg-brand-purple inline-flex min-h-9 items-center rounded-full px-3.5 py-1 text-xs font-semibold text-white"
+                      : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/50 inline-flex min-h-9 items-center rounded-full border bg-white px-3.5 py-1 text-xs font-semibold transition-colors"
                   }
                 >
                   {p.label}
@@ -270,71 +380,68 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
             </div>
           </div>
           <AdminCard className="p-5">
-            {periodoData.orderCount === 0 ? (
-              <p className="text-brand-muted text-sm">
-                Sin ventas cobradas en este período. Las barras aparecen solas apenas entre un
-                pedido pagado (Wompi) o entregado (contra entrega).
-              </p>
-            ) : (
-              <>
-                <p className="text-brand-muted mb-4 text-xs">
-                  <strong className="text-brand-purple-dark">
-                    {formatCOP(periodoData.totalCents)}
-                  </strong>{" "}
-                  cobrados en {periodoData.orderCount} pedido
-                  {periodoData.orderCount === 1 ? "" : "s"} ·{" "}
-                  {periodoData.range.bucket === "day"
-                    ? "una barra por día"
-                    : "una barra por semana"}
-                  .
-                </p>
-                <div
-                  className="flex h-40 items-end gap-1"
-                  role="img"
-                  aria-label="Gráfico de ingresos por período"
-                >
-                  {(() => {
-                    const max = Math.max(...periodoData.buckets.map((x) => x.totalCents));
-                    return periodoData.buckets.map((b, i) => {
-                      const heightPct =
-                        max > 0 ? Math.max(2, Math.round((b.totalCents / max) * 100)) : 2;
-                      return (
-                        <div
-                          key={b.start.toISOString()}
-                          className="flex min-w-0 flex-1 flex-col items-center justify-end self-stretch"
-                        >
-                          <Hint
-                            content={`${b.label}: ${formatCOP(b.totalCents)} (${b.count} pedido${b.count === 1 ? "" : "s"})`}
-                          >
-                            {/* admin-bar-grow: las barras crecen desde 0 al cargar,
-                                escalonadas 35ms por barra (globals.css). */}
-                            <div
-                              className={`admin-bar-grow w-full rounded-t ${
-                                b.totalCents > 0 ? "bg-brand-purple/80" : "bg-brand-purple/15"
-                              }`}
-                              style={{
-                                height: `${heightPct}%`,
-                                animationDelay: `${Math.min(i * 35, 700)}ms`,
-                              }}
-                            />
-                          </Hint>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-                <div className="mt-1 flex gap-1">
-                  {periodoData.buckets.map((b) => (
-                    <span
-                      key={b.start.toISOString()}
-                      className="text-brand-muted min-w-0 flex-1 truncate text-center text-[10px] tabular-nums"
-                    >
-                      {b.tickLabel}
-                    </span>
-                  ))}
-                </div>
-              </>
-            )}
+            {(() => {
+              const maxBucketCents = Math.max(0, ...periodoData.buckets.map((x) => x.totalCents));
+              return (
+                <>
+                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-brand-muted text-xs">
+                      <strong className="text-brand-purple-dark text-sm">
+                        {formatCOP(periodoData.netTotalCents)}
+                      </strong>{" "}
+                      netos en{" "}
+                      <strong className="text-brand-purple-dark">{periodoData.orderCount}</strong>{" "}
+                      pedido{periodoData.orderCount === 1 ? "" : "s"}
+                      {periodoData.retractRefundedCents > 0 ? (
+                        <>
+                          {" "}
+                          ({formatCOP(periodoData.totalCents)} brutos −{" "}
+                          {formatCOP(periodoData.retractRefundedCents)} en retractos)
+                        </>
+                      ) : null}{" "}
+                      ·{" "}
+                      {periodoData.range.bucket === "day"
+                        ? "evolución diaria"
+                        : "evolución semanal"}
+                      .
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <AdminDeltaPill
+                        deltaPct={periodoData.netRevenueDeltaPct}
+                        comparisonLabel={periodoData.range.previousLabel}
+                      />
+                    </div>
+                  </div>
+
+                  <AdminComboBarLineChart
+                    ariaLabel="Gráfico de ingresos cobrados y pedidos por período"
+                    barLegend="Ingresos cobrados (COP)"
+                    lineLegend="Pedidos confirmados"
+                    maxAxisFormatted={maxBucketCents > 0 ? formatCOP(maxBucketCents) : "$0"}
+                    midAxisFormatted={
+                      maxBucketCents > 0 ? formatCOP(Math.round(maxBucketCents / 2)) : undefined
+                    }
+                    data={periodoData.buckets.map((b) => ({
+                      key: b.start.toISOString(),
+                      label: b.label,
+                      tickLabel: b.tickLabel,
+                      barValue: b.totalCents,
+                      barFormatted: formatCOP(b.totalCents),
+                      lineValue: b.count,
+                      lineFormatted: `${b.count} pedido${b.count === 1 ? "" : "s"}`,
+                    }))}
+                  />
+
+                  {periodoData.orderCount === 0 ? (
+                    <p className="text-brand-muted mt-2 text-xs">
+                      Sin ventas cobradas en esta ventana. Las barras y la curva de pedidos se
+                      activan automáticamente apenas se confirme un pago en línea (Wompi) o se
+                      entregue un contra entrega.
+                    </p>
+                  ) : null}
+                </>
+              );
+            })()}
           </AdminCard>
         </section>
 
@@ -345,49 +452,59 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
               <CreditCard className="h-5 w-5" />
               Por método de pago
             </h2>
-            {periodoData.byMethod.length === 0 ? (
-              <p className="text-brand-muted text-sm">Sin ventas cobradas en este período.</p>
-            ) : (
-              <ul className="space-y-3">
-                {periodoData.byMethod.map((m) => (
-                  <li key={m.method}>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-brand-purple-dark text-sm font-semibold">
-                        {PAYMENT_METHOD_LABEL[m.method]}
-                      </span>
-                      <span className="text-brand-purple-dark text-sm font-bold tabular-nums">
-                        {formatCOP(m.totalCents)}
-                      </span>
-                    </div>
-                    <div className="bg-brand-purple/10 mt-1.5 h-2 overflow-hidden rounded-full">
-                      <div
-                        className="bg-brand-purple admin-bar-grow-x h-full rounded-full"
-                        style={{ width: `${m.pct}%` }}
-                      />
-                    </div>
-                    <p className="text-brand-muted mt-1 text-xs">
-                      {m.pct}% del período · {m.count} pedido{m.count === 1 ? "" : "s"} ·{" "}
-                      {PAYMENT_METHOD_HINT[m.method]}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <AdminDonutChart
+              ariaLabel="Participación de ingresos por método de pago"
+              centerValue={periodoData.orderCount > 0 ? formatCOP(periodoData.totalCents) : "$0"}
+              centerLabel={`${periodoData.orderCount} ped.`}
+              slices={(["WOMPI", "COD"] as const).map((method) => {
+                const agg = periodoData.byMethod.find((x) => x.method === method);
+                return {
+                  key: method,
+                  label: PAYMENT_METHOD_LABEL[method],
+                  count: agg?.totalCents ?? 0,
+                  formattedValue: formatCOP(agg?.totalCents ?? 0),
+                  tone: method === "WOMPI" ? "purple" : "turquoise",
+                  hint: `${agg?.count ?? 0} pedido${(agg?.count ?? 0) === 1 ? "" : "s"} · ${PAYMENT_METHOD_HINT[method]}`,
+                };
+              })}
+            />
           </AdminCard>
 
           <AdminCard className="p-5">
             <h2 className="text-brand-purple-dark font-display mb-4 flex items-center gap-2 text-base font-bold">
               <Receipt className="h-5 w-5" />
-              Ticket promedio (AOV)
+              Ticket promedio (AOV) y ritmo de pedidos
             </h2>
-            <div className="text-brand-purple-dark font-display text-3xl font-bold tabular-nums">
-              {periodoData.orderCount > 0 ? formatCOP(periodoData.aovCents) : "—"}
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <div className="text-brand-purple-dark font-display text-3xl font-bold tabular-nums">
+                {periodoData.orderCount > 0 ? formatCOP(periodoData.aovCents) : "—"}
+              </div>
+              <AdminDeltaPill
+                deltaPct={periodoData.aovDeltaPct}
+                comparisonLabel={periodoData.range.previousLabel}
+              />
             </div>
-            <p className="text-brand-muted mt-2 text-xs">
-              {periodoData.aovDeltaPct === null
-                ? `Sin comparativa: no hubo ventas en ${periodoData.range.previousLabel}.`
-                : `${periodoData.aovDeltaPct >= 0 ? "+" : ""}${periodoData.aovDeltaPct}% vs ${periodoData.range.previousLabel}.`}
-            </p>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50/80 p-3 text-xs">
+              <div>
+                <span className="text-brand-muted block text-[11px]">Pedidos en ventana</span>
+                <span className="text-brand-purple-dark text-base font-bold tabular-nums">
+                  {periodoData.orderCount.toLocaleString("es-CO")}
+                </span>
+              </div>
+              <div>
+                <span className="text-brand-muted block text-[11px]">
+                  Ventana previa ({periodoData.range.previousLabel})
+                </span>
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-brand-purple-dark text-base font-bold tabular-nums">
+                    {periodoData.previousOrderCount.toLocaleString("es-CO")}
+                  </span>
+                  <AdminDeltaPill deltaPct={periodoData.ordersDeltaPct} />
+                </div>
+              </div>
+            </div>
+
             <p className="text-brand-muted border-brand-purple/10 mt-3 border-t pt-3 text-xs">
               Promedio del total de cada pedido cobrado en la ventana seleccionada (incluye envío y
               descuentos, como sale del checkout).
@@ -422,33 +539,35 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
           </div>
         </section>
 
-        <AdminCard className="p-5">
-          <h3 className="text-brand-purple-dark font-display mb-2 text-base font-bold">
-            ¿Mientras tanto, qué puedo hacer?
-          </h3>
-          <p className="text-brand-purple-dark/75 mb-3 text-sm">
-            Mientras tanto, puedes ir dejando todo listo:
-          </p>
-          <ul className="text-brand-purple-dark/75 list-inside list-disc space-y-1.5 text-sm">
-            <li>
-              Crear cupones promocionales en{" "}
-              <Link href="/admin/cupones" className="text-brand-purple underline">
-                /admin/cupones
-              </Link>
-              .
-            </li>
-            <li>
-              Revisar pedidos por WhatsApp manual (los clientes pueden hacer wa.me directos hoy).
-            </li>
-            <li>
-              Tener listo el catálogo en{" "}
-              <Link href="/admin/productos" className="text-brand-purple underline">
-                /admin/productos
-              </Link>{" "}
-              con fotos reales y precios definitivos.
-            </li>
-          </ul>
-        </AdminCard>
+        {!hasRealData && (
+          <AdminCard className="p-5">
+            <h3 className="text-brand-purple-dark font-display mb-2 text-base font-bold">
+              ¿Mientras tanto, qué puedo hacer?
+            </h3>
+            <p className="text-brand-purple-dark/75 mb-3 text-sm">
+              Mientras tanto, puedes ir dejando todo listo:
+            </p>
+            <ul className="text-brand-purple-dark/75 list-inside list-disc space-y-1.5 text-sm">
+              <li>
+                Crear cupones promocionales en{" "}
+                <Link href="/admin/cupones" className="text-brand-purple underline">
+                  /admin/cupones
+                </Link>
+                .
+              </li>
+              <li>
+                Revisar pedidos por WhatsApp manual (los clientes pueden hacer wa.me directos hoy).
+              </li>
+              <li>
+                Tener listo el catálogo en{" "}
+                <Link href="/admin/productos" className="text-brand-purple underline">
+                  /admin/productos
+                </Link>{" "}
+                con fotos reales y precios definitivos.
+              </li>
+            </ul>
+          </AdminCard>
+        )}
       </AdminPageBody>
     </AdminPage>
   );

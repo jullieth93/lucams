@@ -72,6 +72,10 @@ export default async function CheckoutDatosPage() {
           priceCents: i.unitPrice,
           quantity: i.qty,
         }))}
+        funnelLines={ctx.cart.items.map((i) => ({
+          productSlug: i.productSlug,
+          editorKind: i.editorKind,
+        }))}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

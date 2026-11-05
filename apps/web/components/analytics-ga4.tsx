@@ -38,7 +38,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import Script from "next/script";
 import { usePathname, useSearchParams } from "next/navigation";
 import { hasAnalyticsConsent } from "@/lib/cookie-consent";
-import { GA_MEASUREMENT_ID, initGa4Queue, isGa4Ready } from "@/lib/analytics";
+import { GA_MEASUREMENT_ID, initGa4Queue, isGa4Ready, sanitizeAnalyticsUrl } from "@/lib/analytics";
 
 // La cookie de consentimiento como external store: el snapshot la lee en cada
 // render y la suscripción es el evento `cookie-consent-changed` (lo dispara
@@ -74,13 +74,13 @@ export function AnalyticsGa4() {
   // revocación mid-session detiene los pageviews aunque el script siga cargado.
   useEffect(() => {
     if (!consented || !isGa4Ready()) return;
-    const qs = searchParams.toString();
-    const url = qs ? `${pathname}?${qs}` : pathname;
-    if (lastPageviewRef.current === url) return;
-    lastPageviewRef.current = url;
+    const sanitized = sanitizeAnalyticsUrl(pathname, searchParams.toString());
+    if (!sanitized) return;
+    if (lastPageviewRef.current === sanitized.pageUrl) return;
+    lastPageviewRef.current = sanitized.pageUrl;
     window.gtag!("event", "page_view", {
-      page_path: pathname,
-      page_location: window.location.origin + url,
+      page_path: sanitized.pagePath,
+      page_location: window.location.origin + sanitized.pageUrl,
       page_title: document.title,
     });
   }, [consented, pathname, searchParams]);

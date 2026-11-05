@@ -6,6 +6,7 @@
  */
 
 import { useActionState } from "react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import {
   reviewWarrantyAction,
   approveWarrantyAction,
@@ -13,21 +14,17 @@ import {
   rejectWarrantyAction,
 } from "./actions";
 
-type St = { error?: string; success?: string } | null;
+type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
 export function WarrantyActions({ id, status }: { id: string; status: string }) {
   const [reviewSt, review, reviewPending] = useActionState<St, FormData>(
     reviewWarrantyAction,
     null,
   );
-  const [approveSt, approve, approvePending] = useActionState<St, FormData>(
-    approveWarrantyAction,
-    null,
-  );
-  const [resolveSt, resolve, resolvePending] = useActionState<St, FormData>(
-    resolveWarrantyAction,
-    null,
-  );
+  const [approveSt, approve, approvePending, approveReauthModal] =
+    useMfaReauthAction(approveWarrantyAction);
+  const [resolveSt, resolve, resolvePending, resolveReauthModal] =
+    useMfaReauthAction(resolveWarrantyAction);
   const [rejectSt, reject, rejectPending] = useActionState<St, FormData>(
     rejectWarrantyAction,
     null,
@@ -36,6 +33,8 @@ export function WarrantyActions({ id, status }: { id: string; status: string }) 
 
   return (
     <div className="space-y-2">
+      {approveReauthModal}
+      {resolveReauthModal}
       {msg && (msg.success || msg.error) && (
         <p className={`text-xs ${msg.success ? "text-emerald-700" : "text-rose-700"}`}>
           {msg.success ?? msg.error}

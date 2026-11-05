@@ -16,9 +16,9 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const consentFindMany = vi.hoisted(() => vi.fn(async (): Promise<unknown[]> => []));
+const queryRaw = vi.hoisted(() => vi.fn(async (): Promise<unknown[]> => []));
 
-vi.mock("@/lib/db", () => ({ prisma: { consent: { findMany: consentFindMany } } }));
+vi.mock("@/lib/db", () => ({ prisma: { $queryRaw: queryRaw } }));
 
 import {
   buildNewsletterCsv,
@@ -36,7 +36,7 @@ function rows(...r: NewsletterConsentRow[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  consentFindMany.mockResolvedValue([]);
+  queryRaw.mockResolvedValue([]);
 });
 
 describe("groupNewsletterConsents — dedupe último estado por email", () => {
@@ -161,74 +161,58 @@ describe("groupNewsletterConsents — dedupe último estado por email", () => {
   });
 });
 
-describe("listNewsletterSubscribers — contadores, filtros y paginación", () => {
-  const LEDGER = rows(
-    {
-      email: "carlos@example.com",
-      accepted: false,
-      acceptedAt: T("2026-09-12T10:00:00Z"),
-      version: "v1",
-    },
-    {
-      email: "carlos@example.com",
-      accepted: true,
-      acceptedAt: T("2026-09-05T10:00:00Z"),
-      version: "v1",
-    },
-    {
-      email: "ana@example.com",
-      accepted: true,
-      acceptedAt: T("2026-09-10T10:00:00Z"),
-      version: "v1",
-    },
-    {
-      email: "bea@example.com",
-      accepted: true,
-      acceptedAt: T("2026-09-08T10:00:00Z"),
-      version: "v1",
-    },
-  );
-
-  it("contadores reflejan el UNIVERSO deduplicado, no el filtro aplicado", async () => {
-    consentFindMany.mockResolvedValue(LEDGER);
+describe("listNewsletterSubscribers — contadores, filtros y paginación SQL (S11)", () => {
+  it("devuelve contadores del universo completo y total filtrado por separado", async () => {
+    queryRaw
+      .mockResolvedValueOnce([{ active: 2, unsubscribed: 1, total: 3, filtered_total: 2 }])
+      .mockResolvedValueOnce([
+        {
+          email: "ana@example.com",
+          status: "active",
+          subscribedAt: T("2026-09-10T10:00:00Z"),
+          unsubscribedAt: null,
+          version: "v1",
+        },
+        {
+          email: "bea@example.com",
+          status: "active",
+          subscribedAt: T("2026-09-08T10:00:00Z"),
+          unsubscribedAt: null,
+          version: "v1",
+        },
+      ]);
 
     const res = await listNewsletterSubscribers({ status: "active" });
 
     expect(res.counters).toEqual({ active: 2, unsubscribed: 1, total: 3 });
-    expect(res.total).toBe(2); // filtrado
+    expect(res.total).toBe(2);
     expect(res.items.map((s) => s.email)).toEqual(["ana@example.com", "bea@example.com"]);
+    expect(queryRaw).toHaveBeenCalledTimes(2);
   });
 
-  it("filtro q (case-insensitive) sobre el email", async () => {
-    consentFindMany.mockResolvedValue(LEDGER);
+  it("calcula totalPages sobre filtered_total y normaliza page <= 0 a 1", async () => {
+    queryRaw
+      .mockResolvedValueOnce([{ active: 5, unsubscribed: 0, total: 5, filtered_total: 5 }])
+      .mockResolvedValueOnce([]);
 
-    const res = await listNewsletterSubscribers({ q: "ANA@" });
+    const res = await listNewsletterSubscribers({ page: 0, pageSize: 2 });
 
-    expect(res.total).toBe(1);
-    expect(res.items[0]?.email).toBe("ana@example.com");
+    expect(res.page).toBe(1);
+    expect(res.pageSize).toBe(2);
+    expect(res.totalPages).toBe(3);
   });
 
-  it("pagina el resultado filtrado", async () => {
-    consentFindMany.mockResolvedValue(LEDGER);
+  it("ejecuta CTE DISTINCT ON parametrizada en Postgres sin cargar toda la tabla en Node", async () => {
+    await listNewsletterSubscribers({ q: "ANA@", status: "active", page: 2, pageSize: 10 });
 
-    const p1 = await listNewsletterSubscribers({ page: 1, pageSize: 2 });
-    const p2 = await listNewsletterSubscribers({ page: 2, pageSize: 2 });
-
-    expect(p1.items).toHaveLength(2);
-    expect(p1.totalPages).toBe(2);
-    expect(p2.items).toHaveLength(1);
-    // Sin solape entre páginas.
-    expect(p1.items.map((s) => s.email)).not.toContain(p2.items[0]?.email);
-  });
-
-  it("consulta solo el scope NEWSLETTER con email, ordenado acceptedAt desc", async () => {
-    await listNewsletterSubscribers();
-
-    expect(consentFindMany).toHaveBeenCalledWith({
-      where: { scope: "NEWSLETTER", email: { not: null } },
-      orderBy: { acceptedAt: "desc" },
-      select: { email: true, accepted: true, acceptedAt: true, version: true },
-    });
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    const callArgs = queryRaw.mock.calls[1] ?? [];
+    const serialized = JSON.stringify(callArgs);
+    expect(serialized).toContain('DISTINCT ON (LOWER(\\"email\\"))');
+    expect(serialized).toContain("LIMIT");
+    expect(serialized).toContain("OFFSET");
+    expect(serialized).toContain("%ana@%");
+    expect(serialized).toContain("active");
   });
 });
 

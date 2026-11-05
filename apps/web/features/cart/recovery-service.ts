@@ -13,6 +13,7 @@ import {
 import { renderCartRecoveryEmail } from "@/features/emails/registry";
 import { designDisplayUnits } from "@/features/personalization/design-units";
 import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
+import { resolveAbandonedCartContact } from "@/features/identity/resolution-service";
 
 /*
  * Recuperación de carrito abandonado (palanca de ingreso, auditoría 2026-07-13).
@@ -35,6 +36,40 @@ import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
+export type AbandonedCartSnapshotItem = {
+  productName: string;
+  productSlug: string;
+  variantName: string;
+  imageUrl: string | null;
+  qty: number;
+  unitPrice: number;
+  units?: number;
+  designId?: string | null;
+  designPreviewUrl?: string | null;
+};
+
+export function parseAbandonedItemsSnapshot(raw: unknown): AbandonedCartSnapshotItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AbandonedCartSnapshotItem[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const r = entry as Record<string, unknown>;
+    if (typeof r.productName !== "string" || typeof r.qty !== "number") continue;
+    out.push({
+      productName: r.productName,
+      productSlug: typeof r.productSlug === "string" ? r.productSlug : "",
+      variantName: typeof r.variantName === "string" ? r.variantName : "",
+      imageUrl: typeof r.imageUrl === "string" ? r.imageUrl : null,
+      qty: r.qty,
+      unitPrice: typeof r.unitPrice === "number" ? r.unitPrice : 0,
+      units: typeof r.units === "number" ? r.units : undefined,
+      designId: typeof r.designId === "string" ? r.designId : null,
+      designPreviewUrl: typeof r.designPreviewUrl === "string" ? r.designPreviewUrl : null,
+    });
+  }
+  return out;
+}
+
 /** Select compartido por el batch del cron y el envío manual (Fase 4). */
 const REMINDER_ROW_SELECT = {
   id: true,
@@ -42,9 +77,12 @@ const REMINDER_ROW_SELECT = {
   reminderCount: true,
   lastReminderSentAt: true,
   recoveredAt: true,
+  closedReason: true,
+  itemsSnapshot: true,
   cart: {
     select: {
       deletedAt: true,
+      deletedBy: true,
       items: {
         select: {
           qty: true,
@@ -65,8 +103,11 @@ type ReminderRow = {
   reminderCount: number;
   lastReminderSentAt: Date | null;
   recoveredAt: Date | null;
+  closedReason: string | null;
+  itemsSnapshot: unknown;
   cart: {
     deletedAt: Date | null;
+    deletedBy: string | null;
     items: Array<{
       qty: number;
       variant: { product: { name: string } };
@@ -75,15 +116,70 @@ type ReminderRow = {
   };
 };
 
-export async function recordAbandonedCartEmail(email: string): Promise<void> {
+export async function recordAbandonedCartEmail(
+  email: string,
+  checkoutStep: "DATOS" | "ENVIO" | "PAGO" = "DATOS",
+): Promise<void> {
   try {
     const sessionId = await peekCartSession();
     if (!sessionId) return;
     const cart = await prisma.cart.findFirst({
       where: { sessionId, deletedAt: null },
-      select: { id: true, _count: { select: { items: true } } },
+      select: {
+        id: true,
+        customerId: true,
+        items: {
+          select: {
+            qty: true,
+            unitPrice: true,
+            variant: {
+              select: {
+                name: true,
+                images: true,
+                product: { select: { name: true, slug: true, images: true } },
+              },
+            },
+            design: { select: { id: true, previewUrl: true, canvasData: true, metadata: true } },
+          },
+        },
+      },
     });
-    if (!cart || cart._count.items === 0) return;
+    if (!cart || cart.items.length === 0) return;
+    const contactId = await resolveAbandonedCartContact(prisma, {
+      cartCustomerId: cart.customerId ?? null,
+      email,
+    });
+    const itemsSnapshot: AbandonedCartSnapshotItem[] = cart.items.map((i) => {
+      const perDesign = designDisplayUnits(i.design);
+      return {
+        productName: i.variant.product.name,
+        productSlug: i.variant.product.slug,
+        variantName: i.variant.name,
+        imageUrl: i.variant.images[0] ?? i.variant.product.images[0] ?? null,
+        qty: i.qty,
+        unitPrice: i.unitPrice,
+        units: perDesign === null ? undefined : perDesign * i.qty,
+        designId: i.design?.id ?? null,
+        designPreviewUrl: i.design?.previewUrl ?? null,
+      };
+    });
+    const subtotalCents = cart.items.reduce((acc, i) => acc + i.qty * i.unitPrice, 0);
+
+    const existing = await prisma.abandonedCart.findUnique({
+      where: { cartId: cart.id },
+      select: { id: true, recoveredAt: true, checkoutStep: true },
+    });
+    // Si el registro histórico ya estaba recuperado por un pedido pagado previo,
+    // no borramos su atribución histórica.
+    if (existing?.recoveredAt) return;
+
+    const nextStep =
+      existing?.checkoutStep === "PAGO"
+        ? "PAGO"
+        : existing?.checkoutStep === "ENVIO" && checkoutStep === "DATOS"
+          ? "ENVIO"
+          : checkoutStep;
+
     // F-11: el token de recuperación NO se genera acá sino al enviar el
     // recordatorio (solo su hash toca la DB).
     await prisma.abandonedCart.upsert({
@@ -91,9 +187,19 @@ export async function recordAbandonedCartEmail(email: string): Promise<void> {
       create: {
         cartId: cart.id,
         email,
+        ...(contactId ? { contactId } : {}),
+        itemsSnapshot,
+        subtotalCents,
+        checkoutStep: nextStep,
       },
-      // Solo refresca el email si cambió; NO toca token/recovered/reminder (idempotente).
-      update: { email },
+      update: {
+        email,
+        ...(contactId ? { contactId } : {}),
+        itemsSnapshot,
+        subtotalCents,
+        checkoutStep: nextStep,
+        closedReason: null,
+      },
     });
   } catch (err) {
     logger.error({
@@ -103,16 +209,61 @@ export async function recordAbandonedCartEmail(email: string): Promise<void> {
   }
 }
 
+/**
+ * Actualiza el paso máximo alcanzado en checkout (`ENVIO` o `PAGO`) para el
+ * carrito activo de la sesión. Best-effort: nunca interrumpe el flujo de compra.
+ */
+export async function advanceAbandonedCartCheckoutStep(step: "ENVIO" | "PAGO"): Promise<void> {
+  try {
+    const sessionId = await peekCartSession();
+    if (!sessionId) return;
+    const cart = await prisma.cart.findFirst({
+      where: { sessionId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!cart) return;
+    if (step === "PAGO") {
+      await prisma.abandonedCart.updateMany({
+        where: { cartId: cart.id, recoveredAt: null },
+        data: { checkoutStep: "PAGO", closedReason: null },
+      });
+    } else {
+      await prisma.abandonedCart.updateMany({
+        where: {
+          cartId: cart.id,
+          recoveredAt: null,
+          OR: [{ checkoutStep: null }, { checkoutStep: "DATOS" }],
+        },
+        data: { checkoutStep: "ENVIO", closedReason: null },
+      });
+    }
+  } catch (err) {
+    logger.warn({
+      event: "abandoned_cart.advance_step.fail",
+      step,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 /** Items del correo: unidades físicas = unidades del diseño × qty de la línea. */
 function toEmailItems(row: ReminderRow): Array<{ name: string; qty: number; units?: number }> {
-  return row.cart.items.map((i) => {
-    const perDesign = designDisplayUnits(i.design);
-    return {
-      name: i.variant.product.name,
-      qty: i.qty,
-      units: perDesign === null ? undefined : perDesign * i.qty,
-    };
-  });
+  if (row.cart.items.length > 0) {
+    return row.cart.items.map((i) => {
+      const perDesign = designDisplayUnits(i.design);
+      return {
+        name: i.variant.product.name,
+        qty: i.qty,
+        units: perDesign === null ? undefined : perDesign * i.qty,
+      };
+    });
+  }
+  const snap = parseAbandonedItemsSnapshot(row.itemsSnapshot);
+  return snap.map((s) => ({
+    name: s.productName,
+    qty: s.qty,
+    units: s.units,
+  }));
 }
 
 type AttemptResult = "sent" | "skipped" | "circuit-open" | "failed";
@@ -206,6 +357,7 @@ export async function sendCartRecoveryReminders(
   const rows = await prisma.abandonedCart.findMany({
     where: {
       recoveredAt: null,
+      closedReason: null,
       createdAt: { gte: notOlderThan, lte: waitedAtLeast },
       // Fase 4 — N recordatorios por carrito: elegible si no llegó al tope Y
       // (nunca se le escribió O ya pasó el intervalo mínimo desde el último).
@@ -224,16 +376,35 @@ export async function sendCartRecoveryReminders(
   let recovered = 0;
   for (const row of rows) {
     try {
-      // Convertido: el saga soft-deletea el cart tras PAID → marcar recuperado y no molestar.
+      // Convertido: el saga soft-deletea el cart tras PAID (o cotización si quote:create).
       if (row.cart.deletedAt) {
-        await prisma.abandonedCart.update({ where: { id: row.id }, data: { recoveredAt: now } });
-        recovered++;
+        if (row.cart.deletedBy === "quote:create") {
+          await prisma.abandonedCart.update({
+            where: { id: row.id },
+            data: { closedReason: "QUOTE_CREATED" },
+          });
+        } else {
+          await prisma.abandonedCart.update({
+            where: { id: row.id },
+            data: { recoveredAt: now, closedReason: "ORDER_PAID" },
+          });
+          recovered++;
+        }
+        continue;
+      }
+      // Si el carrito vivo ya no tiene líneas, se vació manualmente — no enviar correo.
+      if (row.cart.items.length === 0) {
+        await prisma.abandonedCart.update({
+          where: { id: row.id },
+          data: {
+            closedReason: "CART_EMPTIED",
+            lastReminderSentAt: now,
+            reminderCount: { increment: 1 },
+          },
+        });
         continue;
       }
       const items = toEmailItems(row);
-      // Carrito vaciado → cuenta como "ya procesado" para no reconsiderarlo
-      // cada corrida (reminderCount también sube: con max 1 queda fuera para
-      // siempre, igual que el gate histórico de lastReminderSentAt NOT NULL).
       if (items.length === 0) {
         await markReminderSent(row.id, now);
         continue;
@@ -301,10 +472,30 @@ export async function sendReminderToCart(
   });
   if (!row) return { status: "failed", reason: "not-found" };
   if (row.recoveredAt) return { status: "recovered" };
+  if (row.closedReason === "QUOTE_CREATED" || row.closedReason === "CART_EMPTIED") {
+    return { status: "skipped", reason: "empty-cart" };
+  }
   // Conversión detectada al vuelo (el cron aún no la había marcado).
   if (row.cart.deletedAt) {
-    await prisma.abandonedCart.update({ where: { id: row.id }, data: { recoveredAt: now } });
+    if (row.cart.deletedBy === "quote:create") {
+      await prisma.abandonedCart.update({
+        where: { id: row.id },
+        data: { closedReason: "QUOTE_CREATED" },
+      });
+      return { status: "skipped", reason: "empty-cart" };
+    }
+    await prisma.abandonedCart.update({
+      where: { id: row.id },
+      data: { recoveredAt: now, closedReason: "ORDER_PAID" },
+    });
     return { status: "recovered" };
+  }
+  if (row.cart.items.length === 0) {
+    await prisma.abandonedCart.update({
+      where: { id: row.id },
+      data: { closedReason: "CART_EMPTIED" },
+    });
+    return { status: "skipped", reason: "empty-cart" };
   }
   const items = toEmailItems(row);
   if (items.length === 0) return { status: "skipped", reason: "empty-cart" };

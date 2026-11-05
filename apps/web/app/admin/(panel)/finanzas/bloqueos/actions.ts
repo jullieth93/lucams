@@ -27,7 +27,7 @@ export async function addBlockedIdentityAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.FINANCE_COD });
 
   const kind = String(formData.get("kind") ?? "");
   const value = String(formData.get("value") ?? "");
@@ -60,7 +60,7 @@ export async function removeBlockedIdentityAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.FINANCE_COD });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Falta el bloqueo a retirar." };

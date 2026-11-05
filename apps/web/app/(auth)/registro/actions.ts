@@ -35,8 +35,9 @@ import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
-import { NAME_REGEX, capitalizeName } from "@/lib/colombia-validators";
+import { NAME_REGEX, capitalizeName, countWords } from "@/lib/colombia-validators";
 import { recordHabeasDataConsent } from "@/features/consent/service";
+import { ensureCustomerContact } from "@/features/identity/resolution-service";
 import { attachReferral, findReferrerByCode } from "@/features/referrals/service";
 import { renderAccountExistsNoticeEmail } from "@/features/emails/registry";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -50,19 +51,22 @@ const SignupSchema = z
     password: z.string().min(8, "Mínimo 8 caracteres").max(72, "Máximo 72 caracteres"),
     passwordConfirm: z.string(),
     // Misma regla de nombre del checkout/perfil (lib/colombia-validators):
-    // solo letras y se persiste en title case (respeta de/del/la/las…).
+    // solo letras, máx 3 palabras por campo y se persiste en title case.
     firstName: z
       .string()
       .trim()
-      .min(1, "Tu nombre es obligatorio")
+      .min(2, "Escribe al menos 2 letras en tu nombre")
       .max(50, "Máximo 50 caracteres")
       .regex(NAME_REGEX, "Tu nombre solo puede tener letras")
+      .refine((v) => countWords(v) <= 3, "Máximo 3 palabras en el nombre")
       .transform(capitalizeName),
     lastName: z
       .string()
       .trim()
+      .min(2, "Escribe al menos 2 letras en tu apellido")
       .max(50, "Máximo 50 caracteres")
       .regex(NAME_REGEX, "El apellido solo puede tener letras")
+      .refine((v) => countWords(v) <= 3, "Máximo 3 palabras en el apellido")
       .transform(capitalizeName)
       .optional(),
     // Referidos v1 (2026-08-11): código opcional, se valida contra DB en la action.
@@ -292,6 +296,23 @@ export async function signupAction(
         createdBy: userId,
       },
     });
+
+    // ADR-193 (S15): dual-write de `Contact` + `ContactIdentity` al registrar cuenta.
+    // Si el signup aún requiere OTP (`!authData.session`), `EMAIL` permanece
+    // `UNVERIFIED_OBSERVED` hasta superar `confirmar-codigo` (nunca antes).
+    try {
+      await ensureCustomerContact(prisma, {
+        customerId: customer.id,
+        emailVerified: Boolean(authData.session),
+        verificationSource: authData.session ? "SUPABASE_SIGNUP_SESSION" : "SIGNUP_PENDING_OTP",
+      });
+    } catch (contactErr) {
+      logger.error({
+        event: "auth.signup.contact_sync_fail",
+        userId,
+        err: contactErr instanceof Error ? contactErr.message : String(contactErr),
+      });
+    }
 
     // Referidos v2 — ata del código (Referral PENDING + referredById + cupón
     // de bienvenida del referido, visible en /mi-cuenta/cupones). La

@@ -30,7 +30,7 @@
 import "server-only";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
-import type { Prisma } from "@lucams/db";
+import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { STOREFRONT_PRODUCT_WHERE } from "./storefront-visibility";
 
@@ -523,7 +523,7 @@ export type SearchResult = StorefrontProductCard & {
 
 export async function searchStorefrontProducts(
   rawQuery: string,
-  opts?: { limit?: number },
+  opts?: { limit?: number; categorySlug?: string; ocasionSlug?: string },
 ): Promise<SearchResult[]> {
   // #1 (perf/correctitud) — límite parametrizado. Default 8 (dropdown del header, sin cambios); en
   // /productos se pide 100 para traer TODO el set matcheado ANTES de filtrar/paginar (antes el LIMIT
@@ -554,6 +554,34 @@ export async function searchStorefrontProducts(
   const pattern = `%${safe}%`;
   const prefixPattern = `${safe}%`;
 
+  // [CX-01] — paridad con `buildStorefrontWhere`: si el usuario filtra por categoría padre
+  // (p.ej. `fotoimanes`), incluimos tanto la propia categoría como sus subcategorías hijas
+  // activas; y si filtra por ocasión (`ocasionSlug`), restringimos por `ProductOcasionTag`.
+  const categoryClause = opts?.categorySlug
+    ? Prisma.sql`AND (
+        c.slug = ${opts.categorySlug}
+        OR EXISTS (
+          SELECT 1 FROM "Category" cp
+          WHERE cp.id = c."parentId"
+            AND cp."deletedAt" IS NULL
+            AND cp."isActive" = true
+            AND cp.slug = ${opts.categorySlug}
+        )
+      )`
+    : Prisma.empty;
+
+  const ocasionClause = opts?.ocasionSlug
+    ? Prisma.sql`AND EXISTS (
+        SELECT 1
+        FROM "ProductOcasionTag" pot
+        JOIN "OcasionTag" ot ON ot.id = pot."ocasionTagId"
+        WHERE pot."productId" = p.id
+          AND ot.slug = ${opts.ocasionSlug}
+          AND ot."isActive" = true
+          AND ot."deletedAt" IS NULL
+      )`
+    : Prisma.empty;
+
   // Query principal: scoring híbrido.
   //   - 3.0 si match exacto en name (case-insensitive + unaccent)
   //   - 2.0 si prefix en name
@@ -580,6 +608,8 @@ export async function searchStorefrontProducts(
       AND p."isActive" = true
       AND c."deletedAt" IS NULL
       AND c."isActive" = true
+      ${categoryClause}
+      ${ocasionClause}
       AND (
         immutable_unaccent(LOWER(p.name)) LIKE immutable_unaccent(LOWER(${pattern}))
         OR immutable_unaccent(LOWER(p.description)) LIKE immutable_unaccent(LOWER(${pattern}))
@@ -609,11 +639,31 @@ export async function searchStorefrontProducts(
       AND p."isActive" = true
       AND c."deletedAt" IS NULL
       AND c."isActive" = true
+      ${categoryClause}
+      ${ocasionClause}
       AND similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})) > 0.1
     ORDER BY score DESC
     LIMIT 3
   `;
   return suggestions.map((r) => ({ ...mapRow(r), isSuggestion: true }));
+}
+
+export async function listStorefrontVolumeTiers(productId: string) {
+  return prisma.wholesaleTier.findMany({
+    where: {
+      isActive: true,
+      deletedAt: null,
+      OR: [{ productId }, { productId: null }],
+    },
+    select: {
+      productId: true,
+      minQty: true,
+      unitPrice: true,
+      isActive: true,
+      deletedAt: true,
+    },
+    orderBy: { minQty: "asc" },
+  });
 }
 
 function mapRow(r: {

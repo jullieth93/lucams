@@ -16,7 +16,7 @@ export async function updateProductCostAction(formData: FormData): Promise<void>
   // Costos = dato financiero sensible: solo SUPERADMIN. N-21 (2026-09-11): la action
   // era MANAGER_UP pero la ruta /admin/costos es solo-SUPER — las actions nunca más
   // permisivas que su pantalla (la ruta manda).
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.FINANCE });
 
   const productId = String(formData.get("productId") ?? "");
   if (!productId) backToCostos(`error=${encodeURIComponent("Falta el producto.")}`);

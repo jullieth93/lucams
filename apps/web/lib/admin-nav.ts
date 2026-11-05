@@ -38,7 +38,6 @@ import {
   Store,
   ShoppingBag,
   BookOpen,
-  Bot,
   TrendingUp,
   Gauge,
   Activity,
@@ -96,6 +95,13 @@ export const ADMIN_NAV: NavGroup[] = [
     href: "/admin/dashboard",
   },
   {
+    title: "Bandeja Hoy",
+    icon: HeartPulse,
+    href: "/admin/hoy",
+    description:
+      "Cola operativa priorizada por rol: tareas CRM vencidas, SLAs legales de retractos/garantías/soporte, bloqueos de taller y conciliación.",
+  },
+  {
     // Top-level (Lucy 2026-08-11): dentro del grupo colapsado "Analítica" la
     // campana no se veía — el negocio no se enteraba de los avisos. Ahora es
     // hoja visible con el pill de no-leídas siempre a la vista.
@@ -129,6 +135,13 @@ export const ADMIN_NAV: NavGroup[] = [
         icon: Users,
         description:
           "Customer 360: listado con filtros + perfil completo con pedidos, reseñas, direcciones, diseños, referidos y puntos de fidelidad.",
+      },
+      {
+        label: "Oportunidades B2B",
+        href: "/admin/oportunidades",
+        icon: Building2,
+        description:
+          "Pipeline consultivo para empresas, bodas, grados y pedidos por volumen captados en /empresas-y-eventos.",
       },
       {
         label: "Reseñas",
@@ -266,6 +279,13 @@ export const ADMIN_NAV: NavGroup[] = [
           "Audiencia del newsletter: emails suscritos (y dados de baja) con fecha y versión del aviso de privacidad. Exportable a CSV.",
       },
       {
+        label: "Segmentos CRM",
+        href: "/admin/marketing/segmentos",
+        icon: Users,
+        description:
+          "Audiencias comerciales (VIP, regalos, reactivación 90d, ocasión anual y alta intención sin compra) filtradas estrictamente por opt-in Ley 1581 vigente.",
+      },
+      {
         // Fase 4 (2026-10-13): bandeja del módulo de recuperación (antes el
         // recordatorio solo lo mandaba el cron a ciegas). Listado con estado,
         // envío manual a voluntad (con preview del correo) y config del módulo
@@ -353,14 +373,6 @@ export const ADMIN_NAV: NavGroup[] = [
         icon: Image,
         description:
           "Biblioteca de imágenes del sitio (banners, hero, logos). Sube una vez y reutiliza en los campos de imagen.",
-      },
-      {
-        label: "Bot WhatsApp",
-        href: "/admin/bot",
-        icon: Bot,
-        badge: { text: "Fase 5+", tone: "phase5" },
-        description:
-          "Asistente WhatsApp con IA (responder ¿qué le regalo a mi mamá? consultando base de conocimiento). Llega con Fase 5+.",
       },
     ],
   },
@@ -478,19 +490,15 @@ export const ADMIN_NAV: NavGroup[] = [
  * del sidebar (admin-shell.tsx) usa ESTA función.
  */
 export function getAdminNav(): NavGroup[] {
-  // Módulos futuros explícitamente descopeados: ocultos en TODOS los modos
-  // (decisión develop 5499161): Mercado Libre (Canales) y Bot WhatsApp IA.
+  // Módulo futuro explícitamente descopeado: oculto en TODOS los modos
+  // (decisión develop 5499161): Mercado Libre (Canales).
+  // Nota (`Fase 12 · S26`): `/admin/bot` ("Bot WhatsApp") se retiró definitivamente
+  // en favor del copiloto ARM Human-in-the-Loop integrado en `/admin/soporte/[id]`.
   const withoutFuture = ADMIN_NAV.map((group) => {
     if (group.title === "Canales" && group.items) {
       return {
         ...group,
         items: group.items.filter((it) => it.label !== "Mercado Libre"),
-      };
-    }
-    if (group.title === "Contenido" && group.items) {
-      return {
-        ...group,
-        items: group.items.filter((it) => it.label !== "Bot WhatsApp"),
       };
     }
     return group;

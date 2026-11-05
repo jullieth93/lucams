@@ -30,11 +30,56 @@ export class BlocklistError extends Error {
   }
 }
 
-/** Normaliza el valor según el kind (debe coincidir con lo que evalúa cod-risk): email en
- *  minúsculas; phone/address (clave) tal cual, solo trim. */
+/**
+ * Normaliza un teléfono humano a forma canónica de identidad anti-abuso ([SEC-03]):
+ *   - Móviles colombianos de 10 dígitos (`3XXXXXXXXX`), vengan como `+57 300 123 4567`,
+ *     `0057-300-123-4567`, `573001234567` o `300 123 4567` → `+573001234567`.
+ *   - Otros números telefónicos de 7..15 dígitos → `+<dígitos>`.
+ *   - Cadenas sintéticas con letras (p.ej. fixtures de tests `codrisk...-blk`) → trim sin destruir letras.
+ */
+export function normalizePhoneIdentity(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  if (/[a-zA-Z]/.test(trimmed)) return trimmed;
+
+  const compact = trimmed.replace(/[\s().\-\u00A0]/g, "");
+  const coWithPrefix = /^(?:\+?57|0057)(3\d{9})$/.exec(compact);
+  if (coWithPrefix) return `+57${coWithPrefix[1]}`;
+
+  const coLocalMobile = /^(3\d{9})$/.exec(compact);
+  if (coLocalMobile) return `+57${coLocalMobile[1]}`;
+
+  const intlDigits = /^\+?(\d{7,15})$/.exec(compact);
+  if (intlDigits) return `+${intlDigits[1]}`;
+
+  return compact;
+}
+
+/**
+ * Devuelve todas las variantes equivalentes de búsqueda para cubrir tanto filas nuevas
+ * canónicas (`+573001234567`) como filas históricas previas (`3001234567`, `573001234567`
+ * o con formato crudo) sin requerir migración destructiva.
+ */
+export function phoneIdentityVariants(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  const canonical = normalizePhoneIdentity(trimmed);
+  const out = new Set<string>([canonical, trimmed]);
+  const coMatch = /^\+57(3\d{9})$/.exec(canonical);
+  if (coMatch) {
+    out.add(coMatch[1]!);
+    out.add(`57${coMatch[1]!}`);
+  }
+  return [...out];
+}
+
+/** Normaliza el valor según el kind (coherente con `assessCodRisk`): email en minúsculas;
+ *  phone canónico (`+57...`); address (clave ya normalizada) con trim. */
 export function normalizeBlockValue(kind: BlockedIdentityKind, raw: string): string {
   const v = raw.trim();
-  return kind === "EMAIL" ? v.toLowerCase() : v;
+  if (kind === "EMAIL") return v.toLowerCase();
+  if (kind === "PHONE") return normalizePhoneIdentity(v);
+  return v;
 }
 
 export async function listBlockedIdentities(): Promise<BlockedIdentityRow[]> {

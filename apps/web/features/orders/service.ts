@@ -18,7 +18,10 @@
 
 import "server-only";
 import crypto from "node:crypto";
+import type { AdminRole } from "@lucams/db";
 import { prisma, Prisma } from "@/lib/db";
+import { hasCapability } from "@/lib/admin-rbac";
+import { maskOrderForActor } from "@/lib/pii-mask";
 import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
 import { assertStockAvailable, revertStockForOrder, variantDisplayName } from "./stock";
@@ -42,6 +45,7 @@ import { consolidateIdenticalLines } from "@/features/cart/design-identity";
 import { isPurchasableVariant } from "@/features/products/storefront-visibility";
 import { inventoryUnitsForOrderItem } from "@/features/personalization/design-units";
 import { hashBearerToken } from "@/lib/token-hash";
+import { resolveOrderContactTx } from "@/features/identity/resolution-service";
 import { resolveOrderCustomerId } from "./order-customer";
 import { sendOrderRefunded } from "./emails";
 import { assertTransactionalAllowed } from "@/lib/stage-guard";
@@ -146,6 +150,13 @@ export type CreateOrderFromCartInput = {
    */
   loyaltyPointsToRedeem?: number;
   notes?: string;
+  /** Atribución first-party sin PII (`Fase 12 · S25`, capturada con consentimiento de analíticas). */
+  attribution?: {
+    utmSource?: string | null;
+    utmMedium?: string | null;
+    utmCampaign?: string | null;
+    landingPath?: string | null;
+  } | null;
 };
 
 export type CreateOrderFromCartResult = {
@@ -457,10 +468,17 @@ async function createOrderFromCartTx(
     // re-valida DENTRO de la tx (config/balance vigentes): si dejó de ser válida,
     // LoyaltyRedemptionError aborta — el checkout limpia los puntos del state y
     // el cliente re-confirma viendo el total real (mismo criterio que #8).
+    // Defensa en profundidad ([ID-01]): los Puntos Lucams SOLO pueden cotizarse y
+    // debitarse contra el `Customer` autenticado de la sesión (`input.customerId`),
+    // jamás contra una cuenta distinta.
+    const loyaltyCustomerId =
+      orderCustomerId && input.customerId && orderCustomerId === input.customerId
+        ? orderCustomerId
+        : null;
     let loyaltyPointsRedeemed = 0;
     let loyaltyDiscount = 0;
     const loyaltyQuote = await quoteRedemptionForOrder({
-      customerId: orderCustomerId,
+      customerId: loyaltyCustomerId,
       requestedPoints: input.loyaltyPointsToRedeem,
       merchandiseAfterCouponCents: subtotal - discount,
     });
@@ -559,12 +577,31 @@ async function createOrderFromCartTx(
       isGift: input.gift?.isGift ?? false,
       giftMessage: input.gift?.isGift ? (input.gift?.giftMessage ?? null) : null,
     };
+    const orderContactId = await resolveOrderContactTx(tx, {
+      sessionCustomerId: orderCustomerId,
+      orderEmail: input.shipping.email,
+      buyerPhone: input.shipping.phone,
+      buyerFullName: input.shipping.fullName,
+      billingName: input.billing.name,
+      billingDocumentType: input.billing.documentType,
+      billingDocumentNumber: input.billing.documentNumber,
+      isGift: giftScalars.isGift,
+      hasThirdPartyRecipient: Boolean(giftScalars.recipientName || giftScalars.recipientPhone),
+    });
+    const attributionScalars = {
+      ...(input.attribution?.utmSource ? { utmSource: input.attribution.utmSource } : {}),
+      ...(input.attribution?.utmMedium ? { utmMedium: input.attribution.utmMedium } : {}),
+      ...(input.attribution?.utmCampaign ? { utmCampaign: input.attribution.utmCampaign } : {}),
+      ...(input.attribution?.landingPath ? { landingPath: input.attribution.landingPath } : {}),
+    };
     const orderScalars = {
       couponId, // F1 — null si no hubo cupón válido
       // Customer efectivo (resuelto por email de contacto arriba): también va en
       // escalares para que la RECONCILIACIÓN de una PENDING corrija un customerId
       // obsoleto (p. ej. órdenes creadas antes del fix del bug STG LCM-2026-0010).
       customerId: orderCustomerId,
+      ...(orderContactId ? { contactId: orderContactId } : {}),
+      ...attributionScalars,
       // Consentimiento de derechos de imagen (ADR-062 P0-2, Ley 1581): confirmar el pedido implica
       // aceptar las condiciones (titularidad/uso de las imágenes + autorización de impresión).
       contentRightsAcceptedAt: new Date(),
@@ -682,10 +719,10 @@ async function createOrderFromCartTx(
           points: existing.loyaltyPointsRedeemed,
         });
       }
-      if (loyaltyPointsRedeemed > 0 && orderCustomerId) {
+      if (loyaltyPointsRedeemed > 0 && loyaltyCustomerId) {
         await reserveRedeemedPoints(tx, {
           orderId: existing.id,
-          customerId: orderCustomerId,
+          customerId: loyaltyCustomerId,
           points: loyaltyPointsRedeemed,
         });
       }
@@ -728,10 +765,10 @@ async function createOrderFromCartTx(
     // Puntos Lucams — reserva atómica dentro de la tx: decremento gateado del
     // balance (LoyaltyRedemptionError si ya no alcanza → rollback completo) +
     // LoyaltyTxn REDEEM ligada a la orden recién creada.
-    if (loyaltyPointsRedeemed > 0 && orderCustomerId) {
+    if (loyaltyPointsRedeemed > 0 && loyaltyCustomerId) {
       await reserveRedeemedPoints(tx, {
         orderId: order.id,
-        customerId: orderCustomerId,
+        customerId: loyaltyCustomerId,
         points: loyaltyPointsRedeemed,
       });
     }
@@ -763,14 +800,36 @@ export async function clearCartAfterPaid(
   // Etapa 1 (modo catálogo): features/quotes lo reusa para vaciar el cart al
   // crear la cotización, con su propia marca de auditoría ("quote:create").
   deletedBy = "saga:order-paid",
+  orderId?: string,
 ): Promise<void> {
+  const now = new Date();
   await client.cart.updateMany({
     where: { id: cartId, deletedAt: null },
     data: {
-      deletedAt: new Date(),
+      deletedAt: now,
       deletedBy,
     },
   });
+
+  if ("abandonedCart" in client && client.abandonedCart) {
+    if (deletedBy === "saga:order-paid") {
+      await client.abandonedCart.updateMany({
+        where: { cartId, recoveredAt: null },
+        data: {
+          recoveredAt: now,
+          closedReason: "ORDER_PAID",
+          ...(orderId ? { recoveredOrderId: orderId } : {}),
+        },
+      });
+    } else if (deletedBy === "quote:create") {
+      await client.abandonedCart.updateMany({
+        where: { cartId, recoveredAt: null },
+        data: {
+          closedReason: "QUOTE_CREATED",
+        },
+      });
+    }
+  }
 }
 
 /**
@@ -1071,7 +1130,9 @@ export async function getOrder(idOrNumber: string) {
               // ADR-131 (2026-10-13) — el render 300 DPI corre en background tras el
               // finalize: con productionUrls vacío, el estado del RenderJob distingue
               // "en preparación" (PENDING/PROCESSING) de "falló" (FAILED) en el detalle.
-              renderJob: { select: { status: true, doneUnits: true, totalUnits: true } },
+              renderJob: {
+                select: { status: true, doneUnits: true, totalUnits: true, error: true },
+              },
               // Paquete C (2026-10-02) — aceptación explícita de calidad de fotos
               // (checkbox de la Vista Previa): evidencia ante reclamos de garantía.
               qualityAcknowledgedAt: true,
@@ -1088,6 +1149,17 @@ export async function getOrder(idOrNumber: string) {
       customer: { select: { id: true, email: true, firstName: true, lastName: true } },
     },
   });
+}
+
+/**
+ * S17 (Fase 8) — Obtiene un pedido aplicando enmascaramiento server-side de PII
+ * ANTES de devolverlo al componente RSC cuando el actor carece de `orders:read_pii`
+ * (ej. `PRINT_WORKSHOP`, `FULFILLMENT`).
+ */
+export async function getOrderForActor(idOrNumber: string, role: AdminRole) {
+  const order = await getOrder(idOrNumber);
+  if (!order) return null;
+  return maskOrderForActor(order, role);
 }
 
 /**
@@ -1190,12 +1262,15 @@ export type OrderListOpts = {
   sort?: "recent" | "oldest" | "total-desc";
   page?: number;
   pageSize?: number;
+  /** S17: cuando es `false`, restringe la búsqueda `q` a `number`/`trackingNumber` (anti-oráculo PII). */
+  allowPiiSearch?: boolean;
 };
 
 export async function listOrders(opts: OrderListOpts = {}) {
   const q = opts.q?.trim();
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = opts.pageSize ?? ORDER_PAGE_SIZE;
+  const allowPiiSearch = opts.allowPiiSearch !== false;
 
   const orderBy: Prisma.OrderOrderByWithRelationInput[] = (() => {
     switch (opts.sort) {
@@ -1215,23 +1290,29 @@ export async function listOrders(opts: OrderListOpts = {}) {
     ...(opts.needsReconciliation ? { needsReconciliation: true } : {}),
     ...(q
       ? {
-          OR: [
-            { number: { contains: q, mode: "insensitive" } },
-            { email: { contains: q, mode: "insensitive" } },
-            { phone: { contains: q } },
-            { customer: { firstName: { contains: q, mode: "insensitive" } } },
-            { customer: { lastName: { contains: q, mode: "insensitive" } } },
-            // Invitados (customerId null): el nombre vive en el snapshot JSON de
-            // envío — la tabla lo MUESTRA (fallback shipName) pero la búsqueda no
-            // lo encontraba; buscar a una invitada por su nombre devolvía 0 filas.
-            {
-              shippingAddress: {
-                path: ["fullName"],
-                string_contains: q,
-                mode: "insensitive",
-              },
-            },
-          ],
+          OR: allowPiiSearch
+            ? [
+                { number: { contains: q, mode: "insensitive" } },
+                { trackingNumber: { contains: q, mode: "insensitive" } },
+                { email: { contains: q, mode: "insensitive" } },
+                { phone: { contains: q } },
+                { customer: { firstName: { contains: q, mode: "insensitive" } } },
+                { customer: { lastName: { contains: q, mode: "insensitive" } } },
+                // Invitados (customerId null): el nombre vive en el snapshot JSON de
+                // envío — la tabla lo MUESTRA (fallback shipName) pero la búsqueda no
+                // lo encontraba; buscar a una invitada por su nombre devolvía 0 filas.
+                {
+                  shippingAddress: {
+                    path: ["fullName"],
+                    string_contains: q,
+                    mode: "insensitive",
+                  },
+                },
+              ]
+            : [
+                { number: { contains: q, mode: "insensitive" } },
+                { trackingNumber: { contains: q, mode: "insensitive" } },
+              ],
         }
       : {}),
   };
@@ -1256,6 +1337,22 @@ export async function listOrders(opts: OrderListOpts = {}) {
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+/**
+ * S17 (Fase 8) — Lista pedidos aplicando enmascaramiento server-side sobre email,
+ * teléfono, documento y dirección cuando el actor carece de `orders:read_pii`, y
+ * deshabilitando búsquedas por email/teléfono/nombre/dirección si no posee `orders:read_pii`
+ * (anti-oráculo de enumeración PII desde taller o despachos).
+ */
+export async function listOrdersForActor(opts: OrderListOpts, role: AdminRole) {
+  const canReadPii = hasCapability(role, "orders:read_pii");
+  const res = await listOrders({ ...opts, allowPiiSearch: canReadPii });
+  if (canReadPii) return res;
+  return {
+    ...res,
+    items: res.items.map((o) => maskOrderForActor(o, role)),
   };
 }
 

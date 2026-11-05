@@ -13,7 +13,10 @@
  */
 
 import "server-only";
+import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { hasCapability } from "@/lib/admin-rbac";
+import { maskEmail, maskPhone } from "@/lib/pii-mask";
 
 // Estados de pedido en los que un diseño AÚN puede/deber moderarse antes de imprimir.
 const ACTIVE_ORDER_STATUSES = ["PAID", "FULFILLING"] as const;
@@ -47,34 +50,33 @@ export type PendingModerationDesign = {
   shared: boolean;
 };
 
+const PENDING_MODERATION_WHERE = {
+  moderationStatus: "PENDING" as const,
+  OR: [
+    {
+      orderItems: {
+        some: { order: { status: { in: [...ACTIVE_ORDER_STATUSES] }, deletedAt: null } },
+      },
+    },
+    {
+      quoteItems: {
+        some: { quote: { status: { in: [...ACTIVE_QUOTE_STATUSES] }, deletedAt: null } },
+      },
+    },
+    { shareTokenHash: { not: null } },
+  ],
+};
+
+/** Conteo rápido para alertas operativas en el Dashboard admin. */
+export async function countPendingModeration(): Promise<number> {
+  return prisma.design.count({ where: PENDING_MODERATION_WHERE });
+}
+
 /** Cola de moderación: diseños PENDING de pedidos activos, cotizaciones activas
  *  o COMPARTIDOS por link público, más antiguos primero. */
 export async function listPendingModeration(): Promise<PendingModerationDesign[]> {
   const designs = await prisma.design.findMany({
-    where: {
-      moderationStatus: "PENDING",
-      // El OR con cotizaciones es lo que hace existir esta cola en la Etapa 1 (Lucy 2026-07-25).
-      // Filtrar solo por pedidos la dejaba ESTRUCTURALMENTE vacía —no hay pedidos mientras la tienda
-      // opera por cotización—, así que los 699 diseños de la base estaban en PENDING sin forma
-      // humana de aprobarlos y toda hoja de taller habría salido marcada "no imprimir".
-      //
-      // A4-01 (cert 2026-09-26): la tercera rama (shareTokenHash != null) cubre los diseños
-      // SOLO-COMPARTIDOS — el cliente los publica en /d/<token> sin pedido ni cotización, y sin
-      // esta rama nunca pasaban por moderación pese a ser contenido público.
-      OR: [
-        {
-          orderItems: {
-            some: { order: { status: { in: [...ACTIVE_ORDER_STATUSES] }, deletedAt: null } },
-          },
-        },
-        {
-          quoteItems: {
-            some: { quote: { status: { in: [...ACTIVE_QUOTE_STATUSES] }, deletedAt: null } },
-          },
-        },
-        { shareTokenHash: { not: null } },
-      ],
-    },
+    where: PENDING_MODERATION_WHERE,
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -115,6 +117,24 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
         contacto: q.quote.customerWhatsapp,
       })),
     ]),
+  }));
+}
+
+/**
+ * S17 (Fase 8) — Cola de moderación con enmascaramiento server-side de PII
+ * (`sources[].contacto`) cuando el actor carece de `orders:read_pii` (`PRINT_WORKSHOP`).
+ */
+export async function listPendingModerationForActor(
+  role: AdminRole,
+): Promise<PendingModerationDesign[]> {
+  const rows = await listPendingModeration();
+  if (hasCapability(role, "orders:read_pii")) return rows;
+  return rows.map((row) => ({
+    ...row,
+    sources: row.sources.map((s) => ({
+      ...s,
+      contacto: s.tipo === "pedido" ? maskEmail(s.contacto) : maskPhone(s.contacto),
+    })),
   }));
 }
 

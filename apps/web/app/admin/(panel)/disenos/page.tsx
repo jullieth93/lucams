@@ -8,9 +8,10 @@
  */
 
 import type { Metadata } from "next";
+import { Shapes } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
-import { AdminPageBody } from "@/components/admin-page";
+import { AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
 import { listGalleryAdmin, listGalleryTagOptions } from "@/features/personalization/design-gallery";
 import { GalleryManager } from "./gallery-manager";
 import { FichasSection } from "./fichas-section";
@@ -37,23 +38,25 @@ export default async function DisenosAdminPage() {
     listGalleryTagOptions(),
   ]);
   return (
-    // AdminPageBody aporta el padding responsive (px-4 sm:px-6): sin él, en móvil
-    // el header y las tarjetas quedaban pegados al borde de la pantalla (2026-10-01).
-    <AdminPageBody>
-      <div className="mx-auto max-w-4xl">
-        <header className="mb-6">
-          <h1 className="text-brand-purple-dark font-display text-2xl">Diseños prediseñados</h1>
-          <p className="text-brand-muted mt-1 text-sm">
-            Todo el material visual tuyo que alimenta el Estudio: diseños listos por producto (el
-            cliente los aplica con un toque en vez de subir su propia foto) y las fichas ilustradas
-            del abecedario para el editor de nombres.
-          </p>
-        </header>
-        <DisenosTabs
-          productos={<GalleryManager items={items} tagOptions={tagOptions} />}
-          fichas={<FichasSection />}
-        />
-      </div>
-    </AdminPageBody>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Shapes className="h-5 w-5" />}
+        title="Diseños prediseñados y fichas"
+        subtitle="Todo el material visual que alimenta el Estudio: diseños listos por producto y fichas ilustradas del abecedario."
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Catálogo" },
+          { label: "Diseños prediseñados" },
+        ]}
+      />
+      <AdminPageBody>
+        <div className="mx-auto max-w-5xl">
+          <DisenosTabs
+            productos={<GalleryManager items={items} tagOptions={tagOptions} />}
+            fichas={<FichasSection />}
+          />
+        </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }

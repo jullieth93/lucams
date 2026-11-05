@@ -13,6 +13,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight, FileText } from "lucide-react";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { listQuotes } from "@/features/quotes/admin-service";
@@ -30,6 +31,7 @@ import {
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Cotizaciones" };
 
@@ -51,14 +53,6 @@ const STATUS_TONE: Record<QuoteStatus, "amber" | "blue" | "emerald" | "slate"> =
 
 const QUOTE_STATUSES = Object.keys(STATUS_LABEL) as QuoteStatus[];
 
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
 function pickString(sp: Record<string, string | string[] | undefined>, key: string) {
   const v = sp[key];
   return typeof v === "string" ? v : undefined;
@@ -76,7 +70,7 @@ export default async function AdminCotizacionesPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireRole(["SUPERADMIN", "MANAGER"]);
+  await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
 
   const sp = await searchParams;
   const q = pickString(sp, "q");
@@ -265,7 +259,7 @@ export default async function AdminCotizacionesPage({
                     </AdminBadge>
                   </td>
                   <td className="text-brand-muted px-4 py-3 text-xs">
-                    {dateFmt.format(quote.createdAt)}
+                    {formatDateTimeCO(quote.createdAt)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link

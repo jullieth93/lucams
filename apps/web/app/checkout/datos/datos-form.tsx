@@ -42,9 +42,11 @@ import { getZoneCityByCode } from "@/lib/lucams-zones";
 import {
   DOCUMENT_TYPE_LABELS,
   capitalizeName,
+  countWords,
   cruceNumberError,
   formatPhone,
   getDocumentHelp,
+  personNameError,
   stripPhone,
   validateDocument,
   validateName,
@@ -742,8 +744,11 @@ export function DatosForm({
   }
 
   // Validaciones derivadas
+  const fullNameClientErr =
+    fullName.length > 0 && touched.fullName ? personNameError(fullName, 5) : null;
   const isPhoneValid = phoneDisplay.length === 0 || validatePhone(phoneDisplay);
-  const isNameValid = fullName.length === 0 || validateName(fullName);
+  const isNameValid =
+    fullName.length === 0 || (validateName(fullName) && countWords(fullName) <= 5);
   const isEmailValid = email.length === 0 || isValidEmail(email);
   const isDocValid = !docType || docNumber.length === 0 || validateDocument(docType, docNumber);
 
@@ -825,7 +830,10 @@ export function DatosForm({
     const req = (empty: boolean) => (sc > 0 && empty ? texts.requiredField : null);
     const fullNameErr =
       req(!fullName.trim()) ??
-      (fullName.length > 0 && !isNameValid && tch.fullName ? texts.nameError : null) ??
+      (fullName.length > 0 && !isNameValid && tch.fullName
+        ? (personNameError(fullName, 5) ?? texts.nameError)
+        : null) ??
+      fullNameClientErr ??
       err("fullName");
     const emailErr =
       req(!email.trim()) ??
@@ -872,9 +880,7 @@ export function DatosForm({
         : null) ?? err("altPhone");
     const recipientNameErr =
       req(!recipientName.trim()) ??
-      (recipientName.length > 0 && !validateName(recipientName) && tch.recipientName
-        ? "Solo letras, espacios y acentos (sin números)"
-        : null) ??
+      (recipientName.length > 0 && tch.recipientName ? personNameError(recipientName, 5) : null) ??
       err("recipientName");
     const recipientPhoneErr =
       req(!recipientPhoneDisplay.replace(/\D/g, "")) ??

@@ -15,6 +15,7 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { orderStatusBadgeClass, orderStatusLabel } from "@/features/orders/order-status-display";
 import { getAccountTexts } from "../account-texts.server";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Mis pedidos",
@@ -45,12 +46,6 @@ export default async function MisPedidosPage() {
       createdAt: true,
       _count: { select: { items: true } },
     },
-  });
-
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
   });
 
   return (
@@ -110,7 +105,7 @@ export default async function MisPedidosPage() {
                       </span>
                     </div>
                     <div className="text-brand-muted mt-0.5 text-xs">
-                      {dateFmt.format(o.createdAt)} · {o._count.items}{" "}
+                      {formatDateCO(o.createdAt)} · {o._count.items}{" "}
                       {o._count.items === 1 ? texts.orders.itemSingle : texts.orders.itemMany}
                       {o.trackingNumber && (
                         <>
