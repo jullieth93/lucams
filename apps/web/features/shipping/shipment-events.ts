@@ -123,3 +123,15 @@ export async function listShipmentEvents(orderId: string) {
     },
   });
 }
+
+/**
+ * "EN BODEGA DESTINO" → "En bodega destino". Humaniza el estado crudo del carrier
+ * para el timeline del cliente cuando el evento no trae descripción (2026-11-05:
+ * antes se mostraba la etiqueta genérica «Guía registrada» en TODOS los hitos sin
+ * descripción, escondiendo el avance real del paquete).
+ */
+export function humanizeCarrierStatus(raw: string): string {
+  const clean = raw.trim().replace(/\s+/g, " ").toLowerCase();
+  if (!clean) return "";
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}

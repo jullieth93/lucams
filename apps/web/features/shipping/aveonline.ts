@@ -1427,14 +1427,27 @@ export function mapAveonlineStatus(raw: string): TrackingStatus["status"] {
     s.includes("REPARTO") ||
     s.includes("TRANSITO") ||
     s.includes("TRÁNSITO") ||
-    s.includes("CAMINO")
+    s.includes("CAMINO") ||
+    // No canónicos vistos en producción (Envía vía Aveonline, pedido real
+    // LCM-2026-0004, 2026-11-04): "EN BODEGA ORIGEN"/"EN BODEGA DESTINO" y
+    // variantes de tránsito por centros logísticos. Sin este mapeo la orden
+    // quedaba en "Preparando" (FULFILLING) con el paquete ya viajando y el
+    // cliente jamás recibía el email «En camino».
+    s.includes("BODEGA") ||
+    s.includes("CENTRO LOG") ||
+    s.includes("RUTA") ||
+    s.includes("SALIO") ||
+    s.includes("SALIÓ")
   )
     return "IN_TRANSIT";
   if (
     s.includes("DESPACHO") ||
     s.includes("DESPACHAD") ||
     s.includes("ADMITID") ||
-    s.includes("PRODUCIDA")
+    s.includes("PRODUCIDA") ||
+    // "MERCANCIA RECOGIDA" / "RECOGIDO" (Envía, mismo caso real): el carrier ya
+    // recogió el paquete en origen → equivale a despachado.
+    s.includes("RECOGID")
   )
     return "DISPATCHED";
   return "PENDING";
