@@ -84,4 +84,4 @@ Queremos resolverlo directamente contigo, de la mejor manera. Pero si no quedas 
 
 ---
 
-_Versión 2 · vigente desde 2026-11-02_
+_Versión 3 · vigente desde 2026-11-05_

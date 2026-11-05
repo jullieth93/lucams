@@ -70,7 +70,7 @@ El archivo legible por máquina con nuestra información de contacto de segurida
 
 ---
 
-_Versión 2 · vigente desde 2026-11-02_
+_Versión 3 · vigente desde 2026-11-05_
 `;
 
 export default function Page() {
@@ -79,7 +79,7 @@ export default function Page() {
       <LegalPageHeader
         blockKey="legal.security.heading"
         defaultTitle="Seguridad"
-        lastUpdated="Última actualización: 2026-11-02 · Versión 2"
+        lastUpdated="Última actualización: 2026-11-05 · Versión 3"
       />
       <CmsMarkdown blockKey="legal.security" fallback={FALLBACK} className="mt-6" />
     </>

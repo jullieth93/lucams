@@ -141,7 +141,7 @@ describe("contenido legal — el fallback renderizado coincide con la fuente can
  * la Ley 1581 se rompe en silencio, y justo en el flujo nuevo.
  */
 describe("contenido legal — versionado coherente", () => {
-  it("los 8 documentos declaran la MISMA versión (paquete v2 · 2026-11-02)", () => {
+  it("los 8 documentos declaran la MISMA versión (paquete v3 · 2026-11-05)", () => {
     const versionOf = (name: string) =>
       canonicalMarkdown(name)
         .match(/Versión (\d+) · vigente desde (\d{4}-\d{2}-\d{2})/)
