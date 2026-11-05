@@ -885,6 +885,11 @@ export async function mergeContactsByHumanApproval(input: {
       if (!survivor.ownerAdminId && absorbed.ownerAdminId) {
         survivorPatch.ownerAdminId = absorbed.ownerAdminId;
       }
+      // La marca de equipo NUNCA se pierde en una fusión: si cualquiera de los dos
+      // contactos es staff, el sobreviviente hereda isStaff (guardrail 2026-11-04).
+      if (!survivor.isStaff && absorbed.isStaff) {
+        survivorPatch.isStaff = true;
+      }
 
       await tx.contact.update({
         where: { id: survivor.id },

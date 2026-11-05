@@ -185,6 +185,10 @@ model Contact {
   ownerAdmin       AdminUser?    @relation("ContactOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
   // "CUSTOMER_AUTH" | "GUEST_ORDER" | "SUPPORT_TICKET" | "QUOTE" | "ABANDONED_CART" | "NEWSLETTER" | "B2B_INQUIRY" | "MANUAL"
   source           String        @default("GUEST_ORDER")
+  // true si la persona es miembro activo del equipo (su email coincide con un AdminUser).
+  // La marca la mantienen provisionStaffAdmin y el resolution-service (2026-11-04):
+  // excluye al staff de segmentos/RFM/LTV y habilita el flag `selfDealing` en auditoría.
+  isStaff          Boolean       @default(false)
   anonymizedAt     DateTime?
 
   customer                   Customer?

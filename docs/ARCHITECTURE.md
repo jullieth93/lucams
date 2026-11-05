@@ -134,7 +134,7 @@ lucams_shop/
 │       ├── prisma/
 │       │   ├── schema.prisma
 │       │   └── migrations/               # prisma migrate (91 migraciones,
-│       │                                 #   70 modelos de dominio)
+│       │                                 #   71 modelos de dominio)
 │       ├── scripts/                      # cms-site-map.mjs, migrate-cms-v2.mjs,
 │       │                                 # sync-and-prune-cms-v2.mjs,
 │       │                                 # backfill-contacts.mjs,

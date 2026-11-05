@@ -282,6 +282,17 @@ export async function provisionStaffAdmin(email: string, role: AdminRole, actorA
     select: { id: true },
   });
 
+  // Guardrail staff=cliente (2026-11-04): todo Contact existente con este email queda
+  // marcado isStaff — el equipo puede comprar (dogfooding legítimo) pero sus compras
+  // no contaminan segmentos/RFM/LTV y sus auto-gestiones quedan auditadas. Los Contact
+  // que nazcan DESPUÉS con este email los marca el resolution-service en cada flujo vivo.
+  await prisma.contact
+    .updateMany({
+      where: { primaryEmail: normalizedEmail, deletedAt: null, isStaff: false },
+      data: { isStaff: true },
+    })
+    .catch(() => null); // best-effort: el alta del admin no puede fallar por la marca
+
   if (softDeleted) {
     return prisma.adminUser.update({
       where: { id: softDeleted.id },

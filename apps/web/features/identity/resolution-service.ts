@@ -592,7 +592,35 @@ async function resolveOrCreateEmailContactTx(
     });
   }
 
+  await markStaffContactIfAdminTx(tx, contact.id, email);
+
   return contact.id;
+}
+
+/**
+ * Guardrail staff=cliente (2026-11-04): si el email pertenece a un `AdminUser` activo,
+ * el `Contact` queda marcado `isStaff` (exclusión de segmentos/RFM/LTV y flag
+ * `selfDealing` en auditoría admin). NUNCA se desmarca desde flujos vivos: retirar la
+ * marca (ej. ex-empleado) es decisión manual del SUPERADMIN en la ficha del contacto.
+ * Best-effort por diseño: una falla acá no puede romper checkout ni registro.
+ */
+async function markStaffContactIfAdminTx(
+  tx: Prisma.TransactionClient,
+  contactId: string,
+  normalizedEmail: string,
+): Promise<void> {
+  if (!normalizedEmail) return;
+  try {
+    const staff = await tx.adminUser.findFirst({
+      where: { email: normalizedEmail, deletedAt: null },
+      select: { id: true },
+    });
+    if (staff) {
+      await tx.contact.update({ where: { id: contactId }, data: { isStaff: true } });
+    }
+  } catch {
+    // best-effort: nunca bloquear el flujo de negocio por la marca de staff
+  }
 }
 
 /**
@@ -766,6 +794,8 @@ export async function ensureCustomerContactTx(
       contextSource: "CUSTOMER_PROFILE",
     });
   }
+
+  await markStaffContactIfAdminTx(tx, contactId, email);
 
   // Solo tras posesión verificada del correo adoptamos registros previos sin `contactId`
   // que compartan exactamente ese email (o `customerId`).
