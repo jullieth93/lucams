@@ -205,7 +205,7 @@ describe("ProductCard", () => {
 ### Setup
 
 > **Setup real (verificado 2026-09-03):** los tests de integración NO levantan Supabase solos —
-> corren contra la DB que apunte `DATABASE_URL` de `.env.local` (cargado por `tests/setup-env.ts`).
+> corren contra la DB que apunte `DATABASE_URL` de `.env.local` (cargado por `tests/setup-env.ts`). Además `setup-env.ts` fija `EMAIL_SEND_DISABLED=1` (kill-switch de `lib/resend.ts`): la suite JAMÁS emite correo real aunque `.env.local` traiga una `RESEND_API_KEY` viva — incidente 2026-11-05 (spam «Nuevo pedido LCM-2026-000N · Lucia Perez» al buzón real en cada corrida local). `lib/resend.test.ts` lo apaga por test con `vi.stubEnv` para ejercer el path real.
 > El stack local completo (Supabase en podman, espejo de la nube) se maneja con Make:
 > `make db-local-start` → `make db-local-setup` (extensiones + migraciones) → `make db-local-on`
 > (apunta `.env.local` al stack local) → `make db-local-seed`. Contra ese stack corre

@@ -1,4 +1,4 @@
-.PHONY: help local-up local-down local-status db-local-start db-local-stop db-local-setup db-local-on db-local-off db-local-seed db-local-reset web-start web-stop check verify-db audit-script-guards audit-content test-local test-rls test-e2e test-e2e-fullmode test-load build migrate-cms-v2 seed-products seed-letter-sets seed-admin admin-mfa-reset db-stg-setup db-stg-seed clean clean-tmp
+.PHONY: help local-up local-down local-status db-local-start db-local-stop db-local-setup db-local-on db-local-off db-local-seed db-local-reset web-start web-stop check verify-db audit-script-guards audit-content test-local test-rls test-e2e test-e2e-fullmode test-load build migrate-cms-v2 seed-products seed-letter-sets seed-admin admin-mfa-reset db-stg-setup db-stg-seed stg-reset stg-reset-apply clean clean-tmp
 
 # Makefile operativo — Lucams Shop
 # Orquesta únicamente lo que aporta valor real sobre `pnpm`:
@@ -45,6 +45,7 @@ help:
 	@echo "    make admin-mfa-reset  Reset MFA break-glass de un admin (EMAIL=...)"
 	@echo "    make db-stg-setup     Aplica esquema completo en lucams-stg (.env.stg)"
 	@echo "    make db-stg-seed      Siembra catálogo + plantillas + CMS + backfill en lucams-stg"
+	@echo "    make stg-reset        Reset TRANSACCIONAL de STG (borra pedidos/clientes/pruebas; conserva catálogo, CMS y superadmin)"
 	@echo ""
 	@echo "  5. Higiene:"
 	@echo "    make clean            Borra .next y cachés de compilación"
@@ -192,6 +193,12 @@ admin-mfa-reset:
 
 db-stg-setup:
 	bash scripts/db-stg-setup.sh
+
+stg-reset:
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/stg-reset-transactional.mjs
+
+stg-reset-apply:
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/stg-reset-transactional.mjs --apply
 
 db-stg-seed:
 	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-canonical.mjs --apply
