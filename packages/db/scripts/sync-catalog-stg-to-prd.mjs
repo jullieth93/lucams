@@ -68,8 +68,8 @@
  * DBs y hace HEAD al bucket PRD; imprime el plan por entidad).
  *
  * Uso (desde packages/db):
- *   node scripts/one-shot/sync-catalog-stg-to-prd.mjs           # DRY-RUN (plan)
- *   LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 node scripts/one-shot/sync-catalog-stg-to-prd.mjs --apply
+ *   node scripts/sync-catalog-stg-to-prd.mjs           # DRY-RUN (plan)
+ *   LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 node scripts/sync-catalog-stg-to-prd.mjs --apply
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -78,7 +78,7 @@ import { readFileSync } from "node:fs";
 import {
   assertDestructiveAllowed,
   classifyUrl,
-} from "../lib/env-guard.mjs";
+} from "./lib/env-guard.mjs";
 import {
   ENTITY_DEFS,
   diffEntity,
@@ -87,7 +87,7 @@ import {
   rewriteImageHost,
   imageUrlsOf,
   collectUrlObjects,
-} from "../lib/catalog-sync.mjs";
+} from "./lib/catalog-sync.mjs";
 
 const SYNC_TAG = "system:sync-catalog-stg-to-prd";
 
@@ -106,9 +106,9 @@ for (const arg of process.argv.slice(2)) {
   process.exit(1);
 }
 
-const STG_ENV = new URL("../../../../.env.stg", import.meta.url).pathname;
-const PRD_ENV = new URL("../../../../.env.local.nube-backup", import.meta.url).pathname;
-const LOCAL_ENV = new URL("../../../../.env.local", import.meta.url).pathname;
+const STG_ENV = new URL("../../../.env.stg", import.meta.url).pathname;
+const PRD_ENV = new URL("../../../.env.local.nube-backup", import.meta.url).pathname;
+const LOCAL_ENV = new URL("../../../.env.local", import.meta.url).pathname;
 const TARGET_ENV = TARGET === "local" ? LOCAL_ENV : PRD_ENV;
 const TARGET_LABEL = TARGET === "local" ? ".env.local" : ".env.local.nube-backup";
 

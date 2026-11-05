@@ -67,7 +67,7 @@ jobs:
           DOCS_ONLY="false"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             FILES=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" || true)
-            if [ -n "$FILES" ] && ! echo "$FILES" | grep -qvE '^(docs/|README\.md$|CLAUDE\.md$|AGENTS\.md$|apps/web/(README|AGENTS)\.md$|apps/web/.*/README\.md$)'; then
+            if [ -n "$FILES" ] && ! echo "$FILES" | grep -qvE '^(docs/|README\.md$|CLAUDE\.md$|AGENTS\.md$|apps/web/(README|AGENTS|CLAUDE)\.md$|apps/web/.*/README\.md$)'; then
               DOCS_ONLY="true"
               echo "Fast-path documental activado (archivos: $(echo "$FILES" | tr '\n' ' '))"
             fi
