@@ -828,6 +828,7 @@ model Order {
   items                   OrderItem[]
   wompiAttempts           WompiPaymentAttempt[]
   statusEvents            OrderStatusEvent[]
+  shipmentEvents          ShipmentEvent[]
   // DIAN factura electrónica (Fase 7 implementa el envío; aquí el
   // schema queda ready para no remigrar después).
   billingDocumentType     DocumentType?
@@ -906,6 +907,35 @@ model OrderStatusEvent {
   createdAt    DateTime     @default(now())
 
   @@index([orderId, createdAt])
+}
+
+// Historial GRANULAR del carrier (Aveonline): cada evento real de la guía tal como lo
+// reporta la transportadora (webhook `estado[].fecha` o polling `historicos[]` con
+// `fechamostrar`/`descripcion`). OrderStatusEvent guarda transiciones de la máquina de
+// estados INTERNA (un evento por cambio de Order.status); aquí van TODOS los hitos del
+// carrier — varios escaneos IN_TRANSIT, novedades con descripción, etc. — para el
+// timeline enriquecido de /pedido/[token] y la trazabilidad de soporte (2026-11-04).
+// Sin PII: solo hitos logísticos (ciudad/estado/descripción operativa del carrier).
+model ShipmentEvent {
+  id               String   @id @default(cuid())
+  orderId          String
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  trackingNumber   String
+  // Estado INTERNO mapeado (PENDING/DISPATCHED/IN_TRANSIT/DELIVERED/RETURNED/EXCEPTION).
+  status           String
+  // Estado crudo del carrier tal como llegó ("ENTREGADA", "EN REPARTO", "DEVOLUCION"...).
+  carrierStatusRaw String
+  // Descripción operativa del carrier ("Tu paquete está en la bodega de Bogotá"...).
+  description      String   @default("")
+  // Fecha del evento según el carrier; si el payload no la trae, la recepción local.
+  occurredAt       DateTime
+  source           String // "WEBHOOK" | "POLL"
+  // Idempotencia: reintentos del webhook y solape webhook↔cron no duplican filas.
+  dedupKey         String   @unique
+  createdAt        DateTime @default(now())
+
+  @@index([orderId, occurredAt])
+  @@index([trackingNumber, occurredAt])
 }
 
 // Anti-abuso COD (ADR-065): lista de bloqueo persistente. Lucy puede vetar a mano un teléfono, email o

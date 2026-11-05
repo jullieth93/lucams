@@ -15,7 +15,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { AveonlineProvider, buildCotizarProductos, computePackedPackage } from "./aveonline";
+import {
+  AveonlineProvider,
+  buildCotizarProductos,
+  computePackedPackage,
+  parseAveonlineDate,
+} from "./aveonline";
 import type { ShipmentItem } from "./provider";
 
 const item = (over: Partial<ShipmentItem> = {}): ShipmentItem => ({
@@ -159,5 +164,40 @@ describe("handleWebhook — parseo de la notificación de estado", () => {
       );
       expect(ev.status).toBe("RETURNED");
     }
+  });
+});
+
+describe("handleWebhook — historial granular (ShipmentEvent, 2026-11-04)", () => {
+  const provider = new AveonlineProvider();
+
+  it("expone TODOS los hitos del payload estado[] con su fecha del carrier", async () => {
+    const ev = await provider.handleWebhook(
+      JSON.stringify({
+        guia: 892349021,
+        estado: [
+          { estado_id: 1, nombre_estado: "PRODUCIDA", fecha: "2026-11-03 08:00:00" },
+          { estado_id: 4, nombre_estado: "EN REPARTO", fecha: "2026-11-04 09:30:00" },
+          { estado_id: 12, nombre_estado: "ENTREGADA", fecha: "2026-11-04 11:04:43" },
+        ],
+      }),
+      {},
+    );
+    expect(ev.history).toHaveLength(3);
+    expect(ev.history[0]).toMatchObject({ status: "DISPATCHED", carrierStatusRaw: "PRODUCIDA" });
+    expect(ev.history[2]).toMatchObject({ status: "DELIVERED", carrierStatusRaw: "ENTREGADA" });
+    // Fecha en hora Colombia → UTC correcto (11:04:43 -05:00 = 16:04:43Z).
+    expect(ev.history[2].occurredAt.toISOString()).toBe("2026-11-04T16:04:43.000Z");
+    // El estado principal sigue siendo el ÚLTIMO hito (compatible con la saga).
+    expect(ev.status).toBe("DELIVERED");
+  });
+
+  it("parseAveonlineDate entiende `fechamostrar` del polling (MM/DD/YYYY HH:mm:ss, hora CO)", () => {
+    // Mismo instante que el webhook "2026-11-04 11:04:43" → dedup cross-source posible.
+    expect(parseAveonlineDate("11/04/2026 11:04:43").toISOString()).toBe(
+      "2026-11-04T16:04:43.000Z",
+    );
+    expect(parseAveonlineDate("2026-11-04 11:04:43").toISOString()).toBe(
+      "2026-11-04T16:04:43.000Z",
+    );
   });
 });

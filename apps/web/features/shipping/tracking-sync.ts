@@ -28,6 +28,7 @@ import { logger } from "@/lib/logger";
 import { isCatalogMode } from "@/lib/store-mode";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { processTrackingUpdate } from "@/features/orders/saga";
+import { recordShipmentEvents } from "@/features/shipping/shipment-events";
 
 const TRACKING_SYNC_BATCH = 25;
 // Una guía viva típica dura días; >90 días activa es un caso ya resuelto a mano.
@@ -68,6 +69,21 @@ export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> 
     try {
       const provider = await getShippingProvider();
       const tracking = await provider.getTracking(trackingNumber);
+      // Historial granular del carrier → ShipmentEvent (2026-11-04). El polling es la
+      // fuente que trae DESCRIPCIONES (`historicos[].descripcion`) y hace backfill de
+      // hitos que el webhook no entregó; dedup cross-source por minuto (best-effort).
+      if (tracking.history.length > 0) {
+        await recordShipmentEvents({
+          orderId: order.id,
+          trackingNumber,
+          source: "POLL",
+          events: tracking.history.map((h) => ({
+            carrierStatusRaw: h.status,
+            description: h.description,
+            occurredAt: h.timestamp,
+          })),
+        });
+      }
       if (tracking.status === "PENDING") continue; // sin novedad real del carrier
       const result = await processTrackingUpdate({
         trackingNumber,

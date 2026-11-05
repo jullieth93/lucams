@@ -86,11 +86,27 @@ export type TrackingStatus = {
   history: Array<{ status: string; description: string; timestamp: Date }>;
 };
 
+export type ShipmentHistoryItem = {
+  /** Estado INTERNO mapeado (PENDING/DISPATCHED/IN_TRANSIT/DELIVERED/RETURNED/EXCEPTION). */
+  status: TrackingStatus["status"];
+  /** Estado crudo del carrier ("ENTREGADA", "EN REPARTO"...). */
+  carrierStatusRaw: string;
+  /** Descripción operativa del carrier (solo la trae el histórico del polling). */
+  description: string;
+  occurredAt: Date;
+};
+
 export type WebhookEvent = {
   trackingNumber: string;
   status: TrackingStatus["status"];
   carrierStatusRaw: string;
   timestamp: Date;
+  /**
+   * TODOS los hitos del payload `estado:[...]` (el webhook suele mandar el historial
+   * completo, no solo el último). Alimenta la persistencia granular `ShipmentEvent`
+   * para el timeline de /pedido/[token] (2026-11-04).
+   */
+  history: ShipmentHistoryItem[];
   /**
    * false when the payload carried no carrier `fecha`/`timestamp` and `timestamp` is a
    * `new Date()` fallback (non-deterministic). The webhook route uses it to build a

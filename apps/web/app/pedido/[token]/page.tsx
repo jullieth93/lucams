@@ -60,6 +60,8 @@ import { getWarrantyItemsByOrderToken } from "@/features/warranty/service";
 import { RetractControl } from "@/app/mi-cuenta/pedidos/[number]/retract-control";
 import { WarrantyControl } from "@/app/mi-cuenta/pedidos/[number]/warranty-control";
 import { getAccountTexts } from "@/app/mi-cuenta/account-texts.server";
+import { formatDateLongCO, formatDateTimeCO } from "@/lib/datetime";
+import { listShipmentEvents } from "@/features/shipping/shipment-events";
 
 export const metadata: Metadata = {
   // noindex: la URL es de un solo uso y trae un token opaco.
@@ -83,6 +85,16 @@ const TIMELINE_STEPS = [
   { key: "SHIPPED", label: "En camino" },
   { key: "DELIVERED", label: "Entregado" },
 ] as const;
+
+// Etiquetas humanas para los hitos del carrier cuando el evento no trae descripción.
+const SHIPMENT_EVENT_LABEL: Record<string, string> = {
+  PENDING: "Guía registrada",
+  DISPATCHED: "Despachado de nuestra tienda",
+  IN_TRANSIT: "En tránsito",
+  DELIVERED: "Entregado",
+  RETURNED: "Devuelto a origen",
+  EXCEPTION: "Novedad en la entrega",
+};
 
 function timelineProgress(status: string): number {
   const idx = TIMELINE_STEPS.findIndex((s) => s.key === status);
@@ -181,13 +193,15 @@ export default async function PublicOrderPage({
   if (!order) notFound();
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
   const progress = timelineProgress(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
+  // Historial granular del carrier (ShipmentEvent, 2026-11-04): hitos reales de la
+  // guía con fecha/hora de Colombia y descripción — enriquece la barra de progreso.
+  // Solo aplica a guías de transportadora (nunca a "Envío Lucams" INTERNO-*).
+  const shipmentEvents =
+    order.trackingNumber && order.shippingCarrier !== LUCAMS_CARRIER
+      ? await listShipmentEvents(order.id)
+      : [];
   // Entrega propia "Envío Lucams" (trackingNumber INTERNO-*): NO hay guía de
   // transportadora ni rastreo externo — el estado se muestra en lenguaje claro
   // con los datos internos (nunca se consulta Aveonline para estas órdenes).
@@ -348,7 +362,7 @@ export default async function PublicOrderPage({
               {order.number}
             </h1>
             <p className="text-brand-muted mt-1 text-sm">
-              {dateFmt.format(order.createdAt)} · {statusText}
+              {formatDateLongCO(order.createdAt)} · {statusText}
             </p>
           </header>
 
@@ -410,6 +424,55 @@ export default async function PublicOrderPage({
                   );
                 })}
               </ol>
+
+              {/* Historial granular del carrier (ShipmentEvent, 2026-11-04): hitos
+                  reales de la guía con fecha/hora de Colombia y descripción de la
+                  transportadora — más reciente primero. */}
+              {shipmentEvents.length > 0 && (
+                <div className="border-brand-purple/10 mt-5 border-t pt-4">
+                  <p className="text-brand-muted mb-3 text-[11px] font-semibold tracking-wider uppercase">
+                    Movimientos de la guía
+                  </p>
+                  <ol className="relative space-y-3">
+                    {[...shipmentEvents].reverse().map((ev, idx) => {
+                      const tone =
+                        ev.status === "DELIVERED"
+                          ? "bg-emerald-500"
+                          : ev.status === "RETURNED" || ev.status === "EXCEPTION"
+                            ? "bg-amber-500"
+                            : idx === 0
+                              ? "bg-brand-purple"
+                              : "bg-brand-purple/30";
+                      return (
+                        <li key={ev.id} className="flex items-start gap-3">
+                          <span
+                            aria-hidden="true"
+                            className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${tone} ${
+                              idx === 0 ? "ring-brand-purple/25 ring-4" : ""
+                            }`}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-brand-purple-dark text-xs leading-snug font-semibold">
+                              {ev.description ||
+                                SHIPMENT_EVENT_LABEL[ev.status] ||
+                                ev.carrierStatusRaw}
+                              {ev.description && ev.carrierStatusRaw ? (
+                                <span className="text-brand-muted font-normal">
+                                  {" "}
+                                  · {ev.carrierStatusRaw}
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="text-brand-muted mt-0.5 text-[11px]">
+                              {formatDateTimeCO(ev.occurredAt)}
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              )}
             </div>
           )}
 

@@ -1313,11 +1313,14 @@ export class AveonlineProvider implements ShippingProvider {
       status,
       carrierStatusRaw: guia?.estado ?? "",
       history: (guia?.historicos ?? []).map((h) => {
+        // parseAveonlineDate entiende `fechamostrar` (MM/DD/YYYY HH:mm:ss, hora CO
+        // sin TZ) y `fecha` (YYYY-MM-DD HH:mm:ss) — antes `new Date(raw)` las leía
+        // en la TZ del servidor (UTC en Vercel): ~5 h de desfase en cada hito.
         const raw = h.fechamostrar ?? h.fecha; // real: fechamostrar; fecha = fallback defensivo
         return {
           status: h.estado ?? "",
           description: h.descripcion ?? "",
-          timestamp: raw ? new Date(raw) : new Date(),
+          timestamp: raw ? parseAveonlineDate(raw) : new Date(),
         };
       }),
     };
@@ -1359,6 +1362,18 @@ export class AveonlineProvider implements ShippingProvider {
       trackingNumber,
       status,
       carrierStatusRaw: nombreRaw,
+      // Historial granular completo del payload (cada hito con su fecha del carrier)
+      // para persistencia ShipmentEvent — antes solo se usaba el ÚLTIMO estado.
+      history: estadoArr.map((item) => {
+        const raw = item.nombre_estado ?? item.nombre ?? "";
+        const itemTs = item.timestamp ?? item.fecha;
+        return {
+          status: mapAveonlineStatus(raw),
+          carrierStatusRaw: raw,
+          description: "",
+          occurredAt: parseAveonlineDate(itemTs),
+        };
+      }),
       timestamp: parseAveonlineDate(tsRaw),
       // Without a carrier timestamp, parseAveonlineDate falls back to `new Date()`:
       // the route must NOT use that non-deterministic value in the dedup key (D-4).
@@ -1380,18 +1395,24 @@ function isEnviaCarrier(carrier: string, idtransportador: string | number): bool
 
 /**
  * Aveonline manda fechas SIN zona horaria, en hora local de Colombia (America/Bogota,
- * UTC-5): "2020-12-11 11:04:43". `new Date(str)` las interpretaría en la TZ del servidor
- * (UTC en Vercel) → ~5 h de desfase. Normalizamos ese formato a ISO con offset -05:00.
+ * UTC-5): webhook `fecha` como "2020-12-11 11:04:43" y polling `fechamostrar` como
+ * "12/11/2020 11:04:43" (MM/DD/YYYY). `new Date(str)` las interpretaría en la TZ del
+ * servidor (UTC en Vercel) → ~5 h de desfase. Normalizamos ambos formatos a ISO con
+ * offset -05:00. Exportada: la reutiliza la persistencia de ShipmentEvent para que
+ * webhook y polling produzcan el MISMO instante (dedup cross-source confiable).
  */
-function parseAveonlineDate(raw: string | undefined): Date {
+export function parseAveonlineDate(raw: string | undefined): Date {
   if (!raw) return new Date();
-  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/.exec(raw.trim());
-  if (m) return new Date(`${m[1]}T${m[2]}-05:00`);
-  const d = new Date(raw);
+  const trimmed = raw.trim();
+  const isoLocal = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/.exec(trimmed);
+  if (isoLocal) return new Date(`${isoLocal[1]}T${isoLocal[2]}-05:00`);
+  const usLocal = /^(\d{2})\/(\d{2})\/(\d{4})[ T](\d{2}:\d{2}:\d{2})$/.exec(trimmed);
+  if (usLocal) return new Date(`${usLocal[3]}-${usLocal[1]}-${usLocal[2]}T${usLocal[4]}-05:00`);
+  const d = new Date(trimmed);
   return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 
-function mapAveonlineStatus(raw: string): TrackingStatus["status"] {
+export function mapAveonlineStatus(raw: string): TrackingStatus["status"] {
   const s = raw.toUpperCase();
   if (s.includes("ENTREGAD")) return "DELIVERED";
   if (s.includes("DEVUELT") || s.includes("DEVOLUC") || s.includes("RETORN")) return "RETURNED";
