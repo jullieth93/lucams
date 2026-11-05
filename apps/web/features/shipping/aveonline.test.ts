@@ -201,3 +201,54 @@ describe("handleWebhook — historial granular (ShipmentEvent, 2026-11-04)", () 
     );
   });
 });
+
+describe("mapAveonlineStatus — estados no canónicos vistos en PRD (LCM-2026-0004)", () => {
+  const provider = new AveonlineProvider();
+
+  it("EN BODEGA ORIGEN/DESTINO → IN_TRANSIT (el paquete ya viaja entre bodegas)", async () => {
+    for (const nombre of ["EN BODEGA ORIGEN", "EN BODEGA DESTINO"]) {
+      const ev = await provider.handleWebhook(
+        JSON.stringify({
+          guia: "90",
+          estado: [{ nombre_estado: nombre, fecha: "2026-11-04 10:00:00" }],
+        }),
+        {},
+      );
+      expect(ev.status).toBe("IN_TRANSIT");
+      expect(ev.history[0].status).toBe("IN_TRANSIT");
+    }
+  });
+
+  it("MERCANCIA RECOGIDA → DISPATCHED (el carrier ya recogió en origen)", async () => {
+    const ev = await provider.handleWebhook(
+      JSON.stringify({
+        guia: "91",
+        estado: [{ nombre_estado: "MERCANCIA RECOGIDA", fecha: "2026-11-04 16:08:00" }],
+      }),
+      {},
+    );
+    expect(ev.status).toBe("DISPATCHED");
+  });
+
+  it("GENERADA sigue siendo PENDING (guía creada, aún sin movimiento físico)", async () => {
+    const ev = await provider.handleWebhook(
+      JSON.stringify({
+        guia: "92",
+        estado: [{ nombre_estado: "GENERADA", fecha: "2026-11-04 06:07:00" }],
+      }),
+      {},
+    );
+    expect(ev.status).toBe("PENDING");
+  });
+
+  it("ENTREGADA tiene prioridad aunque el texto mencione bodega", async () => {
+    const ev = await provider.handleWebhook(
+      JSON.stringify({
+        guia: "93",
+        estado: [{ nombre_estado: "ENTREGADA EN BODEGA", fecha: "2026-11-04 12:00:00" }],
+      }),
+      {},
+    );
+    expect(ev.status).toBe("DELIVERED");
+  });
+});
