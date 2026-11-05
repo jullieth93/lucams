@@ -114,7 +114,8 @@ describe.skipIf(!hasDb)("submitReviewAction — integración DB", { timeout: T }
     });
     nonBuyerCustomerId = nonBuyer.id;
 
-    // Pedido PAID de la compradora con un ítem del producto → habilita reseñar.
+    // Pedido DELIVERED de la compradora con un ítem del producto → habilita reseñar
+    // (desde 2026-11-05 solo DELIVERED habilita reseña — ver constants.ts).
     await prisma.order.create({
       data: {
         number: `${RUN}-ord`.toUpperCase().slice(0, 40),
@@ -126,7 +127,8 @@ describe.skipIf(!hasDb)("submitReviewAction — integración DB", { timeout: T }
         shipping: 0,
         total: 30_000,
         paymentMethod: "WOMPI",
-        status: "PAID",
+        status: "DELIVERED",
+        deliveredAt: new Date(),
         items: { create: [{ variantId, qty: 1, unitPrice: 30_000 }] },
       },
     });
@@ -214,6 +216,78 @@ describe.skipIf(!hasDb)("submitReviewAction — integración DB", { timeout: T }
       select: { isApproved: true, rating: true, authorName: true },
     });
     expect(created).toMatchObject({ isApproved: false, rating: 5, authorName: "Compradora Test" });
+  });
+
+  it("comprador con pedido PAID (aún NO entregado) → NO puede reseñar (endurecido 2026-11-05: solo DELIVERED)", async () => {
+    // Segundo producto + pedido PAID (pagado pero en producción): la clienta no lo
+    // tiene en la mano → no opina todavía.
+    const cat2 = await prisma.category.create({
+      data: { slug: `${RUN}-cat2`, name: `ZZ ReviewAct2 ${RUN}`, order: 0 },
+      select: { id: true },
+    });
+    const product2 = await prisma.product.create({
+      data: {
+        slug: `${RUN}-prod2`,
+        name: `Producto No Entregado ${RUN}`,
+        description: "Aún en producción",
+        basePrice: 30_000,
+        sku: `${RUN}-PROD2`.toUpperCase(),
+        categoryId: cat2.id,
+        personalizationKind: "NONE",
+        variants: {
+          create: [
+            {
+              name: "Única",
+              sku: `${RUN}-VAR2`.toUpperCase(),
+              price: 30_000,
+              stock: 10,
+              attributes: {},
+            },
+          ],
+        },
+      },
+      select: { id: true, slug: true, variants: { select: { id: true } } },
+    });
+    await prisma.order.create({
+      data: {
+        number: `${RUN}-ord-paid`.toUpperCase().slice(0, 40),
+        email: `${RUN}-buyer@test.local`,
+        phone: "3200000000",
+        customerId: buyerCustomerId,
+        shippingAddress: { city: "Cali", department: "Valle" },
+        subtotal: 30_000,
+        shipping: 0,
+        total: 30_000,
+        paymentMethod: "WOMPI",
+        status: "PAID",
+        items: { create: [{ variantId: product2.variants[0].id, qty: 1, unitPrice: 30_000 }] },
+      },
+    });
+
+    mockSession = {
+      user: { id: buyerCustomerId },
+      customer: { id: buyerCustomerId, firstName: "Compradora", lastName: "Test" },
+    };
+    const res = await submitReviewAction(
+      null,
+      fd({
+        productId: product2.id,
+        slug: product2.slug,
+        rating: "5",
+        comment: "Intento reseñar algo que aún no me ha llegado.",
+      }),
+    );
+    expect(res.error).toMatch(/compraste/);
+    expect(res.success).toBeUndefined();
+
+    // Limpieza explícita del fixture extra (el afterAll general ya cubre por RUN).
+    await prisma.orderItem.deleteMany({ where: { variant: { productId: product2.id } } });
+    await prisma.order.deleteMany({
+      where: { number: `${RUN}-ord-paid`.toUpperCase().slice(0, 40) },
+    });
+    await prisma.productVariant.deleteMany({ where: { productId: product2.id } });
+    await prisma.product.deleteMany({ where: { id: product2.id } });
+    await prisma.category.deleteMany({ where: { id: cat2.id } });
   });
 
   it("segundo submit del mismo cliente/producto → bloqueado por unicidad (#17)", async () => {
