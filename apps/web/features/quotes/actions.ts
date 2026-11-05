@@ -28,7 +28,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { ipKey, phoneKey } from "@/lib/rate-limit-keys";
 import { logger } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
-import { getCurrentCustomer } from "@/lib/auth";
+import { getStorefrontCustomerForForm } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { getOrCreateCartSession } from "@/lib/cart-session";
 import { isCatalogMode } from "@/lib/store-mode";
@@ -125,7 +125,7 @@ export async function createQuoteAction(
   try {
     const [sessionId, customer] = await Promise.all([
       getOrCreateCartSession(),
-      getCurrentCustomer(),
+      getStorefrontCustomerForForm(parsed.data.customerEmail || null),
     ]);
     const { id, number, token } = await createQuoteFromCart(
       parsed.data,

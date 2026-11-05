@@ -564,22 +564,30 @@ export function StudioSidebar({
     toast.success(fillStudioText(texts.fotos.asignadaToast, { n: target + 1 }));
   };
 
-  // 2026-10-29 (owner) — borrado individual con confirmación: cliente primero
-  // (optimista, limpia los slots que la usan), servidor después; si el servidor
-  // falla se restaura la foto en la biblioteca y se avisa.
+  // Borrado individual con confirmación: espera confirmación real del servidor
+  // antes de retirar la miniatura y disparar el toast, evitando falsos positivos
+  // o dobles mensajes contradictorios.
   const [pendingDeleteAsset, setPendingDeleteAsset] = useState<StudioAsset | null>(null);
-  const handleConfirmDeleteAsset = () => {
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
+  const handleConfirmDeleteAsset = async () => {
     const asset = pendingDeleteAsset;
-    setPendingDeleteAsset(null);
-    if (!asset) return;
-    removeAsset(asset.id);
-    toast.success(texts.fotos.eliminadaToast);
-    void deleteDesignAssetAction(asset.id).then((res) => {
+    if (!asset || deletingAssetId) return;
+    setDeletingAssetId(asset.id);
+    try {
+      const res = await deleteDesignAssetAction(asset.id);
+      setPendingDeleteAsset(null);
       if (!res.ok) {
-        addAsset(asset);
         toast.error(res.message ?? texts.fotos.eliminarError);
+        return;
       }
-    });
+      removeAsset(asset.id);
+      toast.success(texts.fotos.eliminadaToast);
+    } catch {
+      setPendingDeleteAsset(null);
+      toast.error(texts.fotos.eliminarError);
+    } finally {
+      setDeletingAssetId(null);
+    }
   };
 
   return (
@@ -1045,13 +1053,21 @@ export function StudioSidebar({
             </div>
           )}
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setPendingDeleteAsset(null)}>
+            <Button
+              variant="outline"
+              disabled={deletingAssetId !== null}
+              onClick={() => setPendingDeleteAsset(null)}
+            >
               {texts.comun.cerrar}
             </Button>
             <Button
               className="bg-red-600 text-white hover:bg-red-700"
-              onClick={handleConfirmDeleteAsset}
+              disabled={deletingAssetId !== null}
+              onClick={() => {
+                void handleConfirmDeleteAsset();
+              }}
             >
+              {deletingAssetId !== null && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
               {texts.fotos.eliminarConfirmar}
             </Button>
           </DialogFooter>
@@ -1372,8 +1388,7 @@ function AssetThumb({
               <GripVertical className="h-3 w-3" />
             </div>
 
-            {/* 2026-10-29 — borrado individual: basura visible SIEMPRE (en táctil
-                no hay hover); arriba a la derecha, sin tapar la cara de la foto. */}
+            {/* Borrado individual: área táctil de 40×40px arriba a la derecha con pastilla visual compacta. */}
             <button
               type="button"
               onClick={(e) => {
@@ -1382,9 +1397,11 @@ function AssetThumb({
               }}
               onPointerDown={(e) => e.stopPropagation()}
               aria-label={texts.fotos.eliminarAria}
-              className="focus:ring-brand-purple absolute top-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-700 shadow transition-colors hover:bg-red-50 focus:ring-2 focus:outline-none"
+              className="focus:ring-brand-purple absolute top-0 right-0 flex h-10 w-10 items-center justify-center rounded-full focus:ring-2 focus:outline-none"
             >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-700 shadow transition-colors hover:bg-red-50">
+                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              </span>
             </button>
           </div>
 

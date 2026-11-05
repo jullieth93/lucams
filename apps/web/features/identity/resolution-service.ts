@@ -498,6 +498,7 @@ async function resolveOrCreateEmailContactTx(
       | "GUEST_ORDER"
       | "SUPPORT_TICKET"
       | "QUOTE"
+      | "B2B_INQUIRY"
       | "ABANDONED_CART"
       | "NEWSLETTER"
       | "ALT_ORDER_EMAIL";
@@ -970,6 +971,52 @@ export async function resolveOrderContactTx(
   });
 }
 
+/**
+ * Verifica si un `customerId` de sesión puede vincularse de forma segura a un formulario
+ * público o captura contextual:
+ *  1. Nunca vincula si el `Customer` comparte identidad (`supabaseUserId` o email) con un
+ *     `AdminUser` activo (staff interno).
+ *  2. Si el formulario incluyó un `submittedEmail` explícito, exige coincidencia exacta
+ *     case-insensitive con `Customer.email`; si difiere, se resuelve como tercero independiente.
+ */
+async function canBindSessionCustomerTx(
+  tx: Prisma.TransactionClient,
+  customerId: string,
+  submittedEmail?: string | null,
+): Promise<boolean> {
+  const customer = await tx.customer.findFirst({
+    where: { id: customerId, deletedAt: null },
+    select: { id: true, email: true, supabaseUserId: true },
+  });
+  if (!customer) return false;
+
+  const custEmail = normalizeEmailIdentity(customer.email);
+  const targetEmail = normalizeEmailIdentity(submittedEmail);
+  if (targetEmail && custEmail !== targetEmail) {
+    return false;
+  }
+
+  const maybeAdminDelegate = (tx as unknown as { adminUser?: typeof tx.adminUser }).adminUser;
+  if (maybeAdminDelegate && typeof maybeAdminDelegate.findFirst === "function") {
+    const adminOr: Prisma.AdminUserWhereInput[] = [];
+    if (customer.supabaseUserId) {
+      adminOr.push({ supabaseUserId: customer.supabaseUserId });
+    }
+    if (custEmail) {
+      adminOr.push({ email: { equals: custEmail, mode: "insensitive" } });
+    }
+    if (adminOr.length > 0) {
+      const staffAdmin = await maybeAdminDelegate.findFirst({
+        where: { isActive: true, deletedAt: null, OR: adminOr },
+        select: { id: true },
+      });
+      if (staffAdmin) return false;
+    }
+  }
+
+  return true;
+}
+
 /** Resuelve el `contactId` de un `SupportTicket` (desde `/contacto` o `/pedido/[token]`). */
 export async function resolveSupportTicketContact(
   db: IdentityDbClient,
@@ -983,7 +1030,7 @@ export async function resolveSupportTicketContact(
   if (!hasIdentityDelegates(db)) return null;
   if (input.orderContactId) return input.orderContactId;
   return withIdentityTx(db, async (tx) => {
-    if (input.customerId) {
+    if (input.customerId && (await canBindSessionCustomerTx(tx, input.customerId, input.email))) {
       const custContactId = await ensureCustomerContactTx(tx, {
         customerId: input.customerId,
         emailVerified: true,
@@ -1011,6 +1058,7 @@ export async function resolveQuoteContactTx(
     customerName: string;
     customerWhatsapp: string;
     customerEmail?: string | null;
+    sourceOverride?: "QUOTE" | "B2B_INQUIRY";
   },
 ): Promise<string | null> {
   if (!hasIdentityDelegates(tx)) return null;
@@ -1018,8 +1066,12 @@ export async function resolveQuoteContactTx(
   const quoteEmail = normalizeEmailIdentity(input.customerEmail);
   const whatsappE164 = normalizePhoneIdentityE164(input.customerWhatsapp);
   const displayName = buildDisplayName(null, null, input.customerName);
+  const sourceLabel = input.sourceOverride ?? "QUOTE";
 
-  if (input.customerId) {
+  if (
+    input.customerId &&
+    (await canBindSessionCustomerTx(tx, input.customerId, quoteEmail || null))
+  ) {
     const custContactId = await ensureCustomerContactTx(tx, {
       customerId: input.customerId,
       emailVerified: true,
@@ -1032,7 +1084,7 @@ export async function resolveQuoteContactTx(
           type: "WHATSAPP",
           normalizedValue: whatsappE164,
           verificationStatus: "UNVERIFIED_OBSERVED",
-          verificationSource: "QUOTE",
+          verificationSource: sourceLabel,
         });
       }
       return custContactId;
@@ -1042,7 +1094,7 @@ export async function resolveQuoteContactTx(
   if (quoteEmail) {
     return resolveOrCreateEmailContactTx(tx, {
       email: quoteEmail,
-      source: "QUOTE",
+      source: sourceLabel,
       displayName,
       whatsappE164: whatsappE164 || null,
     });
@@ -1073,7 +1125,7 @@ export async function resolveQuoteContactTx(
       type: "WHATSAPP",
       normalizedValue: whatsappE164,
       verificationStatus: "UNVERIFIED_OBSERVED",
-      verificationSource: "QUOTE",
+      verificationSource: sourceLabel,
     });
     return existingWhatsappQuote.contactId;
   }
@@ -1083,7 +1135,7 @@ export async function resolveQuoteContactTx(
       primaryEmail: null,
       primaryPhoneE164: whatsappE164,
       displayName,
-      source: "QUOTE",
+      source: sourceLabel,
     },
     select: { id: true },
   });
@@ -1093,7 +1145,7 @@ export async function resolveQuoteContactTx(
     type: "WHATSAPP",
     normalizedValue: whatsappE164,
     verificationStatus: "UNVERIFIED_OBSERVED",
-    verificationSource: "QUOTE",
+    verificationSource: sourceLabel,
   });
 
   return created.id;
@@ -1109,7 +1161,10 @@ export async function resolveAbandonedCartContact(
 ): Promise<string | null> {
   if (!hasIdentityDelegates(db)) return null;
   return withIdentityTx(db, async (tx) => {
-    if (input.cartCustomerId) {
+    if (
+      input.cartCustomerId &&
+      (await canBindSessionCustomerTx(tx, input.cartCustomerId, input.email))
+    ) {
       const custContactId = await ensureCustomerContactTx(tx, {
         customerId: input.cartCustomerId,
         emailVerified: true,
@@ -1146,7 +1201,10 @@ export async function resolveConsentContact(
   }
 
   return withIdentityTx(db, async (tx) => {
-    if (input.customerId) {
+    if (
+      input.customerId &&
+      (await canBindSessionCustomerTx(tx, input.customerId, normalizedEmail || null))
+    ) {
       const custContactId = await ensureCustomerContactTx(tx, {
         customerId: input.customerId,
         emailVerified: Boolean(input.emailVerified),

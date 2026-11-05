@@ -89,11 +89,11 @@ model Consent {
 }
 ```
 
-- **Compuerta dura de segmentación comercial (`features/crm/segments-service.ts`, `/admin/marketing/segmentos`):** ninguna consulta ni exportación CSV de segmentos (`VIP_RECOMPRA`, `REGALO_ANUAL`, `CARRITO_ALTO_VALOR`, `REACTIVACION_90D`) puede listar contactos cuyo último registro `Consent(scope = 'NEWSLETTER')` por `contactId` o `email` no tenga `accepted = true` vigente. Un comprador VIP sin opt-in expreso o dado de baja queda excluido en SQL (certificado en `segments-service.integration.test.ts`).
+- **Compuerta dura de segmentación comercial (`features/crm/segments-service.ts`, `/admin/marketing/segmentos`):** ninguna consulta ni exportación CSV de segmentos (`vip`, `gift_buyers`, `winback_90d`, `annual_occasion`, `high_intent_no_order`) puede listar contactos cuyo último registro `Consent(scope = 'NEWSLETTER')` por `contactId` o `email` no tenga `accepted = true` vigente, y excluye además cuentas internas (`AdminUser`). Un comprador VIP sin opt-in expreso o dado de baja queda excluido en SQL (certificado en `segments-service.integration.test.ts`).
 
 #### Registro y ejercicio de derechos
 
-No hay endpoints REST públicos de consentimiento: el registro lo hacen **Server Actions** en `apps/web/features/consent/` (banner de cookies, newsletter, cotización por WhatsApp, checkout, back-in-stock — cada una escribe sus scopes con IP/UA).
+No hay endpoints REST públicos de consentimiento: el registro lo hacen **Server Actions** en `apps/web/features/consent/`, `/contacto` y `/empresas-y-eventos` (banner de cookies, registro, contacto/soporte, solicitud B2B/eventos, newsletter, cotización por WhatsApp, checkout, back-in-stock — cada una exige aceptación expresa y escribe sus scopes `HABEAS_DATA` / `NEWSLETTER` con versión de política + IP/UA).
 
 - **Consentimiento de cookies:** `persistCookieConsentAction` (una fila por scope, ver § Cookie consent).
 - **Supresión de cuenta (art. 8 lit. e):** self-service en `/mi-cuenta/seguridad → Eliminar mi cuenta` (ver § Derecho de supresión abajo).

@@ -800,14 +800,36 @@ export async function clearCartAfterPaid(
   // Etapa 1 (modo catálogo): features/quotes lo reusa para vaciar el cart al
   // crear la cotización, con su propia marca de auditoría ("quote:create").
   deletedBy = "saga:order-paid",
+  orderId?: string,
 ): Promise<void> {
+  const now = new Date();
   await client.cart.updateMany({
     where: { id: cartId, deletedAt: null },
     data: {
-      deletedAt: new Date(),
+      deletedAt: now,
       deletedBy,
     },
   });
+
+  if ("abandonedCart" in client && client.abandonedCart) {
+    if (deletedBy === "saga:order-paid") {
+      await client.abandonedCart.updateMany({
+        where: { cartId, recoveredAt: null },
+        data: {
+          recoveredAt: now,
+          closedReason: "ORDER_PAID",
+          ...(orderId ? { recoveredOrderId: orderId } : {}),
+        },
+      });
+    } else if (deletedBy === "quote:create") {
+      await client.abandonedCart.updateMany({
+        where: { cartId, recoveredAt: null },
+        data: {
+          closedReason: "QUOTE_CREATED",
+        },
+      });
+    }
+  }
 }
 
 /**

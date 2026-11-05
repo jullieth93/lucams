@@ -51,8 +51,25 @@ const AFTERSALES_KIND_LABEL: Record<"TICKET" | "WARRANTY" | "RETRACT", string> =
 
 const CONSENT_SCOPE_LABEL: Record<string, string> = {
   DATA_PROCESSING: "Tratamiento de datos personales (Ley 1581)",
+  HABEAS_DATA: "Autorización Habeas Data comercial / B2B (Ley 1581)",
   NEWSLETTER: "Comunicaciones comerciales y newsletter",
   COOKIES_ANALYTICS: "Analítica y medición web",
+};
+
+const OPPORTUNITY_STAGE_LABEL: Record<string, string> = {
+  NEW: "Nueva",
+  QUALIFYING: "En calificación",
+  PROPOSAL_SENT: "Propuesta enviada",
+  WON: "Ganada",
+  LOST: "Perdida",
+};
+
+const OPPORTUNITY_STAGE_TONE: Record<string, "purple" | "blue" | "amber" | "emerald" | "slate"> = {
+  NEW: "purple",
+  QUALIFYING: "blue",
+  PROPOSAL_SENT: "amber",
+  WON: "emerald",
+  LOST: "slate",
 };
 
 const dateFmt = new Intl.DateTimeFormat("es-CO", {
@@ -81,8 +98,8 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
   }> = [
     {
       id: "orders",
-      label: "Pedidos y cotizaciones",
-      count: data.orders.length + data.quotes.length,
+      label: "Pedidos, cotizaciones y B2B",
+      count: data.orders.length + data.quotes.length + data.opportunities.length,
     },
     {
       id: "studio",
@@ -122,7 +139,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
       <div
         role="tablist"
         aria-label="Secciones de Contacto 360"
-        className="border-brand-purple/15 flex flex-wrap gap-1.5 rounded-xl border bg-white p-2 shadow-xs"
+        className="border-brand-purple/15 flex flex-nowrap gap-1.5 overflow-x-auto rounded-xl border bg-white p-2 shadow-xs sm:flex-wrap"
       >
         {tabs.map((t) => {
           const selected = activeTab === t.id;
@@ -135,8 +152,8 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
               onClick={() => setActiveTab(t.id)}
               className={
                 selected
-                  ? "bg-brand-purple inline-flex min-h-11 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-colors"
-                  : "text-brand-purple-dark hover:bg-brand-purple/8 inline-flex min-h-11 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors"
+                  ? "bg-brand-purple inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-colors"
+                  : "text-brand-purple-dark hover:bg-brand-purple/8 inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors"
               }
             >
               <span>{t.label}</span>
@@ -250,6 +267,52 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
               </AdminCard>
             </section>
           )}
+          {data.opportunities.length > 0 && (
+            <section>
+              <h3 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
+                Oportunidades B2B / Eventos ({data.opportunities.length})
+              </h3>
+              <AdminCard className="overflow-hidden p-0">
+                <ul className="divide-brand-purple/10 divide-y">
+                  {data.opportunities.map((opp) => (
+                    <li
+                      key={opp.id}
+                      className="hover:bg-brand-purple/[0.03] flex flex-wrap items-center justify-between gap-3 p-4 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/admin/oportunidades/${encodeURIComponent(opp.id)}`}
+                            className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-bold hover:underline"
+                          >
+                            {opp.number}
+                          </Link>
+                          <span className="text-brand-purple-dark truncate text-xs font-medium">
+                            {opp.title}
+                          </span>
+                        </div>
+                        <div className="text-brand-muted mt-0.5 text-xs">
+                          {opp.city ? `${opp.city} · ` : ""}
+                          {opp.expectedUnits ? `${opp.expectedUnits} uds. · ` : ""}
+                          {dateFmt.format(toDate(opp.createdAt))}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {opp.expectedAmountCop > 0 && (
+                          <div className="text-brand-purple-dark text-sm font-semibold tabular-nums">
+                            {formatCOP(opp.expectedAmountCop)}
+                          </div>
+                        )}
+                        <AdminBadge tone={OPPORTUNITY_STAGE_TONE[opp.stage] ?? "slate"}>
+                          {OPPORTUNITY_STAGE_LABEL[opp.stage] ?? opp.stage}
+                        </AdminBadge>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </AdminCard>
+            </section>
+          )}
         </div>
       )}
 
@@ -263,11 +326,11 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
             {data.designs.length === 0 ? (
               <AdminEmpty
                 icon={<Sparkles className="h-5 w-5" />}
-                title="Sin diseños asociados a cuenta"
+                title="Sin diseños asociados"
                 description={
                   data.customer
                     ? "Cuando personalice en el Estudio, sus borradores y diseños aparecerán aquí."
-                    : "Los borradores anónimos del Estudio viven en la sesión del navegador hasta que la persona crea cuenta o compra."
+                    : "Aquí aparecerán los diseños personalizados de sus pedidos, cotizaciones o carritos."
                 }
               />
             ) : (
@@ -321,17 +384,17 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
               ) : (
                 <AdminCard className="space-y-3 p-4">
                   {data.intentSignals.wishlist.map((w) => (
-                    <div key={w.id} className="flex items-center justify-between text-xs">
+                    <div key={w.id} className="flex items-center justify-between gap-2 text-xs">
                       <span className="text-brand-purple-dark font-medium">
                         Favorito: {w.productName}
                       </span>
-                      <span className="text-brand-muted">
+                      <span className="text-brand-muted shrink-0">
                         {dateFmt.format(toDate(w.createdAt))}
                       </span>
                     </div>
                   ))}
                   {data.intentSignals.backInStock.map((b) => (
-                    <div key={b.id} className="flex items-center justify-between text-xs">
+                    <div key={b.id} className="flex items-center justify-between gap-2 text-xs">
                       <span className="text-brand-purple-dark font-medium">
                         Avísame cuando vuelva: {b.productName}
                       </span>
@@ -340,17 +403,39 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                       </AdminBadge>
                     </div>
                   ))}
-                  {data.abandonedCarts.map((ac) => (
-                    <div key={ac.id} className="flex items-center justify-between text-xs">
-                      <span className="text-brand-purple-dark font-medium">
-                        Carrito abandonado ({ac.reminderCount} recordatorio
-                        {ac.reminderCount === 1 ? "" : "s"})
-                      </span>
-                      <AdminBadge tone={ac.recoveredAt ? "emerald" : "amber"}>
-                        {ac.recoveredAt ? "Recuperado" : "Abierto"}
-                      </AdminBadge>
-                    </div>
-                  ))}
+                  {data.abandonedCarts.map((ac) => {
+                    const isRecovered = Boolean(ac.recoveredAt);
+                    const isClosedOther = !isRecovered && Boolean(ac.closedReason);
+                    const statusLabel = isRecovered
+                      ? "Compra cerrada"
+                      : ac.closedReason === "QUOTE_CREATED"
+                        ? "Convertido a cotización"
+                        : ac.closedReason === "CART_EMPTIED"
+                          ? "Vaciado por cliente"
+                          : isClosedOther
+                            ? "Cerrado"
+                            : "Abierto";
+                    const statusTone = isRecovered ? "emerald" : isClosedOther ? "slate" : "amber";
+                    return (
+                      <div
+                        key={ac.id}
+                        className="flex flex-wrap items-center justify-between gap-2 text-xs"
+                      >
+                        <Link
+                          href={`/admin/carritos/${encodeURIComponent(ac.id)}`}
+                          className="text-brand-purple hover:text-brand-purple-dark font-semibold underline underline-offset-2"
+                        >
+                          Carrito ({ac.reminderCount} recordatorio
+                          {ac.reminderCount === 1 ? "" : "s"}
+                          {ac.subtotalCents && ac.subtotalCents > 0
+                            ? ` · ${formatCOP(ac.subtotalCents)}`
+                            : ""}
+                          ) →
+                        </Link>
+                        <AdminBadge tone={statusTone}>{statusLabel}</AdminBadge>
+                      </div>
+                    );
+                  })}
                 </AdminCard>
               )}
             </div>

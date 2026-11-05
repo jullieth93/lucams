@@ -24,7 +24,8 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, hashEmail, ipKey } from "@/lib/rate-limit-keys";
 import { logger } from "@/lib/logger";
-import { getCurrentCustomer } from "@/lib/auth";
+import { getStorefrontCustomerForForm } from "@/lib/auth";
+import { recordHabeasDataConsent } from "@/features/consent/service";
 import { resolveSupportTicketContact } from "@/features/identity/resolution-service";
 import { computeSupportTicketSlaDueAt } from "@/lib/colombian-sla";
 import { hashBearerToken } from "@/lib/token-hash";
@@ -39,9 +40,15 @@ import {
 import { SupportTicketSchema, ORDER_RELATED_SUBJECTS, type SupportTicketInput } from "./schemas";
 import { getClientIp } from "@/lib/client-ip";
 
+export type SupportActionFieldKey = keyof SupportTicketInput | "dataConsent";
+
 export type SupportActionState =
   | { ok: true; ticketId: string; threadPath: string }
-  | { ok: false; error: string; fieldErrors?: Partial<Record<keyof SupportTicketInput, string[]>> }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: Partial<Record<SupportActionFieldKey, string[]>>;
+    }
   | null;
 
 export async function submitContactAction(
@@ -63,7 +70,17 @@ export async function submitContactAction(
     return {
       ok: false,
       error: "Revisa los campos marcados.",
-      fieldErrors: flat.fieldErrors as Partial<Record<keyof SupportTicketInput, string[]>>,
+      fieldErrors: flat.fieldErrors as Partial<Record<SupportActionFieldKey, string[]>>,
+    };
+  }
+
+  if (formData.get("dataConsent") !== "on") {
+    return {
+      ok: false,
+      error: "Autoriza el tratamiento de tus datos personales para enviar tu solicitud.",
+      fieldErrors: {
+        dataConsent: ["Debes autorizar el tratamiento de tus datos personales (Ley 1581 de 2012)."],
+      },
     };
   }
 
@@ -103,7 +120,7 @@ export async function submitContactAction(
   }
 
   try {
-    const session = await getCurrentCustomer();
+    const session = await getStorefrontCustomerForForm(parsed.data.email);
     const contactId = await resolveSupportTicketContact(prisma, {
       customerId: session?.customer.id ?? null,
       email: parsed.data.email,
@@ -150,6 +167,22 @@ export async function submitContactAction(
     // `void (async …)()` antes de que corra. after() difiere el trabajo para DESPUÉS de responder,
     // garantizando que ambos correos salgan (auditoría v3 · #14).
     after(async () => {
+      try {
+        await recordHabeasDataConsent({
+          customerId: session?.customer.id ?? null,
+          contactId,
+          email: parsed.data.email,
+          ip,
+          userAgent,
+          verificationSource: "SUPPORT_TICKET",
+        });
+      } catch (consentErr) {
+        logger.warn({
+          event: "support.ticket.consent_record_fail",
+          ticketId: ticket.id,
+          err: consentErr instanceof Error ? consentErr.message : String(consentErr),
+        });
+      }
       // try/catch: un throw aquí (p. ej. DB caída al leer CONTACT_EMAIL o un template que
       // revienta) mataría AMBOS correos como unhandled rejection silenciosa — el cliente ya
       // recibió su ok y nadie se enteraría del fallo salvo en logs de runtime.

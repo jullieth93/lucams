@@ -64,14 +64,20 @@ describe("QuoteForm", () => {
     expect(getForm().checkValidity()).toBe(false);
   });
 
-  it("auto-formatea el WhatsApp en pantalla y envía los 10 dígitos limpios en el hidden", () => {
+  it("auto-formatea el WhatsApp en pantalla y envía indicativo + dígitos limpios en el hidden", () => {
     render(<QuoteForm texts={DEFAULT_CHECKOUT_TEXTS.quote} />);
     const display = document.querySelector<HTMLInputElement>("#whatsapp-display")!;
     fireEvent.change(display, { target: { value: "3008873826" } });
 
     expect(display.value).toBe("300 887 3826");
     expect(document.querySelector<HTMLInputElement>('input[name="customerWhatsapp"]')!.value).toBe(
-      "3008873826",
+      "+57 3008873826",
+    );
+
+    const dialSelect = screen.getByLabelText("Indicativo de país");
+    fireEvent.change(dialSelect, { target: { value: "52" } });
+    expect(document.querySelector<HTMLInputElement>('input[name="customerWhatsapp"]')!.value).toBe(
+      "+52 3008873826",
     );
   });
 

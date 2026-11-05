@@ -8,23 +8,35 @@
  */
 
 import { z } from "zod";
-import { NAME_REGEX, stripPhone, validatePhone } from "@/lib/colombia-validators";
+import {
+  NAME_REGEX,
+  capitalizeName,
+  countWords,
+  normalizePhoneWithDial,
+  stripPhone,
+} from "@/lib/colombia-validators";
 
 export const QuoteFormSchema = z.object({
   customerName: z
     .string()
+    .trim()
     .min(2, "El nombre debe tener al menos 2 caracteres")
     .max(80, "Máximo 80 caracteres")
     // Misma regex central de nombre (lib/colombia-validators) — no duplicar inline.
     .regex(NAME_REGEX, "El nombre solo puede tener letras")
-    .trim(),
-  // Móvil colombiano: 10 dígitos empezando con 3. Se persiste normalizado
-  // (sin +57, sin espacios) vía stripPhone — ver lib/colombia-validators.
+    .refine((v) => countWords(v) <= 5, "Máximo 5 palabras en el nombre completo")
+    .transform(capitalizeName),
+  // Soporta celular colombiano de 10 dígitos empezando con 3 (con o sin +57) y
+  // números internacionales con indicativo desde <PhoneInput> (diáspora).
   customerWhatsapp: z
     .string()
+    .trim()
     .min(1, "El WhatsApp es requerido")
-    .refine(validatePhone, "Debe ser un móvil colombiano de 10 dígitos (300...)")
-    .transform(stripPhone),
+    .refine(
+      (v) => normalizePhoneWithDial(v) !== null,
+      "Debe ser un móvil colombiano de 10 dígitos (300...) o número internacional válido",
+    )
+    .transform((v) => normalizePhoneWithDial(v) ?? stripPhone(v)),
   // OBLIGATORIO desde 2026-07-25: la cotización se envía por WhatsApp Y por correo, así que sin
   // email se pierde el respaldo escrito — y con él la copia que le queda al cliente de lo que
   // cotizó. Se normaliza a minúsculas y sin espacios antes de validar.

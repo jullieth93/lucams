@@ -89,7 +89,7 @@ export function ReplyForm({ ticketId, disabled }: { ticketId: string; disabled: 
           {copilotLoading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Sparkles className="text-brand-magenta h-3.5 w-3.5" />
+            <Sparkles className="text-brand-pink h-3.5 w-3.5" />
           )}
           {copilotLoading ? "Analizando caso…" : "Sugerir borrador con copiloto"}
         </button>

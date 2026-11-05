@@ -176,7 +176,9 @@ const SEGMENT_BASE_CTE = Prisma.sql`
       po.last_utm_source,
       EXISTS (
         SELECT 1 FROM "AbandonedCart" ac
-        WHERE ac."contactId" = c."id" AND ac."recoveredAt" IS NULL
+        WHERE ac."contactId" = c."id"
+          AND ac."recoveredAt" IS NULL
+          AND ac."closedReason" IS NULL
       ) AS has_abandoned_cart,
       EXISTS (
         SELECT 1 FROM "Quote" q
@@ -210,6 +212,18 @@ const SEGMENT_BASE_CTE = Prisma.sql`
     WHERE c."deletedAt" IS NULL
       AND c."anonymizedAt" IS NULL
       AND c."primaryEmail" IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "AdminUser" au
+        LEFT JOIN "Customer" cu_adm
+          ON cu_adm."contactId" = c."id" AND cu_adm."deletedAt" IS NULL
+        WHERE au."isActive" = true
+          AND au."deletedAt" IS NULL
+          AND (
+            LOWER(au."email") = LOWER(c."primaryEmail")
+            OR (cu_adm."supabaseUserId" IS NOT NULL AND au."supabaseUserId" = cu_adm."supabaseUserId")
+          )
+      )
   )
 `;
 

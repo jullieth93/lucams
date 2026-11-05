@@ -503,9 +503,12 @@ los 2 proyectos base (`desktop-chrome` 1280×800, `mobile-chrome` 390×844) más
 así que **CI queda inafectado** (los workflows fijan sus specs explícitas; ningún otro spec
 hereda los proyectos).
 
-- **Matriz:** cliente público (home, /productos, PDP, /carrito, /checkout, login/registro),
-  cliente autenticado (`/mi-cuenta` y subrutas — se salta sin `storageState`) y admin
-  (dashboard, pedidos, productos, clientes, carritos, cupones, contenido, métricas — idem).
+- **Matriz:** cliente público (home, `/productos`, PDP, `/estudio/<slug>`, `/empresas-y-eventos`,
+  `/contacto`, `/soporte`, `/carrito`, `/checkout/datos`, login/registro), cliente autenticado
+  (`/mi-cuenta`, pedidos, diseños, perfil, soporte — se salta sin `storageState`) y admin
+  (dashboard, `/admin/hoy`, pedidos, productos, clientes, `/admin/clientes/duplicados`,
+  `/admin/oportunidades`, carritos, `/admin/marketing/segmentos`, cupones, contenido, métricas y
+  finanzas — idem).
 - **Chequeos por pantalla × perfil:** (a) overflow horizontal objetivo
   (`scrollWidth > clientWidth`) → **critical** (falla el test) con el elemento culpable;
   (b) tap targets <40px en perfiles táctiles → **medium** (solo se reporta; el scan excluye

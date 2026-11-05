@@ -48,6 +48,9 @@ import {
   AdminPage,
   AdminPageHeader,
   AdminPageBody,
+  AdminCard,
+  AdminComboBarLineChart,
+  AdminDeltaPill,
   AdminNotice,
   OpsCard,
   KpiCard,
@@ -56,6 +59,9 @@ import {
 import { getCurrentAdmin } from "@/lib/auth";
 import { canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
+import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
+import { getPeriodAggregates } from "@/features/finanzas/service";
 import { getInventorySummary } from "@/features/products/inventory-service";
 import { countOpenSupportTickets } from "@/features/support/admin-service";
 import { countOpenWarrantyClaims } from "@/features/warranty/service";
@@ -93,6 +99,9 @@ export default async function AdminDashboardPage({
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
 
+  const role = session.admin.role;
+  const showCommercialPulse = !isCatalogMode() && canAccessAdminPath(role, "/admin/metricas");
+
   const [
     customerCount,
     newCustomersThisMonth,
@@ -110,6 +119,7 @@ export default async function AdminDashboardPage({
     pendingModeration,
     openRetracts,
     failedRenderJobs,
+    pulse7d,
   ] = await Promise.all([
     prisma.customer.count({ where: { deletedAt: null } }),
     prisma.customer.count({ where: { deletedAt: null, createdAt: { gte: monthStart } } }),
@@ -147,6 +157,7 @@ export default async function AdminDashboardPage({
         },
       },
     }),
+    showCommercialPulse ? getPeriodAggregates("7d") : Promise.resolve(null),
   ]);
 
   // Lucy 2026-06-26 hotfix #2 P0-12: el saludo antes mostraba "Hola, crittan01"
@@ -154,7 +165,6 @@ export default async function AdminDashboardPage({
   // un nombre legible quitando dígitos trailing y separadores; si queda algo
   // raro o muy corto, fallback "Hola 👋" sin nombre.
   const displayName = deriveAdminDisplayName(session.admin.email);
-  const role = session.admin.role;
 
   type OpsCardDef = {
     href: string;
@@ -445,7 +455,7 @@ export default async function AdminDashboardPage({
             <h2 className="text-brand-muted mb-3 text-xs font-bold tracking-widest uppercase">
               Operaciones del día
             </h2>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {visibleOpsCards.map((card) => (
                 <OpsCard
                   key={`${card.href}:${card.label}`}
@@ -462,13 +472,71 @@ export default async function AdminDashboardPage({
           </section>
         )}
 
+        {/* ─────────────── Pulso comercial 7 días ─────────────── */}
+        {pulse7d && (
+          <section>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-brand-muted text-xs font-bold tracking-widest uppercase">
+                Pulso comercial (últimos 7 días)
+              </h2>
+              <Link
+                href="/admin/metricas?ventana=7"
+                className="text-brand-purple text-xs font-semibold hover:underline"
+              >
+                Abrir analítica completa →
+              </Link>
+            </div>
+            <AdminCard className="p-5">
+              {(() => {
+                const maxPulseCents = Math.max(0, ...pulse7d.buckets.map((b) => b.totalCents));
+                return (
+                  <>
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-brand-muted text-xs">
+                        <strong className="text-brand-purple-dark text-sm">
+                          {formatCOP(pulse7d.netTotalCents)}
+                        </strong>{" "}
+                        cobrados netos en{" "}
+                        <strong className="text-brand-purple-dark">{pulse7d.orderCount}</strong>{" "}
+                        pedido{pulse7d.orderCount === 1 ? "" : "s"}
+                      </p>
+                      <AdminDeltaPill
+                        deltaPct={pulse7d.netRevenueDeltaPct}
+                        comparisonLabel={pulse7d.range.previousLabel}
+                      />
+                    </div>
+                    <AdminComboBarLineChart
+                      ariaLabel="Pulso comercial de ingresos y pedidos en los últimos 7 días"
+                      barLegend="Ingresos cobrados (COP)"
+                      lineLegend="Pedidos confirmados"
+                      maxAxisFormatted={maxPulseCents > 0 ? formatCOP(maxPulseCents) : "$0"}
+                      midAxisFormatted={
+                        maxPulseCents > 0 ? formatCOP(Math.round(maxPulseCents / 2)) : undefined
+                      }
+                      data={pulse7d.buckets.map((b) => ({
+                        key: b.start.toISOString(),
+                        label: b.label,
+                        tickLabel: b.tickLabel,
+                        barValue: b.totalCents,
+                        barFormatted: formatCOP(b.totalCents),
+                        lineValue: b.count,
+                        lineFormatted: `${b.count} pedido${b.count === 1 ? "" : "s"}`,
+                      }))}
+                    />
+                  </>
+                );
+              })()}
+            </AdminCard>
+          </section>
+        )}
+
         {/* ─────────────── Negocio (KPIs) ─────────────── */}
         {role !== "FULFILLMENT" && (
           <section>
             <h2 className="text-brand-muted mb-3 text-xs font-bold tracking-widest uppercase">
               Estado del negocio
             </h2>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <KpiCard
                 label="Clientes"
                 value={customerCount}

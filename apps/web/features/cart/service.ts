@@ -353,14 +353,76 @@ async function ensureCart(sessionId: string, customerId: string | null) {
   // también pasa la guarda de identidad; nunca se reasigna a otra cuenta.
   const soft = await prisma.cart.findUnique({
     where: { sessionId },
-    select: { id: true, customerId: true },
+    select: { id: true, customerId: true, deletedAt: true, deletedBy: true },
   });
   if (soft) {
     assertCartIdentity(soft, customerId);
+    // Antes de limpiar las líneas del carrito soft-deleted para revivir la sesión,
+    // preservamos el snapshot de productos/subtotal en AbandonedCart (si existía)
+    // para que /admin/carritos/[id] conserve el diagnóstico histórico completo.
+    const existingAbandoned =
+      "abandonedCart" in prisma && prisma.abandonedCart
+        ? await prisma.abandonedCart.findUnique({
+            where: { cartId: soft.id },
+            select: { id: true, itemsSnapshot: true, recoveredAt: true, closedReason: true },
+          })
+        : null;
+    if (existingAbandoned && existingAbandoned.itemsSnapshot === null) {
+      const oldItems = await prisma.cartItem.findMany({
+        where: { cartId: soft.id },
+        select: {
+          qty: true,
+          unitPrice: true,
+          variant: {
+            select: {
+              name: true,
+              images: true,
+              product: {
+                select: {
+                  name: true,
+                  slug: true,
+                  images: true,
+                },
+              },
+            },
+          },
+          design: { select: { id: true, previewUrl: true, canvasData: true, metadata: true } },
+        },
+      });
+      if (oldItems.length > 0) {
+        const snap = oldItems.map((i) => {
+          const perDesign = designDisplayUnits(i.design);
+          return {
+            productName: i.variant.product.name,
+            productSlug: i.variant.product.slug,
+            variantName: i.variant.name,
+            imageUrl: i.variant.images[0] ?? i.variant.product.images[0] ?? null,
+            qty: i.qty,
+            unitPrice: i.unitPrice,
+            units: perDesign === null ? undefined : perDesign * i.qty,
+            designId: i.design?.id ?? null,
+            designPreviewUrl: i.design?.previewUrl ?? null,
+          };
+        });
+        const subtotalCents = oldItems.reduce((acc, i) => acc + i.qty * i.unitPrice, 0);
+        await prisma.abandonedCart.update({
+          where: { id: existingAbandoned.id },
+          data: {
+            itemsSnapshot: snap,
+            subtotalCents,
+            ...(existingAbandoned.closedReason === null && soft.deletedBy === "quote:create"
+              ? { closedReason: "QUOTE_CREATED" }
+              : existingAbandoned.recoveredAt === null && soft.deletedAt
+                ? { recoveredAt: soft.deletedAt, closedReason: "ORDER_PAID" }
+                : {}),
+          },
+        });
+      }
+    }
     await prisma.cartItem.deleteMany({ where: { cartId: soft.id } });
     return prisma.cart.update({
       where: { id: soft.id },
-      data: { deletedAt: null, customerId: customerId ?? undefined },
+      data: { deletedAt: null, deletedBy: null, customerId: customerId ?? undefined },
       include: cartItemsInclude,
     });
   }
@@ -925,6 +987,12 @@ export async function updateCartItemQty(
 
   if (qty === 0) {
     await prisma.cartItem.delete({ where: { id: itemId } });
+    if (cart.items.length === 1 && "abandonedCart" in prisma && prisma.abandonedCart) {
+      await prisma.abandonedCart.updateMany({
+        where: { cartId: cart.id, recoveredAt: null, closedReason: null },
+        data: { closedReason: "CART_EMPTIED" },
+      });
+    }
   } else {
     // Tope efectivo min(99, stock) con SEMÁNTICA DE CLAMP (2026-09-29): el set
     // absoluto se topa al stock real de la variante (el stepper UI ya capa el
@@ -1183,6 +1251,18 @@ export async function mergeAnonCartIntoCustomer(
       anonSessionId,
       customerId,
     });
+    if ("abandonedCart" in tx && tx.abandonedCart) {
+      const [anonAb, custAb] = await Promise.all([
+        tx.abandonedCart.findUnique({ where: { cartId: anonCart.id }, select: { id: true } }),
+        tx.abandonedCart.findUnique({ where: { cartId: customerCart.id }, select: { id: true } }),
+      ]);
+      if (anonAb && !custAb) {
+        await tx.abandonedCart.update({
+          where: { id: anonAb.id },
+          data: { cartId: customerCart.id },
+        });
+      }
+    }
     await tx.cartItem.deleteMany({ where: { cartId: anonCart.id } });
     await tx.cart.delete({ where: { id: anonCart.id } });
   });

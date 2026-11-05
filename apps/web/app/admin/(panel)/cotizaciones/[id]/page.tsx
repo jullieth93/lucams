@@ -11,13 +11,23 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, FileText, Hammer, MapPin, Sparkles, StickyNote, User } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  FileText,
+  Hammer,
+  MapPin,
+  Sparkles,
+  StickyNote,
+  User,
+} from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP, formatCityDept } from "@/lib/format";
 import { customerWaLink } from "@/lib/wa";
 import { getQuoteById } from "@/features/quotes/admin-service";
+import { convertQuoteToOpportunityAction } from "@/features/opportunities/actions";
 import type { QuoteStatus } from "@lucams/db";
 import {
   AdminPage,
@@ -56,11 +66,14 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 });
 
 export default async function AdminCotizacionDetallePage({ params }: { params: Params }) {
-  await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
+  const session = await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
+  const canManageOpportunities = hasCapability(session.admin.role, "opportunities:manage");
+  const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
 
   const { id } = await params;
   const quote = await getQuoteById(id);
   if (!quote) notFound();
+  const linkedOpportunity = quote.convertedOpportunities[0] ?? null;
 
   // WhatsApp al CLIENTE (vista admin — el número sí está disponible acá).
   // El número se persiste normalizado a 10 dígitos CO; el indicativo 57 que
@@ -259,6 +272,16 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
                   </dd>
                 </div>
               </dl>
+              {canRead360 && quote.contactId && (
+                <div className="mt-3">
+                  <Link
+                    href={`/admin/clientes/${encodeURIComponent(quote.contactId)}`}
+                    className="text-brand-purple hover:text-brand-purple-dark inline-block text-xs font-semibold underline underline-offset-2"
+                  >
+                    Abrir Contacto 360 →
+                  </Link>
+                </div>
+              )}
               {quote.notes && (
                 <div className="border-brand-purple/10 mt-3 border-t pt-3">
                   <p className="text-brand-muted text-[10px] font-semibold tracking-wider uppercase">
@@ -270,6 +293,43 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
                 </div>
               )}
             </AdminCard>
+
+            {canManageOpportunities && (
+              <AdminCard className="p-5">
+                <h2 className="text-brand-purple-dark font-display mb-2 flex items-center gap-2 text-base font-bold">
+                  <Building2 className="h-4 w-4" />
+                  Pipeline B2B / Eventos
+                </h2>
+                {linkedOpportunity ? (
+                  <div className="space-y-2 text-xs">
+                    <p className="text-brand-muted">
+                      Esta cotización ya está vinculada a una oportunidad comercial activa:
+                    </p>
+                    <Link
+                      href={`/admin/oportunidades/${encodeURIComponent(linkedOpportunity.id)}`}
+                      className="bg-brand-purple inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold text-white hover:brightness-110"
+                    >
+                      Abrir oportunidad {linkedOpportunity.number} →
+                    </Link>
+                  </div>
+                ) : (
+                  <form action={convertQuoteToOpportunityAction} className="space-y-2.5">
+                    <input type="hidden" name="quoteId" value={quote.id} />
+                    <p className="text-brand-muted text-xs">
+                      ¿Es una negociación de volumen, regalo corporativo o evento? Llévala en 1 clic
+                      al pipeline comercial con tarea de seguimiento en Bandeja Hoy.
+                    </p>
+                    <button
+                      type="submit"
+                      className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg border bg-[#FFF8F0]/70 px-3.5 py-2 text-xs font-semibold transition-colors"
+                    >
+                      <Building2 className="h-4 w-4" />
+                      Convertir en Oportunidad B2B
+                    </button>
+                  </form>
+                )}
+              </AdminCard>
+            )}
 
             <AdminCard className="p-5">
               <h2 className="text-brand-purple-dark font-display mb-3 text-base font-bold">

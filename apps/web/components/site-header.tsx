@@ -98,6 +98,20 @@ export async function SiteHeader() {
             texts={megaMenuTexts}
           />
 
+          <Link
+            href="/empresas-y-eventos"
+            className="text-brand-purple-dark hover:text-brand-purple hidden min-h-10 items-center px-2 text-sm font-medium transition-colors lg:inline-flex"
+          >
+            Empresas y eventos
+          </Link>
+
+          <Link
+            href="/soporte"
+            className="text-brand-purple-dark hover:text-brand-purple hidden min-h-10 items-center px-2 text-sm font-medium transition-colors lg:inline-flex"
+          >
+            Soporte
+          </Link>
+
           <Hint content="Te ayudamos a elegir en 4 preguntas">
             <Link
               href="/recomendador"

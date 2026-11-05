@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NAME_REGEX, capitalizeName, countWords } from "@/lib/colombia-validators";
 
 // No reordenar ni renombrar valores: hay tickets históricos en DB, tests y
 // plantillas de email que referencian estos strings. Los nuevos se agregan al final.
@@ -38,10 +39,20 @@ const orderNumberField = z
   .optional();
 
 export const SupportTicketSchema = z.object({
-  name: z.string().min(2, "Nombre muy corto").max(120),
-  email: z.string().email("Email inválido").max(200),
+  name: z
+    .string()
+    .trim()
+    .min(2, "Nombre muy corto")
+    .max(120, "Máximo 120 caracteres")
+    .regex(NAME_REGEX, "El nombre solo puede tener letras (sin números ni símbolos)")
+    .refine((v) => countWords(v) <= 5, "Ingresa máximo 5 palabras en tu nombre")
+    .transform(capitalizeName),
+  email: z
+    .string()
+    .transform((v) => v.trim().toLowerCase())
+    .pipe(z.email("Email inválido").max(200)),
   subject: z.enum(SUPPORT_SUBJECTS, "Asunto inválido"),
-  message: z.string().min(10, "Cuéntanos un poco más").max(4000),
+  message: z.string().trim().min(10, "Cuéntanos un poco más").max(4000),
   orderNumber: orderNumberField,
 });
 

@@ -42,6 +42,7 @@ export interface ContactListOpts {
   sort?: ContactSortOption;
   page?: number;
   pageSize?: number;
+  includeStaff?: boolean;
 }
 
 export interface ContactDirectoryItem {
@@ -53,6 +54,7 @@ export interface ContactDirectoryItem {
   source: string;
   hasCustomerAccount: boolean;
   customerId: string | null;
+  isStaffAdmin: boolean;
   organizationName: string | null;
   paidOrdersCount: number;
   netLtvCents: number;
@@ -230,6 +232,21 @@ export async function listContactsForActor(
 
   const sqlConditions: Prisma.Sql[] = [Prisma.sql`ct."deletedAt" IS NULL`];
 
+  const isStaffExpr = Prisma.sql`EXISTS (
+    SELECT 1
+    FROM "AdminUser" au
+    WHERE au."isActive" = TRUE
+      AND au."deletedAt" IS NULL
+      AND (
+        (ct."primaryEmail" IS NOT NULL AND LOWER(au."email") = LOWER(ct."primaryEmail"))
+        OR (cu."supabaseUserId" IS NOT NULL AND au."supabaseUserId" = cu."supabaseUserId")
+      )
+  )`;
+
+  if (!opts.includeStaff) {
+    sqlConditions.push(Prisma.sql`NOT (${isStaffExpr})`);
+  }
+
   for (const token of tokens) {
     const pattern = `%${escapeLikePattern(token)}%`;
     if (canReadPii) {
@@ -368,6 +385,7 @@ export async function listContactsForActor(
     customerFirstName: string | null;
     customerLastName: string | null;
     loyaltyPoints: number | null;
+    isStaffAdmin: boolean;
     organizationName: string | null;
     paidOrders: number;
     netLtvCents: bigint;
@@ -393,6 +411,7 @@ export async function listContactsForActor(
         cu."firstName" AS "customerFirstName",
         cu."lastName" AS "customerLastName",
         cu."loyaltyPoints" AS "loyaltyPoints",
+        (${isStaffExpr})::boolean AS "isStaffAdmin",
         org."name" AS "organizationName",
         COALESCE(ord.paid_orders, 0)::int AS "paidOrders",
         COALESCE(ord.net_ltv_cents, 0)::bigint AS "netLtvCents",
@@ -454,6 +473,7 @@ export async function listContactsForActor(
       source: r.source,
       hasCustomerAccount: Boolean(r.customerId),
       customerId: r.customerId,
+      isStaffAdmin: Boolean(r.isStaffAdmin),
       organizationName: r.organizationName,
       paidOrdersCount: Number(r.paidOrders),
       netLtvCents: Number(r.netLtvCents),
@@ -497,6 +517,7 @@ export interface Contact360Data {
   anonymizedAt: Date | null;
   createdAt: Date;
   piiMasked: boolean;
+  isStaffAdmin: boolean;
   organization: {
     id: string;
     name: string;
@@ -552,6 +573,17 @@ export interface Contact360Data {
     department: string;
     createdAt: Date;
   }>;
+  opportunities: Array<{
+    id: string;
+    number: string;
+    title: string;
+    stage: string;
+    eventType: string;
+    expectedUnits: number | null;
+    expectedAmountCop: number;
+    city: string | null;
+    createdAt: Date;
+  }>;
   designs: Array<{
     id: string;
     productName: string;
@@ -566,6 +598,8 @@ export interface Contact360Data {
     reminderCount: number;
     lastReminderSentAt: Date | null;
     recoveredAt: Date | null;
+    closedReason: string | null;
+    subtotalCents: number | null;
     createdAt: Date;
   }>;
   aftersales: Array<{
@@ -700,6 +734,9 @@ export async function getContact360ForActor(
               retractRequest: {
                 select: { status: true, refundAmount: true },
               },
+              design: {
+                include: { product: { select: { name: true, slug: true } } },
+              },
             },
           },
         },
@@ -708,10 +745,37 @@ export async function getContact360ForActor(
         where: { deletedAt: null },
         orderBy: { createdAt: "desc" },
         take: 25,
+        include: {
+          items: {
+            select: {
+              design: {
+                include: { product: { select: { name: true, slug: true } } },
+              },
+            },
+          },
+        },
+      },
+      opportunities: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: 25,
       },
       abandonedCarts: {
         orderBy: { createdAt: "desc" },
         take: 20,
+        include: {
+          cart: {
+            select: {
+              items: {
+                select: {
+                  design: {
+                    include: { product: { select: { name: true, slug: true } } },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       supportTickets: {
         orderBy: { createdAt: "desc" },
@@ -749,32 +813,66 @@ export async function getContact360ForActor(
     }
   }
 
-  const [referralRows, guestBackInStock, blockedEntries, pendingMergesCount] = await Promise.all([
-    contact.customer
-      ? prisma.referral.findMany({
-          where: { referrerId: contact.customer.id },
-          orderBy: { createdAt: "desc" },
-          take: 30,
-        })
-      : Promise.resolve([]),
-    !contact.customer && contact.primaryEmail
-      ? prisma.backInStockSubscription.findMany({
-          where: { email: contact.primaryEmail },
-          orderBy: { createdAt: "desc" },
-          take: 20,
-          include: { product: { select: { name: true, slug: true } } },
-        })
-      : Promise.resolve([]),
-    blockLookupOr.length > 0
-      ? prisma.blockedIdentity.findMany({ where: { OR: blockLookupOr }, take: 5 })
-      : Promise.resolve([]),
-    prisma.identityMergeCandidate.count({
-      where: {
-        status: "PENDING",
-        OR: [{ primaryContactId: contact.id }, { secondaryContactId: contact.id }],
-      },
-    }),
-  ]);
+  const contactEmailsSet = new Set<string>();
+  if (contact.primaryEmail) {
+    contactEmailsSet.add(contact.primaryEmail.trim().toLowerCase());
+  }
+  for (const ident of contact.identities) {
+    if (ident.type === "EMAIL" && ident.verificationStatus !== "REVOKED") {
+      contactEmailsSet.add(ident.normalizedValue.trim().toLowerCase());
+    }
+  }
+  const contactEmails = [...contactEmailsSet];
+
+  const bisOr: Prisma.BackInStockSubscriptionWhereInput[] = [];
+  if (contact.customer) {
+    bisOr.push({ customerId: contact.customer.id });
+  }
+  if (contactEmails.length > 0) {
+    bisOr.push({ email: { in: contactEmails, mode: "insensitive" } });
+  }
+
+  const adminCheckOr: Prisma.AdminUserWhereInput[] = [];
+  if (contact.primaryEmail) {
+    adminCheckOr.push({ email: { equals: contact.primaryEmail, mode: "insensitive" } });
+  }
+  if (contact.customer?.supabaseUserId) {
+    adminCheckOr.push({ supabaseUserId: contact.customer.supabaseUserId });
+  }
+
+  const [referralRows, unifiedBackInStock, blockedEntries, pendingMergesCount, staffMatch] =
+    await Promise.all([
+      contact.customer
+        ? prisma.referral.findMany({
+            where: { referrerId: contact.customer.id },
+            orderBy: { createdAt: "desc" },
+            take: 30,
+          })
+        : Promise.resolve([]),
+      bisOr.length > 0
+        ? prisma.backInStockSubscription.findMany({
+            where: { OR: bisOr },
+            orderBy: { createdAt: "desc" },
+            take: 25,
+            include: { product: { select: { name: true, slug: true } } },
+          })
+        : Promise.resolve([]),
+      blockLookupOr.length > 0
+        ? prisma.blockedIdentity.findMany({ where: { OR: blockLookupOr }, take: 5 })
+        : Promise.resolve([]),
+      prisma.identityMergeCandidate.count({
+        where: {
+          status: "PENDING",
+          OR: [{ primaryContactId: contact.id }, { secondaryContactId: contact.id }],
+        },
+      }),
+      adminCheckOr.length > 0
+        ? prisma.adminUser.findFirst({
+            where: { isActive: true, deletedAt: null, OR: adminCheckOr },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
 
   // Métricas financieras reales sobre órdenes cobradas
   const paidOrders = contact.orders.filter((o) =>
@@ -813,6 +911,37 @@ export async function getContact360ForActor(
   );
   const marketingOptInAt = marketingOptIn ? (latestNewsletterConsent?.acceptedAt ?? null) : null;
 
+  // Consolidar diseños del Estudio (cuenta + pedidos invitado + cotizaciones + carritos)
+  type DesignWithProduct = NonNullable<typeof contact.customer>["designs"][number];
+  const designsMap = new Map<string, DesignWithProduct>();
+  for (const d of contact.customer?.designs ?? []) {
+    designsMap.set(d.id, d);
+  }
+  for (const ord of contact.orders) {
+    for (const it of ord.items) {
+      if (it.design && !designsMap.has(it.design.id)) {
+        designsMap.set(it.design.id, it.design);
+      }
+    }
+  }
+  for (const q of contact.quotes) {
+    for (const it of q.items) {
+      if (it.design && !designsMap.has(it.design.id)) {
+        designsMap.set(it.design.id, it.design);
+      }
+    }
+  }
+  for (const ac of contact.abandonedCarts) {
+    for (const it of ac.cart?.items ?? []) {
+      if (it.design && !designsMap.has(it.design.id)) {
+        designsMap.set(it.design.id, it.design);
+      }
+    }
+  }
+  const allDesigns = [...designsMap.values()].sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+  );
+
   // Señales de abandono / fricción individual ("¿Dónde quedó esta persona?")
   const dropOffSignals: ContactDropOffSignal[] = [];
 
@@ -832,7 +961,7 @@ export async function getContact360ForActor(
   }
 
   for (const ac of contact.abandonedCarts) {
-    if (ac.recoveredAt !== null) continue;
+    if (ac.recoveredAt !== null || ac.closedReason !== null) continue;
     dropOffSignals.push({
       stage: "CART_ABANDONED",
       title: "Carrito abandonado sin compra cerrada",
@@ -841,13 +970,12 @@ export async function getContact360ForActor(
           ? `Se enviaron ${ac.reminderCount} recordatorio${ac.reminderCount === 1 ? "" : "s"} de recuperación.`
           : "Aún sin recordatorio enviado.",
       occurredAt: ac.updatedAt,
-      actionHref: "/admin/carritos",
-      actionLabel: "Ir a carritos",
+      actionHref: `/admin/carritos/${encodeURIComponent(ac.id)}`,
+      actionLabel: "Ver diagnóstico",
     });
   }
 
-  const customerDesigns = contact.customer?.designs ?? [];
-  for (const d of customerDesigns) {
+  for (const d of allDesigns) {
     if (d.status !== "DRAFT") continue;
     dropOffSignals.push({
       stage: "STUDIO_DRAFT",
@@ -903,7 +1031,11 @@ export async function getContact360ForActor(
     contact.primaryEmail ||
     "Contacto";
 
-  const backInStockRaw = contact.customer ? contact.customer.backInStockSubs : guestBackInStock;
+  const identityPhoneFallback =
+    contact.identities.find(
+      (i) => (i.type === "WHATSAPP" || i.type === "PHONE") && i.verificationStatus !== "REVOKED",
+    )?.normalizedValue ?? null;
+  const resolvedPhoneDisplay = contact.primaryPhoneE164 ?? identityPhoneFallback;
 
   return {
     id: contact.id,
@@ -914,11 +1046,13 @@ export async function getContact360ForActor(
         ? maskEmail(contact.primaryEmail)
         : null,
     primaryPhoneE164: canReadPii
-      ? contact.primaryPhoneE164
-      : contact.primaryPhoneE164
-        ? maskPhone(contact.primaryPhoneE164)
+      ? resolvedPhoneDisplay
+      : resolvedPhoneDisplay
+        ? maskPhone(resolvedPhoneDisplay)
         : null,
-    waPhoneRaw: canReadPii ? (contact.primaryPhoneE164 ?? contact.customer?.phone ?? null) : null,
+    waPhoneRaw: canReadPii
+      ? (contact.primaryPhoneE164 ?? contact.customer?.phone ?? identityPhoneFallback)
+      : null,
     documentLabel: canReadPii
       ? contact.documentType && contact.documentNumber
         ? `${contact.documentType} ${contact.documentNumber}`
@@ -934,6 +1068,7 @@ export async function getContact360ForActor(
     anonymizedAt: contact.anonymizedAt,
     createdAt: contact.createdAt,
     piiMasked: !canReadPii,
+    isStaffAdmin: Boolean(staffMatch),
     organization: contact.organization
       ? {
           id: contact.organization.id,
@@ -976,7 +1111,7 @@ export async function getContact360ForActor(
         productSlug: w.product.slug,
         createdAt: w.createdAt,
       })),
-      backInStock: backInStockRaw.map((b) => ({
+      backInStock: unifiedBackInStock.map((b) => ({
         id: b.id,
         productName: b.product.name,
         productSlug: b.product.slug,
@@ -1002,7 +1137,18 @@ export async function getContact360ForActor(
       department: q.department,
       createdAt: q.createdAt,
     })),
-    designs: customerDesigns.map((d) => ({
+    opportunities: contact.opportunities.map((op) => ({
+      id: op.id,
+      number: op.number,
+      title: op.title,
+      stage: op.stage,
+      eventType: op.eventType,
+      expectedUnits: op.expectedUnits,
+      expectedAmountCop: op.expectedAmountCop,
+      city: op.city,
+      createdAt: op.createdAt,
+    })),
+    designs: allDesigns.map((d) => ({
       id: d.id,
       productName: d.product.name,
       productSlug: d.product.slug,
@@ -1016,6 +1162,8 @@ export async function getContact360ForActor(
       reminderCount: ac.reminderCount,
       lastReminderSentAt: ac.lastReminderSentAt,
       recoveredAt: ac.recoveredAt,
+      closedReason: ac.closedReason,
+      subtotalCents: ac.subtotalCents,
       createdAt: ac.createdAt,
     })),
     aftersales,

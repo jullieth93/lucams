@@ -138,6 +138,7 @@ export async function getTodayOperationalInbox(
     codUnreconciled,
     declinedOrders,
     annualOccasionCount,
+    abandonedCarts,
   ] = await Promise.all([
     // 1. Tareas CRM (`Task`) abiertas o en curso
     canManageTasks
@@ -356,6 +357,32 @@ export async function getTodayOperationalInbox(
 
     // 10. Recordatorio anual de ocasiones especiales (320–370 días) con opt-in Ley 1581 vigente
     canReadMarketing ? countConsentedAnnualOccasionContacts() : Promise.resolve(0),
+
+    // 11. Carritos abandonados elegibles (> 4 h, < 7 d, sin recordatorio aún)
+    canRecoverCarts && canAccessAdminPath(role, "/admin/carritos")
+      ? prisma.abandonedCart.findMany({
+          where: {
+            recoveredAt: null,
+            closedReason: null,
+            lastReminderSentAt: null,
+            createdAt: {
+              gte: sevenDaysAgo,
+              lte: new Date(nowMs - 4 * 60 * 60 * 1000),
+            },
+            cart: { deletedAt: null },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            email: true,
+            subtotalCents: true,
+            checkoutStep: true,
+            createdAt: true,
+            contact: { select: { displayName: true } },
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   // --- Mapear Tareas ---
@@ -622,6 +649,34 @@ export async function getTodayOperationalInbox(
         ? `/admin/clientes/${encodeURIComponent(dec.contactId!)}`
         : `/admin/pedidos/${encodeURIComponent(dec.number)}`,
       actionLabel: canGoToContact ? "Contactar cliente" : "Ver pedido",
+      completableTaskId: null,
+    });
+  }
+
+  // --- Carritos abandonados sin contactar ---
+  for (const ac of abandonedCarts) {
+    const labelName = ac.contact?.displayName
+      ? canReadContactPii
+        ? ac.contact.displayName
+        : maskPersonName(ac.contact.displayName)
+      : canReadContactPii
+        ? ac.email
+        : maskEmail(ac.email);
+    items.push({
+      id: `abandoned:${ac.id}`,
+      sourceId: ac.id,
+      category: "RECOVERY",
+      severity: "NORMAL",
+      title: `Carrito abandonado · ${labelName}`,
+      subtitle: `${ac.subtotalCents ? `${formatCOP(ac.subtotalCents)} · ` : ""}Etapa: ${ac.checkoutStep ?? "DATOS"}`,
+      badgeLabel: "Carrito abandonado",
+      badgeTone: "amber",
+      assignedToMe: false,
+      isOverdue: false,
+      dueAtIso: null,
+      createdAtIso: ac.createdAt.toISOString(),
+      actionHref: `/admin/carritos/${encodeURIComponent(ac.id)}`,
+      actionLabel: "Ver qué pasó",
       completableTaskId: null,
     });
   }

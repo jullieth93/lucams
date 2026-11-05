@@ -18,9 +18,21 @@ describe("SupportTicketSchema", () => {
     expect(r.success).toBe(false);
   });
 
-  it("rejects nombre muy corto", () => {
-    const r = SupportTicketSchema.safeParse({ ...validInput, name: "A" });
-    expect(r.success).toBe(false);
+  it("rejects nombre muy corto, con números o de más de 5 palabras y normaliza a Title Case", () => {
+    expect(SupportTicketSchema.safeParse({ ...validInput, name: "A" }).success).toBe(false);
+    expect(SupportTicketSchema.safeParse({ ...validInput, name: "Lucía 123" }).success).toBe(false);
+    expect(
+      SupportTicketSchema.safeParse({
+        ...validInput,
+        name: "Ana María De La Cruz Rodríguez",
+      }).success,
+    ).toBe(false);
+
+    const ok = SupportTicketSchema.safeParse({ ...validInput, name: "lucía del pilar rodríguez" });
+    expect(ok.success).toBe(true);
+    if (ok.success) {
+      expect(ok.data.name).toBe("Lucía del Pilar Rodríguez");
+    }
   });
 
   it("rejects mensaje vacío", () => {

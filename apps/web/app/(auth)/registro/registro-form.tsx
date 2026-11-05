@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { EmailInput } from "@/components/email-input";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
+import { capitalizeName, personNameError } from "@/lib/colombia-validators";
 import { signupAction, type SignupActionState } from "./actions";
 import type { AuthTexts } from "../auth-texts";
 
@@ -46,10 +47,19 @@ export function RegistroForm({
   // mientras se escribe la primera vez; tras el primer blur se re-valida on-change.
   const [firstName, setFirstName] = useState("");
   const [firstNameTouched, setFirstNameTouched] = useState(false);
+  const [lastName, setLastName] = useState("");
+  const [lastNameTouched, setLastNameTouched] = useState(false);
+  const [email, setEmail] = useState("");
+  const [referralCode, setReferralCode] = useState(initialReferralCode ?? "");
   const [confirmTouched, setConfirmTouched] = useState(false);
 
   const passwordsMatch = !passwordConfirm || password === passwordConfirm;
-  const showFirstNameError = firstNameTouched && !firstName.trim();
+  const firstNameLiveErr = firstNameTouched
+    ? !firstName.trim()
+      ? "Tu nombre es obligatorio"
+      : personNameError(firstName, 3)
+    : null;
+  const lastNameLiveErr = lastNameTouched && lastName.trim() ? personNameError(lastName, 3) : null;
   const showMismatch = confirmTouched && !passwordsMatch;
 
   return (
@@ -72,7 +82,7 @@ export function RegistroForm({
 
       <form action={formAction}>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="firstName">{texts.firstNameLabel}</Label>
               <Input
@@ -85,17 +95,21 @@ export function RegistroForm({
                 disabled={pending}
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                onBlur={() => setFirstNameTouched(true)}
-                aria-invalid={Boolean(state?.fieldErrors?.firstName) || showFirstNameError}
-                aria-describedby={showFirstNameError ? "firstName-live-error" : undefined}
+                onBlur={() => {
+                  if (firstName.trim()) setFirstName(capitalizeName(firstName));
+                  setFirstNameTouched(true);
+                }}
+                aria-invalid={Boolean(state?.fieldErrors?.firstName) || Boolean(firstNameLiveErr)}
+                aria-describedby={firstNameLiveErr ? "firstName-live-error" : undefined}
               />
-              {showFirstNameError && (
+              {firstNameLiveErr ? (
                 <p id="firstName-live-error" role="alert" className="text-destructive text-sm">
-                  Tu nombre es obligatorio
+                  {firstNameLiveErr}
                 </p>
-              )}
-              {state?.fieldErrors?.firstName && (
-                <p className="text-destructive text-sm">{state.fieldErrors.firstName[0]}</p>
+              ) : (
+                state?.fieldErrors?.firstName && (
+                  <p className="text-destructive text-sm">{state.fieldErrors.firstName[0]}</p>
+                )
               )}
             </div>
             <div className="space-y-2">
@@ -110,10 +124,23 @@ export function RegistroForm({
                 autoComplete="family-name"
                 placeholder={texts.lastNamePlaceholder}
                 disabled={pending}
-                aria-invalid={Boolean(state?.fieldErrors?.lastName)}
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                onBlur={() => {
+                  if (lastName.trim()) setLastName(capitalizeName(lastName));
+                  setLastNameTouched(true);
+                }}
+                aria-invalid={Boolean(state?.fieldErrors?.lastName) || Boolean(lastNameLiveErr)}
+                aria-describedby={lastNameLiveErr ? "lastName-live-error" : undefined}
               />
-              {state?.fieldErrors?.lastName && (
-                <p className="text-destructive text-sm">{state.fieldErrors.lastName[0]}</p>
+              {lastNameLiveErr ? (
+                <p id="lastName-live-error" role="alert" className="text-destructive text-sm">
+                  {lastNameLiveErr}
+                </p>
+              ) : (
+                state?.fieldErrors?.lastName && (
+                  <p className="text-destructive text-sm">{state.fieldErrors.lastName[0]}</p>
+                )
               )}
             </div>
           </div>
@@ -126,6 +153,8 @@ export function RegistroForm({
               required
               placeholder={texts.emailPlaceholder}
               disabled={pending}
+              value={email}
+              onValueChange={setEmail}
               aria-invalid={Boolean(state?.fieldErrors?.email)}
             />
             {state?.fieldErrors?.email && (
@@ -145,7 +174,8 @@ export function RegistroForm({
               type="text"
               inputMode="text"
               autoComplete="off"
-              defaultValue={initialReferralCode}
+              value={referralCode}
+              onChange={(e) => setReferralCode(e.target.value)}
               placeholder={texts.referralPlaceholder}
               disabled={pending}
               aria-invalid={Boolean(state?.fieldErrors?.referralCode)}

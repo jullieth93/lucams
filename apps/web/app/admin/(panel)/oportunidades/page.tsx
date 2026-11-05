@@ -20,6 +20,8 @@ import {
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
+  AdminSegmentedBar,
+  type ChartTone,
 } from "@/components/admin-page";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { requireCapability } from "@/lib/admin-rbac-guard";
@@ -148,9 +150,37 @@ export default async function AdminOportunidadesPage({
           </AdminCard>
         </div>
 
-        {/* Filtros por etapa + buscador */}
-        <AdminCard className="p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        {/* Embudo visual por etapa + Filtros y buscador */}
+        <AdminCard className="space-y-4 p-4">
+          <div>
+            <p className="text-brand-purple-dark mb-2 text-xs font-bold tracking-wide uppercase">
+              Distribución visual del pipeline por etapa
+            </p>
+            <AdminSegmentedBar
+              ariaLabel="Distribución de oportunidades B2B por etapa del embudo"
+              items={OPPORTUNITY_STAGES.map((st) => {
+                const stageChartTone: Record<(typeof OPPORTUNITY_STAGES)[number], ChartTone> = {
+                  NEW: "amber",
+                  QUALIFYING: "purple",
+                  PROPOSAL_SENT: "turquoise",
+                  WON: "emerald",
+                  LOST: "slate",
+                };
+                const params = new URLSearchParams();
+                params.set("stage", st);
+                if (q) params.set("q", q);
+                return {
+                  key: st,
+                  label: OPPORTUNITY_STAGE_LABELS[st],
+                  count: kpis.stageCounts[st],
+                  tone: stageChartTone[st],
+                  href: `/admin/oportunidades?${params.toString()}`,
+                };
+              })}
+            />
+          </div>
+
+          <div className="border-brand-purple/10 flex flex-col gap-3 border-t pt-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-1.5">
               <Link
                 href={

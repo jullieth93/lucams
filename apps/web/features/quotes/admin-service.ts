@@ -104,6 +104,12 @@ export async function getQuoteById(id: string) {
         // cuando la línea no es personalizada (antes solo un ícono genérico).
         include: { product: { select: { images: true, slug: true } } },
       },
+      convertedOpportunities: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, number: true, stage: true },
+      },
     },
   });
 }

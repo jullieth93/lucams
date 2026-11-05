@@ -17,12 +17,14 @@ import type { PaymentMethod } from "@lucams/db";
 import {
   AdminBadge,
   AdminCard,
+  AdminComboBarLineChart,
+  AdminDeltaPill,
+  AdminDonutChart,
   AdminNotice,
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
 } from "@/components/admin-page";
-import { Hint } from "@/components/ui/tooltip";
 import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
@@ -368,8 +370,8 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                   aria-current={p.key === periodo ? "true" : undefined}
                   className={
                     p.key === periodo
-                      ? "bg-brand-purple rounded-full px-3 py-1 text-xs font-semibold text-white"
-                      : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/50 rounded-full border bg-white px-3 py-1 text-xs font-semibold transition-colors"
+                      ? "bg-brand-purple inline-flex min-h-9 items-center rounded-full px-3.5 py-1 text-xs font-semibold text-white"
+                      : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/50 inline-flex min-h-9 items-center rounded-full border bg-white px-3.5 py-1 text-xs font-semibold transition-colors"
                   }
                 >
                   {p.label}
@@ -378,79 +380,68 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
             </div>
           </div>
           <AdminCard className="p-5">
-            {periodoData.orderCount === 0 ? (
-              <p className="text-brand-muted text-sm">
-                Sin ventas cobradas en este período. Las barras aparecen solas apenas entre un
-                pedido pagado (Wompi) o entregado (contra entrega).
-              </p>
-            ) : (
-              <>
-                <p className="text-brand-muted mb-4 text-xs">
-                  <strong className="text-brand-purple-dark">
-                    {formatCOP(periodoData.netTotalCents)}
-                  </strong>{" "}
-                  netos en {periodoData.orderCount} pedido
-                  {periodoData.orderCount === 1 ? "" : "s"}
-                  {periodoData.retractRefundedCents > 0 ? (
-                    <>
-                      {" "}
-                      ({formatCOP(periodoData.totalCents)} brutos −{" "}
-                      {formatCOP(periodoData.retractRefundedCents)} en retractos)
-                    </>
-                  ) : null}{" "}
-                  ·{" "}
-                  {periodoData.range.bucket === "day"
-                    ? "una barra por día"
-                    : "una barra por semana"}
-                  .
-                </p>
-                <div
-                  className="flex h-40 items-end gap-1"
-                  role="img"
-                  aria-label="Gráfico de ingresos por período"
-                >
-                  {(() => {
-                    const max = Math.max(...periodoData.buckets.map((x) => x.totalCents));
-                    return periodoData.buckets.map((b, i) => {
-                      const heightPct =
-                        max > 0 ? Math.max(2, Math.round((b.totalCents / max) * 100)) : 2;
-                      return (
-                        <div
-                          key={b.start.toISOString()}
-                          className="flex min-w-0 flex-1 flex-col items-center justify-end self-stretch"
-                        >
-                          <Hint
-                            content={`${b.label}: ${formatCOP(b.totalCents)} (${b.count} pedido${b.count === 1 ? "" : "s"})`}
-                          >
-                            {/* admin-bar-grow: las barras crecen desde 0 al cargar,
-                                escalonadas 35ms por barra (globals.css). */}
-                            <div
-                              className={`admin-bar-grow w-full rounded-t ${
-                                b.totalCents > 0 ? "bg-brand-purple/80" : "bg-brand-purple/15"
-                              }`}
-                              style={{
-                                height: `${heightPct}%`,
-                                animationDelay: `${Math.min(i * 35, 700)}ms`,
-                              }}
-                            />
-                          </Hint>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-                <div className="mt-1 flex gap-1">
-                  {periodoData.buckets.map((b) => (
-                    <span
-                      key={b.start.toISOString()}
-                      className="text-brand-muted min-w-0 flex-1 truncate text-center text-[10px] tabular-nums"
-                    >
-                      {b.tickLabel}
-                    </span>
-                  ))}
-                </div>
-              </>
-            )}
+            {(() => {
+              const maxBucketCents = Math.max(0, ...periodoData.buckets.map((x) => x.totalCents));
+              return (
+                <>
+                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-brand-muted text-xs">
+                      <strong className="text-brand-purple-dark text-sm">
+                        {formatCOP(periodoData.netTotalCents)}
+                      </strong>{" "}
+                      netos en{" "}
+                      <strong className="text-brand-purple-dark">{periodoData.orderCount}</strong>{" "}
+                      pedido{periodoData.orderCount === 1 ? "" : "s"}
+                      {periodoData.retractRefundedCents > 0 ? (
+                        <>
+                          {" "}
+                          ({formatCOP(periodoData.totalCents)} brutos −{" "}
+                          {formatCOP(periodoData.retractRefundedCents)} en retractos)
+                        </>
+                      ) : null}{" "}
+                      ·{" "}
+                      {periodoData.range.bucket === "day"
+                        ? "evolución diaria"
+                        : "evolución semanal"}
+                      .
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <AdminDeltaPill
+                        deltaPct={periodoData.netRevenueDeltaPct}
+                        comparisonLabel={periodoData.range.previousLabel}
+                      />
+                    </div>
+                  </div>
+
+                  <AdminComboBarLineChart
+                    ariaLabel="Gráfico de ingresos cobrados y pedidos por período"
+                    barLegend="Ingresos cobrados (COP)"
+                    lineLegend="Pedidos confirmados"
+                    maxAxisFormatted={maxBucketCents > 0 ? formatCOP(maxBucketCents) : "$0"}
+                    midAxisFormatted={
+                      maxBucketCents > 0 ? formatCOP(Math.round(maxBucketCents / 2)) : undefined
+                    }
+                    data={periodoData.buckets.map((b) => ({
+                      key: b.start.toISOString(),
+                      label: b.label,
+                      tickLabel: b.tickLabel,
+                      barValue: b.totalCents,
+                      barFormatted: formatCOP(b.totalCents),
+                      lineValue: b.count,
+                      lineFormatted: `${b.count} pedido${b.count === 1 ? "" : "s"}`,
+                    }))}
+                  />
+
+                  {periodoData.orderCount === 0 ? (
+                    <p className="text-brand-muted mt-2 text-xs">
+                      Sin ventas cobradas en esta ventana. Las barras y la curva de pedidos se
+                      activan automáticamente apenas se confirme un pago en línea (Wompi) o se
+                      entregue un contra entrega.
+                    </p>
+                  ) : null}
+                </>
+              );
+            })()}
           </AdminCard>
         </section>
 
@@ -461,49 +452,59 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
               <CreditCard className="h-5 w-5" />
               Por método de pago
             </h2>
-            {periodoData.byMethod.length === 0 ? (
-              <p className="text-brand-muted text-sm">Sin ventas cobradas en este período.</p>
-            ) : (
-              <ul className="space-y-3">
-                {periodoData.byMethod.map((m) => (
-                  <li key={m.method}>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-brand-purple-dark text-sm font-semibold">
-                        {PAYMENT_METHOD_LABEL[m.method]}
-                      </span>
-                      <span className="text-brand-purple-dark text-sm font-bold tabular-nums">
-                        {formatCOP(m.totalCents)}
-                      </span>
-                    </div>
-                    <div className="bg-brand-purple/10 mt-1.5 h-2 overflow-hidden rounded-full">
-                      <div
-                        className="bg-brand-purple admin-bar-grow-x h-full rounded-full"
-                        style={{ width: `${m.pct}%` }}
-                      />
-                    </div>
-                    <p className="text-brand-muted mt-1 text-xs">
-                      {m.pct}% del período · {m.count} pedido{m.count === 1 ? "" : "s"} ·{" "}
-                      {PAYMENT_METHOD_HINT[m.method]}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <AdminDonutChart
+              ariaLabel="Participación de ingresos por método de pago"
+              centerValue={periodoData.orderCount > 0 ? formatCOP(periodoData.totalCents) : "$0"}
+              centerLabel={`${periodoData.orderCount} ped.`}
+              slices={(["WOMPI", "COD"] as const).map((method) => {
+                const agg = periodoData.byMethod.find((x) => x.method === method);
+                return {
+                  key: method,
+                  label: PAYMENT_METHOD_LABEL[method],
+                  count: agg?.totalCents ?? 0,
+                  formattedValue: formatCOP(agg?.totalCents ?? 0),
+                  tone: method === "WOMPI" ? "purple" : "turquoise",
+                  hint: `${agg?.count ?? 0} pedido${(agg?.count ?? 0) === 1 ? "" : "s"} · ${PAYMENT_METHOD_HINT[method]}`,
+                };
+              })}
+            />
           </AdminCard>
 
           <AdminCard className="p-5">
             <h2 className="text-brand-purple-dark font-display mb-4 flex items-center gap-2 text-base font-bold">
               <Receipt className="h-5 w-5" />
-              Ticket promedio (AOV)
+              Ticket promedio (AOV) y ritmo de pedidos
             </h2>
-            <div className="text-brand-purple-dark font-display text-3xl font-bold tabular-nums">
-              {periodoData.orderCount > 0 ? formatCOP(periodoData.aovCents) : "—"}
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <div className="text-brand-purple-dark font-display text-3xl font-bold tabular-nums">
+                {periodoData.orderCount > 0 ? formatCOP(periodoData.aovCents) : "—"}
+              </div>
+              <AdminDeltaPill
+                deltaPct={periodoData.aovDeltaPct}
+                comparisonLabel={periodoData.range.previousLabel}
+              />
             </div>
-            <p className="text-brand-muted mt-2 text-xs">
-              {periodoData.aovDeltaPct === null
-                ? `Sin comparativa: no hubo ventas en ${periodoData.range.previousLabel}.`
-                : `${periodoData.aovDeltaPct >= 0 ? "+" : ""}${periodoData.aovDeltaPct}% vs ${periodoData.range.previousLabel}.`}
-            </p>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50/80 p-3 text-xs">
+              <div>
+                <span className="text-brand-muted block text-[11px]">Pedidos en ventana</span>
+                <span className="text-brand-purple-dark text-base font-bold tabular-nums">
+                  {periodoData.orderCount.toLocaleString("es-CO")}
+                </span>
+              </div>
+              <div>
+                <span className="text-brand-muted block text-[11px]">
+                  Ventana previa ({periodoData.range.previousLabel})
+                </span>
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-brand-purple-dark text-base font-bold tabular-nums">
+                    {periodoData.previousOrderCount.toLocaleString("es-CO")}
+                  </span>
+                  <AdminDeltaPill deltaPct={periodoData.ordersDeltaPct} />
+                </div>
+              </div>
+            </div>
+
             <p className="text-brand-muted border-brand-purple/10 mt-3 border-t pt-3 text-xs">
               Promedio del total de cada pedido cobrado en la ventana seleccionada (incluye envío y
               descuentos, como sale del checkout).

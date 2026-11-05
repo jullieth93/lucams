@@ -28,6 +28,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { EmailInput } from "@/components/email-input";
+import { PhoneInput } from "@/components/phone-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { createQuoteAction, type QuoteActionState } from "@/features/quotes/actions";
 import type { QuoteFormInput } from "@/features/quotes/schemas";
@@ -40,7 +42,7 @@ import {
   getCityByCode,
   type DaneCity,
 } from "@/lib/dane-divipola";
-import { formatPhone, stripPhone, validatePhone } from "@/lib/colombia-validators";
+import { capitalizeName, normalizePhoneWithDial, personNameError } from "@/lib/colombia-validators";
 import { focusNextFieldOnEnter, tagEnterKeyHints } from "@/lib/enter-next-field";
 import type { CheckoutTexts } from "../checkout-texts";
 
@@ -63,9 +65,12 @@ export function QuoteForm({
     if (state?.ok) router.push(`/cotizacion/${state.token}`);
   }, [state, router]);
 
-  // WhatsApp con auto-formato "300 887 3826" (display) + hidden sin formato
-  // (lo que valida Zod y persiste la cotización) — mismo patrón que datos-form.
-  const [phoneDisplay, setPhoneDisplay] = useState("");
+  // Campos controlados para conservar lo escrito ante cualquier error y validar en vivo.
+  const [customerName, setCustomerName] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [notes, setNotes] = useState("");
+  const [phone, setPhone] = useState({ national: "", dial: "57" });
   const [phoneTouched, setPhoneTouched] = useState(false);
 
   // Dirección DANE: código en el select, nombre en hidden (ver header).
@@ -92,9 +97,16 @@ export function QuoteForm({
     tagEnterKeyHints(formRef.current);
   });
 
+  const nameEffectiveError =
+    (nameTouched ? personNameError(customerName, 5) : null) ?? err("customerName");
+
   const phoneClientError =
-    phoneDisplay.length > 0 && !validatePhone(phoneDisplay) && phoneTouched
-      ? "Móvil colombiano: 10 dígitos empezando con 3"
+    phone.national.length > 0 &&
+    phoneTouched &&
+    normalizePhoneWithDial(`+${phone.dial} ${phone.national}`) === null
+      ? phone.dial === "57"
+        ? "Móvil colombiano: 10 dígitos empezando con 3"
+        : "Revisa el número: entre 6 y 15 dígitos"
       : null;
 
   // Error efectivo del campo WhatsApp (cliente o server) — se reusa para el
@@ -232,11 +244,21 @@ export function QuoteForm({
               maxLength={80}
               placeholder="Ej. Valentina Rojas"
               autoComplete="name"
-              aria-invalid={err("customerName") ? true : undefined}
-              aria-describedby={err("customerName") ? "customerName-error" : undefined}
-              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              onBlur={() => {
+                if (customerName.trim()) setCustomerName(capitalizeName(customerName));
+                setNameTouched(true);
+              }}
+              aria-invalid={nameEffectiveError ? true : undefined}
+              aria-describedby={nameEffectiveError ? "customerName-error" : undefined}
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white"
             />
-            <FieldError id="customerName-error" message={err("customerName")} />
+            <FieldError
+              id="customerName-error"
+              message={nameEffectiveError}
+              hint="Solo letras, máximo 5 palabras"
+            />
           </div>
 
           {/* WhatsApp */}
@@ -250,30 +272,21 @@ export function QuoteForm({
                 *
               </span>
             </Label>
-            <Input
+            <PhoneInput
               id="whatsapp-display"
-              type="tel"
+              name="customerWhatsapp"
               required
-              placeholder="300 887 3826"
-              value={phoneDisplay}
-              onChange={(e) => {
-                setPhoneDisplay(formatPhone(e.target.value));
+              disabled={pending}
+              error={whatsappError}
+              onChange={(national, dial) => {
+                setPhone({ national, dial });
                 setPhoneTouched(false);
               }}
               onBlur={() => setPhoneTouched(true)}
-              maxLength={12} // 10 dígitos + 2 espacios
-              autoComplete="tel-national"
-              inputMode="numeric"
-              aria-invalid={whatsappError ? true : undefined}
-              aria-describedby={whatsappError ? "customerWhatsapp-error" : undefined}
-              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
-            <input type="hidden" name="customerWhatsapp" value={stripPhone(phoneDisplay)} />
-            <FieldError
-              id="customerWhatsapp-error"
-              message={whatsappError}
-              hint="Acá te escribimos para concretar"
-            />
+            {!whatsappError && (
+              <p className="text-brand-muted mt-1 text-xs">Acá te escribimos para concretar</p>
+            )}
           </div>
 
           {/* Email — obligatorio: la cotización también se envía por correo. */}
@@ -287,17 +300,18 @@ export function QuoteForm({
                 *
               </span>
             </Label>
-            <Input
+            <EmailInput
               id="customerEmail"
               name="customerEmail"
-              type="email"
               required
               maxLength={254}
               placeholder={texts.emailPlaceholder}
               autoComplete="email"
+              value={customerEmail}
+              onValueChange={setCustomerEmail}
               aria-invalid={err("customerEmail") ? true : undefined}
               aria-describedby={err("customerEmail") ? "customerEmail-error" : undefined}
-              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white"
             />
             <FieldError
               id="customerEmail-error"
@@ -387,10 +401,12 @@ export function QuoteForm({
               name="notes"
               rows={3}
               maxLength={500}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
               placeholder={texts.notePlaceholder}
               aria-invalid={err("notes") ? true : undefined}
               aria-describedby={err("notes") ? "notes-error" : undefined}
-              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 resize-y"
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 resize-y bg-white"
             />
             <FieldError id="notes-error" message={err("notes")} />
           </div>

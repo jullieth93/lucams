@@ -145,6 +145,13 @@ export async function createQuoteFromCart(
           throw new QuoteError("DUPLICATE_SUBMIT", "El carrito ya fue cotizado por otro envío");
         }
 
+        if ("abandonedCart" in tx && tx.abandonedCart) {
+          await tx.abandonedCart.updateMany({
+            where: { cartId: cart.cartId, recoveredAt: null },
+            data: { closedReason: "QUOTE_CREATED" },
+          });
+        }
+
         const contactId = await resolveQuoteContactTx(tx, {
           customerId,
           customerName: input.customerName,

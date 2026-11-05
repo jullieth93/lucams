@@ -81,3 +81,30 @@ export const getCurrentAdmin = cache(
     return { user, admin };
   },
 );
+
+/**
+ * Devuelve la sesión `Customer` ÚNICAMENTE cuando debe vincularse a un formulario
+ * público del storefront (`/empresas-y-eventos`, `/contacto`, `/checkout/datos`,
+ * alertas de stock y cotizaciones):
+ *  - Si el navegador tiene sesión activa de `AdminUser` (staff interno), retorna `null`
+ *    para impedir que pruebas u operaciones asistidas contaminen el `Contact` del admin.
+ *  - Si se proporciona `submittedEmail` y difiere (case-insensitive) del correo de la
+ *    cuenta `Customer` en sesión, retorna `null` para tratar el envío como de un tercero.
+ */
+export async function getStorefrontCustomerForForm(submittedEmail?: string | null): Promise<{
+  user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
+  customer: Customer;
+} | null> {
+  const [customerSession, adminSession] = await Promise.all([
+    getCurrentCustomer(),
+    getCurrentAdmin(),
+  ]);
+  if (!customerSession || adminSession) {
+    return null;
+  }
+  const cleanSubmitted = submittedEmail?.trim().toLowerCase() ?? "";
+  if (cleanSubmitted && cleanSubmitted !== customerSession.customer.email.trim().toLowerCase()) {
+    return null;
+  }
+  return customerSession;
+}

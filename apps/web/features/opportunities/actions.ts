@@ -10,6 +10,8 @@
 
 import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import {
@@ -22,10 +24,11 @@ import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, hashEmail, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { getClientIp } from "@/lib/client-ip";
-import { getCurrentCustomer } from "@/lib/auth";
+import { getStorefrontCustomerForForm } from "@/lib/auth";
 import { getSettingValue } from "@/lib/cms";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { subscribeNewsletter } from "@/features/newsletter/service";
 import {
   B2bInquirySchema,
   isOpportunityStage,
@@ -33,10 +36,12 @@ import {
   type OpportunityStage,
 } from "./schemas";
 import {
+  convertQuoteToOpportunityByAdmin,
   createPublicB2bOpportunity,
   OpportunityValidationError,
   updateOpportunityByAdmin,
 } from "./service";
+import { sendB2bInquiryEmails } from "./emails";
 
 export type B2bPublicActionState =
   | { ok: true; opportunityNumber: string }
@@ -111,7 +116,7 @@ export async function submitB2bInquiryAction(
 
   try {
     const [customerSession, privacyPolicyVersion, cookieJar] = await Promise.all([
-      getCurrentCustomer().catch(() => null),
+      getStorefrontCustomerForForm(parsed.data.email).catch(() => null),
       getSettingValue("PRIVACY_POLICY_VERSION", "v1 · 2026-09-29"),
       cookies().catch(() => null),
     ]);
@@ -138,6 +143,22 @@ export async function submitB2bInquiryAction(
         sanitizeLandingPath(String(formData.get("landingPath") ?? ""), 160) ??
         cookieUtm?.landingPath ??
         "/empresas-y-eventos",
+    });
+
+    after(async () => {
+      await sendB2bInquiryEmails(created.id);
+      if (parsed.data.acceptNewsletter) {
+        await subscribeNewsletter({
+          email: parsed.data.email,
+          ipAddress: ip,
+          userAgent,
+        }).catch((nlErr) => {
+          logger.warn({
+            event: "b2b.inquiry.newsletter_sync_failed",
+            err: nlErr instanceof Error ? nlErr.message : String(nlErr),
+          });
+        });
+      }
     });
 
     revalidatePath("/admin/oportunidades");
@@ -178,6 +199,15 @@ export async function updateOpportunityAction(
   const internalNotes = String(formData.get("internalNotes") ?? "");
   const lostReason = String(formData.get("lostReason") ?? "");
   const convertedOrderNumber = String(formData.get("convertedOrderNumber") ?? "");
+  const contactName = formData.has("contactName")
+    ? String(formData.get("contactName") ?? "")
+    : undefined;
+  const contactEmail = formData.has("contactEmail")
+    ? String(formData.get("contactEmail") ?? "")
+    : undefined;
+  const contactWhatsapp = formData.has("contactWhatsapp")
+    ? String(formData.get("contactWhatsapp") ?? "")
+    : undefined;
 
   if (!id) return { error: "Falta el identificador de la oportunidad." };
   if (!isOpportunityStage(stageRaw)) return { error: "Etapa inválida." };
@@ -206,6 +236,9 @@ export async function updateOpportunityAction(
       internalNotes,
       lostReason,
       convertedOrderNumber,
+      contactName,
+      contactEmail,
+      contactWhatsapp,
     });
 
     await recordAdminAction({
@@ -239,4 +272,34 @@ export async function updateOpportunityAction(
     });
     return { error: "No se pudo guardar la oportunidad." };
   }
+}
+
+export async function convertQuoteToOpportunityAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ capability: "opportunities:manage" });
+  const quoteId = String(formData.get("quoteId") ?? "").trim();
+  if (!quoteId) {
+    redirect("/admin/cotizaciones");
+  }
+
+  const result = await convertQuoteToOpportunityByAdmin(quoteId, session.admin.id);
+
+  if (!result.alreadyExisted) {
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "opportunity.convert_from_quote",
+      entityType: "Opportunity",
+      entityId: result.id,
+      metadata: {
+        quoteId,
+        opportunityNumber: result.number,
+      },
+    });
+  }
+
+  revalidatePath(`/admin/cotizaciones/${quoteId}`);
+  revalidatePath("/admin/oportunidades");
+  revalidatePath(`/admin/clientes/${result.contactId}`);
+  revalidatePath("/admin/hoy");
+
+  redirect(`/admin/oportunidades/${result.id}`);
 }

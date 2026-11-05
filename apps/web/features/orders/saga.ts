@@ -361,7 +361,7 @@ export async function processPaidOrder(
         // (ventana de doble-checkout/doble-cobro) o que un blip de DB en el
         // clearCart aborte el resto del flujo (createShipment).
         if (order.cartId) {
-          await clearCartAfterPaid(order.cartId, tx);
+          await clearCartAfterPaid(order.cartId, tx, "saga:order-paid", order.id);
         }
       });
       // N-11 (CF-17) — post-commit: el stock cambió → el badge "Agotado" de los
