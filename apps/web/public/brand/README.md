@@ -1,40 +1,52 @@
-# Assets de marca Lucams Shop
+# Activos de marca — Lucams Shop
 
-Acá viven los archivos del logo oficial Lucams y assets visuales derivados.
-Todo lo que esté en `public/brand/` es servido directo por Next.js bajo
-`/brand/<filename>` — accesible desde cualquier `<Image src="/brand/...">`.
+Esta carpeta (`apps/web/public/brand/`) aloja los archivos gráficos oficiales de **Lucams Shop**.
+Todo archivo ubicado en `public/brand/` es servido directamente por Next.js bajo `/brand/<archivo>`
+y puede consumirse desde el frontend mediante `<Image src="/brand/...">`.
 
-## Archivos esperados
+## Inventario actual en producción y tamaños recomendados
 
-| Archivo                        | Uso                                                                                                            | Tamaño recomendado                                      |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `lucams-logo.png` (o `.svg`)   | Logo completo (insignia + LUCAMS + SHOP). Usado en hero del home, página 404, emails, redes sociales           | min 512×512 PNG, ideal SVG                              |
-| `lucams-mascot.png` (o `.svg`) | Solo el mapache kawaii recortado, fondo transparente. Usado en el header de cada página (badge chico)          | min 128×128 PNG cuadrado, fondo transparente, ideal SVG |
-| `favicon.ico` / `favicon.svg`  | Favicon del browser. Generado a partir del mascot o del logo (Lucy decide). Vive en `apps/web/app/favicon.ico` | 32×32 + 16×16 ICO                                       |
+| Archivo / Ruta                                       | Uso principal                                                                                  | Estado actual en repo                                                                                | Tamaño / formato ideal recomendado                       |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `/brand/lucams-logo.png`                             | Logo completo (insignia + wordmark) en hero del home, página 404, correos y metadatos sociales | `468×468` RGBA; usado por `components/lucams-logo.tsx` con fallback `onError` en `brand-mark.tsx`    | Mínimo `512×512` PNG RGBA; ideal `.svg` vectorial        |
+| `/brand/lucams-mascot.png`                           | Mapache kawaii recortado con fondo transparente (badge del header, estados vacíos y acentos)   | `370×355` RGBA con transparencia                                                                     | Mínimo `128×128` PNG cuadrado transparente; ideal `.svg` |
+| `apps/web/app/{favicon.ico,icon.png,apple-icon.png}` | Favicon del navegador, pestaña e instalación PWA (`app/manifest.ts`)                           | `favicon.ico` (`32×32 + 16×16` ICO), `icon.png` y `apple-icon.png` bajo convención nativa App Router | `32×32 + 16×16` ICO + PNG/SVG de alta densidad           |
 
-## Convenciones
+## Convenciones de ingeniería y diseño
 
-- **Formato preferido:** SVG > PNG con transparencia > JPG. SVG escala
-  perfecto en cualquier tamaño, PNG es siguiente mejor, JPG último
-  recurso porque pixela al escalar.
-- **Naming:** kebab-case, sin acentos ni mayúsculas, prefijo `lucams-`
-  para identificar la marca.
-- **Optimización:** PNG/JPG deben pasar por TinyPNG o similar antes de
-  commit. SVG por SVGO. Imágenes pesadas inflan el bundle y el TTI.
-- **Uso desde código:** importar desde `<Image>` de `next/image`, NO
-  desde `<img>` directo. Next.js maneja lazy load, srcset, formato
-  óptimo (WebP/AVIF) automáticamente.
+- **Nombre de marca (`ADR-138`):**
+  escribe siempre **«Lucams»** o **«Lucams Shop»** (está prohibido usar apóstrofo o guion bajo en
+  textos visibles o prosa).
+- **Jerarquía de formatos:**
+  **`SVG > PNG con transparencia > JPG`**. SVG escala con nitidez perfecta en cualquier densidad de
+  pantalla; PNG RGBA es el siguiente estándar cuando el activo es raster; JPG queda como último
+  recurso porque carece de canal alfa y pixela los bordes gráficos.
+- **Nomenclatura (`naming`):**
+  usa siempre `kebab-case`, sin acentos ni mayúsculas, con prefijo `lucams-` (por ejemplo
+  `lucams-logo.png`, `lucams-mascot.png`) para identificar inequívocamente los activos de marca.
+- **Optimización previa a commit:**
+  pasa todo PNG/JPG por TinyPNG (o compresor equivalente sin pérdida perceptible) y limpia todo SVG
+  con SVGO antes de versionar para no inflar el peso de página ni degradar el LCP/TTI.
+- **Consumo desde interfaz vs correos:**
+  en componentes web importa siempre mediante `<Image>` de `next/image` (gestiona lazy loading,
+  `srcset` responsive y conversión automática a WebP/AVIF) y evita `<img>` directo. La única
+  excepción son las plantillas de correo HTML (`features/emails/`), que exigen URL absoluta
+  `https://` sobre el dominio canónico `lucamsshop.com`.
+- **Fallback resiliente en UI:**
+  `components/lucams-logo.tsx` carga `/brand/lucams-logo.png` y conmuta automáticamente al isotipo
+  vectorial kawaii de `components/brand-mark.tsx` en su manejador `onError` si falla la carga del
+  activo raster.
 
-## Estado (actualizado 2026-09-03)
+## Ejemplo rápido de consumo
 
-Los assets ya llegaron y están en uso en producción:
+```tsx
+// En componentes Next.js (con fallback automático onError hacia BrandMark):
+import { LucamsLogo } from "@/components/lucams-logo";
+<LucamsLogo size={40} />;
+```
 
-1. `lucams-logo.png` (468×468, RGBA) — recibido 2026-05-11. `components/lucams-logo.tsx`
-   lo referencia automáticamente; el placeholder SVG kawaii de `components/brand-mark.tsx`
-   queda como fallback onError.
-2. `lucams-mascot.png` (370×355, RGBA) — recibido 2026-05-11.
-3. Favicon brand-aware — desde 2026-07-22, con la convención de Next.js en `apps/web/app/`:
-   `favicon.ico`, `icon.png`, `apple-icon.png`.
+## Pendiente opcional de diseño
 
-Pendiente: versiones **SVG** vectoriales del logo/mascota (hoy solo hay PNG — ver
-`docs/BRANDING.md` § Activos a producir).
+- Incorporar versiones vectoriales `.svg` equivalentes de `lucams-logo` y `lucams-mascot` cuando se
+  exporten desde el editable maestro (hoy operan en PNG RGBA optimizados; consulta el sistema visual
+  completo en [`docs/BRANDING.md`](../../../../docs/BRANDING.md)).

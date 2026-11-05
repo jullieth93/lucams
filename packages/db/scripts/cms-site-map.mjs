@@ -888,7 +888,7 @@ export const SITE_MAP = {
               label: "Línea de última actualización",
               helpText: "Aparece bajo el título de las páginas legales del paquete vigente.",
               category: "LEGAL",
-              body: "Última actualización: 2026-11-02 · Versión 2",
+              body: "Última actualización: 2026-11-05 · Versión 3",
               sortOrder: 10,
             },
             {
@@ -1360,8 +1360,7 @@ export const SITE_MAP = {
               kind: "BLOCK",
               type: "TEXTAREA",
               label: "Recomendador de imanes",
-              helpText:
-                "Recomendador (/recomendador): edita el título y la descripción en Google.",
+              helpText: "Recomendador (/recomendador): edita el título y la descripción en Google.",
               category: "HOME",
               body: "¿No sabes qué elegir? Te ayudamos en 4 preguntas a encontrar el imán perfecto para tu ocasión.",
               sortOrder: 30,
@@ -1391,8 +1390,7 @@ export const SITE_MAP = {
               kind: "BLOCK",
               type: "TEXTAREA",
               label: "Rastrear pedido",
-              helpText:
-                "Rastreo público (/rastrear): edita el título y la descripción en Google.",
+              helpText: "Rastreo público (/rastrear): edita el título y la descripción en Google.",
               category: "HOME",
               body: "Consulta el estado de tu pedido con tu número y correo, sin necesidad de cuenta.",
               sortOrder: 60,
@@ -2050,7 +2048,7 @@ export const SITE_MAP = {
               helpText:
                 "Identificador trazable guardado cuando un titular acepta tratamiento de datos.",
               category: "LEGAL",
-              body: "v2 · 2026-11-02",
+              body: "v3 · 2026-11-05",
               sortOrder: 10,
             },
           ],

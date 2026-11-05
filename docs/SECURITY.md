@@ -1,331 +1,409 @@
-# Seguridad — Lucams_shop
+# Seguridad — Lucams Shop
 
-> **Fuente única de seguridad.** Todo `.md` que toca un tema de seguridad referencia este documento (no duplica). Mandatos derivados de `CLAUDE.md` #12 ("seguridad por defecto") y #9 ("argumentación obligatoria").
-
-## Tabla de contenido
-
-1. [Modelo de amenazas resumido](#modelo-de-amenazas-resumido)
-2. [Autenticación (Supabase Auth)](#autenticación-supabase-auth)
-3. [Autorización (RBAC + RLS)](#autorización-rbac--rls)
-4. [Manejo de secretos y API keys](#manejo-de-secretos-y-api-keys)
-5. [Headers HTTP de seguridad](#headers-http-de-seguridad)
-6. [CORS](#cors)
-7. [CSRF](#csrf)
-8. [Rate limiting](#rate-limiting)
-9. [Validación de input](#validación-de-input)
-10. [Output encoding / XSS](#output-encoding--xss)
-11. [TTLs y caducidad de recursos](#ttls-y-caducidad-de-recursos)
-12. [File upload y Storage](#file-upload-y-storage)
-13. [Webhooks (Wompi, Aveonline, Resend)](#webhooks-wompi-aveonline-resend)
-14. [Audit logs](#audit-logs)
-15. [Logging](#logging)
-16. [PII y Habeas Data (Ley 1581)](#pii-y-habeas-data-ley-1581)
-17. [Dependency scanning y supply chain](#dependency-scanning-y-supply-chain)
-18. [CI/CD security](#cicd-security)
-19. [Observabilidad de seguridad](#observabilidad-de-seguridad)
-20. [Política de divulgación de vulnerabilidades](#política-de-divulgación-de-vulnerabilidades)
+> **Documento vivo (Nivel 1).** Especificación completa y verificada contra el código real de la arquitectura de seguridad de Lucams Shop: modelo de amenazas (OWASP Top 10 + STRIDE), sesiones endurecidas, autenticación de clientes e invitados, RBAC/MFA del panel administrativo, invariantes del grafo de identidad CRM, manejo de secretos y reglas para agentes IA, cabeceras HTTP/CSP/CORS/CSRF, aislamiento RLS y funciones endurecidas en Postgres, rate limiting, Cloudflare Turnstile, subida de imágenes y Storage, webhooks, clasificación de datos/PII, supply chain/CI y respuesta formal a incidentes (IRP).
+>
+> **Documentos relacionados:** [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`COMPLIANCE.md`](COMPLIANCE.md) · [`OBSERVABILITY.md`](OBSERVABILITY.md) · [`OPERATIONS.md`](OPERATIONS.md) · [`CONVENTIONS.md`](CONVENTIONS.md) · [`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md) · [`integrations/supabase.md`](integrations/supabase.md) · [`integrations/cloudflare.md`](integrations/cloudflare.md) · [`integrations/wompi.md`](integrations/wompi.md) · [`integrations/aveonline.md`](integrations/aveonline.md)
 
 ---
 
-## Modelo de amenazas resumido
+## 1. Principios rectores
 
-| Actor                 | Vector                                       | Mitigación principal                                                                                                               |
-| --------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Bot scraper           | Scraping de catálogo, abuso del asistente IA | Rate limit + cache + Turnstile en formularios                                                                                      |
-| Atacante con cuenta   | Acceso a datos de otros usuarios             | RLS + tests automatizados                                                                                                          |
-| Atacante sin cuenta   | SQL injection, XSS, CSRF                     | Prisma + React + SameSite cookies + CSP                                                                                            |
-| Insider (empleado)    | Abuso del admin                              | RBAC + audit log + 2FA                                                                                                             |
-| Suplantador           | Webhook falso de Wompi/Aveonline             | Verificación de firma/credencial + idempotencia                                                                                    |
-| Compromiso de secreto | Secret key (`sb_secret_*`) expuesta          | Rotación inmediata (Supabase permite múltiples secret keys, revocar la comprometida sin downtime) + nunca al cliente + .gitignored |
-| Subida maliciosa      | Archivo con malware en storage               | Allowlist MIME + tamaño máximo + nombre aleatorio + render server                                                                  |
-| Pago fraudulento      | Stolen card en checkout                      | Wompi 3DS + Turnstile + límites Wompi                                                                                              |
+1. **Defensa en profundidad:** ninguna barrera actúa sola. El acceso administrativo combina redirección en borde (`apps/web/proxy.ts`), validación en layout, guardas por Server Action/Route Handler (`apps/web/lib/admin-rbac-guard.ts`), MFA TOTP obligatorio (`aal2`), re-autenticación reciente (`requireRecentMfa`) y RLS estricto en Postgres.
+2. **Fail-closed en producción:** ante ausencia de secretos críticos (`validateEnv()` en `apps/web/lib/env.ts`), marcas de inactividad administrativa faltantes o inválidas, retos anti-bot fallidos en producción o valores fuera de rango, el sistema rechaza la operación. La única excepción deliberada y documentada es la consulta externa a Have I Been Pwned (`lib/pwned-passwords.ts`), que opera _fail-open_ con timeout corto (`3 000 ms`) para que una caída de un tercero externo no bloquee el registro de clientes.
+3. **Menor privilegio:** 8 roles administrativos con 34 capacidades granulares, enmascaramiento server-side de PII antes de serializar React Server Components (RSC), buckets sensibles privados y revocación total de permisos de tabla para los roles `anon`, `authenticated` y `service_role` en el esquema `public`.
+4. **Cero confianza en el cliente:** precios, descuentos, fletes, elegibilidad de cupones, Puntos Lucams, autorizaciones y firmas se calculan o verifican exclusivamente en el servidor con aritmética entera en centavos COP (`Int`).
+5. **Privacidad por diseño:** ninguna foto ni dato personal viaja a Google Gemini, Google Analytics 4 no se carga sin consentimiento previo en la categoría **Analíticas**, las direcciones IP en rate limiting y telemetría de seguridad se almacenan truncadas en hash SHA-256 y los tokens de acceso público se guardan únicamente como digest SHA-256.
 
 ---
 
-## Autenticación (Supabase Auth)
+## 2. Modelo de amenazas, OWASP Top 10 y análisis formal STRIDE
 
-### Stack
+### 2.1 Amenazas principales y controles mitigantes
 
-- **Proveedor:** Supabase Auth (mandato #3).
-- **Métodos en lanzamiento:** email + password con confirmación por **OTP de 6 dígitos** (reemplaza el magic-link de Supabase Auth — inmune al prefetch de Gmail que consume tokens de links).
-- **Después del lanzamiento (Fase 7+):** evaluar Google OAuth como tercer método.
+| Amenaza                                                       | Superficie objetivo                                                                                 | Controles activos en código                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Toma de cuenta (ATO) de clientes o staff**                  | `/login`, `/registro`, `/recuperar-password`, `/admin/login`                                        | Contraseñas verificadas contra HIBP k-anonymity, OTP de 6 dígitos, MFA TOTP `aal2` obligatorio en `/admin`, step-up MFA (`≤ 10 min`), rate limit dual IP + cuenta, Turnstile, expiración por inactividad y telemetría `SecurityEvent`                                                                 |
+| **Inyección de scripts (XSS) y robo de contexto**             | Storefront, descripciones Markdown, previsualizaciones HTML de correos en `/admin`                  | CSP dinámica con nonce por request (sin `'unsafe-inline'` ni `'strict-dynamic'` en `script-src` de producción), `rehype-sanitize` en Markdown y `EMAIL_PREVIEW_SANDBOX_CSP` (`sandbox; default-src 'none'`) en vistas previas de plantillas                                                           |
+| **Acceso directo a objetos ajenos (IDOR) y enumeración**      | `/mi-cuenta/*`, `/pedido/[token]`, `/cotizacion/[token]`, `/api/designs/*`, `/api/design-preview/*` | Verificación de propiedad (`customerId` o `cart_session`) en cada consulta, tokens opacos de 128 bits almacenados como SHA-256, doble factor posventa para invitados (token + correo timing-safe) y bucket `design-previews` privado detrás de proxy autenticado                                      |
+| **Fraude financiero, manipulación de precios y abuso COD**    | `/checkout/*`, `/api/webhooks/wompi`, cupones, Puntos Lucams, contraentrega                         | Recálculo total server-side desde variantes reales, fletes sellados con HMAC-SHA256 (`CSRF_SECRET`), firma SHA-256 timing-safe + ventana de 25 h + idempotencia en Wompi, decremento atómico de stock post-pago (`InventoryLog`), `BlockedIdentity` y motor `assessCodRisk`                           |
+| **Bombas de descompresión y payloads maliciosos en imágenes** | Subidas del Estudio, catálogo y CMS (`/api/designs/*`, Server Actions de medios)                    | Inspección de magic bytes (`sniffImageMime`), lectura previa de dimensiones `ispe` en HEIC/HEIF antes de decodificar, `sharp` `0.35.5` con formatos peligrosos bloqueados (`sharp.block`), tope de píxeles (`25 MP`–`50 MP`), ratio `≤ 20:1`, borrado de EXIF y streaming acotado `readBodyWithLimit` |
+| **Amplificación de base de datos o denegación de servicio**   | `/api/vitals`, `/api/funnel`, `/api/log-error`, `/api/webhooks/*`, fallos masivos de login          | Límites de cuerpo por ruta (`4 KB`–`128 KB`), rate limiting transaccional en Postgres + topes globales de filas nuevas y coalescencia en memoria + upsert por minuto en `SecurityEvent` (`LUC-SEC-008`)                                                                                               |
+| **Exfiltración masiva o escalamiento interno en `/admin`**    | Exportaciones CSV, pedidos, CRM, reembolsos y gestión de staff                                      | Matriz RBAC `8 × 34`, ocultamiento server-side de PII (`lib/pii-mask.ts`), búsqueda anti-oráculo cuando el rol no posee `orders:read_pii`, step-up MFA para exportar o reembolsar, auditoría `selfDealing` y registro inmutable en `AdminActionLog`                                                   |
+| **Bypass de la capa web hacia Supabase PostgREST**            | API REST pública de Supabase con `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`                             | `ENABLE ROW LEVEL SECURITY` + `REVOKE ALL` a `anon`/`authenticated` y revocación DML a `service_role` en el 100 % de las tablas de `public`, blindado por event trigger `enforce_rls_on_new_table_trg` y suite `make test-rls`                                                                        |
 
-### Cookies y sesiones
+### 2.2 Superficie expuesta
 
-- **Cookies `sb-*` de sesión (Supabase SSR): `SameSite=Lax` + `Secure` en prod/preview** (`cookieOptions.secure` en `lib/supabase/server.ts` y `proxy.ts`, auditoría 2026-08-24 B-2 — sin él, la cookie viajaría por HTTP plano en el primer contacto pre-HSTS).
-- **Trade-off documentado — `httpOnly: false` en las `sb-*`:** el browser client lee la sesión desde `document.cookie` (reto MFA, `lib/supabase/browser.ts`), así que no pueden ser HttpOnly con `@supabase/ssr`. La exposición a XSS la mitiga la CSP por nonce, no httpOnly. Las cookies propias sensibles SÍ son HttpOnly (`cart_session`, `checkout_state`, `admin_last_activity`, `lucams_cms_edit`).
-- **`cart_session` (sesión anónima, modelo actualizado 2026-10-31 — LUC-SEC-013):** UUID v4 de 122 bits sin firma (firmarla no evita el robo de cookie). HOY abre más que un carrito: borradores de diseño y previews de fotos personales vía `/api/design-preview/*` (LUC-SEC-001). Mitigaciones: rotación en self-heal de identidad, borrado en logout, purga de borradores idle (30 d) y post-entrega (90 d), nunca en logs ni URLs. Residual aceptado documentado en `lib/cart-session.ts`: el checkout no rota (gracias + recuperación ADR-171 dependen de ella).
-- **TTL de access token:** 1 hora (default Supabase, no extender).
-- **TTL de refresh token:** 30 días con rotación en cada uso.
-- **Logout server-side** invalida la sesión en Supabase, no solo borra la cookie.
-- **Inactividad admin:** sesión de admin expira tras 30 min sin actividad (`lib/admin-activity.ts`). Al expirar el proxy **revoca la sesión server-side** (`signOut({ scope: "global" })`, no solo borra cookies — B-8) y redirige a `/admin/login?expired=1`. La marca de actividad (`admin_last_activity`) va **firmada HMAC-SHA256 con `CSRF_SECRET`** (`<ts>.<hmac>`): la sella la acción de login y la renueva el proxy en cada request admin REAL (ventana deslizante); marca ausente o con firma inválida ⇒ se trata como expirada (cierra el hueco de borrar/forjar la cookie). **Prefetches excluidos** (2026-10-22, ADR-162): no renuevan ni disparan revocación. OJO: Next 16 elimina los headers Flight (`next-router-prefetch`, `rsc`…) antes del proxy, así que la garantía contra prefetches destructivos hacia `/admin/*` vive en el ORIGEN — los enlaces storefront→panel llevan `prefetch={false}` (`site-header.tsx`, `shop-mega-menu.tsx`); el proxy solo blinda los headers genéricos `purpose`/`sec-purpose: prefetch` que sí atraviesan.
-- **Inactividad cliente:** la sesión de cliente persiste **30 días con ventana deslizante** (`lib/customer-activity.ts`, cookie `customer_last_activity` httpOnly firmada HMAC, `path=/`); la sella toda vía de login y la renueva el proxy en cada request autenticada de página. Marca con >30 días o **firma inválida (forjada)** ⇒ revocación server-side + borrado sb-* + redirect. Marca **ausente con JWT válido** (ya verificado contra el Auth server por el `getUser` del proxy) ⇒ se **re-sella y se sigue** (2026-10-22 — antes era fail-closed como admin y producía logouts espurios: la ausencia tiene causas legítimas como sesiones previas a la feature o evicción del browser; la señal anti-robo se conserva en el caso forjado).
-- **Carrera de refresh token (de un solo uso) + prefetch destructivo — endurecimiento 2026-10-22 (ADR-162):** el «logout fantasma» del storefront tenía dos mecanismos. El principal: un **prefetch RSC** del link «PANEL ADMIN» (cuenta admin que entró por /login con la marca admin vieja) disparaba el idle-timeout de admin y su `signOut` global borraba la sesión entera — regla vigente: prefetch nunca revoca ni renueva marcas. El secundario: con el access token expirado, requests concurrentes (navegación + prefetches RSC + polls `/api/*`) disparan refreshes simultáneos y la request perdedora recibe `SIGNED_OUT`, cuyo borrado de cookies sb-* podía llegar al browser DESPUÉS de la response ganadora y borrar la sesión recién refrescada (limitación documentada por @supabase/ssr). Mitigación en `proxy.ts`: (a) el proxy ya no crea cliente de sesión para `/api/*` (los route handlers crean el suyo con `lib/supabase/server.ts` y SÍ pueden persistir cookies); (b) el `setAll` del proxy **ignora los borrados** de cookies `sb-*-auth-token` — los cierres legítimos no dependen de esa vía (logout explícito borra desde su action; los idle-timeouts borran sobre su response de redirect en navegación real).
+- **Storefront público y cuenta de cliente (`apps/web/app/`):** páginas RSC, formularios protegidos por Server Actions de Next.js 16, cuenta autenticada en `/mi-cuenta/*` y flujos públicos por token opaco (`/pedido/[token]`, `/cotizacion/[token]`, `/resena/[token]`, `/carrito/recuperar/[token]`).
+- **API Routes (`apps/web/app/api/`):** webhooks externos (`/api/webhooks/{wompi,aveonline,resend}`), endpoints del Estudio (`/api/designs/*`, `/api/design-preview/[...path]`), catálogo/CMS públicos con rate limit (`/api/catalog/*`, `/api/cms/*`, `/api/coupons/public`), telemetría acotada (`/api/vitals`, `/api/funnel`, `/api/log-error`), baja de correo RFC 8058 (`/api/unsubscribe`), sondas `/api/health/*` y jobs internos `/api/cron/*` autenticados con `x-cron-secret`.
+- **Panel administrativo (`/admin/*`):** aislado bajo layout dedicado, inaccesible sin registro activo en `AdminUser` (`deletedAt IS NULL`), sesión MFA TOTP en nivel `aal2` y marca de actividad vigente `admin_last_activity`.
+- **Almacenamiento y datos:** Postgres en Supabase accedido únicamente desde el servidor mediante Prisma (`packages/db`) y 5 buckets en Supabase Storage (2 públicos de escaparate y 3 privados de operación/clientes).
 
-### Política de contraseñas
+### 2.3 Mapeo de controles OWASP Top 10 (2021)
 
-**Implementado actualmente (commit `68da751` y siguientes, 2026-05-11):**
+| Categoría OWASP Top 10                             | Controles vigentes en Lucams Shop                                                                                                                                                                                                                              |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A01 — Broken Access Control**                    | RBAC `8 × 34` (`canAccessAdminPath` por prefijo más largo + `requireCapability`/`verifyAdminRouteAccess`), `proxy.ts` sobrescribe `x-pathname`, RLS al 100 % + `REVOKE ALL`, tokens opacos SHA-256, `safeRedirectTarget` (`ADR-046`) y `LUC-SEC-001`           |
+| **A02 — Cryptographic Failures**                   | HSTS Preload 2 años, `checkout_state` cifrada con `AES-256-GCM` (`ADR-085`), códigos MFA con `HMAC-SHA256(CSRF_SECRET)`, tokens hasheados SHA-256 en reposo, `crypto.timingSafeEqual` en toda comparación sensible y backups R2 cifrados con GPG `AES-256`     |
+| **A03 — Injection**                                | Consultas parametrizadas con Prisma (y `$queryRaw` con tagged templates tipados), validación Zod allowlist sin `.passthrough()`, Markdown renderizado con `rehype-sanitize`, `EMAIL_PREVIEW_SANDBOX_CSP` y prohibición absoluta de `SVG` en subidas            |
+| **A04 — Insecure Design**                          | Recálculo server-side en centavos COP, decremento atómico de stock post-pago (`InventoryLog`), separación `UNVERIFIED_OBSERVED` vs `VERIFIED` en CRM (`ADR-193`), auditoría de conflicto de interés `selfDealing` y step-up MFA (`≤ 10 min`) en reembolsos     |
+| **A05 — Security Misconfiguration**                | `validateEnv()` fail-fast al arranque, `SECURITY_HEADERS` + CSP con nonce, CORS estricto con scope de cuenta Vercel (`ADR-062`), funciones SQL con `SET search_path` fijo (`027`) y event trigger DDL `enforce_rls_on_new_table_trg` (`049`)                   |
+| **A06 — Vulnerable and Outdated Components**       | `pnpm-lock.yaml` congelado, `pnpm audit --prod --audit-level=high` bloqueante en CI, `sharp@0.35.5` con decodificadores bloqueados (`LUC-SEC-011`), Dependabot semanal y GitHub Actions pineadas por SHA completo                                              |
+| **A07 — Identification & Authentication Failures** | HIBP k-anonymity (`pwned-passwords.ts`), OTP de 6 dígitos (inmune a prefetch de correo), MFA TOTP `aal2` obligatorio en los 8 roles admin, marcas HMAC de inactividad (30 min admin / 30 días cliente), `signOut` global al cambiar clave y doble factor guest |
+| **A08 — Software & Data Integrity Failures**       | Ruleset `protect-ramas-criticas` (`bypass_actors: []`) sobre `develop` y `production`, verificación criptográfica de webhooks (Wompi SHA-256 25 h, Resend Svix HMAC ±5 min, Aveonline timing-safe) y sellos HMAC sobre ofertas de flete                        |
+| **A09 — Security Logging & Monitoring Failures**   | Logger JSON con `scrubPii` y `X-Request-Id`, `AdminActionLog` inmutable (120+ puntos), `SecurityEvent` con coalescencia anti-DoS (`LUC-SEC-008`), reglas `security_admin_login_fails` y `security_webhook_invalid` y monitor cruzado `uptime-monitor-prd`      |
+| **A10 — Server-Side Request Forgery (SSRF)**       | Cero endpoints que hagan `fetch` de URLs suministradas por usuarios; el Estudio solo recibe archivos binarios; las sondas compuestas (`/api/health/all`) usan `getTrustedSelfBaseUrl()` ignorando por completo la cabecera `Host` del cliente                  |
 
-- **Mínimo 8 caracteres** (Zod en server actions). Supabase config también lo refuerza server-side.
-- **Strength meter informativo** custom (5 niveles: muy débil / débil / razonable / fuerte / muy fuerte). Cálculo en `lib/password-strength.ts` — pondera longitud + clases de caracteres + penaliza secuencias comunes (`123`, `qwerty`) y términos locales (`lucams`, `password`). NO bloquea, solo informa.
-- **Pwned Passwords (HaveIBeenPwned)** vía `lib/pwned-passwords.ts`. Usa k-anonymity (SHA-1 prefijo de 5 chars → API gratis sin envío de password). Bloquea registro/cambio de password si está en breaches conocidos. Fail-open si HIBP cae.
-- **Rate-limit doble por IP + por email** (`lib/rate-limit-keys.ts`):
-  - Signup: 10 IP/h + 10 email/h (prod).
-  - Login: 15 IP/15min + 15 email/15min.
-  - Reset-password: 10 IP/h + 10 email/h.
-  - Verify-recovery (OTP entry): 10 IP/15min + 10 email/15min.
-  - Durante pre-launch (commit `8b640ee` ajuste, 2026-05-11): bucket de email == bucket de IP. La defensa-en-profundidad existe solo cuando atacante distribuye sobre varias IPs (caso real de credential stuffing). Para single-source (1 IP, 1 email), el bucket más estricto pega — pero al ser iguales, prácticamente lo limita IP. **Al lanzar productivo con tráfico real**, bajar email a más estricto que IP (signup 3/h, reset 3/h) para detener botnets.
-  - El email se hashea con SHA-256 truncado a 16 chars antes de usar como key — no aparece en claro en `rate_limit_buckets`. **La IP se hashea igual** (`hashIp()`, auditoría 2026-08-24 C-8: la IP es dato personal — Ley 1581): **todas** las rutas públicas y acciones usan `ipKey()`/`emailKey()` de `lib/rate-limit-keys.ts`, así que ninguna key de rate-limit lleva IP ni email en claro.
-- **Recuperación con OTP de 6-10 dígitos** (no link). Inmune a Gmail prefetch que consume tokens de links.
-- **Confirmar contraseña** obligatorio en signup y reset (campos duplicados con `.refine()` Zod + validación inline en client).
-- **signOut global tras cambiar password** (`scope: 'global'`). Invalida TODAS las sesiones del user en otros devices/browsers — si alguien tenía sesión activa con la contraseña vieja, queda fuera al cambio.
-- **Account enumeration mitigation:** mensajes genéricos ("Si esa cuenta existe, te enviamos email...") en flows donde aplica.
+### 2.4 Modelo formal STRIDE por categoría y flujo crítico
 
-**Decisión deliberada — NO implementado:**
+#### Las 6 categorías STRIDE en Lucams Shop
 
-- **No-reuso de últimas N contraseñas.** Costo operacional alto (tabla `PasswordHistory` paralela + bcrypt.compare por entrada). Beneficio marginal vs Pwned Passwords (que ya cubre el principal vector). Re-evaluar si compliance lo exige (banking, no es nuestro caso).
+| Letra | Categoría                  | Definición operativa                                                                | Mitigación transversal en Lucams Shop                                                                                               |
+| :---: | -------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **S** | **Spoofing**               | Suplantar la identidad de otro cliente, administrador o proveedor externo           | Supabase Auth + OTP 6 dígitos + MFA `aal2` obligatorio + firmas criptográficas en webhooks + `x-cron-secret` desde Vault            |
+| **T** | **Tampering**              | Alterar precios, fletes, estados, archivos subidos o cookies en tránsito o cliente  | Recálculo en servidor, `AES-256-GCM` en `checkout_state`, HMAC en fletes/actividad, magic bytes + re-codificación `sharp` y RLS     |
+| **R** | **Repudiation**            | Negar haber ejecutado una compra, autorización o mutación administrativa            | `Consent` append-only (IP, UA, versión), `AdminActionLog` con diff `before`/`after`, `WebhookEvent` y correlación `X-Request-Id`    |
+| **I** | **Information Disclosure** | Acceder a PII, fotos privadas, llaves o topología interna sin autorización          | RLS + `REVOKE ALL`, enmascaramiento RSC (`lib/pii-mask.ts`), 3 buckets privados, `scrubPii` en logs/errores y salud pública mínima  |
+| **D** | **Denial of Service**      | Agotar conexiones DB, memoria serverless, cuota de Storage o presupuesto de APIs IA | `readBodyWithLimit`, presupuestos de píxeles `sharp`, `rate_limit_buckets` + topes globales, Turnstile y coalescencia `LUC-SEC-008` |
+| **E** | **Elevation of Privilege** | Escalar de visitante/cliente a admin o de rol operativo a `SUPERADMIN`              | Matriz RBAC `8 × 34`, triggers anti-escalada en DB (`028`), esquemas Zod cerrados, step-up MFA en `staff:manage` e invariantes CRM  |
 
-**Eventos de seguridad loggeados (event prefix `security.*`):**
+#### Aplicación STRIDE a los 4 flujos críticos
 
-- `security.login.success` / `security.login.fail`
-- `security.pwned.signup_block` / `security.pwned.reset_block`
-- `security.password.reset_success` (con flag `globalSignOut`)
-- `security.pwned.api_fail` / `security.pwned.fetch_error` (HIBP caído)
-- Rate-limit hits ya van como `auth.*.rate_limited` (con `ipCount` + `emailCount`).
+**Flujo 1 — Registro, login y recuperación de cuenta:**
 
-**Persistencia (F-07, auditoría 2026-09-19):** además del log, los eventos de seguridad
-_rechazados_ quedan en la tabla `SecurityEvent` (`lib/security-events.ts`, fail-open):
-login fallido de cliente (`auth.login.fail`) y de admin (`auth.admin_login.fail`), y
-firma/secreto de webhook inválido (`webhook.invalid_signature`, con `metadata.source` =
-wompi/aveonline/resend). La IP se guarda como `ipHash` (SHA-256 truncado, mismo hash del
-rate-limit — nunca en claro). Los consume `evaluateAlerts` con dos reglas:
-`security_admin_login_fails` (≥5 logins admin fallidos en 15 min, alta) y
-`security_webhook_invalid` (≥3 firmas/secretos inválidos en 5 min, media). Retención:
-180 días vía el cron `purge-event-logs`.
+| Vector STRIDE          | Amenaza concreta                                   | Mitigación implementada                                                                                                     |
+| ---------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Spoofing               | Credential stuffing con credenciales filtradas     | Rate limit dual IP + email hasheados, bloqueo HIBP k-anonymity, Turnstile en registro/recuperación y MFA `aal2` en `/admin` |
+| Tampering              | Adivinación de código OTP de confirmación/recupero | OTP de 6 dígitos con expiración corta, doble bucket IP + email (`otp_verify` / `pw_reset`) y entrega DKIM/SPF por Resend    |
+| Repudiation            | Titular niega haber aceptado política de datos     | Fila append-only en `Consent` con `scope`, `accepted`, `version`, `ipAddress`, `userAgent` y `acceptedAt`                   |
+| Information Disclosure | Enumeración de correos registrados                 | Mensajes uniformes en `/login`, `/registro` y `/recuperar-password` sin revelar existencia de cuenta                        |
+| Denial of Service      | Creación masiva automatizada de cuentas            | Turnstile server-side (`signupAction`) + rate limit `signup` por IP + OTP obligatorio antes de activar sesión               |
+| Elevation of Privilege | Inyección de campos `role` o `loyaltyPoints`       | Esquemas Zod cerrados sin campos privilegiados + trigger SQL `customer_block_sensitive_col_update_trg` (`028`)              |
 
-### MFA
+**Flujo 2 — Checkout, pago Wompi y contraentrega (COD):**
 
-- **Para TODOS los roles admin (`SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `PRINT_WORKSHOP`, `FINANCE_ANALYST`, `MANAGER`, `FULFILLMENT`, `CMS_EDITOR`): obligatorio y ENFORCEADO por código** (auditoría 2026-08-24, hallazgo B-1 — antes era opt-in y contradecía esta política). El guard central (`lib/admin-rbac-guard.ts`) y el layout del panel redirigen a `/admin/seguridad?enroll=required` a cualquier admin sin factor TOTP verificado; el enrolamiento está abierto a todos los roles admin; las acciones admin siguen exigiendo aal2. Supabase Auth soporta TOTP.
-- **Para clientes: no implementada aún.** Supabase Auth soporta TOTP; el flujo existe solo para admin (`/admin/seguridad`, `/admin/login/mfa`). Ofrecerla a clientes queda como mejora futura.
-- **Recovery codes admin** (B-5, 2026-08-29): 16 chars (~79 bits), HMAC-SHA256 con `CSRF_SECRET` como pepper (nunca SHA-256 plano), consumo atómico (`updateMany` condicional — un solo uso real). Fallback de lectura para códigos legacy SHA-256 hasta su rotación (TODO en `features/admin-mfa/recovery-codes.ts`).
-- **Step-up MFA en acciones destructivas** (F-10, auditoría 2026-09-04; cobertura ampliada F-05/F-06, S11 `[SEC-02]`, Fase 8 y Fase 12): reembolsar pedido (`refundOrderAction`), reembolsar retracto (`refundRetractAction`), aprobar o resolver garantía con devolución de dinero (`approveWarrantyAction` / `resolveWarrantyAction` cuando `resolution === "REFUND"`), exportar audiencia CSV de suscriptores (`GET /admin/marketing/suscriptores/export`), exportar segmentos comerciales CSV (`GET /admin/marketing/segmentos/export`), exportar reporte contable CSV (`GET /admin/finanzas/export`), dar de alta staff admin (`provisionStaffAdmin` / `promoteAdminAction`), cambiar rol y desactivar admin, fusionar duplicados CRM (`contacts:merge`), conciliación COD (`markCodRemittedAction`, `flagCodDiscrepancyAction`, `setCodEnabledAction`) y autogestión de MFA (`disableMfaAction`, `changeMfaDeviceAction`, `generateRecoveryCodesAction`) exigen un **aal2 reciente (≤10 min)** medido por el timestamp del claim `amr` del JWT (`lib/admin-reauth.ts`, fail-closed). Si está vencido, la UI abre `MfaReauthModal`, verifica el TOTP server-side (`verifyAdminMfaReauthAction` — refresca el JWT con aal2 fresco) y reintenta la acción una vez. Rate-limit propio doble IP+admin (`admin-mfa-reauth`, 5/15 min) y audit `mfa.reauth.success/failure`. Cierra el escenario "sesión admin robada con aal2 fresco emite reembolsos, exfiltra listados PII o crea otro SUPERADMIN" y "sesión aal2 robada enrola el TOTP del atacante o maquilla el ledger COD". El enrolamiento INICIAL de MFA no exige step-up (aún no hay factor): acaba de hacer `challengeAndVerify` en el browser, así que su `amr` ya viene fresco.
+| Vector STRIDE          | Amenaza concreta                                          | Mitigación implementada                                                                                                                           |
+| ---------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spoofing               | Webhook falso simulando pago aprobado en Wompi            | Checksum `SHA-256` timing-safe con `WOMPI_EVENTS_SECRET`, coincidencia estricta `event.environment === WOMPI_ENV` y ventana anti-replay de 25 h   |
+| Tampering              | Alterar `amount`, descuentos o tarifa de envío en cliente | Servidor recalcula totales desde variantes vivas, verifica sello HMAC de flete (`sealShippingOffersPayload`) y firma integridad Wompi en centavos |
+| Repudiation            | Desconocimiento de pago electrónico o entrega             | Autenticación 3DS en dominio Wompi + `WebhookEvent` deduplicado + trazabilidad logística `ShipmentEvent`                                          |
+| Information Disclosure | Exposición de PAN/CVV en servidor o logs                  | Hosted Checkout por redirección a Wompi (cero datos de tarjeta en Lucams Shop) + allowlist de metadatos en `WebhookEvent` (`LUC-SEC-009`)         |
+| Denial of Service      | Acaparamiento de inventario con órdenes `PENDING_PAYMENT` | Sin bloqueo pre-pago de stock: decremento atómico solo al confirmar pago (`InventoryLog`) + auto-cancelación a las 24 h (`expire-pending-orders`) |
+| Elevation of Privilege | Forzar `COD` en destino no cubierto o identidad bloqueada | Re-validación server-side de cobertura COD, `BlockedIdentity` (`PHONE`/`EMAIL`/`ADDRESS`) y evaluación de riesgo `assessCodRisk`                  |
 
-### Verificación de email
+**Flujo 3 — Estudio de personalización y activos privados:**
 
-- Registro requiere confirmación por email antes del primer login: **OTP de 6 dígitos** enviado al correo (configurado en el email template de Supabase), que el usuario tipea en `/confirmar-codigo`. No hay link de confirmación (ver § Stack arriba).
+| Vector STRIDE          | Amenaza concreta                                               | Mitigación implementada                                                                                                                          |
+| ---------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Spoofing               | Subir o borrar fotos en un `Design` ajeno                      | Verificación estricta de propiedad (`customerId` o `cart_session`) en cada Server Action + `metadata.owner_id` en Storage                        |
+| Tampering              | Subir HTML/SVG renombrado como `.jpg` o bomba HEIC             | `sniffImageMime` por magic bytes (prohibido `SVG`), pre-lectura de caja `ispe` en HEIC/HEIF y re-codificación completa con `sharp-safe.ts`       |
+| Repudiation            | Reclamo posterior por baja resolución o derechos de imagen     | Sellos `Order.contentRightsAcceptedAt` al comprar y `Design.qualityAcknowledgedAt` al aceptar imprimir con advertencia de resolución             |
+| Information Disclosure | Enumeración o lectura directa de fotos/previews de terceros    | Buckets `customer-uploads`, `design-previews` y `production-assets` privados; UUID en rutas; proxy `/api/design-preview/*` (`LUC-SEC-001`)       |
+| Denial of Service      | Ráfaga de archivos pesados o imágenes de 200 megapíxeles       | Tope `10 MB`, rate limit doble por dueño + IP (`upload_photo`), presupuestos `25 MP` / `50 MP` y `RASTER_MAX_ASPECT_RATIO = 20`                  |
+| Elevation of Privilege | Cliente intenta descargar artes 300 DPI de `production-assets` | Bucket privado sin políticas públicas; las URLs firmadas o paquetes ZIP solo se emiten tras `verifyAdminRouteAccess` (`designs:read_production`) |
 
-### Pendiente de verificación (mandato #9)
+**Flujo 4 — Tareas programadas (`pg_cron` / GitHub Actions → `/api/cron/*`):**
 
-- [ ] Configuración exacta de TTL de access/refresh tokens en panel Supabase Free → `supabase.com/docs/guides/auth/sessions`. Incluye verificar el **«refresh token reuse interval»** (default 10 s): es la válvula que hace benignos los refreshes concurrentes; si algún proyecto lo tuviera en 0, la carrera de refresh revocaría la familia completa de tokens (ADR-162).
-- [ ] Política de contraseñas configurable en plan Free → `supabase.com/docs/guides/auth/password-security`.
-
----
-
-## Autorización (RBAC + RLS)
-
-### RBAC — matriz de capacidades sobre 8 roles
-
-| Rol                           | Aplica a                       | Capacidades principales y alcance PII                                                                                                                                                                                                         |
-| ----------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `customer` (default Supabase) | Clientes finales               | Leer/escribir sus propias órdenes, dirección, diseños y reseñas                                                                                                                                                                               |
-| `SUPERADMIN`                  | Dueña / dirección general      | Control total de `/admin/*`, usuarios y alta limpia de staff (`provisionStaffAdmin` sin tocar `Customer`), reembolsos finales en efectivo, configuración global y auditoría (`AdminActionLog`)                                                |
-| `OPERATIONS_MANAGER`          | Jefatura de operaciones        | Catálogo, inventario, envíos, pedidos (con PII), moderación, `Contacto 360`, cola de fusión de duplicados (`contacts:merge`), posventa, carritos y suscriptores (sin reembolso final ni gestión de staff)                                     |
-| `CUSTOMER_SUPPORT`            | Atención al cliente y posventa | `Contacto 360` (con PII), soporte, garantías y retractos operativos (sin reembolso en efectivo), carritos abandonados, cotizaciones/oportunidades y consulta de pedidos                                                                       |
-| `PRINT_WORKSHOP`              | Taller de impresión            | Pedidos operativos, moderación de diseños, reintento de `RenderJob` y descarga de ZIP 300 DPI **con PII enmascarada determinísticamente en servidor antes de serializar RSC** (`lib/pii-mask.ts`, sin acceso a `/guia` ni etiquetas de envío) |
-| `FINANCE_ANALYST`             | Contabilidad y finanzas        | `/admin/finanzas`, exportación CSV contable (`GET /admin/finanzas/export` con `requireRecentMfa`), conciliación COD, costos y métricas comerciales (sin catálogo, CMS ni reembolsos en efectivo)                                              |
-| `MANAGER`                     | Empleado integral (compat.)    | Equivalente operativo a `OPERATIONS_MANAGER` preservado para cuentas existentes                                                                                                                                                               |
-| `FULFILLMENT`                 | Despacho logístico             | Transiciones logísticas de pedidos, impresión auditada de guía (`order.print_shipping_guide` en `/admin/pedidos/[number]/guia`) y descarga de ZIP de producción, con PII enmascarada en el listado/detalle general de pedidos                 |
-| `CMS_EDITOR`                  | Editor de contenido            | CMS v2 editorial (páginas, bloques, mediateca, redirects); home en `/admin/contenido`, cero acceso a PII, pedidos o finanzas                                                                                                                  |
-
-- Tabla `AdminUser` con `role` y `isActive`; el alta de staff (`provisionStaffAdmin` en `features/admin-users/service.ts`) aprovisiona o reutiliza `auth.users` sin crear filas ficticias en `Customer` ni contaminar `Contact`.
-- El proxy (`apps/web/proxy.ts` — Next.js 16 renombró `middleware.ts` → `proxy.ts`) solo hace de gate anónimo: redirige a `/admin/login` toda request `/admin/*` sin sesión Supabase. **No corre Prisma ahí.**
-- La verificación real de `AdminUser` activo + rol/capacidad (`ROLE_CAPABILITY_MATRIX` en `lib/admin-rbac.ts`) la hace el servidor en cada página/acción/ruta: `requireRole()` / `requireCapability()` / `getCurrentAdmin()` en las pages, `requireAdminAction({ roles, capability })` al inicio de toda Server Action admin mutante, y `verifyAdminRouteAccess({ roles, capability, req, checkIdle })` (`lib/admin-rbac-guard.ts`) en los Route Handlers sensibles (`/api/design-preview/*`, `/admin/pedidos/[number]/produccion`, `/admin/carritos/[id]/preview`, `/admin/marketing/suscriptores/export`, `/admin/marketing/segmentos/export`, `/admin/finanzas/export` y `/admin/email-templates/[id]/preview`) — todos verifican enrolamiento TOTP + sesión `aal2` y registran lecturas/exportaciones sensibles en `AdminActionLog` (consultable por presets rápidos en `/admin/auditoria`); las 6 rutas bajo `/admin/*` validan además inactividad `admin_last_activity` (`checkIdle: true`), mientras que `/api/design-preview/*` omite `checkIdle` porque la cookie `admin_last_activity` lleva `path=/admin` y el navegador no la adjunta en `/api/*` (el cierre global por inactividad ocurre al navegar en `/admin/*` vía `proxy.ts`). El enmascaramiento de PII (`maskOrderForActor`, `maskContactSummaryForActor`, `listPendingModerationForActor` y bloqueo anti-oráculo `allowPiiSearch: false` en `listOrders`) ocurre estrictamente en servidor antes de serializar props RSC, y el copiloto de soporte (`features/ai/support-copilot.ts`, `sanitizeSupportTextForAi`) redacta emails, teléfonos CO, documentos CC/NIT, direcciones físicas, URLs/tokens, números de pedido y nombres antes de cualquier llamada a Gemini REST (re-hidratando saludo y pedido localmente en servidor).
-- **Defense in depth:** cada Server Action/API route verifica el rol explícitamente (no confiar solo en el gate del proxy).
-
-### Row-Level Security (Supabase / Postgres RLS)
-
-> **Mandato #12:** toda tabla accesible desde el cliente público (vía publishable key, que mapea al rol Postgres `anon`) debe tener RLS habilitada. Sin excepciones.
-
-Políticas detalladas en [`ARCHITECTURE.md` § Row-Level Security](./ARCHITECTURE.md#row-level-security-supabase). Patrones:
-
-```sql
--- Ejemplo: Customer solo lee su propio registro
-CREATE POLICY "customer_read_own" ON public."Customer"
-  FOR SELECT USING (auth.uid()::text = "supabaseUserId");
-
-CREATE POLICY "customer_update_own" ON public."Customer"
-  FOR UPDATE USING (auth.uid()::text = "supabaseUserId");
-
--- Ejemplo: Order solo accesible por el cliente dueño O por admin
-CREATE POLICY "order_read_own_or_admin" ON public."Order"
-  FOR SELECT USING (
-    "customerId" IN (
-      SELECT id FROM public."Customer" WHERE "supabaseUserId" = auth.uid()::text
-    )
-    OR EXISTS (
-      SELECT 1 FROM public."AdminUser"
-      WHERE "supabaseUserId" = auth.uid()::text AND "isActive" = TRUE
-    )
-  );
-```
-
-**Postura verificada en vivo (auditoría 2026-08-24, re-verificada tras la remediación del 2026-08-29):**
-
-- **71/71 modelos Prisma con RLS habilitado** en `public` (71 modelos Prisma + `_prisma_migrations` + `rate_limit_buckets`, según ambiente). 14 políticas activas sobre 13 tablas; el resto es deny-by-default (RLS sin políticas). El event trigger `enforce_rls_on_new_table_trg` (migración 014, endurecido en migración 049) auto-habilita RLS y ejecuta `REVOKE ALL` para `anon`/`authenticated` + `REVOKE SELECT, INSERT, UPDATE, DELETE` para `service_role` sobre toda tabla nueva en `public`; las migraciones llevan verificación inline (`RAISE EXCEPTION` si queda alguna sin RLS, incl. espejos explícitos `050`–`054`) y la postura completa es auditable en solo-lectura con `packages/db/scripts/verify-security-posture.mjs`.
-- **0 grants de tabla para `anon`/`authenticated`** en prod (migración 026: revoca incluso REFERENCES/TRIGGER/TRUNCATE residuales + default privileges). La publishable key no puede leer ni una tabla pública — verificado en vivo: `/rest/v1/` y un `SELECT` directo devuelven 401/42501.
-- **`service_role` sin DML** sobre tablas de `public` (migración 026): solo REFERENCES/TRIGGER/TRUNCATE. La app opera con Prisma como rol `postgres`, no vía PostgREST con service_role.
-- Funciones de `public` endurecidas (migración 027): `search_path` fijado, `is_active_admin` sin EXECUTE para anon/PUBLIC, `rate_limit_check` solo owner.
-- Backstops anti-escalada (migración 028): `review insert own` fuerza `isApproved=false`/`featured=false`; triggers bloquean que `authenticated` modifique columnas sensibles de `Customer` (loyalty/referral) y `CartItem` (`unitPrice`).
-- Migraciones 025-029 aplicadas y verificadas en los 3 ambientes (LOCAL/STG/PRD).
-
-### Tests de RLS (criterio de aceptación de Fase 1)
-
-Implementados como tests de integración vitest contra el stack local (`make test-rls`):
-
-- `apps/web/features/security/rls-coverage.integration.test.ts` — **gate por-PR en CI:** aserta que TODA tabla de `public` tiene RLS habilitado.
-- `apps/web/features/security/rls-matrix.integration.test.ts` — comportamiento de las policies (nightly; se salta limpio sin Supabase real). Patrón:
-
-```ts
-// features/security/rls-matrix.integration.test.ts (esquema ilustrativo)
-import { createClient } from '@supabase/supabase-js';
-
-describe('RLS', () => {
-  it('customer A cannot see customer B orders', async () => {
-    const sbA = createClient(URL, PUBLISHABLE_KEY, { auth: { ... session A ... } });
-    const { data, error } = await sbA.from('Order').select('*').eq('customerId', 'CUSTOMER_B');
-    expect(data).toEqual([]);
-    expect(error).toBeNull(); // RLS no devuelve error, devuelve vacío
-  });
-
-  it('non-admin cannot read AdminActionLog', async () => {
-    const sbCustomer = createClient(URL, PUBLISHABLE_KEY, { auth: { ... customer session ... } });
-    const { data } = await sbCustomer.from('AdminActionLog').select('*');
-    expect(data).toEqual([]);
-  });
-});
-```
-
-### Invariantes de Seguridad del Grafo de Identidad y CRM Nativo (`Contact` / `ContactIdentity`, ADR-193)
-
-Las entidades `Contact`, `ContactIdentity`, `Organization`, `IdentityMergeCandidate`, `ContactActivity`, `Task` y `Opportunity` operan bajo cinco mandatos verificados por pruebas de integración y matriz RLS:
-
-1. **Separación entre observación y posesión criptográfica (`UNVERIFIED_OBSERVED` vs `VERIFIED`):** un email o teléfono digitado libremente en checkout invitado, `/contacto`, `/cotizar` o newsletter se registra como `UNVERIFIED_OBSERVED` y puede asociar `contactId` **exclusivamente para lectura interna del backoffice (`Contacto 360`)**. Jamás vincula `Order.customerId` sin prueba de posesión (OTP, OAuth con `email_verified = true` o enlace HMAC), jamás habilita redención ni lectura de Puntos Lucams y jamás devuelve historial previo al navegador no autenticado.
-2. **Inmunidad ante secuestro en checkout autenticado (`[ID-01]`) y aislamiento de formularios públicos frente a staff (`AdminUser`):** si existe sesión autenticada (`Customer A`) en checkout, `Order.customerId` y `Order.contactId` apuntan siempre a `Customer A` aunque `Order.email` contenga el correo de un tercero `B`; el correo alterno nunca se anexa como `ContactIdentity` de `A` (como máximo genera `IdentityMergeCandidate` para revisión humana). En sentido inverso, en formularios públicos (`/empresas-y-eventos`, `/contacto`, cotizaciones y carritos abandonados), `getStorefrontCustomerForForm` y `canBindSessionCustomerTx` **jamás** vinculan la sesión si el usuario pertenece a `AdminUser` o si el correo digitado difiere del correo de la sesión, evitando contaminar leads externos con la identidad de operadores internos.
-3. **Aislamiento total del destinatario de regalo (`Order.isGift = true`):** `recipientName`, `recipientPhone` y `shippingAddress` pertenecen al homenajeado; queda prohibido crear filas `Contact`, `ContactIdentity` o `IdentityMergeCandidate` a partir de datos del destinatario, así como ejecutar auto-merge por nombre, dirección física o similitud difusa (`pg_trgm`).
-4. **Defensa explícita en migraciones SQL (cero suposiciones):** toda tabla nueva de identidad/CRM debe incluir en su migración `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, `REVOKE ALL ON TABLE ... FROM anon, authenticated`, `REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE ... FROM service_role` y bloque `DO $$ ... RAISE EXCEPTION $$` de verificación inline, sin confiar únicamente en el event trigger `014`/`049`. Toda fusión humana de `IdentityMergeCandidate` exige `requireRecentMfa` (`<= 10 min`) + `AdminActionLog` + snapshot previo reversible.
-5. **Cascada de supresión Ley 1581:** al ejercer supresión de cuenta o solicitud Habeas Data sobre un `Contact`, se anonimizan `primaryEmail`, `primaryPhoneE164`, `displayName`, `documentType` y `documentNumber`, se sellan `anonymizedAt`/`deletedAt`, se eliminan/revocan sus `ContactIdentity`, se purgan los `IdentityMergeCandidate` en `PENDING` y se conservan solo las órdenes pagadas ya anonimizadas por deber contable/tributario.
+| Vector STRIDE          | Amenaza concreta                                              | Mitigación implementada                                                                                                                                 |
+| ---------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spoofing               | Invocación externa no autorizada de `/api/cron/*`             | Cabecera `x-cron-secret` verificada con `cronSecretOk` (`lib/cron-auth.ts`, `timingSafeEqual` fail-closed) en todos los endpoints cron                  |
+| Tampering              | Filtración del secreto de cron en URLs o logs de acceso       | Prohibido pasar secretos por query string; `pg_cron` lee `cron_secret` en tiempo de ejecución desde `vault.decrypted_secrets`                           |
+| Repudiation            | Silencio ante un job que dejó de correr o falló               | `recordCronHeartbeat` + dead-man switch `2×` intervalo (`/api/health/crons`) + alerta `notifyCronFailure` en `/admin/notificaciones`                    |
+| Information Disclosure | Sondeo público de versión desplegada o estado interno de jobs | Respuesta pública mínima (`status` + `timestamp`); `version`, `environment` y detalle de jobs exigen `x-cron-secret` válido                             |
+| Denial of Service      | Purga automática elimina eventos pendientes o errores activos | Guardas conservadoras: `WebhookEvent` solo con `processedAt IS NOT NULL`, `ErrorReport` por `lastSeenAt` y `Notification` solo con `readAt IS NOT NULL` |
+| Elevation of Privilege | Función SQL de purga invocada desde PostgREST                 | `SET search_path` fijo y `REVOKE EXECUTE` a `PUBLIC`, `anon` y `authenticated` en funciones administrativas                                             |
 
 ---
 
-## Manejo de secretos y API keys
+## 3. Gestión endurecida de sesiones, cookies (`ADR-162`) y TTLs
 
-### Reglas de oro
+La orquestación de sesiones vive en [`apps/web/proxy.ts`](../apps/web/proxy.ts) junto con [`apps/web/lib/activity-mark.ts`](../apps/web/lib/activity-mark.ts), [`apps/web/lib/customer-activity.ts`](../apps/web/lib/customer-activity.ts) y [`apps/web/lib/admin-activity.ts`](../apps/web/lib/admin-activity.ts).
 
-1. **Las API keys nunca viven en el front-end.** Las únicas vars expuestas al navegador son las que empiezan con `NEXT_PUBLIC_*` y deben ser **diseñadas para ser públicas** (publishable key de Supabase, site key de Turnstile). **Ninguna llave de Wompi es `NEXT_PUBLIC_*`**: el checkout es redirección al hosted checkout de Wompi (no hay widget en cliente) y las 4 vars `WOMPI_*` son server-only — `NEXT_PUBLIC_WOMPI_PUBLIC_KEY` no existe en el código (eliminada de los `.env*` el 2026-08-01; declarar cualquier `NEXT_PUBLIC_WOMPI_*` está prohibido, ver `OPERATIONS.md` § Variables de entorno).
-2. **Las llaves "públicas" se protegen con reglas de dominio:**
-   - **Supabase publishable key (`sb_publishable_*`):** mapea al rol Postgres `anon`; sus permisos están limitados por RLS. Aunque sea visible, sin RLS rota no puede leer datos privados. Reemplaza la legacy `anon` JWT key (deprecada para proyectos creados después del 2025-11-01).
-   - **Wompi public key (`WOMPI_PUBLIC_KEY`, server-side):** aunque Wompi la llama "pública", en Lucams_shop vive solo en el servidor (firma de integridad + hosted checkout por redirección). Wompi valida que las transacciones se generen desde dominios autorizados en su panel. Configurar `lucamsshop.com` y `*.vercel.app` en Wompi.
-   - **Turnstile site key:** Cloudflare valida site key contra dominio. Configurar dominios permitidos en panel.
-   - **Gemini API key:** **NUNCA es pública.** Solo server-side (`features/ai`, ADR-058): el cliente invoca la Server Action del asistente, nunca el endpoint de Google directo.
-3. **Las llaves privadas viven en `.env.local` (dev) y en Vercel env vars (prod).** Nunca commiteadas.
-4. **Rotación documentada en `OPERATIONS.md`** (anual o tras compromiso sospechoso).
-5. **Nunca loggear secretos.** Filtros en logger redactan claves que coincidan con patrones (`*KEY*`, `*SECRET*`, `*TOKEN*`).
+### 3.1 Inventario técnico de cookies de sesión y estado
 
-### Inventario de claves
+| Cookie                    | `HttpOnly`                                                                            | `Secure`                           | `SameSite` | `Path`   | Duración (`Max-Age`)                                                    | Formato / Protección                                                                               | Propósito                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------- | ---------- | -------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `sb-<ref>-auth-token[.N]` | `false` (requerido por `@supabase/ssr` para MFA en navegador; mitigado con CSP nonce) | `true` en `production` y `preview` | `Lax`      | `/`      | ~400 días contenedor (access token 1 h, refresh token 30 d rotativo)    | JWT + refresh token de Supabase Auth                                                               | Sesión autenticada de clientes y administradores                                |
+| `customer_last_activity`  | `true`                                                                                | `true` en `production` y `preview` | `Lax`      | `/`      | Cookie 60 días; **inactividad máx. 30 días** (`CUSTOMER_IDLE_LIMIT_MS`) | `<ts_ms>.<hmac-sha256>` firmado con `CSRF_SECRET`                                                  | Ventana deslizante de actividad de cliente                                      |
+| `admin_last_activity`     | `true`                                                                                | `true` en `production` y `preview` | `Lax`      | `/admin` | Cookie 30 días; **inactividad máx. 30 min** (`ADMIN_IDLE_LIMIT_MS`)     | `<ts_ms>.<hmac-sha256>` firmado con `CSRF_SECRET`                                                  | Ventana deslizante fail-closed del panel `/admin`                               |
+| `cart_session`            | `true`                                                                                | `true` en `production`             | `Lax`      | `/`      | 30 días                                                                 | `UUID v4` de 122 bits opaco validado por regex (`lib/cart-session.ts`)                             | Propiedad de carrito y borradores anónimos del Estudio                          |
+| `checkout_state`          | `true`                                                                                | `true` en `production`             | `Lax`      | `/`      | 60 minutos                                                              | Cifrado autenticado **AES-256-GCM** con IV aleatorio y clave derivada de `CSRF_SECRET` (`ADR-085`) | Avance temporal entre pasos del checkout sin exponer PII al JS                  |
+| `lucams_cms_edit`         | `true`                                                                                | `true` en `production`             | `Lax`      | `/`      | 8 horas                                                                 | Flag habilitado solo tras verificar `cms:write` en servidor                                        | Modo Live Edit del CMS sobre el storefront                                      |
+| `cookie_consent_v1`       | `false`                                                                               | `true` en HTTPS                    | `Lax`      | `/`      | 1 año                                                                   | JSON codificado sin PII con `v: 1` y `policyVersion` (`lib/cookie-consent.ts`)                     | Preferencias del banner de cookies y disparo de re-consentimiento               |
+| `lucams_utm`              | `false`                                                                               | `true` en HTTPS                    | `Lax`      | `/`      | 30 días                                                                 | JSON `{ source, medium, campaign }` sanitizado (`lib/utm-attribution.ts`)                          | Atribución opcional de campaña; **solo existe si el usuario acepta Analíticas** |
 
-| Variable                                                    | Tipo                             | Visible en cliente | Doc oficial protección                                                                                                                                                           |
-| ----------------------------------------------------------- | -------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_*`) | Pública (RLS-protected)          | Sí                 | Mapea al rol Postgres `anon` · permisos limitados por RLS · whitelist de dominio en Supabase si se activa                                                                        |
-| `NEXT_PUBLIC_SUPABASE_URL`                                  | Pública                          | Sí                 | —                                                                                                                                                                                |
-| `SUPABASE_SECRET_KEY` (`sb_secret_*`)                       | **PRIVADA — bypassa RLS**        | **NO**             | Mapea al rol Postgres `service_role`. Solo server, gitignored. Múltiples secret keys soportadas (rotación sin downtime)                                                          |
-| `WOMPI_PUBLIC_KEY`                                          | Pública (Wompi), **server-side** | **NO**             | Hosted checkout por redirección — no hay widget en cliente, así que ninguna llave Wompi es `NEXT_PUBLIC_*` (la extinta `NEXT_PUBLIC_WOMPI_PUBLIC_KEY` se eliminó 2026-08-01)     |
-| `WOMPI_PRIVATE_KEY`                                         | Privada                          | **NO**             | —                                                                                                                                                                                |
-| `WOMPI_INTEGRITY_SECRET`                                    | Privada                          | **NO**             | —                                                                                                                                                                                |
-| `WOMPI_EVENTS_SECRET`                                       | Privada (firma webhooks)         | **NO**             | Esquema SHA-256 de eventos Wompi (ver § Webhooks)                                                                                                                                |
-| `AVEONLINE_USUARIO` / `AVEONLINE_CLAVE`                     | Privada                          | **NO**             | —                                                                                                                                                                                |
-| `AVEONLINE_WEBHOOK_SECRET`                                  | Privada (webhooks)               | **NO**             | Credencial compartida (Aveonline no documenta HMAC): header `x-aveonline-secret` o `payload.token`; la vía `?secret=` está OFF por defecto (`AVEONLINE_ALLOW_QUERY_SECRET`, D-1) |
-| `RESEND_API_KEY`                                            | Privada                          | **NO**             | —                                                                                                                                                                                |
-| `RESEND_WEBHOOK_SECRET`                                     | Privada (firma webhooks)         | **NO**             | HMAC-SHA256 esquema Svix; var CORE en prod (fail-fast al arranque si falta — D-5)                                                                                                |
-| `GEMINI_API_KEY`                                            | Privada                          | **NO**             | Server-only (`features/ai`, ADR-058): la llamada sale servidor→Google, no toca el navegador                                                                                      |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY`                            | Pública                          | Sí                 | Whitelist de dominio en Cloudflare                                                                                                                                               |
-| `TURNSTILE_SECRET_KEY`                                      | Privada                          | **NO**             | Server-only para validación de token                                                                                                                                             |
-| `R2_*`                                                      | Privada                          | **NO**             | —                                                                                                                                                                                |
+> **Trade-off documentado sobre `httpOnly: false` en `sb-*`:** el cliente de navegador (`apps/web/lib/supabase/browser.ts`) necesita leer la sesión desde `document.cookie` durante el reto interactivo MFA TOTP con `@supabase/ssr`. La exposición ante XSS se neutraliza mediante la CSP estricta por nonce (sin `'unsafe-inline'` ni `'unsafe-eval'` en `script-src`), mientras que todas las cookies sensibles propias (`cart_session`, `checkout_state`, `customer_last_activity`, `admin_last_activity`, `lucams_cms_edit`) son `HttpOnly`.
 
-### Detección automática de secretos
+### 3.2 Control de inactividad diferenciado (`customer` vs `admin`)
 
-- **Reglas gitleaks propias** en [`.gitleaks.toml`](../.gitleaks.toml) (extendiendo la baseline oficial): patrones para `sb_secret_*`, `sb_publishable_*` hardcodeada, URI Postgres con password embebido, `SUPABASE_SECRET_KEY=eyJ…`, Wompi `prv_*`, Anthropic `sk-ant-*` y Resend `re_*`. Sin allowlist de `docs/**` (eliminada en la auditoría 2026-08-24, A-2 — la detección de los 3 formatos nuevos se verificó empíricamente con gitleaks 8.24.3).
-- **Pre-commit hook** versionado en [`scripts/git-hooks/pre-commit`](../scripts/git-hooks/pre-commit): corre `gitleaks git --staged` sobre los cambios a commitear. Se activa por desarrollador con `git config core.hooksPath scripts/git-hooks` (no hay auto-instalación); si `gitleaks` no está instalado, el hook avisa y deja pasar el commit — las capas que SÍ se enforzan siempre son Push Protection + el CI `secrets-scan`.
-- **CI step** (`secrets-scan` en `.github/workflows/ci.yml`) que escanea el repo completo en cada PR.
-- **GitHub Secret Scanning** habilitado a nivel de repo (gratis para repos públicos; revisar privados).
-- **GitHub Push Protection** activo a nivel de cuenta (rechaza push si detecta credenciales reales — probado en la práctica con un push que contenía un `sb_secret_*` real; la llave se rotó y revocó siguiendo IRP-001).
+Las marcas de actividad utilizan `sealActivityMark(nowMs)` y `verifyActivityMark(raw, nowMs, maxIdleMs)` (`lib/activity-mark.ts`), comparando el HMAC-SHA256 mediante `crypto.timingSafeEqual` y rechazando marcas con desvío hacia el futuro mayor a 60 segundos (`FUTURE_SKEW_TOLERANCE_MS`).
 
-### Manipulación segura de archivos de credenciales por agentes IA
+1. **Clientes (`customer_last_activity` — límite 30 días):**
+   - Se sella al iniciar sesión (`/login`), confirmar OTP (`/confirmar-codigo`) o restablecer contraseña.
+   - En cada navegación real fuera de `/admin`, si la marca está `expired` (> 30 días sin actividad) o `invalid` (HMAC manipulado), `proxy.ts` ejecuta `supabase.auth.signOut({ scope: "global" })`, borra todas las cookies `sb-*` y `customer_last_activity`, y redirige a `/login?error=sesion-expirada&next=<ruta>` cuando la ruta pertenece a `CUSTOMER_SESSION_REQUIRED_PREFIXES` (`/mi-cuenta`), o a `/` en páginas públicas.
+   - Si la cookie está ausente pero el servidor acaba de validar un JWT legítimo (`getUser()`), `proxy.ts` **re-sella la marca y continúa** sin expulsar al cliente (evita cierres espurios por evicción de cookie en el navegador, conservando el bloqueo total cuando la marca fue expirada o forjada).
+2. **Administradores (`admin_last_activity` — límite 30 minutos, fail-closed):**
+   - Se sella únicamente al completar el login administrativo o el reto MFA TOTP.
+   - En toda navegación a rutas protegidas de `/admin/*` (excepto `/admin/login*` y el flujo inicial de enrolamiento `/admin/seguridad`), la marca debe ser `ok`. Si falta (`missing`), expiró (`> 30 min`) o su firma es inválida (`invalid`), el proxy revoca la sesión globalmente (`signOut({ scope: "global" })`), limpia `sb-*` y `admin_last_activity` (`path: "/admin"`) y redirige a `/admin/login?expired=1`.
 
-> Mandato derivado de un incidente real (una `SUPABASE_SECRET_KEY` entró al transcript de un agente IA por un `Read` sobre `.env.local`; la llave se rotó y revocó el mismo día siguiendo IRP-001). Toda sesión de Claude Code u otro agente IA con acceso a filesystem **debe** seguir estas reglas, complementarias a las anteriores.
+### 3.3 Defensas contra condiciones de carrera y cierres de sesión fantasma (`ADR-162`)
 
-**El problema:** las herramientas estándar de los agentes IA (`Read`, `Edit`, `Write`) cargan el contenido del archivo en el contexto del modelo y por lo tanto al transcript persistente de la conversación. Para archivos públicos esto es deseable; para archivos de credenciales es un leak silencioso.
+En Next.js 16 con App Router concurren múltiples solicitudes por vista (documento HTML, payloads Flight RSC, prefetches de `<Link>` y llamadas `/api/*`). Supabase Auth emplea _refresh tokens_ de un solo uso (con ventana `refresh token reuse interval` de 10 s en el proyecto Supabase); si dos requests intentan refrescar simultáneamente el mismo token vencido, la perdedora puede recibir `SIGNED_OUT` y borrar las cookies recién emitidas por la ganadora. `apps/web/proxy.ts` neutraliza este vector mediante tres invariantes:
 
-**Archivos restringidos** (nunca usar `Read`/`Edit`/`Write` sobre estos):
+1. **Exclusión de `/api/*` en el proxy:** `proxy.ts` no instancia el cliente Supabase de sesión en rutas `/api/*`; cada Route Handler crea su propio cliente con `lib/supabase/server.ts` cuando lo requiere, evitando carreras paralelas con la navegación principal.
+2. **Filtro anti-borrado en `setAll`:** cuando `@supabase/ssr` intenta escribir cookies con valor vacío que coinciden con `/^sb-[^-]+-auth-token(\.\d+)?$/` producto de una carrera perdida, `proxy.ts` descarta esa eliminación implícita; los cierres legítimos invocan limpieza explícita desde su Server Action o redirección por inactividad.
+3. **Inmunidad de prefetches RSC en origen y borde:** `isPrefetchRequest` detecta `next-router-prefetch`, `purpose: prefetch` y `sec-purpose: prefetch` para que un prefetch jamás renueve ni revoque marcas de actividad. Además, como Next.js 16 consume internamente cabeceras Flight antes de `proxy.ts`, todos los enlaces del storefront hacia `/admin` (`site-header.tsx`, `shop-mega-menu.tsx`) declaran obligatoriamente `prefetch={false}`, evitando que un administrador logueado en la tienda dispare un `signOut` global por un prefetch en segundo plano hacia una marca `admin_last_activity` antigua.
 
-- `.env`, `.env.local`, `.env.development`, `.env.production`, cualquier `.env.*`
-- `~/.git-credentials`
-- `~/.aws/credentials`, `~/.config/gcloud/...`, otros credential stores
-- `.npmrc` con tokens
-- Cualquier archivo cuyo nombre o ubicación sugiera contenido sensible (auth tokens, API keys, passwords, JWTs, connection strings con password embebido)
+### 3.4 Modelo de amenazas de `cart_session` y cierre de sesión (`LUC-SEC-013`)
 
-**Operaciones permitidas y cómo hacerlas:**
+`cart_session` (UUID v4 de 122 bits sin firma adicional, ya que firmarla no impide el robo de cookie) otorga hoy acceso tanto al carrito anónimo como a borradores del Estudio y sus vistas previas vía `/api/design-preview/*` (`LUC-SEC-001`):
 
-| Operación                              | Método correcto                                                                          | Por qué es seguro                                              |
-| -------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Modificar valores**                  | `sed -i 's/OLD/NEW/' .env.local` via Bash                                                | `sed -i` modifica in-place sin imprimir contenido en la salida |
-| **Renombrar variables**                | `sed -i 's/^OLD_NAME=/NEW_NAME=/' .env.local`                                            | Idem                                                           |
-| **Inspeccionar nombres de variables**  | `grep -E '^[A-Z_]+=' .env.local \| cut -d= -f1`                                          | Solo nombres antes del `=`, valores nunca                      |
-| **Verificar que una var está cargada** | `set -a; source .env.local; set +a; [ -n "$VAR" ] && echo loaded` en una sola línea Bash | Vars viven en el subshell, no en el contexto del modelo        |
-| **Verificar tipo/longitud sin valor**  | `${#VAR}` (longitud), `${VAR:0:N}...` (prefijo público como `sb_publishable_`)           | El prefijo de 10-15 chars de un secret no compromete nada      |
-| **Probar conexión**                    | `set -a; source .env.local; set +a; curl -H "apikey: $VAR" URL` en una sola línea        | Las vars se inyectan al curl pero no aparecen en la salida     |
+- **Cierre de sesión limpio:** al cerrar sesión en tienda o admin se revoca el token en Supabase (`signOut({ scope: "global" })`) y se eliminan `sb-*`, la marca de actividad respectiva y `cart_session`, impidiendo que un segundo usuario en un dispositivo compartido herede el carrito o los borradores del Estudio.
+- **Auto-curación ante colisión de identidad:** si `getOrCreateCart` detecta `CART_IDENTITY_MISMATCH` (una cookie `cart_session` apunta a un carrito ya reclamado por otro `customerId`), rota de inmediato el UUID de `cart_session` y registra `cart.identity_mismatch.healed`.
+- **Riesgo residual aceptado (`lib/cart-session.ts`):** el paso final del checkout no rota `cart_session` porque la página `/checkout/gracias` y la recuperación de carrito (`ADR-171`) dependen de ella; el alcance temporal queda acotado por `HttpOnly` + `Secure`, ausencia total en URLs/logs y las purgas automáticas de borradores (`7 d` anónimos / `30 d` logueados) y fotos post-entrega (`90 d`).
 
-**Operaciones prohibidas:**
+### 3.5 TTLs y caducidad explícita de recursos temporales
 
-- `cat .env.local`
-- `Read .env.local` con la herramienta del agente
-- `Edit` o `Write` sobre `.env.local` (Edit requiere Read previo, Write reemplaza pero pasa por contexto)
-- Hacer `echo $SECRET_VAR` que imprima el valor
-- Loggear cualquier var que matchee `*KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*`
+Ningún recurso temporal vive indefinidamente:
 
-**Si el agente IA ya leyó el archivo (incidente):** ejecutar [Runbook IRP-001](#runbook-irp-001-llave-supabase_secret_key-sb_secret_-expuesta) inmediatamente — rotar la credencial, no aceptar el riesgo "porque la DB está vacía". El transcript persiste; el riesgo escala cuando llegue data real.
+| Recurso                                           | TTL / Ventana                    | Mecanismo de expiración o rotación                                                                  |
+| ------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Access token JWT de Supabase Auth                 | **1 hora**                       | Rotación automática mediante refresh token                                                          |
+| Refresh token de Supabase Auth                    | **30 días** (1 solo uso)         | Rotación en cada refresco con intervalo de gracia de reuso (`10 s`)                                 |
+| Sesión inactiva de administrador                  | **30 minutos**                   | Marca HMAC `admin_last_activity` fail-closed + `signOut({ scope: "global" })` en `proxy.ts`         |
+| Sesión inactiva de cliente                        | **30 días**                      | Marca HMAC `customer_last_activity` deslizante + `signOut` global al vencer                         |
+| Ventana de step-up MFA (`requireRecentMfa`)       | **10 minutos**                   | Verificación del timestamp `totp` en el claim `amr` del JWT (`lib/admin-reauth.ts`)                 |
+| Código OTP de registro o recuperación             | **Corta (Supabase Auth)**        | Código numérico de 6 dígitos de un solo uso (sin enlace consumible por prefetch)                    |
+| Cookie `checkout_state`                           | **60 minutos**                   | Timestamp interno sellado bajo `AES-256-GCM` (`lib/checkout-session.ts`)                            |
+| Ofertas cotizadas de flete en checkout            | **Expiración corta por sesión**  | Payload sellado con `HMAC-SHA256` (`sealShippingOffersPayload`)                                     |
+| Caché «última cotización buena» de Aveonline      | **10 minutos**                   | Caché en memoria por instancia (`features/shipping/aveonline.ts`)                                   |
+| Orden Wompi en `PENDING_PAYMENT`                  | **24 horas**                     | Auto-cancelación horaria por `lucams-expire-pending-orders` (verifica estado real en Wompi antes)   |
+| Ventana anti-replay webhook Wompi / Resend        | **25 horas** / **±5 minutos**    | Validación sobre timestamp firmado + deduplicación permanente en `WebhookEvent`                     |
+| URL firmada en `customer-uploads`                 | **1 hora** (auto-refresh ≥ 40 m) | Supabase Storage signed URL + `refreshDesignAssetUrlsAction` antes de exportar a taller             |
+| URL firmada en `production-assets` (artes/guías)  | **1 hora**                       | Generada bajo demanda solo para roles con `designs:read_production` u `orders:shipping`             |
+| Contadores `rate_limit_buckets`                   | **7 días**                       | Purga diaria SQL `purge_rate_limit_buckets()` (`29 5 * * *` UTC, `LUC-SEC-010`)                     |
+| `WebVital` / `ErrorLog` & `ErrorReport` / Eventos | **35 d** / **90 d** / **180 d**  | Job diario `lucams-purge-event-logs` (`03:00 UTC`; ver [`OBSERVABILITY.md`](OBSERVABILITY.md))      |
+| Respaldos cifrados de DB + Storage en R2          | **~30 días**                     | Pipeline diario `backup.yml` (`pg_dump → gzip → gpg AES-256`) + regla de ciclo de vida en bucket R2 |
 
 ---
 
-## Headers HTTP de seguridad
+## 4. Autenticación de clientes y posventa invitado de doble factor
 
-> Configurados en `apps/web/proxy.ts` (el middleware de Next.js 16), que aplica `SECURITY_HEADERS` + la CSP de `apps/web/lib/security-headers.ts` a TODA respuesta — incluidos los early returns (redirects 3xx y 403 de CORS llevan los headers vía `withSecurityHeaders`; la CSP solo en respuestas con body renderizable). Verificar después con `curl -I https://lucamsshop.com | grep -i 'security\|content-security\|frame'`.
+### 4.1 Clientes registrados (`/registro`, `/login`, `/confirmar-codigo`, `/recuperar-password`)
 
-### Set base (Fase 1)
+1. **Política completa de contraseñas (`apps/web/lib/password-strength.ts` y `apps/web/lib/pwned-passwords.ts`):**
+   - **Longitud mínima de 8 caracteres** validada con Zod en Server Actions y reforzada en Supabase Auth, sin reglas arbitrarias de símbolos obligatorios (alineado con NIST SP 800-63B).
+   - **Medidor informativo de 5 niveles** (`muy débil`, `débil`, `razonable`, `fuerte`, `muy fuerte`) en `lib/password-strength.ts`: pondera longitud y variedad de clases de caracteres, y penaliza secuencias triviales (`123`, `qwerty`) y términos locales (`lucams`, `password`). Orienta en vivo sin bloquear por composición.
+   - **Confirmación explícita:** doble campo con `.refine()` en Zod en registro, cambio y restablecimiento.
+   - **Bloqueo de contraseñas filtradas vía Have I Been Pwned (k-anonymity):** se calcula el hash `SHA-1` en mayúsculas, se envía únicamente el prefijo de **5 caracteres** a `GET https://api.pwnedpasswords.com/range/<prefix>` con cabecera `Add-Padding: true` y timeout de **3 000 ms**, y se compara localmente el sufijo de 35 caracteres. La contraseña jamás sale del servidor. Si `count > 0`, se rechaza con mensaje claro en español (`security.pwned.signup_block` / `security.pwned.reset_block`); si la API externa falla o vence el timeout, registra `security.pwned.api_fail` / `security.pwned.fetch_error` y opera _fail-open_.
+   - **Decisión deliberada sobre historial de claves:** no se mantiene una tabla paralela `PasswordHistory` con hashes antiguos; el costo operativo y superficie adicional no se justifican frente a la cobertura real de Pwned Passwords sobre credenciales comprometidas.
+2. **Confirmación y recuperación por código OTP de 6 dígitos:**
+   - El alta de cuenta y la recuperación de clave envían un código numérico de **6 dígitos** (plantillas gestionadas con `scripts/supabase-auth-email-config.mjs`), inmune a los escáneres/prefetches de clientes de correo como Gmail u Outlook que consumen enlaces mágicos de un solo uso antes de que el usuario haga clic.
+   - Tras cambiar o restablecer la contraseña, el servidor ejecuta `signOut({ scope: "global" })` (`security.password.reset_success` / `security.change_password.success`) invalidando de inmediato cualquier sesión activa en otros dispositivos.
+3. **Mitigación anti-enumeración y telemetría:** `/login` y `/recuperar-password` devuelven mensajes uniformes sin revelar si un correo existe, aplicando límites dobles por IP y correo hasheados (`lib/rate-limit-keys.ts`) y registrando eventos `security.login.success`, `security.login.fail` y `auth.*.rate_limited`.
 
-| Header                         | Valor                                                                                                           | Por qué                                                                                                                                                |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Strict-Transport-Security`    | `max-age=63072000; includeSubDomains; preload`                                                                  | Fuerza HTTPS por 2 años en navegadores que lo cachean                                                                                                  |
-| `X-Frame-Options`              | `SAMEORIGIN`                                                                                                    | Clickjacking externo bloqueado; permite la vista previa en iframe del admin (roadmap C1). `frame-ancestors 'self'` en la CSP es el equivalente moderno |
-| `X-Content-Type-Options`       | `nosniff`                                                                                                       | Previene MIME sniffing por el navegador                                                                                                                |
-| `Referrer-Policy`              | `strict-origin-when-cross-origin`                                                                               | Limita info referrer enviada a otros dominios                                                                                                          |
-| `Permissions-Policy`           | `camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), accelerometer=(), gyroscope=()` | Niega APIs sensibles que no usamos                                                                                                                     |
-| `X-DNS-Prefetch-Control`       | `on`                                                                                                            | Optimización menor para preconectar a CDN                                                                                                              |
-| `Cross-Origin-Opener-Policy`   | `same-origin`                                                                                                   | Aísla el browsing context (defensa contra XS-Leaks / Spectre)                                                                                          |
-| `Cross-Origin-Resource-Policy` | `same-site`                                                                                                     | Impide que otros orígenes carguen nuestros recursos como sub-recursos                                                                                  |
+### 4.2 Autenticación posventa de doble factor para invitados (`/pedido/[token]`)
 
-### Content-Security-Policy (CSP) — implementada con nonce (C3, ADR-043)
+Los compradores sin cuenta consultan su orden mediante un enlace con un token opaco de **32 caracteres hexadecimales** (128 bits generados con `crypto.randomBytes(16)`):
 
-Se construye **por request** con `buildCsp(nonce, isProd)` en `apps/web/lib/security-headers.ts` (la invoca `apps/web/proxy.ts`). **Dos modos:**
+- **Almacenamiento y rotación (`ADR-119`):** `Order.publicAccessTokenHash` persiste exclusivamente el digest `SHA-256` (`hashBearerToken` en `lib/token-hash.ts`), verificado con `verifyTokenHashTimingSafe`. Cada reenvío del correo del pedido rota el token, invalidando automáticamente enlaces anteriores que hubieran sido reenviados.
+- **Lectura acotada vs mutación con segundo factor (`apps/web/app/pedido/[token]/actions.ts`):** mientras la vista de seguimiento protege datos sensibles, toda acción posventa mutante —solicitar retracto (`requestGuestRetractAction`), radicar garantía (`requestGuestWarrantyAction`) o abrir un ticket PQR del pedido (`submitGuestOrderSupportAction`)— exige **dos factores simultáneos**:
+  1. **Factor de posesión:** el token opaco válido en la ruta (`/^[a-f0-9]{32}$/`), verificado en tiempo constante contra `Order.publicAccessTokenHash`.
+  2. **Factor de conocimiento:** el correo electrónico exacto de la compra, validado en tiempo constante con `verifyEmailMatchesTimingSafe(email, order.email)` (`trim().toLowerCase()` + digest SHA-256 + `crypto.timingSafeEqual`).
+- Cada acción aplica **rate limiting dual** por IP (`ipKey`) y por prefijo del hash del token (`tokenHash.slice(0, 16)`), frenando adivinación de correo incluso si el enlace fue compartido.
 
-**Producción / preview** (`VERCEL_ENV` = production|preview) — `script-src` con **nonce + `'self'`** (sin `'unsafe-inline'` ni `'unsafe-eval'`). **Ya NO lleva `'strict-dynamic'`** (Ola 18 fix, 2026-07-26): con strict-dynamic la allowlist de hosts quedaba inerte (comportamiento CSP3) y los chunks lazy de Next — que cargan sin trust de nonce — eran bloqueados, rompiendo la hidratación de varias páginas en prod. Con `'self'` + nonce los chunks cargan y los scripts inline siguen exigiendo nonce:
+---
 
-```
+## 5. Seguridad del panel `/admin`
+
+### 5.1 Matriz RBAC: 8 roles (`AdminRole`) × 34 capacidades (`AdminCapability`)
+
+La fuente única de verdad vive en [`apps/web/lib/admin-rbac.ts`](../apps/web/lib/admin-rbac.ts). Todo miembro del equipo existe en `AdminUser` (`isActive = true` y `deletedAt IS NULL`). El aprovisionamiento (`provisionStaffAdmin` en `apps/web/features/admin-users/service.ts`) crea o reutiliza el usuario en `auth.users` sin insertar filas ficticias en `Customer` ni contaminar el grafo comercial `Contact`.
+
+| Rol (`AdminRole`)    | Capacidades | Propósito operativo y alcance sobre PII                                                                                                             |
+| -------------------- | :---------: | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPERADMIN`         | **34 / 34** | Propietaria / dirección general: control total del negocio, staff (`staff:manage`), reembolsos finales en efectivo, finanzas, seguridad y auditoría |
+| `OPERATIONS_MANAGER` | **25 / 34** | Jefatura operativa diaria (catálogo, pedidos con PII, moderación, posventa, `Contacto 360`, fusión CRM, B2B y lealtad; sin reembolsos ni staff)     |
+| `MANAGER`            | **25 / 34** | Alias de compatibilidad en Prisma con capacidades idénticas a `OPERATIONS_MANAGER`                                                                  |
+| `CUSTOMER_SUPPORT`   | **13 / 34** | Atención PQR, retractos, garantías (sin desembolso de efectivo), reseñas, moderación, cotizaciones y consulta `Contacto 360` con PII                |
+| `FINANCE_ANALYST`    | **9 / 34**  | Contabilidad, exportación CSV financiera, costos, conciliación COD, bloqueos anti-abuso, métricas y lectura de pedidos con PII enmascarada          |
+| `PRINT_WORKSHOP`     | **7 / 34**  | Taller de impresión: diseños 300 DPI, reintento `RenderJob`, paquetes ZIP e inventario, con PII enmascarada y sin acceso a guías logísticas         |
+| `FULFILLMENT`        | **6 / 34**  | Alistamiento y despacho: transiciones logísticas, impresión auditada de guías (`orders:shipping`) e inventario, con PII enmascarada en listados     |
+| `CMS_EDITOR`         | **2 / 34**  | Edición editorial CMS v2 (`cms:write` en páginas, bloques, mediateca, redirects) + seguridad de su propia cuenta (`account:self_security`)          |
+
+#### Tabla exacta de las 34 capacidades por rol
+
+Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `CUSTOMER_SUPPORT`, `FA` = `FINANCE_ANALYST`, `PW` = `PRINT_WORKSHOP`, `FU` = `FULFILLMENT`, `CE` = `CMS_EDITOR`.
+
+| #   | Capacidad (`AdminCapability`) | SA  | OM  | CS  | FA  | PW  | FU  | CE  |
+| --- | ----------------------------- | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| 1   | `dashboard:read`              |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 2   | `orders:read`                 |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 3   | `orders:read_pii`             |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 4   | `orders:update_status`        |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
+| 5   | `orders:shipping`             |  ✓  |  ✓  |  —  |  —  |  —  |  ✓  |  —  |
+| 6   | `orders:reconcile`            |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 7   | `orders:refund`               |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 8   | `orders:delete`               |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 9   | `designs:read_production`     |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
+| 10  | `designs:rerender`            |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
+| 11  | `moderation:manage`           |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 12  | `products:write`              |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 13  | `products:delete`             |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 14  | `inventory:write`             |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
+| 15  | `costs:manage`                |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 16  | `quotes:manage`               |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 17  | `customers:read`              |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 18  | `contacts:read`               |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 19  | `contacts:read_pii`           |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 20  | `contacts:write`              |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 21  | `contacts:merge`              |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 22  | `opportunities:manage`        |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 23  | `support:manage`              |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 24  | `posventa:manage`             |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 25  | `posventa:refund`             |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 26  | `marketing:manage`            |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 27  | `marketing:export_pii`        |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 28  | `cms:write`                   |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  ✓  |
+| 29  | `finance:read`                |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 30  | `finance:manage`              |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 31  | `metrics:read`                |  ✓  |  ✓  |  —  |  ✓  |  —  |  —  |  —  |
+| 32  | `system:read`                 |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 33  | `staff:manage`                |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 34  | `account:self_security`       |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+
+### 5.2 Guardia de rutas por prefijo más largo (`canAccessAdminPath`) y Route Handlers
+
+- **`proxy.ts` como gate ligero sin Prisma:** `apps/web/proxy.ts` valida sesión Supabase, nivel MFA e inactividad, y sobrescribe en servidor la cabecera interna `x-pathname` con `request.nextUrl.pathname`, impidiendo que un cliente falsifique la ruta evaluada por el layout administrativo (`app/admin/(panel)/layout.tsx`).
+- **Evaluación por prefijo más largo (_longest-prefix match_):** `ADMIN_ROUTE_ACCESS` (`lib/admin-rbac.ts`) declara las rutas permitidas y `canAccessAdminPath(role, pathname)` aplica siempre la regla más específica (p. ej. `/admin/carritos/configuracion` exige rol gerencial aunque `/admin/carritos` sea accesible también a soporte). Cualquier ruta nueva bajo `/admin/*` no listada queda restringida por defecto a `SUPERADMIN`.
+- **Guardas imperativas (`apps/web/lib/admin-rbac-guard.ts`):**
+  - Páginas: `getCurrentAdmin()`, `requireRole()` y `requireCapability(cap)`.
+  - Server Actions mutantes: `requireAdminAction({ roles, capability })`.
+  - Route Handlers sensibles: `verifyAdminRouteAccess({ roles, capability, req, checkIdle })` en `/admin/pedidos/[number]/produccion`, `/admin/carritos/[id]/preview`, `/admin/email-templates/[id]/preview`, `/admin/marketing/suscriptores/export`, `/admin/marketing/segmentos/export`, `/admin/finanzas/export` (los 6 con `checkIdle: true`) y `/api/design-preview/*` (donde `checkIdle` se omite porque `admin_last_activity` tiene `path=/admin` y el navegador no la adjunta en `/api/*`, quedando cubierto el timeout en cada navegación por `/admin/*`).
+
+### 5.3 MFA TOTP obligatorio (`aal2`), códigos de recuperación y step-up (`requireRecentMfa`)
+
+1. **Obligatoriedad `aal2` en los 8 roles:** ningún rol administrativo puede operar el panel en `aal1` (para clientes finales MFA aún no está habilitado). Si el administrador no posee factor TOTP verificado, `proxy.ts`, el layout y `admin-rbac-guard.ts` redirigen forzosamente a `/admin/seguridad?enroll=required`; si ya tiene factor pero su sesión está en `aal1`, redirigen a `/admin/login/mfa`.
+2. **Códigos de recuperación (`AdminRecoveryCode`, `apps/web/features/admin-mfa/recovery-codes.ts`):**
+   - Al enrolar TOTP se generan **10 códigos de un solo uso** de 16 caracteres (`XXXX-XXXX-XXXX-XXXX`, alfabeto sin caracteres ambiguos, ~79 bits de entropía) mostrados una sola vez.
+   - En base de datos se guarda `codeHash = HMAC-SHA256(CSRF_SECRET, normalizedCode)` como pepper criptográfico (con fallback transitorio de solo lectura para hashes SHA-256 previos hasta su rotación).
+   - El consumo en `/admin/login/mfa/recovery` está limitado a **5 intentos cada 15 min** por IP y por administrador, reclama el código de forma atómica con `updateMany({ where: { id, usedAt: null } })`, desenrola los factores TOTP previos vía `supabaseService.auth.admin` y obliga a registrar un nuevo autenticador en `/admin/seguridad?reconfig=1`.
+3. **Step-up MFA para acciones destructivas o sensibles (`apps/web/lib/admin-reauth.ts`):**
+   - `requireRecentMfa()` inspecciona el timestamp del método `totp` dentro del claim `amr` del JWT y exige verificación en los últimos **10 minutos** (`MFA_REAUTH_WINDOW_MINUTES = 10`, fail-closed). Si venció, lanza `MfaReauthRequiredError` y la UI abre `MfaReauthModal` (`verifyAdminMfaReauthAction`, rate limit `5 / 15 min` IP + admin y auditoría `mfa.reauth.success/failure`) reintentando la acción sin perder el formulario.
+   - **Acciones protegidas con step-up MFA:** reembolso de pedido (`refundOrderAction`), reembolso de retracto (`refundRetractAction`), aprobación o resolución de garantía con devolución de dinero (`approveWarrantyAction` / `resolveWarrantyAction` con `resolution === "REFUND"`), exportaciones CSV (`/admin/marketing/suscriptores/export`, `/admin/marketing/segmentos/export`, `/admin/finanzas/export`), gestión de staff (`provisionStaffAdmin`, promoción/cambio de rol y desactivación de `AdminUser`), fusión de duplicados CRM (`contacts:merge`), operaciones sensibles de COD (`markCodRemittedAction`, `flagCodDiscrepancyAction`, `setCodEnabledAction`) y autogestión de MFA (`disableMfaAction`, `changeMfaDeviceAction`, `generateRecoveryCodesAction`). El enrolamiento inicial no pide step-up porque acaba de ejecutar `challengeAndVerify`.
+
+### 5.4 Enmascaramiento server-side de PII, confirmaciones `ADR-192` y auditoría `AdminActionLog` (`selfDealing`)
+
+- **Enmascaramiento antes de serializar RSC (`apps/web/lib/pii-mask.ts`):** los roles sin `orders:read_pii` (`FINANCE_ANALYST`, `PRINT_WORKSHOP`, `FULFILLMENT`) reciben datos ya redactados en servidor mediante `maskOrderForActor` (`maskEmail`, `maskPhone`, `maskDocumentNumber`, `maskTaxDocument`, `maskPersonName`, `maskShippingAddressSnapshot`: conserva solo ciudad/departamento y `giftMessage` para imprimir la tarjeta de regalo). Para `PRINT_WORKSHOP` se anulan además `labelPath`, `labelUrl` y `trackingUrl` (solo `FULFILLMENT` y gerencia acceden a `/admin/pedidos/[number]/guia`, auditado como `order.print_shipping_guide`). En CRM y moderación operan `maskContactSummaryForActor` y `listPendingModerationForActor`, y `listOrders` desactiva búsquedas por correo/teléfono/documento (`allowPiiSearch: false`) impidiendo oráculos carácter por carácter.
+- **Confirmaciones destructivas (`useAdminConfirm`, `ADR-192`):** toda acción irreversible utiliza [`apps/web/components/admin/use-admin-confirm.tsx`](../apps/web/components/admin/use-admin-confirm.tsx) con soporte de escritura explícita (`requireTyped`, p. ej. `"ELIMINAR"`). Prohibido `window.confirm` o `window.prompt`.
+- **Qué registra y qué NO registra `AdminActionLog` (`apps/web/lib/admin-audit.ts`):**
+  - Registra las **120+ mutaciones administrativas** (cambios de estado de orden, ajustes de inventario, moderación de diseños/reseñas, reembolsos, precios/catálogo, cupones, CMS, promoción/baja de `AdminUser`, bloqueos COD, fusiones CRM) y las **lecturas/descargas sensibles** (exportaciones CSV, descargas ZIP de producción e impresión de guías), persistiendo `adminId`, `action`, `entityType`, `entityId`, diff `before`/`after` e IP/User-Agent.
+  - No registra consultas rutinarias de listado sin exportación ni acciones del cliente final sobre su propia cuenta (trazadas en `Order`, `Consent`, etc.).
+  - **Segregación de funciones y detección `selfDealing`:** cuando el correo del administrador que ejecuta una de las **12 acciones sensibles** (`SELF_DEALING_SENSITIVE_ACTIONS`: `retract.*`, `warranty.*`, `cod.*`, `contact.merge*`) coincide con el correo de la orden o contacto objetivo, `recordAdminAction` inyecta automáticamente `metadata.selfDealing = true` y emite `logger.warn({ event: "admin.audit.self_dealing" })` para revisión en `/admin/auditoria`.
+
+---
+
+## 6. Invariantes de seguridad del grafo de identidad y CRM nativo (`ADR-193`)
+
+La resolución de identidad sobre `Contact`, `ContactIdentity`, `IdentityMergeCandidate`, `Organization`, `ContactActivity`, `Task` y `Opportunity` reside en [`apps/web/features/identity/resolution-service.ts`](../apps/web/features/identity/resolution-service.ts) bajo seis invariantes verificados por pruebas de integración:
+
+1. **Matriz de 4 niveles y bloqueo transaccional determinista (`UNVERIFIED_OBSERVED` vs `VERIFIED`):**
+   - **Nivel 1 (determinista automático):** solo opera sobre identidades `SUPABASE_USER` y `EMAIL` con estado `VERIFIED`. Antes de crear o vincular identidades toma `pg_advisory_xact_lock` bajo el namespace `"lucams_contact_identity_v1"` ordenando las claves lexicográficamente, evitando colisiones `P2002` que abortarían la transacción Postgres (`25P02`), y aplica enriquecimiento conservador (nunca sobrescribe nombre/teléfono verificados con entradas anónimas).
+   - **Nivel 2 (observación contextual `UNVERIFIED_OBSERVED`):** un correo o teléfono digitado libremente en checkout invitado, `/contacto`, cotizaciones o boletín asocia `contactId` **exclusivamente para lectura interna en `Contacto 360`**. Jamás asigna `Order.customerId` sin prueba criptográfica de posesión, jamás permite consultar ni redimir Puntos Lucams y jamás expone historial previo al navegador anónimo.
+   - **Nivel 3 (señales probables sin auto-fusión):** coincidencias por teléfono comprador (`SAME_BUYER_PHONE_E164`), documento fiscal (`SAME_BILLING_DOCUMENT`), correo alterno en sesión autenticada (`AUTH_BUYER_ALT_ORDER_EMAIL`) o discrepancias históricas (`HISTORICAL_ID01_EMAIL_MISMATCH`) jamás fusionan contactos automáticamente; encolan un `IdentityMergeCandidate`. Está **prohibido** el auto-merge por teléfono, nombre, dirección física o similitud difusa (`pg_trgm`), y un par marcado `REJECTED` se respeta permanentemente como _do-not-suggest_.
+   - **Nivel 4 (fusión humana reversible):** requiere capacidad `contacts:merge`, step-up `requireRecentMfa` (`≤ 10 min`), snapshot previo íntegro en `mergeSnapshotJson` y traza en `AdminActionLog`.
+2. **Inmunidad ante secuestro de pedido en checkout autenticado (`[ID-01]`):** en `resolveOrderContactTx`, si existe sesión autenticada (`Customer A`), `Order.customerId` y `Order.contactId` apuntan siempre al contacto de `Customer A` incluso si `Order.email` contiene el correo de un tercero `B`. El correo `B` nunca se anexa como `ContactIdentity` de `A`; como máximo abre un `IdentityMergeCandidate` (`AUTH_BUYER_ALT_ORDER_EMAIL`).
+3. **Aislamiento por construcción del destinatario de regalo (`Order.isGift = true`):** la firma de `resolveOrderContactTx` omite físicamente `recipientName`, `recipientPhone` y `shippingAddress`. Es imposible por construcción crear filas `Contact`, `ContactIdentity` o `IdentityMergeCandidate` con datos personales del homenajeado.
+4. **Aislamiento de staff (`AdminUser` / `isStaff`) frente a formularios públicos:** `getStorefrontCustomerForForm` y `canBindSessionCustomerTx` nunca vinculan la sesión en `/empresas-y-eventos`, `/contacto`, cotizaciones o carritos abandonados si el usuario pertenece a un `AdminUser` activo o si el correo digitado difiere del correo autenticado. Además, `markStaffContactIfAdminTx` marca `Contact.isStaff = true` cuando el correo coincide con un `AdminUser`, excluyendo cuentas internas de segmentos comerciales, matriz RFM y métricas LTV (solo `SUPERADMIN` puede limpiar manualmente esa bandera).
+5. **Defensa explícita en migraciones SQL:** toda tabla de identidad/CRM incluye en su migración espejo explícita (`050`–`054`) `ENABLE ROW LEVEL SECURITY`, `REVOKE ALL` a `anon, authenticated`, `REVOKE SELECT, INSERT, UPDATE, DELETE` a `service_role` y bloque `DO $$ ... RAISE EXCEPTION $$` de verificación inline, sin depender únicamente del event trigger DDL.
+6. **Cascada transaccional de supresión Ley 1581 (`scrubContactOnErasureTx`):** al suprimir una cuenta o atender una solicitud de Hábeas Data, desvincula `contactId -> null` en entidades históricas, elimina físicamente todas las filas `ContactIdentity` y los `IdentityMergeCandidate` en `PENDING`, reemplaza correos requeridos por placeholders `@deleted.lucamsshop.com` y anonimiza `Contact` sellando `anonymizedAt`, `deletedAt` y `deletedBy`.
+
+---
+
+## 7. Manejo de secretos, inventario de claves y reglas para agentes IA
+
+### 7.1 Reglas de oro y validación al arranque (`apps/web/lib/env.ts`)
+
+1. **Cero llaves privadas en el navegador:** solo las variables con prefijo `NEXT_PUBLIC_*` llegan al bundle cliente y todas están diseñadas para exposición pública controlada. **Está prohibido declarar cualquier variable `NEXT_PUBLIC_WOMPI_*`**: el checkout usa Hosted Checkout por redirección y las 4 llaves de Wompi (incluida `WOMPI_PUBLIC_KEY`) viven exclusivamente en el servidor. `GEMINI_API_KEY` también es estrictamente server-only (`features/ai/`).
+2. **Restricción por dominio en claves públicas:** `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_*`) mapea al rol `anon` sin permisos de tabla; `NEXT_PUBLIC_TURNSTILE_SITE_KEY` valida dominios autorizados en Cloudflare; `WOMPI_PUBLIC_KEY` opera desde servidor con dominios autorizados en Wompi (`lucamsshop.com` y `*.vercel.app`).
+3. **Arranque fail-fast:** `validateEnv()` verifica las variables críticas en producción (`CSRF_SECRET`, `RESEND_WEBHOOK_SECRET`, claves Supabase, etc.) e impide iniciar la app con configuración incompleta (`env.prod_vars_missing`).
+
+### 7.2 Inventario maestro de claves y secretos
+
+| Variable                                                    | Clasificación                    | Visible en cliente | Protección y notas operativas                                                                                                    |
+| ----------------------------------------------------------- | -------------------------------- | :----------------: | -------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`                                  | Pública                          |         Sí         | Endpoint del proyecto Supabase                                                                                                   |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_*`) | Pública protegida por RLS        |         Sí         | Mapea al rol Postgres `anon` (`0` grants en `public`); reemplaza a la antigua `anon` JWT key                                     |
+| `SUPABASE_SECRET_KEY` (`sb_secret_*`)                       | **Crítica — bypassa RLS**        |       **NO**       | Mapea a `service_role` (solo Auth Admin y Storage en `lib/supabase/service.ts`). Soporta múltiples llaves activas para `IRP-001` |
+| `DATABASE_URL` / `DIRECT_URL`                               | **Crítica — conexión Prisma**    |       **NO**       | Pooler transaccional (`6543`) y conexión directa de migraciones (`5432`), exclusivas de servidor y CI                            |
+| `CSRF_SECRET`                                               | **Crítica — raíz criptográfica** |       **NO**       | Deriva claves de `checkout_state` (`AES-256-GCM`), marcas de actividad, fletes HMAC, códigos recovery MFA y baja RFC 8058        |
+| `CRON_SECRET`                                               | **Crítica — jobs internos**      |       **NO**       | Verificada en `x-cron-secret` con `timingSafeEqual`; espejo en `vault.decrypted_secrets` (`cron_secret`)                         |
+| `WOMPI_PUBLIC_KEY` / `WOMPI_PRIVATE_KEY`                    | Privadas server-only             |       **NO**       | `WOMPI_PUBLIC_KEY` arma redirección Hosted Checkout en servidor; `WOMPI_PRIVATE_KEY` consulta transacciones en API Wompi         |
+| `WOMPI_INTEGRITY_SECRET` / `WOMPI_EVENTS_SECRET`            | **Críticas — integridad/firma**  |       **NO**       | Firma SHA-256 del monto/referencia al iniciar pago y verificación SHA-256 de webhooks entrantes                                  |
+| `AVEONLINE_USUARIO` / `AVEONLINE_CLAVE`                     | Privadas                         |       **NO**       | Autenticación API logística server-side                                                                                          |
+| `AVEONLINE_WEBHOOK_SECRET`                                  | **Crítica — webhook logístico**  |       **NO**       | Verificada en `x-aveonline-secret` o `payload.token` (`?secret=` deshabilitado por defecto)                                      |
+| `RESEND_API_KEY` / `RESEND_WEBHOOK_SECRET`                  | **Críticas — correo y Svix**     |       **NO**       | Envío transaccional y verificación HMAC-SHA256 Svix (obligatoria en producción)                                                  |
+| `GEMINI_API_KEY`                                            | Privada server-only              |       **NO**       | Invocada únicamente desde servidor tras sanitización cero-PII                                                                    |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY`   | Pública / Privada                |    Sí / **NO**     | Widget cliente restringido por hostname en Cloudflare y validación `siteverify` server-side                                      |
+| `R2_*` y `BACKUP_GPG_PASSPHRASE`                            | **Críticas — respaldos DR**      |       **NO**       | Secretos de GitHub Actions para cifrar con GPG `AES-256` y almacenar dumps diarios en Cloudflare R2                              |
+
+### 7.3 Detección automática de secretos en 3 capas
+
+1. **Capa 1 — Pre-commit local ([`scripts/git-hooks/pre-commit`](../scripts/git-hooks/pre-commit) + [`.gitleaks.toml`](../.gitleaks.toml)):** ejecuta `gitleaks git --staged` con reglas personalizadas para `sb_secret_*`, `sb_publishable_*` hardcodeada, URIs Postgres con contraseña, JWTs legacy de Supabase, Wompi `prv_*`, Anthropic `sk-ant-*` y Resend `re_*`, **sin excluir `docs/**`**. Se activa con `git config core.hooksPath scripts/git-hooks`.
+2. **Capa 2 — GitHub Secret Scanning + Push Protection:** activo a nivel de cuenta y repositorio; bloquea en el servidor remoto cualquier `git push` que contenga secretos reconocibles antes de que entren al historial.
+3. **Capa 3 — Gate obligatorio en CI (`secrets-scan` en `.github/workflows/ci.yml`):** ejecuta Gitleaks sobre el repositorio y forma parte de los 5 checks requeridos por el ruleset `protect-ramas-criticas`.
+
+### 7.4 Reglas de manipulación segura de archivos de credenciales (`.env.*`) por agentes IA
+
+> **Mandato operativo innegociable:** las herramientas de lectura/edición de los agentes IA (`Read`, `read_file`, `Edit`, `Write`, `cat`) vuelcan el contenido leído al contexto del modelo y al _transcript_ persistente de la sesión. Leer un archivo de credenciales con esas herramientas constituye una exposición real de secretos.
+
+- **Archivos estrictamente restringidos (prohibido abrir o escribir con herramientas del agente):**
+  - `.env`, `.env.local`, `.env.stg`, `.env.development`, `.env.production` y cualquier `.env.*`.
+  - `~/.git-credentials`, `~/.aws/credentials`, `~/.config/gcloud/*`, `.npmrc` con tokens y cualquier archivo con llaves, JWTs o cadenas de conexión con contraseña embebida.
+
+| Operación requerida                        | Método seguro permitido (vía subshell Bash sin eco de valores)                          | Por qué es seguro                                                           |
+| ------------------------------------------ | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **Listar solo nombres de variables**       | `grep -E '^[A-Z0-9_]+=' .env.local \| cut -d= -f1`                                      | Imprime únicamente el identificador previo al `=`, jamás el secreto         |
+| **Comprobar si una variable está cargada** | `set -a; source .env.local; set +a; [ -n "${VAR:-}" ] && echo "loaded"`                 | El valor vive solo en el subshell efímero y la salida es booleana           |
+| **Verificar longitud o prefijo público**   | `set -a; source .env.local; set +a; echo "len=${#VAR}"`                                 | No revela el material criptográfico al transcript                           |
+| **Renombrar o actualizar in-place**        | `sed -i 's/^OLD_NAME=/NEW_NAME=/' .env.local`                                           | Modifica el archivo en disco sin imprimir su contenido en stdout            |
+| **Probar conectividad autenticada**        | `set -a; source .env.local; set +a; curl -sS -o /dev/null -w '%{http_code}' -H ... URL` | Inyecta la credencial en el proceso hijo sin imprimir cabeceras ni secretos |
+
+- **Operaciones terminantemente prohibidas:** `cat .env*`, `read_file` / `Read` / `Edit` / `Write` sobre `.env*`, `printenv`, `env`, `set` sin redirección o `echo "$SECRET_VAR"`.
+- **Protocolo si un agente IA llega a leer un secreto por accidente:** tratarlo como compromiso confirmado y ejecutar de inmediato el **[Runbook IRP-001](#134-plan-de-respuesta-a-incidentes--irp-nist-sp-800-61-y-runbooks)** (rotar y revocar la credencial el mismo día, incluso en entornos con pocos datos).
+
+---
+
+## 8. Cabeceras HTTP, CSP con nonce, CORS, CSRF y defensas web
+
+Definidas en [`apps/web/lib/security-headers.ts`](../apps/web/lib/security-headers.ts) y aplicadas en [`apps/web/proxy.ts`](../apps/web/proxy.ts) sobre **todas** las respuestas (incluidas redirecciones `3xx` y rechazos `403` mediante `withSecurityHeaders`).
+
+### 8.1 Cabeceras estáticas globales (`SECURITY_HEADERS`)
+
+| Cabecera                         | Valor en producción                                                                                             | Propósito                                                                    |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `Strict-Transport-Security`      | `max-age=63072000; includeSubDomains; preload`                                                                  | Fuerza HTTPS durante 2 años con elegibilidad HSTS Preload                    |
+| `X-Frame-Options`                | `SAMEORIGIN`                                                                                                    | Defensa clásica contra clickjacking (reforzada por `frame-ancestors 'self'`) |
+| `X-Content-Type-Options`         | `nosniff`                                                                                                       | Impide MIME sniffing en respuestas y descargas                               |
+| `Referrer-Policy`                | `strict-origin-when-cross-origin`                                                                               | Evita filtrar rutas o tokens internos en cabeceras `Referer` hacia terceros  |
+| `Permissions-Policy`             | `camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), accelerometer=(), gyroscope=()` | Deshabilita APIs sensibles del navegador no utilizadas                       |
+| `Cross-Origin-Opener-Policy`     | `same-origin`                                                                                                   | Aísla `window.opener` frente a ventanas externas (anti XS-Leaks)             |
+| `Cross-Origin-Resource-Policy`   | `same-site`                                                                                                     | Bloquea lectura cross-origin de recursos propios                             |
+| `X-DNS-Prefetch-Control`         | `on`                                                                                                            | Permite resolución DNS anticipada controlada                                 |
+| `X-Request-Id`                   | `UUID` (reutiliza `x-request-id` entrante saneado o genera uno nuevo)                                           | Correlación extremo a extremo con logs JSON y `ErrorLog`                     |
+| `Cache-Control` (rutas privadas) | `private, no-store` en `GET /mi-cuenta*`, `/checkout*` y `/admin*`                                              | Impide caché compartida o de navegador en vistas con sesión o PII            |
+
+### 8.2 Content Security Policy (CSP) dinámica con nonce (`ADR-043`)
+
+En cada request de página, `proxy.ts` genera un nonce de 16 bytes (`Buffer.from(crypto.randomUUID()).toString("base64")`), lo propaga en la cabecera de request `x-nonce` (mediante `nextWithNonce()` preservando las cookies refrescadas por Supabase) y emite `Content-Security-Policy` con `buildCsp(nonce, isProd)`:
+
+```text
 default-src 'self';
-script-src 'self' 'nonce-<aleatorio-por-request>' https://challenges.cloudflare.com https://checkout.wompi.co;
+script-src 'self' 'nonce-<base64-por-request>' https://challenges.cloudflare.com https://checkout.wompi.co;
+worker-src 'self';
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com <origin de NEXT_PUBLIC_SUPABASE_URL>;
+img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com <supabaseOrigin>;
 font-src 'self' https://fonts.gstatic.com;
-connect-src 'self' https://*.supabase.co https://api.wompi.co <origin de NEXT_PUBLIC_SUPABASE_URL>;
+connect-src 'self' https://*.supabase.co https://api.wompi.co <supabaseOrigin>;
 frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co;
 frame-ancestors 'self';
 form-action 'self' https://checkout.wompi.co;
@@ -334,34 +412,25 @@ object-src 'none';
 upgrade-insecure-requests;
 ```
 
-Notas sobre el bloque de producción:
+| Directiva                   | Valor en `production` / `preview`                                                                                                                                                                                                                                           | Notas verificadas en código                                                                                                                                                                                    |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default-src`               | `'self'`                                                                                                                                                                                                                                                                    | Cierre por defecto para tipos no declarados                                                                                                                                                                    |
+| `script-src`                | `'self' 'nonce-<base64>' https://challenges.cloudflare.com https://checkout.wompi.co` (+ `https://www.googletagmanager.com` solo si `NEXT_PUBLIC_GA_MEASUREMENT_ID` está definido; + `https://vercel.live` solo en `VERCEL_ENV=preview`)                                    | Sin `'unsafe-inline'`, sin `'unsafe-eval'` y **sin `'strict-dynamic'`** (para preservar la allowlist por host de Turnstile/Wompi/GA4). En `development` usa `'unsafe-inline' 'unsafe-eval'` sin nonce para HMR |
+| `worker-src`                | `'self'`                                                                                                                                                                                                                                                                    | Web Workers propios del cliente (sin `blob:` abierto)                                                                                                                                                          |
+| `style-src`                 | `'self' 'unsafe-inline' https://fonts.googleapis.com`                                                                                                                                                                                                                       | Requerido por atributos `style=""` inline de UI/Konva (que no aceptan nonce) y Google Fonts                                                                                                                    |
+| `img-src`                   | `'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com <supabaseOrigin>` (+ `https://www.google-analytics.com https://www.googletagmanager.com` si GA4 está configurado; + `https://vercel.live https://vercel.com` en `preview`) | Cubre Supabase Storage (incluido `127.0.0.1:54321` en local), `blob:`/`data:` de Konva y Three.js                                                                                                              |
+| `font-src`                  | `'self' https://fonts.gstatic.com`                                                                                                                                                                                                                                          | Fuentes locales `.subset.woff2` y respaldo Google Fonts                                                                                                                                                        |
+| `connect-src`               | `'self' https://*.supabase.co https://api.wompi.co <supabaseOrigin>` (+ `https://www.google-analytics.com https://analytics.google.com https://*.google-analytics.com` si GA4 está configurado; + `https://vercel.live wss://ws-us3.pusher.com` en `preview`)               | Auth/Storage cuando aplica, Wompi y beacon GA4 (Gemini y Aveonline son server-side y no aparecen)                                                                                                              |
+| `frame-src`                 | `'self' https://challenges.cloudflare.com https://checkout.wompi.co` (+ `https://vercel.live` en `preview`)                                                                                                                                                                 | Widget Cloudflare Turnstile y modal Wompi                                                                                                                                                                      |
+| `frame-ancestors`           | `'self'`                                                                                                                                                                                                                                                                    | Impide embeber la tienda en sitios externos                                                                                                                                                                    |
+| `form-action`               | `'self' https://checkout.wompi.co`                                                                                                                                                                                                                                          | Restringe POST de formularios al propio sitio y a Hosted Checkout de Wompi                                                                                                                                     |
+| `base-uri` / `object-src`   | `base-uri 'self'`; `object-src 'none'`                                                                                                                                                                                                                                      | Bloquea inyección de `<base>` y plugins heredados                                                                                                                                                              |
+| `upgrade-insecure-requests` | Activa en `production` y `preview`                                                                                                                                                                                                                                          | Fuerza actualización a HTTPS de subrecursos                                                                                                                                                                    |
 
-- En previews (`VERCEL_ENV=preview`) se añade `https://vercel.live` a `script-src` y `frame-src` (toolbar de Vercel Live).
-- `connect-src` solo lista hosts que el **navegador** contacta: la IA (Gemini) y el envío (Aveonline) se llaman **server-side** → no aparecen.
-- El `<origin de NEXT_PUBLIC_SUPABASE_URL>` se deriva del env (cubre el stack local `http://localhost:54321`); duplicar el wildcard en prod es inocuo.
-- `images.unsplash.com` en `img-src` es TEMPORAL (fotos placeholder del seed) — retirar cuando estén las fotos reales.
-
-**Desarrollo** — `script-src 'self' 'unsafe-inline' 'unsafe-eval' …` (sin nonce). El dev server de Next inyecta scripts de HMR/overlay que con nonce se romperían; **el nonce se valida en un deploy prod-like**, no en dev.
-
-**Cómo funciona el nonce** (guía oficial Next 16, `node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md`):
-
-- El proxy genera un nonce nuevo por request, lo pone en el **request header** `x-nonce` + `Content-Security-Policy`, y en el **response header**. Next lo extrae del CSP y lo aplica automáticamente a TODOS sus `<script>` (framework, bundles, inline) durante el SSR. Integrado con el flujo `getAll/setAll` de Supabase (`nextWithNonce()` clona los headers actuales → preserva cookies refrescadas).
-- **`style-src` mantiene `'unsafe-inline'` a propósito:** los atributos `style=""` inline NO aceptan nonce (solo elementos `<style>`/`<script>`) → removerlo rompería toda la UI. El riesgo XSS por CSS es mucho menor que por script.
-- **`'unsafe-eval'` solo en dev** (HMR + reconstrucción de stacks de React); en prod no se usa.
-- **Rutas admin de preview HTML aislado (`EMAIL_PREVIEW_SANDBOX_CSP`):** `/admin/carritos/[id]/preview` y `/admin/email-templates/[id]/preview` sirven `text/html` de plantillas de correo con `Content-Security-Policy: sandbox; default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline'; font-src https: data:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'` + `<iframe sandbox="">`, y `proxy.ts` respeta ese header sin sobrescribirlo (`isSandboxedPreviewPath`) para que un HTML de correo jamás ejecute scripts en el origen del panel ni lea cookies.
-
-> ⚠️ **Regla de mantenimiento:** el nonce exige **render dinámico en toda página** — una página estática se prerenderea sin nonce y sus scripts quedan **bloqueados** en prod. La app ya es ~97% dinámica; las pocas estáticas llevan `export const dynamic = "force-dynamic"` (registro, recomendador, maintenance, recuperar-password, not-found). **Toda página nueva debe ser dinámica.** `/manifest.webmanifest` se deja estática (no tiene scripts).
-
-**Verificación (prod-like).** Con `VERCEL_ENV=preview next start`, en cada request el nonce del header `Content-Security-Policy` debe coincidir con el de cada `<script nonce="…">` del HTML (0 scripts sin nonce). Verificado 2026-06-29 en home, registro, recomendador, maintenance, producto, admin/login, carrito, contacto, login. **GUI pendiente (Lucy):** recorrer storefront + estudio/canvas + checkout + Turnstile + admin en un deploy preview con la consola abierta buscando `Refused to execute … violates Content Security Policy`.
-
-### Verificación
-
-```bash
-curl -I https://lucamsshop.com
-# Esperado: ver todos los headers anteriores
-```
-
-Tests E2E (Playwright):
+- **Por qué no se incluye `'strict-dynamic'`:** en CSP3 `'strict-dynamic'` invalida la allowlist por host (`'self'`, Cloudflare Turnstile, Wompi, GA4) y bloqueaba chunks lazy de Next.js cargados sin propagación directa de nonce. Con `'self' 'nonce-...'` sin `'unsafe-inline'` ni `'unsafe-eval'`, los bundles propios y hosts explícitos cargan mientras cualquier script inline inyectado sin nonce es bloqueado.
+- **Variaciones controladas por entorno:** si `NEXT_PUBLIC_GA_MEASUREMENT_ID` está definido se habilitan los hosts de Google Tag Manager / Google Analytics en `script-src`, `img-src` y `connect-src` (la carga real del script sigue bloqueada hasta que el usuario acepte `COOKIES_ANALYTICS`); en `VERCEL_ENV=preview` se agrega `https://vercel.live` (`+ wss://ws-us3.pusher.com`); en `development` se usa `'unsafe-inline' 'unsafe-eval'` sin nonce para HMR de Next.js.
+- **Regla de mantenimiento sobre renderizado dinámico:** el nonce por request exige SSR dinámico. Toda página nueva con scripts debe renderizarse dinámicamente (`export const dynamic = "force-dynamic"` cuando no lea cookies/headers por sí sola; `/manifest.webmanifest` es la única excepción por no contener scripts).
+- **Verificación automatizada en Playwright:**
 
 ```ts
 test("security headers present", async ({ request }) => {
@@ -372,164 +441,48 @@ test("security headers present", async ({ request }) => {
 });
 ```
 
----
+### 8.3 Sandbox CSP aislado para previsualización de correos (`EMAIL_PREVIEW_SANDBOX_CSP`)
 
-## CORS
+Las rutas `/admin/carritos/[id]/preview` y `/admin/email-templates/[id]/preview` renderizan HTML de plantillas editables dentro de `<iframe sandbox="">`. Tanto `proxy.ts` (`isSandboxedPreviewPath`) como ambos Route Handlers sirven exclusivamente `EMAIL_PREVIEW_SANDBOX_CSP`:
 
-### Política
+```text
+sandbox; default-src 'none'; img-src 'self' data: https: http:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'self'; base-uri 'none'; form-action 'none'
+```
 
-- **Storefront público (`app/(storefront)/*`):** servido siempre desde el mismo origen → no requiere CORS.
-- **API routes (`app/api/*`):** por defecto **bloquear cualquier origen distinto al sitio**. Solo abrir `Access-Control-Allow-Origin` para casos específicos justificados.
-- **Webhooks (`/api/webhooks/wompi`, `/api/webhooks/aveonline`, `/api/webhooks/resend`):** no usan CORS porque los llaman servidores, no navegadores. Validar firma + IP whitelist si la integración lo permite.
+Al omitir `allow-scripts` y `allow-same-origin`, el documento queda confinado en un origen opaco incapaz de ejecutar JavaScript, leer cookies del panel o enviar formularios.
 
-### Implementación
+### 8.4 CORS estricto en `/api/*` (`ADR-062`)
 
-En `apps/web/proxy.ts`, con la allowlist de `getAllowedOrigins()` en `apps/web/lib/security-headers.ts`:
+`proxy.ts` evalúa `isAllowedOrigin(origin)` (`apps/web/lib/security-headers.ts`) en toda solicitud a `/api/*` con cabecera `Origin`:
 
 ```ts
-// apps/web/lib/security-headers.ts (fragmento — versión simplificada)
 const ALLOWED_ORIGINS = [
   "https://lucamsshop.com",
   "https://www.lucamsshop.com",
-  // Previews de ESTE equipo solamente: el sufijo del scope es obligatorio —
-  // un `*.vercel.app` genérico permitiría que cualquiera registrara un proyecto
-  // con nombre similar y recibiera ACAO (ADR-062).
+  // El sufijo `-jullieth93s-projects` impide que terceros registren `lucams-shop-foo.vercel.app`
   /^https:\/\/lucams-shop(-[a-z0-9][a-z0-9-]*-jullieth93s-projects)?\.vercel\.app$/,
-  // Dev: cualquier puerto de localhost (el dev server corre en :4000). Nunca en prod.
   ...(isDev ? [/^http:\/\/localhost:\d{1,5}$/] : []),
 ];
 ```
 
-El proxy rechaza con 403 (con security headers + CSP) toda request `/api/*` con `Origin` fuera de la allowlist; a los orígenes permitidos les devuelve `Access-Control-Allow-Origin` + `Access-Control-Allow-Credentials: true` + `Vary: Origin`.
+Si `Origin` no coincide, `proxy.ts` responde de inmediato `403 Forbidden` (en `OPTIONS` y en llamadas directas) con `Vary: Origin`. A los orígenes permitidos les devuelve `Access-Control-Allow-Origin`, `Access-Control-Allow-Credentials: true` y `Vary: Origin`. Los webhooks server-to-server sin cabecera `Origin` pasan a sus verificadores de firma.
 
----
+### 8.5 Protección CSRF y sellos derivados de `CSRF_SECRET`
 
-## CSRF
+- **Server Actions de Next.js 16:** protegidas nativamente por comparación de `Origin`/`Host` e identificadores de acción ligados al build.
+- **Cookies `SameSite=Lax` + filtro `Origin` en `/api/*`:** bloquean peticiones cross-site con credenciales.
+- **Sellos criptográficos con `CSRF_SECRET`:**
+  1. `checkout_state` (`apps/web/lib/checkout-session.ts`, `ADR-085`): cifrada con **`AES-256-GCM`** (IV aleatorio por escritura + tag de autenticación GCM, TTL 60 min) porque transporta PII de checkout.
+  2. Ofertas de envío (`sealShippingOffersPayload` / `openShippingOffersPayload`): firmadas con `HMAC-SHA256` verificada en tiempo constante.
+  3. Marcas de actividad (`customer_last_activity` y `admin_last_activity`): `<ts_ms>.<HMAC-SHA256>`.
+  4. Baja de boletín RFC 8058 (`lib/unsubscribe-token.ts` / `features/newsletter/unsubscribe.ts`): token stateless `SHA-256` verificado en tiempo constante sin exponer el correo en texto plano en query strings.
 
-### Cuándo aplica
+### 8.6 Validación de entrada (Zod), XSS, Open Redirects (`ADR-046`) y defensas de aplicación
 
-- **Server Actions de Next.js** son inmunes a CSRF clásico porque Next inyecta tokens automáticamente y valida el origen.
-- **API routes** con cookie-based auth requieren protección manual.
-
-### Estrategia
-
-1. **`SameSite=Lax`** en cookie de sesión → protección base contra CSRF cross-site.
-2. **Verificación de header `Origin`/`Referer`** en mutaciones de API (POST/PUT/DELETE).
-3. **Anti-CSRF token** (synchronizer token) para flujos críticos: cambio de email, eliminación de cuenta, transferencia de admin.
-4. **Tokens de un solo uso** para acciones idempotentes: confirmación de eliminación.
-
-No hay un `lib/csrf.ts` único: el patrón real es **sellado/firma con clave derivada de `CSRF_SECRET`** (variable CORE obligatoria, validada al arranque por `apps/web/lib/env.ts`; generar con `openssl rand -hex 32`), aplicado donde hace falta:
-
-- **Cookie de estado del checkout** (`apps/web/lib/checkout-session.ts`): el state lleva PII completa (contacto, documento, dirección), así que desde 2026-08-29 (auditoría F-9, ADR-085) viaja **cifrada con AES-256-GCM** — IV aleatorio por escritura, clave derivada de `CSRF_SECRET`; el auth tag de GCM reemplaza el HMAC externo viejo para integridad. Si el unseal falla (manipulada, formato legacy HMAC, secret equivocado) o expiró (TTL 60 min), la cookie se ignora y el cliente vuelve al step 1. El **token de ofertas de envío** (`sealShippingOffersPayload` / `openShippingOffersPayload`) sigue con HMAC-SHA256 (integrity only: ese payload no tiene PII) y verificación timing-safe.
-- **Marca de actividad admin** (`apps/web/lib/admin-activity.ts`): `<ts>.<HMAC-SHA256(ts)>` — ver § Cookies y sesiones.
-- **Token de baja del newsletter** (`apps/web/features/newsletter/unsubscribe.ts`): `SHA-256(email:CSRF_SECRET)` truncado a 32 hex. El link de baja lleva `base64url(email).token` (el email no viaja en claro por query strings/logs) y la verificación es stateless.
-
----
-
-## Rate limiting
-
-### Modelo (ADR-016)
-
-Rate limit en Postgres + `pg_cron` durante dev y arranque productivo. Migrar a Redis externo solo si métricas justifican (p95 > 50 ms o volumen real lo exige).
-
-### Buckets y límites
-
-Límites **de producción** implementados hoy (en dev son más laxos). Las keys se construyen con `lib/rate-limit-keys.ts` — **IP y email/teléfono viajan hasheados** (SHA-256 truncado a 16 chars), nunca en claro en `rate_limit_buckets` ni en logs (auditoría 2026-08-24, C-8).
-
-| Flujo                                                               | Clave (scope)                               | Límite prod                        | Razón                                                                      |
-| ------------------------------------------------------------------- | ------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------- |
-| Signup (`/registro`)                                                | `signup` IP + email                         | 10 / 1 h c/u                       | Anti-bot                                                                   |
-| Login cliente (`/login`)                                            | `login` IP + email                          | 15 / 15 min c/u                    | Anti-brute force                                                           |
-| Login admin (`/admin/login`)                                        | `admin-login` IP + email                    | 5 / 15 min c/u                     | Anti-brute force (panel)                                                   |
-| Reset password (`/recuperar-password`)                              | `reset-password` IP + email                 | 10 / 1 h c/u                       | Anti-enumeración/abuso                                                     |
-| Verificación OTP (`/confirmar-codigo`, `/restablecer-password`)     | `verify-otp` / `verify-recovery` IP + email | 10 / 15 min c/u                    | Anti-adivinanza de OTP (B-4: doble bucket)                                 |
-| Reenvío OTP                                                         | `resend-otp` IP + email                     | 3 / 15 min c/u                     | Anti-spam de correos                                                       |
-| Asistente IA del Estudio                                            | `ai_suggest` IP + identidad                 | 20 / 1 h c/u                       | Costo de la API de Gemini                                                  |
-| Cotización por WhatsApp                                             | `quote` IP + teléfono                       | 5 y 3 / 24 h                       | Anti-spam                                                                  |
-| Contacto / soporte                                                  | `contact` IP + email                        | 5 y 3 / 24 h                       | Anti-spam                                                                  |
-| Newsletter                                                          | `newsletter` IP + email                     | 5 / 1 h c/u                        | Anti-spam                                                                  |
-| Reseñas                                                             | `review` IP                                 | 5 / 1 h                            | Anti-spam de reseñas                                                       |
-| Back-in-stock                                                       | `back_in_stock` IP                          | 20 / 1 h                           | Anti-abuso                                                                 |
-| Consentimiento de cookies                                           | `consent_cookies` IP                        | 30 / 1 min                         | Anti-ruido en `Consent`                                                    |
-| Búsqueda (server action)                                            | `search_action` IP                          | 60 / 1 min                         | Anti-scraper                                                               |
-| Uploads del Estudio                                                 | `upload_design_asset` IP + dueño            | 40 / 10 min IP · 30 / 10 min dueño | Anti-DoS de storage (capa IP: un bot sin cookies no rota el bucket — F-08) |
-| Cambio de password / eliminación de cuenta                          | `change-password` / `delete-account` dueño  | 5 / 15 min                         | Fuerza bruta sobre acciones sensibles                                      |
-| Re-autenticación MFA admin (step-up)                                | `admin-mfa-reauth` IP + admin               | 5 / 15 min                         | Fuerza bruta del reto TOTP en acciones destructivas (F-10)                 |
-| APIs públicas de catálogo (`/api/catalog/*`, `/api/coupons/public`) | `catalog_*` / `coupons_public` IP           | 30–60 / 1 min                      | Anti-scraper                                                               |
-| Healthchecks (`/api/health/*`)                                      | `health_*` IP                               | 30 / 1 min                         | Anti-sondeo                                                                |
-| RUM vitals (`/api/vitals`)                                          | `vitals` IP + backstop global               | 120 / 1 min + 3000 / 5 min global  | Anti-DoS de escrituras (C-1)                                               |
-| Log de errores de cliente (`/api/log-error`)                        | `log-error` IP                              | 30 / 5 min                         | Anti-DoS de escrituras                                                     |
-| Webhooks Wompi/Aveonline/Resend                                     | `externalId`                                | 1 / siempre                        | Idempotencia (`WebhookEvent @@unique([source, externalId])`)               |
-
-### Implementación
-
-`apps/web/lib/rate-limit.ts` llama vía Prisma a la función SQL `rate_limit_check(key, limit, window_seconds)` (`supabase/migrations/00000000000003_rate_limit.sql`), que hace increment + check **atómico** sobre `rate_limit_buckets` (sin race condition). Endurecida en la migración 027: `search_path` fijado y EXECUTE solo para el owner (la app la invoca como rol `postgres`).
+1. **Validación allowlist con Zod (prevención de Mass Assignment):** ninguna ruta ni Server Action pasa `req.body` o `FormData` crudo a Prisma; todo input se valida con esquemas Zod cerrados (sin `.passthrough()`) en `apps/web/features/*/schemas.ts`:
 
 ```ts
-// lib/rate-limit.ts (forma real — simplificada)
-export async function rateLimit(
-  key: string,
-  limit: number,
-  windowSeconds: number,
-): Promise<RateLimitResult> {
-  const rows = await prisma.$queryRaw<
-    Array<{ allowed: boolean; count: number; reset_at: Date }>
-  >`SELECT * FROM rate_limit_check(${key}::text, ${limit}::int, ${windowSeconds}::int)`;
-
-  const row = rows[0];
-  if (!row) {
-    // Fail-open detectable (C-8): la función SIEMPRE devuelve fila; si no,
-    // se loguea `rate_limit.empty_row` y se deja pasar la request.
-    logger.warn({ event: "rate_limit.empty_row", key });
-    return { allowed: true, count: 0, resetAt: /* … */ };
-  }
-  return { allowed: row.allowed, count: row.count, resetAt: row.reset_at };
-}
-```
-
-### Headers de respuesta
-
-Las rutas que responden 429 incluyen `Retry-After` (verificado en `/api/health/*`). Los headers `X-RateLimit-*` NO están implementados — agregarlos es mejora futura.
-
-```
-HTTP/1.1 429 Too Many Requests
-Retry-After: 60
-```
-
----
-
-## Validación de input
-
-### Reglas
-
-- **Toda entrada externa se valida con Zod** antes de tocar lógica de negocio.
-- **Esquemas por feature** en `apps/web/features/*/schemas.ts` (y junto a las actions/routes que los usan), compartidos entre client y server.
-- **Mensajes de error en español** y sin filtrar detalles internos.
-- **Whitelist, no blacklist:** definir qué se acepta, no qué se bloquea.
-
-### Patrón
-
-```ts
-// features/checkout/schemas.ts (fragmento ilustrativo del patrón)
-import { z } from "zod";
-
-export const ShippingAddressSchema = z.object({
-  name: z
-    .string()
-    .min(2)
-    .max(80)
-    .regex(/^[\p{L}\s'.-]+$/u, "Solo letras y espacios"),
-  line1: z.string().min(5).max(120),
-  line2: z.string().max(120).optional(),
-  city: z.string().min(2).max(80),
-  department: z.enum(["Amazonas", "Antioquia", "Arauca" /* ... 32 deptos CO ... */]),
-  zip: z
-    .string()
-    .regex(/^\d{6}$/)
-    .optional(),
-  phone: z.string().regex(/^(\+57)?3\d{9}$/, "Celular CO inválido"),
-});
-
+// Esquema allowlist por dominio (ej. checkout: nunca se pasa req.body crudo a Prisma)
 export const CheckoutPayloadSchema = z.object({
   email: z.string().email().toLowerCase().trim(),
   cartId: z.string().cuid(),
@@ -538,745 +491,466 @@ export const CheckoutPayloadSchema = z.object({
   couponCode: z.string().max(40).optional(),
 });
 
-export type CheckoutPayload = z.infer<typeof CheckoutPayloadSchema>;
-```
-
-```ts
-// Patrón en una API route pública (ej. app/api/catalog/products/route.ts)
-export async function GET(req: Request) {
-  const parsed = QuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
-  if (!parsed.success) {
-    return Response.json({ error: "invalid query" }, { status: 400 });
-  }
-  // Continuar solo con datos validados
+// Patrón estándar de validación server-side antes de tocar lógica de negocio
+const parsed = QuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
+if (!parsed.success) {
+  return Response.json({ error: "Parámetros inválidos" }, { status: 400 });
 }
 ```
 
-### Sanitización
-
-- **HTML/Markdown user-generated** (textos legales con formato, razón de retracto, etc.): se renderiza con `ReactMarkdown` + `remark-gfm` + **`rehype-sanitize`** (allowlist de elementos) — nunca HTML crudo.
-- **No usar `dangerouslySetInnerHTML`** salvo con contenido sanitizado o de fuente confiable (admin).
-
----
-
-## Output encoding / XSS
-
-- **React escapa por defecto** todos los strings interpolados → XSS clásico no aplica.
-- **`dangerouslySetInnerHTML`** prohibido excepto:
-  - Blog posts (admin escribe MDX, server-side rendered, no input de usuario).
-  - SEO `<head>` JSON-LD (server-generated).
-- **URLs construidas con input de usuario** validar protocolo (`https:` o relativo, nunca `javascript:`).
-- **CSP estricto** (sección anterior) es defensa en profundidad.
-
----
-
-## TTLs y caducidad de recursos
-
-> Mandato: **todo recurso temporal tiene TTL explícito.** Nada infinito.
-
-| Recurso                                   | TTL                          | Mecanismo                                                                                              |
-| ----------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Access token Supabase                     | 1 h                          | Auto-rotation con refresh token                                                                        |
-| Refresh token Supabase                    | 30 días                      | Rotation en cada uso                                                                                   |
-| Session cookie del admin                  | 30 min idle                  | Marca HMAC + revocación server-side en `proxy.ts` (ver § Cookies)                                      |
-| Reset password (OTP)                      | Corta (config Supabase Auth) | OTP de 6-10 dígitos, no link                                                                           |
-| Email confirmation (OTP)                  | Corta (config Supabase Auth) | OTP de 6 dígitos, no link                                                                              |
-| Reserva de stock (`StockReservation`)     | 15 min                       | `pg_cron` cleanup cada minuto (ADR-014)                                                                |
-| Cache "última cotización buena" Aveonline | 10 min                       | Cache in-memory por proceso (`features/shipping/aveonline.ts`)                                         |
-| Rate limit buckets                        | 1 día (housekeeping)         | `pg_cron` cleanup cada 15 min                                                                          |
-| URL firmada `customer-uploads`            | 1 h (auto-refresh ≥40 min)   | Supabase Storage signed URL + `refreshDesignAssetUrlsAction` antes de exportar a imprenta (`[STU-01]`) |
-| URL firmada `production-assets`           | 1 h (default, configurable)  | Idem (acceso solo admin)                                                                               |
-| `EmailEvent` / `WebhookEvent`             | 180 días                     | Cron `purge-event-logs` (`features/observability/event-log-retention.ts`)                              |
-| `ErrorLog` / `ErrorReport`                | 90 días                      | Idem (ErrorReport por `lastSeenAt`: lo que sigue ocurriendo no se purga)                               |
-| `SecurityEvent`                           | 180 días                     | Idem (F-07 — IP solo como `ipHash`, nunca en claro)                                                    |
-| Audit logs admin                          | 2 años                       | Política legal                                                                                         |
-| Backups en R2                             | ~30 días (diarios)           | Pipeline `pg_dump → gzip → gpg AES256` diario + lifecycle rule en bucket                               |
-
----
-
-## File upload y Storage
-
-### Buckets
-
-Definidos en [`ARCHITECTURE.md` § Storage](./ARCHITECTURE.md#storage-supabase).
-
-### Lectura autorizada de previews de diseños (LUC-SEC-001, 2026-10-30)
-
-`design-previews` es **privado** (migración 046): los bytes solo salen por el Route Handler `GET /api/design-preview/<designId>/<archivo>` (`app/api/design-preview/[...path]/route.ts`), que autoriza por request con la matriz pura de `features/personalization/preview-access.ts`:
-
-- **Dueño** (cookie `cart_session` == `Design.sessionId`, o `Customer` autenticado) y **admin operativo con MFA `aal2`** (`verifyAdminRouteAccess` con `ADMIN_ROLE_SETS.ALL` — excluye `CMS_EDITOR` y sesiones `aal1`) → cualquier variante (limpio, páginas, borradores, watermark legacy).
-- **Capacidad por token** (`?st=` share `/d/`, `?qt=` cotización, `?ot=` pedido — el join exige que la orden/cotización incluya ESE diseño) → las variantes de EXHIBICIÓN (preview limpio, páginas y artefactos watermark legacy), **nunca borradores**. (2026-11-03, ADR-191: el anti-copia se retiró — los tokens abren el preview limpio como antes de 2026-10-13.)
-- Resto → 404 sin oráculo. Respuesta con `Cache-Control: private, max-age=300` (nada de caché pública para contenido personal).
-- `Design.previewUrl`/`draftPreviewUrl` y los snapshots (`OrderItem.designAssetUrl`, `QuoteItem.previewUrl`) persisten la URL del handler; las URLs públicas legacy se convierten al vuelo (`previewRefToAuthorizedUrl`) y un GET anónimo directo al bucket muere.
-
-### Flujo de upload del estudio de personalización
-
-Implementado como **Server Action** `uploadDesignAssetAction` (`apps/web/features/personalization/actions.ts`) + `uploadCustomerPhoto` (`apps/web/lib/storage.ts`) — el archivo viaja al servidor (no hay endpoint `POST /api/upload/sign` ni upload directo del cliente a Storage):
-
-1. Cliente sube la foto por la Server Action (FormData).
-2. Server valida ownership del Design (customerId o sessionId anónima) y rate limit por dueño (`upload_design_asset`, 30 / 10 min).
-3. Server valida:
-   - Tamaño ≤ 10 MB.
-   - **MIME REAL por magic bytes** (`sniffImageMime`, no el Content-Type del cliente — rechaza polyglots `.html`/`.svg` renombrados). Allowlist: `image/jpeg`, `image/png`, `image/webp`, `image/heic`/`image/heif` (los HEIC de iPhone se convierten a JPEG con `heic-decode`).
-4. Strip EXIF + auto-orient con `sharp` (vía `sharp-safe`, que bloquea los loaders con CVE antes de procesar — auditoría F-4).
-5. Upload al bucket **privado** `customer-uploads` con nombre aleatorio (UUID) + `metadata.owner_id`.
-6. Se genera signed URL (TTL 1h) solo para uso del editor; la enumeración se previene con nombres UUID.
-
-### Antivirus / detección de contenido
-
-- **Hoy:** validación de magic bytes + tamaño + allowlist + re-encode con sharp (un payload embebido no sobrevive el re-encode).
-- **Fase 7+ (al lanzar):** evaluar VirusTotal API o ClamAV en una Edge Function pre-procesamiento si el volumen lo justifica. Por ahora: confiar en allowlist + Supabase Storage no ejecuta archivos.
-
-### EXIF stripping
-
-- Imágenes que el cliente sube pueden tener metadata GPS y otra info sensible.
-- **Stripping automático** al momento del upload a `customer-uploads`: `sharp(buffer).rotate().toBuffer()` auto-orienta según EXIF y descarta el resto de metadata (sin `withMetadata`, no se copia nada). La foto que queda en Storage ya va sin EXIF.
-
----
-
-## Webhooks (Wompi, Aveonline, Resend)
-
-> Estado implementado (Bloque A, certificado 2026-06-27). Secrets de webhook:
-> `WOMPI_EVENTS_SECRET` (firma de eventos Wompi), `AVEONLINE_WEBHOOK_SECRET`
-> (credencial de los `tracking.updated` de Aveonline) y `RESEND_WEBHOOK_SECRET`
-> (firma Svix de los eventos de entregabilidad de email; CORE en prod — la app no
-> arranca sin ella, D-5). Todos son privados, solo en `.env*`
-> gitignored, nunca en cliente.
-
-### Verificación de firma
-
-- **Wompi:** `verifyWebhookSignature` (`apps/web/lib/wompi.ts`) verifica
-  `signature.checksum` con el esquema documentado de Wompi — **SHA-256** del
-  concatenado de propiedades + timestamp + `WOMPI_EVENTS_SECRET` — comparado
-  **timing-safe** (`crypto.timingSafeEqual`) tras validar que
-  checksum/properties/timestamp existan (detalle en
-  [`INTEGRATIONS.md` § Wompi](./INTEGRATIONS.md#1-wompi-pasarela-de-pago--proveedor-principal)).
-- **Aveonline:** Aveonline no documenta HMAC — el webhook `/api/webhooks/aveonline`
-  valida una **credencial compartida** (comparación timing-safe) por 3 vías:
-  header `x-aveonline-secret`, `payload.token` (el Token del panel "Mis
-  integraciones", re-enviado en cada notificación) o — solo durante la transición,
-  con `AVEONLINE_ALLOW_QUERY_SECRET=true` (default OFF, auditoría D-1) —
-  `?secret=`. Además: el `trackingNumber` debe existir en DB y los estados son
-  monotónicos (no retroceden). La dedup usa `hasCarrierTimestamp` (D-4): eventos
-  sin fecha del carrier deduplican con externalId `…-no-ts` determinista.
-- **Resend:** firma **HMAC-SHA256 esquema Svix** (contenido firmado =
-  `${svix-id}.${svix-timestamp}.${rawBody}`; la clave son los bytes base64 tras el
-  prefijo `whsec_`), con tolerancia de reloj de 5 min anti-replay. Sin secret en
-  env: rechaza en prod (fail-closed), permite en dev para testing local. Un
-  bounce/complaint nunca se degrada por un evento viejo (upsert en transacción,
-  D-2).
-- **Rechazo HTTP 401** si la firma no coincide. **No revelar la razón** al cliente.
-  Los logs persisten `bodyHash` (sha256 truncado), no el body crudo (D-5).
-
-### Idempotencia
-
-- Tabla `WebhookEvent(@@unique([source, externalId]))`. El `externalId` de Wompi es
-  `${transaction.id}-${status}-${timestamp}` → un retry real de Wompi (mismo
-  timestamp firmado) produce el mismo key y se deduplica.
-- Si ya estaba `processedAt`, devolver 200 sin re-procesar.
-- La saga POST-PAID tiene además idempotencia física en el ledger (índice parcial
-  unique `InventoryLog(orderId, reason, variantId)`) + claim atómico de creación de
-  guía (`Order.shipmentClaimedAt`) — certificado en el Bloque A (2026-06-26).
-
-### Replay protection (implementado, P1-011)
-
-- **Ventana de 25 h** sobre `event.timestamp` (no ±5 min: Wompi reintenta el evento
-  con el MISMO timestamp firmado a los 30 min / 3 h / 24 h — una ventana de 5 min
-  mataba los reintentos legítimos con 401 y el evento se perdía; corregido
-  2026-07-28). Fuera de ventana → 401. La protección real contra replay la da la
-  idempotencia por eventKey: un replay cae en "already processed" y forjar un
-  timestamp nuevo rompe la firma. `WOMPI_DISABLE_TIMESTAMP_CHECK=true` solo para
-  tests locales (cubre SOLO la ventana; el environment-match siempre aplica).
-- **Environment match**: el webhook exige que `event.environment` coincida con
-  `WOMPI_ENV` (no `NODE_ENV` — evita falsos 401 en Vercel preview). Un webhook
-  "prod" no se procesa en sandbox y viceversa.
-
-### Whitelist de IPs (cuando la integración lo permite)
-
-- Wompi y Aveonline publican rangos de IPs salientes. Validar a nivel middleware o
-  Cloudflare WAF (pendiente — la firma/credencial es la defensa primaria actual).
-
----
-
-## Audit logs
-
-### Qué se registra
-
-Toda acción mutante de admin escribe en `AdminActionLog` (tabla en `ARCHITECTURE.md`). Acciones registradas:
-
-- Cambio de estado de orden (`OrderStatus`).
-- Ajuste manual de inventario (`InventoryLog` ya lo hace; `AdminActionLog` adiciona contexto humano).
-- Aprobación/rechazo de reseña.
-- Reembolso manual.
-- Cambio de precio o publicación/despublicación de producto.
-- Creación, edición o desactivación de cupón.
-- Login/logout del admin.
-- Promoción/democión de roles en `AdminUser`.
-
-Helper: `recordAdminAction()` (`apps/web/lib/admin-audit.ts`), usado en las actions admin (120+ callsites).
-
-### Qué NO se registra
-
-- Lecturas (queries que no muta).
-- Acciones de cliente final sobre sus propios datos (eso queda en `Order`, `Cart`, etc.).
-
-### Retención
-
-- 2 años (alineado con Ley 1581 de Habeas Data — soporte en caso de queja del consumidor).
-- Después de 2 años: archivar a R2 (parquet) y purgar de la DB.
-
----
-
-## Logging
-
-### Estructura
-
-JSON estructurado con campos mínimos:
-
-```json
-{
-  "timestamp": "2026-05-09T14:30:00.123Z",
-  "level": "info",
-  "requestId": "cuid_xxx",
-  "route": "/api/webhooks/wompi",
-  "method": "POST",
-  "statusCode": 200,
-  "latencyMs": 234,
-  "userId": "cuid_xxx_or_null",
-  "msg": "checkout created"
-}
-```
-
-### Niveles
-
-| Nivel   | Cuándo                                                 |
-| ------- | ------------------------------------------------------ |
-| `debug` | Solo dev. Datos verbosos para depuración.              |
-| `info`  | Eventos normales (request, response, queue processed). |
-| `warn`  | Algo inusual pero no roto (rate limit hit, retry).     |
-| `error` | Algo falló y necesita atención.                        |
-| `fatal` | El proceso no puede continuar.                         |
-
-### PII redactada
-
-**Nunca loggear:**
-
-- Email completo → loggear hash o `cu***@gmail.com`.
-- Teléfono completo → últimos 4 dígitos.
-- Dirección → ciudad/depto solamente.
-- Tarjetas (no las tenemos, todo vía Wompi) — verificar logs no las contengan accidentalmente.
-- Tokens / passwords / claves.
-
-Implementado en el logger global (`apps/web/lib/logger.ts` — implementación propia sobre `console`, API compatible con pino): `redact()` enmascara claves que coincidan con patrones sensibles (`*KEY*`, `*SECRET*`, `*TOKEN*`, passwords) y `scrubPii()` limpia emails/teléfonos/documentos embebidos en mensajes y stacks. La misma `scrubPii` se aplica al capturar `ErrorLog`/`ErrorReport` (`lib/error-capture.ts`, F-6 — el fingerprint se calcula post-scrub).
-
-### Acceso
-
-- **Dev:** stdout local + archivos en `logs/` (gitignored).
-- **Prod:** Vercel Logs (mandato #7 — sin Sentry hasta Fase 7).
-- **Retención Vercel Logs:** 1 día en Hobby, 7 días en Pro. Suficiente para debugging inmediato. Para retención larga, evaluar BetterStack (Free) en Fase 7.
-
----
-
-## PII y Habeas Data (Ley 1581)
-
-### Datos personales recolectados
-
-| Campo                   | Origen              | Propósito                                            | Retención                                                      |
-| ----------------------- | ------------------- | ---------------------------------------------------- | -------------------------------------------------------------- |
-| Email                   | Registro / checkout | Auth, comunicación transaccional, marketing (opt-in) | Mientras la cuenta exista + 1 año                              |
-| Teléfono                | Checkout            | Logística (contacto del repartidor)                  | Mientras la orden esté activa + 5 años (legal)                 |
-| Dirección               | Checkout            | Logística                                            | Idem                                                           |
-| Nombre                  | Checkout / registro | Personalización + emails                             | Idem                                                           |
-| Fotos subidas (estudio) | Personalización     | Producción del imán                                  | Mientras la orden esté activa + 90 días                        |
-| IP                      | Logs / rate limit   | Seguridad, prevención de fraude                      | Hasheada en rate-limit y `SecurityEvent`; logs Vercel 1-7 días |
-
-### Derechos del titular (Ley 1581)
-
-El cliente gestiona sus datos desde `/mi-cuenta`:
-
-- Ver sus datos almacenados (perfil, direcciones, pedidos, reseñas).
-- Solicitar corrección (edición self-service en `/mi-cuenta/perfil` y `/mi-cuenta/direcciones`).
-- Solicitar eliminación de cuenta en `/mi-cuenta/seguridad → Eliminar mi cuenta` (`features/account/delete-service.ts` — alcance exhaustivo, ver `COMPLIANCE.md` § Derecho de supresión).
-- Exportación y PQR formales: canal manual `habeas-data@lucamsshop.com` (endpoint self-service de exportación = mejora pendiente).
-
-**Eliminación de cuenta:**
-
-- **Anonimización + soft-delete inmediatos** (`Customer.deletedAt` + scrub de PII: nombre/teléfono/documento → null, email → placeholder único), NO borrado físico — concilia la supresión con la retención fiscal DIAN.
-- Se borran físicamente las fotos del Estudio (la PII más sensible) y se anonimizan direcciones, reseñas, tickets y snapshots de envío en órdenes finalizadas; pedidos y consentimientos se conservan anonimizados (obligación legal).
-- El usuario de Supabase Auth se elimina con `admin.deleteUser` (fallback: baneo).
-- Logs: PII redactada por `scrubPii` al capturar + purga por retención (`ErrorLog`/`ErrorReport` 90 días, `EmailEvent`/`WebhookEvent` 180 días); backups: la PII purgada desaparece al rotar la retención (~30 días).
-
-### Política y términos
-
-- **Política de privacidad** publicada en `/legal/privacidad` antes del lanzamiento (ADR-020 abierto: ¿plantilla nuestra o abogado?).
-- **Términos y condiciones** publicados en `/legal/terminos`.
-- **Política de cookies** publicada en `/legal/cookies`. Banner de consentimiento al primer visit (mínimo, no anti-UX).
-- **Habeas Data:** formulario en `/legal/habeas-data` para solicitudes formales.
-
----
-
-## Dependency scanning y supply chain
-
-### Reglas
-
-1. **`pnpm-lock.yaml`** versionado, integridad sub-resource verificada.
-2. **`pnpm audit --prod --audit-level=high`** corre en CI en cada PR dentro del job `quality` (`Typecheck + Lint + Build`, incluso cuando aplica el fast-path documental; el gate es sobre deps de producción — los advisories dev-only se triagean con overrides dirigidos en `pnpm-workspace.yaml`, auditoría F-5).
-3. **Dependabot** automatiza PRs de actualización (`.github/dependabot.yml`, semanal, agrupado; majors bloqueados — se evalúan a mano). **Las GitHub Actions están pineadas por SHA** en los 6 workflows (auditoría A-1).
-4. **`pnpm dlx` para tooling de un solo uso** (no agregar a deps si solo es script).
-5. **Allowlist de licencias** (bloquear GPL/AGPL en código propietario) — **pendiente de automatizar** en CI (no hay `license-checker` hoy).
-6. **No usar paquetes con < 30 días en npm** (evita typosquatting reciente).
-
-### Auditoría manual antes de cada release
-
-- Revisar `pnpm outdated` — actualizar minor/patch agresivo, major con due diligence.
-- Verificar el dashboard de Dependabot.
-- Verificar GitHub Security Advisories del repo.
-
----
-
-## CI/CD security
-
-### En GitHub Actions
-
-- **Secrets** declarados en repo Settings → Secrets, **nunca hardcodeados**.
-- **Permisos mínimos** del `GITHUB_TOKEN` (read-only por defecto, escalar solo donde se necesite).
-- **`pull_request_target`** evitado salvo necesidad — el patrón seguro es `pull_request` + `permissions: contents: read`.
-- **Ruleset `protect-ramas-criticas` (`id: 26248226`)** en `develop` y `production` (ADR-105; endurecido en LUC-SEC-003 y consolidado en 2026-11-03): **pull request obligatorio** (0 approvals — flujo de owner única), rama al día (`strict: true`), **5 required checks** consolidados (`Typecheck + Lint + Build` con `prettier` y `pnpm audit --prod`, `Vitest tests (unit + integración con Postgres)`, `RLS behavior (rls-matrix contra Supabase local)`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`), `bypass_actors: []` (ni admins pueden saltarse el gate), sin force-push ni borrado. No existe rama `main`: el flujo es rama corta → PR a `develop` (STG) → PR `develop` → `production` (PRD) → merge → deploy Vercel → `post-deploy-smoke.yml`.
-
-### Steps mínimos del CI
-
-1. `pnpm install --frozen-lockfile`
-2. `pnpm typecheck`
-3. `pnpm lint`
-4. `pnpm test` (Vitest, unit + integración con Postgres)
-5. `pnpm test:e2e` (Playwright) + a11y (axe)
-6. `pnpm audit --prod --audit-level=high` (falla si vulnerabilidad alta en deps de producción)
-7. Secret scanning (gitleaks, job `secrets-scan`)
-8. Prettier format check
-9. Lighthouse CI (autorun contra build de producción)
-
----
-
-## Observabilidad de seguridad
-
-> Mandato #7: sin Sentry hasta Fase 7. Mientras tanto:
-
-- **Vercel Logs** con grep manual.
-- **Supabase Auth dashboard** muestra intentos fallidos de login, sign-ups, etc.
-- **Tabla `AdminActionLog`** auditable desde `/admin/auditoria`.
-- **`ErrorLog`/`ErrorReport`** (captura server + reportes de cliente vía `/api/log-error`) visibles en `/admin/observability`, con PII ya redactada por `scrubPii` al capturar (F-6).
-- **Healthchecks** en `/api/health/*`: la respuesta pública es mínima (`status` + `timestamp`); el detalle (versión, crons, topología) exige el header `x-cron-secret` (C-3/C-4).
-- **Centro de notificaciones del admin** (`/admin/notificaciones`, `features/notifications/service.ts`): los fallos de cron (`notifyCronFailure`), alertas de stock, cotizaciones y eventos de orden generan notificaciones in-app con severidad y dedup anti-ruido. Los éxitos NO se registran.
-
-Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7. Alertas externas (email/push con umbrales) = mejora pendiente.
-
----
-
-## Threat model formal (STRIDE)
-
-> Verificado contra [Microsoft Learn — Threat Modeling Tool: Threats](https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool-threats) a 2026-05-09. STRIDE es el framework de Microsoft SDL para clasificar amenazas. Se aplica a cada flujo crítico del sistema.
-
-### Las 6 categorías STRIDE
-
-| Letra | Categoría              | Definición (cita textual del doc oficial)                                                       | Mitigación principal en Lucams_shop                                                                  |
-| ----- | ---------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **S** | Spoofing               | _"illegally accessing and then using another user's authentication information"_                | Supabase Auth + MFA admin + cookies SameSite=Lax + Secure (prod/preview)                             |
-| **T** | Tampering              | _"malicious modification of data... unauthorized changes... alteration of data as it flows"_    | RLS + HTTPS + firma/credencial en webhooks + integridad Wompi (`WOMPI_INTEGRITY_SECRET`)             |
-| **R** | Repudiation            | _"users who deny performing an action without other parties having any way to prove otherwise"_ | `AdminActionLog` + logs estructurados con `requestId` + `WebhookEvent` con timestamp                 |
-| **I** | Information Disclosure | _"exposure of information to individuals who are not supposed to have access to it"_            | RLS + service_role solo server-side + redact PII en logs + URL firmada con TTL                       |
-| **D** | Denial of Service      | _"deny service to valid users... making a Web server temporarily unavailable"_                  | Rate limit + Turnstile + Cloudflare DDoS protection + circuit breakers                               |
-| **E** | Elevation of Privilege | _"unprivileged user gains privileged access"_                                                   | RBAC (`AdminUser.role`) + middleware `/admin/*` + tests RLS automáticos + mass assignment prevention |
-
-### Aplicación por flujo crítico
-
-#### Flujo 1: Registro y login
-
-| Vector STRIDE          | Amenaza concreta                                  | Mitigación                                                                                                               |
-| ---------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Spoofing               | Atacante usa email/password robado                | Rate-limit doble IP+email (15/15 min) · HIBP bloquea passwords filtradas · MFA obligatorio admin (enforceado por código) |
-| Tampering              | OTP de recuperación adivinado                     | OTP de 6-10 dígitos · doble bucket IP+email (10/15 min) · email vía Resend con DKIM                                      |
-| Repudiation            | Usuario niega haber registrado la cuenta          | `Consent` con `acceptedAt`, `ipAddress`, `userAgent` versionado                                                          |
-| Information Disclosure | Mensaje "email no registrado" permite enumeración | Mensaje genérico "credenciales inválidas" en login fail                                                                  |
-| Denial of Service      | Bot crea 1000 cuentas/min                         | Rate limit `signup` 10/h por IP + 10/h por email                                                                         |
-| Elevation of Privilege | Usuario edita rol vía mass assignment             | Schemas Zod sin `role` en payloads de cliente; `role` solo desde panel admin                                             |
-
-#### Flujo 2: Checkout + pago Wompi
-
-| Vector STRIDE          | Amenaza                                                | Mitigación                                                                                                   |
-| ---------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| Spoofing               | Webhook falso simulando Wompi                          | Firma SHA-256 (esquema de eventos Wompi) con `WOMPI_EVENTS_SECRET` · environment match · ventana anti-replay |
-| Tampering              | Modificar `amount` entre cliente y servidor            | Servidor recalcula totales desde DB · firma de integridad Wompi                                              |
-| Repudiation            | Cliente niega haber autorizado                         | Wompi 3DS (challenge ante banco emisor) + `WebhookEvent` con payload completo                                |
-| Information Disclosure | PCI: tarjeta queda en logs                             | Wompi maneja tarjetas, nunca tocan nuestro server · logger con redact                                        |
-| Denial of Service      | Bot llena `Order` con `PENDING_PAYMENT` que nunca paga | Turnstile en checkout · TTL 15min en `StockReservation` libera stock                                         |
-| Elevation of Privilege | Cambiar `paymentMethod=COD` para no pagar              | Validación server-side; COD requiere validación adicional + dirección verificada                             |
-
-#### Flujo 3: Estudio de Personalización (upload)
-
-| Vector STRIDE          | Amenaza                                               | Mitigación                                                                                  |
-| ---------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Spoofing               | URL firmada de otro usuario                           | Ownership del Design validado en la Server Action de upload; objeto con `metadata.owner_id` |
-| Tampering              | Subir archivo distinto al validado                    | MIME real por magic bytes + tamaño en server (no confiar en el cliente) · re-encode sharp   |
-| Repudiation            | "Yo no subí esa imagen"                               | `customer-uploads` bucket con metadata `owner_id`                                           |
-| Information Disclosure | Acceso a fotos de otros clientes                      | Bucket privado · URL firmada TTL 1h · enumeración prevenida (UUID en filename)              |
-| Denial of Service      | 1000 uploads de 10MB c/u en 1 min                     | Rate limit 30/10min por dueño + tamaño máximo 10MB                                          |
-| Elevation of Privilege | Cliente lee `production-assets` (privado, solo admin) | RLS bucket-level; URL firmada solo se genera en endpoints admin con role check              |
-
-#### Flujo 4: Background jobs (pg_cron → endpoints HTTP)
-
-Los jobs vivos son `pg_cron` en Supabase llamando endpoints `/api/cron/*` por HTTP (secretos en Supabase Vault, migraciones 015–048, con idle-skip SQL previo en `process-render-jobs` y `cms-publish-scheduled`) + 3 jobs SQL puros de higiene/purga (migraciones 043/047; los legacy de 012 fueron retirados en 033 y 048) + 3 endpoints cron alimentados desde fuera de pg_cron (backup-heartbeat vía GitHub Actions, domain-watch vía GitHub Actions mensual, monitor-heartbeat vía el job de uptime en Supabase STG). No hay cola pgmq ni Edge Functions consumer en producción.
-
-| Vector STRIDE          | Amenaza                                  | Mitigación                                                                                                                                                           |
-| ---------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Spoofing               | Atacante invoca `/api/cron/*` directo    | Header `x-cron-secret` verificado con el helper compartido `cronSecretOk` (`lib/cron-auth.ts`, comparación timing-safe, fail-closed) en los **13/13 endpoints cron** |
-| Tampering              | Secreto del cron en la URL (access logs) | El secreto viaja por header, nunca por query-string; leído desde Vault en runtime                                                                                    |
-| Repudiation            | Job corrió pero "nadie sabe qué pasó"    | `recordCronHeartbeat` por job + log estructurado; fallos → notificación in-app admin                                                                                 |
-| Information Disclosure | Detalle de crons/health expone topología | Respuesta pública mínima (`status`+`timestamp`); detalle solo tras `x-cron-secret` (C-3/C-4)                                                                         |
-| Denial of Service      | Job de purga borra de más                | Purgas con criterios conservadores (webhook solo si `processedAt`, ErrorReport por `lastSeenAt`)                                                                     |
-| Elevation of Privilege | Cron escala permisos                     | Los endpoints usan Prisma/`service` solo para la operación explícita del job                                                                                         |
-
-### Pendiente
-
-- Threat model formal de cada flujo nuevo cuando se agregue (Fase 4: pago, Fase 6: B2B mayorista).
-- Revisión externa pre-lanzamiento (pen test).
-
----
-
-## Plan de respuesta a incidentes (IRP)
-
-> Mandato: cuando algo de seguridad se quiebra, hay un proceso documentado. No se improvisa.
-
-### Definiciones
-
-| Severidad        | Definición                                                                             | Tiempo de respuesta  |
-| ---------------- | -------------------------------------------------------------------------------------- | -------------------- |
-| **P0 — Crítica** | Brecha activa (datos siendo exfiltrados, dinero siendo robado, sitio caído por ataque) | Inmediata (< 15 min) |
-| **P1 — Alta**    | Vulnerabilidad explotable confirmada o comportamiento anómalo grave                    | < 2 h                |
-| **P2 — Media**   | Vulnerabilidad teórica con explotación compleja, o anomalía sin impacto inmediato      | < 24 h               |
-| **P3 — Baja**    | Hallazgo informativo (configuración subóptima, dependencia con CVE bajo)               | < 7 días             |
-
-### Las 6 fases (NIST SP 800-61)
-
-#### 1. Preparación (continua)
-
-- Backups verificados (mensual).
-- IRP documentado y leído por el operador.
-- Contactos de soporte de cada vendor a la mano (ver `OPERATIONS.md` § Contacto y escalamiento).
-- Lista de números/emails de SIC, DIAN, banco de Wompi.
-
-#### 2. Detección (cómo me entero)
-
-- Alertas automatizadas (`OBSERVABILITY.md` § Alertas).
-- Reporte externo: `seguridad@lucamsshop.com` o `/legal/security`.
-- Dashboard `/admin/observability` con anomalías.
-
-#### 3. Contención
-
-| Tipo de incidente                                        | Acción inmediata                                                               |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Credencial comprometida (API key)                        | Rotar inmediatamente en panel del vendor + redeploy                            |
-| Cuenta admin comprometida                                | Suspender desde panel Supabase Auth + invalidar sesiones                       |
-| Webhook flooding (signature válida pero tráfico anómalo) | Cloudflare WAF rule temporal + alertar a Wompi/Aveonline                       |
-| Sitio bajo DDoS                                          | Cloudflare "Under Attack" mode + IP whitelist solo admin                       |
-| Dato sensible expuesto en logs                           | Borrar de Vercel Logs (si retención lo permite) + rotar credenciales si aplica |
-| Database corrupted                                       | Modo mantenimiento (`NEXT_PUBLIC_MAINTENANCE_MODE=1`) + restore desde PITR     |
-| Phishing usando nuestro dominio                          | Reportar a phishtank.com + advertencia en homepage + email a clientes          |
-
-#### 4. Erradicación
-
-- Identificar root cause.
-- Parchar la vulnerabilidad (código, config, política).
-- Verificar que no hay otras instancias del mismo vector.
-
-#### 5. Recuperación
-
-- Restablecer servicio.
-- Validar integridad de datos (especialmente órdenes y pagos).
-- Re-habilitar accesos suspendidos.
-- Comunicación a usuarios afectados (si aplica).
-
-#### 6. Lecciones aprendidas
-
-- Postmortem efímero en `tmp/incidentes/YYYY-MM-DD-<slug>.md` (gitignored — política de documentación; al cerrarse, la postura resultante se consolida en este documento y se borra). [Plantilla en `OBSERVABILITY.md` § Process de postmortem](./OBSERVABILITY.md#process-de-postmortem).
-- Acciones concretas con responsable y fecha.
-- Si fue brecha de datos personales: **reporte a SIC dentro de 15 días hábiles** (Ley 1581).
-
-### Runbook por escenario
-
-#### Runbook IRP-001: Llave `SUPABASE_SECRET_KEY` (`sb_secret_*`) expuesta
-
-**Vectores conocidos de exposición:**
-
-- Commit accidental al repo (mitigado por gitleaks pre-commit + GitHub Push Protection).
-- Logs en producción (mitigado por el redact del logger propio, `lib/logger.ts`).
-- Compartida en chat/email/Slack/issue.
-- **Lectura inadvertida por agente IA** (Claude Code u otro): el agente usa `Read`/`Edit`/`Write` sobre `.env.local` y la key entra al transcript persistente. Vector confirmado en un incidente real (2026-05, rotada y revocada el mismo día). Prevención: ver [§ Manipulación segura de archivos de credenciales por agentes IA](#manipulación-segura-de-archivos-de-credenciales-por-agentes-ia).
-- Push intentado a GitHub donde Push Protection capturó el valor (incluso si rechazó el push, el sistema lo loggea).
-
-```
-Severidad: P0
-ETA contención: 15 min
-
-1. Ir a panel Supabase → Project Settings → API keys → Secret keys.
-2. Click "Create new secret key" para generar reemplazo (las nuevas secret keys
-   permiten múltiples activas simultáneamente — no hay downtime).
-3. Copiar el nuevo valor.
-4. Vercel → Project → Settings → Environment Variables → editar SUPABASE_SECRET_KEY.
-5. Trigger redeploy desde Vercel (o `vercel deploy --prod`).
-6. Verificar /api/health responde 200 con la nueva key.
-7. Auditar últimos 7 días de Supabase Auth logs y queries con la key vieja por accesos sospechosos.
-8. **Revocar** la secret key comprometida en panel Supabase (no solo crear la nueva — la vieja sigue activa hasta revocarla explícitamente).
-9. Si hubo tráfico anómalo: revisar tablas críticas (Order, Customer) por modificaciones.
-10. Postmortem en 24h.
-```
-
-#### Runbook IRP-002: Webhook de Wompi con tráfico anómalo (replay attack o forge)
-
-```
-Severidad: P1
-ETA contención: 2 h
-
-1. Verificar /admin/observability: ratio fail/success de webhooks.
-2. Si fails > 50%, verificar:
-   - ¿Cambió `WOMPI_EVENTS_SECRET` recientemente? Verificar contra panel Wompi.
-   - ¿Wompi cambió formato de signature? Revisar docs.wompi.co/changelog.
-3. Si tráfico válido pero excesivo: Cloudflare WAF rate limit temporal en /api/webhooks/wompi.
-4. Notificar a Wompi vía soporte si se sospecha que es lado de ellos.
-5. Postmortem si afectó órdenes reales.
-```
-
-#### Runbook IRP-003: Brecha de datos personales (PII exfiltrada)
-
-```
-Severidad: P0
-ETA contención: 15 min · ETA reporte SIC: 15 días hábiles
-
-1. Identificar alcance:
-   - Qué datos fueron expuestos (emails? teléfonos? direcciones? fotos?)
-   - Cuántos titulares afectados.
-   - Cómo (RLS bypass? secret key expuesta? SQL injection?)
-2. Cerrar el vector inmediatamente (rotar credenciales, parchar, revocar accesos).
-3. Notificar al equipo legal (abogado) o al usuario operador.
-4. Preparar comunicación a titulares afectados (email transparente, sin tecnicismos).
-5. Documentar todo en tmp/incidentes/YYYY-MM-DD-pii-breach.md (efímero, gitignored).
-6. Reportar a SIC dentro de 15 días hábiles vía formulario oficial.
-7. Postmortem público (sin nombrar titulares) en /legal/incidents.
-```
-
-#### Runbook IRP-004: Stock oversold detectado
-
-```
-Severidad: P1
-ETA contención: 2 h
-
-1. Identificar las órdenes afectadas (query InventoryLog buscando stock < 0 históricamente).
-2. Para cada orden afectada:
-   - Contactar al cliente vía email.
-   - Ofrecer: reembolso completo OR reservar para próxima reposición + cupón de compensación.
-3. Marcar orden como CANCELLED con razón "oversold_compensated" en AdminActionLog.
-4. Identificar root cause:
-   - ¿Falló el SELECT FOR UPDATE? ¿Hubo race condition?
-   - ¿Falló el cleanup de StockReservation expiradas?
-5. Patch + test de regresión que reproduzca la condición.
-6. Postmortem en 24h.
-```
-
----
-
-## Clasificación de datos
-
-> Toda data en el sistema se clasifica para saber cómo protegerla. Mandato: cuando se introduce un campo nuevo, clasificar antes de implementar.
-
-### Niveles
-
-| Nivel                             | Definición                                      | Ejemplos en Lucams_shop                                                                                       | Almacenamiento permitido                                           | Logging                                                |
-| --------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
-| **Público**                       | Información destinada a ser visible en internet | Catálogo de productos, blog, paleta de colores                                                                | Cualquier capa                                                     | OK loggear                                             |
-| **Interno**                       | No sensible pero solo para el equipo            | Métricas agregadas, schema de DB, métricas de crons                                                           | Server-side, accesible a admins                                    | OK loggear                                             |
-| **Confidencial — PII directa**    | Identifica a una persona                        | Email, teléfono, nombre, dirección, foto del estudio                                                          | Postgres con RLS, Storage privado, encriptado en tránsito y reposo | **Redactado** en logs (`redact`/`scrubPii` del logger) |
-| **Restringida — PII sensible**    | Datos especialmente protegidos por Ley 1581     | Solo si recolectamos: salud, biometría, ideología, etc. (no aplica hoy)                                       | Encriptación a nivel campo + acceso auditado                       | **Nunca** en logs                                      |
-| **Crítica — Secretos de sistema** | Llaves, tokens, credenciales                    | `SUPABASE_SECRET_KEY` (`sb_secret_*`), `WOMPI_PRIVATE_KEY`, `GEMINI_API_KEY`, `CSRF_SECRET`                   | Solo en `.env*` (gitignored) y Vercel env vars                     | **Nunca** en logs (redactado por patrón)               |
-| **Regulada — Financiera**         | Datos de pagos                                  | Wompi `transactionId`, `amount`, `currency` (ya en nuestra DB); **NUNCA** PAN, CVV, expiración (Wompi maneja) | Postgres con RLS y audit log                                       | Sin PAN ni CVV. `last4` permitido si Wompi lo provee.  |
-
-### Encriptación
-
-- **En tránsito:** TLS 1.2+ obligatorio (Vercel default). HSTS forzando HTTPS.
-- **En reposo (DB):** Supabase encripta a nivel disk. Para campos extra-sensibles: encriptación a nivel columna con `pgcrypto` cuando se justifique.
-- **En reposo (Storage):** Supabase Storage encripta server-side. Cloudflare R2 también.
-- **En reposo (backups):** el dump viaja cifrado **gpg simétrico AES256** (pipeline `pg_dump → gzip → gpg` en `apps/web/scripts/backup-db-to-r2.mjs`, passphrase por fd desde `BACKUP_GPG_PASSPHRASE`, A-3 — 2026-08-29) y el bucket R2 añade encriptación at-rest. El DR drill mensual (`dr-drill.mjs`) descifra y restaura, así que el cifrado queda cubierto por la prueba.
-
-### Tabla maestra (mantener actualizada al agregar campos)
-
-| Tabla.Campo                             | Clasificación                               | Notas                               |
-| --------------------------------------- | ------------------------------------------- | ----------------------------------- |
-| `Customer.email`                        | PII directa                                 | Hash SHA-256 cuando se loggea       |
-| `Customer.phone`                        | PII directa                                 | Solo últimos 4 dígitos en logs      |
-| `Customer.firstName/lastName`           | PII directa                                 | Iniciales solamente en logs         |
-| `Address.line1/line2/city`              | PII directa                                 | Solo ciudad/depto en logs agregados |
-| `Order.email/phone/shippingAddress`     | PII directa (snapshot)                      | Idem                                |
-| `Order.wompiTransactionId`              | Regulada                                    | Loggeable para soporte              |
-| `Order.total/subtotal/etc.`             | Interno                                     | Loggeable                           |
-| `Review.images[]`                       | PII directa (URL apunta a foto del cliente) | Bucket privado + URL firmada        |
-| `OrderItem.customDesign`                | PII directa (puede contener foto)           | Idem                                |
-| `Customer.supabaseUserId`               | Interno                                     | OK loggear                          |
-| `Customer.referralCode`                 | Interno                                     | OK loggear                          |
-| `AdminActionLog.metadata`               | Interno (puede contener IDs de PII)         | Loggeable; depende de scope         |
-| `WebhookEvent.payload`                  | Regulada (datos Wompi)                      | Acceso solo `service_role`          |
-| `*Secret*`, `*Key*`, `*Token*` env vars | Crítica                                     | **NUNCA** logging                   |
-
----
-
-## Cookie consent banner — implementación
-
-> Categorización detallada en [`COMPLIANCE.md` § Cookie consent](./COMPLIANCE.md#cookie-consent-alineación-gdpr-voluntaria). Aquí el patrón de implementación.
-
-### Componentes reales
-
-- **`apps/web/components/cookies-banner.tsx`** — banner bottom-fixed que aparece en la primera visita (sin cookie persistida) con tres acciones: "Solo necesarias" / "Personalizar" (modal con 4 switches granulares) / "Aceptar todas". `<CookiesReopener>` permite reabrir el modal desde el footer legal y `/legal/cookies`. No se muestra dentro de `/admin`.
-- **`apps/web/lib/cookie-consent.ts`** — helpers puros: cookie `cookie_consent_v1` (JSON encoded, 1 año, `SameSite=Lax`, `Secure` si HTTPS; client-readable a propósito para que futuros scripts de analytics la consulten), versión `v: 1` (cambio de versión ⇒ re-consent), y el evento custom `cookie-consent-changed` para que listeners reaccionen sin re-leer la cookie.
-- **`apps/web/features/consent/`** — tras elegir, la Server Action `persistCookieConsentAction` registra **una fila por scope** en la tabla `Consent` (`COOKIES_NECESSARY` / `COOKIES_FUNCTIONAL` / `COOKIES_ANALYTICS` / `COOKIES_MARKETING`, con `accepted: true|false`, IP, user-agent y la versión del aviso de privacidad vigente vía el setting `PRIVACY_POLICY_VERSION`) — audit trail Ley 1581. Rate limit `consent_cookies` (30/min por IP) anti-ruido.
-
-### Reglas
-
-- **No bloquea el contenido** del sitio (no es modal centrado oscuro). Es banner inferior, dismissible.
-- **No dark patterns:** "Solo necesarias" es tan visible como "Aceptar todas".
-- **Persistencia:** cookie `cookie_consent_v1` + tabla `Consent` server-side (append-only: revocar crea fila nueva con `accepted=false` y `revokesId` apuntando a la anterior).
-- **Re-consent:** si cambia la versión del banner (o el aviso de privacidad), vuelve a mostrarse.
-
-### Carga condicional de scripts
-
-Hoy **no hay scripts de analytics/marketing de terceros activos** (Vercel Analytics y pixels están apagados). Cuando se activen, la regla es: solo se cargan si la categoría correspondiente está ON en la cookie (leíble client-side precisamente para eso) o suscritos al evento `cookie-consent-changed`.
-
----
-
-## Otros vectores cubiertos
-
-> Sección "catch-all" para vectores que no merecen sección propia pero que el código debe contemplar.
-
-### SSRF (Server-Side Request Forgery)
-
-- **Riesgo:** un endpoint server-side que acepta URL del usuario y hace `fetch()` puede ser usado para escanear la red interna o llamar a la metadata API de la VM.
-- **Mitigación:**
-  - **No tenemos endpoints que acepten URL del usuario** en el plan actual. Si llegan a aparecer (ej. importar imagen desde URL): allowlist de dominios o bloquear rangos `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`.
-  - El Estudio de Personalización solo acepta uploads de archivo (vía Server Action al servidor, que re-encodea con sharp), no URLs.
-
-### Open redirects — IMPLEMENTADO (ADR-046)
-
-- **Riesgo:** un parámetro `?next=...` o un destino de redirect admin sin validar puede llevar al usuario a
-  un dominio malicioso (phishing con el dominio propio en la barra). Vectores clave: `//evil.com`
-  (protocol-relative) y `/\evil.com` (backslash normalizado por el navegador) — **parecen internos** (empiezan
-  con `/`) pero `new URL` los resuelve a host externo.
-- **Implementación:** `apps/web/lib/safe-redirect.ts` con dos políticas (13 tests unitarios):
-  - **`safeRedirectTarget(input, fallback="/")` — SOLO interno.** Para `?next=` de auth y similares. Exige un
-    único `/` inicial (no `//`), sin `\`, sin control chars, y que resuelva al MISMO origen (`new URL`
-    autoritativo). Cableado en el **login** (honra `?next=` sanitizado).
-  - **`isAllowedRedirectDestination(input)` — interno O externo http(s):// EXPLÍCITO.** Para el **CMS de
-    redirects admin** (`features/redirects/service.ts`), que por diseño permite apuntar a partners externos.
-    Rechaza los disfrazados. Cableado en `createRedirect`/`updateRedirect` vía `assertAllowedToPath`.
-- **Regla:** **nunca** redirect al valor crudo de un parámetro/formulario. Todo destino de redirect pasa por
-  uno de estos dos validadores server-side (aunque el origen sea un hidden field manipulable).
+2. **Codificación de salida y sanitización XSS:** React escapa interpolaciones por defecto; el contenido Markdown (textos legales, notas, descripciones) se renderiza con `ReactMarkdown` + `remark-gfm` + **`rehype-sanitize`**. `dangerouslySetInnerHTML` está prohibido sobre entradas de usuarios (restringido a JSON-LD generado en servidor).
+3. **Prevención de Open Redirects (`apps/web/lib/safe-redirect.ts`, `ADR-046`):** bloquea rutas relativas a protocolo (`//evil.com`), barras invertidas (`/\evil.com`) y caracteres de control mediante dos validadores server-side:
 
 ```ts
-// lib/safe-redirect.ts (resumen — ver fuente para el detalle)
+// Destinos post-login (`?next=`): exige ruta estrictamente interna del mismo origen
 export function safeRedirectTarget(input: string | null | undefined, fallback = "/"): string {
-  return isSafeInternalPath(input) ? input.trim() : fallback; // solo paths internos seguros
+  return isSafeInternalPath(input) ? input.trim() : fallback;
 }
-// CMS admin: acepta http(s):// explícito O path interno; rechaza //evil.com y /\evil.com.
+
+// Destinos del gestor admin de redirecciones (`UrlRedirect`): acepta ruta interna segura o `http(s)://` explícito
 export function isAllowedRedirectDestination(input: unknown): input is string {
   /* ... */
 }
 ```
 
-### Honeypots en formularios públicos
-
-- Campo `<input type="text" name="website" hidden tabindex="-1" autocomplete="off">` invisible para humanos.
-- Si llega lleno → es bot → rechazar 200 silencioso (sin revelar el filtro).
-- Complementa Turnstile: cero costo, atrapa bots tontos antes de llegar al CAPTCHA.
-
-### Idempotencia en mutaciones de cliente
-
-- **Riesgo:** doble click en "Pagar" crea dos órdenes.
-- **Mitigación real (implementada):**
-  - **Checkout:** idempotencia por `cartId` — un intento de pago Wompi abandonado reutiliza la orden `PENDING_PAYMENT` existente en vez de crear otra (`features/checkout/service.ts`).
-  - **Webhooks:** dedup por `WebhookEvent @@unique([source, externalId])` (ver § Webhooks).
-  - **Saga POST-PAID:** idempotencia física en el ledger (índice parcial unique `InventoryLog(orderId, reason, variantId)`) + claim atómico `Order.shipmentClaimedAt`.
-- El patrón genérico header `Idempotency-Key` + tabla de respuestas cacheadas NO está implementado — agregarlo si aparece una mutación cliente sin clave natural de dedup.
-
-### Pagination y límites de queries
-
-- **Riesgo:** un cliente pide `?limit=1000000` y tumba el servidor.
-- **Mitigación:**
-  - Toda paginación tiene `limit` máximo enforced server-side: catálogo público ≤ 60 items/página, admin ≤ 200.
-  - **Cursor-based pagination** preferida sobre offset (más eficiente, no se rompe con inserts concurrentes).
-  - Endpoints `/api/*` que devuelven listas validan `take` y `skip` con Zod.
-
-### Mass assignment
-
-- **Riesgo:** cliente envía `{ "isAdmin": true }` en el body y el server hace `prisma.update({ data: req.body })`.
-- **Mitigación:**
-  - **Nunca pasar `req.body` directo a Prisma.** Siempre seleccionar explícitamente los campos permitidos tras validación con Zod.
-  - Schemas Zod por endpoint con allowlist de campos (no usar `.passthrough()`).
-
-### Modo mantenimiento
-
-- Variable `NEXT_PUBLIC_MAINTENANCE_MODE=1` en Vercel env vars. Al ser `NEXT_PUBLIC_*` se inliniza en build: **no basta cambiarla, hay que redesplegar**.
-- El proxy **redirige todo el tráfico público a `/maintenance`** cuando está activa. Excepciones: `/maintenance`, `/admin/*` (los admins siguen trabajando), `/api/health/*` (healthchecks externos) y assets `/_next`. No hay allowlist de IPs ni 503 — es redirect.
-- Se activa antes de migraciones destructivas o despliegues riesgosos.
-
-### Defensas contra enumeración
-
-- **Nombres de archivo** en Storage: aleatorios (UUID), no secuenciales.
-- **Números de orden** no secuenciales-reveladores en URLs de cliente (`/mi-cuenta/pedidos/[number]` tras auth; tracking de invitado en `/rastrear` con token hasheado en reposo — F-11). La URL no revela el volumen del negocio.
-- **Mensajes de error** consistentes para "email no registrado" vs "password incorrecto" → no permiten enumeración de cuentas.
-
-### Tiempo constante en comparaciones sensibles
-
-- Comparar HMAC, tokens, hashes con `crypto.timingSafeEqual()` no con `===`. Previene timing attacks.
-
-### Backup verification
-
-- **Mensual y automático:** el workflow `dr-drill.yml` (GitHub Actions, día 2 de cada mes) descarga el backup cifrado más nuevo de R2, lo **descifra con gpg** y lo restaura en un Postgres limpio del runner, verificando conteos de tablas clave (ADR-059).
-- Procedimiento manual documentado en `OPERATIONS.md`.
-- **Alarma:** el backup corre **diario** (`backup.yml`); si el más reciente tiene más de 2 días, alertar (RPO ≤ 24 h).
-
-### Disaster recovery (DR)
-
-- **RPO (Recovery Point Objective):** ≤ 24 h (perder máximo 24 h de datos).
-- **RTO (Recovery Time Objective):** ≤ 4 h (recuperar el sitio en máximo 4 h).
-- **Plan:** documentado en `OPERATIONS.md` con pasos: restaurar Supabase desde PITR, redeploy en Vercel, repoblar Storage desde R2.
-- **Rollback de despliegue ensayado (PROVEN 2026-09-27, ADR-105 addendum):** drill ejecutado con evidencia — `vercel rollback` al deployment anterior (código viejo) → smoke 5/5 contra la DB migrada → rollback hacia adelante → smoke 5/5. La seguridad del rollback instantáneo la da la convención de migraciones **expand-then-contract** (`CONVENTIONS.md` § DB — migration strategy): Vercel revierte código, no DB; una migración destructiva en una sola release invalida el rollback.
+4. **Anti-SSRF, honeypots, paginación acotada, idempotencia y modo mantenimiento:**
+   - **Anti-SSRF:** ningún endpoint hace `fetch` de URLs ingresadas por clientes; las llamadas internas de salud usan `getTrustedSelfBaseUrl()`.
+   - **Honeypots:** campos ocultos (`tabindex="-1"`, `autocomplete="off"`) en formularios públicos descartan bots simples antes de consumir cuota.
+   - **Topes de paginación:** catálogo público acotado a `≤ 60` ítems por página y listados administrativos a `≤ 200`, validando `take`/`skip` con Zod.
+   - **Idempotencia de mutaciones:** checkout deduplica órdenes `PENDING_PAYMENT` por carrito activo; webhooks deduplican en `WebhookEvent(@@unique([source, externalId]))`; la saga post-pago es físicamente idempotente mediante el índice parcial único `InventoryLog(orderId, reason, variantId)` y el claim atómico `Order.shipmentClaimedAt`.
+   - **Modo mantenimiento (`NEXT_PUBLIC_MAINTENANCE_MODE=1`):** al activarse y redesplegar en Vercel, `proxy.ts` redirige el tráfico público a `/maintenance` manteniendo operativos `/admin/*`, `/api/health/*` y `/_next/*`.
 
 ---
 
-## Política de divulgación de vulnerabilidades
+## 9. Postura RLS, privilegios y funciones SQL endurecidas en Supabase Postgres
 
-- Página pública `/legal/security` con email `seguridad@lucamsshop.com` (configurar en Resend al lanzar).
-- **SLA inicial:** acuse de recibo en 72 h, fix de severidad alta en 7 días.
-- **No bug bounty monetario** mientras el proyecto sea pequeño; sí reconocimiento público en `/legal/security/hall-of-fame`.
+Toda lectura y escritura de negocio ocurre en el servidor Next.js vía Prisma (`packages/db`, rol dueño `postgres`). La API pública PostgREST de Supabase está neutralizada por diseño en `public`:
+
+1. **Cobertura del 100 % con RLS:** las **73 tablas** de `public` (**71 modelos** de `packages/db/prisma/schema.prisma` + `_prisma_migrations` + `rate_limit_buckets`) tienen `ROW LEVEL SECURITY` habilitado.
+2. **Revocación total de privilegios (`00000000000022`, `00000000000026`, `00000000000038`, `00000000000049`):**
+   - `anon` y `authenticated` tienen **0 privilegios** (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER`) y `ALTER DEFAULT PRIVILEGES` revocados sobre todas las tablas de `public` (una consulta directa a `/rest/v1/` con la publishable key recibe `401`/`42501`).
+   - `service_role` tiene revocados `SELECT, INSERT, UPDATE, DELETE` sobre las tablas de `public`, acotando el impacto de `SUPABASE_SECRET_KEY` exclusivamente a Auth Admin y Storage APIs.
+
+### 9.1 Blindaje DDL automático sobre tablas nuevas (`00000000000049_enforce_revoke_on_new_tables.sql`)
+
+```sql
+CREATE OR REPLACE FUNCTION public.enforce_rls_on_new_table()
+RETURNS event_trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+  obj record;
+BEGIN
+  FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands()
+  LOOP
+    IF obj.object_type = 'table'
+       AND obj.schema_name = 'public'
+       AND split_part(obj.object_identity, '.', 2) NOT LIKE '\_prisma%'
+    THEN
+      EXECUTE format('ALTER TABLE %s ENABLE ROW LEVEL SECURITY', obj.object_identity);
+      EXECUTE format('REVOKE ALL ON TABLE %s FROM anon, authenticated', obj.object_identity);
+      EXECUTE format(
+        'REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE %s FROM service_role',
+        obj.object_identity
+      );
+    END IF;
+  END LOOP;
+END;
+$$;
+
+CREATE EVENT TRIGGER enforce_rls_on_new_table_trg
+  ON ddl_command_end
+  WHEN TAG IN ('CREATE TABLE', 'CREATE TABLE AS')
+  EXECUTE FUNCTION public.enforce_rls_on_new_table();
+```
+
+### 9.2 Funciones `SECURITY DEFINER`, políticas backstop y triggers anti-escalada (`027` y `028`)
+
+Aunque `anon` y `authenticated` carecen de grants DML en `public`, las políticas y funciones se mantienen endurecidas como segunda línea de defensa si algún permiso llegara a otorgarse en el futuro:
+
+```sql
+-- 1) Función helper para políticas de Storage y backstop admin (migración 027):
+--    search_path vacío + referencias totalmente calificadas + sin EXECUTE para anon/PUBLIC.
+CREATE OR REPLACE FUNCTION public.is_active_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+  SELECT EXISTS (
+    SELECT 1 FROM public."AdminUser"
+    WHERE "supabaseUserId" = (SELECT auth.uid())::text
+      AND "isActive" = true
+      AND "deletedAt" IS NULL
+  );
+$fn$;
+REVOKE EXECUTE ON FUNCTION public.is_active_admin() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_active_admin() TO authenticated;
+
+-- 2) Políticas backstop de propiedad e inserción sin auto-aprobación (migraciones 002 y 028):
+CREATE POLICY "customer_read_own" ON public."Customer"
+  FOR SELECT USING (auth.uid()::text = "supabaseUserId");
+
+CREATE POLICY "order_read_own_or_admin" ON public."Order"
+  FOR SELECT USING (
+    "customerId" IN (SELECT id FROM public."Customer" WHERE "supabaseUserId" = auth.uid()::text)
+    OR public.is_active_admin()
+  );
+
+CREATE POLICY "review insert own" ON public."Review"
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    "isApproved" = false
+    AND "featured" = false
+    AND EXISTS (
+      SELECT 1 FROM public."Customer" c
+      WHERE c.id = "Review"."customerId"
+        AND c."supabaseUserId" = (auth.uid())::text
+    )
+  );
+
+-- 3) Guardas de columna contra auto-asignación de puntos o alteración de unitPrice (migración 028):
+CREATE OR REPLACE FUNCTION public.customer_block_sensitive_col_update()
+RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  IF auth.role() = 'authenticated'
+     AND (NEW."loyaltyPoints" IS DISTINCT FROM OLD."loyaltyPoints"
+       OR NEW."referralCode" IS DISTINCT FROM OLD."referralCode"
+       OR NEW."referredById" IS DISTINCT FROM OLD."referredById") THEN
+    RAISE EXCEPTION 'Customer: columnas sensibles reservadas al servidor' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.cartitem_block_unitprice_update()
+RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  IF auth.role() = 'authenticated' AND NEW."unitPrice" IS DISTINCT FROM OLD."unitPrice" THEN
+    RAISE EXCEPTION 'CartItem: unitPrice solo lo modifica el servidor' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+```
+
+### 9.3 Verificación continua (`verify-security-posture.mjs` y `make test-rls`)
+
+Toda migración Prisma se acompaña de su migración espejo explícita en `supabase/migrations/` (`050`–`054`), auditada en solo lectura por `packages/db/scripts/verify-security-posture.mjs` (`make verify-db`) y probada en CI contra Supabase real con `make test-rls` (`rls-coverage.integration.test.ts` + `rls-matrix.integration.test.ts`):
+
+```ts
+// apps/web/features/security/rls-matrix.integration.test.ts (patrón verificado en CI)
+it("customer A cannot see customer B orders", async () => {
+  const sbA = createClient(URL, PUBLISHABLE_KEY, { auth: {/* sesión cliente A */} });
+  const { data } = await sbA.from("Order").select("*").eq("customerId", "CUSTOMER_B");
+  expect(data ?? []).toEqual([]);
+});
+```
 
 ---
 
-## Verificación end-to-end (criterio de Fase 7)
+## 10. Rate limiting en Postgres (`ADR-016`) y Cloudflare Turnstile
+
+### 10.1 Motor transaccional `rate_limit_check` (`003` + `027`) y cliente TypeScript
+
+En lugar de contadores efímeros en memoria que se pierden entre instancias serverless, `apps/web/lib/rate-limit.ts` ejecuta un incremento y chequeo atómico en Postgres sobre `rate_limit_buckets`:
+
+```sql
+-- supabase/migrations/00000000000003_rate_limit.sql (+ endurecimiento 00000000000027)
+CREATE OR REPLACE FUNCTION public.rate_limit_check(
+  p_key TEXT, p_limit INT, p_window_seconds INT
+) RETURNS TABLE (allowed BOOLEAN, count INT, reset_at TIMESTAMPTZ)
+LANGUAGE plpgsql
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+  v_count INT;
+  v_window_start TIMESTAMPTZ;
+BEGIN
+  INSERT INTO rate_limit_buckets (key, count, window_start)
+  VALUES (p_key, 1, NOW())
+  ON CONFLICT (key) DO UPDATE SET
+    count = CASE
+      WHEN rate_limit_buckets.window_start + (p_window_seconds * INTERVAL '1 second') < NOW() THEN 1
+      ELSE rate_limit_buckets.count + 1
+    END,
+    window_start = CASE
+      WHEN rate_limit_buckets.window_start + (p_window_seconds * INTERVAL '1 second') < NOW() THEN NOW()
+      ELSE rate_limit_buckets.window_start
+    END
+  RETURNING rate_limit_buckets.count, rate_limit_buckets.window_start INTO v_count, v_window_start;
+
+  RETURN QUERY SELECT
+    (v_count <= p_limit)::BOOLEAN,
+    v_count,
+    (v_window_start + (p_window_seconds * INTERVAL '1 second'))::TIMESTAMPTZ;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rate_limit_check(text, int, int) FROM PUBLIC, anon, authenticated;
+```
+
+```ts
+// apps/web/lib/rate-limit.ts
+export async function rateLimit(
+  key: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<RateLimitResult> {
+  const rows = await prisma.$queryRaw<Array<{ allowed: boolean; count: number; reset_at: Date }>>`
+    SELECT * FROM rate_limit_check(${key}::text, ${limit}::int, ${windowSeconds}::int)
+  `;
+  const row = rows[0];
+  if (!row) {
+    logger.warn({ event: "rate_limit.empty_row", key });
+    return { allowed: true, count: 0, resetAt: new Date(Date.now() + windowSeconds * 1000) };
+  }
+  return { allowed: row.allowed, count: row.count, resetAt: row.reset_at };
+}
+```
+
+- **Privacidad de claves (`apps/web/lib/rate-limit-keys.ts`):** nunca se persisten IPs, correos ni teléfonos en claro en `rate_limit_buckets`. `ipKey`, `emailKey`, `phoneKey` y `ownerKey` normalizan el identificador y truncan su hash `SHA-256` a **16 caracteres hexadecimales** (p. ej. `login:ip:9f86d081884c7d65`). `lib/client-ip.ts` prioriza `x-vercel-forwarded-for`, `cf-connecting-ip` y el primer salto de `x-forwarded-for`.
+- **Cabecera `Retry-After` y purga diaria (`LUC-SEC-010`):** las rutas HTTP limitadas responden `429 Too Many Requests` con `Retry-After: <segundos>`. El job `lucams-purge-rate-limits` (`29 5 * * *` UTC, migración `047`) ejecuta `purge_rate_limit_buckets()` eliminando ventanas `> 7 días` y sellando latido en `AlertState['cron:purge-rate-limits']`.
+
+### 10.2 Tabla maestra de límites por acción y endpoint
+
+| Superficie / Acción                                                                        | Clave(s) en `rate_limit_buckets`                                                                                                                                             | Límite / Ventana                                      |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Login de cliente (`/login`)                                                                | `ipKey("login", ip)` + `emailKey("login", email)`                                                                                                                            | `5 / 15 min` (ambos)                                  |
+| Registro de cliente (`/registro`)                                                          | `ipKey("signup", ip)` (+ email donde aplica)                                                                                                                                 | `5 / 60 min`                                          |
+| Confirmación / reenvío de código OTP (`/confirmar-codigo`)                                 | `ipKey("otp_verify", ip)` + `emailKey("otp_verify", email)` / `otp_resend`                                                                                                   | `8 / 15 min` (verificar) · `3 / 15 min` (reenviar)    |
+| Solicitud de recuperación de clave (`/recuperar-password`)                                 | `ipKey("pw_reset", ip)` + `emailKey("pw_reset", email)`                                                                                                                      | `3 / 15 min` (ambos)                                  |
+| Cambio de clave / restablecimiento / eliminación de cuenta                                 | `pw_change:<userId>` / `ipKey("pw_update", ip)` / `ownerKey("delete-account")`                                                                                               | `5 / 15 min`                                          |
+| Login administrativo (`/admin/login`)                                                      | `ipKey("admin-login", ip)` + `emailKey("admin-login", email)`                                                                                                                | `5 / 15 min` (ambos)                                  |
+| Verificación MFA TOTP / step-up reauth / recovery code                                     | `ipKey("admin-mfa*" \| "admin-reauth*", ip)` + `<scope>:user:<adminId>`                                                                                                      | `5 / 15 min` (ambos)                                  |
+| Copiloto IA de soporte (`/admin/soporte/[id]`)                                             | `ai-support-copilot:admin:<adminId>` + `ai-support-copilot:global`                                                                                                           | `15 / 1 h` por admin · `80 / 1 h` global              |
+| Asistente IA de ocasión en Estudio (`suggestDesignIdeasAction`)                            | `ipKey("ai_suggest", ip)` + `ai_suggest:global`                                                                                                                              | `10 / 10 min` por IP · `200 / 1 h` global             |
+| Checkout: pago Wompi / COD (`/checkout/pago`)                                              | `ipKey("pay_wompi" \| "pay_cod", ip)`                                                                                                                                        | `10 / 10 min`                                         |
+| Checkout: validar cupón / redimir puntos / gracias                                         | `ipKey("coupon_apply", ip)` · `loyalty_redeem:<userId>` · `ipKey("gracias", ip)`                                                                                             | `10 / 10 min` · `15 / 10 min` · `30 / 1 min`          |
+| Posventa invitado (`/pedido/[token]`: retracto, garantía, PQR)                             | `ipKey("guest_retract" \| "guest_warranty" \| "guest_order_support", ip)` + `<scope>:tok:<hash16>`                                                                           | `5 / 15 min` (retracto/garantía) · `5 / 60 min` (PQR) |
+| Rastreo público (`/rastrear`) y recuperación carrito (`/carrito/recuperar/[token]`)        | `ipKey("track_lookup", ip)` · `ipKey("cart_recover", ip)`                                                                                                                    | `10 / 5 min` · `15 / 5 min`                           |
+| Estudio: borrador / auto-save / beacon / finalizar / render-status                         | `studio_draft` (`20/10m`), `save-canvas` (`90/1m`), `beacon` (`60/1m`), `finalize` (`15/10m`), `render-status` (`120/1m`)                                                    | Por propietario (`ownerKey`) + IP                     |
+| Estudio: subida / borrado / refresco de fotos                                              | `upload_photo` (`40/10m` IP · `30/10m` dueño), `delete_photo` (`60/10m`), `refresh_urls` (`60/10m`)                                                                          | Doble capa propietario (`ownerKey`) + IP              |
+| Proxy de previews (`/api/design-preview/[...path]`)                                        | `ipKey("design_preview", ip)`                                                                                                                                                | `180 / 1 min`                                         |
+| Formularios comerciales y soporte: cotización, B2B, ticket PQR, respuesta cliente          | `quote_create` (`5/15m`), `b2b_inquiry` (`5/15m` IP + email), `support_ticket` (`5/60m` IP + email), `support_reply` (`10/15m`)                                              | Por IP (+ email/teléfono donde aplica)                |
+| Reseñas (`/producto/[slug]` y `/resena/[token]`), boletín y aviso de stock                 | `review_create` (`5/60m`), `review_token` (`5/60m`), `newsletter` (`5/60m`), `stock_alert` (`8/60m`)                                                                         | Por IP / usuario / email                              |
+| Consentimiento de cookies y baja de correo (`/api/unsubscribe`)                            | `ipKey("cookie_consent", ip)` · `ipKey("unsubscribe", ip)`                                                                                                                   | `20 / 5 min` · `20 / 5 min`                           |
+| APIs públicas de lectura (`/api/catalog/*`, `/api/cms/*`, `/api/coupons/public`, búsqueda) | `ipKey("api_catalog" \| "api_cms" \| "coupons_public" \| "search", ip)`                                                                                                      | `30–120 / 1 min` según ruta                           |
+| Sondas `/api/health` y `/api/health/*`                                                     | `ipKey("health*", ip)`                                                                                                                                                       | `30 / 1 min`                                          |
+| Telemetría pública (`/api/vitals`, `/api/funnel`, `/api/log-error`)                        | `ipKey("vitals", ip)` (`120/1m`) + global `3000/5m`; `ipKey("funnel", ip)` (`180/1m`) + global `6000/5m`; `ipKey("log_error", ip)` (`20/1m`) + `error-report:new` (`300/5m`) | Doble capa por IP + tope global                       |
+
+### 10.3 Los 10 puntos de validación Cloudflare Turnstile
+
+La verificación server-side reside en [`apps/web/lib/turnstile.ts`](../apps/web/lib/turnstile.ts) (`verifyTurnstileToken` contra `https://challenges.cloudflare.com/turnstile/v0/siteverify`, timeout **5 000 ms**). En producción (`NODE_ENV === "production"`), si falta `TURNSTILE_SECRET_KEY` o Cloudflare falla, opera _fail-closed_ (`false`). En desarrollo/CI admite las llaves deterministas de prueba de Cloudflare (`1x00000000000000000000AA`).
+
+| #   | Flujo de negocio                               | Ruta pública             | Server Action / Módulo                                                             |
+| --- | ---------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------- |
+| 1   | Registro de cuenta nueva                       | `/registro`              | `signupAction` (`apps/web/app/(auth)/registro/actions.ts`)                         |
+| 2   | Recuperación de contraseña                     | `/recuperar-password`    | `requestPasswordResetAction` (`apps/web/app/(auth)/recuperar-password/actions.ts`) |
+| 3   | Confirmación de pago en línea (Wompi)          | `/checkout/pago`         | `payWompiAction` (`apps/web/app/checkout/pago/actions.ts`)                         |
+| 4   | Confirmación de pedido contraentrega (COD)     | `/checkout/pago`         | `payCodAction` (`apps/web/app/checkout/pago/actions.ts`)                           |
+| 5   | Suscripción al boletín en pie de página        | Global (footer)          | `subscribeNewsletterAction` (`apps/web/features/newsletter/actions.ts`)            |
+| 6   | Solicitud comercial corporativa / eventos      | `/empresas-y-eventos`    | `submitB2bInquiryAction` (`apps/web/features/opportunities/actions.ts`)            |
+| 7   | Creación de cotización por WhatsApp / catálogo | `/carrito` y Estudio     | `createQuoteAction` (`apps/web/features/quotes/actions.ts`)                        |
+| 8   | Publicación de reseña por cliente autenticado  | `/producto/[slug]`       | `createReviewAction` (`apps/web/features/reviews/actions.ts`)                      |
+| 9   | Publicación de reseña por enlace posventa      | `/resena/[token]`        | `createReviewByTokenAction` (`apps/web/features/reviews/token-actions.ts`)         |
+| 10  | Radicación de consulta / PQR de soporte        | `/contacto` y `/soporte` | `submitSupportTicketAction` (`apps/web/features/support/actions.ts`)               |
+
+---
+
+## 11. Subida de archivos, procesamiento de imágenes, Storage y Webhooks
+
+### 11.1 Pipeline seguro de imágenes (`LUC-SEC-004`, `LUC-SEC-005`, `LUC-SEC-011`)
+
+No existe subida directa desde el navegador a Supabase Storage (`POST /api/upload/sign` no existe); todo archivo atraviesa validación y re-codificación en memoria en el servidor (`uploadDesignAssetAction` → `uploadCustomerPhoto`):
+
+1. **Propiedad y tamaño:** valida propiedad del `Design` (`customerId` o `cart_session`), rate limit doble (IP + dueño) y tamaño máximo (`≤ 10 MB` en fotos de cliente).
+2. **Magic bytes reales (`apps/web/lib/image-sniff.ts`):** `sniffImageMime(buffer)` ignora `File.type` y verifica firmas binarias (`JPEG`, `PNG`, `WebP`, `AVIF` y cajas ISO-BMFF `ftyp` para `HEIC`/`HEIF`). El formato `SVG` está prohibido en todas las subidas, neutralizando polyglots `.html`/`.svg` y vectores XSS/XXE.
+3. **Endurecimiento de `sharp@0.35.5` (`apps/web/features/personalization/sharp-safe.ts`):** bloquea al iniciar los cargadores `VipsForeignLoadNsgif`, `VipsForeignLoadTiff` y `VipsForeignLoadVips` (`sharp.block`), y procesa con `sequentialRead: true` y `failOn: "error"`. Cualquier payload oculto en el contenedor muere al re-codificar los píxeles.
+4. **Presupuestos anti-decompression-bomb (`apps/web/features/personalization/normalize-raster.ts`):**
+   - Antes de decodificar `HEIC`/`HEIF`, `readHeicMaxPixels` inspecciona directamente las cajas `ispe` del contenedor y aborta sin llamar a `libheif` si excede el presupuesto.
+   - `RASTER_PIXEL_BUDGET` fija **`50 000 000` píxeles (50 MP)** para fotos de cliente y renders de producción, y **`25 000 000` píxeles (25 MP)** para previews, más `RASTER_MAX_ASPECT_RATIO = 20`.
+5. **Borrado automático de EXIF/GPS:** `sharp(buffer).rotate()` aplica la orientación física y descarta todos los metadatos EXIF/IPTC/XMP (sin `withMetadata`), eliminando coordenadas GPS y serie del dispositivo antes de escribir en Storage con nombre UUID aleatorio y `metadata.owner_id`.
+
+### 11.2 Los 5 buckets de Supabase Storage y autorización `/api/design-preview/*` (`LUC-SEC-001`)
+
+| Bucket ID           | Visibilidad                                   | Tope de tamaño                                                                    | MIME permitidos                                                     | Controles de acceso y derivados                                                                                                                                                                                              |
+| ------------------- | --------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `product-images`    | **Público** (`public = true`)                 | `5 MB` en bucket (masters admin hasta `15 MB` normalizados a WebP antes de subir) | `image/jpeg`, `image/png`, `image/webp`, `image/avif`               | Escritura exclusiva `products:write`. Genera variantes WebP `≤ 2000 px` (catálogo), `≤ 4000 px` (galería) y `≤ 800 px` con marca de agua diagonal                                                                            |
+| `cms-media`         | **Público** (`public = true`)                 | `5 MB`                                                                            | `image/jpeg`, `image/png`, `image/webp`, `image/avif`               | Escritura exclusiva `cms:write` (`lib/cms-media.ts`), WebP `≤ 2000 px` q82, `alt` obligatorio (`1..300` chars) y bloqueo de borrado si está en uso en `CmsField` o `CmsFieldVersion`                                         |
+| `customer-uploads`  | **Privado** (`public = false`)                | `10 MB`                                                                           | `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif` | `<ownerId>/<designId\|pending>/<uuid>.<ext>` + derivado `<uuid>.canvas.webp` (`≤ 800 px`). Lectura solo con **URL firmada de 1 h** tras verificar propiedad                                                                  |
+| `design-previews`   | **Privado** (`public = false`, `LUC-SEC-001`) | `3 MB`                                                                            | `image/png`, `image/webp`, `image/jpeg`                             | **Inaccesible por URL directa** (migración `046`). Servido solo por `GET /api/design-preview/[...path]` con `Cache-Control: private, max-age=300`; URLs legacy se reescriben con `previewRefToAuthorizedUrl`                 |
+| `production-assets` | **Privado** (`public = false`)                | `30 MB`                                                                           | `image/png`, `image/tiff`, `application/pdf`                        | Artes finales **300 DPI** (`designs:read_production`) y etiquetas archivadas `shipping-labels/<orderId>.pdf` (`features/shipping/label-archive.ts`, magic bytes `%PDF-` y tope `15 MB`, servidas solo con `orders:shipping`) |
+
+**Matriz de `authorizeDesignPreviewRead` (`features/personalization/preview-access.ts`, `ADR-191`):**
+
+1. **Dueño del diseño** (`customerId` o `cart_session` coincidente) o **staff operativo con MFA `aal2`** (`ADMIN_ROLE_SETS.ALL`, excluye `CMS_EDITOR` y sesiones `aal1`): acceso a todas las variantes, incluidos snapshots `.draft.` (`thumb.webp`).
+2. **Portador de token de capacidad (`?st=`, `?qt=`, `?ot=`):** validando en DB que la orden (`?ot=`), cotización (`?qt=`) o enlace compartido (`?st=`) contenga efectivamente ese `designId`, entrega únicamente variantes limpias de exhibición, **nunca** borradores `.draft.`.
+3. **Cualquier otro caso:** responde `404` uniforme sin oráculo de existencia.
+
+### 11.3 Límites de cuerpo (`LUC-SEC-006`/`007`) y webhooks criptográficos
+
+- **`serverActions.bodySizeLimit` (`next.config.ts`) y `readBodyWithLimit` (`lib/read-body-with-limit.ts`):** abortan la lectura por streaming apenas la suma de chunks supera el presupuesto de la ruta (`413 Payload Too Large`), sin cargar megabytes en RAM.
+- **Rechazo opaco en webhooks:** cualquier fallo de firma devuelve `401` sin detallar la causa al emisor, persistiendo en logs solo un `bodyHash` truncado en lugar del payload crudo.
+
+| Proveedor y ruta                               | Tope body | Verificación de autenticidad y anti-replay                                                                                                                                                                                                                                                             | Idempotencia y endurecimiento de payload                                                                                                                                                                                   |
+| ---------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Wompi** (`POST /api/webhooks/wompi`)         | `64 KB`   | Checksum `SHA-256` (`properties` + `timestamp` + `WOMPI_EVENTS_SECRET`) con `timingSafeEqual`; ventana de **25 horas** sobre `event.timestamp` (cubre los reintentos oficiales de Wompi a +30 m, +3 h y +24 h con el mismo timestamp firmado); coincidencia estricta `event.environment === WOMPI_ENV` | `WebhookEvent` (`externalId = ${tx.id}-${status}-${timestamp}`), saga monotónica, recálculo en centavos y **allowlist estricta de metadatos** (`LUC-SEC-009`). Detalle en [`integrations/wompi.md`](integrations/wompi.md) |
+| **Resend** (`POST /api/webhooks/resend`)       | `128 KB`  | Firma **Svix HMAC-SHA256** sobre `${svix-id}.${svix-timestamp}.${rawBody}` (clave base64 tras `whsec_`, `RESEND_WEBHOOK_SECRET` obligatorio en prod) con ventana anti-replay de **±5 minutos**                                                                                                         | Deduplicación en `WebhookEvent`, upsert monotónico en transacción (un bounce/complaint nunca se degrada por un evento viejo), baja automática y allowlist (`LUC-SEC-009`)                                                  |
+| **Aveonline** (`POST /api/webhooks/aveonline`) | `32 KB`   | Secreto `AVEONLINE_WEBHOOK_SECRET` comparado con `timingSafeEqual` en `x-aveonline-secret` o `payload.token` (`?secret=` **deshabilitado** por defecto salvo `AVEONLINE_ALLOW_QUERY_SECRET=true`)                                                                                                      | Exige `trackingNumber` existente en `Order`, estados monotónicos (`ShipmentEvent`), dedup determinista `hasCarrierTimestamp` (`…-no-ts` si falta fecha del carrier) y allowlist cerrada (`LUC-SEC-003`)                    |
+
+---
+
+## 12. Clasificación de datos, PII, IA cero-PII, supply chain y CI/CD
+
+### 12.1 Niveles de clasificación de datos y cifrado
+
+| Nivel                             | Definición                                       | Ejemplos en Lucams Shop                                                                    | Almacenamiento permitido                                             | Regla en logs                                              |
+| --------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Público**                       | Información destinada a internet                 | Catálogo publicado, páginas CMS, precios, reseñas aprobadas                                | Cualquier capa                                                       | Permitido                                                  |
+| **Interno**                       | Operativo sin PII directa                        | `Order.total`, `Customer.supabaseUserId`, contadores `FunnelEventDaily`, métricas de crons | Postgres / paneles `/admin/*`                                        | Permitido                                                  |
+| **Confidencial — PII directa**    | Identifica o contacta a una persona natural      | Correo, teléfono, nombre, documento, dirección, IP cruda                                   | Postgres con RLS + `REVOKE ALL`, cookie `AES-256-GCM`                | **Redactado** (`REDACT_KEYS` + `scrubPii` en `logger.ts`)  |
+| **Restringida — Datos sensibles** | Imágenes con posibles rostros/menores (Ley 1581) | Fotos del Estudio (`customer-uploads`) y previews/renders personales                       | Buckets privados + URL firmada corta / proxy autenticado + purga TTL | **Nunca** en logs                                          |
+| **Regulada — Financiera**         | Trazabilidad de transacciones de pago            | `wompiTransactionId`, montos, estado; **jamás** PAN, CVV ni fecha de expiración            | Postgres con RLS y `AdminActionLog`                                  | `transactionId` permitido; PAN/CVV inexistentes en sistema |
+| **Crítica — Secretos de sistema** | Llaves, tokens, contraseñas y semillas HMAC      | `SUPABASE_SECRET_KEY`, `CSRF_SECRET`, `WOMPI_*`, `CRON_SECRET`, `BACKUP_GPG_PASSPHRASE`    | `.env*` gitignored, Vercel Env Vars, GitHub Secrets y Supabase Vault | **Nunca** en logs                                          |
+
+- **Cifrado y recuperación ante desastres (DR):** TLS 1.2+ con HSTS en tránsito; cifrado en reposo en Supabase Postgres y Storage; respaldos diarios (`backup.yml`) cifrados simétricamente con **GPG `AES-256`** antes de subir a Cloudflare R2 y verificados cada mes mediante restauración real en un Postgres limpio por `.github/workflows/dr-drill.yml` (`ADR-059`). Objetivos operativos: **RPO ≤ 24 h** y **RTO ≤ 4 h**, con rollback instantáneo de aplicación probado gracias a migraciones **expand-then-contract** (`CONVENTIONS.md`).
+
+### 12.2 Mapa de PII por modelo Prisma
+
+| Modelo Prisma                                                            | Campos sensibles / PII                                                                                                                  | Controles activos y ciclo de vida                                                                                                |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `Customer` y `Address`                                                   | `email`, `name`, `phone`, `birthMonth`, `birthDay`, `recipientName`, `line1`, `line2`, `neighborhood`, `deliveryNotes`                  | RLS cerrado; autogestión en `/mi-cuenta`; borrado/anonimización en `deleteCustomerAccount`                                       |
+| `Order`                                                                  | `email`, `phone`, `shippingAddress`, `recipientName`, `recipientPhone`, `giftMessage`, `billing*`, `publicAccessTokenHash`              | Enmascarado RSC (`maskOrderForActor`) sin `orders:read_pii`; anonimizado al suprimir cuenta conservando el soporte contable      |
+| `Contact`, `ContactIdentity` y `MergeCandidate`                          | `primaryEmail`, `primaryPhoneE164`, `displayName`, `documentNumber`, `normalizedValue`, `rawValue`, `evidenceJson`, `mergeSnapshotJson` | `contacts:read_pii`, aislamiento `isStaff`/`isGift` y purga/anonimización en `scrubContactOnErasureTx`                           |
+| `Organization` y `Opportunity`                                           | `name`, `taxIdNumber`, `contactName`, `contactEmail`, `contactPhone`                                                                    | Acceso exclusivo `SUPERADMIN` y `OPERATIONS_MANAGER` (`opportunities:manage`)                                                    |
+| `Quote`, `SupportTicket` y `SupportTicketMessage`                        | `customerName`, `customerEmail`, `customerWhatsapp`, `name`, `email`, `body`, hashes de tokens                                          | Tokens opacos; en supresión de cuenta se redactan mensajes y metadatos de contacto                                               |
+| `Design` y `DesignAsset`                                                 | Fotos crudas en `customer-uploads`, previews en `design-previews`, renders 300 DPI en `production-assets`, `canvasData`                 | Buckets privados, moderación previa a `SHIPPED` y purgas `7 d` / `30 d` / `90 d`                                                 |
+| `AbandonedCart`, `NewsletterSubscriber`, `StockAlertSubscription`        | `email`, `phone`, `recoveryToken`                                                                                                       | Purga a `90 d` (`AbandonedCart`), baja RFC 8058 en un clic y eliminación en supresión de cuenta                                  |
+| `Consent`                                                                | `email`, `phone`, `ipAddress`, `userAgent`, `scope`, `accepted`, `version`                                                              | Append-only Ley 1581; en supresión se inserta revocación y se anonimizan `email`/`phone`/`ipAddress`/`userAgent` en el historial |
+| `BlockedIdentity`                                                        | `type` (`PHONE`, `EMAIL`, `ADDRESS`), `value` normalizado, `reason`                                                                     | Interés legítimo antifraude contraentrega (`/admin/finanzas/bloqueos`, `finance:manage`)                                         |
+| `WebhookEvent`, `EmailEvent`, `SecurityEvent`, `ErrorLog`, `ErrorReport` | `to`, metadatos allowlist (`LUC-SEC-009`), `ipHash`, mensajes pasados por `scrubPii`                                                    | Purga automática en `purge-event-logs` (`180 d` eventos / `90 d` errores)                                                        |
+| `AdminUser` y `AdminActionLog`                                           | `email`, `name`, `ip`, `userAgent`, `before`/`after`                                                                                    | Acceso exclusivo `SUPERADMIN`; correos de titulares suprimidos se redactan puntualmente en `AdminActionLog`                      |
+
+### 12.3 Redacción cero-PII en IA (Gemini), logs (`logger.ts`) y analítica (GA4)
+
+1. **Google Gemini con cero PII y cero fotos (`generativelanguage.googleapis.com/v1beta`):**
+   - _Asistente de ideas del Estudio (`features/personalization/ai-suggest.ts`):_ `sanitizeOccasion` recorta a 120 caracteres y reemplaza correos, teléfonos y documentos antes de consultar ideas textuales; jamás envía imágenes.
+   - _Copiloto interno de soporte (`features/ai/support-copilot.ts`):_ `sanitizeSupportTextForAi` sustituye determinísticamente URLs (`[enlace]`), correos (`[correo]`), referencias `LCM-*`/`COT-*`/`OP-*` (`[referencia]`), teléfonos colombianos (`[teléfono]`), direcciones (`[dirección]`), secuencias numéricas de 6–16 dígitos (`[documento]`) y nombres del cliente (`[cliente]`). El saludo y referencia se rehidratan localmente en servidor tras una segunda pasada del sanitizador.
+2. **Logger estructurado (`apps/web/lib/logger.ts`):** enmascara por nombre de clave (`/(secret|token|key|password|cookie|authorization|email|phone)$/i`, además de `to`, `ip`, `ipaddress`, `whatsapp`, `documentnumber`) y limpia strings/stacks con `scrubPii` (`[EMAIL]`, `[PHONE]`) antes de escribir en consola o en `ErrorLog`/`ErrorReport` (detalle de eventos en [`OBSERVABILITY.md`](OBSERVABILITY.md)).
+3. **Google Analytics 4 y banner de cookies (`lib/analytics.ts`, `lib/cookie-consent.ts`):** `AnalyticsLoader` bloquea `gtag.js` mientras `hasAnalyticsConsent()` sea `false`. Al revocar **Analíticas**, activa `window["ga-disable-<ID>"] = true` y borra `_ga`, `_ga_*` y `lucams_utm`. Con consentimiento activo, `sanitizeAnalyticsUrl` excluye `/admin*`, reemplaza tokens de `/pedido/*`, `/cotizacion/*`, `/resena/*`, `/carrito/recuperar/*`, `/d/*` y `/soporte/*` por `[redacted]` y filtra query params por allowlist.
+
+### 12.4 Seguridad de supply chain y CI/CD (`protect-ramas-criticas`)
+
+- **Supply chain:** `pnpm-lock.yaml` con `--frozen-lockfile`, `pnpm audit --prod --audit-level=high` ejecutado en cada PR dentro del job `quality` (incluso en el fast-path documental; advisories solo de desarrollo se acotan con overrides revisados en `pnpm-workspace.yaml`), Dependabot semanal agrupado (`.github/dependabot.yml`, majors bloqueados para revisión manual), GitHub Actions pineadas por SHA completo en todos los workflows y prohibición de instalar paquetes recién publicados sin diligencia previa.
+- **Protección de ramas y CI (`.github/workflows/ci.yml`):**
+  - `GITHUB_TOKEN` con permisos mínimos (`contents: read` por defecto) y sin uso inseguro de `pull_request_target`.
+  - **Ruleset `protect-ramas-criticas` (`id: 26248226`)** activo sobre `develop` (STG) y `production` (PRD): exige Pull Request con rama al día (`strict: true`), `bypass_actors: []` (ni administradores pueden saltarse los gates), bloqueo de force-push/borrado y **5 checks obligatorios**: (1) `Typecheck + Lint + Build` (incluye Prettier y `pnpm audit --prod`), (2) `Vitest tests (unit + integración con Postgres)`, (3) `RLS behavior (rls-matrix contra Supabase local)`, (4) `E2E + a11y + Lighthouse — Playwright` y (5) `Gitleaks secret scan`.
+
+---
+
+## 13. Telemetría `SecurityEvent`, catálogo `LUC-SEC-*`, `BlockedIdentity` e IRP
+
+### 13.1 Eventos de seguridad persistentes (`SecurityEvent`, `LUC-SEC-008`)
+
+`recordSecurityEvent` ([`apps/web/lib/security-events.ts`](../apps/web/lib/security-events.ts)) persiste señales forenses duraderas con `ipHash` truncado (nunca IP en claro):
+
+| Evento (`SECURITY_EVENT`)   | Cuándo se emite                                                                           | Regla de alerta asociada (`alerts.ts`)                                              |
+| --------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `auth.login.fail`           | Credenciales inválidas en `/login` de clientes                                            | Telemetría forense (frenado en tiempo real por rate limit `5 / 15 min` IP + email)  |
+| `auth.admin_login.fail`     | Credenciales inválidas o usuario sin rol activo en `/admin/login`                         | `security_admin_login_fails` (**alta**): dispara si `SUM(count) >= 5` en 15 minutos |
+| `webhook.invalid_signature` | Firma, checksum, timestamp o secreto inválido en `/api/webhooks/{wompi,aveonline,resend}` | `security_webhook_invalid` (**media**): dispara si `SUM(count) >= 3` en 5 minutos   |
+
+Para impedir amplificación de escrituras bajo ataque (`LUC-SEC-008`), `recordSecurityEvent` agrupa por minuto (`<event>:<ipHash>:<source>:<bucketMinuto>`): las primeras **5** ocurrencias hacen upsert directo y las siguientes se coalescen en memoria (`FLUSH_EVERY = 10`, techo `MAX_TRACKED_KEYS = 10 000`).
+
+### 13.2 Catálogo de controles `LUC-SEC-*` trazables en código
+
+| Código                        | Control implementado y verificado por pruebas                                                                                                                    |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LUC-SEC-001`                 | Privatización del bucket `design-previews` (migración `046`) y lectura exclusiva vía `/api/design-preview/[...path]` con `authorizeDesignPreviewRead`            |
+| `LUC-SEC-003`                 | Protección estricta de ramas (`develop`, `production` con ruleset `protect-ramas-criticas`) y allowlist cerrada en el webhook de Aveonline                       |
+| `LUC-SEC-004` / `LUC-SEC-005` | Normalización raster (`normalizeRasterImage`), presupuestos de `25 MP` / `50 MP`, ratio `≤ 20:1` y pre-chequeo de cajas `ispe` en HEIC/HEIF antes de decodificar |
+| `LUC-SEC-006`                 | Tope ajustado de `serverActions.bodySizeLimit` en `next.config.ts` acompañado de subidas fragmentadas en el Estudio                                              |
+| `LUC-SEC-007`                 | Lector en streaming `readBodyWithLimit` aplicado por ruta en webhooks, ingesta RUM/embudo y endpoints JSON                                                       |
+| `LUC-SEC-008`                 | Coalescencia en memoria y agregación por minuto (`dedupKey` + `count`) en `SecurityEvent` contra amplificación de DB                                             |
+| `LUC-SEC-009`                 | Allowlists cerradas de metadatos persistidos en `WebhookEvent` para Wompi y Resend (minimización de PII)                                                         |
+| `LUC-SEC-010`                 | Función SQL `purge_rate_limit_buckets()` y job diario `lucams-purge-rate-limits` (> 7 días) con latido en `AlertState`                                           |
+| `LUC-SEC-011`                 | Actualización de `sharp` `0.35.5` y bloqueo preventivo de cargadores `VipsForeignLoadNsgif`, `VipsForeignLoadTiff` y `VipsForeignLoadVips`                       |
+| `LUC-SEC-013`                 | Modelo de amenazas de `cart_session`: rotación ante `CART_IDENTITY_MISMATCH` y borrado explícito en logout                                                       |
+
+### 13.3 Bloqueo anti-abuso (`BlockedIdentity`) y divulgación responsable (`RFC 9116`)
+
+- **Riesgo contraentrega (`BlockedIdentity` + `assessCodRisk`):** [`apps/web/features/anti-abuse/blocklist-service.ts`](../apps/web/features/anti-abuse/blocklist-service.ts) y `/admin/finanzas/bloqueos` bloquean identidades reincidentes por `PHONE` (`+573XXXXXXXXX`), `EMAIL` o `ADDRESS` (`Order.shippingAddressKey`), combinados con historial de `noShowAt` y velocidad de órdenes pendientes antes de habilitar COD.
+- **Divulgación coordinada de vulnerabilidades:** canal oficial único **`security@lucamsshop.com`**, publicado en `/legal/security` y en [`apps/web/public/.well-known/security.txt`](../apps/web/public/.well-known/security.txt) (`Contact: mailto:security@lucamsshop.com`, `Preferred-Languages: es, en`, `Canonical: https://lucamsshop.com/.well-known/security.txt`, `Policy: https://lucamsshop.com/legal/security`). Compromiso público vigente (Versión 3): acuse de recibo en **≤ 3 días hábiles**, confidencialidad del investigador, puerto seguro para reportes de buena fe y reconocimiento público opcional al cerrar el hallazgo.
+
+### 13.4 Plan de Respuesta a Incidentes — IRP (NIST SP 800-61) y Runbooks
+
+| Severidad        | Definición                                                                                                             | SLA de respuesta     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| **P0 — Crítica** | Brecha activa de PII/fotos privadas, secreto crítico expuesto, cobros/reembolsos fraudulentos o caída total por ataque | Inmediata (`< 15 m`) |
+| **P1 — Alta**    | Vulnerabilidad explotable confirmada, campaña sostenida contra `/admin/login` o webhooks, o colisión grave pago/stock  | `< 2 horas`          |
+| **P2 — Media**   | Anomalía acotada, degradación parcial de integración o vulnerabilidad con precondiciones complejas                     | `< 24 horas`         |
+| **P3 — Baja**    | Endurecimiento preventivo o CVE bajo en dependencia sin vector alcanzable                                              | `< 7 días`           |
+
+**Las 6 fases operativas (NIST SP 800-61):**
+
+1. **Preparación:** simulacro mensual automatizado `dr-drill.yml`, contactos de escalamiento en [`OPERATIONS.md`](OPERATIONS.md) y verificaciones continuas de RLS/secretos.
+2. **Detección:** alertas críticas por Resend (`ALERT_EMAIL`), `/admin/notificaciones`, `/admin/observability`, monitor externo `uptime-monitor-prd` (STG → PRD) y buzón `security@lucamsshop.com`.
+3. **Contención inmediata según vector:**
+   - _Credencial o secreto expuesto:_ rotar en el proveedor, Vercel (`production`/`preview`) y Supabase Vault + redesplegar + revocar la llave anterior.
+   - _Cuenta administrativa sospechosa:_ desactivar `AdminUser` en `/admin/usuarios`, revocar sesiones globales en Supabase Auth y auditar `AdminActionLog` por `adminId`.
+   - _DDoS o abuso volumétrico de webhook/origen:_ activar modo _Under Attack_ o regla WAF por IP/ASN en Cloudflare / Vercel Firewall.
+   - _Corrupción de datos o regresión grave:_ activar `NEXT_PUBLIC_MAINTENANCE_MODE=1` o ejecutar `vercel rollback` inmediato; restaurar desde PITR o R2 si aplica.
+4. **Erradicación:** preservar evidencia forense (`SecurityEvent`, `AdminActionLog`, `WebhookEvent`, `ErrorLog` por `X-Request-Id`), corregir la causa raíz y añadir test de regresión (`pnpm test` / `make test-rls`).
+5. **Recuperación:** restablecer operación normal, conciliar órdenes/pagos y rehabilitar accesos verificados.
+6. **Lecciones aprendidas y deber legal SIC:** redactar postmortem _blameless_ temporal en `tmp/incidentes/YYYY-MM-DD-<slug>.md` (ver plantilla en [`OBSERVABILITY.md`](OBSERVABILITY.md)), consolidar controles permanentes en este documento vivo y ejecutar `make clean-tmp`. Si hubo afectación a datos personales, **notificar a la SIC dentro de los 15 días hábiles siguientes a la detección** (Ley 1581 de 2012, arts. 17 lit. k y 18 lit. g) e informar a los titulares afectados.
+
+#### Runbook `IRP-001` — Exposición de `SUPABASE_SECRET_KEY` (`sb_secret_*`) u otro secreto crítico (`P0`, ETA 15 min)
+
+1. En el panel de Supabase (`Project Settings → API keys → Secret keys`), crear una **nueva secret key** (Supabase admite múltiples llaves activas en paralelo sin tiempo fuera de servicio).
+2. Actualizar `SUPABASE_SECRET_KEY` en Vercel (`Settings → Environment Variables`, entornos `production` y `preview`) y en archivos locales mediante subshell seguro sin eco.
+3. Disparar redespliegue a producción y verificar que `GET /api/health/all` responda `200`.
+4. **Revocar explícitamente** la llave comprometida en el panel de Supabase (crear la nueva no desactiva la anterior).
+5. Auditar los últimos 7 días de logs de Supabase Auth, Storage y tablas críticas (`Order`, `Customer`, `AdminUser`) en busca de accesos anómalos; documentar postmortem en 24 h.
+
+#### Runbook `IRP-002` — Tráfico anómalo o fallos masivos de firma en webhook Wompi (`P1`, ETA 2 h)
+
+1. Revisar en `/admin/observability` la tarjeta de webhooks recientes y en `SecurityEvent` los registros `webhook.invalid_signature` agrupados por `ipHash` y `metadata.source = "wompi"`.
+2. Si fallan envíos legítimos, verificar coincidencia de `WOMPI_EVENTS_SECRET` y `WOMPI_ENV` frente al panel de Wompi y revisar avisos oficiales del proveedor.
+3. Si se trata de inundación hostil desde IPs concretas, aplicar regla temporal de rate limit/bloqueo en Cloudflare WAF sobre `/api/webhooks/wompi` y conciliar órdenes pendientes contra el panel Wompi.
+
+#### Runbook `IRP-003` — Incidente con exposición de datos personales / PII (`P0`, ETA contención 15 min · SIC ≤ 15 días hábiles)
+
+1. Contener y cerrar de inmediato el vector técnico (revocar llave, corregir ruta/política y desplegar fix de urgencia) preservando evidencia forense (`X-Request-Id`, `SecurityEvent`, `AdminActionLog`).
+2. Determinar alcance exacto: categorías de datos afectadas (contacto, direcciones, fotos del Estudio), ventana temporal y número de titulares impactados.
+3. Notificar a los titulares afectados en lenguaje claro indicando medidas adoptadas y canales de atención (`habeas-data@lucamsshop.com`), y presentar el reporte oficial ante la **SIC dentro de los 15 días hábiles** siguientes a la detección conforme a [`COMPLIANCE.md`](COMPLIANCE.md).
+
+#### Runbook `IRP-004` — Colisión pago/stock post-captura (`saga_paid` / `needsReconciliation`, `P1`, ETA 2 h)
+
+1. Abrir `/admin/pedidos` filtrando **«Necesitan atención»** (`needsReconciliation = true`) y cruzar el ledger `InventoryLog` junto con la notificación `stock_sale_lost:<variantId>`.
+2. Contactar de inmediato al comprador ofreciendo reposición prioritaria o reembolso íntegro con cupón de compensación, registrando la resolución y nota en `/admin/pedidos/[number]` (`AdminActionLog`).
+3. Verificar integridad del `SELECT ... FOR UPDATE` / decremento condicional e incorporar prueba de concurrencia si existió regresión.
+
+---
+
+## 14. Verificación extremo a extremo
+
+Comandos de comprobación rápida de la postura de seguridad:
 
 ```bash
-# Headers de seguridad presentes
-curl -I https://lucamsshop.com | grep -i 'strict-transport\|x-frame\|content-security'
+# 1. Postura estática de migraciones SQL, RLS, REVOKE y buckets de Storage
+make verify-db
 
-# RLS verificada contra el stack local
+# 2. Suite de integración RLS contra Postgres real (cobertura 100 % + aislamiento entre clientes)
 make test-rls
 
-# Rate limit funciona (ruta pública de catálogo: 30/min por IP)
-for i in {1..35}; do curl -s -o /dev/null -w '%{http_code}\n' https://lucamsshop.com/api/catalog/products; done
-# Los intentos tras el 30 deben devolver 429
-
-# Webhook con firma inválida es rechazado
-curl -X POST https://lucamsshop.com/api/webhooks/wompi -d '{"fake":"payload"}' \
-  -H "Content-Type: application/json"
-# Esperado: 401
-
-# Secret scanning del repo
+# 3. Escaneo completo de secretos y auditoría de dependencias de producción
 gitleaks git --config .gitleaks.toml .
-
-# Audit de dependencias (gate CI: solo producción, high+)
 pnpm audit --prod --audit-level=high
+
+# 4. Verificación en vivo de cabeceras HTTP/CSP y rechazo 401 de webhooks sin firma válida
+curl -sSI https://lucamsshop.com | grep -iE 'strict-transport|x-frame|content-security|x-content-type'
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST https://lucamsshop.com/api/webhooks/wompi \
+  -H 'Content-Type: application/json' -d '{"fake":"payload"}'
 ```

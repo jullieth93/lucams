@@ -17,21 +17,21 @@ Puedes contactarnos por:
 ## Qué datos recolectamos
 
 - **Identificación:** nombre, correo electrónico y teléfono.
-- **Contacto y envío:** dirección de entrega.
-- **Cotización por WhatsApp:** tu nombre, tu número de WhatsApp, tu ciudad y departamento, tu correo (opcional) y las notas que nos escribas en el formulario.
+- **Contacto y envío:** dirección e indicaciones de entrega.
+- **Cotizaciones y solicitudes corporativas:** tu nombre, tu número de WhatsApp o teléfono, tu ciudad y departamento, tu correo, empresa u organización (opcional) y los detalles que nos escribas al cotizar por WhatsApp o en **[Empresas y Eventos](/empresas-y-eventos)**.
 - **Pago:** cuando pagas en línea, los datos sensibles de tu tarjeta los procesa **Wompi**, nuestra pasarela de pagos, en su propia página segura — **nosotros no los vemos ni los almacenamos**. Solo conservamos la información mínima de la transacción (referencia, valor y estado del pago).
-- **Asistente de diseño con IA:** solo el **texto de la ocasión** que describes (por ejemplo, "el cumpleaños de mi mamá"). No enviamos tus fotos ni tus datos de contacto; y si el texto parece contener datos personales (números de documento, correos o celulares), lo reemplazamos por un texto neutro antes de enviarlo.
-- **Comportamiento:** historial de pedidos, productos vistos y reseñas.
+- **Herramientas de IA (sin datos personales):** en el Estudio solo enviamos el **texto depurado de la ocasión** que describes (por ejemplo, "el cumpleaños de mi mamá"), sin tus fotos ni tus datos de contacto; y en soporte interno redactamos borradores únicamente sobre texto previamente anonimizado (sin nombres, correos, teléfonos, direcciones ni documentos).
+- **Relación comercial y navegación:** historial de pedidos, solicitudes de soporte, puntos de lealtad, reseñas y —solo si aceptas la categoría **Analíticas** en el banner— métricas de visita y canal de llegada (ver [Política de Cookies](/legal/cookies)).
 - **Imágenes:** las fotos que subes al **Estudio de Personalización**.
 
 ## Con qué finalidad los usamos
 
-- Atender tu **cotización** y contactarte por WhatsApp para cerrarla contigo.
+- Atender tu **cotización** o **solicitud de evento/empresa** y acompañarte por correo o WhatsApp.
 - Procesar tu pedido, cobrarlo y enviártelo.
-- Enviarte comunicaciones sobre tu compra (confirmación, despacho, entrega).
-- Sugerirte **ideas de diseño** con el asistente de IA del Estudio, a partir del texto de la ocasión que nos cuentas.
+- Enviarte comunicaciones sobre tu compra, soporte o garantías (confirmación, despacho, entrega y seguimiento).
+- Producir tu diseño personalizado y sugerirte **ideas de diseño** con el asistente de IA del Estudio.
 - Enviarte novedades y promociones **solo si nos das tu consentimiento** — es opcional y puedes cancelarlo cuando quieras.
-- Mejorar el servicio con analítica **agregada y anonimizada**.
+- Mejorar el servicio con estadísticas agregadas y, si autorizas las cookies **Analíticas**, entender el desempeño de páginas y campañas.
 
 No usamos tus datos para finalidades distintas a estas sin informarte y pedirte autorización antes.
 
@@ -39,9 +39,9 @@ No usamos tus datos para finalidades distintas a estas sin informarte y pedirte 
 
 Las fotos que subes al Estudio de Personalización pueden incluir **rostros u otra información sensible**. Por eso:
 
-- Solo las tratamos para **armar y producir tu diseño**.
+- Solo las tratamos para **armar y producir tu diseño** (y cubrir eventuales garantías o reimpresiones tras la entrega).
 - Tratar datos sensibles requiere tu **autorización expresa**, y **no estás obligado/a** a autorizar el tratamiento de datos sensibles.
-- Puedes pedir que las eliminemos, y los diseños abandonados se **borran automáticamente** pasado un tiempo sin actividad.
+- Puedes pedir que las eliminemos, y tanto los borradores abandonados como los archivos de pedidos ya entregados se **borran automáticamente** cumplidos nuestros plazos de retención.
 
 ## Tus derechos como titular
 
@@ -61,13 +61,13 @@ Escríbenos a **{{email_habeas_data}}** (o a {{email_contacto}}, o por WhatsApp)
 - Respondemos tus **consultas** en máximo **{{habeas_consulta_dias}} días hábiles**.
 - Respondemos tus **reclamos** en máximo **{{habeas_reclamo_dias}} días hábiles**.
 
-Si quieres el detalle completo de cómo ejercerlos, visita nuestra página de **[Hábeas Data](/legal/habeas-data)**.
+Si quieres el detalle completo de cómo ejercerlos y los plazos exactos de retención, visita nuestra página de **[Hábeas Data](/legal/habeas-data)**.
 
 ## Con quién compartimos tus datos y transferencias internacionales
 
-Para prestarte el servicio compartimos datos con proveedores que actúan como **encargados del tratamiento** (hosting, correo, pagos, logística e inteligencia artificial del Estudio). Todos están obligados contractualmente a proteger tus datos.
+Para prestarte el servicio compartimos datos con proveedores que actúan como **encargados del tratamiento** (hosting, correo, pagos, logística, analítica opcional bajo consentimiento e inteligencia artificial sin datos de contacto). Todos están obligados contractualmente a proteger tus datos.
 
-Algunos de estos encargados operan **fuera de Colombia (Estados Unidos)** — por ejemplo, la infraestructura de nube y de correo, y el asistente de IA del Estudio. Jurídicamente esto es una **transmisión internacional**, no una transferencia: ellos tratan los datos **por nuestra cuenta y siguiendo nuestras instrucciones**, y nosotras seguimos siendo las responsables (Decreto 1074 de 2015, art. 2.2.2.25.1.3, numerales 4 y 5). Con cada uno tenemos un **contrato de transmisión** que fija el alcance del tratamiento y exige garantías de seguridad (cifrado en tránsito y en reposo).
+Algunos de estos encargados operan **fuera de Colombia (Estados Unidos)** — por ejemplo, la infraestructura de nube y de correo, la analítica opcional y el asistente de IA. Jurídicamente esto es una **transmisión internacional**, no una transferencia: ellos tratan los datos **por nuestra cuenta y siguiendo nuestras instrucciones**, y nosotras seguimos siendo las responsables (Decreto 1074 de 2015, art. 2.2.2.25.1.3, numerales 4 y 5). Con cada uno tenemos un **contrato de transmisión / DPA** que fija el alcance del tratamiento y exige garantías de seguridad (cifrado en tránsito y en reposo).
 
 Puedes ver la lista actualizada de terceros y los países donde operan en **[Subprocesadores](/legal/subprocesadores)**.
 
@@ -76,11 +76,11 @@ Puedes ver la lista actualizada de terceros y los países donde operan en **[Sub
 Al entregarnos tus datos y aceptar este aviso, **autorizas** su tratamiento para las finalidades descritas. Te pedimos esa autorización de forma expresa —con una casilla que tú marcas— cuando:
 
 - **creas tu cuenta**,
-- **pides tu cotización por WhatsApp**,
+- **pides tu cotización por WhatsApp** o **solicitas una propuesta en Empresas y Eventos**,
 - **completas tus datos de compra** en el sitio, y
 - **eliges tus cookies** en el banner.
 
-De cada una guardamos el registro (fecha, versión de este aviso y el correo o el número de WhatsApp con el que la diste) como **prueba de la autorización**. Puedes **revocarla** en cualquier momento por los canales indicados, salvo cuando exista un deber legal o contractual de conservar cierta información (por ejemplo, datos de facturación o de un pedido en curso).
+De cada una guardamos el registro (fecha, versión de este aviso y el correo o el número de WhatsApp con el que la diste) como **prueba de la autorización**. Puedes **revocarla** en cualquier momento por los canales indicados, salvo cuando exista un deber legal o contractual de conservar cierta información (por ejemplo, comprobantes de un pedido).
 
 ## Política de Tratamiento completa
 
@@ -95,4 +95,4 @@ Si cambiamos este aviso de forma sustancial, te lo informaremos y actualizaremos
 
 ---
 
-_Versión 2 · vigente desde 2026-11-02_
+_Versión 3 · vigente desde 2026-11-05_

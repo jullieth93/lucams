@@ -16,7 +16,7 @@
  *     sesión humana — el cliente es un singleton sin estado.
  *
  * Referencias:
- *  - docs/INTEGRATIONS.md § 3. Supabase (tres clientes)
+ *  - docs/integrations/supabase.md (tres clientes)
  *  - docs/SECURITY.md § Llaves de API + § Datos clasificados
  */
 

@@ -120,4 +120,4 @@ Podemos actualizar estos Términos para reflejar cambios legales o de nuestro se
 
 ---
 
-_Versión 2 · vigente desde 2026-11-02_
+_Versión 3 · vigente desde 2026-11-05_
