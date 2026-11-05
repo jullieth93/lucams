@@ -135,6 +135,9 @@ async function runDrained(send: SendEmailFn, input: SendEmailInput): Promise<Sen
 function withApiKey(key = "key_test_FIXED"): void {
   vi.stubEnv("RESEND_API_KEY", key);
   vi.stubEnv("NODE_ENV", "production");
+  // La suite fija EMAIL_SEND_DISABLED=1 globalmente (setup-env, incidente spam
+  // 2026-11-05); estos tests ejercen el path real → la apagan explícitamente.
+  vi.stubEnv("EMAIL_SEND_DISABLED", undefined);
 }
 
 beforeEach(() => {
@@ -144,6 +147,10 @@ beforeEach(() => {
   // EMAIL_FROM se hereda de .env.local; lo limpiamos para probar el default del
   // módulo de forma determinista. Tests que lo necesiten lo re-stubean.
   delete process.env.EMAIL_FROM;
+  // EMAIL_SEND_DISABLED=1 lo fija la suite global (setup-env, kill-switch anti-spam
+  // 2026-11-05): lo apagamos por defecto ACÁ para ejercer la lógica real del módulo;
+  // el test del kill-switch lo reactiva explícitamente.
+  delete process.env.EMAIL_SEND_DISABLED;
 });
 
 afterEach(() => {
@@ -156,6 +163,18 @@ afterEach(() => {
 // Modo DEV / sin API key (no-op, NUNCA toca la red)
 // =============================================================================
 describe("sendEmail — sin RESEND_API_KEY (no-op)", () => {
+  it("EMAIL_SEND_DISABLED=1 (kill-switch de la suite) → skipped SIN llamar a Resend aunque haya key", async () => {
+    vi.stubEnv("RESEND_API_KEY", "key_test");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("EMAIL_SEND_DISABLED", "1");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const sendEmail = await loadFresh();
+    const res = await sendEmail({ to: "a@b.co", subject: "s", html: "<p>h</p>", text: "h" });
+    expect(res).toMatchObject({ sent: false, reason: "disabled-by-env", skipped: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("DEV sin key → { sent:false, reason:'no-api-key', skipped:true } y NO hace fetch", async () => {
     vi.stubEnv("RESEND_API_KEY", "");
     vi.stubEnv("NODE_ENV", "development");
