@@ -255,6 +255,14 @@ export async function SiteFooter() {
               </li>
               <li className="pt-1">
                 <Link
+                  href="/soporte"
+                  className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
+                >
+                  Soporte al cliente →
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/ayuda"
                   className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >

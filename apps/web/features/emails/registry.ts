@@ -32,6 +32,8 @@
 
 import { EMAIL_OVERRIDE_KEYS, withOverrides, type EmailOverrideKey } from "./overrides";
 import { accountExistsNoticeEmail } from "./templates/account-exists-notice";
+import { b2bInquiryAdminNotificationEmail } from "./templates/b2b-inquiry-admin-notification";
+import { b2bInquiryReceivedEmail } from "./templates/b2b-inquiry-received";
 import { backInStockEmail } from "./templates/back-in-stock";
 import { cartRecoveryEmail } from "./templates/cart-recovery";
 import { designRejectedEmail } from "./templates/design-rejected";
@@ -579,6 +581,50 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       ],
     },
   }),
+
+  // ─────────────────────── Empresas y Eventos (B2B) ───────────────────────
+  define({
+    id: "b2b-inquiry-received",
+    name: "Confirmación de solicitud B2B / Eventos",
+    group: "Cotizaciones",
+    description:
+      "Confirmación al cliente apenas envía el formulario de /empresas-y-eventos con su radicado OP-XXXXXX y resumen del proyecto.",
+    render: b2bInquiryReceivedEmail,
+    sampleData: {
+      opportunityNumber: "OP-7K9M2P",
+      contactName: CUSTOMER,
+      organizationName: "Café Cordillera S.A.S.",
+      eventLabel: "Regalos corporativos / fin de año",
+      expectedUnits: 150,
+      city: "Bogotá D.C.",
+      department: "Bogotá D.C.",
+      eventDateLabel: "15 dic 2026",
+      notes: "Queremos 150 sets de imanes con nuestro logo y tarjeta de agradecimiento.",
+    },
+  }),
+  define({
+    id: "b2b-inquiry-admin-notification",
+    name: "Aviso interno: nueva oportunidad B2B",
+    group: "Cotizaciones",
+    description:
+      "Notificación INTERNA al buzón de alertas cuando nace una oportunidad en /empresas-y-eventos. Reply-To al correo del solicitante y link wa.me directo al cliente.",
+    render: b2bInquiryAdminNotificationEmail,
+    sampleData: {
+      opportunityId: "opp_01JZXD8R2M",
+      opportunityNumber: "OP-7K9M2P",
+      contactName: CUSTOMER,
+      contactEmail: "camila@cafecordillera.co",
+      contactWhatsapp: "+573004567890",
+      organizationName: "Café Cordillera S.A.S.",
+      nit: "901234567-8",
+      eventLabel: "Regalos corporativos / fin de año",
+      expectedUnits: 150,
+      city: "Bogotá D.C.",
+      department: "Bogotá D.C.",
+      eventDateLabel: "15 dic 2026",
+      notes: "Queremos 150 sets de imanes con nuestro logo y tarjeta de agradecimiento.",
+    },
+  }),
 ];
 
 const REGISTRY_BY_ID = new Map(EMAIL_TEMPLATE_REGISTRY.map((t) => [t.id, t]));
@@ -673,6 +719,16 @@ export const renderWarrantyRejectedEmail = withOverrides(
 export const renderQuoteAdminNotificationEmail = withOverrides(
   "quote-admin-notification",
   quoteAdminNotificationEmail,
+);
+
+export const renderB2bInquiryReceivedEmail = withOverrides(
+  "b2b-inquiry-received",
+  b2bInquiryReceivedEmail,
+);
+
+export const renderB2bInquiryAdminNotificationEmail = withOverrides(
+  "b2b-inquiry-admin-notification",
+  b2bInquiryAdminNotificationEmail,
 );
 
 // account-exists-notice no recibe data (no hay tokens disponibles): el

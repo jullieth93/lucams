@@ -162,12 +162,34 @@ export function ShopMegaMenu({
                     </div>
                   )}
 
-                  <Link
-                    href="/productos"
-                    className="text-brand-purple-dark hover:text-brand-purple mt-4 block text-center text-sm font-semibold"
-                  >
-                    {texts.viewAll}
-                  </Link>
+                  <div className="border-brand-purple/10 mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+                    <div className="flex flex-wrap items-center gap-4 text-xs font-semibold">
+                      <Link
+                        href="/empresas-y-eventos"
+                        className="text-brand-purple-dark hover:text-brand-purple"
+                      >
+                        Empresas y eventos →
+                      </Link>
+                      <Link
+                        href="/soporte"
+                        className="text-brand-purple-dark hover:text-brand-purple"
+                      >
+                        Soporte al cliente →
+                      </Link>
+                      <Link
+                        href="/rastrear"
+                        className="text-brand-purple-dark hover:text-brand-purple"
+                      >
+                        Rastrear pedido →
+                      </Link>
+                    </div>
+                    <Link
+                      href="/productos"
+                      className="text-brand-purple-dark hover:text-brand-purple text-sm font-semibold"
+                    >
+                      {texts.viewAll}
+                    </Link>
+                  </div>
                 </div>
               </NavigationMenuContent>
             </NavigationMenuItem>
@@ -278,6 +300,27 @@ export function ShopMegaMenu({
                     {texts.signup}
                   </Link>
                 )}
+                <Link
+                  href="/empresas-y-eventos"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
+                >
+                  Empresas y eventos
+                </Link>
+                <Link
+                  href="/soporte"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
+                >
+                  Soporte al cliente
+                </Link>
+                <Link
+                  href="/rastrear"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
+                >
+                  Rastrear pedido
+                </Link>
                 <Link
                   href="/ayuda"
                   onClick={() => setMobileOpen(false)}

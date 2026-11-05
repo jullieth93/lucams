@@ -53,7 +53,6 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/materiales",
   "/admin/costos",
   "/admin/canales",
-  "/admin/bot",
   "/admin/metricas",
   "/admin/performance",
   "/admin/redirects",
@@ -436,7 +435,7 @@ describe("filterNavByRole — CMS_EDITOR", () => {
         label: "Contenido",
         items: [
           { label: "Páginas del sitio", href: "/admin/contenido" },
-          { label: "Bot WhatsApp", href: "/admin/bot" },
+          { label: "Redirecciones URL", href: "/admin/redirects" },
         ],
       },
       {
@@ -457,7 +456,7 @@ describe("filterNavByRole — CMS_EDITOR", () => {
     expect(out.map((g) => g.label)).toEqual(["Contenido", "Configuración"]);
   });
 
-  it("Contenido queda solo con 'Páginas del sitio' (Bot WhatsApp es solo-SUPERADMIN)", () => {
+  it("Contenido queda solo con 'Páginas del sitio' (Redirecciones URL es solo-SUPERADMIN)", () => {
     const out = filterNavByRole(buildNavConContenido(), "CMS_EDITOR");
     const contenido = out.find((g) => g.label === "Contenido");
     expect(contenido?.items?.map((i) => i.href)).toEqual(["/admin/contenido"]);

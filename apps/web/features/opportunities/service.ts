@@ -15,7 +15,10 @@ import { randomBytes } from "node:crypto";
 import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { rolesWithCapability } from "@/lib/admin-rbac";
+import { capitalizeName } from "@/lib/colombia-validators";
 import {
+  normalizeEmailIdentity,
+  normalizePhoneIdentityE164,
   normalizeTaxDocumentIdentity,
   resolveQuoteContactTx,
 } from "@/features/identity/resolution-service";
@@ -74,8 +77,11 @@ export async function createPublicB2bOpportunity(
 
   const cleanOrgName = input.organizationName?.trim() || "";
   const normalizedNit = input.nit?.trim() ? normalizeTaxDocumentIdentity("NIT", input.nit) : null;
+  const cleanContactName = capitalizeName(input.contactName.trim());
+  const cleanContactEmail = normalizeEmailIdentity(input.email);
+  const cleanContactWhatsapp = normalizePhoneIdentityE164(input.whatsapp) || input.whatsapp.trim();
 
-  const titlePrefix = cleanOrgName || input.contactName.trim();
+  const titlePrefix = cleanOrgName || cleanContactName;
   const title =
     `${titlePrefix} · ${OPPORTUNITY_EVENT_LABELS[input.eventType]} (${input.expectedUnits} uds.)`.slice(
       0,
@@ -86,9 +92,10 @@ export async function createPublicB2bOpportunity(
     async (tx) => {
       const contactId = await resolveQuoteContactTx(tx, {
         customerId: context.customerId ?? null,
-        customerName: input.contactName,
+        customerName: cleanContactName,
         customerWhatsapp: input.whatsapp,
-        customerEmail: input.email,
+        customerEmail: cleanContactEmail,
+        sourceOverride: "B2B_INQUIRY",
       });
 
       if (!contactId) {
@@ -144,6 +151,9 @@ export async function createPublicB2bOpportunity(
               number: candidateNumber,
               contactId,
               organizationId,
+              contactName: cleanContactName,
+              contactEmail: cleanContactEmail || null,
+              contactWhatsapp: cleanContactWhatsapp || null,
               title,
               eventType: input.eventType,
               stage: "NEW",
@@ -275,6 +285,9 @@ export async function listOpportunitiesForAdmin(opts: { stage?: string; q?: stri
           OR: [
             { number: { contains: cleanQ, mode: "insensitive" } },
             { title: { contains: cleanQ, mode: "insensitive" } },
+            { contactName: { contains: cleanQ, mode: "insensitive" } },
+            { contactEmail: { contains: cleanQ, mode: "insensitive" } },
+            { contactWhatsapp: { contains: cleanQ } },
             { contact: { displayName: { contains: cleanQ, mode: "insensitive" } } },
             { contact: { primaryEmail: { contains: cleanQ, mode: "insensitive" } } },
             { organization: { name: { contains: cleanQ, mode: "insensitive" } } },
@@ -295,6 +308,15 @@ export async function listOpportunitiesForAdmin(opts: { stage?: string; q?: stri
             displayName: true,
             primaryEmail: true,
             primaryPhoneE164: true,
+            identities: {
+              where: {
+                type: { in: ["WHATSAPP", "PHONE"] },
+                verificationStatus: { not: "REVOKED" },
+              },
+              orderBy: { createdAt: "desc" },
+              take: 2,
+              select: { type: true, normalizedValue: true },
+            },
           },
         },
         organization: { select: { name: true } },
@@ -338,9 +360,19 @@ export async function listOpportunitiesForAdmin(opts: { stage?: string; q?: stri
     eventDate: r.eventDate,
     city: r.city,
     contactId: r.contact.id,
-    contactName: r.contact.displayName ?? r.contact.primaryEmail ?? "Contacto B2B",
-    contactEmail: r.contact.primaryEmail,
-    contactPhone: r.contact.primaryPhoneE164,
+    contactName:
+      r.contactName ??
+      r.contact.displayName ??
+      r.contactEmail ??
+      r.contact.primaryEmail ??
+      "Contacto B2B",
+    contactEmail: r.contactEmail ?? r.contact.primaryEmail,
+    contactPhone:
+      r.contactWhatsapp ??
+      r.contact.primaryPhoneE164 ??
+      r.contact.identities.find((i) => i.type === "WHATSAPP")?.normalizedValue ??
+      r.contact.identities.find((i) => i.type === "PHONE")?.normalizedValue ??
+      null,
     organizationName: r.organization?.name ?? null,
     ownerAdminEmail: r.ownerAdmin?.email ?? null,
     createdAt: r.createdAt,
@@ -411,6 +443,9 @@ export async function updateOpportunityByAdmin(input: {
   internalNotes: string | null;
   lostReason: string | null;
   convertedOrderNumber?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactWhatsapp?: string | null;
 }) {
   if (!isOpportunityStage(input.stage)) {
     throw new OpportunityValidationError("Etapa de oportunidad inválida.");
@@ -447,6 +482,22 @@ export async function updateOpportunityByAdmin(input: {
     }
   }
 
+  const contactPatch: Prisma.OpportunityUncheckedUpdateInput = {};
+  if (input.contactName !== undefined) {
+    const trimmed = input.contactName?.trim() ?? "";
+    contactPatch.contactName = trimmed ? capitalizeName(trimmed) : null;
+  }
+  if (input.contactEmail !== undefined) {
+    const normEmail = normalizeEmailIdentity(input.contactEmail);
+    contactPatch.contactEmail = normEmail || null;
+  }
+  if (input.contactWhatsapp !== undefined) {
+    const rawPhone = input.contactWhatsapp?.trim() ?? "";
+    contactPatch.contactWhatsapp = rawPhone
+      ? normalizePhoneIdentityE164(rawPhone) || rawPhone
+      : null;
+  }
+
   return prisma.opportunity.update({
     where: { id: input.id },
     data: {
@@ -457,6 +508,142 @@ export async function updateOpportunityByAdmin(input: {
       internalNotes: input.internalNotes?.trim() || null,
       lostReason: input.stage === "LOST" ? input.lostReason?.trim() || null : null,
       ...(convertedOrderId !== undefined ? { convertedOrderId } : {}),
+      ...contactPatch,
     },
   });
+}
+
+/**
+ * Convierte en 1 clic una `Quote` en una `Opportunity` del pipeline consultivo B2B.
+ * Idempotente: si la cotización ya tenía una `Opportunity` activa vinculada, la devuelve.
+ */
+export async function convertQuoteToOpportunityByAdmin(
+  quoteId: string,
+  ownerAdminId: string,
+): Promise<{ id: string; number: string; contactId: string; alreadyExisted: boolean }> {
+  const existing = await prisma.opportunity.findFirst({
+    where: { convertedQuoteId: quoteId, deletedAt: null },
+    select: { id: true, number: true, contactId: true },
+  });
+  if (existing) {
+    return { ...existing, alreadyExisted: true };
+  }
+
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, deletedAt: null },
+    include: { items: true },
+  });
+  if (!quote) {
+    throw new OpportunityValidationError("La cotización seleccionada no existe.");
+  }
+
+  const totalUnits = quote.items.reduce((acc, it) => acc + Math.max(1, it.quantity), 0);
+  const cleanContactName = capitalizeName(quote.customerName.trim());
+  const cleanContactEmail = normalizeEmailIdentity(quote.customerEmail);
+  const cleanContactWhatsapp =
+    normalizePhoneIdentityE164(quote.customerWhatsapp) || quote.customerWhatsapp.trim();
+  const title = `${cleanContactName} · Cotización ${quote.number} (${totalUnits} uds.)`.slice(
+    0,
+    190,
+  );
+  const dueIn24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  return prisma.$transaction(
+    async (tx) => {
+      const contactId =
+        quote.contactId ??
+        (await resolveQuoteContactTx(tx, {
+          customerName: cleanContactName,
+          customerWhatsapp: quote.customerWhatsapp,
+          customerEmail: cleanContactEmail || null,
+        }));
+      if (!contactId) {
+        throw new OpportunityValidationError("No se pudo resolver el contacto de esta cotización.");
+      }
+
+      if (!quote.contactId) {
+        await tx.quote.update({
+          where: { id: quote.id },
+          data: { contactId },
+        });
+      }
+
+      let createdOpp: { id: string; number: string } | null = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const candidateNumber = generateOpportunityNumber();
+        try {
+          createdOpp = await tx.opportunity.create({
+            data: {
+              number: candidateNumber,
+              contactId,
+              ownerAdminId,
+              contactName: cleanContactName,
+              contactEmail: cleanContactEmail || null,
+              contactWhatsapp: cleanContactWhatsapp || null,
+              title,
+              eventType: "CORPORATE_GIFT",
+              stage: "QUALIFYING",
+              expectedUnits: totalUnits,
+              expectedAmountCop: quote.total,
+              city: quote.city,
+              department: quote.department,
+              notes:
+                quote.notes?.trim() ||
+                `Oportunidad creada desde cotización ${quote.number} (${quote.items.length} línea(s)).`,
+              convertedQuoteId: quote.id,
+              dataConsentAt: quote.dataConsentAt,
+              dataConsentVersion: quote.dataConsentVersion,
+            },
+            select: { id: true, number: true },
+          });
+          break;
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!createdOpp) {
+        throw new OpportunityValidationError("No se pudo generar el radicado de la oportunidad.");
+      }
+
+      await tx.task.create({
+        data: {
+          title: `Dar seguimiento a ${createdOpp.number} (${quote.number})`,
+          description: `Convertida desde cotización ${quote.number} · ${totalUnits} uds.`,
+          status: "OPEN",
+          priority: totalUnits >= 50 ? "HIGH" : "NORMAL",
+          dueAt: dueIn24h,
+          ownerAdminId,
+          contactId,
+          opportunityId: createdOpp.id,
+        },
+      });
+
+      await tx.contactActivity.create({
+        data: {
+          contactId,
+          authorAdminId: ownerAdminId,
+          kind: "SYSTEM",
+          body: `Cotización ${quote.number} convertida en oportunidad comercial ${createdOpp.number}.`,
+          metadata: {
+            quoteId: quote.id,
+            quoteNumber: quote.number,
+            opportunityId: createdOpp.id,
+            opportunityNumber: createdOpp.number,
+          },
+        },
+      });
+
+      return {
+        id: createdOpp.id,
+        number: createdOpp.number,
+        contactId,
+        alreadyExisted: false,
+      };
+    },
+    { maxWait: 10_000, timeout: 25_000 },
+  );
 }

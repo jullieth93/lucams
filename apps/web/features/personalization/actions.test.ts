@@ -50,6 +50,9 @@ const { state, MockStorageError } = vi.hoisted(() => {
       createDraftArgs: [] as Array<Record<string, unknown>>,
       finalizeArgs: [] as Array<Record<string, unknown>>,
       productBySlug: null as Record<string, unknown> | null,
+      assetById: null as Record<string, unknown> | null,
+      deletedAssetIds: [] as string[],
+      storageRemovedPaths: [] as string[][],
     },
   };
 });
@@ -98,6 +101,18 @@ vi.mock("@/lib/storage", () => ({
   },
   refreshCustomerUploadSignedUrl: async (path: string) => `https://signed.example/fresh/${path}`,
 }));
+vi.mock("@/lib/supabase/service", () => ({
+  supabaseService: {
+    storage: {
+      from: () => ({
+        remove: async (paths: string[]) => {
+          state.storageRemovedPaths.push(paths);
+          return { error: null };
+        },
+      }),
+    },
+  },
+}));
 vi.mock("@/lib/db", () => ({
   prisma: {
     designAsset: {
@@ -107,7 +122,12 @@ vi.mock("@/lib/db", () => ({
         if (state.assetCreateError) throw state.assetCreateError;
         return { id: "asset_1" };
       },
+      findUnique: async () => state.assetById,
       findMany: async () => state.galleryAssets,
+      delete: async (args: { where: { id: string } }) => {
+        state.deletedAssetIds.push(args.where.id);
+        return { id: args.where.id };
+      },
     },
     product: {
       findUnique: async () => null,
@@ -155,6 +175,7 @@ import {
   createDraftDesignAction,
   createLetterSetDesignAction,
   createNameDesignAction,
+  deleteDesignAssetAction,
   finalizeDesignAction,
   reopenDesignForEditAction,
   saveCanvasAction,
@@ -798,5 +819,67 @@ describe("uploadDesignAssetAction · validación 300 DPI en primer upload sin de
     expect(res.ok).toBe(true);
     expect(state.uploadCalls).toBe(1);
     expect(state.uploadArgs[0]?.productSizeCm).toBe("7x9");
+  });
+});
+
+describe("deleteDesignAssetAction · acepta CUID real de Prisma y valida ownership", () => {
+  beforeEach(() => {
+    state.assetById = null;
+    state.deletedAssetIds = [];
+    state.storageRemovedPaths = [];
+    state.galleryAssets = [];
+    state.rateLimitCalls = [];
+    state.rateLimitDeny = [];
+  });
+
+  it("elimina un DesignAsset con id CUID (cm...) perteneciente a la sesión actual", async () => {
+    const cuid = "cmw2ujwk50026jyvqult49u2z";
+    state.assetById = {
+      id: cuid,
+      customerId: null,
+      sessionId: "sess_test",
+      storageUrl: "sess_test/pending/master.jpg",
+      canvasPath: "sess_test/pending/master.canvas.webp",
+      designId: null,
+      design: null,
+    };
+
+    const res = await deleteDesignAssetAction(cuid);
+    expect(res).toEqual({ ok: true });
+    expect(state.deletedAssetIds).toEqual([cuid]);
+    expect(state.storageRemovedPaths).toEqual([
+      ["sess_test/pending/master.jpg", "sess_test/pending/master.canvas.webp"],
+    ]);
+  });
+
+  it("rechaza con VALIDATION si el id es corto o contiene caracteres inválidos", async () => {
+    expect(await deleteDesignAssetAction("abc")).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Asset inválido",
+    });
+    expect(await deleteDesignAssetAction("cmw2ujwk50026/../../etc")).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Asset inválido",
+    });
+    expect(state.deletedAssetIds).toEqual([]);
+  });
+
+  it("bloquea con FORBIDDEN si pertenece a otra sesión o cliente", async () => {
+    const cuid = "cmw2ujwk50026jyvqult99999";
+    state.assetById = {
+      id: cuid,
+      customerId: null,
+      sessionId: "other_session",
+      storageUrl: "other/master.jpg",
+      canvasPath: null,
+      designId: null,
+      design: null,
+    };
+
+    const res = await deleteDesignAssetAction(cuid);
+    expect(res).toEqual({ ok: false, code: "FORBIDDEN", message: "No autorizado" });
+    expect(state.deletedAssetIds).toEqual([]);
   });
 });

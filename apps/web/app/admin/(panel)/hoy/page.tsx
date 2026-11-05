@@ -23,6 +23,7 @@ import {
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
+  AdminSegmentedBar,
 } from "@/components/admin-page";
 import { requireCapability } from "@/lib/admin-rbac-guard";
 import { getTodayOperationalInbox } from "@/features/crm/today-inbox-service";
@@ -128,6 +129,54 @@ export default async function AdminHoyPage() {
             </p>
           </AdminCard>
         </div>
+
+        {/* Distribución visual de la carga por frente operativo */}
+        <AdminCard className="p-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-brand-purple-dark text-xs font-bold tracking-wide uppercase">
+              Composición de carga operativa por carril
+            </h2>
+            <span className="text-brand-muted text-xs tabular-nums">
+              {inbox.counts.total} caso{inbox.counts.total === 1 ? "" : "s"} activo
+              {inbox.counts.total === 1 ? "" : "s"}
+            </span>
+          </div>
+          <AdminSegmentedBar
+            ariaLabel="Distribución de pendientes activos por carril operativo"
+            items={[
+              {
+                key: "CARE_SLA",
+                label: "Posventa SLA",
+                count: inbox.counts.byCategory.CARE_SLA,
+                tone: "rose",
+              },
+              {
+                key: "WORKSHOP",
+                label: "Taller y despacho",
+                count: inbox.counts.byCategory.WORKSHOP,
+                tone: "purple",
+              },
+              {
+                key: "FINANCE",
+                label: "Finanzas y conciliación",
+                count: inbox.counts.byCategory.FINANCE,
+                tone: "amber",
+              },
+              {
+                key: "TASK",
+                label: "Tareas CRM",
+                count: inbox.counts.byCategory.TASK,
+                tone: "turquoise",
+              },
+              {
+                key: "RECOVERY",
+                label: "Recuperación comercial",
+                count: inbox.counts.byCategory.RECOVERY,
+                tone: "pink",
+              },
+            ]}
+          />
+        </AdminCard>
 
         <TodayInboxBoard items={inbox.items} counts={inbox.counts} />
       </AdminPageBody>

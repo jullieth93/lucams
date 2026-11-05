@@ -981,8 +981,15 @@ export async function uploadDesignAssetAction(formData: FormData) {
 //   - Si el remove de Storage falla, la fila se borra igual: los bytes huérfanos
 //     los recoge el barrido de retención (retention-service orphan sweep).
 
+const ASSET_ID_SCHEMA = z
+  .string()
+  .trim()
+  .min(10)
+  .max(64)
+  .regex(/^[a-zA-Z0-9_-]+$/);
+
 export async function deleteDesignAssetAction(assetId: string) {
-  const parsed = z.string().uuid().safeParse(assetId);
+  const parsed = ASSET_ID_SCHEMA.safeParse(assetId);
   if (!parsed.success) {
     return { ok: false as const, code: "VALIDATION" as const, message: "Asset inválido" };
   }

@@ -86,13 +86,23 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
   const sort: ContactSortOption = isContactSortOption(legacyMappedSort)
     ? legacyMappedSort
     : "recent";
+  const includeStaff = pickString(sp, "staff") === "1";
   const page = Math.max(1, Number(sp.page) || 1);
 
   const { items, total, totalPages, pendingMergesCount, piiMasked } = await listContactsForActor(
-    { q, segment, sort, page },
+    { q, segment, sort, page, includeStaff },
     session.admin.role,
   );
-  const hasActiveFilters = Boolean(q) || segment !== "all" || sort !== "recent";
+  const hasActiveFilters = Boolean(q) || segment !== "all" || sort !== "recent" || includeStaff;
+
+  const staffToggleParams = new URLSearchParams();
+  if (q) staffToggleParams.set("q", q);
+  if (segment !== "all") staffToggleParams.set("segment", segment);
+  if (sort !== "recent") staffToggleParams.set("sort", sort);
+  if (!includeStaff) staffToggleParams.set("staff", "1");
+  const staffToggleHref = staffToggleParams.toString()
+    ? `/admin/clientes?${staffToggleParams.toString()}`
+    : "/admin/clientes";
 
   return (
     <AdminPage>
@@ -101,8 +111,9 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
         title="Clientes y contactos"
         subtitle={
           <>
-            {total.toLocaleString("es-CO")} {total === 1 ? "persona" : "personas"} en el grafo
-            unificado (cuentas + invitados + posventa)
+            {total.toLocaleString("es-CO")} {total === 1 ? "cliente" : "clientes"} en el directorio
+            comercial unificado (cuentas + invitados + posventa)
+            {!includeStaff && " · cuentas internas ocultas"}
             {hasActiveFilters && " · con filtros aplicados"}
           </>
         }
@@ -112,16 +123,30 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
           { label: "Clientes" },
         ]}
         actions={
-          canMerge ? (
+          <div className="flex flex-wrap items-center gap-2">
             <Link
-              href="/admin/clientes/duplicados"
-              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-11 items-center gap-2 rounded-lg border bg-white px-3.5 py-2 text-sm font-semibold transition-colors"
+              href={staffToggleHref}
+              className={
+                includeStaff
+                  ? "inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                  : "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-11 items-center gap-1.5 rounded-lg border bg-white px-3 py-2 text-xs font-semibold transition-colors"
+              }
             >
-              <GitMerge className="h-4 w-4" />
-              Posibles duplicados
-              {pendingMergesCount > 0 && <AdminBadge tone="amber">{pendingMergesCount}</AdminBadge>}
+              {includeStaff ? "Ocultar cuentas internas" : "Ver cuentas internas"}
             </Link>
-          ) : undefined
+            {canMerge && (
+              <Link
+                href="/admin/clientes/duplicados"
+                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-11 items-center gap-2 rounded-lg border bg-white px-3.5 py-2 text-sm font-semibold transition-colors"
+              >
+                <GitMerge className="h-4 w-4" />
+                Posibles duplicados
+                {pendingMergesCount > 0 && (
+                  <AdminBadge tone="amber">{pendingMergesCount}</AdminBadge>
+                )}
+              </Link>
+            )}
+          </div>
         }
       />
 
@@ -134,6 +159,7 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
             if (q) params.set("q", q);
             if (pill.key !== "all") params.set("segment", pill.key);
             if (sort !== "recent") params.set("sort", sort);
+            if (includeStaff) params.set("staff", "1");
             const href = params.toString()
               ? `/admin/clientes?${params.toString()}`
               : "/admin/clientes";
@@ -160,6 +186,7 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
         >
           {segment !== "all" && <input type="hidden" name="segment" value={segment} />}
+          {includeStaff && <input type="hidden" name="staff" value="1" />}
           <div className="sm:col-span-7">
             <label
               htmlFor="f-q"
@@ -257,11 +284,14 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col items-start gap-1">
-                      {c.hasCustomerAccount ? (
-                        <AdminBadge tone="purple">Con cuenta</AdminBadge>
-                      ) : (
-                        <AdminBadge tone="slate">Invitado</AdminBadge>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {c.hasCustomerAccount ? (
+                          <AdminBadge tone="purple">Con cuenta</AdminBadge>
+                        ) : (
+                          <AdminBadge tone="slate">Invitado</AdminBadge>
+                        )}
+                        {c.isStaffAdmin && <AdminBadge tone="amber">Equipo interno</AdminBadge>}
+                      </div>
                       <span className="text-brand-muted text-[11px]">
                         {SOURCE_LABEL[c.source] ?? c.source}
                       </span>
@@ -333,12 +363,24 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
             </span>
             <div className="flex gap-1">
               {page > 1 && (
-                <PaginationLink page={page - 1} q={q} segment={segment} sort={sort}>
+                <PaginationLink
+                  page={page - 1}
+                  q={q}
+                  segment={segment}
+                  sort={sort}
+                  includeStaff={includeStaff}
+                >
                   ← Anterior
                 </PaginationLink>
               )}
               {page < totalPages && (
-                <PaginationLink page={page + 1} q={q} segment={segment} sort={sort}>
+                <PaginationLink
+                  page={page + 1}
+                  q={q}
+                  segment={segment}
+                  sort={sort}
+                  includeStaff={includeStaff}
+                >
                   Siguiente →
                 </PaginationLink>
               )}
@@ -355,12 +397,14 @@ function PaginationLink({
   q,
   segment,
   sort,
+  includeStaff,
   children,
 }: {
   page: number;
   q?: string;
   segment?: ContactSegmentFilter;
   sort?: ContactSortOption;
+  includeStaff?: boolean;
   children: React.ReactNode;
 }) {
   const params = new URLSearchParams();
@@ -368,6 +412,7 @@ function PaginationLink({
   if (q) params.set("q", q);
   if (segment && segment !== "all") params.set("segment", segment);
   if (sort && sort !== "recent") params.set("sort", sort);
+  if (includeStaff) params.set("staff", "1");
   return (
     <Link
       href={`/admin/clientes?${params.toString()}`}

@@ -20,7 +20,7 @@ import { ADMIN_ROLE_SETS, canAccessAdminPath } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
-import { COLLECTED_REVENUE_ORDER_WHERE } from "@/features/finanzas/service";
+import { COLLECTED_REVENUE_ORDER_WHERE, getPeriodAggregates } from "@/features/finanzas/service";
 import {
   getFunnelDashboardReport,
   type FunnelReportFilters,
@@ -31,18 +31,18 @@ import { ORDER_STATUS_LABEL } from "@/features/orders/order-status-display";
 import { FunnelPanel } from "./funnel-panel";
 import { CrmIntelligencePanel } from "./crm-intelligence-panel";
 import {
-  AdminBadge,
   AdminCard,
+  AdminComboBarLineChart,
+  AdminDeltaPill,
+  AdminDonutChart,
   AdminEmpty,
+  AdminHorizontalBars,
   AdminNotice,
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
-  AdminTable,
-  AdminTableBody,
-  AdminTableHead,
-  AdminTableRow,
   KpiCard,
+  type ChartTone,
 } from "@/components/admin-page";
 
 export const metadata: Metadata = {
@@ -53,18 +53,15 @@ export const metadata: Metadata = {
 // Estados de Order que implican dinero recibido (ver nota del header).
 const PAID_STATUSES: OrderStatus[] = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"];
 
-const ORDER_STATUS_TONE: Record<
-  OrderStatus,
-  "slate" | "amber" | "purple" | "turquoise" | "emerald" | "rose"
-> = {
+const ORDER_STATUS_CHART_TONE: Record<OrderStatus, ChartTone> = {
   DRAFT: "slate",
   PENDING_PAYMENT: "amber",
   PAID: "purple",
-  FULFILLING: "purple",
+  FULFILLING: "pink",
   SHIPPED: "turquoise",
   DELIVERED: "emerald",
   CANCELLED: "rose",
-  REFUNDED: "rose",
+  REFUNDED: "coral",
 };
 
 const QUOTE_STATUS_LABEL: Record<QuoteStatus, string> = {
@@ -73,7 +70,7 @@ const QUOTE_STATUS_LABEL: Record<QuoteStatus, string> = {
   CLOSED: "Cerrada (vendida)",
   DISCARDED: "Descartada",
 };
-const QUOTE_STATUS_TONE: Record<QuoteStatus, "amber" | "purple" | "emerald" | "slate"> = {
+const QUOTE_STATUS_CHART_TONE: Record<QuoteStatus, ChartTone> = {
   PENDING: "amber",
   CONTACTED: "purple",
   CLOSED: "emerald",
@@ -140,7 +137,7 @@ export default async function AdminMetricasPage({
   // [FIN-01] — todas las consultas de Order/OrderItem filtran `deletedAt: null` y los
   // ingresos del mes usan el mismo criterio de caja real que `/admin/finanzas`
   // (Wompi confirmado + COD entregado − retractos reembolsados en el mes).
-  const [quotesByStatus, orderData, funnelReport, crmReport] = await Promise.all([
+  const [quotesByStatus, orderData, funnelReport, crmReport, periodTrend] = await Promise.all([
     prisma.quote.groupBy({
       by: ["status"],
       where: { deletedAt: null },
@@ -189,6 +186,7 @@ export default async function AdminMetricasPage({
         ]),
     getFunnelDashboardReport(funnelFilters, now),
     catalog ? Promise.resolve(null) : getCrmBehavioralIntelligence(funnelFilters.days),
+    catalog ? Promise.resolve(null) : getPeriodAggregates(funnelFilters.days === 7 ? "7d" : "30d"),
   ]);
   const ordersByStatus = orderData?.[0] ?? [];
   const ordersLast30 = orderData?.[1] ?? 0;
@@ -271,7 +269,70 @@ export default async function AdminMetricasPage({
           </div>
         )}
 
-        {/* Detalle por estado */}
+        {/* Evolución diaria de ingresos y pedidos (7d / 30d) */}
+        {!catalog && periodTrend && (
+          <AdminCard className="p-5">
+            {(() => {
+              const maxTrendCents = Math.max(0, ...periodTrend.buckets.map((b) => b.totalCents));
+              return (
+                <>
+                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                        Evolución diaria de ingresos y pedidos ({funnelFilters.days} días)
+                      </h2>
+                      <p className="text-brand-muted text-xs">
+                        <strong className="text-brand-purple-dark">
+                          {formatCOP(periodTrend.netTotalCents)}
+                        </strong>{" "}
+                        netos ·{" "}
+                        <strong className="text-brand-purple-dark">{periodTrend.orderCount}</strong>{" "}
+                        pedido{periodTrend.orderCount === 1 ? "" : "s"} cobrado
+                        {periodTrend.orderCount === 1 ? "" : "s"} · Ticket promedio{" "}
+                        <strong className="text-brand-purple-dark">
+                          {periodTrend.orderCount > 0 ? formatCOP(periodTrend.aovCents) : "—"}
+                        </strong>
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <AdminDeltaPill
+                        deltaPct={periodTrend.netRevenueDeltaPct}
+                        comparisonLabel={periodTrend.range.previousLabel}
+                      />
+                      <Link
+                        href={`/admin/finanzas?periodo=${funnelFilters.days === 7 ? "7d" : "30d"}`}
+                        className="text-brand-purple text-xs font-semibold hover:underline"
+                      >
+                        Abrir Finanzas →
+                      </Link>
+                    </div>
+                  </div>
+
+                  <AdminComboBarLineChart
+                    ariaLabel={`Tendencia diaria de ingresos y pedidos en los últimos ${funnelFilters.days} días`}
+                    barLegend="Ingresos cobrados (COP)"
+                    lineLegend="Pedidos confirmados"
+                    maxAxisFormatted={maxTrendCents > 0 ? formatCOP(maxTrendCents) : "$0"}
+                    midAxisFormatted={
+                      maxTrendCents > 0 ? formatCOP(Math.round(maxTrendCents / 2)) : undefined
+                    }
+                    data={periodTrend.buckets.map((b) => ({
+                      key: b.start.toISOString(),
+                      label: b.label,
+                      tickLabel: b.tickLabel,
+                      barValue: b.totalCents,
+                      barFormatted: formatCOP(b.totalCents),
+                      lineValue: b.count,
+                      lineFormatted: `${b.count} pedido${b.count === 1 ? "" : "s"}`,
+                    }))}
+                  />
+                </>
+              );
+            })()}
+          </AdminCard>
+        )}
+
+        {/* Detalle visual por estado (Donut + Leyenda interactiva) */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {!catalog && (
             <AdminCard className="p-5">
@@ -286,90 +347,56 @@ export default async function AdminMetricasPage({
                   Ver todos →
                 </Link>
               </div>
-              <ul className="space-y-3">
-                {(() => {
-                  const statusKeys = Object.keys(ORDER_STATUS_LABEL) as OrderStatus[];
-                  const totalOrdersAll = statusKeys.reduce(
-                    (acc, s) => acc + (orderCount.get(s) ?? 0),
-                    0,
-                  );
-                  return statusKeys.map((s) => {
-                    const count = orderCount.get(s) ?? 0;
-                    const pct = totalOrdersAll > 0 ? Math.round((count / totalOrdersAll) * 100) : 0;
-                    const rowContent = (
-                      <>
-                        <div className="flex items-center justify-between gap-3">
-                          <AdminBadge tone={ORDER_STATUS_TONE[s]}>
-                            {ORDER_STATUS_LABEL[s]}
-                          </AdminBadge>
-                          <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-                            {count.toLocaleString("es-CO")}
-                            {totalOrdersAll > 0 && (
-                              <span className="text-brand-muted ml-1.5 text-xs font-normal">
-                                ({pct}%)
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                        <div className="bg-brand-purple/10 mt-1.5 h-1.5 overflow-hidden rounded-full">
-                          <div
-                            className="bg-brand-purple/75 h-full rounded-full transition-all"
-                            style={{ width: `${count > 0 ? Math.max(3, pct) : 0}%` }}
-                          />
-                        </div>
-                      </>
-                    );
-                    return (
-                      <li key={s}>
-                        {s === "DRAFT" ? (
-                          <div>{rowContent}</div>
-                        ) : (
-                          <Link
-                            href={`/admin/pedidos?status=${s}`}
-                            className="hover:bg-brand-purple/5 -mx-2 block rounded-lg px-2 py-1 transition-colors"
-                          >
-                            {rowContent}
-                          </Link>
-                        )}
-                      </li>
-                    );
-                  });
-                })()}
-              </ul>
+              {(() => {
+                const statusKeys = (Object.keys(ORDER_STATUS_LABEL) as OrderStatus[]).filter(
+                  (s) => s !== "DRAFT" || (orderCount.get("DRAFT") ?? 0) > 0,
+                );
+                const totalOrdersAll = statusKeys.reduce(
+                  (acc, s) => acc + (orderCount.get(s) ?? 0),
+                  0,
+                );
+                return (
+                  <AdminDonutChart
+                    ariaLabel="Distribución de pedidos por estado"
+                    centerValue={totalOrdersAll.toLocaleString("es-CO")}
+                    centerLabel="Pedidos"
+                    slices={statusKeys.map((s) => ({
+                      key: s,
+                      label: ORDER_STATUS_LABEL[s],
+                      count: orderCount.get(s) ?? 0,
+                      tone: ORDER_STATUS_CHART_TONE[s],
+                      href: s === "DRAFT" ? undefined : `/admin/pedidos?status=${s}`,
+                    }))}
+                  />
+                );
+              })()}
             </AdminCard>
           )}
 
           <AdminCard className="p-5">
-            <h2 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
-              Cotizaciones por estado
-            </h2>
-            <ul className="space-y-3">
-              {QUOTE_STATUSES.map((s) => {
-                const count = quoteCount.get(s) ?? 0;
-                const pct = totalQuotes > 0 ? Math.round((count / totalQuotes) * 100) : 0;
-                return (
-                  <li key={s}>
-                    <div className="flex items-center justify-between gap-3">
-                      <AdminBadge tone={QUOTE_STATUS_TONE[s]}>{QUOTE_STATUS_LABEL[s]}</AdminBadge>
-                      <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-                        {count.toLocaleString("es-CO")}
-                        {totalQuotes > 0 && (
-                          <span className="text-brand-muted ml-1.5 text-xs font-normal">
-                            ({pct}%)
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="bg-brand-purple/10 mt-1.5 h-1.5 overflow-hidden rounded-full">
-                      <div
-                        className="bg-brand-purple/75 h-full rounded-full transition-all"
-                        style={{ width: `${count > 0 ? Math.max(3, pct) : 0}%` }}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                Cotizaciones por estado
+              </h2>
+              <Link
+                href="/admin/cotizaciones"
+                className="text-brand-purple text-xs font-semibold hover:underline"
+              >
+                Ver todas →
+              </Link>
+            </div>
+            <AdminDonutChart
+              ariaLabel="Distribución de cotizaciones por estado"
+              centerValue={totalQuotes.toLocaleString("es-CO")}
+              centerLabel="Cotizaciones"
+              slices={QUOTE_STATUSES.map((s) => ({
+                key: s,
+                label: QUOTE_STATUS_LABEL[s],
+                count: quoteCount.get(s) ?? 0,
+                tone: QUOTE_STATUS_CHART_TONE[s],
+                href: `/admin/cotizaciones?status=${s}`,
+              }))}
+            />
             <p className="text-brand-muted border-brand-purple/10 mt-4 border-t pt-3 text-xs">
               Total: <strong>{totalQuotes.toLocaleString("es-CO")}</strong> cotizaciones activas (no
               incluye eliminadas).
@@ -388,43 +415,25 @@ export default async function AdminMetricasPage({
               <AdminEmpty
                 icon={<Trophy className="h-5 w-5" />}
                 title="Todavía no hay ventas"
-                description="Cuando entren los primeros pedidos pagados, acá vas a ver qué productos se venden más."
+                description="Cuando entren los primeros pedidos pagados, acá vas a ver el ranking visual de productos más vendidos."
               />
             ) : (
-              <AdminTable minWidth={520}>
-                <AdminTableHead>
-                  <tr>
-                    <th className="w-12 px-4 py-3 text-center font-semibold">#</th>
-                    <th className="px-4 py-3 text-left font-semibold">Producto</th>
-                    <th className="px-4 py-3 text-left font-semibold">Opción</th>
-                    <th className="px-4 py-3 text-left font-semibold">Código</th>
-                    <th className="px-4 py-3 text-right font-semibold">Unidades vendidas</th>
-                  </tr>
-                </AdminTableHead>
-                <AdminTableBody>
-                  {topProducts.map((t, i) => (
-                    <AdminTableRow key={t.variantId}>
-                      <td className="text-brand-muted px-4 py-3 text-center text-xs tabular-nums">
-                        {i + 1}
-                      </td>
-                      <td className="text-brand-purple-dark px-4 py-3 font-medium">
-                        {t.variant!.product.name}
-                      </td>
-                      <td className="text-brand-purple-dark/85 px-4 py-3 text-sm">
-                        {t.variant!.name}
-                      </td>
-                      <td className="px-4 py-3">
-                        <code className="text-brand-purple-dark/85 bg-brand-purple/5 rounded px-1.5 py-0.5 font-mono text-[11px]">
-                          {t.variant!.sku}
-                        </code>
-                      </td>
-                      <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
-                        {(t._sum.qty ?? 0).toLocaleString("es-CO")}
-                      </td>
-                    </AdminTableRow>
-                  ))}
-                </AdminTableBody>
-              </AdminTable>
+              <AdminCard className="p-5">
+                <AdminHorizontalBars
+                  items={topProducts.map((t, idx) => {
+                    const units = t._sum.qty ?? 0;
+                    return {
+                      key: t.variantId,
+                      label: t.variant!.product.name,
+                      sublabel: t.variant!.name,
+                      badgeText: t.variant!.sku,
+                      value: units,
+                      formattedValue: `${units.toLocaleString("es-CO")} uds.`,
+                      tone: idx === 0 ? "purple" : idx < 3 ? "pink" : "turquoise",
+                    };
+                  })}
+                />
+              </AdminCard>
             )}
           </section>
         )}

@@ -13,11 +13,14 @@ import { formatCOP } from "@/lib/format";
 import {
   AdminBadge,
   AdminCard,
+  AdminHorizontalBars,
+  AdminSegmentedBar,
   AdminTable,
   AdminTableBody,
   AdminTableHead,
   AdminTableRow,
   KpiCard,
+  type ChartTone,
 } from "@/components/admin-page";
 import type {
   CrmBehavioralIntelligenceReport,
@@ -26,6 +29,14 @@ import type {
 } from "@/features/crm/intelligence-service";
 
 const RFM_BADGE_TONE: Record<RfmTierKey, "emerald" | "purple" | "turquoise" | "amber" | "slate"> = {
+  champions: "emerald",
+  loyal: "purple",
+  promising_new: "turquoise",
+  at_risk: "amber",
+  hibernating: "slate",
+};
+
+const RFM_CHART_TONE: Record<RfmTierKey, ChartTone> = {
   champions: "emerald",
   loyal: "purple",
   promising_new: "turquoise",
@@ -66,7 +77,7 @@ export function CrmIntelligencePanel({
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-brand-purple-dark font-display flex items-center gap-2 text-lg font-bold">
-            <Sparkles className="text-brand-magenta h-5 w-5" />
+            <Sparkles className="text-brand-pink h-5 w-5" />
             Inteligencia conductual, retención RFM y atribución CRM ({report.windowDays}d)
           </h2>
           <p className="mt-0.5 text-xs text-slate-600">
@@ -171,41 +182,23 @@ export function CrmIntelligencePanel({
               días.
             </p>
           ) : (
-            <AdminTable minWidth={380}>
-              <AdminTableHead>
-                <tr>
-                  <th className="px-3 py-2 text-left font-semibold">Medio</th>
-                  <th className="px-3 py-2 text-right font-semibold">Fallos</th>
-                  <th className="px-3 py-2 text-right font-semibold">Pedidos</th>
-                  <th className="px-3 py-2 text-right font-semibold">Monto intentado</th>
-                </tr>
-              </AdminTableHead>
-              <AdminTableBody>
-                {dropOffs.declinedPaymentsByMethod.map((m) => (
-                  <AdminTableRow key={m.paymentMethodType}>
-                    <td className="px-3 py-2 text-xs font-semibold text-slate-800">
-                      {m.paymentMethodType}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs text-rose-700 tabular-nums">
-                      {m.failedTransactionsCount}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs text-slate-700 tabular-nums">
-                      {m.affectedOrdersCount}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs font-medium text-slate-800 tabular-nums">
-                      {formatCOP(m.failedAmountCents)}
-                    </td>
-                  </AdminTableRow>
-                ))}
-              </AdminTableBody>
-            </AdminTable>
+            <AdminHorizontalBars
+              items={dropOffs.declinedPaymentsByMethod.map((m) => ({
+                key: m.paymentMethodType,
+                label: m.paymentMethodType,
+                sublabel: `${m.failedTransactionsCount} fallo${m.failedTransactionsCount === 1 ? "" : "s"} en ${m.affectedOrdersCount} pedido${m.affectedOrdersCount === 1 ? "" : "s"}`,
+                value: m.failedAmountCents,
+                formattedValue: formatCOP(m.failedAmountCents),
+                tone: "rose",
+              }))}
+            />
           )}
 
           {(canAccessCarts || canAccessOpportunities) && (
             <div className="mt-3 flex flex-wrap gap-3 text-xs">
               {canAccessCarts && (
                 <Link
-                  href="/admin/carritos"
+                  href="/admin/carritos?status=all"
                   className="text-brand-purple hover:text-brand-purple-dark font-semibold underline"
                 >
                   Gestionar carritos abandonados →
@@ -238,39 +231,24 @@ export function CrmIntelligencePanel({
               canal.
             </p>
           ) : (
-            <AdminTable minWidth={420}>
-              <AdminTableHead>
-                <tr>
-                  <th className="px-3 py-2 text-left font-semibold">Canal (`utm_source`)</th>
-                  <th className="px-3 py-2 text-right font-semibold">Pedidos</th>
-                  <th className="px-3 py-2 text-right font-semibold">Ingresos</th>
-                  <th className="px-3 py-2 text-right font-semibold">Margen est.</th>
-                </tr>
-              </AdminTableHead>
-              <AdminTableBody>
-                {channelAttribution.map((ch) => (
-                  <AdminTableRow key={ch.channel}>
-                    <td className="px-3 py-2 text-xs font-semibold text-slate-800">{ch.channel}</td>
-                    <td className="px-3 py-2 text-right text-xs text-slate-700 tabular-nums">
-                      {ch.ordersCount} ({ch.uniqueContactsCount} cte.)
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs font-semibold text-slate-900 tabular-nums">
-                      {formatCOP(ch.grossRevenueCents)}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs font-medium text-emerald-700 tabular-nums">
-                      {formatCOP(ch.estimatedMarginCents)}
-                    </td>
-                  </AdminTableRow>
-                ))}
-              </AdminTableBody>
-            </AdminTable>
+            <AdminHorizontalBars
+              items={channelAttribution.map((ch, idx) => ({
+                key: ch.channel,
+                label: ch.channel,
+                sublabel: `${ch.ordersCount} pedido${ch.ordersCount === 1 ? "" : "s"} · ${ch.uniqueContactsCount} cliente${ch.uniqueContactsCount === 1 ? "" : "s"}`,
+                value: ch.grossRevenueCents,
+                formattedValue: formatCOP(ch.grossRevenueCents),
+                secondaryText: `Margen est. ${formatCOP(ch.estimatedMarginCents)}`,
+                tone: idx === 0 ? "purple" : idx === 1 ? "turquoise" : "pink",
+              }))}
+            />
           )}
         </AdminCard>
       </div>
 
       {/* 3. Matriz RFM histórica + Margen Neto */}
       <AdminCard className="p-5">
-        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-brand-purple-dark flex items-center gap-2 text-sm font-bold">
               <Crown className="h-4 w-4 text-amber-500" />
@@ -278,13 +256,30 @@ export function CrmIntelligencePanel({
             </h3>
             <p className="text-xs text-slate-500">
               Partición exhaustiva sobre {rfm.totalPaidContacts.toLocaleString("es-CO")} contactos
-              compradores activos · Cobertura de costos unitarios configurados: {costPct}%.
+              compradores activos (excluye equipo interno) · Cobertura de costos configurados:{" "}
+              {costPct}%.
             </p>
           </div>
-          <div className="text-right text-xs text-slate-600 tabular-nums">
+          <div className="text-xs text-slate-600 tabular-nums sm:text-right">
             Margen acumulado est.:{" "}
             <strong className="text-emerald-700">{formatCOP(rfm.totalEstimatedMarginCents)}</strong>
           </div>
+        </div>
+
+        <div className="mb-5 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4">
+          <p className="text-brand-purple-dark mb-2 text-xs font-semibold">
+            Composición visual de la base compradora por nivel RFM
+          </p>
+          <AdminSegmentedBar
+            ariaLabel="Distribución porcentual de clientes por nivel RFM"
+            items={rfm.tiers.map((tier) => ({
+              key: tier.key,
+              label: tier.label,
+              count: tier.contactsCount,
+              tone: RFM_CHART_TONE[tier.key],
+              sublabel: tier.contactsCount > 0 ? `LTV ${formatCOP(tier.avgLtvCents)}` : undefined,
+            }))}
+          />
         </div>
 
         <AdminTable minWidth={560}>

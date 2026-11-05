@@ -1057,7 +1057,13 @@ export async function saveCanvas(opts: {
 
   const referencedAssetIds =
     opts.canvasData.version === 2
-      ? opts.canvasData.slots.flatMap((slot) => (slot.assetId ? [slot.assetId] : []))
+      ? [
+          ...new Set(
+            opts.canvasData.slots.flatMap((slot) =>
+              [slot.assetId, slot.profileAssetId].filter((id): id is string => Boolean(id)),
+            ),
+          ),
+        ]
       : [];
   if (referencedAssetIds.length > 0) {
     await prisma.designAsset.updateMany({

@@ -104,7 +104,7 @@ export function PhoneInput({
   }
 
   const selectClass =
-    "border-brand-purple/25 focus:border-brand-purple h-9 rounded-md border bg-white px-1.5 text-sm focus:outline-none disabled:bg-slate-50 disabled:text-slate-400";
+    "border-brand-purple/25 focus:border-brand-purple h-10 rounded-md border bg-white px-2 text-sm focus:outline-none disabled:bg-slate-50 disabled:text-slate-400";
 
   return (
     <div className="space-y-1.5">
@@ -136,6 +136,7 @@ export function PhoneInput({
           aria-describedby={error && id ? `${id}-error` : undefined}
           onChange={(e) => emit(e.target.value.replace(/\D/g, "").slice(0, 15), dial)}
           onBlur={onBlur}
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white"
         />
       </div>
       {/* Lo que valida/persiste el server: indicativo + dígitos nacionales. */}

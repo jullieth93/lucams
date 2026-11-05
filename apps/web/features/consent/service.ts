@@ -66,18 +66,23 @@ export async function recordCookieConsent(input: {
  * versión vigente del aviso de privacidad + IP/UA para el audit trail.
  */
 export async function recordHabeasDataConsent(input: {
-  customerId: string;
+  customerId?: string | null;
+  contactId?: string | null;
   email: string;
+  emailVerified?: boolean;
   ip?: string | null;
   userAgent?: string | null;
+  verificationSource?: string;
 }) {
   const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1 · 2026-09-29");
-  const contactId = await resolveConsentContact(prisma, {
-    customerId: input.customerId,
-    email: input.email,
-    emailVerified: false,
-    verificationSource: "SIGNUP_HABEAS_DATA",
-  });
+  const contactId =
+    input.contactId ??
+    (await resolveConsentContact(prisma, {
+      customerId: input.customerId ?? null,
+      email: input.email,
+      emailVerified: input.emailVerified ?? false,
+      verificationSource: input.verificationSource ?? "SIGNUP_HABEAS_DATA",
+    }));
   await prisma.consent.create({
     data: {
       scope: "HABEAS_DATA",
@@ -85,7 +90,7 @@ export async function recordHabeasDataConsent(input: {
       version,
       ipAddress: input.ip ?? null,
       userAgent: input.userAgent ?? null,
-      customerId: input.customerId,
+      customerId: input.customerId ?? null,
       email: input.email,
       ...(contactId ? { contactId } : {}),
     },

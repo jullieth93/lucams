@@ -247,7 +247,11 @@ export interface PeriodAggregates {
   totalCents: number;
   retractRefundedCents: number;
   netTotalCents: number;
+  previousNetTotalCents: number;
+  netRevenueDeltaPct: number | null;
   orderCount: number;
+  previousOrderCount: number;
+  ordersDeltaPct: number | null;
   aovCents: number;
   aovDeltaPct: number | null;
 }
@@ -259,7 +263,7 @@ export interface PeriodAggregates {
  */
 export async function getPeriodAggregates(period: FinanzasPeriod): Promise<PeriodAggregates> {
   const range = resolvePeriodRange(period, new Date());
-  const [rows, retractAgg] = await Promise.all([
+  const [rows, retractAgg, prevRetractAgg] = await Promise.all([
     prisma.order.findMany({
       where: {
         ...COLLECTED_REVENUE_ORDER_WHERE,
@@ -275,11 +279,25 @@ export async function getPeriodAggregates(period: FinanzasPeriod): Promise<Perio
       },
       _sum: { refundAmount: true },
     }),
+    prisma.retractRequest.aggregate({
+      where: {
+        status: "REFUNDED",
+        refundedAt: { gte: range.previousFrom, lt: range.from },
+        orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+      },
+      _sum: { refundAmount: true },
+    }),
   ]);
   const current = rows.filter((r) => r.createdAt >= range.from);
   const previous = rows.filter((r) => r.createdAt < range.from);
   const totalCents = current.reduce((acc, r) => acc + r.total, 0);
   const retractRefundedCents = retractAgg._sum.refundAmount ?? 0;
+  const netTotalCents = Math.max(0, totalCents - retractRefundedCents);
+
+  const prevGrossCents = previous.reduce((acc, r) => acc + r.total, 0);
+  const prevRetractCents = prevRetractAgg._sum.refundAmount ?? 0;
+  const previousNetTotalCents = Math.max(0, prevGrossCents - prevRetractCents);
+
   const aovCents = computeAov(current);
   return {
     range,
@@ -287,8 +305,12 @@ export async function getPeriodAggregates(period: FinanzasPeriod): Promise<Perio
     byMethod: aggregateByPaymentMethod(current),
     totalCents,
     retractRefundedCents,
-    netTotalCents: Math.max(0, totalCents - retractRefundedCents),
+    netTotalCents,
+    previousNetTotalCents,
+    netRevenueDeltaPct: pctChange(netTotalCents, previousNetTotalCents),
     orderCount: current.length,
+    previousOrderCount: previous.length,
+    ordersDeltaPct: pctChange(current.length, previous.length),
     aovCents,
     aovDeltaPct: pctChange(aovCents, computeAov(previous)),
   };

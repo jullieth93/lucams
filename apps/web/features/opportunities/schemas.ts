@@ -4,6 +4,13 @@
  */
 
 import { z } from "zod";
+import {
+  NAME_REGEX,
+  capitalizeName,
+  countWords,
+  normalizeAndValidateNit,
+  normalizePhoneWithDial,
+} from "@/lib/colombia-validators";
 
 export const OPPORTUNITY_STAGES = ["NEW", "QUALIFYING", "PROPOSAL_SENT", "WON", "LOST"] as const;
 
@@ -54,12 +61,26 @@ export function isOpportunityEventType(value: string): value is OpportunityEvent
   return (OPPORTUNITY_EVENT_TYPES as readonly string[]).includes(value);
 }
 
+function todayBogotaIso(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export const B2bInquirySchema = z.object({
   contactName: z
     .string()
     .trim()
-    .min(2, "Escribe tu nombre completo (mínimo 2 caracteres).")
-    .max(120, "Nombre demasiado largo."),
+    .min(2, "Escribe tu nombre completo (mínimo 2 letras).")
+    .max(120, "Nombre demasiado largo.")
+    .regex(NAME_REGEX, "El nombre solo puede tener letras (sin números ni símbolos).")
+    .refine((val) => countWords(val) <= 5, {
+      message: "Ingresa máximo 5 palabras en tu nombre completo.",
+    })
+    .transform(capitalizeName),
   organizationName: z
     .string()
     .trim()
@@ -70,22 +91,31 @@ export const B2bInquirySchema = z.object({
     .string()
     .trim()
     .max(30, "El NIT es demasiado largo.")
-    .refine((val) => val === "" || /^[0-9.\-\s]{5,25}$/.test(val), {
-      message: "Ingresa un NIT válido (solo números y guion de verificación).",
+    .superRefine((val, ctx) => {
+      if (!val) return;
+      const check = normalizeAndValidateNit(val);
+      if (!check.valid) {
+        ctx.addIssue({
+          code: "custom",
+          message: check.error ?? "Ingresa un NIT colombiano válido (ej. 900123456-8).",
+        });
+      }
     })
+    .transform((val) => (val ? normalizeAndValidateNit(val).normalized : ""))
     .optional()
     .default(""),
-  email: z.email("Ingresa un correo electrónico válido.").max(180),
+  email: z
+    .string()
+    .transform((val) => val.trim().toLowerCase())
+    .pipe(z.email("Ingresa un correo electrónico válido.").max(180)),
   whatsapp: z
     .string()
     .trim()
-    .refine(
-      (val) => {
-        const digits = val.replace(/\D/g, "");
-        return digits.length >= 7 && digits.length <= 15;
-      },
-      { message: "Ingresa un número de WhatsApp o celular válido." },
-    ),
+    .refine((val) => normalizePhoneWithDial(val) !== null, {
+      message:
+        "Ingresa un celular válido (en Colombia: 10 dígitos empezando en 3; otro país: 6 a 15 dígitos).",
+    })
+    .transform((val) => normalizePhoneWithDial(val) ?? val),
   eventType: z.enum(OPPORTUNITY_EVENT_TYPES, {
     message: "Selecciona el tipo de proyecto o evento.",
   }),
@@ -101,9 +131,12 @@ export const B2bInquirySchema = z.object({
     .default("")
     .refine((val) => val === "" || /^\d{4}-\d{2}-\d{2}$/.test(val), {
       message: "Fecha estimada inválida.",
+    })
+    .refine((val) => val === "" || val >= todayBogotaIso(), {
+      message: "La fecha estimada de entrega no puede estar en el pasado.",
     }),
-  city: z.string().trim().min(2, "Indica la ciudad de entrega.").max(80),
-  department: z.string().trim().max(80).optional().default(""),
+  city: z.string().trim().min(2, "Selecciona la ciudad de entrega.").max(80),
+  department: z.string().trim().min(2, "Selecciona el departamento de entrega.").max(80),
   notes: z
     .string()
     .trim()

@@ -2,17 +2,35 @@
 
 /*
  * Formulario consultivo B2B / Eventos en `/empresas-y-eventos` (`Fase 12 · S24`).
+ * Validadores estandarizados Colombia (nombre máx 5 palabras + capitalización,
+ * EmailInput con dominios y corrección de typos en 1 clic, PhoneInput con indicativo,
+ * NIT DIAN módulo 11 y catálogo DANE departamento/ciudad). Estado controlado para
+ * nunca perder datos digitados ante un error de servidor o Turnstile.
  */
 
-import { useActionState, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import { Building2, CheckCircle2, Loader2, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { EmailInput } from "@/components/email-input";
+import { PhoneInput } from "@/components/phone-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { WhatsAppIcon } from "@/components/icons/brand";
+import {
+  DEPARTMENTS,
+  getCitiesByDeptCode,
+  getCityByCode,
+  type DaneCity,
+} from "@/lib/dane-divipola";
+import {
+  capitalizeName,
+  normalizeAndValidateNit,
+  normalizePhoneWithDial,
+  personNameError,
+} from "@/lib/colombia-validators";
 import {
   OPPORTUNITY_EVENT_LABELS,
   OPPORTUNITY_EVENT_TYPES,
@@ -31,6 +49,7 @@ type Props = {
 };
 
 const QUICK_UNIT_TIERS = [25, 50, 100, 250, 500] as const;
+const MAX_FULL_NAME_WORDS = 5;
 
 export function B2bInquiryForm({
   waSupportUrl,
@@ -44,6 +63,70 @@ export function B2bInquiryForm({
   );
   const [eventType, setEventType] = useState<OpportunityEventType>("CORPORATE_GIFT");
   const [units, setUnits] = useState<string>("50");
+  const [eventDate, setEventDate] = useState<string>("");
+  const [contactName, setContactName] = useState<string>("");
+  const [organizationName, setOrganizationName] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
+  const [phone, setPhone] = useState<{ national: string; dial: string }>({
+    national: "",
+    dial: "57",
+  });
+  const [nit, setNit] = useState<string>("");
+  const [deptCode, setDeptCode] = useState<string>("");
+  const [cityCode, setCityCode] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
+  const [acceptHabeasData, setAcceptHabeasData] = useState<boolean>(false);
+  const [acceptNewsletter, setAcceptNewsletter] = useState<boolean>(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const markTouched = (field: string) => setTouched((prev) => ({ ...prev, [field]: true }));
+
+  const todayIso = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Bogota",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date()),
+    [],
+  );
+
+  const cities = useMemo<DaneCity[]>(
+    () => (deptCode ? getCitiesByDeptCode(deptCode) : []),
+    [deptCode],
+  );
+  const selectedDept = useMemo(() => DEPARTMENTS.find((d) => d.code === deptCode), [deptCode]);
+  const selectedCity = useMemo(() => getCityByCode(cityCode), [cityCode]);
+
+  const srvErr = (field: string): string | null => {
+    if (!state || state.ok) return null;
+    const map = state.fieldErrors as Record<string, string[] | undefined> | undefined;
+    return map?.[field]?.[0] ?? null;
+  };
+
+  const contactNameLiveErr = touched.contactName
+    ? personNameError(contactName, MAX_FULL_NAME_WORDS)
+    : null;
+  const contactNameErr = contactNameLiveErr ?? srvErr("contactName");
+
+  const phoneLiveErr =
+    touched.whatsapp &&
+    phone.national.length > 0 &&
+    normalizePhoneWithDial(`+${phone.dial} ${phone.national}`) === null
+      ? phone.dial === "57"
+        ? "Móvil colombiano: 10 dígitos empezando con 3 (ej. 300 123 4567)."
+        : "Revisa el número: debe tener entre 6 y 15 dígitos."
+      : null;
+  const whatsappErr = phoneLiveErr ?? srvErr("whatsapp");
+
+  const nitCheck = useMemo(() => (nit.trim() ? normalizeAndValidateNit(nit) : null), [nit]);
+  const nitLiveErr = touched.nit && nitCheck && !nitCheck.valid ? nitCheck.error : null;
+  const nitErr = nitLiveErr ?? srvErr("nit");
+  const nitAutoDvHint =
+    nitCheck && nitCheck.valid && nitCheck.providedDv === null
+      ? `Dígito de verificación DIAN: ${nitCheck.expectedDv} (se guardará ${nitCheck.normalized})`
+      : null;
 
   if (state?.ok) {
     return (
@@ -55,8 +138,8 @@ export function B2bInquiryForm({
           ¡Recibimos tu solicitud de proyecto!
         </h3>
         <p className="text-brand-purple-dark/80 mx-auto mt-2 max-w-md text-sm">
-          Nuestro equipo de proyectos especiales te contactará en menos de 24 horas hábiles con una
-          propuesta a tu medida. Tu código de referencia es{" "}
+          Te enviamos copia de tu solicitud por correo electrónico y nuestro equipo te contactará en
+          menos de 24 horas hábiles con una propuesta a tu medida. Tu código de referencia es{" "}
           <span className="border-brand-purple/25 text-brand-purple-dark inline-block rounded-lg border bg-white px-2.5 py-0.5 font-mono text-xs font-bold">
             {state.opportunityNumber}
           </span>
@@ -68,7 +151,7 @@ export function B2bInquiryForm({
             href={waSupportUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-emerald-700"
+            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-emerald-800"
           >
             <WhatsAppIcon className="h-4 w-4" />
             Adelantar detalles por WhatsApp
@@ -128,22 +211,24 @@ export function B2bInquiryForm({
         </div>
       </div>
 
-      {/* Estimador rápido de unidades */}
+      {/* Estimador rápido de unidades + fecha */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="b2b-units" className="text-brand-purple-dark text-sm font-semibold">
-            2. Cantidad aproximada de unidades
+            2. Cantidad aproximada de unidades *
           </Label>
           <Input
             id="b2b-units"
             name="expectedUnits"
             type="number"
+            inputMode="numeric"
             min={10}
             max={100000}
             required
             value={units}
-            onChange={(e) => setUnits(e.target.value)}
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 min-h-11 bg-white"
+            onChange={(e) => setUnits(e.target.value.replace(/\D/g, ""))}
+            aria-invalid={Boolean(srvErr("expectedUnits"))}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white"
           />
           <div className="flex flex-wrap gap-1.5 pt-1">
             {QUICK_UNIT_TIERS.map((tier) => (
@@ -161,8 +246,8 @@ export function B2bInquiryForm({
               </button>
             ))}
           </div>
-          {state && !state.ok && state.fieldErrors?.expectedUnits && (
-            <p className="text-xs text-rose-700">{state.fieldErrors.expectedUnits[0]}</p>
+          {srvErr("expectedUnits") && (
+            <p className="text-xs text-rose-700">{srvErr("expectedUnits")}</p>
           )}
         </div>
 
@@ -174,11 +259,19 @@ export function B2bInquiryForm({
             id="b2b-date"
             name="eventDate"
             type="date"
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 min-h-11 bg-white"
+            min={todayIso}
+            value={eventDate}
+            onChange={(e) => setEventDate(e.target.value)}
+            aria-invalid={Boolean(srvErr("eventDate"))}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white"
           />
-          <p className="text-brand-muted text-[11px]">
-            Así reservamos cupo prioritario en nuestro taller artesanal.
-          </p>
+          {srvErr("eventDate") ? (
+            <p className="text-xs text-rose-700">{srvErr("eventDate")}</p>
+          ) : (
+            <p className="text-brand-muted text-[11px]">
+              Así reservamos cupo prioritario en nuestro taller artesanal.
+            </p>
+          )}
         </div>
       </div>
 
@@ -195,11 +288,23 @@ export function B2bInquiryForm({
             minLength={2}
             maxLength={120}
             autoComplete="name"
-            placeholder="Valentina Gómez"
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 min-h-11 bg-white"
+            placeholder="Ej. Valentina Gómez Rojas"
+            value={contactName}
+            onChange={(e) => setContactName(e.target.value)}
+            onBlur={() => {
+              if (contactName.trim()) setContactName(capitalizeName(contactName));
+              markTouched("contactName");
+            }}
+            aria-invalid={Boolean(contactNameErr)}
+            aria-describedby={contactNameErr ? "b2b-name-error" : undefined}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white"
           />
-          {state && !state.ok && state.fieldErrors?.contactName && (
-            <p className="text-xs text-rose-700">{state.fieldErrors.contactName[0]}</p>
+          {contactNameErr ? (
+            <p id="b2b-name-error" className="text-xs text-rose-700">
+              {contactNameErr}
+            </p>
+          ) : (
+            <p className="text-brand-muted text-[11px]">Solo letras, máximo 5 palabras.</p>
           )}
         </div>
 
@@ -215,29 +320,44 @@ export function B2bInquiryForm({
               maxLength={140}
               autoComplete="organization"
               placeholder="Ej. Estudio Creativo SAS / Boda Ana & Juan"
-              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 min-h-11 bg-white pl-9"
+              value={organizationName}
+              onChange={(e) => setOrganizationName(e.target.value)}
+              onBlur={() => {
+                if (organizationName.trim()) {
+                  setOrganizationName(organizationName.trim().replace(/\s+/g, " "));
+                }
+              }}
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white pl-9"
             />
           </div>
+          {srvErr("organizationName") && (
+            <p className="text-xs text-rose-700">{srvErr("organizationName")}</p>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-1.5">
           <Label htmlFor="b2b-email" className="text-brand-purple-dark text-sm font-semibold">
             Correo electrónico *
           </Label>
-          <Input
+          <EmailInput
             id="b2b-email"
             name="email"
-            type="email"
             required
             maxLength={180}
             autoComplete="email"
             placeholder="valentina@empresa.co"
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 min-h-11 bg-white"
+            value={email}
+            onValueChange={setEmail}
+            aria-invalid={Boolean(srvErr("email"))}
+            aria-describedby={srvErr("email") ? "b2b-email-error" : undefined}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white"
           />
-          {state && !state.ok && state.fieldErrors?.email && (
-            <p className="text-xs text-rose-700">{state.fieldErrors.email[0]}</p>
+          {srvErr("email") && (
+            <p id="b2b-email-error" className="text-xs text-rose-700">
+              {srvErr("email")}
+            </p>
           )}
         </div>
 
@@ -245,18 +365,15 @@ export function B2bInquiryForm({
           <Label htmlFor="b2b-whatsapp" className="text-brand-purple-dark text-sm font-semibold">
             WhatsApp / Celular *
           </Label>
-          <Input
+          <PhoneInput
             id="b2b-whatsapp"
             name="whatsapp"
-            type="tel"
             required
-            autoComplete="tel"
-            placeholder="300 123 4567"
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 min-h-11 bg-white"
+            disabled={pending}
+            error={whatsappErr}
+            onChange={(national, dial) => setPhone({ national, dial })}
+            onBlur={() => markTouched("whatsapp")}
           />
-          {state && !state.ok && state.fieldErrors?.whatsapp && (
-            <p className="text-xs text-rose-700">{state.fieldErrors.whatsapp[0]}</p>
-          )}
         </div>
 
         <div className="space-y-1.5">
@@ -266,46 +383,85 @@ export function B2bInquiryForm({
           <Input
             id="b2b-nit"
             name="nit"
-            maxLength={30}
-            placeholder="901234567-8"
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 min-h-11 bg-white"
+            inputMode="numeric"
+            maxLength={12}
+            placeholder="900123456-8"
+            value={nit}
+            onChange={(e) => setNit(e.target.value.replace(/[^\d-]/g, "").slice(0, 12))}
+            onBlur={() => {
+              markTouched("nit");
+              if (nitCheck?.valid) setNit(nitCheck.normalized);
+            }}
+            aria-invalid={Boolean(nitErr)}
+            aria-describedby={nitErr ? "b2b-nit-error" : undefined}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white"
           />
-          {state && !state.ok && state.fieldErrors?.nit && (
-            <p className="text-xs text-rose-700">{state.fieldErrors.nit[0]}</p>
+          {nitErr ? (
+            <p id="b2b-nit-error" className="text-xs text-rose-700">
+              {nitErr}
+            </p>
+          ) : nitAutoDvHint ? (
+            <p className="text-brand-purple text-[11px] font-medium">{nitAutoDvHint}</p>
+          ) : (
+            <p className="text-brand-muted text-[11px]">
+              9 dígitos + dígito DIAN (si escribes los 9 dígitos te calculamos el DV).
+            </p>
           )}
         </div>
       </div>
 
+      {/* Destino DANE oficial (Departamento -> Ciudad) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="b2b-city" className="text-brand-purple-dark text-sm font-semibold">
-            Ciudad de entrega *
+          <Label htmlFor="b2b-dept" className="text-brand-purple-dark text-sm font-semibold">
+            Departamento de entrega *
           </Label>
-          <Input
-            id="b2b-city"
-            name="city"
+          <select
+            id="b2b-dept"
             required
-            minLength={2}
-            maxLength={80}
-            placeholder="Bogotá, Medellín, Cali..."
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 min-h-11 bg-white"
-          />
-          {state && !state.ok && state.fieldErrors?.city && (
-            <p className="text-xs text-rose-700">{state.fieldErrors.city[0]}</p>
-          )}
+            value={deptCode}
+            onChange={(e) => {
+              setDeptCode(e.target.value);
+              setCityCode("");
+            }}
+            aria-invalid={Boolean(srvErr("department"))}
+            className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-10 w-full rounded-md border bg-white px-3 text-sm focus:ring-2 focus:outline-none"
+          >
+            <option value="">Selecciona departamento...</option>
+            {DEPARTMENTS.map((d) => (
+              <option key={d.code} value={d.code}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          <input type="hidden" name="department" value={selectedDept?.name ?? ""} />
+          {srvErr("department") && <p className="text-xs text-rose-700">{srvErr("department")}</p>}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="b2b-dept" className="text-brand-purple-dark text-sm font-semibold">
-            Departamento (opcional)
+          <Label htmlFor="b2b-city" className="text-brand-purple-dark text-sm font-semibold">
+            Ciudad / Municipio de entrega *
           </Label>
-          <Input
-            id="b2b-dept"
-            name="department"
-            maxLength={80}
-            placeholder="Cundinamarca, Antioquia..."
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 min-h-11 bg-white"
-          />
+          <select
+            id="b2b-city"
+            required
+            disabled={!deptCode}
+            value={cityCode}
+            onChange={(e) => setCityCode(e.target.value)}
+            aria-invalid={Boolean(srvErr("city"))}
+            className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-10 w-full rounded-md border bg-white px-3 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+          >
+            <option value="">
+              {deptCode ? "Selecciona ciudad o municipio..." : "Elige primero el departamento"}
+            </option>
+            {cities.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <input type="hidden" name="city" value={selectedCity?.name ?? ""} />
+          {srvErr("city") && <p className="text-xs text-rose-700">{srvErr("city")}</p>}
         </div>
       </div>
 
@@ -320,12 +476,13 @@ export function B2bInquiryForm({
           minLength={10}
           maxLength={2500}
           rows={4}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
           placeholder="¿Qué productos te interesan (fotoimanes con logo, calendarios corporativos, recordatorios magnéticos, empaque de regalo)? ¿Todos llevan el mismo diseño o personalización individual?"
+          aria-invalid={Boolean(srvErr("notes"))}
           className="border-brand-purple/20 focus-visible:ring-brand-purple/30 bg-white"
         />
-        {state && !state.ok && state.fieldErrors?.notes && (
-          <p className="text-xs text-rose-700">{state.fieldErrors.notes[0]}</p>
-        )}
+        {srvErr("notes") && <p className="text-xs text-rose-700">{srvErr("notes")}</p>}
       </div>
 
       {/* Consentimientos Ley 1581 de 2012 */}
@@ -335,29 +492,33 @@ export function B2bInquiryForm({
             type="checkbox"
             name="acceptHabeasData"
             required
+            checked={acceptHabeasData}
+            onChange={(e) => setAcceptHabeasData(e.target.checked)}
             className="accent-brand-purple mt-0.5 h-4 w-4 shrink-0 rounded"
           />
           <span className="text-brand-purple-dark/90">
             Autorizo el tratamiento de mis datos personales para gestionar esta cotización conforme
             a la{" "}
             <Link
-              href="/privacidad"
+              href="/legal/privacidad"
               target="_blank"
-              className="text-brand-purple font-semibold underline underline-offset-2"
+              className="text-brand-purple-dark hover:text-brand-purple font-semibold underline underline-offset-2"
             >
               Política de Privacidad
             </Link>{" "}
             (Ley 1581 de 2012). *
           </span>
         </label>
-        {state && !state.ok && state.fieldErrors?.acceptHabeasData && (
-          <p className="text-xs text-rose-700">{state.fieldErrors.acceptHabeasData[0]}</p>
+        {srvErr("acceptHabeasData") && (
+          <p className="text-xs text-rose-700">{srvErr("acceptHabeasData")}</p>
         )}
 
         <label className="flex cursor-pointer items-start gap-2.5 text-xs">
           <input
             type="checkbox"
             name="acceptNewsletter"
+            checked={acceptNewsletter}
+            onChange={(e) => setAcceptNewsletter(e.target.checked)}
             className="accent-brand-purple mt-0.5 h-4 w-4 shrink-0 rounded"
           />
           <span className="text-brand-purple-dark/80">

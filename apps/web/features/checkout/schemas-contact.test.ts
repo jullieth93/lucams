@@ -49,7 +49,8 @@ describe("ContactSchema — formato por tipo (casos válidos)", () => {
   it.each([
     ["CC", "1234567890"],
     ["CE", "1234567"],
-    ["NIT", "900123456-7"],
+    ["NIT", "900123456-8"],
+    ["NIT", "900123456"],
     ["PP", "AB123456"],
     ["TI", "1029384756"],
   ] as const)("%s %s válido pasa", (documentType, documentNumber) => {
@@ -63,6 +64,7 @@ describe("ContactSchema — formato por tipo (casos inválidos)", () => {
     ["CC", "12345678901"], // largo (máx 10)
     ["CE", "12345678"], // largo (máx 7)
     ["NIT", "12345678"], // corto (9 + DV opcional)
+    ["NIT", "900123456-7"], // DV DIAN inválido (el real de 900123456 es 8)
     ["PP", "AB-123"], // símbolo no alfanumérico
     ["TI", "1234567"], // corto (mín 8)
   ] as const)("%s %s inválido se rechaza con ayuda del tipo", (documentType, documentNumber) => {

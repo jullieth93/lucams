@@ -151,7 +151,7 @@ function ContactSidePanel({
           </div>
         )}
 
-        <div className="border-brand-purple/10 grid grid-cols-3 gap-2 border-t pt-2.5 text-xs">
+        <div className="border-brand-purple/10 grid grid-cols-1 gap-2 border-t pt-2.5 text-xs sm:grid-cols-3">
           <div className="rounded-lg bg-slate-50 px-2.5 py-1.5">
             <p className="text-muted-foreground text-[11px]">Compras pagas</p>
             <p className="text-brand-purple-dark flex items-center gap-1 font-bold">

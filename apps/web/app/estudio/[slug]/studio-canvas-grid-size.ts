@@ -197,12 +197,13 @@ export function computeMaxFrameH(opts: {
   if (viewportH === null) return null;
   const maxFrameHBySlots = slotMaxHeight * rows + gap * (rows - 1) + rows * reserve;
   if (isCalendar || rows >= 2) return maxFrameHBySlots;
+  const effectiveFrameMin = viewportH < 500 ? Math.max(220, viewportH - 110) : FRAME_HEIGHT_MIN;
   const frame =
     containerWidth < BP_MOBILE
       ? MOBILE_FRAME_HEIGHT
       : Math.min(
           FRAME_HEIGHT_MAX,
-          Math.max(FRAME_HEIGHT_MIN, Math.round(viewportH * FRAME_HEIGHT_VH)),
+          Math.max(effectiveFrameMin, Math.round(viewportH * FRAME_HEIGHT_VH)),
         );
   if (hasEditableText) return frame; // sin cap por conteo (texto tappeable)
   return Math.min(frame, maxFrameHBySlots);

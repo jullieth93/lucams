@@ -80,17 +80,23 @@ const RUTAS_CLIENTE_AUTH = [
   "/mi-cuenta/pedidos",
   "/mi-cuenta/disenos",
   "/mi-cuenta/perfil",
+  "/mi-cuenta/soporte",
 ];
 
 const RUTAS_ADMIN = [
   "/admin/dashboard",
+  "/admin/hoy",
   "/admin/pedidos",
   "/admin/productos",
   "/admin/clientes",
+  "/admin/clientes/duplicados",
+  "/admin/oportunidades",
   "/admin/carritos",
+  "/admin/marketing/segmentos",
   "/admin/cupones",
   "/admin/contenido/paginas",
   "/admin/metricas",
+  "/admin/finanzas",
 ];
 
 // PDP: slug del catálogo VIVO (los slugs cambian con archivados/renombres —
@@ -312,6 +318,9 @@ test.describe("auditoría responsive global — cliente + admin × 6 perfiles", 
         "/productos",
         `/producto/${pdpSlug}`,
         `/estudio/${pdpSlug}`,
+        "/empresas-y-eventos",
+        "/contacto",
+        "/soporte",
         "/carrito",
         "/checkout/datos",
         "/login",

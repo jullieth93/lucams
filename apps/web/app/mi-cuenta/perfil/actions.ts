@@ -47,7 +47,7 @@ const OptionalNameSchema = (maxWords: number) =>
 const ProfileSchema = z
   .object({
     firstName: OptionalNameSchema(3),
-    lastName: OptionalNameSchema(2),
+    lastName: OptionalNameSchema(3),
     phone: z
       .string()
       .trim()

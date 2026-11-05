@@ -448,7 +448,13 @@ model AbandonedCart {
   id                  String    @id @default(cuid())
   cartId              String    @unique
   cart                Cart      @relation(fields: [cartId], references: [id])
+  contactId           String?
   email               String
+  itemsSnapshot       Json?     // snapshot de ítems/diseños al capturar o cerrar el carrito
+  subtotalSnapshot    Int?      // centavos COP al momento del snapshot
+  checkoutStep        String?   // "DATOS" | "ENVIO" | "PAGO"
+  closedAt            DateTime?
+  closedReason        String?   // "CONVERTED_COD" | "CONVERTED_WOMPI" | "CONVERTED_QUOTE" | "CART_CLEARED" | "EXPIRED"
   lastReminderSentAt  DateTime?
   reminderCount       Int       @default(0) // nº de recordatorios enviados (maxReminders configurable, ADR-153)
   recoveredAt         DateTime?
@@ -626,7 +632,7 @@ crear la orden si el cliente pidió factura.
 
 ### Arquitectura de Identidad Canónica (`Contact`), CRM Operacional Nativo y Frontera SSoT (ADR-193)
 
-> **Estado:** Activa end-to-end en Fases 6–12 (`20261104160000_expand_contact_identity_graph` + RLS `051`, `20261104170000_expand_admin_role_capabilities`, `20261104180000_support_sla_ownership_and_guest_thread`, `20261104190000_add_crm_activities_and_tasks` + RLS `052`, `20261104200000_add_b2b_opportunities` + RLS `053`, `20261104210000_order_utm_attribution`), servicio determinista de resolución y _dual-write_ (`apps/web/features/identity/resolution-service.ts`), cascada Ley 1581 (`scrubContactOnErasureTx`), motor progresivo de backfill por cursor (`packages/db/scripts/backfill-contacts.mjs`), `Contacto 360` (`/admin/clientes/[id]`), cola de fusión humana (`/admin/clientes/duplicados`), bandeja operativa `/admin/hoy`, soporte con SLA hábil colombiano + copiloto cero-PII, pipeline B2B `/empresas-y-eventos` → `/admin/oportunidades`, segmentos Ley 1581 (`/admin/marketing/segmentos`) e inteligencia conductual CRM/RFM (`/admin/metricas`).
+> **Estado:** Activa end-to-end en Fases 6–12 (`20261104160000_expand_contact_identity_graph` + RLS `051`, `20261104170000_expand_admin_role_capabilities`, `20261104180000_support_sla_ownership_and_guest_thread`, `20261104190000_add_crm_activities_and_tasks` + RLS `052`, `20261104200000_add_b2b_opportunities` + RLS `053`, `20261104210000_order_utm_attribution`, `20261105010000_opportunity_snapshots_and_cart_diagnostics`), servicio determinista de resolución y _dual-write_ con aislamiento de cuentas `AdminUser` (`apps/web/features/identity/resolution-service.ts`), cascada Ley 1581 (`scrubContactOnErasureTx`), motor progresivo de backfill por cursor (`packages/db/scripts/backfill-contacts.mjs`), `Contacto 360` (`/admin/clientes/[id]`), cola de fusión humana (`/admin/clientes/duplicados`), bandeja operativa `/admin/hoy`, soporte con SLA hábil colombiano + copiloto cero-PII, pipeline B2B `/empresas-y-eventos` → `/admin/oportunidades` (con snapshot del cliente y correos transaccionales), segmentos Ley 1581 (`/admin/marketing/segmentos`) e inteligencia conductual CRM/RFM + gráficos analíticos SVG (`/admin/metricas`).
 
 1. **Separación estructural Persona (`Contact`) vs Credencial (`Customer`):**
    - `Contact` representa a toda contraparte humana comercial o posventa en Lucams (comprador registrado, comprador invitado `Order.customerId IS NULL`, solicitante `Quote` / `Opportunity`, remitente `SupportTicket`, prospecto `AbandonedCart`, suscriptor `Consent`).
@@ -659,7 +665,7 @@ crear la orden si el cliente pidió factura.
 El contenido del sitio se organiza en **3 capas** para que `/admin/contenido` sea rápido y manejable para una persona no técnica sin contaminar el panel con micro-UI funcional:
 
 1. **Capa 1 — Parámetros maestros y reglas estatutarias:** ajustes `CmsField` (`kind = SETTING`, contenedor `global` en Configuración → «Ajustes del sitio» solo `SUPERADMIN`, más los 21 ajustes delegados a sus módulos dueños `/admin/envios`, `/admin/fidelizacion` y `/admin/carritos/configuracion`), `Product.warrantyMonths` (`/admin/productos`, ADR-106) y constantes normativas en `apps/web/lib/consumer-law.ts` (retracto, garantía, entrega máxima legal, Habeas Data). Se interpolan en textos y legales vía `resolveCmsTokens()` (`apps/web/lib/cms-tokens.ts`).
-2. **Capa 2 — Contenido editorial, comercial, SEO y legal (`/admin/contenido`):** **8 páginas/colecciones editoriales en `/admin/contenido` + 1 contenedor `global` en Configuración = 9 `CmsPage`, 29 secciones y 166 campos** (`105 BLOCK + 61 SETTING`: `inicio`, `navegacion`, `ayuda`, `contacto`, `legales`, `checkout`, `sistema`, `seo` y `global`). Las 24 plantillas de correo (incluida `newsletter-welcome`) se administran unificadas en `/admin/email-templates` (`EmailTemplateOverride`).
+2. **Capa 2 — Contenido editorial, comercial, SEO y legal (`/admin/contenido`):** **8 páginas/colecciones editoriales en `/admin/contenido` + 1 contenedor `global` en Configuración = 9 `CmsPage`, 29 secciones y 166 campos** (`105 BLOCK + 61 SETTING`: `inicio`, `navegacion`, `ayuda`, `contacto`, `legales`, `checkout`, `sistema`, `seo` y `global`). Las 29 plantillas de correo (incluidas `newsletter-welcome`, posventa invitado y confirmaciones/alertas B2B) se administran unificadas en `/admin/email-templates` (`EmailTemplateOverride`).
 3. **Capa 3 — Micro-UI funcional tipada en código:** botones, `aria-label`, `placeholder`, validaciones, Estudio (`studio-texts.ts`), Auth (`auth-texts.ts`), Mi Cuenta (`account-texts.ts`), 404 y vistas transaccionales por token viven directo en TS/JSX, sin round-trip a DB ni payload RSC duplicado.
 
 El modelo en DB (migración `20260730120000_add_cms_v2`, RLS deny-by-default en `supabase/migrations/00000000000018`; legacy `CmsBlock` + `SiteSetting` dropeado en `20260731130000_drop_cms_legacy`) consta de 4 tablas:

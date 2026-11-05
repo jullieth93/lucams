@@ -120,6 +120,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
             ) : (
               <AdminBadge tone="slate">Invitado / sin cuenta</AdminBadge>
             )}
+            {data.isStaffAdmin && <AdminBadge tone="amber">Equipo interno</AdminBadge>}
             {data.anonymizedAt && <AdminBadge tone="rose">Anonimizado Ley 1581</AdminBadge>}
             {data.kpis.paidOrdersCount >= 3 && <AdminBadge tone="emerald">Cliente VIP</AdminBadge>}
           </span>

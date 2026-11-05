@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
-import { getCurrentCustomer } from "@/lib/auth";
+import { getCurrentCustomer, getStorefrontCustomerForForm } from "@/lib/auth";
 import {
   ContactSchema,
   BillingSchema,
@@ -147,7 +147,7 @@ export async function saveDatosAction(
     // se dio, la casilla es la prueba visible) — solo lo logueamos.
     try {
       const hdrs = await headers();
-      const session = await getCurrentCustomer();
+      const session = await getStorefrontCustomerForForm(contactParsed.data.email);
       await recordCheckoutDataConsent({
         email: contactParsed.data.email,
         customerId: session?.customer.id ?? null,

@@ -857,9 +857,10 @@ model Order {
   utmCampaign String?
   landingPath String?
 
-  contactActivities      ContactActivity[]
-  tasks                  Task[]
-  convertedOpportunities Opportunity[]     @relation("OpportunityConvertedOrder")
+  contactActivities       ContactActivity[]
+  tasks                   Task[]
+  convertedOpportunities  Opportunity[]     @relation("OpportunityConvertedOrder")
+  recoveredAbandonedCarts AbandonedCart[]   @relation("AbandonedCartRecoveredOrder")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1305,16 +1306,28 @@ model AbandonedCart {
   recoverTokenHash   String?   @unique
   lastReminderSentAt DateTime?
   recoveredAt        DateTime?
+  recoveredOrderId   String?
+  recoveredOrder     Order?    @relation("AbandonedCartRecoveredOrder", fields: [recoveredOrderId], references: [id], onDelete: SetNull)
   // Recordatorios enviados a este carrito (Fase 4, 2026-10-13): soporta el
   // setting CART_RECOVERY_MAX_REMINDERS > 1 (antes el gate era lastReminderSentAt
   // NOT NULL = un solo envío). Backfill en la migración: filas ya recordadas = 1.
   // El CHECK >= 0 vive en la migración (convención F-24, SQL-only).
   reminderCount      Int       @default(0)
+  // Snapshot inmutable de líneas y etapa de checkout para diagnóstico administrativo
+  // aunque el Cart vivo se reutilice, vacíe o cierre por orden/cotización.
+  itemsSnapshot      Json?
+  subtotalCents      Int?
+  // "DATOS" | "ENVIO" | "PAGO" (CHECK SQL en 20261105010000)
+  checkoutStep       String?
+  // "ORDER_PAID" | "QUOTE_CREATED" | "CART_EMPTIED" (CHECK SQL en 20261105010000)
+  closedReason       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([recoveredAt, lastReminderSentAt])
+  @@index([closedReason, recoveredAt])
+  @@index([recoveredOrderId])
   @@index([contactId])
 }
 
@@ -2631,6 +2644,11 @@ model Opportunity {
   organization       Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   ownerAdminId       String?
   ownerAdmin         AdminUser?    @relation("OpportunityOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
+  // Snapshot directo de los datos ingresados por el solicitante en /empresas-y-eventos o cotización
+  // para preservar el contacto comercial exacto de la oportunidad (nombre, email y WhatsApp E.164).
+  contactName        String?
+  contactEmail       String?
+  contactWhatsapp    String?
   title              String
   // "CORPORATE_GIFT" | "WEDDING_SOCIAL" | "SCHOOL_GRADUATION" | "BRAND_MERCH" | "OTHER"
   eventType          String        @default("CORPORATE_GIFT")

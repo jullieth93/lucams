@@ -10,6 +10,20 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import {
+  AdminBadge,
+  AdminCard,
+  AdminEmpty,
+  AdminPage,
+  AdminPageBody,
+  AdminPageHeader,
+  AdminSegmentedBar,
+  AdminTable,
+  AdminTableBody,
+  AdminTableHead,
+  AdminTableRow,
+  type ChartTone,
+} from "@/components/admin-page";
 import { requireCapability } from "@/lib/admin-rbac-guard";
 import { hasCapability } from "@/lib/admin-rbac";
 import { formatCOP } from "@/lib/format";
@@ -41,6 +55,14 @@ const SEGMENT_ICON: Record<CrmSegmentKey, typeof Crown> = {
   winback_90d: RotateCcw,
   annual_occasion: CalendarHeart,
   high_intent_no_order: Sparkles,
+};
+
+const SEGMENT_TONE: Record<CrmSegmentKey, ChartTone> = {
+  vip: "purple",
+  gift_buyers: "pink",
+  winback_90d: "amber",
+  annual_occasion: "turquoise",
+  high_intent_no_order: "coral",
 };
 
 type SearchParams = Promise<{
@@ -81,156 +103,197 @@ export default async function AdminCrmSegmentsPage({
   }
 
   return (
-    <div className="space-y-6">
-      {/* Cabecera */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="text-brand-purple flex items-center gap-2 text-xs font-semibold tracking-wider uppercase">
-            <Users className="h-4 w-4" />
-            Marketing · Audiencias nativas
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Users className="h-5 w-5" />}
+        title="Segmentos comerciales CRM"
+        subtitle="Audiencias accionables construidas sobre compras reales e intención de clientes (excluye cuentas internas), listas para exportar con cumplimiento estricto de Ley 1581."
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Comercial" },
+          { label: "Segmentos CRM" },
+        ]}
+        actions={
+          canExport ? (
+            <ExportSegmentCsvButton segment={activeSegment} disabled={data.total === 0} />
+          ) : undefined
+        }
+      />
+
+      <AdminPageBody>
+        {/* Garantía Ley 1581 */}
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+          <div className="space-y-1">
+            <p className="font-semibold">
+              Filtro automático de Habeas Data (Ley 1581 de 2012) activo
+            </p>
+            <p className="text-xs leading-relaxed text-emerald-900/90">
+              Esta vista y su archivo CSV incluyen únicamente contactos de clientes con autorización
+              comercial <span className="font-semibold">NEWSLETTER vigente</span> (sin baja
+              posterior, sin cuentas internas ni anonimización). En el segmento actual hay{" "}
+              <span className="font-semibold">{data.excludedNoOptInCount}</span>{" "}
+              {data.excludedNoOptInCount === 1
+                ? "contacto excluido automáticamente"
+                : "contactos excluidos automáticamente"}{" "}
+              por no contar con opt-in de marketing activo.
+            </p>
           </div>
-          <h1 className="font-display text-brand-purple-dark mt-1 text-2xl font-bold">
-            Segmentos comerciales CRM
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Audiencias accionables construidas sobre el historial real de compras e intención del
-            cliente, listas para exportar a tus campañas con cumplimiento estricto de Ley 1581.
-          </p>
         </div>
 
-        {canExport ? (
-          <ExportSegmentCsvButton segment={activeSegment} disabled={data.total === 0} />
-        ) : null}
-      </div>
-
-      {/* Garantía Ley 1581 */}
-      <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
-        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
-        <div className="space-y-1">
-          <p className="font-semibold">
-            Filtro automático de Habeas Data (Ley 1581 de 2012) activo
-          </p>
-          <p className="text-xs leading-relaxed text-emerald-900/90">
-            Esta vista y su archivo CSV incluyen únicamente contactos con autorización comercial{" "}
-            <span className="font-semibold">NEWSLETTER vigente</span> (sin baja posterior ni
-            anonimización). En el segmento actual hay{" "}
-            <span className="font-semibold">{data.excludedNoOptInCount}</span>{" "}
-            {data.excludedNoOptInCount === 1
-              ? "contacto excluido automáticamente"
-              : "contactos excluidos automáticamente"}{" "}
-            por no contar con opt-in de marketing activo.
-          </p>
-        </div>
-      </div>
-
-      {/* Tarjetas selectoras de segmento */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {CRM_SEGMENT_KEYS.map((key) => {
-          const def = CRM_SEGMENT_DEFINITIONS[key];
-          const counter = data.counters.find((c) => c.key === key) ?? {
-            key,
-            consentedCount: 0,
-            excludedNoOptInCount: 0,
-          };
-          const Icon = SEGMENT_ICON[key];
-          const selected = key === activeSegment;
-          return (
-            <Link
-              key={key}
-              href={buildHref({ segment: key, page: 1 })}
-              className={`group flex min-h-28 flex-col justify-between rounded-2xl border p-4 transition-all ${
-                selected
-                  ? "border-brand-purple bg-brand-cream/70 ring-brand-purple/25 shadow-sm ring-2"
-                  : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-xl ${
-                    selected
-                      ? "bg-brand-purple text-white"
-                      : "bg-brand-purple/10 text-brand-purple-dark"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                </span>
-                <span className="font-display text-brand-purple-dark text-2xl font-bold tabular-nums">
-                  {counter.consentedCount}
-                </span>
-              </div>
-              <div className="mt-3">
-                <p className="text-brand-purple-dark text-sm font-semibold">{def.shortLabel}</p>
-                <p className="mt-0.5 text-[11px] text-slate-500">
-                  {counter.excludedNoOptInCount} sin opt-in excluidos
-                </p>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-
-      {/* Playbook recomendado + buscador */}
-      <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 lg:grid-cols-[1fr_auto] lg:items-center">
-        <div>
-          <h2 className="text-brand-purple-dark text-base font-bold">{data.segment.label}</h2>
-          <p className="mt-0.5 text-sm text-slate-600">{data.segment.description}</p>
-          <p className="text-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#FFF8F0] px-3 py-1.5 text-xs font-medium">
-            <Sparkles className="text-brand-magenta h-3.5 w-3.5 shrink-0" />
-            <span>
-              <strong>Acción sugerida:</strong> {data.segment.recommendedPlaybook}
+        {/* Panorama visual comparativo de las 5 audiencias */}
+        <AdminCard className="p-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-brand-purple-dark text-xs font-bold tracking-wide uppercase">
+              Volumen contactable por audiencia (con opt-in vigente)
+            </h2>
+            <span className="text-brand-muted text-xs">
+              Haz clic en cualquier segmento para inspeccionar su audiencia
             </span>
-          </p>
+          </div>
+          <AdminSegmentedBar
+            ariaLabel="Comparativa de contactos con opt-in comercial por segmento CRM"
+            items={CRM_SEGMENT_KEYS.map((key) => {
+              const def = CRM_SEGMENT_DEFINITIONS[key];
+              const counter = data.counters.find((c) => c.key === key);
+              return {
+                key,
+                label: def.shortLabel,
+                count: counter?.consentedCount ?? 0,
+                tone: SEGMENT_TONE[key],
+                href: buildHref({ segment: key, page: 1 }),
+              };
+            })}
+          />
+        </AdminCard>
+
+        {/* Tarjetas selectoras de segmento (responsive móvil / tablet / desktop) */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {CRM_SEGMENT_KEYS.map((key) => {
+            const def = CRM_SEGMENT_DEFINITIONS[key];
+            const counter = data.counters.find((c) => c.key === key) ?? {
+              key,
+              consentedCount: 0,
+              excludedNoOptInCount: 0,
+            };
+            const totalAudience = counter.consentedCount + counter.excludedNoOptInCount;
+            const optInPct =
+              totalAudience > 0 ? Math.round((counter.consentedCount / totalAudience) * 100) : 0;
+            const Icon = SEGMENT_ICON[key];
+            const selected = key === activeSegment;
+            return (
+              <Link
+                key={key}
+                href={buildHref({ segment: key, page: 1 })}
+                aria-current={selected ? "true" : undefined}
+                className={`group flex min-h-32 flex-col justify-between rounded-2xl border p-4 transition-all ${
+                  selected
+                    ? "border-brand-purple bg-brand-cream/70 ring-brand-purple/25 shadow-sm ring-2"
+                    : "border-brand-purple/10 hover:border-brand-purple/30 bg-white hover:shadow-xs"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${
+                      selected
+                        ? "bg-brand-purple text-white"
+                        : "bg-brand-purple/10 text-brand-purple-dark"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="font-display text-brand-purple-dark text-2xl font-bold tabular-nums">
+                    {counter.consentedCount.toLocaleString("es-CO")}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-1.5">
+                  <p className="text-brand-purple-dark text-sm font-semibold">{def.shortLabel}</p>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="bg-brand-purple h-full rounded-full transition-all"
+                      style={{
+                        width: `${counter.consentedCount > 0 ? Math.max(6, optInPct) : 0}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    {totalAudience > 0 ? `${optInPct}% habilitados · ` : ""}
+                    {counter.excludedNoOptInCount} sin opt-in
+                  </p>
+                </div>
+              </Link>
+            );
+          })}
         </div>
 
-        <form action="/admin/marketing/segmentos" method="GET" className="flex items-center gap-2">
-          <input type="hidden" name="segment" value={activeSegment} />
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="search"
-              name="q"
-              defaultValue={q}
-              placeholder="Buscar nombre o email…"
-              className="focus:border-brand-purple focus:ring-brand-purple/20 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 pr-3 pl-9 text-sm focus:bg-white focus:ring-2 focus:outline-none sm:w-64"
-            />
-          </div>
-          <button
-            type="submit"
-            className="bg-brand-purple hover:bg-brand-purple-dark min-h-11 rounded-xl px-4 text-sm font-semibold text-white transition-colors"
-          >
-            Filtrar
-          </button>
-        </form>
-      </div>
+        {/* Playbook recomendado + buscador */}
+        <AdminCard className="p-5">
+          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div>
+              <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                {data.segment.label}
+              </h2>
+              <p className="mt-0.5 text-sm text-slate-600">{data.segment.description}</p>
+              <p className="text-brand-purple-dark bg-brand-cream/80 border-brand-purple/10 mt-2.5 inline-flex items-start gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium">
+                <Sparkles className="text-brand-pink mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  <strong>Acción sugerida:</strong> {data.segment.recommendedPlaybook}
+                </span>
+              </p>
+            </div>
 
-      {/* Tabla de contactos con opt-in vigente */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
-        {data.items.length === 0 ? (
-          <div className="p-10 text-center">
-            <p className="text-brand-purple-dark text-sm font-semibold">
-              No hay contactos con opt-in comercial vigente en este segmento
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {q
-                ? "Prueba limpiando la búsqueda o seleccionando otra audiencia arriba."
-                : "Cuando tus compradores acepten recibir novedades en el checkout o en el pie de página, aparecerán automáticamente aquí."}
-            </p>
+            <form
+              action="/admin/marketing/segmentos"
+              method="GET"
+              className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            >
+              <input type="hidden" name="segment" value={activeSegment} />
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  name="q"
+                  defaultValue={q}
+                  placeholder="Buscar nombre o email…"
+                  className="focus:border-brand-purple focus:ring-brand-purple/20 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 pr-3 pl-9 text-sm focus:bg-white focus:ring-2 focus:outline-none sm:w-64"
+                />
+              </div>
+              <button
+                type="submit"
+                className="bg-brand-purple hover:bg-brand-purple-dark min-h-11 rounded-xl px-4 text-sm font-semibold text-white transition-colors"
+              >
+                Filtrar
+              </button>
+            </form>
           </div>
+        </AdminCard>
+
+        {/* Tabla de contactos con opt-in vigente (auto-cards en móvil/tablet) */}
+        {data.items.length === 0 ? (
+          <AdminEmpty
+            icon={<Users className="h-5 w-5" />}
+            title="No hay contactos con opt-in comercial vigente en este segmento"
+            description={
+              q
+                ? "Prueba limpiando la búsqueda o seleccionando otra audiencia arriba."
+                : "Cuando tus compradores acepten recibir novedades en el checkout, en Empresas y Eventos o en el pie de página, aparecerán automáticamente aquí."
+            }
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold tracking-wide text-slate-600 uppercase">
+          <div className="space-y-3">
+            <AdminTable minWidth={680}>
+              <AdminTableHead>
                 <tr>
-                  <th className="px-4 py-3">Contacto</th>
-                  <th className="px-4 py-3">Compras / LTV</th>
-                  <th className="px-4 py-3">Última compra</th>
-                  <th className="px-4 py-3">Señales / Canal UTM</th>
-                  <th className="px-4 py-3">Evidencia Ley 1581</th>
+                  <th className="px-4 py-3 text-left font-semibold">Contacto</th>
+                  <th className="px-4 py-3 text-left font-semibold">Compras / LTV</th>
+                  <th className="px-4 py-3 text-left font-semibold">Última compra</th>
+                  <th className="px-4 py-3 text-left font-semibold">Señales / Canal UTM</th>
+                  <th className="px-4 py-3 text-left font-semibold">Evidencia Ley 1581</th>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
+              </AdminTableHead>
+              <AdminTableBody>
                 {data.items.map((member) => (
-                  <tr key={member.contactId} className="hover:bg-slate-50/60">
+                  <AdminTableRow key={member.contactId}>
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-900">
                         {canOpenContact360 ? (
@@ -263,17 +326,12 @@ export default async function AdminCrmSegmentsPage({
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1.5">
                         {member.intentSignals.map((sig) => (
-                          <span
-                            key={sig}
-                            className="bg-brand-purple/10 text-brand-purple-dark inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium"
-                          >
+                          <AdminBadge key={sig} tone="purple">
                             {sig}
-                          </span>
+                          </AdminBadge>
                         ))}
                         {member.lastUtmSource ? (
-                          <span className="inline-flex rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-800">
-                            UTM: {member.lastUtmSource}
-                          </span>
+                          <AdminBadge tone="turquoise">UTM: {member.lastUtmSource}</AdminBadge>
                         ) : null}
                       </div>
                     </td>
@@ -283,40 +341,40 @@ export default async function AdminCrmSegmentsPage({
                       </div>
                       <div className="text-[11px] text-slate-400">{member.consentVersion}</div>
                     </td>
-                  </tr>
+                  </AdminTableRow>
                 ))}
-              </tbody>
-            </table>
+              </AdminTableBody>
+            </AdminTable>
+
+            {/* Paginación */}
+            {data.totalPages > 1 ? (
+              <AdminCard className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs text-slate-600">
+                <span>
+                  Página {data.page} de {data.totalPages} ({data.total} contactos con opt-in)
+                </span>
+                <div className="flex items-center gap-2">
+                  {data.page > 1 ? (
+                    <Link
+                      href={buildHref({ page: data.page - 1 })}
+                      className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold hover:bg-slate-50"
+                    >
+                      Anterior
+                    </Link>
+                  ) : null}
+                  {data.page < data.totalPages ? (
+                    <Link
+                      href={buildHref({ page: data.page + 1 })}
+                      className="inline-flex min-h-9 items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold hover:bg-slate-50"
+                    >
+                      Siguiente
+                    </Link>
+                  ) : null}
+                </div>
+              </AdminCard>
+            ) : null}
           </div>
         )}
-
-        {/* Paginación */}
-        {data.totalPages > 1 ? (
-          <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/50 px-4 py-3 text-xs text-slate-600">
-            <span>
-              Página {data.page} de {data.totalPages} ({data.total} contactos con opt-in)
-            </span>
-            <div className="flex items-center gap-2">
-              {data.page > 1 ? (
-                <Link
-                  href={buildHref({ page: data.page - 1 })}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold hover:bg-slate-50"
-                >
-                  Anterior
-                </Link>
-              ) : null}
-              {data.page < data.totalPages ? (
-                <Link
-                  href={buildHref({ page: data.page + 1 })}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold hover:bg-slate-50"
-                >
-                  Siguiente
-                </Link>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }

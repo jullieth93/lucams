@@ -232,9 +232,23 @@ describe("EmailInput — validación en vivo on-blur (Fase 7a)", () => {
     expect(hint).toHaveTextContent("¿Quisiste decir lucy@gmail.com?");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(input).not.toHaveAttribute("aria-invalid", "true");
-    // El value NO se auto-corrige.
+    // El value NO se auto-corrige en blur, pero permite aplicar la corrección en 1 clic.
     expect(input.value).toBe("lucy@gmial.com");
     expect(onValueChange).not.toHaveBeenCalledWith("lucy@gmail.com");
+
+    fireEvent.click(screen.getByRole("button", { name: "lucy@gmail.com" }));
+    expect(input.value).toBe("lucy@gmail.com");
+    expect(onValueChange).toHaveBeenCalledWith("lucy@gmail.com");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("outlook.es es un dominio Microsoft real y NO se marca como typo", () => {
+    render(<EmailInput aria-label="Correo" />);
+    const input = screen.getByRole("textbox", { name: "Correo" });
+    fireEvent.change(input, { target: { value: "lucy@outlook.es" } });
+    fireEvent.blur(input);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("dominio válido que no es typo no muestra sugerencia", () => {

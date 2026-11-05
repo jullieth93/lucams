@@ -140,6 +140,18 @@ export async function countConsentedAnnualOccasionContacts(): Promise<number> {
       AND o."deletedAt" IS NULL
       AND o."status" IN ('PAID', 'FULFILLING', 'SHIPPED', 'DELIVERED')
       AND o."createdAt" BETWEEN (NOW() - INTERVAL '370 days') AND (NOW() - INTERVAL '320 days')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "AdminUser" au
+        LEFT JOIN "Customer" cu_adm
+          ON cu_adm."contactId" = c."id" AND cu_adm."deletedAt" IS NULL
+        WHERE au."isActive" = true
+          AND au."deletedAt" IS NULL
+          AND (
+            LOWER(au."email") = LOWER(COALESCE(c."primaryEmail", ''))
+            OR (cu_adm."supabaseUserId" IS NOT NULL AND au."supabaseUserId" = cu_adm."supabaseUserId")
+          )
+      )
   `;
   return Number(rows[0]?.cnt ?? 0);
 }
@@ -218,16 +230,28 @@ export async function getCrmBehavioralIntelligence(
       },
     }),
     prisma.$queryRaw<UnrecoveredCartAggRow[]>`
+      WITH per_cart AS (
+        SELECT
+          ac."id",
+          COALESCE(
+            ac."subtotalCents",
+            SUM(ci."qty" * COALESCE(ci."unitPrice", pv."price", p."basePrice")),
+            0
+          )::bigint AS cart_value_cents
+        FROM "AbandonedCart" ac
+        LEFT JOIN "Cart" ca ON ca."id" = ac."cartId" AND ca."deletedAt" IS NULL
+        LEFT JOIN "CartItem" ci ON ci."cartId" = ca."id"
+        LEFT JOIN "ProductVariant" pv ON pv."id" = ci."variantId"
+        LEFT JOIN "Product" p ON p."id" = pv."productId"
+        WHERE ac."recoveredAt" IS NULL
+          AND ac."closedReason" IS NULL
+          AND ac."createdAt" >= ${since}
+        GROUP BY ac."id", ac."subtotalCents"
+      )
       SELECT
-        COUNT(DISTINCT ac."id")::int AS carts_count,
-        COALESCE(SUM(ci."qty" * COALESCE(pv."price", p."basePrice")), 0)::bigint AS estimated_value_cents
-      FROM "AbandonedCart" ac
-      LEFT JOIN "Cart" ca ON ca."id" = ac."cartId" AND ca."deletedAt" IS NULL
-      LEFT JOIN "CartItem" ci ON ci."cartId" = ca."id"
-      LEFT JOIN "ProductVariant" pv ON pv."id" = ci."variantId"
-      LEFT JOIN "Product" p ON p."id" = pv."productId"
-      WHERE ac."recoveredAt" IS NULL
-        AND ac."createdAt" >= ${since}
+        COUNT(*)::int AS carts_count,
+        COALESCE(SUM(cart_value_cents), 0)::bigint AS estimated_value_cents
+      FROM per_cart
     `,
     prisma.$queryRaw<DeclinedRow[]>`
       SELECT
@@ -311,6 +335,18 @@ export async function getCrmBehavioralIntelligence(
         JOIN paid_orders po ON po."contactId" = c."id"
         WHERE c."deletedAt" IS NULL
           AND c."anonymizedAt" IS NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "AdminUser" au
+            LEFT JOIN "Customer" cu_adm
+              ON cu_adm."contactId" = c."id" AND cu_adm."deletedAt" IS NULL
+            WHERE au."isActive" = true
+              AND au."deletedAt" IS NULL
+              AND (
+                LOWER(au."email") = LOWER(COALESCE(c."primaryEmail", ''))
+                OR (cu_adm."supabaseUserId" IS NOT NULL AND au."supabaseUserId" = cu_adm."supabaseUserId")
+              )
+          )
         GROUP BY c."id"
       ),
       tiered AS (
@@ -368,7 +404,10 @@ export async function getCrmBehavioralIntelligence(
           COALESCE(SUM(o."total"), 0)::bigint AS rev
         FROM "AbandonedCart" ac
         LEFT JOIN "Order" o
-          ON o."cartId" = ac."cartId"
+          ON (
+            (ac."recoveredOrderId" IS NOT NULL AND o."id" = ac."recoveredOrderId")
+            OR (ac."recoveredOrderId" IS NULL AND o."cartId" = ac."cartId")
+          )
           AND o."deletedAt" IS NULL
           AND o."status" IN ('PAID', 'FULFILLING', 'SHIPPED', 'DELIVERED')
         WHERE ac."recoveredAt" IS NOT NULL

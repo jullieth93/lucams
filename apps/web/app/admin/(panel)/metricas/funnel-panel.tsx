@@ -463,9 +463,13 @@ export function FunnelPanel({
                       </div>
                     </div>
 
-                    <div className="bg-brand-purple/10 mt-2.5 h-2.5 overflow-hidden rounded-full">
+                    <div className="bg-brand-purple/10 mt-2.5 h-3 overflow-hidden rounded-full sm:flex sm:justify-center">
                       <div
-                        className="admin-bar-grow-x from-brand-purple via-brand-purple to-brand-pink h-full rounded-full bg-gradient-to-r"
+                        className={`admin-bar-grow-x h-full rounded-full ${
+                          highDrop
+                            ? "from-brand-purple via-brand-pink bg-gradient-to-r to-rose-500"
+                            : "from-brand-purple via-brand-purple to-brand-turquoise bg-gradient-to-r"
+                        }`}
                         style={{ width: `${barWidthPct}%` }}
                       />
                     </div>
@@ -529,37 +533,57 @@ export function FunnelPanel({
                         : "Sin aperturas"}
                     </AdminBadge>
                   </div>
-                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg bg-slate-50 p-2">
-                      <dt className="text-brand-muted">Ven ficha</dt>
-                      <dd className="text-brand-purple-dark font-bold tabular-nums">
-                        {dev.productViews.toLocaleString("es-CO")}
-                      </dd>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 p-2">
-                      <dt className="text-brand-muted">Abren Estudio</dt>
-                      <dd className="text-brand-purple-dark font-bold tabular-nums">
-                        {dev.studioOpens.toLocaleString("es-CO")}
-                      </dd>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 p-2">
-                      <dt className="text-brand-muted">Al carrito</dt>
-                      <dd className="text-brand-purple-dark font-bold tabular-nums">
-                        {dev.cartAdds.toLocaleString("es-CO")}
-                      </dd>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 p-2">
-                      <dt className="text-brand-muted">Compras</dt>
-                      <dd className="text-brand-purple-dark font-bold tabular-nums">
-                        {dev.purchases.toLocaleString("es-CO")}
-                        {dev.overallPurchasePct !== null && (
-                          <span className="text-brand-muted ml-1 font-normal">
-                            ({dev.overallPurchasePct}%)
-                          </span>
-                        )}
-                      </dd>
-                    </div>
-                  </dl>
+                  {(() => {
+                    const devMax = Math.max(
+                      1,
+                      dev.productViews,
+                      dev.studioOpens,
+                      dev.cartAdds,
+                      dev.purchases,
+                    );
+                    const rows = [
+                      { label: "Ven ficha", val: dev.productViews, color: "#7C6AAD" },
+                      { label: "Abren Estudio", val: dev.studioOpens, color: "#E85B9F" },
+                      { label: "Al carrito", val: dev.cartAdds, color: "#2BB8AF" },
+                      {
+                        label: "Compras",
+                        val: dev.purchases,
+                        color: "#10B981",
+                        suffix:
+                          dev.overallPurchasePct !== null
+                            ? `(${dev.overallPurchasePct}%)`
+                            : undefined,
+                      },
+                    ];
+                    return (
+                      <div className="mt-3 space-y-2 text-xs">
+                        {rows.map((r) => {
+                          const w = r.val > 0 ? Math.max(4, Math.round((r.val / devMax) * 100)) : 0;
+                          return (
+                            <div key={r.label} className="rounded-lg bg-slate-50 px-2.5 py-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-brand-muted">{r.label}</span>
+                                <span className="text-brand-purple-dark font-bold tabular-nums">
+                                  {r.val.toLocaleString("es-CO")}
+                                  {r.suffix ? (
+                                    <span className="text-brand-muted ml-1 font-normal">
+                                      {r.suffix}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </div>
+                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200/70">
+                                <div
+                                  className="admin-bar-grow-x h-full rounded-full"
+                                  style={{ width: `${w}%`, backgroundColor: r.color }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </AdminCard>
               );
             })}

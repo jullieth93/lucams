@@ -12,7 +12,9 @@ import {
   documentNumberMatchesType,
   formatPhone,
   getDocumentHelp,
+  normalizeAndValidateNit,
   normalizePhoneWithDial,
+  personNameError,
   stripPhone,
   validateDocument,
   validateName,
@@ -117,13 +119,17 @@ describe("validateDocument — NIT", () => {
     expect(validateDocument("NIT", "900123456")).toBe(true);
   });
 
-  it("acepta 9 dígitos + guión + DV", () => {
-    expect(validateDocument("NIT", "900123456-7")).toBe(true);
+  it("acepta 9 dígitos + guión + DV DIAN válido (900123456-8)", () => {
+    expect(validateDocument("NIT", "900123456-8")).toBe(true);
   });
 
-  it("acepta 10 dígitos sin guión (DV pegado)", () => {
-    // El regex /^\d{9}-?\d?$/ trata el guión como opcional.
-    expect(validateDocument("NIT", "9001234567")).toBe(true);
+  it("acepta 10 dígitos sin guión cuando el DV DIAN es válido (9001234568)", () => {
+    expect(validateDocument("NIT", "9001234568")).toBe(true);
+  });
+
+  it("rechaza NIT con dígito de verificación DIAN inválido (900123456-7, el real es 8)", () => {
+    expect(validateDocument("NIT", "900123456-7")).toBe(false);
+    expect(validateDocument("NIT", "9001234567")).toBe(false);
   });
 
   it("acepta 9 dígitos con guión final pero sin DV", () => {
@@ -204,13 +210,37 @@ describe("documentNumberMatchesType — fuente única cliente/server", () => {
     expect(documentNumberMatchesType("CC", "1234567890")).toBe(true);
     expect(documentNumberMatchesType("CC", "12345")).toBe(false);
     expect(documentNumberMatchesType("PP", "ab123456")).toBe(true); // case-insensitive
-    expect(documentNumberMatchesType("NIT", "900123456-7")).toBe(true);
+    expect(documentNumberMatchesType("NIT", "900123456-8")).toBe(true);
+    expect(documentNumberMatchesType("NIT", "900123456-7")).toBe(false);
     expect(documentNumberMatchesType("TI", "1234567")).toBe(false);
   });
 
   it("recorta espacios y rechaza vacío", () => {
     expect(documentNumberMatchesType("CE", " 123456 ")).toBe(true);
     expect(documentNumberMatchesType("CE", "")).toBe(false);
+  });
+});
+
+describe("normalizeAndValidateNit & personNameError", () => {
+  it("normaliza NIT con puntos y calcula DV DIAN cuando falta", () => {
+    const r = normalizeAndValidateNit("900.123.456");
+    expect(r.valid).toBe(true);
+    expect(r.expectedDv).toBe("8");
+    expect(r.normalized).toBe("900123456-8");
+  });
+
+  it("rechaza NIT con DV errado informando el DV DIAN esperado", () => {
+    const r = normalizeAndValidateNit("900.123.456-4");
+    expect(r.valid).toBe(false);
+    expect(r.error).toContain("8");
+  });
+
+  it("personNameError valida letras, mínimo 2 caracteres y tope de palabras", () => {
+    expect(personNameError("", 5)).toBeNull();
+    expect(personNameError("A", 5)).toContain("2 letras");
+    expect(personNameError("Valentina 123", 5)).toContain("Solo puede tener letras");
+    expect(personNameError("Ana María De La Cruz Pérez", 5)).toContain("5 palabras");
+    expect(personNameError("Ana María De La Cruz", 5)).toBeNull();
   });
 });
 

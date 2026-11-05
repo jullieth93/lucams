@@ -79,10 +79,17 @@ export default async function AdminOpportunityDetailPage({
 
   const stage = isOpportunityStage(opp.stage) ? opp.stage : "NEW";
   const eventType = isOpportunityEventType(opp.eventType) ? opp.eventType : "OTHER";
-  const contactName = opp.contact.displayName ?? opp.contact.primaryEmail ?? "Contacto B2B";
-  const waLink = opp.contact.primaryPhoneE164
+  const contactName =
+    opp.contactName ??
+    opp.contact.displayName ??
+    opp.contactEmail ??
+    opp.contact.primaryEmail ??
+    "Contacto B2B";
+  const contactEmail = opp.contactEmail ?? opp.contact.primaryEmail;
+  const contactWhatsapp = opp.contactWhatsapp ?? opp.contact.primaryPhoneE164;
+  const waLink = contactWhatsapp
     ? customerWaLink(
-        opp.contact.primaryPhoneE164,
+        contactWhatsapp,
         `Hola ${contactName}, te escribo de Lucams Shop sobre tu solicitud ${opp.number}. `,
       )
     : null;
@@ -174,6 +181,9 @@ export default async function AdminOpportunityDetailPage({
               initialInternalNotes={opp.internalNotes}
               initialLostReason={opp.lostReason}
               initialConvertedOrderNumber={opp.convertedOrder?.number ?? null}
+              initialContactName={contactName}
+              initialContactEmail={contactEmail}
+              initialContactWhatsapp={contactWhatsapp}
               currentAdminId={session.admin.id}
               assignableAdmins={assignableAdmins}
             />
@@ -195,14 +205,12 @@ export default async function AdminOpportunityDetailPage({
           <aside className="space-y-4">
             <AdminCard className="p-4">
               <h2 className="text-brand-purple-dark flex items-center gap-1.5 text-sm font-bold">
-                <User className="h-4 w-4" /> Contacto principal
+                <User className="h-4 w-4" /> Contacto del cliente
               </h2>
               <p className="text-brand-purple-dark mt-2 text-sm font-semibold">{contactName}</p>
-              {opp.contact.primaryEmail && (
-                <p className="text-brand-muted text-xs">{opp.contact.primaryEmail}</p>
-              )}
-              {opp.contact.primaryPhoneE164 && (
-                <p className="text-brand-muted text-xs">{opp.contact.primaryPhoneE164}</p>
+              {contactEmail && <p className="text-brand-muted text-xs break-all">{contactEmail}</p>}
+              {contactWhatsapp && (
+                <p className="text-brand-muted text-xs tabular-nums">{contactWhatsapp}</p>
               )}
               <Link
                 href={`/admin/clientes/${encodeURIComponent(opp.contact.id)}`}
@@ -211,6 +219,23 @@ export default async function AdminOpportunityDetailPage({
                 Abrir Contacto 360 →
               </Link>
             </AdminCard>
+
+            {opp.convertedQuote && (
+              <AdminCard className="border-brand-purple/25 bg-[#FFF8F0]/60 p-4">
+                <h2 className="text-brand-purple-dark flex items-center gap-1.5 text-sm font-bold">
+                  <Package className="h-4 w-4" /> Cotización origen
+                </h2>
+                <Link
+                  href={`/admin/cotizaciones/${encodeURIComponent(opp.convertedQuote.id)}`}
+                  className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-block font-mono text-sm font-bold underline underline-offset-2"
+                >
+                  {opp.convertedQuote.number}
+                </Link>
+                <p className="text-brand-muted mt-0.5 text-xs">
+                  Total cotizado: {formatCOP(opp.convertedQuote.total)}
+                </p>
+              </AdminCard>
+            )}
 
             {opp.organization && (
               <AdminCard className="p-4">

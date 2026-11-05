@@ -35,7 +35,7 @@ import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
-import { NAME_REGEX, capitalizeName } from "@/lib/colombia-validators";
+import { NAME_REGEX, capitalizeName, countWords } from "@/lib/colombia-validators";
 import { recordHabeasDataConsent } from "@/features/consent/service";
 import { ensureCustomerContact } from "@/features/identity/resolution-service";
 import { attachReferral, findReferrerByCode } from "@/features/referrals/service";
@@ -51,19 +51,22 @@ const SignupSchema = z
     password: z.string().min(8, "Mínimo 8 caracteres").max(72, "Máximo 72 caracteres"),
     passwordConfirm: z.string(),
     // Misma regla de nombre del checkout/perfil (lib/colombia-validators):
-    // solo letras y se persiste en title case (respeta de/del/la/las…).
+    // solo letras, máx 3 palabras por campo y se persiste en title case.
     firstName: z
       .string()
       .trim()
-      .min(1, "Tu nombre es obligatorio")
+      .min(2, "Escribe al menos 2 letras en tu nombre")
       .max(50, "Máximo 50 caracteres")
       .regex(NAME_REGEX, "Tu nombre solo puede tener letras")
+      .refine((v) => countWords(v) <= 3, "Máximo 3 palabras en el nombre")
       .transform(capitalizeName),
     lastName: z
       .string()
       .trim()
+      .min(2, "Escribe al menos 2 letras en tu apellido")
       .max(50, "Máximo 50 caracteres")
       .regex(NAME_REGEX, "El apellido solo puede tener letras")
+      .refine((v) => countWords(v) <= 3, "Máximo 3 palabras en el apellido")
       .transform(capitalizeName)
       .optional(),
     // Referidos v1 (2026-08-11): código opcional, se valida contra DB en la action.

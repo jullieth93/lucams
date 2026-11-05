@@ -739,6 +739,28 @@ export default async function EstudioPage({
     ),
   });
 
+  // Hidratación de la biblioteca «Mis fotos» al recargar (F5):
+  // las fotos subidas pero aún no vinculadas a un diseño (designId: null) o
+  // vinculadas a borradores recientes de este mismo producto pertenecen al owner
+  // actual y deben permanecer visibles tras recargar hasta que el cliente las
+  // elimine explícitamente o caduquen por retención.
+  const ownerAssetFilter = studioCustomer
+    ? { customerId: studioCustomer.customer.id }
+    : cartSessionId
+      ? { customerId: null, sessionId: cartSessionId }
+      : null;
+
+  if (ownerAssetFilter) {
+    const hydratedLibrary = await loadOwnerLibraryAssets({
+      ownerFilter: ownerAssetFilter,
+      productId: product.id,
+      excludeIds: initialDesignAssets.map((a) => a.id),
+    });
+    if (hydratedLibrary.length > 0) {
+      initialDesignAssets = [...initialDesignAssets, ...hydratedLibrary];
+    }
+  }
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
@@ -828,4 +850,42 @@ function letterSetSubtitle(
   }
   const template = hasStyles ? texts.letras.subFullIlustrado : texts.letras.subFull;
   return fillStudioText(template, { n: letterCount });
+}
+
+async function loadOwnerLibraryAssets(params: {
+  ownerFilter: { customerId: string } | { customerId: null; sessionId: string };
+  productId: string;
+  excludeIds: string[];
+}): Promise<
+  Array<{
+    id: string;
+    signedUrl: string;
+    canvasUrl: string | null;
+    width: number;
+    height: number;
+  }>
+> {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const libraryRows = await prisma.designAsset.findMany({
+    where: {
+      ...params.ownerFilter,
+      createdAt: { gte: sevenDaysAgo },
+      ...(params.excludeIds.length > 0 ? { id: { notIn: params.excludeIds } } : {}),
+      OR: [{ designId: null }, { design: { productId: params.productId, status: "DRAFT" } }],
+    },
+    orderBy: { createdAt: "asc" },
+    take: 60,
+    select: { id: true, storageUrl: true, canvasPath: true, width: true, height: true },
+  });
+  if (libraryRows.length === 0) return [];
+  return Promise.all(
+    libraryRows.map(async (a) => ({
+      id: a.id,
+      signedUrl: await refreshCustomerUploadSignedUrl(a.storageUrl),
+      canvasUrl: a.canvasPath ? await refreshCustomerUploadSignedUrl(a.canvasPath) : null,
+      width: a.width,
+      height: a.height,
+    })),
+  );
 }

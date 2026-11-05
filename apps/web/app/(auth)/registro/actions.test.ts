@@ -51,6 +51,9 @@ vi.mock("@/lib/rate-limit-keys", () => ({
 }));
 vi.mock("@/lib/pwned-passwords", () => ({ checkPwnedPassword }));
 vi.mock("@/features/consent/service", () => ({ recordHabeasDataConsent }));
+vi.mock("@/features/identity/resolution-service", () => ({
+  ensureCustomerContact: vi.fn(async () => ({ contactId: "ct-1" })),
+}));
 vi.mock("@/features/referrals/service", () => ({
   attachReferral: vi.fn(async () => {}),
   findReferrerByCode: vi.fn(async () => null),
@@ -162,5 +165,13 @@ describe("signupAction — nombre estandarizado (lib/colombia-validators)", () =
     expect(customerCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ firstName: "María Fernanda", lastName: "De León" }),
     });
+  });
+
+  it("rechaza nombres o apellidos de más de 3 palabras", async () => {
+    const fd = signupForm();
+    fd.set("firstName", "Ana María De La");
+    const res = await signupAction(null, fd);
+    expect(res.fieldErrors?.firstName?.[0]).toContain("3 palabras");
+    expect(signUp).not.toHaveBeenCalled();
   });
 });
