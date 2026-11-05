@@ -56,7 +56,10 @@ function mapAveonlineStatus(raw) {
 }
 
 function normalizeCarrierStatus(raw) {
-  return String(raw ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+  return String(raw ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ");
 }
 
 function dedupKey(trackingNumber, carrierStatusRaw, occurredAt) {
@@ -84,6 +87,7 @@ try {
       carrierStatusRaw: true,
       occurredAt: true,
       dedupKey: true,
+      order: { select: { shipmentClaimedAt: true } },
     },
   });
 
@@ -91,19 +95,38 @@ try {
   let fixed = 0;
   let removedDupes = 0;
   for (const row of rows) {
+    const normalizedRaw = normalizeCarrierStatus(row.carrierStatusRaw);
     const mapped = mapAveonlineStatus(row.carrierStatusRaw);
-    const newKey = dedupKey(row.trackingNumber, row.carrierStatusRaw, row.occurredAt);
-    if (mapped === row.status && newKey === row.dedupKey) continue;
+    const isGenerated = normalizedRaw === "GENERADA";
+    // GENERADA: clave estable sin minuto + anclaje a la hora REAL de creación de la
+    // guía (Order.shipmentClaimedAt) cuando el carrier la reportó más tarde.
+    const newKey = isGenerated
+      ? `${row.trackingNumber}|GENERADA`
+      : dedupKey(row.trackingNumber, row.carrierStatusRaw, row.occurredAt);
+    const claimed = row.order?.shipmentClaimedAt ?? null;
+    const newOccurredAt =
+      isGenerated && claimed && claimed.getTime() < row.occurredAt.getTime()
+        ? claimed
+        : row.occurredAt;
+    if (
+      mapped === row.status &&
+      newKey === row.dedupKey &&
+      newOccurredAt.getTime() === row.occurredAt.getTime()
+    )
+      continue;
     toFix += 1;
     console.log(
       `  · ${row.trackingNumber} "${row.carrierStatusRaw}": ${row.status} → ${mapped}` +
-        (newKey === row.dedupKey ? "" : " (dedupKey cambia)"),
+        (newKey === row.dedupKey ? "" : " (dedupKey cambia)") +
+        (newOccurredAt.getTime() === row.occurredAt.getTime()
+          ? ""
+          : ` (occurredAt → ${newOccurredAt.toISOString()} hora real de creación)`),
     );
     if (!apply) continue;
     try {
       await prisma.shipmentEvent.update({
         where: { id: row.id },
-        data: { status: mapped, dedupKey: newKey },
+        data: { status: mapped, dedupKey: newKey, occurredAt: newOccurredAt },
       });
       fixed += 1;
     } catch (err) {
