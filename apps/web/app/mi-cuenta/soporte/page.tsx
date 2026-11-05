@@ -16,6 +16,7 @@ import { listBidirectionalTicketsForCustomer } from "@/features/support/public-t
 import { SUBJECT_LABELS, type SUPPORT_SUBJECTS } from "@/features/support/schemas";
 import { CustomerTicketReplyForm } from "@/components/support/customer-ticket-reply-form";
 import { getAccountTexts } from "../account-texts.server";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Soporte",
@@ -56,12 +57,6 @@ export default async function MiCuentaSoportePage() {
     listBidirectionalTicketsForCustomer(session.customer.id),
     getAccountTexts(),
   ]);
-
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -131,7 +126,7 @@ export default async function MiCuentaSoportePage() {
                   {ticketStatusLabel(t.status)}
                 </span>
                 <span className="text-brand-muted ml-auto text-xs">
-                  {dateFmt.format(t.createdAt)}
+                  {formatDateCO(t.createdAt)}
                 </span>
               </div>
               <p className="text-brand-purple-dark mt-1.5 text-sm font-semibold">
@@ -165,7 +160,7 @@ export default async function MiCuentaSoportePage() {
                         <p className="text-brand-purple-dark text-[11px] font-semibold">
                           {m.authorKind === "ADMIN" ? "Equipo Lucams" : "Tú"} ·{" "}
                           <span className="text-brand-muted font-normal">
-                            {dateFmt.format(m.createdAt)}
+                            {formatDateCO(m.createdAt)}
                           </span>
                         </p>
                         <p className="text-brand-purple-dark/90 mt-0.5 text-sm whitespace-pre-line">
@@ -178,7 +173,7 @@ export default async function MiCuentaSoportePage() {
               )}
               {t.resolvedAt && (
                 <p className="text-brand-muted mt-2 text-xs">
-                  Resuelta el {dateFmt.format(t.resolvedAt)} — te avisamos por correo.
+                  Resuelta el {formatDateCO(t.resolvedAt)} — te avisamos por correo.
                 </p>
               )}
 

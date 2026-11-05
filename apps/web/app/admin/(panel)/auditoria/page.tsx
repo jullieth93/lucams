@@ -19,6 +19,7 @@ import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { formatDateTimeCO } from "@/lib/datetime";
 import {
   AdminPage,
   AdminPageHeader,
@@ -340,10 +341,7 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
                 logs.map((row) => (
                   <AdminTableRow key={row.id}>
                     <td className="text-brand-purple-dark/75 px-4 py-2 text-xs">
-                      {row.createdAt.toLocaleString("es-CO", {
-                        dateStyle: "short",
-                        timeStyle: "short",
-                      })}
+                      {formatDateTimeCO(row.createdAt)}
                     </td>
                     <td className="text-brand-purple-dark px-4 py-2 text-xs">
                       {adminMap.get(row.actorId) ?? (
@@ -356,6 +354,11 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
                       <span className="bg-brand-purple/10 text-brand-purple-dark rounded px-1.5 py-0.5">
                         {row.action}
                       </span>
+                      {(row.metadata as Record<string, unknown> | null)?.selfDealing === true && (
+                        <span className="ml-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-sans text-[10px] font-bold text-amber-800">
+                          auto-gestión staff
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-xs">
                       <span className="text-brand-purple-dark/85">{row.entityType}</span>

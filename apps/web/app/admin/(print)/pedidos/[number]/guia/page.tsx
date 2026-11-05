@@ -34,6 +34,7 @@ import {
 import { getSettingValue } from "@/lib/cms";
 import { formatCOP } from "@/lib/format";
 import { PrintGuideButton } from "./print-button";
+import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Guía de entrega",
@@ -95,14 +96,6 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
   });
   const estimateText = formatLucamsDeliveryEstimate(deliveryDays);
   const isCod = order.paymentMethod === "COD";
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "America/Bogota",
-  });
-
   if (!isInternal) {
     return (
       <main className="mx-auto max-w-xl p-8 text-sm">
@@ -143,7 +136,7 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
           </div>
           <div className="text-right">
             <p className="font-mono text-[11px] font-bold">{order.number}</p>
-            <p className="text-[8px]">{dateFmt.format(order.createdAt)}</p>
+            <p className="text-[8px]">{formatDateTimeNoYearCO(order.createdAt)}</p>
           </div>
         </header>
 

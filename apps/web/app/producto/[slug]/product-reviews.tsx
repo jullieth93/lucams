@@ -12,6 +12,7 @@ import { getCurrentCustomer } from "@/lib/auth";
 import type { ProductRatingAggregate } from "@/features/reviews/public-service";
 import { REVIEWABLE_ORDER_STATUSES } from "@/features/reviews/constants";
 import { ReviewForm } from "./review-form";
+import { formatDateLongCO } from "@/lib/datetime";
 
 export async function ProductReviews({
   productId,
@@ -58,12 +59,6 @@ export async function ProductReviews({
       ])
     : [null, null];
 
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-
   return (
     <section id="resenas" className="border-brand-purple/10 border-t pt-8">
       <div className="mb-4 flex items-baseline justify-between gap-3">
@@ -108,7 +103,7 @@ export async function ProductReviews({
                   </span>
                 </div>
                 <p className="text-brand-purple-dark/80 text-sm whitespace-pre-line">{r.comment}</p>
-                <p className="text-brand-muted mt-1 text-xs">{dateFmt.format(r.createdAt)}</p>
+                <p className="text-brand-muted mt-1 text-xs">{formatDateLongCO(r.createdAt)}</p>
               </li>
             ))}
           </ul>

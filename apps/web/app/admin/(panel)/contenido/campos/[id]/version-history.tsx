@@ -11,6 +11,7 @@ import { History, RotateCcw } from "lucide-react";
 import { publishCmsFieldAction } from "@/app/admin/(panel)/contenido/actions";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 type Version = {
   id: string;
@@ -119,15 +120,6 @@ export function VersionHistory({
 }
 
 function formatDateHuman(d: Date): string {
-  const date = new Date(d);
-  // Hora de Colombia (America/Bogota, UTC-5 fijo): es la hora que Lucy espera
-  // ver tanto en "Guardada el…" como en la programación (C3).
-  return date.toLocaleDateString("es-CO", {
-    timeZone: "America/Bogota",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // Hora de Colombia fija vía helper compartido (lib/datetime — bug LCM-2026-0004).
+  return formatDateTimeCO(d);
 }

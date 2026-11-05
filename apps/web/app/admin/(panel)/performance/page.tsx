@@ -44,6 +44,7 @@ import { computePercentiles, type VitalPercentiles } from "@/features/observabil
 import { buildTargetTable, type InpTargetRow } from "@/features/observability/inp-targets";
 import { buildRouteMetricTable } from "@/features/observability/route-metrics";
 import { classifyDevice, type DeviceClass } from "@/features/observability/device";
+import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Rendimiento técnico",
@@ -59,13 +60,6 @@ const MAX_ERRORS = 20;
    (3000 filas/5 min global) acota el peor caso y este tope evita que una
    ventana inundada tumbe el panel admin. */
 const MAX_VITAL_ROWS = 200_000;
-
-const dateTimeFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 // Umbrales oficiales de Web Vitals (web.dev). CLS va sin unidad; LCP/INP/FCP/
 // TTFB/FID en ms. LONGTASK y PAGEWEIGHT usan umbrales propios (ADR-135 —
@@ -503,7 +497,7 @@ export default async function AdminPerformancePage({
                 {recentErrors.map((e) => (
                   <AdminTableRow key={e.id}>
                     <td className="text-brand-muted px-4 py-3 align-top text-xs whitespace-nowrap">
-                      {dateTimeFmt.format(e.createdAt)}
+                      {formatDateTimeNoYearCO(e.createdAt)}
                     </td>
                     <td className="px-4 py-3 align-top">
                       {e.routePath || e.requestPath ? (

@@ -212,6 +212,9 @@ const SEGMENT_BASE_CTE = Prisma.sql`
     WHERE c."deletedAt" IS NULL
       AND c."anonymizedAt" IS NULL
       AND c."primaryEmail" IS NOT NULL
+      -- Guardrail staff=cliente (2026-11-04): el equipo (Contact.isStaff) JAMÁS entra a
+      -- audiencias comerciales — sus compras internas no son demanda real de mercado.
+      AND c."isStaff" = false
       AND NOT EXISTS (
         SELECT 1
         FROM "AdminUser" au

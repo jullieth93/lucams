@@ -46,6 +46,7 @@ import {
   listTasksForEntity,
 } from "@/features/crm/service";
 import { Contact360Tabs } from "./contact-360-tabs";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Contacto 360",
@@ -101,12 +102,6 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
     ? customerWaLink(data.waPhoneRaw, `Hola ${data.displayName}, te escribo de Lucams Shop. `)
     : null;
 
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-
   return (
     <AdminPage>
       <AdminPageHeader
@@ -114,7 +109,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
         title={data.displayName}
         subtitle={
           <span className="inline-flex flex-wrap items-center gap-2">
-            <span>Contacto desde {dateFmt.format(data.createdAt)}</span>
+            <span>Contacto desde {formatDateCO(data.createdAt)}</span>
             {data.customer ? (
               <AdminBadge tone="purple">Cuenta verificada</AdminBadge>
             ) : (
@@ -247,7 +242,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
             </div>
             <p className="text-brand-muted mt-1.5 text-xs">
               {data.kpis.marketingOptIn && data.kpis.marketingOptInAt
-                ? `Autorizado el ${dateFmt.format(data.kpis.marketingOptInAt)}`
+                ? `Autorizado el ${formatDateCO(data.kpis.marketingOptInAt)}`
                 : "Solo recibe notificaciones transaccionales de sus pedidos."}
             </p>
           </AdminCard>

@@ -68,6 +68,8 @@ import {
   productionPieceGroups,
   type ProductionSpec,
 } from "@/features/personalization/production-spec";
+import { formatDateTimeCO } from "@/lib/datetime";
+import { listShipmentEvents } from "@/features/shipping/shipment-events";
 
 export const metadata: Metadata = { title: "Detalle pedido" };
 
@@ -177,6 +179,29 @@ export default async function AdminPedidoDetallePage({
     orderBy: { createdAt: "asc" },
   });
 
+  // Historial granular del carrier (ShipmentEvent, 2026-11-04): hitos reales de la
+  // guía Aveonline con fecha/hora — trazabilidad de soporte sin salir del pedido.
+  const shipmentEvents = order.trackingNumber ? await listShipmentEvents(order.id) : [];
+
+  // Guardrail staff=cliente (2026-11-04): badge «Equipo interno» cuando el comprador
+  // es miembro activo del staff (marca persistida Contact.isStaff O match vivo por
+  // email — consistente con el badge de Contacto 360). Visibilidad operativa, no PII.
+  const orderBuyerIsStaff = order.contactId
+    ? ((
+        await prisma.$queryRaw<Array<{ staff: boolean }>>`
+          SELECT (c."isStaff" OR EXISTS (
+            SELECT 1
+            FROM "AdminUser" au
+            WHERE au."isActive" = TRUE
+              AND au."deletedAt" IS NULL
+              AND LOWER(au."email") = LOWER(COALESCE(c."primaryEmail", ''))
+          )) AS staff
+          FROM "Contact" c
+          WHERE c."id" = ${order.contactId} AND c."deletedAt" IS NULL
+        `
+      )[0]?.staff ?? false)
+    : false;
+
   // ADR-063 T1 — firmar los PNGs 300 DPI de producción SOLO si el actor posee
   // `production:download_assets` (principio de mínimo privilegio).
   const productionPaths = order.items.flatMap((it) => it.design?.productionUrls ?? []);
@@ -226,13 +251,6 @@ export default async function AdminPedidoDetallePage({
     isInternalDelivery && order.status === "SHIPPED"
       ? "En ruta"
       : (STATUS_LABEL[order.status] ?? order.status);
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
   const isSimulatedTracking = order.trackingNumber?.startsWith("TEST-") ?? false;
   // Paquete G (2026-10-02) — último intento fallido de guía, persistido
   // sanitizado por la saga (Order.shipmentLastError). Se muestra solo cuando
@@ -263,7 +281,7 @@ export default async function AdminPedidoDetallePage({
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <AdminBadge tone={STATUS_TONE[order.status] ?? "slate"}>{statusLabel}</AdminBadge>
-            <span>· creado {dateFmt.format(order.createdAt)}</span>
+            <span>· creado {formatDateTimeCO(order.createdAt)}</span>
             {!canReadPii && (
               <Hint content="Por privacidad (Ley 1581), los datos de contacto y dirección exacta vienen protegidos desde el servidor para tu rol.">
                 <span className="border-brand-purple/20 bg-brand-cream text-brand-purple-dark inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold">
@@ -461,11 +479,11 @@ export default async function AdminPedidoDetallePage({
                                   Previa): evidencia ante reclamos de garantía. */}
                               {it.design.qualityAcknowledgedAt && (
                                 <Hint
-                                  content={`Aceptación registrada el ${dateFmt.format(it.design.qualityAcknowledgedAt)}`}
+                                  content={`Aceptación registrada el ${formatDateTimeCO(it.design.qualityAcknowledgedAt)}`}
                                 >
                                   <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
                                     ⚠️ aceptó calidad de fotos (
-                                    {dateFmt.format(it.design.qualityAcknowledgedAt)})
+                                    {formatDateTimeCO(it.design.qualityAcknowledgedAt)})
                                   </span>
                                 </Hint>
                               )}
@@ -554,6 +572,11 @@ export default async function AdminPedidoDetallePage({
 
             {/* Cliente */}
             <Card icon={<User className="h-4 w-4" />} title="Cliente">
+              {orderBuyerIsStaff && (
+                <p className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
+                  ⚑ Equipo interno — compra del staff (excluida de segmentos y RFM)
+                </p>
+              )}
               <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
                 <Row label="Nombre" value={ship.fullName ?? "—"} />
                 <Row label="Email" value={order.email} />
@@ -688,7 +711,7 @@ export default async function AdminPedidoDetallePage({
                     )}
                     {order.reconciledAt && (
                       <p className="text-brand-muted mt-1 text-[10px]">
-                        Cerrada el {dateFmt.format(order.reconciledAt)}
+                        Cerrada el {formatDateTimeCO(order.reconciledAt)}
                       </p>
                     )}
                   </>
@@ -725,13 +748,7 @@ export default async function AdminPedidoDetallePage({
               <Card icon={<Undo2 className="h-4 w-4" />} title="Reembolso">
                 <Row label="Monto" value={formatCOP(order.refundAmount ?? order.total)} />
                 {order.refundedAt && (
-                  <Row
-                    label="Fecha"
-                    value={new Date(order.refundedAt).toLocaleString("es-CO", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  />
+                  <Row label="Fecha" value={formatDateTimeCO(order.refundedAt)} />
                 )}
                 {order.refundReason && <Row label="Motivo" value={order.refundReason} />}
                 <p className="mt-2 text-[11px] text-amber-700">
@@ -878,6 +895,29 @@ export default async function AdminPedidoDetallePage({
                         : "Descargar etiqueta PDF →"}
                     </a>
                   )}
+                  {shipmentEvents.length > 0 && (
+                    <div className="border-brand-purple/10 mt-3 border-t pt-3">
+                      <p className="text-brand-muted mb-2 text-[10px] font-semibold tracking-wider uppercase">
+                        Movimientos de la guía
+                      </p>
+                      <ol className="space-y-2">
+                        {[...shipmentEvents].reverse().map((ev) => (
+                          <li key={ev.id} className="text-[11px] leading-snug">
+                            <span className="text-brand-purple-dark font-semibold">
+                              {formatDateTimeCO(ev.occurredAt)}
+                            </span>
+                            <span className="text-brand-purple-dark/80">
+                              {" "}
+                              — {ev.carrierStatusRaw}
+                            </span>
+                            {ev.description && (
+                              <span className="text-brand-muted"> · {ev.description}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -895,7 +935,7 @@ export default async function AdminPedidoDetallePage({
                       <p className="text-[11px] font-bold text-rose-800">
                         Último error de la transportadora
                         {shipmentLastError.at &&
-                          ` · ${dateFmt.format(new Date(shipmentLastError.at))}`}
+                          ` · ${formatDateTimeCO(new Date(shipmentLastError.at))}`}
                       </p>
                       <p className="mt-1 font-mono text-[11px] break-words text-rose-900">
                         {shipmentLastError.message}
@@ -975,7 +1015,7 @@ export default async function AdminPedidoDetallePage({
                         <p className="text-brand-muted mt-0.5 text-[11px] italic">“{ev.note}”</p>
                       )}
                       <p className="text-brand-muted mt-0.5 text-[10px]">
-                        {dateFmt.format(ev.createdAt)}
+                        {formatDateTimeCO(ev.createdAt)}
                       </p>
                     </li>
                   ))}

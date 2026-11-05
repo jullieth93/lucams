@@ -41,6 +41,7 @@ import {
 } from "@/features/cart/admin-service";
 import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
 import { BulkCartBar, BulkSelectAllCartsCheckbox } from "./bulk-cart-bar";
+import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Carritos abandonados" };
 
@@ -61,13 +62,6 @@ const STATUS_FILTER_LABEL: Record<StatusOption, string> = {
   closed: "Cotizados / Vaciados",
   all: "Todos",
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 export default async function AdminCarritosPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
@@ -367,7 +361,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
                       </span>
                     </td>
                     <td className="text-brand-muted px-4 py-3 text-xs">
-                      <span title={dateFmt.format(c.lastActivityAt)}>
+                      <span title={formatDateTimeNoYearCO(c.lastActivityAt)}>
                         {formatRelativeTime(c.lastActivityAt)}
                       </span>
                     </td>
@@ -400,7 +394,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
                         )}
                         {c.lastReminderSentAt && (
                           <span className="text-brand-muted text-[10px]">
-                            Último correo: {dateFmt.format(c.lastReminderSentAt)}
+                            Último correo: {formatDateTimeNoYearCO(c.lastReminderSentAt)}
                           </span>
                         )}
                       </div>

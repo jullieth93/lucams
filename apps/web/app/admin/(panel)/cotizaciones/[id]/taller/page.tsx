@@ -29,16 +29,9 @@ import { getQuoteProductionBundle } from "@/features/quotes/admin-service";
 import { resolveProductionSpec } from "@/features/personalization/production-spec";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
 import { formatCOP } from "@/lib/format";
+import { formatDateTimeLongCO } from "@/lib/datetime";
 
 type Params = Promise<{ id: string }>;
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "long",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 const asRecord = (v: unknown): Record<string, unknown> | null =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -82,7 +75,7 @@ export default async function HojaDeTallerPage({ params }: { params: Params }) {
             <span className="font-mono text-base">{quote.number}</span>
           </span>
         }
-        subtitle={`${quote.customerName} · ${quote.city}, ${quote.department} · ${dateFmt.format(quote.createdAt)}`}
+        subtitle={`${quote.customerName} · ${quote.city}, ${quote.department} · ${formatDateTimeLongCO(quote.createdAt)}`}
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Ventas" },

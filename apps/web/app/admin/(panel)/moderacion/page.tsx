@@ -29,6 +29,7 @@ import { ModerationActions } from "./moderation-actions";
 import { ProductionPiecesButton } from "./production-pieces-button";
 import { ModerationPreviewZoom } from "./preview-zoom";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Moderación" };
 
@@ -38,12 +39,6 @@ type SearchParams = Promise<{
   error?: string;
   pedido?: string;
 }>;
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 function sourceHref(s: ModerationSource): string {
   return s.tipo === "pedido"
@@ -121,14 +116,14 @@ function ModerationItem({
             </span>
           )}
         </div>
-        <p className="text-brand-muted mt-1 text-xs">En cola desde {dateFmt.format(d.createdAt)}</p>
+        <p className="text-brand-muted mt-1 text-xs">En cola desde {formatDateCO(d.createdAt)}</p>
         {/* Paquete C (2026-10-02) — traza de la aceptación explícita de
             calidad de fotos (checkbox de la Vista Previa): si el cliente
             reclama una garantía por "llegó pixelada", acá está la
             evidencia de que fue informado y aceptó. */}
         {d.qualityAcknowledgedAt && (
           <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-            ⚠️ Aceptó calidad de fotos el {dateFmt.format(d.qualityAcknowledgedAt)}
+            ⚠️ Aceptó calidad de fotos el {formatDateCO(d.qualityAcknowledgedAt)}
           </p>
         )}
       </div>

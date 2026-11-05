@@ -18,6 +18,7 @@ import { SiteHeader } from "@/components/site-header";
 import { getPublicSupportThreadByToken } from "@/features/support/public-thread-service";
 import { SUBJECT_LABELS, type SUPPORT_SUBJECTS } from "@/features/support/schemas";
 import { CustomerTicketReplyForm } from "@/components/support/customer-ticket-reply-form";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Seguimiento de solicitud de soporte",
@@ -51,14 +52,6 @@ export default async function PublicSupportThreadPage({
   const { token } = await params;
   const thread = await getPublicSupportThreadByToken(token);
   if (!thread) notFound();
-
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -95,7 +88,7 @@ export default async function PublicSupportThreadPage({
           <div className="rounded-xl bg-[#FFF8F0] p-4">
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="text-brand-purple-dark font-semibold">Tu mensaje inicial</span>
-              <span className="text-brand-muted">{dateFmt.format(thread.createdAt)}</span>
+              <span className="text-brand-muted">{formatDateTimeCO(thread.createdAt)}</span>
             </div>
             <p className="text-brand-purple-dark/90 mt-2 text-sm whitespace-pre-wrap">
               {thread.message}
@@ -124,7 +117,7 @@ export default async function PublicSupportThreadPage({
                         <span className="text-brand-purple-dark font-semibold">
                           {isAdmin ? "Equipo Lucams Shop" : "Tú"}
                         </span>
-                        <span className="text-brand-muted">{dateFmt.format(m.createdAt)}</span>
+                        <span className="text-brand-muted">{formatDateTimeCO(m.createdAt)}</span>
                       </div>
                       <p className="text-brand-purple-dark/90 mt-1.5 whitespace-pre-wrap">
                         {m.body}

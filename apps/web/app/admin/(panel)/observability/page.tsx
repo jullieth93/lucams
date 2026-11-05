@@ -48,15 +48,9 @@ import {
 } from "@/features/observability/email-deliverability";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { ClientErrorActions } from "./client-error-actions";
+import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Salud técnica" };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 /** Bytes → texto corto para el tile de Storage (KB/MB/GB con 1 decimal). */
 function formatBytes(bytes: number): string {
@@ -376,7 +370,7 @@ export default async function AdminObservabilityPage() {
                 danger={c.overdue}
                 hint={
                   c.lastRunAt
-                    ? `últ. ${dateFmt.format(c.lastRunAt)}`
+                    ? `últ. ${formatDateTimeNoYearCO(c.lastRunAt)}`
                     : c.pending
                       ? "agendado — aún sin primera ejecución"
                       : "sin registro de ejecución"
@@ -402,7 +396,7 @@ export default async function AdminObservabilityPage() {
               danger={backup.stale}
               hint={
                 backup.lastSuccessAt
-                  ? `últ. éxito ${dateFmt.format(backup.lastSuccessAt)}`
+                  ? `últ. éxito ${formatDateTimeNoYearCO(backup.lastSuccessAt)}`
                   : "ningún backup ha reportado éxito"
               }
             />
@@ -433,7 +427,7 @@ export default async function AdminObservabilityPage() {
               danger={monitor.stale || monitor.failing}
               hint={
                 monitor.lastRunAt
-                  ? `últ. corrida ${dateFmt.format(monitor.lastRunAt)} · ${monitor.lastDetail ?? "—"}`
+                  ? `últ. corrida ${formatDateTimeNoYearCO(monitor.lastRunAt)} · ${monitor.lastDetail ?? "—"}`
                   : "el monitor nunca ha reportado"
               }
             />
@@ -457,7 +451,7 @@ export default async function AdminObservabilityPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-brand-purple-dark truncate font-medium">{e.message}</p>
                       <p className="text-brand-muted text-xs">
-                        {e.routePath ?? "—"} · últ. {dateFmt.format(e.lastAt)}
+                        {e.routePath ?? "—"} · últ. {formatDateTimeNoYearCO(e.lastAt)}
                       </p>
                     </div>
                     <span className="flex-shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
@@ -480,7 +474,7 @@ export default async function AdminObservabilityPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-brand-purple-dark truncate font-medium">{e.message}</p>
                       <p className="text-brand-muted truncate text-xs">
-                        {e.url ?? "—"} · últ. {dateFmt.format(e.lastSeenAt)}
+                        {e.url ?? "—"} · últ. {formatDateTimeNoYearCO(e.lastSeenAt)}
                       </p>
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-2">
@@ -514,8 +508,10 @@ export default async function AdminObservabilityPage() {
                         · {w.externalId}
                       </p>
                       <p className="text-brand-muted text-xs">
-                        recibido {dateFmt.format(w.createdAt)}
-                        {w.processedAt ? ` · procesado ${dateFmt.format(w.processedAt)}` : ""}
+                        recibido {formatDateTimeNoYearCO(w.createdAt)}
+                        {w.processedAt
+                          ? ` · procesado ${formatDateTimeNoYearCO(w.processedAt)}`
+                          : ""}
                       </p>
                     </div>
                     {w.processedAt ? (

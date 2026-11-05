@@ -164,6 +164,7 @@ import { ensureCanvasV2 } from "./lib/canvas-migrate";
 import { magnetTextureWidth } from "./lib/texture-resolution";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, type StudioTexts } from "./studio-texts";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 const AUTO_SAVE_DELAY_MS = 2000;
 // 2026-10-13 — miniatura del DRAFT para "Mis diseños": se compone y sube como
@@ -2527,10 +2528,7 @@ export function StudioEditor({
             {resumeOffer.savedAt > 0
               ? fillStudioText(texts.comun.continuarDetalle, {
                   producto: product.name,
-                  fecha: new Intl.DateTimeFormat("es-CO", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  }).format(new Date(resumeOffer.savedAt)),
+                  fecha: formatDateTimeCO(new Date(resumeOffer.savedAt)),
                 })
               : product.name}
           </p>

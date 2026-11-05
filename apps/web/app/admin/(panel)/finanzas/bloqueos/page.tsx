@@ -27,6 +27,7 @@ import { requireRole } from "@/lib/admin-rbac-guard";
 import { isCatalogMode } from "@/lib/store-mode";
 import { listBlockedIdentities } from "@/features/anti-abuse/blocklist-service";
 import { AddBlockForm, RemoveBlockButton } from "./bloqueos-form";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Bloqueos contra entrega",
@@ -40,12 +41,6 @@ const KIND_META: Record<string, { label: string; tone: "turquoise" | "pink" | "a
   EMAIL: { label: "Email", tone: "pink" },
   ADDRESS: { label: "Dirección", tone: "amber" },
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
 
 export default async function BloqueosCodPage() {
   await requireRole(ADMIN_ROLE_SETS.FINANCE_COD);
@@ -118,7 +113,7 @@ export default async function BloqueosCodPage() {
                       {r.reason}
                     </td>
                     <td className="text-brand-muted px-4 py-3 align-top text-xs">
-                      {dateFmt.format(r.createdAt)}
+                      {formatDateCO(r.createdAt)}
                     </td>
                     <td className="px-4 py-3 text-right align-top">
                       <RemoveBlockButton id={r.id} label={r.value} />

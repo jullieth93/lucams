@@ -35,6 +35,7 @@ import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { CreateCouponForm } from "./create-coupon-form";
 import { archiveCouponAction, pauseCouponAction, resumeCouponAction } from "./actions";
+import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Cupones",
@@ -325,8 +326,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                       )}
                     </td>
                     <td className="text-brand-muted px-4 py-3 text-xs">
-                      {c.validFrom.toLocaleDateString("es-CO", { timeZone: "America/Bogota" })} →{" "}
-                      {c.validTo.toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}
+                      {formatDateCO(c.validFrom)} → {formatDateCO(c.validTo)}
                     </td>
                     <td className="text-brand-purple-dark/85 px-4 py-3 text-center text-sm tabular-nums">
                       {c.usedCount}

@@ -43,6 +43,7 @@ import { reorderAction } from "./actions";
 import { ReorderControl } from "@/components/orders/reorder-control";
 import { getAccountTexts } from "../../account-texts.server";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
+import { formatDateTimeLongCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Detalle de mi pedido",
@@ -121,13 +122,6 @@ export default async function CustomerPedidoDetallePage({
   if (!order) notFound();
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
-  const dateFmt = new Intl.DateTimeFormat("es-CO", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
   const progress = timelineProgress(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
   // #2 — contraentrega: no mostrar "Pagado" (aún no paga); "Confirmado" + aviso del monto en efectivo.
@@ -175,7 +169,7 @@ export default async function CustomerPedidoDetallePage({
           Pedido {order.number}
         </h1>
         <p className="text-brand-muted mt-1 text-sm">
-          {dateFmt.format(order.createdAt)} · {statusText}
+          {formatDateTimeLongCO(order.createdAt)} · {statusText}
         </p>
       </header>
 

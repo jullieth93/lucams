@@ -44,6 +44,7 @@ import {
   KpiCard,
   type ChartTone,
 } from "@/components/admin-page";
+import { formatMonthYearCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Métricas de ventas",
@@ -127,10 +128,7 @@ export default async function AdminMetricasPage({
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const monthLabel = new Intl.DateTimeFormat("es-CO", {
-    month: "long",
-    year: "numeric",
-  }).format(now);
+  const monthLabel = formatMonthYearCO(now);
 
   // Consultas independientes → Promise.all para no serializar round-trips a DB.
   // En modo catálogo las queries de Order ni siquiera se disparan (orderData=null).

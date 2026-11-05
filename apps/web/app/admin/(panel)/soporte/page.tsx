@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { TicketActions } from "./ticket-actions";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Soporte y PQR",
@@ -66,14 +67,6 @@ const PRIORITY_TONE: Record<SupportTicketPriority, "slate" | "purple" | "amber" 
   HIGH: "amber",
   URGENT: "rose",
 };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 function subjectLabel(subject: string): string {
   return (SUBJECT_LABELS as Record<string, string>)[subject] ?? subject;
@@ -263,7 +256,7 @@ export default async function AdminSoportePage({ searchParams }: { searchParams:
                     )}
                     <span>· {t.email}</span>
                     <span>·</span>
-                    <Hint content={dateFmt.format(t.createdAt)}>
+                    <Hint content={formatDateTimeCO(t.createdAt)}>
                       <span>{formatRelativeTime(t.createdAt)}</span>
                     </Hint>
                     {t.orderNumber && <span>· Pedido {t.orderNumber}</span>}

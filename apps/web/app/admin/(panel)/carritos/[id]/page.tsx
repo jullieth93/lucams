@@ -45,16 +45,9 @@ import {
 } from "@/features/cart/admin-service";
 import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
 import { sendReminderAction } from "../actions";
+import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = { title: "Diagnóstico de carrito abandonado" };
-
-const dateFmt = new Intl.DateTimeFormat("es-CO", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
 
 const CUID_RE = /^c[a-z0-9]{24}$/;
 
@@ -120,7 +113,7 @@ export default async function AdminCarritoDetallePage({
         }
         subtitle={
           <>
-            Registrado el {dateFmt.format(detail.createdAt)} · {detail.email} ·{" "}
+            Registrado el {formatDateTimeCO(detail.createdAt)} · {detail.email} ·{" "}
             {detail.lineItems.length} {detail.lineItems.length === 1 ? "línea" : "líneas"} ·{" "}
             <strong className="text-brand-purple-dark">{formatCOP(detail.totalCents)}</strong>
           </>
@@ -283,7 +276,7 @@ export default async function AdminCarritoDetallePage({
                         </Link>
                         <span className="text-brand-muted ml-2">
                           {ord.paymentMethod} · {formatCOP(ord.total)} ·{" "}
-                          {dateFmt.format(ord.createdAt)}
+                          {formatDateTimeCO(ord.createdAt)}
                         </span>
                       </div>
                       <AdminBadge
@@ -316,7 +309,7 @@ export default async function AdminCarritoDetallePage({
                       <li key={dec.externalId}>
                         <strong>{dec.orderNumber}</strong> · {dec.paymentMethodType ?? "Medio N/D"}{" "}
                         ({dec.status}){dec.statusMessage ? ` — «${dec.statusMessage}»` : ""} ·{" "}
-                        {dateFmt.format(dec.createdAt)}
+                        {formatDateTimeCO(dec.createdAt)}
                       </li>
                     ))}
                   </ul>
@@ -334,11 +327,11 @@ export default async function AdminCarritoDetallePage({
                 <p>
                   Recordatorios por correo enviados: <strong>{detail.reminderCount}</strong>
                   {detail.lastReminderSentAt &&
-                    ` (último: ${dateFmt.format(detail.lastReminderSentAt)})`}
+                    ` (último: ${formatDateTimeCO(detail.lastReminderSentAt)})`}
                 </p>
                 {detail.recoveredAt && (
                   <p className="font-semibold text-emerald-700">
-                    Recuperado el {dateFmt.format(detail.recoveredAt)}
+                    Recuperado el {formatDateTimeCO(detail.recoveredAt)}
                   </p>
                 )}
               </div>
