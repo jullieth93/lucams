@@ -1,84 +1,383 @@
-# Compliance — Lucams_shop (Colombia)
+# Cumplimiento Normativo y Paquete Legal — Lucams Shop
 
-> Marco regulatorio que aplica a un e-commerce colombiano. **Nada de esto es opcional para vender legalmente.** Detalle por norma + tareas concretas en el código y en el flujo operativo.
-
-> **Disclaimer:** este documento refleja interpretación operativa de las normas a 2026-05-09. **No reemplaza asesoría legal profesional.** Antes del lanzamiento se recomienda revisión por abogado colombiano (ADR-020).
-
-## Tabla de contenido
-
-1. [Resumen ejecutivo de obligaciones](#resumen-ejecutivo-de-obligaciones)
-2. [Ley 1581 de 2012 — Protección de Datos Personales (Habeas Data)](#ley-1581-de-2012--protección-de-datos-personales-habeas-data)
-3. [Ley 1480 de 2011 — Estatuto del Consumidor](#ley-1480-de-2011--estatuto-del-consumidor)
-4. [Facturación electrónica DIAN (Resolución 165 de 2023)](#facturación-electrónica-dian-resolución-165-de-2023)
-5. [IVA y retenciones](#iva-y-retenciones)
-6. [Documentos legales requeridos en el sitio](#documentos-legales-requeridos-en-el-sitio)
-7. [Cookie consent (alineación GDPR voluntaria)](#cookie-consent-alineación-gdpr-voluntaria)
-8. [Subprocessor list y transferencias internacionales](#subprocessor-list-y-transferencias-internacionales)
-9. [Calendario de cumplimiento](#calendario-de-cumplimiento)
+> **Documento vivo (Nivel 1).** Especificación verificada contra el código real del cumplimiento jurídico, regulatorio y técnico de Lucams Shop en Colombia: Estatuto del Consumidor (Ley 1480 de 2011 y Ley 2439 de 2024), reversión del pago (Ley 1480 art. 51 y Decreto 587 de 2016 / Decreto 1074 de 2015), Protección de Datos Personales y Hábeas Data (Ley 1581 de 2012, Decreto 1377 de 2013 y Decreto 090 de 2018), reglas específicas de privacidad y retención del Estudio de Personalización, gobierno de cookies, arquitectura de tres capas del **Paquete Legal Versión 3 (`2026-11-05`)**, régimen tributario vigente (`BILLING_DOCUMENT_ENABLED = false`) y postura operativa de propiedad intelectual (`PLAN_CATALOG_V2 [1.7]`).
+>
+> **Nota de alcance:** este documento describe la implementación técnica y operativa vigente de las normas colombianas en el código y en el panel administrativo; complementa (sin sustituir) el criterio contable y jurídico profesional de la titular.
+>
+> **Documentos relacionados:** [`SECURITY.md`](SECURITY.md) · [`OBSERVABILITY.md`](OBSERVABILITY.md) · [`PLAN_CATALOG_V2.md`](PLAN_CATALOG_V2.md) · [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md) · [`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md) · [`domains/studio-and-production.md`](domains/studio-and-production.md) · [`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md) · [`integrations/aveonline.md`](integrations/aveonline.md)
 
 ---
 
-## Resumen ejecutivo de obligaciones
+## 1. Resumen ejecutivo de obligaciones regulatorias e identificación del responsable
 
-| Norma                                     | Aplica si...                                                              | Bloqueante para lanzar              |
-| ----------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------- |
-| **Ley 1581 / Decreto 1377** (Habeas Data) | Recolectamos datos personales (sí: emails, teléfonos, direcciones, fotos) | ✅ Sí                               |
-| **Ley 1480** (Estatuto del Consumidor)    | Vendemos B2C (sí)                                                         | ✅ Sí                               |
-| **Facturación electrónica DIAN**          | Somos responsables de IVA (sí, al inscribir el negocio)                   | ✅ Sí (multas hasta 1% de ingresos) |
-| **IVA 19% standard**                      | Productos no exentos (los imanes están gravados a tarifa general)         | ✅ Sí                               |
-| **Retención en la fuente**                | Comprador es agente retenedor (B2B mayorista)                             | Solo para Fase 6 (B2B)              |
-| **Registro Único de Comerciantes (RUES)** | Operamos comercialmente                                                   | ✅ Sí (no es código, es trámite)    |
-| **Cámara de Comercio**                    | Registro mercantil del negocio                                            | ✅ Sí (trámite)                     |
+### 1.1 Mapa ejecutivo de obligaciones en Colombia
+
+| Marco normativo                                                      | Ámbito de aplicación en Lucams Shop                                                           | Estado técnico y operativo actual                                                                                                                         |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ley 1581 de 2012 y Decreto 1377 de 2013** (Hábeas Data)            | Recolección de correos, teléfonos, direcciones, documentos y fotografías subidas al Estudio   | **Activo:** tabla `Consent` append-only (8 scopes), aviso v3, supresión self-service, cascada CRM `scrubContactOnErasureTx` y purgas automáticas diarias  |
+| **Decreto 090 de 2018** (Registro Nacional de Bases de Datos — RNBD) | Obligatorio solo para sociedades comerciales y ESAL con activos totales `≥ 100 000 UVT`       | **Exento de registro obligatorio hoy:** operación como persona natural comerciante bajo el umbral legal (registro voluntario opcional)                    |
+| **Ley 1480 de 2011 y Ley 2439 de 2024** (Estatuto del Consumidor)    | Ventas a distancia B2C en `lucamsshop.com` y pedidos cerrados por WhatsApp desde cotizaciones | **Activo:** precios enteros en centavos COP, retracto 5 días hábiles + reembolso ≤ 15 días calendario, garantías `1..120` meses y SLAs en días hábiles    |
+| **Ley 1480 art. 51 y Decreto 587 de 2016** (Reversión del pago)      | Pagos con instrumentos electrónicos (tarjetas, PSE, billeteras) procesados a través de Wompi  | **Activo:** procedimiento de 5 causales publicado en `/legal/devoluciones` y `/legal/terminos` (5 días hábiles solicitud + 15 días hábiles participantes) |
+| **Estatuto Tributario art. 437 par. 3 y Res. DIAN 165 de 2023**      | Régimen de IVA y obligación de facturar electrónicamente según tope anual de `3 500 UVT`      | **No responsable de IVA hoy:** soporte de operación `LCM-YYYY-NNNN`, `Order.tax = 0` y `BILLING_DOCUMENT_ENABLED = false` con columnas DIAN preparadas    |
+| **Estatuto Tributario (Retefuente, ReteIVA, ReteICA en ventas B2B)** | Ventas corporativas cuando el comprador es persona jurídica o agente de retención             | No aplica en B2C; en B2B las practica el comprador agente retenedor sobre el pago entregando certificado de retención                                     |
+| **Código de Comercio (RUES / Matrícula Mercantil y RUT)**            | Ejercicio profesional del comercio en Colombia                                                | Trámite mercantil y tributario gestionado administrativamente por la titular                                                                              |
+| **Estándar opt-in de cookies y RFC 9116 (`security.txt`)**           | Analítica opcional (GA4 y Web Vitals RUM) y divulgación coordinada de vulnerabilidades        | **Activo:** banner `cookie_consent_v1` con re-consentimiento por versión, embudo sin cookies (`FunnelEventDaily`) y `/.well-known/security.txt`           |
+
+### 1.2 Identificación del responsable y canales oficiales
+
+- **Marca y figura jurídica:** **Lucams Shop**, establecimiento de comercio electrónico operado desde Bogotá D.C., Colombia, por persona natural comerciante titular de la marca Lucams Shop (`ADR-072`, `ADR-138`).
+- **Canales oficiales centralizados en ajustes CMS (`apps/web/lib/cms-tokens.ts`):**
+  - Atención al consumidor, soporte y PQR: `{{email_contacto}}` (`CONTACT_EMAIL`, por defecto `hola@lucamsshop.com`), centro `/soporte` (`/contacto`) y canal oficial de WhatsApp.
+  - Protección de datos personales (consultas y reclamos Hábeas Data / ARCO): `{{email_habeas_data}}` (`HABEAS_DATA_EMAIL`, por defecto `habeas-data@lucamsshop.com`) y autoservicio en `/mi-cuenta/seguridad` → `/mi-cuenta/eliminar`.
+  - Derecho de retracto, devoluciones y reversión del pago: `{{email_retracto}}` (`RETRACTO_EMAIL`, por defecto `retracto@lucamsshop.com`), `/mi-cuenta/pedidos/[number]` y `/pedido/[token]`.
+  - Seguridad de la información y reporte coordinado de vulnerabilidades: **`security@lucamsshop.com`** (`{{email_security}}` / `SECURITY_EMAIL`, publicado en `/legal/security` y `/.well-known/security.txt`).
+- **Autoridades de inspección y vigilancia:** Superintendencia de Industria y Comercio (**SIC**, protección al consumidor y datos personales) y Dirección de Impuestos y Aduanas Nacionales (**DIAN**, obligaciones tributarias).
+
+### 1.3 Identificación permanente en e-commerce (art. 50 lit. a Ley 1480): entrega a requerimiento vs publicación sin exponer vivienda privada
+
+El **art. 50 literal a de la Ley 1480 de 2011** ordena a los proveedores que ofrezcan productos por medios electrónicos informar en todo momento de forma cierta, fidedigna, suficiente, clara y actualizada su nombre o razón social, NIT, dirección de notificación judicial, teléfono y correo electrónico:
+
+1. **Postura vigente en el Paquete Legal Versión 3:** los documentos publicados identifican a **Lucams Shop (persona natural), Bogotá D.C., Colombia**, informan teléfono/WhatsApp y los cuatro buzones institucionales, e indican que los datos formales completos de identificación mercantil y tributaria se suministran de inmediato a requerimiento para cualquier actuación legal o ante autoridad, evitando exponer la vivienda familiar o el número de cédula puro a suplantación. El test `legal-content-sync.test.ts` bloquea en CI que se publiquen números `NIT` o matrículas no verificados.
+2. **Ruta de endurecimiento pleno 100 % vía CMS (sin tocar código):** dado que el art. 50 configura un deber de publicación permanente y no solo de entrega bajo solicitud, el cumplimiento literal se logra **sin exponer la residencia privada de la titular** (que solo vive en los ajustes internos privados `PICKUP_*` de Aveonline):
+   - **Nombre comercial + nombre de la comerciante** inscrita en el registro mercantil.
+   - **NIT con dígito de verificación** asignado en el RUT.
+   - **Dirección de notificación judicial designada** (oficina virtual, casillero comercial o dirección mercantil registrada ante Cámara de Comercio, distinta del domicilio privado).
+   - **Teléfono y correos electrónicos institucionales** ya publicados.
+
+### 1.4 Estructura base del Aviso de Privacidad (Decreto 1377 de 2013, arts. 14 y 15)
+
+Todo punto de captura inicial (registro, checkout, cotización, B2B `/empresas-y-eventos`, soporte y boletín) remite al Aviso de Privacidad (`/legal/privacidad`) y a la Política de Tratamiento (`/legal/habeas-data`), cuya estructura obligatoria cubre:
+
+```text
+Responsable: Lucams Shop (persona natural comerciante), Bogotá D.C., Colombia.
+Canales de Hábeas Data: {{email_habeas_data}} y /mi-cuenta/seguridad.
+
+Datos tratados:
+- Identificación y contacto: nombre, correo electrónico, teléfono móvil y documento cuando aplique.
+- Logística: dirección física de entrega y datos del destinatario cuando marcas un pedido como regalo.
+- Transaccionales: referencia del pedido e identificadores de estado (Wompi procesa los medios de pago).
+- Personalización: fotografías, textos y composiciones cargadas en el Estudio de Personalización.
+
+Finalidades principales:
+1. Fabricar las piezas personalizadas, procesar el pago, despachar el pedido y prestar soporte, retracto y garantía.
+2. Enviar notificaciones estrictamente transaccionales sobre el estado de tu compra o cotización.
+3. Enviar comunicaciones comerciales, novedades o recordatorios únicamente cuando otorgas autorización previa y expresa (opcional y revocable en cualquier momento).
+4. Medir seguridad, estabilidad técnica y métricas agregadas del servicio.
+
+Derechos del titular (art. 8 Ley 1581 de 2012):
+Conocer, actualizar y rectificar tus datos; solicitar prueba de la autorización; ser informado del uso dado; presentar quejas ante la SIC; revocar la autorización y solicitar la supresión de tus datos; y acceder de forma gratuita a tus datos personales.
+```
 
 ---
 
-## Ley 1581 de 2012 — Protección de Datos Personales (Habeas Data)
+## 2. Fuente única de plazos estatutarios (`consumer-law.ts`) y motor `{{tokens}}` (`cms-tokens.ts`)
 
-> Cubierto en parte en [`SECURITY.md` § PII y Habeas Data](./SECURITY.md#pii-y-habeas-data-ley-1581). Este documento agrega el cumplimiento operativo.
+### 2.1 Constantes legales centralizadas (`apps/web/lib/consumer-law.ts`)
 
-### Obligaciones del Responsable del Tratamiento (nosotros)
+Para impedir contradicciones entre la lógica de negocio, los relojes SLA del panel, las fichas de producto, los correos transaccionales, las preguntas frecuentes y los 8 documentos legales (`ADR-187`), todos los términos de ley residen en un único módulo isomórfico ([`apps/web/lib/consumer-law.ts`](../apps/web/lib/consumer-law.ts)):
 
-1. **Política de Tratamiento de Datos Personales** publicada y vinculante.
-2. **Aviso de Privacidad** mostrado en el primer contacto (registro, formulario de contacto, checkout).
-3. **Autorización expresa** del titular antes de recolectar datos. La autorización debe ser:
-   - **Previa** (antes del tratamiento).
-   - **Expresa** (no inferida).
-   - **Informada** (que se le diga al titular qué se hará con sus datos).
-   - **Verificable** (registrada — guardamos `Consent(customerId?, email?, phone?, scope, accepted, version, acceptedAt, ipAddress, userAgent)` en DB; `phone` ancla consentimientos de titulares sin email, ej. cotización por WhatsApp).
-4. **Atender peticiones, quejas y reclamos (PQR)** en máximo **15 días hábiles**.
-5. **Reportar incidentes de seguridad** a la SIC (Superintendencia de Industria y Comercio) si comprometen datos personales (notificación dentro de 15 días hábiles del descubrimiento).
-6. **Registro Nacional de Bases de Datos (RNBD)** ante la SIC: según el Decreto 090 de 2018 (modifica el art. 2.2.2.26.1.2 del Decreto 1074 de 2015), la obligación aplica a **sociedades comerciales y ESAL con activos ≥ 100.000 UVT** (2026: UVT $52.374 → ≈ $5.237.400.000). Una **persona natural no está en el ámbito obligatorio** (puede registrarse voluntariamente). _(Verificado 2026-09-04 contra el Decreto 090/2018: el criterio "procesa datos sensibles a gran escala" que figuraba aquí no existe en la norma — eliminado. Confirmar la decisión de no registrar con el abogado.)_
+```ts
+export const RETRACT_WINDOW_BUSINESS_DAYS = 5; // Ley 1480 art. 47 (5 días hábiles desde entrega)
+export const RETRACT_REFUND_MAX_CALENDAR_DAYS = 15; // Ley 2439 de 2024 art. 3 (máx. 15 días calendario)
+export const MAX_LEGAL_DELIVERY_CALENDAR_DAYS = 30; // Ley 1480 art. 50 lit. h (máx. 30 días calendario)
+export const WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS = 15; // Ley 1480 art. 58 / Decreto 1074 de 2015 (15 días hábiles)
+export const DEFAULT_CATALOG_WARRANTY_MONTHS = 1; // Ley 1480 art. 8 (base catálogo; cada producto sella el suyo)
+export const HABEAS_DATA_CONSULTATION_BUSINESS_DAYS = 10; // Ley 1581 art. 14 (10 días hábiles consultas)
+export const HABEAS_DATA_CLAIM_BUSINESS_DAYS = 15; // Ley 1581 art. 15 (15 días hábiles reclamos/supresión)
 
-### Implementación técnica
+export function formatWarrantyTerm(months: number): string {
+  return `${months} ${months === 1 ? "mes" : "meses"}`;
+}
+```
 
-#### Tabla `Consent`
+Cualquier consumidor interno de plazos importa exclusivamente desde `lib/consumer-law.ts`: `features/retract/service.ts`, `features/warranty/`, `lib/colombian-sla.ts`, los diccionarios de textos de checkout y cuenta, las plantillas de correo y el motor de interpolación CMS.
 
-Modelo real (`packages/db/prisma/schema.prisma`): append-only — revocar crea una fila nueva con `accepted=false` y `revokesId` apuntando al consentimiento revocado.
+### 2.2 Los 11 tokens legales/institucionales (+ 6 operativos) en `resolveCmsTokens` (`apps/web/lib/cms-tokens.ts`)
+
+`<CmsText>`, `<CmsMarkdown>` y `getPageSeo()` ejecutan `resolveCmsTokens(text, ctx)` tanto sobre el cuerpo persistido en `CmsField` como sobre los `FALLBACK` estáticos compilados en el código (`apps/web/lib/cms-tokens.test.ts`). Los documentos de `packages/db/legal-content/*.md` se apoyan en **11 tokens legales y de contacto** más **6 tokens de promesa operativa y contexto** (**17 tokens canónicos en total**):
+
+| Grupo                          | Token                         | Fuente exacta en código o `SiteSetting`                       | Valor por defecto            |
+| ------------------------------ | ----------------------------- | ------------------------------------------------------------- | ---------------------------- |
+| **1. Canales legales (4)**     | `{{email_contacto}}`          | `SiteSetting` `CONTACT_EMAIL`                                 | `hola@lucamsshop.com`        |
+| **1. Canales legales (4)**     | `{{email_habeas_data}}`       | `SiteSetting` `HABEAS_DATA_EMAIL`                             | `habeas-data@lucamsshop.com` |
+| **1. Canales legales (4)**     | `{{email_retracto}}`          | `SiteSetting` `RETRACTO_EMAIL`                                | `retracto@lucamsshop.com`    |
+| **1. Canales legales (4)**     | `{{email_security}}`          | `SiteSetting` `SECURITY_EMAIL` (`/.well-known/security.txt`)  | `security@lucamsshop.com`    |
+| **2. Plazos estatutarios (7)** | `{{garantia_base}}`           | `formatWarrantyTerm(DEFAULT_CATALOG_WARRANTY_MONTHS)`         | `1 mes`                      |
+| **2. Plazos estatutarios (7)** | `{{garantia_respuesta_dias}}` | `String(WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS)`               | `15`                         |
+| **2. Plazos estatutarios (7)** | `{{retracto_dias}}`           | `String(RETRACT_WINDOW_BUSINESS_DAYS)`                        | `5`                          |
+| **2. Plazos estatutarios (7)** | `{{retracto_reembolso_dias}}` | `String(RETRACT_REFUND_MAX_CALENDAR_DAYS)`                    | `15`                         |
+| **2. Plazos estatutarios (7)** | `{{entrega_max_legal_dias}}`  | `String(MAX_LEGAL_DELIVERY_CALENDAR_DAYS)`                    | `30`                         |
+| **2. Plazos estatutarios (7)** | `{{habeas_consulta_dias}}`    | `String(HABEAS_DATA_CONSULTATION_BUSINESS_DAYS)`              | `10`                         |
+| **2. Plazos estatutarios (7)** | `{{habeas_reclamo_dias}}`     | `String(HABEAS_DATA_CLAIM_BUSINESS_DAYS)`                     | `15`                         |
+| **3. Promesa operativa (6)**   | `{{fab}}`                     | `SiteSetting` `PRODUCTION_DAYS_DEFAULT` (preparación taller)  | `2`                          |
+| **3. Promesa operativa (6)**   | `{{entrega}}`                 | `SiteSetting` `DELIVERY_DAYS_ESTIMATE` (rango transportadora) | `2 a 5`                      |
+| **3. Promesa operativa (6)**   | `{{total}}`                   | Suma entera calculada `fab + min(entrega)`                    | `4`                          |
+| **3. Promesa operativa (6)**   | `{{cobertura}}`               | `SiteSetting` `DELIVERY_COVERAGE_COUNT`                       | `1.100+`                     |
+| **3. Promesa operativa (6)**   | `{{cutoff_lucams}}`           | `SiteSetting` `LUCAMS_SHIPPING_CUTOFF_HOUR` (2 dígitos)       | `12`                         |
+| **3. Promesa operativa (6)**   | `{{ciudad}}`                  | `ctx.city` opcional en páginas dinámicas                      | Contextual                   |
+
+---
+
+## 3. Estatuto del Consumidor (Ley 1480 de 2011 y Ley 2439 de 2024)
+
+### 3.1 Deberes precontractuales, precios enteros COP y distinción estricta entre estimado operativo y plazo máximo legal de entrega
+
+1. **Ocho elementos obligatorios visibles antes de pagar (arts. 23 y 50):**
+   - Identificación y canales de contacto de Lucams Shop.
+   - Características esenciales del producto: dimensiones en cm, materiales, acabado, peso y advertencia de seguridad por imanes/piezas pequeñas fuera del alcance de menores de 3 años.
+   - Precio total en pesos colombianos sin cargos ocultos (art. 26).
+   - Medios de pago habilitados (Wompi — tarjetas, PSE, Nequi/billeteras — y pago contraentrega donde aplique cobertura y validación antifraude).
+   - Desglose separado de tiempo de preparación y tiempo/costo de envío.
+   - Existencia del derecho de retracto de 5 días hábiles o aviso expreso de excepción por producto claramente personalizado (art. 47 num. 3).
+   - Término individual de garantía legal anunciado (`Product.warrantyMonths`) y condiciones para hacerla efectiva.
+   - Acceso directo y casilla desmarcada de aceptación de Términos y Condiciones (`/legal/terminos`) y Política de Datos (`/legal/habeas-data`).
+2. **Precios en centavos COP (`Int`):** el código prohíbe floats monetarios; el resumen pre-pago desglosa `Order.subtotal`, descuento por cupón (`Order.discount`), redención de Puntos Lucams (`Order.loyaltyDiscount`), flete (`Order.shipping`) y total definitivo (`Order.total`).
+3. **Distinción legal estricta entre estimado operativo de preparación + transporte vs plazo máximo legal de 30 días calendario (`MAX_LEGAL_DELIVERY_CALENDAR_DAYS = 30`):**
+   - En fichas de producto, carrito, checkout, correos de confirmación/despacho, vista de seguimiento `/pedido/[token]`, PDF de guía y panel `/admin` se muestran **siempre por separado**:
+     1. **Preparación estimada en taller antes del despacho** (`{{fab}}` días hábiles por defecto o `Product.productionDays` específico de la referencia).
+     2. **Tránsito estimado de la transportadora después del despacho** (`{{entrega}}` días hábiles informados por Aveonline o por la modalidad seleccionada).
+   - Expresiones orientativas («estimado», «alrededor de X días») jamás se presentan como fecha calendario garantizada en envíos nacionales porque el tránsito depende de terceros transportadores; asimismo, la modalidad local **Envío Lucams** en Bogotá está expresamente sujeta a cobertura de localidad y hora de corte (`{{cutoff_lucams}}:00`).
+   - Conforme al **art. 50 literal h de la Ley 1480 de 2011** (y Ley 2439 de 2024), el plazo máximo legal supletorio para materializar la entrega es de **treinta (`30`) días calendario** (`{{entrega_max_legal_dias}}`) contados desde la confirmación del pedido. Si por falta de disponibilidad o causa atribuible a Lucams Shop se incumple ese tope legal, el consumidor puede resolver unilateralmente el contrato y obtener la devolución íntegra de todas las sumas pagadas sin deducción alguna en un plazo no mayor a **15 días calendario**.
+   - El script `packages/db/scripts/sync-and-prune-cms-v2.mjs` mantiene sincronizados defaults de código, mapa CMS y bloques publicados creando versiones reversibles sin pisar ediciones manuales deliberadas.
+
+### 3.2 Derecho de retracto, excepción de personalizados y prorrateo exacto `BigInt` (art. 47 y Ley 2439 de 2024)
+
+Implementado en [`apps/web/features/retract/service.ts`](../apps/web/features/retract/service.ts) tanto para compras web como para ventas a distancia cerradas por WhatsApp a partir de una cotización:
+
+| Categoría de ítem en la orden                                                                              |     ¿Aplica retracto?     | Regla en código y sustento normativo                                                                             |
+| ---------------------------------------------------------------------------------------------------------- | :-----------------------: | ---------------------------------------------------------------------------------------------------------------- |
+| Producto de catálogo estándar (`PersonalizationKind.NONE` o plantilla `PREMADE` sin edición del comprador) | **Sí (`5 días hábiles`)** | Ley 1480 art. 47 inc. 1; `isItemPersonalized(item) === false`                                                    |
+| Pieza creada en el Estudio (cualquiera de las 8 modalidades con foto, logo o texto propio del cliente)     |          **No**           | Exceptuada por **art. 47 numeral 3** («claramente personalizados»); `customDesign != null \|\| designId != null` |
+| Paquete o combo integrado exclusivamente por productos estándar                                            | **Sí (`5 días hábiles`)** | Ninguna línea personalizada                                                                                      |
+| Paquete o combo que incluye al menos un ítem personalizado                                                 |          **No**           | Informado antes del pago en ficha, checkout y `/legal/devoluciones`                                              |
+
+#### Cómputo de ventana en hora colombiana y prorrateo financiero sin floats
+
+```ts
+// apps/web/features/retract/service.ts (extracto real)
+const COT_OFFSET_MS = 5 * 60 * 60 * 1000; // America/Bogota (UTC-5 fijo)
+
+export function retractWindowEnd(deliveredAt: Date): Date {
+  const endCot = new Date(
+    addBusinessDays(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS).getTime() - COT_OFFSET_MS,
+  );
+  endCot.setUTCHours(23, 59, 59, 999); // cierre a las 23:59:59.999 COT del 5.º día hábil
+  return new Date(endCot.getTime() + COT_OFFSET_MS);
+}
+
+/** División entera half-up con BigInt (cero floats y cero overflow en multiplicación). */
+function roundMulDiv(a: number, b: number, denom: number): number {
+  if (a <= 0 || b <= 0 || denom <= 0) return 0;
+  const num = BigInt(a) * BigInt(b);
+  const d = BigInt(denom);
+  return Number((num + d / BigInt(2)) / d);
+}
+```
+
+```ts
+// apps/web/features/retract/service.ts — prorrateo exacto sin floats (invariante [FIN-01])
+export function computeRetractRefundBreakdown(
+  input: RetractRefundBreakdownInput,
+): RetractRefundBreakdown {
+  const lineTotal = Math.max(0, Math.trunc(input.lineTotal));
+  const subtotal = Math.max(0, Math.trunc(input.orderSubtotal));
+  const subtotalCouponDiscount =
+    input.couponType === "FREE_SHIPPING" ? 0 : Math.max(0, Math.trunc(input.couponDiscount));
+  const loyaltyDiscount = Math.max(0, Math.trunc(input.loyaltyDiscount));
+  const totalMerchandiseDiscount = Math.min(subtotal, subtotalCouponDiscount + loyaltyDiscount);
+
+  const discountShareCents =
+    totalMerchandiseDiscount > 0 && subtotal > 0
+      ? Math.min(lineTotal, roundMulDiv(totalMerchandiseDiscount, lineTotal, subtotal))
+      : 0;
+  const rawCashRefund = Math.max(0, lineTotal - discountShareCents);
+  const maxOrderCashMerchandise = Math.max(0, subtotal - totalMerchandiseDiscount);
+  const alreadyRefunded = Math.max(0, Math.trunc(input.alreadyRefundedCents ?? 0));
+  const remainingOrderCash = Math.max(0, maxOrderCashMerchandise - alreadyRefunded);
+  const cashRefundCents = Math.min(rawCashRefund, remainingOrderCash);
+
+  const pointsRedeemed = Math.max(0, Math.trunc(input.loyaltyPointsRedeemed));
+  const pointsToRestore =
+    pointsRedeemed > 0 && subtotal > 0
+      ? Math.min(pointsRedeemed, roundMulDiv(pointsRedeemed, lineTotal, subtotal))
+      : 0;
+
+  return { cashRefundCents, discountShareCents, pointsToRestore };
+}
+```
+
+```prisma
+// packages/db/prisma/schema.prisma — modelo real de derecho de retracto
+enum RetractStatus {
+  PENDING   // solicitado por comprador/invitado, pendiente de revisión
+  APPROVED  // aprobado, esperando devolución física del bien
+  RECEIVED  // producto recibido sin uso y en empaque original
+  REFUNDED  // reembolso ejecutado en <= 15 días calendario
+  REJECTED  // rechazado con motivo obligatorio (rejectionNote)
+}
+
+model RetractRequest {
+  id                String        @id @default(cuid())
+  orderItemId       String        @unique
+  contactId         String?
+  status            RetractStatus @default(PENDING)
+  reason            String?
+  rejectionNote     String?
+  refundAmount      Int           // centavos COP (reforzado con CHECK SQL >= 0)
+  refundMethod      String?       // "WOMPI_VOID" | "BANK_TRANSFER"
+  requestedAt       DateTime      @default(now())
+  approvedAt        DateTime?
+  receivedAt        DateTime?
+  refundedAt        DateTime?
+  processedBy       String?       // AdminUser.id
+  assignedToAdminId String?
+  slaDueAt          DateTime?     // +15 días calendario hasta 23:59:59.999 COT
+}
+```
+
+- **Invariante financiero `[FIN-01]` y Puntos Lucams (`computeRetractRefundBreakdown`):**
+  1. Prorratea tanto el descuento de cupón sobre mercancía (un cupón `FREE_SHIPPING` afecta flete, nunca ítems) como `Order.loyaltyDiscount` sobre `orderSubtotal`.
+  2. Acota `cashRefundCents` contra `remainingOrderCash` (`subtotal - totalMerchandiseDiscount - alreadyRefundedCents`), garantizando matemáticamente que múltiples retractos parciales en una misma orden jamás devuelvan un centavo más del efectivo realmente cobrado.
+  3. Calcula `pointsToRestore` proporcionales a la línea y, al marcar el retracto como `REFUNDED`, invoca de forma idempotente `restoreRedeemedPointsForRetract` (`features/loyalty/service.ts`) para reintegrar al saldo del comprador los Puntos Lucams consumidos en ese ítem.
+  4. La base de datos refuerza `CHECK ("refundAmount" >= 0)` en `RetractRequest` (`00000000000051_domain_invariants_hardening.sql`).
+
+#### Flujo operativo extremo a extremo del retracto (7 pasos)
+
+1. **Solicitud dentro de los 5 días hábiles:** el comprador registrado solicita el retracto por línea en `/mi-cuenta/pedidos/[number]`; el comprador invitado lo hace desde `/pedido/[token]` superando el reto 2FA posventa (código OTP de 6 dígitos enviado al correo de la orden, ver [`SECURITY.md` § 4.2](SECURITY.md#42-autenticación-posventa-de-doble-factor-para-invitados-pedidotoken)); o bien escribe a `{{email_retracto}}` / `/soporte` (donde staff autorizado cuenta con `createRetractRequestAsAdmin` en `/admin/soporte/[id]`, que también cubre bordes con días festivos).
+2. **Validación automática de elegibilidad:** orden en estado `DELIVERED`, dentro de `retractWindowEnd(deliveredAt)`, ítem no personalizado (`!isItemPersonalized`) y sin `RetractRequest` previo sobre ese `orderItemId` (`@unique`).
+3. **Creación y sellado de SLA legal (`PENDING`):** se inserta `RetractRequest` con `refundAmount = cashRefundCents`, `contactId` resuelto y **`slaDueAt` sellado a +15 días calendario** (`computeRetractSlaDueAt`, hasta las `23:59:59.999` COT conforme a la **Ley 2439 de 2024, art. 3**).
+4. **Aprobación e instrucciones (`APPROVED`):** desde `/admin/retractos` el equipo aprueba la solicitud y dispara `sendRetractApproved` con las instrucciones de empaque y dirección de recepción (si no cumple requisitos legales, solo puede pasar a `REJECTED` con `rejectionNote` motivada).
+5. **Devolución física del bien a cargo del comprador (art. 47 Ley 1480):** el consumidor devuelve el producto sin señales de uso, completo y en su empaque original; conforme al inciso 4 del art. 47 de la Ley 1480 y a `/legal/devoluciones`, **los costos de transporte de la devolución por retracto corren por cuenta del comprador** (cuando la devolución obedece a defecto o error en el despacho, se tramita como **garantía** con transporte 100 % asumido por Lucams Shop).
+6. **Inspección de recibo (`RECEIVED`):** al llegar la pieza en condiciones aptas se registra `receivedAt` (no re-incrementa stock automáticamente hasta revisión manual de inventario).
+7. **Reembolso con step-up MFA (`REFUNDED` en ≤ 15 días calendario):** staff con `posventa:refund` + verificación reciente `requireRecentMfa` ejecuta la devolución en Wompi al mismo medio de pago (`WOMPI_VOID`) o transferencia bancaria (`BANK_TRANSFER` para pedidos COD/WhatsApp), sella `refundedAt`, dispara `restoreRedeemedPointsForRetract`, notifica por correo (`sendRetractRefunded`) y deja rastro en `AdminActionLog`.
+
+### 3.3 Flujo operativo paso a paso de reversión del pago (Ley 1480 art. 51 y Decreto 587 de 2016)
+
+Regulada en el **art. 51 de la Ley 1480 de 2011** y reglamentada en el **Decreto 587 de 2016** (compilado en el **Decreto 1074 de 2015, arts. 2.2.2.51.1 a 2.2.2.51.13**), publicada íntegramente en `/legal/devoluciones` y `/legal/terminos`:
+
+1. **Condición de procedencia y las 5 causales legales taxativas:** aplica únicamente cuando la compra se pagó mediante un **instrumento de pago electrónico** (tarjeta de crédito, tarjeta débito, PSE u otro medio electrónico procesado por **Wompi**; no aplica a pagos en efectivo contraentrega) y se configura alguna de las cinco causales legales:
+   - **Causal 1 — Fraude:** el consumidor fue objeto de fraude.
+   - **Causal 2 — Operación no solicitada:** el cargo corresponde a una operación que el titular no solicitó.
+   - **Causal 3 — Producto no recibido:** el producto adquirido no fue entregado en el plazo legal o pactado.
+   - **Causal 4 — Producto no correspondiente:** el bien entregado no corresponde a lo solicitado o no cumple con las características inherentes o las atribuidas por la información suministrada.
+   - **Causal 5 — Producto defectuoso:** el bien entregado se encuentra defectuoso.
+2. **Paso 1 — Queja ante Lucams Shop y notificación al emisor en ≤ 5 días hábiles:** dentro de los **cinco (5) días hábiles** siguientes a la fecha en que el consumidor tuvo noticia de la operación fraudulenta o no solicitada, o en que debió haber recibido el producto o lo recibió defectuoso o sin corresponder a lo pedido (arts. 2.2.2.51.4 y 2.2.2.51.6), debe:
+   - Presentar queja escrita ante Lucams Shop por `{{email_retracto}}`, `/soporte` o WhatsApp indicando número de pedido (`LCM-YYYY-NNNN`), monto, causal invocada, sustento y datos de la transacción; y, si ya recibió el bien (causales 4 o 5), ponerlo a disposición para su recogida en las mismas condiciones en que lo recibió.
+   - Notificar dentro del **mismo plazo de 5 días hábiles** al **emisor del instrumento de pago electrónico** (banco o entidad financiera) adjuntando la constancia de la queja presentada ante el comercio.
+3. **Paso 2 — Trámite interno y articulación con Wompi:** soporte radica o vincula el ticket urgente en `/admin/soporte`, audita `Order`, `WompiPaymentTransaction` y `ShipmentEvent`, emite acuse al consumidor recordándole el deber de notificar a su banco emisor, coordina la reversión voluntaria o aporta las pruebas de entrega/autorización ante **Wompi** cuando el banco abre controversia o contracargo, y audita la gestión en `AdminActionLog`.
+4. **Paso 3 — Plazo de 15 días hábiles para hacerla efectiva:** presentada la solicitud completa ante el emisor, los participantes del proceso de pago (emisor, red y pasarela Wompi) cuentan con un término máximo de **quince (15) días hábiles** para hacer efectiva la reversión (art. 2.2.2.51.8). Si una autoridad administrativa o judicial demuestra mala fe del consumidor, la SIC puede imponerle sanción hasta por 50 SMMLV (art. 51 inc. final).
+
+### 3.4 Garantías legales modulares selladas por ítem (`1..120` meses, arts. 7 a 11, 16 y 59.16)
+
+Cada ficha define su término en `Product.warrantyMonths` (validado entre **`1` y `120` meses**; base de catálogo `DEFAULT_CATALOG_WARRANTY_MONTHS = 1`) y, al crearse la orden, ese valor se copia de forma inmutable en **`OrderItem.warrantyMonths`** (`ADR-106`, migración `00000000000050_warranty_months_snapshot.sql`). Cualquier cambio posterior en el catálogo solo rige compras futuras y jamás recorta la garantía prometida a pedidos históricos. Las piezas personalizadas en el Estudio gozan exactamente de la misma garantía de calidad, impresión, adherencia magnética y transporte.
+
+| Norma (Ley 1480 de 2011)    | Regla estatutaria en Colombia                                                                                                           | Implementación técnica y documental en Lucams Shop                                                                              |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Art. 8** (término)        | Rige el término fijado por ley/SIC; a falta de este, **el anunciado por el productor/proveedor**; si no se indica, rige 1 año           | Anunciado en `/producto/[slug]`, checkout, correo de confirmación, `/legal/garantias` y sellado en `OrderItem.warrantyMonths`   |
+| **Art. 9** (suspensión)     | El plazo se suspende mientras el consumidor está privado del bien por garantía; ante **cambio total**, la garantía corre desde cero     | Regla publicada en `/legal/garantias` y trazada en `WarrantyClaim` (`/admin/garantias`)                                         |
+| **Art. 10** (solidaridad)   | Productor y proveedor responden solidariamente; al consumidor le basta demostrar el defecto (salvo causales del art. 16)                | Radicación directa con evidencia fotográfica en `/mi-cuenta/pedidos/[number]` y `/pedido/[token]` (con 2FA para invitados)      |
+| **Art. 11** (remedios)      | 1.º Reparación gratuita + **transporte 100 % gratuito**; si no admite reparación o se repite la falla, el cliente elige cambio o dinero | Remedios `REPAIR`, `REPLACE` (reimpresión directa desde `productionUrls` retenidos 90 d) o `REFUND` (con `requireRecentMfa`)    |
+| **Art. 16** (exoneraciones) | Fuerza mayor, hecho de tercero, uso indebido o desatender instrucciones de cuidado; **la carga de probarlo es de Lucams Shop**          | Instrucciones de cuidado publicadas en `/legal/garantias` + sello `Design.qualityAcknowledgedAt` en fotos con alerta de nitidez |
+| **Art. 59 num. 16** (SIC)   | La SIC puede fijar términos especiales obligatorios por categoría (hoy no existe reglamento especial para imanes/papelería decorativa)  | Monitoreo normativo; si se expide reglamento especial, se actualiza en catálogo y CMS                                           |
+
+- **Ciclo de `WarrantyClaim` en `/admin/garantias` y soporte a fallas repetidas (art. 11 num. 2):** nace en `PENDING` con `slaDueAt` calculado a **15 días hábiles colombianos** (`WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS = 15`), avanza a `IN_REVIEW` → `APPROVED` → `RESOLVED` (registrando `resolutionType`: `"REPAIR"`, `"REPLACE"` o `"REFUND"` y enviando `warranty.email.resolved`) o `REJECTED` (con nota técnica obligatoria probando la causal del art. 16). A diferencia de `RetractRequest`, `WarrantyClaim.orderItemId` **no tiene restricción `@unique`** porque un bien reparado o sustituido puede presentar una segunda falla (habilitando el derecho del consumidor en el art. 11 num. 2); el servicio solo impide abrir un reclamo simultáneo cuando ya existe uno activo (`PENDING`/`IN_REVIEW`/`APPROVED`) sobre esa línea. Mientras exista un `WarrantyClaim` abierto, `purge-delivered-designs` **conserva intactos** los renders 300 DPI para poder reimprimir sin pedirle archivos de nuevo al cliente:
+
+```prisma
+enum WarrantyStatus {
+  PENDING   // radicado por cliente o invitado (con 2FA posventa)
+  IN_REVIEW // en diagnóstico técnico
+  APPROVED  // procede la garantía, pendiente de ejecutar remedio
+  RESOLVED  // resuelto ("REPAIR" | "REPLACE" | "REFUND")
+  REJECTED  // improcedente con causal probada del art. 16 Ley 1480
+}
+
+model WarrantyClaim {
+  id                String         @id @default(cuid())
+  orderItemId       String         // sin @unique: permite historial si se repite falla (art. 11.2)
+  customerId        String?
+  contactId         String?
+  status            WarrantyStatus @default(PENDING)
+  description       String
+  evidenceUrls      String[]       @default([])
+  resolutionType    String?        // "REPAIR" | "REPLACE" | "REFUND"
+  resolutionNote    String?
+  requestedAt       DateTime       @default(now())
+  resolvedAt        DateTime?
+  processedBy       String?        // AdminUser.id
+  assignedToAdminId String?
+  slaDueAt          DateTime?      // +15 días hábiles colombianos (Ley Emiliani + Pascua)
+}
+```
+
+### 3.5 Reseñas verificadas y moderación contra publicidad engañosa (Ley 1480 art. 23)
+
+Publicar reseñas simuladas o presentar opiniones libres como compras reales vulnera el deber de información veraz (art. 23 Ley 1480). El sistema impone cuatro controles técnicos (`apps/web/features/reviews/`):
+
+1. **Exclusividad de pedidos `DELIVERED` (`REVIEWABLE_ORDER_STATUSES = ["DELIVERED"]`):** tanto `createReviewAction` (cuenta autenticada) como `createReviewByTokenAction` (`/resena/[token]`, enviado por `review-request` solo tras confirmarse la entrega) verifican en BD una `Order` entregada con ese producto.
+2. **Moderación humana previa en app y en base de datos:** toda reseña se inserta con `isApproved = false` y `featured = false`. Además del servicio TypeScript, la política RLS `"review insert own"` (`00000000000028_harden_rls_backstop_policies.sql`) bloquea cualquier `INSERT` directo con `isApproved = true`; solo tras revisión en `/admin/resenas` se publica en tienda.
+3. **Cero testimonios sin compra asociada (`customerId = null` apagado por política):** aunque el esquema permite `customerId` anulable para conservar reseñas anonimizadas tras supresión de cuenta (`authorName = "Cliente verificado"`), está prohibido crear testimonios manuales sin compra verificada y producción tiene **0 reseñas sintéticas**.
+4. **Bloqueo de scripts de seed (`env-guard`):** cualquier script de semilla de reseñas para desarrollo/STG aborta automáticamente si detecta credenciales de producción o un host remoto no autorizado.
+
+### 3.6 Motor de días hábiles colombianos (`colombian-sla.ts`), las 10 cláusulas de T&C y protocolo ante la SIC
+
+El módulo determinista [`apps/web/lib/colombian-sla.ts`](../apps/web/lib/colombian-sla.ts) calcula los vencimientos legales en huso `America/Bogota` (`UTC-5`, cierre `23:59:59.999` COT) descontando sábados, domingos y los **18 festivos oficiales de Colombia (Ley 51 de 1983 — Ley Emiliani)**:
+
+- **6 festivos de fecha fija:** 1 de enero, 1 de mayo, 20 de julio, 7 de agosto, 8 de diciembre y 25 de diciembre.
+- **7 festivos trasladados al lunes siguiente (Ley Emiliani):** Epifanía (6 ene), San José (19 mar), San Pedro y San Pablo (29 jun), Asunción (15 ago), Día de la Raza (12 oct), Todos los Santos (1 nov) e Independencia de Cartagena (11 nov).
+- **5 festivos móviles respecto al domingo de Pascua** (calculado con el algoritmo gregoriano exacto de Meeus/Jones/Butcher): Jueves Santo (`-3` días), Viernes Santo (`-2`), Ascensión del Señor (`+43`), Corpus Christi (`+64`) y Sagrado Corazón de Jesús (`+71`).
+
+Cada `SupportTicket`, `WarrantyClaim` y `RetractRequest` expone su estado de semáforo SLA (`MET`, `ON_TIME`, `DUE_SOON` cuando restan ≤ 2 días hábiles o ≤ 3 calendario, `OVERDUE` y `UNSET`) en `/admin/soporte`, `/admin/garantias`, `/admin/retractos` y en la bandeja operativa diaria **`/admin/hoy`**.
+
+| Tipo de actuación                                          | Término máximo legal                                    | Constante en `consumer-law.ts`                | Norma colombiana                         |
+| ---------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------- | ---------------------------------------- |
+| Consulta de Hábeas Data (acceso / prueba de autorización)  | **10 días hábiles** (prorrogables +5 hábiles con aviso) | `HABEAS_DATA_CONSULTATION_BUSINESS_DAYS = 10` | Ley 1581 de 2012, art. 14                |
+| Reclamo de Hábeas Data (corrección, supresión, revocación) | **15 días hábiles** (prorrogables +8 hábiles con aviso) | `HABEAS_DATA_CLAIM_BUSINESS_DAYS = 15`        | Ley 1581 de 2012, art. 15                |
+| PQR de consumo y reclamación directa de garantía           | **15 días hábiles**                                     | `WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS = 15`  | Ley 1480 de 2011, art. 58                |
+| Devolución del dinero por derecho de retracto              | **15 días calendario** desde que se ejerce              | `RETRACT_REFUND_MAX_CALENDAR_DAYS = 15`       | Ley 1480 art. 47 (mod. Ley 2439 de 2024) |
+
+**Secciones obligatorias en `/legal/terminos` y protocolo de respuesta ante la SIC:**
+
+1. `/legal/terminos` mantiene cubiertas las **10 secciones contractuales exigidas**: (1) identificación del proveedor, (2) definiciones legales, (3) procedimiento de compra paso a paso y corrección de errores antes de pagar, (4) medios de pago y condición tributaria, (5) tiempos separados de preparación/transporte y tope de 30 días calendario, (6) derecho de retracto y excepción del art. 47 num. 3, (7) garantía legal modular, (8) reversión del pago art. 51, (9) canales y plazos de PQR, y (10) ley colombiana aplicable, **SIC Facilita** y jurisdicción.
+2. Ante cualquier **reclamación directa previa** (requisito de procedibilidad del art. 58 num. 5 Ley 1480), mediación en **SIC Facilita** o requerimiento administrativo/jurisdiccional de la **SIC**, se abre o escala el expediente en `/admin/soporte` con prioridad urgente y se recopila desde el panel el dossier probatorio íntegro: constancia de la orden (`LCM-YYYY-NNNN`), registros inmutables de `Consent` (versión, fecha/hora, IP, user-agent), eventos logísticos `ShipmentEvent` y guía PDF archivada en `shipping-labels`, sellos `Order.contentRightsAcceptedAt` y `Design.qualityAcknowledgedAt`, hilo completo de `SupportTicketMessage` y auditoría en `AdminActionLog`, contestando de fondo dentro de los **15 días hábiles** (o el plazo perentorio señalado por la Superintendencia).
+
+---
+
+## 4. Protección de Datos Personales (Ley 1581 de 2012) y Privacidad del Estudio
+
+### 4.1 Deberes del responsable, exención RNBD (Decreto 090 de 2018) y datos de menores
+
+- **Autorización previa, expresa, informada y verificable (art. 9 Ley 1581):** todas las acciones que capturan datos personales (`features/consent/`, registro, checkout, cotización por WhatsApp, soporte, solicitud B2B `/empresas-y-eventos`, boletín y avisos de stock) exigen acción afirmativa con casillas desmarcadas por defecto.
+- **Exención del Registro Nacional de Bases de Datos (RNBD — Decreto 090 de 2018):** el Decreto 090 de 2018 (que modificó el art. 2.2.2.26.1.2 del Decreto 1074 de 2015) restringió la obligación de inscribir bases de datos en el RNBD exclusivamente a **sociedades comerciales y entidades sin ánimo de lucro con activos totales superiores a `100 000 UVT`** (en 2026: `≈ $5.237.400.000` COP). Como **persona natural comerciante**, Lucams Shop no está obligada a registrarse en el RNBD (el registro voluntario es opcional), sin que ello atenúe ninguno de los demás deberes de la Ley 1581, incluido el **reporte de incidentes de seguridad de datos personales ante la SIC dentro de los 15 días hábiles** siguientes a su detección (`IRP-003` en [`SECURITY.md` § 13.4](SECURITY.md#134-plan-de-respuesta-a-incidentes--irp-nist-sp-800-61-y-runbooks)).
+- **Menores de edad (art. 7 Ley 1581):** la tienda está dirigida a mayores de 18 años. Cuando un comprador sube fotografías familiares al Estudio declara contar con autorización legítima de los representantes legales (`Order.contentRightsAcceptedAt`), y cualquier solicitud de retiro formulada por padres o representantes en `{{email_habeas_data}}` se ejecuta con prioridad inmediata.
+
+### 4.2 Modelo `Consent` append-only, los 8 `ConsentScope` y compuerta dura de marketing
+
+En `packages/db/prisma/schema.prisma`, `Consent` es estrictamente append-only: revocar un permiso jamás hace `UPDATE` ni `DELETE` de la prueba previa, sino que inserta una fila nueva con `accepted = false` y `revokesId` apuntando al registro anterior, sellando la versión vigente en `PRIVACY_POLICY_VERSION` (**`"v3 · 2026-11-05"`**):
 
 ```prisma
 enum ConsentScope {
-  COOKIES_NECESSARY // siempre on
-  COOKIES_FUNCTIONAL
-  COOKIES_ANALYTICS
-  COOKIES_MARKETING
-  NEWSLETTER
-  BACK_IN_STOCK // "avísame cuando vuelva" — notificación pedida por el titular
-  MARKETING_PROFILING // perfilamiento (segmentación, recomendaciones)
-  HABEAS_DATA // autorización general tratamiento de datos personales
+  COOKIES_NECESSARY   // técnicas indispensables (siempre true)
+  COOKIES_FUNCTIONAL  // preferencias opcionales
+  COOKIES_ANALYTICS   // Google Analytics 4 + WebVital RUM + lucams_utm
+  COOKIES_MARKETING   // pauta externa (sin píxeles activos hoy)
+  NEWSLETTER          // comunicaciones comerciales voluntarias
+  BACK_IN_STOCK       // aviso puntual de reposición pedido por el titular
+  MARKETING_PROFILING // segmentación comercial opcional
+  HABEAS_DATA         // autorización general de tratamiento de datos personales
 }
 
 model Consent {
   id         String       @id @default(cuid())
-  customerId String?      // null para guests (newsletter, cookies, cotización)
-  contactId  String?      // ancla canónica ADR-193 (Contact)
-  email      String?      // ancla para consentimientos sin cuenta
-  phone      String?      // ancla alterna (cotización por WhatsApp, móvil a 10 dígitos)
+  customerId String?
+  contactId  String?      // ancla canónica CRM (ADR-193)
+  email      String?      // ancla para invitados sin cuenta
+  phone      String?      // ancla móvil CO (10 dígitos) para cotizaciones por WhatsApp sin email
   scope      ConsentScope
   accepted   Boolean
-  version    String       // versión del aviso de privacidad aceptado (setting PRIVACY_POLICY_VERSION)
+  version    String       // ej. "v3 · 2026-11-05"
   ipAddress  String?
   userAgent  String?
-  revokesId  String?      // si revoca uno previo, apunta a su id
+  revokesId  String?
   acceptedAt DateTime     @default(now())
 
   @@index([customerId, scope])
@@ -89,699 +388,204 @@ model Consent {
 }
 ```
 
-- **Compuerta dura de segmentación comercial (`features/crm/segments-service.ts`, `/admin/marketing/segmentos`):** ninguna consulta ni exportación CSV de segmentos (`vip`, `gift_buyers`, `winback_90d`, `annual_occasion`, `high_intent_no_order`) puede listar contactos cuyo último registro `Consent(scope = 'NEWSLETTER')` por `contactId` o `email` no tenga `accepted = true` vigente, y excluye además cuentas internas (`AdminUser`). Un comprador VIP sin opt-in expreso o dado de baja queda excluido en SQL (certificado en `segments-service.integration.test.ts`).
+- **Compuerta SQL dura en audiencias comerciales (`apps/web/features/crm/segments-service.ts`):** ninguna vista ni exportación CSV en `/admin/marketing/segmentos` (`vip`, `gift_buyers`, `winback_90d`, `annual_occasion`, `high_intent_no_order`) incluye un contacto a menos que su último `Consent(scope = 'NEWSLETTER')` por `contactId` o `email` tenga `accepted = true`, excluyendo además cuentas de staff (`AdminUser` / `Contact.isStaff = true`), certificado por `segments-service.integration.test.ts`.
 
-#### Registro y ejercicio de derechos
+### 4.3 Reglas detalladas de privacidad y temporalidad del Estudio de Personalización
 
-No hay endpoints REST públicos de consentimiento: el registro lo hacen **Server Actions** en `apps/web/features/consent/`, `/contacto` y `/empresas-y-eventos` (banner de cookies, registro, contacto/soporte, solicitud B2B/eventos, newsletter, cotización por WhatsApp, checkout, back-in-stock — cada una exige aceptación expresa y escribe sus scopes `HABEAS_DATA` / `NEWSLETTER` con versión de política + IP/UA).
+El Estudio permite personalizar productos incluso sin haber creado cuenta previa, y las imágenes cargadas suelen contener rostros familiares. Para cumplir estrictamente con los principios de finalidad, acceso restringido y temporalidad (**Ley 1581 art. 4 lits. b, d y f**), rigen seis mecanismos específicos:
 
-- **Consentimiento de cookies:** `persistCookieConsentAction` (una fila por scope, ver § Cookie consent).
-- **Supresión de cuenta (art. 8 lit. e):** self-service en `/mi-cuenta/seguridad → Eliminar mi cuenta` (ver § Derecho de supresión abajo).
-- **Exportación, rectificación formal y PQR:** canal manual `habeas-data@lucamsshop.com` (un endpoint self-service de exportación queda como mejora pendiente — no existe hoy).
+#### 1. Declaración de derechos (`Order.contentRightsAcceptedAt`) y aceptación de calidad (`Design.qualityAcknowledgedAt`)
 
-#### Página `/legal/habeas-data`
+- Al confirmar el pedido, el checkout exige declarar titularidad o autorización sobre las fotos y textos cargados, persistiendo el sello **`Order.contentRightsAcceptedAt`**.
+- Cuando una fotografía subida dispara alertas de baja resolución o recorte en el Estudio, la interfaz bloquea el cierre del diseño hasta que el cliente marque expresamente la casilla **«imprimir con avisos de calidad»**, guardando la marca temporal en **`Design.qualityAcknowledgedAt`**. Este sello es visible en moderación (`/admin/disenos`) y en el detalle del pedido en `/admin/pedidos/[id]`, constituyendo prueba objetiva de limitación informada y aceptada ante reclamos por nitidez bajo el **art. 16 de la Ley 1480**.
 
-- Publica la Política de Tratamiento (texto en `packages/db/legal-content/legal.habeas-data.md`) y los canales para PQR.
-- Canal formal: email `habeas-data@lucamsshop.com` (además del formulario general de `/contacto`, que crea `SupportTicket`).
-- Plazos legales (Ley 1581 arts. 14 y 15, centralizados en `apps/web/lib/consumer-law.ts`): consultas **10 días hábiles** (`HABEAS_DATA_CONSULTATION_BUSINESS_DAYS` → `{{habeas_consulta_dias}}`) y reclamos/supresión **15 días hábiles** (`HABEAS_DATA_CLAIM_BUSINESS_DAYS` → `{{habeas_reclamo_dias}}`); SLA operativo de respuesta inicial 5 días hábiles.
+#### 2. Derivados bajo el bucket privado `design-previews` (`ADR-147` / `ADR-191` / `LUC-SEC-001`)
 
-### Aviso de Privacidad — texto base
+- Ningún derivado de diseño vive en un bucket público: todos residen bajo el prefijo `<designId>/...` en el bucket privado `design-previews` y solo se entregan tras validar autorización por petición en `GET /api/design-preview/<designId>/<archivo>`.
+- **Snapshot de borrador (`Design.draftPreviewUrl`, `ADR-147`):** miniatura WebP liviana (`≤ 120 KB`, `400 px`) que el auto-save sobrescribe con _upsert_ siempre sobre la misma ruta `<designId>/thumb.webp` (cero acumulación de versiones) y que solo pueden leer el dueño o staff autorizado con MFA `aal2`.
+- **Previews limpios de exhibición (`ADR-191`):** `<designId>/preview.<ext>` y `<designId>/pages/NN.webp` son accesibles al dueño, staff `aal2` o portador del token de capacidad específico (`?st=`, `?qt=`, `?ot=` verificado por join contra ese diseño), y se eliminan automáticamente junto con el diseño sin crear una categoría separada de retención.
 
-> Texto inicial sugerido. **Revisar con abogado antes del lanzamiento.**
+#### 3. Reglas de «Volver a pedir» (_reorder_) y protección de fotos de terceros en enlaces compartidos (`ADR-117` / `ADR-119`)
 
-> **Actualizado 2026-07-19 (ADR-072):** la figura jurídica es **persona natural** (Lucy Jullieth Hurtado Rodríguez, Bogotá D.C.), NO S.A.S. El texto legal publicado vive en `packages/db/legal-content/*.md` + los CmsBlock `legal.*`. La cédula y la dirección exacta NO se publican (se dan a solicitud — Opción 1). El texto base histórico de abajo queda solo como referencia de estructura.
+- En pedidos de invitados (`/pedido/[token]`), el botón **«Volver a pedir»** permite reutilizar un diseño previo en una compra nueva únicamente mientras sus archivos originales sigan dentro de la ventana de retención (`< 90 días` desde la entrega):
+  - **Análisis de privacidad:** quien posee el enlace válido ya contaba con acceso de visualización sobre el pedido original, de modo que permitir reordenar no expone las imágenes a sujetos nuevos. Además, el token posventa **se rota automáticamente en cada nuevo envío de correo** (`ADR-119`), dejando sin efecto enlaces viejos reenviados a terceros.
+  - **Corte automático tras la purga:** una vez cumplidos los 90 días post-entrega (`Design.purgedAt != null`), el ítem **deja de ser re-ordenable** y el flujo redirige al Estudio pidiendo subir fotos nuevas (acto que renueva la posesión y el consentimiento).
+  - **Aislamiento físico por pedido:** cuando se ejecuta un _reorder_ vigente, el servidor **copia los bytes a rutas nuevas propias** para el nuevo diseño, de modo que cada pedido corre su propio reloj independiente de 90 días sin que la purga del pedido original afecte al nuevo ni viceversa.
 
-```
-Lucy Jullieth Hurtado Rodríguez (persona natural), titular de la marca Lucams_shop,
-con domicilio en Bogotá D.C., responsable del tratamiento de tus datos personales,
-recolecta:
-- Identificación: nombre, email, teléfono.
-- Contacto: dirección de envío.
-- Pago: información mínima de la transacción (Wompi maneja los datos sensibles).
-- Comportamiento: historial de pedidos, productos vistos, reseñas.
-- Imágenes: fotos que subes al estudio de personalización.
+#### 4. Orden de purga de carritos y borradores pre-compra (`/api/cron/purge-anon-designs`, `08:00 UTC`)
 
-Finalidades:
-- Procesar tu pedido y enviarlo.
-- Comunicaciones transaccionales.
-- Marketing si das consentimiento explícito (opcional).
-- Mejorar el servicio (analítica agregada y anonimizada).
+Ejecutado a diario por [`apps/web/features/cart/cart-retention.ts`](../apps/web/features/cart/cart-retention.ts) y [`apps/web/features/personalization/retention-service.ts`](../apps/web/features/personalization/retention-service.ts):
 
-Tus derechos:
-- Conocer, actualizar y rectificar tus datos.
-- Solicitar prueba de la autorización otorgada.
-- Ser informado del uso que se da a tus datos.
-- Presentar quejas ante la SIC por infracciones a la Ley 1581.
-- Revocar la autorización y/o solicitar la supresión de tus datos.
-- Acceder gratuitamente a tus datos.
+1. **Carritos primero (para destrabar diseños en la misma corrida):** como las purgas de diseños respetan todo diseño referenciado por un `Cart` vivo, el job elimina primero con _hard-delete_ los carritos vacíos sin actividad **`≥ 7 días`** (`PURGE_EMPTY_CART_AFTER_DAYS = 7`), los carritos vivos inactivos **`≥ 60 días`** sin `AbandonedCart` vigente (`PURGE_STALE_CART_AFTER_DAYS = 60`), y las filas `AbandonedCart` **`≥ 90 días`** (`PURGE_ABANDONED_CART_AFTER_DAYS = 90`).
+2. **Borradores `DRAFT` y activos huérfanos anónimos (`customerId = null`):** se purgan tras **`7 días`** sin actividad (`PURGE_ANON_DESIGN_AFTER_DAYS = 7`, más estricto que el techo máximo de 30 días informado en `/legal/habeas-data`), borrando fotos crudas en `customer-uploads`, previews y filas `DesignAsset`/`Design`.
+3. **Borradores `DRAFT` inactivos de clientes registrados (`customerId != null`):** se purgan tras **`30 días`** sin actividad (`PURGE_IDLE_DESIGN_AFTER_DAYS = 30`, más protector que el techo público de 90 días) siempre que no estén en carrito, pedido ni cotización viva ni en estado `ARCHIVED`.
+4. **Diseños `READY` (y `ARCHIVED` desde `READY`) nunca comprados (`ADR-130`):** se purgan tras **`90 días`** sin actividad (`PURGE_IDLE_READY_AFTER_DAYS = 90`), liberando tanto las fotos crudas como los renders 300 DPI (`~2,6 MB` por unidad en `production-assets`) que nunca llegaron a orden ni cotización.
+5. **Diseños ligados a cotizaciones:** se depuran a los **`90 días`** de cerrada/descartada la cotización (`PURGE_AFTER_QUOTE_CLOSED_DAYS = 90`, limpiando `QuoteItem.previewUrl`) o al cumplirse el tope de **`365 días`** en cotizaciones abiertas sin movimiento (`PURGE_STALE_QUOTE_AFTER_DAYS = 365`).
+6. **Garantía anti-huérfanos en fallos de red:** en todas las pasadas, si la API de Supabase Storage falla al borrar algún objeto, la fila en Postgres **no se elimina** para que la corrida del día siguiente reintente sin dejar jamás archivos ocultos sin puntero en BD.
 
-Contacto: habeas-data@lucamsshop.com
-```
+#### 5. Purga post-entrega de pedidos `DELIVERED` (`/api/cron/purge-delivered-designs`, `09:00 UTC`)
 
-### Derecho de supresión — implementación self-service (2026-07-10)
+Implementada en [`apps/web/features/personalization/retention-delivered.ts`](../apps/web/features/personalization/retention-delivered.ts):
 
-Además del canal manual (`habeas-data@lucamsshop.com`, respuesta en 15 días hábiles), el cliente puede
-ejercer el **derecho de supresión (art. 8 lit. e)** por sí mismo en `/mi-cuenta/seguridad → Eliminar mi
-cuenta` (`features/account/delete-service.ts`). El enfoque es **anonimizar + soft-delete**, NO borrado
-físico, para conciliar la supresión con la **retención fiscal de la DIAN**:
+- Cumplidos **`90 días`** desde `Order.deliveredAt` (`PURGE_DELIVERED_DESIGN_AFTER_DAYS = 90`), elimina físicamente las fotos crudas de `customer-uploads`, todos los archivos 300 DPI de `production-assets` (`productionUrls[]`, `productionUrl` legacy y staging `_client/`), y las filas `DesignAsset`, sellando `Design.purgedAt` únicamente cuando el 100 % de los bytes fueron removidos.
+- **Qué conserva:** el preview limpio de exhibición (`previewUrl`), `canvasData` y el snapshot comercial del `OrderItem` para soporte histórico y contable.
+- **Exclusiones estrictas de posventa:** jamás purga un diseño si participa en otra orden aún en curso o entregada hace menos de 90 días, ni si tiene un **`RetractRequest` abierto** (`PENDING`, `APPROVED`, `RECEIVED`) o un **`WarrantyClaim` abierto** (`PENDING`, `IN_REVIEW`, `APPROVED`, necesario para reimprimir un cambio en garantía).
 
-| Dato                                                                   | Acción al eliminar                                                                                                                                                                                                                                         | Motivo                                                                                                                         |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Customer (nombre, teléfono, documento, email)                          | Scrub: nombre/tel/documento→null, email→placeholder único, `supabaseUserId`→placeholder, `deletedAt`                                                                                                                                                       | Supresión de PII                                                                                                               |
-| Auth user (Supabase)                                                   | `admin.deleteUser`; si falla → **baneo** (`ban_duration`) como fallback                                                                                                                                                                                    | Cortar acceso garantizado (no basta el best-effort)                                                                            |
-| Direcciones                                                            | Scrub de columnas PII (nombre/dirección/teléfono) + soft-delete                                                                                                                                                                                            | Contienen PII                                                                                                                  |
-| Reseñas                                                                | `customerId`→null + `authorName`→"Cliente Lucams"                                                                                                                                                                                                          | Conservar contenido público sin PII                                                                                            |
-| **Fotos del Estudio** (DesignAsset, Design)                            | **Borran archivos** de Storage (`customer-uploads`, `design-previews` incl. derivados paginados, `production-assets` fuera de órdenes activas de taller) + filas `DesignAsset` tanto propias como adoptadas de sesión invitada                             | La PII más sensible (rostros); solo se retienen los archivos de imprenta de órdenes pagadas aún en curso (`PAID`/`FULFILLING`) |
-| Tickets de soporte (`SupportTicket` + mensajes)                        | Desvincular + scrub de `SupportTicket` (por `customerId` o `email`) y de todos sus `SupportTicketMessage` (`body` → `[Mensaje eliminado por solicitud de supresión de cuenta]`, `authorName` → `"Cliente eliminado"`)                                      | Hilos conversacionales con PII libre                                                                                           |
-| Garantías (`WarrantyClaim`) y Carrito (`Cart`)                         | Desvinculación `WarrantyClaim.customerId` → `null` y eliminación física del `Cart` activo (con cascada a `CartItem`/`AbandonedCart`)                                                                                                                       | Cortar vínculo posventa y eliminar carritos vivos sin finalidad                                                                |
-| Wishlist (`WishlistItem`) y Back-in-stock                              | **Borrar filas**                                                                                                                                                                                                                                           | Historial de interés del titular; sin retención legal que la justifique                                                        |
-| Snapshot de envío en órdenes                                           | Scrub PII (nombre/tel/dirección) en órdenes YA finalizadas                                                                                                                                                                                                 | Las en curso conservan la dirección por finalidad legítima (completar la entrega)                                              |
-| Logs y promociones (`LoyaltyTxn`, `CouponUsage`, `Coupon`, `Referral`) | `customerId`→`null`, scrub de `CouponUsage.email`, desactivación/anonimización de `Coupon` personales y scrub de `Referral.referredEmail`                                                                                                                  | Cortar el vínculo de perfilado y eliminar el email del titular en programas promocionales                                      |
-| **Pedidos / facturas**                                                 | **SE CONSERVAN** (anonimizados)                                                                                                                                                                                                                            | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión                                                      |
-| **Consentimientos y Newsletter**                                       | Se inserta fila append-only de revocación (`accepted=false`) para `NEWSLETTER`/`MARKETING_PROFILING`, se da de baja en Resend Contacts (`markResendContactUnsubscribed`) y se anonimizan `email`/`phone`/`ipAddress`/`userAgent` en el histórico `Consent` | Cese inmediato de envíos comerciales conservando trazabilidad probatoria sin PII activa (`[PRI-01]`)                           |
+#### 6. Tope no productivo (`14 días`) y barrido recurrente de huérfanos en Storage (`sweepOrphanStorageObjects`)
 
-**Confirmación fuerte:** escribir "ELIMINAR" + re-autenticación con contraseña + rate-limit
-(`ownerKey('delete-account')`, 5/15min). El alcance de supresión es **exhaustivo** (verificado por revisión
-adversarial 2026-07-10, hallazgos #1–#6): antes solo tocaba Customer/Address/Review y dejaba PII sensible
-(fotos, tickets, snapshots) atrás. La política de conservación fiscal vs. supresión queda explícita.
+- En cualquier entorno distinto de `production`, `capRetentionDaysNonProd` recorta automáticamente las ventanas de retención a un máximo de **`14 días`** (`RETENTION_NONPROD_MAX_DAYS = 14`), evitando acumular datos de prueba en STG.
+- Al cierre de `purge-anon-designs`, `sweepOrphanStorageObjects` escanea hasta **`500 objetos por corrida`** en `production-assets`, `design-previews` y `customer-uploads` (otorgando **7 días de gracia** al prefijo temporal `pending/`), verifica dos veces contra la tabla `Design` que el diseño no exista y borra cualquier objeto huérfano residual.
 
-### Retención por temporalidad — purga de fotos anónimas (art. 4 lit. f) (2026-07-17)
+### 4.4 Ejercicio de derechos ARCO y cascada exhaustiva de supresión (`deleteCustomerAccount`)
 
-El derecho de supresión (arriba) es **a pedido del titular** y filtra por `customerId` → NO alcanza a
-quien **nunca creó cuenta**. El Estudio permite personalizar de forma **anónima** (sin login): esas fotos
-crudas (a veces rostros) quedan en `customer-uploads` ligadas a un diseño DRAFT con `customerId=null`. Sin
-una política de temporalidad se acumularían **indefinidamente** sin finalidad vigente — contrario al
-principio de **temporalidad/minimización (Ley 1581, art. 4 lit. f)**: los datos se conservan solo el tiempo
-necesario para la finalidad (armar el diseño y comprarlo), no para siempre.
+El titular puede ejercer sus derechos escribiendo a `{{email_habeas_data}}` (exportación, actualización formal o reclamo) o ejecutando por sí mismo la supresión inmediata en **`/mi-cuenta/seguridad` → `/mi-cuenta/eliminar`** ([`apps/web/features/account/delete-service.ts`](../apps/web/features/account/delete-service.ts)). El flujo exige escribir `"ELIMINAR"`, re-autenticar la contraseña actual y superar el rate limit `5 / 15 min`, bloqueando temporalmente la baja solo mientras existan pedidos activos en tránsito o taller (`PENDING_PAYMENT`, `PAID`, `FULFILLING`, `SHIPPED`, conforme al art. 9 del Decreto 1377 de 2013):
 
-**Política:** un diseño **DRAFT anónimo abandonado** (sin actividad ≥ **30 días** y sin carrito ni pedido
-vivo) se **purga automáticamente**: se borran sus fotos de `customer-uploads` + los previews/artefactos +
-las filas `DesignAsset`/`Design`. Igual para los `DesignAsset` anónimos **huérfanos** (subidos y nunca
-usados). Implementación: `features/personalization/retention-service.ts` (`purgeAbandonedAnonymousDesigns`)
-vía el cron `/api/cron/purge-anon-designs` (agendado por `pg_cron`, ver [OPERATIONS.md](OPERATIONS.md)).
+| Dato o tabla en el sistema                                                                   | Acción exacta ejecutada en `deleteCustomerAccount`                                                                                                                 | Fundamento legal                                                           |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| **Fotos y renders en Storage** (`customer-uploads`, `design-previews`, `production-assets`)  | Borrado físico _fail-closed_ previo a la transacción SQL de fotos crudas, borradores y renders 300 DPI (incluidos diseños adoptados de sesión invitada)            | Eliminación física de imágenes personales (PII sensible)                   |
+| **`Customer`**                                                                               | Scrub de nombre, teléfono y documento a `null`, correo y `supabaseUserId` a placeholders únicos irreversibles y sello `deletedAt`                                  | Supresión de identidad directa                                             |
+| **Usuario en Supabase Auth**                                                                 | `auth.admin.deleteUser`; si la llamada remota fallara, aplica **baneo inmediato** (`ban_duration`) como fallback garantizado                                       | Corte inmediato e irrevocable de autenticación                             |
+| **Grafo CRM (`Contact`, `ContactIdentity`, `IdentityMergeCandidate`)**                       | `scrubContactOnErasureTx` (`ADR-193`): desvincula `contactId -> null` en 8 tablas, elimina todas las `ContactIdentity` y fusiones `PENDING`, y anonimiza `Contact` | Eliminación de perfilamiento e índices de búsqueda                         |
+| **`Address`, `Favorite`/`WishlistItem`, `StockAlertSubscription`, `Cart` / `AbandonedCart`** | Scrub de direcciones y eliminación física de favoritos, suscripciones de stock y carritos                                                                          | Sin deber legal de retención posterior                                     |
+| **`Order` (pedidos históricos ya entregados, cancelados o reembolsados)**                    | **Se conserva el registro contable** desvinculado (`customerId = null`, `contactId = null`) y con correo, teléfono, documento y dirección de entrega anonimizados  | Deber mercantil y fiscal (Código de Comercio art. 60 / ET art. 632)        |
+| **`Quote`, `SupportTicket`, `SupportTicketMessage` y `WarrantyClaim`**                       | Desvinculación, anonimización de cabeceras y reemplazo del cuerpo de mensajes por `[Mensaje eliminado por solicitud de supresión de cuenta]`                       | Limpieza de texto conversacional libre                                     |
+| **`Review`, `LoyaltyTxn`, `CouponUsage`, `Coupon` y `Referral`**                             | `customerId -> null`, `authorName = "Cliente verificado"`, desactivación de cupones personales y limpieza de correos en usos y referidos                           | Conservación estadística sin identificación personal                       |
+| **`Consent`, `NewsletterSubscriber`, Resend Contacts y `AdminActionLog`**                    | Inserta revocación `accepted = false`, marca baja en Resend, limpia `email`/`phone`/`ipAddress`/`userAgent` en `Consent` y redacta el correo en `AdminActionLog`   | Cese comercial inmediato conservando trazabilidad auditable sin PII activa |
 
-**Qué NO toca la pasada anónima:** `READY`/`USED_IN_ORDER`/`ARCHIVED`, ni nada referenciado por un
-carrito vivo o un pedido (esos tienen finalidad vigente). El borrado de bytes es **best-effort con
-reintento**: si la remoción del bucket falla, las filas NO se borran → el siguiente ciclo reintenta
-(nunca deja bytes sin registro en DB).
+### 4.5 Tabla maestra de retención y subprocesadores internacionales (art. 26 Ley 1581)
 
-### Retención de DRAFTs idle de clientes logueados (2026-09-18)
+| Categoría / Almacén                                                                    | Retención en PRD      | Mecanismo automático de purga                                                  |
+| -------------------------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------ |
+| Carritos vacíos / carritos vivos inactivos / `AbandonedCart`                           | **7 d / 60 d / 90 d** | `lucams-purge-anon-designs` (`cart-retention.ts`)                              |
+| Diseños `DRAFT` anónimos / `DRAFT` registrados / `READY` nunca comprados               | **7 d / 30 d / 90 d** | `lucams-purge-anon-designs` (`retention-service.ts`, cap `14 d` en no-PRD)     |
+| Fotos y renders 300 DPI en cotizaciones cerradas / abiertas sin movimiento             | **90 d / 365 d**      | `lucams-purge-anon-designs`                                                    |
+| Fotos crudas y renders 300 DPI de pedidos `DELIVERED`                                  | **90 días**           | `lucams-purge-delivered-designs` (excluye retractos y garantías abiertos)      |
+| `rate_limit_buckets` / `WebVital` / `ErrorLog`, `ErrorReport`, `Notification` (leídas) | **7 d / 35 d / 90 d** | `lucams-purge-rate-limits` y `lucams-purge-event-logs`                         |
+| `EmailEvent`, `WebhookEvent` (`processedAt != null`) y `SecurityEvent`                 | **180 días**          | `lucams-purge-event-logs` (`event-log-retention.ts`)                           |
+| `FunnelEventDaily` (contadores diarios agregados sin cookies ni PII)                   | **365 días**          | `lucams-purge-event-logs`                                                      |
+| Respaldos externos cifrados GPG `AES-256` en Cloudflare R2                             | **~30 días**          | Rotación automática del ciclo diario de respaldos (`backup.yml`)               |
+| Soporte contable anonimizado de `Order` y auditoría `AdminActionLog`                   | Plazo legal mercantil | Conservación legal (Código de Comercio art. 60 / Estatuto Tributario art. 632) |
 
-La política anterior excluía TODO diseño con `customerId` ("lo rige el ciclo de vida de la cuenta"): un
-boceto de una cuenta viva conservaba sus fotos crudas **indefinidamente**, aunque nadie lo tocara en
-años — misma violación de temporalidad que la de los anónimos. Desde 2026-09-18, un diseño **DRAFT de
-cliente logueado sin actividad ≥ 90 días** (`PURGE_IDLE_DESIGN_AFTER_DAYS`, env var homónima opcional)
-y sin carrito vivo / pedido / cotización vigente se purga igual que el anónimo (misma función de
-borrado seguro). El plazo es más laxo que el anónimo (30d) porque el cliente puede volver a su cuenta.
-**NO toca** `READY` (cotizado o no), `USED_IN_ORDER` (ver la política post-entrega de abajo) ni
-`ARCHIVED` (decisión explícita del titular; lo cubre la supresión de cuenta). Corre en la misma
-corrida del cron `/api/cron/purge-anon-designs` (`purgeIdleCustomerDesigns`).
+**Subprocesadores activos y transmisión internacional (`/legal/subprocesadores`):** la tienda opera en modo completo (`NEXT_PUBLIC_STORE_MODE=full`). Como Estados Unidos no cuenta con declaratoria general de país adecuado por la SIC, la transmisión internacional se ampara en la autorización expresa otorgada al aceptar la política de privacidad (art. 26 Ley 1581), acuerdos de encargado (DPA) y cifrado TLS/reposo, notificando con **30 días de antelación** a los clientes activos antes de incorporar un nuevo encargado:
 
-### Retención de READYs abandonados — nunca ordenados (2026-10-08, ADR-130)
-
-El Estudio genera los renders de producción 300 DPI (`production-assets`, ~2,6 MB por unidad
-física) cuando el cliente llega a «Ver diseño» (status `READY`). Hasta esta fecha **ninguna
-retención cubría un READY que nunca llegó a pedido ni cotización**: esos bytes (y las fotos
-crudas asociadas) se retenían para siempre sin finalidad vigente — fuga medida en STG el
-2026-10-08: 575 renders / 1,5 GB, 2× la cuota Free de Storage.
-
-**Política:** un diseño `READY` **sin actividad ≥ 90 días** (`PURGE_IDLE_READY_AFTER_DAYS`, env
-var homónima opcional), sin carrito vivo, sin pedido y sin cotización vigente, se purga completo
-(bytes de los 3 buckets + filas; si el borrado de bytes falla, las filas NO se borran y el próximo
-ciclo reintenta). Aplica a anónimos y logueados por igual — el plazo ya es la versión laxa.
-**NO toca** `USED_IN_ORDER` (post-entrega), `ARCHIVED` ni nada reclamado por carrito/pedido/
-cotización. Si el cliente vuelve, los renders son regenerables desde `canvasData` con fotos
-nuevas. Implementación: `purgeIdleReadyDesigns` en `features/personalization/retention-service.ts`,
-misma corrida del cron `/api/cron/purge-anon-designs`.
-
-### Retención de carritos y barrido de huérfanos de Storage (2026-10-12)
-
-Dos puntos ciegos detectados tras medir ~316 MB de objetos huérfanos en PRD (diseños borrados
-cuyos bytes quedaron en Storage):
-
-1. **Carritos eternos blindaban diseños.** `Cart` y `AbandonedCart` nunca expiraban, y el guard
-   de las purgas de diseños excluye todo diseño referenciado por un carrito VIVO → un carrito
-   abandonado hace años retenía fotos crudas sin finalidad vigente. **Política:** cart vivo sin
-   actividad ≥ **60 días** (`PURGE_STALE_CART_AFTER_DAYS`) o vacío sin actividad ≥ **7 días**
-   (`PURGE_EMPTY_CART_AFTER_DAYS`) → **hard-delete** (patrón del repo para carts:
-   `mergeAnonCartIntoCustomer` — data efímera sin valor de auditoría; además `sessionId
-@unique` no respeta `deletedAt`). No se toca un cart con registro en `AbandonedCart` (link
-   de recuperación potencialmente vivo). Los registros `AbandonedCart` ≥ **90 días**
-   (`PURGE_ABANDONED_CART_AFTER_DAYS`) se borran — recuperados o no, el email ya no es útil (los
-   recordatorios solo se envían dentro de los primeros 7 días). Al purgar el cart **no se borran
-   diseños**: quedan libres del guard y los purga la pasada normal si cumplen su TTL.
-   Implementación: `features/cart/cart-retention.ts`.
-2. **Objetos huérfanos de Storage** (fila `Design` inexistente) no los veía nadie. **Política:**
-   barrido recurrente acotado (500 objetos/corrida) que reclasifica contra la tabla `Design` con
-   las reglas del one-shot `purge-orphan-storage-20261012.mjs` (`<designId>/…` en
-   production-assets/design-previews; `<ownerId>/<designId>/…` en customer-uploads, con gracia de
-   7 días para `pending/`) y borra bytes + fila vía Storage API, con doble verificación en JS
-   antes de borrar. Implementación: `sweepOrphanStorageObjects` en
-   `features/personalization/retention-service.ts`.
-
-Ambas corren en la misma corrida del cron `/api/cron/purge-anon-designs` (los carritos PRIMERO,
-para destrabar diseños en la misma pasada; el barrido de huérfanos al final, como red de fondo).
-
-### Previews derivados del diseño: thumbnails de borrador y exhibición limpia bajo bucket privado (ADR-147 / ADR-191)
-
-Los derivados del diseño viven en el bucket privado `design-previews` bajo el path del propio
-diseño, servidos únicamente a través de `/api/design-preview/*`, así que **ninguno introduce una nueva categoría de retención**: se borran con las purgas
-de siempre (por diseño) y los cubre el barrido de huérfanos.
-
-- **Thumbnail de borrador** (`Design.draftPreviewUrl`, ADR-147): snapshot WebP liviano
-  (≤120 KB, 400 px) que el auto-save reescribe con upsert al MISMO path (`<designId>/thumb.webp`)
-  — no acumula versiones y solo es accesible al dueño o a staff autorizado con MFA `aal2`.
-- **Previews de exhibición limpios** (ADR-191, retiró el watermark tiling de ADR-148 el 2026-11-03): todas las superficies (carrito, «Ver» paginado, Mis diseños, `/d` + OG, cotización, gracias y pedido) exhiben las versiones limpias (`<designId>/preview.<ext>`, `<designId>/pages/NN.webp`) autorizadas al dueño, staff con rol permitido + MFA `aal2`, o portador del capability token correspondiente (`st`/`qt`/`ot`). Los artefactos `preview-wm.webp` / `wm/pages/*` históricos quedan huérfanos y los cubre la purga estándar de retención (`designPreviewDerivedPaths`).
-
-### Retención POST-ENTREGA de fotos y renders de producción (2026-09-18)
-
-Cuando la compra SÍ se concreta, la finalidad de las fotos crudas (`customer-uploads`) y de los renders
-300 DPI (`production-assets`) era producir y entregar el pedido. Cumplida —y vencida la ventana
-operativa de reposición— no hay finalidad que justifique conservarlos: un pedido puede dejar ~57 MB y
-el plan de Supabase tiene 1 GB de Storage.
-
-**Política:** un diseño `USED_IN_ORDER` cuya orden está **DELIVERED desde ≥ 90 días**
-(`PURGE_DELIVERED_DESIGN_AFTER_DAYS`, anclado a `Order.deliveredAt`, env var homónima opcional) se
-depura así (`features/personalization/retention-delivered.ts`, cron `/api/cron/purge-delivered-designs`,
-pg_cron migración 035):
-
-- **Se borran los bytes**: fotos crudas del bucket privado `customer-uploads` y renders de
-  `production-assets` (`productionUrls[]`, el legacy `productionUrl` y el área de paso `_client/`).
-  Las filas `DesignAsset` se borran con ellos (su única finalidad era apuntar a los bytes; la
-  evidencia de consentimiento de derechos de imagen se conserva a nivel pedido en
-  `Order.contentRightsAcceptedAt`).
-- **Se conservan**: `previewUrl` (el preview que el cliente ve en su pedido), `canvasData`, la fila
-  `Design` y el **snapshot inmutable del OrderItem** (`customDesign` + `designAssetUrl` + metadata) —
-  historial del pedido y retención fiscal DIAN. Los punteros a bytes borrados dentro del snapshot
-  quedan muertos y la UI de admin ya lo tolera.
-- **Exclusiones (reimpresiones y post-venta)**: no se purga mientras alguna orden del diseño siga en
-  curso o recién entregada, ni con **retracto abierto** (PENDING/APPROVED/RECEIVED — Ley 1480 art. 47)
-  ni **garantía abierta** (PENDING/IN_REVIEW/APPROVED — un remedio REPLACE reimprime desde
-  `productionUrls`).
-- **Idempotencia**: el diseño queda marcado con `Design.purgedAt` solo si TODOS los bytes se borraron;
-  si Storage falla, no se marca y el próximo ciclo reintenta.
-
-### Reorder («Volver a pedir») y fotos de terceros desde el link público (2026-10-02)
-
-El link público del pedido `/pedido/<token>` (invitados Wompi; **reenviable** — cualquiera con el
-link lo abre) históricamente permitía VER las fotos del pedido; desde 2026-10-02 también permite
-**REUSARLAS en un pedido nuevo** (reorder del invitado, ADR-117/119).
-
-**Análisis de aceptación:** no amplía el acceso real — quien tiene el link ya podía ver (y
-descargar) ese contenido; el reuso operativo no expone nada nuevo a nadie nuevo. El alcance sigue
-acotado por la retención: las fotos crudas se purgan a los 90 días de entregado (política de
-arriba) y un ítem ya purgado **NO es re-ordenable** — el CTA pide re-subir las fotos al estudio,
-que es de hecho un re-consentimiento (quien sube la foto la tiene). El clon del reorder
-**copia los bytes** a paths propios con ciclo de retención independiente: la purga del pedido
-original no borra las fotos del pedido nuevo, y viceversa (cada compra tiene su propia finalidad
-vigente; los 90 días corren por pedido).
-
-**Riesgo residual aceptado:** quien reenvía el link comparte también la capacidad de reusar las
-fotos — mismo alcance que ya tenía para verlas. El token se ROTA en cada envío del email
-(ADR-119), así que un link viejo reenviado muere con el próximo envío.
-
-### Aceptación de calidad de fotos — `Design.qualityAcknowledgedAt` (2026-10-02)
-
-Cuando una foto dispara avisos de calidad en el estudio (resolución baja, etc.), el cliente debe
-marcar una **casilla de aceptación** («imprimir con avisos de calidad») antes de finalizar; la
-aceptación queda persistida con timestamp en **`Design.qualityAcknowledgedAt`**.
-
-**Finalidad:** trazabilidad ante reclamos de garantía (Ley 1480 art. 7-16): si el cliente reclama
-por nitidez o resolución de la impresión, el registro prueba que fue **informado** del aviso y
-aceptó imprimir de todas formas — la garantía legal no cubre el resultado de una limitación del
-insumo del cliente que fue informada y aceptada (causal de exoneración, art. 16). Visible en
-moderación (`/admin/disenos`) y en el detalle del pedido del admin.
-
-### Retención de logs de eventos con PII (2026-08-29)
-
-Mismo principio de temporalidad aplicado a los logs que el sistema acumula solo
-(`features/observability/event-log-retention.ts`, vía el cron `/api/cron/purge-event-logs`):
-
-| Tabla          | Contenido con PII                                                             | Retención | Criterio de purga                                            |
-| -------------- | ----------------------------------------------------------------------------- | --------- | ------------------------------------------------------------ |
-| `EmailEvent`   | `to` = email del cliente                                                      | 180 días  | `createdAt`                                                  |
-| `WebhookEvent` | `payload` crudo (Wompi trae `customer_email`)                                 | 180 días  | `createdAt` y solo si `processedAt` (no romper idempotencia) |
-| `ErrorLog`     | message+stack de errores server (PII ya redactada por `scrubPii` al capturar) | 90 días   | `createdAt`                                                  |
-| `ErrorReport`  | reportes de error del cliente (`/api/log-error`)                              | 90 días   | `lastSeenAt` (un error que sigue ocurriendo NO se borra)     |
-
-Las purgas son `deleteMany` con cutoff y quedan logueadas (`retention.purge_event_logs`).
+| Encargado / Servicio                                                                        | País / Región         | Datos tratados y propósito                                              | Salvaguarda técnica y base legal                                                       |
+| ------------------------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Supabase**                                                                                | EE. UU.               | Base de datos Postgres, Auth y Storage de archivos                      | RLS en 73/73 tablas, `REVOKE ALL`, 3 buckets privados · Contrato + autorización        |
+| **Vercel**                                                                                  | EE. UU. / Global      | Ejecución serverless (`iad1`), CDN y registros de borde                 | TLS/HSTS, CSP por nonce, `scrubPii` en stdout · Contrato + autorización                |
+| **Wompi**                                                                                   | Colombia              | Procesamiento de pagos electrónicos y antifraude                        | PCI-DSS en dominio Wompi; PAN y CVV nunca tocan Lucams Shop · Necesidad contractual    |
+| **Aveonline** (+ Envía, Coordinadora, Servientrega, Interrapidísimo, TCC, Deprisa, Saferbo) | Colombia              | Cotización, generación de guías, rastreo y recaudo contraentrega        | Solo nombre, dirección y teléfono de entrega · Necesidad contractual                   |
+| **Resend**                                                                                  | EE. UU.               | Envío de correos transaccionales y contactos opt-in                     | DKIM/SPF/DMARC y supresión inmediata ante rebotes/quejas · Contrato / opt-in           |
+| **Cloudflare** y **Cloudflare R2**                                                          | Global / EE. UU.      | DNS, Email Routing, Turnstile anti-bot y respaldos DR                   | Dumps cifrados con GPG **AES-256** antes de salir del runner · Seguridad / continuidad |
+| **Google (Gemini API)**                                                                     | EE. UU.               | Sugerencias de texto en el Estudio y copiloto interno de soporte        | **Cero PII y cero fotos** (`sanitizeOccasion` + `sanitizeSupportTextForAi`)            |
+| **Google LLC (Google Analytics 4)**                                                         | EE. UU.               | Analítica de conversión opcional                                        | **Apagado por defecto;** exige opt-in `COOKIES_ANALYTICS` + `sanitizeAnalyticsUrl`     |
+| **Meta / WhatsApp**, **Mi.com.co** y **GitHub**                                             | Global / CO / EE. UU. | Canal iniciado por el usuario (`wa.me`), registro `.com`/`.co` y código | Mi.com.co y GitHub no tratan bases de datos de compradores                             |
 
 ---
 
-## Ley 1480 de 2011 — Estatuto del Consumidor
+## 5. Gobierno de cookies (estándar opt-in) y analítica sin cookies
 
-> Verificado contra [Ley 1480 — Función Pública](https://www.funcionpublica.gov.co/eva/gestornormativo/norma.php?i=44306) y [Estatuto del Consumidor art. 47 — leyes.co](https://leyes.co/el_estatuto_del_consumidor/47.htm) a 2026-05-09.
+Implementado en [`apps/web/components/cookies-banner.tsx`](../apps/web/components/cookies-banner.tsx), [`apps/web/lib/cookie-consent.ts`](../apps/web/lib/cookie-consent.ts), [`apps/web/lib/analytics.ts`](../apps/web/lib/analytics.ts) y [`apps/web/lib/utm-attribution.ts`](../apps/web/lib/utm-attribution.ts), alineado de forma voluntaria al estándar europeo de opt-in granular:
 
-### Obligaciones de información (art. 23 y siguientes)
+### 5.1 Las 4 categorías del banner y reglas de re-consentimiento
 
-Antes de la compra, el sitio debe mostrar:
+| Categoría (`ConsentScope`)                         | Estado inicial | ¿Bloqueable? | Qué gobierna en tiempo real                                                                                |
+| -------------------------------------------------- | :------------: | :----------: | ---------------------------------------------------------------------------------------------------------- |
+| **Estrictamente necesarias** (`COOKIES_NECESSARY`) |     **ON**     |      No      | Sesión Auth, timeouts de inactividad, carrito anónimo, estado cifrado de checkout y preferencia del banner |
+| **Funcionales** (`COOKIES_FUNCTIONAL`)             |    **OFF**     |      Sí      | Preferencias opcionales de interfaz no esenciales                                                          |
+| **Analíticas** (`COOKIES_ANALYTICS`)               |    **OFF**     |      Sí      | Carga de Google Analytics 4 (`gtag.js`), envío de beacons RUM a `/api/vitals` y atribución `lucams_utm`    |
+| **Marketing** (`COOKIES_MARKETING`)                |    **OFF**     |      Sí      | Píxeles publicitarios externos (hoy no hay píxeles de terceros instalados)                                 |
 
-1. **Identidad del proveedor** (razón social, NIT, dirección física, contacto).
-2. **Características del producto** (medidas, materiales, peso, advertencias).
-3. **Precio total** incluyendo IVA y costo de envío.
-4. **Métodos de pago disponibles.**
-5. **Tiempo de entrega.**
-6. **Derecho de retracto** (si aplica) y procedimiento para ejercerlo.
-7. **Política de garantía** y condiciones de devolución.
-8. **Términos y condiciones** del contrato.
+- **Sin patrones oscuros y reabrible siempre:** el banner inferior ofrece con idéntica jerarquía visual _Solo necesarias_, _Personalizar_ y _Aceptar todas_, no aparece en `/admin/*`, y puede reabrirse en cualquier momento desde `<CookiesReopener>` en el footer y en `/legal/cookies`. Cada elección invoca `persistCookieConsentAction` (`30 / 1 min` por IP) registrando una fila por categoría en `Consent`.
+- **Re-consentimiento automático por versión (`policyVersion`):** `cookie_consent_v1` guarda la versión estructural (`v: 1`) y `policyVersion` (alimentada desde el ajuste CMS `PRIVACY_POLICY_VERSION`). Cuando cambia la versión publicada del aviso de privacidad, el banner vuelve a mostrarse automáticamente a visitantes recurrentes; si el usuario revoca `COOKIES_ANALYTICS`, `clearAnalyticsCookies()` y `clearStoredUtm()` borran de inmediato `_ga`, `_ga_*` y `lucams_utm`.
+- **Embudo propio sin cookies (`FunnelEventDaily`):** `POST /api/funnel` (`credentials: "omit"`) registra únicamente contadores enteros diarios agregados sin leer ni escribir cookies ni PII, permitiendo medir salud operativa sin rastrear personas.
 
-### Fuente única de plazos estatutarios en código (`consumer-law.ts` + `{{tokens}}`)
+### 5.2 Catálogo completo de cookies utilizadas por el sitio
 
-Para impedir contradicciones entre lógica de negocio, emails transaccionales, UI, FAQs y los 8 documentos de `packages/db/legal-content/*.md` (ADR-187), todos los plazos legales y operativos transversales viven en `apps/web/lib/consumer-law.ts` y se interpolan vía `resolveCmsTokens()` (`apps/web/lib/cms-tokens.ts`):
-
-- `RETRACT_WINDOW_BUSINESS_DAYS = 5` → `{{retracto_dias}}` (Ley 1480 art. 47)
-- `RETRACT_REFUND_MAX_CALENDAR_DAYS = 15` → `{{retracto_reembolso_dias}}` (Ley 2439/2024 art. 3)
-- `MAX_LEGAL_DELIVERY_CALENDAR_DAYS = 30` → `{{entrega_max_legal_dias}}` (Ley 1480 art. 50 lit. h)
-- `DEFAULT_CATALOG_WARRANTY_MONTHS = 1` → `{{garantia_base}}` (`formatWarrantyTerm`, Ley 1480 art. 8; el término específico del producto vive en `Product.warrantyMonths` y se sella en `OrderItem.warrantyMonths`, ADR-106)
-- `WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS = 15` → `{{garantia_respuesta_dias}}` (Decreto 1074/2015)
-- `HABEAS_DATA_CONSULTATION_BUSINESS_DAYS = 10` / `HABEAS_DATA_CLAIM_BUSINESS_DAYS = 15` → `{{habeas_consulta_dias}}` / `{{habeas_reclamo_dias}}` (Ley 1581 arts. 14–15)
-- `LUCAMS_SHIPPING_CUTOFF_HOUR` (setting CMS) → `{{cutoff_lucams}}`
-
-El test `apps/web/app/legal/legal-content-sync.test.ts` verifica que el `FALLBACK` de cada página `/legal/*` sea idéntico al `.md` canónico y `apps/web/lib/cms-tokens.test.ts` cubre la resolución de todos los tokens. Además, el motor determinista `apps/web/lib/colombian-sla.ts` calcula los vencimientos legales en días hábiles colombianos (Ley 51 / Emiliani + festivos móviles de Pascua en `America/Bogota`) para `SupportTicket`, `WarrantyClaim` y `RetractRequest`, alimentando los relojes de `/admin/soporte` y la bandeja priorizada `/admin/hoy`.
-
-### Información de entrega: estimado operativo vs plazo legal
-
-- Storefront, checkout, correos, seguimiento, guía y Admin muestran por separado la
-  **preparación estimada antes del despacho** y el **tránsito estimado después del despacho**.
-- «Alrededor de X días» y «estimado» no sustituyen el plazo informado antes del pago ni se
-  presentan como fecha garantizada. Envío Lucams del mismo día siempre queda sujeto a
-  disponibilidad y condiciones de la ruta (`{{cutoff_lucams}}:00`).
-- Los Términos conservan el límite de **treinta (`{{entrega_max_legal_dias}}`) días calendario** y el remedio legal por
-  incumplimiento. Los defaults de código, el site map CMS y el body publicado permanecen
-  alineados (`sync-and-prune-cms-v2.mjs` republica con versión reversible sin pisar ediciones manuales).
-
-### Derecho de retracto (art. 47) — verificado
-
-> **5 días hábiles** desde la entrega del bien para retractarse sin justificación (Ley 1480 art. 47, sin cambios). El reembolso para comercio electrónico debe hacerse en máximo **15 días calendario** contados desde que el consumidor ejerce el retracto — plazo introducido por la **Ley 2439 de 2024** (art. 3, modifica el art. 47), que lo bajó de los 30 días hábiles anteriores. Verificado el 2026-06-27 contra [Holland & Knight — Ley 2439 de 2024](https://www.hklaw.com/en/insights/publications/2025/01/ley-2439-de-2024-modificaciones-al-estatuto-del-consumidor-en-colombia) + Gestor Normativo Función Pública.
-
-#### Excepciones legales (las relevantes para nosotros)
-
-> Cita textual del art. 47: _"contratos de suministro de bienes confeccionados conforme a las especificaciones del consumidor o claramente personalizados"_ están **exceptuados** del derecho de retracto.
-
-**Implicación crítica para Lucams_shop:**
-
-| Producto                                                                    | Aplica retracto                                           |
-| --------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Imanes del catálogo estándar (no personalizados)                            | ✅ Sí — 5 días hábiles                                    |
-| Imanes del Estudio de Personalización (con foto del cliente o texto custom) | ❌ **No** — exceptuado por personalización                |
-| Bundles del catálogo estándar                                               | ✅ Sí                                                     |
-| Bundles que incluyen al menos un imán personalizado                         | ❌ No (preferimos cubrir todo el bundle por consistencia) |
-
-> **Decisión operativa:** la exclusión por personalización aplica solo si el producto fue **claramente personalizado** (tiene foto/texto custom del cliente). Productos del catálogo "estándar" (imanes pre-diseñados sin personalización del cliente) **sí tienen retracto**. Esto debe quedar claro en la página de cada producto.
-
-#### Implementación técnica
-
-La elegibilidad se calcula **al vuelo** (no hay flag persistido por item): un `OrderItem` es
-personalizado —y por tanto exceptuado— si tiene `customDesign` (legacy) o `designId`
-(`isItemPersonalized` en `apps/web/features/retract/service.ts`). El resto de condiciones:
-orden `DELIVERED`, dentro de la ventana de 5 días hábiles (en calendario colombiano COT) y sin
-solicitud previa. La identidad es obligatoria: toda operación del servicio exige `customerId`
-(tipo estricto, auditoría D-3 — un guest nunca coincide, sin hueco IDOR).
-
-#### Flujo de retracto
-
-1. Cliente solicita retracto desde el detalle del pedido (`/mi-cuenta/pedidos/[number]`, control
-   por item) o email a `retracto@lucamsshop.com`.
-2. Validar elegibilidad:
-   - ¿Está dentro de los 5 días hábiles desde la entrega?
-   - ¿El item NO está personalizado (`isItemPersonalized = false`)?
-3. Si elegible:
-   - Crear `RetractRequest(orderItemId, reason?, status='PENDING', refundAmount=<línea del item>)`.
-   - El admin aprueba en `/admin/retractos` → email al cliente con instrucciones de devolución.
-4. Cliente devuelve el producto vía Coordinadora (a costo del proveedor — nosotros).
-5. Recepción → `RetractRequest.status='RECEIVED'`.
-6. Reembolso **manual** vía panel Wompi o transferencia bancaria si COD; se registra
-   `refundMethod` (`"WOMPI_VOID" | "BANK_TRANSFER"`) + `refundedAt` y se avisa al cliente por email.
-   - Plazo legal: 15 días calendario desde la solicitud.
-   - No restaura stock automáticamente ni cambia el estado de la orden (la entrega ya ocurrió).
-7. `RetractRequest.status='REFUNDED'`.
-
-#### Schema Prisma
-
-```prisma
-enum RetractStatus {
-  PENDING // solicitado, pendiente de aprobar
-  APPROVED // aprobado, esperando que el cliente devuelva el producto
-  RECEIVED // producto recibido de vuelta
-  REFUNDED // reembolso emitido (dinero Wompi manual)
-  REJECTED // rechazado (no elegible / fuera de ventana)
-}
-
-model RetractRequest {
-  id            String        @id @default(cuid())
-  orderItemId   String        @unique
-  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  status        RetractStatus @default(PENDING)
-  reason        String? // texto libre del cliente
-  rejectionNote String? // motivo si REJECTED
-  refundAmount  Int // línea del item al solicitar (COP centavos)
-  refundMethod  String? // "WOMPI_VOID" | "BANK_TRANSFER" — al reembolsar
-  requestedAt   DateTime      @default(now())
-  approvedAt    DateTime?
-  receivedAt    DateTime?
-  refundedAt    DateTime?
-  processedBy   String? // AdminUser.id que gestionó la solicitud
-}
-```
-
-### Garantía legal (art. 7-16)
-
-- **Plazo de garantía:** el art. 8 permite al productor **anunciar el término por producto** cuando no haya uno especial fijado por ley o autoridad; si no se informa, rige un año. La política de este release parte de **1 mes** y el Admin puede configurar entre 1 y 120 meses por producto. La ficha muestra el plazo antes de comprar, el checkout remite a esa información y la confirmación de pedido lo detalla por línea. `OrderItem.warrantyMonths` sella el término al confirmar: una edición posterior de `Product.warrantyMonths` solo afecta ventas futuras, nunca pedidos existentes.
-- **Garantía cubre:** defectos de fabricación, de materiales o de impresión (incluida la adherencia del imán de fábrica); no cubre mal uso, humedad, golpes, desgaste natural ni manipulación indebida (art. 16 — la carga de probar la causal de exclusión es nuestra).
-- **Reparación, sustitución o reembolso** a elección del consumidor si el bien presenta defecto en garantía.
-
-**Base normativa exacta** (texto oficial de la Ley 1480 de 2011, investigación 2026-09-29 — el blindaje de los textos públicos quedó propagado a canónico + fallbacks + FAQs en el paquete v1):
-
-| Norma                         | Qué ordena (texto oficial)                                                                                                                                                                                                                                                                                                                            | Dónde quedó en los textos públicos                                                                                                                  |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Art. 8** (término)          | El término es el dispuesto por la ley/autoridad competente; **a falta de ella, el anunciado por el productor y/o proveedor**; si no se indica, **1 año**. Corre desde la entrega.                                                                                                                                                                     | Término por producto anunciado: ficha, `legal.garantias.md` § Cuánto dura, `legal.terminos.md` § Garantía legal, checkout y confirmación de pedido. |
-| **Art. 9** (cómputo)          | El término se **suspende** mientras el consumidor está privado del producto por efectividad de la garantía; con **cambio total** del producto corre de nuevo completo.                                                                                                                                                                                | `legal.garantias.md` § Cómo se cuenta el plazo; FAQ (suspensión).                                                                                   |
-| **Art. 10** (responsables)    | Productor y proveedor responden **solidariamente**; **basta demostrar el defecto** (carga favorable al consumidor), salvo exoneraciones del art. 16.                                                                                                                                                                                                  | `legal.garantias.md` § Quién prueba qué.                                                                                                            |
-| **Art. 11** (remedios)        | 1) Reparación **totalmente gratuita** + transporte; si no admite reparación → reposición o devolución del dinero. 2) Si la falla **se repite** → a elección del consumidor: nueva reparación, devolución total o parcial del precio, o cambio por otro de iguales o mejores características. 4) Suministrar **instrucciones de uso y mantenimiento**. | `legal.garantias.md` § Qué puedes pedir (escalera) y § Cómo cuidar tus productos; FAQ «¿Cómo cuido mis imanes?».                                    |
-| **Art. 16** (exoneraciones)   | Mal uso; fuerza mayor/caso fortuito; hecho de un tercero; **no seguir las instrucciones de uso y conservación**. La carga de probar la causal es del proveedor.                                                                                                                                                                                       | `legal.garantias.md` § Qué NO cubre (causales mapeadas) — las instrucciones publicadas habilitan la causal 16.4 en la práctica.                     |
-| **Art. 47 num. 3** (retracto) | Exceptúa los bienes «confeccionados conforme a las especificaciones del consumidor o **claramente personalizados**».                                                                                                                                                                                                                                  | `legal.devoluciones.md` y `legal.terminos.md` (cita corregida de «parágrafo 3, literal c» a **numeral 3**, 2026-09-29).                             |
-| **Ley 2439 de 2024**          | Reembolso del retracto en e-commerce en máximo **15 días calendario** (modificó el inciso del art. 47).                                                                                                                                                                                                                                               | `legal.devoluciones.md` § Tu reembolso y `legal.terminos.md` § Derecho de retracto (ya citada).                                                     |
-| **Art. 59.16** (SIC)          | La SIC puede fijar por reglamento **términos especiales de garantía** por tipo de bien. **No lo ha hecho** para papelería/imanes → rige el término anunciado (art. 8).                                                                                                                                                                                | Monitoreo: si la SIC reglamenta la categoría, el término oficial manda sobre el anunciado y habría que republicar.                                  |
-
-#### Implementación
-
-- Política de garantía publicada en `/legal/garantias`.
-- Solicitud desde el detalle del pedido (`/mi-cuenta/pedidos/[number]`, control por item) y gestión admin en `/admin/garantias`.
-- `OrderItem.warrantyMonths` conserva el plazo contratado; `WarrantyClaim` calcula sobre ese snapshot, no sobre el producto vigente.
-
-### Reseñas y moderación (publicidad no engañosa)
-
-Publicar reseñas ficticias sería publicidad engañosa (riesgo SIC). Postura verificada:
-
-- **Toda reseña entra con `isApproved=false`** y solo se publica tras moderación en `/admin/resenas` — la policy RLS `review insert own` lo **fuerza a nivel DB** (migración 028: `isApproved=false`/`featured=false` en el INSERT, no solo en la app).
-- **Producción tiene 0 reseñas** (verificado en vivo 2026-08-29): las ficticias del seed inicial se retiraron y la decisión fue no republicarlas.
-- Los scripts de seed de reseñas (`packages/db/scripts/seed-reviews-*.mjs`) quedaron **bloqueados contra prod** (y remotos desconocidos) por `env-guard` — solo corren contra el stack local/stg.
-- **Política de la dueña (2026-09-05): SOLO reseñas de compras verificadas.** La capacidad de testimonios "curados" (`Review.customerId = null`, sin compra asociada) queda **apagada por política** — no se usa aunque el código la soporte. Si algún día se reconsidera, exige etiqueta pública visible que los distinga de compras verificadas (Ley 1480 art. 23: publicidad engañosa).
-
-### Términos y Condiciones — secciones obligatorias
-
-1. Identificación del proveedor.
-2. Definiciones (consumidor, productor, expendedor, etc.).
-3. Procedimiento de compra paso a paso.
-4. Métodos de pago.
-5. Tiempo y costo de envío.
-6. Derecho de retracto (con texto del art. 47 y excepciones aplicables).
-7. Política de garantías.
-8. Política de reversión de pago (art. 51).
-9. Procedimiento de PQR.
-10. Jurisdicción aplicable y mecanismos de solución de controversias.
-
-> Plantilla base se redacta antes de Fase 7. Revisión legal recomendada (ADR-020).
-
-### Reversión del pago (art. 51)
-
-> Si el consumidor reporta a su banco que la compra fue fraudulenta o el producto no llegó, el banco puede revertir el pago. **Tenemos 21 días calendario para responder y demostrar lo contrario.**
-
-- Implementación (pendiente — se construye con la tienda full): webhook de Wompi nos avisa de chargebacks → alerta al operador → tabla `Chargeback` para tracking. Hoy no existe esa tabla ni el flujo; mientras tanto el canal es el email del banco/Wompi al operador.
+| Cookie                        | Categoría | TTL / Expiración        | Atributos de seguridad y finalidad                                                                              |
+| ----------------------------- | --------- | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `sb-<project-ref>-auth-token` | Necesaria | Contenedor `400 d`      | Sesión `@supabase/ssr` (`SameSite=Lax`, `Secure` en HTTPS; tokens internos rotan: access `1 h`, refresh `30 d`) |
+| `customer_last_activity`      | Necesaria | `30 días` (idle `7 d`)  | `HttpOnly`, firmada HMAC-SHA256 con `CSRF_SECRET` ligada a `user.id` (`ADR-162`)                                |
+| `admin_last_activity`         | Necesaria | `30 días` (idle `30 m`) | `HttpOnly`, `Path=/admin`, firmada HMAC-SHA256 ligada a `user.id` (`ADR-162`)                                   |
+| `cart_session`                | Necesaria | `30 días`               | `HttpOnly`, `SameSite=Lax`; UUID opaco del carrito/borrador anónimo rotado al cerrar sesión (`LUC-SEC-013`)     |
+| `checkout_state`              | Necesaria | `60 minutos`            | `HttpOnly`, **cifrada `AES-256-GCM`** en servidor con `CSRF_SECRET`                                             |
+| `lucams_cms_edit`             | Necesaria | `8 horas`               | `HttpOnly`, exclusiva para edición visual in-context del personal autorizado                                    |
+| `cookie_consent_v1`           | Necesaria | `1 año`                 | Legible en cliente por diseño para que el cargador de analítica consulte el consentimiento sin golpear servidor |
+| `lucams_utm` / `_ga`, `_ga_*` | Analítica | `30 días` / GA4         | **Solo se crean tras opt-in expreso en `COOKIES_ANALYTICS`**; eliminadas activamente al revocar                 |
 
 ---
 
-## Facturación electrónica DIAN (Resolución 165 de 2023)
+## 6. Arquitectura del Paquete Legal Versión 3 (`2026-11-05`) y guardián `legal-content-sync.test.ts`
 
-> Verificado contra [DIAN — Obligados a Facturar](https://www.dian.gov.co/impuestos/sociedades/Paginas/obligadosfacturar.aspx) y [Resolución 000202 de 2025](https://www.dian.gov.co/normatividad/Normatividad/Resoluci%C3%B3n%20000202%20de%2031-03-2025.pdf) a 2026-05-09.
+### 6.1 Las 3 capas sincronizadas de los 8 documentos legales
 
-### Obligación
+Todos los textos legales comparten versión unificada (**`Versión 3 · vigente desde 2026-11-05`**) a través de tres capas idénticas más dos ajustes maestros (`legal.last-updated = "Última actualización: 2026-11-05 · Versión 3"` y `PRIVACY_POLICY_VERSION = "v3 · 2026-11-05"`):
 
-Toda persona natural o jurídica responsable de IVA en Colombia debe facturar electrónicamente. Sanciones:
+| #   | Ruta pública             | Capa 1: Markdown canónico (`packages/db/legal-content/`) | Capa 2: `FALLBACK` en `apps/web/app/legal/` | Capa 3: `CmsField` (`LEGAL`) | Materia regulada                                                                       |
+| --- | ------------------------ | -------------------------------------------------------- | ------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------- |
+| 1   | `/legal/privacidad`      | `legal.privacidad.md`                                    | `privacidad/page.tsx`                       | `legal.privacidad.body`      | Aviso de Privacidad (Decreto 1377 de 2013, arts. 14 y 15)                              |
+| 2   | `/legal/terminos`        | `legal.terminos.md`                                      | `terminos/page.tsx`                         | `legal.terminos.body`        | Términos y Condiciones (las 10 cláusulas obligatorias, Ley 1480 y Ley 2439)            |
+| 3   | `/legal/cookies`         | `legal.cookies.md`                                       | `cookies/page.tsx`                          | `legal.cookies.body`         | Política, categorías e inventario técnico de cookies                                   |
+| 4   | `/legal/devoluciones`    | `legal.devoluciones.md`                                  | `devoluciones/page.tsx`                     | `legal.devoluciones.body`    | Derecho de retracto, excepción personalizados, flete de retorno y reversión art. 51    |
+| 5   | `/legal/garantias`       | `legal.garantias.md`                                     | `garantias/page.tsx`                        | `legal.garantias.body`       | Garantía legal modular, suspensión, instrucciones de cuidado y causales art. 16        |
+| 6   | `/legal/habeas-data`     | `legal.habeas-data.md`                                   | `habeas-data/page.tsx`                      | `legal.habeas-data.body`     | Política integral de Tratamiento de Datos Personales, ARCO y tabla de retención        |
+| 7   | `/legal/subprocesadores` | `legal.subprocesadores.md`                               | `subprocesadores/page.tsx`                  | `legal.subprocesadores.body` | Encargados del tratamiento, transportadoras aliadas y transmisión internacional        |
+| 8   | `/legal/security`        | `legal.security.md`                                      | `security/page.tsx`                         | `legal.security.body`        | Divulgación coordinada de vulnerabilidades (`security@lucamsshop.com`, acuse ≤ 3 días) |
 
-- Cierre del establecimiento por **3 días**, **o**
-- Multa equivalente al **1% de los ingresos operacionales del año anterior**, hasta tope de **950 UVT**.
+### 6.2 Las 7 invariantes de CI en `legal-content-sync.test.ts` y checklist para publicar una nueva versión
 
-### Modalidades de cumplimiento
+El test automatizado [`apps/web/app/legal/legal-content-sync.test.ts`](../apps/web/app/legal/legal-content-sync.test.ts) bloquea cualquier PR si se incumple cualquiera de estas siete reglas:
 
-| Modalidad                                 | Cuándo                                                                      |
-| ----------------------------------------- | --------------------------------------------------------------------------- |
-| **Software gratuito DIAN**                | Hasta 2.000 facturas/año y bajo cierto umbral de ingresos                   |
-| **Proveedor tecnológico autorizado** (PT) | Más de 80 proveedores habilitados; integran con nuestra app vía API         |
-| **Software propio habilitado**            | Solo si el negocio justifica el desarrollo + habilitación (no nuestro caso) |
+1. **Paridad byte a byte `legal.<slug>.md === FALLBACK`:** el bloque `const FALLBACK = \`...\``de cada`page.tsx` (des-escapando `` \` `` y `\${`) debe coincidir exactamente con el archivo canónico ya formateado con Prettier.
+2. **Cero correos `@lucamsshop.com` literales:** todo buzón dentro de los textos legales debe escribirse con `{{email_contacto}}`, `{{email_habeas_data}}`, `{{email_retracto}}` o `{{email_security}}`.
+3. **Cero plazos legales hardcodeados:** prohibido escribir literales como `"15 días calendario"`, `"30 días calendario"`, `"10 días hábiles"`, `"15 días hábiles"` o `"5 días hábiles"`; deben provenir siempre de los `{{tokens}}` de `consumer-law.ts`.
+4. **Cero redacción obsoleta de Etapa 1 («modo catálogo»):** rechaza expresiones como `"todavía no cobramos"`, `"cuando activemos"`, `"Etapa 1"` o `[PENDIENTE]`.
+5. **Cero `NIT` o `matrícula mercantil` no operados:** impide publicar identificadores tributarios ficticios o sin soporte documental.
+6. **Pie de versión unificado y sincronizado en las 3 fuentes:** los 8 archivos deben cerrar con `_Versión 3 · vigente desde 2026-11-05_`, alineado con `legal.last-updated` / `PRIVACY_POLICY_VERSION` en `cms-site-map.mjs` y con `DEFAULT_PRIVACY_POLICY_VERSION` en `lib/cookie-consent.ts`.
+7. **Cero voseo (`es-CO` tuteo estricto):** escanea los 8 documentos legales y bloquea cualquier conjugación o imperativo de voseo frente al tuteo estándar colombiano (`tú`).
 
-### Decisión operativa para Lucams_shop
+**Protocolo de 6 pasos para publicar una futura `Versión 4`:**
 
-**Usar un proveedor tecnológico autorizado** (no software propio, no gratuito DIAN — el gratuito no se integra bien con un e-commerce). Candidatos a evaluar antes de Fase 7:
-
-| Proveedor       | Notas                                                                        | Verificar             |
-| --------------- | ---------------------------------------------------------------------------- | --------------------- |
-| **Alegra**      | API + dashboard. Plan más bajo ~$25-50 USD/mes. Integración Node disponible. | `alegra.com/colombia` |
-| **Siigo**       | Líder local. API. Costo similar.                                             | `siigo.com`           |
-| **Facture**     | API-first. Más técnico.                                                      | `facture.co`          |
-| **DIAN gratis** | Solo para volumen bajo, sin API real. Descartado.                            | —                     |
-
-> **ADR pendiente (cuando se elija):** ADR-025 — proveedor de facturación electrónica.
-
-### Flujo de emisión
-
-```
-Order → PAID → enqueue("invoice_emit", { orderId })
-            → Edge Function consumer:
-              1. Construye payload del proveedor (cliente, items, IVA).
-              2. POST al proveedor (con retry + circuit breaker).
-              3. Recibe CUFE (Código Único de Factura Electrónica) y URL del PDF.
-              4. Guarda Invoice(orderId, cufe, pdfUrl, xmlUrl, status='ISSUED').
-              5. Email al cliente con factura adjunta.
-```
-
-### Schema
-
-```prisma
-model Invoice {
-  id              String   @id @default(cuid())
-  orderId         String   @unique
-  order           Order    @relation(fields: [orderId], references: [id])
-  number          String   @unique  // Numeración aprobada por DIAN
-  cufe            String   @unique  // Código Único de Factura Electrónica
-  pdfUrl          String
-  xmlUrl          String?
-  totalAmount     Int      // centavos COP
-  iva             Int
-  status          String   // 'ISSUED' | 'CANCELLED' | 'REJECTED_BY_DIAN'
-  providerName    String   // 'alegra' | 'siigo' | etc.
-  providerEmittedAt DateTime
-  createdAt       DateTime @default(now())
-}
-```
-
-### Numeración
-
-- DIAN exige **resolución de numeración** vigente. Solicitarla con anticipación.
-- El proveedor tecnológico maneja la numeración consecutiva y el envío a DIAN.
-
-### Notas de crédito
-
-- Reembolsos parciales o totales requieren **nota de crédito electrónica** (también vía proveedor).
-- Schema `CreditNote(invoiceId, amount, reason, cufe, ...)` análogo a `Invoice`.
-
-### Verificaciones pendientes (mandato #9)
-
-Antes de elegir proveedor:
-
-- [ ] Confirmar costo mensual del plan más básico de cada candidato.
-- [ ] Verificar disponibilidad de API REST y SDK Node.
-- [ ] Confirmar soporte de notas de crédito vía API.
-- [ ] Confirmar que el proveedor maneja el envío a DIAN (no nosotros).
-
-### Addendum 2026-05-15 — Umbral persona natural NO responsable de IVA + control proactivo en admin
-
-> Decisión Lucy en `docs/PLAN_CATALOG_V2.md` 1.8 (2026-05-15).
-
-Persona natural NO responsable de IVA en Colombia **NO está obligada** a emitir factura electrónica si sus ingresos brutos anuales del año anterior están por debajo de **3.500 UVT** (UVT 2026 = **$52.374**, Resolución DIAN 000238 del 15-12-2025 → umbral 2026 = **$183.309.000**; verificado 2026-09-04 — re-verificar el UVT cada diciembre).
-
-Por debajo del umbral, puede emitir:
-
-- **Documento equivalente POS** (sistema autorizado).
-- **Cuenta de cobro** (válida tributariamente, no es factura).
-
-Una vez cruzado el umbral (o si Lucy decide ser facturador electrónico voluntariamente para acceso B2B corporativo): registro como facturador electrónico ante DIAN, contratar proveedor tecnológico (Alegra / Siigo / Facture), implementar CUFE, XML, validación previa.
-
-**Impacto en copy público**: el banner B2B en `/productos/publicitarios` y la página `/mayorista` NO deben prometer "factura electrónica DIAN obligatoria" hasta que Lucams esté efectivamente en régimen. Texto correcto: "documentación tributaria (cuenta de cobro o factura electrónica según corresponda)".
-
-**Control proactivo en admin** (a implementar en Área 8 + Fase 4 Orders):
-
-- 6 settings nuevos en categoría `FACTURACION` de `SiteSetting`:
-  - `DIAN_FACTURADOR_ELECTRONICO` (boolean)
-  - `DIAN_REGIMEN` (text)
-  - `DIAN_UMBRAL_UVT_ANUAL` (number, default 3500)
-  - `DIAN_VALOR_UVT_COP` (number)
-  - `DIAN_INGRESOS_ANUALES_REGISTRADOS` (number)
-  - `DIAN_PROVEEDOR_FACTURACION` (text)
-- Card "Estado tributario DIAN" en `/admin/dashboard` con 4 niveles (verde < 60% / amarillo 60-80% / naranja 80-100% / rojo > 100%).
-- Job `pg_cron` mensual día 1 a las 8am COT manda email a `r.julliethhr@gmail.com` cuando ingresos ≥ 60% del umbral.
-- Cuando exista `Order` con flujo PAID en Fase 4, `DIAN_INGRESOS_ANUALES_REGISTRADOS` se auto-calcula sumando `Order.total` del año fiscal. Mientras tanto: actualización manual mensual desde admin.
-
-**Acción humana pendiente**: Lucy define con su contador cuándo activar facturación electrónica + a qué proveedor migrar (ADR-025 pendiente).
-
-**Estado vigente del checkout (2026-10-20, ADR-160):** el checkbox «Quiero documento tributario» de `/checkout/datos` está **OCULTO tras el flag `BILLING_DOCUMENT_ENABLED=false`** (`features/checkout/billing-document.ts`). Razón: la tienda es persona natural no responsable de IVA y sin trámites DIAN operados, así que el checkbox prometía un documento que no se emite (riesgo Ley 1480 arts. 23/29 — ningún texto público promete lo que la tienda no opera). Con el flag apagado: la sección no se renderiza, `saveDatosAction` ignora un `wantsInvoice` manipulado a mano y el schema no exige los campos. El pipeline de datos queda **intacto**: `wantsInvoice=false` viaja como siempre, el snapshot `Order.billingDocumentType/Number/Name` se sigue escribiendo cuando aplique, y el admin muestra el bloque «Documento de venta» solo en órdenes históricas que sí tienen datos. **Condición de reactivación:** que exista operación tributaria real (trámites DIAN, o decisión operada de emitir cuentas de cobro de forma sistemática) → flip del flag a `true` + revisión de los textos públicos si la promesa cambia.
-
-**Verificación de textos públicos (2026-10-20):** ningún texto público promete factura — `legal.terminos.md` declara «la vendedora **no está obligada a expedir factura de venta**» (persona natural no responsable de IVA) y ofrece constancia de la operación; `legal.subprocesadores.md` condiciona el subprocesador DIAN a «si en el futuro activamos la facturación electrónica». El copy B2B correcto sigue siendo «documentación tributaria (cuenta de cobro o factura electrónica según corresponda)».
+1. Editar primero los archivos maestros en `packages/db/legal-content/legal.*.md` manteniendo los `{{tokens}}` y el nuevo pie `_Versión 4 · vigente desde YYYY-MM-DD_`.
+2. Ejecutar **`pnpm format` antes de copiar** (Prettier refluye líneas Markdown; si copias antes de formatear, `legal-content-sync.test.ts` detectará diferencia).
+3. Sincronizar los `FALLBACK` en `apps/web/app/legal/*/page.tsx`, actualizar `legal.last-updated` y `PRIVACY_POLICY_VERSION` en `packages/db/scripts/cms-site-map.mjs` y `DEFAULT_PRIVACY_POLICY_VERSION` en `apps/web/lib/cookie-consent.ts` (si cambió el tratamiento de datos, esto disparará re-consentimiento del banner).
+4. Actualizar la versión esperada en `apps/web/app/legal/legal-content-sync.test.ts`.
+5. Ejecutar `make check && pnpm test` hasta obtener verde completo.
+6. Sincronizar los bloques en STG y PRD mediante `packages/db/scripts/sync-and-prune-cms-v2.mjs` (o desde `/admin/contenido`) preservando el historial reversible de versiones CMS.
 
 ---
 
-## IVA y retenciones
+## 7. Régimen comercial, tributario (`BILLING_DOCUMENT_ENABLED = false`) y Propiedad Intelectual
 
-### IVA
+### 7.1 Operación vigente: persona natural no responsable de IVA y soporte `LCM-YYYY-NNNN`
 
-- **Tarifa general 19%** sobre los productos. Verificable en panel DIAN o con contador.
-- **Productos exentos / excluidos:** revisar art. 424 y 477 del Estatuto Tributario. Los imanes magnéticos están **gravados a tarifa general** (no exentos).
-- **Cálculo en checkout:** `iva = round(subtotal * 0.19)`. Mostrar desglose en el resumen.
+- **Marco tributario vigente (Estatuto Tributario art. 437 parágrafo 3; Decreto 1625 de 2016 art. 1.6.1.4.3 num. 3):** una persona natural no responsable de IVA no está obligada a expedir factura electrónica de venta mientras sus ingresos brutos anuales provenientes de la actividad económica sean inferiores a **`3 500 UVT`** (con UVT 2026 = `$52.374` según Res. DIAN 000238 de 2025, equivalente a **`$183.309.000` COP**; revalidar cada diciembre el valor oficial de la UVT con contador).
+- **Estado exacto en código y textos públicos:**
+  - Todos los precios y totales (`ProductVariant.price`, `Order.subtotal`, `Order.discount`, `Order.loyaltyDiscount`, `Order.shipping`, `Order.tax`, `Order.total`) son enteros en **centavos COP (`Int`)**, con **`Order.tax = 0`**.
+  - **No existe modelo `Invoice` activo en Prisma ni cobro discriminado de IVA 19 %.** Cada compra genera constancia/soporte de operación (`LCM-YYYY-NNNN`), `/legal/terminos` declara expresamente la condición de persona natural no responsable de IVA, la opción de facturación electrónica de Aveonline permanece apagada tras doble compuerta (`AVEONLINE_FACTURACION_ELECTRONICA`), y las superficies corporativas (`/empresas-y-eventos`) ofrecen verazmente _«documentación tributaria (cuenta de cobro o factura electrónica según corresponda)»_.
 
-### Retenciones (Régimen Común)
+### 7.2 Interruptor `BILLING_DOCUMENT_ENABLED = false`, preparación DIAN (Res. 165 de 2023) y retenciones B2B
 
-Si Lucams_shop opera como Régimen Común y vende a clientes B2B (Fase 6 mayorista), aplican:
+1. **Interruptor maestro (`apps/web/features/checkout/billing-document.ts`, `ADR-160`):**
+   - `BILLING_DOCUMENT_ENABLED = false` oculta la sección «Quiero documento tributario» en `/checkout/datos` y hace que `saveDatosAction` ignore cualquier `wantsInvoice` manipulado manualmente, evitando prometer un documento tributario no operado (arts. 23 y 29 Ley 1480) y cumpliendo minimización de datos.
+   - `BillingDocumentInputSchema` (`CC` 6–10 dígitos, `CE`, `NIT` 9–10 dígitos, `TI`, `PP`) y las columnas en Prisma (`DocumentType`, `TaxResponsibility`, `DianStatus`: `NOT_REQUIRED | PENDING | SENT | ACCEPTED | REJECTED`, `Order.billingDocumentType`, `billingDocumentNumber`, `billingName`, `dianCufe`, `dianXmlUrl` y `Organization.taxIdType`/`taxIdNumber`) ya están desplegadas y probadas. Cuando `Order.isGift = true`, `recipientName` y `recipientPhone` se usan exclusivamente para la entrega logística, manteniendo `billing*` aislado sobre el comprador titular.
+2. **Ruta de activación de facturación electrónica DIAN (Resolución 165 de 2023):** cuando el negocio supere el tope de `3 500 UVT` o decida inscribirse voluntariamente como facturador electrónico para ventas corporativas (evitando las sanciones del art. 652-1 ET: cierre por 3 días o multa del 1 % de ingresos hasta 950 UVT):
 
-- **Retención en la fuente** (1.5% sobre la venta antes de IVA, si el cliente es agente retenedor).
-- **Retención de IVA (RetIVA)** (15% del IVA, si aplica).
-- **Retención de ICA** (varía por municipio, ~0.4% – 1%).
+| Modalidad DIAN                       | Evaluación para Lucams Shop                                                                                                | Decisión arquitectónica                |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Proveedor Tecnológico autorizado** | **Alegra**, **Siigo** o **Facture**: exponen API REST para emisión automática tras `Order -> PAID`, CUFE, XML y numeración | **Modalidad elegida cuando se active** |
+| **Facturador gratuito DIAN**         | Operación manual sin API transaccional adecuada para e-commerce                                                            | Descartado                             |
+| **Software propio habilitado**       | Costo desproporcionado de habilitación, firma digital XAdES-EPES y mantenimiento normativo                                 | Descartado                             |
 
-Estos los calcula y aplica el **comprador** (cliente B2B), no nosotros — nosotros emitimos la factura completa y el cliente nos paga el neto descontado las retenciones, y nos da los certificados de retención.
+- **Requisitos al encender `BILLING_DOCUMENT_ENABLED = true`:** RUT actualizado con responsabilidad `52` (facturador electrónico), resolución de numeración DIAN vigente cargada en el Proveedor Tecnológico, emisión asíncrona de factura (`CUFE` + `dianXmlUrl`), emisión obligatoria de **Nota Crédito Electrónica** ante reembolsos totales o parciales (retractos/garantías), e inclusión del proveedor elegido en `/legal/subprocesadores` con preaviso si aplica.
 
-> En B2C (consumidor final no agente retenedor), **no aplican retenciones**. El cliente paga el total con IVA.
+3. **IVA futuro y retenciones en ventas corporativas B2B (`Organization`):**
+   - En ventas B2C a consumidor final **jamás aplican retenciones**.
+   - Si en régimen responsable de IVA (tarifa general **19 %** sobre imanes y productos gravados) o bajo cuenta de cobro se vende a una empresa **agente de retención** (canal corporativo B2B), las retenciones aplicables (**Retención en la fuente** por compras, **ReteIVA** del 15 % del IVA cuando proceda y **ReteICA** según municipio, ej. Bogotá) **las calcula y descuenta el comprador corporativo al momento del pago**, nunca como descuento en el precio de lista: Lucams Shop emite el documento por el valor bruto total y recibe del cliente corporativo el pago neto más el **certificado de retención** para soporte contable y conciliación en `/admin/cotizaciones` / `/admin/organizaciones`.
 
-### Implementación
+### 7.3 Postura operativa sobre Propiedad Intelectual (`PLAN_CATALOG_V2 [1.7]`)
 
-```ts
-// lib/tax.ts
-export function calculateTax(subtotalCents: number): { iva: number; total: number } {
-  const iva = Math.round(subtotalCents * 0.19);
-  return { iva, total: subtotalCents + iva };
-}
-```
-
-> Para B2B la lógica se complica (retenciones aplicadas al pago, no al precio); se diseña en detalle en Fase 6.
-
----
-
-## Documentos legales requeridos en el sitio
-
-| Documento                                                   | URL                                                         | Origen                                           | Verificación                   |
-| ----------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------ | ------------------------------ |
-| **Política de Privacidad** (Habeas Data)                    | `/legal/privacidad`                                         | Plantilla CO + revisión legal                    | Versión y fecha visibles       |
-| **Términos y Condiciones**                                  | `/legal/terminos`                                           | Idem                                             | Idem                           |
-| **Política de Cookies**                                     | `/legal/cookies`                                            | Idem                                             | Idem                           |
-| **Política de Devoluciones y Retracto**                     | `/legal/devoluciones`                                       | Idem                                             | Idem                           |
-| **Política de Garantía**                                    | `/legal/garantias`                                          | Idem                                             | Idem                           |
-| **Política de Tratamiento de Datos Personales**             | `/legal/privacidad` (cubierta ahí mismo; no hay URL aparte) | Plantilla SIC + revisión legal                   | Idem                           |
-| **Aviso de Privacidad**                                     | Modal al primer contacto + footer link                      | Idem                                             | Idem                           |
-| **Habeas Data — PQR**                                       | `/legal/habeas-data`                                        | Texto legal + email `habeas-data@lucamsshop.com` | —                              |
-| **Lista de subprocesadores**                                | `/legal/subprocesadores`                                    | Generada de `docs/COMPLIANCE.md`                 | Actualización al cambiar stack |
-| **Política de seguridad / divulgación de vulnerabilidades** | `/legal/security`                                           | Texto interno                                    | —                              |
-
-> Cada documento tiene **versionado**: header `Versión X.Y — vigente desde YYYY-MM-DD`. Cambios mayores requieren re-aceptación del usuario activo.
->
-> **Paquete v2 certificado en STG y PRD:** los **8 documentos** comparten **«Versión 2 · vigente desde 2026-11-02»**. La garantía pasa de un plazo uniforme a un término informado por producto: el catálogo parte de 1 mes y el Admin puede aumentarlo por ficha. Antes de cambiar el catálogo, la migración `20261102100000_warranty_snapshot` copia el término vigente a cada `OrderItem`; por eso las compras anteriores conservan el término que se les prometió. `packages/db/scripts/one-shot/publish-legal-v2-20261102.mjs` (dry-run por defecto) publica el paquete legal, la FAQ y el aviso del checkout, deja `Product.warrantyMonths=1` y preserva el historial de versiones CMS. No cambia `PRIVACY_POLICY_VERSION`: la modificación no altera el tratamiento de datos; cada nueva orden conserva la aceptación y el plazo de garantía correspondiente. La guarda `apps/web/app/legal/legal-content-sync.test.ts` cubre los 8 documentos y exige una única versión compartida. Buzones: `habeas-data@lucamsshop.com` es el canal publicado para datos personales y temas legales (también en `/contacto`); `security@` es solo para divulgación de vulnerabilidades.
-
-### Identificación de la titular en el sitio — análisis «a requerimiento» vs publicación (investigación 2026-09-11)
-
-**La norma que aplica:** el [art. 50 de la Ley 1480 de 2011](https://consumoteca.com.co/articulo-50-de-la-ley-1480-estatuto-del-consumidor/) (ventas por medios electrónicos) ordena a los proveedores «informar **en todo momento** de forma cierta, fidedigna, suficiente, clara, accesible y actualizada **su identidad especificando su nombre o razón social, Número de Identificación Tributaria (NIT), dirección de notificación judicial, teléfono, correo electrónico** y demás datos de contacto». Es un deber de PUBLICACIÓN permanente, no de entrega a requerimiento. Refuerzos: [art. 23](http://www.secretariasenado.gov.co/senado/basedoc/ley_1480_2011.html) (información suficiente al consumidor), Ley 2439 de 2024 (obligaciones de portales de contacto) y la guía SIC de comercio electrónico ([Observatorio eCommerce MinTIC](https://observatorioecommerce.mintic.gov.co/797/articles-198739_recurso_1.pdf): «Identificación del proveedor» como primer ítem).
-
-**Conclusión de la investigación:** la estrategia pura «disponible a requerimiento» **no satisface al pie de la letra el art. 50** para una tienda que ya cobra en línea. PERO se puede cumplir la ley **sin exponer la casa ni la cédula** de la titular:
-
-1. **Nombre/identidad:** basta el nombre de la titular como comerciante (o la razón social cuando exista). El nombre comercial registrado («Lucams_shop») opera como identidad pública; el nombre de la titular es el dato que la ley pide y es el que ya firma las comunicaciones del negocio — es la identidad del negocio, no un dato «extra».
-2. **NIT:** una persona natural comerciante obtiene NIT propio al inscribirse en el RUT (cédula + dígito de verificación). Publicar el NIT **no** expone nada adicional sensible — es el identificador fiscal estándar que toda tienda pequeña publica (práctica habitual en tiendas persona-natural en Colombia).
-3. **Dirección de notificación judicial ≠ dirección de la casa:** la ley pide una _dirección de notificación_, que la titular puede **designar** (apartado postal, dirección registrada en el RUT, oficina/este punto lo define con el abogado). La dirección exacta de la casa (hoy en los settings privados `PICKUP_*` de Aveonline) **no tiene que aparecer en ninguna superficie pública**.
-4. **Teléfono/correo:** ya públicos (WhatsApp del negocio + `hola@`).
-
-**Estado y siguiente paso:** hoy el sitio dice «identificación de la titular disponible a requerimiento» (decisión 2026-09-05 por preocupación legítima de exposición de PII/suplantación). Riesgo de la fórmula actual: una queja ante la SIC podría calificarla de información insuficiente (art. 50); el riesgo de ejecución contra tiendas pequeñas es bajo y nace de quejas. **Pregunta ya formulada al abogado (pendiente de respuesta):** si basta «a requerimiento» o se publica. Recomendación técnica de esta investigación: cuando exista RUT/NIT, publicar **nombre de la titular (o razón social) + NIT + dirección de notificación designada (no la casa) + teléfono/correo ya públicos** — cumplimiento pleno del art. 50 con exposición mínima. Implementación: 100% CMS (settings/legales), sin código.
-
----
-
-## Cookie consent (alineación GDPR voluntaria)
-
-Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR, **alineamos al estándar más alto** para futura expansión a UE/Latam y para confianza del usuario.
-
-### Categorías
-
-| Categoría                                                            | Default      | Bloqueable por usuario                 |
-| -------------------------------------------------------------------- | ------------ | -------------------------------------- |
-| **Estrictamente necesarias**                                         | ON           | ❌ No (sin estas el sitio no funciona) |
-| **Funcionales** (idioma, dark mode, último carrito visto)            | OFF (opt-in) | ✅ Sí                                  |
-| **Analíticas** (Google Analytics 4 `gtag.js` y RUM `WebVital`)       | OFF (opt-in) | ✅ Sí                                  |
-| **Marketing** (remarketing, pixels de Facebook/Google si se activan) | OFF (opt-in) | ✅ Sí                                  |
-
-### Implementación
-
-- Banner en primer visit (con detección por cookie `cookie_consent_v1`) — componente `apps/web/components/cookies-banner.tsx`, helpers en `apps/web/lib/cookie-consent.ts`.
-- Tres opciones: "Solo necesarias", "Personalizar", "Aceptar todas".
-- Persistir consentimiento en `Consent` (una fila por scope: `COOKIES_NECESSARY` / `COOKIES_FUNCTIONAL` / `COOKIES_ANALYTICS` / `COOKIES_MARKETING`, con `accepted: true|false`).
-- **Re-consent REAL (N-15, 2026-09-12):** la cookie guarda la `policyVersion` aceptada (versión vigente del setting CMS `PRIVACY_POLICY_VERSION`, que el root layout pasa al banner como prop). Si la versión vigente **cambia** (nuevo aviso de privacidad), el banner **se re-muestra** a quien ya había decidido — el consentimiento previo no prueba el texto nuevo. Matices: setting ausente/vacío → nunca re-muestra (degrada al comportamiento anterior); cookie legacy sin `policyVersion` → no se re-muestra, se reescribe en silencio con la vigente (un cambio FUTURO sí disparará re-consent para ese visitante). La cookie también mantiene la versión interna del banner (`v: 1`) → cambio de estructura = re-consent.
-- Página `/legal/cookies` con detalle y revocación granular (reabre el modal de preferencias).
-
-### Cookies que usamos (catálogo a mantener actualizado)
-
-| Cookie                        | Propósito                                       | Tipo      | TTL                                                                                           | Notas                                                                                                              |
-| ----------------------------- | ----------------------------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `sb-<project-ref>-auth-token` | Supabase Auth (sesión, puede venir fragmentada) | Necesaria | 400 días (default de `@supabase/ssr`; los tokens internos rotan: access 1 h, refresh 30 días) | `SameSite=Lax`, `Secure` en prod/preview; `httpOnly: false` (el browser client la lee — ver SECURITY.md § Cookies) |
-| `cart_session`                | Carrito anónimo                                 | Necesaria | 30 días                                                                                       | HttpOnly                                                                                                           |
-| `checkout_state`              | Estado del checkout multi-step                  | Necesaria | 60 min                                                                                        | HttpOnly, **cifrada AES-256-GCM** (lleva PII — F-9)                                                                |
-| `cookie_consent_v1`           | Estado del consentimiento de cookies            | Necesaria | 1 año                                                                                         | Client-readable a propósito (futuros scripts la consultan)                                                         |
-| `admin_last_activity`         | Marca de actividad admin (idle-timeout)         | Necesaria | 30 días                                                                                       | HttpOnly, firmada HMAC, `path=/admin` (solo admins)                                                                |
-| `lucams_cms_edit`             | Modo edición CMS en vivo                        | Necesaria | 8 h                                                                                           | HttpOnly, `Secure` en prod/preview (solo admins con rol CONTENT)                                                   |
-
-No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` va en headers). Sin consentimiento explícito en `COOKIES_ANALYTICS`, no se carga `gtag.js` ni se crean cookies `_ga*`; cuando el usuario acepta `COOKIES_ANALYTICS` y `NEXT_PUBLIC_GA_MEASUREMENT_ID` está configurado, GA4 opera con sanitización estricta de URL (`sanitizeAnalyticsUrl`: excluye `/admin*`, enmascara tokens de capacidad `/pedido/[token]`, `/carrito/recuperar/[token]`, `/resena/[token]`, `/d/[token]`, `/cotizacion/[token]`, `/soporte/[token]` y filtra query params por allowlist sin PII). En paralelo, el embudo operativo propio (`POST /api/funnel` → `FunnelEventDaily`) funciona 100 % sin cookies (`credentials: "omit"`) y sin PII (solo contadores enteros diarios por paso, producto, superficie, categoría de equipo y código de error cerrado).
-
----
-
-## Subprocessor list y transferencias internacionales
-
-> Bajo Ley 1581 (art. 26 Decreto 1377), debemos informar al titular si transferimos sus datos a terceros, especialmente fuera de Colombia.
-
-### Subprocesadores activos
-
-| Servicio                                        | Propósito                          | País                               | Datos transferidos                                                                                                                                                                                                                                                                                        | Base legal                              |
-| ----------------------------------------------- | ---------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| **Supabase**                                    | DB, Auth, Storage                  | EE.UU. (AWS us-east-1 o sa-east-1) | Todos los datos del cliente (RLS aplicado)                                                                                                                                                                                                                                                                | Consentimiento + ejecución del contrato |
-| **Vercel**                                      | Hosting de la app                  | EE.UU. (edge global)               | Datos en tránsito durante la sesión + logs                                                                                                                                                                                                                                                                | Idem                                    |
-| **Wompi**                                       | Procesamiento de pagos             | Colombia                           | Datos de la transacción + datos del cliente para anti-fraude                                                                                                                                                                                                                                              | Necesidad contractual                   |
-| **Aveonline** (agregador) + Coordinadora/otras  | Logística                          | Colombia                           | Nombre, dirección, teléfono                                                                                                                                                                                                                                                                               | Necesidad contractual                   |
-| **Resend**                                      | Email transaccional                | EE.UU.                             | Email + contenido del mensaje                                                                                                                                                                                                                                                                             | Necesidad contractual                   |
-| **Google (Gemini API)**                         | Asistente IA del estudio           | EE.UU.                             | Solo el texto de la "ocasión" que escribe el cliente — pasa por un **filtro de PII** server-side (`sanitizeOccasion`, desde 2026-08-29: documentos, emails y celulares CO se reemplazan por texto neutro antes de llamar a Google) y la UI del Estudio muestra la nota "Evita escribir datos personales…" | Consentimiento explícito                |
-| **Google (Google Analytics 4)**                 | Analítica web de conversión        | EE.UU.                             | Eventos ecommerce y páginas públicas sanitizadas (`sanitizeAnalyticsUrl`: sin PII ni tokens de capacidad, `/admin*` excluido); bloqueado por completo salvo opt-in en `COOKIES_ANALYTICS`                                                                                                                 | Consentimiento explícito (opt-in)       |
-| **Cloudflare**                                  | DNS + CDN + Turnstile + R2 backups | Global                             | Datos en tránsito + IP + backups encriptados                                                                                                                                                                                                                                                              | Idem                                    |
-| **Mi.com.co**                                   | Registrador de dominio             | Colombia                           | Datos del registrante (operador, no cliente)                                                                                                                                                                                                                                                              | Necesidad contractual                   |
-| **GitHub**                                      | Repositorio de código              | EE.UU.                             | No procesa datos de clientes                                                                                                                                                                                                                                                                              | —                                       |
-| **Proveedor DIAN** (Alegra/Siigo/Facture — TBD) | Facturación electrónica            | Colombia                           | Datos de la factura (NIT/CC, nombre, items)                                                                                                                                                                                                                                                               | Obligación legal                        |
-
-### Política
-
-- Lista publicada en `/legal/subprocesadores`.
-- **Estado por etapa:** producción opera en **modo tienda completa** (`NEXT_PUBLIC_STORE_MODE=full`) por decisión de Lucy desde 2026-09-03 — Wompi, Aveonline y Gemini están **activos** en producción, y la lista de subprocesadores aplica plenamente. (Antes, en Etapa 1 "catalog", figuraban como "cuando lo activemos" en la página pública — si se vuelve a catalog, actualizar esa página.)
-- **Notificación de cambio:** 30 días antes de agregar/cambiar un subprocesador, email a clientes activos.
-- Al firmar Pro con cualquiera, **revisar DPA (Data Processing Agreement)** ofrecido por el vendor — la mayoría lo ofrecen estándar.
-
-### Transferencias internacionales
-
-> Ley 1581 art. 26: requieren autorización del titular **o** que el país receptor tenga nivel adecuado de protección **o** se firmen contratos modelo.
-
-- EE.UU.: no tiene nivel adecuado declarado por la SIC.
-- **Estrategia:** consentimiento explícito en el aviso de privacidad + DPA con cada proveedor + documentación de medidas técnicas (encriptación en tránsito y reposo).
-
----
-
-## Calendario de cumplimiento
-
-| Hito                                                                | Cuándo                                                                                                            | Bloqueante      |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------- |
-| Constituir el negocio (RUES + Cámara de Comercio)                   | Antes de Fase 7                                                                                                   | ✅ Sí           |
-| Obtener RUT con responsabilidad 42 (facturador electrónico)         | Antes de Fase 7                                                                                                   | ✅ Sí           |
-| Solicitar resolución de numeración a DIAN                           | Antes de Fase 7                                                                                                   | ✅ Sí           |
-| Firmar contrato con proveedor de facturación electrónica            | Antes de Fase 7                                                                                                   | ✅ Sí           |
-| Revisión legal de los 9 documentos del sitio                        | Antes de Fase 7                                                                                                   | ✅ Sí (ADR-020) |
-| Política de privacidad y T&C publicados                             | Antes de Fase 7                                                                                                   | ✅ Sí           |
-| Banner de consentimiento de cookies funcional                       | Antes de Fase 7                                                                                                   | ✅ Sí           |
-| Habilitación de proveedor DIAN (si software propio)                 | N/A (usamos PT autorizado)                                                                                        | —               |
-| Registro Nacional de Bases de Datos (RNBD) si aplica                | Confirmar con abogado                                                                                             | Posible         |
-| Email `habeas-data@lucamsshop.com` operativo + SLA de PQR           | Lanzamiento                                                                                                       | ✅ Sí           |
-| Email `retracto@lucamsshop.com` operativo                           | Lanzamiento                                                                                                       | ✅ Sí           |
-| Tabla `Consent` registrando cada autorización                       | ✅ Implementado                                                                                                   | ✅ Sí           |
-| Exportación de datos self-service                                   | Pendiente (hoy: canal manual `habeas-data@`)                                                                      | ✅ Sí           |
-| Eliminación de cuenta self-service (anonimización + soft-delete)    | ✅ Implementado en `/mi-cuenta/seguridad → Eliminar mi cuenta`                                                    | ✅ Sí           |
-| Purga por retención de logs con PII (`purge-event-logs`)            | ✅ Implementado (90/180 días; Notification leídas >90d, WebVital >35d y FunnelEventDaily >365d)                   | ✅ Sí           |
-| Purga de fotos anónimas abandonadas (`purge-anon-designs`)          | ✅ Implementado (DRAFT anónimos ≥30d; desde 2026-09-18 también DRAFT idle de logueados ≥90d)                      | ✅ Sí           |
-| Retención de carritos + huérfanos de Storage (`purge-anon-designs`) | ✅ Implementado (2026-10-12: AbandonedCart ≥90d, carts vivos idle ≥60d/vacíos ≥7d, barrido de objetos sin Design) | ✅ Sí           |
-| Purga post-entrega de fotos/renders (`purge-delivered-designs`)     | ✅ Implementado (DELIVERED ≥90d, excluye retracto/garantía abierta; conserva preview + snapshot)                  | ✅ Sí           |
-| Flujo de retracto end-to-end                                        | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/retractos`)                                              | ✅ Sí           |
-| Flujo de garantía                                                   | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/garantias`)                                              | ✅ Sí           |
-| Reporte de incidente a SIC ante brecha (procedimiento)              | Documentar en Fase 7                                                                                              | ✅ Sí           |
+1. **Contenido cargado por compradores en el Estudio:** `/legal/terminos` exige que el usuario sea titular o cuente con licencia suficiente sobre las imágenes, logotipos y textos encargados (`Order.contentRightsAcceptedAt`). En `/admin/disenos` (`ModerationStatus`), el equipo revisa las órdenes antes de imprimir y rechaza material ilícito o infractor evidente, gestionando el cambio de arte o reembolso inmediato.
+2. **Temáticas inspiradas del catálogo prediseñado (`PLAN_CATALOG_V2.md` § 1.7):** las colecciones propias inspiradas en estética pop, música, cine o anime se diseñan como ilustraciones y composiciones originales inspiradas, evitando utilizar logotipos oficiales registrados o marcas de terceros como signo distintivo en los nombres de producto. Como salvaguarda comercial y jurídica, ante cualquier reclamación formal de titularidad o comunicación _cease & desist_ recibida en `{{email_contacto}}` o `{{email_habeas_data}}`, rige el **protocolo inmediato de retiro sin litigio**:
+   1. **Baja inmediata en 1 clic:** archivar o despublicar de inmediato el producto o variante desde `/admin/productos`, lo que purga al instante las etiquetas de caché de Next.js y lo retira automáticamente del catálogo público, de `sitemap.xml` y del feed `/api/catalog/merchant-feed.xml`.
+   2. **Redirección limpia:** registrar en `/admin/contenido/redirecciones` un `UrlRedirect` permanente hacia la categoría general para evitar páginas `404`.
+   3. **Cierre ordenado y trazabilidad:** completar o reembolsar los pedidos previos según el alcance del requerimiento, responder por escrito al solicitante dejando constancia del retiro inmediato de buena fe y conservar la evidencia en `AdminActionLog`.

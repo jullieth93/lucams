@@ -1,7 +1,7 @@
 /*
  * Webhook Aveonline — recibe actualizaciones de estado de guías.
  *
- * Aveonline NO documenta HMAC. Mitigación (ADR-039 docs/INTEGRATIONS_AVEONLINE §6.2):
+ * Aveonline NO documenta HMAC. Mitigación (ADR-039, docs/integrations/aveonline.md):
  *   1. Credencial compartida — header `x-aveonline-secret` o `payload.token` (el Token
  *      del registro en el panel Mis integraciones, re-enviado en cada notificación).
  *      La vía `?secret=<AVEONLINE_WEBHOOK_SECRET>` solo se acepta durante la transición
@@ -260,7 +260,7 @@ export async function POST(req: Request) {
 
 export async function GET() {
   return NextResponse.json(
-    { ok: false, note: "POST only — see docs/INTEGRATIONS_AVEONLINE.md §6" },
+    { ok: false, note: "POST only — see docs/integrations/aveonline.md" },
     { status: 405 },
   );
 }

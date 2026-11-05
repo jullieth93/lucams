@@ -58,7 +58,7 @@
  *     Las operaciones SUELTAS (la gran mayoría del runtime) sí se salvan.
  *
  * Referencias:
- *   - docs/INTEGRATIONS.md § Supabase (DATABASE_URL vs DIRECT_URL)
+ *   - docs/integrations/supabase.md (DATABASE_URL vs DIRECT_URL)
  *   - https://www.prisma.io/docs/guides/database/supabase
  */
 

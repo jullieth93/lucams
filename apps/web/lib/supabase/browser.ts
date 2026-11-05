@@ -6,7 +6,7 @@
  * normal de Supabase, que escribe cookies → leídas por server.ts en SSR).
  *
  * Referencias:
- *  - docs/INTEGRATIONS.md § 3. Supabase
+ *  - docs/integrations/supabase.md
  *  - docs/SECURITY.md § Llaves de API
  */
 

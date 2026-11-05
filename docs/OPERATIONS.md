@@ -1,1687 +1,914 @@
-# Operations — Lucams_shop
+# Manual de Operaciones, Ambientes y Disaster Recovery — Lucams Shop
 
-Variables de entorno consolidadas, comandos de despliegue, runbook de incidentes y plan de monitoreo. Este documento se actualiza cada vez que se agrega una integración nueva o se cambia un proceso operativo.
+> Guía operativa viva y exhaustiva de **Lucams Shop** para desarrollo diario en VM Linux, administración de ambientes (`LOCAL`, `STG`, `PRD`), variables de entorno, despliegues, homologación de datos, operación de subsistemas, recuperación ante desastres (DR) y respuesta a incidentes.
+> Para el resumen ejecutivo revisa [`STATE.md`](STATE.md); para la arquitectura del sistema consulta [`ARCHITECTURE.md`](ARCHITECTURE.md); y para el detalle por proveedor externo revisa [`integrations/README.md`](integrations/README.md).
 
-> **Estado actual:** el stack opera end-to-end en 3 ambientes (DEV local podman, STG `lucams-stg`, PRD `lucamsshop.com`) — los comandos y runbooks de este documento aplican tal cual. Los cambios de infraestructura, vars o procesos se reflejan editando la sección correspondiente (doc vivo, sin changelog — el historial está en git).
+## Tabla de contenido
+
+1. [Topología de los 3 ambientes y paridad local ↔ Vercel](#1-topología-de-los-3-ambientes-y-paridad-local--vercel)
+2. [Entorno de desarrollo en VM Linux + Podman rootless](#2-entorno-de-desarrollo-en-vm-linux--podman-rootless)
+3. [Matriz maestra de variables de entorno y secretos](#3-matriz-maestra-de-variables-de-entorno-y-secretos)
+4. [Estrategia de ramas, flujo GitHub, CI/CD y despliegues](#4-estrategia-de-ramas-flujo-github-cicd-y-despliegues)
+5. [Configuración, operación, monitoreo y reset de Staging (`lucams-stg`)](#5-configuración-operación-monitoreo-y-reset-de-staging-lucams-stg)
+6. [Homologación y sincronización entre ambientes (`PRD ↔ STG ↔ LOCAL`)](#6-homologación-y-sincronización-entre-ambientes-prd--stg--local)
+7. [Catálogo exhaustivo de scripts operativos (`packages/db/scripts`, `apps/web/scripts` y `scripts`)](#7-catálogo-exhaustivo-de-scripts-operativos-packagesdbscripts-appswebscripts-y-scripts)
+8. [Operación de subsistemas en `/admin` y proceso físico de taller](#8-operación-de-subsistemas-en-admin-y-proceso-físico-de-taller)
+9. [Disaster Recovery (DR), backups en R2, modo mantenimiento y simulacros](#9-disaster-recovery-dr-backups-en-r2-modo-mantenimiento-y-simulacros)
+10. [Runbooks detallados de respuesta a incidentes](#10-runbooks-detallados-de-respuesta-a-incidentes)
+11. [Verificación de límites Free/Pro contra documentación oficial, costos y escalamiento](#11-verificación-de-límites-freepro-contra-documentación-oficial-costos-y-escalamiento)
+12. [Lecciones operativas vigentes](#12-lecciones-operativas-vigentes)
 
 ---
 
-## Entorno de desarrollo (VM dedicada — símil Vercel local)
+## 1. Topología de los 3 ambientes y paridad local ↔ Vercel
 
-> **Mandato #10:** la VM es 100% dedicada al proyecto, usuario con `sudo`, persistencia local, instalación global permitida. **No usar venvs Python ni contenedores Docker** salvo necesidad explícita y justificada. La VM debe **funcionar como símil local de Vercel** (logs accesibles, variables de entorno configuradas, hot reload, healthchecks).
+### 1.1 Mapa de ambientes activos
 
-### Prerrequisitos a instalar globalmente (una sola vez)
+| Ambiente    | URL de aplicación                                                                                              | Rama Git asociada                                               | Base de datos y servicios Supabase                                                                           | Propósito operativo                                                                                                                                  |
+| ----------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`LOCAL`** | `http://localhost:4000` (Studio `:54323`, Mailpit `:54324`, Kong `:54321`)                                     | `develop` y ramas cortas `feat/*`, `fix/*`, `docs/*`, `chore/*` | Stack Supabase local en **Podman rootless** (`127.0.0.1:54322`) gestionado con `make db-local-*`             | Desarrollo diario aislado, ejecución de `make check`, `make test-local`, `make test-rls` y Playwright E2E sin tocar la nube.                         |
+| **`STG`**   | Previews de Vercel (`lucams-shop-git-develop-jullieth93s-projects.vercel.app` y PRs) con Vercel Authentication | `develop` y PRs abiertos                                        | Proyecto Supabase **`lucams-stg`** (`ref: mjbdiqdkykhsixvqlrrp`, `us-east-2`, pooler en clúster **`aws-0`**) | Certificación previa a lanzamiento, curaduría controlada, pruebas con pasarelas sandbox/demo y alojamiento del monitor externo `uptime-monitor-prd`. |
+| **`PRD`**   | `https://lucamsshop.com` (Vercel Production Branch)                                                            | `production` _(no existe rama `main`)_                          | Proyecto Supabase **`lucams-prod`** (organización `Lucams`, pooler en clúster **`aws-1`**)                   | Tienda real abierta al público, pagos reales, logística real, backups diarios cifrados hacia Cloudflare R2 y monitoreo 24/7.                         |
+
+### 1.2 Matriz de paridad Local (VM dedicada) ↔ Vercel
+
+La VM Linux dedicada opera como un espejo fiel del runtime de Vercel (detalle adicional de plataforma en [`integrations/vercel.md`](integrations/vercel.md)):
+
+| Dimensión                        | Entorno Local (VM Linux)                                | Vercel (Preview / Production)                             | Notas críticas de paridad                                                                                                                                                         |
+| -------------------------------- | ------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime Node.js                  | `Node.js 22.x` (`>=22.0.0`)                             | `Node.js 22.x`                                            | Definido en `package.json` (`engines`) y Vercel Settings → General.                                                                                                               |
+| Gestor de paquetes               | `pnpm 11.0.9` (Corepack)                                | `pnpm 11.0.9` (`packageManager`)                          | Instalación determinista con `pnpm install --frozen-lockfile`.                                                                                                                    |
+| Root Directory                   | Trabajo desde raíz con `--filter web`                   | **`apps/web`** (configurado en Vercel UI)                 | **Obligatorio en Vercel UI:** Vercel valida `next` en el `package.json` del Root Directory antes de leer `vercel.json`; sin `apps/web` falla con _"No Next.js version detected"_. |
+| `vercel.json`                    | [`apps/web/vercel.json`](../apps/web/vercel.json)       | [`apps/web/vercel.json`](../apps/web/vercel.json)         | Minimalista (`{ "framework": "nextjs" }`). No existe `vercel.json` en la raíz del repositorio.                                                                                    |
+| Build y salida                   | `pnpm --filter web build` → `apps/web/.next/`           | Auto-detectado sobre `apps/web` (`next build` → `.next/`) | Idéntico grafo de compilación y empaquetado de funciones serverless.                                                                                                              |
+| Procesamiento nativo de imágenes | `sharp@0.35.5` (override fijo en `pnpm-workspace.yaml`) | `sharp@0.35.5` empaquetado en la lambda                   | Fijado explícitamente (`LUC-SEC-011`) y encapsulado tras `features/personalization/sharp-safe.ts`.                                                                                |
+| Intercepción HTTP                | `apps/web/proxy.ts` en Node.js runtime                  | `apps/web/proxy.ts` en Node.js runtime                    | No se usa Edge Runtime en ninguna ruta ni proxy.                                                                                                                                  |
+| Telemetría Next.js               | `NEXT_TELEMETRY_DISABLED=1`                             | `NEXT_TELEMETRY_DISABLED=1`                               | Desactivada en los tres entornos.                                                                                                                                                 |
+
+---
+
+## 2. Entorno de desarrollo en VM Linux + Podman rootless
+
+### 2.1 Prerrequisitos globales de la máquina (instalación única)
+
+La estación de trabajo es una VM Linux dedicada donde las herramientas base se instalan de forma global (sin entornos virtuales innecesarios y usando Podman rootless en lugar de Docker daemon con privilegios de root):
 
 ```bash
-# Node.js 22 LTS (gestor recomendado: fnm o nvm)
+# 1. Node.js 22 LTS (vía fnm o paquete del sistema) y Corepack / pnpm 11.0.9
 curl -fsSL https://fnm.vercel.app/install | bash
 fnm install 22 && fnm use 22
+corepack enable && corepack prepare pnpm@11.0.9 --activate
 
-# pnpm (verificar instrucciones oficiales: pnpm.io/installation)
-curl -fsSL https://get.pnpm.io/install.sh | sh -
+# 2. Habilitar socket de Podman rootless para el usuario actual
+systemctl --user enable --now podman.socket
 
-# Supabase CLI (para dev local con Postgres + Auth + Storage en Docker)
-# Doc oficial: supabase.com/docs/guides/local-development/cli/getting-started
-curl -fsSL https://supabase.com/install.sh | sh
-
-# Vercel CLI (para emular el runtime de Vercel localmente)
+# 3. Herramientas CLI operativas (Vercel CLI, GitHub CLI, PostgreSQL client 17, gitleaks, k6)
 pnpm add -g vercel
-
-# GitHub CLI (para PRs, issues, secrets)
-sudo dnf install -y gh   # o equivalente según distro
+sudo dnf install -y gh gnupg2   # o apt equivalente según distribución
 gh auth login
+
+# 4. Activar el hook pre-commit versionado del repositorio (escaneo gitleaks sobre staged)
+git config core.hooksPath scripts/git-hooks
 ```
 
-> **Verificación pendiente (mandato #9):** cuando se ejecuten estos comandos por primera vez, confirmar versiones contra docs oficiales y registrar versiones en `STATE.md` para que la VM sea reproducible.
+El binario de Supabase CLI (`2.111.0`, fijado en paridad con CI para evitar incompatibilidades de GoTrue en versiones posteriores) reside en `tmp/bin/supabase` (gitignored y preservado por `make clean-tmp`) y opera contra el directorio `supabase-local/` (que incluye `supabase/snippets/` vacío requerido por los bind mounts de Podman).
 
-### Estructura de variables de entorno locales
+### 2.2 Estructura de archivos `.env*` y mecánica del switch `db-local-on/off`
 
-```
-lucams_shop/
-├── apps/web/.env.example     # Versionado en git, valores placeholder (el ÚNICO example — no hay uno en la raíz)
-├── .env.local                # Gitignored (600) — FUENTE ÚNICA: el flip la alterna local↔nube
-├── .env.local.nube-backup    # Gitignored (600) — respaldo con credenciales de prod (lo escribe el flip)
-├── .env.stg                  # Gitignored (600) — credenciales de lucams-stg (make db-stg-*)
-└── apps/web/.env.local       # SYMLINK → ../../.env.local (Next.js solo lee env de su propio
-                              # directorio; el symlink garantiza que app y scripts usen la MISMA
-                              # fuente. Antes era una copia estática y quedó apuntando a prod
-                              # tras el flip — corregido 2026-08-01)
+```text
+lucams-shop/
+├── apps/web/.env.example        # ÚNICA plantilla versionada en Git (con placeholders seguros; sin secretos)
+├── .env.local                   # Gitignored (chmod 600) — fuente activa que leen la app y los scripts locales
+├── .env.local.nube-backup       # Gitignored (chmod 600) — respaldo de credenciales cloud escrito por el flip
+├── .env.stg                     # Gitignored (chmod 600) — credenciales exclusivas de `lucams-stg`
+└── apps/web/.env.local          # SYMLINK → ../../.env.local (garantiza fuente única entre Next.js y scripts)
 ```
 
-- **`.env.example`** se commitea siempre que se agrega/quita una variable.
-- **`.env.local`** nunca se commitea (ver `.gitignore` — la regla `.env.*` cubre todos estos archivos, incluido el symlink).
-- En Vercel se configuran por entorno (Production / Preview / Development) en el dashboard — matriz ejecutada en «Variables de entorno por ambiente».
+- **Por qué existe el symlink `apps/web/.env.local -> ../../.env.local`:** Next.js carga automáticamente archivos `.env*` desde el directorio de la aplicación (`apps/web/`), mientras los scripts de `packages/db/scripts/` y `Makefile` referencian la raíz. El enlace simbólico evita que ambos diverjan tras alternar ambientes.
+- **Cómo funciona `scripts/db-local-env.sh` (`make db-local-on` / `make db-local-off`):**
+  - `make db-local-on`: respalda `.env.local` en `.env.local.nube-backup` (si aún no existe respaldo previo) y reescribe en `.env.local` únicamente las 5 variables de conexión (`DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`) con las llaves deterministas devueltas por `supabase status -o env`, dejando el resto del archivo intacto y sin imprimir ningún secreto por terminal.
+  - `make db-local-off`: restaura `.env.local` desde `.env.local.nube-backup`. **Regla de seguridad:** si en algún momento realizas una tarea puntual contra la nube y vuelves a desarrollar, ejecuta `make db-local-on` de inmediato al terminar.
 
-### Símil Vercel local: cómo correr el stack
+### 2.3 Stack Supabase local en Podman rootless y prohibición de `supabase stop`
+
+El stack local levanta en contenedores rootless todos los servicios requeridos por Lucams: PostgreSQL + `pg_cron` (`:54322`), GoTrue Auth, Kong API Gateway (`:54321`), PostgREST, Storage API (con los 5 buckets y sus políticas), `pg_meta`, **Supabase Studio (`http://localhost:54323`)**, **Mailpit (`http://localhost:54324`, bandeja local donde caen los correos OTP y de prueba)** y Logflare. Excluye deliberadamente `-x imgproxy,edge-runtime,realtime`, que la aplicación no utiliza y cuya inicialización falla bajo Podman rootless.
+
+> **Regla crítica — jamás ejecutes `supabase stop` directamente:** en Podman rootless, `supabase stop` destruye los contenedores dejando los volúmenes nombrados y el siguiente `supabase start` aborta con `volume already exists`. Usa siempre **`make db-local-stop`** (que ejecuta `podman stop` nativo preservando contenedores y datos) y **`make db-local-start`** (que detecta los `>=10` contenedores `supabase_*` y los reanuda en segundos con `podman start`). Si alguna vez el stack queda a medias (`1..9` contenedores), recupéralo limpio con **`make db-local-reset`**.
+
+### 2.4 Referencia completa de targets del `Makefile`
+
+Todos los targets declarados en [`Makefile`](../Makefile):
+
+| Categoría                       | Target `make ...`          | Qué ejecuta exactamente y cuándo usarlo                                                                                                                                                                                                          |
+| ------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Día a día local**             | `make local-up`            | Ejecuta `db-local-start` + `web-start`: deja arriba Supabase local y Next.js dev en `http://localhost:4000`.                                                                                                                                     |
+|                                 | `make local-down`          | Ejecuta `web-stop` + `db-local-stop`: detiene Next.js y apaga contenedores Podman **conservando todos los datos**.                                                                                                                               |
+|                                 | `make local-status`        | Muestra `supabase status` (puertos/estado) y verifica si el PID en `tmp/pids/web-dev.pid` sigue vivo.                                                                                                                                            |
+|                                 | `make web-start`           | Arranca `pnpm --filter web dev` en segundo plano (`setsid`) exportando `.env.local` (`PORT=4000`), escribiendo PID en `tmp/pids/web-dev.pid` y log en `tmp/logs/web-dev.log`.                                                                    |
+|                                 | `make web-stop`            | Termina limpiamente el grupo de procesos de Next.js dev y limpia `tmp/pids/web-dev.pid`.                                                                                                                                                         |
+| **BD local (Podman)**           | `make db-local-start`      | Habilita `podman.socket`; si ya existen `>=10` contenedores `supabase_*` los reanuda con `podman start`, si hay `0` los crea con `supabase start -x imgproxy,edge-runtime,realtime`.                                                             |
+|                                 | `make db-local-stop`       | Detiene los contenedores `supabase_*` con `podman stop` nativo sin borrarlos.                                                                                                                                                                    |
+|                                 | `make db-local-setup`      | Corre `scripts/db-local-setup.sh`: instala `pg_trgm`/`unaccent`, ejecuta `prisma migrate deploy`, aplica las 53 `supabase/migrations/*.sql` como `supabase_admin` y desactiva en local los jobs HTTP de `pg_cron`.                               |
+|                                 | `make db-local-on`         | Apunta `.env.local` al stack local Podman respaldando antes `.env.local.nube-backup`.                                                                                                                                                            |
+|                                 | `make db-local-off`        | Restaura `.env.local` desde `.env.local.nube-backup`.                                                                                                                                                                                            |
+|                                 | `make db-local-seed`       | Siembra en orden sobre `.env.local`: catálogo canónico, plantillas, ocasiones, catálogo v2, sets de fichas, site map CMS v2 y backfill de `Contact`.                                                                                             |
+|                                 | `make db-local-reset`      | Destrucción y reconstrucción total local: elimina contenedores y volúmenes `supabase_*` y encadena `db-local-start` → `db-local-setup` → `db-local-on` → `db-local-seed`.                                                                        |
+| **Calidad, tests y build**      | `make check`               | **Gate rápido obligatorio antes de entregar:** `pnpm format:check` + `pnpm -r typecheck` + `pnpm -r lint` + `pnpm --filter @lucams/db test` + `audit-script-guards` + `audit-content` + escaneo regex anti-voseo (`es-CO` tuteo estricto).       |
+|                                 | `make verify-db`           | Corre `audit-schema-drift.mjs check` (0 deriva Prisma↔SQL) y `verify-security-posture.mjs` (5/5 invariantes RLS/grants/buckets/event trigger) contra `.env.local`.                                                                               |
+|                                 | `make audit-script-guards` | Ejecuta `packages/db/scripts/lib/check-script-guards.mjs` para verificar que todo script de escritura importa `env-guard.mjs`.                                                                                                                   |
+|                                 | `make audit-content`       | Ejecuta `lib/cms-sitemap-parity.test.ts` (0 diferencias AST entre claves CMS leídas en código y `cms-site-map.mjs`).                                                                                                                             |
+|                                 | `make test-local`          | Corre la suite completa de Vitest de `apps/web` (`pnpm --filter web test`) contra el stack local.                                                                                                                                                |
+|                                 | `make test-rls`            | Corre `rls-coverage.integration.test.ts` y `rls-matrix.integration.test.ts` contra PostgREST/GoTrue local.                                                                                                                                       |
+|                                 | `make test-e2e`            | Ejecuta la suite Playwright E2E (`pnpm --filter web test:e2e`).                                                                                                                                                                                  |
+|                                 | `make test-e2e-fullmode`   | Ejecuta `scripts/e2e-fullmode.sh`: levanta un servidor dedicado en `:4100` con `NEXT_PUBLIC_STORE_MODE=full` y `RESEND_API_KEY=` vacío, y corre las specs `fullmode-*`.                                                                          |
+|                                 | `make test-load`           | Ejecuta el escenario de carga `tests/load/storefront-browsing.js` con `k6` contra `BASE_URL` (default `http://localhost:4000`).                                                                                                                  |
+|                                 | `make build`               | Ejecuta `pnpm --filter web build`. **Convención de RAM:** en VMs con ≤4 GB de RAM libre ejecuta antes `make db-local-stop` para evitar muerte por OOM durante el empaquetado de Next.js, y vuelve a subir con `make db-local-start` al terminar. |
+| **Semillas, break-glass y STG** | `make migrate-cms-v2`      | Ejecuta `migrate-cms-v2.mjs --apply` contra `.env.local` (upsert aditivo sin pisar contenido publicado).                                                                                                                                         |
+|                                 | `make seed-products`       | Ejecuta `seed-catalog-canonical.mjs --apply` contra `.env.local`.                                                                                                                                                                                |
+|                                 | `make seed-letter-sets`    | Ejecuta `seed-letter-sets.mjs` contra `.env.local`.                                                                                                                                                                                              |
+|                                 | `make seed-admin`          | Alta o reactivación break-glass de `SUPERADMIN` (`EMAIL=correo@dominio.com make seed-admin`).                                                                                                                                                    |
+|                                 | `make admin-mfa-reset`     | Borrado break-glass de factores TOTP de un administrador que perdió su teléfono (`EMAIL=correo@dominio.com make admin-mfa-reset`; exige teclear el host destino).                                                                                |
+|                                 | `make db-stg-setup`        | Ejecuta `scripts/db-stg-setup.sh` contra `.env.stg` (esquema completo + desagendado idempotente de los 5 crons de email).                                                                                                                        |
+|                                 | `make db-stg-seed`         | Ejecuta los 7 scripts idempotentes de semilla y backfill contra `.env.stg`.                                                                                                                                                                      |
+|                                 | `make stg-reset`           | Ejecuta `stg-reset-transactional.mjs` en **dry-run** contra `.env.stg` (muestra conteos sin borrar nada).                                                                                                                                        |
+|                                 | `make stg-reset-apply`     | Ejecuta `stg-reset-transactional.mjs --apply` contra `.env.stg` (limpia datos de prueba conservando catálogo, CMS y `SUPERADMIN`).                                                                                                               |
+| **Higiene**                     | `make clean`               | Elimina `apps/web/.next` y `apps/web/node_modules/.cache`.                                                                                                                                                                                       |
+|                                 | `make clean-tmp`           | Limpia artefactos temporales de `tmp/` preservando únicamente `tmp/bin/`, `tmp/pids/` y `tmp/logs/`.                                                                                                                                             |
+
+### 2.5 Lectura de logs locales y política de redacción
 
 ```bash
-# 1. Levantar Supabase local (Postgres + Auth + Storage + Realtime + Edge Functions, todo en Docker)
-#    Esto evita depender de Supabase Free (que se pausa) y da paridad con producción.
-supabase start
-# Salida: publishable key, secret key, DB URL → copiar a .env.local
+# Seguir en tiempo real el servidor Next.js levantado con `make web-start` (:4000)
+tail -f tmp/logs/web-dev.log
 
-# 2. Levantar Next.js en modo dev (símil a Vercel)
-pnpm --filter web dev
-# Por defecto en http://localhost:3000
-
-# 3. Alternativa: usar Vercel CLI para emular el runtime de Vercel exactamente
-vercel dev
-# Esto incluye: rutas dinámicas, Edge Functions, Image Optimization, ISR
-
-# 4. Aplicar migraciones a la DB local
-pnpm --filter @lucams/db prisma migrate dev
-
-# 5. Sembrar productos seed
-pnpm --filter @lucams/db prisma db seed
+# Inspeccionar logs de contenedores específicos de Supabase en Podman
+podman ps --filter name=supabase_ --format "{{.Names}}\t{{.Status}}"
+podman logs --tail 100 -f supabase_db_supabase-local
+podman logs --tail 100 -f supabase_auth_supabase-local
 ```
 
-### Supabase LOCAL del día a día (espejo nube, podman rootless)
+> **Nota sobre puertos:** `PORT=4000` en `.env.local` es leído cuando se exporta al shell (`make web-start`); si ejecutas `pnpm --filter web dev` directamente sin exportar `PORT`, Next.js arranca en `:3000`.
+> **Política estricta de logs (`apps/web/lib/logger.ts`):** salida JSON estructurada (`level`, `event`, `requestId`, `route`, `latencyMs`) con redacción obligatoria de secretos y PII (nunca se imprimen correos completos, teléfonos, direcciones ni datos de medios de pago).
 
-> Implementado 2026-08-01. La VM no tiene Docker; el stack corre con **podman
-> rootless** (socket del usuario) — espejo de la nube para TODO lo que la app
-> toca: Postgres 15 + pg_cron, GoTrue (auth), Kong (API :54321), PostgREST,
-> Storage (uploads), Mailpit (emails :54324), pg_meta, **Studio (:54323)** y
-> Logflare. Excluidos deliberadamente: `imgproxy`, `edge-runtime`, `realtime`
-> (la app no los usa y su init rompe el start del CLI en podman).
+### 2.6 Contrato completo de Healthchecks (`/api/health*`)
 
-**Setup una sola vez (ya hecho en esta VM):**
+Todos los endpoints bajo `apps/web/app/api/health/` son `force-dynamic`, aplican rate limit de **30 req/min por IP** (`429` + `Retry-After: 60`) y ocultan metadatos internos de topología a menos que se envíe el header `x-cron-secret: <CRON_SECRET>` (comparación timing-safe):
 
-- CLI Supabase **2.111.0** en `tmp/bin/supabase` (herramienta local gitignored;
-  es la versión fijada en CI — las nuevas traen GoTrue incompatible).
-- Socket podman: `systemctl --user enable --now podman.socket`.
-- Workdir `supabase-local/` (config.toml + `supabase/snippets/` vacío — el CLI
-  bind-mountea esa carpeta y sin ella el start falla en podman).
+| Endpoint                    | Qué verifica                                                                                                                                                                                       | Respuesta sana → degradada            | Crítico en `/all` |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | :---------------: |
+| `GET /api/health`           | Liveness puro del proceso Next.js (`{ status, service, timestamp }`; nunca filtra SHA ni entorno en público).                                                                                      | `200`                                 |         —         |
+| `GET /api/health/db`        | Consulta real `SELECT 1` a PostgreSQL mediante Prisma.                                                                                                                                             | `200` → `500`                         |      **Sí**       |
+| `GET /api/health/storage`   | Acceso real a Supabase Storage.                                                                                                                                                                    | `200` → `500`                         |      **Sí**       |
+| `GET /api/health/resend`    | Validez de `RESEND_API_KEY` y verificación del dominio de `EMAIL_FROM` (sin enviar correo).                                                                                                        | `200` (`ok`/`warn`/`skipped`) → `500` |        No         |
+| `GET /api/health/aveonline` | Autenticación contra Aveonline y coherencia entre cuenta y `AVEONLINE_ENV`.                                                                                                                        | `200` (`ok`/`warn`) → `500`           |        No         |
+| `GET /api/health/wompi`     | `GET /merchants/{publicKey}` (timeout 6 s) contra `WOMPI_ENV`; devuelve `skipped` en modo `catalog` sin llaves.                                                                                    | `200` (`ok`/`skipped`) → `503`        |        No         |
+| `GET /api/health/crons`     | Dead-man switch de los **14 procesos monitoreados** (`> 2×` intervalo sin latido = `overdue`). Público: `{ status, timestamp }`; con `x-cron-secret` incluye `overdue[]`, `disabled[]` y `jobs[]`. | `200` → `503`                         |   Independiente   |
+| `GET /api/health/all`       | Agregador único `{ status, totalLatencyMs, timestamp, checks[] }` (+ `version`/`environment` solo con `x-cron-secret`). Devuelve `503` **únicamente** si fallan `db` o `storage`.                  | `200` → `503`                         |     Agregador     |
 
-**Flujo diario (Makefile):**
+Comprobación rápida local:
 
 ```bash
-make db-local-start   # levanta el stack (idempotente; datos persisten en volúmenes)
-make db-local-setup   # extensiones + prisma migrate deploy + supabase/migrations (orden CI)
-make db-local-on      # .env.local → stack local (respaldo en .env.local.nube-backup)
-make db-local-seed    # catálogo + plantillas Estudio + ocasiones + CMS (854 campos)
-pnpm --filter web dev # la app ya habla con el stack local
-make test-local       # suite vitest completa contra la DB local (todas las suites son autocontenidas)
-make db-local-off     # .env.local → nube compartida (restaura el respaldo)
-make db-local-stop    # apaga el stack (los datos quedan en los volúmenes)
+curl -fsS http://localhost:4000/api/health/all | jq .
+curl -fsS -H "x-cron-secret: $CRON_SECRET" http://localhost:4000/api/health/crons | jq .
 ```
 
-**Supabase Studio (GUI) — completo y verificado:**
+---
 
-- **URL:** http://localhost:54323 → redirige a `/project/default`. Sin login
-  (default del CLI local; SOLO dev, nunca exponer fuera de la VM).
-- **Table editor / SQL editor:** pg_meta responde (verificado: lista todas las
-  tablas del esquema, `auth.*` incluidas).
-- **Auth users:** pestaña Authentication lee `auth.users` del GoTrue local.
-- **Storage:** buckets del repo (customer-uploads, product-images, cms-media,
-  production-assets) con las mismas policies (migraciones `supabase/migrations`).
-- **Emails:** Mailpit en http://localhost:54324 (bandeja de los correos que
-  emita la app en dev — registro, recuperación, cotizaciones).
-- **Logs:** Logflare en :54323 (pestaña Logs del Studio).
-- **pg_cron:** instalado + los jobs de la nube (12 HTTP + 3 SQL puros —
-  habilitado con `CREATE EXTENSION pg_cron` en el setup; homologación verificada
-  2026-08-05; conteo actualizado 2026-09-12: entró `lucams-expire-pending-orders` (032)
-  y salió `stock_reservation_cleanup` (033); 2026-09-19: entró
-  `lucams-purge-delivered-designs` (035)).
+## 3. Matriz maestra de variables de entorno y secretos
 
-**Notas operativas:**
+La validación tipada vive en `apps/web/lib/env.ts` y la plantilla canónica en [`apps/web/.env.example`](../apps/web/.env.example).
 
-- `db-local-start` tras `db-local-stop`: si el CLI falla con `volume already
-exists` (manejo de volúmenes distinto a docker), basta `make db-local-reset`
-  (borra los volúmenes y rehace todo: start + setup + seed; los datos se resiembran).
-- El Nightly CI usa el MISMO enfoque con docker real en el runner
-  (`.github/ci/localstack`) — los resultados son comparables.
-- **Guarda de ambiente anti-PRD:** los scripts destructivos (purgas/limpiezas
-  masivas, teardown de vitest) pasan por `packages/db/scripts/lib/env-guard.mjs`
-  — permite hosts locales y STG, y bloquea PRD y cualquier `*.supabase.co`
-  desconocido. Escape hatch para una intervención deliberada:
-  `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`. **OJO — alcance declarado:** la guarda NO
-  cubre hosts remotos ajenos a Supabase — un `DATABASE_URL`/`DIRECT_URL` contra
-  un Postgres remoto no-Supabase pasa sin bloqueo.
+### 3.1 Variables validadas por la aplicación (`apps/web/lib/env.ts`)
 
-### Logs locales (símil Vercel Logs)
+#### A. `CoreEnv` — Obligatorias en absolutamente todos los entornos (6 variables)
 
-Durante `pnpm dev` los logs salen a stdout. Para una experiencia más cercana a Vercel:
+| Variable                               | Visibilidad        | Formato / Ejemplo                                      | Propósito y notas operativas                                                                        |
+| -------------------------------------- | ------------------ | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Cliente + Servidor | `https://<ref>.supabase.co` o `http://127.0.0.1:54321` | Endpoint base de Supabase Auth y Storage.                                                           |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Cliente + Servidor | `sb_publishable_...` / `eyJ...`                        | Llave pública para sesión SSR y GoTrue (PostgREST tiene 0 privilegios en `public`).                 |
+| `SUPABASE_SECRET_KEY`                  | **Solo servidor**  | `sb_secret_...` / `eyJ...`                             | Llave privilegiada exclusiva para `auth.admin.*` y Storage server-side (`lib/supabase/service.ts`). |
+| `DATABASE_URL`                         | **Solo servidor**  | `postgresql://...:6543/postgres?pgbouncer=true`        | Conexión principal de Prisma a través del pooler Supavisor en modo transacción.                     |
+| `DIRECT_URL`                           | **Solo servidor**  | `postgresql://...:5432/postgres`                       | Conexión de sesión directa para `prisma migrate deploy`, DDL y scripts masivos.                     |
+| `CSRF_SECRET`                          | **Solo servidor**  | Hex aleatorio `>=32` chars (`openssl rand -hex 32`)    | Secreto HMAC para firmado criptográfico de cookies de sesión (carrito, checkout, Live Edit).        |
 
-```bash
-# Logs del Next.js
-pnpm --filter web dev | tee logs/next-$(date +%F).log
+#### B. `PROD_REQUIRED` — Obligatorias cuando `NODE_ENV=production` en deploy real (10 variables)
 
-# Logs de Supabase local
-supabase status                  # ver puertos
-supabase logs --tail             # stream en vivo de Postgres + servicios
+| Variable                         | Visibilidad        | Valor en `STG` (Preview)                                   | Valor en `PRD` (Production)                   | Propósito                                                                                                        |
+| -------------------------------- | ------------------ | ---------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_STORE_MODE`         | Cliente + Servidor | `"full"` o `"catalog"` explícito                           | `"full"` (o `"catalog"` en Etapa 1)           | Define etapa funcional (`ADR-077`). En `production` no tiene default: si falta, aborta el arranque.              |
+| `NEXT_PUBLIC_SITE_URL`           | Cliente + Servidor | _(Usa `VERCEL_URL` automático)_                            | `https://lucamsshop.com`                      | **Fuente única de URL canónica** (`lib/origin.ts`): sitemap, robots, canonicals, OpenGraph y enlaces en correos. |
+| `NEXT_PUBLIC_WA_NUMBER`          | Cliente + Servidor | _(Lee `WA_NUMBER` de CMS STG)_                             | `573208873826`                                | Número oficial de WhatsApp (código de país sin `+`) para respaldo pre-CMS.                                       |
+| `RESEND_API_KEY`                 | **Solo servidor**  | Llave Resend (con crons de email apagados)                 | `re_...` de producción                        | Envío HTTP transaccional hacia la API de Resend (`lib/resend.ts`).                                               |
+| `EMAIL_FROM`                     | **Solo servidor**  | `Lucams Shop <hola@mail.lucamsshop.com>`                   | `Lucams Shop <hola@mail.lucamsshop.com>`      | Remitente verificado con SPF, DKIM y DMARC.                                                                      |
+| `EMAIL_REPLY_TO`                 | **Solo servidor**  | `hola@lucamsshop.com`                                      | `hola@lucamsshop.com`                         | Buzón al que llegan las respuestas de clientes.                                                                  |
+| `RESEND_WEBHOOK_SECRET`          | **Solo servidor**  | `whsec_...` (si aplica)                                    | `whsec_...`                                   | Verificación de firma Svix en `/api/webhooks/resend` (fail-closed en producción).                                |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cliente + Servidor | Site key de prueba Cloudflare (`1x00000000000000000000AA`) | Site key real atada a `lucamsshop.com`        | Widget anti-bot invisible en checkout, registro, soporte y B2B.                                                  |
+| `TURNSTILE_SECRET_KEY`           | **Solo servidor**  | Secret key de prueba Cloudflare                            | Secret key real de Cloudflare                 | Verificación server-side contra `/turnstile/v0/siteverify`.                                                      |
+| `CRON_SECRET`                    | **Solo servidor**  | Hex `>=32` propio de STG (igual en Vault STG)              | Hex `>=32` propio de PRD (igual en Vault PRD) | Autenticación timing-safe de `/api/cron/*` y detalle de `/api/health/*`.                                         |
 
-# Logs estructurados por nivel (desde el código usar pino o similar)
-LOG_LEVEL=debug pnpm --filter web dev
-```
+#### C. `FULL_MODE_REQUIRED` — Exigidas adicionalmente en `production` cuando `NEXT_PUBLIC_STORE_MODE=full` (8 variables + `AVEONLINE_ENV`)
 
-> **Política de logs:** estructurados (JSON), con campos `level`, `requestId`, `userId` (si autenticado), `route`, `latencyMs`. **PII redactada:** nunca loggear emails completos, teléfonos, direcciones, payloads de tarjetas. Detalle en [`SECURITY.md` § Logging](./SECURITY.md#logging).
+| Variable                   | Visibilidad       | `STG` (Preview)         | `PRD` (Production)      | Propósito                                                                                         |
+| -------------------------- | ----------------- | ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `WOMPI_ENV`                | **Solo servidor** | `sandbox`               | `production`            | Selecciona base URL de Wompi y bloquea mezclar llaves `pub_test_` en `production`.                |
+| `WOMPI_PUBLIC_KEY`         | **Solo servidor** | `pub_test_...`          | `pub_prod_...`          | Identificador de comercio al construir el redirect hospedado _(jamás `NEXT_PUBLIC_WOMPI_*`)_.     |
+| `WOMPI_PRIVATE_KEY`        | **Solo servidor** | `prv_test_...`          | `prv_prod_...`          | Consultas autenticadas server-to-server a Wompi.                                                  |
+| `WOMPI_INTEGRITY_SECRET`   | **Solo servidor** | `test_integrity_...`    | `prod_integrity_...`    | Firma SHA-256 de integridad (`referencia + monto + moneda + secreto`).                            |
+| `WOMPI_EVENTS_SECRET`      | **Solo servidor** | `test_events_...`       | `prod_events_...`       | Verificación de firma del webhook `/api/webhooks/wompi`.                                          |
+| `AVEONLINE_USUARIO`        | **Solo servidor** | Usuario demo de pruebas | Usuario comercial real  | Autenticación contra Aveonline.                                                                   |
+| `AVEONLINE_CLAVE`          | **Solo servidor** | Clave demo de pruebas   | Clave comercial real    | Contraseña API de Aveonline.                                                                      |
+| `AVEONLINE_WEBHOOK_SECRET` | **Solo servidor** | Secreto de prueba       | Secreto compartido real | Autenticación de novedades entrantes en `/api/webhooks/aveonline`.                                |
+| `AVEONLINE_ENV`            | **Solo servidor** | `test` (default)        | `production`            | Guard de coherencia en `/api/health/aveonline` para impedir operar con cuenta demo en producción. |
 
-### Healthchecks locales (mismos que producción)
+#### D. Variables opcionales de ajuste de pool, kill-switches, retención, IA y analítica
 
-```bash
-# Una vez levantado el dev server (:4000 con `make web-start` — la PORT sale de
-# .env.local exportada al shell; un `pnpm --filter web dev` pelado arranca en :3000)
-curl -f http://localhost:4000/api/health           # 200 si el servidor corre (liveness; no chequea DB)
-curl -f http://localhost:4000/api/health/db        # 200 si Postgres responde
-curl -f http://localhost:4000/api/health/all       # 200 si db + storage OK (agregado)
-# Encadenado:
-curl -f http://localhost:4000/api/health && echo OK
-```
+| Variable                                           | Default en código                            | Dónde se lee                                      | Comportamiento exacto                                                                                                                                                                                               |
+| -------------------------------------------------- | -------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PRISMA_CONNECTION_LIMIT`                          | `5`                                          | `packages/db/src/index.ts`                        | Límite de conexiones por instancia serverless hacia Supavisor (evita saturar el pool en picos de concurrencia).                                                                                                     |
+| `PRISMA_POOL_TIMEOUT`                              | `20` (segundos)                              | `packages/db/src/index.ts`                        | Tiempo máximo esperando conexión libre del pool antes de lanzar `P2024` (acompañado de retry automático en lecturas).                                                                                               |
+| `PRISMA_LOG`                                       | Solo `error` (`warn` en dev)                 | `packages/db/src/index.ts`                        | En `"query"` habilita trazado SQL de diagnóstico local.                                                                                                                                                             |
+| `EMAIL_SEND_DISABLED`                              | Ausente (`"1"` en Vitest)                    | `apps/web/lib/resend.ts`                          | Kill-switch anti-spam: cuando vale exactamente `"1"`, omite toda llamada saliente a Resend devolviendo `skipped` limpio.                                                                                            |
+| `CRON_JOBS_DISABLED`                               | `""`                                         | `features/observability/cron-heartbeat.ts`        | Lista separada por comas de jobs desagendados deliberadamente (en STG: `alerts,daily-summary,review-request,cart-recovery,back-in-stock`) para que `/api/health/crons` los marque `disabled: true, overdue: false`. |
+| `NEXT_PUBLIC_MAINTENANCE_MODE`                     | Ausente                                      | `apps/web/proxy.ts`                               | Cuando vale exactamente `"1"` (comparación estricta) redirige el storefront a `/maintenance`. **Exige Redeploy en Vercel** (ver § 9.3).                                                                             |
+| `PURGE_IDLE_DESIGN_AFTER_DAYS`                     | `30` (`14` en STG Vercel)                    | `features/personalization/retention-service.ts`   | Días de inactividad para purgar diseños `DRAFT` de clientes autenticados.                                                                                                                                           |
+| `PURGE_IDLE_READY_AFTER_DAYS`                      | `90` (`14` en STG Vercel)                    | `features/personalization/retention-service.ts`   | Días de inactividad para purgar diseños `READY` que nunca llegaron a pedido ni cotización viva (`ADR-130`).                                                                                                         |
+| `PURGE_DELIVERED_DESIGN_AFTER_DAYS`                | `90` (`14` en STG Vercel)                    | `features/personalization/retention-delivered.ts` | Días desde `Order.deliveredAt` tras los cuales se borran fotos crudas y renders 300 DPI de pedidos entregados sin posventa abierta.                                                                                 |
+| `GEMINI_API_KEY`                                   | Opcional                                     | `features/ai/gemini-provider.ts`                  | Habilita sugerencias del Estudio y copiloto de soporte; sin ella degrada limpiamente (`AiUnavailableError`).                                                                                                        |
+| `GEMINI_MODEL_PRIMARY` / `FALLBACK`                | `gemini-2.5-flash-lite` / `gemini-2.5-flash` | `features/ai/gemini-provider.ts`                  | Modelos REST `v1beta` primario y de respaldo automático.                                                                                                                                                            |
+| `NEXT_PUBLIC_GA4_ID` / `NEXT_PUBLIC_META_PIXEL_ID` | Opcionales                                   | `components/analytics/`                           | Se inyectan **únicamente** si el usuario otorgó `COOKIES_ANALYTICS` / `COOKIES_MARKETING`.                                                                                                                          |
+| `PAYMENT_PROVIDER`                                 | `"wompi"`                                    | `features/payments/provider.ts`                   | Selector del adaptador de pagos (`"wompi"` único activo).                                                                                                                                                           |
+| `LOG_LEVEL` / `PORT` / `NEXT_TELEMETRY_DISABLED`   | `info` / `4000` / `1`                        | `lib/logger.ts` / `Makefile` / Next               | Nivel de detalle de logs, puerto de `make web-start` y apagado de telemetría.                                                                                                                                       |
 
-### Jobs de limpieza SQL pg_cron — VERSIONADOS
-
-Los jobs de limpieza internos (solo SQL, sin secret) viven en migraciones guardadas e idempotentes:
-
-- `lucams-purge-rate-limits` (`29 5 * * *`, migración `047` — LUC-SEC-010): ejecuta `purge_rate_limit_buckets()` (borra claves > 7 días y registra latido en `AlertState['cron:purge-rate-limits']`). Los dos jobs legacy de la `012` quedaron retirados (`stock_reservation_cleanup` en la `033` y `rate_limit_cleanup` en la `048`).
-- `lucams-internal-cron-history-purge` (`17 4 * * *`) y `lucams-internal-net-response-purge` (`43 4 * * *`, migración `043`): purgan `cron.job_run_details` (> 14 d) y `net._http_response` (> 24 h).
-
-### Jobs HTTP pg_cron — VERSIONADOS vía Vault (auditoría 2026-07-17)
-
-Los jobs que llaman a `GET /api/cron/*` (protegidos por `CRON_SECRET`, mandato #11 — no Vercel
-Cron) **también están versionados** en `supabase/migrations/00000000000015_pgcron_http_jobs.sql`
-(+ `016` purge-event-logs, `021` cms-publish-scheduled, `032` expire-pending-orders, `035`
-purge-delivered-designs, `041` process-render-jobs, `043` purgas internas pg_cron/pg_net, `044`
-tracking-sync, `047` purge-rate-limits y `048` retiro de duplicado `rate_limit_cleanup` + idle-skip SQL).
-Antes vivían solo como comandos manuales aquí → en un `db reset`, proyecto nuevo o DR se perdían
-silenciosamente (alertas, resumen diario, palancas de ingreso, purga de retención). Las migraciones son
-GUARDADAS (pg_cron + pg_net) e IDEMPOTENTES.
-
-**Sin secreto en el SQL (mandato #12):** el comando de cada job lee en runtime la base URL y el
-`CRON_SECRET` desde **Supabase Vault** (`vault.decrypted_secrets`) y manda el secreto por el header
-`x-cron-secret` (no en la URL). El texto versionado solo contiene la BÚSQUEDA en el vault.
-
-| Job                                  | Schedule (UTC)       | Endpoint                            | Qué hace                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------------------ | -------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lucams-alerts`                      | `*/5 * * * *`        | `/api/cron/alerts`                  | Alertas (5xx en pico, reconciliación, webhooks)                                                                                                                                                                                                                                                                                                                                 |
-| `lucams-daily-summary`               | `0 13 * * *`         | `/api/cron/daily-summary`           | Resumen diario 8am Colombia                                                                                                                                                                                                                                                                                                                                                     |
-| `lucams-review-request`              | `0 17 * * *`         | `/api/cron/review-request`          | Solicitud de reseña 7–30 días post-entrega                                                                                                                                                                                                                                                                                                                                      |
-| `lucams-cart-recovery`               | `0 * * * *`          | `/api/cron/cart-recovery`           | Recordatorio de carrito abandonado (idle ≥4h por default; configurable desde `/admin/carritos/configuracion` — ver la sección de abajo)                                                                                                                                                                                                                                         |
-| `lucams-back-in-stock`               | `*/30 * * * *`       | `/api/cron/back-in-stock`           | "Avísame cuando vuelva"                                                                                                                                                                                                                                                                                                                                                         |
-| `lucams-purge-anon-designs`          | `0 8 * * *`          | `/api/cron/purge-anon-designs`      | Retención: diseños DRAFT anónimos (Ley 1581) + DRAFT idle de logueados (90d) + READYs abandonados (ADR-130) + carritos (AbandonedCart ≥90d, carts idle ≥60d/vacíos ≥7d) + barrido de huérfanos de Storage (2026-10-12)                                                                                                                                                          |
-| `lucams-purge-delivered-designs`     | `0 9 * * *`          | `/api/cron/purge-delivered-designs` | Retención post-entrega: borra fotos crudas + renders de diseños entregados ≥90d (migración 035)                                                                                                                                                                                                                                                                                 |
-| `lucams-purge-event-logs`            | `0 3 * * *`          | `/api/cron/purge-event-logs`        | Retención: purga logs con PII — EmailEvent + WebhookEvent > 180d (migración 016)                                                                                                                                                                                                                                                                                                |
-| `lucams-cms-publish-scheduled`       | `*/5 * * * *`        | `/api/cron/cms-publish-scheduled`   | CMS: publica versiones programadas (roadmap C3). Con idle-skip SQL (migración 048): consulta `CmsFieldVersion` (`publishAt <= now()` sin publicar) antes de invocar `net.http_get`; si no hay trabajo actualiza heartbeat local y evita cold start                                                                                                                              |
-| `lucams-expire-pending-orders`       | `23 * * * *`         | `/api/cron/expire-pending-orders`   | Expira órdenes WOMPI en PENDING_PAYMENT > 24h (N-12, migración 032)                                                                                                                                                                                                                                                                                                             |
-| `lucams-process-render-jobs`         | `* * * * *`          | `/api/cron/process-render-jobs`     | Render de producción 300 DPI ASÍNCRONO (ADR-136, migración 041): procesa la cola RenderJob página por página con progreso real (doneUnits) y reintentos acotados. Con idle-skip SQL (migración 048): consulta `RenderJob` (`PENDING` o `PROCESSING` atascado >5 min) antes de disparar HTTP                                                                                     |
-| `lucams-tracking-sync`               | `4,19,34,49 * * * *` | `/api/cron/tracking-sync`           | Polling de respaldo del tracking Aveonline (migración 044): consulta `obtenerEstadoAuth` de las guías activas (FULFILLING/SHIPPED, no INTERNO-*, ≤90d, máx 25/corrida) y alimenta el MISMO pipeline del webhook (`processTrackingUpdate`). Si el webhook AveCRM no llega o se pierde, la orden igual converge a SHIPPED/DELIVERED con su email y `deliveredAt` (ancla retracto) |
-| `lucams-purge-rate-limits`           | `29 5 * * *`         | SQL puro (sin HTTP)                 | Higiene anti-abuso: `purge_rate_limit_buckets()` borra claves inactivas >7d en `rate_limit_buckets` con latido en `AlertState` (migración 047; reemplaza al legacy `rate_limit_cleanup` de `012`, retirado en `048`; `stock_reservation_cleanup` fue retirado en `033`)                                                                                                         |
-| `lucams-internal-cron-history-purge` | `17 4 * * *`         | SQL puro (sin HTTP)                 | Higiene interna: purga `cron.job_run_details` > 14d (migración 043 — pg_cron NO se auto-limpia; su historial fue el consumidor #1 de la BD: 93 MB en PRD al 2026-10-20)                                                                                                                                                                                                         |
-| `lucams-internal-net-response-purge` | `43 4 * * *`         | SQL puro (sin HTTP)                 | Higiene interna: purga `net._http_response` > 24h (migración 043). La app nunca lee las respuestas (fire-and-forget); el único lector es `monitor_uptime_prd()` de STG ~10 min después — 24h cubre con holgura                                                                                                                                                                  |
-
-> **Postura por ambiente (PRD = 15 jobs activos; STG = 11; LOCAL = 3 SQL activos + 12 HTTP inactivos):**
+> **Aclaración importante — constantes en código que NO son variables de entorno:**
 >
-> - **STG (2026-08-05):** los 5 jobs que envían email quedan **DESAGENDADOS** (`lucams-alerts`, `lucams-daily-summary`, `lucams-review-request`, `lucams-cart-recovery`, `lucams-back-in-stock`) para no disparar correos reales con `RESEND_API_KEY` de previews; en cambio STG corre `uptime-monitor-prd` (`*/10 * * * *`, monitoreo externo de PRD). **OJO:** no re-aplicar `015`/`023` crudas en STG porque re-agendan los 5 crons de email; las migraciones `032`–`048` son seguras en STG porque solo tocan sus jobs sin correo.
-> - **LOCAL (`scripts/db-local-setup.sh`):** tras aplicar migraciones, desactiva (`active = false`) los jobs `net.http_get` para evitar fallos cada minuto cuando `pnpm dev` está apagado, dejando activos los 3 SQL puros.
+> - En `apps/web/features/cart/cart-retention.ts`, los plazos `PURGE_STALE_CART_AFTER_DAYS = 60` (carritos vivos inactivos), `PURGE_EMPTY_CART_AFTER_DAYS = 7` (carritos vacíos) y `PURGE_ABANDONED_CART_AFTER_DAYS = 90` (filas de `AbandonedCart`) son **constantes TypeScript exportadas**, no leen `process.env`.
+> - En `apps/web/features/personalization/retention-service.ts`, `PURGE_ANON_DESIGN_AFTER_DAYS = 7`, `PURGE_AFTER_QUOTE_CLOSED_DAYS = 90`, `PURGE_STALE_QUOTE_AFTER_DAYS = 365` y el techo no-productivo `RETENTION_NONPROD_MAX_DAYS = 14` (`capRetentionDaysNonProd`, aplicado cuando `VERCEL_ENV` existe y es distinto de `"production"` salvo override explícito por env var) también son constantes en código.
+> - En `apps/web/features/checkout/billing-document.ts`, el interruptor de solicitud de factura en checkout es la constante `BILLING_DOCUMENT_ENABLED = false` (apagado mientras la operación tributaria no requiera facturación electrónica DIAN, conservando intacto el esquema y la visualización de órdenes históricas).
 
-**Env var:** `CRON_SECRET` (generar con `openssl rand -hex 32`) — en `.env.local` y en Vercel. Sin
-ella los endpoints responden 401 (fail-closed). El destinatario de alertas/resumen sale de la setting
-`ALERT_EMAIL` (default `hola@lucamsshop.com`).
+### 3.2 Secretos exclusivos de GitHub Actions, Cloudflare R2 y pruebas (`backup.yml` y `dr-drill.yml`)
 
-**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod — UNA sola vez):** habilitar `pg_cron` + `pg_net`
-en el dashboard, y crear los 2 secretos del Vault (así el SQL versionado nunca contiene el valor):
+Estos valores viven en **GitHub Actions Secrets** (solo se cargan localmente si deseas ejecutar un backup o drill manual):
+
+| Secreto / Variable                                                       | Consumidor                                    | Propósito                                                                                                                                               |
+| ------------------------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BACKUP_DATABASE_URL`                                                    | `backup.yml`, `post-deploy-smoke.yml`         | URL directa (o session mode) de `lucams-prod` para `pg_dump` PG17 y verificación de `_prisma_migrations`.                                               |
+| `BACKUP_SUPABASE_URL` / `BACKUP_SUPABASE_SECRET_KEY`                     | `backup.yml` (`backup-storage`)               | Lectura server-side de los 5 buckets de Storage de `lucams-prod` para el espejo cifrado diario.                                                         |
+| `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | `backup.yml`, `dr-drill.yml`                  | Credenciales S3-compatibles del bucket `lucams-backups` en Cloudflare R2 (`normalizeR2AccountId` limpia URLs pegadas por error).                        |
+| `BACKUP_GPG_PASSPHRASE`                                                  | `backup.yml`, `dr-drill.yml`                  | Passphrase simétrica AES-256 entregada a `gpg` por descriptor `--passphrase-fd 3` (jamás por `argv` ni variables del subproceso). Fail-closed si falta. |
+| `BACKUP_PREFIX` / `BACKUP_KEEP` / `BACKUP_STORAGE_BUCKETS`               | Opcionales en scripts                         | Prefijo (`"db"` → `"db-storage"`), retención de copias (`30` en el workflow = 1 mes diario) y lista de buckets.                                         |
+| `DRILL_DATABASE_URL` / `DRILL_MIN_PRODUCTS` / `DRILL_STORAGE_BUCKET`     | `dr-drill.yml`                                | Base limpia efímera del runner, umbral detector de volcados vacíos (`default 5`) y bucket objetivo del drill de Storage.                                |
+| `VERCEL_BYPASS_TOKEN`                                                    | `.env.stg` / Vault STG (`cron_vercel_bypass`) | Secreto de _Protection Bypass for Automation_ de Vercel para atravesar SSO en Previews mediante el header `x-vercel-protection-bypass`.                 |
+
+### 3.3 Política de rotación y gestión en Vercel API/CLI
+
+| Credencial                            | Periodicidad                 | Procedimiento sin caída / notas                                                                                                                            |
+| ------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Llaves productivas de Wompi           | Anual o ante sospecha        | Coordinar ventana corta, actualizar en Vercel Production y redesplegar.                                                                                    |
+| `SUPABASE_SECRET_KEY` (`sb_secret_*`) | Anual o ad-hoc               | Las llaves `sb_secret_*` permiten múltiples llaves activas simultáneas: crear nueva → actualizar Vercel + GitHub Secrets → redesplegar → revocar anterior. |
+| `RESEND_API_KEY` / `AVEONLINE_*`      | Anual o ante sospecha        | Emitir nueva credencial en el proveedor, actualizar en Vercel (y Vault STG si aplica al monitor) y revocar la previa.                                      |
+| `GEMINI_API_KEY`                      | Semestral o cambio de equipo | Rotar en Google AI Studio y actualizar en Vercel.                                                                                                          |
+| `CRON_SECRET`                         | Anual o ante sospecha        | Actualizar simultáneamente en Vercel, GitHub Secrets y `vault.update_secret` en Supabase.                                                                  |
+
+- **Variables `sensitive` en Vercel API:** una vez creadas como `sensitive`, la API de Vercel devuelve `decrypted: false` y jamás permite releer su valor en claro; la fuente de verdad humana es el gestor de contraseñas de la propietaria.
+- **Por qué no usar `vercel deploy` desde la raíz del monorepo:** el CLI empaqueta el árbol local completo (>250 MB con workspaces/activos) y choca contra el límite de subida de 100 MB de Vercel. Todo despliegue debe entrar por **Git push / PR** (o excepcionalmente vía API `POST /v13/deployments` con `gitSource`).
+
+---
+
+## 4. Estrategia de ramas, flujo GitHub, CI/CD y despliegues
+
+### 4.1 Ramas protegidas y ruleset `protect-ramas-criticas`
+
+En el repositorio sólo existen **dos ramas permanentes**: **`develop`** (integración y STG) y **`production`** (tienda en vivo; **no existe `main`**). Ambas están blindadas por el ruleset de GitHub `protect-ramas-criticas` (`id: 26248226`, `ADR-105`):
+
+- `bypass_actors: []` (ni siquiera los administradores del repositorio pueden hacer push directo, `force-push` ni eliminar ramas).
+- Exige Pull Request con rama estrictamente actualizada respecto a la base (`strict: true`).
+- Exige en verde los **5 status checks obligatorios**:
+  1. `Gitleaks secret scan`
+  2. `Typecheck + Lint + Build` (incluye `prettier --check`, `pnpm audit --prod`, `audit-script-guards`, `audit-content` y filtro anti-voseo)
+  3. `Vitest tests (unit + integración con Postgres)` (incluye `audit-schema-drift.mjs`)
+  4. `RLS behavior (rls-matrix contra Supabase local)`
+  5. `E2E + a11y + Lighthouse — Playwright`
+
+### 4.2 Los 6 workflows de GitHub Actions
+
+Todos los workflows en [`.github/workflows/`](../.github/workflows/) fijan acciones de terceros por SHA completo y declaran `permissions: contents: read`:
+
+| Workflow                | Disparador (`on`)                                                                                       | Qué ejecuta                                                                                                                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`                | `pull_request` (`develop`, `production`) + `workflow_dispatch` _(sin `push` para no duplicar corridas)_ | Detector fail-closed `changes` (fast-path ~30–50 s para cambios exclusivos de `docs/**`, `README.md`, `CLAUDE.md`, `AGENTS.md`; `packages/db/legal-content/*.md` corre siempre CI completo) + los 5 gates requeridos. |
+| `post-deploy-smoke.yml` | `deployment_status` nativo de Vercel (`Production` + `success`) + `workflow_dispatch`                   | Hace checkout explícito de `ref: production`, sondea `/api/health`, `/api/health/db`, `/api/health/crons`, `/` y `/productos`, y verifica 0 migraciones pendientes en `_prisma_migrations` de PRD.                    |
+| `nightly-full.yml`      | `schedule` diario `06:00 UTC` (con guarda de actividad de 24 h) + `workflow_dispatch`                   | Levanta el stack Supabase completo en Docker para las 6 suites Vitest de GoTrue/Storage/Wompi, las 7 specs E2E de Auth/MFA/Admin/CMS y el smoke Firefox/WebKit.                                                       |
+| `backup.yml`            | `schedule` diario `07:13 UTC` + `workflow_dispatch`                                                     | Ejecuta `pg_dump` PG17 + espejo de los 5 buckets de Storage cifrados con GPG AES-256 hacia Cloudflare R2 y reporta latido a `POST /api/cron/backup-heartbeat`.                                                        |
+| `dr-drill.yml`          | `schedule` mensual `27 8 2 * *` (día 2, `08:27 UTC`) + `workflow_dispatch`                              | Descifra y restaura el backup más reciente de R2 en `supabase/postgres`, cuadra conteos exactos contra las sentencias `COPY` y verifica en streaming el espejo de Storage (`drill-storage`).                          |
+| `domain-watch.yml`      | `schedule` mensual `23 11 5 * *` (día 5, `11:23 UTC`) + `workflow_dispatch`                             | Consulta RDAP de Verisign sobre `lucamsshop.com` y envía el resultado a `POST /api/cron/domain-watch`.                                                                                                                |
+
+### 4.3 Flujo paso a paso de promoción y orden de migraciones
+
+1. **Desarrollo en rama corta:** crea tu rama desde `origin/develop` (`git checkout -b feat/mi-cambio origin/develop`), valida localmente con `make check && pnpm test` (+ `make build` si tocas rutas o configuración de Next.js) y abre PR hacia `develop`.
+2. **Aterrizaje en `develop` (STG):** una vez verde el PR, haz merge (`gh pr merge --merge --delete-branch`). Si el cambio incluye migraciones o semillas:
+   - Ejecuta `make db-stg-setup` (o `prisma migrate deploy` + migración SQL puntual contra `.env.stg`).
+   - Si agregaste campos en `cms-site-map.mjs`, corre `cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/migrate-cms-v2.mjs --apply` e invalida caché en `/admin/contenido` del Preview.
+3. **Promoción a `production` (PRD — requiere autorización explícita):**
+   - Abre PR `develop → production` (`gh pr create --base production --head develop`) y espera los 5 checks en verde.
+   - **Orden crítico de migraciones respecto al deploy de código:**
+     - **Migraciones aditivas de tablas/columnas/RLS (`expand-then-contract`):** aplícalas contra PRD **antes** o inmediatamente al fusionar (`cd packages/db && npx dotenv -e ../../.env.local.nube-backup -- pnpm exec prisma migrate deploy` y `psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/<nueva>.sql`), porque el build de Vercel **no** ejecuta `migrate deploy`.
+     - **Migraciones SQL que agendan un job HTTP `pg_cron` hacia un endpoint `/api/cron/*` nuevo (ej. `041`, `044`):** aplícalas **inmediatamente después** de que el deploy de Vercel esté en `Ready`, para evitar que `pg_cron` golpee una ruta que aún responde `404`.
+   - Fusiona el PR, confirma que `post-deploy-smoke.yml` termine en verde y **verifica siempre que el dominio `lucamsshop.com` haya actualizado su alias al nuevo deployment** (si Vercel deja el deploy `Ready` sin reasignar el alias, ejecuta `vercel promote <deployment-url>`).
+
+---
+
+## 5. Configuración, operación, monitoreo y reset de Staging (`lucams-stg`)
+
+### 5.1 Particularidades de red y pooler en Supabase Cloud
+
+- **Clúster de Supavisor (`aws-0` vs `aws-1`):** cada proyecto Supabase reside en un clúster regional específico (`lucams-stg` está en `aws-0-us-east-2.pooler.supabase.com`, mientras `lucams-prod` opera en `aws-1`). Si alguna vez recreas un proyecto, consulta el host exacto en _Project Settings → Database → Connection string_ o vía Management API (`GET /v1/projects/{ref}/config/database/pooler`). Un clúster equivocado responde `Tenant or user not found`.
+- **Host directo IPv6-only:** el host directo `db.<ref>.supabase.co:5432` en Supabase resuelve únicamente registros `AAAA` (IPv6). Desde máquinas o redes solo IPv4 (como esta VM), tanto `DATABASE_URL` (`:6543?pgbouncer=true`, transaction mode) como `DIRECT_URL` (`:5432`, session mode) deben usar el hostname del **Supavisor pooler** (`aws-0-...pooler.supabase.com`), que sí expone IPv4.
+
+### 5.2 Setup inicial, semillas y secretos en Supabase Vault
+
+Para inicializar o poner al día `lucams-stg` desde la VM (con `.env.stg` configurado):
+
+```bash
+make db-stg-setup   # Extensiones + Prisma migrations + 53 SQL migrations + desagendado de los 5 crons de email
+make db-stg-seed    # Catálogo canónico + plantillas + ocasiones + catálogo v2 + sets de letras + CMS v2 + Contact backfill
+```
+
+Secretos requeridos en `supabase_vault` (ejecutados una sola vez en el SQL Editor del proyecto correspondiente; jamás se versionan valores reales en archivos `.sql`):
 
 ```sql
-select vault.create_secret('https://lucamsshop.com', 'cron_base_url');
-select vault.create_secret('<CRON_SECRET real>',    'cron_secret');
--- SOLO ambientes detrás de Vercel Authentication (previews STG) — migración 023:
-select vault.create_secret('<VERCEL_BYPASS_TOKEN>', 'cron_vercel_bypass');
+-- 1. En PRD (`lucams-prod`):
+SELECT vault.create_secret('https://lucamsshop.com', 'cron_base_url');
+SELECT vault.create_secret('<CRON_SECRET_PRD>',      'cron_secret');
+
+-- 2. En STG (`lucams-stg`): incluye el bypass de Vercel Authentication para atravesar SSO
+SELECT vault.create_secret('https://lucams-shop-git-develop-jullieth93s-projects.vercel.app', 'cron_base_url');
+SELECT vault.create_secret('<CRON_SECRET_STG>',      'cron_secret');
+SELECT vault.create_secret('<VERCEL_BYPASS_TOKEN>',  'cron_vercel_bypass');
+
+-- 3. Exclusivo en STG para el monitor externo 24/7 hacia PRD (`scripts/monitor-uptime-stg.sql`):
+SELECT vault.create_secret('https://lucamsshop.com',                    'monitor_prd_base_url');
+SELECT vault.create_secret('<RESEND_API_KEY>',                          'monitor_resend_api_key');
+SELECT vault.create_secret('Lucams Shop <hola@mail.lucamsshop.com>',    'monitor_email_from');
+SELECT vault.create_secret('hola@lucamsshop.com',                       'monitor_alert_email');
+SELECT vault.create_secret('<CRON_SECRET_PRD>',                         'monitor_cron_secret');
 ```
 
-Luego aplicar las migraciones (`015`–`048` dejan configurados los 12 HTTP + 3 SQL puros en PRD). Para rotar el secreto: `vault.update_secret`.
-Sin los secretos, los jobs quedan agendados pero fallan o hacen no-op seguro en runtime hasta setearlos.
+Para rotar cualquiera de estos valores en el futuro usa `SELECT vault.update_secret('<id-del-secreto>', '<nuevo-valor>');`.
 
-> **Tercer secreto `cron_vercel_bypass` (migración 023, 2026-08-01):** los previews de Vercel tienen
-> Deployment Protection (SSO) — sin bypass, los jobs HTTP reciben la página de login de Vercel (200
-> HTML) en vez de ejecutar el endpoint, y `/api/health/crons` reporta `lastRunAt: null` en todos
-> (el detalle de jobs requiere `x-cron-secret` desde la auditoría 2026-08-24, C-4).
-> La migración 023 re-agenda los jobs HTTP añadiendo el header `x-vercel-protection-bypass` SOLO si el
-> secreto existe en el Vault (la 032 replica el patrón para `lucams-expire-pending-orders`). En PRD
-> (dominio público) no se crea → headers sin cambios. En STG ya
-> está creado (verificado 2026-08-01: `net._http_response` devuelve JSON real de los endpoints).
-> El valor es el "protection bypass for automation" del proyecto Vercel (también en `.env.stg` como
-> `VERCEL_BYPASS_TOKEN`).
+### 5.3 Postura de los jobs `pg_cron` por ambiente y monitor externo en STG
 
-### Recuperación de carritos abandonados — módulo admin configurable (ADR-153, 2026-10-13)
+| Job en `cron.job`                    | Expresión UTC        | Tipo / Destino                                             |   `PRD`   |      `STG`      |  `LOCAL`  |
+| ------------------------------------ | -------------------- | ---------------------------------------------------------- | :-------: | :-------------: | :-------: |
+| `lucams-alerts`                      | `*/5 * * * *`        | HTTP `/api/cron/alerts` (emite email)                      |  Activo   | **Desagendado** | Inactivo  |
+| `lucams-daily-summary`               | `0 13 * * *`         | HTTP `/api/cron/daily-summary` (emite email)               |  Activo   | **Desagendado** | Inactivo  |
+| `lucams-review-request`              | `0 17 * * *`         | HTTP `/api/cron/review-request` (emite email)              |  Activo   | **Desagendado** | Inactivo  |
+| `lucams-cart-recovery`               | `0 * * * *`          | HTTP `/api/cron/cart-recovery` (emite email)               |  Activo   | **Desagendado** | Inactivo  |
+| `lucams-back-in-stock`               | `*/30 * * * *`       | HTTP `/api/cron/back-in-stock` (emite email)               |  Activo   | **Desagendado** | Inactivo  |
+| `lucams-cms-publish-scheduled`       | `*/5 * * * *`        | HTTP `/api/cron/cms-publish-scheduled` (con idle-skip SQL) |  Activo   |     Activo      | Inactivo  |
+| `lucams-process-render-jobs`         | `* * * * *`          | HTTP `/api/cron/process-render-jobs` (con idle-skip SQL)   |  Activo   |     Activo      | Inactivo  |
+| `lucams-expire-pending-orders`       | `23 * * * *`         | HTTP `/api/cron/expire-pending-orders`                     |  Activo   |     Activo      | Inactivo  |
+| `lucams-tracking-sync`               | `4,19,34,49 * * * *` | HTTP `/api/cron/tracking-sync`                             |  Activo   |     Activo      | Inactivo  |
+| `lucams-purge-event-logs`            | `0 3 * * *`          | HTTP `/api/cron/purge-event-logs`                          |  Activo   |     Activo      | Inactivo  |
+| `lucams-purge-anon-designs`          | `0 8 * * *`          | HTTP `/api/cron/purge-anon-designs`                        |  Activo   |     Activo      | Inactivo  |
+| `lucams-purge-delivered-designs`     | `0 9 * * *`          | HTTP `/api/cron/purge-delivered-designs`                   |  Activo   |     Activo      | Inactivo  |
+| `lucams-purge-rate-limits`           | `29 5 * * *`         | SQL puro (`purge_rate_limit_buckets()`)                    |  Activo   |     Activo      |  Activo   |
+| `lucams-internal-cron-history-purge` | `17 4 * * *`         | SQL puro (`cron.job_run_details` >14d)                     |  Activo   |     Activo      |  Activo   |
+| `lucams-internal-net-response-purge` | `43 4 * * *`         | SQL puro (`net._http_response` >24h)                       |  Activo   |     Activo      |  Activo   |
+| `uptime-monitor-prd`                 | `*/10 * * * *`       | `scripts/monitor-uptime-stg.sql` (STG sondea PRD)          | No existe |   **Activo**    | No existe |
 
-El módulo `/admin/carritos` convirtió la palanca de recuperación en una capacidad operada
-desde el panel, SIN tocar el agendamiento: el cron `lucams-cart-recovery` conserva su
-schedule pg_cron (`0 * * * *`, migración 015) y lee la config en cada corrida.
+- **Por qué los 5 crons de correo están desagendados en STG:** los despliegues Preview cuentan con `RESEND_API_KEY` para permitir pruebas manuales de flujos transaccionales; mantener activos los crons automáticos enviaría correos reales desde datos de prueba. **No re-apliques manualmente las migraciones `015` o `023` crudas en STG** sin correr a continuación el bloque de `cron.unschedule(...)` incluido al final de `scripts/db-stg-setup.sh`.
+- **Cómo funciona `uptime-monitor-prd` desde STG (`scripts/monitor-uptime-stg.sql`):** ofrece un dominio de fallo independiente de Vercel/PRD a costo `$0`. Cada 10 minutos evalúa las respuestas asíncronas de la corrida anterior sobre los 5 healthchecks de PRD (`/api/health/all`, `/api/health/crons`, `/api/health/resend`, `/api/health/wompi`, `/api/health/aveonline`), dispara el nuevo lote, reporta latido a `POST /api/cron/monitor-heartbeat` de PRD y, si detecta **2+ corridas consecutivas fallidas** (~20 min), envía alerta directa a `ALERT_EMAIL` vía Resend con enfriamiento anti-spam de 30 minutos.
 
-- **Configuración (`/admin/carritos/configuracion`, solo SUPERADMIN):** settings
-  `CmsField` kind SETTING (misma convención de loyalty/shipping —
-  `features/cart/recovery-settings.ts`): `CART_RECOVERY_ENABLED` (kill-switch total: ni
-  cron ni manual), `CART_RECOVERY_MODE` (`automatic` = el cron decide; `manual` = solo
-  envíos a voluntad desde el panel), `CART_RECOVERY_IDLE_HOURS` (default 4),
-  `CART_RECOVERY_MAX_REMINDERS` (default 1), `CART_RECOVERY_INTERVAL_HOURS` (default 24).
-  **Los defaults reproducen el comportamiento histórico** (un recordatorio a las 4h):
-  desplegar sin configurar nada no cambia la conducta. Los cambios publican al guardar
-  (kind SETTING) e invalidan el tag `cms` desde la Server Action — el cron los ve en la
-  próxima corrida, sin redeploy.
-- **Comportamiento del cron:** módulo apagado o modo `manual` → responde ok con
-  `skippedReason` (`"disabled"` / `"manual"`) y el heartbeat se registra igual (el
-  dead-man switch mide que el job está vivo, no que haya enviado). En `automatic` aplica
-  idleHours/maxReminders/intervalHours. Con `maxReminders > 1` los recordatorios al mismo
-  carrito se espaciaban por `intervalHours`.
-- **Envío manual (MANAGER_UP / permiso CATALOG):** individual desde el detalle
-  `/admin/carritos/<id>` o bulk desde `enviar/`. `sendReminderToCart(id)` respeta el
-  kill-switch y `intervalHours` (anti-duplicación), NO `maxReminders` (el tope es del
-  brazo automático). El detalle muestra el **preview real del email en iframe** con un
-  token ficticio — el token real solo se genera al enviar (F-11 intacto).
-- **Audit log:** `cart_recovery.settings.save`, `cart_recovery.reminder.send`,
-  `cart_recovery.reminder.bulk_send` (visibles en `/admin/auditoria`).
-- **Migración `20261013140000_abandoned_cart_reminder_count`:** agrega
-  `AbandonedCart.reminderCount Int @default(0)` con backfill =1 donde ya hubo
-  recordatorio. **Aplicada a STG el 2026-10-13 y a PRD el 2026-10-20** (llegó tarde:
-  el deploy no corre migrate deploy — ver «Release strategy»; el drift check del
-  post-deploy-smoke ahora lo detecta).
-- **Fix asociado:** la idempotency-key de Resend ahora es por intento
-  (`cart-recovery-<id>-<n>`) — con más de un recordatorio por carrito, la clave única por
-  carrito hubiera suprimido los envíos 2..N.
+### 5.4 Reset transaccional limpio de STG (`make stg-reset`)
 
-### Render de producción asíncrono — RenderJob (ADR-136, 2026-10-13)
-
-> **Orden de despliegue en PRD (obligatorio):** la migración supabase
-> `00000000000041_pgcron_render_jobs.sql` (agenda el cron `lucams-process-render-jobs`)
-> debe aplicarse **DESPUÉS** de desplegar el código que expone
-> `/api/cron/process-render-jobs` — si el cron corre antes del deploy, cada tick pega un
-> 404 hasta que salga el release. En **STG la 041 ya está aplicada**. Las migraciones
-> Prisma de la jornada 2026-10-12/13 (`20261012120000_order_wompi_payment_attempt`,
-> `20261012130000_loyalty_points_program`, `20261012140000_design_draft_preview_url`,
-> `20261013120000_render_job_async_production`, `20261013130000_design_preview_watermark`)
-> ya están aplicadas en **STG y PRD** (la tabla `RenderJob` existe en ambos; solo la
-> agenda del cron es la que espera al deploy en PRD).
-
-El render de los PNG 300 DPI ya **no corre en el request** de "Agregar al carrito" (un set de
-calendario ×3 = 36 páginas contra `maxDuration=60` → 500/504, incidente STG 2026-10). El
-finalize sube el preview, crea el `RenderJob` y responde; el Estudio muestra progreso real por
-polling (`GET /api/designs/<id>/render-status`) y el render corre en background:
-
-- **Worker**: `processRenderJobs` (`features/personalization/render-job-service.ts`), por lotes
-  y unidad por unidad, actualizando `RenderJob.doneUnits`. Lo llama el cron
-  `lucams-process-render-jobs` (cada minuto, migración `supabase/migrations/00000000000041_pgcron_render_jobs.sql`)
-  y el propio finalize como _kick_ acotado (8 s) para que diseños chicos terminen en el request.
-- **Reintentos**: `attempts` cuenta solo FALLOS y reclamos de lease vencido (5 min), no ticks;
-  a los 3 → `FAILED` + ErrorLog (lo recoge la alerta `errors_spike`). `NEEDS_KONVA` (diseño no
-  reproducible server-side) es terminal inmediato: si el diseño ya tiene los PNG del cliente
-  (ADR-081) el job cierra DONE y los conserva; si no hay nada que imprimir, FAILED.
-- **Retención**: `RenderJob.design` es `ON DELETE CASCADE` — purgar el diseño mata el job; no
-  hay barrido de jobs huérfanos porque no pueden existir.
-- **STG/PRD**: la migración 041 agenda solo su job (patrón seguro como la 032 — no re-agenda
-  los de email desagendados en STG). Usa los mismos secretos Vault `cron_base_url` /
-  `cron_secret` (+ `cron_vercel_bypass` en STG); sin pasos manuales nuevos si 015 ya corrió.
-- **Comportamiento admin con render en curso**: una orden puede pagarse con el render en
-  background (el SLA de producción lo absorbe; son minutos). El detalle del pedido muestra
-  "Preparando archivos de impresión… X de N" / "el render falló" según el `RenderJob`, y el ZIP
-  de producción (`/admin/pedidos/<n>/produccion`) responde **409** mientras haya un job vivo
-  (nunca un ZIP a medias) y grita en el LEEME.txt los items con render FAILED.
-- **Inspección del troquel y reversos:** el detalle del pedido muestra cada PNG completo con
-  `object-contain` sobre cuadrícula de transparencia; gris visible en las esquinas = alpha exterior
-  del troquel, no contenido faltante. El ZIP y `armado.png` repiten esa cuadrícula y el LEEME/ficha
-  enuncian «reverso B en blanco» cuando `backOptional` lo exige. Nunca espejar la cara A.
-- **Productos planos a sangre (`noFold`):** el finalize rechaza una foto que no cubra toda la
-  ventana (`PHOTO_NOT_FULL_BLEED`). No se debe saltar la guarda ni regenerar pedidos históricos
-  sin comparación visual y aprobación del owner.
-
-### Publicar el lenguaje estimado de entrega en STG
-
-El código trae los fallbacks nuevos, pero los campos CMS ya publicados conservan su body. Ejecutar
-desde `packages/db` primero en dry-run y luego con `--apply` usando `.env.stg`:
+Cuando se requiere iniciar un ciclo limpio de QA en STG sin perder la curaduría comercial ni las cuentas administrativas:
 
 ```bash
-pnpm exec dotenv -e ../../.env.stg -- node scripts/one-shot/republish-delivery-estimates-20261101.mjs
-pnpm exec dotenv -e ../../.env.stg -- node scripts/one-shot/republish-delivery-estimates-20261101.mjs --apply
+make stg-reset         # Paso 1 (obligatorio): DRY-RUN — imprime conteos exactos de filas que se borrarían
+make stg-reset-apply   # Paso 2: ejecuta el borrado atómico en STG (exige confirmación y pasa por env-guard)
 ```
 
-Después, sembrar claves nuevas con `migrate-cms-v2`, invalidar el caché CMS desde
-`/admin/contenido` y verificar checkout, PDP, ayuda y `legal/terminos`. PRD requiere aprobación
-explícita posterior; repetir dry-run allí antes de cualquier `--apply`.
+- **Qué elimina `stg-reset-transactional.mjs`:** pedidos (`Order`, ítems, estados, hitos de envío, ledger Wompi, conciliaciones COD, retractos, garantías), cotizaciones, carritos y abandonados, clientes (`Customer` + sus `auth.users` no-admin), grafo completo `Contact` (identidades, candidatos de fusión, actividades, tareas, oportunidades, organizaciones), tickets de soporte, consentimientos, fidelización, referidos, reseñas, direcciones, lista de deseos, alertas de stock, diseños/assets/`RenderJob` y tablas de bitácoras/errores.
+- **Qué preserva intacto:** todo el catálogo (`Category`, `Product`, `ProductVariant`, `OcasionTag`, `WholesaleTier`, `Material`, `ProductMaterial`), plantillas, sets de letras, galería prediseñada, redirecciones, cupones de configuración, el CMS v2 completo (`CmsPage`, `CmsSection`, `CmsField`, versiones, listas, mediateca, overrides de email) y los usuarios `AdminUser` con rol `SUPERADMIN` junto con su cuenta `auth.users`.
 
-### Migraciones de la jornada integral 2026-10-17/20 (fases 1-6, ADR-155…160)
+---
 
-| Migración                                                         | Qué crea                                                         | STG           | PRD           |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------- | ------------- | ------------- |
-| Prisma `20261017120000_wompi_payment_ledger`                      | Ledger `WompiPaymentAttempt`/`WompiPaymentTransaction` (ADR-137) | ✅ 2026-10-20 | ✅ 2026-10-21 |
-| Prisma `20261017130000_design_client_rev`                         | `Design.clientRev` — concurrencia optimista del editor (ADR-156) | ✅ 2026-10-20 | ✅ 2026-10-21 |
-| Prisma `20261020120000_design_archived_from`                      | `Design.archivedFrom`                                            | ✅ 2026-10-20 | ✅ 2026-10-21 |
-| SQL `supabase/migrations/00000000000042_wompi_payment_ledger.sql` | RLS del ledger                                                   | ✅ 2026-10-20 | ✅ 2026-10-21 |
+## 6. Homologación y sincronización entre ambientes (`PRD ↔ STG ↔ LOCAL`)
 
-- Las Prisma viajan con el `prisma migrate deploy` del release (mismo orden de siempre). La SQL
-  042 **no agenda crons** (solo RLS de las tablas nuevas) — segura de aplicar en cualquier
-  momento y no toca los jobs desagendados de STG.
-- **Backfill del ledger:** one-shot
-  `packages/db/scripts/one-shot/wompi-payment-ledger-backfill.mjs` (dry-run por defecto,
-  `--apply` con env-guard) — copia al ledger la evidencia local histórica de órdenes WOMPI
-  (`wompiReference`/`paymentAttempt`/`wompiTransactionId`, marcando `backfilled`); NO consulta
-  la API de Wompi ni infiere estados. **Corrido en STG el 2026-10-20 (0 cambios necesarios)
-  y en PRD el 2026-10-21 (2 órdenes procesadas, 0 conflictos)** — el ledger quedó al día en
-  ambos ambientes.
-- **Claves CMS nuevas** de la jornada (`estudio.lienzo.borrar-diseno-*`,
-  `estudio.texto.ig-reaplicar-*`, `estudio.exportar.zoom-*-aria`, `estudio.letras.set-pager-*`,
-  `estudio.plantillas.reemplazo-*`, confirms `account.designs.*` — 7 claves — y el texto
-  `editor-desc` actualizado): ya registradas en `packages/db/scripts/cms-site-map.mjs`; se
-  materializan por ambiente con `make migrate-cms-v2` + «Actualizar caché de contenido» en
-  `/admin/contenido` (mientras no se siembren, sirven los fallbacks del código).
-  Sumadas después: `estudio.errores.borrador-perdido` (nueva), defaults actualizados de
-  `checkout.shipping.lucams-days`/`checkout.shipping.note` (el seed es upsert que NO pisa
-  campos ya editados: si el ambiente las tiene publicadas con el texto viejo, actualizarlas a
-  mano en `/admin/contenido`) y `checkout.datos.save-name-label`/`-placeholder` retiradas del
-  site map (borrar las filas en DB si existen — ya sin consumidor). **Ya aplicado en LOCAL**
-  (seed + bodies actualizados directo en DB); pendiente STG y PRD al promover.
+### 6.1 Herramientas vigentes de auditoría y sincronización
 
-### Claves CMS de la jornada 2026-10-26
+1. **Verificación de deriva de esquema y postura de seguridad (cualquier ambiente, solo lectura):**
+   ```bash
+   cd packages/db
+   npx dotenv -e ../../.env.local -- node scripts/audit-schema-drift.mjs check
+   npx dotenv -e ../../.env.local -- node scripts/verify-security-posture.mjs
+   ```
+   _(Cambiando `../../.env.local` por `../../.env.stg` o `../../.env.local.nube-backup` auditas STG o PRD sin escribir un solo byte)._
+2. **Diagnóstico comparativo SQL STG ↔ PRD:** `bash scripts/diag-stg/homologacion.sh` ejecuta `05-homologacion-schema.sql` (columnas, índices, triggers, políticas RLS) y `06-homologacion-datos.sql` (checksums vivos de catálogo, variantes, plantillas, galería y CMS, separando divergencias vivas de filas archivadas).
+3. **Homologación comercial `PRD → LOCAL` o `PRD → STG` (`homologate-catalog-from-prd.mjs`):**
+   - Lee PRD en modo solo lectura desde `.env.local.nube-backup` y alinea en el ambiente destino (bloqueando PRD como destino mediante `env-guard.mjs`): estados `isActive`/`deletedAt` de productos y variantes, contenido comercial de `Product` y la galería `DesignGalleryImage` (copiando objetos faltantes en `product-images`).
+   ```bash
+   cd packages/db
+   npx dotenv -e ../../.env.stg -- node scripts/homologate-catalog-from-prd.mjs           # Dry-run
+   npx dotenv -e ../../.env.stg -- node scripts/homologate-catalog-from-prd.mjs --apply   # Aplica en STG
+   ```
+4. **Promoción puntual de curaduría `STG → PRD` (`sync-catalog-stg-to-prd.mjs` y `sync-gallery-stg-to-prd.mjs`):**
+   - Empareja por claves naturales (`slug`, `sku`, `key`, `(tag, name)`) preservando los CUIDs existentes en PRD para no romper FKs históricas, y copia binarios nuevos de Storage.
+   ```bash
+   cd packages/db
+   # Siempre correr primero en dry-run y revisar línea por línea el diff antes de --apply:
+   node scripts/sync-catalog-stg-to-prd.mjs
+   LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 DATABASE_URL="$DIRECT_URL" node scripts/sync-catalog-stg-to-prd.mjs --apply
+   ```
 
-Declaradas en `packages/db/scripts/cms-site-map.mjs`. **Sembradas en LOCAL, STG y PRD**
-(`migrate-cms-v2 --apply`, 2026-10-27; verificado por query: las 20 claves presentes en STG y
-PRD). **Pendiente manual:** «Actualizar caché de contenido» en `/admin/contenido` de cada
-ambiente (mientras no se invalide, sirven los fallbacks del código o el caché de hasta 1 h).
+### 6.2 Reglas invariantes de homologación
 
-### Migración de la revisión integral admin (2026-10-29)
+- **El stock jamás viaja de `STG` a `PRD`:** en PRD las existencias son físicas y reales; toda variante nueva creada en PRD por sincronización nace con `stock = 0` para carga manual verificada en `/admin/inventario`.
+- **Excepciones deliberadas entre ambientes:** `AdminUser` (las cuentas de prueba de STG nunca se copian a PRD), tablas transaccionales (`Order`, `Customer`, `Contact`), secretos de Vault y `CRON_JOBS_DISABLED`.
+- **Trampa de `Json?` en Prisma:** al escribir columnas JSON anulables (como `DesignGalleryImage.variantFilter`), pasar `null` plano escribe el literal JSON `'null'` en vez de `SQL NULL`; usa siempre `Prisma.DbNull` en updates o `undefined` en creates.
+- **Jamás ejecutes Vitest con `.env.local.nube-backup` exportado en tu shell:** las suites de integración crean fixtures y `env-guard.mjs` protege scripts administrativos, no runners de pruebas arbitrarios.
 
-| Migración                                                           | Qué crea                                             | STG           | PRD           |
-| ------------------------------------------------------------------- | ---------------------------------------------------- | ------------- | ------------- |
-| Prisma `20261029120000_order_status_events`                         | `OrderStatusEvent` (historial de estados del pedido) | ✅ 2026-10-29 | ✅ 2026-10-29 |
-| SQL `supabase/migrations/00000000000045_order_status_event_rls.sql` | RLS deny-by-default de la tabla                      | ✅ 2026-10-29 | ✅ 2026-10-29 |
+### 6.3 Receta `pg_dump` / `pg_restore` data-only y manejo de las 3 FKs circulares del CMS v2
 
-La SQL 045 **no agenda crons** (solo RLS) — segura de aplicar en cualquier momento. El código
-que la escribe (`transitionOrder` / `createOrderFromCart`) llegó a `production` con el release
-PR #118 (2026-10-29); el historial se puebla desde el deploy (los pedidos históricos no tienen
-eventos retroactivos — el detalle solo muestra la tarjeta «Historial» cuando hay eventos).
+Cuando necesites clonar un volcado binario `--data-only` de las tablas de catálogo/CMS desde PRD hacia LOCAL o STG usando `pg_dump -Fc --data-only` (PostgreSQL client 17) y `pg_restore --data-only`:
 
-- **Estudio / plantillas y prediseñados:** `estudio.plantillas.reemplazo-par-titulo`,
-  `-cuerpo`, `-nombre`, `-aria` (modal de reemplazo por PAR de caras — ADR-158 ajustado),
-  `estudio.plantillas.toast-reemplazo-par`, `estudio.plantillas.ver-diseno-aria`,
-  `estudio.plantillas.ver-diseno-usar` (botón «Ver» + dialog del prediseñado en táctil),
-  `estudio.plantillas.elegir-para-continuar` (bloqueo guiado de plantilla — ADR-167
-  ajustado).
-- **Estudio / lienzo y estilo:** `estudio.lienzo.texto-editable-hint` (pill descubrible de
-  edición de texto), `estudio.texto.estilo-grosor-titulo`, `estudio.texto.estilo-grosor-aria`
-  (slider de grosor del borde — ADR-173).
-- **Checkout / fidelización de invitados (ADR-175):** `checkout.guest-loyalty.title`,
-  `.body`, `.referral-note`, `.cta`, `.cart-note`; `checkout.gracias.guest-points-title`,
-  `guest-points-body`, `guest-points-cta`, `checkout.gracias.points-earned`.
-- **Default actualizado:** `estudio.texto.ig-ubicacion-hint` (ubicación «Ciudad, País»
-  multi-palabra). El seed es upsert que NO pisa campos ya editados: si el ambiente la tiene
-  publicada con el texto viejo, actualizarla a mano en `/admin/contenido`.
-- **Sumada 2026-10-27:** `estudio.texto.ig-ubicacion-formato` (aviso inline cuando la
-  ubicación no lleva exactamente una coma «Ciudad, País» — regla no bloqueante). **Sembrada
-  en LOCAL, STG y PRD** el 2026-10-27; pendiente solo invalidar caché en `/admin/contenido`.
+- **Por qué falla `--disable-triggers` en Supabase:** en las imágenes de Supabase (tanto cloud como local), el rol `postgres` **no es `SUPERUSER`** (el superusuario interno es `supabase_admin`), por lo que `pg_restore --disable-triggers` aborta con `permission denied: "RI_ConstraintTrigger_..." is a system trigger`.
+- **Cómo resolver el ciclo `CmsField ↔ CmsFieldVersion` sin superuser:** `CmsField.publishedVersionId` referencia a `CmsFieldVersion(id)` mientras `CmsFieldVersion.fieldId` y `CmsListItem.fieldId` referencian a `CmsField(id)`. Antes de ejecutar `pg_restore --data-only` en el ambiente destino (LOCAL o STG), suelta temporalmente las **3 restricciones de clave foránea**, restaura los datos y recréalas validando integridad:
 
-### Claves CMS y datos de la jornada 2026-10-29 (ADR-178…182)
+```sql
+-- 1. En el destino (LOCAL o STG), ANTES de pg_restore --data-only:
+BEGIN;
+ALTER TABLE public."CmsField"        DROP CONSTRAINT IF EXISTS "CmsField_publishedVersionId_fkey";
+ALTER TABLE public."CmsFieldVersion" DROP CONSTRAINT IF EXISTS "CmsFieldVersion_fieldId_fkey";
+ALTER TABLE public."CmsListItem"     DROP CONSTRAINT IF EXISTS "CmsListItem_fieldId_fkey";
+TRUNCATE TABLE
+  public."Category", public."Product", public."ProductVariant",
+  public."OcasionTag", public."ProductOcasionTag",
+  public."PersonalizationTemplate", public."DesignGalleryImage",
+  public."CmsPage", public."CmsSection", public."CmsField",
+  public."CmsFieldVersion", public."CmsListItem", public."CmsMedia"
+  RESTART IDENTITY CASCADE;
+COMMIT;
 
-Declaradas en `packages/db/scripts/cms-site-map.mjs`:
+-- 2. Ejecutar desde shell:
+-- pg_restore --data-only --no-owner --no-privileges -d "$DEST_DIRECT_URL" catalogo-cms.dump
 
-- **Estudio / biblioteca «Mis fotos» usable:** `estudio.fotos.asignada-toast`,
-  `estudio.fotos.sin-lienzo-libre`, `estudio.fotos.eliminar-aria`, `-titulo`, `-cuerpo`,
-  `-confirmar`, `estudio.fotos.eliminada-toast`, `estudio.fotos.eliminar-error`.
-- **Estudio / calendario colapsable:** `estudio.unidades.cal-meses-titulo`,
-  `estudio.unidades.cal-meses-resumen`, `estudio.unidades.cal-meses-toggle-aria`.
-- **Carrito:** `cart.plantilla-label` (rótulo «Plantilla: …» de la línea con diseño).
-- **Defaults actualizados (republish con historial, respeta edición del owner):**
-  `estudio.lienzo.cal-banner-hint` (sin el «·» huérfano), `estudio.fotos.thumb-arrastrar`
-  (tap-to-assign) y `estudio.texto.ig-ubicacion-hint` (la copia vieja «Máximo 2 palabras…»
-  contradecía la regla multi-palabra del 2026-10-26) — one-shot
-  `republish-estudio-texts-20261029.mjs` (los 3 ambientes, 2026-10-29/30).
-- **Datos de producto:** `personalizationSchema.borderWidth` habilitado en
-  `tiras-magneticas-fotos` (LOCAL/STG/PRD) y homologado en `set-fotoimanes-cuadrados`
-  (LOCAL/PRD; STG ya lo tenía con max 2 — se conserva) — one-shot
-  `border-width-tiras-cuadrados-20261029.mjs`.
+-- 3. En el destino, DESPUÉS de pg_restore (fallará si faltara alguna fila referenciada):
+BEGIN;
+ALTER TABLE public."CmsFieldVersion"
+  ADD CONSTRAINT "CmsFieldVersion_fieldId_fkey"
+  FOREIGN KEY ("fieldId") REFERENCES public."CmsField"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE public."CmsListItem"
+  ADD CONSTRAINT "CmsListItem_fieldId_fkey"
+  FOREIGN KEY ("fieldId") REFERENCES public."CmsField"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE public."CmsField"
+  ADD CONSTRAINT "CmsField_publishedVersionId_fkey"
+  FOREIGN KEY ("publishedVersionId") REFERENCES public."CmsFieldVersion"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+COMMIT;
+```
 
-**Aplicado en LOCAL, STG y PRD** el 2026-10-29 (migrate-cms-v2 + ambos one-shots).
-**Pendiente manual:** «Actualizar caché de contenido» en `/admin/contenido` de cada ambiente.
+---
 
-**Grosor del borde (ADR-173):** no es dato CMS ni migración — vive en
-`personalizationSchema.borderWidth` del Product y se configura por producto en
-`/admin/productos` (tab Personalización, SectionCard «Grosor del borde»).
+## 7. Catálogo exhaustivo de scripts operativos (`packages/db/scripts`, `apps/web/scripts` y `scripts`)
 
-### One-shot de datos de la jornada 2026-11-03 (Tiras Magnéticas a 5×15 / 5×16.5 cm)
+### 7.1 Librerías de guarda obligatorias (`packages/db/scripts/lib/`)
 
-Sin claves CMS nuevas. Un one-shot (dry-run por defecto, `--apply` ejecuta; allowlisted en
-`check-script-guards.mjs`), **aplicado en STG y PRD** (2026-11-03, idempotencia verificada con
-re-corrida dry-run «~ ya al día» en ambos) y cubierto en LOCAL vía seed canónico (ver abajo):
+Todo script que ejecute operaciones de escritura o borrado en `packages/db/scripts/` está auditado en CI por `make audit-script-guards` y comparte estas utilidades:
 
-- `packages/db/scripts/one-shot/tiras-nuevas-medidas-20261103.mjs` — medidas reales vigentes
-  (owner): tira de 3 fotos 5×15 cm (celda 5×5) y de 4 fotos 5×16.5 cm (celda apaisada 5×4.125 →
-  `aspectRatio: "5:4.125"` en las variantes de 4 fotos, incl. gemelas `-NOMAG`). Fusiona
-  `personalizationSchema.sizeCm`, renombra variantes, alinea las plantillas `photo-strip-3-fotos`
-  /`photo-strip-4-fotos` al canónico de `seed-templates.mjs` (stage 400×400 / 400×330 a 80 px/cm),
-  reemplaza las medidas viejas en `description`/copy de producto y `richDescription` de la
-  categoría, y ajusta `physicalSpecs` (empaque 7×20 → 6×17; `weightGrams` 43 **confirmado por la
-  owner** el 2026-11-03 — el valor conservador queda como el vigente). Solo REPORTA ocurrencias
-  en CMS.
-- **Seed canónico:** `tiras-magneticas-fotos` (SKU `FI-TIRA-01`) nació por one-shots y no estaba
-  declarado en `seed-catalog-canonical.mjs` → un ambiente fresco no lo tenía (LOCAL no lo tenía).
-  Ya está declarado con sus 4 variantes; LOCAL quedó sembrado con `make db-local-seed` (parcial:
-  `seed-catalog-canonical` + `seed-templates`). La misma brecha se cerró para
-  `separadores-magneticos` y `separadores-alargados` (+ su categoría `separadores`, declarada
-  también) — las matrices de variantes se generan con `sepMagVariants`/`sepAlrNomagVariants`,
-  espejo exacto del dato vivo STG/PRD (incl. la quirk `noFold`/`facesPerUnit` solo en ciertas
-  cantidades). Y al revés: `set-fotoimanes-circulares` / `set-fotoimanes-corazon` salieron de la
-  declaración (archivados en PRD desde 2026-08-11 — regla R5) y fueron archivados en LOCAL con
-  `one-shot/archive-prd-archived-products-local-20261103.mjs` (env-guarded, NO corre en PRD —
-  cubre también `pack-separadores-libros`, ausente en STG/PRD).
+| Módulo                                                                          | Propósito y reglas de seguridad                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`env-guard.mjs`](../packages/db/scripts/lib/env-guard.mjs)                     | Exporta `assertDestructiveAllowed(scriptName, rawUrl)`. Permite por defecto conexiones locales (`localhost`, `127.0.0.1`, `host.docker.internal`, `host.containers.internal`) y el proyecto STG registrado (`mjbdiqdkykhsixvqlrrp`). Rechaza con `process.exit(2)` cualquier intento contra `lucams-prod` o proyectos `*.supabase.co` no listados a menos que exportes explícitamente `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`. _(Alcance declarado: inspecciona hosts `*.supabase.co`; conexiones directas a proveedores Postgres externos no caen bajo ese patrón)._ |
+| [`confirm-target.mjs`](../packages/db/scripts/lib/confirm-target.mjs)           | Confirmación interactiva en TTY que obliga al operador a teclear literalmente el hostname de destino antes de ejecutar acciones irreversibles (usado en `admin-mfa-reset.mjs --apply`).                                                                                                                                                                                                                                                                                                                                                                           |
+| [`check-script-guards.mjs`](../packages/db/scripts/lib/check-script-guards.mjs) | Gate estático invocado por `make audit-script-guards` (incluido en `make check`): verifica que ningún script destructivo omita `assertDestructiveAllowed`.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| [`test-coupon-signal.mjs`](../packages/db/scripts/lib/test-coupon-signal.mjs)   | Señal canónica (`^(?:CAT\|SAGA\|ord)[0-9]{13,}-`) compartida para distinguir cupones efímeros filtrados por suites de integración de cupones comerciales reales.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| [`zombie-settings.mjs`](../packages/db/scripts/lib/zombie-settings.mjs)         | Lista declarativa de claves `SETTING` retiradas del CMS v2 para poda limpia mediante `remove-zombie-settings.mjs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
-**Cache:** las escrituras directas en DB se ven en tienda tras el TTL de la caché `catalog`
-(≤1 h) o la próxima escritura admin de catálogo — en PRD ya sirve las medidas nuevas (verificado
-2026-11-03). Los diseños/pedidos existentes conservan su snapshot con la medida vendida (igual
-que en el cambio 5×15→6.5×20 del 2026-07-22).
+### 7.2 Los 28 scripts vigentes en `packages/db/scripts/`
 
-### One-shots de datos de la jornada 2026-10-27 (fixes Estudio Cuadrados — ADR-177 + extensión ADR-164)
+> **Regla de conexión para scripts sobre Supabase Cloud:** cuando ejecutes escrituras masivas, migraciones o sincronizaciones contra STG o PRD, pasa `DATABASE_URL="$DIRECT_URL"` (session pooler `:5432`) para evitar timeouts o bloqueos de prepared statements en PgBouncer transaccional (`:6543`).
 
-Sin claves CMS nuevas. Dos one-shots (dry-run por defecto, `--apply` ejecuta; allowlisted en
-`check-script-guards.mjs`), **aplicados en LOCAL, STG y PRD** (2026-10-27, idempotencia
-verificada con re-corrida dry-run «~ ya estaba» en los 3 ambientes):
+| #   | Script (`packages/db/scripts/`)                                                               | Modo por defecto                           | Flags y variables admitidas                                                  | Propósito exacto                                                                                                                                                                                                                                     |
+| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | [`admin-mfa-reset.mjs`](../packages/db/scripts/admin-mfa-reset.mjs)                           | `--dry-run`                                | `--apply`, `EMAIL=<correo>`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`             | Procedimiento break-glass para eliminar factores MFA (`auth.mfa_factors`) de un administrador bloqueado y registrar `AdminAuditLog`; en `--apply` exige escribir el hostname vía `confirm-target.mjs`.                                               |
+| 2   | [`audit-schema-drift.mjs`](../packages/db/scripts/audit-schema-drift.mjs)                     | Solo lectura                               | `snapshot [--out FILE]`, `check [--baseline FILE]`                           | Audita deriva estructural entre `schema.prisma` y `public.*` en PostgreSQL (tablas, columnas, enums, índices y FKs; admite `rate_limit_buckets` como tabla SQL pura).                                                                                |
+| 3   | [`audit-slugs.mjs`](../packages/db/scripts/audit-slugs.mjs)                                   | Solo lectura                               | —                                                                            | Lista categorías y productos activos (`deletedAt: null`) con sus `slug` e indicador `isActive` para revisión rápida de rutas SEO.                                                                                                                    |
+| 4   | [`audit-storefront-consistency.mjs`](../packages/db/scripts/audit-storefront-consistency.mjs) | Solo lectura                               | —                                                                            | Auditoría integral de coherencia entre admin, PDP y Estudio: escaleras de slots por variante, promos válidas, aspect ratio de plantillas (`±0.05`), geometría física de tiras y cordura de capas SVG.                                                |
+| 5   | [`audit-variants.mjs`](../packages/db/scripts/audit-variants.mjs)                             | Solo lectura                               | —                                                                            | Inspecciona las variantes activas agrupadas por producto con SKU, atributos, precio y stock.                                                                                                                                                         |
+| 6   | [`backfill-contacts.mjs`](../packages/db/scripts/backfill-contacts.mjs)                       | `--dry-run` (`transaction_read_only = on`) | `--apply`, `--batch-size=200`, `--json`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` | Backfill progresivo por cursores (`ADR-193`) que consolida 8 fuentes históricas en el grafo `Contact` + `ContactIdentity` sin emitir PII por consola.                                                                                                |
+| 7   | [`cleanup-test-junk.mjs`](../packages/db/scripts/cleanup-test-junk.mjs)                       | Escritura protegida (`env-guard`)          | `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                                          | Limpia categorías/productos fugados de suites (`Cat <runId>`, aplicando soft-delete si hay `OrderItem` con FK `Restrict`) y fixtures `AdminUser` (`mfaitest_*`, `*@lucams.test`).                                                                    |
+| 8   | [`cms-site-map.mjs`](../packages/db/scripts/cms-site-map.mjs)                                 | Módulo declarativo                         | Importado por scripts y tests AST                                            | Fuente estructural canónica del CMS v2 (`SITE_MAP`: 9 páginas, 29 secciones y 166 campos = 105 `BLOCK` + 61 `SETTING`).                                                                                                                              |
+| 9   | [`homologate-catalog-from-prd.mjs`](../packages/db/scripts/homologate-catalog-from-prd.mjs)   | `--dry-run`                                | `--apply` _(bloquea PRD como destino)_                                       | Lee PRD en solo lectura (`.env.local.nube-backup`) y alinea en `LOCAL` o `STG` estados de productos/variantes, textos comerciales y `DesignGalleryImage` (+ binarios en `product-images`), sin tocar stock.                                          |
+| 10  | [`identity-dry-run.mjs`](../packages/db/scripts/identity-dry-run.mjs)                         | Solo lectura estricta                      | `--json`                                                                     | Perfilador de colisiones de identidad sobre la base de datos bajo `SET TRANSACTION READ ONLY`; reporta candidatos de fusión sin escribir filas ni exponer PII.                                                                                       |
+| 11  | [`migrate-cms-v2.mjs`](../packages/db/scripts/migrate-cms-v2.mjs)                             | `--dry-run`                                | `--apply`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                               | Upsert aditivo e idempotente de `SITE_MAP` hacia `CmsPage`, `CmsSection` y `CmsField` preservando el `body` publicado y el historial editorial existente.                                                                                            |
+| 12  | [`purge-test-coupons.mjs`](../packages/db/scripts/purge-test-coupons.mjs)                     | `--dry-run`                                | `--apply`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                               | Purga cupones de prueba detectados por `test-coupon-signal.mjs`; aborta si alguno tiene `Order` o `CouponUsage` asociados y guarda respaldo JSON en `tmp/backups/` al aplicar.                                                                       |
+| 13  | [`remove-zombie-settings.mjs`](../packages/db/scripts/remove-zombie-settings.mjs)             | `--dry-run`                                | `--apply`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                               | Elimina en una transacción las claves `SETTING` obsoletas definidas en `lib/zombie-settings.mjs` junto con sus `CmsFieldVersion` y `CmsListItem`.                                                                                                    |
+| 14  | [`seed-admin.mjs`](../packages/db/scripts/seed-admin.mjs)                                     | `--dry-run`                                | `--apply`, `EMAIL=<correo>`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`             | Crea o reactiva un `AdminUser` con rol `SUPERADMIN` vinculado al usuario existente en `auth.users` (por `EMAIL` o el primer usuario registrado).                                                                                                     |
+| 15  | [`seed-catalog-canonical.mjs`](../packages/db/scripts/seed-catalog-canonical.mjs)             | `--dry-run`                                | `--apply`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                               | Seed canónico e idempotente del catálogo base; jamás sobrescribe precios, imágenes, `isActive`, `deletedAt` ni `isFeatured` editados en `/admin`.                                                                                                    |
+| 16  | [`seed-catalog-v2.mjs`](../packages/db/scripts/seed-catalog-v2.mjs)                           | Escritura protegida (`env-guard`)          | `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                                          | Delta idempotente de jerarquía comercial: subcategorías hijas, ventanas estacionales, `richDescription`/`idealFor`/`physicalSpecs` y enlaces iniciales `ProductOcasionTag`.                                                                          |
+| 17  | [`seed-letter-sets.mjs`](../packages/db/scripts/seed-letter-sets.mjs)                         | Escritura protegida (`env-guard`)          | `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                                          | Upsert de los sets base `LetterTileSet` (`es` y `en`, `ADR-057`) para distribución de letras imantadas Scrabble.                                                                                                                                     |
+| 18  | [`seed-ocasiones.mjs`](../packages/db/scripts/seed-ocasiones.mjs)                             | `--dry-run`                                | `--apply`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                               | Upsert de las 15 etiquetas comerciales colombianas en `OcasionTag` (Amor y Amistad, Día de la Madre, Navidad, etc.).                                                                                                                                 |
+| 19  | [`seed-templates.mjs`](../packages/db/scripts/seed-templates.mjs)                             | `--dry-run`                                | `--apply`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                               | Upsert de las plantillas `PersonalizationTemplate` activas con sus capas SVG y slots configurables.                                                                                                                                                  |
+| 20  | [`shipping-dims-audit.mjs`](../packages/db/scripts/shipping-dims-audit.mjs)                   | Solo lectura                               | —                                                                            | Replica `getEffectiveShippingDims` sobre todos los productos y variantes activos para detectar huecos de peso o dimensiones antes de que Aveonline lance `MissingShippingDimsError`.                                                                 |
+| 21  | [`simulate-aveonline-webhook.mjs`](../packages/db/scripts/simulate-aveonline-webhook.mjs)     | Dev helper (HTTP local)                    | `<TRACKING_NUMBER> [ESTADO]` _(default `ENTREGADA`)_                         | Envía un webhook firmado válido a `/api/webhooks/aveonline` en entorno local para probar cambios de guía sin esperar a la transportadora.                                                                                                            |
+| 22  | [`simulate-wompi-webhook.mjs`](../packages/db/scripts/simulate-wompi-webhook.mjs)             | Dev helper (HTTP local)                    | `<ORDER_NUMBER>` _(ej. `LCM-2026-0001`)_                                     | Calcula el checksum HMAC real con `WOMPI_EVENTS_SECRET` y dispara `transaction.updated` `APPROVED` contra `/api/webhooks/wompi` en local.                                                                                                            |
+| 23  | [`stg-reset-transactional.mjs`](../packages/db/scripts/stg-reset-transactional.mjs)           | `--dry-run`                                | `--apply` _(invocado vía `make stg-reset` / `make stg-reset-apply`)_         | Limpieza transaccional atómica de órdenes, clientes, contactos, diseños y logs de prueba preservando catálogo, CMS, cupones de configuración y `SUPERADMIN`.                                                                                         |
+| 24  | [`sync-and-prune-cms-v2.mjs`](../packages/db/scripts/sync-and-prune-cms-v2.mjs)               | `--dry-run`                                | `--apply`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`                               | Sincroniza la estructura `SITE_MAP`, republica semillas tokenizadas solo cuando el SHA-256 coincide con la semilla previa intacta y poda campos retirados a Capa 3.                                                                                  |
+| 25  | [`sync-catalog-stg-to-prd.mjs`](../packages/db/scripts/sync-catalog-stg-to-prd.mjs)           | `--dry-run`                                | `--apply`, `DATABASE_URL="$DIRECT_URL"`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` | Promueve curaduría de catálogo, plantillas y CMS desde `.env.stg` hacia `.env.local.nube-backup` por claves naturales preservando CUIDs de PRD y dejando variantes nuevas en `stock = 0`.                                                            |
+| 26  | [`sync-gallery-stg-to-prd.mjs`](../packages/db/scripts/sync-gallery-stg-to-prd.mjs)           | `--dry-run`                                | `--apply`, `DATABASE_URL="$DIRECT_URL"`, `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` | Promueve motivos de `DesignGalleryImage` y sus binarios de Storage desde STG hacia PRD emparejando por `id` y luego por `(tag, name)`.                                                                                                               |
+| 27  | [`verify-cms-v2-integrity.mjs`](../packages/db/scripts/verify-cms-v2-integrity.mjs)           | Solo lectura (exit `0`/`1`)                | —                                                                            | Verifica invariantes del CMS v2: 0 campos publicados sin `publishedVersionId`, 0 referencias rotas a `CmsMedia` y 0 listas JSON inválidas.                                                                                                           |
+| 28  | [`verify-security-posture.mjs`](../packages/db/scripts/verify-security-posture.mjs)           | Solo lectura (exit `0`/`1`)                | —                                                                            | Audita los 5 invariantes de seguridad en Postgres/Storage: RLS en el 100 % de `public.*`, 0 grants a `anon`/`authenticated`, 0 DML a `service_role`, 3 buckets sensibles con `public = false` y event trigger `enforce_rls_on_new_table_trg` activo. |
 
-- `packages/db/scripts/one-shot/cuadrados-sin-texto-20261027.mjs` — retira las capas
-  `type:"text"` del canvasData de la plantilla cuadrada y restaura la geometría de la foto
-  (height `stageH-140` → `stageH-80`). Efecto inmediato incluso con el código viejo: sin
-  capas editables, la pestaña Texto de «Ajustar foto» queda deshabilitada.
-- `packages/db/scripts/one-shot/frame-options-binary-cuadrados-20261027.mjs` — fusiona
-  `frameOptions:["blanco","negro"]` en `personalizationSchema` del producto
-  `set-fotoimanes-cuadrados` y actualiza su `description` (deja de prometer «6 colores de
-  marca»; el picker «Personalizado» cubre el multi-color).
+### 7.3 Scripts de backup, DR, smoke y rendimiento en `apps/web/scripts/`
 
-**Pendiente manual:** «Actualizar caché de contenido» en `/admin/contenido` de STG y PRD
-(escrituras directas en DB; el caché `catalog` sirve el dato viejo hasta invalidar o ~1 h).
-Los diseños existentes no se tocan: conservan su snapshot (la capa de texto queda inerte por
-los gates de `allowText` del ADR-177; los colores pastel ya elegidos se anuncian como
-«Personalizado #HEX»).
+| Script (`apps/web/scripts/`)                                               | Comando / Invocación                                                                | Propósito operativo                                                                                                                                                                          |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`backup-db-to-r2.mjs`](../apps/web/scripts/backup-db-to-r2.mjs)           | `pnpm --filter web db:backup` (ejecutado por `backup.yml`)                          | Genera `pg_dump` de `public`, comprime con `gzip`, cifra con GPG simétrico AES-256, sube `db/YYYY-MM-DD/lucams-*.sql.gz.gpg` a Cloudflare R2 y poda respaldos con `> 30` días.               |
+| [`backup-storage-to-r2.mjs`](../apps/web/scripts/backup-storage-to-r2.mjs) | `pnpm --filter web storage:backup` (ejecutado por `backup.yml`)                     | Descarga los 5 buckets de Supabase Storage, empaqueta y cifra `storage/YYYY-MM-DD/lucams-storage-*.tar.gz.gpg` + `manifest.json` libre de PII en R2 y poda archivos con `> 30` días.         |
+| [`dr-drill.mjs`](../apps/web/scripts/dr-drill.mjs)                         | Ejecutado por `.github/workflows/dr-drill.yml`                                      | Descarga el último `.sql.gz.gpg` desde R2, descifra en memoria, restaura sobre Postgres 17 efímero y valida conteos exactos de filas contra los bloques `COPY` del dump.                     |
+| [`dr-drill-storage.mjs`](../apps/web/scripts/dr-drill-storage.mjs)         | Ejecutado por `.github/workflows/dr-drill.yml` (`drill-storage`)                    | Descarga el último tarball cifrado de Storage y su `manifest.json`, descifra en streaming sin escribir archivos en claro a disco y verifica conteos y bytes por bucket.                      |
+| [`post-deploy-smoke.mjs`](../apps/web/scripts/post-deploy-smoke.mjs)       | `SMOKE_BASE_URL=https://lucamsshop.com node apps/web/scripts/post-deploy-smoke.mjs` | Smoke test post-deploy y post-DR: verifica HTTP `200` en home, `/catalogo`, `/api/health`, cabecera `Content-Security-Policy` y ausencia de redirect inesperado a `/mantenimiento`.          |
+| [`profile-studio-entry.mjs`](../apps/web/scripts/profile-studio-entry.mjs) | `node apps/web/scripts/profile-studio-entry.mjs`                                    | Perfilador Playwright + Chrome DevTools Protocol (throttling CPU ×6 móvil) para auditar `longTasks`, TBT e hidratación de Konva al entrar a `/estudio/[slug]` (`ADR-166`).                   |
+| [`uptime-monitor.mjs`](../apps/web/scripts/uptime-monitor.mjs)             | `node apps/web/scripts/uptime-monitor.mjs [--dry-run]`                              | Sonda manual de contingencia equivalente a la Edge Function `uptime-monitor-prd` (lee credenciales de `~/.config/lucams/uptime.env` si la sonda primaria de STG estuviera en mantenimiento). |
 
-### Higiene de Supabase Storage — estrategia completa (2026-10-12)
+### 7.4 Scripts de infraestructura y diagnóstico en `scripts/`
 
-Contexto: el 2026-10-12 se midieron **~316 MB de objetos huérfanos en PRD** (217 MB en
-`production-assets`, 99 MB en `customer-uploads`) — bytes de diseños borrados antes de que las
-purgas de retención existieran, invisibles para la métrica de cuota (que solo medía 2 buckets).
-Se barrió con el one-shot `packages/db/scripts/one-shot/purge-orphan-storage-20261012.mjs` y se
-cerraron los puntos ciegos con cuatro capas que corren en **STG y PRD** (el job
-`lucams-purge-anon-designs` NO es de los desagendados en STG — corre en ambos):
+| Script (`scripts/`)                                                           | Uso y argumentos                                                                                                           | Propósito operativo                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`db-local-env.sh`](../scripts/db-local-env.sh)                               | `bash scripts/db-local-env.sh on\|off` _(vía `make db-local-on/off`)_                                                      | Conmuta de forma segura `.env.local` entre el stack Podman local y el respaldo `.env.local.nube-backup`, recreando el symlink `apps/web/.env.local`.                                                   |
+| [`db-local-setup.sh`](../scripts/db-local-setup.sh)                           | `bash scripts/db-local-setup.sh` _(vía `make db-local-setup`)_                                                             | Arranca Supabase CLI sobre Podman rootless, aplica `prisma db push` y las migraciones SQL `002..054` compatibles con local, y regenera el cliente Prisma.                                              |
+| [`db-stg-setup.sh`](../scripts/db-stg-setup.sh)                               | `bash scripts/db-stg-setup.sh` _(vía `make db-stg-setup`)_                                                                 | Aplica `prisma migrate deploy` y las migraciones SQL sobre `.env.stg` verificando la postura RLS final.                                                                                                |
+| [`e2e-fullmode.sh`](../scripts/e2e-fullmode.sh)                               | `bash scripts/e2e-fullmode.sh [specs...]` _(vía `make test-e2e-full`)_                                                     | Levanta el servidor con `NEXT_PUBLIC_STORE_MODE=full` en `:4000`, espera `/api/health`, corre Playwright y limpia procesos al terminar.                                                                |
+| [`git-hooks/pre-commit`](../scripts/git-hooks/pre-commit)                     | Instalado con `make install-hooks`                                                                                         | Bloquea commits con llaves privadas, archivos `.env*`, artefactos temporales o voseo accidental en código/docs.                                                                                        |
+| [`monitor-uptime-stg.sql`](../scripts/monitor-uptime-stg.sql)                 | Referencia SQL en SQL Editor de `lucams-stg`                                                                               | Registra los secretos `monitor_*` en Vault y agenda el job `uptime-monitor-prd` cada 5 min contra `lucamsshop.com/api/health/all`.                                                                     |
+| [`supabase-auth-email-config.mjs`](../scripts/supabase-auth-email-config.mjs) | `SUPABASE_ACCESS_TOKEN=... RESEND_API_KEY=... node scripts/supabase-auth-email-config.mjs --ref <project-ref> [--dry-run]` | Configura por Management API el SMTP custom de Resend (`smtp.resend.com:465`, remitente `hola@lucamsshop.com`) y las plantillas HTML de OTP en español (`supabase/auth-templates/*.html`).             |
+| [`vercel-runtime-errors.sh`](../scripts/vercel-runtime-errors.sh)             | `bash scripts/vercel-runtime-errors.sh [alias] [segundos]` _(default `lucamsshop.com` y `25` s)_                           | Conecta `vercel logs --json` en vivo sobre el deployment activo para capturar trazas `statusCode >= 500` y `level=error` cuando la base de datos misma está caída y `ErrorLog` no puede recibir filas. |
+| [`diag-stg/`](../scripts/diag-stg/)                                           | `bash scripts/diag-stg/homologacion.sh` y consultas `01..07-*.sql`                                                         | Suite SQL de solo lectura para auditar en STG/PRD zonas de envío (`01`), Web Vitals/INP (`04`), deriva de esquema (`05`), paridad de datos vivos (`06`) y `ErrorLog` recientes (`07`).                 |
 
-1. **Purgas por diseño (retención, Ley 1581)** — cron `lucams-purge-anon-designs` (08:00 UTC) +
-   `lucams-purge-delivered-designs` (09:00 UTC). Borran bytes + filas cuando un diseño cumple su
-   TTL: DRAFT anónimo ≥30d, DRAFT de logueado ≥90d, READY nunca ordenado ≥90d (ADR-130),
-   entregado ≥90d (retention-delivered). Si el borrado de bytes falla, las filas NO se borran →
-   reintento en el próximo ciclo (nunca bytes sin registro). Detalle y TTLs en
-   [COMPLIANCE.md](COMPLIANCE.md).
-2. **Retención de carritos** — misma corrida, PRIMERA fase (`features/cart/cart-retention.ts`).
-   Un cart VIVO blindaba sus diseños para siempre (guard `NO_LIVE_CART_ITEM`); ahora:
-   `AbandonedCart` ≥90d se borra (el email de recuperación ya no es útil) y carts vivos idle
-   ≥60d / vacíos ≥7d se hard-deletan (patrón de `mergeAnonCartIntoCustomer`; CartItem cae por
-   CASCADE). NO borra diseños: los deja libres para la capa 1 en la misma corrida.
-3. **Barrido de huérfanos (orphan sweep)** — misma corrida, ÚLTIMA fase
-   (`sweepOrphanStorageObjects` en `features/personalization/retention-service.ts`). Red de
-   fondo para la deriva que las capas 1–2 no ven (objetos cuya fila `Design` ya no existe).
-   Propiedades: **acotado** (500 objetos/corrida, más viejos primero — el backlog se barre en
-   corridas sucesivas), **fail-safe** (anti-join SQL contra `storage.objects` + doble
-   verificación en JS que relee los `Design` antes de borrar; un bug en el SQL nunca borra
-   bytes de un diseño vivo), **no fatal** (si falla, se loguea a ErrorLog vía
-   `cron.purge_anon_designs.orphan_sweep_fail` sin tumbar las purgas legales ni el heartbeat) y
-   **loggeado** (`retention.orphan_sweep` con scanned/deleted/failed). Reglas: `<designId>/…`
-   en `production-assets`/`design-previews`; `<ownerId>/<designId>/…` en `customer-uploads` con
-   gracia de 7 días para `<ownerId>/pending/…` (mismas del one-shot).
-4. **Monitoreo de cuota de TODOS los buckets** — `/admin/observability` mide bytes y archivos
-   reales de los 5 buckets directamente desde `storage.objects` (`metadata.size`), incluidos
-   los huérfanos aún no barridos (antes `production-assets` — el más pesado — reportaba solo
-   conteo y la alerta no lo veía). Pill «Total real» en ámbar si supera **800 MB** (plan Free:
-   1 GB). Si la consulta a `storage.objects` falla, el tile degrada a las columnas de la app
-   (total parcial marcado «Lectura degradada» + log `observability.storage_quota_fail`).
+---
 
-**Verificación manual de huérfanos** (dry-run de la capa 3, contra cualquier ambiente):
+## 8. Operación de subsistemas en `/admin` y proceso físico de taller
+
+### 8.1 Módulo configurable de recuperación de carritos abandonados (`ADR-153`)
+
+La recuperación de carritos abandonados combina captura progresiva de contacto en checkout (`/api/checkout/abandoned`), detección y envío horario (`/api/cron/abandoned-carts`) y un panel administrativo completo en `/admin/carritos-abandonados` junto con su configuración en `/admin/configuracion` (`SystemSetting`):
+
+| Clave en `SystemSetting`       | Valor inicial                | Rango permitido            | Comportamiento operativo                                                                                                                                                                                                 |
+| ------------------------------ | ---------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CART_RECOVERY_ENABLED`        | `"false"` (apagado al nacer) | `"true"` / `"false"`       | **Kill-switch maestro:** cuando es `"false"`, el cron sigue detectando y marcando carritos abandonados para analítica en `/admin`, pero **no despacha ningún correo**.                                                   |
+| `CART_RECOVERY_MODE`           | `"manual"`                   | `"automatic"` / `"manual"` | En `"manual"`, los correos solo salen cuando un operador pulsa **«Enviar recordatorio»** en `/admin/carritos-abandonados`; en `"automatic"`, el cron horario despacha recordatorios dentro de las ventanas configuradas. |
+| `CART_RECOVERY_IDLE_HOURS`     | `"4"`                        | `1` – `72` horas           | Horas de inactividad mínimas desde `lastActivityAt` antes de elegibilidad para el primer recordatorio.                                                                                                                   |
+| `CART_RECOVERY_MAX_REMINDERS`  | `"1"`                        | `1` – `3` envíos           | Tope máximo de correos de recuperación por carrito (`reminderCount < maxReminders`).                                                                                                                                     |
+| `CART_RECOVERY_INTERVAL_HOURS` | `"24"`                       | `1` – `168` horas          | Horas mínimas de espera entre un recordatorio y el siguiente cuando `maxReminders > 1`.                                                                                                                                  |
+
+- **Garantías operativas:** idempotencia por intento en Resend (`Idempotency-Key: cart-recovery-<abandonedCartId>-<attemptNumber>`), respeto estricto de `EmailSuppression` y baja firmada HMAC en 1 clic (`/api/unsubscribe`), vista previa con token ficticio en `/admin` que jamás muta contadores reales, atribución exacta en `Order.recoveredFromCartId` al convertir y trazabilidad completa en `AdminAuditLog` (`cart_recovery.config_updated`, `cart_recovery.manual_send`).
+
+### 8.2 Cola asíncrona de producción `RenderJob` (`ADR-136`)
+
+Los entregables de impresión a **300 DPI** (`production-assets/{orderId}/...`) se generan fuera del request sincrónico de compra mediante la tabla `RenderJob` y [`features/personalization/render-job-service.ts`](../apps/web/features/personalization/render-job-service.ts):
+
+1. **Encolado y kick inmediato:** al finalizar un diseño o confirmar el pago (`PAID`), se inserta/actualiza `RenderJob(status = PENDING)` y se ejecuta un _best-effort kick_ con presupuesto máximo de **8 s** antes de responder al navegador.
+2. **Worker por lotes (`lucams-process-render-jobs`):** se ejecuta cada minuto con _idle-skip_ SQL en PostgreSQL (0 invocaciones HTTP a Vercel cuando no hay filas elegibles). Reclama jobs con lease atómico de **5 minutos** (`lockedAt`), avanza por unidades (`doneUnits / totalUnits`) y tras **3 intentos fallidos** marca `status = FAILED` disparando alerta administrativa.
+3. **Separación Node vs navegador (`NEEDS_KONVA`):** `@napi-rs/canvas` renderiza en servidor fotos, cuadrículas, tiras, mosaicos, textos y stickers; si una plantilla compleja requiere el motor Konva del navegador del operador, el job queda señalizado con `lastError = 'NEEDS_KONVA'` para generación asistida desde `/admin/pedidos/[number]/produccion`.
+4. **Bloqueo de paquetes incompletos y control visual en `/produccion`:**
+   - El endpoint de descarga ZIP en `/admin/pedidos/[number]/produccion` devuelve **HTTP `409 Conflict`** mientras exista un `RenderJob` en `PENDING` o `PROCESSING`, evitando que el taller descargue carpetas a medias.
+   - Las miniaturas de troquel en la ficha de taller se muestran con `object-contain` sobre cuadrícula de transparencia (nunca `object-cover`) para que el operario verifique sangrado, esquinas redondeadas y perforaciones reales antes de imprimir.
+   - En productos de doble cara (separadores magnéticos y tarjetas dedicatoria), el paquete incluye los PNG de reverso a 300 DPI (`reverso-patron-lucams.png` o `reverso-blanco.png`). En tiras planas de una sola cara (`noFold`), el generador exige foto a sangre completa (`PHOTO_NOT_FULL_BLEED`) y el reverso es la lámina magnética física.
+
+### 8.3 Higiene de 4 capas en los 5 buckets de Supabase Storage
+
+Para operar con holgura dentro del límite de **1 GB** del tier Free (y mantener costos mínimos en Pro), la higiene de binarios se ejecuta en cuatro capas complementarias:
+
+1. **Capa 1 — Purga por diseño y minimización Ley 1581 (`03:30 UTC`):**
+   - `purgeExpiredDesigns` elimina en `customer-uploads` y `design-previews` borradores `DRAFT` inactivos (`> 30` días en PRD, cap de `14` días en STG/dev) y diseños `READY` sin orden asociada (`> 90` días en PRD, cap de `14` días en STG/dev).
+   - `purgeDeliveredOrderDesigns` (`03:45 UTC`) purga fotos originales, previews y `production-assets` de órdenes `DELIVERED` tras `90` días desde `deliveredAt` (preservando registros contables de la orden).
+2. **Capa 2 — Retención previa de carritos (`03:15 UTC`):** `purgeStaleCarts` limpia carritos vacíos (`> 7` días), carritos activos inactivos (`> 60` días) y `AbandonedCart` cerrados (`> 90` días) antes de que corra la purga de diseños, liberando referencias huérfanas.
+3. **Capa 3 — Barrido diario de objetos huérfanos (`sweepOrphanStorageObjects`):** dentro del cron de `03:30 UTC`, inspecciona hasta **500 objetos por corrida** en `customer-uploads`, `design-previews` y `production-assets` con **doble verificación** antes de borrar: (a) ningún `Design`, `DesignAsset` ni `OrderItem` referencia la ruta y (b) para prefijos `pending/` en `customer-uploads`, el objeto supera **7 días de gracia** (protegiendo sesiones largas en el Estudio).
+4. **Capa 4 — Monitoreo real y limpieza editorial:** `/api/health/all` suma `metadata->>'size'` directamente sobre `storage.objects` y emite alerta preventiva ámbar al superar **800 MB** (`80 %` de 1 GB). Para los buckets editoriales (`cms-media` y `product-images`), `/admin/contenido/mediateca` incluye el filtro **«Sin uso»** para auditar y depurar activos sin referencias en CMS ni catálogo.
+
+### 8.4 Procedimiento de reembolso de pedidos (`/admin/pedidos/[number]`)
+
+> **Advertencia financiera crítica:** la acción administrativa `refundOrder` **no mueve dinero automáticamente en Wompi ni ejecuta transferencias bancarias**. El reembolso monetario es deliberadamente **100 % manual** para impedir salidas irreversibles de caja por error humano o compromiso de sesión.
+
+1. **Paso 1 — Ejecutar primero la devolución del dinero fuera del backoffice:**
+   - **Pagos online (Wompi):** ingresa al comercios dashboard de Wompi (`comercios.wompi.co`), localiza la transacción `APPROVED` por referencia `LCM-YYYY-NNNN` (verificando en la pestaña de pagos de la orden que corresponda al `wompiTransactionId` ganador), ejecuta la anulación/reembolso y conserva el comprobante.
+   - **Contraentrega (`COD`):** coordina y transfiere el monto acordado a la cuenta bancaria certificada del cliente y guarda el soporte de transferencia.
+2. **Paso 2 — Registrar el reembolso en `/admin/pedidos/[number]`:**
+   - Con rol autorizado (`SUPERADMIN`, `ORDER_MANAGER` o `CUSTOMER_SUPPORT` con MFA `aal2`), pulsa **«Reembolsar pedido»** e ingresa el motivo detallado.
+   - `refundOrder` ejecuta en una sola transacción: cambia `Order.status → REFUNDED` (`paymentStatus → REFUNDED`), **revierte de forma idempotente el stock** de cada variante física descontada, **libera el cupón** (`CouponUsage` y `Coupon.usageCount`) para que el cliente o cupón conserve su cupo exacto, inserta `OrderStatusHistory` + `AdminAuditLog` y despacha el correo transaccional de confirmación (_best-effort_).
+3. **Qué NO hace automáticamente `refundOrder`:**
+   - **No anula la guía en Aveonline:** si ya se había emitido `trackingNumber` y el paquete no ha salido del taller, anula la guía en el portal de Aveonline o desde el módulo de envíos antes de la recolección.
+   - **No procesa reembolsos parciales de centavos en el estado de la orden:** las compensaciones parciales (ej. cupón o reposición por garantía en `/admin/garantias`) se gestionan por flujo de garantía/soporte sin marcar toda la orden como `REFUNDED`.
+
+### 8.5 Proceso operativo físico de taller, formatos de corte y empaque/unboxing
+
+La ficha imprimible en `/admin/pedidos/[number]/produccion` traduce cada ítem mediante [`features/personalization/production-spec.ts`](../apps/web/features/personalization/production-spec.ts) (`resolveProductionSpec` y `productionPieceGroups`) en instrucciones físicas inequívocas para impresión, laminado, troquelado y empaque:
+
+#### A. Formatos físicos de salida en taller (`ProductionOutputFormat`)
+
+| Formato (`outputFormat`) | Productos típicos                                                                         | Instrucción física de producción y corte                                                                                                                                                      |
+| ------------------------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fichas-sueltas`         | Fotoimanes cuadrados/rectangulares, Polaroid, Spotify, Save the Date, stickers imantados  | Impresión a 300 DPI con sangrado perimetral, laminado protector UV, adhesión a lámina magnética flexible (salvo variante sin imán) y corte individual por pieza con esquinas según plantilla. |
+| `lamina-fichas`          | Abecedarios / sets Scrabble (`LetterTileSet`), rompecabezas magnéticos y sets troquelados | Impresión en lámina agrupada y troquelado en grilla de fichas individuales verificando el conteo total de piezas del set.                                                                     |
+| `tira-continua`          | Tiras fotográficas clásicas de cabina (1 cara) y tiras planas (`noFold`)                  | Impresión continua vertical a sangre completa sobre sustrato magnético flexible; corte recto por el contorno exterior sin pliegue central.                                                    |
+| `tira-desplegada`        | Separadores magnéticos plegables de libro (doble cara tête-bêche)                         | Impresión desplegada con cara frontal + cara trasera rotada `180°` (_tête-bêche_) separadas por línea de hendido central; doblar por el eje e imantar caras internas enfrentadas.             |
+| `caras-sueltas`          | Tarjetas dedicatoria y piezas impresas por ambas caras rígidas                            | Impresión de frente y reverso (`reverso-patron-lucams` o `reverso-blanco`) alineados a registro antes del refilado final.                                                                     |
+| `piezas-sueltas`         | Productos físicos sin personalización fotográfica (accesorios, kits listos)               | Picking directo de inventario verificado por SKU en estantería.                                                                                                                               |
+
+- **Variantes sin imán (`attributes.magnet === false` / sufijo SKU `-NOMAG`):** la ficha de producción resalta una alerta explícita de sustrato fotográfico/rígido **sin lámina magnética**, evitando desperdicio de insumo magnético en taller.
+
+#### B. Estándar físico de empaque y experiencia de unboxing (`PackagingType`)
+
+Cada producto define su `Product.packagingType` (sobreescrito automáticamente cuando el pedido marca `Order.isGift = true`):
+
+| `PackagingType`    | Cuándo aplica                                                                                                               | Composición física en mesa de empaque                                                                                                                                                                                               | Regla de documentos e impresos internos                                                                                                                    |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`STANDARD_BAG`** | Pedidos B2C regulares de fotoimanes, Polaroid, tiras, separadores y coleccionables (`isGift = false`)                       | Sobre/bolsa kraft protectora con papel seda libre de ácido, cierre con **sticker de marca Lucams** y tarjeta breve de cuidados del imán.                                                                                            | Incluye resumen de orden estándar.                                                                                                                         |
+| **`GIFT_BOX`**     | Productos con `packagingType = GIFT_BOX` o **cualquier orden marcada como regalo (`Order.isGift = true`)**                  | Caja rígida/armable de regalo estética kawaii con papel seda, cinta decorativa, sticker sello **Lucams** y tarjeta impresa con el mensaje personalizado (`Order.giftMessage` y `giftSenderName`).                                   | **Prohibido incluir precios, descuentos o montos COP** dentro del paquete; la ficha de empaque oculta importes para proteger la sorpresa del destinatario. |
+| **`BULK_BOX`**     | Pedidos mayoristas B2B, recordatorios corporativos, bodas y eventos masivos (`x50+` unidades / cotizaciones `QuoteRequest`) | Caja máster corrugada de alta resistencia con separadores internos por lotes contados (paquetes de 25/50 unidades protegidos contra roce magnético), sin decoración individual por unidad salvo acuerdo explícito en la cotización. | Incluye remisión de conteo por lote/SKU para recepción rápida del cliente corporativo o wedding planner.                                                   |
+| **`ENVELOPE`**     | Piezas planas livianas individuales (tarjetas dedicatoria sueltas, láminas planas pequeñas)                                 | Sobre rígido acartonado anti-doblez con refuerzo interno e identificación exterior «No doblar».                                                                                                                                     | Incluye comprobante resumido de pedido.                                                                                                                    |
+
+---
+
+## 9. Disaster Recovery (DR), backups en R2, modo mantenimiento y simulacros
+
+### 9.1 Objetivos RPO / RTO, las 5 capas de defensa y alcance real de los backups
+
+- **Objetivos comprometidos en producción:** **`RPO ≤ 24 h`** (pérdida máxima tolerable de datos ante catástrofe total de proveedor) y **`RTO ≤ 4 h`** (tiempo máximo para restituir operación verificada en `https://lucamsshop.com`).
+
+| Capa                     | Componente                                      | Mecanismo primario de resiliencia                                                                     | Respaldo secundario independiente                                                                                                                                                 | RPO efectivo                        |
+| ------------------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| **1. Cómputo y CDN**     | Vercel (`apps/web`)                             | Deployments inmutables por commit en GitHub + **Instant Rollback** en `< 5 min`                       | Código fuente íntegro en GitHub (`production` protegida) desplegable en proyecto nuevo                                                                                            | `0 min` (stateless)                 |
+| **2. Base de datos**     | Supabase PostgreSQL (`lucams-prod`)             | Snapshots diarios / PITR nativo de Supabase (en plan Pro) + migraciones versionadas en Git            | Cron diario `backup.yml` (`07:13 UTC`): `pg_dump` de `public` comprimido y cifrado **GPG AES-256** en Cloudflare R2 (retención **30 días**) + latido `/api/cron/backup-heartbeat` | `≤ 24 h` (`≤ minutos` con PITR Pro) |
+| **3. Objetos binarios**  | Supabase Storage (5 buckets)                    | Almacenamiento redundante S3 subyacente de Supabase                                                   | Cron diario `backup.yml` (`07:13 UTC`): tarball de los 5 buckets cifrado **GPG AES-256** + `manifest.json` sin PII en Cloudflare R2 (retención **30 días**)                       | `≤ 24 h`                            |
+| **4. Respaldo off-site** | Cloudflare R2 (`lucams-backups`)                | Infraestructura independiente de AWS/Supabase/Vercel con cifrado en cliente (`BACKUP_GPG_PASSPHRASE`) | Verificación automática el día `2` de cada mes (`08:27 UTC`) por `.github/workflows/dr-drill.yml` (DB + Storage)                                                                  | Verificado mensualmente             |
+| **5. Dominio y DNS**     | `lucamsshop.com` (`mi.com.co` + Cloudflare DNS) | DNS Anycast en Cloudflare con TTL corto (`300 s`)                                                     | Vigilancia mensual RDAP (`.github/workflows/domain-watch.yml`, día `5` `11:23 UTC` → `POST /api/cron/domain-watch`) contra vencimiento o cambio de nameservers/EPP                | N/A                                 |
+
+- **Alcance y exclusiones explícitas de `backup.yml` (transparencia operativa):**
+  - **Incluido y ensayado mensualmente:** el 100 % de las tablas e índices del esquema `public` (vía [`backup-db-to-r2.mjs`](../apps/web/scripts/backup-db-to-r2.mjs)) y el 100 % de los objetos de los 5 buckets de Storage (vía [`backup-storage-to-r2.mjs`](../apps/web/scripts/backup-storage-to-r2.mjs)).
+  - **Excluido del dump lógico diario:** el esquema interno `auth.*` de GoTrue (`auth.users`, `auth.mfa_factors`), los secretos de `vault.decrypted_secrets` y la configuración de proyecto de Supabase. Ante pérdida total del proyecto Supabase sin PITR de plataforma, los clientes recuperan acceso de inmediato porque el login de tienda es **passwordless por código OTP de email** (al iniciar sesión se vincula por email verificado al perfil `Customer`/`Contact` restaurado en `public`), y los administradores se reenrolan ejecutando `scripts/supabase-auth-email-config.mjs` + `seed-admin.mjs` + registro MFA TOTP en `/admin/seguridad`.
+
+### 9.2 Procedimiento de recuperación end-to-end (7 pasos)
+
+Ante una caída catastrófica o corrupción severa en producción, ejecuta en orden estricto:
+
+1. **Activar cortafuegos de mantenimiento:** establece `NEXT_PUBLIC_MAINTENANCE_MODE=1` en Vercel Production y lanza un Redeploy inmediato (o activa regla temporal 503 en Cloudflare si necesitas corte al segundo; ver §9.3) para frenar nuevas órdenes y mutaciones.
+2. **Evaluar el alcance del incidente:** determina si el fallo es de código/build (ir directo a Drill #3 Rollback Vercel), corrupción parcial reciente en BD con proyecto vivo (usar PITR de Supabase si está activo) o pérdida total del proyecto/región (continuar al paso 3 con R2).
+3. **Aprovisionar destino y restaurar base de datos:**
+   - Si creas un proyecto Supabase nuevo, aplica la estructura base (`prisma migrate deploy` + migraciones `supabase/migrations/002..054`) o restaura directamente el último `db/YYYY-MM-DD/lucams-*.sql.gz.gpg` desde Cloudflare R2 y ejecuta `node packages/db/scripts/verify-security-posture.mjs`.
+   - Recrea los secretos en `vault.secrets` (§5.2) y aplica la configuración SMTP/plantillas OTP con `node scripts/supabase-auth-email-config.mjs --ref <nuevo-ref>`.
+4. **Restaurar los 5 buckets de Storage (si aplica):** descarga y descifra el último `storage/YYYY-MM-DD/lucams-storage-*.tar.gz.gpg` desde R2 y sube los objetos respetando los nombres exactos de bucket y rutas internas (`product-images`, `cms-media`, `customer-uploads`, `design-previews` privado, `production-assets` privado).
+5. **Reapuntar variables de entorno en Vercel:** actualiza `DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` y `SUPABASE_SECRET_KEY` en Vercel Production y dispara un Redeploy limpio.
+6. **Ejecutar smoke test integral antes de abrir tráfico público:** corre `SMOKE_BASE_URL=https://lucamsshop.com node apps/web/scripts/post-deploy-smoke.mjs`, verifica `/api/health/all` con `Authorization: Bearer $CRON_SECRET` y comprueba conciliación de pagos pendientes en Wompi.
+7. **Desactivar modo mantenimiento y documentar post-mortem:** cambia `NEXT_PUBLIC_MAINTENANCE_MODE=0` en Vercel Production, ejecuta Redeploy, verifica `curl -sI https://lucamsshop.com/` (`HTTP/2 200`) y registra tiempos reales de detección, restauración y causa raíz.
+
+### 9.3 Modo mantenimiento (`NEXT_PUBLIC_MAINTENANCE_MODE=1`)
+
+[`apps/web/proxy.ts`](../apps/web/proxy.ts) evalúa `process.env.NEXT_PUBLIC_MAINTENANCE_MODE === "1"` (comparación estricta contra el string `"1"`):
+
+| Ruta solicitada cuando `NEXT_PUBLIC_MAINTENANCE_MODE="1"`                                        | Respuesta de `proxy.ts`                          | Motivo                                                                                |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Storefront público (`/`, `/catalogo`, `/productos/*`, `/estudio/*`, `/checkout`, `/mi-cuenta/*`) | **`307 Temporary Redirect` → `/mantenimiento`**  | Muestra página estática amigable en español sin consultar la base de datos.           |
+| `/mantenimiento`                                                                                 | `200 OK`                                         | Evita bucles de redirección y sirve la pantalla informativa.                          |
+| `/admin/*`                                                                                       | **Permitido** (sigue flujo normal de auth + MFA) | Permite al equipo operar el backoffice y verificar estado interno durante la ventana. |
+| `/api/*` (`/api/health*`, `/api/webhooks/*`, `/api/cron/*`)                                      | **Permitido**                                    | No pierde webhooks tardíos de Wompi/Aveonline/Resend ni bloquea sondas de salud.      |
+| `/_next/*`, `/favicon.ico` y estáticos con extensión                                             | **Permitido**                                    | Necesarios para renderizar estilos y tipografías de `/mantenimiento`.                 |
+
+> **Por qué cambiar `NEXT_PUBLIC_MAINTENANCE_MODE` en Vercel exige obligatoriamente un Redeploy (~2–4 min):**
+> En Next.js, toda variable con prefijo `NEXT_PUBLIC_*` se incrusta (_inlining_) en tiempo de compilación (`next build`). Como advierte textualmente la documentación oficial de Next.js (`docs/01-app/02-guides/environment-variables.md`):
+> _"After being built, your app will no longer respond to changes to these environment variables."_
+> Por lo tanto, editar el valor en **Vercel → Settings → Environment Variables** no surte efecto hasta pulsar **Deployments → Redeploy** sobre el deployment activo de `production`.
+
+Comprobación inmediata desde terminal tras el Redeploy:
 
 ```bash
-cd packages/db
-pnpm exec dotenv -e ../../.env.stg -- node scripts/one-shot/purge-orphan-storage-20261012.mjs
+# Con modo mantenimiento ACTIVO (debe responder 307 y location: /mantenimiento):
+curl -sI https://lucamsshop.com/ | grep -iE '^HTTP|^location'
+
+# Con modo mantenimiento INACTIVO (debe responder 200 sin cabecera location):
+curl -sI https://lucamsshop.com/ | grep -iE '^HTTP|^location'
 ```
 
-(con `--apply` + `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` ejecuta; el cron diario hace innecesario
-correrlo a mano salvo diagnóstico). Frontera conocida: los huérfanos de `product-images` y
-`cms-media` no los barre la capa 3 (su dueño es el catálogo/CMS, no Design) — la mediateca
-tiene filtro «Sin uso» en `/admin/contenido/mediateca`.
+- **Alternativa de corte instantáneo (< 5 s) si no puedes esperar 2–4 min de build:** activa una regla temporal de mantenimiento/503 en **Cloudflare Rules** sobre `lucamsshop.com/*` (excluyendo `/api/webhooks/*` y `/api/health*`) mientras termina el Redeploy de Vercel.
 
-### Symlink de Supabase local con datos de prueba
+### 9.4 Los 3 simulacros de recuperación (DR Drills) y calendario anual
+
+#### Drill #1 — Restauración parcial / Point-in-Time Recovery (PITR en Supabase)
+
+Valida la recuperación quirúrgica ante un borrado humano accidental o migración defectuosa sin pérdida de las últimas horas:
 
 ```bash
-# Reset rápido de la DB local con seed
-supabase db reset                # destruye datos locales y re-aplica migraciones + seed
+# 1. En un proyecto de prueba / rama de restauración de Supabase, restaurar al timestamp previo al incidente
+#    (Dashboard Supabase -> Database -> Backups -> Point in Time / Restore to new project).
 
-# Snapshot manual antes de un cambio peligroso
-supabase db dump --local > backups/local-$(date +%F-%H%M).sql
+# 2. Exportar únicamente la(s) tabla(s) afectada(s) desde la instancia restaurada:
+pg_dump --data-only --format=custom \
+  --table='public."Product"' \
+  --table='public."ProductVariant"' \
+  "$PITR_RESTORED_DIRECT_URL" -f partial-recovery.dump
+
+# 3. Verificar conteos en local/STG antes de reinyectar y validar postura:
+pg_restore --list partial-recovery.dump
+DATABASE_URL="$TARGET_DIRECT_URL" node packages/db/scripts/verify-security-posture.mjs
 ```
 
-### Convenciones de la VM
+#### Drill #2 — Restauración completa desde Cloudflare R2 (`dr-drill.yml` + procedimiento manual)
 
-- **Repo en:** `/home/ansible/workspaces/lucams_shop/`
-- **Logs locales en:** `/home/ansible/workspaces/lucams_shop/logs/` (gitignored)
-- **Backups locales en:** `/home/ansible/workspaces/lucams_shop/backups/` (gitignored)
-- **Git remote:** GitHub del usuario (configurado en Fase 0b).
-- **Hook pre-commit versionado:** `scripts/git-hooks/pre-commit` corre gitleaks sobre lo
-  staged (auditoría 2026-08-24, A-2/A-4). Activación una vez por clon:
-  `git config core.hooksPath scripts/git-hooks` — ya hecho en esta VM. Si gitleaks no está
-  instalado el hook avisa y deja pasar el commit: las capas que mandan son GitHub Push
-  Protection + el job `secrets-scan` de CI.
-- **Nada de credenciales** en historial de shell ni en archivos versionados.
+El workflow [`.github/workflows/dr-drill.yml`](../.github/workflows/dr-drill.yml) ejecuta automáticamente el **día 2 de cada mes a las `08:27 UTC`** (y bajo demanda con `workflow_dispatch`) dos jobs paralelos:
 
----
+1. **`drill` (PostgreSQL 17 efímero):** ejecuta [`apps/web/scripts/dr-drill.mjs`](../apps/web/scripts/dr-drill.mjs), descarga el último `.sql.gz.gpg` desde R2, lo descifra, aplica el SQL completo y comprueba que el `COUNT(*)` real de las tablas críticas (`Product`, `ProductVariant`, `Order`, `Customer`, `CmsField`, `AdminUser`) coincida exactamente con las líneas de cada bloque `COPY` del respaldo.
+2. **`drill-storage` (Streaming sin disco en claro):** ejecuta [`apps/web/scripts/dr-drill-storage.mjs`](../apps/web/scripts/dr-drill-storage.mjs), descarga el último tarball `.tar.gz.gpg` y su `manifest.json`, descifra y recorre el stream `tar` en memoria sin escribir archivos de clientes al disco del runner y valida conteos de objetos y bytes por bucket.
 
-## Compatibilidad local ↔ Vercel (paridad de runtime)
+> **Nota crítica de privacidad y PII en GitHub Actions:** aunque `dr-drill.mjs` y `dr-drill-storage.mjs` solo imprimen conteos agregados y nombres de tablas/buckets (cero PII en logs), el runner descarga y descifra temporalmente datos reales de producción. Mantén el repositorio **privado** o ejecuta `dr-drill.yml` en un **runner privado/self-hosted con logs restringidos** para cumplir Ley 1581 de 2012.
 
-> Mandato #10 dice que la VM funciona como **símil-Vercel local**. Esta sección documenta la paridad entre comandos/configuración local y los que Vercel ejecuta en cada deploy.
-
-### Matriz de paridad
-
-| Aspecto                 | Local (VM)                                                                                                                                                | Vercel                                                                                           | Estado |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------ |
-| Versión Node            | 22.22.2 (NodeSource RPM)                                                                                                                                  | 22 (default Next 16)                                                                             | ✅     |
-| Package manager         | pnpm 11.0.9 (vía corepack)                                                                                                                                | pnpm (detectado por `pnpm-lock.yaml`)                                                            | ✅     |
-| **Build command**       | `pnpm --filter web build`                                                                                                                                 | igual (declarado en `vercel.json`)                                                               | ✅     |
-| **Install command**     | `pnpm install --frozen-lockfile`                                                                                                                          | igual (declarado en `vercel.json`)                                                               | ✅     |
-| **Output directory**    | `apps/web/.next/`                                                                                                                                         | igual (declarado en `vercel.json`)                                                               | ✅     |
-| **Framework detection** | Next.js auto                                                                                                                                              | Forced `"nextjs"` en `vercel.json` (evita falsa detección por `package.json` root del workspace) | ✅     |
-| Image optimization      | `sharp` 0.34.4 (clavado a propósito: la línea 0.35.x rompía las lambdas de Vercel — comentario en `pnpm-workspace.yaml`; build script aprobado ahí mismo) | Vercel managed (mismo binary)                                                                    | ✅     |
-| Edge runtime            | no usado                                                                                                                                                  | no usado (mantenemos `proxy.ts` con runtime nodejs)                                              | ✅     |
-| Telemetry               | `NEXT_TELEMETRY_DISABLED=1` en `.env.local`                                                                                                               | Idem en Vercel env vars                                                                          | ✅     |
-
-### Gap crítico — sincronización de env vars (RESUELTO 2026-08-01)
-
-**Resuelto:** la matriz completa de env vars quedó distribuida por ambiente en Vercel (Production/Preview) el 2026-08-01 — ver «Variables de entorno por ambiente» más abajo. Esta subsección queda como referencia del set mínimo inicial (Fase 0): en local viven en `.env.local`; en Vercel se configuran en Project Settings → Environment Variables.
-
-#### Vars a sincronizar (de `.env.local` a Vercel UI)
-
-Para los 3 environments de Vercel: **Production**, **Preview**, **Development**.
-
-| Variable                               | Pública (visible al cliente) | Notas                                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SITE_URL`                 | ✅                           | Cambia entre local (`http://localhost:3000`) y prod (`https://lucamsshop.com` cuando se compre). **Fuente ÚNICA de la URL canónica** (audit v3 #28): `lib/origin.ts:getCanonicalSiteUrl()` la lee para sitemap, robots, canonicals, OG y `metadataBase`. NO usar el setting CMS `SITE_URL` para esas superficies (causaba split-brain) |
-| `NEXT_PUBLIC_SUPABASE_URL`             | ✅                           | Igual en todos los entornos                                                                                                                                                                                                                                                                                                            |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅                           | Igual en todos los entornos                                                                                                                                                                                                                                                                                                            |
-| `SUPABASE_SECRET_KEY`                  | ❌ Solo server               | **Marcar como Encrypted en Vercel**                                                                                                                                                                                                                                                                                                    |
-| `DATABASE_URL`                         | ❌                           | Pooler (puerto 6543), reemplazar `[YOUR-PASSWORD]` con la db password                                                                                                                                                                                                                                                                  |
-| `DIRECT_URL`                           | ❌                           | Direct (puerto 5432), idem                                                                                                                                                                                                                                                                                                             |
-| `RESEND_API_KEY`                       | ❌ Solo server               | Encrypted                                                                                                                                                                                                                                                                                                                              |
-| `EMAIL_FROM`                           | ❌                           | Texto plano (`Lucams_shop <onboarding@resend.dev>`)                                                                                                                                                                                                                                                                                    |
-| `NEXT_PUBLIC_WA_NUMBER`                | ✅                           | `573208873826`                                                                                                                                                                                                                                                                                                                         |
-| `NODE_ENV`                             | ❌                           | `production` en Vercel (no se setea manual; Vercel lo maneja)                                                                                                                                                                                                                                                                          |
-| `NEXT_TELEMETRY_DISABLED`              | ❌                           | `1`                                                                                                                                                                                                                                                                                                                                    |
-
-> **Cómo agregarlas:** Vercel Dashboard → Project `lucams-shop` → Settings → Environment Variables → "Add New". Para cada var, marcar los 3 entornos (Production, Preview, Development) salvo que el valor difiera. Las que tienen `*_KEY`, `*_SECRET`, `DATABASE_*` deben marcarse como **Encrypted** (default checkbox).
-
-> **Verificación:** después de configurarlas, push cualquier commit. El log del deploy en Vercel debe mostrar `pnpm install` y `pnpm --filter web build` ejecutarse sin "Missing environment variable" warnings.
-
-### Estrategia de ramas, flujo GitHub y CI/CD
-
-Dos ramas permanentes en `github.com/jullieth93/lucams` (ambas protegidas por el ruleset `protect-ramas-criticas`, `id: 26248226`, `bypass_actors: []` — ni admins pueden hacer push directo, force-push ni borrarlas):
-
-| Rama         | Rol                      | Vercel                                               | Base de datos    |
-| ------------ | ------------------------ | ---------------------------------------------------- | ---------------- |
-| `develop`    | Integración + staging    | Preview deploys                                      | Supabase **STG** |
-| `production` | Release / tienda en vivo | **Production Branch de Vercel (vigente 2026-08-05)** | Supabase **PRD** |
-
-- **NO hay `main`** — la rama de producción se llama `production` (decisión de Lucy).
-- **Flujo completo GitHub extremo a extremo:**
-  1. **Rama corta desde `origin/develop`** (`feat/*`, `fix/*`, `chore/*`, `docs/*`) → validaciones locales (`pnpm lint && pnpm typecheck && pnpm format:check && make audit-content` + tests aplicables) → `git push -u origin <rama>` → **PR hacia `develop`** (`gh pr create --base develop`).
-  2. **Gate de PR (`ci.yml`):** exige rama al día (`strict: true`) y los **5 required status checks** en verde (~5–6 min en cambios de código; ~50 s cuando el detector fail-closed `changes` activa el fast-path solo-documental, donde corren `gitleaks`, `prettier --check` y `pnpm audit --prod` mientras los 3 jobs pesados se saltan limpios).
-  3. **Merge a `develop` y validación en STG:** `gh pr merge --merge --delete-branch` (al no haber trigger `push` en `ci.yml`, el merge no duplica la corrida ya certificada). Vercel despliega el Preview conectado a STG; si el cambio incluye migraciones Prisma, SQL de `supabase/migrations` o seeds CMS/catálogo, aplicarlos contra `.env.stg` y validar en STG.
-  4. **Release a PRD (con OK explícito de Lucy):** abrir **PR `develop` → `production`** (`gh pr create --base production --head develop`) → esperar los mismos 5 required checks (1 sola corrida limpia, sin duplicados) → aplicar migraciones Prisma/SQL/seeds en PRD (`.env.local.nube-backup`) → merge (`gh pr merge --merge`).
-  5. **Deploy y smoke automático de PRD:** Vercel compila `production`, actualiza `lucamsshop.com` y emite el evento nativo `deployment_status` (`environment == 'Production'`, `state == 'success'`), que dispara automáticamente [`.github/workflows/post-deploy-smoke.yml`](../.github/workflows/post-deploy-smoke.yml) sobre `ref: production` (5 sondas públicas + drift check `_prisma_migrations`).
-- **Inventario de los 6 workflows de GitHub Actions** (todas las actions pineadas por SHA; `permissions: contents: read` por defecto):
-
-| Workflow                | Triggers vigentes                                                 | Qué certifica / ejecuta                                                                                                                                                                       |
-| ----------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci.yml`                | `pull_request` (`develop`, `production`) + `workflow_dispatch`    | Gate de PR: `changes` (fast-path docs) + 5 required checks (`Typecheck + Lint + Build` con Prettier y `pnpm audit --prod`, `Vitest` + drift schema, `RLS behavior`, `E2E + LHCI`, `Gitleaks`) |
-| `post-deploy-smoke.yml` | `deployment_status` (Vercel `Production` success) + manual        | Smoke read-only contra `lucamsshop.com` + drift check de `_prisma_migrations` haciendo checkout explícito de `ref: production` (los deploys `Preview` se saltan en 0 s)                       |
-| `nightly-full.yml`      | `schedule` (`0 6 * * *` UTC con guard 24 h) + `workflow_dispatch` | Si hubo commits en 24 h (o disparo manual): 6 suites Vitest GoTrue/Storage/Wompi, 7 specs E2E admin/MFA/CMS/auth/retracto + Firefox/WebKit y journey de dinero `wompi-sandbox`                |
-| `backup.yml`            | `schedule` (`13 7 * * *` UTC) + `workflow_dispatch`               | `pg_dump` PG17 + mirror de 5 buckets Storage cifrados con `gpg` AES256 hacia Cloudflare R2 + latido `POST /api/cron/backup-heartbeat`                                                         |
-| `dr-drill.yml`          | `schedule` (`27 8 2 * *` UTC, día 2) + `workflow_dispatch`        | Descifra el dump fresco (≤36 h) de R2, restaura en Postgres limpio verificando conteos exactos vs `COPY` y valida legibilidad del mirror de Storage                                           |
-| `domain-watch.yml`      | `schedule` (`15 13 1 * *` UTC, día 1) + `workflow_dispatch`       | Sondeo mensual RDAP de `lucamsshop.com` → `POST /api/cron/domain-watch` (alerta vencimiento y dead-man switch)                                                                                |
-
-- **Seeds de la ola (cuando el merge trae cambios de DATOS):** tras el merge a `develop` (STG) y tras el release (PRD), correr por ambiente los scripts de `packages/db/scripts` que apliquen — `migrate-cms-v2.mjs` (keys CMS nuevas aditivas), `sync-and-prune-cms-v2.mjs` (sincronización estructural + poda transaccional al retirar claves a Capa 3, ADR-187) y/o `seed-templates.mjs` (plantillas del Estudio). Son idempotentes (nunca pisan campos CMS editados manualmente; `sync-and-prune-cms-v2.mjs` corre en dry-run por defecto y exige `--apply`). Se corren con el env del ambiente (`set -a && source .env.stg && set +a` para STG; `.env.local.nube-backup` para PRD) y después se invalida el caché CMS (ver la nota de «migrate-cms-v2» abajo).
-
-### Homologación de ambientes — procedimiento verificable (ADR-102, 2026-09-15)
-
-Los 3 ambientes (local / STG / PRD) deben tener **0 divergencias VIVAS** en catálogo, variantes, plantillas y CMS. Procedimiento (todo desde `packages/db`):
+Procedimiento manual equivalente en terminal de emergencia (usando `--passphrase-fd 3` para no exponer la frase GPG en `ps aux` ni `.bash_history`):
 
 ```bash
-# 1. Snapshot por ambiente (solo lectura):
-pnpm exec dotenv -e ../../.env.local            -- node scripts/one-shot/homologation-dump-20260915.mjs local
-pnpm exec dotenv -e ../../.env.stg              -- node scripts/one-shot/homologation-dump-20260915.mjs stg
-pnpm exec dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/homologation-dump-20260915.mjs prd
+# 1. Descifrar y restaurar el backup de BD sobre una instancia Postgres 17 limpia:
+gpg -d --batch --yes --passphrase-fd 3 3<<<"$BACKUP_GPG_PASSPHRASE" \
+  lucams-2026-11-01.sql.gz.gpg | gunzip | psql "$RESTORE_DIRECT_URL" -v ON_ERROR_STOP=1
 
-# 2. Diff cruzado (debe decir "HOMOLOGADOS en lo VIVO" en los 3 pares):
-node scripts/one-shot/homologation-diff-20260915.mjs local stg
-node scripts/one-shot/homologation-diff-20260915.mjs stg prd
-node scripts/one-shot/homologation-diff-20260915.mjs local prd
+# 2. Verificar conteos e invariantes de seguridad sobre la BD restaurada:
+DATABASE_URL="$RESTORE_DIRECT_URL" node packages/db/scripts/verify-security-posture.mjs
+DATABASE_URL="$RESTORE_DIRECT_URL" node packages/db/scripts/verify-cms-v2-integrity.mjs
+
+# 3. Inspeccionar o extraer el backup de Storage sin dejar el passphrase en historial:
+gpg -d --batch --yes --passphrase-fd 3 3<<<"$BACKUP_GPG_PASSPHRASE" \
+  lucams-storage-2026-11-01.tar.gz.gpg | tar -tzf - | head -n 30
 ```
 
-- El diff separa divergencias **vivas** (bloquean) de **drift en filas archivadas** (ruido histórico de soft-deletes — se reporta, no bloquea).
-- Las divergencias de DATOS CURADOS (precios, activación de productos) NO se auto-normalizan: se le preguntan a Lucy y se registran como decisión (precedente: ADR-102 ②).
-- La normalización masiva usa `homologate-20260915.mjs` (espejo STG + overrides documentados, dry-run por defecto, env-guard; PRD con bypass).
-- **Diseños prediseñados (2026-10-03):** `DesignGalleryImage` no lo cubría nada — se creó `packages/db/scripts/one-shot/sync-gallery-stg-to-prd.mjs` (dry-run por defecto; `--apply` con env-guard). Cruce por `id` y por `(tag, name)` — las filas sembradas independiente en cada ambiente tienen cuid distinta y el update conserva el id de PRD (FK `DesignAsset.galleryImageId`). Copia además los objetos del bucket `product-images` que falten en PRD. Preflight: aborta si PRD no tiene la columna `variantFilter` (correr `migrate deploy` antes). El comparador `scripts/diag-stg/06-homologacion-datos.sql` incluye `imageUrlB` y `variantFilter` en el checksum desde la misma fecha.
-- El drift archivado NO se persigue: modificar historia archivada no aporta y confunde.
-- **Homologación comercial PRD → espejo (2026-10-13):** `packages/db/scripts/homologate-catalog-from-prd.mjs` (dry-run por defecto, `--apply`, env-guard que bloquea PRD como destino; PRD se lee vía `.env.local.nube-backup`, NUNCA se escribe) alinea en LOCAL/STG: ① estados isActive/deletedAt de productos/variantes (gemelas `-NOMAG` intactas), ② contenido completo de Product (los campos del checksum de `06-homologacion-datos.sql`), ③ `DesignGalleryImage` (cruce por id y `(tag, name)`, inserts conservan el id de PRD) copiando al bucket del espejo los objetos de `product-images` que falten (mismo path, URLs reescritas al host del espejo). Filas del espejo ausentes en PRD: solo se reportan. El stock queda excluido del script rutinario; una excepción exige autorización explícita, solo puede fluir PRD → STG y debe verificarse por SKU. Ojo Prisma: en campos `Json?` el `null` plano escribe JSON `'null'` — SQL NULL exige `undefined` (create) o `Prisma.DbNull` (update), y el checksum compara `variantFilter::text`.
-- **Sync de catálogo/CMS (2026-10-03):** `packages/db/scripts/one-shot/sync-catalog-stg-to-prd.mjs` cubre Category/Product/ProductVariant/CmsPage/CmsSection/CmsField/PersonalizationTemplate con el mismo patrón (dry-run, env-guard, clave natural, conserva ids de PRD). El **stock no viaja nunca STG → PRD** (PRD es operativo real; las variantes nuevas entran con stock 0 y se reportan para carga manual). Ejecutado el 2026-10-03: 6 inserts (producto `separadores-magneticos-delgados` + su variante + 4 settings `LUCAMS_SHIPPING_*`), 83 updates (incl. precio Abecedario $34.900→$33.900, decisión de Lucy), 4 versiones CMS publicadas, 1 objeto de storage.
-- **Excepciones permanentes del comparador (DIFF deliberado, no perseguir):** `AdminUser` (los admins extra de STG son de pruebas; no se replican a PRD por seguridad), `Order`/`Customer` (datos transaccionales por ambiente), env vars por scope (`AVEONLINE_WEBHOOK_SECRET` solo Production, `CRON_JOBS_DISABLED` solo Preview — deliberado). **Incidente 2026-10-03:** los 130 `UrlRedirect` de PRD eran TODOS artefactos `/itest…` de una corrida de tests de integración apuntada a PRD — eliminados; lección: jamás correr suites de integración con el env de PRD cargado (el env-guard de scripts no aplica a vitest; ojo con `dotenv -e .env.local.nube-backup`).
-- **Gate pre-push (lección CI 2026-09-15):** además de typecheck/lint/test/build, correr `pnpm format:check` y `make audit-content` (`apps/web/lib/cms-sitemap-parity.test.ts`) antes de cada push.
-- **Drift check de SCHEMA Prisma ↔ Supabase (A9-08, remediación R3 2026-09-26):** la homologación de arriba cubre DATOS; la estructura la gatea `packages/db/scripts/audit-schema-drift.mjs` (solo lectura) en el job `unit-tests` de CI: snapshot del schema `public` tras `prisma migrate deploy` → se aplican las SQL de `supabase/migrations` → `check --baseline` falla el PR si falta algo declarado en `schema.prisma`, si las SQL crean tablas/columnas no allowlisteadas o si quitan algo que Prisma creó. Tolerancias conocidas (warning, con su historia en el header del script): `rate_limit_buckets` (SQL-only, 003). (`AdminRecoveryCode`/A5-01 se resolvió en R6 2026-09-27: la migración Prisma `20260926120000_admin_recovery_code` la crea y la SQL 008 quedó idempotente — salió de la allowlist.) Local: `pnpm --filter @lucams/db exec node scripts/audit-schema-drift.mjs check`.
+#### Drill #3 — Instant Rollback de cómputo en Vercel (`< 5 min`)
 
-### `vercel.json` del repo
-
-El único `vercel.json` versionado es [`apps/web/vercel.json`](../apps/web/vercel.json) y es **minimal**: solo declara `{ "framework": "nextjs" }` (+ `$schema`). **No hay `vercel.json` en la raíz del repo** ni `ignoreCommand` en el código. La configuración de build/install/output viene del **Root Directory** del proyecto en Vercel UI (debe estar seteado a `apps/web`).
-
-> **Skip de deploys docs-only:** si está activo, vive en la UI de Vercel (Settings → Git → Ignored Build Step) y **no es auditable desde el repo** — verificarlo ahí, no en el código.
-
-> **Por qué Root Directory en UI y no `framework`/`buildCommand` en `vercel.json`:** Vercel valida la presencia de `next` en el `package.json` del **Root Directory** **antes** de leer `vercel.json`. Como nuestro `package.json` del repo root es del workspace (no de Next.js), declarar `framework: nextjs` en `vercel.json` no supera esa validación — produce el error _"No Next.js version detected"_. La solución correcta para monorepos es Root Directory = `apps/web`. Aprendido el 2026-05-09 al fallar el primer deploy con `vercel.json` "completo" — ver [`STATE.md` § sesión 12](STATE.md).
-
-### Configuración requerida en Vercel UI
-
-| Setting            | Valor                          | Cómo                                                                                                                     |
-| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| **Root Directory** | `apps/web`                     | Settings → General → Root Directory → input. **Crítico**: sin esto los deploys fallan con "No Next.js version detected". |
-| Framework          | (auto-detect)                  | Vercel detecta Next.js en `apps/web/package.json`                                                                        |
-| Build Command      | (auto-detect = `next build`)   | —                                                                                                                        |
-| Install Command    | (auto-detect = `pnpm install`) | Detecta `pnpm-workspace.yaml` en el padre, instala desde root del workspace                                              |
-| Output Directory   | (auto-detect = `.next`)        | —                                                                                                                        |
-| Node Version       | 22.x                           | Settings → General → Node.js Version                                                                                     |
-
----
-
-## Entorno local con Make (raíz del repositorio)
-
-> El [`Makefile`](../Makefile) en la raíz del repo concentra únicamente lo que agrega valor operativo real sobre `pnpm`: orquestación segura de Supabase local en Podman rootless, arranque/parada de Next.js en `:4000` con seguimiento de PID en `tmp/` (gitignored), gates compuestos de calidad/RLS y scripts administrativos con carga explícita de `.env.local` / `.env.stg`.
-
-### Comandos principales (`make help`)
-
-| Comando               | Acción                                                                                                             |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `make local-up`       | Reanuda Supabase local en Podman + inicia Next dev en `http://localhost:4000` (`tmp/logs/web-dev.log`)             |
-| `make local-down`     | Detiene Next dev y apaga contenedores Podman **conservando los volúmenes y datos**                                 |
-| `make local-status`   | Muestra el estado de Supabase local y el PID vivo de `:4000` (limpiando PID huérfano si aplica)                    |
-| `make db-local-setup` | Aplica extensiones + `prisma migrate deploy` + `supabase/migrations/*.sql` en orden CI                             |
-| `make db-local-seed`  | Siembra catálogo, plantillas, ocasiones, fichas, CMS v2 y backfill de `Contact` cargando `.env.local`              |
-| `make check`          | Gate rápido pre-push (`pnpm format:check`, `pnpm -r typecheck`, `pnpm -r lint`, tests DB, guards y paridad CMS v2) |
-| `make verify-db`      | Verifica 0 deriva Prisma↔SQL (`audit-schema-drift.mjs`) y 5/5 invariantes RLS/grants (`verify-security-posture`)   |
-| `make test-local`     | Ejecuta la suite Vitest completa contra el stack local (`pnpm --filter web test`)                                  |
-| `make test-rls`       | Ejecuta `rls-coverage` + `rls-matrix` contra PostgREST/GoTrue del stack local                                      |
-| `make build`          | Build de producción Next.js 16 (en máquinas de 4 GB de RAM: correr antes `make db-local-stop`)                     |
-| `make clean-tmp`      | Depura `tmp/` conservando únicamente `tmp/bin/`, `tmp/pids/` y `tmp/logs/`                                         |
-
-### Convenciones del Makefile
-
-- **Carga explícita de entorno en scripts de DB:** todo target que invoca `packages/db/scripts/*` carga `dotenv -e ../../.env.local` (o `.env.stg`), evitando depender de variables sueltas en la terminal.
-- **Protección de volúmenes en Podman rootless:** `db-local-stop` usa `podman stop` nativo (nunca `supabase stop`, que elimina contenedores y choca al recrear volúmenes existentes).
-- **Sin exposición de secretos:** `web-start` exporta `.env.local` en una subshell aislada (`setsid`) sin imprimir valores en consola.
-
----
-
-## Variables de entorno
-
-### Lista consolidada
+Cuando un despliegue nuevo en `production` introduce una regresión de código pero la base de datos sigue intacta:
 
 ```bash
-# ─── App ───
-NEXT_PUBLIC_SITE_URL=http://localhost:3000        # dev
-# NEXT_PUBLIC_SITE_URL=https://lucamsshop.com       # prod
+# 1. Listar los deployments recientes de producción e identificar el último estable:
+vercel ls --prod
 
-NEXT_PUBLIC_WA_NUMBER=573208873826                # WhatsApp temporal del usuario
+# 2. Promover instantáneamente el deployment previo sano al alias lucamsshop.com (sin rebuild):
+vercel promote <url-deployment-previo-sano> --yes
 
-# STORE_MODE (ADR-077, plan de salida 2026-07-21): "catalog" = tienda
-# catálogo + cotización por WhatsApp (Etapa 1, sin pagos/envíos/IA);
-# "full" = tienda completa. **Producción corre en "full" por decisión de Lucy
-# (2026-09-03)** — la tienda vende con pagos reales. En "catalog" las vars de
-# Wompi/Aveonline/Gemini NO se exigen en producción.
-# NEXT_PUBLIC_STORE_MODE=catalog
-
-# ─── Supabase ───
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJxxxxx
-SUPABASE_SECRET_KEY=eyJxxxxx                # Server-only, NUNCA al cliente
-DATABASE_URL=postgresql://postgres:[pwd]@xxx.pooler.supabase.com:6543/postgres?pgbouncer=true
-DIRECT_URL=postgresql://postgres:[pwd]@xxx.supabase.com:5432/postgres
-
-# ─── Wompi (Etapa 2 — requerido en prod solo en modo "full") ───
-WOMPI_ENV=sandbox                                  # sandbox | production
-WOMPI_PUBLIC_KEY=pub_test_xxxxxxxxxxxxxx
-WOMPI_PRIVATE_KEY=prv_test_xxxxxxxxxxxxxx
-WOMPI_INTEGRITY_SECRET=test_integrity_xxxxxxxxxxxxxx
-WOMPI_EVENTS_SECRET=test_events_xxxxxxxxxxxxxx
-# (La llave pública de Wompi NO se expone al navegador: el checkout es redirección al
-# hosted checkout de Wompi. No declarar NEXT_PUBLIC_WOMPI_* — ver apps/web/.env.example.)
-
-# ─── Aveonline (Etapa 2 — requerido en prod solo en modo "full") ───
-AVEONLINE_USUARIO=xxxxxxxxxxxxxx
-AVEONLINE_CLAVE=xxxxxxxxxxxxxx
-AVEONLINE_WEBHOOK_SECRET=xxxxxxxxxxxxxx
-AVEONLINE_ENV=test                                 # test | production
-
-# ─── Resend ───
-RESEND_API_KEY=re_xxxxxxxxxxxxxx
-EMAIL_FROM=Lucams_shop <onboarding@resend.dev>     # dev
-# EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.com>  # prod
-EMAIL_REPLY_TO=hola@lucamsshop.com                     # prod (respuestas de clientes)
-RESEND_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxx         # firma Svix del webhook de Resend (rebotes/quejas).
-                                                   # PROD_REQUIRED: sin ella el endpoint rechaza fail-closed
-                                                   # y la lista de supresión deja de alimentarse. En el
-                                                   # dashboard de Resend suscribir SOLO el grupo "emails".
-
-# ─── Gemini (IA del Estudio — proveedor elegido ADR-058; modo "full" o dev) ───
-GEMINI_API_KEY=xxxxxxxxxxxxxx
-GEMINI_MODEL_PRIMARY=gemini-2.5-flash-lite         # primario (free tier; verificar nombre vigente en doc oficial)
-GEMINI_MODEL_FALLBACK=gemini-2.5-flash             # respaldo si el primario falla
-
-# ─── Cloudflare Turnstile (CAPTCHA invisible en checkout y registro) ───
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAAAxxxxxxxxx  # Para widget en cliente
-TURNSTILE_SECRET_KEY=0x4AAAAAAAxxxxxxxxx            # Server-only, validación de token
-
-# ─── Cloudflare R2 (backups en producción) ───
-R2_ACCOUNT_ID=xxxxxxxxxxxxxx
-R2_ACCESS_KEY_ID=xxxxxxxxxxxxxx
-R2_SECRET_ACCESS_KEY=xxxxxxxxxxxxxx
-R2_BUCKET=lucams-backups
-# BACKUP_GPG_PASSPHRASE: passphrase del cifrado gpg de los dumps (desde 2026-08-29).
-# Vive como GitHub Secret (fail-closed en backup.yml y dr-drill.yml; valor en el
-# gestor de Lucy); en .env* solo hace falta para correr `pnpm --filter web db:backup`
-# o `apps/web/scripts/dr-drill.mjs` a mano.
-
-# ─── Crons (pg_cron → /api/cron/* — OBLIGATORIO en prod) ───
-CRON_SECRET=GENERATE_WITH_OPENSSL_RAND_HEX_32
-
-# ─── Misc ───
-# Modo mantenimiento: "1" (y solo "1") redirige todo el tráfico público a /maintenance
-# (apps/web/proxy.ts). Al ser NEXT_PUBLIC_* queda inlineada en el build → cambiarla en Vercel
-# NO surte efecto sin un redeploy. Ver § Disaster Recovery.
-# NEXT_PUBLIC_MAINTENANCE_MODE=1
-CSRF_SECRET=GENERATE_WITH_OPENSSL_RAND_HEX_32      # firma HMAC de cookies de sesión (carrito/checkout)
-NODE_ENV=development                               # development | production
-PORT=4000                                          # puerto del dev server local (lo exporta `make web-start`;
-                                                   # Next NO lo lee del .env — un `pnpm dev` pelado usa :3000)
-LOG_LEVEL=info                                     # debug | info | warn | error
-NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next.js apagada
-
-# ─── Retención (opcionales — ajuste sin redeploy; defaults entre paréntesis) ───
-# PURGE_STALE_CART_AFTER_DAYS=60        # carritos vivos idle (ADR-143)
-# PURGE_EMPTY_CART_AFTER_DAYS=7         # carritos vacíos
-# PURGE_ABANDONED_CART_AFTER_DAYS=90    # AbandonedCart (email de recuperación)
-# PURGE_IDLE_READY_AFTER_DAYS=90        # diseños READY nunca ordenados (ADR-130)
-# Nota (auditoría 2026-10-20): en ambientes Vercel NO productivos (VERCEL_ENV ≠ "production",
-# p.ej. STG) los plazos de diseños se ACOTAN automáticamente a 14 días
-# (capRetentionDaysNonProd, features/personalization/retention-service.ts) — STG no retiene
-# renders 300-DPI de pruebas durante meses. Un override explícito (estas vars) siempre manda.
+# 3. Ejecutar el smoke test de producción para confirmar restablecimiento:
+SMOKE_BASE_URL=https://lucamsshop.com node apps/web/scripts/post-deploy-smoke.mjs
 ```
 
-> **Nunca commitear los valores reales.** Mantener el archivo `.env.example` (con placeholders) versionado en el repo y `.env.local` (con valores reales) ignorado. Ver [`/.gitignore`](../.gitignore).
+#### Calendario obligatorio de simulacros DR
 
-### Convenciones
-
-- **Vars con `NEXT_PUBLIC_`** son accesibles desde el navegador. **No poner secretos** ahí.
-- **`SUPABASE_SECRET_KEY`** y **`*_PRIVATE_KEY`** son server-only.
-- En desarrollo: archivo `.env.local` (gitignored).
-- En Vercel: configurar por entorno (Production / Preview / Development) en el dashboard.
-- **Nunca commitear** valores reales. Mantener un `.env.example` con valores ficticios como referencia.
-
-### Política de rotación
-
-| Secreto                 | Frecuencia     | Después de                                                                                                                      |
-| ----------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Wompi production keys   | Anual          | Compromiso sospechoso                                                                                                           |
-| Supabase secret key     | Anual o ad-hoc | Compromiso sospechoso. Las nuevas secret keys (`sb_secret_*`) son revocables/rotables sin downtime — múltiples activas a la vez |
-| Resend API key          | Anual          | Compromiso sospechoso                                                                                                           |
-| Gemini API key          | 6 meses        | Cambio de equipo                                                                                                                |
-| Aveonline usuario/clave | Anual          | Compromiso sospechoso                                                                                                           |
+| Frecuencia                       | Ventana programada                      | Simulacro / Actividad                                                                                                                 | Responsable / Evidencia                                                                      |
+| -------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Diaria (automática)**          | `07:13 UTC` (`02:13 COT`)               | Respaldo cifrado de BD + Storage hacia Cloudflare R2 (`backup.yml`) + latido a `/api/cron/backup-heartbeat`                           | Run verde en GitHub Actions; regla `backup_stale` alerta si pasan `> 36 h` sin latido.       |
+| **Mensual (automática — día 2)** | Día `2` de cada mes `08:27 UTC`         | **Drill #2 completo** (`dr-drill.yml`: `drill` BD + `drill-storage` binarios)                                                         | Artefacto de ejecución en GitHub Actions; alerta de fallo en GitHub Actions si no cuadra.    |
+| **Mensual (automática — día 5)** | Día `5` de cada mes `11:23 UTC`         | Vigilancia RDAP de `lucamsshop.com` (`domain-watch.yml` → `POST /api/cron/domain-watch`)                                              | Baseline en `AlertState`; alerta por vencimiento (`60/30/14/7/3/1` días) o cambio de NS/EPP. |
+| **Trimestral (Q1–Q4, asistida)** | Primera semana de ene / abr / jul / oct | **Drill #3** en Preview/PRD + ensayo de **modo mantenimiento** + revisión de **Drill #1** y rotación preventiva de secretos si aplica | Revisión humana del equipo técnico verificando RTO real `< 4 h`.                             |
 
 ---
 
-## Comandos (cuando exista código)
+## 10. Runbooks detallados de respuesta a incidentes
 
-### Desarrollo local
+### 10.1 Orden estancada en `PENDING_PAYMENT`, retraso de webhook Wompi o cobro multi-transacción
 
-```bash
-# Instalar dependencias
-pnpm install
+- **Síntoma:** el cliente reporta débito exitoso en su banco/Nequi, pero el pedido `LCM-YYYY-NNNN` sigue en `PENDING_PAYMENT` o aparece en `/admin/pedidos?reconcile=1` (`needsReconciliation = true`).
+- **Diagnóstico:**
+  1. Abre `/admin/pedidos/[number]` y revisa la tabla `WompiPaymentTransaction` asociada a la orden y el `wompiTransactionId` principal.
+  2. Si el webhook de Wompi aún no llegó, consulta en `comercios.wompi.co` por la referencia `LCM-YYYY-NNNN`. El job `lucams-expire-pending-orders` (cada 15 min) consulta proactivamente la API de Wompi antes de expirar órdenes con `> 30 min`, por lo que pagos `APPROVED` rezagados suelen autoconciliarse en el siguiente ciclo.
+  3. **Caso multi-transacción (`flagForeignApprovedPayment`):** si el cliente intentó pagar dos veces y se aprobaron dos transacciones distintas para la misma orden, el receptor marca `Order.needsReconciliation = true` sin duplicar despacho.
+- **Resolución:** verifica en Wompi cuál ID de transacción conservar y anula/reembolsa la transacción duplicada directamente en `comercios.wompi.co`; luego limpia la bandera de conciliación desde `/admin/pedidos/[number]` dejando nota en auditoría.
 
-# Levantar dev server
-pnpm --filter web dev
+### 10.2 Colisión concurrente por la última unidad de stock (`notifyStockSaleLost`)
 
-# Aplicar migración de Prisma
-pnpm --filter @lucams/db prisma migrate dev
+- **Síntoma:** llega alerta de `notifyStockSaleLost` (deduplicada cada 6 h) y una orden pagada aparece con `needsReconciliation = true`.
+- **Causa arquitectónica:** en Lucams Shop **no existe reserva temporal de inventario en checkout** (el modelo legado de reservas fue retirado para impedir bloqueo de stock por carritos abandonados). El descuento atómico (`stock >= quantity`) ocurre únicamente en la transición verificada a `PAID`. Si dos compradores pagan exactamente al mismo segundo la última unidad física, el primero descuenta el stock y el segundo queda registrado en `PAID` con `needsReconciliation = true`.
+- **Resolución:** revisa en taller si es factible producir la unidad adicional en el turno actual; si lo es, repón `+1` en `/admin/inventario` y procesa el pedido normalmente. Si es un artículo agotado no fabricable, contacta al comprador de inmediato, ejecuta el reembolso en Wompi y aplica §8.4 (`refundOrder`).
 
-# Generar cliente Prisma
-pnpm --filter @lucams/db prisma generate
+### 10.3 Orden `PAID` sin guía generada en Aveonline
 
-# Seed inicial de productos
-pnpm --filter @lucams/db prisma db seed
+- **Síntoma:** la orden está en `PAID` / `PROCESSING`, pero `trackingNumber` sigue vacío o `/admin/pedidos` muestra error de despacho.
+- **Orden exacto de diagnóstico:**
+  1. Lee `Order.shipmentLastError` en `/admin/pedidos/[number]`.
+  2. Busca en `/admin/errores` (`ErrorLog`) entradas con código/contexto `shipping.aveonline.createshipment.fail`.
+  3. Consulta `GET /api/health/aveonline` (autenticado con `Bearer $CRON_SECRET`) para descartar credenciales vencidas, saldo insuficiente en billetera Aveonline o caída de la API de la transportadora.
+  4. Si el error es `MissingShippingDimsError`, audita pesos y dimensiones con `node packages/db/scripts/shipping-dims-audit.mjs` y completa las medidas del producto/variante en `/admin/productos`.
+- **Resolución:** corregida la causa (dimensiones, dirección Dane o saldo en Aveonline), reintenta la emisión de guía desde `/admin/pedidos/[number]`. Una vez emitida, si el webhook de Aveonline fallara más adelante, el job `lucams-tracking-sync` (`4,19,34,49 * * * *`) sincroniza estados cada 15 min.
 
-# Lint
-pnpm lint
+### 10.4 Fallos en `RenderJob` 300 DPI o decodificación de imagen en `sharp@0.35.5`
 
-# Typecheck
-pnpm typecheck
+- **Síntoma:** un `RenderJob` pasa a `FAILED` tras 3 intentos, queda bloqueado en `PROCESSING` o la descarga ZIP en `/produccion` responde HTTP `409`.
+- **Diagnóstico y resolución:**
+  - Si un worker murió a mitad de ejecución, espera a que venza el lease de **5 minutos** (`lockedAt`): el siguiente pulso de `lucams-process-render-jobs` lo retomará automáticamente desde `doneUnits`.
+  - Si `lastError === 'NEEDS_KONVA'`, abre `/admin/pedidos/[number]/produccion` en navegador de escritorio para completar el render asistido y subir el asset final.
+  - Si `lastError` reporta imagen corrupta o límite de píxeles excedido en [`sharp-safe.ts`](../apps/web/features/personalization/sharp-safe.ts), descarga el archivo original desde `customer-uploads`, valida que no esté truncado, re-encola el job desde `/produccion` o coordina con soporte al cliente el reemplazo de la fotografía dañada.
 
-# Tests unitarios
-pnpm test
+### 10.5 Correo transaccional que no llega al cliente (Resend / Svix)
 
-# Tests E2E (Playwright)
-pnpm --filter web test:e2e
+- **Síntoma:** el cliente no recibe OTP de acceso, confirmación de compra o guía de envío.
+- **Diagnóstico y resolución:**
+  1. Verifica que `EMAIL_SEND_DISABLED` no sea `"true"` en el ambiente y consulta `GET /api/health/email`.
+  2. Busca el destinatario en `EmailDeliveryLog` y verifica que no esté listado en `EmailSuppression` por rebote duro (`bounced`) o queja (`complained`).
+  3. Revisa en el dashboard de Resend el estado del mensaje y del endpoint Svix (`/api/webhooks/resend`). **Regla de oro:** en la suscripción del webhook de Resend mantén activos únicamente `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.bounced` y `email.complained`; jamás actives el grupo global `emails` (incluye `email.received` y contamina logs con HTTP `400`).
 
-# Auditoría responsive en 6 perfiles de viewport (cliente público/auth/admin;
-# reporte consolidado en tmp/audit-20261013/report.json — ADR-154; con
-# E2E_ENV=stg E2E_AUTH=1 audita también las rutas autenticadas de STG)
-pnpm --filter web test:audit-responsive
+### 10.6 Proyecto Supabase en tier Free pausado por inactividad de 7 días
 
-# Lighthouse local (Lighthouse CI autorun — el mismo gate del job `lighthouse` de CI)
-pnpm lhci
-```
+- **Síntoma:** `lucams-stg` (o un entorno en plan Free sin tráfico) rechaza conexiones TCP y `/api/health/db` falla con timeout o host inalcanzable.
+- **Prevención activa:** en `PRD` el cron `uptime-monitor-prd` (cada 5 min) y los jobs `pg_cron` mantienen actividad constante; en `STG`, `uptime-monitor-prd` corre desde `lucams-stg` cada 5 min manteniendo despierto el proyecto.
+- **Resolución si ocurre una pausa:** ingresa a `supabase.com/dashboard` → selecciona el proyecto pausado → pulsa **Restore project** (tarda ~2–5 min), verifica conectividad con `GET /api/health/db` y ejecuta `node packages/db/scripts/verify-security-posture.mjs`.
 
-### Despliegue
+### 10.7 Fallo de build en Vercel o deploy de `production` que no actualiza `lucamsshop.com`
 
-```bash
-# Vercel despliega producción desde la rama `production` (release = fast-forward
-# de `develop`; no existe `main`) y previews en cada push a `develop` / PR.
-# Ver «Estrategia de ramas y releases» y «Environments» más abajo.
-# OJO: `vercel deploy` CLI desde la raíz NO sirve en este monorepo (sube ~250 MB
-# y revienta el límite de 100 MB de Vercel — el deploy real es vía git push;
-# ver «Checklist STG» punto 7).
-# Despliegue manual (excepcional):
-vercel deploy --prod
-
-# Promover preview a producción:
-vercel promote <deployment-url>
-# OJO (incidente 2026-10-01): tras un merge a `production`, verificar que el
-# dominio lucamsshop.com quedó apuntando al deployment nuevo — Vercel puede
-# dejar el deployment del merge SIN alias de dominio (el sitio sigue sirviendo
-# el build anterior aunque el deploy esté Ready). Si pasa:
-#   vercel promote <deployment-url>
-# Prevención: revisar Settings → Domains en Vercel (asignación del dominio a
-# la rama production) y/o migrar los nameservers de Cloudflare a Vercel DNS.
-
-# Rollback:
-vercel rollback <deployment-url>
-```
-
-### Supabase
-
-```bash
-# Aplicar migración SQL adicional (RLS, funciones)
-supabase db push
-
-# Conectarse a la DB
-supabase db connect
-
-# Backup manual
-supabase db dump --data-only > backup-$(date +%F).sql
-```
-
-### Editar contenido CMS por script → invalidar caché
-
-Las páginas públicas leen el modelo CMS v2 de 3 capas (ADR-082 / ADR-187: 9 contenedores, 29
-secciones, 166 campos en `CmsPage`/`CmsSection`/`CmsField`) mediante un único snapshot en
-`unstable_cache` (`["cms-snapshot-v2"]`, tag `"cms"`, TTL 1h, `apps/web/lib/cms.ts`). Las
-acciones del admin lo invalidan solas (`updateTag("cms")`), pero **un script de
-`packages/db/scripts` que edite CMS directo en DB NO puede invalidarlo** (`updateTag` solo
-corre dentro de una Server Action de Next — confirmado: la opción "script que dispara el tag"
-no es viable fuera de un request). Después de correr cualquiera de esos scripts
-(`migrate-cms-v2.mjs`, `sync-and-prune-cms-v2.mjs`):
-
-1. Entra a **`/admin/contenido`** (índice de páginas).
-2. Click en **"Actualizar caché de contenido"**.
-
-Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminActionLog`
-(`cms.cache.refresh`). Si no se hace, el sitio sirve la versión vieja hasta 1 hora.
-
-> **Nota (2026-09-04):** los scripts one-shot `seed-legal-content-2026-07.mjs`,
-> `update-legal-ley-2439.mjs` y `fix-voseo-cms.mjs` ya se ejecutaron y se eliminaron
-> (commit `c436195`); la publicación de textos legales hoy es manual vía
-> `/admin/contenido` (CMS v2, campos `legal.*`).
-
----
-
-## Procedimientos operativos frecuentes
-
-### Procedimiento: Reembolso de un pedido (dinero 100% manual)
-
-Qué hace el SISTEMA cuando reembolsas desde `/admin/pedidos/[number]` → "Reembolsar pedido…"
-(requiere SUPERADMIN + MFA reciente + checkbox "el dinero ya fue devuelto"):
-
-1. **Tú primero mueves el dinero, a mano**: Wompi → dashboard → transacción → "Devolver"
-   (tarjeta/billetera), o transferencia bancaria si el pedido fue contraentrega (COD — no
-   existe transacción Wompi que revertir). NO hay llamada automática a la API de Wompi:
-   el sistema nunca mueve plata.
-2. Con el checkbox marcado, la acción registra de forma **atómica** (una sola transacción DB):
-   - `Order.status = REFUNDED` con `refundedAt/By`, motivo y monto total del pedido.
-   - **Stock repuesto** de cada variante (revert del decremento del pago, idempotente).
-   - **Cupón liberado** si el pedido usó uno (vuelve a estar disponible para el cliente).
-   - Auditoría `order.refund` con quién confirmó el dinero.
-3. **Email automático al cliente** ("Reembolso procesado — pedido \<n\>") con monto, motivo
-   opcional y la nota de que la acreditación puede tardar unos días hábiles (esa espera la
-   define Wompi/el banco, no nosotros).
-4. Lo que el sistema **NO hace**: anular la guía Aveonline (si ya se generó, gestión manual),
-   ni tocar retractos (flujo aparte: `/admin/retractos`, también con dinero manual), ni
-   reembolsos parciales (siempre es por el total del pedido).
-
-Si el email no llega, ver "Incidente: Email no llega al cliente". El registro del reembolso
-NO depende del email (es best-effort): la orden ya quedó REFUNDED aunque el correo falle.
-
----
-
-## Runbook de incidentes
-
-> Los incidentes son efímeros (política de documentación): se trabajan en `tmp/` (gitignored) con descripción, impacto, root cause, mitigación y prevención; al cerrarse, la postura resultante se consolida en `SECURITY.md` o aquí y el archivo se borra.
-
-### Incidente: Webhook de Wompi no procesó una orden
-
-**Síntomas:** cliente pagó (recibe email de Wompi), pero `Order` sigue en `PENDING_PAYMENT`.
-
-**Diagnóstico:**
-
-1. Verificar `WebhookEvent` en DB: ¿se recibió el evento? Si no, el problema está en Wompi (panel de eventos).
-2. Si se recibió: ver `processedAt`. Si está null, ver Vercel Logs del request `/api/wompi/webhook` para errores.
-3. Verificar que la firma del webhook era válida.
-
-**Mitigación:**
-
-1. Validar manualmente el pago en panel Wompi.
-2. Marcar `Order.status = PAID` desde admin con razón "manual_after_webhook_failure".
-3. Crear envío (guía) Aveonline manualmente.
-4. Notificar al cliente.
-
-**Prevención:**
-
-- Implementar reintentos con backoff cuando el webhook handler falle (vía `pgmq` con visibility timeout, ADR-017). (2026-09-04: pgmq nunca se adoptó — ADR-017 SUPERSEDED; si esta prevención sigue pendiente, rediseñar sobre pg_cron + pg_net).
-- Job `pg_cron` cada 15 min que enqueue en `order_reconciliation` las órdenes en `PENDING_PAYMENT` con > 1h y consume los mensajes consultando Wompi por su estado real.
-
----
-
-### Incidente: Stock negativo o sobreventa
-
-**Síntomas:** dos órdenes pagaron por el mismo último item disponible.
-
-**Diagnóstico:**
-
-1. Ver `InventoryLog` del variant afectado en orden cronológico.
-2. Verificar timing: ¿hubo dos pagos en menos de 1s?
-
-**Mitigación:**
-
-1. Una de las órdenes ya pagada se contacta al cliente para ofrecer:
-   - Reembolso completo, o
-   - Reservar para próxima reposición + cupón de compensación.
-2. Marcar la orden como `CANCELLED` con razón "oversold_compensated".
-
-**Prevención (modelo cerrado en ADR-014):**
-
-- **Reserva de stock al pasar a `PENDING_PAYMENT`** vía tabla `StockReservation` con `expiresAt = NOW() + 15 min`.
-- **Cleanup vía `pg_cron`** cada minuto: `DELETE FROM "StockReservation" WHERE "expiresAt" < NOW()` (libera la reserva).
-- **Descuento real** al pasar a `PAID`: transacción atómica con `SELECT ... FOR UPDATE` sobre `ProductVariant`, registrar `InventoryLog` con `reason='ORDER_PAID'`.
-- Constraint `CHECK ("stock" >= 0)` a nivel DB sobre `ProductVariant`.
-- Si la reserva expiró antes del PAID y ya no hay stock: webhook handler aborta, marca orden `CANCELLED`, notifica al cliente y reembolsa vía Wompi.
-
----
-
-### Incidente: Supabase pausado por inactividad (solo Free)
-
-**Síntomas:** el sitio devuelve 500 al consultar la DB.
-
-**Diagnóstico:** dashboard Supabase muestra el proyecto en estado "paused".
-
-**Mitigación:**
-
-1. Click "Restore" en el dashboard.
-2. Esperar 1-2 min a que la DB esté disponible.
-
-**Prevención:**
-
-- Migrar a Pro antes del lanzamiento (no se pausa).
-- Mientras tanto, en dev hacer al menos un deploy o consulta semanal.
-
----
-
-### Incidente: Email no llega al cliente
-
-**Síntomas:** cliente reporta no haber recibido confirmación.
-
-**Diagnóstico:**
-
-1. Buscar el email en panel Resend (logs de envío).
-2. Si dice "delivered" → revisar SPAM del cliente; problema del MTA.
-3. Si dice "bounced" → email inválido o blocklist.
-4. Si no aparece → el código no llamó al SDK; revisar Vercel Logs.
-
-**Mitigación:**
-
-- Reenviar manualmente desde admin.
-- Si el dominio está blocklisted, contactar al ISP para deslistar.
-
-**Prevención:**
-
-- Alertar en Resend cuando bounce rate > 5%.
-- Validar email en checkout con regex + DNS MX lookup opcional.
-
----
-
-### Incidente: Vercel deploy falla
-
-**Síntomas:** PR muestra "Build failed" en Vercel.
-
-**Diagnóstico:** Logs de build en el dashboard de Vercel.
-
-**Mitigación:**
-
-- Si es error de TS/lint: arreglar y hacer push.
-- Si es error de instalación: verificar `package.json` y `pnpm-lock.yaml` versionados.
-- Si Vercel está caído: esperar (status.vercel.com).
-
-**Prevención:**
-
-- CI en GitHub Actions corre antes del merge para no llegar a Vercel con errores triviales.
-
----
-
-### Incidente: Pago realizado pero guía no se creó en Aveonline
-
-**Síntomas:** orden en `PAID` sin `trackingNumber`.
-
-**Diagnóstico:** Vercel Logs del flujo post-pago.
-
-**Mitigación:**
-
-1. Crear el envío manualmente desde admin (`/admin/ordenes/[id]/crear-envio`).
-2. Si Aveonline está caído (verificar status), reintentar después.
-
-**Prevención:**
-
-- Cola `shipment_creation_retry` en `pgmq` con visibility timeout 60s y backoff implícito por reintentos del consumer. (2026-09-04: pgmq nunca se adoptó — ADR-017 SUPERSEDED; si esta prevención sigue pendiente, rediseñar sobre pg_cron + pg_net).
-- Job `pg_cron` cada 15 min: detecta órdenes `PAID` sin `trackingNumber` con > 1h y las enqueue.
-- Consumer idempotente: chequea `trackingNumber` antes de crear (no duplicar guías en Aveonline).
-
----
-
-## Plan de monitoreo (RESUELTO 2026-09-14 — job pg_cron en Supabase STG, sin SaaS/Actions/VM)
-
-> **Decisión (Lucy, 2026-09-13/14):** ningún monitor SaaS gratuito (UptimeRobot/BetterStack/
-> Sentry) por dependencia de tiers que luego piden suscripción; ningún consumo de minutos de
-> GitHub Actions; y **tampoco la VM de desarrollo** (no siempre está encendida). En su lugar,
-> **job pg_cron `uptime-monitor-prd` dentro del proyecto Supabase de STG** — infraestructura
-> administrada 24/7 (la misma que ya corre los crons de la app), dominio de fallo independiente
-> de Vercel/PRD, $0:
->
-> - **Definición versionada:** `scripts/monitor-uptime-stg.sql` (se aplica SOLO en STG, nunca
->   en PRD; no forma parte de `supabase/migrations/*` justamente para no replicarse). Como
->   pg_net es asíncrono, el job trabaja en **2 fases por corrida** (cada 10 min): colecta el
->   lote anterior y dispara el nuevo. Una falla solo cuenta si se sostiene **2+ corridas
->   seguidas** (~20 min) — las transitorias no alertan.
-> - **Alerta:** con falla persistente, POST a Resend desde SQL (email a `ALERT_EMAIL`,
->   anti-spam 30 min, estado en la tabla `uptime_monitor_state` de STG). **Reporte:** cada
->   corrida hace POST a `/api/cron/monitor-heartbeat` de PRD → tile «Monitor externo
->   (Supabase STG)» en `/admin/observability` y reglas `uptime_monitor_failing` /
->   `uptime_monitor_stale` (esta última = el dead-man del propio job).
-> - **Secretos en el Vault de STG** (nunca en el SQL): `monitor_prd_base_url`,
->   `monitor_resend_api_key`, `monitor_email_from`, `monitor_alert_email`,
->   `monitor_cron_secret`.
-> - **Respaldo manual:** `node apps/web/scripts/uptime-monitor.mjs --dry-run`
->   sondea desde cualquier máquina con `~/.config/lucams/uptime.env` — útil si STG está
->   en mantenimiento.
->
-> Cubre el ciego histórico: caída del propio sistema de alertas (dead-man de crons), caída de
-> Vercel y probes reales de Wompi/Aveonline/Resend caídos. **Limitación declarada:** si el
-> proyecto Supabase de STG está caído/en pausa, no hay monitor externo (los alertas in-app
-> siguen) — `uptime_monitor_stale` lo delata a los 30 min. ~~Workflow GHA y monitor por VM~~:
-> existieron 1 día cada uno y se retiraron (2026-09-13/14); si algún día se quiere redundancia,
-> el repo es público y Actions no cobra.
->
-> Complemento in-app (ya implementado en la remediación 360°): heartbeat de backups vía
-> `POST /api/cron/backup-heartbeat` (lo invoca `backup.yml` al terminar; regla `backup_stale`
-> si pasan >36 h sin latido) y `/api/health/crons` con los 11 jobs.
->
-> **Vigilante del dominio lucamsshop.com (2026-09-19 — L-H3/L-N1 de la auditoría 360°):**
-> el dominio (expira 2027-07-19) no tenía alerta de renovación ni detección de secuestro.
-> Productor: **workflow `domain-watch.yml` de GitHub Actions** (**mensual: día 5, 11:23 UTC ≈
-> 6:23 AM Colombia** — decisión Lucy 2026-09-20: mensual, no diario, porque el repo no será
-> público siempre y en privado los minutos de GHA contarían; trade-off aceptado: umbrales de
-> expiración alcanzables 60/30 días y detección de cambio de NS/status en hasta ~30 días; runners
-> Azure) — la vía pg_cron+pg_net desde Supabase STG se descartó el mismo
-> día: Verisign y rdap.org RECHAZAN las conexiones HTTPS salientes de pg_net (verificado en
-> vivo; api.github.com sí responde desde el mismo pg_net — el bloqueo es del lado RDAP). El
-> workflow consulta `https://rdap.verisign.com/com/v1/domain/lucamsshop.com` (2 intentos ×
-> 20 s) y hace POST a `/api/cron/domain-watch` de PRD con `x-cron-secret` (el MISMO secret
-> `CRON_SECRET` ya existente en GitHub — no hay secreto nuevo). La app
-> (`features/observability/domain-watch.ts`, estado en `AlertState` keys `domain-watch:*`)
-> siembra el baseline en la primera observación sin alertar y luego alerta: **expiración**
-> (crítica al cruzar 60/30/14/7/3/1 días, una vez por umbral; con ≤3 días, recordatorio si
-> la última alerta tiene >20 h), **cambio de nameservers o status EPP** (crítica — posible
-> secuestro/suspensión ICANN, p.ej. aparece `client hold`; se alerta por CAMBIO y se
-> actualiza el baseline) y **RDAP caído** (alta a la 2ª corrida seguida con `rdapOk=false`).
-> El latido `cron:domain-watch` (CRON_JOBS, 24 h) lo cubre el dead-man switch: si el workflow
-> deja de correr, `cron_stale_domain-watch` dispara a las 48 h. Acción humana ante alerta de
-> NS/status: verificar en el registrador (mi.com.co) que el cambio sea propio; si no, rotar
-> clave de la cuenta + MFA + transfer-lock y contactar soporte (posible secuestro en curso).
->
-> ~~Decisión pendiente: alternativa gratuita antes del lanzamiento.~~ (Las opciones SaaS quedan
-> descartadas; ADR futura solo si se necesita algo más fino que el monitor de STG.)
-
-### Mientras tanto (Fase 0a–6)
-
-- `console.error` con contexto en cada catch.
-- Vercel Logs accesible vía dashboard.
-- Cliente reporta errores manualmente vía WhatsApp / email.
-
----
-
-## Backup y recuperación
-
-### Durante desarrollo (Free)
-
-- **Supabase Free** no tiene backups automáticos. **Crítico:** export semanal manual:
+- **Síntoma A (build rojo):** revisa el log de compilación en Vercel; las causas típicas son `Root Directory` distinto de `apps/web`, falta de una variable `PROD_REQUIRED` / `FULL_MODE_REQUIRED` en [`apps/web/lib/env.ts`](../apps/web/lib/env.ts) o error de tipos que no pasó por `make check`.
+- **Síntoma B (build `READY`, pero `lucamsshop.com` sigue sirviendo el commit anterior):** ocurre cuando Vercel deja el deployment con `stage` sin promover automáticamente el alias de dominio. Ejecuta:
   ```bash
-  supabase db dump --data-only > backups/$(date +%F).sql
+  vercel ls --prod
+  vercel promote <deployment-url-nuevo-ready> --yes
+  SMOKE_BASE_URL=https://lucamsshop.com node apps/web/scripts/post-deploy-smoke.mjs
   ```
-- Subir a un repo privado o Drive del usuario.
 
-### En producción (Supabase Pro)
+### 10.8 Edición directa en BD de CMS v2 o catálogo que no se refleja en tienda
 
-- **PITR 7 días** automático.
-- **Export adicional diario a Cloudflare R2** (ADR-059) — implementado:
-  - Script: [`apps/web/scripts/backup-db-to-r2.mjs`](../apps/web/scripts/backup-db-to-r2.mjs) — `pg_dump` (plano, `--no-owner --no-privileges`) → gzip → **cifrado gpg simétrico AES256** (desde 2026-08-29, hallazgo A-3 de la auditoría 2026-08-24: el dump lleva PII — Ley 1581 — y su confidencialidad no puede depender solo del ACL del bucket) → sube a R2 (S3-compatible, `@aws-sdk/client-s3`) → poda backups viejos (conserva los últimos `BACKUP_KEEP` — default 8 en el script; el workflow fija 30 ≈ 1 mes de diarios). Llaves `db/lucams-<UTC>.sql.gz.gpg` ordenables (los `.sql.gz` legacy sin cifrar los va podando la retención y ya no entran al DR drill).
-  - Workflow: [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) — cron diario (07:13 UTC; era semanal — lunes 07:00 — hasta 2026-08-04) + `workflow_dispatch`. Instala `postgresql-client-17` (el server Supabase es PG17; `pg_dump` < 17 rechaza el volcado). Un job `gate` **salta limpio** si faltan los secrets (sin correos de error hasta configurar).
-  - **R2 ya provisionado (opera desde 2026-07-27):** bucket `lucams-backups` + token de API R2 creados en Cloudflare y los GitHub secrets `BACKUP_DATABASE_URL` (conexión DIRECTA, no pooler), `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` configurados; workflow validado en corrida manual. Los `R2_*` de los `.env*` quedan como placeholder — los reales viven solo en GitHub Secrets (llenarlos solo para correr `pnpm db:backup` a mano). **`BACKUP_GPG_PASSPHRASE`** (GitHub Secret desde 2026-08-29; el valor está en el gestor de Lucy): sin ella el backup **falla a propósito** (fail-closed — un dump sin cifrar en R2 es peor que un correo de error) y el DR drill la usa para descifrar.
-  - Local: `pnpm --filter web db:backup` con el entorno cargado (requiere `pg_dump` 17 y `gpg` locales + `BACKUP_GPG_PASSPHRASE`).
-- **Mirror diario de Supabase Storage a R2** (hallazgo F-16, auditoría 2026-09-04) — implementado:
-  - Script: [`apps/web/scripts/backup-storage-to-r2.mjs`](../apps/web/scripts/backup-storage-to-r2.mjs) — lista TODOS los objetos de cada bucket con la API de Storage (service key server-side; recorrido recursivo + paginación de a 1000), los empaqueta en `tar.gz` por bucket con un ustar mínimo propio (sin dependencias nuevas), los cifra con **gpg simétrico AES256** (misma `BACKUP_GPG_PASSPHRASE` del backup de la DB — las fotos de `customer-uploads` son PII, Ley 1581) y sube a R2 en streaming (solo el CIFRADO toca disco, en un temp 0600; la memoria no crece con el tamaño de los objetos). Snapshot COMPLETO por bucket (no incremental): a esta escala (cientos de objetos) un archivo autocontenido por bucket y día es lo más simple de verificar y restaurar. Llaves `db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg`; manifiesto JSON por corrida en `db-storage/lucams-<UTC>.manifest.json` (solo conteos por bucket: objetos y bytes — NUNCA paths ni datos personales, el manifiesto va sin cifrar para que el drill elija qué verificar). Retención `BACKUP_KEEP` por bucket y para manifiestos (el workflow fija 30).
-  - Buckets cubiertos (configurable vía `BACKUP_STORAGE_BUCKETS`): `customer-uploads`, `production-assets`, `design-previews`, `cms-media`, `product-images`.
-  - Workflow: job `backup-storage` de [`.github/workflows/backup.yml`](../.github/workflows/backup.yml), tras el backup de la DB, con gate propio (`storage_configured`): si faltan los secrets nuevos el job se SALTA limpio sin apagar el backup de la DB.
-  - Secrets `BACKUP_SUPABASE_URL` y `BACKUP_SUPABASE_SECRET_KEY`: **configurados y mirror ACTIVO** (verificado 2026-10-13, run 38418418178 con `HAS_STORAGE=true`). Si algún día falta alguno, el job se salta limpio con aviso amarillo sin apagar el backup de la DB.
-  - Local: `pnpm --filter web storage:backup` (cae a `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SECRET_KEY` si no hay `BACKUP_SUPABASE_*`; requiere `gpg` y `BACKUP_GPG_PASSPHRASE`).
-  - **Lo que el backup NO cubre:** `auth.users` sigue sin restore validado (el dump `pg_dump` la incluye como schema `auth`, pero nunca se ha ensayado re-enlazarla con GoTrue en un restore real — el drill #2 verifica solo tablas públicas). Tampoco cubre la configuración del proyecto Supabase (auth providers, políticas de Storage, Vault, edge functions): se recrean a mano desde el repo/dashboard.
-- Verificar restauración cada trimestre con un environment de testing.
+- **Síntoma:** ejecutaste un script de sincronización (`sync-catalog-stg-to-prd.mjs`, `migrate-cms-v2.mjs`) o una corrección SQL directa y el storefront sigue mostrando el texto o producto anterior.
+- **Causa:** los scripts CLI se conectan directo a PostgreSQL y no invalidan la Data Cache en memoria/CDN de las lambdas de Vercel (`revalidateTag` / `updateTag`).
+- **Resolución:**
+  - **Para textos, secciones y settings del CMS (`cms`):** entra a `/admin/contenido` y pulsa el botón **«Actualizar caché de contenido»** (invoca `revalidateCmsAction` → `updateTag("cms")` inmediato).
+  - **Para catálogo y variantes (`catalog`):** edita y guarda cualquier producto en `/admin/productos` (dispara invalidación del tag `catalog`) o espera su ventana máxima de expiración automática (**5 minutos**, `revalidate: 300`).
 
----
+### 10.9 Pérdida de dispositivo MFA TOTP de un administrador y reconfiguración SMTP Auth
 
-## Healthchecks
+- **Bloqueo de MFA TOTP (teléfono extraviado o dañado):**
+  1. Verifica la identidad del miembro del equipo por canal secundario directo con dirección.
+  2. Desde una estación autorizada con credenciales directas del ambiente, ejecuta primero en dry-run y luego con confirmación interactiva de host:
+     ```bash
+     EMAIL=operador@lucamsshop.com make admin-mfa-reset
+     # Para aplicar en local/STG (en PRD requiere además LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 y DIRECT_URL):
+     cd packages/db
+     EMAIL=operador@lucamsshop.com node scripts/admin-mfa-reset.mjs --apply
+     ```
+  3. El administrador inicia sesión inmediatamente en `/admin/login` y el proxy lo redirige a `/admin/seguridad` para enrolar su nuevo autenticador TOTP (`aal2`).
+- **Desconfiguración de correos OTP de Supabase Auth:** si GoTrue vuelve al límite por defecto o pierde las plantillas en español, reaplica SMTP de Resend y los HTML de [`supabase/auth-templates/`](../supabase/auth-templates/) con:
+  ```bash
+  SUPABASE_ACCESS_TOKEN=... RESEND_API_KEY=... \
+    node scripts/supabase-auth-email-config.mjs --ref <project-ref>
+  ```
 
-> Implementados en `apps/web/app/api/health/`.
+### 10.10 Alerta de vigilancia RDAP del dominio (`domain-watch.yml`) y errores en vivo sin BD
 
-- `GET /api/health` — liveness de la app (200 si el servidor corre; no chequea dependencias externas). Respuesta mínima `{ status, service, timestamp }` — **sin `version` ni `environment`** (auditoría 2026-08-24, C-3: el SHA exacto identifica el commit en el repo público — fingerprinting del deploy).
-- `GET /api/health/db` — 200 si Postgres responde (`SELECT 1` vía Prisma).
-- `GET /api/health/storage` — 200 si el bucket de Supabase Storage responde.
-- `GET /api/health/resend` — 200 si la API key de Resend es válida y el dominio de `EMAIL_FROM` está verificado (no envía emails).
-- `GET /api/health/aveonline` — autentica contra Aveonline y reporta qué cuenta responde (detecta la cuenta demo en `production`).
-- `GET /api/health/wompi` — 200 si `GET /merchants/{publicKey}` responde OK contra el ambiente `WOMPI_ENV` (no crea transacciones). Sin `WOMPI_*` (modo catálogo) devuelve `skipped`.
-- `GET /api/health/crons` — dead-man switch de los jobs pg_cron: 503 si alguno no corrió en 2× su intervalo. En público solo devuelve `{ status, timestamp }`; el detalle (jobs/overdue/disabled) exige el header `x-cron-secret` (auditoría 2026-08-24, C-4). Los jobs de `CRON_JOBS_DISABLED` se listan aparte (con secreto) y no degradan.
-- `GET /api/health/all` — agrega los checks en un solo JSON: 200 si db + storage están OK (Resend/Aveonline/Wompi son no bloqueantes). `version` y `environment` **solo se incluyen con el header `x-cron-secret`** (C-3). El endpoint pensado para monitors externos.
-
-Configurar en BetterStack (free) o UptimeRobot (free) para alertas si alguno cae > 3 min.
-
-### Health API (para monitores externos)
-
-Contrato de los endpoints `/api/health*` para integrar un monitor (BetterStack, UptimeRobot, etc.).
-Todos devuelven el **status agregado en público** (sin auth), `force-dynamic`, con **rate-limit de 30 req/min por IP**
-(429 + `Retry-After: 60` al exceder) y responden JSON con al menos `status` y `timestamp`.
-**El detalle topológico queda tras el header `x-cron-secret: <CRON_SECRET>`** (auditoría 2026-08-24, C-3/C-4):
-en `/api/health/crons` los jobs/overdue/disabled, y en `/api/health/all` el `version`/`environment`, solo se
-devuelven con ese header (los monitores de uptime aceptan headers custom — configurarlo quedó como acción
-pendiente en los monitores externos, ver STATE 2026-08-29).
-
-| Endpoint                | Qué verifica                                                            | HTTP sano → degradado             |
-| ----------------------- | ----------------------------------------------------------------------- | --------------------------------- |
-| `/api/health`           | Liveness del servidor Next (sin dependencias)                           | 200 siempre (si hay proceso)      |
-| `/api/health/db`        | Postgres responde (`SELECT 1` vía Prisma)                               | 200 → 500                         |
-| `/api/health/storage`   | Bucket de Supabase Storage responde                                     | 200 → 500                         |
-| `/api/health/resend`    | API key válida + dominio de `EMAIL_FROM` verificado                     | 200 (`ok`/`warn`/`skipped`) → 500 |
-| `/api/health/aveonline` | Autentica contra Aveonline; reporta modo (`test`/`production`) y cuenta | 200 (`ok`/`warn`) → 500           |
-| `/api/health/wompi`     | `GET /merchants/{publicKey}` (6s timeout); `skipped` sin `WOMPI_*`      | 200 (`ok`/`skipped`) → 503        |
-| `/api/health/crons`     | Latido de los 9 jobs pg_cron (2× intervalo sin correr = overdue)        | 200 → 503                         |
-| `/api/health/all`       | Agrega db + storage + resend + aveonline + wompi en un solo JSON        | 200 → 503                         |
-
-- **Shape de `/api/health/all`:**
-  `{ status, totalLatencyMs, timestamp, checks: [{ service, status, latencyMs, detail? }] }`
-  (`version` y `environment` solo se agregan con `x-cron-secret`)
-  con `status` global `"ok" | "degraded"` y cada check `"ok" | "warn" | "fail" | "skipped"`.
-- **Pesos:** solo **postgres y storage son críticos** — si alguno reporta `fail`, `/all` responde
-  **503** (`status: "degraded"`). **resend, aveonline y wompi son no bloqueantes** (`warn`/`fail`
-  quedan visibles en `checks` pero el global sigue 200). `skipped` = integración no configurada
-  a propósito en ese ambiente (p.ej. Wompi en modo catálogo); tampoco degrada.
-- **Shape de `/api/health/crons`:** en público `{ status, timestamp }` (503 si hay jobs vencidos — alcanza
-  para que el monitor alerte). Con `x-cron-secret`:
-  `{ status, overdue: [{ job, lastRunAt }], disabled: [job], jobs: [{ job, overdue, disabled, lastRunAt }], timestamp }` —
-  503 si `overdue` es no vacío. Los jobs de **`CRON_JOBS_DISABLED`** (comma-separado, ver
-  `.env.example`) llegan con `disabled: true, overdue: false` y se listan en `disabled`: en
-  ambientes con jobs desagendados a propósito (STG: los 5 crons de email, ver «Jobs HTTP pg_cron»)
-  el monitor no queda en falso degraded eterno.
-- **Previews con Deployment Protection:** los previews de Vercel exigen SSO → el monitor debe
-  mandar el header `x-vercel-protection-bypass: <VERCEL_BYPASS_TOKEN>` (valor en `.env.stg` /
-  Vercel → Settings → Deployment Protection) o recibirá la página de login (200 HTML) en vez del
-  JSON. En PRD (dominio público) no hace falta.
+- **Alerta `domain-watch` (`/api/cron/domain-watch` + `AlertState`):**
+  - El workflow mensual [`.github/workflows/domain-watch.yml`](../.github/workflows/domain-watch.yml) (día `5`, `11:23 UTC`) consulta RDAP de Verisign sobre `lucamsshop.com` (registrador **CO Internet / `mi.com.co`**) y reporta a `POST /api/cron/domain-watch` con `x-cron-secret`.
+  - Si alerta por **proximidad de vencimiento (umbrales `60 / 30 / 14 / 7 / 3 / 1` días)**: renueva el dominio de inmediato en el panel titular de `mi.com.co` y re-ejecuta `domain-watch.yml` con `workflow_dispatch` para actualizar el baseline en `AlertState`.
+  - Si alerta por **cambio inesperado de nameservers o pérdida de `clientTransferProhibited`**: trátalo como incidente de seguridad crítico (`P0`), audita accesos al registrador `mi.com.co` y Cloudflare con MFA y escala a dirección.
+- **Diagnóstico de errores `500` cuando PostgreSQL está caído y `/admin/errores` no carga:** usa el extractor en vivo de lambdas de Vercel (no requiere conexión a BD):
+  ```bash
+  bash scripts/vercel-runtime-errors.sh lucamsshop.com 45
+  ```
 
 ---
 
-## Performance budget — alertas
+## 11. Verificación de límites Free/Pro contra documentación oficial, costos y escalamiento
 
-Cuando se rompan estos límites, abrir issue automático:
+### 11.1 Límites verificados por proveedor externo (Mandato de exactitud operativa)
 
-| Métrica                 | Umbral           | Acción                          |
-| ----------------------- | ---------------- | ------------------------------- |
-| Lighthouse Performance  | < 90             | Bloquear merge en PR            |
-| Bundle JS por página    | > 250 KB gz      | Revisar imports                 |
-| TTFB home (ISR)         | > 500 ms         | Investigar regresión            |
-| Function execution time | > 30 s           | Revisar logs y queries          |
-| DB connections          | > 80% del límite | Migrar a Pro / añadir pgBouncer |
+| Proveedor y plan                  | Cuotas y límites técnicos verificados                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Regla contractual / umbral de upgrade en Lucams Shop                                                                                                                                                                                                                                                | Fuente oficial verificada                                                                                                                                            |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Vercel** (`Hobby` vs `Pro`)     | **Hobby:** `100 GB` Fast Data Transfer/mes, `1M` Edge Requests, funciones Node con `maxDuration` hasta `60 s` (300 s con Fluid Compute), **1 cron Vercel/día** (no usamos Vercel Cron; usamos `pg_cron`). **Pro (\$20 USD/mes):** `1 TB` transferencia, comercialización permitida, soporte y analítica ampliada.                                                                                                                                                                                                             | **Obligatorio `Pro` antes de facturar comercialmente en `lucamsshop.com`:** los términos de Vercel establecen textualmente: _"Hobby accounts are restricted to non-commercial personal use only."_ (`STG`/desarrollo personal puede operar en Hobby; tienda comercial activa exige **Vercel Pro**). | [Vercel Fair Use & Hobby Restriction](https://vercel.com/docs/limits/fair-use-guidelines) · [Vercel Functions Limits](https://vercel.com/docs/functions/limitations) |
+| **Supabase** (`Free` vs `Pro`)    | **Free (\$0):** `500 MB` DB Postgres, **`1 GB` Storage**, `5 GB` egress, `50 000` MAU Auth, **pausa tras 7 días sin actividad**, sin PITR nativo. **Pro (\$25 USD/mes):** `8 GB` DB, `100 GB` Storage, `250 GB` egress, backups diarios nativos + PITR opcional, cero pausas por inactividad.                                                                                                                                                                                                                                 | Alerta automática ámbar en **800 MB** de Storage (`80 %` de 1 GB) y monitoreo de tamaño de BD. Migrar `lucams-prod` a **Supabase Pro** al superar `350 MB` de BD, `800 MB` de Storage sostenidos o al requerir PITR continuo.                                                                       | [Supabase Pricing & Quotas](https://supabase.com/pricing) · [Supabase Storage Limits](https://supabase.com/docs/guides/storage/uploads/file-limits)                  |
+| **Supabase `pg_cron` + `pg_net`** | Extensión nativa en Postgres sin cuota de invocaciones externas (reemplaza por completo Vercel Cron). _(Nota arquitectónica: `pgmq` fue evaluado y descartado en favor de `pg_cron` + tabla `RenderJob` en `public` con leases SQL atómicos)._                                                                                                                                                                                                                                                                                | Los 18 procesos programados usan _idle-skip_ SQL cuando no hay trabajo pendiente para minimizar llamadas HTTP hacia Vercel.                                                                                                                                                                         | [Supabase Cron Docs](https://supabase.com/docs/guides/cron)                                                                                                          |
+| **Resend** (`Free` vs `Pro`)      | **Free (\$0):** **`3 000` emails/mes** y tope estricto de **`100` emails/día**, 1 dominio verificado (`lucamsshop.com`). **Pro (\$20 USD/mes):** `50 000` emails/mes **sin tope diario de 100/día**.                                                                                                                                                                                                                                                                                                                          | Con ~3–4 correos transaccionales por pedido + OTP de login, el tope de **100 correos/día** del plan Free se alcanza con ~20–25 pedidos diarios o campañas de recuperación; pasar a **Resend Pro** antes de lanzar pauta comercial masiva.                                                           | [Resend Pricing & Quotas](https://resend.com/pricing)                                                                                                                |
+| **Cloudflare R2** (`Free tier`)   | **`10 GB`-mes** de almacenamiento, `1 000 000` operaciones Clase A (escrituras/listados) y `10 000 000` Clase B/mes, **$0 USD egress**.                                                                                                                                                                                                                                                                                                                                                                                       | Con retención de 30 días de dumps `.sql.gz.gpg` + `.tar.gz.gpg`, el consumo inicial permanece dentro del tramo gratuito; exceso marginal cuesta `\$0.015/GB-mes`.                                                                                                                                   | [Cloudflare R2 Pricing](https://developers.cloudflare.com/r2/pricing/)                                                                                               |
+| **Cloudflare Turnstile** (`Free`) | Hasta **`1 000 000` verificaciones/mes** sin costo y sin fricción visual agresiva, con modo degradado auditable en servidor.                                                                                                                                                                                                                                                                                                                                                                                                  | Holgado para el tráfico de formularios públicos, cotizaciones, cupones y contacto.                                                                                                                                                                                                                  | [Cloudflare Turnstile Docs](https://developers.cloudflare.com/turnstile/plans/)                                                                                      |
+| **Google Gemini API** (`ADR-058`) | `gemini-2.5-flash-lite` (`GEMINI_MODEL_PRIMARY`) con fallback automático a `gemini-2.5-flash` (`GEMINI_MODEL_FALLBACK`) por REST `v1beta` (`fetch` directo sin SDK npm, timeout `12 s`) para sugerencias creativas del Estudio y copiloto de soporte. En Free tier existen cuotas estrictas de RPM/RPD; en **Pay-as-you-go (Tier 1)** escala a fracción de centavo por millón de tokens. _(Proveedores comerciales alternativos evaluados al inicio del proyecto fueron descartados sin dejar SDKs ni variables en el repo)._ | Si `GEMINI_API_KEY` se omite, el costo y las llamadas externas son exactamente **\$0** (degradación limpia con `AiUnavailableError`). Activar facturación Tier 1 en Google AI Studio si el tráfico del Estudio supera la cuota gratuita.                                                            | [Gemini API Rate Limits & Pricing](https://ai.google.dev/gemini-api/docs/rate-limits)                                                                                |
 
----
+### 11.2 Estructura mensual de costos fijos y variables
 
-## Costos — tracking mensual
+| Categoría                  | Servicio                                     | Etapa pre-lanzamiento / catálogo                        | Operación comercial activa (`full` mode)                                   | Naturaleza del costo    |
+| -------------------------- | -------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------- |
+| Hosting y funciones        | Vercel (`apps/web`)                          | \$0 (solo preview/no comercial)                         | **\$20 USD / mes** (Vercel Pro obligatorio para uso comercial)             | Fijo mensual            |
+| Base de datos y Storage    | Supabase (`lucams-prod` + `lucams-stg`)      | \$0 (Free tier vigilado con purgas)                     | **\$0 – \$25 USD / mes** (Pro al crecer BD/Storage o activar PITR)         | Fijo mensual            |
+| Correo transaccional y OTP | Resend                                       | \$0 (`≤ 100` correos/día, `≤ 3 000`/mes)                | **\$0 – \$20 USD / mes** (Pro al superar ~20 pedidos/día)                  | Fijo mensual por tramo  |
+| Backups DR y DNS/WAF       | Cloudflare DNS + Turnstile + R2              | \$0 (dentro de Free tier de `10 GB`)                    | **\$0 – \$2 USD / mes**                                                    | Fijo / consumo marginal |
+| Dominio oficial            | `lucamsshop.com` (registrador / `mi.com.co`) | Renovación anual prorrateada (~**\$12–\$18 USD / año**) | Vigilado mensualmente por `domain-watch.yml`                               | Anual                   |
+| Pasarela de pagos          | Wompi Colombia (Bancolombia)                 | \$0 fijo mensual                                        | Comisión variable por transacción aprobada + IVA y retenciones aplicables  | Variable por venta      |
+| Logística nacional y COD   | Aveonline                                    | \$0 fijo de plataforma                                  | Valor de cada flete despachado + comisión de recaudo contraentrega (`COD`) | Variable por guía       |
+| IA opcional                | Google Gemini API                            | \$0 (sin `GEMINI_API_KEY` o Free tier)                  | \$0 – pago marginal por uso en Tier 1 (`gemini-2.5-flash-lite` / `flash`)  | Variable opcional       |
 
-> A revisar el día 1 de cada mes una vez en producción.
+### 11.3 Matriz de canales de soporte, seguridad y escalamiento
 
-| Servicio       | Plan            | Costo                 | Notas                                                                                                                                                      |
-| -------------- | --------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Vercel Pro     | $20/mes         | —                     | —                                                                                                                                                          |
-| Supabase Pro   | $25/mes         | —                     | —                                                                                                                                                          |
-| Resend Pro     | $20/mes         | —                     | —                                                                                                                                                          |
-| Gemini (IA)    | Free tier       | —                     | Proveedor elegido (ADR-058; reemplazó a Anthropic). Alerta si se sale del nivel gratuito                                                                   |
-| Wompi          | Por trx         | —                     | 2.65% + $700 + IVA (plan Avanzado, frecuencia mensual). [Verificado: wompi.com/es/co/planes-tarifas a 2026-05-09](https://wompi.com/es/co/planes-tarifas/) |
-| Aveonline      | Por envío       | —                     | Plan mensual + comisión COD desde 2.40% (ver `INTEGRATIONS_AVEONLINE.md` §11)                                                                              |
-| Dominio        | $50.000 COP/año | —                     | mi.com.co                                                                                                                                                  |
-| **Total fijo** |                 | **~$272.000 COP/mes** |                                                                                                                                                            |
-
----
-
-## Contacto y escalamiento
-
-| Tipo de incidente      | A quién avisar                                   |
-| ---------------------- | ------------------------------------------------ |
-| Pasarela de pago caída | Soporte Wompi (panel) + usuario                  |
-| Logística caída        | Soporte Aveonline + usuario                      |
-| DB caída               | Soporte Supabase + usuario                       |
-| Sitio caído            | Vercel status + usuario                          |
-| Pregunta del cliente   | WhatsApp del usuario (+57 320 887 3826 temporal) |
+| Dominio / Incidente                                     | Canal interno / Buzón oficial                                                                                                   | Escalación en proveedor externo                                                         |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Vulnerabilidades de seguridad y divulgación responsable | **`security@lucamsshop.com`** (`public/.well-known/security.txt`)                                                               | Rotación inmediata de credenciales en Vercel + Supabase Vault + Resend + GitHub Secrets |
+| Privacidad, Habeas Data (Ley 1581) y bajas              | Panel `/admin/clientes` / flujo ARCO documentado en [`COMPLIANCE.md`](COMPLIANCE.md)                                            | Resend Suppressions + purga verificada en DB/Storage                                    |
+| Atención al comprador, retractos y garantías            | **`hola@lucamsshop.com`** + WhatsApp oficial + `/admin/soporte`, `/admin/retractos` y `/admin/garantias`                        | Portal comercios Wompi (`comercios.wompi.co`) y portal operativo Aveonline              |
+| Incidentes de infraestructura (`P0` caída total / DR)   | Alertas automáticas Resend → `ADMIN_NOTIFICATION_EMAIL` + Issues en GitHub (`uptime-monitor-prd`, `backup.yml`, `dr-drill.yml`) | Status pages oficiales: `vercel-status.com`, `status.supabase.com`, `resend-status.com` |
 
 ---
 
-## DevOps — branching, releases, environments, feature flags
-
-### Branching strategy (vigente — detalle completo en «Estrategia de ramas, flujo GitHub y CI/CD» arriba)
-
-- **`develop`** es la rama de integración y staging: todo cambio entra por PR desde rama corta con los 5 required checks de `protect-ramas-criticas` en verde (push directo bloqueado). **No existe `main`** (decisión de Lucy).
-- **`production`** es la rama en vivo: solo avanza por **PR `develop` → `production`** con OK explícito de Lucy y los 5 required checks en verde. Es la **Production Branch** de Vercel (Settings → Git).
-- **Rollback:** `vercel rollback` instantáneo para código (seguro bajo expand-then-contract) + tag de restauración antes de cambios estructurales grandes (ej. `pre-cms-v2`).
-
-### Release strategy
-
-| Tipo           | Trigger                                        | Audiencia / DB                                                                                         |
-| -------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| **Preview**    | PR / merge a `develop` o rama feature          | Dev / reviewer — DB de **STG** (`lucams-stg`) desde 2026-08-01 (previews aislados: ver «Environments») |
-| **Production** | Merge del PR de release `develop → production` | 100% del tráfico (`lucamsshop.com`)                                                                    |
-
-- **Smoke post-release:** dos capas. (a) **Automatizada** (F-08): `.github/workflows/post-deploy-smoke.yml` corre `apps/web/scripts/post-deploy-smoke.mjs` contra PRD — se dispara nativamente con `deployment_status` de Vercel (`environment == 'Production'` y `state == 'success'`) y bajo demanda (`workflow_dispatch`), haciendo checkout explícito de `ref: production` (el monitoreo periódico entre deploys vive cada 10 min en `uptime-monitor-prd` de Supabase STG, sin duplicar cron en GitHub Actions). Sonda 5 GETs públicos read-only (`/api/health`, `/api/health/db`, `/api/health/crons`, `/`, `/productos`), exige 200 con reintentos, aserta contenido mínimo estructural en `/` y `/productos` (`lang="es-CO"`, skip-link `href="#contenido"`, `<main id="contenido">`), y sale ROJO si algo falla — señal inmediata de evaluar rollback antes de certificar. Local/otro ambiente: `SMOKE_BASE_URL=https://… node apps/web/scripts/post-deploy-smoke.mjs`. (b) **Manual profunda:** `apps/web/tests/e2e/release-check-a1.spec.ts` con `PLAYWRIGHT_BASE_URL` apuntando a prod.
-- **Migraciones Prisma y SQL en release (2026-10-20 — incidente real):** el deploy de Vercel NO corre `prisma migrate deploy` ni `supabase/migrations/*.sql`, son pasos explícitos del operador. Procedimiento: al promover el release a `production` y ANTES de dar por certificado, correr `set -a && source .env.local.nube-backup && set +a && cd packages/db && pnpm exec prisma migrate deploy` (y `psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/<nueva>.sql` cuando haya SQL nueva). **Guard automático:** `post-deploy-smoke.yml` compara las migraciones Prisma de `ref: production` contra `_prisma_migrations` de PRD (secret `BACKUP_DATABASE_URL`) en cuanto termina el deploy de Vercel y falla ROJO si hay pendientes.
-- **Garantía modular (ADR-106):** para promover el cambio a STG/PRD, primero aplicar `20261102100000_warranty_snapshot` con `prisma migrate deploy` y verificar que todo `OrderItem.warrantyMonths` histórico conserva su valor; solo después correr `packages/db/scripts/one-shot/publish-legal-v2-20261102.mjs --apply` con el `.env` del ambiente. El one-shot publica CMS/legal/FAQ y fija los productos vigentes en 1 mes, pero nunca toca órdenes ni reclamos. Invalidar luego el caché desde `/admin/contenido` y verificar una compra nueva con el plazo sellado en su item.
-- **Versionado:** tags `vX.Y.Z` (semver) en cada release de producción significativa.
-  - `X` mayor: cambios que rompen compatibilidad de schema o API público.
-  - `Y` menor: features nuevas no rompedoras.
-  - `Z` patch: bugfixes y mejoras menores.
-- **Changelog:** `CHANGELOG.md` actualizado en cada release tag con entradas Conventional Commits agrupadas (Keep a Changelog format).
-
-### Environments
-
-Mapa real al 2026-08-01 (tras la separación dev/prod con Supabase local podman):
-
-| Ambiente | Deploy / URL                                                                  | Rama git                                    | Base de datos                                                                                     |
-| -------- | ----------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| **DEV**  | `http://127.0.0.1:4000` (+ Studio `:54323`, Mailpit `:54324`)                 | `develop` (+ ramas feature)                 | Supabase **LOCAL** podman (`127.0.0.1:54322`) — `make db-local-*`                                 |
-| **STG**  | Previews de Vercel (`lucams-shop-git-<rama>-jullieth93s-projects.vercel.app`) | `develop` y ramas feature (vía PR)          | Supabase Free **`lucams-stg`** (ref `mjbdiqdkykhsixvqlrrp`, us-east-2) — **✅ creado 2026-08-01** |
-| **PRD**  | `https://lucamsshop.com` (Vercel Production)                                  | `production` (release = PR desde `develop`) | Supabase nube **`lucams-prod`** (org `Lucams`, hoy tier Free)                                     |
-
-- **Previews aislados desde 2026-08-01:** las env vars de Vercel quedaron distribuidas por ambiente (matriz abajo) — los previews ya NO tocan la DB de prod ni servicios reales. **Flip hecho (2026-08-05):** la Production Branch de Vercel ya es `production` — los push a `develop` despliegan **preview**, no producción.
-
-#### Variables de entorno por ambiente (matriz ejecutada 2026-08-01)
-
-- **Scope separado (valor distinto Production/Preview):** las 5 de Supabase/DB (`DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` — preview → `lucams-stg`) · `CRON_SECRET` y `CSRF_SECRET` (valores nuevos en preview) · `WOMPI_ENV` + `WOMPI_PUBLIC_KEY`/`PRIVATE_KEY`/`EVENTS_SECRET`/`INTEGRITY_SECRET` (hoy sandbox en ambos scopes — al lanzar, las claves reales van SOLO en Production y preview conserva test) · `NEXT_PUBLIC_TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` (preview = claves de prueba públicas de Cloudflare — las reales están restringidas por dominio y fallarían en `*.vercel.app`) · `NEXT_PUBLIC_STORE_MODE` (`catalog` explícito en ambos al ejecutar la matriz — sin ella, preview caería al default `full` y activaría pagos/envíos; **Preview pasó a `full` el 2026-08-07** para la suite E2E modo full §7.5 — ver STATE.md — y Production debe conservar `catalog` hasta Etapa 2) · `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` (set único desde 2026-08-01: Production = cuenta real · Preview = cuenta demo pública).
-- **Solo Production (el preview no las recibe):** `AVEONLINE_ENV` (modo declarado para el guard del health check — en preview default `test`, que acepta la cuenta demo) · `NEXT_PUBLIC_SITE_URL` (preview usa el `VERCEL_URL` automático del deployment — `lib/origin.ts`) · `NEXT_PUBLIC_WA_NUMBER` (preview lee `WA_NUMBER` del CMS de stg). **`RESEND_API_KEY` estaba en esta lista — el 2026-08-04 se agregó TAMBIÉN a scope Preview y los crons de stg empezaron a enviar correos reales; por eso los 5 jobs de email de stg quedaron desagendados el 2026-08-05 (ver «Jobs HTTP pg_cron»).**
-- **Compartidas a propósito:** `GEMINI_API_KEY` (cuota de IA compartida), `EMAIL_FROM`/`EMAIL_REPLY_TO` (identidad de remitente — ojo: desde 2026-08-04 preview también tiene `RESEND_API_KEY`, así que stg SÍ puede enviar), `LOG_LEVEL`, `NEXT_TELEMETRY_DISABLED`, `AVEONLINE_WEBHOOK_SECRET`.
-- **Alineada con `lib/env.ts`:** las CORE exigidas en todo entorno están en preview (Supabase/DB + `CSRF_SECRET`); las `PROD_REQUIRED` solo aplican a `VERCEL_ENV=production` (en preview advierten, no bloquean); las `FULL_MODE_REQUIRED` no aplican en `catalog`.
-
-#### Homologación de ambientes (verificada 2026-08-01)
-
-Los 3 ambientes están homologados en **catálogo y configuración**; difieren solo en datos transaccionales (cada uno genera los suyos en pruebas) y en los valores que por diseño apuntan a cada ambiente:
-
-| Check                                                                                                                                                                                                                                                                                                                                                                                                                 | PRD | STG      | LOCAL    |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | -------- | -------- |
-| Extensiones app (`pg_trgm`, `unaccent`, `pg_cron`, `pg_net`, `pgmq`)                                                                                                                                                                                                                                                                                                                                                  | 5   | 5        | 5        |
-| Jobs pg_cron                                                                                                                                                                                                                                                                                                                                                                                                          | 10  | 5 (†)    | 10       |
-| Tablas con RLS (incluye `_prisma_migrations` y `Notification`)                                                                                                                                                                                                                                                                                                                                                        | 59  | 59       | 59       |
-| Buckets storage                                                                                                                                                                                                                                                                                                                                                                                                       | 5   | 5        | 5        |
-| Migraciones Prisma aplicadas                                                                                                                                                                                                                                                                                                                                                                                          | 52  | 52       | 52       |
-| Secretos Vault (`cron_base_url`, `cron_secret`)                                                                                                                                                                                                                                                                                                                                                                       | ✓   | ✓        | ✓        |
-| Catálogo (566 productos, 526 categorías, 726 variantes, 115 ocasiones, 981 campos CMS, 130 redirects, 24 plantillas, 43 cupones reales — corregido 2026-08-07: las cifras históricas 612/572/772 incluían 46 fixtures de tests, barridos en LOCAL/STG; en PRD siguen soft-deleted e invisibles hasta limpieza autorizada — medición de la homologación 2026-08-07, auditorías históricas consolidadas fuera del repo) | ✓   | ✓ (sync) | ✓ (sync) |
-
-**Verificado por re-medición el 2026-08-05 (homologación completa):** las 19 tablas de catálogo con conteos IDÉNTICOS en los 3 ambientes (query lado a lado); LOCAL re-sincronizado desde PRD tras los resets del 2026-08-01/02 (procedimiento del punto «Re-sincronizar» aplicado con dump fresco); RLS de `_prisma_migrations` habilitado en local; duplicado de `20260731130000_drop_cms_legacy` en `_prisma_migrations` de PRD eliminado (registro fallido con 0 pasos); fixtures de diseño para tests de personalización recreados con assets REALES en `customer-uploads` (finalize-server-render y letter-tiles pasan en local: 10/10 junto a la suite completa 2763 verde). Las diferencias restantes son INTENCIONALES (crons de email desagendados en stg, transaccional por ambiente, notificaciones por ambiente).
-
-**Actualización 2026-08-29 (auditoría OWASP cerrada y homologada):** migraciones Supabase **025–029** aplicadas y verificadas en LOCAL/STG/PRD (drop de la función huérfana `rls_auto_enable` + su event trigger, hardening de grants de tablas y de funciones públicas — `search_path` fijo y EXECUTE acotado, policies backstop RLS endurecidas, `pg_net` convergido al schema `extensions` — la 029 lo mueve con DROP+CREATE en una transacción porque pg_net no es relocatable) y migraciones Prisma **51–52** (`20260829150200_bearer_tokens_hash_at_rest`, `20260829150300_coupon_usage_per_customer_trigger`) aplicadas en los 3 ambientes en el mismo deploy → Prisma queda en **52/52** (la fila de arriba ya lo refleja).
-
-- **(†) Jobs pg_cron en STG = 5 a propósito (2026-08-05):** desagendados los 5 que envían email (`lucams-alerts`, `lucams-daily-summary`, `lucams-review-request`, `lucams-cart-recovery`, `lucams-back-in-stock`) — los previews recibieron `RESEND_API_KEY` el 2026-08-04 y los crons de stg empezaron a mandar correos reales. Quedan `lucams-cms-publish-scheduled`, `lucams-purge-anon-designs`, `lucams-purge-event-logs` y los 2 SQL puros. **No re-aplicar las migraciones 015/023 en stg:** re-agendan por patrón unschedule→schedule y el estado deseado es desagendados (detalle en «Jobs HTTP pg_cron» y changelog 2026-08-05). Desde la remediación R6 (2026-09-26, A9B-09) `scripts/db-stg-setup.sh` incluye un paso final idempotente (4/4) que des-agenda estos 5 jobs tras aplicar migraciones, así un re-setup de STG no los devuelve.
-- **Difieren a propósito (cada valor apunta a SU ambiente):** `cron_base_url` del Vault (PRD → `https://lucamsshop.com` · STG → alias estable del preview de `develop` · LOCAL → `http://host.containers.internal:4000` — los jobs solo funcionan con el dev server arriba; sin él fallan en silencio en `cron.job_run_details`), `cron_secret` (propio por ambiente) y las URLs de DB.
-- **Imágenes de producto:** el catálogo usa URLs externas (0 productos en el bucket propio hoy) → se ven igual en los 3 ambientes sin copiar archivos. Si un día se suben fotos al bucket `product-images` de prod, las URLs públicas absolutas se leen igual desde stg/local (solo lectura).
-- **Re-sincronizar el catálogo PRD → STG/LOCAL** (tras cambios de catálogo en prod que se quieran ensayar): dump data-only de las 19 tablas de catálogo (`pg_dump -Fc --data-only -t …`, el de hoy quedó en `tmp/backups/catalogo-prod-20260801.dump`) → `TRUNCATE … RESTART IDENTITY CASCADE` en el destino → `pg_restore --data-only`. **Ojo:** la FK circular `CmsField↔CmsFieldVersion` obliga a soltar y recrear 3 constraints (`CmsField_publishedVersionId_fkey`, `CmsFieldVersion_fieldId_fkey`, `CmsListItem_fieldId_fkey`) — el rol `postgres` de las imágenes Supabase (cloud y local) **no es superuser** (el superuser es `supabase_admin`) y `--disable-triggers` falla con `permission denied … is a system trigger`. Terminar borrando los cupones con código de prueba.
-- **DEV sí tiene rama git:** el trabajo diario es sobre `develop` en la VM; las ramas feature nacen y vuelven a `develop`. La DB local no depende de ninguna rama (espejo del esquema + seeds).
-- **Supabase «main» ≠ git:** el dashboard de Supabase muestra cada proyecto en una rama interna llamada `main` (su propia rama por defecto). No tiene relación con las ramas git del repo.
-- **Flip de `.env.local`:** el dev alterna local↔nube con `make db-local-on/off`. **Antes de tocar la nube** (migraciones, seeds, invalidar caché en prod) correr `make db-local-off`; al terminar, `make db-local-on`.
-
-#### ¿Necesitamos staging?
-
-- **Ya existe (creado 2026-08-01):** `lucams-stg` montado end-to-end con token de Management API — esquema + seeds + pg_cron + secretos Vault + env vars Preview en Vercel — y verificado con smoke (preview `stg-verify`: home/catálogo/admin 200, catálogo servido desde stg vía pooler `aws-0`, host exclusivo de ese proyecto).
-- ~~⚠️ PENDIENTE: la `SUPABASE_SECRET_KEY` de `lucams-stg` es inválida~~ **RESUELTO (2026-08-02):** Lucy copió la llave real del dashboard (Settings → API Keys) a `.env.stg`; propagada a Vercel scope Preview y redeploy verificado: `/api/health/storage` = ok (antes 401/JWS en auth/PostgREST/Storage). Mismo día creado el admin `r.julliethhr@gmail.com` (SUPERADMIN) en stg vía Admin API + `seed-admin.mjs` — password aleatorio, Lucy lo restablece con "recuperar contraseña" en el preview (OTP a su Gmail real).
-- **Costo: $0.** Supabase Free permite **2 proyectos activos** por org (prod + stg) y Vercel Hobby ya incluye previews. NO hace falta Vercel Pro ni Supabase Pro para tener STG.
-- **Cuándo pagar (momento oportuno = abrir al público):** Vercel **Pro** (Hobby está limitado a uso no comercial — una tienda abierta al público debe migrar) y Supabase **Pro** en `lucams-prod` (backups diarios + PITR, garantía de no-pausa, recursos). `lucams-stg` puede quedarse Free.
-
-#### Checklist STG (ejecutada 2026-08-01 — queda como referencia para rehacer o clonar el ambiente)
-
-1. **Proyecto:** creado vía Management API (`POST /v1/projects`, org `qaomfftpzubbkhimucsi`, Free, us-east-2) con token temporal de Lucy (revocable en supabase.com/dashboard/account/tokens). Por dashboard: org `Lucams` → **New project** (misma región que prod).
-2. **VM/repo:** `.env.stg` (fuera de git por `.env.*`) copiando `.env.local.nube-backup` con las 5 vars del proyecto nuevo **y ajustando los servicios a prueba**: SIN `RESEND_API_KEY` (stg no envía emails reales), SIN `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` (cae a modo test con la cuenta demo), `CRON_SECRET`/`CSRF_SECRET` **propios de stg** (los mismos valores que Vercel scope Preview y el Vault de stg — no los de prod), `NEXT_PUBLIC_STORE_MODE="catalog"`, `NEXT_PUBLIC_SITE_URL`=alias estable del preview de `develop`. **No tocar el flip** (`db-local-on/off` solo alterna local↔prod). ⚠️ **Pooler:** el host puede ser `aws-0` o `aws-1` según el clúster asignado — descubrirlo con `GET /v1/projects/{ref}/config/database/pooler` (stg quedó en `aws-0`; prod está en `aws-1`). Y la conexión directa `db.<ref>.supabase.co` es **IPv6-only** (la VM no tiene ruta IPv6) — siempre pooler.
-3. **Esquema:** `make db-stg-setup` (script `scripts/db-stg-setup.sh`: extensiones → `prisma migrate deploy` → SQL de `supabase/migrations` → grants, mismo orden del Nightly; el rol `postgres` del proyecto es superuser en Supabase cloud, cubre el event trigger de la 014). Luego **habilitar pg_cron + pg_net** (`create extension if not exists pg_cron; create extension if not exists pg_net;` — en cloud vienen deshabilitadas y las migraciones con jobs se auto-omiten) y **re-aplicar las 5 migraciones con jobs (012, 015, 016, 021, 023)**: quedan los 10 jobs agendados, en paridad con prod. **(2026-08-05: tras esto hay que desagendar en stg los 5 jobs de email — el estado deseado ya no es paridad completa; ver «Jobs HTTP pg_cron» y el (†) de «Homologación».)**
-4. **Seeds:** `make db-stg-seed` (catálogo + plantillas + ocasiones + CMS — 59 productos, 75 categorías, 16 ocasiones, 854 campos CMS).
-5. **Reset transaccional de STG (2026-11-05):** `make stg-reset` (dry-run con conteos, no escribe) y `make stg-reset-apply` (borra pedidos, clientes, contactos, soporte, diseños y bitácoras de prueba; conserva catálogo, CMS, cupones de configuración y el/los AdminUser SUPERADMIN con su `auth.users`; una transacción atómica con timeout WAN ampliado; env-guard bloquea PRD). Útil para arrancar ciclos de pruebas nuevos en limpio.
-6. **Secretos Vault para pg_cron** (los jobs leen `cron_base_url`/`cron_secret` del Vault en runtime): creados con los comandos del header de `scripts/db-stg-setup.sh` — `cron_base_url` = `https://lucams-shop-git-develop-jullieth93s-projects.vercel.app` (alias estable del preview de `develop`) y `cron_secret` = el MISMO valor de `CRON_SECRET` scope Preview.
-7. **Vercel env vars (vía CLI/API):** la matriz completa quedó con scope por ambiente (ver «Variables de entorno por ambiente» arriba) — mecánica: la existente se acota a `["production"]` (`PATCH /v9/projects/{id}/env/{envId}`) y se crea el valor stg con `["preview"]` (`POST /v10/projects/{id}/env`, type `sensitive`). Ojo: las vars `sensitive` NO se pueden leer por API (`decrypted: false`) — los valores de preview salieron de la copia local `.env.local.nube-backup` (mismas claves test) o se generaron nuevos (`CRON_SECRET`, `CSRF_SECRET`).
-8. **Verificar:** los previews tienen **Vercel Authentication** (SSO) — para el smoke automatizado generar un bypass: `PATCH /v1/projects/{id}/protection-bypass` con `{}` y usar el header `x-vercel-protection-bypass: <secret>`. Smoke ejecutado: home/`/productos`/`/admin/login` 200 + categoría «Separadores Magnéticos» servida desde stg. (`vercel deploy` CLI desde la raíz NO sirve: sube 250 MB y revienta el límite de 100 MB — el deploy debe ser vía git o `POST /v13/deployments` con `gitSource`.)
-9. **Documentar:** STG ✅ en la tabla de arriba + `docs/STATE.md` al día.
-
-### Feature flags
-
-> Patrón obligatorio para features arriesgadas o experimentales. ADR pendiente sobre proveedor (ADR-026 a tomar).
-
-#### Opciones a evaluar antes de Fase 5
-
-| Proveedor                              | Tier Free                        | Pros                                                        | Contras                                        |
-| -------------------------------------- | -------------------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
-| **Vercel Edge Config**                 | Hobby incluido                   | Integrado, edge-fast, sin red extra                         | Sin UI rica de targeting · funciones limitadas |
-| **GrowthBook** (cloud Free)            | 5 ambientes, sin límite usuarios | UI completa, A/B testing nativo, gratis para nuestra escala | +1 vendor                                      |
-| **Self-hosted GrowthBook en Supabase** | Sin costo extra                  | Control total, no exfiltra datos                            | Mantenimiento extra                            |
-| **Tabla `FeatureFlag` en Postgres**    | Cero                             | Cero vendors, fácil                                         | Sin UI; cambios requieren SQL                  |
-| **LaunchDarkly**                       | Sin Free real                    | Industria estándar                                          | Caro                                           |
-
-**Recomendación inicial (a confirmar en ADR-026):** **GrowthBook cloud Free** + cliente JS simple. Coherente con free-tier-first y da UI de targeting.
-
-#### Patrón de uso
-
-```ts
-// lib/feature-flags.ts
-import { evaluateFlag } from "@/lib/feature-flags-client";
-
-export async function isFeatureEnabled(flagKey: string, userId?: string): Promise<boolean> {
-  return await evaluateFlag(flagKey, { userId, env: process.env.NODE_ENV });
-}
-
-// uso:
-if (await isFeatureEnabled("ai-design-suggest", user?.id)) {
-  // ...
-}
-```
-
-#### Convenciones
-
-- Nombres de flag en `kebab-case`: `ai-design-suggest`, `cod-payment`, `wholesale-portal`.
-- Cada flag tiene un **owner**, una **fecha de activación esperada**, y una **fecha de cleanup** (cuándo se quita el flag y queda 100% on).
-- Tabla de flags activos en `STATE.md` (sección "Feature flags activos") para que el operador siempre sepa qué está experimental.
-
----
-
-## Disaster Recovery (DR)
-
-### Objetivos
-
-- **RPO (Recovery Point Objective):** ≤ 24 h. Aceptamos perder hasta 24h de datos en el peor escenario.
-- **RTO (Recovery Time Objective):** ≤ 4 h. El sitio debe estar de vuelta en máximo 4h.
-
-### Capas de defensa
-
-| Capa                 | Mecanismo                                                                                                                                                                            | Recuperación                                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| App (Vercel)         | Inmutable deploys + Git                                                                                                                                                              | Rollback a deployment previo: `vercel rollback <url>` (segundos)                                         |
-| DB (Supabase)        | La capa real hoy es el backup diario a R2 (fila de abajo). **`lucams-prod` sigue en tier Free: sin PITR ni backups del dashboard** — PITR 7 días aplica al subir a Pro               | Con Pro: restore PITR desde dashboard (~30 min). Hoy (Free): restore desde el dump R2 (~2h)              |
-| Storage (Supabase)   | Replicación interna AWS + **mirror diario cifrado a R2** (`backup-storage-to-r2.mjs`, F-16 2026-09-04); legibilidad verificada por el drill mensual `drill-storage` (`dr-drill.yml`) | Restore manual: `gpg -d` con `BACKUP_GPG_PASSPHRASE` + `tar xzf` + re-subida por la API de Storage (~2h) |
-| Backup off-site (R2) | Export diario a R2, **cifrado gpg AES256 desde 2026-08-29**; restore verificado por drill automatizado mensual (`dr-drill.yml`)                                                      | Restore manual: `gpg -d` con `BACKUP_GPG_PASSPHRASE` + `psql` (~2h)                                      |
-| DNS (Cloudflare)     | Configuración versionada en repo (Terraform o manual)                                                                                                                                | Recreación manual (~30 min)                                                                              |
-
-### Procedimiento de recuperación end-to-end
-
-```
-1. ¿Qué se cayó?
-   - Solo Vercel: rollback al deployment previo. ETA 5 min.
-   - Solo DB: restore PITR al punto sano (requiere Supabase Pro — hoy Free). ETA 30 min.
-     Sin Pro: restaurar el último dump de R2 (descifrando con gpg). ETA ~2 h.
-   - Storage: restaurar desde el mirror de R2 (`gpg -d` + `tar xzf` del archivo del bucket
-     + re-subir los objetos con la API de Storage y la service key). ETA 2 h.
-     (Antes de 2026-09-04 no había copia off-site: solo la replicación interna de AWS.)
-   - Todo: combinación de los anteriores.
-
-2. Comunicar a clientes (status page o email masivo si los emails funcionan).
-
-3. Activar el modo mantenimiento: NEXT_PUBLIC_MAINTENANCE_MODE=1 en Vercel
-   + REDEPLOY (ver abajo — sin redeploy la variable no hace nada).
-
-4. Ejecutar restore.
-
-5. Verificar:
-   - /api/health/* responde 200.
-   - Datos críticos (Order, Customer) están consistentes vs último estado conocido.
-   - Smoke tests E2E en staging o producción passed.
-
-6. Desactivar el modo mantenimiento: borrar (o poner en 0) NEXT_PUBLIC_MAINTENANCE_MODE
-   + REDEPLOY otra vez.
-
-7. Post-mortem dentro de 48 h.
-```
-
-#### Modo mantenimiento — la variable real y por qué exige redeploy
-
-Hasta 2026-07-24 este runbook decía `MAINTENANCE_MODE=true`: **esa variable no existe en el
-código**. Quien la hubiera puesto en medio de un incidente habría creído que el sitio estaba
-cerrado mientras seguía atendiendo tráfico.
-
-|                     | Valor real                                                                              |
-| ------------------- | --------------------------------------------------------------------------------------- |
-| Variable            | `NEXT_PUBLIC_MAINTENANCE_MODE`                                                          |
-| Valor que activa    | exactamente `1` (comparación estricta con el string `"1"`; `true` **no** sirve)         |
-| Quién la lee        | [`apps/web/proxy.ts`](../apps/web/proxy.ts) — redirige todo el tráfico a `/maintenance` |
-| Qué sigue accesible | `/maintenance`, `/admin/*`, `/api/health/*`, `/_next/*`                                 |
-
-> 🔁 **Cambiar la variable en Vercel NO basta: hay que redesplegar.** Al llevar el prefijo
-> `NEXT_PUBLIC_`, Next.js **reemplaza `process.env.NEXT_PUBLIC_MAINTENANCE_MODE` por su valor
-> literal durante `next build`** — también en el código de servidor —, y la doc oficial es
-> explícita: _"After being built, your app will no longer respond to changes to these environment
-> variables"_ ([Next.js 16.2.11, `docs/01-app/02-guides/environment-variables.md`, § Bundling
-> Environment Variables for the Browser](https://nextjs.org/docs/app/guides/environment-variables#bundling-environment-variables-for-the-browser),
-> consultado 2026-07-24 en la copia que trae el paquete `next` del repo). El build vigente quedó
-> congelado con el valor que existía cuando se compiló.
->
-> Procedimiento correcto: Vercel → Settings → Environment Variables → setear/borrar la var →
-> **Deployments → Redeploy** (desmarcando "Use existing Build Cache" no hace falta, pero el
-> redeploy sí). Comprobación, ya con el redeploy en **Ready**:
-> `curl -sI https://lucamsshop.com/ | grep -iE '^HTTP|^location'` debe mostrar un redirect hacia
-> `/maintenance` al activar, y `HTTP/2 200` sin `location` al desactivar. _(La forma exacta del
-> header — relativa o absoluta — no se pudo comprobar en vivo: exigiría cerrar la tienda real.
-> [pendiente verificación])_
->
-> ⏱️ **Consecuencia operativa:** cerrar la tienda cuesta un build completo (~2-4 min), no un
-> toggle instantáneo. Si el incidente exige cortar tráfico YA, es más rápido pausar el dominio en
-> Vercel o poner una regla en Cloudflare que esperar el redeploy.
-
-### DR drills (mensual automatizado + calendario cuatrimestral)
-
-> Mandato: probar la restauración real cada 3 meses. Sin drills, el plan de DR no existe.
-> Desde 2026-08-05 el drill #2 además corre **automatizado cada mes** (ver abajo).
-
-#### Drill #1: Restore parcial de DB desde PITR
-
-```bash
-# 1. En un proyecto Supabase de testing, restaurar un PITR de hace 24h.
-# 2. Verificar que la app conecta con la DB restaurada.
-# 3. Ejecutar smoke tests E2E.
-# 4. Documentar tiempo total y cualquier issue encontrado.
-# 5. Resultado en tmp/dr-drill-YYYY-Qx.md (efímero, gitignored).
-```
-
-#### Drill #2: Restore desde backup R2 — automatizado (2026-08-05)
-
-El workflow [`.github/workflows/dr-drill.yml`](../.github/workflows/dr-drill.yml) corre **mensual** (día 2 a las 08:27 UTC — el backup, **diario desde 2026-08-05**, ya habrá corrido) y a demanda (`workflow_dispatch`): baja el dump más nuevo de R2 (solo llaves `.sql.gz.gpg` — los legacy sin cifrar ya no son candidatos), lo **descifra con gpg** (`BACKUP_GPG_PASSPHRASE`, el mismo secret del backup — desde 2026-08-29 los dumps viajan cifrados), lo restaura en un Postgres vacío del runner (imagen `supabase/postgres`, el mismo engine de prod) y verifica conteos de tablas clave. **Verificaciones:** run 30972179553 (2026-08-05, dump legacy sin cifrar); run **33926922592 (2026-09-04, VERDE)** — conteos restaurados **exactos** contra las filas COPY del propio dump (`Product=11/11 · Category=84/84 · OcasionTag=115/115 · CmsField=982/982 · Order=0/0 · Customer=1/1`), 60 errores SQL esperados (colisiones de schemas internos Supabase, allowlist en `dr-drill-lib.mjs`) y 0 inesperados. El run del 2026-09-02 falló por el umbral `DRILL_MIN_PRODUCTS=100` (obsoleto tras la depuración del catálogo: quedan 11 productos reales) y por un contador de errores SQL que era código muerto; la reparación del 2026-09-04 reemplazó el umbral por conteo exacto vs COPY (el umbral queda como detector de dumps vacíos, default 5) e hizo la clasificación de errores fail-closed. Un backup que no se restaura no es un backup.
-
-Desde 2026-09-04 (F-16) el mismo workflow corre el job **`drill-storage`**: prueba de legibilidad del mirror de Supabase Storage ([`apps/web/scripts/dr-drill-storage.mjs`](../apps/web/scripts/dr-drill-storage.mjs)) — baja el manifiesto más nuevo de `db-storage/`, elige un bucket con N>0 objetos (o el forzado por `DRILL_STORAGE_BUCKET`), descarga su `lucams-<UTC>.tar.gz.gpg`, lo descifra y cuenta las entradas del tar en streaming (el plaintext jamás toca disco), y exige que conteo y bytes cuadren EXACTO con el manifiesto. No restaura nada: verifica que el archivo se puede leer, que es un tar válido y que el cifrado cuadra. Corre bajo el gate `storage_configured` (mismos secrets `BACKUP_SUPABASE_*` que activan el mirror — sin ellos se salta limpio).
-
-> **Privacidad (PII):** el drill restaura datos reales de prod en el runner de CI. La máquina es **efímera** (GitHub la destruye al terminar el job) y los logs solo publican **conteos** y líneas `^ERROR` del restore — nunca filas. Ojo: el repo es **público**, así que los logs de Actions también lo son; que el script nunca imprima datos de filas es lo que mantiene la PII fuera.
-
-El drill manual sigue vigente para el calendario cuatrimestral de abajo:
-
-```bash
-# 1. Bajar el último backup diario de R2 (objeto .sql.gz.gpg).
-# 2. Descifrar + descomprimir (la passphrase es el secret BACKUP_GPG_PASSPHRASE):
-#    gpg -d --batch --passphrase-fd 3 -o dump.sql.gz backup.sql.gz.gpg 3<<<"$BACKUP_GPG_PASSPHRASE" && gunzip dump.sql.gz
-#    (o correr apps/web/scripts/dr-drill.mjs a mano con el entorno cargado — hace todo esto).
-# 3. Aplicar a Supabase de testing.
-# 4. Validar integridad (counts de tablas críticas, queries de cross-check).
-# 5. Documentar.
-```
-
-#### Drill #3: Rollback de Vercel
-
-```bash
-# 1. Deploy intencionalmente "roto" a producción (ej. respuesta 500 forzada en /api/health).
-# 2. Detectar vía monitoreo.
-# 3. Rollback con `vercel rollback`.
-# 4. Verificar resolución < 5 min.
-# 5. Documentar.
-```
-
-### Calendario de DR drills
-
-| Trimestre   | Drill                                                   | Responsable    |
-| ----------- | ------------------------------------------------------- | -------------- |
-| Mensual     | Drill #2 automatizado (`dr-drill.yml`, día 2 08:27 UTC) | GitHub Actions |
-| Q1 cada año | Drill #1 (PITR DB)                                      | Operador       |
-| Q2          | Drill #2 (R2 backup, manual)                            | Operador       |
-| Q3          | Drill #3 (Vercel rollback)                              | Operador       |
-| Q4          | Drill combinado (todos)                                 | Operador       |
-
----
-
-## Verificación de tiers Free contra docs oficiales (mandato #9)
-
-> Verificaciones ejecutadas el **2026-05-09**. Cada cifra cita fuente y fecha. Mandato #9 (CLAUDE.md) exige que toda afirmación técnica esté respaldada por doc oficial; este bloque cierra la cola que estaba pendiente en `STATE.md`.
-
-### Vercel Hobby — [vercel.com/docs/limits](https://vercel.com/docs/limits) + [vercel.com/legal/terms](https://vercel.com/legal/terms)
-
-| Item                   | Valor verificado                                          |
-| ---------------------- | --------------------------------------------------------- |
-| Function timeout       | 10 s default, **60 s máximo**                             |
-| Fast Data Transfer     | 100 GB/mes                                                |
-| Function invocations   | 1.000.000/mes                                             |
-| Active CPU             | 4 CPU-hrs/mes                                             |
-| Provisioned Memory     | 360 GB-hrs/mes                                            |
-| Build minutes          | 6.000/mes (45 min máximo por deployment)                  |
-| Cron Jobs              | 100 por proyecto (no usamos — ADR-017 prefiere `pg_cron`) |
-| Concurrent Builds      | 1                                                         |
-| Deployments por día    | 100                                                       |
-| Static file uploads    | 100 MB                                                    |
-| Runtime logs retention | **1 hora**                                                |
-| Domains por proyecto   | 50                                                        |
-
-> ⚠️ **Crítico — ToS uso comercial:** cita textual del [Vercel Terms](https://vercel.com/legal/terms): _"You shall only use the Services under a Hobby plan for your personal or non-commercial use."_ Hobby **no permite uso comercial**. Adicionalmente: _"We may shut down and terminate projects or deployments using the Hobby plan without notice for any reason or no reason."_
->
-> **Implicación:** Lucams_shop debe migrar a Vercel Pro **antes de la primera transacción Wompi real** (no es preferencia, es obligación contractual). El upgrade ya estaba planeado en Fase 7; queda confirmado como bloqueante.
-
-### Supabase Free — [supabase.com/pricing](https://supabase.com/pricing)
-
-| Item                        | Valor verificado                              |
-| --------------------------- | --------------------------------------------- |
-| Database size               | 500 MB                                        |
-| Database compute            | Shared CPU + 500 MB RAM                       |
-| File storage                | 1 GB                                          |
-| Monthly Active Users (Auth) | 50.000                                        |
-| Edge Function invocations   | 500.000/mes                                   |
-| Egress (bandwidth)          | 5 GB + 5 GB cached                            |
-| **Pausa por inactividad**   | **1 semana** sin actividad → proyecto pausado |
-| Active projects             | Máximo 2 por organización                     |
-
-> **Implicación operativa:** durante dev, hacer al menos un deploy o consulta semanal para no perder horas re-activando el proyecto. Si quisiéramos un staging environment separado en Free (ADR-027 pendiente), consume 1 de los 2 proyectos disponibles — no bloqueante pero limita.
-
-### Supabase Queues (`pgmq`) y `pg_cron` — [supabase.com/docs/guides/queues](https://supabase.com/docs/guides/queues)
-
-| Item                         | Valor verificado                                                                                                            |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `pgmq` disponibilidad        | **Disponible** vía dashboard → Integrations en proyectos con Postgres ≥ 15.6.1.143. Plan Free no excluido en docs públicas. |
-| `pg_cron` disponibilidad     | **Disponible** vía dashboard → Integrations en plan Free.                                                                   |
-| Límites específicos por tier | **No publicados explícitamente** en docs oficiales para Free.                                                               |
-
-> **`[pendiente verificación práctica]` (mandato #9):** confirmar al crear el proyecto Supabase real (Fase 0b) que ambos extensions activan sin errores y registrar cualquier límite que aparezca. Si fueran restringidos a planes pagos, replanteamos ADR-017 (Vercel Cron como fallback).
-
-### Resend Free — [resend.com/pricing](https://resend.com/pricing)
-
-| Item                | Valor verificado                                      |
-| ------------------- | ----------------------------------------------------- |
-| Emails por mes      | 3.000                                                 |
-| Emails por día      | 100                                                   |
-| Dominios custom     | 1 (verificable cuando tengamos `mail.lucamsshop.com`) |
-| Retención de emails | 30 días                                               |
-
-> **Implicación:** suficiente para dev y soft launch. 100 emails/día cubren ~30 órdenes/día con 3 emails por orden (confirmación + envío + entrega). Migrar a Pro al activar dominio propio en Fase 7 (ya planeado).
-
-### Anthropic Claude API — [platform.claude.com/docs/en/about-claude/models/overview](https://platform.claude.com/docs/en/about-claude/models/overview)
-
-> **Superado por ADR-058 (2026-07-13):** el asistente IA del Estudio quedó con **Gemini** (Flash-Lite, nivel gratuito), no con Anthropic. Esta tabla queda como referencia histórica de la evaluación de costos.
-
-| Modelo                                              | Input USD/MTok | Output USD/MTok | Context     | Max output  |
-| --------------------------------------------------- | -------------- | --------------- | ----------- | ----------- |
-| **Claude Sonnet 4.6** (recomendado para Estudio IA) | **$3**         | **$15**         | 1M tokens   | 64k tokens  |
-| Claude Haiku 4.5 (alternativa más barata)           | $1             | $5              | 200k tokens | 64k tokens  |
-| Claude Opus 4.7 (más potente)                       | $5             | $25             | 1M tokens   | 128k tokens |
-
-> **Modelo elegido:** Sonnet 4.6 (per `INTEGRATIONS.md § Claude API`). Estimación de costo por sugerencia: ~500 tokens input + ~300 tokens output = **~$0.006 USD por sugerencia única**. Con cache 24h en Postgres (ADR-016) y rate limit por usuario, 1.000 sugerencias únicas/mes ≈ **$6 USD/mes**. Manejable. Tokens "Priority Tier" disponibles para escalado futuro.
->
-> (2026-09-04: el proveedor real implementado es Gemini — ADR-058; Claude nunca se integró; ANTHROPIC_* eliminadas 2026-08-01).
-
-### Cloudflare R2 Free — [developers.cloudflare.com/r2/pricing](https://developers.cloudflare.com/r2/pricing/)
-
-| Item                              | Valor verificado                        |
-| --------------------------------- | --------------------------------------- |
-| Storage                           | 10 GB-mes                               |
-| Class A operations (writes/lists) | 1.000.000/mes                           |
-| Class B operations (reads)        | 10.000.000/mes                          |
-| **Egress**                        | **Free** (zero egress fees)             |
-| Aplica solo a                     | Standard storage (no Infrequent Access) |
-
-> **Implicación:** más que suficiente para backups diarios del proyecto durante años. Egress gratis es la ventaja clave vs S3 (donde restore implica $$$). Activo desde 2026-07-27 (backup diario + DR drill mensual).
-
-### Cloudflare Turnstile Free — [cloudflare.com/products/turnstile](https://www.cloudflare.com/products/turnstile/) + [community.cloudflare.com](https://community.cloudflare.com/t/turnstile-1-million-verify-requests-limit/469162)
-
-| Item                       | Valor verificado                            |
-| -------------------------- | ------------------------------------------- |
-| Plan                       | $0/mes                                      |
-| Siteverify endpoint calls  | **1.000.000/mes por sitio**                 |
-| Widgets máximos por cuenta | 20                                          |
-| Aplica para                | Personal/hobby/business no-mission-critical |
-
-> **Implicación:** suficiente para checkout + registro + cualquier formulario público en Lucams. Activar dentro de la cuenta Cloudflare en Fase 0b.
-
-### Resumen ejecutivo de impacto en el plan
-
-| Hallazgo                                       | Impacto en ROADMAP/decisiones                                                                                                           |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Vercel Hobby = sin uso comercial (ToS)         | Adelantar migración a Pro al primer pago real (ya planeado en Fase 7, ahora **confirmado como obligación contractual**, no preferencia) |
-| Supabase Free se pausa a 1 semana              | Disciplina de actividad semanal durante dev. Pro antes del lanzamiento (ya planeado)                                                    |
-| Supabase Free = 2 proyectos máx                | Si queremos staging Free, consume 1 de 2. No bloqueante para Fase 0b                                                                    |
-| `pgmq`/`pg_cron` en Free no confirmado por doc | **Verificar en Fase 0b al crear proyecto.** Si están restringidos, ADR-017 se replantea (Vercel Cron como fallback)                     |
-| Resend 100/día                                 | OK para soft launch (~30 órdenes/día)                                                                                                   |
-| R2 egress gratis                               | Backups robustos sin temer costo de restore                                                                                             |
-| Turnstile 1M/sitio                             | Sin preocupación de tope                                                                                                                |
-| Sonnet 4.6 a $0.006/sugerencia                 | Con cache 24h, 1.000 sugerencias únicas/mes = $6 USD. Manejable. **Superado por ADR-058: el proveedor real es Gemini (free tier)**      |
-
----
-
-## Lecciones operativas (vigentes)
-
-- **Scripts de datos masivos contra Supabase remoto: correrlos con `DATABASE_URL="$DIRECT_URL"`.** Contra el pooler (pgbouncer) un script con miles de upserts secuenciales se estanca («idle in transaction», 0 progreso); con la conexión directa (5432) completa en minutos. El env-guard exige además `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` para PRD.
-- **Mutar catálogo por SQL directo NO invalida el route cache de la app:** un archivado/reactivado por SQL deja el 404/200 viejo servido hasta el TTL o el próximo deploy. Para estados rápidos usar el admin (emite `revalidatePath`) o invalidar tras el SQL.
-- **`PrismaClientInitializationError` no siempre trae `code`:** el P2024 de cold start llega sin código; todo manejo de errores Prisma que discrimine por `code` debe tener fallback por mensaje (ya implementado en el retry de `packages/db/src/index.ts`).
-- **Un redeploy NO purga el Data Cache del CMS** (`revalidate: 3600`): los valores CMS publicados por script se reflejan solos en ≤1 h, o al instante con «Actualizar caché de contenido» en `/admin/contenido`.
-- **El `pg_dump` local (v13) es más viejo que los servidores (PG17):** para firmas de esquema usar queries `information_schema`/`pg_catalog` vía `psql`, NO `pg_dump --schema-only` (ver § Homologación de ambientes).
-- **Webhook de Resend:** la selección de eventos en el dashboard debe quedar SOLO en el grupo _emails_ — contacts/domains/suppression no traen `email_id` y la ruta responde 400 (los reintentos Svix auto-deshabilitarían el endpoint).
-- **Tras un merge a `production`, verificar que `lucamsshop.com` quedó apuntando al deployment nuevo** — Vercel puede dejar el deploy del merge sin alias (el sitio sigue sirviendo el build anterior aunque esté Ready). Si pasa: `vercel promote <deployment-url>`.
-- **Escaneo de errores de runtime sin depender de la DB:** `scripts/vercel-runtime-errors.sh <alias> <segundos>` (para cuando `/admin/observability` queda ciego por la misma falla de DB).
-- **Estado deseado de crons en STG: los 5 jobs de email DESAGENDADOS.** Las migraciones 015/016/021/023 re-agendan por patrón unschedule→schedule: re-aplicarlas en STG devuelve los crons de email (no hacerlo salvo que se quiera eso). Las migraciones nuevas (032, 035, 041) agendan solo su propio job y son seguras en STG.
-- **Diagnóstico de guías Aveonline fallidas:** `Order.shipmentLastError` (detalle del pedido) → log `shipping.aveonline.createshipment.fail` → health `/api/health/aveonline`, en ese orden.
-- **Assets de medios de pago:** mantener `apps/web/public/payments/` + `lib/payment-logos.ts` a la par con `lib/payment-methods.ts` (todo método nuevo necesita su logo y su entrada en el mapper).
-- **Historial operativo:** el changelog fechado se retiró de este documento (política de documentación de CLAUDE.md); la historia completa está en git (`git log -- docs/OPERATIONS.md`).
+## 12. Lecciones operativas vigentes
+
+1. **Jamás ejecutes `supabase stop` en la VM con Podman rootless:** usa siempre `make db-local-stop` / `make db-local-start` para no corromper el estado de red de los contenedores locales.
+2. **En VMs con memoria RAM ajustada, detén la BD local antes de compilar producción:** ejecuta `make db-local-stop` antes de `make build` y vuelve a levantarla con `make db-local-start`.
+3. **Nunca corras `vercel deploy` desde la raíz del monorepo:** la CLI empaquetaría el workspace entero (`> 100 MB`); todo despliegue a `STG` o `PRD` viaja por push/PR en GitHub con **Root Directory = `apps/web`**.
+4. **Cualquier cambio en variables `NEXT_PUBLIC_*` requiere un Redeploy explícito en Vercel:** editar el valor en el panel de Vercel no altera un build ya compilado (crítico para `NEXT_PUBLIC_MAINTENANCE_MODE` y `NEXT_PUBLIC_STORE_MODE`).
+5. **Usa siempre el pooler IPv4 (`:6543` en runtime y `:5432` en `DIRECT_URL`) y verifica el clúster exacto (`aws-0` en STG vs `aws-1` en PRD):** el host directo `db.<ref>.supabase.co` es IPv6-only y falla desde redes IPv4 y runners de GitHub Actions.
+6. **En Vercel, no leas variables marcadas como `sensitive` en `Preview` vía CLI:** `vercel env pull --environment=preview` falla por diseño de seguridad de la API de Vercel.
+7. **Protege el webhook de Resend:** suscribe únicamente los 5 eventos de entrega (`sent`, `delivered`, `delivery_delayed`, `bounced`, `complained`), nunca el grupo comodín `emails`.
+8. **Toda herramienta CLI destructiva nace en `--dry-run` y pasa por `env-guard.mjs`:** revisa siempre el conteo impreso en seco antes de añadir `--apply`, y nunca exportes `.env.local.nube-backup` al correr Vitest.
+9. **El stock físico nunca se copia de `STG` a `PRD`:** las variantes nuevas sincronizadas a producción nacen con `stock = 0` para conteo real en taller.
+10. **En reembolsos, el dinero se devuelve primero en Wompi o banco y después se confirma en `/admin`:** `refundOrder` actualiza estado, inventario y cupones de forma atómica, pero jamás ordena giros automáticos ni anula guías ya emitidas en Aveonline.
+11. **En PostgreSQL de Supabase el rol `postgres` no es `SUPERUSER`:** para `pg_restore --data-only` del CMS v2 no uses `--disable-triggers`; suelta y recrea en transacción las 3 FKs circulares de `CmsField` / `CmsFieldVersion` / `CmsListItem` (§6.3).
+12. **Si la base de datos cae y `/admin/errores` no puede escribir ni leer `ErrorLog`, inspecciona las lambdas en vivo:** ejecuta `bash scripts/vercel-runtime-errors.sh lucamsshop.com 45` y apóyate en los correos de `uptime-monitor-prd` alojado en `lucams-stg`.

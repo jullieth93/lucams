@@ -929,7 +929,7 @@ export default async function AdminPedidoDetallePage({
                   )}
                   {/* Paquete G — causa REAL del último intento fallido (mensaje
                       de la transportadora, sanitizado) + sugerencia operativa
-                      (docs/INTEGRATIONS_AVEONLINE.md §4.4). */}
+                      (docs/integrations/aveonline.md). */}
                   {shipmentLastError && !isInternalDelivery && (
                     <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/60 p-3">
                       <p className="text-[11px] font-bold text-rose-800">

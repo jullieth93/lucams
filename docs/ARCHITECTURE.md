@@ -1,955 +1,944 @@
-# Arquitectura — Lucams_shop
+# Arquitectura Técnica — Lucams Shop
 
-## Visión general
+> Especificación arquitectónica viva y exhaustiva del monorepo de **Lucams Shop** (`apps/web` + `packages/db`).
+> Para el resumen ejecutivo de arranque rápido consulta [`STATE.md`](STATE.md); para navegación por dominios e integraciones revisa [`README.md`](README.md); para convenciones de código consulta [`CONVENTIONS.md`](CONVENTIONS.md); y para operación diaria, ambientes y DR consulta [`OPERATIONS.md`](OPERATIONS.md).
 
-Aplicación monolítica modular en **Next.js 16.3.4 (App Router)** desplegada en Vercel, con backend serverless integrado, persistencia en **Supabase Postgres** vía **Prisma**, autenticación con **Supabase Auth**, almacenamiento de imágenes en **Supabase Storage**, e integraciones externas con Wompi (pagos), Aveonline (logística), Gemini API (IA, ADR-058) y Resend (email).
+## Tabla de contenido
 
+1. [Visión general, topología de producción y principios arquitectónicos](#1-visión-general-topología-de-producción-y-principios-arquitectónicos)
+2. [Stack tecnológico y versiones exactas](#2-stack-tecnológico-y-versiones-exactas)
+3. [Estructura del monorepo y árbol completo de rutas App Router](#3-estructura-del-monorepo-y-árbol-completo-de-rutas-app-router)
+4. [Modelo de datos completo en PostgreSQL y Prisma (71 modelos + 26 enums)](#4-modelo-de-datos-completo-en-postgresql-y-prisma-71-modelos--26-enums)
+5. [Arquitectura de Identidad Canónica (`Contact`), CRM Operacional Nativo y Frontera SSoT (`ADR-193`)](#5-arquitectura-de-identidad-canónica-contact-crm-operacional-nativo-y-frontera-ssot-adr-193)
+6. [Arquitectura CMS v2 de 3 capas (`ADR-082` / `ADR-187`)](#6-arquitectura-cms-v2-de-3-capas-adr-082--adr-187)
+7. [Gate de visibilidad del storefront y redirecciones dinámicas (`UrlRedirect`)](#7-gate-de-visibilidad-del-storefront-y-redirecciones-dinámicas-urlredirect)
+8. [Autorización del Backoffice (`/admin`): RBAC 8 roles × 34 capacidades, MFA `aal2` y máscara PII](#8-autorización-del-backoffice-admin-rbac-8-roles--34-capacidades-mfa-aal2-y-máscara-pii)
+9. [Extensiones PostgreSQL, postura RLS/grants y procesos programados](#9-extensiones-postgresql-postura-rlsgrants-y-procesos-programados)
+10. [Abstracciones de proveedores y arquitectura de Storage (5 buckets)](#10-abstracciones-de-proveedores-y-arquitectura-de-storage-5-buckets)
+11. [Estrategia de caché, revalidación, pipeline de `proxy.ts` y `maxDuration`](#11-estrategia-de-caché-revalidación-pipeline-de-proxyts-y-maxduration)
+12. [Accesibilidad (WCAG 2.1 AA), presupuestos de performance, testing, CI/CD y referencias](#12-accesibilidad-wcag-21-aa-presupuestos-de-performance-testing-cicd-y-referencias)
+
+---
+
+## 1. Visión general, topología de producción y principios arquitectónicos
+
+**Lucams Shop** es una plataforma de comercio electrónico personalizado y operación de taller de imprenta en Colombia (imanes personalizados tipo Polaroid, sets de letras ilustradas, calendarios magnéticos, separadores magnéticos y línea corporativa/eventos B2B). Opera como un **monolito modular full-stack** sobre Next.js 16 App Router (Node.js 22 serverless en Vercel) respaldado por PostgreSQL 17 en Supabase.
+
+### 1.1 Diagrama de topología de producción
+
+```text
+                       Clientes (Navegadores Web / Móvil · es-CO)
+                                           │
+                                           ▼
+                    Cloudflare DNS (lucamsshop.com / mail.lucamsshop.com)
+                    + Cloudflare Turnstile (anti-bot invisible en mutaciones)
+                                           │ HTTPS (TLS 1.3 + HSTS preload)
+                                           ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ Vercel Serverless (Node.js 22 · Root Directory: apps/web)                           │
+│                                                                                     │
+│  ┌───────────────────────────────────────────────────────────────────────────────┐  │
+│  │ apps/web/proxy.ts (Node.js runtime — reemplazo de middleware.ts en Next.js 16)│  │
+│  │  • Nonce CSP criptográfico por request + cabeceras de seguridad               │  │
+│  │  • Modo mantenimiento (NEXT_PUBLIC_MAINTENANCE_MODE)                          │  │
+│  │  • Redirecciones 301/302 (PRODUCT_REDIRECTS estáticas + UrlRedirect cacheadas)│  │
+│  │  • Gate de modo tienda (NEXT_PUBLIC_STORE_MODE=catalog|full)                  │  │
+│  │  • Sesión Supabase SSR + Gate /mi-cuenta + Gate /admin e /internal + MFA aal2 │  │
+│  └───────────────────────────────────────┬───────────────────────────────────────┘  │
+│                                          ▼                                          │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐  ┌─────────────────────┐  │
+│  │ React Server Components │  │ Server Actions tipadas  │  │ Route Handlers /api │  │
+│  │ • Storefront y PDP      │  │ • Carrito / Checkout    │  │ • Webhooks HMAC     │  │
+│  │ • Estudio (/estudio/*)  │  │ • Guardado de diseños   │  │ • 15 endpoints cron │  │
+│  │ • Mi Cuenta (/mi-cuenta)│  │ • Mutaciones /admin     │  │ • Proxy previews    │  │
+│  │ • Backoffice (/admin)   │  │ • Posventa y soporte    │  │ • Health / Feeds    │  │
+│  └────────────┬────────────┘  └────────────┬────────────┘  └──────────┬──────────┘  │
+│               └────────────────────────────┼──────────────────────────┘             │
+│                                            │ Prisma Client (@lucams/db · pool=5)    │
+└────────────────────────────────────────────┼────────────────────────────────────────┘
+                                             │
+                 ┌───────────────────────────┼───────────────────────────┐
+                 ▼                           ▼                           ▼
+┌──────────────────────────────┐ ┌─────────────────────────┐ ┌────────────────────────┐
+│ Supabase Cloud (sa-east-1)   │ │ Proveedores de negocio  │ │ Operación y analítica  │
+│ • PostgreSQL 17 (Supavisor   │ │ • Wompi Colombia        │ │ • Cloudflare R2        │
+│   :6543 tx-mode / :5432 DDL) │ │   (pagos + webhooks)    │ │   (backups GPG AES256) │
+│ • 73 tablas en public + RLS  │ │ • Aveonline             │ │ • GitHub Actions       │
+│   100 % + PostgREST cerrado  │ │   (cotización, guías,   │ │   (CI, nightly, smoke, │
+│ • GoTrue Auth (OTP + TOTP)   │ │    recaudo COD, sync)   │ │    backup, DR, RDAP)   │
+│ • Storage (5 buckets: 2 pub, │ │ • Resend REST API       │ │ • Monitor pg_cron STG  │
+│   3 privados)                │ │   (30 plantillas HTML + │ │   hacia PRD c/10 min   │
+│ • pg_cron + pg_net + Vault   │ │    webhooks Svix)       │ │ • GA4 + Meta Pixel     │
+│   (15 jobs en DB)            │ │ • Google Gemini REST    │ │   (bajo consentimiento)│
+└──────────────────────────────┘ └─────────────────────────┘ └────────────────────────┘
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Vercel (Next.js)                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │  Storefront  │  │  Admin Panel │  │   API Routes         │  │
-│  │  (RSC        │  │  (RBAC + MFA)│  │   (webhooks, cron,   │  │
-│  │   dinámico)  │  │              │  │    catálogo, CMS)    │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │
-└─────────┼─────────────────┼──────────────────────┼──────────────┘
-          │                 │                      │
-          ▼                 ▼                      ▼
-   ┌──────────────────────────────────────────────────────┐
-   │                     Supabase                          │
-   │  ┌────────────┐  ┌────────────┐  ┌────────────────┐ │
-   │  │ Postgres   │  │   Auth     │  │   Storage      │ │
-   │  │ (Prisma)   │  │ (RLS)      │  │ (firmadas)     │ │
-   │  └────────────┘  └────────────┘  └────────────────┘ │
-   └──────────────────────────────────────────────────────┘
-          │                                    ▲
-          ▼                                    │
-   ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
-   │   Wompi      │  │  Aveonline   │  │  Gemini API      │
-   │ (pagos)      │  │ (logística)  │  │  (IA diseño)     │
-   └──────────────┘  └──────────────┘  └──────────────────┘
-                              │
-                              ▼
-                       ┌──────────────┐
-                       │   Resend     │
-                       │  (email)     │
-                       └──────────────┘
-```
 
-## Estructura de carpetas
+### 1.2 Principios arquitectónicos rectores
 
-```
-lucams_shop/
+1. **Modo dual de operación (`NEXT_PUBLIC_STORE_MODE=catalog|full`, `ADR-077`):**
+   - Resuelto en `apps/web/lib/store-mode.ts` (`getStoreMode()`, `isFullStoreMode()`, `isCatalogMode()`) y reforzado en `apps/web/proxy.ts` y `apps/web/lib/stage-guard.ts` (`assertFullStoreMode()`).
+   - **`catalog` (Etapa 1):** habilita catálogo público, Estudio de Personalización 2D/3D completo, carrito como armador de pedido y cierre mediante cotización persistida en `Quote` + `QuoteItem` con enlace público `/cotizacion/[token]` y redirección a WhatsApp. Bloquea `/checkout/*` (redirige a `/carrito`), `/mi-cuenta/cupones` y toda Server Action exclusiva de pago en línea o contraentrega.
+   - **`full` (Etapa 2):** habilita checkout de 3 pasos (`/checkout/datos` → `/checkout/envio` → `/checkout/pago`), pasarela Wompi, contraentrega Aveonline, cupones, puntos de fidelización, referidos y posventa completa.
+   - **Fail-closed:** valores ausentes o desconocidos caen a `"catalog"` en el cliente; en `NODE_ENV=production` `apps/web/lib/env.ts` exige el valor explícito y aborta el arranque si falta o si está en `full` sin las credenciales requeridas (`FULL_MODE_REQUIRED`).
+2. **Postgres-first sin infraestructura superflua (`ADR-016`):**
+   - No se utilizan Redis, Upstash, colas SaaS externas ni Vercel Cron.
+   - **Rate limiting distribuido:** tabla SQL `rate_limit_buckets` y función atómica `check_rate_limit(p_key, p_max, p_window_ms)` invocada desde `apps/web/lib/rate-limit.ts`.
+   - **Jobs y colas durables:** `pg_cron` + `pg_net` en Supabase disparan los endpoints `/api/cron/*` con secretos leídos en tiempo de ejecución desde `supabase_vault`, mientras la generación pesada de archivos de imprenta 300 DPI se desacopla en la tabla `RenderJob` (`ADR-136`).
+   - **Búsqueda tolerante a errores y tildes:** índices GIN de expresión en PostgreSQL con `pg_trgm` y `unaccent` (`supabase/migrations/00000000000005` y `00000000000031`).
+3. **Defensa en profundidad en datos y autorización:**
+   - Todo acceso de lectura y escritura del dominio ocurre en el servidor mediante **Prisma** (`@lucams/db`, rol `postgres`).
+   - La API pública PostgREST de Supabase está **completamente cerrada** sobre `public`: `REVOKE ALL` para `anon` y `authenticated`, `REVOKE SELECT, INSERT, UPDATE, DELETE` para `service_role`, `ENABLE ROW LEVEL SECURITY` en el 100 % de las tablas de dominio y un event trigger DDL (`enforce_rls_on_new_table_trg`) que blinda automáticamente cualquier tabla nueva.
+   - El cliente Supabase de navegador (`apps/web/lib/supabase/browser.ts`) se usa **únicamente** para flujos de sesión y MFA TOTP de GoTrue; el cliente administrativo (`apps/web/lib/supabase/service.ts`, `import "server-only"`) se restringe a `auth.admin.*` y operaciones sobre `storage.objects`.
+   - En `/admin`, la autorización aplica tres anillos acumulativos: `proxy.ts` (autenticación + rol activo + MFA `aal2` + prefijo de ruta), layout/página RSC (`verifyAdminRouteAccess` + enmascaramiento server-side de PII en `lib/pii-mask.ts`) y guardas explícitas en cada Server Action (`requireAdminAction` / `requireCapability`).
+4. **Frontera cliente/servidor estricta y exactitud financiera:**
+   - React Server Components (RSC) por defecto; `"use client"` vive únicamente en hojas interactivas (lienzo Konva, visor 3D Three.js, store optimista del carrito en Zustand, formularios interactivos y diálogos).
+   - Todo valor monetario en base de datos, servicios y payloads internos se representa como **entero en centavos COP (`Int`)** (`$19.900 COP` = `1_990_000`), validado con `fitsMoneyInt4` (`apps/web/lib/money.ts`) y restricciones `CHECK >= 0` en PostgreSQL. Jamás se emplean números de punto flotante para precios, descuentos, fletes ni totales.
+
+---
+
+## 2. Stack tecnológico y versiones exactas
+
+Versiones declaradas en `package.json`, `apps/web/package.json`, `packages/db/package.json` y `pnpm-workspace.yaml`:
+
+| Capa                     | Tecnología / Paquete                                                        | Versión exacta                                | Rol arquitectónico y notas                                                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime y gestor         | Node.js / `pnpm`                                                            | `>=22.0.0` / `11.0.9`                         | Monorepo `pnpm` workspaces (`apps/*`, `packages/*`).                                                                                        |
+| Framework web            | `next` / `eslint-config-next`                                               | `16.4.3`                                      | App Router, RSC, Server Actions, Turbopack, `proxy.ts` en Node.js runtime.                                                                  |
+| Biblioteca UI            | `react` / `react-dom`                                                       | `19.3.1`                                      | Renderizado concurrente, `useActionState`, Server Components.                                                                               |
+| Lenguaje                 | `typescript`                                                                | `^5`                                          | `strict: true`, `noUncheckedIndexedAccess: true`, cero `any` sin justificar.                                                                |
+| Estilos y sistema visual | `tailwindcss` / `@tailwindcss/postcss` / `tw-animate-css`                   | `^4` / `^4` / `^1.4.0`                        | Tokens semánticos CSS-first (`@theme inline` en `app/globals.css`). Ver [`BRANDING.md`](BRANDING.md).                                       |
+| Primitivos accesibles    | `radix-ui` + `shadcn/ui` + `lucide-react` + `sonner`                        | `^1.8.1` / `^1.65.0` / `^2.0.8`               | Diálogos, popovers, tooltips de marca (`Hint`/`Tooltip`), iconografía y notificaciones toast.                                               |
+| Estado cliente           | `zustand`                                                                   | `^5.0.16`                                     | Carrito optimista sincronizado con BD y estado local de interfaz.                                                                           |
+| Validación de esquemas   | `zod`                                                                       | `^4.6.7`                                      | Validación en env (`lib/env.ts`), Server Actions, Route Handlers, webhooks y columnas JSONB.                                                |
+| Editor gráfico 2D        | `konva` / `react-konva`                                                     | `^10.9.0` / `^19.3.2`                         | Lienzo interactivo 2D del Estudio de Personalización en el navegador.                                                                       |
+| Visor 3D interactivo     | `three` / `@react-three/fiber` / `@react-three/drei`                        | `^0.187.0` / `^9.8.2` / `^10.7.9`             | Previsualización 3D de grosor, laminado e imán (lazy-loaded fuera del bundle crítico).                                                      |
+| Render server-side 2D    | `@napi-rs/canvas`                                                           | `^1.1.0`                                      | Renderizado vectorial server-side a 300 DPI por ficha en sets de letras y nombres (`ADR-188`).                                              |
+| Procesamiento de imagen  | `sharp` + `heic-decode`                                                     | `0.35.5` (override fijo) / `^2.1.0`           | Normalización WebP, recorte y composición 300 DPI vía `sharp-safe.ts` (`LUC-SEC-011`) + soporte HEIC/HEIF de iOS.                           |
+| Empaquetado taller       | `jszip`                                                                     | `^3.10.2`                                     | Generación streaming/buffer del paquete ZIP de producción por pedido (`/produccion`).                                                       |
+| ORM y acceso a datos     | `prisma` / `@prisma/client` (`@lucams/db`)                                  | `^6.18.0`                                     | Único canal de lectura/escritura de dominio contra PostgreSQL 17 (pool serverless + retry transitorio).                                     |
+| Auth y Storage           | `@supabase/supabase-js` / `@supabase/ssr`                                   | `^2.118.0` / `^0.12.6`                        | Sesiones SSR en cookies, OTP de cliente, MFA TOTP admin (`aal2`) y Storage API sobre los 5 buckets.                                         |
+| Correo transaccional     | Resend REST (`fetch` nativo en `lib/resend.ts`)                             | API HTTP v1                                   | Envío transaccional sin SDK npm externo + 30 plantillas HTML tipadas en `features/emails/` + webhooks Svix.                                 |
+| Pasarela de pagos        | Wompi Colombia (`features/payments/wompi.ts`)                               | API v1                                        | Checkout hospedado (redirect), consulta de transacciones y conciliación por webhook HMAC-SHA256 (`ADR-004`).                                |
+| Logística y COD          | Aveonline (`features/shipping/aveonline.ts`)                                | API v2                                        | Cotización multi-transportadora, generación de guías, archivo PDF de rótulos, recaudo contraentrega y tracking (`ADR-039`).                 |
+| Asistente de IA          | Google Gemini REST (`features/ai/gemini-provider.ts`)                       | `v1beta`                                      | `gemini-2.5-flash-lite` (primario) y `gemini-2.5-flash` (fallback) para sugerencias del Estudio y copiloto de soporte cero-PII (`ADR-058`). |
+| Backups off-site         | `@aws-sdk/client-s3` + `gpg` AES-256                                        | `^3.1066.0`                                   | Volcados diarios cifrados de PostgreSQL y espejo de Storage hacia Cloudflare R2 (`ADR-059`).                                                |
+| Testing y calidad        | `vitest` / `@playwright/test` / `@axe-core/playwright` / `@lhci/cli` / `k6` | `^4.1.12` / `^1.64.1` / `^4.14.0` / `^0.15.1` | Unit + integración DB real, E2E multi-navegador, auditoría WCAG AA, Lighthouse CI y pruebas de carga.                                       |
+| Estilo y seguridad       | `eslint` / `prettier` / `gitleaks`                                          | `^9` / `^3.9.10` / CLI                        | Linting estático, formato uniforme y escaneo de secretos en pre-commit y CI.                                                                |
+
+---
+
+## 3. Estructura del monorepo y árbol completo de rutas App Router
+
+### 3.1 Estructura raíz del repositorio
+
+```text
+lucams-shop/
 ├── apps/
-│   └── web/                              # Next.js 16 (App Router)
-│       ├── app/
-│       │   ├── page.tsx                  # Home (force-dynamic)
-│       │   ├── productos/                # Catálogo con filtros (SSR puro)
-│       │   ├── producto/[slug]/          # PDP
-│       │   ├── ocasion/[slug]/
-│       │   ├── estudio/[slug]/           # Estudio de personalización (react-konva + three.js)
-│       │   ├── carrito/
-│       │   ├── checkout/                 # Multi-step: datos/ → envio/ → pago/ → gracias/
-│       │   ├── pedido/[token]/           # Vista guest por token (hash en DB)
-│       │   ├── empresas-y-eventos/       # Captación consultiva B2B y eventos sociales
-│       │   │                             #   (crea Contact + Organization? + Opportunity)
-│       │   ├── cotizacion/[token]/       # Confirmación guest de cotización B2B
-│       │   │                             #   (el formulario vive en checkout/datos
-│       │   │                             #   cuando NEXT_PUBLIC_STORE_MODE=catalog)
-│       │   ├── d/[token]/                # Shortlink público de diseño compartido
-│       │   │                             #   (se revoca al rechazar el diseño)
-│       │   ├── status/                   # Status público (lib/public-status.ts)
-│       │   ├── maintenance/              # Página de mantenimiento
-│       │   ├── internal/                 # 3 páginas dev-only (3d-preview, correos,
-│       │   │                             #   plantilla-preview)
-│       │   ├── mi-cuenta/                # Cuenta cliente (pedidos, perfil, direcciones…)
-│       │   ├── (auth)/                   # login, registro, recuperar-password…
-│       │   ├── legal/                    # terminos, privacidad, habeas-data…
-│       │   ├── admin/
-│       │   │   ├── login/                # Login + MFA challenge
-│       │   │   └── (panel)/              # Backoffice + CRM nativo (hoy, pedidos,
-│       │   │                             #   productos, inventario, contenido (CMS),
-│       │   │                             #   cupones, clientes + duplicados,
-│       │   │                             #   oportunidades B2B, soporte, garantías,
-│       │   │                             #   retractos, marketing/segmentos,
-│       │   │                             #   mayorista, materiales/costos, finanzas,
-│       │   │                             #   metricas, carritos, seguridad…)
-│       │   ├── api/
-│       │   │   ├── webhooks/             # wompi/, aveonline/, resend/
-│       │   │   ├── cron/                 # 13 handlers (x-cron-secret vía
-│       │   │   │                         #   lib/cron-auth.ts): alerts, cart-recovery,
-│       │   │   │                         #   purge-event-logs, domain-watch…
-│       │   │   ├── catalog/              # products, search, filters, categories…
-│       │   │   ├── coupons/public/
-│       │   │   ├── cms/
-│       │   │   └── health/, vitals/, funnel/, log-error/, unsubscribe/, admin/
-│       │   ├── error.tsx                 # Error boundary global
-│       │   ├── not-found.tsx             # 404
-│       │   ├── global-error.tsx          # Catch-all (root)
-│       │   ├── sitemap.ts / robots.ts / manifest.ts
-│       │   └── layout.tsx
-│       ├── components/                   # ui/ (shadcn), admin/, cms/, home/,
-│       │                                 # product-detail/, address/, legal/ + sueltos
-│       ├── features/                     # Dominios de negocio: checkout, orders, cart,
-│       │                                 # payments, shipping, personalization, cms,
-│       │                                 # identity, contacts, crm, opportunities,
-│       │                                 # analytics, coupons, quotes, redirects,
-│       │                                 # moderation, ai, emails, observability…
-│       │                                 # (actions.ts + service.ts + schemas.ts)
-│       │                                 # OJO: features/security/ NO tiene código
-│       │                                 # productivo — solo los 2 tests RLS de
-│       │                                 # integración; la seguridad vive en lib/
-│       │                                 # (security-*.ts, admin-rbac*.ts, cron-auth.ts)
-│       │                                 # y features/admin-mfa/
-│       ├── lib/
-│       │   ├── supabase/
-│       │   │   ├── server.ts             # Cliente con cookies (SSR)
-│       │   │   ├── browser.ts            # Cliente browser — solo Auth (MFA login)
-│       │   │   └── service.ts            # Cliente service_role (server-only)
-│       │   ├── db.ts                     # Prisma client
-│       │   ├── wompi.ts                  # Cliente Wompi (fetch + circuit breaker)
-│       │   ├── resend.ts                 # Cliente Resend vía fetch
-│       │   ├── cms.ts                    # Lectura CMS v2 (unstable_cache tag "cms")
-│       │   ├── checkout-session.ts       # Cookie de checkout sellada AES-256-GCM
-│       │   ├── cart-session.ts           # Cookie de sesión de carrito anónimo
-│       │   ├── token-hash.ts             # SHA-256 de bearer tokens (F-11)
-│       │   ├── admin-rbac-guard.ts       # Guard de rol + MFA obligatorio (B-1)
-│       │   ├── cron-auth.ts              # x-cron-secret timing-safe, compartido por
-│       │   │                             #   los 15 handlers cron/health protegidos
-│       │   ├── security-events.ts        # SecurityEvent durable (login fallido,
-│       │   │                             #   firma de webhook inválida; IP hasheada)
-│       │   ├── error-capture.ts          # ErrorLog/ErrorReport con scrubPii (F-6)
-│       │   ├── rate-limit.ts             # Postgres-based (ADR-016)
-│       │   ├── errors.ts                 # AppError + ProblemDetails (RFC 7807)
-│       │   ├── logger.ts                 # JSON estructurado con redact PII
-│       │   ├── fetch-with-timeout.ts / retry.ts / circuit-breaker.ts
-│       │   ├── security-headers.ts / turnstile.ts / storage.ts / format.ts…
-│       ├── proxy.ts                      # Proxy (ex-middleware, Next 16): request ID,
-│       │                                 #   sesión Supabase (NO en /api/* — ADR-162), CORS,
-│       │                                 #   security headers, gate /admin/*, idle-timeouts
-│       ├── next.config.ts
-│       └── package.json
+│   └── web/                        # Aplicación Next.js 16 (Storefront, Estudio, Mi Cuenta, Admin y APIs)
+│       ├── app/                    # Árbol de rutas App Router (RSC, Server Actions colocalizadas y Route Handlers)
+│       ├── components/             # Componentes compartidos (ui/, layout/, catalog/, cms/, studio/, admin/)
+│       ├── features/               # 40 módulos verticales de dominio (service, repository, schemas, actions, emails)
+│       ├── lib/                    # Primitivas transversales (env, auth, rbac, pii-mask, cms, rate-limit, resend, sharp)
+│       ├── public/                 # Activos estáticos versionados (marca, fuentes, plantillas SVG, íconos)
+│       ├── scripts/                # Scripts operativos de app (backup R2, DR drills, smoke post-deploy, uptime, profiling)
+│       ├── tests/                  # Setup Vitest, specs Playwright E2E y scripts de carga k6
+│       ├── proxy.ts                # Punto único de intercepción HTTP en Node.js runtime (Next.js 16)
+│       ├── next.config.ts          # Configuración de Next.js, imágenes remotas y paquetes externos de servidor
+│       └── vercel.json             # Región gru1/iad1 y configuración de despliegue (Root Directory = apps/web)
 ├── packages/
-│   └── db/
+│   └── db/                         # Paquete compartido @lucams/db
 │       ├── prisma/
-│       │   ├── schema.prisma
-│       │   └── migrations/               # prisma migrate (91 migraciones,
-│       │                                 #   71 modelos de dominio)
-│       ├── scripts/                      # cms-site-map.mjs, migrate-cms-v2.mjs,
-│       │                                 # sync-and-prune-cms-v2.mjs,
-│       │                                 # backfill-contacts.mjs,
-│       │                                 # audit-schema-drift.mjs (drift Prisma↔SQL
-│       │                                 #   gateado en CI), seeds…
-│       └── package.json
+│       │   ├── schema.prisma       # Esquema canónico: 71 modelos y 26 enums
+│       │   ├── migrations/         # 94 migraciones incrementales de Prisma
+│       │   └── seed.ts             # Seed base de desarrollo
+│       ├── legal-content/          # Fuentes Markdown versionadas de los 8 documentos legales
+│       ├── scripts/                # 28 scripts operativos, de auditoría, homologación y semillas + guardas en lib/
+│       └── src/index.ts            # Singleton PrismaClient con pool serverless (limit=5, timeout=20s) y retry P1001/P1017/P2024
 ├── supabase/
-│   └── migrations/                       # SQL no-Prisma (RLS, grants, storage,
-│                                         #   funciones, pg_cron) 00000000000002…53
-├── .github/workflows/
-│   ├── ci.yml                            # Gate de PR: changes (fast-path docs) +
-│   │                                     #   secrets-scan + quality (fmt/audit/lint/
-│   │                                     #   typecheck/build) + unit-tests +
-│   │                                     #   rls-behavior + e2e (Playwright + LHCI)
-│   ├── nightly-full.yml                  # Nocturno (guard 24h) + on-demand:
-│   │                                     #   Supabase real + cross-browser + Wompi
-│   ├── backup.yml                        # Backup DB + Storage → R2 cifrado gpg (A-3)
-│   ├── dr-drill.yml                      # DR drill mensual — restore desde R2
-│   ├── domain-watch.yml                  # RDAP dominio → POST /api/cron/domain-watch
-│   └── post-deploy-smoke.yml             # Smoke PRD en deployment_status Production
-│                                         #   (ref: production + drift Prisma)
-├── docs/                                 # Documentación (este archivo entre otros)
-├── README.md
-├── CLAUDE.md
-├── pnpm-workspace.yaml
-└── package.json
+│   ├── config.toml                 # Configuración del stack Supabase CLI local sobre Podman rootless
+│   ├── auth-templates/             # Plantillas HTML en español con código OTP para Supabase Auth
+│   └── migrations/                 # 53 migraciones SQL (00000000000002..00000000000054): RLS, grants, Storage, triggers y pg_cron
+├── scripts/                        # Scripts bash/node de infraestructura local, STG, diagnóstico SQL y hooks Git
+├── .github/workflows/              # 6 workflows: ci.yml, nightly-full.yml, post-deploy-smoke.yml, backup.yml, dr-drill.yml, domain-watch.yml
+├── docs/                           # Documentación viva en 3 niveles (STATE.md, transversales, domains/* e integrations/*)
+└── Makefile                        # Interfaz canónica de comandos de desarrollo, calidad, BD, seeds y auditoría
 ```
 
-**Monorepo con pnpm workspaces.** No usar Turborepo todavía (innecesario al inicio).
+### 3.2 Árbol exhaustivo de rutas App Router (`apps/web/app/`)
 
-## Stack y versiones objetivo
+#### Storefront público, catálogo, Estudio, checkout y rutas por token
 
-| Capa            | Tecnología                    | Versión objetivo                                                       |
-| --------------- | ----------------------------- | ---------------------------------------------------------------------- |
-| Runtime         | Node.js                       | 22 LTS (`engines.node >= 22`)                                          |
-| Package manager | pnpm                          | 11.x (`packageManager: pnpm@11.0.9`)                                   |
-| Framework       | Next.js                       | **16.3.4 (App Router, RSC, Server Actions, Turbopack)**                |
-| UI runtime      | React                         | 19.x                                                                   |
-| Lenguaje        | TypeScript                    | 5.x estricto                                                           |
-| UI              | Tailwind CSS                  | **4.x (sintaxis CSS-first con `@theme`, sin `tailwind.config`)**       |
-| Componentes     | shadcn/ui                     | latest (style `radix-nova`, soporte oficial v4)                        |
-| Animaciones     | `tw-animate-css`              | latest (reemplaza `tailwindcss-animate` deprecado en v4)               |
-| Toast/notif     | `sonner`                      | latest (reemplaza `toast` deprecado en v4)                             |
-| State (cliente) | Zustand                       | 5.x                                                                    |
-| Validación      | Zod                           | 4.x                                                                    |
-| ORM             | Prisma                        | 6.x                                                                    |
-| DB              | Postgres                      | Supabase managed                                                       |
-| Auth            | Supabase Auth                 | latest (MFA TOTP obligatorio en /admin)                                |
-| Editor canvas   | react-konva                   | 19.x                                                                   |
-| 3D              | three.js + react-three-fiber  | latest                                                                 |
-| Email           | Resend                        | API REST vía fetch server-side (`lib/resend.ts`, sin SDK)              |
-| IA              | Gemini API                    | REST vía fetch server-side (`features/ai/gemini-provider.ts`, ADR-058) |
-| Tests unit      | Vitest                        | 4.x                                                                    |
-| Tests E2E       | Playwright                    | latest                                                                 |
-| Lint            | ESLint + `eslint-config-next` | 9.x / 16.x (flat config)                                               |
-| Format          | Prettier                      | 3.x                                                                    |
-
-## Modelo de datos (Prisma)
-
-> **Nota:** el schema mostrado abajo es la base lógica del dominio (el inventario completo de los 57 modelos está más abajo, § Inventario completo de modelos). Cada modelo de dominio (no auxiliares de infra como `rate_limit_buckets`) además gana los **audit fields estándar** (`createdAt`, `updatedAt`, `createdBy?`, `updatedBy?`, `deletedAt?`, `deletedBy?`) per [`CONVENTIONS.md` § Soft delete + audit fields](./CONVENTIONS.md#db--soft-delete--audit-fields). Para no inflar el schema visual, esos campos no se repiten en cada modelo aquí — pero la capa de servicio llena `createdBy/updatedBy` al crear/actualizar (p.ej. `features/products/service.ts`) y los queries por defecto filtran `WHERE "deletedAt" IS NULL`.
-
-```prisma
-// prisma/schema.prisma
-
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")  // Para migraciones, sin pgBouncer (convención oficial Supabase+Prisma)
-}
-
-// ──────────────── IDENTIDAD ────────────────
-
-model Customer {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  phone           String?
-  firstName       String?
-  lastName        String?
-  supabaseUserId  String   @unique  // Vincula con auth.users
-  loyaltyPoints   Int      @default(0)
-  referralCode    String   @unique
-  referredById    String?
-  referredBy      Customer? @relation("Referrals", fields: [referredById], references: [id])
-  referrals       Customer[] @relation("Referrals")
-  addresses       Address[]
-  orders          Order[]
-  reviews         Review[]
-  loyaltyTxns     LoyaltyTxn[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-model Address {
-  id          String   @id @default(cuid())
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  name        String
-  line1       String
-  line2       String?
-  city        String
-  department  String   // Departamento de Colombia
-  zip         String?
-  phone       String
-  isDefault   Boolean  @default(false)
-}
-
-enum AdminRole {
-  SUPERADMIN
-  MANAGER
-  FULFILLMENT
-  CMS_EDITOR  // solo contenido del sitio
-}
-
-model AdminUser {
-  id              String    @id @default(cuid())
-  supabaseUserId  String    @unique
-  email           String    @unique
-  role            AdminRole
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-}
-
-// ──────────────── CATÁLOGO ────────────────
-
-model Category {
-  id          String    @id @default(cuid())
-  slug        String    @unique
-  name        String
-  description String?
-  image       String?
-  parentId    String?
-  parent      Category? @relation("Subcategories", fields: [parentId], references: [id])
-  children    Category[] @relation("Subcategories")
-  products    Product[]
-  order       Int       @default(0)
-  isActive    Boolean   @default(true)
-}
-
-model Product {
-  id                     String    @id @default(cuid())
-  slug                   String    @unique
-  name                   String
-  description            String
-  basePrice              Int       // En centavos COP
-  compareAtPrice         Int?
-  cost                   Int?
-  sku                    String    @unique
-  isPersonalizable       Boolean   @default(false)
-  personalizationSchema  Json?     // Definición del editor (capas, plantillas)
-  images                 String[]  // URLs de Supabase Storage
-  categoryId             String
-  category               Category  @relation(fields: [categoryId], references: [id])
-  variants               ProductVariant[]
-  reviews                Review[]
-  isActive               Boolean   @default(true)
-  isFeatured             Boolean   @default(false)
-  seoTitle               String?
-  seoDescription         String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-}
-
-model ProductVariant {
-  id          String   @id @default(cuid())
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  name        String   // ej. "10×15 cm, mate"
-  sku         String   @unique
-  price       Int?     // Override del basePrice
-  stock       Int      @default(0)
-  attributes  Json     // { size, finish, ... }
-  inventoryLogs InventoryLog[]
-  cartItems   CartItem[]
-  orderItems  OrderItem[]
-}
-
-model InventoryLog {
-  id        String         @id @default(cuid())
-  variantId String
-  variant   ProductVariant @relation(fields: [variantId], references: [id])
-  delta     Int            // + o -
-  reason    String         // "ORDER_PAID", "MANUAL_RESTOCK", "RETURN"
-  orderId   String?
-  createdAt DateTime       @default(now())
-}
-
-// ──────────────── CARRITO Y ÓRDENES ────────────────
-
-model Cart {
-  id          String     @id @default(cuid())
-  customerId  String?
-  sessionId   String     @unique
-  currency    String     @default("COP")
-  items       CartItem[]
-  abandoned   AbandonedCart?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-}
-
-model CartItem {
-  id            String         @id @default(cuid())
-  cartId        String
-  cart          Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  variantId     String
-  variant       ProductVariant @relation(fields: [variantId], references: [id])
-  qty           Int
-  customDesign  Json?          // Diseño del estudio de personalización
-  unitPrice     Int            // Snapshot del precio al agregar (con tier de volumen si aplica; se re-pricea al cambiar qty — ver § Reglas)
-}
-
-enum OrderStatus {
-  DRAFT
-  PENDING_PAYMENT
-  PAID
-  FULFILLING
-  SHIPPED
-  DELIVERED
-  CANCELLED
-  REFUNDED
-}
-
-enum PaymentMethod {
-  WOMPI
-  COD
-}
-
-model Order {
-  id                  String        @id @default(cuid())
-  number              String        @unique  // Human-readable: LCS-2026-0001
-  customerId          String?
-  customer            Customer?     @relation(fields: [customerId], references: [id])
-  email               String
-  phone               String
-  shippingAddress     Json
-  subtotal            Int
-  discount            Int           @default(0)
-  shipping            Int
-  tax                 Int           @default(0)
-  total               Int
-  currency            String        @default("COP")
-  status              OrderStatus   @default(DRAFT)
-  paymentMethod       PaymentMethod
-  wompiTransactionId  String?
-  shippingCarrier     String?
-  trackingNumber      String?
-  trackingUrl         String?
-  couponId            String?
-  coupon              Coupon?       @relation(fields: [couponId], references: [id])
-  notes               String?
-  items               OrderItem[]
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-}
-
-model OrderItem {
-  id              String         @id @default(cuid())
-  orderId         String
-  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variantId       String
-  variant         ProductVariant @relation(fields: [variantId], references: [id])
-  qty             Int
-  unitPrice       Int
-  warrantyMonths  Int            // snapshot del término informado al comprar
-  customDesign    Json?
-  designAssetUrl  String?        // PNG alta resolución para producción
-}
-
-enum CouponType {
-  PERCENT
-  FIXED
-  FREE_SHIPPING
-}
-
-model Coupon {
-  id         String     @id @default(cuid())
-  code       String     @unique
-  type       CouponType
-  value      Int        // Porcentaje (1-100) o centavos COP
-  minOrder   Int?
-  maxUses    Int?
-  usedCount  Int        @default(0)
-  validFrom  DateTime
-  validTo    DateTime
-  isActive   Boolean    @default(true)
-  orders     Order[]
-}
-
-model Review {
-  id          String   @id @default(cuid())
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  customerId  String?  // Nullable: sobrevive al borrado de cuenta (SetNull)
-  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  rating      Int      // 1-5
-  comment     String
-  images      String[] // URLs de Supabase Storage
-  authorName  String?  // Snapshot del reseñador (se muestra aunque customer quede null)
-  authorCity  String?
-  isApproved  Boolean  @default(false)
-  featured    Boolean  @default(false) // Curaduría admin para el carousel de home
-  createdAt   DateTime @default(now())
-}
-
-// ──────────────── MARKETING ────────────────
-
-model AbandonedCart {
-  id                  String    @id @default(cuid())
-  cartId              String    @unique
-  cart                Cart      @relation(fields: [cartId], references: [id])
-  contactId           String?
-  email               String
-  itemsSnapshot       Json?     // snapshot de ítems/diseños al capturar o cerrar el carrito
-  subtotalSnapshot    Int?      // centavos COP al momento del snapshot
-  checkoutStep        String?   // "DATOS" | "ENVIO" | "PAGO"
-  closedAt            DateTime?
-  closedReason        String?   // "CONVERTED_COD" | "CONVERTED_WOMPI" | "CONVERTED_QUOTE" | "CART_CLEARED" | "EXPIRED"
-  lastReminderSentAt  DateTime?
-  reminderCount       Int       @default(0) // nº de recordatorios enviados (maxReminders configurable, ADR-153)
-  recoveredAt         DateTime?
-  createdAt           DateTime  @default(now())
-}
-
-// PROGRAMA EN OPERACIÓN (ADR-145, 2026-10): Puntos Lucams — 1 pt/$1.000,
-// 100 pts = $1.000, reserva atómica en createOrderFromCart, restauración en
-// CANCELLED/REFUNDED, administrable desde /admin/fidelizacion.
-model LoyaltyTxn {
-  id          String   @id @default(cuid())
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id])
-  delta       Int
-  reason      String   // "ORDER_PAID", "REVIEW_POSTED", "REFERRAL_CONVERTED"
-  orderId     String?
-  createdAt   DateTime @default(now())
-}
-
-model Referral {
-  id            String    @id @default(cuid())
-  referrerId    String
-  referredEmail String
-  status        String    // "PENDING", "REGISTERED", "CONVERTED"
-  rewardedAt    DateTime?
-  createdAt     DateTime  @default(now())
-}
-
-// FUTURO_APROBADO (2026-09-12): el modelo persiste SIN implementación — no hay
-// /blog público ni editor admin de posts; capacidad aprobada del roadmap (Fase 5/6).
-model BlogPost {
-  id              String    @id @default(cuid())
-  slug            String    @unique
-  title           String
-  content         String    // MDX
-  coverImage      String?
-  author          String
-  publishedAt     DateTime?
-  isPublished     Boolean   @default(false)
-  seoTitle        String?
-  seoDescription  String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-}
-
-// ──────────────── IDEMPOTENCIA ────────────────
-enum WebhookSource {
-  WOMPI
-  RESEND
-  AVEONLINE
-}
-
-model WebhookEvent {
-  id           String        @id @default(cuid())
-  source       WebhookSource
-  externalId   String
-  payload      Json
-  processedAt  DateTime?
-  createdAt    DateTime      @default(now())
-
-  @@unique([source, externalId])
-}
+```text
+apps/web/app/
+├── layout.tsx                                      # Root layout (lang="es-CO", fuentes, CSP nonce, Analytics bajo consentimiento, <CmsEditOverlay>)
+├── page.tsx                                        # Home comercial dinámica (hero, categorías, destacados, ocasiones, reseñas, banners CMS)
+├── error.tsx / global-error.tsx / not-found.tsx    # Fronteras globales de error (con captura a ErrorLog) y 404
+├── manifest.ts / robots.ts / sitemap.ts            # Metadatos PWA, directivas de rastreo y mapa XML dinámico
+├── feeds/google-merchant.xml/route.ts              # Feed RSS/XML de catálogo activo para Google Merchant Center y Meta Catalog
+├── maintenance/page.tsx                            # Pantalla estática de ventana de mantenimiento (NEXT_PUBLIC_MAINTENANCE_MODE=1)
+├── status/page.tsx                                 # Página pública de estado operativo de servicios
+├── productos/
+│   ├── page.tsx                                    # Catálogo general filtrable (categoría, ocasión, precio, personalizable, orden)
+│   └── [categoria]/[subcategoria]/page.tsx         # Listado jerárquico por categoría padre y subcategoría activa
+├── producto/[slug]/page.tsx                        # PDP: galería, selector de variantes, escalas por volumen, stock en vivo y reseñas
+├── ocasion/
+│   ├── page.tsx                                    # Índice de ocasiones comerciales activas (OcasionTag)
+│   └── [slug]/page.tsx                             # Landing temática de productos por ocasión
+├── recomendador/page.tsx                           # Asistente guiado de recomendación de regalos según ocasión y presupuesto
+├── empresas-y-eventos/page.tsx                     # Landing comercial B2B y formulario consultivo (crea Contact + Organization + Opportunity)
+├── estudio/
+│   ├── layout.tsx                                  # Shell inmersivo sin distracciones para edición gráfica
+│   └── [slug]/page.tsx                             # Estudio de Personalización 2D/3D (Konva + R3F, plantillas, sets de letras, galería, IA; maxDuration=60)
+├── d/[token]/page.tsx                              # Vista pública de sólo lectura para diseños compartidos (Design.shareTokenHash)
+├── r/[codigo]/route.ts                             # Captura de enlace de referido (?ref=), seteo de cookie y redirección a tienda
+├── carrito/
+│   ├── page.tsx                                    # Carrito de compras (resumen de líneas, previews, cupones y CTA a cotización o checkout)
+│   └── recuperar/[token]/route.ts                  # Hidratación de carrito abandonado vía AbandonedCart.recoverTokenHash
+├── cotizacion/[token]/page.tsx                     # Resumen público inmutable de cotización (Quote.publicAccessTokenHash) para Etapa 1 / WhatsApp
+├── checkout/                                       # Protegido por modo tienda `full` (en `catalog` redirige a /carrito)
+│   ├── layout.tsx                                  # Layout minimalista de conversión con indicador de 3 pasos
+│   ├── datos/page.tsx                              # Paso 1: contacto, identificación tributaria/entrega, dirección DANE DIVIPOLA y opciones de regalo
+│   ├── envio/page.tsx                              # Paso 2: cotización multi-carrier en vivo vía Aveonline y elección de envío (maxDuration=45)
+│   ├── pago/page.tsx                               # Paso 3: resumen final, cupón, puntos, aceptación legal, pago Wompi o COD (maxDuration=60)
+│   └── gracias/page.tsx                            # Confirmación post-pago y reconciliación fallback contra API de Wompi (maxDuration=60)
+├── pedido/[token]/page.tsx                         # Tracking público del pedido por Order.publicAccessTokenHash (hitos ShipmentEvent, retracto, garantía y soporte)
+├── rastrear/page.tsx                               # Buscador público de estado de pedido / guía sin iniciar sesión
+├── resena/[token]/page.tsx                         # Formulario verificado de reseña post-entrega desde correo transaccional
+├── ayuda/page.tsx                                  # Centro de preguntas frecuentes alimentado por CMS v2
+├── contacto/page.tsx                               # Formulario de contacto y canales de atención
+├── soporte/
+│   ├── page.tsx                                    # Apertura pública de ticket PQRS / soporte (con Turnstile)
+│   └── [token]/page.tsx                            # Hilo bidireccional invitado de ticket de soporte por token opaco
+├── unsubscribe/page.tsx                            # Confirmación visual de baja de comunicaciones comerciales (RFC 8058 / Ley 1581)
+└── legal/                                          # Paquete normativo colombiano sincronizado con packages/db/legal-content/*.md
+    ├── layout.tsx
+    ├── terminos/page.tsx                           # Términos y condiciones (Ley 1480)
+    ├── privacidad/page.tsx                         # Política de tratamiento de datos personales (Ley 1581 / Decreto 1377)
+    ├── habeas-data/page.tsx                        # Ejercicio de derechos ARCO / Habeas Data
+    ├── devoluciones/page.tsx                       # Derecho de retracto (art. 47 Ley 1480 + excepción de bienes personalizados)
+    ├── garantias/page.tsx                          # Garantía legal de calidad e idoneidad
+    ├── cookies/page.tsx                            # Política y preferencias granulares de cookies
+    ├── subprocesadores/page.tsx                    # Inventario transparente de encargados/subprocesadores externos
+    └── security/page.tsx                           # Divulgación responsable de vulnerabilidades (security@lucamsshop.com)
 ```
 
-### Reglas
+#### Autenticación de clientes y portal `/mi-cuenta`
 
-- **Precios en enteros (centavos COP)** para evitar errores de coma flotante. Wompi también los maneja así.
-- `WebhookEvent.@@unique([source, externalId])` garantiza idempotencia ante reintentos.
-- `cuid()` para todos los IDs (compactos, ordenables, sin colisión).
-- Soft delete: `deletedAt`/`deletedBy` en lugar de borrar (`isActive` solo para publicado/no-publicado); nunca perder histórico.
-- **Bearer tokens públicos hasheados en reposo** (F-11, auditoría 2026-08-24): `Order.publicAccessTokenHash`, `Quote.publicAccessTokenHash`, `Design.shareTokenHash` y `AbandonedCart.recoverTokenHash` guardan solo el digest SHA-256 (`lib/token-hash.ts`); el token en claro se entrega una vez (link/email) y los lookups hashean el token presentado. Mismo patrón que `AdminRecoveryCode.codeHash` (HMAC-SHA256 con pepper).
-- **Stock: decremento atómico al transicionar a `PAID`** (no reserva en `PENDING_PAYMENT` — evita secuestrar stock de carritos abandonados): `updateMany` con `WHERE stock >= qty` (row-lock implícito, compatible con pgBouncer; sin `SELECT FOR UPDATE`), revert al `CANCELLED`/`REFUNDED` solo si hubo decremento previo, idempotencia física con índice parcial único en `InventoryLog(orderId, reason, variantId)`. ~~`StockReservation` queda en el schema sin consumidores~~ → **RETIRADA del schema 2026-09-12** (ADR-091; ADR-014 SUPERSEDED — la protección real es este UPDATE atómico + `needsReconciliation`). Ver `features/orders/stock.ts`.
-- **Tope de cupón por cliente en la DB** (G-5, auditoría 2026-08-24): `CouponUsage` registra cada redención (por `customerId` o email normalizado) y el trigger `coupon_usage_per_customer_limit` (migración Prisma `20260829150300_coupon_usage_per_customer_trigger`) toma un `pg_advisory_xact_lock` por (couponId, identidad) y re-cuenta bajo el lock, cerrando la carrera de checkouts concurrentes.
-- **Reseñas: solo compras verificadas** (T10): el único canal productivo de creación (`features/reviews/actions.ts`) exige sesión de cliente + una orden en estado PAID+ que contenga el producto, Turnstile y rate-limit; entra con `isApproved=false` y la moderación es humana en `/admin/resenas`. El schema admite testimonios curados sin cliente (`customerId=null` + snapshot `authorName`/`authorCity`), pero **esa capacidad está apagada por política**: ningún código productivo crea reseñas sin compra (solo los seeds demo de dev/STG lo hacen). Una reseña activa por (producto, cliente) vía índice parcial único.
-- **Reconciliación de pagos multi-tx** (F-02/F-03, certificación 2026-09-26): una reference de Wompi admite varios intentos; un `APPROVED` cuya tx es distinta de la que pagó la orden es un **segundo cobro real**. `flagForeignApprovedPayment` (`features/orders/saga.ts`, espejado en el fallback `/checkout/gracias`) marca `needsReconciliation` con ambos txIds sin mutar el estado ni disparar side effects (visible en `/admin/pedidos` + alerta crítica). Simétricamente, el resumen diario (`features/observability/daily-summary.ts`) reporta `expiredPendingWompi24h`: pedidos Wompi cancelados por el cron de expiración sin txId confirmado en 24h, para cruzar contra el panel Wompi.
-- **Revocación de share token al rechazar diseños** (A4-01, certificación 2026-09-26): `rejectDesign` (`features/moderation/service.ts`) pone `shareTokenHash=null` — un diseño rechazado no puede seguir publicado en `/d/<token>`; la cola de moderación incluye también diseños solo-compartidos.
-- **Audit log** (`AdminActionLog`): toda acción admin con `actorId`, `action`, `entityType`, `entityId`, `metadata`, `createdAt`.
-- **Precio por volumen (`WholesaleTier`) para TODOS los clientes** (regla aprobada e implementada 2026-10-02): los niveles son descuento por volumen PÚBLICO — sin flag de mayorista ni login (el checkout soporta invitados). El carrito resuelve el nivel aplicable en `addProductToCart`, `addPersonalizedToCart` y `updateCartItemQty` (`features/cart/service.ts` + helper puro `features/cart/volume-pricing.ts`): base actual (`variant.price ?? product.basePrice` + multiplicadores por-ficha/multi-unidad si es personalizado) → si hay niveles activos del producto (o globales `productId=null` cuando el producto no tiene propios), gana el de MAYOR `minQty <= qty` de la línea y su `unitPrice` (absoluto, centavos COP) REEMPLAZA el de la línea; un nivel más caro que el base nunca se aplica (anti-config errónea). `updateCartItemQty` re-pricea al cruzar umbrales en ambos sentidos; sin niveles configurados el snapshot queda intacto (semántica legacy). La "qty" del nivel es la cantidad de la LÍNEA (diseños/packs que paga el cliente), no las unidades internas de un diseño multi-unidad. Orden y cotización heredan el precio vía el snapshot del `CartItem`, sin cambios. Todo server-side desde la DB (anti-tamper); 1 query acotada de tiers por línea mutada.
-
-### Modelos adicionales (ADR-014, ADR-016)
-
-```prisma
-// ──────────────── RESERVA DE STOCK (ADR-014) — RETIRADA 2026-09-12 ────────────────
-// StockReservation ya NO existe en el schema (migración Prisma
-// 20260912120000_drop_site_event_recommendation_log_stock_reservation; ADR-091).
-// Nunca tuvo consumidores productivos: el decremento es directo al PAID (ver
-// § Reglas). Su cron stock_reservation_cleanup se des-agendó en
-// supabase/migrations/00000000000033. Si el volumen justifica reservas con TTL
-// en el futuro, se diseña como feature nuevo.
-
-// ──────────────── RATE LIMIT EN POSTGRES (ADR-016) ────────────────
-// Tabla + función creadas vía SQL migration (supabase/migrations/
-// 00000000000003_rate_limit.sql), no vía Prisma. Se accede desde
-// lib/rate-limit.ts, que llama la función rate_limit_check (increment +
-// check atómico, sin race condition).
-
-// CREATE TABLE rate_limit_buckets (
-//   key          TEXT        PRIMARY KEY,
-//   count        INT         NOT NULL DEFAULT 0,
-//   window_start TIMESTAMPTZ NOT NULL DEFAULT NOW()
-// );
-// CREATE FUNCTION rate_limit_check(p_key TEXT, p_limit INT, p_window_seconds INT) ...
-
-// ──────────────── AUDIT LOG ADMIN ────────────────
-
-model AdminActionLog {
-  id          String   @id @default(cuid())
-  actorId     String   // AdminUser.id
-  action      String   // "ORDER_STATUS_CHANGED", "INVENTORY_ADJUSTED", "REVIEW_APPROVED", etc.
-  entityType  String   // "Order", "ProductVariant", "Review"
-  entityId    String
-  metadata    Json     // Detalle según action: { from: ..., to: ..., reason: ... }
-  ip          String?
-  userAgent   String?
-  createdAt   DateTime @default(now())
-
-  @@index([actorId, createdAt])
-  @@index([entityType, entityId])
-}
+```text
+apps/web/app/
+├── (auth)/
+│   ├── layout.tsx                                  # Layout centrado de acceso de clientes
+│   ├── login/page.tsx                              # Inicio de sesión con email/contraseña u OTP
+│   ├── registro/page.tsx                           # Alta de cuenta con validación HIBP k-anonymity y aviso anti-enumeración
+│   ├── confirmar-codigo/page.tsx                   # Verificación de código OTP de 6 dígitos enviado vía Resend SMTP
+│   ├── recuperar-password/page.tsx                 # Solicitud de restablecimiento de contraseña
+│   └── restablecer-password/page.tsx               # Cambio efectivo de contraseña tras validación de token
+├── auth/callback/route.ts                          # Intercambio PKCE de códigos de Supabase Auth con validación anti-open-redirect
+└── mi-cuenta/                                      # Requiere sesión Supabase activa (Customer)
+    ├── layout.tsx                                  # Navegación lateral de cuenta de cliente
+    ├── page.tsx                                    # Resumen general: pedidos recientes, puntos, código de referido y accesos rápidos
+    ├── pedidos/page.tsx                            # Historial paginado de compras del cliente
+    ├── pedidos/[number]/page.tsx                   # Detalle completo de orden, guía, retracto, garantía y recompra
+    ├── disenos/page.tsx                            # Biblioteca de diseños guardados (DRAFT, READY, USED_IN_ORDER)
+    ├── direcciones/page.tsx                        # CRUD de libreta de direcciones con predeterminada única
+    ├── favoritos/page.tsx                          # Lista de deseos (WishlistItem)
+    ├── cupones/page.tsx                            # Cupones disponibles y saldo/movimientos de fidelización (solo modo `full`)
+    ├── resenas/page.tsx                            # Reseñas escritas y compras entregadas pendientes de calificar
+    ├── soporte/page.tsx                            # Mis tickets de atención al cliente
+    ├── perfil/page.tsx                             # Datos personales, documento y preferencias de comunicaciones
+    ├── seguridad/page.tsx                          # Cambio de contraseña y cierre global de sesiones
+    └── eliminar/page.tsx                           # Solicitud autoservicio de supresión/anonimización de cuenta (Ley 1581)
 ```
 
-### Inventario completo de modelos (67 modelos, 26 enums)
+#### Backoffice `/admin` y rutas internas `/internal`
 
-El schema ilustrativo de arriba es la base lógica; la fuente de verdad es
-`packages/db/prisma/schema.prisma` (67 modelos, 26 enums — verificado contra el
-schema vigente). Inventario agrupado por módulo:
-
-| Módulo                       | Modelos                                                                                                                                  |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Identidad cliente / contacto | `Customer`, `Address`, `Organization`, `Contact`, `ContactIdentity`, `IdentityMergeCandidate`                                            |
-| RBAC admin                   | `AdminUser`, `AdminRecoveryCode` (códigos MFA hasheados HMAC-SHA256)                                                                     |
-| Catálogo y SEO               | `Category`, `Product`, `ProductVariant`, `InventoryLog`, `OcasionTag`, `ProductOcasionTag`, `Material`, `ProductMaterial`, `UrlRedirect` |
-| Carrito, órdenes y pagos     | `Cart`, `CartItem`, `AbandonedCart`, `Order`, `OrderItem`, `OrderStatusEvent`, `WompiPaymentAttempt`, `WompiPaymentTransaction`          |
-| Anti-abuso COD               | `BlockedIdentity`, `CodReconciliation`                                                                                                   |
-| Cupones                      | `Coupon`, `CouponUsage`                                                                                                                  |
-| Post-venta                   | `Review`, `RetractRequest`, `WarrantyClaim`                                                                                              |
-| Fidelización, señales y blog | `LoyaltyTxn`, `Referral`, `WishlistItem`, `BackInStockSubscription`, `BlogPost` (`BlogPost` persiste como `FUTURO_APROBADO`)             |
-| Mayorista / cotizaciones B2B | `Quote`, `QuoteItem`, `WholesaleTier`                                                                                                    |
-| Idempotencia webhooks        | `WebhookEvent`                                                                                                                           |
-| Auditoría y seguridad        | `AdminActionLog`, `SecurityEvent` (login fallido / firma inválida, IP hasheada; `/admin/seguridad`)                                      |
-| Consentimientos (Ley 1581)   | `Consent`                                                                                                                                |
-| Observabilidad               | `WebVital`, `FunnelEventDaily`, `ErrorLog`, `ErrorReport`, `AlertState`, `Notification`, `EmailEvent`                                    |
-| Soporte                      | `SupportTicket`, `SupportTicketMessage`                                                                                                  |
-| CMS v2                       | `CmsPage`, `CmsSection`, `CmsField`, `CmsFieldVersion`, `CmsListItem`, `CmsMedia` (ver § CMS v2)                                         |
-| Emails                       | `EmailTemplateOverride` (overrides de copy de las plantillas de correo, `/admin/email-templates`)                                        |
-| Personalización              | `Design`, `RenderJob`, `DesignAsset`, `PersonalizationTemplate`, `LetterTileSet`, `LetterTile`, `DesignGalleryImage`                     |
-
-`DesignGalleryImage` (diseños prediseñados, `/admin/disenos`) se agrupa por `tag`
-(= `personalizationSchema.galleryTag` o, por fallback, el slug del producto) y, desde
-2026-10-02, puede segregarse por **atributo de variante** con `variantFilter Json?`
-(subset de `ProductVariant.attributes`, ej. `{"sizeCm":"2×6"}`; null = aplica a todas
-las variantes). El matching es puro (`features/personalization/design-gallery-filter.ts`,
-`matchesVariantFilter`); el Estudio filtra server-side con los attributes de la variante
-elegida y el admin valida el filtro contra las variantes reales antes de persistir.
-La configuración de personalización de un producto (`personalizationKind` +
-`personalizationSchema`) se edita completa desde el admin (`/admin/productos`, tab
-"Personalización" → `features/products/personalization-schema.ts`); ya no depende de
-los scripts de seed. Los tooltips de toda la app usan el primitivo de marca
-`components/ui/tooltip.tsx` (`Hint`/`Tooltip`, radix), nunca el `title=` nativo.
-
-La frontera de imprenta comparte invariantes puras entre cliente y servidor. En productos planos
-`personalizationSchema.noFold=true`, `photo-fit.ts` calcula cover/rotación/límites de paneo y
-`finalizeDesign` vuelve a validar contra las dimensiones autoritativas de `DesignAsset`; un canvas
-fuera de cobertura no llega a `RenderJob`. `production-spec.ts` es la fuente única de semántica de
-armado (piezas, caras, reversos B blancos) para el detalle Admin y el ZIP. Los PNG privados se
-presentan con `object-contain` sobre cuadrícula de alpha: la visualización no recorta ni altera bytes.
-| Storefront misc | `UrlRedirect`, `WishlistItem`, `BackInStockSubscription` |
-| B2B | `Quote`, `QuoteItem`, `WholesaleTier` (este último con consumidor storefront desde 2026-10-02: el carrito lo aplica como descuento por volumen público — ver § Reglas) |
-| Costeo / recetas (BOM) | `Material`, `ProductMaterial` |
-
-Campos (no modelos) que conviene conocer: `Order` lleva los datos de **facturación
-electrónica DIAN** (`billingDocumentType/Number/Name`, `dianStatus`, `dianCufe`,
-`dianXmlUrl` — schema ready, el envío a la DIAN es Fase 7) y `dianStatus` se setea al
-crear la orden si el cliente pidió factura.
-
-### Arquitectura de Identidad Canónica (`Contact`), CRM Operacional Nativo y Frontera SSoT (ADR-193)
-
-> **Estado:** Activa end-to-end en Fases 6–12 (`20261104160000_expand_contact_identity_graph` + RLS `051`, `20261104170000_expand_admin_role_capabilities`, `20261104180000_support_sla_ownership_and_guest_thread`, `20261104190000_add_crm_activities_and_tasks` + RLS `052`, `20261104200000_add_b2b_opportunities` + RLS `053`, `20261104210000_order_utm_attribution`, `20261105010000_opportunity_snapshots_and_cart_diagnostics`), servicio determinista de resolución y _dual-write_ con aislamiento de cuentas `AdminUser` (`apps/web/features/identity/resolution-service.ts`), cascada Ley 1581 (`scrubContactOnErasureTx`), motor progresivo de backfill por cursor (`packages/db/scripts/backfill-contacts.mjs`), `Contacto 360` (`/admin/clientes/[id]`), cola de fusión humana (`/admin/clientes/duplicados`), bandeja operativa `/admin/hoy`, soporte con SLA hábil colombiano + copiloto cero-PII, pipeline B2B `/empresas-y-eventos` → `/admin/oportunidades` (con snapshot del cliente y correos transaccionales), segmentos Ley 1581 (`/admin/marketing/segmentos`) e inteligencia conductual CRM/RFM + gráficos analíticos SVG (`/admin/metricas`).
-
-1. **Separación estructural Persona (`Contact`) vs Credencial (`Customer`):**
-   - `Contact` representa a toda contraparte humana comercial o posventa en Lucams (comprador registrado, comprador invitado `Order.customerId IS NULL`, solicitante `Quote` / `Opportunity`, remitente `SupportTicket`, prospecto `AbandonedCart`, suscriptor `Consent`).
-   - `Customer` permanece intacto como cuenta autenticada de autoservicio (`supabaseUserId String @unique`, `loyaltyPoints`, `referralCode`, `addresses`, `/mi-cuenta`), vinculándose 1:1 opcional mediante `Customer.contactId String? @unique` (`onDelete: SetNull`).
-   - FKs anulables (_expand-only_, `onDelete: SetNull`, indexadas) activas sobre las 8 entidades relacionales: `Customer` (`@unique`), `Order`, `SupportTicket`, `Quote`, `AbandonedCart`, `Consent`, `WarrantyClaim` y `RetractRequest`.
-
-2. **Modelos, enums e índices parciales activos:**
-   - Enums de identidad y CRM:
-     - `ContactIdentityType`: `SUPABASE_USER` | `EMAIL` | `PHONE` | `WHATSAPP`
-     - `IdentityVerificationStatus`: `VERIFIED` | `UNVERIFIED_OBSERVED` | `REVOKED`
-     - `MergeCandidateStatus`: `PENDING` | `APPROVED` | `REJECTED`
-     - `TaskStatus`: `OPEN` | `IN_PROGRESS` | `DONE` | `CANCELLED`; `TaskPriority`: `LOW` | `NORMAL` | `HIGH` | `URGENT`
-     - `OpportunityKind`: `CORPORATE` | `SOCIAL_EVENT` | `EDUCATIONAL` | `WHOLESALE`; `OpportunityStage`: `NEW` | `QUALIFYING` | `PROPOSAL_SENT` | `DESIGN_APPROVAL` | `WON` | `LOST`
-   - `Contact`, `ContactIdentity`, `Organization` e `IdentityMergeCandidate` con unicidad parcial SQL anti-`P2002` exclusivamente en `SUPABASE_USER` y `EMAIL` no revocados (nunca `@unique` global en teléfonos E.164).
-   - `ContactActivity` (timeline manual y sistémico con restricción `CHECK` `kind IN ('NOTE', 'CALL', 'WHATSAPP', 'EMAIL_MANUAL', 'SYSTEM')`) y `Task` (compromisos operativos transversales anclables a `contactId`, `orderId`, `supportTicketId`, `warrantyClaimId`, `retractRequestId` u `opportunityId`).
-   - `Opportunity`: pipeline consultivo para compras corporativas y eventos sociales (`/empresas-y-eventos` + conversión 1-clic desde `Quote`), con enlace opcional a `Order` ganada (`convertedOrderId`).
-   - `Order` incorpora atribución first-party sin PII (`utmSource`, `utmMedium`, `utmCampaign`, `landingPath`) alimentada por cookie `lucams_utm` estrictamente condicionada a `COOKIES_ANALYTICS`.
-
-3. **Frontera SSoT y exclusiones del CRM Operacional Mínimo:**
-   - **Lucams Postgres** es la Fuente Única de Verdad (SSoT) en los 10 dominios (`Contact`, `Order`, pagos Wompi/COD, inventario, diseños privados, renders 300 DPI, oportunidades B2B/eventos, actividades/tareas, posventa y ledger `Consent` Ley 1581).
-   - Los pedidos B2C de autoservicio web, carritos abandonados, reservas/decrementos de stock, cálculo de precios/puntos y activos gráficos privados (`customer-uploads`, `design-previews`, `production-assets`) quedan **estrictamente fuera** de cualquier pipeline comercial `Opportunity` o sincronización a SaaS externos. Enums de soporte: `DocumentType`,
-     `TaxResponsibility`, `DianStatus`, `CodReconciliationStatus`, `RetractStatus`,
-     `WarrantyStatus`, `QuoteStatus`, `DesignStatus`, `ModerationStatus`, `ConsentScope`,
-     `BlockedIdentityKind`, `CmsFieldType`, `CmsFieldKind`, `PersonalizationKind`,
-     `TemplateMode` (además de `AdminRole`, `OrderStatus`, `PaymentMethod`, `CouponType`,
-     `WebhookSource` mostrados arriba).
-
-## CMS v2 — arquitectura de 3 capas (ADR-082 / ADR-187)
-
-El contenido del sitio se organiza en **3 capas** para que `/admin/contenido` sea rápido y manejable para una persona no técnica sin contaminar el panel con micro-UI funcional:
-
-1. **Capa 1 — Parámetros maestros y reglas estatutarias:** ajustes `CmsField` (`kind = SETTING`, contenedor `global` en Configuración → «Ajustes del sitio» solo `SUPERADMIN`, más los 21 ajustes delegados a sus módulos dueños `/admin/envios`, `/admin/fidelizacion` y `/admin/carritos/configuracion`), `Product.warrantyMonths` (`/admin/productos`, ADR-106) y constantes normativas en `apps/web/lib/consumer-law.ts` (retracto, garantía, entrega máxima legal, Habeas Data). Se interpolan en textos y legales vía `resolveCmsTokens()` (`apps/web/lib/cms-tokens.ts`).
-2. **Capa 2 — Contenido editorial, comercial, SEO y legal (`/admin/contenido`):** **8 páginas/colecciones editoriales en `/admin/contenido` + 1 contenedor `global` en Configuración = 9 `CmsPage`, 29 secciones y 166 campos** (`105 BLOCK + 61 SETTING`: `inicio`, `navegacion`, `ayuda`, `contacto`, `legales`, `checkout`, `sistema`, `seo` y `global`). Las 29 plantillas de correo (incluidas `newsletter-welcome`, posventa invitado y confirmaciones/alertas B2B) se administran unificadas en `/admin/email-templates` (`EmailTemplateOverride`).
-3. **Capa 3 — Micro-UI funcional tipada en código:** botones, `aria-label`, `placeholder`, validaciones, Estudio (`studio-texts.ts`), Auth (`auth-texts.ts`), Mi Cuenta (`account-texts.ts`), 404 y vistas transaccionales por token viven directo en TS/JSX, sin round-trip a DB ni payload RSC duplicado.
-
-El modelo en DB (migración `20260730120000_add_cms_v2`, RLS deny-by-default en `supabase/migrations/00000000000018`; legacy `CmsBlock` + `SiteSetting` dropeado en `20260731130000_drop_cms_legacy`) consta de 4 tablas:
-
-```
-CmsPage ─┬─ CmsSection ─┬─ CmsField ───── CmsFieldVersion (append-only)
-         │              │                        └─ publishAt (C3: publicación programada,
-         │              │                           job pg_cron lucams-cms-publish-scheduled)
-         │              ├─ CmsListItem (B4: filas de campos LISTA; el body público
-         │              │   sigue siendo el array serializado a JSON — lectura compatible)
-         │              └─ fields type IMAGE (B5) → CmsMedia (metadata del asset;
-         │                  el archivo vive en el bucket público `cms-media`)
-         └─ path (ruta pública 1:1 opcional — alimenta la vista previa en vivo C1 solo donde aplica)
+```text
+apps/web/app/
+├── admin/
+│   ├── layout.tsx                                  # Shell raíz del backoffice (noindex, nofollow)
+│   ├── page.tsx                                    # Redirección inteligente a la vista inicial permitida por el rol del actor
+│   ├── login/page.tsx                              # Inicio de sesión exclusivo de personal administrativo
+│   ├── login/mfa/page.tsx                          # Enrolamiento obligatorio y verificación de segundo factor TOTP (aal2)
+│   ├── (print)/pedidos/[number]/guia/page.tsx      # Vista limpia de impresión de rótulo/guía (SHIPPING_GUIDE_PRINT; excluye taller y CMS)
+│   └── (panel)/                                    # Protegido por verifyAdminRouteAccess + RBAC + MFA aal2
+│       ├── layout.tsx / error.tsx                  # Sidebar filtrado por rol, campana de notificaciones y frontera de error admin
+│       ├── hoy/page.tsx                            # Bandeja operativa diaria (tareas vencidas, SLA soporte, pedidos/talleres urgentes)
+│       ├── dashboard/page.tsx                      # KPIs ejecutivos de ventas, conversión, operaciones y alertas activas
+│       ├── pedidos/page.tsx                        # Bandeja filtrable de órdenes, estados, conciliación Wompi y acciones por lote
+│       ├── pedidos/[number]/page.tsx               # Detalle 360 del pedido, ficha de producción, guía Aveonline, timeline y posventa (maxDuration=60)
+│       ├── pedidos/[number]/produccion/route.ts    # Descarga autenticada del paquete ZIP 300 DPI + instructivo de armado (maxDuration=60)
+│       ├── cotizaciones/page.tsx                   # Bandeja de cotizaciones Etapa 1 / WhatsApp
+│       ├── cotizaciones/[id]/page.tsx              # Detalle comercial de cotización y conversión 1-clic a Opportunity B2B
+│       ├── cotizaciones/[id]/taller/page.tsx       # Ficha técnica de taller para líneas personalizadas de una cotización
+│       ├── oportunidades/page.tsx                  # Tablero y listado del pipeline consultivo B2B / eventos (Opportunity)
+│       ├── oportunidades/[id]/page.tsx             # Ficha de oportunidad comercial, etapas, cotización/orden vinculada y tareas
+│       ├── clientes/page.tsx                       # Directorio unificado de identidades canónicas (Contact + Customer)
+│       ├── clientes/[id]/page.tsx                  # Vista Contacto 360 (identidades, pedidos, tickets, oportunidades, notas, tareas, consentimientos)
+│       ├── clientes/duplicados/page.tsx            # Cola humana de resolución de colisiones de identidad (IdentityMergeCandidate)
+│       ├── productos/page.tsx                      # Catálogo administrativo con badge real de visibilidad en tienda
+│       ├── productos/nuevo/page.tsx                # Creación de producto
+│       ├── productos/[id]/page.tsx                 # Edición integral de producto, imágenes, SEO, receta BOM y personalizationSchema
+│       ├── productos/[id]/variants/page.tsx        # Gestión de variantes, SKU, atributos físicos/envío y precios
+│       ├── categorias/page.tsx & [id]/page.tsx     # Árbol jerárquico de categorías padre/subcategorías y ventanas estacionales
+│       ├── ocasiones/page.tsx & [id]/page.tsx      # Gestión de etiquetas transversales por ocasión (OcasionTag)
+│       ├── inventario/page.tsx                     # Control de existencias, umbrales de stock bajo y kardex (InventoryLog)
+│       ├── mayorista/page.tsx                      # Escalas públicas de descuento por volumen (WholesaleTier por producto o globales)
+│       ├── materiales/page.tsx                     # Catálogo de insumos físicos (Material) y mermas para costeo BOM
+│       ├── costos/page.tsx                         # Simulador de margen bruto real por variante (insumos + comisión Wompi + empaque)
+│       ├── plantillas/page.tsx                     # Plantillas vectoriales/capas del Estudio (PersonalizationTemplate)
+│       ├── fichas/page.tsx                         # Sets ilustrados de letras y carga de las 53 fichas A-Z/Ñ/0-9 (LetterTileSet / LetterTile)
+│       ├── disenos/page.tsx                        # Galería de diseños prediseñados con filtro por variante (DesignGalleryImage)
+│       ├── moderacion/page.tsx                     # Moderación de diseños subidos/compartidos por clientes (ModerationStatus)
+│       ├── cupones/page.tsx & [id]/page.tsx        # Gestión de cupones promocionales, topes y redenciones (Coupon / CouponUsage)
+│       ├── fidelizacion/page.tsx                   # Reglas del programa de puntos, referidos y ajustes manuales auditados
+│       ├── carritos/page.tsx                       # Monitoreo de carritos abandonados (AbandonedCart) y métricas de recuperación
+│       ├── carritos/configuracion/page.tsx         # Ajustes operativos de recuperación (kill-switch, modo automático/manual, ventanas)
+│       ├── carritos/enviar/page.tsx                # Despacho manual supervisado de recordatorios de carrito
+│       ├── carritos/[id]/page.tsx & preview/route.ts # Detalle del carrito abandonado y previsualización exacta del correo
+│       ├── marketing/suscriptores/page.tsx & export/route.ts # Suscriptores con opt-in vigente y exportación CSV auditada
+│       ├── marketing/segmentos/page.tsx & export/route.ts    # Segmentación comercial respetando alcance Ley 1581
+│       ├── resenas/page.tsx                        # Moderación y respuesta oficial a reseñas verificadas
+│       ├── soporte/page.tsx & [id]/page.tsx        # Bandeja de tickets con semáforo SLA hábil colombiano, hilo y copiloto IA cero-PII
+│       ├── mensajes/page.tsx                       # Consulta de mensajes de contacto entrantes
+│       ├── retractos/page.tsx                      # Gestión legal de solicitudes de retracto (Ley 1480 art. 47)
+│       ├── garantias/page.tsx                      # Gestión de reclamos de garantía (reparación, reposición o reembolso)
+│       ├── reclamos/page.tsx & [id]/page.tsx       # Vista consolidada de casos de posventa
+│       ├── finanzas/page.tsx & export/route.ts     # Reporte financiero de ingresos, fletes, descuentos y exportación contable CSV
+│       ├── finanzas/conciliacion/page.tsx          # Conciliación de recaudos contraentrega remitidos por Aveonline (CodReconciliation)
+│       ├── finanzas/bloqueos/page.tsx              # Lista negra anti-fraude COD hasheada/normalizada (BlockedIdentity)
+│       ├── envios/page.tsx                         # Tarifas de respaldo, tope de envío gratis, zonas locales y preferencias de despacho
+│       ├── canales/page.tsx & tienda/page.tsx      # Estado de canales de venta, feed Google Merchant y modo de tienda
+│       ├── contenido/                              # CMS v2 (layout, índice 8 páginas, paginas/[slug], campos/[id], bloques/*, borradores, mediateca, configuracion)
+│       ├── email-templates/page.tsx, [id]/page.tsx & [id]/preview/route.ts # Editor de overrides y preview de las 30 plantillas de correo
+│       ├── redirects/page.tsx                      # Gestión de redirecciones 301/302 (UrlRedirect) y contador de impactos
+│       ├── notificaciones/page.tsx                 # Centro interno de alertas operativas (Notification)
+│       ├── metricas/page.tsx                       # Inteligencia conductual CRM/RFM, embudo diario (FunnelEventDaily) y cohortes
+│       ├── performance/page.tsx                    # Telemetría RUM de Core Web Vitals (WebVital p75 por ruta y dispositivo)
+│       ├── observability/page.tsx                  # Salud de integraciones, latidos de los 14 crons vigilados, errores y backups
+│       ├── integraciones/page.tsx & aveonline/page.tsx # Diagnóstico vivo de conectores externos y pruebas de cobertura logística
+│       ├── seguridad/page.tsx                      # Gestión propia de MFA/códigos de recuperación + bitácora SecurityEvent (SUPERADMIN)
+│       ├── auditoria/page.tsx                      # Visor inmutable de AdminActionLog con alerta de selfDealing
+│       ├── usuarios/page.tsx                       # Alta, baja y asignación de roles de AdminUser (exclusivo SUPERADMIN)
+│       └── [...placeholder]/page.tsx               # Catch-all controlado para rutas administrativas inexistentes
+└── internal/                                       # En producción exige sesión AdminUser activa + MFA aal2 desde proxy.ts
+    ├── 3d-preview/page.tsx                         # Banco de pruebas aislado del visor 3D de imanes
+    ├── correos/page.tsx                            # Galería interna de inspección visual de plantillas de correo
+    └── plantilla-preview/[slug]/page.tsx           # Renderizador de verificación visual para PersonalizationTemplate
 ```
 
-- **`CmsPage`**: los 9 contenedores canónicos (`inicio`, `navegacion`, `ayuda`, `contacto`, `legales`,
-  `checkout`, `sistema`, `seo`, `global`). **`CmsSection`**: 29 zonas editoriales/de ajuste.
-  **`CmsField`**: 166 campos con `key` global única (`home.hero.title`, `CONTACT_EMAIL`), `kind`
-  (`BLOCK` = publicación explícita · `SETTING` = publica al guardar), `type` (`TEXT`…`JSON`, `IMAGE`),
-  `label`/`helpText` para no-técnicos. **`CmsFieldVersion`**: historial inmutable (revert + auditoría legal).
-- **Estructura declarativa**: `packages/db/scripts/cms-site-map.mjs` es la fuente única de verdad de
-  páginas/secciones/campos; `make migrate-cms-v2` la aplica de forma aditiva e idempotente (nunca pisa
-  `body` publicado) y `packages/db/scripts/sync-and-prune-cms-v2.mjs` sincroniza estructura, republica
-  semillas tokenizadas intactas (SHA-256) y poda claves retiradas en una transacción.
-- **Motor de lectura de snapshot único** (`apps/web/lib/cms.ts`): `loadCmsSnapshotCached`
-  (`["cms-snapshot-v2"]`, `tags: ["cms"]`, `revalidate: 3600`) ejecuta **1 sola query Prisma** con todos
-  los `CmsField` activos y su `publishedVersion`. `getCmsBlock`, `getSettingValue`, `getCmsList`,
-  `getCmsImage` y `getCmsBanners` leen en memoria desde ese snapshot, hidratan `Date` fuera del caché y
-  caen al **fallback** hardcoded si la DB falla (nunca se cachea un error transitorio). Invalidación:
-  `updateTag("cms")` desde las Server Actions del admin o botón «Actualizar caché de contenido» en
-  `/admin/contenido` tras scripts directos en DB.
-- **Admin** (`app/admin/(panel)/contenido/`): índice de las 8 páginas editoriales con búsqueda global,
-  edición inline + vista previa lateral en vivo únicamente en rutas públicas 1:1 (`inicio`, `ayuda`,
-  `contacto`, `sistema`) y enlaces directos por documento/ruta en `legales` y `seo` (con editor inline
-  `<title>` + `meta description` + vista previa Google SERP), historial de versiones, publicación
-  programada (C3), editor de filas para listas (B4) con subcampos IMAGE/BOOLEAN (B6), mediateca (B5) y
-  vista «Solo borradores» con publicar en lote (C4). Acceso: `SUPERADMIN` + `CMS_EDITOR` en contenido
-  editorial (`ADMIN_ROLE_SETS.CONTENT`) y **`SUPERADMIN` exclusivo** en `/admin/contenido/paginas/global`
-  («Ajustes del sitio», que además oculta en UI los 21 settings `MODULE_MANAGED_SETTING_KEYS` y enlaza a
-  sus módulos dueños). Los controles de falso page-builder (crear/archivar/mover/duplicar campos) están
-  retirados de la UI porque la estructura nace del código (`cms-site-map.mjs`).
-- **Gate de paridad exacta en CI**: `apps/web/lib/cms-sitemap-parity.test.ts` (`make audit-content`)
-  recorre el AST de `apps/web` y exige **0 diferencias bidireccionales** entre las claves CMS leídas en
-  código y las 166 declaradas en `cms-site-map.mjs` (reemplazó el antiguo ratchet `audit-content-coverage.mjs`).
-- ADRs: DECISIONS.md ADR-082 (modelo 4 tablas), ADR-083 (iconos en Category), ADR-084 (listas B4), ADR-187 (3 capas + snapshot único + paridad AST).
+#### API Route Handlers (`apps/web/app/api/`)
 
-## Gate de visibilidad storefront y redirects (certificación 2026-09)
+```text
+apps/web/app/api/
+├── admin/cms/edit-mode/route.ts                    # POST/DELETE cookie HttpOnly firmada que activa Live Edit (<CmsEditOverlay>) en storefront
+├── catalog/                                        # API pública cacheada (tag `catalog`, AI-ready y consumo de widgets)
+│   ├── categories/route.ts                         # Árbol de categorías visibles en tienda
+│   ├── filters/route.ts                            # Facetas dinámicas disponibles (precio, materiales, ocasiones)
+│   ├── ocasiones/route.ts & [slug]/route.ts        # Listado y detalle de ocasiones activas
+│   ├── products/route.ts & [slug]/route.ts         # Listado paginado y ficha pública de producto
+│   ├── recommend/route.ts                          # Motor de recomendación por ocasión, presupuesto y perfil
+│   ├── search/route.ts                             # Búsqueda difusa con pg_trgm + unaccent y ranking de relevancia
+│   └── templates/route.ts                          # Plantillas activas compatibles con producto/variante
+├── cms/                                            # Lectura pública acotada del CMS v2 (tag `cms`)
+│   ├── blocks/route.ts & [key]/route.ts            # Bloques editoriales publicados
+│   ├── search/route.ts                             # Búsqueda sobre contenido público/ayuda
+│   └── settings/route.ts                           # Subconjunto estricto PUBLIC_CMS_SETTINGS (jamás expone settings internos de operación)
+├── coupons/public/route.ts                         # Cupones promocionales marcados como visibles en banner/tienda (tags `catalog`, `coupons`)
+├── cron/                                           # 15 endpoints protegidos con header timing-safe `x-cron-secret` (lib/cron-auth.ts)
+│   ├── alerts/route.ts                             # Evaluación cada 5 min de reglas de alerta (errores, pagos, crons vencidos, backup, storage)
+│   ├── back-in-stock/route.ts                      # Notificación de reposición de stock cada 30 min (BackInStockSubscription)
+│   ├── backup-heartbeat/route.ts                   # Receptor POST de latido exitoso desde GitHub Actions `backup.yml`
+│   ├── cart-recovery/route.ts                      # Detección y envío horario de recordatorios de carrito abandonado
+│   ├── cms-publish-scheduled/route.ts              # Publicación programada cada 5 min de versiones CMS (`publishAt <= now`)
+│   ├── daily-summary/route.ts                      # Resumen operativo diario por correo al equipo administrador
+│   ├── domain-watch/route.ts                       # Receptor POST mensual de verificación RDAP de dominio (`domain-watch.yml`)
+│   ├── expire-pending-orders/route.ts              # Expiración horaria de órdenes Wompi estancadas previa re-consulta a la API de Wompi
+│   ├── monitor-heartbeat/route.ts                  # Receptor POST del monitor externo de uptime (STG pg_cron / script manual)
+│   ├── process-render-jobs/route.ts                # Worker cada minuto de la cola RenderJob 300 DPI con lease de 5 min (maxDuration=60)
+│   ├── purge-anon-designs/route.ts                 # Purga diaria de carritos caducados, diseños sin finalidad y barrido de huérfanos en Storage
+│   ├── purge-delivered-designs/route.ts            # Purga diaria de fotos crudas y renders pesados de órdenes entregadas ≥90 días
+│   ├── purge-event-logs/route.ts                   # Retención diaria de tablas de telemetría, webhooks, errores y seguridad
+│   ├── review-request/route.ts                     # Envío diario de invitación a reseñar pedidos entregados
+│   └── tracking-sync/route.ts                      # Polling de respaldo cada 15 min de guías activas contra Aveonline (maxDuration=60)
+├── design-preview/[...path]/route.ts               # Proxy de control de acceso al bucket privado `design-previews` (dueño, admin o bearer token válido)
+├── designs/
+│   ├── save-canvas/route.ts                        # Guardado de payload JSON del lienzo del Estudio con límite estricto de cuerpo
+│   └── [designId]/render-status/route.ts           # Sondeo de avance (`doneUnits / totalUnits`) del RenderJob asociado al diseño
+├── funnel/route.ts                                 # Ingesta anónima sin PII de contadores de embudo diario (FunnelEventDaily)
+├── health/                                         # Sondas operativas (rate-limited; detalle sensible exige `x-cron-secret`)
+│   ├── route.ts                                    # Liveness básico de la aplicación Next.js
+│   ├── all/route.ts                                # Agregador global (503 solo si caen componentes críticos DB o Storage)
+│   ├── db/route.ts                                 # Conectividad real a PostgreSQL vía Prisma (`SELECT 1`)
+│   ├── storage/route.ts                            # Acceso a Supabase Storage y medición de cuota usada
+│   ├── crons/route.ts                              # Dead-man switch de los 14 procesos programados monitoreados (503 si alguno está vencido)
+│   ├── wompi/route.ts                              # Probe de credenciales y coherencia de ambiente contra Wompi
+│   ├── aveonline/route.ts                          # Probe de autenticación contra Aveonline
+│   └── resend/route.ts                             # Probe de llave y dominio verificado en Resend
+├── log-error/route.ts                              # Captura rate-limited de excepciones del cliente hacia ErrorLog
+├── unsubscribe/route.ts                            # Endpoint one-click `List-Unsubscribe-Post` (RFC 8058) firmado con HMAC
+├── vitals/route.ts                                 # Ingesta RUM de métricas Core Web Vitals hacia WebVital
+└── webhooks/
+    ├── wompi/route.ts                              # Recepción idempotente de eventos de pago Wompi firmados con SHA-256 (maxDuration=60)
+    ├── aveonline/route.ts                          # Recepción idempotente de novedades logísticas de Aveonline con secreto compartido/HMAC
+    └── resend/route.ts                             # Recepción de eventos de entregabilidad/rebotes/quejas de Resend verificados con Svix
+```
 
-- **Predicado único de visibilidad** (F-04/A4-02, 2026-09-26): `features/products/storefront-visibility.ts` concentra el "¿se ve este producto en la tienda?" en dos formas — `STOREFRONT_PRODUCT_WHERE` / `STOREFRONT_CATEGORY_WHERE` (fragmentos Prisma consumidos por **ambos** stacks de catálogo: el SSR `features/products/public-service.ts` y el AI-ready `lib/catalog.ts`; las queries `$queryRaw` replican el gate con el JOIN a `Category` y lo cubre un test de integración) y `getStorefrontVisibility` (clasificador puro para el badge del admin: un producto activo también se esconde si su categoría está pausada/archivada o se queda sin opciones activas). Un producto es visible si no está archivado, está activo y su categoría también.
-- **Redirects 301 automáticos en rename de slug** (A11-02, 2026-09-26): `createSlugRenameRedirect` (`features/redirects/service.ts`) la llaman los services de producto/categoría/ocasión tras un update exitoso — antes el rename dejaba las URLs viejas en 404 (SEO, links de WhatsApp, bots). Política de colisiones: el rename es autoritativo (re-apunta y reactiva redirects previos sobre la URL vieja), el rename de vuelta archiva el redirect que ocupa el path, y las cadenas se aplanan (A→B→C queda A→C + B→C). Simétricamente, `archiveRedirectOccupyingPath` (A11R-03) archiva el redirect que ocupa la URL de una entidad NUEVA creada con un slug previamente redirigido — la página viva siempre gana. Los redirects se administran en `/admin/redirects` y el proxy los resuelve con cache in-memory de 60 s (ver § Caching).
+### 3.3 Mapa de los 40 módulos verticales en `apps/web/features/`
 
-## Extensiones Postgres habilitadas
+Cada directorio en `apps/web/features/` encapsula la lógica de un subdominio (`service.ts`, `schemas.ts`, `actions.ts`, `emails.ts` y pruebas unitarias/integración colocalizadas):
 
-> Habilitadas en Supabase vía dashboard o migración SQL. Solo se listan las que el proyecto usa hoy.
-
-| Extensión  | Propósito                                                                               | Dónde se habilita                                                              |
-| ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `pg_trgm`  | Búsqueda fuzzy de productos (operador `%`, `similarity()`)                              | `supabase/migrations/00000000000005`                                           |
-| `unaccent` | Búsqueda insensible a tildes                                                            | `supabase/migrations/00000000000005`                                           |
-| `pg_cron`  | Schedule de jobs internos (cleanups DB-side y disparo de jobs HTTP hacia `/api/cron/*`) | dashboard + `supabase/migrations/00000000000012, 015, 016, 021, 023, 032, 035` |
-| `pg_net`   | `net.http_get` desde pg_cron hacia los endpoints `/api/cron/*` (schema `extensions`)    | `supabase/migrations/00000000000029`                                           |
-| `pgcrypto` | Disponible para hashing en DB (los bearer tokens se hashean en app con SHA-256, F-11)   | `packages/db/prisma/migrations/20260829150200_bearer_tokens_hash_at_rest`      |
-
-> **No se usan** `pgmq` (los background jobs son HTTP vía pg_cron + pg_net, ver § Background jobs), ni `uuid-ossp`, ni `pg_stat_statements`.
-
-### Jobs pg_cron versionados
-
-Las migraciones `00000000000012/015/016/021/023/032/035` agendan los jobs (idempotentes: `unschedule` → `schedule`; leen `cron_base_url` y `cron_secret` del Vault de Supabase en runtime, sin secretos en el SQL; el header `x-cron-secret` viaja en headers, nunca en la URL). Son **guardados**: si `pg_cron`/`pg_net` no están instalados en el ambiente, el job se omite con `RAISE NOTICE` en vez de romper la migración. La `00000000000033` des-agenda `stock_reservation_cleanup` (su tabla salió del schema en la remediación 2026-09-12). Las `00000000000037/039` siembran los latidos (`AlertState` con clave `cron:<job>`, `ON CONFLICT DO NOTHING`) para que el dead-man switch cubra también los jobs disparados fuera de pg_cron.
+- **Identidad, acceso y privacidad:** `account`, `addresses`, `admin-mfa`, `admin-users`, `consent`, `crm`, `customers`, `identity`, `security` (suites de certificación RLS).
+- **Catálogo, contenido y descubrimiento:** `back-in-stock`, `categories`, `cms`, `ocasiones`, `products`, `redirects`, `reviews`, `wishlist`.
+- **Personalización, IA e imprenta:** `ai`, `moderation`, `personalization`.
+- **Conversión, pagos y logística:** `anti-abuse`, `cart`, `checkout`, `coupons`, `finanzas`, `orders`, `payments`, `quotes`, `shipping`.
+- **Crecimiento, B2B y retención:** `emails`, `loyalty`, `newsletter`, `opportunities`, `referrals`.
+- **Posventa y operación interna:** `analytics`, `notifications`, `observability`, `retract`, `support`, `warranty`.
 
 ---
 
-## Background jobs
+## 4. Modelo de datos completo en PostgreSQL y Prisma (71 modelos + 26 enums)
 
-> ADR-017 decidió `pgmq` como cola durable; en la práctica **pgmq no se adoptó**: los jobs son endpoints HTTP `/api/cron/*` (13 handlers) disparados por `pg_cron` + `pg_net` (migraciones `00000000000015/016/021/023/032/035`) o desde fuera de pg_cron (GitHub Actions / uptime monitor), y el reintento de guía Aveonline quedó manual con alerta (ADR posterior a ADR-060). No se usa Vercel Cron.
+La fuente canónica del esquema es `packages/db/prisma/schema.prisma`, respaldada por **94 migraciones de Prisma** y **53 migraciones SQL de Supabase**. En el esquema `public` conviven exactamente **73 tablas**: **71 modelos Prisma**, **1 tabla SQL operativa** (`rate_limit_buckets`) y la tabla interna `_prisma_migrations`.
 
+### 4.1 Reglas globales e invariantes de modelado
+
+1. **Claves primarias:** todos los modelos usan `id String @id @default(cuid())` (compactos, seguros en URLs internas y sin colisión).
+2. **Dinero entero en centavos COP (`Int`):** toda columna monetaria (`basePrice`, `price`, `unitPrice`, `subtotal`, `discountAmount`, `shippingCost`, `total`, `loyaltyDiscount`, `costPerUnit`, `expectedAmountCop`, etc.) almacena centavos enteros de peso colombiano, validada en la aplicación con `fitsMoneyInt4` (`<= 2_147_483_647` centavos ≈ `$21.474.836 COP`) y con `CHECK (... >= 0)` en base de datos.
+3. **Borrado lógico vs estado de publicación:** las entidades con valor histórico, contable o legal usan `deletedAt DateTime?` y `deletedBy String?` (soft-delete), reservando `isActive Boolean` exclusivamente para encender o pausar visibilidad comercial. Excepción explícita: `Cart` y `AbandonedCart` son datos efímeros y se purgan con hard-delete cuando vence su finalidad (`features/cart/cart-retention.ts`) para no retener fotos sin base legal ni bloquear `Cart.sessionId @unique`.
+4. **Inmutabilidad de snapshots transaccionales:** `Order`, `OrderItem` y `QuoteItem` congelan al momento de crearse nombres, SKUs, precios unitarios, dirección completa, datos de facturación y `metadata.designSnapshot` (`canvasData`, `productionUrls`, `previewUrl`), de modo que ediciones posteriores al catálogo o purgas de archivos pesados tras 90 días jamás alteren una venta pasada.
+5. **Bearer tokens hasheados en reposo:** `Order.publicAccessTokenHash`, `Quote.publicAccessTokenHash`, `Design.shareTokenHash` y `AbandonedCart.recoverTokenHash` persisten únicamente el hash **SHA-256 hex de 64 caracteres** (`apps/web/lib/token-hash.ts`). `AdminRecoveryCode.codeHash` persiste un digest HMAC-SHA256 con pepper de servidor. El valor en claro jamás se guarda en base de datos.
+6. **Descuento atómico de inventario al confirmar pago (`PAID`):** no existe tabla de reserva temporal de inventario en checkout (retirada por `ADR-091` para impedir secuestro de inventario por carritos abandonados). El stock se descuenta de forma atómica al pasar a `PAID` (o al confirmar pedido COD) mediante `updateMany` con predicado `WHERE stock >= qty` compatible con Supavisor en modo transacción, respaldado por un índice parcial único en `InventoryLog(orderId, reason, variantId)` que impide doble descuento o doble reversa. Si dos pagos concurrentes compiten por la última unidad, la orden perdedora marca `Order.needsReconciliation = true` y dispara `notifyStockSaleLost` para gestión inmediata.
+7. **Reconciliación multi-transacción en Wompi:** una misma orden puede registrar múltiples intentos (`WompiPaymentAttempt`) y múltiples transacciones del gateway (`WompiPaymentTransaction`). Si llega un segundo `APPROVED` con `providerTransactionId` distinto al que ya pagó la orden, `flagForeignApprovedPayment` marca `needsReconciliation = true` con ambos IDs sin duplicar efectos secundarios.
+8. **Tope de cupón serializado en PostgreSQL:** además del contador global `Coupon.usedCount`, el trigger SQL `coupon_usage_per_customer_limit` toma un `pg_advisory_xact_lock` por `(couponId, identidad)` antes de insertar en `CouponUsage`, eliminando condiciones de carrera entre checkouts simultáneos.
+9. **Descuento público por volumen (`WholesaleTier`):** las escalas por volumen se aplican automáticamente en el carrito (`features/cart/volume-pricing.ts`) a cualquier comprador (registrado o invitado) según la cantidad de la línea; gana el mayor `minQty <= qty` activo del producto (o global `productId IS NULL` si el producto no define escalas propias) siempre que mejore el precio base.
+10. **Fechas y zona horaria:** todas las columnas `DateTime` se almacenan en UTC (`TIMESTAMPTZ` / `TIMESTAMP(3)`) y se formatean e interpretan en el negocio bajo `America/Bogota` (`UTC-5`, sin horario de verano) mediante `apps/web/lib/datetime.ts`.
+
+### 4.2 Catálogo individual de los 71 modelos Prisma (+ `rate_limit_buckets`)
+
+#### A. Identidad canónica, cuentas de clientes y CRM operativo (9 modelos)
+
+| #   | Modelo                   | Propósito exacto                                                                                                                    | Columnas clave                                                                                                                                                                                                                                                                                                                                             | Relaciones principales                                                                                                                                                                                                             | Invariantes, `CHECK` e índices críticos                                                                                                                                                                                     |
+| --- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `Organization`           | Empresa, colegio o entidad cliente del canal B2B/eventos.                                                                           | `id`, `name`, `taxId`, `DocumentType?`, `sector`, `city`, `department`, `website`, `notes`, `deletedAt`, `deletedBy`                                                                                                                                                                                                                                       | `contacts Contact[]`, `opportunities Opportunity[]`                                                                                                                                                                                | Índice parcial único sobre `taxId` normalizado cuando `deletedAt IS NULL`; índice `(deletedAt, name)`.                                                                                                                      |
+| 2   | `Contact`                | Contraparte humana canónica unificada de la tienda (comprador registrado, invitado, lead B2B, solicitante de soporte o suscriptor). | `id`, `displayName`, `primaryEmail`, `primaryPhoneE164`, `whatsappE164`, `documentType`, `documentNumber`, `city`, `department`, `isStaff`, `marketingOptIn`, `mergedIntoContactId`, `deletedAt`                                                                                                                                                           | `organization`, `mergedInto` (auto-relación), `identities`, `customer` (1:1 opc.), `orders`, `quotes`, `supportTickets`, `abandonedCarts`, `consents`, `warrantyClaims`, `retractRequests`, `activities`, `tasks`, `opportunities` | `isStaff` monotónico (marca cuentas vinculadas a `AdminUser`); `mergedIntoContactId` encadena redirección tras fusión humana sin perder trazabilidad.                                                                       |
+| 3   | `ContactIdentity`        | Identificador observable asociado a un `Contact` (`SUPABASE_USER`, `EMAIL`, `PHONE`, `WHATSAPP`).                                   | `id`, `contactId`, `type`, `valueNormalized`, `valueRaw`, `verificationStatus`, `source`, `verifiedAt`, `revokedAt`, `lastSeenAt`                                                                                                                                                                                                                          | `contact` (`onDelete: Cascade`)                                                                                                                                                                                                    | Índices únicos parciales SQL **solo** para `type IN ('SUPABASE_USER','EMAIL') AND verificationStatus != 'REVOKED'`; teléfonos E.164 permiten homónimos familiares sin `P2002`.                                              |
+| 4   | `IdentityMergeCandidate` | Par de contactos con colisión ambigua pendiente o resuelta por revisión humana en `/admin/clientes/duplicados`.                     | `id`, `contactAId`, `contactBId`, `reason`, `evidence` (`Json`), `status`, `resolvedByAdminId`, `resolvedAt`, `resolutionNotes`                                                                                                                                                                                                                            | `contactA`, `contactB` (`onDelete: Cascade`), `resolvedByAdmin` (`SetNull`)                                                                                                                                                        | Orden canónico `contactAId < contactBId`; `@@unique([contactAId, contactBId])`; estado `REJECTED` actúa como supresión permanente para no reabrir el mismo par.                                                             |
+| 5   | `Customer`               | Credencial autenticada de autoservicio vinculada a `auth.users` de Supabase para `/mi-cuenta`.                                      | `id`, `supabaseUserId` (`@unique`), `contactId` (`@unique`), `email` (`@unique`), `fullName`, `phone`, `documentType`, `documentNumber`, `taxResponsibility`, `loyaltyPoints`, `referralCode` (`@unique`), `referredById`, `lastActivityAt`, `deletedAt`                                                                                                   | `contact` (`SetNull`), `referredBy`/`referrals`, `addresses`, `orders`, `reviews`, `carts`, `loyaltyTxns`, `consents`, `designs`, `quotes`, `wishlistItems`, `backInStockSubs`, `supportTickets`                                   | `CHECK (loyaltyPoints >= 0)`; sincronizado con borrado de `auth.users` mediante trigger SQL `004` y flujo de supresión Ley 1581.                                                                                            |
+| 6   | `Address`                | Dirección física de envío en Colombia dentro de la libreta de un `Customer`.                                                        | `id`, `customerId`, `label`, `recipientName`, `phone`, `department`, `city`, `daneCode`, `neighborhood`, `streetAddress`, `additionalInfo`, `postalCode`, `isDefault`, `deletedAt`                                                                                                                                                                         | `customer` (`onDelete: Cascade`)                                                                                                                                                                                                   | Índice único parcial SQL (`009`) garantiza a lo sumo **una** dirección `isDefault = true` viva (`deletedAt IS NULL`) por `customerId`.                                                                                      |
+| 7   | `ContactActivity`        | Entrada inmutable del timeline operativo o comercial de un contacto (nota manual, llamada, WhatsApp, email o hito del sistema).     | `id`, `contactId`, `orderId`, `supportTicketId`, `authorAdminId`, `kind`, `body`, `metadata` (`Json`), `createdAt`                                                                                                                                                                                                                                         | `contact` (`Cascade`), `order` (`SetNull`), `supportTicket` (`SetNull`), `authorAdmin` (`SetNull`)                                                                                                                                 | `CHECK ("kind" IN ('NOTE', 'CALL', 'WHATSAPP', 'EMAIL', 'SYSTEM'))`; índices compuestos por `(contactId, createdAt)`, `(orderId, createdAt)` y `(supportTicketId, createdAt)`.                                              |
+| 8   | `Task`                   | Compromiso operativo con responsable y fecha límite visible en `/admin/hoy` y en las fichas de entidad.                             | `id`, `title`, `description`, `status`, `priority`, `dueAt`, `completedAt`, `ownerAdminId`, `createdByAdminId`, `contactId`, `orderId`, `supportTicketId`, `warrantyClaimId`, `retractRequestId`, `opportunityId`                                                                                                                                          | `ownerAdmin`, `createdByAdmin`, `contact`, `order`, `supportTicket`, `warrantyClaim`, `retractRequest`, `opportunity` (todas `SetNull`)                                                                                            | `CHECK ("status" IN ('OPEN', 'IN_PROGRESS', 'DONE', 'CANCELLED'))`; `CHECK ("priority" IN ('LOW', 'NORMAL', 'HIGH', 'URGENT'))`; índices por `(ownerAdminId, status, dueAt)`.                                               |
+| 9   | `Opportunity`            | Negocio consultivo B2B o de eventos sociales gestionado desde `/empresas-y-eventos` y `/admin/oportunidades`.                       | `id`, `number` (`@unique`), `contactId`, `organizationId`, `ownerAdminId`, `title`, `eventType`, `stage`, `expectedUnits`, `expectedAmountCop`, `eventDate`, `requesterName`, `requesterEmail`, `requesterPhone`, `companyName`, `convertedQuoteId`, `convertedOrderId`, `lostReason`, `utmSource`, `utmMedium`, `utmCampaign`, `landingPath`, `deletedAt` | `contact` (`Cascade`), `organization` (`SetNull`), `ownerAdmin` (`SetNull`), `convertedQuote` (`SetNull`), `convertedOrder` (`SetNull`), `tasks`                                                                                   | `CHECK ("stage" IN ('NEW', 'QUALIFYING', 'PROPOSAL_SENT', 'WON', 'LOST'))`; `CHECK ("eventType" IN ('CORPORATE_GIFT', 'WEDDING_SOCIAL', 'SCHOOL_GRADUATION', 'BRAND_MERCH', 'OTHER'))`; `CHECK ("expectedAmountCop" >= 0)`. |
+
+#### B. Administración, RBAC, MFA y seguridad (4 modelos)
+
+| #   | Modelo              | Propósito exacto                                                                                                                                                       | Columnas clave                                                                                                                                                 | Relaciones principales                                                                                                                       | Invariantes, `CHECK` e índices críticos                                                                                                                                      |
+| --- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 10  | `AdminUser`         | Operador autorizado del backoffice `/admin` con rol RBAC explícito.                                                                                                    | `id`, `supabaseUserId` (`@unique`), `email` (`@unique`), `fullName`, `role` (`AdminRole`), `isActive`, `lastLoginAt`, `lastActiveAt`, `deletedAt`, `deletedBy` | `recoveryCodes`, `actionLogs`, `resolvedMerges`, `authoredActivities`, `ownedTasks`, `createdTasks`, `ownedOpportunities`, `assignedTickets` | Un usuario autenticado en GoTrue sin fila `AdminUser` con `isActive = true` y `deletedAt IS NULL` recibe rechazo inmediato en `proxy.ts` y guards.                           |
+| 11  | `AdminRecoveryCode` | Código de recuperación de un solo uso para contingencia de segundo factor MFA TOTP del administrador.                                                                  | `id`, `adminUserId`, `codeHash` (`@unique`), `usedAt`, `createdAt`                                                                                             | `adminUser` (`onDelete: Cascade`)                                                                                                            | Guarda exclusivamente HMAC-SHA256 con pepper de servidor; se invalida marcando `usedAt` al consumirse.                                                                       |
+| 12  | `AdminActionLog`    | Bitácora de auditoría inmutable (append-only) de toda mutación administrativa relevante o acceso sensible.                                                             | `id`, `actorId`, `action`, `entityType`, `entityId`, `metadata` (`Json`), `ip`, `userAgent`, `createdAt`                                                       | `actor` (`AdminUser`, `Restrict`)                                                                                                            | Enriquecido automáticamente con `metadata.selfDealing = true` si el administrador opera sobre un registro propio; índices `(actorId, createdAt)` y `(entityType, entityId)`. |
+| 13  | `SecurityEvent`     | Registro de eventos defensivos (fallos de login admin, firmas inválidas de webhook, secretos rechazados) con agregación anti-amplificación por minuto (`LUC-SEC-008`). | `id`, `event`, `outcome`, `ipHash`, `actorId`, `metadata` (`Json`), `count`, `dedupKey` (`@unique`), `createdAt`                                               | Independiente (telemetría de seguridad)                                                                                                      | Nunca guarda IP en claro (`ipHash`); agrupa ráfagas por `dedupKey` e incrementa `count`; purgado por `purge-event-logs`.                                                     |
+
+#### C. Catálogo, inventario, precios por volumen, materiales (BOM) y SEO (11 modelos)
+
+| #   | Modelo              | Propósito exacto                                                                                                | Columnas clave                                                                                                                                                                                                                                                                                                                  | Relaciones principales                                                                                                                 | Invariantes, `CHECK` e índices críticos                                                                                                                                                   |
+| --- | ------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 14  | `Category`          | Categoría raíz o subcategoría jerárquica del catálogo comercial.                                                | `id`, `slug` (`@unique`), `name`, `description`, `imageUrl`, `iconKey`, `parentId`, `order`, `isActive`, `activeFrom`, `activeUntil`, `seoTitle`, `seoDescription`, `deletedAt`                                                                                                                                                 | Auto-relación `parent`/`children` (`SetNull`), `products`                                                                              | Soporta árbol de 2 niveles y ventanas estacionales automáticas (`activeFrom`/`activeUntil`); índice `(parentId, isActive, deletedAt, order)`.                                             |
+| 15  | `Product`           | Ficha comercial maestra vendible o cotizable en el storefront.                                                  | `id`, `slug` (`@unique`), `name`, `description`, `richDescription`, `idealFor` (`String[]`), `categoryId`, `basePrice`, `compareAtPrice`, `images` (`String[]`), `isPersonalizable`, `personalizationKind`, `personalizationSchema` (`Json`), `physicalSpecs` (`Json`), `warrantyMonths`, `isActive`, `isFeatured`, `deletedAt` | `category` (`Restrict`), `variants`, `reviews`, `ocasionLinks`, `designs`, `templates`, `wholesaleTiers`, `materials`, `wishlistItems` | `CHECK (basePrice >= 0)`; índices GIN `pg_trgm` sobre `unaccent(name)` y `unaccent(description)` (`031`) para búsqueda instantánea; visibilidad gobernada por `STOREFRONT_PRODUCT_WHERE`. |
+| 16  | `ProductVariant`    | Opción concreta comprable de un producto (tamaño, cantidad por pack, con/sin imán, acabado).                    | `id`, `productId`, `sku` (`@unique`), `name`, `price`, `compareAtPrice`, `stock`, `lowStockThreshold`, `attributes` (`Json`), `order`, `isActive`, `deletedAt`                                                                                                                                                                  | `product` (`Cascade`), `inventoryLogs`, `cartItems`, `orderItems` (`Restrict`), `quoteItems`, `backInStockSubs`, `materials`           | `CHECK (stock >= 0)`; `price = null` hereda `Product.basePrice`; `attributes` define `sizeCm`, `quantity`, `magnet`, `aspectRatio` y `_shipping` (peso/dimensiones).                      |
+| 17  | `InventoryLog`      | Libro mayor (kardex) inmutable de movimientos de unidades físicas por variante.                                 | `id`, `variantId`, `delta`, `stockAfter`, `reason`, `orderId`, `actorId`, `notes`, `createdAt`                                                                                                                                                                                                                                  | `variant` (`Restrict`), `order` (`SetNull`)                                                                                            | Índice único parcial en `(orderId, reason, variantId)` cuando `orderId IS NOT NULL` garantiza idempotencia exacta en saga de pago y reversas.                                             |
+| 18  | `OcasionTag`        | Etiqueta transversal de ocasión de compra o regalo para navegación cruzada y recomendador.                      | `id`, `slug` (`@unique`), `name`, `description`, `iconKey`, `monthHint`, `suggestedQuantityRange` (`Json`), `order`, `isActive`, `deletedAt`                                                                                                                                                                                    | `productLinks ProductOcasionTag[]`                                                                                                     | Alimenta `/ocasion/[slug]`, menú dinámico por mes (`monthHint`) y recomendador de regalos.                                                                                                |
+| 19  | `ProductOcasionTag` | Tabla puente N:M entre productos y ocasiones comerciales.                                                       | `productId`, `ocasionId`, `order`, `createdAt`                                                                                                                                                                                                                                                                                  | `product` (`Cascade`), `ocasion` (`Cascade`)                                                                                           | Clave compuesta `@@id([productId, ocasionId])` e índice inverso `(ocasionId, order)`.                                                                                                     |
+| 20  | `WholesaleTier`     | Escala pública de precio unitario por volumen para una cantidad mínima de unidades en la línea.                 | `id`, `productId`, `minQty`, `unitPrice`, `label`, `isActive`, `createdAt`, `updatedAt`                                                                                                                                                                                                                                         | `product` (`Cascade`, opcional: `null` = escala global)                                                                                | `CHECK (minQty >= 2)` y `CHECK (unitPrice >= 0)`; unicidad por `(productId, minQty)` + índice parcial para globales.                                                                      |
+| 21  | `Material`          | Insumo físico de fabricación (lámina magnética, papel fotográfico, PET laminado, bolsa, caja) para costeo BOM.  | `id`, `code` (`@unique`), `name`, `unit`, `unitCostCop`, `wastePct`, `supplier`, `notes`, `isActive`, `deletedAt`                                                                                                                                                                                                               | `productMaterials ProductMaterial[]`                                                                                                   | `unitCostCop` en centavos COP por unidad de medida (`cm2`, `unidad`, `hoja`); `wastePct` modela merma real de corte/impresión.                                                            |
+| 22  | `ProductMaterial`   | Línea de receta de materiales (Bill of Materials) por producto o variante específica.                           | `id`, `productId`, `variantId`, `materialId`, `quantity`, `notes`                                                                                                                                                                                                                                                               | `product` (`Cascade`), `variant` (`Cascade`, opc.), `material` (`Restrict`)                                                            | Permite calcular costo unitario y margen neto exacto en `/admin/costos`; `@@unique([productId, variantId, materialId])`.                                                                  |
+| 23  | `UrlRedirect`       | Regla dinámica de redirección HTTP 301 o 302 administrable en `/admin/redirects` y generada al renombrar slugs. | `id`, `fromPath` (`@unique`), `toPath`, `statusCode`, `isActive`, `hitCount`, `lastHitAt`, `reason`, `createdBy`, `deletedAt`                                                                                                                                                                                                   | Independiente (resuelta en `proxy.ts`)                                                                                                 | Previene cadenas `A→B→C` aplanándolas al guardar, impide auto-bucles y se invalida al instante con `updateTag("redirects")`.                                                              |
+| 24  | `BlogPost`          | Artículo editorial de contenido orgánico / guías de regalo (capacidad reservada `FUTURO_APROBADO`).             | `id`, `slug` (`@unique`), `title`, `excerpt`, `bodyMarkdown`, `coverImageUrl`, `tags` (`String[]`), `isPublished`, `publishedAt`, `seoTitle`, `seoDescription`, `deletedAt`                                                                                                                                                     | Independiente                                                                                                                          | Mantenido en el esquema con RLS estricta para activación editorial futura sin migración destructiva.                                                                                      |
+
+#### D. Estudio de Personalización, plantillas y cola de renderizado (7 modelos)
+
+| #   | Modelo                    | Propósito exacto                                                                                                               | Columnas clave                                                                                                                                                                                                                                                                                               | Relaciones principales                                                                                                                  | Invariantes, `CHECK` e índices críticos                                                                                                                                                               |
+| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 25  | `PersonalizationTemplate` | Plantilla visual (editable por capas SVG/texto o prediseñada) disponible en el Estudio.                                        | `id`, `slug` (`@unique`), `name`, `description`, `productId`, `mode` (`TemplateMode`), `aspectRatio`, `previewUrl`, `canvasConfig` (`Json`), `tags` (`String[]`), `order`, `isActive`, `deletedAt`                                                                                                           | `product` (`SetNull`), `designs`                                                                                                        | El Estudio empareja plantillas activas por `productId` o tolerancia de `aspectRatio` (`±0.05`).                                                                                                       |
+| 26  | `LetterTileSet`           | Colección temática de fichas ilustradas (ej. Kawaii Animales en español o inglés) para sets de letras y nombres (`ADR-057`).   | `id`, `name`, `language`, `description`, `previewUrl`, `isActive`, `order`, `createdAt`, `updatedAt`                                                                                                                                                                                                         | `tiles LetterTile[]`                                                                                                                    | `@@unique([name, language])`; cada set agrupa hasta 53 caracteres (A–Z, Ñ, 0–9 y símbolos).                                                                                                           |
+| 27  | `LetterTile`              | Ilustración individual de una letra, dígito o símbolo perteneciente a un `LetterTileSet`.                                      | `id`, `setId`, `char`, `imageUrl`, `storagePath`, `widthPx`, `heightPx`, `updatedAt`                                                                                                                                                                                                                         | `set` (`LetterTileSet`, `Cascade`)                                                                                                      | `@@unique([setId, char])`; consumida tanto en el preview del Estudio como en el render server-side 300 DPI (`@napi-rs/canvas`).                                                                       |
+| 28  | `DesignGalleryImage`      | Arte prediseñado curado en `/admin/disenos` para productos sin foto propia (ej. separadores magnéticos).                       | `id`, `tag`, `name`, `imageUrl`, `thumbnailUrl`, `storagePath`, `variantFilter` (`Json?`), `order`, `isActive`, `createdAt`, `updatedAt`                                                                                                                                                                     | Independiente (asociada por `tag` = `galleryTag` o `product.slug`)                                                                      | `variantFilter` permite restringir un arte a atributos concretos de variante (ej. `{"sizeCm":"2×6"}`); cacheado bajo tag `gallery-thumbs`.                                                            |
+| 29  | `Design`                  | Diseño personalizado creado por un cliente o invitado en el Estudio.                                                           | `id`, `customerId`, `sessionId`, `productId`, `variantId`, `templateId`, `status` (`DesignStatus`), `moderationStatus` (`ModerationStatus`), `canvasData` (`Json`), `metadata` (`Json`), `previewUrl`, `productionUrl`, `productionUrls` (`String[]`), `shareTokenHash` (`@unique`), `purgedAt`, `deletedAt` | `customer` (`SetNull`), `product` (`Restrict`), `template` (`SetNull`), `assets`, `renderJobs`, `cartItems`, `orderItems`, `quoteItems` | Ciclo `DRAFT → READY → USED_IN_ORDER → ARCHIVED`; al rechazarse en moderación anula `shareTokenHash`; `purgedAt` marca depuración post-entrega de binarios pesados conservando el registro histórico. |
+| 30  | `RenderJob`               | Trabajo asíncrono en cola para generar los PNG definitivos a 300 DPI de un `Design` fuera del request del cliente (`ADR-136`). | `id`, `designId`, `status` (`RenderJobStatus`), `attempts`, `maxAttempts`, `totalUnits`, `doneUnits`, `lockedAt`, `lastError`, `completedAt`, `createdAt`, `updatedAt`                                                                                                                                       | `design` (`Cascade`)                                                                                                                    | Lease de 5 min sobre `PROCESSING` (`lockedAt`) para recuperar workers caídos; `doneUnits` alimenta la barra de progreso en tiempo real.                                                               |
+| 31  | `DesignAsset`             | Fotografía cruda subida por el usuario al bucket privado `customer-uploads` para alimentar un `Design`.                        | `id`, `designId`, `customerId`, `sessionId`, `storagePath` (`@unique`), `mimeType`, `sizeBytes`, `widthPx`, `heightPx`, `sha256`, `createdAt`                                                                                                                                                                | `design` (`Cascade`, opc. mientras está huérfano en subida)                                                                             | Dimensiones reales verificadas en servidor (`sharp-safe.ts`); se elimina junto con sus bytes en Storage al ejecutarse las purgas de retención Ley 1581.                                               |
+
+#### D2. Carrito, cotizaciones Etapa 1, cupones, órdenes, pagos Wompi y logística (14 modelos)
+
+| #   | Modelo                    | Propósito exacto                                                                                                                  | Columnas clave                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Relaciones principales                                                                                                                                                                                                                                                                                            | Invariantes, `CHECK` e índices críticos                                                                                                                              |
+| --- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 32  | `Cart`                    | Carrito activo de sesión anónima (`sessionId`) o de cliente autenticado (`customerId`).                                           | `id`, `customerId`, `sessionId` (`@unique`), `couponId`, `checkoutData` (`Json?`), `createdAt`, `updatedAt`, `deletedAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `customer` (`Cascade`), `coupon` (`SetNull`), `items`, `abandoned` (1:1 opc.)                                                                                                                                                                                                                                     | Se fusiona al iniciar sesión (`mergeAnonCartIntoCustomer`); los carritos vivos inactivos ≥60d o vacíos ≥7d (sin `AbandonedCart` activo) se purgan en duro.           |
+| 33  | `CartItem`                | Línea individual dentro de un `Cart` (producto estándar o diseño personalizado `READY`).                                          | `id`, `cartId`, `productId`, `variantId`, `designId`, `quantity`, `unitPrice`, `metadata` (`Json?`), `createdAt`, `updatedAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `cart` (`Cascade`), `product` (`Cascade`), `variant` (`Cascade`), `design` (`SetNull`)                                                                                                                                                                                                                            | `CHECK (quantity >= 1)` y `CHECK (unitPrice >= 0)`; recalcula `unitPrice` server-side al cruzar escalas de `WholesaleTier`.                                          |
+| 34  | `AbandonedCart`           | Seguimiento de carrito con correo capturado en checkout que no completó compra, para recuperación supervisada (`ADR-153`).        | `id`, `cartId` (`@unique`), `contactId`, `email`, `customerName`, `phone`, `checkoutStep`, `cartSnapshot` (`Json`), `totalCop`, `recoverTokenHash` (`@unique`), `remindersSent`, `lastReminderAt`, `recoveredOrderId`, `closedAt`, `closedReason`, `unsubscribedAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `cart` (`Cascade`), `contact` (`SetNull`), `recoveredOrder` (`SetNull`)                                                                                                                                                                                                                                           | `checkoutStep` (`'DATOS' \| 'ENVIO' \| 'PAGO'`), `closedReason` (`'ORDER_PAID' \| 'QUOTE_CREATED' \| 'CART_EMPTIED'`); purgado a los 90 días.                        |
+| 35  | `Quote`                   | Cotización formal persistida en Etapa 1 (`catalog`) o canal consultivo WhatsApp.                                                  | `id`, `number` (`@unique`), `customerId`, `contactId`, `status` (`QuoteStatus`), `customerName`, `customerEmail`, `customerPhone`, `city`, `department`, `notes`, `adminNotes`, `subtotal`, `total`, `publicAccessTokenHash` (`@unique`), `whatsappSentAt`, `deletedAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `customer` (`SetNull`), `contact` (`SetNull`), `items QuoteItem[]`, `opportunities`                                                                                                                                                                                                                               | Congela precios al momento de solicitarse; mientras está `PENDING`/`CONTACTED` (hasta 365d) protege las fotos de sus diseños frente a la purga anónima.              |
+| 36  | `QuoteItem`               | Línea inmutable perteneciente a una `Quote`.                                                                                      | `id`, `quoteId`, `productId`, `variantId`, `designId`, `productName`, `variantName`, `sku`, `quantity`, `unitPrice`, `lineTotal`, `previewUrl`, `metadata` (`Json?`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `quote` (`Cascade`), `product` (`Restrict`), `variant` (`SetNull`), `design` (`SetNull`)                                                                                                                                                                                                                          | Preserva el snapshot comercial y de personalización para taller (`/admin/cotizaciones/[id]/taller`).                                                                 |
+| 37  | `Coupon`                  | Cupón promocional de descuento porcentual, monto fijo en COP o envío gratis.                                                      | `id`, `code` (`@unique`), `description`, `type` (`CouponType`), `value`, `minSubtotal`, `maxDiscount`, `maxUses`, `maxUsesPerCustomer`, `usedCount`, `startsAt`, `expiresAt`, `firstPurchaseOnly`, `isPublic`, `isActive`, `deletedAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `carts`, `orders`, `usages CouponUsage[]`                                                                                                                                                                                                                                                                         | `code` siempre normalizado en mayúsculas; en `PERCENT` `value` son puntos porcentuales (`1..100`), en `FIXED` son centavos COP.                                      |
+| 38  | `CouponUsage`             | Registro individual de redención efectiva de un cupón por pedido pagado/confirmado.                                               | `id`, `couponId`, `orderId` (`@unique`), `customerId`, `customerEmailNormalized`, `discountApplied`, `createdAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `coupon` (`Restrict`), `order` (`Cascade`), `customer` (`SetNull`)                                                                                                                                                                                                                                                | Gobernado por el trigger SQL `coupon_usage_per_customer_limit` con `pg_advisory_xact_lock` para hacer cumplir `maxUsesPerCustomer` sin carreras.                     |
+| 39  | `Order`                   | Orden de compra maestra (número `LCM-YYYY-NNNN`) con snapshot completo financiero, fiscal, de regalo y logístico.                 | `id`, `number` (`@unique`), `customerId`, `contactId`, `status` (`OrderStatus`), `paymentMethod` (`PaymentMethod`), `subtotal`, `discountAmount`, `loyaltyPointsRedeemed`, `loyaltyDiscount`, `shippingCost`, `codFee`, `total`, `couponId`, `customerEmail`, `customerName`, `customerPhone`, `documentType`, `documentNumber`, `shippingAddress` (`Json`), `isGift`, `giftSenderName`, `giftRecipientName`, `giftMessage`, `billingDocumentType/Number/Name`, `dianStatus`, `wompiTransactionId`, `needsReconciliation`, `reconciliationNotes`, `shippingCarrier`, `trackingNumber`, `trackingUrl`, `labelUrl`, `labelStoragePath`, `shipmentLastError`, `publicAccessTokenHash` (`@unique`), `contentRightsAcceptedAt`, `utmSource`, `utmMedium`, `utmCampaign`, `landingPath`, `paidAt`, `shippedAt`, `deliveredAt`, `cancelledAt`, `deletedAt` | `customer` (`SetNull`), `contact` (`SetNull`), `coupon` (`SetNull`), `items`, `statusEvents`, `shipmentEvents`, `wompiAttempts`, `wompiTransactions`, `codReconciliation`, `couponUsage`, `retractRequests`, `warrantyClaims`, `reviews`, `supportTickets`, `inventoryLogs`, `loyaltyTxns`, `activities`, `tasks` | `CHECK` no negativos en todos los montos; máquina de estados auditada en `OrderStatusEvent`; destinatario de regalo encapsulado en `Order` sin contaminar `Contact`. |
+| 40  | `OrderItem`               | Línea comprada inmutable dentro de una `Order`.                                                                                   | `id`, `orderId`, `productId`, `variantId`, `designId`, `productName`, `variantName`, `sku`, `quantity`, `unitPrice`, `lineTotal`, `customDesign` (`Json?`), `designAssetUrl`, `metadata` (`Json?`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `order` (`Cascade`), `product` (`Restrict`), `variant` (`Restrict`), `design` (`SetNull`)                                                                                                                                                                                                                         | Guarda `metadata.designSnapshot` completo al momento del checkout para garantizar fabricación idéntica al preview aprobado por el cliente.                           |
+| 41  | `OrderStatusEvent`        | Historial cronológico inmutable de transiciones de `OrderStatus` de un pedido.                                                    | `id`, `orderId`, `fromStatus`, `toStatus`, `actorType`, `actorId`, `notes`, `metadata` (`Json?`), `createdAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `order` (`Cascade`)                                                                                                                                                                                                                                                                                               | Registra cada salto (`PENDING_PAYMENT → PAID → FULFILLING → SHIPPED → DELIVERED`, etc.) con autor (`SYSTEM`, `WEBHOOK`, `ADMIN`, `CUSTOMER`).                        |
+| 42  | `ShipmentEvent`           | Hito granular de transporte reportado por webhook o polling de Aveonline para la línea de tiempo del pedido.                      | `id`, `orderId`, `trackingNumber`, `status`, `carrierStatusRaw`, `description`, `occurredAt`, `dedupKey` (`@unique`), `createdAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `order` (`Cascade`)                                                                                                                                                                                                                                                                                               | `dedupKey` determinista evita duplicar novedades repetidas entre el webhook de Aveonline y el cron `tracking-sync`.                                                  |
+| 43  | `WompiPaymentAttempt`     | Intento de pago abierto desde `/checkout/pago` para una `Order` con referencia única hacia Wompi (`ADR` ledger pagos, mig `042`). | `id`, `orderId`, `reference` (`@unique`), `amountInCents`, `currency`, `status` (`WompiAttemptStatus`), `checkoutUrl`, `expiresAt`, `createdAt`, `updatedAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `order` (`Cascade`), `transactions WompiPaymentTransaction[]`                                                                                                                                                                                                                                                     | Permite reintentar pagos declinados/expirados sobre un pedido sin perder el rastro de referencias previas.                                                           |
+| 44  | `WompiPaymentTransaction` | Transacción individual reportada por Wompi (webhook o consulta activa) asociada a una `Order` y/o `WompiPaymentAttempt`.          | `id`, `orderId`, `attemptId`, `providerTransactionId` (`@unique`), `reference`, `status` (`WompiPaymentTransactionStatus`), `paymentMethodType`, `amountInCents`, `currency`, `rawPayload` (`Json`), `finalizedAt`, `createdAt`, `updatedAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `order` (`Cascade`), `attempt` (`SetNull`)                                                                                                                                                                                                                                                                        | Detecta dobles cobros (`APPROVED` con distinto `providerTransactionId`) y alimenta conciliación financiera exacta.                                                   |
+| 45  | `CodReconciliation`       | Liquidación financiera del dinero recaudado en efectivo por la transportadora en un pedido contraentrega (`COD`).                 | `id`, `orderId` (`@unique`), `expectedAmountCop`, `remittedAmountCop`, `carrierFeeCop`, `status` (`CodReconciliationStatus`), `settlementRef`, `remittedAt`, `notes`, `recordedByAdminId`, `createdAt`, `updatedAt`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `order` (`Cascade`)                                                                                                                                                                                                                                                                                               | Separa estado logístico (`DELIVERED`) de liquidación de caja (`REMITTED` vs `DISCREPANCY`) en `/admin/finanzas/conciliacion`.                                        |
+
+#### E. Anti-abuso COD, posventa, soporte, fidelización y señales de demanda (10 modelos)
+
+| #   | Modelo                    | Propósito exacto                                                                                                                        | Columnas clave                                                                                                                                                                                                                                                                            | Relaciones principales                                                                                                                                    | Invariantes, `CHECK` e índices críticos                                                                                                                                                       |
+| --- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 46  | `BlockedIdentity`         | Lista negra operativa para bloquear contraentrega (`COD`) a teléfonos, correos o direcciones con reincidencia de no-recepción o fraude. | `id`, `kind` (`BlockedIdentityKind`), `valueNormalized`, `reason`, `sourceOrderId`, `expiresAt`, `createdByAdminId`, `isActive`, `createdAt`                                                                                                                                              | Independiente (consultada en checkout COD)                                                                                                                | `@@unique([kind, valueNormalized])`; gestionada desde `/admin/finanzas/bloqueos` por `FINANCE`/`OPERATIONS_MANAGER`.                                                                          |
+| 47  | `RetractRequest`          | Solicitud legal de derecho de retracto dentro de los 5 días hábiles posteriores a la entrega (Ley 1480 art. 47).                        | `id`, `orderId`, `contactId`, `status` (`RetractStatus`), `reason`, `itemsRequested` (`Json`), `refundAmountCop`, `returnTrackingNumber`, `adminNotes`, `resolvedByAdminId`, `resolvedAt`, `createdAt`, `updatedAt`                                                                       | `order` (`Restrict`), `contact` (`SetNull`), `tasks`                                                                                                      | Valida elegibilidad por ítem (los productos personalizados están exceptuados por ley salvo defecto de calidad, que tramita `WarrantyClaim`); bloquea purga de renders mientras sigue abierto. |
+| 48  | `WarrantyClaim`           | Reclamo de garantía legal por defecto de calidad, impresión, imán o daño de transporte.                                                 | `id`, `orderId`, `contactId`, `status` (`WarrantyStatus`), `issueType`, `description`, `evidenceUrls` (`String[]`), `resolutionType`, `refundAmountCop`, `replacementOrderId`, `adminNotes`, `resolvedByAdminId`, `resolvedAt`, `createdAt`, `updatedAt`                                  | `order` (`Restrict`), `contact` (`SetNull`), `tasks`                                                                                                      | Soporta evidencias fotográficas y desenlaces de reposición (reimpresión), reparación o devolución de dinero; bloquea purga de renders mientras no sea terminal.                               |
+| 49  | `Review`                  | Reseña y calificación (`1..5` estrellas) de compra verificada sobre un producto.                                                        | `id`, `productId`, `customerId`, `orderId`, `rating`, `title`, `body`, `photoUrls` (`String[]`), `authorName`, `authorCity`, `isVerifiedPurchase`, `isApproved`, `adminReply`, `repliedAt`, `deletedAt`                                                                                   | `product` (`Cascade`), `customer` (`SetNull`), `order` (`SetNull`)                                                                                        | `CHECK (rating BETWEEN 1 AND 5)`; entra siempre con `isApproved = false`; índice único parcial de 1 reseña viva por `(productId, customerId)`.                                                |
+| 50  | `SupportTicket`           | Caso de atención al cliente / PQRS con cálculo de SLA en horas hábiles colombianas (`lib/colombian-sla.ts`).                            | `id`, `number` (`@unique`), `customerId`, `contactId`, `orderId`, `assignedAdminId`, `guestAccessTokenHash` (`@unique`), `subject`, `category`, `status`, `priority`, `requesterName`, `requesterEmail`, `firstResponseDueAt`, `firstRespondedAt`, `resolvedAt`, `createdAt`, `updatedAt` | `customer` (`SetNull`), `contact` (`SetNull`), `order` (`SetNull`), `assignedAdmin` (`SetNull`), `messages SupportTicketMessage[]`, `activities`, `tasks` | Permite seguimiento autenticado (`/mi-cuenta/soporte`) o invitado por token hasheado (`/soporte/[token]`).                                                                                    |
+| 51  | `SupportTicketMessage`    | Mensaje individual dentro de la conversación de un `SupportTicket` (cliente, respuesta de agente o nota interna privada).               | `id`, `ticketId`, `senderType`, `authorAdminId`, `body`, `isInternal`, `attachmentUrls` (`String[]`), `createdAt`                                                                                                                                                                         | `ticket` (`Cascade`), `authorAdmin` (`SetNull`)                                                                                                           | Los mensajes con `isInternal = true` jamás se serializan hacia las vistas públicas o de cliente.                                                                                              |
+| 52  | `LoyaltyTxn`              | Movimiento contable inmutable del libro mayor de puntos de fidelización de un `Customer`.                                               | `id`, `customerId`, `orderId`, `pointsDelta`, `balanceAfter`, `reason`, `expiresAt`, `actorAdminId`, `notes`, `createdAt`                                                                                                                                                                 | `customer` (`Cascade`), `order` (`SetNull`)                                                                                                               | Todo cambio en `Customer.loyaltyPoints` ocurre en la misma transacción que inserta su `LoyaltyTxn` (`EARN_ORDER`, `REDEEM_ORDER`, `REVERT_ORDER`, `REFERRAL_BONUS`, `ADMIN_ADJUST`).          |
+| 53  | `Referral`                | Relación de atribución y recompensa entre un cliente embajador (`referrer`) y un referido en su primera compra pagada.                  | `id`, `referrerId`, `referredCustomerId` (`@unique`), `qualifyingOrderId` (`@unique`), `referrerPointsAwarded`, `discountAppliedCop`, `rewardedAt`, `createdAt`                                                                                                                           | `referrer` (`Customer`, `Cascade`), `referredCustomer` (`Customer`, `Cascade`)                                                                            | Impide auto-referidos y garantiza recompensa única al acreditarse la primera orden `PAID` del referido.                                                                                       |
+| 54  | `WishlistItem`            | Producto marcado como favorito por un cliente autenticado.                                                                              | `id`, `customerId`, `productId`, `createdAt`                                                                                                                                                                                                                                              | `customer` (`Cascade`), `product` (`Cascade`)                                                                                                             | `@@unique([customerId, productId])`.                                                                                                                                                          |
+| 55  | `BackInStockSubscription` | Suscripción con consentimiento explícito para recibir un único aviso por email cuando una variante agotada recupere stock.              | `id`, `productId`, `variantId`, `customerId`, `email`, `notifiedAt`, `unsubscribedAt`, `createdAt`                                                                                                                                                                                        | `product` (`Cascade`), `variant` (`Cascade`), `customer` (`SetNull`)                                                                                      | Índice único activo por `(variantId, email)` pendiente de notificar; procesado por el cron `lucams-back-in-stock`.                                                                            |
+
+#### F. Cumplimiento Ley 1581, CMS v2 y plantillas de correo (8 modelos)
+
+| #   | Modelo                  | Propósito exacto                                                                                                                         | Columnas clave                                                                                                                                                                                                    | Relaciones principales                                                                            | Invariantes, `CHECK` e índices críticos                                                                                                                                      |
+| --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 56  | `Consent`               | Registro auditable e inmutable (append-only) de otorgamiento o revocación de consentimiento bajo Ley 1581 de 2012.                       | `id`, `customerId`, `contactId`, `email`, `phone`, `scope` (`ConsentScope`), `accepted`, `version`, `ipAddress`, `userAgent`, `revokesId`, `acceptedAt`                                                           | `customer` (`SetNull`), `contact` (`SetNull`), auto-relación `revokes`/`revokedBy` (`SetNull`)    | Append-only: revocar inserta una nueva fila con `accepted = false` y `revokesId` apuntando al consentimiento previo; anclable también por `phone` en cotizaciones sin email. |
+| 57  | `CmsPage`               | Contenedor de primer nivel del CMS v2 (8 páginas editoriales en `/admin/contenido` + `global` en Configuración).                         | `id`, `slug` (`@unique`), `title`, `description`, `path`, `order`, `isActive`, `createdAt`, `updatedAt`                                                                                                           | `sections CmsSection[]`                                                                           | Define `path` público opcional 1:1 para habilitar previsualización lateral y Live Edit.                                                                                      |
+| 58  | `CmsSection`            | Agrupación lógica ordenada de campos dentro de una `CmsPage` (29 secciones canónicas).                                                   | `id`, `pageId`, `key`, `title`, `description`, `order`, `createdAt`, `updatedAt`                                                                                                                                  | `page` (`Cascade`), `fields CmsField[]`                                                           | `@@unique([pageId, key])`.                                                                                                                                                   |
+| 59  | `CmsField`              | Campo editable del CMS v2 (`166` campos canónicos: `105 BLOCK` + `61 SETTING`).                                                          | `id`, `sectionId`, `key` (`@unique`), `label`, `helpText`, `kind` (`CmsFieldKind`), `type` (`CmsFieldType`), `category`, `publishedVersionId` (`@unique`), `metadata` (`Json?`), `order`, `isActive`, `deletedAt` | `section` (`Cascade`), `publishedVersion` (`CmsFieldVersion`, `SetNull`), `versions`, `listItems` | Relación circular controlada `CmsField.publishedVersionId ↔ CmsFieldVersion.fieldId`; verificado por `cms-sitemap-parity.test.ts`.                                           |
+| 60  | `CmsFieldVersion`       | Versión inmutable de contenido de un `CmsField` (publicada, borrador o programada a futuro con `publishAt`).                             | `id`, `fieldId`, `version`, `body`, `mediaId`, `publishAt`, `publishedAt`, `createdBy`, `changeNote`, `createdAt`                                                                                                 | `field` (`Cascade`), `publishedFor` (`CmsField`), `media` (`CmsMedia`, `SetNull`)                 | `@@unique([fieldId, version])`; permite rollback instantáneo y publicación diferida mediante el cron `cms-publish-scheduled`.                                                |
+| 61  | `CmsListItem`           | Fila estructurada de un campo tipo lista del CMS (FAQs, banners, pasos, beneficios).                                                     | `id`, `fieldId`, `order`, `data` (`Json`), `isActive`, `createdAt`, `updatedAt`                                                                                                                                   | `field` (`CmsField`, `Cascade`)                                                                   | Al publicarse se serializa de forma determinista al `body` JSON de la `CmsFieldVersion` para lectura O(1) en el snapshot.                                                    |
+| 62  | `CmsMedia`              | Metadatos de imagen subida a la mediateca pública `cms-media` (dimensiones, peso, texto alternativo `alt`).                              | `id`, `storagePath` (`@unique`), `publicUrl`, `filename`, `mimeType`, `sizeBytes`, `widthPx`, `heightPx`, `alt`, `uploadedBy`, `createdAt`                                                                        | `versions CmsFieldVersion[]`                                                                      | Normalizada en servidor a WebP `q82` ≤2000 px antes de almacenarse.                                                                                                          |
+| 63  | `EmailTemplateOverride` | Personalización editable en `/admin/email-templates` de las claves `SUBJECT`, `PREHEADER` y `HEADING` sobre las 30 plantillas de correo. | `id`, `templateId`, `key`, `value`, `updatedBy`, `createdAt`, `updatedAt`                                                                                                                                         | Independiente (`@@unique([templateId, key])`)                                                     | Cacheado bajo tag `email-overrides`; soporta interpolación de `{tokens}` del envío y cae al copy tipado de código si la fila no existe.                                      |
+
+#### G. Idempotencia de webhooks, observabilidad, analítica y notificaciones (8 modelos + 1 tabla SQL)
+
+| #   | Modelo / Tabla       | Propósito exacto                                                                                                                                                              | Columnas clave                                                                                                                                                                               | Relaciones principales     | Invariantes, `CHECK` e índices críticos                                                                                                                   |
+| --- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 64  | `WebhookEvent`       | Registro de deduplicación e idempotencia para webhooks entrantes (`WOMPI`, `RESEND`, `AVEONLINE`).                                                                            | `id`, `source` (`WebhookSource`), `externalId`, `payload` (`Json`), `processedAt`, `createdAt`                                                                                               | Independiente              | `@@unique([source, externalId])` garantiza procesamiento at-most-once efectivo frente a reintentos de red de los proveedores.                             |
+| 65  | `EmailEvent`         | Trazabilidad de eventos de entregabilidad (`email.sent`, `email.delivered`, `email.bounced`, `email.complained`, `email.opened`, `email.clicked`) reportados por Resend.      | `id`, `resendId` (`@unique`), `type`, `to`, `fromEmail`, `subject`, `metadata` (`Json`), `occurredAt`, `createdAt`                                                                           | Independiente              | Índices por `(to, occurredAt)` y `(type, occurredAt)` para métricas de rebote, supresión y auditoría en `/admin/observability`.                           |
+| 66  | `WebVital`           | Muestra de Real User Monitoring (`LCP`, `FID`, `CLS`, `INP`, `TTFB`, `FCP`) enviada desde el cliente hacia `/api/vitals`.                                                     | `id`, `name`, `value`, `rating`, `delta`, `navType`, `route`, `sessionId`, `target`, `userAgent`, `createdAt`                                                                                | Independiente              | Incluye `target` (selector CSS causante de INP); agregada en p50/p75/p95 por ruta en `/admin/performance`.                                                |
+| 67  | `FunnelEventDaily`   | Contador diario agregado y estrictamente libre de PII de pasos del embudo tienda + Estudio (`[ANA-01]`).                                                                      | `id`, `day` (`@db.Date`), `eventName`, `productSlug`, `editorKind`, `deviceCategory`, `errorCode`, `count`, `updatedAt`                                                                      | Independiente              | `CHECK ("count" >= 0)` y `@@unique([day, eventName, productSlug, editorKind, deviceCategory, errorCode])`; cero cookies, IP ni `sessionId`; purga a 365d. |
+| 68  | `ErrorLog`           | Excepción no manejada del servidor capturada vía `instrumentation.onRequestError` (RSC, Route Handlers, Server Actions y `proxy.ts`).                                         | `id`, `message`, `digest`, `stack`, `routePath`, `requestPath`, `method`, `routeType`, `createdAt`                                                                                           | Independiente              | Append-only; `digest` agrupa ocurrencias del mismo fallo para alertas (`errors_spike`) y `/admin/observability`.                                          |
+| 69  | `ErrorReport`        | Reporte deduplicado de errores cliente/servidor agrupado por huella (`fingerprint` SHA-1 de mensaje + stack inicial) con flujo de resolución (`OPEN`, `RESOLVED`, `IGNORED`). | `id`, `fingerprint` (`@unique`), `message`, `stack`, `url`, `userAgent`, `userId`, `digest`, `count`, `status`, `metadata` (`Json`), `firstSeenAt`, `lastSeenAt`, `resolvedAt`, `resolvedBy` | Independiente              | Incrementa `count` y `lastSeenAt` en cada repetición de la misma huella (`@@index([status, lastSeenAt])`).                                                |
+| 70  | `AlertState`         | Estado persistente de deduplicación anti-spam de alertas por correo y registro de latidos (`cron:<job>`) del dead-man switch.                                                 | `key` (`@id`), `lastSentAt`, `lastDetail`, `updatedAt`                                                                                                                                       | Independiente              | Claves `cron:<nombre>` sembradas en migraciones `037`/`039`/`044`; consultadas por `/api/health/crons` y `/admin/observability`.                          |
+| 71  | `Notification`       | Notificación operativa duradera mostrada en el centro de notificaciones de `/admin` (`ALERT`, `CRON`, `QUOTE`, `SYSTEM`).                                                     | `id`, `type`, `severity`, `title`, `detail`, `actionUrl`, `actionLabel`, `metadata` (`Json`), `dedupKey`, `readAt`, `createdAt`                                                              | Independiente              | Anti-ruido: agrupa repeticiones sobre filas no leídas con igual `dedupKey` (ej. `notifyStockSaleLost` deduplica 6 h por variante).                        |
+| SQL | `rate_limit_buckets` | Cubetas de ventana fija en PostgreSQL para rate limiting distribuido (`ADR-016`, migración SQL `003`).                                                                        | `key TEXT PRIMARY KEY`, `count INT NOT NULL`, `window_start TIMESTAMPTZ NOT NULL`                                                                                                            | Función `check_rate_limit` | Operada exclusivamente vía `SELECT check_rate_limit(...)`; depurada a diario por el job SQL `lucams-purge-rate-limits` (`047`).                           |
+
+### 4.3 Catálogo completo de los 26 `enum` de Prisma y restricciones `CHECK` de dominio
+
+Todos los `enum` declarados en `packages/db/prisma/schema.prisma` con el **100 % de sus valores exactos**:
+
+| #   | Enum Prisma                     | Valores exactos (100 %)                                                                                                                                  |
+| --- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `AdminRole`                     | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `PRINT_WORKSHOP`, `FINANCE_ANALYST`, `MANAGER`, `FULFILLMENT`, `CMS_EDITOR`                      |
+| 2   | `OrderStatus`                   | `DRAFT`, `PENDING_PAYMENT`, `PAID`, `FULFILLING`, `SHIPPED`, `DELIVERED`, `CANCELLED`, `REFUNDED`                                                        |
+| 3   | `PaymentMethod`                 | `WOMPI`, `COD`                                                                                                                                           |
+| 4   | `CodReconciliationStatus`       | `REMITTED`, `DISCREPANCY`                                                                                                                                |
+| 5   | `CouponType`                    | `PERCENT`, `FIXED`, `FREE_SHIPPING`                                                                                                                      |
+| 6   | `WebhookSource`                 | `WOMPI`, `RESEND`, `AVEONLINE`                                                                                                                           |
+| 7   | `DocumentType`                  | `CC`, `CE`, `NIT`, `PP`, `TI`                                                                                                                            |
+| 8   | `TaxResponsibility`             | `PERSONA_NATURAL_NO_RESPONSABLE`, `PERSONA_NATURAL_RESPONSABLE`, `PERSONA_JURIDICA`                                                                      |
+| 9   | `DianStatus`                    | `NOT_REQUIRED`, `PENDING`, `SENT`, `ACCEPTED`, `REJECTED`                                                                                                |
+| 10  | `ConsentScope`                  | `COOKIES_NECESSARY`, `COOKIES_FUNCTIONAL`, `COOKIES_ANALYTICS`, `COOKIES_MARKETING`, `NEWSLETTER`, `BACK_IN_STOCK`, `MARKETING_PROFILING`, `HABEAS_DATA` |
+| 11  | `ContactIdentityType`           | `SUPABASE_USER`, `EMAIL`, `PHONE`, `WHATSAPP`                                                                                                            |
+| 12  | `IdentityVerificationStatus`    | `VERIFIED`, `UNVERIFIED_OBSERVED`, `REVOKED`                                                                                                             |
+| 13  | `MergeCandidateStatus`          | `PENDING`, `APPROVED`, `REJECTED`                                                                                                                        |
+| 14  | `BlockedIdentityKind`           | `PHONE`, `EMAIL`, `ADDRESS`                                                                                                                              |
+| 15  | `WompiAttemptStatus`            | `OPEN`, `IN_FLIGHT`, `APPROVED`, `FAILED`, `SUPERSEDED`, `REVIEW`                                                                                        |
+| 16  | `WompiPaymentTransactionStatus` | `PENDING`, `APPROVED`, `DECLINED`, `VOIDED`, `ERROR`                                                                                                     |
+| 17  | `RetractStatus`                 | `PENDING`, `APPROVED`, `RECEIVED`, `REFUNDED`, `REJECTED`                                                                                                |
+| 18  | `WarrantyStatus`                | `PENDING`, `IN_REVIEW`, `APPROVED`, `RESOLVED`, `REJECTED`                                                                                               |
+| 19  | `CmsFieldType`                  | `TEXT`, `TEXTAREA`, `MARKDOWN`, `HTML`, `JSON`, `EMAIL`, `URL`, `NUMBER`, `PHONE`, `COLOR`, `BOOLEAN`, `IMAGE`                                           |
+| 20  | `CmsFieldKind`                  | `BLOCK`, `SETTING`                                                                                                                                       |
+| 21  | `PersonalizationKind`           | `PHOTO_PACK`, `PHOTO_GRID`, `CALENDAR_PHOTO_MONTH`, `CALENDAR_PHOTO_HERO`, `EVENT_FAVOR`, `BUSINESS_LOGO`, `CUSTOM_DECOR`, `TEXT_ONLY`, `NONE`           |
+| 22  | `TemplateMode`                  | `EDITABLE`, `PREMADE`                                                                                                                                    |
+| 23  | `DesignStatus`                  | `DRAFT`, `READY`, `USED_IN_ORDER`, `ARCHIVED`                                                                                                            |
+| 24  | `ModerationStatus`              | `PENDING`, `APPROVED`, `REJECTED`                                                                                                                        |
+| 25  | `RenderJobStatus`               | `PENDING`, `PROCESSING`, `DONE`, `FAILED`                                                                                                                |
+| 26  | `QuoteStatus`                   | `PENDING`, `CONTACTED`, `CLOSED`, `DISCARDED`                                                                                                            |
+
+**Columnas `String` gobernadas por restricciones `CHECK` SQL y esquemas Zod** (elegidas deliberadamente sobre `ALTER TYPE ... ADD VALUE` para evitar locks exclusivos en migraciones calientes):
+
+| Modelo.columna               | Valores permitidos                                                                        | Dónde se impone                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `ContactActivity.kind`       | `'NOTE'`, `'CALL'`, `'WHATSAPP'`, `'EMAIL'`, `'SYSTEM'`                                   | `ContactActivity_kind_check` (`20261104190000`) + `features/crm/schemas.ts`            |
+| `Task.status`                | `'OPEN'`, `'IN_PROGRESS'`, `'DONE'`, `'CANCELLED'`                                        | `Task_status_check` (`20261104190000`) + `features/crm/schemas.ts`                     |
+| `Task.priority`              | `'LOW'`, `'NORMAL'`, `'HIGH'`, `'URGENT'`                                                 | `Task_priority_check` (`20261104190000`) + `features/crm/schemas.ts`                   |
+| `Opportunity.stage`          | `'NEW'`, `'QUALIFYING'`, `'PROPOSAL_SENT'`, `'WON'`, `'LOST'`                             | `Opportunity_stage_check` (`20261104200000`) + `features/opportunities/schemas.ts`     |
+| `Opportunity.eventType`      | `'CORPORATE_GIFT'`, `'WEDDING_SOCIAL'`, `'SCHOOL_GRADUATION'`, `'BRAND_MERCH'`, `'OTHER'` | `Opportunity_eventType_check` (`20261104200000`) + `features/opportunities/schemas.ts` |
+| `AbandonedCart.checkoutStep` | `'DATOS'`, `'ENVIO'`, `'PAGO'`                                                            | `features/cart/recovery-service.ts`                                                    |
+| `AbandonedCart.closedReason` | `'ORDER_PAID'`, `'QUOTE_CREATED'`, `'CART_EMPTIED'`                                       | `features/cart/recovery-service.ts`                                                    |
+
+---
+
+## 5. Arquitectura de Identidad Canónica (`Contact`), CRM Operacional Nativo y Frontera SSoT (`ADR-193`)
+
+La capa de identidad y CRM operacional nativo (detalle funcional en [`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md)) separa la **persona comercial** (`Contact`) de la **credencial autenticada** (`Customer`) para unificar compras de invitados, cuentas registradas, cotizaciones, oportunidades B2B, soporte y consentimientos sin romper ningún flujo existente.
+
+### 5.1 Algoritmo determinista de resolución (`apps/web/features/identity/resolution-service.ts`)
+
+Toda entrada con datos de contacto invoca `resolveOrCreateContactTx` bajo locks transaccionales deterministas (`pg_advisory_xact_lock` ordenados lexicográficamente por clave normalizada para impedir deadlocks):
+
+1. **Nivel 1 — Vínculo autenticado fuerte (`SUPABASE_USER`):** si existe sesión autenticada (`supabaseUserId`), resuelve de forma inmediata el `Contact` asociado (siguiendo cualquier cadena `mergedIntoContactId` hasta el contacto raíz vigente).
+2. **Nivel 2 — Correo electrónico normalizado (`EMAIL`):** normaliza `trim().toLowerCase()`. Si coincide con una única identidad `EMAIL` no revocada, reutiliza ese `Contact`.
+3. **Nivel 3 — Regla anti-secuestro `[ID-01]` y prohibición absoluta de auto-merge:**
+   - **Jamás se fusionan dos `Contact` de manera automática en background ni durante el checkout.**
+   - Si una operación presenta señales que apuntan a **dos contactos distintos** (por ejemplo, un usuario autenticado escribe un correo perteneciente a otro `Contact`, o un teléfono E.164 coincide con otro contacto con distinto correo), el motor preserva la operación sobre el contacto primario/nuevo sin bloquear la venta y registra un `IdentityMergeCandidate` (`status = PENDING`, par ordenado `contactAId < contactBId`) para decisión humana explícita en `/admin/clientes/duplicados`.
+   - Un teléfono (`PHONE` / `WHATSAPP`) por sí solo **nunca** dispara unión silenciosa a una cuenta con correo distinto, porque en Colombia es habitual compartir celular entre familiares o asistentes de compras corporativas.
+4. **Nivel 4 — Aislamiento de destinatarios de regalo:** cuando `Order.isGift = true`, el comprador sigue siendo el `Contact` titular de la orden; los datos del agasajado (`giftRecipientName`, dirección de entrega y teléfono de portería/recepción) viven exclusivamente encapsulados en el snapshot de `Order` y **jamás** crean ni contaminan identidades en `ContactIdentity`.
+
+### 5.2 Aislamiento de personal interno (`isStaff`) y detección de `selfDealing`
+
+- Si el `supabaseUserId` o el correo resuelto pertenece a un `AdminUser`, `Contact.isStaff` queda marcado en `true` de forma **monotónica** (nunca se desmarca desde flujos públicos). Los contactos con `isStaff = true` quedan excluidos de métricas comerciales de cohortes/RFM y campañas de marketing para no distorsionar conversión con compras o pruebas de las administradoras.
+- En `apps/web/lib/admin-audit.ts` (`recordAdminAction`), cuando el actor administrativo ejecuta una acción sobre un pedido, reembolso, puntos, retracto, garantía o contacto vinculado a su propia identidad (`actorEmail` / `supabaseUserId` / `Contact`), la entrada en `AdminActionLog` se marca automáticamente con `metadata.selfDealing = true` y resalta una insignia de alerta en `/admin/auditoria`.
+
+### 5.3 Fusión humana reversible y cascada de privacidad (Ley 1581)
+
+- **Cola `/admin/clientes/duplicados`:** requiere capacidad `contacts:merge` (`SUPERADMIN` y `OPERATIONS_MANAGER`). Al aprobar una fusión, todas las FKs de las 8 entidades satelitales (`Customer`, `Order`, `Quote`, `SupportTicket`, `AbandonedCart`, `Consent`, `WarrantyClaim`, `RetractRequest`), junto con `ContactActivity`, `Task` y `Opportunity`, se reasignan en una sola transacción al contacto sobreviviente; el absorbido fija `mergedIntoContactId` y queda auditado en `AdminActionLog`. Si el operador marca `REJECTED`, el par queda suprimido permanentemente para no volver a sugerirse.
+- **Derecho de supresión (`scrubContactOnErasureTx`):** cuando un titular elimina su cuenta o ejerce supresión por Habeas Data, el servicio anonimiza PII directa en `Contact` y revoca/limpia sus `ContactIdentity`, preservando únicamente los documentos contables/fiscales obligatorios (`Order`) y la traza probatoria del acto de revocación en `Consent`.
+
+### 5.4 Frontera de Fuente Única de Verdad (SSoT)
+
+PostgreSQL de Lucams es la **única fuente de verdad** en los 10 dominios del negocio: (1) grafo `Contact` / `Customer`, (2) órdenes y estados, (3) ledger de pagos Wompi y conciliación COD, (4) inventario y kardex, (5) diseños del Estudio, (6) activos privados y renders 300 DPI, (7) pipeline `Opportunity` / `Organization`, (8) actividades y tareas operativas, (9) posventa (`SupportTicket`, `RetractRequest`, `WarrantyClaim`) y (10) ledger legal `Consent`. Ningún pipeline consultivo ni herramienta externa modifica precios de carrito, existencias, estados de pago ni archivos privados de clientes.
+
+---
+
+## 6. Arquitectura CMS v2 de 3 capas (`ADR-082` / `ADR-187`)
+
+El contenido y la configuración editable de la tienda se dividen en **3 capas estrictas** (detalle en [`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)) para ofrecer edición ágil sin contaminar la base de datos con micro-textos de interfaz:
+
+1. **Capa 1 — Parámetros maestros y reglas estatutarias (`kind = SETTING` + código normativo):**
+   - `61` campos `CmsField` con `kind = SETTING`: el contenedor `global` («Ajustes del sitio», exclusivo `SUPERADMIN`) más los `21` ajustes delegados (`MODULE_MANAGED_SETTING_KEYS`) operados directamente desde sus pantallas dueñas (`/admin/envios`, `/admin/fidelizacion` y `/admin/carritos/configuracion`).
+   - Plazos de garantía por producto (`Product.warrantyMonths`) y constantes legales colombianas en `apps/web/lib/consumer-law.ts`.
+   - Se interpolan dinámicamente dentro de bloques y textos legales mediante `resolveCmsTokens()` (`apps/web/lib/cms-tokens.ts`, ej. `{{CONTACT_EMAIL}}`, `{{FREE_SHIPPING_THRESHOLD}}`).
+2. **Capa 2 — Contenido editorial, comercial, legal y SEO (`kind = BLOCK` + plantillas de correo):**
+   - **9 páginas `CmsPage`** (`8` visibles en `/admin/contenido`: `inicio`, `navegacion`, `ayuda`, `contacto`, `legales`, `checkout`, `sistema`, `seo` + `1` contenedor `global` en Configuración), **29 secciones `CmsSection`** y **166 campos `CmsField`** (`105 BLOCK` + `61 SETTING`).
+   - Los 8 documentos legales nacen versionados en `packages/db/legal-content/*.md` y se sincronizan con el CMS (`ADR-080`).
+   - Las **30 plantillas de correo** registradas en `EMAIL_TEMPLATE_REGISTRY` (`apps/web/features/emails/registry.ts`) permiten edición controlada de asunto, preheader, encabezado, introducción y pie en `/admin/email-templates` vía `EmailTemplateOverride`.
+3. **Capa 3 — Micro-interfaz funcional tipada en código:**
+   - Botones, etiquetas `aria-label`, placeholders, mensajes de validación y textos operativos del Estudio (`studio-texts.ts`), Autenticación (`auth-texts.ts`), Mi Cuenta (`account-texts.ts`), Checkout y páginas por token residen directamente en TypeScript sin consultas a base de datos.
+
+### 6.1 Jerarquía relacional, motor de snapshot único y Live Edit
+
+```text
+CmsPage (9) ──► CmsSection (29) ──► CmsField (166: 105 BLOCK + 61 SETTING)
+   │                                   ├──► CmsFieldVersion (historial append-only + publishAt)
+   │                                   │       └──► CmsMedia (bucket público `cms-media`)
+   │                                   └──► CmsListItem (filas ordenadas serializadas al publicar)
+   └── path opcional 1:1 ──► Vista previa lateral y Live Edit (<CmsEditOverlay>)
 ```
-┌──────────────────────────────────────────────────────────┐
-│  pg_cron (Supabase) — jobs versionados en migraciones     │
-│  HTTP (015/016/021/023/032/035, header x-cron-secret desde Vault):│
-│    lucams-alerts (*/5min)        → /api/cron/alerts       │
-│    lucams-daily-summary (13:00)  → /api/cron/daily-summary│
-│    lucams-review-request (17:00) → /api/cron/review-request│
-│    lucams-cart-recovery (c/1h)   → /api/cron/cart-recovery│
-│    lucams-back-in-stock (*/30min)→ /api/cron/back-in-stock│
-│    lucams-purge-anon-designs (08:00) → /api/cron/purge-anon-designs│
-│    lucams-purge-delivered-designs (09:00) → /api/cron/purge-delivered-designs│
-│    lucams-purge-event-logs (03:00)   → /api/cron/purge-event-logs  │
-│    lucams-cms-publish-scheduled (*/5min) → /api/cron/cms-publish-scheduled│
-│    lucams-expire-pending-orders (c/1h, min 23) → /api/cron/expire-pending-orders│
-│  SQL puro (043/047; la 033 y la 048 retiraron los legacy de 012): │
-│    lucams-purge-rate-limits (05:29) — buckets > 7 días + latido   │
-│    lucams-internal-cron-history-purge / net-response-purge        │
-│  Fuera de pg_cron:                                      │
-│    backup diario a R2 (backup.yml) → POST /api/cron/backup-heartbeat│
-│    tras cada éxito (latido que lee la regla backup_stale) │
-│    domain-watch.yml (mensual) → POST /api/cron/domain-watch│
-│    uptime monitor (Make target, script externo) → POST /api/cron/monitor-heartbeat│
-└──────────────────────┬───────────────────────────────────┘
-                       │  net.http_get(url = Vault:cron_base_url + path,
-                       │              headers = x-cron-secret [+
-                       │              x-vercel-protection-bypass en STG])
-                       ▼
-        ┌─────────────────────────────────────────────┐
-        │  API routes /api/cron/* (Next.js, Vercel)    │
-        │  - Validan x-cron-secret (timing-safe) con   │
-        │    cronSecretOk de lib/cron-auth.ts          │
-        │  - Procesan idempotentemente                 │
-        │  - recordCronHeartbeat (dead-man switch)     │
-        │  - En error: captureServerError +            │
-        │    notifyCronFailure (centro de notific.)    │
-        └─────────────────────────────────────────────┘
-```
 
-**Patrón de endpoint cron** (`apps/web/app/api/cron/*/route.ts`): handler `GET` con `force-dynamic`, valida el header `x-cron-secret` contra `CRON_SECRET` con `cronSecretOk` de **`lib/cron-auth.ts`** (comparación timing-safe, fail-closed si falta el secreto o el header — consolidado en la certificación 2026-09-26: lo comparten los 13 handlers cron + el detalle protegido de `/api/health/all` y `/api/health/crons`, 15 en total), ejecuta la lógica delegando al feature (`features/observability/event-log-retention.ts`, `features/cart/cart-recovery.ts`, etc.), registra heartbeat en éxito y captura el error + notifica en fallo.
+- **Fuente declarativa y paridad AST en CI:** `packages/db/scripts/cms-site-map.mjs` declara la totalidad de páginas, secciones y campos. El test `apps/web/lib/cms-sitemap-parity.test.ts` (`make audit-content`) analiza el AST de `apps/web` y exige **cero diferencias bidireccionales** entre las claves leídas en código y las 166 declaradas en el site map.
+- **Snapshot único en memoria (`apps/web/lib/cms.ts`):** `loadCmsSnapshotCached` (`unstable_cache`, clave `["cms-snapshot-v2"]`, `tags: ["cms"]`, `revalidate: 3600`) ejecuta **una sola consulta Prisma** que trae los campos activos y su `publishedVersion`. `getCmsBlock`, `getSettingValue`, `getCmsList`, `getCmsImage` y `getCmsBanners` resuelven en memoria desde ese snapshot y caen al fallback tipado si la base de datos falla, sin cachear nunca errores transitorios.
+- **Privacidad de settings públicos:** `/api/cms/settings` filtra estrictamente por la lista blanca `PUBLIC_CMS_SETTINGS` (verificado por `apps/web/lib/cms-settings-privacy.test.ts`), impidiendo exponer umbrales internos o banderas operativas.
+- **Modo Live Edit (`<CmsEditOverlay>`):** habilitado por `/api/admin/cms/edit-mode` mediante cookie `HttpOnly` firmada para actores con `cms:write`, permitiendo inspeccionar y saltar desde el storefront real al campo correspondiente en `/admin/contenido`.
 
 ---
 
-## Row-Level Security y grants (Supabase)
+## 7. Gate de visibilidad del storefront y redirecciones dinámicas (`UrlRedirect`)
 
-**Postura actual (verificada en prod 2026-06-29, endurecida en la auditoría 2026-08): los roles `anon` y `authenticated` NO tienen ningún privilegio de tabla en el schema `public`.** La API pública (PostgREST) responde `42501 permission denied` en todas las tablas — la publishable key (`sb_publishable_*`) no lee ni escribe datos de dominio. Todo el acceso a datos es server-side vía **Prisma** (conexión directa, rol `postgres`); el cliente Supabase del browser (`lib/supabase/browser.ts`) se usa **solo para Auth** (login MFA del admin). Migraciones al respecto:
-
-- `00000000000022` — `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated` (+ default privileges para tablas futuras).
-- `00000000000026` — revoca los grants residuales `REFERENCES/TRIGGER/TRUNCATE` de anon/authenticated y el DML de `service_role` (la app no lo necesita: Prisma conecta como `postgres`).
-- `00000000000028` — policies backstop y triggers de guarda menos permisivos, por si un GRANT reaparece: impiden auto-aprobar reseñas, que el cliente se toque `loyaltyPoints`/`referralCode`, o reescribir `CartItem.unitPrice` vía PostgREST.
-- `00000000000027` — endurece las funciones de `public`: `search_path` fijo (anti schema-hijack), `EXECUTE` revocado a `PUBLIC`/anon/authenticated donde no hace falta, y `is_active_admin()` recreada con nombres calificados.
-- `00000000000030` — barre los `EXECUTE` residuales de funciones que la 027 no alcanzó.
-- `00000000000038` — revoca los grants no-DML residuales (`REFERENCES/TRIGGER/TRUNCATE`) que los default privileges de Supabase re-otorgan a anon/authenticated en tablas creadas por migraciones Prisma posteriores a la 026 (causa raíz conocida: el event trigger de la 014 habilita RLS en tablas nuevas pero **no revoca grants** — la postura se restaura con sweeps como este); lleva verificación inline que **falla el deploy** si reaparece un grant.
-- `00000000000025` — elimina el event trigger que re-habilitaba RLS automáticamente (huérfano).
-
-**RLS queda habilitada en todas las tablas como backstop (defensa en profundidad)**, con policies deny-by-default salvo las excepciones originales (`00000000000002/007/010/017/018/019/024`: p.ej. lectura pública de `Review` aprobadas o `Product` activos, hoy dormidas tras la revocación de grants). Las tablas nuevas del 2026-09 quedaron cubiertas igual: `00000000000034` (RLS de `EmailTemplateOverride`) y `00000000000036` (RLS de `SecurityEvent`), deny-by-default. La matriz completa se prueba en CI con un cliente impostor (`apps/web/features/security/rls-matrix.integration.test.ts` + `rls-coverage.integration.test.ts` — el directorio `features/security/` solo aloja estos tests, no código productivo): corre en el job `rls-behavior` de cada PR y en nightly, y falla si alguna tabla con PII empieza a responder vía API pública.
-
-Las rutas `/api/*` y Server Actions que escriben tablas lo hacen vía Prisma; el cliente `service_role` de `lib/supabase/service.ts` (secret key `sb_secret_*`, server-only) se reserva para Auth admin y Storage.
-
-## Abstracción `PaymentProvider`
-
-Diseño desde el día 1 para no acoplarse a Wompi y permitir agregar Mercado Pago u otros sin reescribir el checkout (ADR-004). Vive en `apps/web/features/payments/`:
-
-- `provider.ts` — la interface `PaymentProvider` y el singleton `getPaymentProvider()`; el provider activo se controla por env `PAYMENT_PROVIDER` (default `wompi`, el único soportado hoy).
-- `wompi.ts` — `WompiPaymentProvider` (sandbox + producción).
-
-La interface (simplificada; ver `provider.ts` para los tipos completos):
-
-```ts
-// features/payments/provider.ts
-export interface PaymentProvider {
-  readonly name: "wompi" | "mercadopago";
-
-  /** Crea la URL hosted de pago (redirect inmediato; NO es un cargo todavía) */
-  createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult>;
-
-  /** Consulta estado real de una transacción (no confiar en query params del redirect) */
-  getPaymentDetails(providerTransactionId: string): Promise<PaymentDetails>;
-
-  /** Verifica firma del webhook entrante y normaliza el evento */
-  verifyWebhook(rawBody: string, headers: Record<string, string>): WebhookVerificationResult;
-}
-
-export type PaymentStatus = "PENDING" | "APPROVED" | "DECLINED" | "VOIDED" | "ERROR";
-```
-
-El mismo patrón se usa para envíos: `features/shipping/provider.ts` (`getShippingProvider()`, Aveonline activa, ADR-039) e IA: `features/ai/provider.ts` (Gemini activa, ADR-058).
-
-## Storage (Supabase)
-
-Cinco buckets con políticas distintas (detalle exhaustivo en [`SECURITY.md` § File upload](./SECURITY.md#file-upload-y-storage); buckets creados en `supabase/migrations/00000000000005/006/020`):
-
-| Bucket              | Visibilidad               | Uso                                                                                                                                                                                                                                                                                                                                           | TTL URL firmada       |
-| ------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `product-images`    | Público (lectura abierta) | Imágenes oficiales del catálogo (`<productId>/<uuid>.webp`, cacheControl 1 año; máx 5 MB)                                                                                                                                                                                                                                                     | —                     |
-| `customer-uploads`  | Privado                   | Fotos que sube el cliente al estudio de personalización (máx 10 MB)                                                                                                                                                                                                                                                                           | 1 hora                |
-| `design-previews`   | Privado                   | Previews renderizados de diseños (exhibición limpia + páginas por unidad + borradores; máx 3 MB, png/webp/jpeg). Lectura solo vía Route Handler autorizado `/api/design-preview/*` (LUC-SEC-001, migración 046; ADR-191): borradores solo dueño/admin autenticados; exhibición limpia también por token válido de compartir/cotización/pedido | —                     |
-| `production-assets` | Privado                   | Renders de producción generados al confirmar orden, descargables por admin (máx 30 MB, png/tiff/pdf, ADR-063)                                                                                                                                                                                                                                 | 1 hora (configurable) |
-| `cms-media`         | Público                   | Assets de campos IMAGE del CMS v2 (máx 5 MB)                                                                                                                                                                                                                                                                                                  | —                     |
-
-**Reglas:**
-
-- Validación de tipo MIME (sniffing real del archivo, no el header del cliente) + tamaño en server (no confiar en cliente) — `lib/storage.ts`.
-- Nombres de archivo aleatorios (UUID) para evitar enumeración.
-- Allowlist de extensiones: `jpg`, `png`, `webp`, `avif`; el bucket `customer-uploads` acepta además `heic`/`heif` (fotos de iPhone, decodificadas en server con `heic-decode`) y `production-assets` admite `tiff`/`pdf` (salidas de imprenta).
-- Tamaño máximo (límite en la fila del bucket, verificado en DB): 5 MB `product-images`/`cms-media`, 10 MB `customer-uploads`, 3 MB `design-previews`, 30 MB `production-assets` (un PNG 300 DPI 30×30 cm sin compresión puede pasar de 20 MB).
-- **Optimización de catálogo (2026-09-18)**: toda imagen pública (`product-images`, `cms-media`) se normaliza en server con sharp a **WebP q82, borde largo ≤2000 px** antes de subir (`optimizeCatalogImage` en `lib/storage.ts`; fail-closed: si no decodifica, se rechaza). Las fotos del Estudio se comprimen en el navegador a JPEG ≤2400 px cuando superan 2 MB (`client-image-compress.ts`).
-- **Retención (Ley 1581, temporalidad)**: `customer-uploads` y `production-assets` se purgan por cron — DRAFT anónimos ≥30d y DRAFT idle de logueados ≥90d (`purge-anon-designs`), y fotos crudas + renders de pedidos **DELIVERED ≥90d** sin retracto/garantía abierto (`purge-delivered-designs`, marca `Design.purgedAt`; conserva preview, canvas y snapshot del pedido). Política completa en [`COMPLIANCE.md`](./COMPLIANCE.md).
+- **Predicado único de visibilidad (`apps/web/features/products/storefront-visibility.ts`):**
+  - Centraliza la regla comercial mediante `STOREFRONT_PRODUCT_WHERE` y `STOREFRONT_CATEGORY_WHERE`, consumidos tanto por el catálogo SSR (`features/products/public-service.ts`) como por el catálogo cacheado/AI-ready (`lib/catalog.ts`) y replicados en las consultas SQL `$queryRaw` de búsqueda difusa.
+  - Un producto sólo es visible en tienda cuando `product.deletedAt IS NULL`, `product.isActive = true`, su categoría asignada está activa (`category.deletedAt IS NULL`, `category.isActive = true` y dentro de la ventana `[activeFrom, activeUntil]` si existe) y cuenta con opciones comprables válidas. La función pura `getStorefrontVisibility` alimenta el indicador diagnóstico exacto en `/admin/productos`.
+- **Redirecciones estáticas y dinámicas (`UrlRedirect`):**
+  - `apps/web/lib/product-redirects.ts` (`PRODUCT_REDIRECTS`) resuelve en memoria slugs fundacionales renombrados.
+  - `apps/web/features/redirects/service.ts` gestiona la tabla `UrlRedirect` (cacheada con `unstable_cache`, tag `redirects`, `revalidate: 60`).
+  - Al renombrar el `slug` de un producto, categoría u ocasión desde el admin, `createSlugRenameRedirect` crea o actualiza automáticamente el `301` desde la ruta antigua hacia la nueva y aplana cadenas (`A → B → C` queda `A → C` y `B → C`). A la inversa, cuando una entidad vuelve a ocupar un slug previamente redirigido, `archiveRedirectOccupyingPath` archiva el redirect para que la página viva prevalezca siempre sin ciclos infinitos.
 
 ---
 
-## Caching y revalidación
+## 8. Autorización del Backoffice (`/admin`): RBAC 8 roles × 34 capacidades, MFA `aal2` y máscara PII
 
-- **SSR dinámico** en storefront: home `force-dynamic`; el stack SSR del catálogo (`features/products/public-service.ts` — listado y PDP) consulta DB por request con dedup `React.cache()` por request (sin data cache: el PDP muestra stock en vivo, que decrementa en la saga) e invalida con `revalidatePath("/productos")` desde las mutaciones admin.
-- **Catálogo AI-ready** (`lib/catalog.ts` — `/api/catalog/*`, recomendador, búsqueda): `unstable_cache` con tag `catalog`; las mutaciones admin de productos/categorías/ocasiones/cupones/imágenes llaman `updateTag("catalog")` (`features/products/service.ts`, `stock-admin.ts`, `image-actions.ts`, `features/categories|ocasiones|coupons/service.ts`…). Ambos stacks comparten el gate de visibilidad (ver § Gate de visibilidad storefront).
-- **CMS v2**: lecturas con `unstable_cache` tag `cms`, TTL 1h (`apps/web/lib/cms.ts`); invalidación on-demand con `updateTag("cms")` desde las Server Actions del admin al publicar.
-- **Redirects**: `lookupActiveRedirectCached` (`features/redirects/service.ts`) con `unstable_cache` (tag `redirects`, revalidate 60 s como red de seguridad) sobre la Data Cache compartida; las mutaciones admin emiten `updateTag("redirects")` y el redirect nuevo aplica de inmediato (B-8 2026-10-02 — antes era un Map in-memory por instancia que divergía en multi-instancia).
-- **Server Components** por defecto; client components solo donde haya interactividad real (carrito, editor, filtros).
-- **Cache de imágenes** automático en Vercel (`next/image` con AVIF/WebP; `product-images` se sube con `cacheControl` de 1 año — nombres con UUID, inmutables).
+La autorización administrativa reside en `apps/web/lib/admin-rbac.ts` (lógica pura isomórfica), `apps/web/lib/admin-rbac-guard.ts` (guardas server-side) y `apps/web/lib/pii-mask.ts` (protección determinista de datos personales). Todo acceso a `/admin` (salvo `/admin/login*`) exige **autenticación GoTrue + fila `AdminUser` activa (`isActive = true`, `deletedAt = null`) + segundo factor TOTP verificado en sesión (`aal2`)**.
 
-## Accesibilidad (WCAG 2.1 AA)
+### 8.1 Descripción de los 8 roles administrativos (`AdminRole`)
 
-> Lucams_shop debe ser usable por personas con discapacidades visuales, motrices o cognitivas. La paleta kawaii no es excusa para baja accesibilidad.
+| Rol (`AdminRole`)    | Propósito operativo                                                                                                                                   | Capacidades | Vista inicial (`adminHomePath`) |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------- |
+| `SUPERADMIN`         | Dirección total del negocio, usuarios admin, configuración global, auditoría, finanzas y reembolsos finales de retracto.                              | **34 / 34** | `/admin/dashboard`              |
+| `OPERATIONS_MANAGER` | Jefatura de operaciones: pedidos, catálogo, inventario, envíos, taller, posventa, reembolsos de garantía, CRM 360, fusión de contactos y marketing.   | **24 / 34** | `/admin/dashboard`              |
+| `MANAGER`            | Rol gerencial equivalente en matriz de capacidades a `OPERATIONS_MANAGER` (preservado por compatibilidad operativa).                                  | **24 / 34** | `/admin/dashboard`              |
+| `CUSTOMER_SUPPORT`   | Atención al cliente y ventas consultivas: tickets, garantías, retractos (sin ejecutar reembolso), Contacto 360 con PII, carritos y oportunidades B2B. | **13 / 34** | `/admin/dashboard`              |
+| `FINANCE_ANALYST`    | Contabilidad, conciliación de recaudos COD, bloqueos COD, costos, métricas, exportación financiera CSV y lectura de pedidos con PII fiscal.           | **9 / 34**  | `/admin/dashboard`              |
+| `PRINT_WORKSHOP`     | Taller de imprenta: consulta operativa de pedidos **sin PII**, cambio de estados de fabricación, descarga de ZIP 300 DPI y moderación de diseños.     | **7 / 34**  | `/admin/dashboard`              |
+| `FULFILLMENT`        | Alistamiento y despacho logístico: consulta operativa **sin PII**, cambio de estados, descarga de activos e impresión de rótulo/guía transportadora.  | **6 / 34**  | `/admin/dashboard`              |
+| `CMS_EDITOR`         | Edición exclusiva de páginas, bloques, listas y mediateca editorial en `/admin/contenido` (sin acceso a `global` ni a pedidos/clientes).              | **2 / 34**  | `/admin/contenido`              |
 
-### Mínimos exigibles desde Fase 1
+### 8.2 Conjuntos nombrados `ADMIN_ROLE_SETS`
 
-- **Contraste:** texto cuerpo ≥ 4.5:1 (AA), texto grande ≥ 3:1. Validado en `BRANDING.md`.
-- **Navegación por teclado:** todos los flujos críticos (catálogo → PDP → carrito → checkout) usables solo con teclado.
-- **Focus visible:** ring visible en `:focus-visible` para botones, links, inputs (no anular `outline`).
-- **Skip link:** "Saltar al contenido" como primer elemento focuseable.
-- **Landmarks:** `<header>`, `<main>`, `<nav>`, `<footer>` consistentes en todas las páginas.
-- **`alt` en imágenes:** producto siempre con descripción significativa, no solo "imán".
-- **Labels en formularios:** `<label htmlFor>` siempre. No usar `placeholder` como reemplazo.
-- **`aria-live` regions** para feedback dinámico (toast, errores, agregar al carrito).
-- **`prefers-reduced-motion`:** respetado en animaciones (Lottie, transiciones).
-- **Idioma:** `<html lang="es-CO">` correcto.
+Definidos en `apps/web/lib/admin-rbac.ts` para reutilización consistente en páginas, Server Actions y Route Handlers:
 
-### Tests automatizados
+| Set (`ADMIN_ROLE_SETS.*`)                                | Regla de derivación                   | Roles incluidos                                                                                                                                                |
+| -------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALL`                                                    | `orders:read_operational`             | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `PRINT_WORKSHOP`, `FINANCE_ANALYST`, `MANAGER`, `FULFILLMENT`                                          |
+| `ORDERS_TRANSITION`                                      | `orders:transition`                   | `SUPERADMIN`, `OPERATIONS_MANAGER`, `PRINT_WORKSHOP`, `MANAGER`, `FULFILLMENT`                                                                                 |
+| `PRODUCTION_DOWNLOAD`                                    | `production:download_assets`          | `SUPERADMIN`, `OPERATIONS_MANAGER`, `PRINT_WORKSHOP`, `MANAGER`, `FULFILLMENT`                                                                                 |
+| `SHIPPING_GUIDE_PRINT`                                   | `orders:read_pii` **o** `FULFILLMENT` | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `FINANCE_ANALYST`, `MANAGER`, `FULFILLMENT` _(excluye explícitamente `PRINT_WORKSHOP` y `CMS_EDITOR`)_ |
+| `PRODUCTION_MODERATE`                                    | `production:moderate`                 | `SUPERADMIN`, `OPERATIONS_MANAGER`, `PRINT_WORKSHOP`, `MANAGER`                                                                                                |
+| `MANAGER_UP`                                             | `catalog:write`                       | `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`                                                                                                                  |
+| `SUPPORT_CARE`                                           | `support:manage`                      | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                                              |
+| `CARTS_RECOVER`                                          | `carts:recover`                       | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                                              |
+| `OPPORTUNITIES`                                          | `opportunities:manage`                | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                                              |
+| `CONTACTS_360`                                           | `contacts:read_360`                   | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                                              |
+| `CONTACTS_MERGE`                                         | `contacts:merge`                      | `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`                                                                                                                  |
+| `FINANCE` / `FINANCE_COD` / `FINANCE_EXPORT` / `METRICS` | `finance:*` / `metrics:read`          | `SUPERADMIN`, `FINANCE_ANALYST`                                                                                                                                |
+| `MARKETING_EXPORT`                                       | `marketing:export_csv`                | `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`                                                                                                                  |
+| `CONTENT`                                                | `cms:write`                           | `SUPERADMIN`, `CMS_EDITOR`                                                                                                                                     |
+| `SUPER`                                                  | Exclusivo dirección                   | `SUPERADMIN`                                                                                                                                                   |
+| `ALL_PLUS_CMS`                                           | Todos los roles del enum              | Los 8 roles (`SUPERADMIN` .. `CMS_EDITOR`)                                                                                                                     |
 
-- **`@axe-core/react`** en dev mode (warns en consola).
-- **Playwright + axe-playwright** en CI: fallar si nuevas violaciones AA aparecen.
-- **Lighthouse A11y ≥ 95** como criterio de aceptación.
+### 8.3 Matriz completa de las 34 capacidades (`ADMIN_CAPABILITIES`) × 8 roles
 
-### Componentes shadcn/ui
+Abreviaturas de columnas: **SA** = `SUPERADMIN`, **OM** = `OPERATIONS_MANAGER`, **MG** = `MANAGER`, **CS** = `CUSTOMER_SUPPORT`, **FA** = `FINANCE_ANALYST`, **PW** = `PRINT_WORKSHOP`, **FL** = `FULFILLMENT`, **CE** = `CMS_EDITOR`.
 
-shadcn/ui usa Radix primitives, que ya cumplen ARIA. Mantener `aria-*` props cuando se personalice. No reinventar componentes accesibles desde cero.
+| #   | Capacidad (`AdminCapability`)     | SA  | OM  | MG  | CS  | FA  | PW  | FL  | CE  |
+| --- | --------------------------------- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| 1   | `dashboard:read`                  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 2   | `orders:read_operational`         |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 3   | `orders:read_pii`                 |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |
+| 4   | `orders:transition`               |  ✓  |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
+| 5   | `orders:reconcile`                |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 6   | `production:download_assets`      |  ✓  |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
+| 7   | `production:moderate`             |  ✓  |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
+| 8   | `production:manage_AssetsCatalog` |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 9   | `contacts:read_360`               |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 10  | `contacts:read_pii`               |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 11  | `contacts:merge`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 12  | `crm:manage_activities`           |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 13  | `crm:manage_tasks`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 14  | `support:manage`                  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 15  | `warranty:manage`                 |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 16  | `warranty:refund`                 |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 17  | `retract:manage`                  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 18  | `retract:refund`                  |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 19  | `carts:recover`                   |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 20  | `carts:configure`                 |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 21  | `marketing:read`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 22  | `marketing:export_csv`            |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 23  | `opportunities:manage`            |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 24  | `finance:read`                    |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 25  | `finance:reconcile_cod`           |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 26  | `finance:export_csv`              |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 27  | `metrics:read`                    |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 28  | `catalog:write`                   |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 29  | `shipping:configure`              |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 30  | `cms:write`                       |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  ✓  |
+| 31  | `cms:manage_global`               |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 32  | `audit:read`                      |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 33  | `staff:manage`                    |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 34  | `account:self_security`           |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 
-### Pendientes
+### 8.4 Mapa de prefijos `ROUTE_ROLES` (`canAccessAdminPath`) y deny-by-default
 
-- Auditoría manual con lector de pantalla (NVDA / VoiceOver) en Fase 7.
-- Pruebas con usuarios con discapacidad visual (post-lanzamiento).
+`canAccessAdminPath(role, pathname)` evalúa **longest-prefix match** sobre los 41 prefijos declarados en `ROUTE_ROLES`. Si una ruta de `/admin` no coincide con ningún prefijo declarado, la función devuelve `false` para cualquier rol distinto de `SUPERADMIN` (**deny-by-default**):
+
+| Prefijo(s) de ruta                                                                                                                                                                                                 | Regla / Capacidad exigida         | Roles con acceso                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- | ---------------------------------------- |
+| `/admin/dashboard`, `/admin/hoy`                                                                                                                                                                                   | `dashboard:read`                  | `SA`, `OM`, `MG`, `CS`, `FA`, `PW`, `FL` |
+| `/admin/pedidos` _(excepto sub-rutas con guarda propia como `/guia`)_                                                                                                                                              | `orders:read_operational`         | `SA`, `OM`, `MG`, `CS`, `FA`, `PW`, `FL` |
+| `/admin/garantias`, `/admin/reclamos`                                                                                                                                                                              | `warranty:manage`                 | `SA`, `OM`, `MG`, `CS`                   |
+| `/admin/retractos`                                                                                                                                                                                                 | `retract:manage`                  | `SA`, `OM`, `MG`, `CS`                   |
+| `/admin/soporte`, `/admin/mensajes`                                                                                                                                                                                | `support:manage`                  | `SA`, `OM`, `MG`, `CS`                   |
+| `/admin/cotizaciones`, `/admin/oportunidades`                                                                                                                                                                      | `opportunities:manage`            | `SA`, `OM`, `MG`, `CS`                   |
+| `/admin/moderacion`                                                                                                                                                                                                | `production:moderate`             | `SA`, `OM`, `MG`, `PW`                   |
+| `/admin/disenos`, `/admin/fichas`, `/admin/plantillas`                                                                                                                                                             | `production:manage_AssetsCatalog` | `SA`, `OM`, `MG`                         |
+| `/admin/productos`, `/admin/inventario`, `/admin/categorias`, `/admin/ocasiones`, `/admin/resenas`                                                                                                                 | `catalog:write`                   | `SA`, `OM`, `MG`                         |
+| `/admin/envios`                                                                                                                                                                                                    | `shipping:configure`              | `SA`, `OM`, `MG`                         |
+| `/admin/clientes/duplicados` _(gana por prefijo más largo sobre `/admin/clientes`)_                                                                                                                                | `contacts:merge`                  | `SA`, `OM`, `MG`                         |
+| `/admin/clientes`                                                                                                                                                                                                  | `contacts:read_360`               | `SA`, `OM`, `MG`, `CS`                   |
+| `/admin/marketing/suscriptores/export`, `/admin/marketing/segmentos/export`                                                                                                                                        | `marketing:export_csv`            | `SA`, `OM`, `MG`                         |
+| `/admin/marketing`                                                                                                                                                                                                 | `marketing:read`                  | `SA`, `OM`, `MG`                         |
+| `/admin/carritos/configuracion` _(gana sobre `/admin/carritos`)_                                                                                                                                                   | Exclusivo `SUPERADMIN`            | `SA`                                     |
+| `/admin/carritos`                                                                                                                                                                                                  | `carts:recover`                   | `SA`, `OM`, `MG`, `CS`                   |
+| `/admin/finanzas/conciliacion`, `/admin/finanzas/bloqueos`                                                                                                                                                         | `finance:reconcile_cod`           | `SA`, `FA`                               |
+| `/admin/finanzas/export`                                                                                                                                                                                           | `finance:export_csv`              | `SA`, `FA`                               |
+| `/admin/finanzas`, `/admin/costos`                                                                                                                                                                                 | `finance:read`                    | `SA`, `FA`                               |
+| `/admin/metricas`                                                                                                                                                                                                  | `metrics:read`                    | `SA`, `FA`                               |
+| `/admin/contenido/paginas/global`, `/admin/contenido/configuracion` _(ganan sobre `/admin/contenido`)_                                                                                                             | Exclusivo `SUPERADMIN`            | `SA`                                     |
+| `/admin/contenido`                                                                                                                                                                                                 | `cms:write`                       | `SA`, `CE`                               |
+| `/admin/fidelizacion`, `/admin/email-templates`                                                                                                                                                                    | Exclusivo `SUPERADMIN`            | `SA`                                     |
+| `/admin/auditoria`                                                                                                                                                                                                 | `audit:read`                      | `SA`                                     |
+| `/admin/usuarios`                                                                                                                                                                                                  | `staff:manage`                    | `SA`                                     |
+| `/admin/seguridad` _(gestión propia de MFA; feed `SecurityEvent` interno solo `SA`)_                                                                                                                               | `ALL_ROLES_ORDER`                 | Todos los 8 roles                        |
+| Rutas no listadas (`/admin/cupones`, `/admin/mayorista`, `/admin/materiales`, `/admin/canales`, `/admin/redirects`, `/admin/notificaciones`, `/admin/performance`, `/admin/observability`, `/admin/integraciones`) | Deny-by-default (`!best`)         | Exclusivo `SA`                           |
+
+### 8.5 Enmascaramiento server-side de PII (`apps/web/lib/pii-mask.ts`)
+
+Para cumplir el principio de minimización de datos (Ley 1581 de 2012), los datos personales **nunca se filtran en el navegador con CSS ni ocultamiento condicional en componentes cliente**: se redactan en el servidor **antes** de serializar el árbol RSC:
+
+- `maskOrderForActor(order, role)`: cuando el actor carece de `orders:read_pii` (`PRINT_WORKSHOP` y `FULFILLMENT`), ofusca `customerName` (iniciales), `customerEmail` (`l***@d***.com`), `customerPhone` (`******89`), `documentNumber`, `billingDocument*` y el detalle exacto de calle/apartamento en `shippingAddress` (dejando únicamente ciudad y departamento).
+  - **Excepción deliberada de taller:** conserva íntegro `giftMessage` porque se imprime físicamente dentro del pedido.
+  - **Diferenciación logística (`PRINT_WORKSHOP` vs `FULFILLMENT`):** para `PRINT_WORKSHOP` limpia también `labelUrl`, `labelStoragePath` y `trackingUrl` (el rótulo PDF contiene dirección y teléfono en claro); para `FULFILLMENT` los conserva para poder adherir la guía física al paquete e imprimir `/admin/pedidos/[number]/guia`.
+- `maskContactSummaryForActor(contact, role)`: aplica la misma redacción determinista cuando un actor carece de `contacts:read_pii`.
 
 ---
 
-## Performance budget
+## 9. Extensiones PostgreSQL, postura RLS/grants y procesos programados
 
-| Métrica                                 | Objetivo    |
-| --------------------------------------- | ----------- |
-| Lighthouse Performance                  | ≥ 95        |
-| Lighthouse SEO                          | ≥ 95        |
-| Lighthouse A11y                         | ≥ 95        |
-| Lighthouse Best Practices               | ≥ 95        |
-| Largest Contentful Paint                | < 2.5 s     |
-| Time to First Byte (home, SSR dinámico) | < 200 ms    |
-| Cumulative Layout Shift                 | < 0.1       |
-| First Input Delay / INP                 | < 200 ms    |
-| Bundle JS (page)                        | < 200 KB gz |
+### 9.1 Extensiones PostgreSQL habilitadas
 
-## Testing
+| Extensión        | Esquema      | Propósito en Lucams                                                                                                                          | Migración / Activación                                                              |
+| ---------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `pg_trgm`        | `public`     | Similitud de trigramas (`similarity()`, `%`) e índices GIN de búsqueda difusa en catálogo.                                                   | `supabase/migrations/00000000000005` y `031`                                        |
+| `unaccent`       | `public`     | Normalización insensible a tildes en búsquedas en español.                                                                                   | `supabase/migrations/00000000000005`                                                |
+| `pg_cron`        | `cron`       | Planificador interno en base de datos para jobs SQL y disparo HTTP hacia `/api/cron/*`.                                                      | Supabase + migraciones `012, 015, 016, 021, 023, 032, 035, 041, 043, 044, 047, 048` |
+| `pg_net`         | `extensions` | Cliente HTTP asíncrono (`net.http_get` / `net.http_post`) usado desde `pg_cron` (movido fuera de `public` en `029`).                         | `supabase/migrations/00000000000029`                                                |
+| `pgcrypto`       | `extensions` | Primitivas criptográficas auxiliares en base de datos.                                                                                       | `20260829150200_bearer_tokens_hash_at_rest`                                         |
+| `supabase_vault` | `vault`      | Almacén cifrado de secretos leídos en tiempo de ejecución por `pg_cron` (`cron_base_url`, `cron_secret`, `cron_vercel_bypass`, `monitor_*`). | Nativo de Supabase                                                                  |
 
-> Estrategia completa en [`TESTING.md`](./TESTING.md). Resumen:
+_(No se utilizan `pgmq`, `uuid-ossp` ni `pg_stat_statements` en flujos de la aplicación)._
 
-- **Vitest** unitarios + integración (con Supabase local): **270 archivos, 4275 tests verdes** en la certificación de release 2026-09-26/27 (`pnpm -r test`).
-- **Playwright** E2E para flujos críticos (compra Wompi/COD, personalización, admin, retracto): **69 specs** en `apps/web/tests/e2e/`.
-- **Tests RLS automáticos** con cliente impostor (`features/security/rls-*.integration.test.ts`, criterio de aceptación de Fase 1) — corren en el job `rls-behavior` de cada PR.
-- **Lighthouse CI** en GitHub Actions sobre cada PR.
-- **Visual regression** con screenshots de Playwright sobre páginas críticas.
-- **Accesibilidad** automatizada con `@axe-core/playwright`.
-- **Load testing** con k6 antes de cada release de Fase 7.
+### 9.2 Postura completa de Row-Level Security (RLS) y privilegios (`supabase/migrations/002..054`)
 
-## CI/CD y gates de release
+1. **Cero exposición en PostgREST:** las migraciones `022`, `026` y `038` revocan la totalidad de privilegios (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER`) sobre todas las tablas de `public` para `anon` y `authenticated`, y revocan el DML (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) para `service_role`. Cualquier consulta directa con la llave publicable responde `42501 permission denied`.
+2. **RLS habilitada al 100 % como segunda barrera:** las 73 tablas de `public` (excepto `_prisma_migrations`) tienen `rowsecurity = true` con políticas backstop restrictivas (`002`, `007`, `010`, `011`, `017..019`, `024`, `028`, `034`, `036`, `040`, `042`, `045`, `050..054`).
+3. **Funciones SQL endurecidas:** las migraciones `027` y `030` fijan `SET search_path = public, pg_temp` en todas las funciones de `public` (incluyendo `is_active_admin()` y `check_rate_limit`) y revocan `EXECUTE` a `PUBLIC`, `anon` y `authenticated` donde no corresponde.
+4. **Blindaje automático ante tablas futuras (`014` + `049`):** el event trigger DDL `enforce_rls_on_new_table_trg` se dispara en cada `CREATE TABLE` dentro de `public` y ejecuta de inmediato `ENABLE ROW LEVEL SECURITY`, `REVOKE ALL ... FROM anon, authenticated` y `REVOKE SELECT, INSERT, UPDATE, DELETE ... FROM service_role`.
+5. **Certificación continua:** `packages/db/scripts/verify-security-posture.mjs` audita en modo solo lectura los 5 invariantes de postura en cualquier ambiente, mientras `rls-matrix.integration.test.ts` y `rls-coverage.integration.test.ts` atacan el stack Supabase real en cada PR (`job rls-behavior`).
 
-- **6 workflows** en `.github/workflows/`: `ci.yml` (`pull_request` hacia `develop`/`production` + `workflow_dispatch`, sin trigger `push`; detector fail-closed `changes` para fast-path documental en ~50 s + 5 jobs de gate: `secrets-scan`, `quality` —incluye `prettier --check`, `pnpm audit --prod`, typecheck, lint, paridad CMS, guards DB, lint voseo y build—, `unit-tests` con drift check Prisma↔Supabase, `rls-behavior` y `e2e` unificado con Playwright + Lighthouse desktop/móvil), `nightly-full.yml` (guard de actividad 24 h en `schedule`; corre únicamente las suites exclusivas de GoTrue/Storage real, cross-browser Firefox/WebKit y Wompi sandbox), `backup.yml` (diario a R2 cifrado gpg), `dr-drill.yml` (mensual), `domain-watch.yml` (mensual) y `post-deploy-smoke.yml` (disparado nativamente por `deployment_status` de Vercel `Production` + `workflow_dispatch`, con `ref: production` explícito y drift check de `_prisma_migrations`).
-- **Drift check de schema en CI** (A9-08): `packages/db/scripts/audit-schema-drift.mjs` compara el schema resultante de aplicar solo las migraciones Prisma contra el resultado de aplicar también las migraciones SQL de Supabase — falla el job `unit-tests` si divergen. La migración Prisma aditiva `20260926120000_admin_recovery_code` (remediación A5-01 de la certificación) convirtió a Prisma en la fuente única del `CREATE TABLE "AdminRecoveryCode"` (antes solo lo creaba la SQL `00000000000008`); ambas quedaron idempotentes (`IF NOT EXISTS`) para no chocar en ningún orden de aplicación.
-- **Ruleset `protect-ramas-criticas` (`id: 26248226`, ADR-105)** sobre `develop` y `production`: bloquea pushes directos, force-push y borrado sin actores con bypass (`bypass_actors: []`), exige PR con rama al día (`strict: true`) y **5 required status checks** consolidados (`Typecheck + Lint + Build`, `Vitest tests (unit + integración con Postgres)`, `RLS behavior (rls-matrix contra Supabase local)`, `E2E + a11y + Lighthouse — Playwright`, `Gitleaks secret scan`). Flujo: rama corta → PR a `develop` (STG) → PR `develop` → `production` (PRD) → deploy Vercel → `post-deploy-smoke.yml`. Rollback: `vercel rollback` (instantáneo, revierte código no DB — seguro por la convención expand-then-contract) + forward-fix.
+### 9.3 Resumen arquitectónico de los 18 procesos programados
+
+El detalle completo de expresiones cron, secretos de Vault y payloads vive en [`integrations/supabase.md`](integrations/supabase.md). La arquitectura opera **18 procesos automatizados** sin Vercel Cron:
+
+- **12 jobs HTTP en `pg_cron` + `pg_net`** (`GET /api/cron/*` con header `x-cron-secret` desde Vault y `x-vercel-protection-bypass` en STG): `lucams-alerts` (`*/5 * * * *`), `lucams-cms-publish-scheduled` (`*/5 * * * *`), `lucams-process-render-jobs` (`* * * * *`, con skip SQL si no hay jobs `PENDING` ni leases vencidos, mig `048`), `lucams-back-in-stock` (`*/30 * * * *`), `lucams-cart-recovery` (`0 * * * *`), `lucams-expire-pending-orders` (`23 * * * *`), `lucams-tracking-sync` (`4,19,34,49 * * * *`), `lucams-purge-event-logs` (`0 3 * * *`), `lucams-purge-anon-designs` (`0 8 * * *`), `lucams-purge-delivered-designs` (`0 9 * * *`), `lucams-daily-summary` (`0 13 * * *`) y `lucams-review-request` (`0 17 * * *`). _(En STG los 5 jobs emisores de correo comercial/operativo permanecen desagendados y declarados en `CRON_JOBS_DISABLED`)._
+- **3 receptores HTTP `POST` disparados desde fuera de la BD de PRD:** `/api/cron/backup-heartbeat` (diario tras `backup.yml`), `/api/cron/domain-watch` (día 5 de cada mes desde `domain-watch.yml`) y `/api/cron/monitor-heartbeat` (cada 10 min desde el job `uptime-monitor-prd` alojado en `pg_cron` de STG o el script manual `uptime-monitor.mjs`).
+- **3 jobs SQL puros internos en PostgreSQL:** `lucams-purge-rate-limits` (`29 5 * * *`, limpia cubetas >7d y registra latido en `AlertState`), `lucams-internal-cron-history-purge` (poda `cron.job_run_details`) y `lucams-internal-net-response-purge` (poda `net._http_response`).
+- **Dead-man switch:** **14** de estos procesos escriben latido `cron:<nombre>` en `AlertState`; `/api/health/crons` devuelve `503` si cualquiera supera `2×` su intervalo esperado (salvo los listados en `CRON_JOBS_DISABLED`).
 
 ---
 
-## Patrones cross-cutting (referencias)
+## 10. Abstracciones de proveedores y arquitectura de Storage (5 buckets)
 
-Para no duplicar contenido, esta sección referencia las fuentes únicas de patrones que aplican a todo el código:
+### 10.1 Contratos desacoplados de proveedores externos
 
-| Patrón                                                                 | Fuente única                                                                                          |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Naming (FE, BE, DB)                                                    | [`CONVENTIONS.md` § Naming](./CONVENTIONS.md#naming)                                                  |
-| Server Component vs Client Component                                   | [`CONVENTIONS.md` § RSC vs Client](./CONVENTIONS.md#frontend--server-components-vs-client-components) |
-| Formularios y validación                                               | [`CONVENTIONS.md` § Formularios](./CONVENTIONS.md#frontend--formularios-y-validación)                 |
-| Estados de UI (loading, error, empty)                                  | [`CONVENTIONS.md` § Estados](./CONVENTIONS.md#frontend--estados-de-ui-loading-error-empty)            |
-| API conventions (REST + Server Actions)                                | [`CONVENTIONS.md` § APIs](./CONVENTIONS.md#backend--apis-rest--server-actions)                        |
-| Formato estándar de errores (RFC 7807)                                 | [`CONVENTIONS.md` § Errores RFC 7807](./CONVENTIONS.md#backend--formato-estándar-de-errores-rfc-7807) |
-| Capa de servicio (service.ts / repository.ts)                          | [`CONVENTIONS.md` § Capa de servicio](./CONVENTIONS.md#backend--capa-de-servicio)                     |
-| **Saga pattern** (Wompi → Aveonline → Email)                           | [`CONVENTIONS.md` § Saga pattern](./CONVENTIONS.md#backend--saga-pattern-para-flujos-distribuidos)    |
-| **Idempotencia**                                                       | [`CONVENTIONS.md` § Idempotencia](./CONVENTIONS.md#backend--idempotencia)                             |
-| Naming SQL (snake_case vs PascalCase)                                  | [`CONVENTIONS.md` § DB naming](./CONVENTIONS.md#db--naming-sql)                                       |
-| **Migration strategy** (expand-then-contract)                          | [`CONVENTIONS.md` § Migration strategy](./CONVENTIONS.md#db--migration-strategy-expand-then-contract) |
-| **Indexing strategy**                                                  | [`CONVENTIONS.md` § Indexing](./CONVENTIONS.md#db--indexing-strategy)                                 |
-| **Soft delete + audit fields** (`createdBy`, `updatedBy`, `deletedAt`) | [`CONVENTIONS.md` § Soft delete](./CONVENTIONS.md#db--soft-delete--audit-fields)                      |
-| Foreign keys cascade explícito                                         | [`CONVENTIONS.md` § FK cascade](./CONVENTIONS.md#db--foreign-keys-cascade-explícito)                  |
-| **Retention y archival**                                               | [`CONVENTIONS.md` § Retention](./CONVENTIONS.md#db--retention-y-archival)                             |
-| **Timeouts, retries, circuit breakers**                                | [`CONVENTIONS.md` § Resiliencia](./CONVENTIONS.md#resiliencia--timeouts-retries-circuit-breakers)     |
-| **Logging y request ID correlation**                                   | [`CONVENTIONS.md` § Logging](./CONVENTIONS.md#logging-y-request-id-correlation)                       |
+La lógica de dominio nunca importa directamente SDKs ni endpoints HTTP de pasarelas, transportadoras o modelos de IA; consume tres interfaces server-only:
 
-> **Mandato:** cuando se introduce un patrón nuevo que aplica cross-cutting, vive en `CONVENTIONS.md`. ARCHITECTURE.md describe la **estructura** del sistema, no los **patrones de código**.
+1. **Pagos (`apps/web/features/payments/provider.ts`, `ADR-004`):**
+   - Interfaz `PaymentProvider` (`createCheckout`, `getPaymentDetails`, `verifyWebhook`) resuelta por el singleton perezoso `getPaymentProvider()` según `PAYMENT_PROVIDER` (por defecto `"wompi"`).
+   - Implementación activa: `WompiPaymentProvider` (`features/payments/wompi.ts`; detalle en [`integrations/wompi.md`](integrations/wompi.md)). Nunca se confía en query params del redirect de retorno: el estado real se verifica siempre por firma HMAC-SHA256 del webhook o consulta autenticada `getPaymentDetails`.
+2. **Transporte y contraentrega (`apps/web/features/shipping/provider.ts`, `ADR-039`):**
+   - Interfaz `ShippingProvider` (`quote`, `createShipment`, `getTracking`, `handleWebhook`) resuelta por `getShippingProvider()`.
+   - Implementación activa: `AveonlineProvider` (`features/shipping/aveonline.ts`; detalle en [`integrations/aveonline.md`](integrations/aveonline.md)), protegida con circuit breaker, caché de contingencia de tarifas (`estimated: true`) y archivado propio en Storage del PDF base64 del rótulo (`label-archive.ts`) para no depender de URLs efímeras del operador logístico.
+3. **Inteligencia artificial (`apps/web/features/ai/provider.ts`, `ADR-058`):**
+   - Interfaz `AiProvider` (`suggestDesign`) + servicio de copiloto de soporte (`features/ai/support-copilot.ts`), implementados en `gemini-provider.ts` sobre Google Gemini REST `v1beta` (`gemini-2.5-flash-lite` con fallback automático a `gemini-2.5-flash`; detalle en [`integrations/google-and-ai.md`](integrations/google-and-ai.md)). Degrada limpiamente mediante `AiUnavailableError` si no hay API key o se agota la cuota, y jamás envía PII de clientes al proveedor.
+
+### 10.2 Los 5 buckets de Supabase Storage
+
+Definidos y asegurados en las migraciones SQL `005`, `006`, `013`, `020` y `046` (reglas de seguridad detalladas en [`SECURITY.md`](SECURITY.md)):
+
+| Bucket              | Visibilidad                        | Límite  | Formatos admitidos (MIME sniffing real)                          | Propósito, acceso y ciclo de vida                                                                                                                                                                                                                                                                                          |
+| ------------------- | ---------------------------------- | ------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `product-images`    | **Público**                        | `5 MB`  | `jpg`, `png`, `webp`, `avif` (normalizado a WebP `q82` ≤2000 px) | Fotografías oficiales del catálogo (`<productId>/<uuid>.webp`, `cacheControl: 31536000`).                                                                                                                                                                                                                                  |
+| `cms-media`         | **Público**                        | `5 MB`  | `jpg`, `png`, `webp`, `avif` (normalizado a WebP `q82` ≤2000 px) | Imágenes editoriales, banners e íconos subidos en la mediateca de `/admin/contenido`.                                                                                                                                                                                                                                      |
+| `customer-uploads`  | **Privado**                        | `10 MB` | `jpg`, `png`, `webp`, `avif`, `heic`, `heif`                     | Fotos crudas del cliente en el Estudio (`DesignAsset`). Acceso exclusivo server-side o URL firmada corta (1 h); purgado por retención Ley 1581.                                                                                                                                                                            |
+| `design-previews`   | **Privado** (mig `046`, `ADR-191`) | `3 MB`  | `png`, `webp`, `jpeg`                                            | Previews renderizados de diseños. **Nunca expone URL pública directa de Supabase:** se sirve exclusivamente a través del proxy `/api/design-preview/[...path]`, que autoriza borradores sólo al dueño o admin autenticado, y vistas limpias sólo con bearer token válido de compartir (`/d/[token]`), cotización o pedido. |
+| `production-assets` | **Privado** (`ADR-063`)            | `30 MB` | `png`, `tiff`, `pdf`                                             | Archivos finales a 300 DPI listos para imprenta y copias archivadas de rótulos PDF de envío. Descargables únicamente por roles con `production:download_assets` / `SHIPPING_GUIDE_PRINT`; los renders de órdenes `DELIVERED` se depuran tras 90 días sin posventa abierta.                                                 |
+
+Toda lectura de metadatos o transformación de imagen en servidor pasa obligatoriamente por `apps/web/features/personalization/sharp-safe.ts` (`sharp@0.35.5`, `limitInputPixels`, `sequentialRead: true`), evitando desbordamientos de memoria y vulnerabilidades de decodificadores nativos.
+
+---
+
+## 11. Estrategia de caché, revalidación, pipeline de `proxy.ts` y `maxDuration`
+
+### 11.1 Etiquetas de Data Cache e invalidación en Next.js 16
+
+En Next.js 16 se distingue estrictamente entre **`updateTag(tag)`** (invocado desde **Server Actions** para expiración inmediata _read-your-own-writes_) y **`revalidateTag(tag, "max")`** (invocado desde **Route Handlers**, como `/api/cron/cms-publish-scheduled`).
+
+| Tag de caché      | TTL de respaldo                                     | Módulos lectores (`unstable_cache`)                                                                                                                                | Emisores de invalidación                                                                                                                                                                                             |
+| ----------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cms`             | `3600 s` (1 h)                                      | `apps/web/lib/cms.ts` (`loadCmsSnapshotCached`: bloques, listas, imágenes y los 61 settings, incluidos envíos, fidelización y recuperación de carritos)            | Server Actions de `/admin/contenido`, `/admin/envios`, `/admin/fidelizacion`, `/admin/carritos`, `/admin/finanzas/conciliacion` (`updateTag("cms")`) y cron `cms-publish-scheduled` (`revalidateTag("cms", "max")`). |
+| `catalog`         | `3600 s` detalle / `300 s` listas / `600 s` cupones | `apps/web/lib/catalog.ts` y lecturas cacheadas de `features/products/public-service.ts` _(el stock vivo en PDP se consulta por request con dedup `React.cache()`)_ | Mutaciones admin de productos, imágenes, stock, categorías, ocasiones, plantillas y cupones (`updateTag("catalog")`).                                                                                                |
+| `coupons`         | `600 s` (10 min)                                    | `lib/catalog.ts` (`/api/coupons/public`, banner promocional)                                                                                                       | `features/coupons/service.ts` emite siempre el par `updateTag("catalog")` + `updateTag("coupons")`.                                                                                                                  |
+| `redirects`       | `60 s` (1 min)                                      | `features/redirects/service.ts` (`lookupActiveRedirectCached` en `proxy.ts`)                                                                                       | Toda mutación manual en `/admin/redirects` y todo renombre/alta de slug en catálogo (`updateTag("redirects")`).                                                                                                      |
+| `gallery-thumbs`  | `3600 s` (1 h)                                      | `features/personalization/design-gallery.ts` (miniaturas firmadas/listas de la galería prediseñada)                                                                | Mutaciones en `/admin/disenos` (`updateTag("gallery-thumbs")`).                                                                                                                                                      |
+| `email-overrides` | `3600 s` (1 h)                                      | `features/emails/overrides.ts` (personalizaciones de las 30 plantillas)                                                                                            | Guardado/restauración en `/admin/email-templates` (`updateTag("email-overrides")`).                                                                                                                                  |
+
+### 11.2 Pipeline exacto de `apps/web/proxy.ts`
+
+En Next.js 16 `apps/web/proxy.ts` reemplaza por completo al antiguo `middleware.ts` y corre en **Node.js runtime** (nunca Edge). Su `matcher` excluye estáticos (`_next/static`, `_next/image`, `favicon.ico`, assets con extensión). Orden exacto de ejecución por request:
+
+1. **Generación de nonce CSP y cabeceras de seguridad (`lib/security-headers.ts`):** crea un nonce criptográfico por petición, inyecta `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, `X-Frame-Options` (permitiendo `SAMEORIGIN` controlado únicamente para el iframe de vista previa en vivo del CMS admin) y `Strict-Transport-Security` en producción.
+2. **Modo mantenimiento (`NEXT_PUBLIC_MAINTENANCE_MODE=1`):** permite el paso de `/maintenance`, `/api/health*`, `/api/webhooks/*`, `/api/cron/*` y `/admin*`, redirigiendo el tráfico público de clientes con `307` hacia `/maintenance` (o `503` JSON en `/api/*` públicos).
+3. **Cortocircuito de rutas técnicas puras:** `/api/webhooks/*`, `/api/cron/*` y `/api/health*` continúan directo a sus Route Handlers con las cabeceras de seguridad aplicadas, sin refrescar cookies de sesión ni consultar redirecciones de catálogo.
+4. **Redirecciones 301/302 de SEO:** evalúa primero el mapa estático `PRODUCT_REDIRECTS` y luego `lookupActiveRedirectCached` (`UrlRedirect` en Data Cache compartida), preservando query strings.
+5. **Gate de modo de tienda (`NEXT_PUBLIC_STORE_MODE=catalog`):** si el modo activo es `catalog`, intercepta cualquier acceso a `/checkout/*` o `/mi-cuenta/cupones` y redirige limpiamente a `/carrito` o `/mi-cuenta`.
+6. **Refresco de sesión Supabase SSR (`@supabase/ssr`):** sincroniza cookies de autenticación cuando existen credenciales de sesión en el request.
+7. **Protección de `/mi-cuenta/*`:** si no hay usuario autenticado en Supabase, redirige a `/login?next=<ruta-segura>`.
+8. **Protección de `/internal/*` en producción:** en `NODE_ENV=production` exige la misma cadena completa de administrador activo con MFA `aal2` que `/admin` (devolviendo `404` o redirigiendo a `/admin/login` ante terceros).
+9. **Protección integral de `/admin/*`:**
+   - Permite `/admin/login` y `/admin/login/mfa` según el estado parcial de login.
+   - Verifica usuario autenticado en GoTrue, consulta su fila `AdminUser` activa (`isActive = true`, `deletedAt IS NULL`), comprueba el nivel de aseguramiento `aal2` (`supabase.auth.mfa.getAuthenticatorAssuranceLevel()`), forzando enrolamiento o reto en `/admin/login/mfa` si está en `aal1`, y valida autorización de ruta con `canAccessAdminPath(admin.role, pathname)`.
+
+### 11.3 Rutas con `maxDuration` extendido (Route Segment Config)
+
+El timeout serverless se declara exclusivamente en código mediante `export const maxDuration = <segundos>` (nunca duplicado en `vercel.json`):
+
+| #   | Archivo de ruta                                                   | `maxDuration` | Motivo técnico                                                                                                                               |
+| --- | ----------------------------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `apps/web/app/api/webhooks/wompi/route.ts`                        | `60 s`        | Saga completa de orden pagada: descuento de stock, creación de guía en Aveonline, archivado de PDF y correos.                                |
+| 2   | `apps/web/app/api/cron/process-render-jobs/route.ts`              | `60 s`        | Renderizado server-side a 300 DPI (`sharp` / `@napi-rs/canvas`) y subida de múltiples piezas a `production-assets`.                          |
+| 3   | `apps/web/app/api/cron/tracking-sync/route.ts`                    | `60 s`        | Sincronización por lotes de guías en tránsito contra la API de Aveonline.                                                                    |
+| 4   | `apps/web/app/admin/(panel)/pedidos/[number]/produccion/route.ts` | `60 s`        | Descarga paralela de renders 300 DPI desde Storage y compresión en memoria del ZIP de taller (`jszip`).                                      |
+| 5   | `apps/web/app/admin/(panel)/pedidos/[number]/page.tsx`            | `60 s`        | Las Server Actions invocadas desde el detalle del pedido (generar guía Aveonline, reintentos, conciliación) heredan el timeout del segmento. |
+| 6   | `apps/web/app/checkout/envio/page.tsx`                            | `45 s`        | Cotización multi-transportadora en vivo contra Aveonline con margen para reintentos controlados.                                             |
+| 7   | `apps/web/app/checkout/pago/page.tsx`                             | `60 s`        | Creación transaccional del pedido, validación antifraude/cupón y apertura de checkout Wompi o guía COD.                                      |
+| 8   | `apps/web/app/checkout/gracias/page.tsx`                          | `60 s`        | Fallback de reconciliación directa contra Wompi y ejecución de `processPaidOrder` si el cliente regresa antes que el webhook.                |
+| 9   | `apps/web/app/estudio/[slug]/page.tsx`                            | `60 s`        | Las Server Actions del Estudio (`finalizeDesign`, subida/validación de fotos y encolado de `RenderJob`) heredan el límite del segmento.      |
+
+---
+
+## 12. Accesibilidad (WCAG 2.1 AA), presupuestos de performance, testing, CI/CD y referencias
+
+### 12.1 Accesibilidad exigible (WCAG 2.1 Nivel AA)
+
+- **Idioma y estructura semántica:** `<html lang="es-CO">`, enlace «Saltar al contenido principal» como primer elemento enfocable y landmarks consistentes (`<header>`, `<nav>`, `<main>`, `<footer>`).
+- **Contraste cromático:** relación mínima `4.5:1` en texto normal y `3:1` en texto grande y controles gráficos (auditado sobre los tokens de marca en [`BRANDING.md`](BRANDING.md)).
+- **Teclado y foco:** navegación completa por teclado en catálogo, PDP, carrito, checkout y modales Radix/shadcn; anillo `:focus-visible` siempre visible; formularios con `<label htmlFor>` explícito y regiones `aria-live` para avisos dinámicos.
+- **Movimiento e imágenes:** respeto estricto a `prefers-reduced-motion: reduce`; textos `alt` descriptivos en catálogo y mediateca CMS; tooltips unificados con el componente accesible `components/ui/tooltip.tsx` (prohibido el atributo nativo `title=`).
+- **Certificación automatizada:** suite `@axe-core/playwright` en CI sin violaciones AA nuevas y puntaje **Lighthouse Accessibility ≥ 95**.
+
+### 12.2 Presupuestos de performance y Core Web Vitals
+
+| Métrica / Indicador                                           | Presupuesto objetivo         | Mecanismo de control                                                                                |
+| ------------------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| Lighthouse Performance / SEO / Accessibility / Best Practices | **≥ 95** en las 4 categorías | Gate automático `@lhci/cli` (desktop y móvil) en `ci.yml`.                                          |
+| Largest Contentful Paint (LCP)                                | **< 2,5 s**                  | Imágenes `next/image` AVIF/WebP prioritarias en hero/PDP y fuentes locales optimizadas.             |
+| Interaction to Next Paint (INP)                               | **< 200 ms**                 | Hidratación mínima RSC; perfilador CDP móvil ×6 en Estudio (`profile-studio-entry.mjs`, `ADR-166`). |
+| Cumulative Layout Shift (CLS)                                 | **< 0,1**                    | Dimensiones intrínsecas reservadas en grillas, banners y skeletons.                                 |
+| Time to First Byte (TTFB home/catálogo)                       | **< 200 ms**                 | Snapshot CMS único en caché + pool Prisma caliente.                                                 |
+| Bundle JS inicial por página pública                          | **< 200 KB gzip**            | Konva, Three.js/R3F y herramientas admin cargados por ruta o `dynamic()` bajo demanda.              |
+
+### 12.3 Pirámide de testing y gates de CI/CD
+
+La estrategia detallada de pruebas vive en [`TESTING.md`](TESTING.md) y la operación de workflows en [`OPERATIONS.md`](OPERATIONS.md) e [`integrations/github-and-ops.md`](integrations/github-and-ops.md):
+
+- **Capas de prueba:** unitarias e integración contra PostgreSQL real con **Vitest 4**, certificación de postura y matriz **RLS** contra Supabase local (`rls-matrix` y `rls-coverage`), extremo a extremo y accesibilidad con **Playwright + axe**, **Lighthouse CI** en escritorio y móvil, y pruebas de carga en **k6** (`apps/web/tests/load/`).
+- **6 workflows en `.github/workflows/`:**
+  1. `ci.yml`: dispara en `pull_request` hacia `develop` y `production` (+ `workflow_dispatch`); aplica fast-path documental fail-closed (~30–50 s) cuando sólo cambian archivos Markdown de documentación y ejecuta los 5 gates completos ante cualquier cambio de código, esquema o contenido legal.
+  2. `nightly-full.yml`: nocturno (`06:00 UTC`, con guarda de actividad de 24 h) + manual; levanta Supabase completo (GoTrue + Storage + Mailpit) para suites exclusivas de Auth/Storage real, Wompi sandbox y smoke cross-browser Firefox/WebKit.
+  3. `post-deploy-smoke.yml`: dispara nativamente con `deployment_status` (`Production` = `success`) en Vercel + `workflow_dispatch`; verifica `/api/health`, `/api/health/db`, `/api/health/crons`, journeys públicos y ausencia de deriva en `_prisma_migrations` sobre `ref: production`.
+  4. `backup.yml`: volcado diario (`07:13 UTC`) de PostgreSQL y espejo de los 5 buckets de Storage cifrados con GPG AES-256 hacia Cloudflare R2 + latido a `/api/cron/backup-heartbeat`.
+  5. `dr-drill.yml`: simulacro mensual automatizado (día 2, `08:27 UTC`) que restaura el último backup de R2 sobre `supabase/postgres`, cuadra conteos exactos `COPY` y verifica descifrado e integridad del archivo tar de Storage.
+  6. `domain-watch.yml`: verificación mensual RDAP (día 5, `11:23 UTC`) de expiración, nameservers y locks EPP de `lucamsshop.com`.
+- **Protección de ramas (`protect-ramas-criticas`, `ADR-105`):** protege `develop` y `production` sin actores con bypass (`bypass_actors: []`), bloquea push directo y force-push, exige rama actualizada (`strict: true`) y requiere en verde los **5 checks obligatorios**: `Gitleaks secret scan`, `Typecheck + Lint + Build`, `Vitest tests (unit + integración con Postgres)`, `RLS behavior (rls-matrix contra Supabase local)` y `E2E + a11y + Lighthouse — Playwright`.
+
+### 12.4 Referencias de patrones transversales en [`CONVENTIONS.md`](CONVENTIONS.md)
+
+Para evitar duplicidad, los estándares de escritura de código viven en [`CONVENTIONS.md`](CONVENTIONS.md):
+
+| Patrón transversal                                                                          | Referencia canónica                                                                                        |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Regla trilingüe, marca «Lucams» (`ADR-138`) y nomenclatura                                  | [`CONVENTIONS.md` § 2](CONVENTIONS.md#2-idioma-marca-y-convenciones-de-nomenclatura)                       |
+| Anatomía de `features/*` y separación Prisma vs clientes Supabase                           | [`CONVENTIONS.md` § 3](CONVENTIONS.md#3-arquitectura-de-módulos-y-separación-prisma-vs-supabase)           |
+| Reglas de Next.js 16 (`proxy.ts`, `params` async, `ActionResult<T>`, caché)                 | [`CONVENTIONS.md` § 4](CONVENTIONS.md#4-frontend-en-nextjs-16-y-react-19-rsc-proxyts-formularios-y-caché)  |
+| Estados explícitos de UI y controles transversales de interfaz                              | [`CONVENTIONS.md` § 5](CONVENTIONS.md#5-estados-explícitos-de-ui-y-controles-transversales-de-interfaz)    |
+| Dinero en centavos COP (`Int`) y fechas en `America/Bogota`                                 | [`CONVENTIONS.md` § 6](CONVENTIONS.md#6-dinero-en-centavos-cop-int-y-fechas-en-americabogota)              |
+| Errores RFC 7807, sanitización, logging estructurado y circuit breakers                     | [`CONVENTIONS.md` § 7](CONVENTIONS.md#7-errores-estándar-rfc-7807-sanitización-logging-y-resiliencia-http) |
+| Procesamiento seguro de imágenes en servidor (`sharp-safe.ts`)                              | [`CONVENTIONS.md` § 8](CONVENTIONS.md#8-procesamiento-seguro-de-imágenes-server-side-sharp-safets)         |
+| Flujo de cambios en CMS v2 y sincronización del paquete legal (`ADR-080`)                   | [`CONVENTIONS.md` § 9](CONVENTIONS.md#9-cms-v2-de-3-capas-y-sincronización-del-paquete-legal)              |
+| Sagas (`features/orders/saga.ts`), idempotencia y migraciones duales _expand-then-contract_ | [`CONVENTIONS.md` § 10](CONVENTIONS.md#10-base-de-datos-idempotencia-patrón-saga-y-migraciones-duales)     |
+| Guardas obligatorias (`--dry-run`, `env-guard.mjs`, `confirm-target.mjs`) en scripts DB     | [`CONVENTIONS.md` § 11](CONVENTIONS.md#11-guardas-obligatorias-en-scripts-packagesdbscripts)               |
+| Calidad estática, ESLint, Prettier, `gitleaks` y commits convencionales                     | [`CONVENTIONS.md` § 12](CONVENTIONS.md#12-calidad-estática-eslint-prettier-gitleaks-y-flujo-git)           |

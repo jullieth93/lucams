@@ -1,216 +1,1144 @@
-# Decisiones vigentes — Lucams Shop
+# Decisiones Arquitectónicas y de Producto — Lucams Shop
 
-> **Documento vivo** (política de documentación de `CLAUDE.md`): decisiones VIGENTES organizadas por dominio, con su regla y razón actual. No es un historial: una decisión reemplazada se reescribe o se elimina; la historia completa vive en git (`git log -- docs/DECISIONS.md`).
->
-> **Anclas:** los números `ADR-NNN` son estables porque se referencian desde código/comentarios. Los ADR marcados **SUPERSEDED** se conservan solo como ancla de una línea. Cómo agregar una decisión: nueva entrada en el dominio que corresponda, con el siguiente número libre, sin fecha ni narrativa de sesión.
+> **Documento vivo de Nivel 1 ([`README.md`](README.md)).** Registra todas las decisiones técnicas, operativas y de producto con anclas estables `ADR-XXX` citadas en comentarios del código. No es una bitácora: si una decisión cambia, se actualiza aquí o se marca `Superseded` apuntando al ADR vigente; la historia vive en `git log -- docs/DECISIONS.md`.
 
-## Stack e infraestructura
+- **Regla de numeración:** nunca reutilices ni renombres un `ADR-XXX`. Asigna el siguiente entero libre en la sección temática correspondiente.
+- **Estados:** `Vigente`, `Parcialmente superseded por ADR-YYY`, `Superseded por ADR-YYY`, `Propuesta no implementada`, `Pendiente de activación externa`.
 
-- **ADR-001 / ADR-015 / ADR-024 — Stack:** Next.js **16** (App Router, RSC, Server Actions, Turbopack) + TypeScript + Tailwind v4 + shadcn/ui. Next 16 tiene breaking changes vs 15: ver `apps/web/AGENTS.md` antes de codificar.
-- **ADR-002 — Hosting Vercel:** soporte nativo de Next.js, ISR, Image Optimization y previews por PR. Costo aceptado: Pro ~$20 USD/mes (obligatorio para uso comercial por ToS de Hobby).
-- **ADR-003 — DB Supabase:** Postgres + Auth + Storage accedido vía Prisma (mandato del usuario). RLS declarativo en toda tabla. Acoplamiento aceptado.
-- **ADR-007 — Free durante dev → Pro al lanzar:** desarrollo $0/mes; PRD paga Vercel Pro; Supabase sigue Free (sin PITR — el backup diario a R2 es la red real, ver ADR-059/096).
-- **ADR-029 — `vercel.json` vive dentro de `apps/web/`** (Root Directory de Vercel), no en la raíz del monorepo.
-- **ADR-076 — Dominio:** `lucamsshop.com`, registrado en mi.com.co, DNS en Cloudflare. Supersede ADR-011 (`lucamsshop.co`, descartado).
+---
 
-## Pagos y dinero
+## 1. Stack e infraestructura
 
-- **ADR-004 — Pasarela Wompi** sobre Mercado Pago (mejor fit Colombia: PSE/tarjetas/Nequi, comisiones y DX verificadas contra docs oficiales). El adapter `PaymentProvider` deja la puerta a Mercado Pago sin reescritura. Precios en **enteros (centavos COP)**, nunca floats.
-- **ADR-009 / ADR-055 — Contraentrega (COD) activa desde el día 1** (decisión del usuario): método de pago completo con su saga; la guía se genera igual y el dinero se concilia manualmente.
-- **ADR-064 — Ledger de conciliación COD:** modelo `CodReconciliation` (1 fila por orden, creada solo al resolver); el estado «por remitir» se DERIVA de órdenes COD `DELIVERED` sin fila `REMITTED`. Cero cambios en la saga, idempotente por `orderId`.
-- **ADR-065 — Anti-abuso COD por identidad** (teléfono O email, no IP) evaluado en `finalizeCheckout` antes de generar guía: velocidad, historial de no-recogidos, monto acumulado; constantes conservadoras documentadas en `features/checkout/cod-risk.ts`.
-- **ADR-094 — `/checkout/gracias?id=<txId>` sin auth: riesgo aceptado** con mitigaciones: txId no enumerable (id de Wompi), rate-limit `gracias:ip:` 20/5 min, `noindex`, el estado se verifica SIEMPRE contra la API de Wompi. Re-evaluar si aparece evidencia de enumeración.
-- **ADR-109 — Stock: clamp `min(99, stock)`** con mensajes que nombran el producto; rechazo solo sin margen. La carrera TOCTOU de reconciliación está cerrada: update gateado por status, `OrderAlreadyPaidError` → redirect a gracias. La protección contra sobreventa es el UPDATE atómico `UPDATE … WHERE stock >= qty` al `PAID` + `needsReconciliation` (sin reservas con TTL — ver ADR-014).
-- **ADR-137 — Ledger Wompi con referencia UUID única por intento:** cada intento de pago es una fila `WompiPaymentAttempt` (referencia UUID, monto, estado) con sus `WompiPaymentTransaction` (migración Prisma `20261017120000_wompi_payment_ledger` + RLS supabase 042; lógica en `features/orders/payment-reference.ts`). Antes de reusar o rotar una referencia se **reconcilia contra la API de Wompi** (no solo contra el estado local) y el webhook **ignora transacciones históricas** (tolerancia 60 s) para no pisar el intento vigente; APPROVED/PENDING bloquean un intento nuevo. Cierra de raíz el bug «La referencia ya ha sido usada». SUPERSEDE el enfoque previo de esta misma ancla (`Order.paymentAttempt` + sufijo `-N` + ventana de reuso de 3 min).
-- **ADR-174 — Error de stock que NOMBRA el producto + alerta in-app inmediata al admin por venta perdida:** (1) `finalizeCheckout` ya no traduce el fallo de stock al genérico `ORDER_CREATE_FAILED`: re-lanza `STOCK_UNAVAILABLE` con el `customerMessage` del `InsufficientStockError` (que nombra el producto) y `payWompiAction` redirige a `/carrito` con ese mensaje (mismo comportamiento que ya tenía COD). (2) `features/orders/stock-alerts.ts` (`notifyStockSaleLost`) notifica IN-APP al admin en los 4 puntos donde un intento de compra muere por stock (`checkout_step`, `order_create`, `saga_paid`, `cod_finalize`): dedup de 6h por variante vía `AlertState` (`stock_sale_lost:<variantId>`, la ventana se sella SOLO si la notificación se creó), severity **critical** cuando ya hubo cobro (`saga_paid` — pide decidir reembolso o reposición), deep link al pedido si existe o a `/admin/inventario`. Fire-and-forget con log: NUNCA rompe la compra. Solo canal in-app (decisión owner): sin email y sin umbral de «stock bajo» configurable.
+### ADR-001 — Arquitectura web sobre Next.js 16 App Router
 
-## Envíos y logística
+- **Estado:** `Vigente`
+- **Decisión:** Unificar tienda y `/admin` en `apps/web` sobre Next.js 16 (`16.4.x`, App Router, RSC, Server Actions, Turbopack) y TypeScript `strict`.
+- **Motivo:** Menor JS en cliente y contratos tipados extremo a extremo ([`ARCHITECTURE.md`](ARCHITECTURE.md)).
 
-- **ADR-039 — Aveonline como proveedor de envíos** tras la interface `ShippingProvider` (`features/shipping/`); Venndelo quedó descartado (ADR-005 SUPERSEDED). Detalle operativo en `docs/INTEGRATIONS_AVEONLINE.md`.
-- **ADR-049 — `maxDuration` explícito** en las funciones que corren `createShipment` (webhook Wompi, fallback de `/checkout/gracias`, reintento admin), dimensionado para contener el presupuesto interno con margen.
-- **ADR-053 — Cotización de envío:** timeout realista (15 s, ~33 % de headroom sobre el máximo medido) y retry acotado a 2 intentos en `cotizarDoble`; `maxDuration` del paso de envío acorde.
-- **ADR-054 — Integración Aveonline auditada contra doc oficial** (2026-07-11): el contrato vigente (auth, cotización, guía, webhook sin HMAC documentado) vive en `docs/INTEGRATIONS_AVEONLINE.md`.
-- **ADR-107 — «Envío Lucams» (carrier propio Bogotá):** settings CMS (`LUCAMS_SHIPPING_ENABLED/PRICE_COP/CUTOFF_HOUR/LOCALITIES`), oferta adicional sellada HMAC solo si destino=Bogotá y localidad habilitada; **estimación** operativa por preparación + cutoff hora Colombia, siempre sujeta a disponibilidad de ruta; la saga NO genera guía Aveonline (`trackingNumber = INTERNO-<orderNumber>`). Toggle de transportadoras Aveonline en `/admin/envios`.
-- **ADR-108 — Localidad como dato de dirección:** el checkout muestra TODAS las localidades de la ciudad (las zonas habilitadas solo gatean la OFERTA propia); «Barrio» opcional persistido en sesión/orden/libro de direcciones. Regla única de estimación de entrega en `lib/delivery-estimate.ts` (preparación + cutoff) compartida por checkout, admin, guía, emails, PDP y FAQ.
-- **ADR-120 — Zonas de entrega:** fallback legacy solo si la setting V2 está AUSENTE (`"{}"` es fail-closed); `finalizeCheckout` re-valida la oferta Lucams contra las settings vigentes (anti-manipulación).
-- **ADR-163 — Reglas de peso por transportadora, evaluadas ANTES de ofrecerla al cliente:** la cotización `cotizarDoble` de Aveonline NO reporta todas las restricciones del carrier (caso real STG LCM-2026-0003: Transprensa cotizó OK pero al generar la guía respondió «no opera envíos de menos de 11 kilos» — pedido atascado post-venta). La API no tiene endpoint de reglas (verificado contra la doc auditada; pendiente confirmar con soporte Aveonline si existe matriz por carrier/ruta). Defensa propia: setting `SHIPPING_CARRIER_RULES` (`global/comercio`, JSON `{ keyNormalizada: { minWeightKg, maxWeightKg, note } }`, CRUD en `features/shipping/settings.ts`, edición por fila en `/admin/envios` junto al toggle on/off) y filtro en `quoteShipping` que computa `computePackedPackage(items)` una vez y excluye las ofertas que violen la regla ANTES del sellado HMAC (log `shipping.quote.carrier_filtered`; si no queda ninguna Aveonline pero hay «Envío Lucams», ese flujo intacto). Red de descubrimiento: los rechazos parciales de cotización loguean `numbererror`+`dataerror` por carrier (`shipping.aveonline.quote.partial` — antes solo nombres) y `suggestShipmentFailureCause` tiene rama para «no opera envíos de menos de N kilos» (sugiere configurar la regla). Semilla: `transprensa minWeightKg 11` (one-shot `shipping-carrier-rules-20261022.mjs`, PRD-deliberado). Complemento de datos: auditoría de cobertura de dims (`packages/db/scripts/shipping-dims-audit.mjs`, read-only) verificó STG/PRD 100 % cubiertos y saneó LOCAL (42 productos por one-shot + `depthCm` fuera de rango); el seed canónico ahora siembra dims por `personalizationKind` al crear productos (nunca pisa los vivos).
-- **ADR-185 — Valor declarado POR unidad física (fix de la inflación ×N de la valoración, 2026-10-31, reporte owner + reproducción live):** `quoteShipping` y la saga enviaban `declaredValueCop = unitPrice` (precio de la UNIDAD DE VENTA) con `qty = inventoryUnits` (unidades FÍSICAS — ej. las 26 letras del abecedario). Para variantes con `attributes.quantity > 1` (abecedario ×26/27, vocales ×5, separadores ×2-6, fotoimanes sueltos ×2-10) el valor asegurado se multiplicaba ×N: un abecedario de $39.900 se declaraba en **$1.037.400** y, como cada carrier cobra valoración ~1 % sobre lo declarado, el flete Bogotá→Bogotá se inflaba ~$10.000 (cotización real PRD: ENVÍA $19.423 / TCC $36.446; reproducido con sonda live contra la cuenta real: $20.374 / $38.348 con el modelo viejo vs **$8.399 / $16.298** con el corregido). Fix: helper puro `declaredValueCopPerInventoryUnit` (`features/personalization/design-units.ts`) = `unitPrice × qty_venta / inventoryUnits`, aplicado en `quoteShipping` y en la saga (`createShipment`) — cotización y guía aseguran el valor de venta real de la línea. El PESO sigue siendo `weightGrams × inventoryUnits` (los `physicalSpecs.weightGrams` de productos multi-unidad son por unidad física: 12 g el separador, 50 g la ficha de letra — calibración fina con báscula queda como mejora de datos, no de código). Tests: `design-units.test.ts` (helper) + `service-quote.test.ts` (regresión end-to-end del ítem cotizado).
-- **ADR-186 — Entrega no contractual + cobertura a sangre certificable (2026-11-01, owner):** (1) todas las superficies separan **preparación estimada antes del despacho** de **tránsito estimado después del despacho**, eliminan «te llega/entrega en X» como garantía y conservan en Términos el máximo legal de 30 días calendario; aplica a storefront, checkout, emails, Admin, guía, ayuda, CMS y legales. `republish-delivery-estimates-20261101.mjs` actualiza bodies existentes con historial y sin pisar ediciones del owner. (2) Los productos planos `noFold` son a sangre: `photo-fit.ts` impone scale ≥ cover y limita el paneo al excedente de la foto; el cliente guía al primer slot descubierto y `finalizeDesign` repite la validación server-side (`PHOTO_NOT_FULL_BLEED`). (3) Admin y `armado.png` muestran PNG completos sobre cuadrícula de transparencia para que el troquel redondeado sea visible; la ficha/ZIP identifica los reversos B opcionales (con patrón de marca desde ADR-190). Los pedidos históricos no se regeneran ni sobrescriben automáticamente.
+### ADR-002 — Hosting serverless en Vercel Pro
 
-## Catálogo y producto
+- **Estado:** `Vigente`
+- **Decisión:** Desplegar `apps/web` en Vercel Pro (`iad1`) con rama `develop` para STG y `production` para PRD.
+- **Motivo:** Soporte nativo Next.js 16, caché por tags y licencia comercial ([`integrations/vercel.md`](integrations/vercel.md)).
 
-- **ADR-036 — Information Architecture:** naming estandarizado (`Set` para multi-imán, `Pack` solo B2B, shape en el nombre), variantes por atributo, categoría «De Temporada».
-- **ADR-037 — Estrategia de plantilla por tipo de producto** y catálogo de plantillas administrado por seed (los templates declarados en el seed son la fuente; barrido `--prune` opt-in).
-- **ADR-038 — API Catálogo RAG-ready:** endpoints públicos `/api/catalog/*` sin auth, con cache HTTP + rate-limit, sin datos sensibles; la DB es la fuente de verdad y un LLM/bot futuro consume la API estructurada, nunca inventa (principio AI-ready transversal). Decisiones de diseño originales: `docs/PLAN_CATALOG_V2.md`.
-- **ADR-099 — PRD es la fuente de verdad comercial del catálogo** (estados isActive/deletedAt los manda la curaduría del admin, no los seeds); las gemelas `-NOMAG` son banco de validación que vive solo en LOCAL/STG; sincronización PRD → espejos con `homologate-catalog-from-prd.mjs` (ampliado 2026-10-13: además de estados alinea el CONTENIDO completo de Product — los campos del checksum de homologación — y la galería `DesignGalleryImage` con copia de bytes de storage PRD → espejo). El stock queda excluido de toda sincronización rutinaria porque es operativo; una homologación excepcional solo puede ser **PRD → STG**, con autorización explícita de la owner y verificación por SKU.
-- **ADR-101 — Fotoimanes se vende por PACKS de 6** (un producto por formato; variantes = photoSlots 6/12/18/24 con precio lineal). Mismo sustantivo «Packs» para Abecedario y Vocales.
-- **ADR-102 — Homologación de ambientes certificable:** comparación por claves naturales (slug/sku/key) separando divergencias VIVAS de drift histórico; criterio de aprobado = 0 divergencias vivas; STG como referencia curada con overrides explícitos.
-- **ADR-121 — Homologación STG↔PRD:** IDs internos NO se alinean (SKU = llave de negocio); contenido curado migra aditivo; settings de negocio son por ambiente. Excepciones deliberadas: uptime-monitor solo en STG, crons de email solo en PRD, `AdminUser` QA en STG.
-- **ADR-123 — Prediseñados segregados por atributo de variante** (`DesignGalleryImage.variantFilter` subset-match; null = todas) + assets deduplicados por `galleryImageId`.
-- **ADR-124 — Precios por volumen (`WholesaleTier`) PÚBLICOS:** se aplican en carrito/checkout sin flag mayorista; nunca suben el precio; re-priceo al cambiar cantidad.
-- **ADR-126 — Sync reusable STG→PRD** de galería y catálogo/CMS con clave natural, stock excluido de esa ruta, dry-run por defecto. Lección: los tests/scripts contra PRD son read-only salvo operación aprobada; cualquier excepción de inventario solo fluye PRD → STG con autorización explícita.
-- **ADR-134 — Eliminación permanente de productos** desde la papelera del admin, con guardas (pedidos/diseños/carritos/reseñas bloquean con mensaje claro) y purga de imágenes del bucket.
-- **ADR-141 — Calendario comercial:** festivos colombianos incl. 9 de julio (Ley 2578 de 2026); sufijo «(adhesivo)» eliminado del ecosistema; toggle de borde de Cuadrados escribe `borderColor` de verdad.
-- **Política de catálogo (vigente):** no replicar productos con marcas registradas no licenciadas (Snoopy/Disney/Harry Potter/etc. — descartados con motivo; regla permanente de curaduría).
+### ADR-003 — Persistencia unificada en Supabase con Prisma y RLS total
 
-## Estudio de personalización
+- **Estado:** `Vigente`
+- **Decisión:** Usar Supabase (PostgreSQL 15, Auth, Storage, `pg_cron`, `pg_net`) vía Prisma tipado (`@lucams/db`) sobre Supavisor (`:6543`) con RLS en el 100 % de las tablas.
+- **Motivo:** Productividad tipada con defensa en profundidad SQL y PostgREST bloqueado ([`integrations/supabase.md`](integrations/supabase.md)).
 
-- **ADR-013 — El Estudio es el diferenciador #1** (mandato de producto): personalización en vivo + vista 3D + IA.
-- **ADR-035 / ADR-057 — Motor Konva/react-konva aumentado (no refactor ni licencias)**, editor por tipo de producto (enum `PersonalizationKind`), 3 buckets Storage (`customer-uploads` privado, `design-previews` público, `production-assets` privado). Verificado que el editor comercial Polotno se construye sobre el mismo Konva: construir lo propio cuesta $0 de licencia.
-- **ADR-063 — Plan de UX «fantástica» del Estudio por categoría** (ejecutado): descarga de producción con ZIP + hoja de armado, calendario con grilla real horneada, corte corazón/círculo, moderación con zoom, superficies fantasma implementadas o eliminadas.
-- **ADR-081 — Los PNG de imprenta los renderiza el SERVIDOR** (tiers: compositor calendario → sharp → `@napi-rs/canvas`), no el navegador; el body del finalize solo sube el preview compositado.
-- **ADR-103 / ADR-104 — Plantilla de Estudio unificada y adaptativa:** el lienzo se dimensiona por ANCHO (columnas por ancho objetivo de slot: 450 px ≤6 slots / 300 px ≥7; móvil <640 px a una columna), pisos que nunca desbordan (`fitColsToFloor`), tarjeta-unidad universal; admin usable en tablet; gates anti-overflow-horizontal en CI.
-- **ADR-115 — Patrón único de CTA ocupado** (`studio-busy-cta.ts`, opacidad 70 % en todas las superficies).
-- **ADR-118 — PROPUESTA registrada, NO implementada:** unificar el preview del cliente con el renderer de producción server-side.
-- **ADR-128 — SUPERSEDED por ADR-190** (2026-11-03): la regla «cara B vacía = EN BLANCO en TODOS los renders» (que superó ADR-114, regla espejo) quedó reemplazada para los separadores backOptional por el patrón de marca «Lucams». Se conserva como ancla histórica (referenciada desde comentarios de código).
-- **ADR-129 / ADR-133 — Durabilidad del avance:** debounce 2 s para el guardado normal; `sendBeacon` a `POST /api/designs/save-canvas` como mejor esfuerzo en unload; **snapshot local `{rev, canvasData}` reconciliado por `clientRev`** (el snapshot más nuevo gana y arranca dirty) — la durabilidad no depende de entrega durante `pagehide`. Claim de órdenes guest por email al verificar OTP/login; reseña por token en el email de entrega.
-- **ADR-136 — Render de producción ASÍNCRONO:** el render 300 DPI salió del request de «Agregar al carrito» (timeout con calendarios ×3). Tabla `RenderJob`, kick de 8 s en el finalize, worker por cron `lucams-process-render-jobs` cada minuto (migración supabase 041 — **aplicar en PRD solo DESPUÉS del deploy del endpoint**), progreso real vía `/api/designs/<id>/render-status`, ZIP admin 409 mientras el render vive.
-- **ADR-056 — Compartir diseño:** link público `/d/<token>` (capability URL, token no enumerable); los tokens viven hasheados en reposo y rotan al pedirse de nuevo (postura de tokens de ADR-085); las vistas servidas del link llevan watermark (ADR-148).
-- **ADR-058 — Asistente IA de sugerencias:** adaptador `AiProvider` proveedor-agnóstico (mismo patrón que `PaymentProvider`); proveedor actual **Gemini** vía fetch server-side a la API REST, con fallback entre modelos; cambiar de proveedor es config, no reescritura.
-- **ADR-139 — Recover del Estudio rehidrata por `assetId`** (adiós placeholder lila) con toast honesto; plantilla por `Design.templateId`; modal de elección cara A/B; color picker propio; Polaroid IG con ubicación asistida; lettersets con stepper de sets; marcador de borrador honesto (solo tras el primer auto-save real).
-- **ADR-140 — 3D:** libro multi-unidad sin z-fighting, `alphaTest` en tapas, `ErrorBoundary` por escena, grosor por producto, encuadre del mural al clúster; los separadores largos en el libro encuadran con `flatBookmarkFit` (corrección de perspectiva + apoyo sobre el camber de la hoja; la rama doblada queda intacta).
-- **ADR-142 — Uploads:** compresión obligatoria con presupuesto 4 MB y piso 300 DPI; HEIC decode/transcode fail-closed (error honesto, nunca un master degradado); masters prediseñados print-grade (los antiguos se resuben desde `/admin/disenos`).
-- **ADR-143 — Carrito:** «Ver» paginado por unidad con miniatura = primera página; retención documentada: carritos idle 60 d, vacíos 7 d, `AbandonedCart` 90 d.
-- **ADR-147 — Mis diseños:** thumbnails de borrador (`draftPreviewUrl`, cubierto por las purgas), CTA «Editar» para READY, badges Borrador/Listo/Ya pedido.
-- **ADR-148 — SUPERSEDED por ADR-191** (2026-11-03): el watermark anti-copia tiling LUCAMS en vistas servidas quedó retirado por decisión del owner (dañaba la lectura, muy marcado sobre diseños oscuros, sin nota que lo explicara). Se conserva como ancla histórica (referenciada desde comentarios de código); la matriz de acceso por token vive ahora en ADR-191.
-- **ADR-191 — Watermark anti-copia RETIRADO de los previews de diseño (owner 2026-11-03; SUPERSEDE ADR-148 y su ajuste preferClean del mismo día):** el tiling LUCAMS dañaba la lectura (muy marcado sobre diseños oscuros) y no llevaba nota que lo explicara. TODAS las superficies exhiben las versiones LIMPIAS (carrito, «Ver diseño», Mis diseños, /d + OG, cotización, gracias, pedidos): `designPreviewDisplay` siempre deriva `preview.<ext>` + `pages/NN.webp`; el finalize ya no genera `preview-wm.webp`/`thumb.webp` ni `wm/pages/*` (menos trabajo por finalize) y `previewWatermarkedAt` queda null (columna conservada para históricos). La matriz del handler (`preview-access.ts`) se simplificó a 3 clases: borradores SOLO dueño/admin (jamás por token); exhibición (preview/páginas/artefactos wm legacy) también por token (share/quote/order) — el comportamiento anterior a 2026-10-13. El aviso «tu impresión final no la lleva» desaparece de la UI (la flag `watermarked` queda siempre false). Los artefactos wm históricos quedan huérfanos y los cubre la purga de retención (`designPreviewDerivedPaths`). La galería de prediseñados conserva SU watermark (arte propio de la tienda — otro alcance, `design-gallery.ts`). Si algún día se quiere anti-copia de nuevo, restaurar de git (ADRs 148/191 narran el vaivén completo).
-- **ADR-150 — Preview paginado unificado en superficies cliente:** `DesignPreviewDialog` + `preview-zoom.ts` viven en `apps/web/components/` (compartido real, ya no exclusivo del carrito) y sirven a `/carrito`, `/checkout/gracias`, `/mi-cuenta/pedidos/[number]` y `/pedido/[token]` con la MISMA interacción: miniatura clicable que abre el lightbox paginado por unidad (`pages` vía `designPreviewDisplay()`), más badge «N unidades» (componente `design-units-badge.tsx`, solo con count ≥2; el número va fuera del `CmsText` porque CmsText no interpola). Gracias cambia la tira estática 64px por tarjetas por ítem (miniatura 96px clicable, variante+desglose, ×N, badge «Tu diseño»); los selects Prisma ganan `previewPagesCount`. El pager solo existe cuando `Design.previewPagesCount > 1` (los diseños de 1 unidad no generan páginas — `features/personalization/preview-artifacts.ts`). Claves CMS nuevas: `cart.unidades-badge`, `order.status.unidades-badge`, `checkout.gracias.unidades-badge`.
-- **ADR-151 — Estilo del Estudio en móvil = bottom-sheet, no scroll horizontal:** en <sm la `StudioStyleToolbar` muestra un botón resumen siempre visible (swatch + nombre del color + estado del borde) que abre un `Sheet` bottom con grilla de colores (`grid-cols-4` con wrap), toggle Con/Sin borde, «Personalizado», «Elegido: {color}» y botón primario sticky «Listo» (solo cierra; la selección aplica en vivo). En ≥sm la toolbar vertical queda intacta + span «· Elegido: {color}». SUPERSEDE el scroll horizontal de la toolbar de estilo en móvil de Ola 32 (README del Estudio). El asset picker de fotos gana footer sticky con «Listo» (cierra sin asignar) y el toggle «Diseños prediseñados» de la sidebar se destaca en lila de marca (`bg-brand-purple` + texto blanco). 5 claves CMS: `estudio.fotos.picker-listo`, `estudio.texto.estilo-resumen-aria`, `estudio.texto.estilo-sheet-titulo`, `estudio.texto.estilo-sheet-listo`, `estudio.texto.estilo-color-elegido`.
-- **ADR-152 — Política de borradores (retomador por marcador + poda con progreso real + limpieza manual):** `features/personalization/draft-lifecycle.ts` + `app/estudio/[slug]/lib/draft-marker.ts` concentran el ciclo de vida de los DRAFT (customerId y sessionId). Entrar a `/estudio/<slug>` ya **no reusa silenciosamente** un DRAFT: el DRAFT se crea **lazy** (en el primer save real, no en el boot) y el marcador local «Continuar donde quedaste» (localStorage, scope `productSlug:variantId`, JSON `{designId, savedAt, unitCount}`) se escribe solo tras el primer auto-save con **progreso real** (`designHasMeaningfulProgress`) y ofrece retomar vía interstitial → `?designId=<id>&resume=1` (el recover server-side valida ownership y exige DRAFT; si el draft ya no aplica, boot fresco con aviso explícito «No pudimos recuperar tu borrador: expiró o ya no existe. Empezamos uno nuevo.» — texto `estudio.errores.borrador-perdido` — mostrado ANTES de limpiar el marcador; nunca reseteo silencioso). Gates del retomador: **solo para clientes autenticados** (decisión owner 2026-10-21 — la cadena para invitados, marcador local + cookie `cart_session` + DRAFT server-side, era estructuralmente frágil: la rotación de `cart_session` del self-heal de `CART_IDENTITY_MISMATCH` dejaba los drafts anónimos inalcanzables y el interstitial prometía algo que no siempre cumplía; el invitado conserva auto-saves, flush sendBeacon, recover explícito por `?designId=` —«Editar» del carrito— y la purga de sus DRAFT idle a 7 días; un marcador escrito como invitado se revalida al hacer login gracias a `adoptAnonDraftDesigns` — ADR-155): `page.tsx` pasa `draftResumeEnabled` al editor y solo entonces se lee/escribe el marcador; vigencia **30 días**; NO se ofrecen borradores vacíos ni los cuyas unidades (`unitCount` cosechado del canvas) contradicen la intención de la PDP (`?copies=N`; mismatch → boot fresco **conservando** el marcador, que sigue válido para su propia intención). Poda best-effort tras cada vía de creación (los clones de editar/volver-a-pedir NO reusan, a propósito): conserva los `MAX_DRAFTS_PER_PRODUCT = 3` DRAFT **con progreso real** más recientes por dueño+producto y además barre los vacíos con más de 1 h de gracia; mismas guardas de la retención (sin carrito vivo ni pedido; READY/USED_IN_ORDER intocables). Mis diseños: sección «Borradores» colapsable (abierta si ≤3) con borrado individual, «Vaciar borradores» y archivado, todos con **confirmación real (Dialog)** (server actions en `app/mi-cuenta/disenos/actions.ts`, solo logueados; textos `account.designs.*`). Fix de seguridad asociado: `purgeDesignBatch` (retention-service) no borra bytes de `customer-uploads` compartidos con otros diseños vivos (`cloneDesignForEdit` comparte `storageUrl`).
-- **ADR-156 — Concurrencia y durabilidad del editor:** los auto-saves corren en una **cola serial** (`app/estudio/[slug]/lib/serial-task-queue.ts`) con **concurrencia optimista por `Design.clientRev`** (migración `20261017130000_design_client_rev`): el server rechaza con `STALE_REVISION` un save basado en una revisión vieja y el cliente rehidrata. El DRAFT es lazy (ADR-152), hay **flush de saves pendientes** antes de «Vista Previa» y «Agregar al carrito», y los tickets de subida de fotos reintentan con backoff (×3). Extiende ADR-129/133: el snapshot local reconciliado por `clientRev` sigue siendo la red de mejor esfuerzo en unload.
-- **ADR-157 — Lettersets multi-set con estilo por set:** en Abecedario/Vocales el estilo (Solo letra/Kawaii…), los colores y el borde son **por set** (`metadata.units[u].styleSetId/withBorder`; las claves raíz del canvas quedan como representante del set 1, por retrocompat). El finalize exige `unitCount` láminas renderizadas para la surface letterset (fix `INCOMPLETE_SLOTS` multi-set); la paleta de color es sticky junto a la grilla; el borde de ficha del editor es el 5 % del ancho (iguala 3D/producción); «Ver diseño» del estudio y «Ver» del carrito **paginan por set** (preview pages por set tras finalize).
-- **ADR-158 — Prediseñados: destino siempre explícito:** todo click en un prediseñado pregunta el destino (elige cara si es ambigua; si no hay lienzo libre, modal «¿Cuál lienzo quieres reemplazar?» con miniaturas y `forceTargetSlot`) y tras aplicar se limpia la selección. Preview emergente en hover con `HoverCard` radix (`openDelay` 400 ms, solo desktop; touch sin cambio). **AJUSTADO (SUPERSEDED la acotación «hover-only, sin preview en táctil»):** en puntero coarse el `HoverCard` ya NO se monta (en táctil un tap «preventivo» sobre la tarjeta abría el preview y tapaba el flujo) y en su lugar cada tarjeta de prediseñado lleva un botón «Ver» (ojo, 44px táctil) que abre `predesigned-view-dialog.tsx` (imagen grande + «Usar este diseño») — disponible también en el asset picker; en desktop el hover queda como siempre y «Ver» acompaña. Además el reemplazo «con todo lleno» en separadores opera por PAR de caras (`replacePair` en `lib/apply-predesigned.ts` — excepción explícita al anclaje cara-A; el modal de reemplazo muestra las tarjetas en `pairMode` y el toast confirma «ambas caras»). Claves CMS: `estudio.plantillas.ver-diseno-aria`/`-usar`, `estudio.plantillas.reemplazo-par-*`, `estudio.plantillas.toast-reemplazo-par`.
-- **ADR-159 — Tab Texto con UN solo «Listo» que aplica y cierra:** SUPERSEDE la decisión del owner del 2026-10-05 de mantener «Aplicar» + «Listo» (vivía solo en código, `studio-text-editor-modal.tsx` — no era ADR): un solo botón primario persiste en `SlotState.textOverrides` y cierra; ×/Escape cancela sin guardar. Misma jornada: acción «Borrar el diseño» con confirmación (`clearAllSlots`, undoable), círculo multicolor con affordance conservada (anillo arcoíris + disco interior con el color elegido) y aviso de calidad reescrito («zonas quemadas de luz» en vez de «sobreexpuesta»).
-- **ADR-164 — Maduración del Estudio (jornada owner 2026-10-22):** (1) **Checklist persistente «Tu diseño»** (`studio-checklist.tsx`): en móvil todo lo que vive tras el FAB «Editar» pasaba desapercibido — pasos derivados de las features del producto (fotos X/N, prediseñados disponibles, «Tu mensaje» con 1 capa de texto, «Datos de la publicación» IG) con estado Listo/Pendiente/Opcional y tap que navega a su sección (scoped por `rootRef` — la sidebar se monta dos veces con los mismos ids); el FAB lleva badge con el conteo de pasos bloqueantes (los opcionales nunca suman). Textos `estudio.checklist.*`. (2) **«Ver diseño» bloqueado mientras el auto-save guarda** (`autoSaveStatus.kind === "saving"`, toolbar y FAB; en error queda habilitado — el flush reintenta) y `AutoSaveIndicator` visible en <sm (antes `hidden sm:flex`). (3) **Prediseñado como primera acción:** el draft LAZY se crea en el momento vía `store.ensureDesignId` (misma `createDraftDesignAction` del auto-save, dedupe de la promesa en vuelo) en las 3 vías + drag & drop — antes un guard silencioso sobre `designId` mataba el primer clic (bug «solo funciona después de subir una foto»). (4) **Fast-path de assets de galería** en `assignPredesignedToDesignAction`: sin `validatePhotoQuality` para masters curados, caras A/B en paralelo y log de duración por etapa (la copia server-side entre buckets no es viable: `storage.copy` solo opera dentro del mismo bucket). (5) **Paleta de marcos por producto:** Polaroid Clásica y Tiras Magnéticas ofrecen solo `["blanco","negro"]` (+ «Sin Color»/«Personalizado», fijos) — dato sembrado (one-shot `frame-options-binary-20261022.mjs`), no código. **EXTENDIDO (2026-10-27):** Fotoimanes Cuadrados se suma a la paleta binaria (one-shot `frame-options-binary-cuadrados-20261027.mjs` en LOCAL/STG/PRD) y su descripción de catálogo deja de prometer «6 colores de marca». (6) **Tira photobooth:** la barra de acciones flotante solo se muestra en el slot SELECCIONADO (primer tap selecciona, segundo abre el editor, tap fuera des-selecciona); la advertencia de calidad sigue descubrible con badge ⚠ mínimo en slots no seleccionados. (7) **Variante/tamaño visible en el lienzo:** chip en el header de cada sección de unidad (`unitVariantLabel` con sizeCm — la omisión de tamaño aplica solo a la Vista Previa) y tamaño incluido en el `variantLabel` de los editores de letras.
-- **ADR-166 — Rendimiento del lienzo Konva (medido, 2026-10-22):** la entrada al Estudio en celular (queja owner: Polaroid lenta y el teléfono se calienta) se perfiló con CDP Profiler (emulación 390×844 + CPU ×6, build producción): Konva creaba los backing stores de los 18 canvas (6 stages × 3 layers) a devicePixelRatio nativo (3 → 9× píxeles por draw), el chrome SVG de la plantilla se re-rasterizaba en CADA `drawImage` de CADA slot (los SVG no quedan como bitmap entre draws) y el `shadowBlur` de la tarjeta se rasterizaba por software en cada redraw de su capa. Polaroid costaba 13.4 s de JS y 65 longtasks (vs 8.0 s de Cuadrados — de ahí que solo esos productos se sintieran). Fixes: (1) `Konva.pixelRatio` capeado a 2 en el editor (`lib/konva-pixel-ratio.ts` — los exports no se afectan: `toDataURL` usa pixelRatio relativo al tamaño lógico y producción renderiza en servidor); (2) el chrome SVG se rasteriza UNA vez a un offscreen canvas compartido por todos los slots (`lib/chrome-bitmap-cache.ts`; PNG/JPG siguen con use-image); (3) la capa de sombra (estática por stage/shape) va con `Layer.cache()` — su raster se paga una sola vez. Resultado medido en las mismas condiciones: **Polaroid 7.6 s de JS (−43 %) y 14 longtasks — a la par de Cuadrados (7.3 s / 13)**; el residuo es boot compartido de la app. ~~Pendiente documentado: derivado ligero (~800 px)~~ → **CERRADO en ADR-169** (barrido multi-producto + derivado ≤800 px del lienzo, 2026-10-23).
-- **ADR-167 — Checklist «Elige tu plantilla»: sin plantilla seleccionada por defecto (2026-10-22, owner):** el estudio auto-seleccionaba la primera plantilla en el boot (`templates[0]`) y además `findTemplateIdForCanvas` «matcheaba» una por dimensiones del stage, así que la sección Plantillas se veía resuelta sin que el cliente decidiera nada y el primer auto-save ya persistía `Design.templateId` (el recover la «heredaba» como elección propia). Nuevo contrato: (1) `resolveBootTemplate` (`lib/boot-template.ts`) separa **geometría de render** (la primera plantilla visible siempre la presta — el lienzo necesita dimensiones) de **selección** (`templateId` null salvo deep-link `?template=` válido o `templates.length === 1`, donde la elección es trivial y se auto-selecciona); (2) el match por dimensiones queda como fallback EXCLUSIVO del recover de diseños legacy (previos a persistir `Design.templateId`); (3) el servidor tampoco siembra default: `createDraftDesign` sin `templateId` persiste `null` (todos los consumidores son null-safe; producción usa `canvasData.unitTemplate`, no la FK); (4) el checklist «Tu diseño» suma el paso **«Elige tu plantilla» en primera posición** (icono `LayoutTemplate`), `pending` hasta elección explícita y solo cuando hay >1 plantilla — suma al badge del FAB «Editar»; textos CMS `estudio.checklist.paso-plantillas`. Efecto colateral aceptado: con selección null la paleta «Polaroid Clásica» y la detección de escena polaroid degradan con seguridad hasta el primer clic en plantilla. **AJUSTADO (bloqueo guiado al finalizar):** el checklist informativo no bastaba — con >1 plantillas y sin elección, «Ver diseño»/finalizar YA NO procede: toast con la razón + se abre el sheet «Personalizar» (en móvil) / se resalta la sección Plantillas (que subió de posición, antes de «Mis fotos», con chip «Pendiente») — texto CMS `estudio.plantillas.elegir-para-continuar`. El checklist sigue como mapa de progreso; el bloqueo es la frontera dura.
-- **ADR-168 — Vista 3D de lettersets con pager por set (2026-10-23, owner; supersede la acotación al set activo de 2026-10-19 y la iteración «todos los sets juntos» del 2026-10-22):** el tablero memo 3D de Abecedario/Vocales componía las texturas solo del SET ACTIVO — con N>1 sets el cliente nunca veía los demás. Tras una primera iteración que los mostraba todos juntos, el owner fijó el idioma de referencia del «Calendario Set 12 Tarjetas» (`CalendarCardFocus`): **un set a la vez, recorrible**. El modal 3D muestra UN set con pills «Anterior»/«Siguiente» (wrap-around, teclado ← →, mismas clases del calendario), indicador «Set N de M» con `aria-live` en el header (mismo texto CMS `unidades.unidadDe` del pager del editor; arias `exportar.pagerAnteriorAria/pagerSiguienteAria`), arranca en el `activeUnit` que el cliente estaba editando y el rótulo overlay cuenta las fichas del set visible. Las texturas se construyen upfront (una llamada por set en paralelo, tope `MAX_LETTER_SET_UNITS = 10`) para paginar al instante sin spinners; `boardCols` volvió a la fórmula clásica √n (con 1 set en pantalla n siempre es `letters.length` — el ajuste de divisor de la iteración anterior se eliminó). Con 1 set el modal queda exactamente como antes (sin pager).
-- **ADR-169 — Barrido de rendimiento del Estudio multi-producto + derivado ≤800 px del lienzo (2026-10-23, medido):** (1) **Sweep**: se re-creó el harness de laboratorio de ADR-166 (no quedó versionado) como `apps/web/scripts/profile-studio-entry.mjs` — Playwright + CDP, 390×844 dpr 3, CPU ×6, contexto frío, mediana de 3 corridas, jsMs = `ScriptDuration` del dominio Performance hasta lienzo montado + 1.5 s sin longtasks, más hotspots por self-time (procedimiento en docs/TESTING.md § Profiling del Estudio). Alcance: los 8 productos con Estudio VIVO en el catálogo (STG/PRD — `cuadro-3-fotos`, `planner-mensual-con-foto`, `box-para-pareja`, `box-dia-papa` son legacy LOCAL con categoría archivada, no existen en STG; el storefront los esconde por diseño vía `STOREFRONT_PRODUCT_WHERE`). Resultado (mediana, vs control Cuadrados 2194 ms JS / 13 longtasks — ojo: escala absoluta distinta a la del harness original de ADR-166, lo que manda es el delta relativo): **ningún producto supera el umbral +30 % ni muestra longtasks anómalos** — Polaroid 1.12×/14 LT, Separadores 1.17×/8 LT, Sep. alargados 0.95×/9 LT, Tiras 0.82×/10 LT, Calendario mes a mes 0.73×/12 LT, Abecedario y Vocales 0.35×/5 LT. El residuo es boot compartido de la app; no hubo causas estructurales que corregir. (2) **Deuda ADR-166 cerrada — derivado ligero del lienzo**: `uploadCustomerPhoto` genera un WebP ≤800 px (`CUSTOMER_UPLOAD_CANVAS_MAX_EDGE_PX`, q82) hermano del master (`<uuid>.canvas.webp`, fail-open, skip si el master ya es ≤800 px) persistido en `DesignAsset.canvasPath` (migración `20261022120000_design_asset_canvas_path`); se firma/emite como `canvasUrl` en los 3 puntos (upload, fast-path de galería, boot recover) y el lienzo/previews/thumbs consumen `canvasUrl ?? assetUrl` con re-hidrata por assetId igual que el master. **Imprenta intacta**: producción lee `DesignAsset.storageUrl` (master) y el fallback ADR-081 del finalize (snapshots de stages — hoy Polaroid) conmuta los slots al MASTER durante el raster con `runWithPrintMasters` (`lib/print-master-mode.ts`: preload → flag → espera determinista por `src` del nodo → snapshot → flag off). Los thumbs de galería NO se reusaron como derivado (llevan watermark LUCAMS horneado — se genera derivado limpio propio). Las purgas (retención ADR-152, GDPR, reorder) cubren el `.canvas.webp` con la misma guardia de bytes compartidos; assets legacy sin derivado caen al master (sin backfill).
-- **ADR-170 — Detalle 3D del calendario multi-set con pager de DOS NIVELES (2026-10-23, owner):** `CalendarCardFocus` recibía las tarjetas de TODOS los sets aplanadas (12 × N) y las recorría en una secuencia lineal — con 3 sets el cliente paginaba 36 tarjetas sin saber en qué set iba. Nuevo contrato (misma decisión del pager por set de lettersets, ADR-168): el nivel tarjeta (Anterior/Siguiente + teclado ← →) recorre **solo las 12 tarjetas del set actual** con wrap-around DENTRO del set (nunca cruza al siguiente), el indicador del header (aria-live) anuncia **«{mes} — Set N de M»** componiendo los labels de mes de `slotLabels` con el texto CMS existente `unidades.unidadDe` (cero claves nuevas), y una fila de chips «Set N de M» (nav con `aria-pressed`, estilo de las pills del visor) salta directo a la tarjeta 1 de cada set. `cardsPerSet` sale de `canvasData.unitSlots` (misma fuente que el montaje de la Vista Previa, no un 12 hardcodeado) y `cardLabels` se repite por unidad con la regla de `resolvedSlotLabels`. Con 1 set el visor queda exactamente como antes («Tarjeta N de 12», wrap lineal).
-- **ADR-172 — TODAS las escenas de la galería son 3D (repisa y regalo incluidas):** los flat-lays 2D de repisa/regalo (PNG 1080×1080 servido como `<img>` plano — al acercar se pixelaba) quedaron ELIMINADOS (`lib/compose-shelf-flatlay.ts` y `lib/compose-gift-flatlay.ts` retirados del árbol) y reemplazados por escenas react-three-fiber (`shelf-3d-view.tsx` / `gift-3d-view.tsx`) con el mismo estándar que nevera/libro/polaroid: OrbitControls con límites, texturas del diseño del cliente, sombra horneada, tamaño real siempre (la fila/mueble crece y la cámara reencuadra — las piezas nunca se encogen) y pose «recostada» con contacto físico real (esquina inferior en la superficie, superior contra el plano de apoyo; abanico leve de yaw) cuya matemática pura comparte `lib/leaning-scene-layout.ts`. `scene-gallery.tsx` conserva los ids `shelf`/`gift`, sus textos CMS y su supervivencia al filtro SIN IMÁN; `is3DScene` queda como punto único de verdad (pill de gestos, rótulo de cantidad). QA visual de las dos escenas nuevas pendiente vía `app/internal/3d-preview` + specs homolog-3d (ver STATE § Pendientes).
-- **ADR-173 — Grosor del borde configurable por producto (factor multiplicador):** `personalizationSchema.borderWidth {enabled, min, max, default}` (kinds foto; sin migración Prisma — el JSON ya existía) define el RANGO que el cliente ve como slider en la toolbar de estilo (desktop y sheet móvil; textos `estudio.texto.estilo-grosor-*`); la elección viaja en `canvasData.borderWidthFactor` como FACTOR sobre la base histórica de cada superficie (1 = el grosor de siempre; cotas del schema 0.25–3). Producción es WYSIWYG: los mismos helpers parametrizados de `frame-palette.ts` (`frameBleedMargin`, canaleta de tiras — que escala proporcional) consumen el factor en el tier canvas. El admin lo edita en el form de producto (SectionCard «Grosor del borde», tab Personalización): el rango solo se guarda con el checkbox activo.
-- **ADR-176 — Auto-fill «Llenar slots con mis fotos» prioriza fotos no usadas:** el orden de asignación ya no es el orden plano de «Mis fotos» (repetía la primera foto del pack anterior en el siguiente diseño): `orderAssetsForAutoFill` (`lib/store.ts`, puro) ordena por grupos — (a) nunca usadas (ni en este diseño ni en otras líneas del carrito), (b) usadas en OTRAS líneas del carrito, (c) usadas en este diseño (las menos repetidas primero); dentro de (a)/(b) manda el orden de «Mis fotos». El set (b) lo alimenta el server vía `listCartDesignAssetIdsInUse` (`lib/cart-design-assets.server.ts`) que cosecha los `assetId` de los diseños ya en el carrito y llega al store desde `page.tsx`.
-- **ADR-177 — `allowText` gobierna toda la superficie de texto del producto (2026-10-27, owner):** la pestaña Texto de «Ajustar foto» y el hint «toca el texto para editarlo» se habilitaban solo por las capas editables de la plantilla, SIN mirar `allowText` del producto — la plantilla cuadrada traía una capa `free_text` editable y exponía edición de texto en un producto que no lo admite. Contrato: (1) `studio-canvas-grid.tsx` filtra `textLayers` a `[]` cuando `allowText` es false (la pestaña Texto queda deshabilitada aunque la plantilla tenga capas); (2) `studio-editor.tsx` gatea `hasEditableTextLayers` con `allowText` (apaga el hint); (3) `StudioSlotEditModal` blinda su tab inicial (`hasPhoto || !hasText → "photo"`, nunca arranca en una pestaña deshabilitada); (4) la plantilla cuadrada pierde la capa de texto en el dato (seed `includeText: false` + one-shot `cuadrados-sin-texto-20261027.mjs` en LOCAL/STG/PRD, con la geometría de la foto restaurada al alto completo) y el SVG de preview se reescribe sin texto. Los diseños existentes conservan la capa en su snapshot, inerte por los gates (no imprime: el render server solo imprime `override.text` de capas editables y el cliente ya no puede escribirla).
-- **ADR-178 — Pulido transversal de la capa cliente (owner 2026-10-29):** (1) **TODAS las X de cerrar son de marca**: `components/ui/close-x-button.tsx` (`CloseXButton`/`CLOSE_X_CLASS` — fondo `brand-purple`, X blanca, redonda) es el punto único; lo heredan `DialogContent`/`SheetContent` y las X propias del Estudio (visor 3D, galería de escenas, lightbox PDP, modales de cara/reemplazo/calidad/limpiar — estos tres últimos además GANAN una X visible, antes solo cerraban por backdrop); los headers/footers sticky del sheet «Personalizar» y del picker suben a `z-20` (el botón «Ver» de prediseñados, `z-10`, se pintaba sobre ellos al scrollear listas largas — separadores). (2) **Pills del lienzo menos invasivas**: «Ideas» (asistente IA, sigue disponible) pasa de pill sólido rosado a outline discreto (el primario visual es «Ver en tu espacio»); «Borrar el diseño» queda solo icono de basura (44px táctil + tooltip + confirmación intacta). (3) **«Mis fotos» es una biblioteca USABLE**: tap/clic en una foto la asigna al lienzo seleccionado si está libre o al próximo libre (con aviso de calidad primero si aplica, «Usar de todos modos» asigna) y cada miniatura tiene borrado individual con confirmación (`deleteDesignAssetAction`: ownership estricto, solo assets de diseños DRAFT o sin diseño, bytes compartidos protegidos, fallo de Storage no bloquea — el orphan sweep recoge); «Llenar slots con mis fotos» queda deshabilitado mientras haya subidas en vuelo. (4) **Prediseñados de 2 caras**: el «Ver» (PredesignedViewDialog) muestra AMBAS caras con toggle Cara A/B (antes solo la A). (5) **Calendario**: la grilla de meses es colapsable por set con ayuda visual (chevron de marca + resumen «N de 12 meses con foto» + mapa de chips por mes al colapsar — tocar un chip expande y salta al mes; claves `estudio.unidades.cal-meses-*`); el hint del banner ya no arranca con «·» huérfano.
-- **ADR-179 — Avisos de calidad recalibrados (owner 2026-10-29 — «a veces no son acertivos»):** la barra «soft» de resolución baja de 300 a **240 DPI efectivos** (80% del requerido; a la distancia de lectura del producto se ve nítido — avisar entre 240–300 DPI era ruido sin acción) y la «strong» a < 200 DPI (0.67); error bloqueante intacto (< 150 DPI). Blur: stdev Laplaciano soft < 10 y strong < 4 (antes 15/5 — falsos positivos con retratos de fondo desenfocado y fotos de celular apenas suaves). Mismo criterio en las DOS vías de aviso: server (`lib/photo-validation.ts`, al subir) y cliente (`checkPhotoQuality` de `lib/smart-crop.ts`, chip del slot — su banda warn queda 50–80% del requerido). Copy del aviso soft de resolución reescrito: dice «suficiente pero cerca del límite» y qué hacer (la original, no la de WhatsApp).
-- **ADR-180 — 3D: reverso negro del imán según variante + calendario sin imán con escenas (owner 2026-10-29):** las vistas 3D (`FridgeView3D`, `RoomBoardView3D`, `ShelfView3D`, `GiftView3D`, `CalendarCardFocus` y los tableros memo de letras/nombre) reciben `magnet` y con variante CON IMÁN pintan el reverso de cada pieza del negro de la goma ferrita (`MAGNET_BACK_COLOR`); sin imán, el papel de siempre (la escena Polaroid no aplica: las tarjetas van acostadas boca arriba, el reverso no se ve; los separadores ya lo tenían por diseño). Y el calendario SIN IMÁN ya no queda sin escenas: `scenesForKind("calendar")` suma repisa/regalo (tarjetas APOYADAS, sin adherencia — el gate `MAGNET_SCENES` las deja pasar), así que «Míralo en tu espacio» siempre tiene destino.
-- **ADR-188 — Sets de letras: producción POR FICHA server-side + admin agrupado por set/unidad (owner 2026-11-03):** Abecedario/Vocales/Nombre subían UNA lámina PNG por set con todas las fichas dibujadas juntas (~180 DPI por ficha, fondo crema de grilla) — imprenta recibía «1 lámina para recortar en 27». Nuevo contrato: el **RenderJob** renderiza UN PNG por ficha a 300 DPI reales y a la medida de corte de la variante (`letter-tile-render.ts` — mismo `drawLetterTile` puro del editor/3D/preview-admin, extraído a `letter-tile-draw.ts`), con progreso real por ficha (`ficha-NN.png`) y la lámina del cliente como fallback (NEEDS_KONVA la conserva, patrón ADR-131). El plan del worker sale de `metadata` (letters + units por set: colores/estilo/borde) y los dibujos del tema se descargan bajo demanda con caché por job; un set/ficha sin imagen degrada a «Solo letra» igual que el editor. `production-spec.ts` distingue por conteo: `fichas × sets` archivos → `fichas-sueltas` (un archivo = una ficha final) vs `sets` archivos → `lamina-fichas` (legacy, pedidos históricos intactos). Admin y ZIP presentan los productos agrupados (lettersets, calendario multi-set, tiras ×N) **organizados por set/unidad con rótulos reales** (letra, mes, segmento) vía el helper puro `productionPieceGroups` — adiós a la grilla plana «pieza-01…N»; el ZIP nombra `01-ficha-a.png` con subcarpeta `set-N/` en multi-set. **AJUSTADO (mismo día, feedback owner sobre el primer pedido multi-set):** (a) las piezas se exhiben en **grilla compacta + lightbox** (`production-pieces-gallery.tsx` — miniaturas densas 4–6 cols, clic → tamaño completo con ‹ ›/← →, abrir/descargar, marca ⚠️ de moderación pendiente): 54 fichas ya no invaden el vertical; (b) el encolado del job de mejora ya no traga fallos en silencio (catch → ErrorLog vía `captureServerError` — un flake transitorio dejó un abecedario con láminas y sin job, caso STG 2026-11-03) y el detalle del pedido ofrece **«Regenerar archivos por ficha»** cuando un letterset quedó en formato lámina (`regenerateLettersetProductionAction` — crea/resetea el RenderJob con el conteo real y lo patea; FULFILLMENT+ con auditoría).
-- **ADR-189 — PNG de producción RECTANGULARES a sangre (owner 2026-11-03):** en tarjetas rectangulares el redondeo de esquinas ya NO se hornea en el PNG de imprenta (antes: esquinas transparentes vía `roundRectPath`/máscara dest-in) — el arte llega completo hasta las 4 esquinas y el redondeo lo hace el corte físico (troquel, ya declarado en la ficha «Esquinas: Redondeadas»); con esquinas horneadas, un desvío de 1 mm del troquel dejaba filos blancos. Aplica al tier canvas (`production-render-canvas.ts`: frame-card llena el stage, clip de ventana a escuadra cuando coincide con el contorno de la tarjeta), a las tiras de separadores (`composeFaceStrips` sin máscara de esquinas) y a las fichas de letras (lienzo blanco a sangre bajo `drawLetterTile`). SE CONSERVAN: la silueta transparente de las formas troqueladas especiales (corazón/círculo — ahí el contorno ES el corte) y el `cornerRadius` de ventanas de foto INSERTAS (elemento de diseño, ej. la ventana de la Polaroid). El preview del cliente sigue mostrando las esquinas redondeadas (WYSIWYG del producto físico). Limitación conocida: la ruta de fallback NEEDS_KONVA (snapshot del navegador — filtros, marco SVG) puede conservar el redondeo horneado del editor; la vía principal (render server, ADR-081) ya sale a sangre.
-- **ADR-190 — Cara B vacía de separadores = patrón de marca «Lucams» (owner 2026-11-03; SUPERSEDE ADR-128 para productos backOptional):** cuando el cliente no diseña la cara B de un separador de 2 caras (magnéticos 2×6/4×4.2 y alargados planos 4×12/4×15), la pieza sale con el **wordmark script «Lucams» tileado en diagonal sobre blanco** (referencia visual de la owner), ya no en blanco puro. UN SOLO dibujo en las tres superficies (WYSIWYG por construcción): el módulo puro `brand-back-pattern.ts` (`drawBrandBackFace`, métricas proporcionales al ancho de la cara, wordmark en Dancing Script gris-lila `#E9E6F0` a −24° en patrón ladrillo) lo usan la Vista Previa/«Ve Diseño» (`production-preview-render.ts`), el 3D (`brand-back-texture.ts` → `book-view-3d.tsx`, con blanco solo como respaldo del instante de carga) y producción (`default-back-face.ts` — sucesor de `blank-back-face.ts` — genera el PNG con las dimensiones/DPI exactas de la cara A pareja, vía @napi-rs/canvas + fuente TTF vendorizada). **Delimitación por cara (mismo día, feedback owner):** en la Vista Previa de los alargados planos (noFold, A|B pegadas sin filete) cada cara lleva su propio contorno redondeado sutil — con foto a sangre o patrón, la B ya no se pierde visualmente (los demás compositores ya delimitaban por celda/unidad). **Fix de la fuga (mismo día, artefacto real de STG):** la grilla del patrón siembra wordmarks con margen de cobertura más allá del lienzo de la cara — el montaje del preview compone AMBAS caras en UN canvas compartido y el texto se desbordaba sobre la cara A; el patrón ahora se pinta con clip al rect de la cara (producción y 3D nunca fugaron: dibujan en canvas propio por cara). La ficha de producción lo anota («Reversos con marca de agua», antes «reversos en blanco + paso de imprimir en blanco») y el tooltip del Estudio lo comunica al cliente. No retroactivo: pedidos históricos conservan su blanco.
+### ADR-007 — Escalamiento gradual de costos de infraestructura
 
-## CMS y contenido
+- **Estado:** `Vigente`
+- **Decisión:** Pagar Vercel Pro en PRD y operar tiers base en Supabase/Resend/Cloudflare bajo umbral, supliendo PITR con backups diarios cifrados en R2 (`ADR-059`).
+- **Motivo:** Costos fijos mínimos con alertas preventivas de cuota (`ADR-161`, [`ROADMAP.md`](ROADMAP.md)).
 
-- **ADR-033 — CMS interno sin vendor:** contenido editable por no-técnicos; endpoints públicos RAG-ready. (Modelo original de 2 tablas reemplazado por ADR-082.)
-- **ADR-082 — CMS v2:** `CmsPage → CmsSection → CmsField → CmsFieldVersion` con key histórica estable; `kind` distingue BLOCK (publicación explícita) de SETTING (publica al guardar); la API pública de lectura y el cache tag `cms` se conservan. Crece vía site map declarativo (`packages/db/scripts/cms-site-map.mjs`) + `make migrate-cms-v2`. El alcance de qué entra al CMS evolucionó al modelo de 3 capas en **ADR-187**.
-- **ADR-083 — Icono/gradiente de categoría es dato de catálogo** (`Category.icon/gradient`, editables en `/admin/categorias`), no contenido CMS.
-- **ADR-084 — Campos lista:** `CmsListItem` (edición tipada por mini-schema del site map) serializa a JSON como `body` del campo al guardar; una sola fuente de escritura.
-- **ADR-090 — Modo PREMADE (`?templateId=`) retirado del storefront** (funcionalidad falsa: 0 plantillas PREMADE, nadie consumía las URLs). `Design.templateId` se conserva para el recover por plantilla. Si el negocio quiere diseños pre-hechos, se construye como feature nuevo con diseño propio. Relacionado: `Product.premadeSurcharge` retirado (ADR-125).
-- **ADR-092 — Soporte:** la respuesta es humana por email (el cliente responde al mismo hilo) + email de cierre al resolver el ticket (`support-ticket-closed`, idempotente); la bandeja de tickets en `/mi-cuenta` está DIFERIDA (gran parte de los tickets son de invitados sin cuenta; el canal real es el email).
-- **ADR-097 — Soporte consolidado en `/admin/soporte`** (`/admin/mensajes` = redirect 308 que preserva `?status=`).
-- **ADR-122 — Tooltip de marca global:** primitivo radix reemplaza TODO `title=` nativo; paridad de advertencias de calidad en el Estudio.
-- **ADR-116 — `dark:` de Tailwind responde a la clase `.dark`** (`@custom-variant`), no a `prefers-color-scheme` del SO.
-- **ADR-138 — Marca unificada «Lucams Shop»:** constante única `SITE_NAME` en `apps/web/lib/site.ts`; nunca «Lucam's» ni «Lucams_shop» en textos visibles (el underscore solo en identificadores técnicos); legal-content sincronizado; logo administrable vía CMS (`site.logo`).
-- **ADR-187 — CMS v2 de 3 capas, snapshot único, UX honesta por superficie y fuente única de reglas legales/operativas:** SUPERSEDE la política «100 % de literales UI en CMS + ratchet `audit-content-coverage.mjs`» que infló el panel a >1.300 micro-claves y lecturas por clave. Nuevo contrato: (1) **Capa 1 — Parámetros maestros y ley estatutaria:** `CmsField` `SETTING` en `global` («Ajustes del sitio» en Configuración, reservado a **`SUPERADMIN`**; los 21 `MODULE_MANAGED_SETTING_KEYS` de envíos/fidelización/carritos se ocultan de la edición cruda y redirigen a sus módulos dueños `/admin/envios`, `/admin/fidelizacion` y `/admin/carritos/configuracion`) + `Product.warrantyMonths` (`/admin/productos`) + constantes normativas en `apps/web/lib/consumer-law.ts` (Ley 1480, Ley 2439/2024, Ley 1581), interpoladas en textos públicos vía `resolveCmsTokens()` (`apps/web/lib/cms-tokens.ts`: `{{garantia_base}}`, `{{garantia_respuesta_dias}}`, `{{retracto_dias}}`, `{{retracto_reembolso_dias}}`, `{{entrega_max_legal_dias}}`, `{{habeas_consulta_dias}}`, `{{habeas_reclamo_dias}}`, `{{cutoff_lucams}}`). (2) **Capa 2 — Contenido editorial, comercial, SEO y legal en `/admin/contenido`:** **8 tarjetas editoriales en `/admin/contenido` + `global` en Configuración = 9 contenedores, 29 secciones y 166 campos (`105 BLOCK + 61 SETTING`)** declarados en `packages/db/scripts/cms-site-map.mjs` (`inicio`, `navegacion`, `ayuda`, `contacto`, `legales`, `checkout`, `sistema`, `seo`, `global`), con vista previa lateral en vivo únicamente en páginas públicas 1:1 (`inicio`, `ayuda`, `contacto`, `sistema`), enlaces directos por documento/ruta en `legales` y `seo`, editor inline `<title>` + `meta description` + vista previa Google SERP en `seo.page.*`, y sin controles de falso page-builder en UI. (3) **Capa 3 — Micro-UI funcional tipada en código:** Estudio (`studio-texts.ts`), Auth (`auth-texts.ts`), Mi Cuenta (`account-texts.ts`), 404, labels/placeholders/`aria-label`/validaciones y vistas por token viven en TS/JSX sin round-trip a DB ni duplicación en el payload RSC; `email.welcome.*` se consolidó en `EmailTemplateOverride` (`newsletter-welcome`, editable en `/admin/email-templates`). (4) **Snapshot único y gate de paridad exacta:** `apps/web/lib/cms.ts` carga todos los `CmsField` activos + `publishedVersion` en **1 sola query Prisma** cacheada (`["cms-snapshot-v2"]`, `tags: ["cms"]`, TTL 1 h) con hidratación de `Date` y fallback fuera de `unstable_cache`; `apps/web/lib/cms-sitemap-parity.test.ts` (`make audit-content`) recorre el AST de `apps/web` y exige **0 diferencias bidireccionales** contra `SITE_MAP` (única excepción legacy read-only: `LUCAMS_SHIPPING_LOCALITIES`, ADR-120). Sincronización y poda transaccional idempotente: `packages/db/scripts/sync-and-prune-cms-v2.mjs`.
+### ADR-011 — Dominio inicial `.co` como primario
 
-## Checkout, cuenta y datos del cliente
+- **Estado:** `Superseded por ADR-076`
+- **Decisión:** Descartado `.co` como dominio canónico principal en favor de `lucamsshop.com`.
+- **Motivo:** Se vigila solo como activo defensivo de marca ([`integrations/github-and-ops.md`](integrations/github-and-ops.md)).
 
-- **ADR-030 — Auth con URLs separadas:** cliente `/login` vs admin `/admin/login` (flujos, guards y cookies independientes).
-- **ADR-031 — Guest-first browsing:** sin muro de registro; cupón de bienvenida como incentivo opt-in.
-- **ADR-050 / ADR-051 / ADR-052 — Área `/mi-cuenta` completa y direcciones unificadas:** mismo formato estructurado en cuenta y checkout (`Address.structured` JSONB; campos planos son display derivado); mapeo centralizado `buildAddressInput`; guardar-al-pagar y reuso bidireccional. La etiqueta `Address.name` **ya no se captura en UI** (era redundante con «Tipo de destino»): se deriva al guardar con `deriveAddressName` (`features/checkout/destination-types.ts`) — label plano del `destinationType` o fallback «Mi dirección en {ciudad}» para rural/legacy —; las direcciones históricas conservan su etiqueta libre y se muestran vía fallback.
-- **ADR-070 — Snapshot autocontenido del diseño en `OrderItem`:** al crear la orden se copian `designAssetUrl` + `metadata.designSnapshot` (URLs de producción); la orden no depende del diseño vivo después.
-- **ADR-077 — Modo de tienda por flag:** una sola base de código; `NEXT_PUBLIC_STORE_MODE` = `catalog` (sin pagos/envíos/IA en UI) | `full` (Wompi + Aveonline). **PRD opera en `full`** por decisión de Lucy (2026-09-03); los trámites DIAN quedan solo para facturación electrónica.
-- **ADR-078 — La frontera de etapa (`STORE_MODE`) se hace cumplir en el servidor:** `guardTransactionalAction()` en cada Server Action del checkout + `assertTransactionalAllowed()` como backstop. Esconder UI no es autorizar.
-- **ADR-110 — Garantías+Reclamos en UN módulo** (`/admin/garantias`; `/admin/reclamos` → 308): una tabla, una máquina de estados, email de resolución garantizado al cliente (incl. plantilla `warranty-rejected`); RESOLVED+REFUND recuerda que el dinero es manual.
-- **ADR-111 — Token firmado de reseña de un solo uso sin login** (`/resena/<token>`, HMAC stateless con `CSRF_SECRET`, exp 30 d, Turnstile, Review PENDING).
-- **ADR-117 — Reorder («Volver a pedir»):** el clon COPIA los bytes (fotos + renders) con ciclo de retención independiente; ítems purgados (>90 d) no re-ordenables → CTA a re-subir fotos.
-- **ADR-119 — «Ver mi pedido» bifurcado:** registrado → `/mi-cuenta/pedidos/<number>`; invitado Wompi → `/pedido/<token>` con token ROTADO al enviar; invitado COD → `/rastrear` sin rotar.
-- **ADR-127 — PARCIALMENTE SUPERSEDED por ADR-155 / `[ID-01]` (2026-11-04):** la mitad «el pedido pertenece al email de contacto digitado» quedó **SUPERSEDED** porque reasignar `Order.customerId` a otro `Customer` sin sesión autenticada permitía drenar Puntos Lucams ajenos y filtrar fotos/datos privados en `/mi-cuenta/pedidos` de terceros (`order-customer.ts` ahora deriva `Order.customerId` exclusivamente del `Customer` activo de la sesión; el correo digitado viaja en `Order.email` y un pedido invitado solo se reclama tras verificar email vía OTP/login). Se conservan vigentes el flujo regalo nativo (`isGift`, destinatario, mensaje, guía al destinatario, emails sin precios) y Referidos v2 (`Coupon.customerId`).
-- **ADR-144 — Sesiones y checkout:** checkbox «guardar dirección» honesto (detecta ya-guardada); placeholder de logo Transprensa con warning visible en admin; **sesión de cliente 30 días deslizante** (admin sigue 30 min de idle); cookie admin con `path=/admin`.
-- **ADR-146 — Datos colombianos estandarizados:** Localidad + CP real del catálogo DANE por ciudad, `PhoneInput` con indicativo, `colombia-validators` (NIT con DV) compartido.
-- **ADR-155 — La identidad del cliente la deriva la SESIÓN (checkout y carrito):** el checkout resuelve el `Customer` desde `getCurrentUser` (por `supabaseUserId`), nunca del contenido del carrito; un guard por email impide escribir en el perfil el documento tributario de un tercero (bug LCM-2026-0010). El carrito revalida **comprabilidad en lectura** (variante/producto/categoría activos), resuelve la variante de una línea personalizada SIEMPRE del canvas en servidor (anti-reprice) y aísla identidad (`CART_IDENTITY_MISMATCH`) con **auto-sanado**: las server actions del carrito rotan la cookie `cart_session` y reintentan una vez ante mismatch (`rotateCartSession` en `lib/cart-session.ts`, log `cart.identity_mismatch.healed`), con copy específico como red de seguridad si el retry también falla; «Editar» clona READY→DRAFT y reemplaza la línea en sitio; al login se adoptan los diseños anónimos de la sesión — **todos** los DRAFT con progreso real, no solo los referenciados por ítems del carrito (`adoptAnonDraftDesigns` en `features/cart/service.ts`; un borrador anónimo nunca agregado al carrito ya no queda huérfano al loguearse, y la adopción no corre si el carrito de la sesión pertenece a otra cuenta).
-- **ADR-165 — Variante por unidad en el preview paginado + línea de carrito generalista:** con >1 set/unidad, la línea del carrito ya no presenta los atributos del representante (set 0) como si aplicaran a todo: `letterSetBorderNote` resuelve sobre `metadata.units[*].withBorder` (todas iguales → «Con borde»/«Sin borde»; mixtas → «Borde: varía por set») y el peso descriptivo lo lleva `pieceSummary` (ya generalista). El detalle por unidad vive en el «Ver»: `DesignPreviewDialog` acepta `pageLabels?: (string | null)[]` (alineados por índice con `pages` — la página k = unidad k por contrato de `saveDesignPreviewPages`) y los muestra bajo el indicador «N / M»; los calcula el helper puro `designPreviewPageLabels` (`features/personalization/preview-page-labels.ts`: lettersets → «Set N · con/sin borde» desde `metadata.units[k]`; resto multi-unidad → sustantivo del Estudio «Tira N»/«Calendario N»/«Separador N»; si unidades y páginas no cuadran —diseños viejos— degrada a `null`, nunca rótulos desalineados). Aplicado en las 4 superficies del dialog (carrito, gracias, pedido de cuenta, pedido público). Además la línea y el badge «N …» usan sustantivo real por tipo: el helper puro `unitCountNounForLine` (`features/cart/line-preview.ts`: letterset→sets, calendario→calendarios, tira/tiras, separadores, packs; fallback unidades) alimenta `CartLineItem.unitNoun` (etiqueta de cantidad y badge; el CMS publicado sigue mandando cuando existe) — alineado también en checkout/gracias, `/mi-cuenta/pedidos` y `/pedido/[token]`.
-- **ADR-171 — Recuperación del carrito del customer tras re-login:** el logout borra la cookie `cart_session` (dispositivos compartidos — se conserva así), así que un re-login sin cookie hacía que el primer `addToCart` mintara un UUID nuevo y creara un SEGUNDO Cart para el mismo customer (el viejo quedaba huérfano hasta la purga de 60 días). Ahora las 3 vías de autenticación (login password, OTP de `confirmar-codigo` y el callback PKCE `/auth/callback`), cuando NO hay cookie `cart_session`, llaman `recoverCustomerCartSessionId` (`features/cart/service.ts`): devuelve el `sessionId` del carrito VIVO más reciente del customer con ítems (null si no hay nada recuperable → flujo normal minta sesión fresca) y el caller escribe la cookie. Ya no se crean carts duplicados huérfanos.
-- **ADR-181 — Detalle de línea sin hechos repetidos + plantilla visible (owner 2026-10-29):** la línea del carrito repetía cantidad y tamaño hasta 3 veces («Set 12 tarjetas · 7.5×10 cm» + «12 fotos · 7.5×10 cm · Con imán» + «📐 12 páginas · 7.5×10 cada página»). El helper puro `dedupeCartLineDetail` (`features/cart/line-preview.ts`) aplica «cada hecho se enuncia UNA vez»: las medidas «A×B» son hechos COMPUESTOS (no dos números sueltos — «6 fotos» y «6×6 cm» no se confunden) y cada token sobrevive solo si aporta un número/medida no enunciado por un contenedor superior (variantName → breakdown → pieceSummary); un pieceSummary sin nada nuevo no se renderiza. Aplicado en `/carrito` y en el resumen de la cotización (`quote-form`). Además `CartLineItem.templateName` (join `design.template.name`) muestra la plantilla elegida («Plantilla: Polaroid Clásica» — antes dos líneas de plantillas distintas eran indistinguibles; clave CMS `cart.plantilla-label`).
-- **ADR-182 — Enter = siguiente campo (móvil sin TAB, owner 2026-10-29):** `lib/enter-next-field.ts` (`focusNextFieldOnEnter` + `tagEnterKeyHints`): Enter sobre un input de texto mueve el foco al siguiente control editable visible del contenedor (salta deshabilitados; en el último cierra el teclado con blur) y los inputs se rotulan `enterkeyhint="next"`. Respeta los Enter con otro sentido (textarea = salto de línea; campos que ya hacen `preventDefault`, p.ej. el editor de hashtags). Cableado en el checkout de datos, el form de cotización y los «datos de publicación» de la Polaroid Instagram.
-- **ADR-193 — Grafo de Identidad Canónica (`Contact` separado de `Customer`) y CRM Operacional Mínimo Nativo (implementado en Fases 6–12):** `Customer` (`supabaseUserId @unique` NOT NULL) representa exclusivamente una **credencial autenticada de autoservicio**, lo que antes fragmentaba en 7 silos a compradores invitados (`Order.customerId = null`), cotizaciones (`Quote`), tickets públicos (`SupportTicket`), carritos abandonados (`AbandonedCart`) y suscriptores (`Consent`). Se adopta e implementa el **CRM Operacional Mínimo nativo en Postgres de Lucams** (descartando comprar un CRM/ERP externo por doble SSoT y acoplamiento íntimo con el Estudio Konva/3D, buckets privados, Wompi, Aveonline y Puntos Lucams) bajo el siguiente contrato innegociable:
-  1. **Separación `Contact` vs `Customer` (migración _expand-backfill-switch_ sin downtime):** `Contact` modela a toda persona humana con relación comercial o posventa (invitada o registrada), mientras `Customer` conserva credenciales, puntos, referidos y `/mi-cuenta` enlazado 1:1 opcional (`Customer.contactId String? @unique`, `onDelete: SetNull`). Las entidades `Order`, `SupportTicket`, `Quote`, `AbandonedCart`, `Consent`, `WarrantyClaim` y `RetractRequest` enlazan `contactId String?` anulable (`onDelete: SetNull`, indexado). `Organization` se mantiene ligera y opcional (`Contact.organizationId?`) para clientes corporativos/eventos B2B (`/empresas-y-eventos` → `Opportunity` en `/admin/oportunidades`), y **jamás se convierte un pedido B2C ni un carrito abandonado en `Opportunity`**.
-  2. **Identificadores y unicidad parcial anti-`P2002` (`ContactIdentity`):** cada identificador registra `type` (`SUPABASE_USER` | `EMAIL` | `PHONE` | `WHATSAPP`), `normalizedValue` (`lower(trim(email))` o E.164 estricto `+573XXXXXXXXX` vía `normalizePhoneIdentity`) y `verificationStatus` (`VERIFIED` | `UNVERIFIED_OBSERVED` | `REVOKED`). Solo los anclajes de titular único (`SUPABASE_USER` y `EMAIL` no revocados, más `Contact.primaryEmail` activo con `deletedAt IS NULL`) llevan índice único parcial SQL; **`PHONE` y `WHATSAPP` se indexan pero NUNCA son `@unique` globales** porque en Colombia los móviles familiares se comparten y los prepago se reciclan (forzar unicidad causaría `P2002` en checkout o mezcla indebida de personas).
-  3. **Matriz estricta de 4 niveles, aislamiento de sesiones staff/terceros y aislamiento de regalos:** **(Nivel 1 — Determinista)** sesión autenticada `supabaseUserId` → `Customer.contactId`, `EMAIL` `VERIFIED` (OTP, OAuth verificado o link HMAC) y regla absoluta en checkout autenticado (`Order.customerId = sessionCustomer.id` y `Order.contactId = sessionCustomer.contactId` aunque `Order.email` sea otro correo de notificación). En **formularios públicos** (`/empresas-y-eventos`, `/contacto`, cotizaciones y captura de carritos), `getStorefrontCustomerForForm` + `canBindSessionCustomerTx` impiden vincular la sesión si el usuario autenticado es un `AdminUser` activo o si el email enviado difiere del de la sesión (evitando contaminar leads de clientes con cuentas de staff), y los listados/métricas CRM (`/admin/clientes`, `/admin/marketing/segmentos`, `/admin/metricas`) excluyen por defecto cuentas internas `AdminUser` (con filtro explícito «Ver cuentas internas» en `/admin/clientes`); **(Nivel 2 — Asociación contextual sin privilegios)** un invitado no autenticado que digita `email = X` (`UNVERIFIED_OBSERVED`) enlaza `contactId` solo para lectura interna del backoffice (`Contacto 360`), **jamás** asigna `Order.customerId`, **jamás** toca Puntos Lucams y **jamás** expone historial previo al visitante anónimo; **(Nivel 3 — Señal probable → `IdentityMergeCandidate`)** teléfono comprador E.164 compartido entre emails distintos (`SAME_BUYER_PHONE_E164`), mismo documento tributario DIAN (`SAME_BILLING_DOCUMENT`), comprador autenticado usando otro `Order.email` (`AUTH_BUYER_ALT_ORDER_EMAIL`) o discrepancias históricas pre-`[ID-01]` (`HISTORICAL_ID01_EMAIL_MISMATCH`) se encolan en par canónico ordenado `(primaryContactId, secondaryContactId)` con `status: PENDING` — **cero auto-merge**; **(Nivel 4 — Fusión humana)** solo un operador autorizado con `requireRecentMfa` (`<= 10 min`) y snapshot auditable en `AdminActionLog` aprueba o rechaza en `/admin/clientes/duplicados` (`REJECTED` actúa como _do-not-suggest_ permanente). **Prohibido** hacer matching por nombre, dirección física o similitud difusa (`pg_trgm`), y **aislamiento total de destinatario de regalo**: cuando `Order.isGift = true`, `recipientName`, `recipientPhone` y `shippingAddress` pertenecen al homenajeado y jamás crean `Contact`, `ContactIdentity` ni candidatos de fusión.
-  4. **Capa operativa transversal, segmentos Ley 1581, copiloto ARM sin PII e inteligencia conductual visual:** timeline manual/sistémico `ContactActivity` + compromisos `Task` transversales (contacto, pedido, ticket, garantía, retracto, oportunidad), bandeja priorizada por rol `/admin/hoy` con relojes SLA hábiles colombianos (`lib/colombian-sla.ts`), `Opportunity` con snapshot del cliente solicitante (`contactNameSnapshot`/`contactEmailSnapshot`/`contactPhoneSnapshot`), correo de confirmación al cliente + alerta a admin y botón WhatsApp directo al cliente, soporte endurecido con asignación, bloqueo optimista y copiloto humano-en-el-bucle cero-PII (`features/ai/support-copilot.ts`, eliminando por completo la ruta `/admin/bot` → `404`), segmentos comerciales `/admin/marketing/segmentos` filtrados estrictamente en SQL por opt-in vigente `NEWSLETTER` (Ley 1581) con step-up MFA en exportación CSV, atribución UTM first-party sin PII en `Order` (`lucams_utm` condicionada a consentimiento de analítica) e inteligencia conductual CRM + matriz RFM + LTV de margen neto + gráficos SVG cero-dependencias en `/admin/metricas`, `/admin/finanzas` y `/admin/dashboard`.
-  5. **Seguridad explícita y Habeas Data (Ley 1581):** toda tabla nueva (`FunnelEventDaily`, `Organization`, `Contact`, `ContactIdentity`, `IdentityMergeCandidate`, `ContactActivity`, `Task`, `Opportunity`) lleva en su migración `ENABLE ROW LEVEL SECURITY` + `REVOKE ALL` (`anon`, `authenticated`) + `REVOKE SELECT, INSERT, UPDATE, DELETE` (`service_role`) + verificación inline SQL y cobertura en `rls-matrix.integration.test.ts`; la supresión de cuenta o solicitud Ley 1581 anonimiza `Contact`, purga/revoca `ContactIdentity`, elimina `IdentityMergeCandidate` pendientes y conserva únicamente el rastro contable anonimizado de `Order`.
+### ADR-015 — Sistema de estilos con Tailwind CSS v4 y shadcn/ui
 
-- **ADR-194 — Toda fecha visible se renderiza en hora Colombia fija (`America/Bogota`) vía `lib/datetime.ts`:** las páginas que creaban `Intl.DateTimeFormat("es-CO", …)` sin `timeZone` renderizaban en la TZ del servidor (UTC en Vercel) y corrían 5 h las fechas (caso real: pedido LCM-2026-0004, 3-nov 8:22 p.m. COT mostrado como 4-nov 01:22 a.m.). Se adopta una familia única de formatters compartidos (`formatDateCO`, `formatDateTimeCO`, `formatDateTimeLongCO`, `formatDateTimeNoYearCO`, `formatDateLongCO`, `formatMonthYearCO`, `formatDayMonthCO`, `formatTimeCO`, `formatIsoDateCO`) con la zona fija a propósito — el negocio, el soporte y los plazos legales (retracto/PQR) son colombianos y admin/cliente deben ver la MISMA hora — y se gatea con `lib/datetime-convention.test.ts` (prohibido formatear fechas ad hoc en `app/`/`components/`).
-- **ADR-195 — Staff=cliente se gobierna, no se prohíbe (`Contact.isStaff` + `selfDealing` en auditoría):** un `AdminUser` activo puede comprar como cliente con el mismo correo (dogfooding legítimo — la compra real LCM-2026-0004 destapó ADR-194) sin contaminar la operación: (a) `Contact.isStaff` (default false) lo marca el resolution-service en flujos vivos y `provisionStaffAdmin` en altas, se hereda en fusiones y excluye al equipo en SQL duro de los segmentos comerciales (las compras internas no son demanda real); (b) `recordAdminAction` marca `selfDealing: true` (badge «auto-gestión staff» en `/admin/auditoria` + warn forense) cuando el actor gestiona un registro de su propio correo en acciones sensibles (reembolsos de retracto/garantía, conciliación COD, fusión de contactos) — fail-open y sin bloquear: con equipo pequeño la auto-gestión es a veces inevitable, pero jamás invisible; (c) desmarcar staff (ex-empleado) es acción manual del SUPERADMIN. Se rechaza bloquear la compra del staff por el valor del dogfooding en PRD.
+- **Estado:** `Vigente`
+- **Decisión:** Usar Tailwind CSS v4 (`@theme inline` en `apps/web/app/globals.css`, sin `tailwind.config.ts`), `shadcn/ui` (`new-york`) y `sonner`.
+- **Motivo:** Tokens CSS nativos de marca y modo oscuro controlado por clase ([`BRANDING.md`](BRANDING.md)).
 
-## Fidelización y marketing
+### ADR-024 — Adopción de convenciones nativas de Next.js 16
 
-- **ADR-006 — WhatsApp solo `wa.me`** con mensaje pre-armado contextual; sin Twilio ni API (mandato).
-- **ADR-069 — Cupones fluidos:** vigencia anclada a hora Colombia (COT fijo) en la capa de ingesta; validación completa de reglas + aplicación atómica + `CouponUsage`/`usedCount` idempotente; carrera `maxUsesPerCustomer` cerrada con trigger + advisory lock (P2002 → «cupón ya usado»).
-- **ADR-098 — Wishlist aceptada como feature de cliente** (`/mi-cuenta/favoritos`, cubierta por la supresión de cuenta); la palanca de marketing sobre favoritos queda DIFERIDA: sería una finalidad nueva que exige evaluación de cumplimiento propia.
-- **ADR-145 — Fidelización administrable:** «Invita y gana» configurable en `/admin/fidelizacion` (los cupones ya emitidos conservan sus términos) y **Puntos Lucams**: 1 pt/$1.000, 100 pts = $1.000, orden cupón→puntos, reserva atómica en `createOrderFromCart`, restauración en CANCELLED/REFUNDED, UI en mi-cuenta.
-- **ADR-175 — Conversión de invitados con incentivo de puntos + retrocrédito tras verificar email:** el invitado con programa activo VE lo que ganaría: `getGuestLoyaltyIncentive` (`features/checkout/service.ts`; null en modo catálogo, con sesión o si ganaría 0 pts) alimenta un bloque en el order-summary de datos y pago (puntos del carrito + equivalencia en $ + microcopy de referidos + CTA a `/registro`; textos `checkout.guest-loyalty.*`) y un banner en `/checkout/gracias` (`GuestPointsBanner` invitado / `PointsEarnedNote` logueado; `checkout.gracias.guest-points-*`/`points-earned`). El cumplido es `awardRetroactivePointsForNewCustomer` (`features/loyalty/service.ts`): acredita las órdenes PAID+ de los últimos **30 días** con el MISMO email (case-insensitive; excluye las ya vinculadas a OTRO customer y las que ya tienen su EARN — doble candado con el índice único EARN+orden: un P2002 se salta en silencio). Se cablea SOLO tras identidad verificada (OTP exitoso o login password — NUNCA en el signup sin verificar email, que sería regalar puntos por email ajeno).
-- **ADR-153 — Recuperación de carritos abandonados configurable desde `/admin/carritos`:** settings vía `CmsField` kind SETTING (convención de loyalty/shipping settings, `features/cart/recovery-settings.ts`): `CART_RECOVERY_ENABLED` (kill-switch), `CART_RECOVERY_MODE` (`automatic`|`manual`), `CART_RECOVERY_IDLE_HOURS` (4), `CART_RECOVERY_MAX_REMINDERS` (1), `CART_RECOVERY_INTERVAL_HOURS` (24); los defaults reproducen el comportamiento histórico, así que desplegar sin tocar nada no cambia la conducta. El cron `lucams-cart-recovery` conserva su schedule pg_cron (sin crons nuevos) y lee la config por corrida: disabled/manual → responde ok con `skippedReason`; automático aplica los parámetros. El módulo admin trae bandeja (con auto-fallback a vista histórica cuando `pendingCount === 0`, filtros estado/email, métricas de tasa y valor recuperado), **diagnóstico end-to-end «¿Qué sucedió realmente?»** en `/admin/carritos/[id]` respaldado por snapshots en `AbandonedCart` (`itemsSnapshot`, `subtotalSnapshot`, `checkoutStep`, `closedAt`, `closedReason`: `CONVERTED_COD`, `CONVERTED_WOMPI`, `CONVERTED_QUOTE`, `CART_CLEARED`, `EXPIRED` — preservando los productos y miniaturas del Estudio incluso después de vaciarse el `Cart` vivo y cruzando rechazos `WompiPaymentTransaction`, cotizaciones y pedidos pagados — migración `20261105010000_opportunity_snapshots_and_cart_diagnostics`), preview real del email en iframe (token ficticio en preview — el real solo al enviar, F-11 intacto), envío manual individual y bulk (`sendReminderToCart` respeta kill-switch e intervalHours, no maxReminders, e hidrata desde `itemsSnapshot` si el `Cart` vivo ya no tiene filas) y `configuracion/` (SUPERADMIN). RBAC: bandeja/envío MANAGER_UP, configuración SUPERADMIN; audit log `cart_recovery.settings.save` / `cart_recovery.reminder.send` / `cart_recovery.reminder.bulk_send`. Migración `20261013140000_abandoned_cart_reminder_count` (`AbandonedCart.reminderCount` + backfill) y fix de idempotency-key de Resend por intento (`cart-recovery-<id>-<n>`).
+- **Estado:** `Vigente`
+- **Decisión:** Operar `apps/web/proxy.ts` (en vez de `middleware.ts`), `await` en `params`/`searchParams`/`cookies()`/`headers()`, `updateTag(tag)` en Server Actions y `revalidateTag(tag, "max")` en Route Handlers.
+- **Motivo:** Cumplir el contrato nativo de Next.js 16 sin shims heredados ([`CONVENTIONS.md`](CONVENTIONS.md)).
 
-## Seguridad
+### ADR-029 — Ubicación de `vercel.json` en `apps/web/`
 
-- **ADR-016 — Rate limit en Postgres** (`rate_limit_check`, fail-open ante anomalía logueada), sin proveedor externo. ⚠️ La mitad «cache en Postgres» quedó SUPERSEDED: el caching real es `unstable_cache` de Next (tags `cms`/`catalog`/`redirects`).
-- **ADR-017 — SUPERSEDED:** pgmq nunca se adoptó; los background jobs son **pg_cron + pg_net → HTTP `GET /api/cron/*`** con `x-cron-secret` desde Supabase Vault. (Ancla conservada porque el número se cita desde código/comentarios.)
-- **ADR-045 — Capa de resiliencia cableada en proveedores externos:** `fetchWithTimeout` (default 5 s), `withRetry` (3 intentos, backoff+jitter, NUNCA 4xx salvo 408/429), `CircuitBreaker` por instancia (threshold 5, reset 30 s).
-- **ADR-046 — Open-redirect cerrado:** `safeRedirectTarget` solo interno (un único `/` inicial, mismo origen vía `new URL`); redirects del CMS sanitizados.
-- **ADR-047 / ADR-048 — Loop de errores del cliente:** `ErrorReport` deduplicado por fingerprint SHA-1 server-side desde `/api/log-error` (best-effort, nunca lanza); arreglos de la revisión adversarial aplicados con la regla «toda afirmación con evidencia `archivo:línea`».
-- **ADR-085 — Postura post-auditoría OWASP (vigente):** MFA TOTP enforceado por código para TODOS los roles admin; tokens bearer hasheados en reposo (SHA-256) con rotación en reuso; cookie de checkout cifrada AES-256-GCM; backups cifrados gpg; HIBP k-anonymity en registro/cambio de password.
-- **ADR-087 — Step-up MFA (aal2 ≤10 min)** en acciones admin destructivas (reembolsos, gestión de admins, conciliación COD, autogestión MFA), medido por el claim `amr` del JWT; la UI abre modal TOTP que verifica server-side.
-- **ADR-088 — Telemetría Web Vitals estrictamente opt-in** (cookie de consentimiento `analytics === true`; sin respuesta no se envía nada — coherente con Ley 1581).
-- **ADR-094 — ver § Pagos.**
-- **ADR-105 — Ramas críticas y release protegidos (ruleset `protect-ramas-criticas`, `id: 26248226`):** tanto `develop` como `production` bloquean push directo, force-push y borrado sin excepciones (`bypass_actors: []`), exigen PR con rama al día (`strict: true`) y **5 required checks** consolidados (`Typecheck + Lint + Build` —incluye Prettier y `pnpm audit --prod`—, `Vitest tests (unit + integración con Postgres)`, `RLS behavior (rls-matrix contra Supabase local)`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`; en PRs solo-docs los 3 jobs pesados se saltan por `if:` de job y GitHub los evalúa como aprobados). Rollback = forward-fix + `vercel rollback` documentado y ensayado; `post-deploy-smoke.yml` (disparado por `deployment_status` de Vercel `Production` sobre `ref: production`) como red inmediata.
-- **ADR-162 — Sesión de storefront endurecida (fix «logout fantasma», 2026-10-22):** el bug «el login se pierde al recargar/navegar» tenía DOS mecanismos, ambos verificados con trazas en STG y repros e2e:
-  1. _*Prefetch destructivo hacia /admin/* (la causa principal, capturada con trazas en STG y certificada con e2e):_* una cuenta ADMIN que entra por el /login de la tienda conserva su marca `admin_last_activity` vieja/ausente; el header muestra el link «PANEL ADMIN» y Next.js prefetcha `/admin/dashboard` automáticamente; el proxy corría el idle-timeout admin SOBRE ESE PREFETCH y ejecutaba `signOut({ scope: "global" })` → la sesión entera (tienda incluida) moría server-side en segundos y ningún reload la recuperaba. **No se puede detectar el prefetch en el proxy:** Next 16 ELIMINA los headers Flight internos (`rsc`, `next-router-prefetch`, `next-router-state-tree`) antes de entregar la request al proxy (documentado en `next/dist/docs/.../proxy.md` § "RSC requests and rewrites"; verificado con captura de headers en el browser + traza en el proxy: salen con valor y llegan `null`). Por eso la garantía se puso en el ORIGEN: los enlaces storefront→panel (`site-header.tsx`, `shop-mega-menu.tsx`) llevan **`prefetch={false}`** y el prefetch ni se emite. Complemento de defensa en el proxy: los headers genéricos de prefetch que SÍ atraviesan (`purpose`/`sec-purpose: prefetch`) excluyen la request de renovar/revocar marcas (redirect de expiración sin tocar la sesión); el timeout completo corre solo en la navegación REAL al panel.
-  2. **Carrera del refresh token de un solo uso:** con el access token expirado, requests concurrentes (navegación + prefetches + polls `/api/*`) disparan refreshes simultáneos y la request perdedora recibe `SIGNED_OUT`, cuyo borrado de cookies `sb-*-auth-token` podía llegar al browser después de la response ganadora y borrar la sesión recién refrescada (limitación documentada por @supabase/ssr). Mitigaciones en `proxy.ts`: (a) el proxy ya no crea cliente de sesión para `/api/*` (los route handlers se autogestionan con `lib/supabase/server.ts` y SÍ pueden persistir cookies); (b) el `setAll` del proxy **ignora los borrados** de cookies `sb-*-auth-token` (los cierres legítimos — logout action, idle-timeouts en navegación real — borran por sus propias responses).
-     Complemento: el idle-timeout de cliente discrimina la marca `customer_last_activity` ausente de la forjada (`inspectActivityMark` en `lib/activity-mark.ts`): **ausente con JWT verificado ⇒ se re-sella** (antes fail-closed = logout espurio ante causas legítimas como evicción del browser); **forjada o >30 días ⇒ revoca** como siempre. Cobertura: `proxy.test.ts` (skip `/api`, filtro de borrado, re-sellado, prefetch no destructivo) y `customer-activity.test.ts` (inspect discriminado).
+- **Estado:** `Vigente`
+- **Decisión:** Mantener `apps/web/vercel.json` dentro del Root Directory configurado en Vercel y nunca en la raíz del monorepo.
+- **Motivo:** Garantiza aplicación real de `regions`, cabeceras y `maxDuration` ([`integrations/vercel.md`](integrations/vercel.md)).
 
-- **ADR-183 — El gate «MFA obligatorio» (B-1) vive en el PROXY, no solo en el layout (2026-10-29, bug owner):** un admin sin TOTP que hacía login caía en `/admin/seguridad?enroll=required` con la página EN BLANCO hasta refrescar a mano. Causa raíz (reproducida con trazas en LOCAL): la acción de login redirigía al home del rol y el gate era un `redirect()` de React en el layout del `(panel)` — en la navegación RSC resultante, el router recibía un payload de redirect para la URL ya destino y la re-pedía en bucle (~1500 requests RSC sin render). Contrato: (1) `adminLoginAction` redirige DIRECTO a `/admin/seguridad?enroll=required` cuando no hay factor TOTP verificado (sin la cadena intermedia); (2) el proxy hace el gate a nivel HTTP para TODA request `/admin/*` autenticada sin TOTP (documento y RSC por igual — el 307 lo sigue el router como navegación de documento), con `/admin/seguridad` exenta; (3) el gate del layout se conserva como defensa en profundidad. Tests: `proxy.test.ts` (3 casos nuevos del gate; el mock Supabase ganó `auth.mfa.listFactors`). **2026-10-30 (misma clase, visto en el setup e2e):** el redirect del reto aal2 (factor verificado + sesión aal1 → `/admin/login/mfa`) también sale DIRECTO de `adminLoginAction` (el candado del layout queda de backstop), y la regla «sin TOTP → seguridad» del action mira cualquier factor TOTP existente, no solo el verificado: un enroll a medias vía API (el del setup e2e) debe caer al reto, no al enrolamiento.
-- **ADR-184 — Pulido de lectura móvil y normalización visible (2026-10-30, owner):** (1) el intro editorial de categoría (descripción + caso de uso) copaba el primer viewport móvil y el producto «se perdía»: `components/category-intro.tsx` lo colapsa a 2 líneas con «Leer más/menos» SOLO en <sm (texto completo en DOM — el clamp es visual, el SEO lo lee igual), en `/productos?categoria=X` y en la subcategoría. (2) Bug de la Ubicación IG: la normalización visible del campo («bogota,colombia» → «Bogotá, Colombia») solo corría al salir del campo SI había un commit pendiente — quien escribía pausado (debounce ya disparado) veía su texto crudo para siempre. `use-debounced-commit` ahora normaliza el draft visible en TODA salida del campo, sin tocarlo mientras se escribe (test de regresión incluido). (3) Specs e2e del estudio al día: el oráculo de color de texto usa la paleta binaria (blanco/negro — «Rosa» ya no existe), el test de la tira abre el bottom-sheet de estilo antes de «Sin borde», y el test de color elige la plantilla explícitamente (el lienzo bloqueado de ADR-178 lo exige); el setup e2e se endureció en frío (networkidle + 30 s por intento de navegación).
-- **ADR-192 — Confirmaciones admin con diálogo de marca (2026-11-03, owner: «procede con todo» tras el barrido de maduración):** el panel usaba `window.confirm()`/`window.prompt()` nativos (stopgap documentado desde 2026-06: «100% nativo, accesible, satisface el caso») — bloquean el hilo, no llevan tono Lucams y no se pueden testear con Testing Library. Se unifica TODO en `useAdminConfirm` (`components/admin/use-admin-confirm.tsx`): Dialog Radix promise-based (`await confirm(msg, opts)`), con opción `requireTyped` para irreversibles (escribir ELIMINAR — el patrón destructivo de mi-cuenta/eliminar, antes `window.prompt` en purgas de productos y prediseñados). `ConfirmAction` y `ReauthForm` se reimplementaron sobre el hook conservando su API (submit interceptado → diálogo → `requestSubmit()` con bandera anti-loop), así los ~30 formularios que ya los usaban quedaron migrados sin tocarse; los 16 call sites directos (imágenes de producto/variante, mediateca, bloqueos COD, cotizaciones, pedidos/bloqueo de dirección, plantillas, galería de prediseñados, ocasiones, editores CMS) migraron al hook o a `ConfirmAction`. Test: `use-admin-confirm.test.tsx` (resolver true/false, requireTyped case-insensitive, ConfirmAction no envía al cancelar).
+### ADR-076 — Dominio canónico `lucamsshop.com` sobre Cloudflare
 
-## Datos, DB y jobs
+- **Estado:** `Vigente`
+- **Decisión:** Operar `lucamsshop.com` (registrado en `mi.com.co`) con DNS, Email Routing y Turnstile en Cloudflare, y correo saliente desde `mail.lucamsshop.com`.
+- **Motivo:** Aísla reputación SMTP y enruta `hola@lucamsshop.com` y `security@lucamsshop.com` ([`integrations/cloudflare.md`](integrations/cloudflare.md)).
 
-- **ADR-014 — SUPERSEDED por ADR-091/109:** no hay reservas de stock con TTL; la protección real es el UPDATE atómico al `PAID` + `needsReconciliation`. (Ancla conservada: el número se cita desde código.)
-- **ADR-026 — Feature flags:** tabla `FeatureFlag` en Postgres + helper con cache 60 s; sin vendor externo.
-- **ADR-059 / ADR-086 — Backups fuera de Supabase:** dump diario `pg_dump` gzip + gpg a Cloudflare R2 y mirror cifrado de los 5 buckets de Storage (`backup.yml` en GHA, retención `BACKUP_KEEP=30`, passphrase solo en GitHub Secrets).
-- **ADR-089 / ADR-131 — Pool Prisma serverless:** `connection_limit` fijado vía override de datasources (default **5**, `pool_timeout=20 s`; params explícitos en `DATABASE_URL` ganan) + retry transitorio de adquisición (P1001/P1017/P2024, match por código O mensaje). Redirects del proxy como lista completa cacheada.
-- **ADR-091 — Schema sin tablas muertas:** `SiteEvent`, `RecommendationLog` y `StockReservation` dropeados; `BlogPost` y `LoyaltyTxn` conservados como FUTURO_APROBADO.
-- **ADR-095 — Seeds seguros:** split canónico/demo (`seed-catalog-canonical.mjs` nunca pisa price/images/isActive/deletedAt; reseñas demo solo dev/STG), dry-run por defecto + `--apply`, **`env-guard` FAIL-CLOSED** en todo script que escribe (lint en CI), one-shots ejecutados en `packages/db/scripts/one-shot/`.
-- **ADR-096 — Heartbeat de backups:** `backup.yml` hace POST a `/api/cron/backup-heartbeat`; regla `backup_stale` (>36 h) con tile en `/admin/observability`; el DR drill exige dump fresco ≤36 h.
-- **ADR-130 — Retención de diseños:** purga de READY abandonados (90 d idle) en el cron de retención — cierra la fuga de renders 300-DPI que infló el Storage.
-- **ADR-149 — Higiene de Storage:** purga de huérfanos históricos (one-shot aplicado) + barrido recurrente en el cron `purge-anon-designs` + métricas de cuota con bytes de los 5 buckets.
+---
 
-## Observabilidad y rendimiento
+## 2. Pagos, inventario y dinero
 
-- **ADR-008 — Sin Sentry ni monitoreo de errores de pago** (mandato): captura propia en DB (`ErrorLog` servidor vía `instrumentation.onRequestError`, `ErrorReport` cliente), alertas por email con dedup, monitor de uptime = job pg_cron en STG que sondea PRD (ver OPERATIONS).
-- **ADR-062 — Gate de producción ejecutado:** auditoría de preparación (18 dimensiones) y plan de go-live cerrados; lo operativo vigente vive en `docs/OPERATIONS.md`.
-- **ADR-066 — SLOs cuantitativos con datos reales:** `evaluateSlo` (pura) clasifica cumplido/en riesgo/incumplido/sin datos suficientes (no se miente con muestras mínimas); panel en `/admin/observability`.
-- **ADR-067 — Smoke LIVE de pago:** E2E de dinero contra Wompi sandbox en el nightly CI (con guard de secrets) + gate Lighthouse móvil en CI.
-- **ADR-113 — Palancas de rendimiento:** fuentes del Estudio fuera del root layout (`preload:false` en `/estudio/*`), Turnstile perezoso, vitals p75 por ruta, caché `unstable_cache` tag `catalog` en categorías+rango de precios, gate móvil Lighthouse en CI.
-- **ADR-132 — LCP móvil:** fuentes subset woff2 latin + `fetchpriority=high` en la primera fila de cards (PDP/grid/carrusel).
-- **ADR-135 — RUM extendido:** métricas `LONGTASK` y `PAGEWEIGHT` por visita (consent-gated), atribución por elemento para CLS/LCP, `sessionId` desde cookie HttpOnly; `/admin/performance` con p75, filtros por dispositivo/navType y secciones por ruta y elemento. (2026-10-20: la atribución usa el build `next/dist/compiled/web-vitals-attribution` registrado una vez — `useReportWebVitals` nunca la entregó; LONGTASK solo se reporta en navegadores con soporte; ingesta con techo de valor por métrica.)
-- **ADR-154 — Auditoría responsive e2e en 6 perfiles de viewport:** proyectos Playwright `mobile-landscape` (844×390), `tablet` (768×1024), `tablet-landscape` (1024×768) y `desktop-large` (1920×1080) sumados a los 2 base, con `testMatch` solo `tests/e2e/audit-responsive.spec.ts` (CI inafectado: los workflows fijan specs explícitas). La spec audita la matriz cliente público / cliente autenticado / admin × 6 perfiles: overflow horizontal con el elemento culpable (critical, falla), tap targets <40px en perfiles táctiles (medium, solo reporta) y screenshots full-page; reporte consolidado en `tmp/audit-20261013/report.json` vía `global.teardown`. Comando: `pnpm test:audit-responsive` (con `E2E_ENV=stg E2E_AUTH=1` para las rutas autenticadas).
-- **ADR-161 — Higiene de tablas internas pg_cron/pg_net + alertas de capacidad + techo de retención no-productivo** (auditoría integral 2026-10-20): (1) los jobs SQL puros `lucams-internal-cron-history-purge` (14 d) y `lucams-internal-net-response-purge` (24 h) de la migración 043 purgan `cron.job_run_details` y `net._http_response`, que crecen sin límite y eran el 87% de la BD de PRD (213 MB de 245 MB; el negocio = 16 MB) — tras el vacuum one-shot PRD quedó en 48 MB; (2) `evaluateAlerts` dispara `capacity_storage_high` (>800 MB medidos de `storage.objects`, mismo umbral que el tile del panel) y `capacity_db_high` (>400 MB, 80% del tier Free) — la tendencia se detecta antes de la barra roja del proveedor; (3) `capRetentionDaysNonProd` acota a 14 d los plazos de retención de diseños cuando `VERCEL_ENV ≠ "production"` (STG acumuló 920 MB de renders 300-DPI de pruebas en 10 días); VERCEL_ENV ausente (local/scripts) NO aplica el tope — un script local puede apuntar a PRD.
+### ADR-004 — Pasarela Wompi y montos enteros en centavos COP
 
-## Legal y compliance
+- **Estado:** `Vigente`
+- **Decisión:** Integrar Wompi (Hosted Web Checkout) tras `PaymentProvider` y representar todo dinero como entero en **centavos COP (`Int`)**, nunca flotantes.
+- **Motivo:** Cobertura de medios locales (PSE/Nequi/tarjetas) y cero errores IEEE-754 ([`integrations/wompi.md`](integrations/wompi.md)).
 
-- **ADR-020 — Estrategia legal:** plantillas redactadas por Lucams sobre `docs/COMPLIANCE.md` + revisión de abogado colombiano antes de facturación DIAN (trámites NIT/DIAN pendientes — ver STATE).
-- **ADR-071 — Figura jurídica: persona natural** con exposición mínima de datos en los textos legales.
-- **ADR-072 — Barrido legal colombiano aplicado:** 8 documentos canónicos en `packages/db/legal-content/*.md`, retracto 5 días hábiles + reembolso 15 días calendario (Ley 2439/2024) + excepción por personalización, IVA régimen-agnóstico (sin prometer factura DIAN hasta tenerla).
-- **ADR-079 — La prueba del consentimiento se persiste con el dato** (casilla obligatoria en cotización, registro, datos de compra y cookies — Ley 1581); ante una afirmación pública falsa se elige hacerla verdadera.
-- **ADR-080 — El texto legal renderizado es el canónico:** el fallback de cada página `/legal/*` es copia exacta del `.md` canónico y un test lo verifica (la divergencia es imposible de mergear).
-- **ADR-106 — Garantía configurable por producto, sin reducir compras previas:** la Ley 1480 art. 8 permite anunciar un término por producto. `Product.warrantyMonths` tiene default y mínimo de 1 mes (máximo 120), editable por Admin y visible en la ficha; el catálogo se inicializa en 1 mes. Al crear la orden, `OrderItem.warrantyMonths` recibe un snapshot y las reclamaciones calculan desde él: una edición futura jamás reduce el término ofrecido a una orden ya confirmada. La migración conserva el término vigente de cada orden anterior; términos, garantías, FAQ, checkout y email reflejan el término específico. Documentos legales v2 («Versión 2 · vigente desde 2026-11-02»).
-- **ADR-160 — Checkbox «Quiero documento tributario» OCULTO tras flag:** `BILLING_DOCUMENT_ENABLED = false` (`features/checkout/billing-document.ts`). Razón: la tienda es persona natural **sin trámites DIAN** y el checkbox prometía un documento que no se opera (Ley 1480 — ningún texto público promete lo que la tienda no opera; el canónico legal ya dice «no está obligada a expedir factura»). Apagado: `datos-form` no renderiza la sección, `saveDatosAction` ignora un `wantsInvoice` manipulado a mano y el schema no exige los campos. El pipeline de datos queda **intacto para reactivar** (flip a `true` cuando exista operación tributaria real — ver COMPLIANCE § DIAN): `wantsInvoice=false` viaja como siempre, el snapshot `billingDocumentType/Number/Name` se sigue escribiendo cuando aplique y el admin muestra el bloque «Documento de venta» solo en órdenes históricas con datos.
+### ADR-009 — Contraentrega (COD) habilitada como medio de pago nativo
 
-## Proceso y documentación
+- **Estado:** `Vigente`
+- **Decisión:** Soportar pago contraentrega (`COD`) con máquina de estados, filtro antifraude previo y despacho inmediato.
+- **Motivo:** Atiende demanda local contraentrega con riesgo controlado ([`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md)).
 
-- **ADR-012 — Documentación dentro del repo** como documentos vivos (ver «Política de documentación» en CLAUDE.md); auditorías e incidentes son efímeros en `tmp/` (gitignored) y sus aprendizajes se consolidan en el doc del dominio.
-- **ADR-018 — Mandato «argumentación obligatoria»:** toda afirmación técnica cita fuente oficial con fecha; lo no verificable se marca `[pendiente verificación]`.
-- **ADR-019 — Trazabilidad inter-sesión:** `docs/STATE.md` (estado actual) + git history; `docs/audits/` ya no existe en el árbol (efímeras en `tmp/`).
-- **ADR-044 — Accesibilidad WCAG 2.1 AA sin tocar la paleta:** tonos de texto derivados AA como tokens (`--brand-muted`, `--brand-pink-ink`, `--brand-coral-ink`); gate `@axe-core/playwright` estricta (0 serious/critical) en CI.
-- **ADR-073 — Panel admin siempre dinámico** (sin prerender estático); el bug de build de Next 16 con `/_global-error` está documentado y rodeado.
-- **ADR-021 — Tipografías:** Fredoka (display) + Inter (body), vía `next/font/google` con subsets woff2 latin (ADR-132). Detalle en `docs/BRANDING.md`.
+### ADR-014 — Reservas temporales de inventario con TTL
+
+- **Estado:** `Superseded por ADR-091 y ADR-109`
+- **Decisión:** Eliminado `StockReservation`; el stock se descuenta atómicamente solo al confirmar pago (`PAID`) o pedido `COD`.
+- **Motivo:** Evita bloqueos artificiales de stock por carritos abandonados.
+
+### ADR-055 — Flujo operativo completo de pedidos COD
+
+- **Estado:** `Vigente`
+- **Decisión:** En pedidos `COD`, evaluar riesgo, descontar inventario con ledger idempotente, generar guía con recaudo y conciliar remesa tras `DELIVERED`.
+- **Motivo:** Unifica logística de prepago y contraentrega sin duplicar sagas.
+
+### ADR-064 — Ledger de conciliación financiera COD (`CodReconciliation`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Persistir liquidación COD en `CodReconciliation` (1 fila idempotente por `orderId` al resolver); «por remitir» se deriva de `COD` `DELIVERED` sin fila `REMITTED`.
+- **Motivo:** Separa entrega física del ingreso efectivo de caja en `/admin/finanzas`.
+
+### ADR-065 — Motor anti-abuso COD por identidad (`cod-risk.ts`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Evaluar riesgo COD por teléfono o correo (más `BlockedIdentity`), nunca por IP, midiendo velocidad, no-recogidos y monto abierto.
+- **Motivo:** Frena abuso reiterado sin castigar redes móviles NAT (`features/checkout/cod-risk.ts`).
+
+### ADR-094 — Página `/checkout/gracias?id=<txId>` sin sesión obligatoria
+
+- **Estado:** `Vigente`
+- **Decisión:** Permitir acceso con `transactionId` no enumerable de Wompi, `noindex`, rate limit `gracias:ip:` (20/5 min) y consulta obligatoria a la API de Wompi.
+- **Motivo:** Retorno fluido de invitados sin confiar en query params para marcar `PAID` ([`integrations/wompi.md`](integrations/wompi.md)).
+
+### ADR-109 — Tope por línea y descuento atómico anti-sobreventa
+
+- **Estado:** `Vigente`
+- **Decisión:** Limitar carrito a `min(99, stock)`, descontar con `UPDATE ... WHERE stock >= qty` + índice único `InventoryLog` y marcar `needsReconciliation = true` si se agota post-cobro.
+- **Motivo:** Cierra carreras TOCTOU y escala alerta crítica si falta stock tras aprobarse Wompi.
+
+### ADR-137 — Ledger Wompi con referencia UUID única por intento
+
+- **Estado:** `Vigente`
+- **Decisión:** Registrar cada cobro en `WompiPaymentAttempt` + `WompiPaymentTransaction` (`payment-reference.ts`), reconciliando contra Wompi antes de rotar y bloqueando nuevos intentos si hay `APPROVED`/`PENDING`.
+- **Motivo:** Elimina «La referencia ya ha sido usada» e impide que webhooks viejos pisen el intento activo ([`integrations/wompi.md`](integrations/wompi.md)).
+
+### ADR-174 — Errores de stock con nombre de producto y alerta in-app
+
+- **Estado:** `Vigente`
+- **Decisión:** Propagar `STOCK_UNAVAILABLE` nombrando el producto hasta `/carrito` y emitir alerta in-app deduplicada (6 h en `AlertState`) vía `notifyStockSaleLost` (`critical` en `saga_paid`).
+- **Motivo:** Orienta al comprador y avisa al instante ventas perdidas por quiebre (`features/orders/stock-alerts.ts`).
+
+---
+
+## 3. Envíos y logística
+
+### ADR-005 — Proveedor logístico inicial Venndelo
+
+- **Estado:** `Superseded por ADR-039`
+- **Decisión:** Descartado Venndelo en favor de Aveonline detrás de `ShippingProvider`.
+- **Motivo:** Mejor API multi-transportadora y soporte de recaudo COD en Colombia.
+
+### ADR-039 — Aveonline como agregador logístico nacional (`ShippingProvider`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Encapsular cotización, emisión de guías, copia de rótulos PDF en Storage y tracking tras `features/shipping/provider.ts`.
+- **Motivo:** Desacopla múltiples transportadoras bajo un contrato único ([`integrations/aveonline.md`](integrations/aveonline.md)).
+
+### ADR-040 — Cotización vía `cotizarDoble` y filtrado de errores por carrier
+
+- **Estado:** `Vigente`
+- **Decisión:** Consumir `cotizarDoble`, descartar carriers con `numbererror` y firmar cada tarifa válida con HMAC-SHA256.
+- **Motivo:** Impide mostrar cotizaciones inválidas o alterar fletes desde el cliente ([`integrations/aveonline.md`](integrations/aveonline.md)).
+
+### ADR-049 — Presupuesto `maxDuration` explícito en rutas que generan guía
+
+- **Estado:** `Vigente`
+- **Decisión:** Extender `maxDuration` en `apps/web/vercel.json` para los endpoints que ejecutan `createShipment`.
+- **Motivo:** Absorbe hasta 20 s de latencia de Aveonline sin corte serverless ([`integrations/vercel.md`](integrations/vercel.md)).
+
+### ADR-053 — Timeouts y reintentos acotados en cotización logística
+
+- **Estado:** `Vigente`
+- **Decisión:** Configurar timeout de 15 s, máximo 2 intentos y circuit breaker `aveonlineQuoteCB` en `cotizarDoble`.
+- **Motivo:** Tolera latencias reales (7–11 s) sin bloquear el checkout ante degradación externa.
+
+### ADR-054 — Contrato endurecido con Aveonline y compuerta anti-facturación
+
+- **Estado:** `Vigente`
+- **Decisión:** Exigir `x-aveonline-secret` en el webhook, archivar PDFs de guías en bucket privado propio y aplicar doble guarda para no emitir guías reales en `generarGuia2` fuera de PRD.
+- **Motivo:** Evita webhooks falsos, enlaces caducos y cobros de guías en pruebas ([`integrations/aveonline.md`](integrations/aveonline.md)).
+
+### ADR-060 — Fallo de creación de guía con resolución asistida en `/admin`
+
+- **Estado:** `Vigente`
+- **Decisión:** Si `createShipment` falla tras cobro aprobado, mantener la orden `PAID`, expirar `shipmentClaimedAt` (10 min), guardar error sanitizado en `shipmentLastError` y alertar para reintento manual.
+- **Motivo:** Nunca revierte un pago cobrado ni duplica guías ciegamente tras un timeout (`shipment-error.ts`).
+
+### ADR-107 — Carrier propio «Envío Lucams» en Bogotá
+
+- **Estado:** `Vigente`
+- **Decisión:** Ofrecer entrega local propia en Bogotá gobernada desde CMS (`LUCAMS_SHIPPING_*`), firmada con el mismo HMAC y guía `INTERNO-<orderNumber>`.
+- **Motivo:** Entrega rápida y tarifa controlada en Bogotá sin invocar Aveonline ([`integrations/aveonline.md`](integrations/aveonline.md)).
+
+### ADR-108 — Localidad y barrio estructurados + estimador único de despacho
+
+- **Estado:** `Vigente`
+- **Decisión:** Capturar localidad y «Barrio» opcional en toda dirección urbana y centralizar plazos en `apps/web/lib/delivery-estimate.ts`.
+- **Motivo:** Direcciones completas y promesas idénticas en PDP, checkout, correos y `/admin`.
+
+### ADR-120 — Revalidación fail-closed de zonas de entrega locales
+
+- **Estado:** `Vigente`
+- **Decisión:** Tratar zonas vacías (`"{}"`) como fail-closed y revalidar en `finalizeCheckout` que la localidad siga habilitada para «Envío Lucams».
+- **Motivo:** Cierra manipulación entre cotización y confirmación final.
+
+### ADR-163 — Reglas de peso por transportadora (`SHIPPING_CARRIER_RULES`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Filtrar ofertas antes del sellado HMAC comparando `computePackedPackage` contra topes configurables en `/admin/envios` (p. ej. Transprensa ≥ 11 kg).
+- **Motivo:** Evita ofrecer carriers que luego rechazan emitir guía por peso ([`integrations/aveonline.md`](integrations/aveonline.md)).
+
+### ADR-185 — Valor declarado por unidad física de inventario
+
+- **Estado:** `Vigente`
+- **Decisión:** Enviar a Aveonline `declaredValueCopPerInventoryUnit = unitPrice * qty_venta / inventoryUnits` (`design-units.ts`).
+- **Motivo:** Impide multiplicar por `N` el seguro en sets multi-pieza (abecedarios ×27, separadores ×6).
+
+### ADR-186 — Promesa logística no contractual y sangrado obligatorio (`noFold`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Separar **preparación estimada** de **tránsito estimado** manteniendo el máximo legal (`{{entrega_max_legal_dias}}`), y exigir `scale >= cover` (`PHOTO_NOT_FULL_BLEED`) en productos `noFold`.
+- **Motivo:** Cumple Ley 1480 y evita bordes blancos al guillotinar piezas sin doblez.
+
+---
+
+## 4. Catálogo, precios y homologación entre ambientes
+
+### ADR-036 — Arquitectura de información y nomenclatura del catálogo
+
+- **Estado:** `Vigente`
+- **Decisión:** Estandarizar `Set`/`Pack`, forma en el título, atributos tipados por variante y categoría dinámica de temporada.
+- **Motivo:** Consistencia en navegación, búsqueda y Google Merchant ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)).
+
+### ADR-037 — Plantillas de personalización gobernadas por tipo y semilla
+
+- **Estado:** `Vigente`
+- **Decisión:** Vincular `PersonalizationTemplate` a `PersonalizationKind` con seed idempotente (`seed-templates.mjs`) y archivado opt-in (`--prune`).
+- **Motivo:** Geometrías reproducibles entre ambientes sin pisar edición admin.
+
+### ADR-038 — Endpoints públicos `/api/catalog/*` estructurados y RAG-ready
+
+- **Estado:** `Vigente`
+- **Decisión:** Exponer lectura pública cacheada y con rate limit del catálogo activo en `/api/catalog/*` desde PostgreSQL, sin PII ni costos internos.
+- **Motivo:** Consumo fiable por buscadores y asistentes sin alucinar precios ([`PLAN_CATALOG_V2.md`](PLAN_CATALOG_V2.md)).
+
+### ADR-099 — PRD como fuente comercial del catálogo y variantes gemelas `-NOMAG` activas
+
+- **Estado:** `Vigente`
+- **Decisión:** La curaduría comercial manda desde `PRD`. Las variantes gemelas sin imán (**`-NOMAG`**) están **activas en producción** junto a las magnéticas; la homologación sincroniza catálogo y galería sin tocar jamás el stock.
+- **Motivo:** Opera líneas con y sin imán en la misma ficha protegiendo inventario vivo ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)).
+
+### ADR-101 — Venta de fotoimanes, abecedarios y vocales por sets cerrados
+
+- **Estado:** `Vigente`
+- **Decisión:** Vender fotoimanes en múltiplos fijos (`photoSlots` 6/12/18/24) y unificar la denominación de sets en Abecedario y Vocales.
+- **Motivo:** Aprovechamiento óptimo de pliegos en taller y compra clara en PDP.
+
+### ADR-102 — Homologación certificable por claves naturales
+
+- **Estado:** `Vigente`
+- **Decisión:** Auditar paridad entre ambientes por claves naturales (`slug`, `sku`, `key`) en `scripts/diag-stg/homologacion.sh`.
+- **Motivo:** Certifica `0` divergencias activas aunque difieran los CUID internos ([`OPERATIONS.md`](OPERATIONS.md)).
+
+### ADR-121 — Reglas de aislamiento y excepciones deliberadas STG ↔ PRD
+
+- **Estado:** `Vigente`
+- **Decisión:** No igualar IDs primarios; aislar secretos, `AdminUser` QA, `uptime-monitor-prd` (en STG) y apagar en STG los 5 crons de correo a clientes (`CRON_JOBS_DISABLED`).
+- **Motivo:** Cero colisiones FK y garantía de cero correos comerciales desde STG ([`OPERATIONS.md`](OPERATIONS.md)).
+
+### ADR-123 — Galería de prediseñados filtrada por variante y deduplicada
+
+- **Estado:** `Vigente`
+- **Decisión:** Filtrar `DesignGalleryImage` por `variantFilter` y deduplicar copias en diseños mediante `galleryImageId`.
+- **Motivo:** Muestra solo artes compatibles en proporción y ahorra Storage.
+
+### ADR-124 — Descuentos por volumen (`WholesaleTier`) públicos en carrito
+
+- **Estado:** `Vigente`
+- **Decisión:** Aplicar tramos `WholesaleTier` automáticamente en carrito/checkout para todo cliente, prohibiendo tramos que suban el precio base.
+- **Motivo:** Impulsa volumen sin barrera de registro mayorista ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)).
+
+### ADR-125 — Retiro de recargo por prediseñado (`Product.premadeSurcharge`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Eliminar cobros extra por elegir artes prediseñados de la tienda.
+- **Motivo:** Precio transparente y mayor conversión en el Estudio.
+
+### ADR-126 — Sincronización aditiva STG → PRD con `dry-run` y stock excluido
+
+- **Estado:** `Vigente`
+- **Decisión:** Promover catálogo y galería con `sync-catalog-stg-to-prd.mjs` / `sync-gallery-stg-to-prd.mjs` en `--dry-run` por defecto, requiriendo `--apply` + `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` y excluyendo stock.
+- **Motivo:** Prepara lanzamientos en STG sin riesgo sobre inventario o pedidos PRD ([`CONVENTIONS.md`](CONVENTIONS.md)).
+
+### ADR-134 — Eliminación permanente desde papelera con guardas de integridad
+
+- **Estado:** `Vigente`
+- **Decisión:** Permitir borrado físico en `/admin/productos` solo si el producto está archivado y carece de órdenes, diseños, carritos y reseñas, limpiando Storage.
+- **Motivo:** Depura pruebas sin romper FK `RESTRICT` ni historial contable.
+
+### ADR-141 — Festivos colombianos vigentes en calendarios y marco en cuadrados
+
+- **Estado:** `Vigente`
+- **Decisión:** Incorporar el festivo del 9 de julio (Ley 2578), retirar sufijos «(adhesivo)» y persistir `borderColor` al alternar marco en cuadrados.
+- **Motivo:** Exactitud legal del calendario impreso y fidelidad WYSIWYG.
+
+---
+
+## 5. Estudio de personalización 2D/3D y producción 300 DPI
+
+### ADR-013 — El Estudio interactivo como núcleo diferencial
+
+- **Estado:** `Vigente`
+- **Decisión:** Integrar edición 2D en vivo, visor espacial 3D y sugerencias con IA antes del pago.
+- **Motivo:** Reduce incertidumbre visual y produce originales a 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md)).
+
+### ADR-035 — Motor Konva propio y arquitectura de 5 buckets en Supabase Storage
+
+- **Estado:** `Vigente`
+- **Decisión:** Operar el Estudio sobre `konva` / `react-konva` por `PersonalizationKind` y separar archivos en **5 buckets de Supabase Storage**: **`product-images`** y **`cms-media`** (`public = true`); **`customer-uploads`**, **`design-previews`** (privado desde migración `046`, servido por `/api/design-preview/*`) y **`production-assets`** (`public = false`, renders 300 DPI y guías PDF).
+- **Motivo:** Cero licencias de terceros y aislamiento estricto entre medios públicos y activos privados de clientes/imprenta ([`integrations/supabase.md`](integrations/supabase.md)).
+
+### ADR-056 — Enlaces compartibles `/d/[token]` con vistas limpias
+
+- **Estado:** `Parcialmente superseded por ADR-191`
+- **Decisión:** Compartir diseños finalizados mediante `/d/[token]` (token hasheado SHA-256 y rotado al regenerar); el requisito inicial de marca de agua quedó **`Superseded por ADR-191`**.
+- **Motivo:** Muestra el arte limpio bloqueando borradores por token (`preview-access.ts`).
+
+### ADR-057 — Consolidación del editor Konva in-house y permisos de Storage
+
+- **Estado:** `Vigente`
+- **Decisión:** Descartar SDKs pagos externos (Polotno) manteniendo `react-konva` propio y accesos mediados por servidor sobre los **5 buckets** (`product-images` y `cms-media` públicos; `customer-uploads`, `design-previews` y `production-assets` privados).
+- **Motivo:** Control completo de sangrado, memoria móvil y privacidad fotográfica ([`integrations/supabase.md`](integrations/supabase.md)).
+
+### ADR-058 — Asistente creativo de IA tras `AiProvider` (Gemini)
+
+- **Estado:** `Vigente`
+- **Decisión:** Encapsular sugerencias de texto en `features/ai/provider.ts` vía fetch REST `v1beta` server-side a Google Gemini con fallback de modelo y timeout de 12 s.
+- **Motivo:** Cero SDK pesado, API key privada y proveedor intercambiable ([`integrations/google-and-ai.md`](integrations/google-and-ai.md)).
+
+### ADR-063 — Flujo integral de taller: ZIP por pedido, armado y moderación
+
+- **Estado:** `Vigente`
+- **Decisión:** Generar en `/admin/pedidos/[id]` ZIP con piezas 300 DPI, `armado.png`, `LEEME.txt`, grillas de calendario, siluetas troqueladas y visor de moderación.
+- **Motivo:** Elimina preprensa manual en producción ([`domains/studio-and-production.md`](domains/studio-and-production.md)).
+
+### ADR-081 — Renderizado de archivos de imprenta 300 DPI en el servidor
+
+- **Estado:** `Vigente`
+- **Decisión:** Componer los PNG finales en servidor (`sharp` + `@napi-rs/canvas` con `.ttf` locales) a partir del JSON del lienzo.
+- **Motivo:** Nitidez constante de 300 DPI sin depender de la RAM del teléfono del cliente.
+
+### ADR-103 — Geometría adaptativa del lienzo por ancho disponible
+
+- **Estado:** `Vigente`
+- **Decisión:** Calcular columnas con `fitColsToFloor` (450 px para ≤6 slots, 300 px para ≥7 y 1 columna en `<640 px`).
+- **Motivo:** Aprovecha escritorio sin causar scroll horizontal en móvil.
+
+### ADR-104 — Tarjeta-unidad universal y paridad táctil
+
+- **Estado:** `Vigente`
+- **Decisión:** Unificar la tarjeta editable por unidad en todos los tipos del Estudio y asegurar operación táctil sin overflow en tienda y `/admin`.
+- **Motivo:** UX coherente multi-dispositivo verificada por `ADR-154`.
+
+### ADR-114 — Regla espejo en cara B vacía de separadores
+
+- **Estado:** `Superseded por ADR-128 y ADR-190`
+- **Decisión:** Descartado duplicar en espejo la cara A cuando la cara B queda vacía.
+- **Motivo:** Sustituido hoy por el patrón diagonal de marca «Lucams» (`ADR-190`).
+
+### ADR-115 — Estado visual único para CTAs ocupados (`studio-busy-cta.ts`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Estandarizar spinner, bloqueo de clic y opacidad 70 % en botones ocupados del Estudio mediante `studio-busy-cta.ts`.
+- **Motivo:** Feedback inmediato durante cargas y guardados.
+
+### ADR-118 — Unificación futura del compositor de vista previa cliente
+
+- **Estado:** `Propuesta no implementada`
+- **Decisión:** Mantener como mejora opcional converger el preview cliente de filtros Konva complejos con el compositor servidor.
+- **Motivo:** El flujo actual ya opera server-side (`ADR-081`) con respaldo `NEEDS_KONVA`.
+
+### ADR-128 — Cara B vacía de separadores renderizada en blanco puro
+
+- **Estado:** `Superseded por ADR-190`
+- **Decisión:** El reverso blanco liso en productos `backOptional` sin cara B fue reemplazado por el patrón «Lucams».
+- **Motivo:** Se preserva el ancla por referencias de trazabilidad en el motor de render.
+
+### ADR-129 — Auto-save con debounce, `sendBeacon` y reconciliación local
+
+- **Estado:** `Vigente`
+- **Decisión:** Guardar cada 2 s de pausa, respaldar cierres con `sendBeacon` (`POST /api/designs/save-canvas`) y reconciliar `localStorage` por revisión.
+- **Motivo:** Previene pérdida de progreso al cerrar el navegador móvil.
+
+### ADR-133 — Reclamación segura de pedidos invitados tras verificar correo
+
+- **Estado:** `Vigente`
+- **Decisión:** Asociar órdenes invitadas al `Customer` solo tras verificar titularidad del correo (OTP/login verificado) y emitir links firmados de reseña al entregar.
+- **Motivo:** Conecta posventa sin permitir apropiación de pedidos ajenos (`ADR-155`).
+
+### ADR-136 — Cola asíncrona `RenderJob` para producción a 300 DPI
+
+- **Estado:** `Vigente`
+- **Decisión:** Desacoplar el render 300 DPI mediante `RenderJob`, ventana inicial de 8 s, cron por minuto `lucams-process-render-jobs`, `/api/designs/[id]/render-status` y `409` en ZIP mientras corre.
+- **Motivo:** Paso instantáneo al carrito sin timeouts en diseños multi-página ([`domains/studio-and-production.md`](domains/studio-and-production.md)).
+
+### ADR-139 — Rehidratación fiel por `assetId` al retomar diseños
+
+- **Estado:** `Vigente`
+- **Decisión:** Regenerar URLs firmadas frescas desde `assetId` al reabrir borradores o clones, restaurando `templateId` y estado de sets.
+- **Motivo:** Evita fotos rotas cuando caducan URLs firmadas previas.
+
+### ADR-140 — Escenas 3D con grosor real, `ErrorBoundary` y ajuste de separadores
+
+- **Estado:** `Vigente`
+- **Decisión:** Envolver visores 3D en `ErrorBoundary`, corregir z-fighting, usar grosor por variante y encuadrar separadores largos con `flatBookmarkFit`.
+- **Motivo:** Visor 3D realista y resiliente ante fallos WebGL.
+
+### ADR-142 — Presupuesto de 4 MB, piso de DPI y decodificación HEIC fail-closed
+
+- **Estado:** `Vigente`
+- **Decisión:** Comprimir subidas bajo 4 MB validando DPI y decodificando HEIC/HEIF en modo fail-closed (error explícito ante archivo corrupto).
+- **Motivo:** Soporta fotos de iPhone sin guardar masters dañados.
+
+### ADR-143 — Vista previa paginada en carrito y retención de carritos
+
+- **Estado:** `Vigente`
+- **Decisión:** Paginar todas las unidades en el modal de `/carrito` y purgar carritos vacíos (7 d), inactivos (60 d) y `AbandonedCart` (90 d).
+- **Motivo:** Revisión completa pre-pago e higiene de tablas operativas.
+
+### ADR-147 — Estados y miniaturas en `/mi-cuenta/disenos`
+
+- **Estado:** `Vigente`
+- **Decisión:** Persistir `draftPreviewUrl`, distinguir `Borrador` / `Listo` / `Ya pedido` y clonar diseños `READY` al reeditar.
+- **Motivo:** Biblioteca clara sin mutar artes de órdenes ya creadas.
+
+### ADR-148 — Marca de agua en mosaico sobre vistas previas de diseño
+
+- **Estado:** `Superseded por ADR-191`
+- **Decisión:** Retirado el estampado de marca de agua en vistas previas de diseños de clientes.
+- **Motivo:** Ancla conservada por comentarios en `preview-access.ts` y `retention-service.ts`; rige `ADR-191`.
+
+### ADR-150 — Diálogo compartido `DesignPreviewDialog` paginado por unidad
+
+- **Estado:** `Vigente`
+- **Decisión:** Centralizar en `components/design-preview-dialog.tsx` el visor con zoom y paginación usado en carrito, gracias, cuenta y seguimiento invitado.
+- **Motivo:** Inspección posventa idéntica en todas las rutas ([`CONVENTIONS.md`](CONVENTIONS.md)).
+
+### ADR-151 — Barra de estilo móvil en `Sheet` inferior («resumen + Listo»)
+
+- **Estado:** `Vigente`
+- **Decisión:** En `<640 px`, abrir opciones densas de estilo en un `Sheet` inferior con grilla completa, vista en vivo y botón fijo «Listo».
+- **Motivo:** Elimina tiras horizontales truncadas en pantallas pequeñas.
+
+### ADR-152 — Recuperación de borradores para clientes autenticados e invitados (`[STU-02]`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Crear borradores `DRAFT` de forma perezosa y habilitar «Continuar donde quedaste» tanto para **clientes autenticados** como para **invitados con cookie HttpOnly `cart_session` (`[STU-02]`)** (`draftResumeEnabled` en `app/estudio/[slug]/page.tsx` + borradores locales 7 d en letras/nombres), validando propiedad estricta anti-IDOR en servidor y podando a máximo 3 borradores por producto.
+- **Motivo:** Protege el diseño en curso de registrados e invitados sin reuso silencioso ni exposición cruzada ([`domains/studio-and-production.md`](domains/studio-and-production.md)).
+
+### ADR-156 — Cola serial de auto-save y concurrencia optimista (`Design.clientRev`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Encolar guardados en `serial-task-queue.ts` con `clientRev` creciente, rechazar `STALE_REVISION` y hacer flush antes de previsualizar o comprar.
+- **Motivo:** Evita que peticiones lentas sobrescriban ediciones nuevas.
+
+### ADR-157 — Sets de letras multi-unidad con estilo propio por set
+
+- **Estado:** `Vigente`
+- **Decisión:** Guardar estilo/colores/borde por unidad en `metadata.units[u]`, validar las `unitCount` unidades y paginar por set.
+- **Motivo:** Permite combinar estilos distintos en una sola compra de varios sets.
+
+### ADR-158 — Aplicación explícita de prediseñados y reemplazo por par
+
+- **Estado:** `Vigente`
+- **Decisión:** Confirmar destino cuando no hay slot libre (`replacePair` en separadores), con `HoverCard` en desktop y botón táctil «Ver» (`44 px`) en móvil.
+- **Motivo:** Impide pisar fotos por error y habilita zoom táctil accesible.
+
+### ADR-159 — Edición de texto con acción única «Listo» y borrado confirmado
+
+- **Estado:** `Vigente`
+- **Decisión:** Aplicar textos con un solo botón «Listo» (`Escape`/`×` cancelan) y exigir confirmación con deshacer en «Borrar el diseño».
+- **Motivo:** Elimina confusión entre «Aplicar» y «Listo».
+
+### ADR-164 — Checklist «Tu diseño», arranque lazy en prediseñados y paletas binarias
+
+- **Estado:** `Vigente`
+- **Decisión:** Guiar pasos pendientes en `studio-checklist.tsx`, iniciar `designId` lazy también desde prediseñados/drag-and-drop y fijar paleta binaria (`blanco`/`negro` + personalizado) en formatos fotográficos.
+- **Motivo:** Guía clara en móvil y arranque rápido en el primer clic.
+
+### ADR-166 — Optimización Konva móvil (pixelRatio, caché SVG y sombras)
+
+- **Estado:** `Vigente`
+- **Decisión:** Tope `Konva.pixelRatio <= 2`, caché bitmap de marcos SVG (`chrome-bitmap-cache.ts`) y `Layer.cache()` en sombras estáticas.
+- **Motivo:** ~43 % menos CPU móvil manteniendo salida 300 DPI en servidor.
+
+### ADR-167 — Selección explícita obligatoria en productos multi-plantilla
+
+- **Estado:** `Vigente`
+- **Decisión:** Si hay `>1` plantillas visibles sin `?template=`, arrancar `templateId = null` (`boot-template.ts`) y exigir elección explícita antes de finalizar.
+- **Motivo:** Impide imprimir la primera plantilla por omisión involuntaria.
+
+### ADR-168 — Visor 3D de sets de letras con paginador por set
+
+- **Estado:** `Vigente`
+- **Decisión:** Mostrar en 3D un set a la vez con controles «Anterior/Siguiente» (`Set N de M`, hasta `MAX_LETTER_SET_UNITS = 10`).
+- **Motivo:** Conserva escala legible sin mezclar múltiples alfabetos.
+
+### ADR-169 — Derivados `.canvas.webp` (≤800 px) y perfilado del Estudio
+
+- **Estado:** `Vigente`
+- **Decisión:** Crear `DesignAsset.canvasPath` (`<= 800 px`) para edición/previews conservando `storageUrl` íntegro para 300 DPI, auditado con `profile-studio-entry.mjs`.
+- **Motivo:** Fluidez de lienzo en gama media sin degradar impresión ([`TESTING.md`](TESTING.md)).
+
+### ADR-170 — Detalle 3D de calendarios multi-set en dos niveles
+
+- **Estado:** `Vigente`
+- **Decisión:** Navegar meses con wrap-around dentro del set activo y saltar entre calendarios mediante chips superiores en `CalendarCardFocus`.
+- **Motivo:** Evita recorrer 24–36 meses sin contexto de unidad.
+
+### ADR-172 — Galería de escenas 100 % en 3D interactivo (React Three Fiber)
+
+- **Estado:** `Vigente`
+- **Decisión:** Reemplazar montajes 2D por **7 escenas 3D reales** (`FridgeView3D`, `BookView3D`, `PolaroidTable3D`, `RoomBoardView3D`, `ShelfView3D`, `GiftView3D`, `CalendarCardFocus`) con pose física (`leaning-scene-layout.ts`).
+- **Motivo:** Zoom sin pixelado y cobertura de variantes con y sin imán ([`domains/studio-and-production.md`](domains/studio-and-production.md)).
+
+### ADR-173 — Grosor de marco configurable por producto (`borderWidthFactor`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Exponer `personalizationSchema.borderWidth` como slider y aplicar `canvasData.borderWidthFactor` (`0.25–3`) en lienzo y render 300 DPI (`frame-palette.ts`).
+- **Motivo:** Ajuste estético WYSIWYG administrable por producto sin migrar SQL.
+
+### ADR-176 — Auto-llenado priorizando fotos aún no usadas
+
+- **Estado:** `Vigente`
+- **Decisión:** Ordenar `orderAssetsForAutoFill` priorizando fotos inéditas en el diseño y en el carrito (`listCartDesignAssetIdsInUse`) antes de repetir.
+- **Motivo:** Evita duplicar las mismas fotos al armar varios packs seguidos.
+
+### ADR-177 — Compuerta estricta `allowText` en capas editables
+
+- **Estado:** `Vigente`
+- **Decisión:** Si `allowText = false`, ocultar capas de texto, hints y pestaña «Texto» en el modal aunque la plantilla traiga capas heredadas.
+- **Motivo:** Blinda formatos solo-foto (como Cuadrados) contra textos accidentales.
+
+### ADR-178 — `CloseXButton` unificado, biblioteca «Mis fotos» usable y calendario colapsable
+
+- **Estado:** `Vigente`
+- **Decisión:** Unificar cierres en `close-x-button.tsx`, habilitar asignación/borrado seguro en «Mis fotos» (`deleteDesignAssetAction`), toggle A/B en prediseñados y meses colapsables por set.
+- **Motivo:** Coherencia visual de marca y ergonomía móvil.
+
+### ADR-179 — Umbrales recalibrados de calidad fotográfica (DPI y foco)
+
+- **Estado:** `Vigente`
+- **Decisión:** Alinear `photo-validation.ts` y `smart-crop.ts`: avisos en `<240` / `<200 DPI`, bloqueo en `<150 DPI` y umbrales Laplacianos `10` / `4`.
+- **Motivo:** Tolera bokeh natural de retratos bloqueando fotos pixeladas.
+
+### ADR-180 — Reverso 3D según imán y escenas para calendario `-NOMAG`
+
+- **Estado:** `Vigente`
+- **Decisión:** Renderizar dorso ferrita oscuro en imanes y papel claro en `-NOMAG`, activando escenas de repisa y regalo en calendarios sin imán.
+- **Motivo:** Fidelidad material completa en todas las variantes.
+
+### ADR-188 — Sets de letras renderizados por ficha individual a 300 DPI
+
+- **Estado:** `Vigente`
+- **Decisión:** Generar un PNG 300 DPI por cada ficha (`letter-tile-render.ts`) y agrupar `/admin` + ZIP por set (`productionPieceGroups`).
+- **Motivo:** Piezas listas para corte individual y vista compacta en sets de 27/54 fichas.
+
+### ADR-189 — PNG de producción rectangulares a sangre completa
+
+- **Estado:** `Vigente`
+- **Decisión:** Exportar piezas rectangulares con esquinas llenas a sangre (redondeo solo en troquel físico y preview web), dejando transparencia solo en siluetas especiales.
+- **Motivo:** Elimina filos blancos por tolerancia mecánica del troquel.
+
+### ADR-190 — Reverso con patrón «Lucams» en separadores `backOptional` sin cara B
+
+- **Estado:** `Vigente`
+- **Decisión:** Estampar mosaico diagonal «Lucams» (`#E9E6F0`, `DancingScript.ttf`) vía `brand-back-pattern.ts` en preview, `BookView3D` y PNG 300 DPI (`default-back-face.ts`) cuando la cara B queda vacía.
+- **Motivo:** Acabado editorial 100 % WYSIWYG que sustituye el reverso blanco ([`BRANDING.md`](BRANDING.md)).
+
+### ADR-191 — Retiro total de marca de agua en vistas previas de diseños de clientes
+
+- **Estado:** `Vigente`
+- **Decisión:** Servir limpias sin marca de agua todas las vistas previas de diseños de clientes, retirar `preview-wm.webp` y restringir borradores a su dueño o `/admin` (`preview-access.ts`).
+- **Motivo:** Apreciación fiel del arte manteniendo privacidad con `design-previews` privado y tokens firmados.
+
+---
+
+## 6. CMS v2, soporte, UI transversal y marca
+
+### ADR-033 — CMS propio en PostgreSQL sin proveedor headless externo
+
+- **Estado:** `Vigente`
+- **Decisión:** Gestionar contenidos y ajustes en PostgreSQL propio bajo `/admin/contenido` y `/api/cms/*`.
+- **Motivo:** Cero SaaS extra, versionado transaccional e invalidación inmediata.
+
+### ADR-082 — Modelo jerárquico versionado del CMS v2
+
+- **Estado:** `Vigente`
+- **Decisión:** Modelar `CmsPage` → `CmsSection` → `CmsField` (`BLOCK` / `SETTING`) → `CmsFieldVersion` desde `packages/db/scripts/cms-site-map.mjs`.
+- **Motivo:** Historial con rollback y llaves estables ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)).
+
+### ADR-083 — Iconos y gradientes de categorías en `Category`
+
+- **Estado:** `Vigente`
+- **Decisión:** Persistir `icon` y `gradient` en el modelo `Category` (`/admin/categorias`) en vez de bloques CMS sueltos.
+- **Motivo:** Cohesión directa con el ciclo de vida del catálogo.
+
+### ADR-084 — Edición estructurada de listas con `CmsListItem`
+
+- **Estado:** `Vigente`
+- **Decisión:** Editar listas repetibles con filas `CmsListItem` validadas por `listSchema` y serializadas al publicar el `CmsField`.
+- **Motivo:** Formularios seguros sin romper la lectura de snapshot único.
+
+### ADR-090 — Retiro del modo `?templateId=` (`PREMADE`) en storefront
+
+- **Estado:** `Vigente`
+- **Decisión:** Retirar compra directa `PREMADE` en tienda, usando `Design.templateId` solo para trazabilidad y rehidratación en el Estudio.
+- **Motivo:** Los artes listos viven unificados como prediseñados en el Estudio (`ADR-158`).
+
+### ADR-092 — Sistema omnicanal de soporte PQR activo en web y correo
+
+- **Estado:** `Vigente`
+- **Decisión:** Operar atención PQR por hilo de correo (`support-ticket-closed`) y tres portales activos en producción: `/soporte`, `/soporte/[token]` y **`/mi-cuenta/soporte`**.
+- **Motivo:** Seguimiento y SLAs trazables para invitados y clientes autenticados ([`domains/post-sale-and-support.md`](domains/post-sale-and-support.md)).
+
+### ADR-097 — Bandeja única de atención en `/admin/soporte`
+
+- **Estado:** `Vigente`
+- **Decisión:** Consolidar contacto y PQR en `/admin/soporte` redirigiendo `/admin/mensajes` con HTTP `308`.
+- **Motivo:** Unifica SLAs, asignación y control de concurrencia.
+
+### ADR-116 — Modo oscuro controlado exclusivamente por clase `.dark`
+
+- **Estado:** `Vigente`
+- **Decisión:** Activar `@custom-variant dark` solo por clase `.dark` (`next-themes`), nunca por `prefers-color-scheme` del sistema.
+- **Motivo:** Preserva la paleta crema/pastel de marca por defecto ([`BRANDING.md`](BRANDING.md)).
+
+### ADR-122 — Tooltips accesibles de marca sobre Radix UI
+
+- **Estado:** `Vigente`
+- **Decisión:** Prohibir `title=` nativo y usar el componente accesible `Tooltip` de Radix.
+- **Motivo:** Soporte de foco/teclado y consistencia visual.
+
+### ADR-138 — Identidad verbal unificada «Lucams» / «Lucams Shop»
+
+- **Estado:** `Vigente`
+- **Decisión:** Usar exclusivamente **«Lucams»** o **«Lucams Shop»** (`SITE_NAME` en `lib/site.ts`), descartando definitivamente grafías históricas con apóstrofo o guion bajo en UI, correos y prosa.
+- **Motivo:** Coherencia legal y editorial en todos los canales ([`BRANDING.md`](BRANDING.md)).
+
+### ADR-184 — Intro de categoría colapsable en móvil y blur normalizado
+
+- **Estado:** `Vigente`
+- **Decisión:** Colapsar intros largas a 2 líneas en `<640 px` (texto íntegro en DOM para SEO) y normalizar al `blur` en `use-debounced-commit`.
+- **Motivo:** Prioriza productos en móvil y evita valores sin formatear.
+
+### ADR-187 — CMS v2 de 3 capas (`CmsPage` → `CmsSection` → `CmsField` + `CmsListItem`, 166 campos con paridad AST)
+
+- **Estado:** `Vigente`
+- **Decisión:** Organizar contenidos en **3 capas**: **(1)** ajustes maestros `global` + constantes legales (`consumer-law.ts` con `resolveCmsTokens()`); **(2)** contenido editorial, comercial, SEO y legal en `/admin/contenido` (**9 contenedores, 29 secciones y 166 campos: 105 `BLOCK` + 61 `SETTING`** + `CmsListItem` en `cms-site-map.mjs`); **(3)** micro-UI funcional en TS (`studio-texts.ts`, `auth-texts.ts`, `account-texts.ts`), leído en **1 consulta cacheada** (`cms-snapshot-v2`, tag `cms`) y verificado por AST en `cms-sitemap-parity.test.ts`.
+- **Motivo:** Cero inflación de llaves técnicas en DB, Live Edit real y paridad `166/166` garantizada en CI ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)).
+
+### ADR-192 — Confirmaciones administrativas de marca (`useAdminConfirm`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Prohibir `window.confirm`/`prompt` en `/admin` y usar `useAdminConfirm` (`ConfirmAction`, `ReauthForm`, `requireTyped`).
+- **Motivo:** Diálogos accesibles no bloqueantes y testeables.
+
+---
+
+## 7. Checkout, cuenta, identidad y CRM 360°
+
+### ADR-030 — Autenticación separada entre clientes (`/login`) y staff (`/admin/login`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Aislar rutas, formularios y sesiones de tienda frente al backoffice administrativo.
+- **Motivo:** Exige MFA `aal2` e inactividad de 30 min solo en `/admin/*` ([`SECURITY.md`](SECURITY.md)).
+
+### ADR-031 — Flujo guest-first sin muro de registro
+
+- **Estado:** `Vigente`
+- **Decisión:** Permitir diseñar, cotizar, pagar y rastrear pedidos sin cuenta obligatoria.
+- **Motivo:** Maximiza conversión móvil ofreciendo cuenta opcional con puntos (`ADR-175`).
+
+### ADR-050 — Portal de autoservicio `/mi-cuenta` integral
+
+- **Estado:** `Vigente`
+- **Decisión:** Cubrir en `/mi-cuenta` pedidos, diseños, direcciones, favoritos, fidelización, reseñas, soporte PQR, seguridad y baja Ley 1581.
+- **Motivo:** Autoservicio completo posventa y de privacidad.
+
+### ADR-051 — Dirección estructurada colombiana única (`Address.structured`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Guardar direcciones urbanas/rurales en JSONB estructurado compartido entre cuenta y checkout, derivando línea plana y etiqueta (`deriveAddressName`).
+- **Motivo:** Evita errores de formato al generar guías en Aveonline.
+
+### ADR-052 — Sincronización bidireccional de libreta de direcciones
+
+- **Estado:** `Vigente`
+- **Decisión:** Precargar direcciones del cliente en checkout y guardar nuevas deduplicadas con `buildAddressInput`.
+- **Motivo:** Compra recurrente ágil sin filas repetidas.
+
+### ADR-070 — Snapshot inmutable del diseño en `OrderItem`
+
+- **Estado:** `Vigente`
+- **Decisión:** Congelar `designAssetUrl` y `metadata.designSnapshot` en `OrderItem` al crear el pedido.
+- **Motivo:** Protege la orden frente a cambios o purgas posteriores del `Design`.
+
+### ADR-077 — Modo de tienda gobernado por `NEXT_PUBLIC_STORE_MODE`
+
+- **Estado:** `Vigente`
+- **Decisión:** Soportar modos `catalog` y `full` en el mismo código (`lib/store-mode.ts`); STG y PRD operan en `full`.
+- **Motivo:** Conmutación limpia por variable de entorno ([`STATE.md`](STATE.md)).
+
+### ADR-078 — Imposición server-side del modo de tienda (`stage-guard.ts`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Ejecutar `guardTransactionalAction()` / `assertTransactionalAllowed()` en servidor cuando el modo es `catalog`.
+- **Motivo:** Frontera de autorización real en backend, no solo visual.
+
+### ADR-110 — Módulo unificado de Garantías y Reclamos (`/admin/garantias`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Unificar garantías y reclamos en `/admin/garantias` (`/admin/reclamos` → `308`) con correo obligatorio al resolver.
+- **Motivo:** Trazabilidad única bajo Ley 1480 ([`domains/post-sale-and-support.md`](domains/post-sale-and-support.md)).
+
+### ADR-111 — Enlace firmado sin login para reseñas (`/resena/[token]`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Enviar al entregar un token HMAC (`CSRF_SECRET`, 30 d, Turnstile) para calificar órdenes `DELIVERED` en estado `PENDING`.
+- **Motivo:** Reseñas verificadas de invitados sin reseñas falsas.
+
+### ADR-117 — «Volver a pedir» con clonación independiente de bytes
+
+- **Estado:** `Vigente`
+- **Decisión:** Clonar objetos de Storage al reordenar; si ya se purgaron (>90 d), guiar a subir nuevas fotos.
+- **Motivo:** Desacopla la retención del pedido nuevo respecto al antiguo.
+
+### ADR-119 — Enrutamiento «Ver mi pedido» y doble factor posventa invitado
+
+- **Estado:** `Vigente`
+- **Decisión:** Enviar autenticados a `/mi-cuenta/pedidos/[number]` e invitados a `/pedido/[token]` con doble factor posesión + conocimiento en acciones sensibles.
+- **Motivo:** Seguimiento directo protegiendo PII e historial logístico.
+
+### ADR-127 — Flujo nativo de regalo (`isGift`) y atribución segura
+
+- **Estado:** `Parcialmente superseded por ADR-155 y ADR-193`
+- **Decisión:** Mantener `Order.isGift` (destinatario, dedicatoria y correos sin precios) y Referidos v2; asociar `customerId` por email digitado quedó **`Superseded por ADR-155`**.
+- **Motivo:** Evita fuga de diseños/puntos y aísla al destinatario fuera del CRM (`ADR-193`).
+
+### ADR-144 — Sesión deslizante de 30 días en tienda y 30 min en `/admin`
+
+- **Estado:** `Vigente`
+- **Decisión:** Renovar `customer_last_activity` por 30 días en tienda y aislar el timeout de 30 min bajo alcance `/admin`.
+- **Motivo:** Comodidad de compra sin debilitar el backoffice ([`SECURITY.md`](SECURITY.md)).
+
+### ADR-146 — Normalización oficial colombiana (DANE, MinTIC, E.164 y NIT)
+
+- **Estado:** `Vigente`
+- **Decisión:** Validar ciudades/códigos postales DANE-MinTIC, teléfonos internacionales y dígito de verificación NIT (`colombia-validators`).
+- **Motivo:** Menos rechazos logísticos y datos limpios en CRM.
+
+### ADR-155 — Identidad estricta desde sesión y auto-sanado de `cart_session`
+
+- **Estado:** `Vigente`
+- **Decisión:** Derivar `Order.customerId` solo de `getCurrentUser`, revalidar variante desde canvas, rotar `cart_session` ante `CART_IDENTITY_MISMATCH` y adoptar borradores al autenticar.
+- **Motivo:** Cierra IDOR/re-pricing y bloqueos por cookies desincronizadas.
+
+### ADR-165 — Rótulos por unidad y sustantivos exactos en carrito
+
+- **Estado:** `Vigente`
+- **Decisión:** Etiquetar cada página en `DesignPreviewDialog` y pluralizar con el sustantivo real (`sets`, `calendarios`, `tiras`, `separadores`, `packs`).
+- **Motivo:** Claridad en líneas multi-unidad con estilos distintos.
+
+### ADR-171 — Recuperación del carrito activo tras re-login
+
+- **Estado:** `Vigente`
+- **Decisión:** Restaurar el carrito vivo con ítems del cliente (`recoverCustomerCartSessionId`) al iniciar sesión sin cookie `cart_session`.
+- **Motivo:** Conserva el carrito entre sesiones sin dejar cookies abiertas al salir.
+
+### ADR-181 — Deduplicación semántica de detalles en carrito y plantilla visible
+
+- **Estado:** `Vigente`
+- **Decisión:** Eliminar repeticiones en `dedupeCartLineDetail` preservando medidas `A×B` y mostrar `Plantilla: <nombre>`.
+- **Motivo:** Distinción clara entre líneas del mismo producto.
+
+### ADR-182 — Avance con `Enter` al siguiente campo en formularios móviles
+
+- **Estado:** `Vigente`
+- **Decisión:** Usar `enterkeyhint="next"` y `focusNextFieldOnEnter` (`lib/enter-next-field.ts`) en formularios secuenciales.
+- **Motivo:** Fluidez en teclados táctiles sin tecla `Tab`.
+
+### ADR-193 — Grafo de identidad `Contact` 360° y CRM operacional nativo
+
+- **Estado:** `Vigente`
+- **Decisión:** Separar `Customer` (cuenta autenticada) de `Contact` (invitado o registrado), enlazando 7 dominios por `contactId`, con `ContactIdentity` (unicidad parcial solo en `SUPABASE_USER`/`EMAIL`), fusión humana con MFA (`IdentityMergeCandidate`), aislamiento `isGift`, `/admin/hoy`, pipeline B2B `/empresas-y-eventos` → `Opportunity` y segmentos SQL con opt-in `NEWSLETTER`.
+- **Motivo:** Visión 360° en PostgreSQL propio sin errores `P2002` por teléfonos compartidos ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md)).
+
+### ADR-194 — Zona horaria `America/Bogota` obligatoria en fechas visibles
+
+- **Estado:** `Vigente`
+- **Decisión:** Formatear toda fecha/hora visible exclusivamente con `apps/web/lib/datetime.ts` (`America/Bogota`), verificado por `datetime-convention.test.ts`.
+- **Motivo:** Elimina desfases de +5 h por reloj UTC serverless ([`CONVENTIONS.md`](CONVENTIONS.md)).
+
+### ADR-195 — Compras del equipo interno (`Contact.isStaff` y `selfDealing`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Marcar `Contact.isStaff = true` para correos de `AdminUser` (excluidos de analítica/segmentos) y registrar `selfDealing: true` en `AdminActionLog` en autogestiones financieras.
+- **Motivo:** Permite compras reales de prueba sin sesgar métricas ni auditoría.
+
+---
+
+## 8. Fidelización, marketing y carritos abandonados
+
+### ADR-006 — Atención por WhatsApp vía enlaces `wa.me`
+
+- **Estado:** `Vigente`
+- **Decisión:** Usar enlaces `wa.me` con contexto pre-llenado sin API paga de WhatsApp Business ni Twilio.
+- **Motivo:** Costo $0 y atención directa ([`integrations/github-and-ops.md`](integrations/github-and-ops.md)).
+
+### ADR-069 — Cupones con vigencia en hora Colombia y advisory lock
+
+- **Estado:** `Vigente`
+- **Decisión:** Evaluar fechas de cupón en `America/Bogota`, registrar `CouponUsage` idempotente y serializar `maxUsesPerCustomer` con `pg_advisory_xact_lock`.
+- **Motivo:** Impide superar topes de uso en checkouts paralelos.
+
+### ADR-098 — Favoritos (`/mi-cuenta/favoritos`) sin marketing no autorizado
+
+- **Estado:** `Vigente`
+- **Decisión:** Guardar deseos del cliente (incluidos en baja Ley 1581) sin disparar correos promocionales sin consentimiento específico.
+- **Motivo:** Respeta el principio de finalidad de Hábeas Data ([`COMPLIANCE.md`](COMPLIANCE.md)).
+
+### ADR-145 — «Puntos Lucams» y referidos en `/admin/fidelizacion`
+
+- **Estado:** `Vigente`
+- **Decisión:** Operar acumulación/redención atómica (cupón → puntos, reversión proporcional) y referidos `/r/[codigo]` configurables desde `/admin/fidelizacion`.
+- **Motivo:** Retención auditable en `LoyaltyTxn` ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md)).
+
+### ADR-153 — Recuperación de carritos configurable y snapshots de abandono
+
+- **Estado:** `Vigente`
+- **Decisión:** Gobernar `lucams-cart-recovery` desde `/admin/carritos/configuracion` y guardar snapshots (`itemsSnapshot`, `closedReason`) en `AbandonedCart`.
+- **Motivo:** Control sin redespliegue y diagnóstico completo tras vaciarse el carrito vivo.
+
+### ADR-175 — Incentivo de puntos a invitados y retrocrédito verificado
+
+- **Estado:** `Vigente`
+- **Decisión:** Mostrar puntos potenciales a invitados y acreditarlos sobre compras de los últimos 30 días solo tras verificar titularidad del correo.
+- **Motivo:** Impulsa registro poscompra bloqueando reclamos con correos ajenos.
+
+---
+
+## 9. Seguridad, sesiones y gobierno de CI/CD
+
+### ADR-016 — Rate limiting en PostgreSQL y caché con `unstable_cache`
+
+- **Estado:** `Parcialmente superseded` (caché en DB reemplazado por `unstable_cache`)
+- **Decisión:** Ejecutar rate limit atómico con `public.rate_limit_check` (`lib/rate-limit.ts`) y cachear lecturas con `unstable_cache` + tags (`cms`, `catalog`, `redirects`).
+- **Motivo:** Protección distribuida sin Redis externo ([`SECURITY.md`](SECURITY.md)).
+
+### ADR-017 — Procesos programados con `pg_cron` + `pg_net` + Supabase Vault y GitHub Actions
+
+- **Estado:** `Superseded` (descartado `pgmq` en favor de crons HTTP autenticados y workflows puntuales)
+- **Decisión:** Ejecutar los **18 crons operativos** desde Supabase `pg_cron` + `pg_net` → `/api/cron/*` con `x-cron-secret` en **Supabase Vault** (más limpiezas SQL internas), **6 workflows puntuales de GitHub Actions** (`ci`, `nightly-full`, `backup`, `dr-drill`, `post-deploy-smoke`, `domain-watch`) y `RenderJob` (`ADR-136`).
+- **Motivo:** Sin workers residentes ni límites de crons de Vercel, secretos fuera de texto plano y dead-man switch ([`integrations/supabase.md`](integrations/supabase.md)).
+
+### ADR-043 — CSP estricta con nonce criptográfico por petición
+
+- **Estado:** `Vigente`
+- **Decisión:** Emitir nonce único en `apps/web/proxy.ts` junto con `Content-Security-Policy`, HSTS y cabeceras duras (`lib/security-headers.ts`).
+- **Motivo:** Defensa XSS real sin `'unsafe-inline'` en scripts ([`SECURITY.md`](SECURITY.md)).
+
+### ADR-045 — Primitivas obligatorias de resiliencia externa
+
+- **Estado:** `Vigente`
+- **Decisión:** Envolver integraciones HTTP en `fetchWithTimeout`, `withRetry` (backoff + jitter) y `CircuitBreaker` por proveedor.
+- **Motivo:** Aísla lentitud o caídas de terceros ([`integrations/README.md`](integrations/README.md)).
+
+### ADR-046 — Prevención de open-redirect (`safeRedirectTarget`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Validar parámetros `next`/`redirect` y redirecciones CMS en `lib/safe-redirect.ts` exigiendo ruta interna del mismo origen.
+- **Motivo:** Impide redirecciones abiertas post-login.
+
+### ADR-047 — Captura deduplicada de errores de navegador (`ErrorReport`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Recibir errores de cliente en `POST /api/log-error`, limpiar PII (`scrubPii`) y deduplicar por hash SHA-1.
+- **Motivo:** Visibilidad de fallos reales sin inundar PostgreSQL ([`OBSERVABILITY.md`](OBSERVABILITY.md)).
+
+### ADR-048 — Evidencia verificable en código y no-reintento en guías
+
+- **Estado:** `Vigente`
+- **Decisión:** Cerrar hallazgos solo con prueba en código/test y prohibir reintentos automáticos en `createShipment`.
+- **Motivo:** Cero cierres cosméticos ni guías duplicadas.
+
+### ADR-085 — Endurecimiento criptográfico post-OWASP
+
+- **Estado:** `Vigente`
+- **Decisión:** Exigir MFA TOTP admin, tokens públicos SHA-256 en reposo, sesión de checkout AES-256-GCM, backups GPG y chequeo HIBP k-anonymity.
+- **Motivo:** Protección integral de credenciales, tokens y copias ([`SECURITY.md`](SECURITY.md)).
+
+### ADR-087 — Reautenticación MFA reciente (`aal2 <= 10 min`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Exigir `requireRecentMfa` (validando `amr` del JWT) en reembolsos, gestión admin/MFA, conciliación COD, fusiones CRM y exportaciones.
+- **Motivo:** Mitiga sesiones administrativas desatendidas.
+
+### ADR-088 — RUM y analítica sujetos a consentimiento explícito
+
+- **Estado:** `Vigente`
+- **Decisión:** Bloquear Web Vitals RUM, GA4 y `lucams_utm` hasta contar con `analytics === true` (`lib/cookie-consent.ts`).
+- **Motivo:** Cumplimiento estricto de Ley 1581 ([`COMPLIANCE.md`](COMPLIANCE.md)).
+
+### ADR-105 — Protección `protect-ramas-criticas` y migraciones reversibles
+
+- **Estado:** `Vigente`
+- **Decisión:** Bloquear push directo a `develop` y `production` (`bypass_actors: []`) exigiendo los **5 checks de `ci.yml`**, smoke post-deploy y SQL _expand-then-contract_.
+- **Motivo:** Cero cambios sin CI verde y `vercel rollback` seguro ([`OPERATIONS.md`](OPERATIONS.md)).
+
+### ADR-162 — Blindaje anti-logout fantasma en `proxy.ts`
+
+- **Estado:** `Vigente`
+- **Decisión:** Usar `prefetch={false}` hacia `/admin/*`, ignorar prefetches en idle-timeout, excluir `/api/*` de sesión en `proxy.ts`, frenar borrados espurios de refresh y re-sellar `customer_last_activity` si el JWT es válido.
+- **Motivo:** Elimina cierres de sesión accidentales por prefetches o carreras SSR ([`SECURITY.md`](SECURITY.md)).
+
+### ADR-183 — Compuerta HTTP de MFA obligatorio en `proxy.ts` y login
+
+- **Estado:** `Vigente`
+- **Decisión:** Redirigir desde `adminLoginAction` y `proxy.ts` hacia `/admin/seguridad?enroll=required` o `/admin/login/mfa` cuando falta `aal2`.
+- **Motivo:** Evita bucles RSC en sesiones admin sin MFA completado.
+
+---
+
+## 10. Datos, base de datos, backups y retención
+
+### ADR-026 — Banderas de funcionalidad en código/entorno sin tabla `FeatureFlag`
+
+- **Estado:** `Vigente`
+- **Decisión:** Controlar banderas estructurales por variables de entorno y constantes en código (`NEXT_PUBLIC_STORE_MODE`, `BILLING_DOCUMENT_ENABLED`), sin tabla `FeatureFlag`, usando `CmsField` `SETTING` para ajustes operativos en caliente.
+- **Motivo:** Cero consultas extra por request y validación estática ([`CONVENTIONS.md`](CONVENTIONS.md)).
+
+### ADR-027 — Proyecto Supabase dedicado para Staging (`lucams-stg`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Aislar tres bases: local en Podman, `lucams-stg` (`develop`) y `lucams-prod` (`production`).
+- **Motivo:** Pruebas reales de RLS, webhooks y resets sin tocar producción ([`OPERATIONS.md`](OPERATIONS.md)).
+
+### ADR-059 — Backups diarios cifrados de DB y Storage en Cloudflare R2
+
+- **Estado:** `Vigente`
+- **Decisión:** Ejecutar cada día `backup.yml` (`pg_dump` + espejo Storage cifrados con GPG hacia R2, `BACKUP_KEEP=30`).
+- **Motivo:** Bóveda DR externa independiente de Supabase ([`integrations/cloudflare.md`](integrations/cloudflare.md)).
+
+### ADR-086 — Cobertura de los 5 buckets en backup y simulacro DR mensual
+
+- **Estado:** `Vigente`
+- **Decisión:** Respaldar los 5 buckets de Storage en R2 y verificar restauración completa cada mes con `dr-drill.yml`.
+- **Motivo:** Protege catálogo, CMS y artes 300 DPI pagados.
+
+### ADR-089 — Acotamiento del pool Prisma en entorno serverless
+
+- **Estado:** `Vigente`
+- **Decisión:** Parametrizar `connection_limit` y `pool_timeout` sobre `DATABASE_URL` en el cliente `@lucams/db`.
+- **Motivo:** Previene saturar Supavisor ante picos serverless (`ADR-131`).
+
+### ADR-091 — Limpieza de tablas muertas y gobernanza de esquema
+
+- **Estado:** `Vigente`
+- **Decisión:** Retirar tablas sin uso y exigir espejo de RLS + `REVOKE` en `supabase/migrations/` (event trigger `049`) para los 71 modelos Prisma.
+- **Motivo:** Paridad SQL/Prisma verificada por `make verify-db`.
+
+### ADR-095 — Semillas no destructivas y guarda `env-guard.mjs` fail-closed
+
+- **Estado:** `Vigente`
+- **Decisión:** Imponer `--dry-run` por defecto, semillas que respeten precios/stock y `assertDestructiveAllowed` auditado por `make audit-script-guards`.
+- **Motivo:** Bloquea escrituras accidentales sobre producción ([`CONVENTIONS.md`](CONVENTIONS.md)).
+
+### ADR-096 — Latido de frescura de backups (`backup_stale`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Reportar éxito en `/api/cron/backup-heartbeat` y alertar `backup_stale` si pasan `>36 h` sin respaldo válido.
+- **Motivo:** Detecta fallos silenciosos del backup diario ([`OBSERVABILITY.md`](OBSERVABILITY.md)).
+
+### ADR-130 — Purga de diseños `READY` abandonados (>90 días sin orden)
+
+- **Estado:** `Vigente`
+- **Decisión:** Purgar diseños `READY` sin actividad ni vínculo con pedidos o cotizaciones tras 90 días.
+- **Motivo:** Libera PNGs pesados de carritos no comprados.
+
+### ADR-131 — Pool Prisma (`limit=5`, `timeout=20s`) y retry de conexión
+
+- **Estado:** `Vigente`
+- **Decisión:** Fijar `connection_limit=5`, `pool_timeout=20` y `runWithDbRetry` (3 intentos solo en `P1001`/`P1017`/`P2024` pre-ejecución).
+- **Motivo:** Absorbe concurrencia RSC de Next.js 16 sin duplicar mutaciones.
+
+### ADR-149 — Barrido de huérfanos en Storage y métrica de cuota
+
+- **Estado:** `Vigente`
+- **Decisión:** Limpiar objetos huérfanos en `purge-anon-designs` y medir peso por bucket en `/admin/observability`.
+- **Motivo:** Control continuo de cuota de Storage.
+
+### ADR-161 — Purga de bitácoras `pg_cron`/`pg_net`, alertas de cuota y retención STG
+
+- **Estado:** `Vigente`
+- **Decisión:** Purgar `cron.job_run_details` (14 d) y `net._http_response` (24 h), alertar `capacity_storage_high` (>800 MB) / `capacity_db_high` (>400 MB) y limitar retención no-PRD a 14 días.
+- **Motivo:** Evita llenar disco por logs internos o pruebas de staging.
+
+---
+
+## 11. Observabilidad, rendimiento y calidad
+
+### ADR-008 — Observabilidad propia en PostgreSQL sin Sentry
+
+- **Estado:** `Vigente`
+- **Decisión:** Centralizar `ErrorLog`, `ErrorReport`, crons, 12 reglas `AlertState` y `uptime-monitor-prd` en `/admin/observability`.
+- **Motivo:** Costo $0 y redacción de PII en origen ([`OBSERVABILITY.md`](OBSERVABILITY.md)).
+
+### ADR-022 — Plataforma SaaS externa de monitoreo de errores
+
+- **Estado:** `Pendiente de activación externa`
+- **Decisión:** Diferir SaaS externo mientras la observabilidad propia (`ADR-008`) cubra SLOs sin costo fijo.
+- **Motivo:** Se reevaluará solo ante escala que exija APM distribuido ([`ROADMAP.md`](ROADMAP.md)).
+
+### ADR-062 — Certificación continua de preparación productiva
+
+- **Estado:** `Vigente`
+- **Decisión:** Exigir salud de endpoints, RLS, pagos, envíos, backups, legales y smoke post-deploy en cada release.
+- **Motivo:** Estándar operativo vivo en [`OPERATIONS.md`](OPERATIONS.md) y [`QA_CHECKLIST.md`](QA_CHECKLIST.md).
+
+### ADR-066 — Evaluación honesta de SLOs (`evaluateSlo`) y gate Lighthouse
+
+- **Estado:** `Vigente`
+- **Decisión:** Exigir muestra mínima en SLOs (`sin datos suficientes` cuando falta volumen) y correr Lighthouse desktop/móvil en CI.
+- **Motivo:** Sin falsos verdes estadísticos ni regresiones Web Vitals.
+
+### ADR-067 — Certificación E2E de cobro real en sandbox
+
+- **Estado:** `Vigente`
+- **Decisión:** Ejecutar `wompi-sandbox.spec.ts` en `nightly-full.yml` validando cobro tarjeta `4242` → webhook firmado → orden `PAID` + guía sandbox.
+- **Motivo:** Prueba real de dinero con terceros ([`TESTING.md`](TESTING.md)).
+
+### ADR-113 — Fuentes decorativas aisladas en `/estudio`, Turnstile lazy y caché catálogo
+
+- **Estado:** `Vigente`
+- **Decisión:** Cargar las 6 fuentes del Estudio solo en `/estudio/*` (`preload: false`), diferir Turnstile y cachear catálogo con tag `catalog`.
+- **Motivo:** Ahorra ~2 MB en el storefront público.
+
+### ADR-132 — Subsets `.subset.woff2` y prioridad LCP en primeras filas
+
+- **Estado:** `Vigente`
+- **Decisión:** Servir subsets ligeros de `Fredoka` e `Inter` y marcar `priority` en las primeras imágenes visibles de grillas y PDP.
+- **Motivo:** Mejora directa de LCP móvil.
+
+### ADR-135 — Telemetría RUM extendida (`LONGTASK`, `PAGEWEIGHT` y selector)
+
+- **Estado:** `Vigente`
+- **Decisión:** Capturar Web Vitals con atribución DOM, tareas largas y peso de página hacia `/admin/performance` bajo consentimiento.
+- **Motivo:** Diagnóstico exacto de cuellos de botella reales ([`OBSERVABILITY.md`](OBSERVABILITY.md)).
+
+### ADR-154 — Auditoría responsive en 6 viewports (`audit-responsive.spec.ts`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Auditar overflow horizontal y blancos táctiles sobre 6 perfiles Playwright (`desktop-chrome`, `mobile-chrome`, `mobile-landscape`, `tablet`, `tablet-landscape`, `desktop-large`).
+- **Motivo:** Cobertura sistemática multi-pantalla ([`TESTING.md`](TESTING.md)).
+
+---
+
+## 12. Cumplimiento legal y tributario colombiano
+
+### ADR-020 — Marco legal colombiano versionado en repositorio
+
+- **Estado:** `Vigente`
+- **Decisión:** Mantener Ley 1480, Ley 2439/2024 y Ley 1581/2012 trazadas en [`COMPLIANCE.md`](COMPLIANCE.md) y reflejadas en `/legal/*`.
+- **Motivo:** Reglas del software alineadas con plazos legales vigentes.
+
+### ADR-025 — Integración futura de facturación electrónica DIAN
+
+- **Estado:** `Pendiente de activación externa`
+- **Decisión:** Conservar el modelo tributario listo tras `BILLING_DOCUMENT_ENABLED = false` (`ADR-160`) hasta habilitar proveedor DIAN.
+- **Motivo:** Evita acoplar proveedor prematuro o prometer factura no activa ([`STATE.md`](STATE.md)).
+
+### ADR-071 — Operación como persona natural con exposición mínima de PII
+
+- **Estado:** `Vigente`
+- **Decisión:** Operar inicialmente como persona natural comerciante publicando los canales legales (`hola@lucamsshop.com`, `security@lucamsshop.com`).
+- **Motivo:** Cumple identificación comercial protegiendo datos sensibles personales.
+
+### ADR-072 — Paquete legal canónico de 8 documentos (`Versión 3`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Versionar los 8 textos en `packages/db/legal-content/legal.*.md` (retracto 5 días hábiles, reembolso ≤15 días calendario Ley 2439/2024, excepción de personalizados).
+- **Motivo:** Respaldo jurídico íntegro en modo `full` ([`COMPLIANCE.md`](COMPLIANCE.md)).
+
+### ADR-079 — Prueba auditable del consentimiento (Ley 1581)
+
+- **Estado:** `Vigente`
+- **Decisión:** Exigir casilla desmarcada y registrar versión de política, fecha, canal e IP (`getClientIp`) en todo formulario con datos personales.
+- **Motivo:** Prueba demostrable ante la SIC.
+
+### ADR-080 — Paridad automática entre `.md` legales y `FALLBACK` en código
+
+- **Estado:** `Vigente`
+- **Decisión:** Validar en `legal-content-sync.test.ts` igualdad exacta entre `packages/db/legal-content/*.md` y `app/legal/*/page.tsx`.
+- **Motivo:** Ningún despliegue sirve textos legales desfasados ([`CONVENTIONS.md`](CONVENTIONS.md)).
+
+### ADR-106 — Garantía por producto (`1..120` meses) congelada en `OrderItem`
+
+- **Estado:** `Vigente`
+- **Decisión:** Estampar `Product.warrantyMonths` en `OrderItem.warrantyMonths` al comprar para calcular elegibilidad de reclamos.
+- **Motivo:** Respeta la garantía vigente al momento de la compra (Ley 1480 art. 8).
+
+### ADR-160 — Ocultamiento de solicitud tributaria (`BILLING_DOCUMENT_ENABLED = false`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Apagar en UI y servidor la solicitud de documento tributario mientras `BILLING_DOCUMENT_ENABLED` sea `false` (`billing-document.ts`).
+- **Motivo:** Cumple Ley 1480 arts. 23 y 29 evitando expectativas de factura electrónica aún no activa.
+
+---
+
+## 13. Proceso de ingeniería, tipografías y accesibilidad
+
+### ADR-012 — Documentación viva de 3 niveles y cero arqueología
+
+- **Estado:** `Vigente`
+- **Decisión:** Organizar `docs/` en 3 niveles ([`README.md`](README.md)), actualizar en el sitio y confinar artefactos efímeros a `tmp/` (`make clean-tmp`).
+- **Motivo:** Ahorro de contexto y cero bitácoras obsoletas ([`../CLAUDE.md`](../CLAUDE.md)).
+
+### ADR-018 — Verificación técnica contra código y fuentes oficiales
+
+- **Estado:** `Vigente`
+- **Decisión:** Contrastar límites de proveedores, tarifas y normas contra código real o documentación oficial vigente.
+- **Motivo:** Elimina decisiones basadas en supuestos desactualizados.
+
+### ADR-019 — Continuidad operativa en `docs/STATE.md` e historial Git
+
+- **Estado:** `Vigente`
+- **Decisión:** Mantener el estado ejecutivo actual y pendientes abiertos en [`STATE.md`](STATE.md) (`<= 8 KB`), dejando la cronología a `git log`.
+- **Motivo:** Contexto inmediato al iniciar cualquier sesión.
+
+### ADR-021 — Fuentes locales `.subset.woff2` (`next/font/local`) y `.ttf` para `@napi-rs/canvas`
+
+- **Estado:** `Vigente`
+- **Decisión:** Cargar `Fredoka` e `Inter` desde `apps/web/assets/fonts/*.subset.woff2` con `next/font/local` (`app/layout.tsx`) y conservar `apps/web/assets/fonts/*.ttf` para las 6 fuentes del Estudio (`app/estudio/fonts.ts`) y el render 300 DPI en `@napi-rs/canvas` (`GlobalFonts`).
+- **Motivo:** Cero descargas de Google Fonts en runtime/build, óptimo LCP y paridad tipográfica con imprenta ([`BRANDING.md`](BRANDING.md)).
+
+### ADR-044 — Accesibilidad WCAG 2.1 AA con tokens de tinta y gate `axe`
+
+- **Estado:** `Vigente`
+- **Decisión:** Usar variantes accesibles (`--brand-muted`, `--brand-pink-ink`, `--brand-coral-ink`) en texto interactivo y exigir `0` fallos `serious`/`critical` en `a11y-contrast.test.ts` y `axe.spec.ts`.
+- **Motivo:** Contraste AA real conservando la estética pastel ([`BRANDING.md`](BRANDING.md)).
+
+### ADR-073 — Renderizado dinámico obligatorio en `/admin/*`
+
+- **Estado:** `Vigente`
+- **Decisión:** Forzar renderizado dinámico sin prerender estático en todo el árbol `/admin/*`.
+- **Motivo:** Depende siempre de sesión autenticada `aal2` y datos vivos.

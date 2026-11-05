@@ -15,7 +15,7 @@
  *
  * Fuentes del PDF, en orden de preferencia:
  *   1. labelPdfBase64 (archivorotulo/archivosticker de la respuesta generarGuia —
- *      INTEGRATIONS_AVEONLINE §4.3 ya lo preveía: "guardar en Supabase Storage").
+ *      docs/integrations/aveonline.md).
  *   2. Descarga de labelUrl, luego trackingUrl (solo http(s)).
  *
  * Validaciones: tamaño máx, timeout de descarga y magic bytes %PDF (el
