@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateStepCondition } from "./eligibility";
 import { LifecycleJourneyStepSchema } from "./schemas";
 import { isLifecycleDryRun } from "./settings";
+import { lifecycleTestRecipientName } from "./messaging";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -62,5 +63,11 @@ describe("lifecycle step rules", () => {
     expect(isLifecycleDryRun()).toBe(false);
     vi.stubEnv("LIFECYCLE_DRY_RUN", "true");
     expect(isLifecycleDryRun()).toBe(true);
+  });
+
+  it("usa solo el nombre base del correo en pruebas con alias", () => {
+    expect(lifecycleTestRecipientName("crittan01+lifecycle-stg-123@gmail.com")).toBe("crittan01");
+    expect(lifecycleTestRecipientName("lucia.perez@example.com")).toBe("lucia");
+    expect(lifecycleTestRecipientName("@example.com")).toBe("hola");
   });
 });

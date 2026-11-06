@@ -11,6 +11,7 @@ import {
 } from "@/features/newsletter/unsubscribe";
 import { NEWSLETTER_PRIVACY_VERSION } from "@/features/newsletter/service";
 import { findEligibleContacts, toAudienceMember } from "./eligibility";
+import { lifecycleTestRecipientName } from "./messaging";
 import { isLifecycleDryRun } from "./settings";
 import type {
   LifecycleAudiencePreview,
@@ -280,7 +281,7 @@ export async function sendLifecycleTest(
     body: step.body,
     ctaLabel: step.ctaLabel,
     ctaUrl: `${siteUrl}${step.ctaPath}`,
-    recipientName: admin.fullName ?? admin.email.split("@")[0],
+    recipientName: admin.fullName ?? lifecycleTestRecipientName(admin.email),
     productNames: ["Fotoimanes Cuadrados", "Calendario personalizado"],
     unsubscribeUrl: step.commercial
       ? `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(admin.email)}`

@@ -27,6 +27,13 @@ export function buildMessageMetadata(
   };
 }
 
+export function lifecycleTestRecipientName(email: string): string {
+  const localPart = email.trim().split("@")[0];
+  const withoutTag = localPart.split("+")[0];
+  const firstPart = withoutTag.split(/[._-]/).find((part) => part.trim().length > 0);
+  return firstPart || "hola";
+}
+
 function textMetadata(metadata: Prisma.JsonValue, key: string, fallback: string): string {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return fallback;
   const value = (metadata as Prisma.JsonObject)[key];
