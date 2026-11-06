@@ -65,6 +65,7 @@ const ROUTES = [
   "/admin/integraciones",
   "/admin/email-templates",
   "/admin/redirects",
+  "/admin/ayuda",
 ];
 
 test.setTimeout(300_000);

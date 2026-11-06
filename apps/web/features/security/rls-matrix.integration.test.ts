@@ -37,6 +37,8 @@ const SENSITIVE = [
   "Address",
   "AdminUser",
   "AdminRecoveryCode",
+  "AdminHelpProgress",
+  "AdminHelpFeedback",
   "AdminActionLog",
   "Cart",
   "CartItem",

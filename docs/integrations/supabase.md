@@ -248,7 +248,7 @@ Usa este procedimiento al auditar o aprovisionar un entorno de Supabase para Luc
 ### Paso 2 — Esquema Prisma y Migraciones SQL (RLS, Storage, Crons)
 
 - [ ] Ejecutar `pnpm --filter @lucams/db exec prisma migrate deploy` usando `DIRECT_URL`.
-- [ ] Aplicar en orden las migraciones SQL de `supabase/migrations/00000000000002_*.sql` a `00000000000054_*.sql` (habilitan RLS, revocan grants, crean los 5 buckets con sus límites/MIME, instalan el event trigger `enforce_rls_on_new_table_trg` y registran los jobs `pg_cron`).
+- [ ] Aplicar en orden las migraciones SQL de `supabase/migrations/00000000000002_*.sql` a `00000000000056_*.sql` (habilitan RLS, revocan grants, crean los 5 buckets con sus límites/MIME, instalan el event trigger `enforce_rls_on_new_table_trg` y registran los jobs `pg_cron`).
 - [ ] Ejecutar `node packages/db/scripts/verify-security-posture.mjs` y confirmar que las 5 invariantes de seguridad pasan sin errores.
 
 ### Paso 3 — Extensiones y Secretos en Supabase Vault
