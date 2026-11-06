@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { AdminRole } from "@lucams/db";
 import { ArrowRight, CircleHelp, GraduationCap } from "lucide-react";
@@ -27,7 +27,27 @@ export function AdminHelpLauncher({
   progress: AdminHelpProgress[];
 }) {
   const [open, setOpen] = useState(false);
-  const [onboardingSnoozed, setOnboardingSnoozed] = useState(false);
+  const [onboardingSnoozed, setOnboardingSnoozed] = useState(true);
+  const onboardingStorageKey = `admin-help-onboarding-snoozed:${onboarding.id}`;
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        setOnboardingSnoozed(window.sessionStorage.getItem(onboardingStorageKey) === "1");
+      } catch {
+        setOnboardingSnoozed(false);
+      }
+    });
+  }, [onboardingStorageKey]);
+
+  function snoozeOnboarding() {
+    try {
+      window.sessionStorage.setItem(onboardingStorageKey, "1");
+    } catch {
+      // La persistencia de sesión es una mejora; el avance del servidor sigue disponible.
+    }
+    setOnboardingSnoozed(true);
+  }
+
   const guideProgress = progress.find((item) => item.guideId === guide?.id) ?? null;
   const onboardingProgress = progress.find((item) => item.guideId === onboarding.id) ?? null;
   const shouldStartOnboarding =
@@ -100,7 +120,7 @@ export function AdminHelpLauncher({
           role={role}
           initialProgress={onboardingProgress}
           autoStart
-          onClose={() => setOnboardingSnoozed(true)}
+          onClose={snoozeOnboarding}
         />
       )}
 

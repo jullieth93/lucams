@@ -26,7 +26,7 @@ import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
 // Guarda de ambiente compartida con los scripts destructivos del repo.
 import { checkDestructiveAllowed } from "../../../../../packages/db/scripts/lib/env-guard.mjs";
-import { enrollTotpFactor } from "../_helpers/mfa";
+import { dismissAdminHelpOnboarding, enrollTotpFactor } from "../_helpers/mfa";
 import { totp } from "../_helpers/totp";
 import {
   authManifestPath,
@@ -181,6 +181,7 @@ export default async function globalSetup() {
     await clickAndWaitForURL(page, /iniciar sesión/i, /\/admin\/login\/mfa/);
     await page.getByPlaceholder("123456").fill(totp(adminTotpSecret, Date.now()));
     await clickAndWaitForURL(page, /verificar y entrar/i, /\/admin\/dashboard/);
+    await dismissAdminHelpOnboarding(page);
     await context.storageState({ path: authStatePath(env, "admin") });
 
     // Cliente (login de storefront → redirect a "/" en éxito).

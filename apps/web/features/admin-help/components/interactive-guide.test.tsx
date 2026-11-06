@@ -42,6 +42,7 @@ describe("AdminInteractiveGuide", () => {
     const guide = getOnboardingForRole("CMS_EDITOR");
     render(<AdminInteractiveGuide guide={guide} role="CMS_EDITOR" autoStart />);
 
+    expect(screen.getByRole("region", { name: `Recorrido: ${guide.title}` })).toHaveClass("left-4");
     fireEvent.click(screen.getByRole("button", { name: "No mostrar automáticamente esta ruta" }));
     await waitFor(() =>
       expect(saveHelpProgressAction).toHaveBeenCalledWith({

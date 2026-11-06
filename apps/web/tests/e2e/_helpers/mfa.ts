@@ -37,23 +37,41 @@ export async function enrollTotpFactor(email: string, password: string): Promise
   return en.totp.secret;
 }
 
+export async function dismissAdminHelpOnboarding(page: Page): Promise<void> {
+  const dismiss = page.getByRole("button", { name: "No mostrar automáticamente esta ruta" });
+  const visible = await dismiss
+    .waitFor({ state: "visible", timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!visible) return;
+  await dismiss.click();
+  await dismiss.waitFor({ state: "hidden", timeout: 10_000 });
+}
+
 /**
  * Completa el reto TOTP de /admin/login/mfa SI aparece tras el login por UI.
  * No-op si el input del código nunca aparece (sesión ya en aal2). Tras verificar
- * espera salir del reto.
+ * espera salir del reto y descarta el onboarding para aislar el escenario operativo.
  */
-export async function completeMfaChallengeIfNeeded(page: Page, secret: string): Promise<void> {
+export async function completeMfaChallengeIfNeeded(
+  page: Page,
+  secret: string,
+  opts: { dismissOnboarding?: boolean } = {},
+): Promise<void> {
+  const { dismissOnboarding = true } = opts;
   const input = page.getByPlaceholder("123456");
   const challenged = await input
     .waitFor({ state: "visible", timeout: 15_000 })
     .then(() => true)
     .catch(() => false);
-  if (!challenged) return;
-  await input.fill(totp(secret, Date.now()));
-  await page.getByRole("button", { name: /verificar y entrar/i }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/admin/login/mfa"), {
-    timeout: 20_000,
-  });
+  if (challenged) {
+    await input.fill(totp(secret, Date.now()));
+    await page.getByRole("button", { name: /verificar y entrar/i }).click();
+    await page.waitForURL((url) => !url.pathname.startsWith("/admin/login/mfa"), {
+      timeout: 20_000,
+    });
+  }
+  if (dismissOnboarding) await dismissAdminHelpOnboarding(page);
 }
 
 /**
@@ -63,8 +81,9 @@ export async function completeMfaChallengeIfNeeded(page: Page, secret: string): 
  */
 export async function loginAdminWithTotp(
   page: Page,
-  opts: { email: string; password: string; totpSecret: string },
+  opts: { email: string; password: string; totpSecret: string; dismissOnboarding?: boolean },
 ): Promise<void> {
+  const { dismissOnboarding = true } = opts;
   await page.goto("/admin/login", { waitUntil: "domcontentloaded" });
   await page.locator('input[name="email"]').fill(opts.email);
   await page.locator('input[name="password"]').fill(opts.password);
@@ -73,4 +92,5 @@ export async function loginAdminWithTotp(
   await page.getByPlaceholder("123456").fill(totp(opts.totpSecret, Date.now()));
   await page.getByRole("button", { name: /verificar y entrar/i }).click();
   await page.waitForURL(/\/admin\/dashboard/, { timeout: 20_000 });
+  if (dismissOnboarding) await dismissAdminHelpOnboarding(page);
 }
