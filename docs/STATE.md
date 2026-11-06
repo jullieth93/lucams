@@ -19,11 +19,11 @@
 
 ## Topología de ambientes y homologación STG ↔ PRD
 
-| Ambiente  | Infraestructura                                                                                | Estado operativo actual                                                                      |
-| --------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| **LOCAL** | Supabase en Podman (`:54321`/`:54322`/`:54324`) + Next dev (`:4000` vía `make local-up`)       | Operativo; `make db-local-seed` 100 % idempotente; 3 crons SQL activos                       |
-| **STG**   | `develop` → Vercel Preview (`VERCEL_BYPASS_TOKEN`) + Supabase STG (`mjbdiqdkykhsixvqlrrp`)     | Operativo; aloja `uptime-monitor-prd` (11 jobs `pg_cron`); reset limpio vía `make stg-reset` |
-| **PRD**   | `production` → `lucamsshop.com` en Vercel Pro (`iad1`) + Supabase PRD (`zxkucphbsfygakgxcnik`) | **En producción (`full`)**; 16 jobs `pg_cron` + backups diarios GPG (DB + Storage) en R2     |
+| Ambiente  | Infraestructura                                                                                | Estado operativo actual                                                                                                                            |
+| --------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **LOCAL** | Supabase en Podman (`:54321`/`:54322`/`:54324`) + Next dev (`:4000` vía `make local-up`)       | Operativo; `make db-local-seed` 100 % idempotente; 3 crons SQL activos                                                                             |
+| **STG**   | `develop` → Vercel Preview (`VERCEL_BYPASS_TOKEN`) + Supabase STG (`mjbdiqdkykhsixvqlrrp`)     | Operativo; aloja `uptime-monitor-prd` (12 jobs `pg_cron`, incluido `lucams-fiscal-watch` de la mig `055`); reset limpio vía `make stg-reset`       |
+| **PRD**   | `production` → `lucamsshop.com` en Vercel Pro (`iad1`) + Supabase PRD (`zxkucphbsfygakgxcnik`) | **En producción (`full`)**; 15 jobs `pg_cron` (16 tras el release que aplique la mig `055` — `ADR-196`) + backups diarios GPG (DB + Storage) en R2 |
 
 ### Excepciones deliberadas de homologación (`ADR-099`, `ADR-121`, `ADR-126`)
 
@@ -105,7 +105,8 @@
    proveedor tecnológico (`BILLING_DOCUMENT_ENABLED = false` en `features/checkout/billing-document.ts`).
 2. **Checklist del próximo release `develop → production`:**
    - Verificar aplicación en PRD de migraciones Prisma (hasta `094`) y SQL Supabase (hasta `055`,
-     incluida la agenda del cron `lucams-fiscal-watch` y su latido sembrado — `ADR-196`), y
+     incluida la agenda del cron `lucams-fiscal-watch` y su latido sembrado — `ADR-196`; en STG ya
+     está aplicada y verificada end-to-end), y
      ejecutar `packages/db/scripts/backfill-contacts.mjs` (`--dry-run` → `--apply`) si aplica.
    - Correr `packages/db/scripts/sync-and-prune-cms-v2.mjs` e invalidar caché en `/admin/contenido`
      para reflejar el **paquete legal Versión 3 (`2026-11-05`)** y `PRIVACY_POLICY_VERSION`.
