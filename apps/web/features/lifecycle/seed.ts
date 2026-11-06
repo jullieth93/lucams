@@ -33,6 +33,53 @@ type SeedJourney = {
   steps: SeedStep[];
 };
 
+const LEGACY_CART_STEPS = [
+  {
+    journeyKey: "first-purchase",
+    legacySubject: "Tu carrito te espera",
+    nextSubject: "Tu primer producto está a un paso",
+    legacyPosition: 4,
+    nextPosition: 3,
+  },
+  {
+    journeyKey: "high-intent",
+    legacySubject: "Revisa tu selección cuando quieras",
+    nextSubject: "Encuentra el formato que sí te representa",
+    legacyPosition: 3,
+    nextPosition: 2,
+  },
+] as const;
+
+async function reconcileLegacySeed(key: string): Promise<void> {
+  if (key === "b2b-follow-up") {
+    await prisma.lifecycleJourney.updateMany({
+      where: { key, status: "DRAFT", version: 1, inactivityDays: 0 },
+      data: { inactivityDays: 2 },
+    });
+    return;
+  }
+  const legacy = LEGACY_CART_STEPS.find((item) => item.journeyKey === key);
+  if (!legacy) return;
+  const removed = await prisma.lifecycleJourneyStep.deleteMany({
+    where: {
+      journey: { key, status: "DRAFT", version: 1 },
+      condition: "HAS_ABANDONED_CART",
+      subject: legacy.legacySubject,
+      messages: { none: {} },
+      enrollments: { none: {} },
+    },
+  });
+  if (removed.count === 0) return;
+  await prisma.lifecycleJourneyStep.updateMany({
+    where: {
+      journey: { key, status: "DRAFT", version: 1 },
+      subject: legacy.nextSubject,
+      position: legacy.legacyPosition,
+    },
+    data: { position: legacy.nextPosition },
+  });
+}
+
 export async function ensureLifecycleJourneySeeds(): Promise<void> {
   for (const journey of defaultJourneys as SeedJourney[]) {
     await prisma.lifecycleJourney.upsert({
@@ -67,5 +114,6 @@ export async function ensureLifecycleJourneySeeds(): Promise<void> {
         },
       },
     });
+    await reconcileLegacySeed(journey.key);
   }
 }

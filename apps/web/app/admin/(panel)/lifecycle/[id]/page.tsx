@@ -106,7 +106,11 @@ export default async function LifecycleJourneyDetailPage({
           <LifecycleStatusButtons
             journeyId={journey.id}
             status={journey.status}
-            firstStepId={journey.steps[0]?.id}
+            steps={journey.steps.map((step) => ({
+              id: step.id,
+              position: step.position,
+              subject: step.subject,
+            }))}
           />
         }
       />
@@ -118,12 +122,21 @@ export default async function LifecycleJourneyDetailPage({
           <ArrowLeft className="h-3.5 w-3.5" /> Volver a recorridos
         </Link>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <KpiCard label="Inscripciones activas" value={metrics.active} />
           <KpiCard label="Mensajes enviados" value={metrics.messagesSent} />
+          <KpiCard
+            label="Entregados por Resend"
+            value={`${metrics.messagesDelivered} · ${Math.round(metrics.deliveryRate * 100)} %`}
+          />
           <KpiCard label="Clics" value={`${Math.round(metrics.clickRate * 100)} %`} />
+          <KpiCard label="Conversiones" value={metrics.conversions} />
           <KpiCard label="Ingresos atribuidos" value={formatCOP(metrics.revenueCents)} />
         </div>
+        <p className="text-brand-muted text-xs">
+          Rebotes: {metrics.messagesBounced} · quejas: {metrics.messagesComplained} · diferidos:{" "}
+          {metrics.messagesDelayed}
+        </p>
 
         <section className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
           <h2 className="font-display text-brand-purple-dark text-lg font-bold">
@@ -139,7 +152,7 @@ export default async function LifecycleJourneyDetailPage({
               {audience.sample.map((member) => (
                 <li key={member.contactId} className="rounded-lg bg-slate-50 px-3 py-2">
                   <span className="text-brand-purple-dark font-medium">
-                    {member.displayName ?? member.email}
+                    {member.displayName ?? member.email ?? "Contacto sin correo"}
                   </span>
                   {member.triggerRef && (
                     <span className="text-brand-muted ml-2 text-xs">{member.triggerRef}</span>
@@ -148,6 +161,35 @@ export default async function LifecycleJourneyDetailPage({
               ))}
             </ul>
           )}
+        </section>
+
+        <section className="border-brand-purple/10 space-y-3 rounded-xl border bg-white p-5 shadow-sm">
+          <div>
+            <h2 className="font-display text-brand-purple-dark text-lg font-bold">
+              Previsualización de mensajes y enlaces
+            </h2>
+            <p className="text-brand-muted mt-1 text-sm">
+              El enlace final de atribución se genera al enviar. Aquí se valida la ruta interna de
+              destino.
+            </p>
+          </div>
+          {journey.steps.map((step) => (
+            <details key={step.id} className="rounded-lg border border-slate-200 p-3">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-800">
+                Paso {step.position}: {step.subject}
+              </summary>
+              <p className="text-brand-muted mt-2 text-xs">
+                Botón: {step.ctaLabel} · destino: <code>{step.ctaPath}</code>
+              </p>
+              <iframe
+                src={`/admin/lifecycle/${journey.id}/preview?stepId=${step.id}`}
+                title={`Vista previa del paso ${step.position}`}
+                loading="lazy"
+                sandbox=""
+                className="mt-3 h-[720px] w-full rounded-md border border-slate-200 bg-white"
+              />
+            </details>
+          ))}
         </section>
 
         <LifecycleJourneyForm journeyId={journey.id} initialJourney={initialJourney} />
@@ -196,6 +238,7 @@ export default async function LifecycleJourneyDetailPage({
                     <EnrollmentActionButtons
                       enrollmentId={enrollment.id}
                       status={enrollment.status}
+                      exitReason={enrollment.exitReason}
                     />
                   </td>
                 </AdminTableRow>
@@ -233,7 +276,7 @@ export default async function LifecycleJourneyDetailPage({
                   </td>
                   <td className="max-w-sm text-sm">
                     {message.subject}
-                    {message.status === "FAILED" && message.error && (
+                    {message.error && (
                       <span className="mt-1 block text-xs text-rose-700">{message.error}</span>
                     )}
                   </td>

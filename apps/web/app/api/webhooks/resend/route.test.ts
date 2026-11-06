@@ -36,6 +36,7 @@ vi.mock("next/headers", () => ({
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    contact: { findMany: vi.fn(async () => []) },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
         emailEvent: {
@@ -166,8 +167,9 @@ describe("webhook Resend — jerarquía de terminalidad (E1)", () => {
   it("delivered y luego bounced (supresor nuevo) → SÍ actualiza: el rebote gana siempre", async () => {
     state.existing = { type: "email.delivered", occurredAt: new Date("2026-10-01T10:00:00Z") };
 
-    await postEvent({ type: "email.bounced", occurredAt: "2026-10-01T10:05:00Z" });
+    const res = await postEvent({ type: "email.bounced", occurredAt: "2026-10-01T10:05:00Z" });
 
+    expect(await res.json()).toEqual({ ok: true });
     expect(state.upserts).toHaveLength(1);
     expect(state.upserts[0].update.type).toBe("email.bounced");
   });

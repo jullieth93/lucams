@@ -22,6 +22,16 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
         "Configuración versionada de disparador, inscripción, pasos y reglas de frecuencia. Solo ejecuta mensajes cuando está activo.",
     },
     {
+      term: "Control general",
+      definition:
+        "Interruptor y límite diario compartido por todos los recorridos. Se aplica por contacto en hora Colombia y se reserva en base de datos antes de enviar para evitar excesos incluso con workers concurrentes.",
+    },
+    {
+      term: "Modo de prueba (DRY_RUN)",
+      definition:
+        "En STG procesa reglas y mensajes sin llamar a Resend ni crear tareas operativas. La acción de prueba valida el contenido sin enviar correo.",
+    },
+    {
       term: "Inscripción",
       definition:
         "Relación entre un contacto y un recorrido en un ciclo concreto, con paso actual, próxima ejecución y salida.",
@@ -39,7 +49,7 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
     {
       term: "Atribución",
       definition:
-        "Relación entre el último clic y la primera compra pagada en los 30 días siguientes. Cada pedido se atribuye a un solo mensaje y los ingresos nunca se calculan sobre intenciones.",
+        "Relación entre el último clic anterior a una orden creada dentro de los 30 días siguientes que ya esté pagada. Un clic posterior no roba la conversión. Cada pedido se atribuye a un solo mensaje y los ingresos nunca se calculan sobre intenciones.",
     },
   ],
   sections: [
@@ -68,7 +78,7 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
           label: "Consentimiento requerido",
           description: "Determina si la inscripción exige newsletter vigente.",
           interpretation:
-            "Los pasos comerciales vuelven a comprobar consentimiento siempre; los transaccionales no lo usan como bloqueo.",
+            "Los pasos comerciales vuelven a comprobar la versión vigente del consentimiento y cualquier revocación posterior; los transaccionales no lo usan como bloqueo.",
         },
         {
           id: "ventanas",
@@ -82,7 +92,15 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
           label: "Límite diario y silencio",
           description: "Restringe mensajes por día y define horario de silencio.",
           interpretation:
-            "El silencio cruza medianoche si la hora inicial es mayor que la final. La ejecución se reprograma, no se pierde.",
+            "El límite global cuenta todos los recorridos; el individual solo el recorrido actual. Se aplica el más restrictivo. El silencio cruza medianoche si la hora inicial es mayor que la final y la ejecución se reprograma.",
+        },
+        {
+          id: "delegacion",
+          label: "Carrito y reposición",
+          description:
+            "Evita recordatorios duplicados con los flujos transaccionales ya existentes.",
+          interpretation:
+            "Un carrito vigente sale con DELEGATED_CART_RECOVERY y una alerta con stock con DELEGATED_BACK_IN_STOCK. Esos flujos envían su propio mensaje; Lifecycle no repite el aviso.",
         },
       ],
     },
@@ -141,22 +159,29 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
           label: "Inscripciones y ciclos",
           description: "Muestran paso actual, próxima ejecución, estado y motivo de salida.",
           interpretation:
-            "Pausar detiene temporalmente; reanudar programa la ejecución. Finalizar impide además una nueva inscripción automática del contacto en ese recorrido.",
+            "Solo una pausa manual puede reanudarse. Una baja, rebote, queja o fallo definitivo no se reanuda para evitar omitir la supresión. Finalizar impide una nueva inscripción automática.",
         },
         {
           id: "message",
-          label: "Mensajes",
-          description: "Conserva estado, fecha, error, enlace, clic y conversión.",
+          label: "Mensajes y entrega",
+          description: "Conserva estado, error, enlace, entrega Resend, clic y conversión.",
           interpretation:
-            "Pendiente espera ejecución; enviado ya salió; fallido permite reintentar; suprimido no continúa.",
+            "Enviado significa aceptado por Resend; entregado llega después por webhook. DRY_RUN es una simulación sin correo. Fallido permite reintentar; baja, rebote o queja cancelan lo pendiente.",
         },
         {
           id: "metrics",
-          label: "Clics, conversión e ingresos",
+          label: "Entrega, clics, conversión e ingresos",
           description:
-            "Calcula tasa de clics, compras atribuidas y monto de la primera orden pagada dentro de los 30 días posteriores al último clic.",
+            "Cruza resendId con EmailEvent para medir entrega, rebote, queja y diferido, y calcula clics, compras atribuidas e ingreso.",
           interpretation:
-            "No es atribución de apertura: el clic precede a la compra y esta debe ser pagada. No confundas inscripciones completadas con ingresos.",
+            "La conversión exige un clic anterior a una orden creada dentro de 30 días que ya esté pagada. Un clic posterior a la orden no la roba. No confundas aceptación por Resend, entrega o inscripciones completadas con ventas.",
+        },
+        {
+          id: "b2b-tasks",
+          label: "Tareas B2B",
+          description: "Crea seguimiento operativo aunque el contacto no tenga correo.",
+          interpretation:
+            "Cada oportunidad, paso y ciclo tiene una clave idempotente. La tarea queda en Bandeja Hoy y la bitácora de Contacto 360; ganar o perder la oportunidad cierra el recorrido.",
         },
         {
           id: "audience",
@@ -175,13 +200,13 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
       title: "Crear y activar un recorrido",
       goal: "Configurar una automatización revisada antes de permitir mensajes reales.",
       steps: [
-        "Abre Lifecycle Journeys y selecciona Nuevo recorrido.",
-        "Define clave, nombre, propósito y disparador.",
+        "Abre Lifecycle Journeys y revisa el interruptor y el límite global del motor.",
+        "Selecciona Nuevo recorrido y define clave, nombre, propósito y disparador.",
         "Configura consentimiento, ventanas, límite diario y horario de silencio.",
         "Agrega los pasos con espera, condición, asunto, preheader, titular, contenido y botón.",
-        "Guarda como borrador y revisa la audiencia elegible.",
-        "Envíate una prueba con MFA y revisa texto, enlaces y clasificación comercial.",
-        "Activa el recorrido y verifica las primeras inscripciones y ejecuciones en el cron.",
+        "Guarda como borrador y revisa la audiencia elegible y la vista previa de cada paso.",
+        "Prueba el paso elegido con MFA; en STG el resultado siempre es DRY_RUN y no sale correo.",
+        "Activa el recorrido y verifica las primeras inscripciones, entregas y ejecuciones en el cron.",
       ],
       expected:
         "El recorrido queda activo con inscripciones elegibles, sin activarse por accidente ni sobrescribir otras automatizaciones.",
@@ -222,10 +247,10 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
     },
   ],
   cautions: [
-    "No actives recorridos sin revisar audiencia y prueba de correo: los envíos reales pueden llegar a clientes.",
-    "No uses el motor para reemplazar recuperación de carritos o reseñas existentes; sus condiciones evitan duplicarlos.",
+    "No actives recorridos sin revisar audiencia, control general y previsualización: en PRD los envíos reales pueden llegar a clientes.",
+    "No uses el motor para reemplazar recuperación de carritos, reposiciones o reseñas: Lifecycle delega esos avisos para no duplicarlos.",
     "No cambies horarios o pasos esperando efectos retroactivos en mensajes ya enviados.",
-    "No interpretes clics como ventas: la conversión solo se registra sobre una orden pagada posterior.",
+    "No interpretes clics ni aceptación por Resend como ventas o entregas: cada estado se mide por separado y la conversión exige orden pagada posterior al clic.",
   ],
   faqs: [
     {
@@ -246,7 +271,12 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
     {
       question: "¿Cuándo termina una inscripción?",
       answer:
-        "Al completar todos los pasos, al registrarse una salida por compra o resultado B2B, al perder consentimiento requerido o cuando un administrador la finaliza.",
+        "Al completar todos los pasos, al registrarse una salida por compra o resultado B2B, al perder consentimiento requerido, al delegar carrito o reposición, o cuando un administrador la finaliza.",
+    },
+    {
+      question: "¿STG puede enviar correos Lifecycle reales?",
+      answer:
+        "No. Preview siempre ejecuta DRY_RUN: registra la simulación sin llamar a Resend ni crear tareas operativas. La prueba administrativa tampoco envía correo.",
     },
   ],
   related: [
@@ -268,5 +298,5 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
     "conversión",
     "atribución",
   ],
-  version: 2,
+  version: 3,
 };

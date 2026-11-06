@@ -48,6 +48,8 @@ test("admin crea, versiona, activa y pausa un recorrido sin enviar correos reale
   await expect(
     page.getByRole("heading", { name: "Lifecycle Journeys", exact: true }),
   ).toBeVisible();
+  await expect(page.getByText("Control general del motor")).toBeVisible();
+  await expect(page.getByLabel("Límite global por contacto y día")).toBeVisible();
   await expect(page.getByText("Primera compra", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("link", { name: "Nuevo recorrido" }).click();
@@ -66,11 +68,30 @@ test("admin crea, versiona, activa y pausa un recorrido sin enviar correos reale
   await expect(page).toHaveURL(/\/admin\/lifecycle\/[a-z0-9]+/);
   await expect(page.getByRole("heading", { name: "Recorrido E2E", exact: true })).toBeVisible();
   await expect(page.getByText("Audiencia elegible ahora")).toBeVisible();
+  await expect(page.getByText("Previsualización de mensajes y enlaces")).toBeVisible();
+  await page.getByText("Paso 1: Mensaje de prueba E2E").click();
+  const preview = page.frameLocator('iframe[title="Vista previa del paso 1"]');
+  await expect(preview.locator("body")).toContainText("Titular de prueba E2E");
+  await expect(preview.locator("body")).toContainText("Explorar productos");
+  if (process.env.LIFECYCLE_DRY_RUN === "1") {
+    await page.getByRole("button", { name: "Enviarme una prueba" }).click();
+    await expect(
+      page.getByText("Contenido validado en modo de prueba; no se envió ningún correo."),
+    ).toBeVisible();
+  }
 
   await page.getByRole("button", { name: "Activar", exact: true }).click();
   await expect(page.getByText("Estado actualizado a ACTIVE.")).toBeVisible();
   await page.getByRole("button", { name: "Pausar", exact: true }).click();
   await expect(page.getByText("Estado actualizado a PAUSED.")).toBeVisible();
+
+  if (process.env.LIFECYCLE_DRY_RUN === "1" && process.env.CRON_SECRET) {
+    const response = await page.request.get("/api/cron/lifecycle", {
+      headers: { "x-cron-secret": process.env.CRON_SECRET },
+    });
+    expect(response.ok()).toBe(true);
+    expect(await response.json()).toMatchObject({ ok: true, errors: 0, dryRun: true });
+  }
 
   await page.getByLabel("Nombre visible").fill("Recorrido E2E actualizado");
   await page.getByRole("button", { name: "Guardar recorrido" }).click();

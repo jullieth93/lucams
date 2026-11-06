@@ -39,18 +39,6 @@
       },
       {
         "position": 3,
-        "delayMinutes": 5760,
-        "subject": "Tu carrito te espera",
-        "heading": "Tu compra quedó a un paso",
-        "preheader": "Revisa tu selección y completa tu primer pedido.",
-        "body": "Hola {nombre}. Tu selección sigue esperándote. Antes de completarla puedes revisar los productos, la personalización, el envío y el total. No necesitas crear otra selección: vuelve a tu carrito y retómala donde quedaste.",
-        "ctaLabel": "Revisar mi carrito",
-        "ctaPath": "/carrito",
-        "commercial": true,
-        "condition": "HAS_ABANDONED_CART"
-      },
-      {
-        "position": 4,
         "delayMinutes": 10080,
         "subject": "Tu primer producto está a un paso",
         "heading": "Convierte tu idea en algo memorable",
@@ -207,18 +195,6 @@
       },
       {
         "position": 2,
-        "delayMinutes": 4320,
-        "subject": "Revisa tu selección cuando quieras",
-        "heading": "Tu carrito sigue siendo parte de tu idea",
-        "preheader": "Vuelve a tu selección y revisa el resultado antes de comprar.",
-        "body": "Hola {nombre}. Si tu selección quedó pendiente, puedes volver al carrito para revisar productos, diseños, envío y total. No necesitas empezar de nuevo.",
-        "ctaLabel": "Volver a mi carrito",
-        "ctaPath": "/carrito",
-        "commercial": true,
-        "condition": "HAS_ABANDONED_CART"
-      },
-      {
-        "position": 3,
         "delayMinutes": 7200,
         "subject": "Encuentra el formato que sí te representa",
         "heading": "Prueba otra forma de contar tu historia",
@@ -238,7 +214,7 @@
     "trigger": "B2B_FOLLOW_UP",
     "status": "DRAFT",
     "requireOptIn": false,
-    "inactivityDays": 0,
+    "inactivityDays": 2,
     "entryLookbackDays": 30,
     "cooldownDays": 90,
     "maxMessagesPerDay": 1,

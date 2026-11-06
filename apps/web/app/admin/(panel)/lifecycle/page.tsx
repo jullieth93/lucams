@@ -20,6 +20,8 @@ import {
   getLifecycleJourneyMetrics,
   listLifecycleJourneys,
 } from "@/features/lifecycle/admin-service";
+import { getLifecycleSettings } from "@/features/lifecycle/settings";
+import { LifecycleEngineControls } from "./action-buttons";
 
 export const metadata: Metadata = { title: "Lifecycle Journeys" };
 
@@ -40,9 +42,10 @@ const STATUS_LABELS = {
 
 export default async function LifecyclePage() {
   await requireAdminAction({ capability: "lifecycle:manage" });
-  const [journeys, metrics] = await Promise.all([
+  const [journeys, metrics, settings] = await Promise.all([
     listLifecycleJourneys(),
     getLifecycleJourneyMetrics(),
+    getLifecycleSettings(),
   ]);
 
   return (
@@ -66,10 +69,20 @@ export default async function LifecyclePage() {
         }
       />
       <AdminPageBody>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <LifecycleEngineControls
+          enabled={settings.enabled}
+          maxMessagesPerDay={settings.maxMessagesPerDay}
+          dryRun={settings.dryRun}
+        />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <KpiCard label="Inscripciones activas" value={metrics.active} />
           <KpiCard label="Mensajes enviados" value={metrics.messagesSent} />
+          <KpiCard
+            label="Entregados por Resend"
+            value={`${metrics.messagesDelivered} · ${Math.round(metrics.deliveryRate * 100)} %`}
+          />
           <KpiCard label="Clics en enlaces" value={`${Math.round(metrics.clickRate * 100)} %`} />
+          <KpiCard label="Conversiones" value={metrics.conversions} />
           <KpiCard label="Ingresos atribuidos" value={formatCOP(metrics.revenueCents)} />
         </div>
 

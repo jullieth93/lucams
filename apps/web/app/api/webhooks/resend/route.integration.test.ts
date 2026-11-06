@@ -96,6 +96,12 @@ describe.skipIf(!hasDb)("webhook Resend ROUTE — firma Svix + upsert con guarda
     await prisma.emailEvent
       .deleteMany({ where: { resendId: { in: createdResendIds } } })
       .catch(() => {});
+    await prisma.lifecycleJourney
+      .deleteMany({ where: { key: { startsWith: RUN } } })
+      .catch(() => {});
+    await prisma.contact
+      .deleteMany({ where: { primaryEmail: { startsWith: RUN } } })
+      .catch(() => {});
   });
 
   it("firma inválida → 401 y NO se crea EmailEvent", async () => {
@@ -215,5 +221,70 @@ describe.skipIf(!hasDb)("webhook Resend ROUTE — firma Svix + upsert con guarda
     const row = await prisma.emailEvent.findUnique({ where: { resendId: emailId } });
     expect(row?.type).toBe("email.delivered");
     expect(row?.occurredAt.toISOString()).toBe("2026-08-20T11:00:00.000Z");
+  });
+
+  it("un rebote firmado suprime de inmediato las inscripciones Lifecycle del destinatario", async () => {
+    const contact = await prisma.contact.create({
+      data: { primaryEmail: `${RUN}@lucams.test`, displayName: "Contacto webhook Lifecycle" },
+    });
+    const journey = await prisma.lifecycleJourney.create({
+      data: {
+        key: `${RUN}-webhook`,
+        name: "Recorrido webhook",
+        description: "Valida supresión inmediata por evento firmado.",
+        trigger: "FIRST_PURCHASE",
+        status: "ACTIVE",
+        requireOptIn: false,
+        steps: {
+          create: {
+            position: 1,
+            delayMinutes: 0,
+            subject: "Paso webhook",
+            heading: "Paso webhook",
+            preheader: "Paso webhook",
+            body: "Contenido transaccional del paso webhook.",
+            ctaLabel: "Abrir",
+            ctaPath: "/productos",
+            commercial: false,
+          },
+        },
+      },
+      include: { steps: true },
+    });
+    const enrollment = await prisma.lifecycleEnrollment.create({
+      data: {
+        journeyId: journey.id,
+        contactId: contact.id,
+        currentStepId: journey.steps[0].id,
+        nextRunAt: new Date(),
+      },
+    });
+    const message = await prisma.lifecycleMessage.create({
+      data: {
+        enrollmentId: enrollment.id,
+        stepId: journey.steps[0].id,
+        contactId: contact.id,
+        dedupKey: `${RUN}-pending-webhook`,
+        subject: "Paso webhook",
+        ctaUrl: "/productos",
+        scheduledFor: new Date(),
+      },
+    });
+    const emailId = `re_${RUN}_lifecycle_bounce`;
+    createdResendIds.push(emailId);
+
+    const res = await postEvent({
+      emailId,
+      type: "email.bounced",
+      occurredAt: "2026-08-20T12:00:00.000Z",
+    });
+
+    expect(res.status).toBe(200);
+    expect(
+      await prisma.lifecycleEnrollment.findUniqueOrThrow({ where: { id: enrollment.id } }),
+    ).toMatchObject({ status: "SUPPRESSED", exitReason: "EMAIL_BOUNCED" });
+    expect(
+      await prisma.lifecycleMessage.findUniqueOrThrow({ where: { id: message.id } }),
+    ).toMatchObject({ status: "CANCELLED", error: "EMAIL_BOUNCED" });
   });
 });

@@ -5,7 +5,13 @@ import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/resend";
 import { getSiteUrl } from "@/features/emails/layout";
 import { renderLifecycleMessageEmail } from "@/features/emails/registry";
+import {
+  buildCommercialEmailHeaders,
+  encodeUnsubscribeParam,
+} from "@/features/newsletter/unsubscribe";
+import { NEWSLETTER_PRIVACY_VERSION } from "@/features/newsletter/service";
 import { findEligibleContacts, toAudienceMember } from "./eligibility";
+import { isLifecycleDryRun } from "./settings";
 import type {
   LifecycleAudiencePreview,
   LifecycleJourneyInput,
@@ -70,15 +76,25 @@ function validateStepOwnership(steps: LifecycleJourneyInput["steps"]) {
   if (positions.size !== steps.length) {
     throw new LifecycleValidationError("Cada paso debe tener una posición única.");
   }
-  if (
-    steps.some((step) => step.commercial === false && step.condition === "HAS_OPT_IN") === false
-  ) {
-    return;
+  for (let position = 1; position <= steps.length; position += 1) {
+    if (!positions.has(position)) {
+      throw new LifecycleValidationError("Los pasos deben numerarse de forma consecutiva desde 1.");
+    }
+  }
+}
+
+function validateJourneyInput(input: LifecycleJourneyInput) {
+  validateStepOwnership(input.steps);
+  if (input.trigger === "REACTIVATION" && input.inactivityDays < 1) {
+    throw new LifecycleValidationError("La reactivación exige al menos un día de inactividad.");
+  }
+  if (input.trigger === "B2B_FOLLOW_UP" && input.inactivityDays < 1) {
+    throw new LifecycleValidationError("El seguimiento B2B exige al menos un día de inactividad.");
   }
 }
 
 export async function createLifecycleJourney(input: LifecycleJourneyInput, adminId: string) {
-  validateStepOwnership(input.steps);
+  validateJourneyInput(input);
   if (input.status !== "DRAFT") {
     throw new LifecycleValidationError(
       "Crea el recorrido como borrador y actívalo después de revisarlo.",
@@ -130,7 +146,7 @@ export async function updateLifecycleJourney(
   input: LifecycleJourneyInput,
   adminId: string,
 ) {
-  validateStepOwnership(input.steps);
+  validateJourneyInput(input);
   const existing = await prisma.lifecycleJourney.findUnique({
     where: { id },
     include: { steps: { select: { id: true } } },
@@ -266,13 +282,19 @@ export async function sendLifecycleTest(
     ctaUrl: `${siteUrl}${step.ctaPath}`,
     recipientName: admin.fullName ?? admin.email.split("@")[0],
     productNames: ["Fotoimanes Cuadrados", "Calendario personalizado"],
+    unsubscribeUrl: step.commercial
+      ? `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(admin.email)}`
+      : undefined,
   });
+  if (isLifecycleDryRun()) return "dry-run";
   const result = await sendEmail({
     to: admin.email,
     subject: `[PRUEBA] ${rendered.subject}`,
     html: rendered.html,
     text: rendered.text,
     idempotencyKey: `lifecycle-test:${journeyId}:${step.id}:${Date.now()}`,
+    commercial: step.commercial,
+    headers: step.commercial ? buildCommercialEmailHeaders(admin.email, siteUrl) : undefined,
     tags: [{ name: "type", value: "lifecycle_test" }],
   });
   if (!result.sent)
@@ -289,15 +311,24 @@ export async function setEnrollmentStatus(
     select: {
       id: true,
       status: true,
-      contact: { select: { deletedAt: true, anonymizedAt: true } },
+      exitReason: true,
+      journey: { select: { status: true, requireOptIn: true } },
+      contact: {
+        select: {
+          deletedAt: true,
+          anonymizedAt: true,
+          isStaff: true,
+          consents: {
+            where: { scope: "NEWSLETTER", version: NEWSLETTER_PRIVACY_VERSION },
+            orderBy: { acceptedAt: "desc" },
+            take: 1,
+            select: { accepted: true },
+          },
+        },
+      },
     },
   });
   if (!enrollment) throw new LifecycleValidationError("La inscripción no existe.");
-  if (enrollment.contact.deletedAt || enrollment.contact.anonymizedAt) {
-    throw new LifecycleValidationError(
-      "No puedes reactivar una inscripción de un contacto eliminado.",
-    );
-  }
   if (action === "pause") {
     if (enrollment.status !== "ACTIVE") {
       throw new LifecycleValidationError("Solo puedes pausar una inscripción activa.");
@@ -308,8 +339,25 @@ export async function setEnrollmentStatus(
     });
   }
   if (action === "resume") {
-    if (enrollment.status !== "SUPPRESSED") {
-      throw new LifecycleValidationError("Solo puedes reanudar una inscripción pausada.");
+    if (enrollment.status !== "SUPPRESSED" || enrollment.exitReason !== "ADMIN_PAUSED") {
+      throw new LifecycleValidationError("Solo puedes reanudar una pausa manual.");
+    }
+    if (
+      enrollment.contact.deletedAt ||
+      enrollment.contact.anonymizedAt ||
+      enrollment.contact.isStaff
+    ) {
+      throw new LifecycleValidationError(
+        "No puedes reactivar una inscripción de un contacto inactivo.",
+      );
+    }
+    if (enrollment.journey.status === "ARCHIVED") {
+      throw new LifecycleValidationError("Reactiva el recorrido antes de reanudar la inscripción.");
+    }
+    if (enrollment.journey.requireOptIn && enrollment.contact.consents[0]?.accepted !== true) {
+      throw new LifecycleValidationError(
+        "El contacto no tiene consentimiento vigente para reanudar.",
+      );
     }
     return prisma.lifecycleEnrollment.update({
       where: { id: enrollmentId },
@@ -378,26 +426,58 @@ export async function retryLifecycleMessage(messageId: string) {
   });
 }
 
+type LifecycleDeliveryGroup = { type: string; count: number };
+
 export async function getLifecycleJourneyMetrics(
   journeyId?: string,
 ): Promise<LifecycleJourneyMetrics> {
   const enrollmentWhere = journeyId ? { journeyId } : {};
   const messageWhere = journeyId ? { enrollment: { journeyId } } : {};
-  const [enrollments, active, completed, exited, suppressed, sent, clicked, conversions, revenue] =
-    await Promise.all([
-      prisma.lifecycleEnrollment.count({ where: enrollmentWhere }),
-      prisma.lifecycleEnrollment.count({ where: { ...enrollmentWhere, status: "ACTIVE" } }),
-      prisma.lifecycleEnrollment.count({ where: { ...enrollmentWhere, status: "COMPLETED" } }),
-      prisma.lifecycleEnrollment.count({ where: { ...enrollmentWhere, status: "EXITED" } }),
-      prisma.lifecycleEnrollment.count({ where: { ...enrollmentWhere, status: "SUPPRESSED" } }),
-      prisma.lifecycleMessage.count({ where: { ...messageWhere, status: "SENT" } }),
-      prisma.lifecycleMessage.count({ where: { ...messageWhere, clickedAt: { not: null } } }),
-      prisma.lifecycleMessage.count({ where: { ...messageWhere, convertedAt: { not: null } } }),
-      prisma.lifecycleMessage.aggregate({
-        where: { ...messageWhere, convertedAt: { not: null } },
-        _sum: { revenueCents: true },
-      }),
-    ]);
+  const deliveryQuery = journeyId
+    ? prisma.$queryRaw<LifecycleDeliveryGroup[]>`
+        SELECT ev."type", COUNT(*)::int AS count
+        FROM "EmailEvent" ev
+        JOIN "LifecycleMessage" m ON m."resendId" = ev."resendId"
+        JOIN "LifecycleEnrollment" e ON e."id" = m."enrollmentId"
+        WHERE e."journeyId" = ${journeyId}
+          AND ev."type" IN ('email.delivered', 'email.bounced', 'email.complained', 'email.delayed')
+        GROUP BY ev."type"
+      `
+    : prisma.$queryRaw<LifecycleDeliveryGroup[]>`
+        SELECT ev."type", COUNT(*)::int AS count
+        FROM "EmailEvent" ev
+        JOIN "LifecycleMessage" m ON m."resendId" = ev."resendId"
+        WHERE ev."type" IN ('email.delivered', 'email.bounced', 'email.complained', 'email.delayed')
+        GROUP BY ev."type"
+      `;
+  const [
+    enrollments,
+    active,
+    completed,
+    exited,
+    suppressed,
+    sent,
+    clicked,
+    conversions,
+    revenue,
+    delivery,
+  ] = await Promise.all([
+    prisma.lifecycleEnrollment.count({ where: enrollmentWhere }),
+    prisma.lifecycleEnrollment.count({ where: { ...enrollmentWhere, status: "ACTIVE" } }),
+    prisma.lifecycleEnrollment.count({ where: { ...enrollmentWhere, status: "COMPLETED" } }),
+    prisma.lifecycleEnrollment.count({ where: { ...enrollmentWhere, status: "EXITED" } }),
+    prisma.lifecycleEnrollment.count({ where: { ...enrollmentWhere, status: "SUPPRESSED" } }),
+    prisma.lifecycleMessage.count({ where: { ...messageWhere, status: "SENT" } }),
+    prisma.lifecycleMessage.count({ where: { ...messageWhere, clickedAt: { not: null } } }),
+    prisma.lifecycleMessage.count({ where: { ...messageWhere, convertedAt: { not: null } } }),
+    prisma.lifecycleMessage.aggregate({
+      where: { ...messageWhere, convertedAt: { not: null } },
+      _sum: { revenueCents: true },
+    }),
+    deliveryQuery,
+  ]);
+  const deliveryCount = (type: string) => delivery.find((group) => group.type === type)?.count ?? 0;
+  const delivered = deliveryCount("email.delivered");
   return {
     enrollments,
     active,
@@ -405,9 +485,14 @@ export async function getLifecycleJourneyMetrics(
     exited,
     suppressed,
     messagesSent: sent,
+    messagesDelivered: delivered,
+    messagesBounced: deliveryCount("email.bounced"),
+    messagesComplained: deliveryCount("email.complained"),
+    messagesDelayed: deliveryCount("email.delayed"),
     messagesClicked: clicked,
     conversions,
     revenueCents: revenue._sum.revenueCents ?? 0,
+    deliveryRate: sent > 0 ? delivered / sent : 0,
     clickRate: sent > 0 ? clicked / sent : 0,
     conversionRate: sent > 0 ? conversions / sent : 0,
   };

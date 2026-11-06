@@ -18,6 +18,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { resolveConsentContact } from "@/features/identity/resolution-service";
+import { suppressLifecycleForEmails } from "@/features/lifecycle/suppression";
 
 /**
  * Token de unsubscribe = SHA-256(email:CSRF_SECRET) truncado a 32 hex.
@@ -172,6 +173,7 @@ export async function unsubscribeNewsletter(
     },
   });
 
+  await suppressLifecycleForEmails([normalized], "CONSENT_REVOKED");
   await updateResendUnsubscribed(normalized);
 
   logger.info({ event: "newsletter.unsubscribe.success", emailHash: hashEmail(normalized) });

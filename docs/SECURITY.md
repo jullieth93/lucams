@@ -311,11 +311,11 @@ Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `C
 
 ### 5.6 Lifecycle Journeys (`ADR-198`)
 
-- `/admin/lifecycle` exige `lifecycle:manage`, limitado a `SUPERADMIN`, `OPERATIONS_MANAGER` y `MANAGER`, además de MFA `aal2`. Activar un recorrido, enviar una prueba y reintentar un mensaje usa `requireRecentMfa` y el modal TOTP; todas las mutaciones quedan en `AdminActionLog`.
+- `/admin/lifecycle` exige `lifecycle:manage`, limitado a `SUPERADMIN`, `OPERATIONS_MANAGER` y `MANAGER`, además de MFA `aal2`. Activar un recorrido, probar, reintentar y cambiar el interruptor/límite general usa `requireRecentMfa` y el modal TOTP; todas las mutaciones quedan en `AdminActionLog`. `/admin/lifecycle/[id]/preview` repite la misma capacidad y control de inactividad, y sirve HTML aislado con `EMAIL_PREVIEW_SANDBOX_CSP`.
 - Las cuatro tablas Lifecycle tienen RLS y revocación completa para `anon`, `authenticated` y DML de `service_role` en la migración `057`; el acceso ocurre exclusivamente por Prisma en servidor. El cron usa `x-cron-secret` y no acepta comandos ni destinatarios desde HTTP.
-- El consentimiento `NEWSLETTER` vigente se verifica en PostgreSQL y antes de cada paso comercial, con baja RFC 8058 y supresión por rebote/queja. Los contactos eliminados, anonimizados o `isStaff` no reciben mensajes. La semilla nunca activa recorridos.
-- El CTA solo admite `isSafeInternalPath`. El enlace `/j/[token]` usa un secreto derivado con HMAC-SHA256 de 192 bits por mensaje; en base de datos solo se conserva su hash SHA-256, nunca el token utilizable ni correos en la URL. El mismo token y contenido se conservan al reintentar, evitando cambiar un correo que pudo haber sido aceptado por Resend.
-- La deduplicación de inscripciones/mensajes y el reclamo previo al envío viven en PostgreSQL. Las conversiones requieren clic y pago dentro de 30 días; `convertedOrderId` único impide contar una orden más de una vez.
+- El consentimiento `NEWSLETTER` se verifica por versión vigente y revocación posterior en PostgreSQL y antes de cada paso comercial. La baja cierra de inmediato recorridos que exigen opt-in; rebote/queja suprime todas las inscripciones activas del destinatario y cancela pendientes. La consulta previa de supresión no degrada a envío si falla la DB. Contactos eliminados, anonimizados o `isStaff` no reciben mensajes y solo una pausa manual puede reanudarse.
+- El CTA solo admite `isSafeInternalPath`. El enlace `/j/[token]` usa HMAC-SHA256 de 192 bits por mensaje; en base de datos solo se conserva su hash SHA-256, nunca el token utilizable ni correos en la URL. El mismo token y contenido se conservan al reintentar.
+- La deduplicación de inscripciones/mensajes y la reserva transaccional del límite diario global viven en PostgreSQL. Las conversiones requieren clic anterior y orden posterior pagada dentro de 30 días; `convertedOrderId` único impide contar una orden más de una vez. STG queda forzado a `DRY_RUN`, sin llamadas a Resend ni creación de tareas operativas.
 
 ---
 

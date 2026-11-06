@@ -63,6 +63,11 @@ export const LifecycleJourneyIdSchema = z.object({
   journeyId: z.string().cuid(),
 });
 
+export const LifecycleSettingsSchema = z.object({
+  enabled: z.boolean(),
+  maxMessagesPerDay: z.number().int().min(1).max(20),
+});
+
 export const LifecycleTestSchema = LifecycleJourneyIdSchema.extend({
   stepId: z.string().cuid().optional(),
 });
