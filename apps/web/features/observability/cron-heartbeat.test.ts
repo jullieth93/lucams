@@ -58,11 +58,16 @@ describe("cron-heartbeat", () => {
     else process.env.CRON_JOBS_DISABLED = originalDisabled;
   });
 
-  it("rastrea los 14 jobs, incluidos cms-publish-scheduled (5 min), expire-pending-orders (N-12) y purge-rate-limits (LUC-SEC-010)", () => {
-    expect(Object.keys(CRON_JOBS)).toHaveLength(14);
+  it("rastrea los 15 jobs, incluidos cms-publish-scheduled (5 min), expire-pending-orders (N-12), purge-rate-limits (LUC-SEC-010) y fiscal-watch (ADR-196)", () => {
+    expect(Object.keys(CRON_JOBS)).toHaveLength(15);
     expect(CRON_JOBS["cms-publish-scheduled"]).toEqual({
       intervalMs: 5 * 60 * 1000,
       label: "Publicación programada CMS",
+    });
+    // ADR-196: vigilancia fiscal diaria (umbrales DIAN 3 500 UVT).
+    expect(CRON_JOBS["fiscal-watch"]).toEqual({
+      intervalMs: 24 * 60 * 60 * 1000,
+      label: "Vigilancia fiscal (umbrales DIAN)",
     });
     // N-12: el cron que auto-cancela pendientes — la alerta pending_payment_wompi_stale
     // (N-12b) existe para detectar precisamente que ESTE job no corrió.

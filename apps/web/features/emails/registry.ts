@@ -37,6 +37,7 @@ import { b2bInquiryReceivedEmail } from "./templates/b2b-inquiry-received";
 import { backInStockEmail } from "./templates/back-in-stock";
 import { cartRecoveryEmail } from "./templates/cart-recovery";
 import { designRejectedEmail } from "./templates/design-rejected";
+import { fiscalThresholdAlertEmail } from "./templates/fiscal-threshold-alert";
 import { newsletterWelcomeEmail } from "./templates/newsletter-welcome";
 import { orderAdminNotificationEmail } from "./templates/order-admin-notification";
 import { orderCancelledEmail } from "./templates/order-cancelled";
@@ -625,6 +626,30 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       notes: "Queremos 150 sets de imanes con nuestro logo y tarjeta de agradecimiento.",
     },
   }),
+  // ──────────────────────── Administración ────────────────────────
+  define({
+    id: "fiscal-threshold-alert",
+    name: "Alerta interna: vigilancia fiscal (umbral DIAN)",
+    group: "Administración",
+    description:
+      "Aviso INTERNO al buzón de alertas cuando la vigilancia fiscal (ADR-196, cron diario) cruza el 90 % o el 100 % de un umbral DIAN: tope de facturación electrónica o condición de IVA por ventas con tarjeta. Una vez por cruce y por año.",
+    render: fiscalThresholdAlertEmail,
+    sampleData: {
+      ruleName: "Tope de facturación electrónica",
+      legalBasis: "Art. 618-1 ET · Decreto 1625 art. 1.6.1.4.3 num. 3 · Res. DIAN 165 de 2023",
+      action:
+        "Agenda con el contador la habilitación como facturador electrónico (RUT responsabilidad 52 + proveedor tecnológico) y revisa la ruta de activación en docs/COMPLIANCE.md § 7.2.",
+      year: 2026,
+      levelLabel: "90 %",
+      thresholdUvt: 3_500,
+      currentCop: 16_497_810_000,
+      thresholdCop: 18_330_900_000,
+      currentPct: 90,
+      projectedCop: 20_164_000_000,
+      projectedPct: 110,
+      uvtCop: 52_374,
+    },
+  }),
 ];
 
 const REGISTRY_BY_ID = new Map(EMAIL_TEMPLATE_REGISTRY.map((t) => [t.id, t]));
@@ -729,6 +754,11 @@ export const renderB2bInquiryReceivedEmail = withOverrides(
 export const renderB2bInquiryAdminNotificationEmail = withOverrides(
   "b2b-inquiry-admin-notification",
   b2bInquiryAdminNotificationEmail,
+);
+
+export const renderFiscalThresholdAlertEmail = withOverrides(
+  "fiscal-threshold-alert",
+  fiscalThresholdAlertEmail,
 );
 
 // account-exists-notice no recibe data (no hay tokens disponibles): el

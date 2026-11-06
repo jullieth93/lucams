@@ -74,7 +74,7 @@ flowchart LR
     F --> LI["CmsListItem + CmsMedia"]
   end
   subgraph L2["Capa 2: Correos Transaccionales"]
-    EM["EmailTemplateOverride (30 plantillas)"]
+    EM["EmailTemplateOverride (31 plantillas)"]
   end
   subgraph L3["Capa 3: Microcopy Funcional"]
     TS["Diccionarios tipados TS (Estudio, Auth, Cuenta)"]
@@ -115,7 +115,7 @@ Las tablas legadas (`CmsBlock` y `SiteSetting`) fueron consolidadas en un único
 
 ### Capa 2 — Plantillas de correo transaccional (`/admin/email-templates`)
 
-El módulo `/admin/email-templates` (`SUPERADMIN`) administra `EmailTemplateOverride` sobre las **30 plantillas registradas** en `apps/web/features/emails/registry.ts`, permitiendo personalizar `SUBJECT`, `PREHEADER` y `HEADING` con interpolación segura de variables `{campo}`, vista previa HTML aislada con CSP sandbox y envío de correo de prueba `[PRUEBA]`, cacheado bajo el tag `"email-overrides"`. Para el inventario completo de plantillas y webhooks de entrega, consulta [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md).
+El módulo `/admin/email-templates` (`SUPERADMIN`) administra `EmailTemplateOverride` sobre las **31 plantillas registradas** en `apps/web/features/emails/registry.ts`, permitiendo personalizar `SUBJECT`, `PREHEADER` y `HEADING` con interpolación segura de variables `{campo}`, vista previa HTML aislada con CSP sandbox y envío de correo de prueba `[PRUEBA]`, cacheado bajo el tag `"email-overrides"`. Para el inventario completo de plantillas y webhooks de entrega, consulta [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md).
 
 ### Capa 3 — Microcopy funcional en código TypeScript
 

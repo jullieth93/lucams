@@ -1103,6 +1103,12 @@
 - **Decisión:** Apagar en UI y servidor la solicitud de documento tributario mientras `BILLING_DOCUMENT_ENABLED` sea `false` (`billing-document.ts`).
 - **Motivo:** Cumple Ley 1480 arts. 23 y 29 evitando expectativas de factura electrónica aún no activa.
 
+### ADR-196 — Vigilancia fiscal proactiva de umbrales DIAN (`fiscal-watch`)
+
+- **Estado:** `Vigente`
+- **Decisión:** Cron diario (`/api/cron/fiscal-watch`, pg_cron 07:05 COT) que mide el año fiscal colombiano (UTC-5 fijo) contra los umbrales de 3 500 UVT — tope de facturación electrónica (art. 618-1 ET) y condición de IVA por ventas con tarjeta (art. 437 par. 3 ET, solo Wompi `CARD`) — con base bruta conservadora (incluye `REFUNDED`), proyección de cierre por ritmo de 30 días y alertas 70 %/90 %/100 % (in-app siempre; email al owner en 90 %/100 %, una vez por cruce y año vía `AlertState["fiscal-watch:<regla>:<año>"]`). UVT y umbrales viven como constantes en `features/fiscal-watch/config.ts` con test-guardia de actualización anual. Superficies: tarjeta condicional en `/admin/hoy` y panel permanente en `/admin/metricas`.
+- **Motivo:** La exención de persona natural se pierde por sorpresa si nadie mide el acumulado anual; la alerta temprana deja meses para la habilitación DIAN (ruta en [`COMPLIANCE.md`](COMPLIANCE.md) § 7.2) y el diseño de reglas admite futuros umbrales (RNBD 100 000 UVT, etc.).
+
 ---
 
 ## 13. Proceso de ingeniería, tipografías y accesibilidad
