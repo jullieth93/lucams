@@ -18,6 +18,9 @@ import { canAccessAdminPath, adminHomePath } from "@/lib/admin-rbac";
 import { getCmsImage } from "@/lib/cms";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getUnreadCount } from "@/features/notifications/service";
+import { AdminHelpLauncher } from "@/features/admin-help/components/help-launcher";
+import { getGuideForPath, getOnboardingForRole } from "@/features/admin-help/registry";
+import { getAdminHelpProgress } from "@/features/admin-help/service";
 
 // Todo el panel admin es SIEMPRE dinámico: exige sesión + datos vivos de la BD, nunca debe
 // prerenderizarse en el build. Además evita el bug de prerender estático de Next 16 (useContext
@@ -72,6 +75,9 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
   // Logo administrable del shell (Fase 3 · 3.9 — setting CMS `site.logo`,
   // cacheado con tag "cms"; null = insignia gradiente + wordmark de siempre).
   const siteLogo = await getCmsImage("site.logo");
+  const helpProgress = await getAdminHelpProgress(session.admin.id);
+  const currentGuide = getGuideForPath(pathname, session.admin.role);
+  const onboarding = getOnboardingForRole(session.admin.role);
 
   return (
     <AdminShell
@@ -80,6 +86,12 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
       logo={siteLogo ? { url: siteLogo.url, alt: siteLogo.alt } : null}
     >
       {children}
+      <AdminHelpLauncher
+        guide={currentGuide}
+        onboarding={onboarding}
+        role={session.admin.role}
+        progress={helpProgress}
+      />
     </AdminShell>
   );
 }
