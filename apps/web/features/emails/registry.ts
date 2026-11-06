@@ -38,6 +38,7 @@ import { backInStockEmail } from "./templates/back-in-stock";
 import { cartRecoveryEmail } from "./templates/cart-recovery";
 import { designRejectedEmail } from "./templates/design-rejected";
 import { fiscalThresholdAlertEmail } from "./templates/fiscal-threshold-alert";
+import { lifecycleMessageEmail } from "./templates/lifecycle-message";
 import { newsletterWelcomeEmail } from "./templates/newsletter-welcome";
 import { orderAdminNotificationEmail } from "./templates/order-admin-notification";
 import { orderCancelledEmail } from "./templates/order-cancelled";
@@ -650,6 +651,24 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       uvtCop: 52_374,
     },
   }),
+  define({
+    id: "lifecycle-message",
+    name: "Mensaje de recorrido Lifecycle",
+    group: "Lifecycle",
+    description:
+      "Plantilla común para pasos de recorridos de primera compra, posventa, reactivación, alta intención y seguimiento B2B.",
+    render: lifecycleMessageEmail,
+    sampleData: {
+      subject: "Tu próxima creación empieza aquí",
+      heading: "Convierte una foto en un regalo especial",
+      preheader: "Explora opciones y revisa tu personalización antes de comprar.",
+      body: "Hola {nombre}. Elige un producto, sube tus fotos y revisa cada detalle antes de completar tu pedido.",
+      ctaLabel: "Explorar productos",
+      ctaUrl: "https://lucamsshop.com/productos",
+      recipientName: CUSTOMER,
+      productNames: ["Fotoimanes Cuadrados", "Calendario personalizado"],
+    },
+  }),
 ];
 
 const REGISTRY_BY_ID = new Map(EMAIL_TEMPLATE_REGISTRY.map((t) => [t.id, t]));
@@ -754,6 +773,11 @@ export const renderB2bInquiryReceivedEmail = withOverrides(
 export const renderB2bInquiryAdminNotificationEmail = withOverrides(
   "b2b-inquiry-admin-notification",
   b2bInquiryAdminNotificationEmail,
+);
+
+export const renderLifecycleMessageEmail = withOverrides(
+  "lifecycle-message",
+  lifecycleMessageEmail,
 );
 
 export const renderFiscalThresholdAlertEmail = withOverrides(

@@ -1,6 +1,6 @@
 # Observabilidad, Monitoreo y Alertas — Lucams Shop
 
-> **Documento vivo (Nivel 1).** Especificación verificada contra el código real de la arquitectura de observabilidad sin SaaS externos de Lucams Shop: principios, desglose de los **7 tableros administrativos** y `/status`, sondas de salud (`/api/health/*`), monitor externo cruzado `uptime-monitor-prd` (Supabase STG → PRD), logging estructurado JSON (`lib/logger.ts` API-compatible con Pino + `scrubPii`), captura de errores (`ErrorLog` y `ErrorReport`), análisis del punto ciego de base de datos, monitoreo dead-man switch de los **15 crons** de `CRON_JOBS` (frente a los **19 procesos programados** totales), motor de **12 reglas de alerta** + alertas transaccionales inmediatas, **SLOs cuantitativos, SLIs y política de Error Budgets**, Web Vitals RUM (`ADR-135`), embudo sin cookies (`FunnelEventDaily`) vs GA4, inteligencia conductual CRM/RFM, políticas de retención de **12 fuentes** y proceso de postmortem _blameless_.
+> **Documento vivo (Nivel 1).** Especificación verificada contra el código real de la arquitectura de observabilidad sin SaaS externos de Lucams Shop: principios, desglose de los **7 tableros administrativos** y `/status`, sondas de salud (`/api/health/*`), monitor externo cruzado `uptime-monitor-prd` (Supabase STG → PRD), logging estructurado JSON (`lib/logger.ts` API-compatible con Pino + `scrubPii`), captura de errores (`ErrorLog` y `ErrorReport`), análisis del punto ciego de base de datos, monitoreo dead-man switch de los **16 crons** de `CRON_JOBS` (frente a los **20 procesos programados** totales), incluido `lifecycle` para inscripciones, pasos y atribución, motor de **12 reglas de alerta** + alertas transaccionales inmediatas, **SLOs cuantitativos, SLIs y política de Error Budgets**, Web Vitals RUM (`ADR-135`), embudo sin cookies (`FunnelEventDaily`) vs GA4, inteligencia conductual CRM/RFM, políticas de retención de **12 fuentes** y proceso de postmortem _blameless_.
 >
 > **Documentos relacionados:** [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`OPERATIONS.md`](OPERATIONS.md) · [`SECURITY.md`](SECURITY.md) · [`COMPLIANCE.md`](COMPLIANCE.md) · [`CONVENTIONS.md`](CONVENTIONS.md) · [`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md) · [`integrations/supabase.md`](integrations/supabase.md) · [`integrations/github-and-ops.md`](integrations/github-and-ops.md)
 
@@ -22,7 +22,7 @@
 | --- | ------------------------------ | --------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | 1   | **Resumen general**            | `/admin/dashboard` (`dashboard/page.tsx`)           | Todos los roles operativos      | Pulso comercial del día: órdenes nuevas, ingresos, pendientes de despacho, stock crítico y accesos rápidos         |
 | 2   | **Bandeja operativa «Hoy»**    | `/admin/hoy` (`hoy/page.tsx`)                       | Filtrado por capacidad del rol  | Cola priorizada por semáforos SLA colombianos (PQR, garantías, retractos), reconciliaciones, moderación y CRM      |
-| 3   | **Salud técnica**              | `/admin/observability` (`observability/page.tsx`)   | `SUPERADMIN` (`system:read`)    | `ErrorLog`, `ErrorReport`, webhooks recientes, SLOs, 15 crons, backups R2, monitor STG→PRD, Resend y cuotas DB     |
+| 3   | **Salud técnica**              | `/admin/observability` (`observability/page.tsx`)   | `SUPERADMIN` (`system:read`)    | `ErrorLog`, `ErrorReport`, webhooks recientes, SLOs, 16 crons, backups R2, monitor STG→PRD, Resend y cuotas DB     |
 | 4   | **Rendimiento RUM**            | `/admin/performance` (`performance/page.tsx`)       | `SUPERADMIN` (`system:read`)    | Percentiles `p50`/`p75`/`p95` de 8 métricas Web Vitals, selectores CSS lentos y errores agrupados por `digest`     |
 | 5   | **Centro de notificaciones**   | `/admin/notificaciones` (`notificaciones/page.tsx`) | Roles admin según alcance       | Fuente única in-app de alertas (`Notification` deduplicada por `dedupKey`), fallos de cron, stock y resumen 8 a.m. |
 | 6   | **Estado de integraciones**    | `/admin/integraciones` (`integraciones/page.tsx`)   | `SUPERADMIN` (`system:read`)    | Diagnóstico interactivo de credenciales y conectividad de Supabase, Wompi, Aveonline, Resend, Cloudflare y Gemini  |
@@ -35,7 +35,7 @@
 2. **`/admin/hoy` (`getTodayOperationalInbox`):** bandeja accionable de primera hora construida por rol: oculta cualquier bloque para el que el operador no posea `AdminCapability` y aplica enmascaramiento de PII (`lib/pii-mask.ts`) a roles no privilegiados. Ordena por urgencia: (a) tickets PQR, garantías y retractos con reloj SLA colombiano en estado `OVERDUE` o `DUE_SOON` (`lib/colombian-sla.ts`), (b) órdenes marcadas con `needsReconciliation = true`, (c) diseños personalizados pendientes de moderación antes de taller, y (d) tareas/seguimientos vencidos de `ContactActivity` y `Opportunity`.
 3. **`/admin/observability` (Salud técnica — exclusivo `SUPERADMIN`):** consolida en una sola pantalla:
    - Resumen operativo 24h y los **3 SLOs cuantitativos** de `slos.ts` (`met`, `at_risk`, `breached`, `insufficient_data`).
-   - Salud individual de los **15 crons** de `CRON_JOBS` (`getCronHealth`: último latido, detalle `idle (...)` y bandera `overdue`).
+   - Salud individual de los **16 crons** de `CRON_JOBS`, incluido `lifecycle`, (`getCronHealth`: último latido, detalle `idle (...)` y bandera `overdue`).
    - Tile del **backup diario cifrado a R2** (`AlertState["backup:last-success"]`) y tile del **monitor externo cruzado** (`AlertState["uptime-monitor:last-run"]`).
    - **Entregabilidad de correo a 7 días** (`features/observability/email-deliverability.ts`: enviados, entregados, rebotes y quejas sobre `EmailEvent`).
    - **Cuotas físicas reales:** tamaño de Postgres (`pg_database_size(current_database())` frente a 500 MB) y ocupación de Storage (`SUM(metadata->>'size')` en `storage.objects` frente a 1 GB).
@@ -189,7 +189,8 @@ Todos los llamados siguen la convención `<dominio>.<acción>[.<resultado>]`:
 | **Webhooks**         | `webhook.wompi.received`, `webhook.wompi.processed_approved`, `webhook.wompi.invalid_signature`, `webhook.wompi.replay_rejected`, `webhook.aveonline.processed`, `email.bounce`              | `info` / `warn`  | Verificación de firmas, ventana anti-replay de 25 h, idempotencia y rebotes en Resend     |
 | **Envíos**           | `shipping.aveonline.quote.cache_fallback`, `shipping.aveonline.createshipment.success`, `shipping.aveonline.createshipment.fail`, `shipping.label_archive.ok`, `shipping.tracking_sync.done` | `info` / `warn`  | Cotizador multi-transportadora, archivo de guías PDF en Storage y convergencia logística  |
 | **Estudio e IA**     | `design.asset.upload.success`, `design.finalize.success`, `design.finalize.async_render_enqueued`, `design.render_job.done`, `design.reorder_clone.success`, `ai.gemini.model_fail`          | `info` / `warn`  | Subida de fotos con `sharp`, cola de renders 300 DPI, clones de _reorder_ y Gemini        |
-| **Crons y Purgas**   | `alerts.sent`, `daily_summary.sent`, `retention.purge_event_logs`, `retention.purge_anon_designs`, `retention.purge_delivered_designs`, `retention.orphan_sweep`, `cron.<job>.fail`          | `info` / `error` | Ejecución periódica de los 15 crons, conteos borrados por retención y fallos operativos   |
+| **Crons y Purgas**   | `alerts.sent`, `daily_summary.sent`, `retention.purge_event_logs`, `retention.purge_anon_designs`, `retention.purge_delivered_designs`, `retention.orphan_sweep`, `cron.<job>.fail`          | `info` / `error` | Ejecución periódica de los 16 crons, conteos borrados por retención y fallos operativos   |
+| **Lifecycle**        | `lifecycle.cycle`, `lifecycle.enroll.fail`, `lifecycle.step.fail`, `cron.lifecycle.fail`                                                                                                     | `info` / `error` | Inscripciones, mensajes, salidas, fallos acotados y salud del motor de recorridos         |
 | **Observabilidad**   | `server.error`, `observability.capture_fail`, `observability.client_capture.new_row_capped`, `vitals.out_of_range`, `rate_limit.empty_row`, `health.all.degraded`                            | `warn` / `error` | Salud del propio subsistema de captura, topes anti-DoS y degradación de sondas            |
 
 ### 3.3 Captura de errores de servidor (`ErrorLog`) y de cliente (`ErrorReport`)
@@ -221,7 +222,7 @@ bash scripts/vercel-runtime-errors.sh lucamsshop.com 180
 
 ---
 
-## 4. Tareas programadas: 15 crons en `CRON_JOBS` vs 19 procesos totales
+## 4. Tareas programadas: 16 crons en `CRON_JOBS` vs 20 procesos totales
 
 El proyecto **no usa Vercel Cron**; toda ejecución periódica corre sobre `pg_cron` + `pg_net` en Supabase leyendo secretos en tiempo de ejecución desde `vault.decrypted_secrets` (`cron_base_url`, `cron_secret` y, en STG, `cron_vercel_bypass`), más workflows específicos en GitHub Actions cuando se requiere CLI externo o protocolo RDAP.
 
@@ -233,7 +234,9 @@ El proyecto **no usa Vercel Cron**; toda ejecución periódica corre sobre `pg_c
 4. **Exclusión limpia en STG (`CRON_JOBS_DISABLED`):** los 5 crons que despachan correos comerciales/posventa se desactivan explícitamente en STG reportando `disabled: true` y `overdue: false`.
 5. **Optimización _idle-skip_ en SQL (`00000000000048_pgcron_dedup_and_idle_skip.sql`):** `process-render-jobs` (cada 1 min) y `cms-publish-scheduled` (cada 5 min) consultan primero por índice SQL (`< 1 ms`) si hay filas pendientes en `RenderJob` o `CmsFieldVersion`. Si no hay trabajo, actualizan el latido `idle (...)` directamente en `AlertState` sin despertar funciones en Vercel (~103 680 invocaciones HTTP ahorradas al mes), saliendo _fail-closed_ sin latido si faltara algún secreto en Vault.
 
-### 4.2 Los 15 crons monitoreados en `CRON_JOBS`
+### 4.2 Los 16 crons monitoreados en `CRON_JOBS`
+
+`lifecycle` se ejecuta cada 15 minutos con `lucams-lifecycle`, vigila inscripciones, pasos y atribución de Lifecycle Journeys y tiene umbral `overdue` de 30 minutos. Las cinco configuraciones sembradas permanecen en borrador hasta una activación humana; su latido se registra solo cuando el motor termina sin errores.
 
 | #   | Clave en `CRON_JOBS`      | Job agendado / Productor                               | Expresión UTC        | Intervalo | Umbral `overdue` (`2×`) | Endpoint / Acción ejecutada                                                                       |
 | --- | ------------------------- | ------------------------------------------------------ | -------------------- | --------- | ----------------------- | ------------------------------------------------------------------------------------------------- |
@@ -252,17 +255,18 @@ El proyecto **no usa Vercel Cron**; toda ejecución periódica corre sobre `pg_c
 | 13  | `review-request`          | `lucams-review-request` (`pg_cron`)                    | `0 17 * * *`         | `24 h`    | **48 h**                | `GET /api/cron/review-request` (`12:00` COT para órdenes `DELIVERED`)                             |
 | 14  | `fiscal-watch`            | `lucams-fiscal-watch` (`pg_cron`)                      | `5 12 * * *`         | `24 h`    | **48 h**                | `GET /api/cron/fiscal-watch` (umbrales DIAN 3 500 UVT, `07:05` COT — `ADR-196`)                   |
 | 15  | `domain-watch`            | `.github/workflows/domain-watch.yml` (GitHub Actions)  | `23 11 5 * *`        | `31 d`    | **62 d**                | `POST /api/cron/domain-watch` (auditoría mensual RDAP del dominio)                                |
+| 16  | `lifecycle`               | `lucams-lifecycle` (`pg_cron`)                         | `*/15 * * * *`       | `15 min`  | **30 min**              | `GET /api/cron/lifecycle` (inscripciones, pasos, salidas y atribución de Lifecycle Journeys)      |
 
-### 4.3 Conciliación exacta con los 19 procesos programados de la plataforma
+### 4.3 Conciliación exacta con los 20 procesos programados de la plataforma
 
-En [`integrations/supabase.md`](integrations/supabase.md) se inventarían **19 procesos programados** totales. Los **4 restantes** operan fuera del arreglo `CRON_JOBS` porque limpian tablas internas de extensiones Postgres o cuentan con sus propias claves y reglas de severidad alta en `AlertState`:
+En [`integrations/supabase.md`](integrations/supabase.md) se inventarían **20 procesos programados** totales. Los **4 restantes** operan fuera del arreglo `CRON_JOBS` porque limpian tablas internas de extensiones Postgres o cuentan con sus propias claves y reglas de severidad alta en `AlertState`:
 
 | #   | Proceso programado                      | Ejecutor y horario UTC                                                                 | Por qué no va en `CRON_JOBS` y cómo se vigila                                                                                                                              |
 | --- | --------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 16  | `lucams-internal-cron-history-purge`    | `pg_cron` PRD/STG · `17 4 * * *` (`00000000000043`)                                    | SQL puro sobre esquema interno: `DELETE FROM cron.job_run_details WHERE end_time < now() - interval '14 days'`; cubierto por `capacity_db_high` (`> 400 MB`)               |
-| 17  | `lucams-internal-net-response-purge`    | `pg_cron` PRD/STG · `43 4 * * *` (`00000000000043`)                                    | SQL puro sobre cola efímera: `DELETE FROM net._http_response WHERE created < now() - interval '1 day'`; cubierto por `capacity_db_high`                                    |
-| 18  | `uptime-monitor-prd`                    | `pg_cron` **solo en Supabase STG** · `*/10 * * * *` (`scripts/monitor-uptime-stg.sql`) | Corre en otro proyecto y escribe `AlertState["uptime-monitor:last-run"]` vía `/api/cron/monitor-heartbeat`; vigilado por `uptime_monitor_stale` y `uptime_monitor_failing` |
-| 19  | `backup.yml` (Backup DB + Storage → R2) | GitHub Actions · `13 7 * * *` (`.github/workflows/backup.yml`)                         | Sella `AlertState["backup:last-success"]` vía `/api/cron/backup-heartbeat`; vigilado por `backup_stale` (`> 36 h`) y por el simulacro mensual `dr-drill.yml`               |
+| 17  | `lucams-internal-cron-history-purge`    | `pg_cron` PRD/STG · `17 4 * * *` (`00000000000043`)                                    | SQL puro sobre esquema interno: `DELETE FROM cron.job_run_details WHERE end_time < now() - interval '14 days'`; cubierto por `capacity_db_high` (`> 400 MB`)               |
+| 18  | `lucams-internal-net-response-purge`    | `pg_cron` PRD/STG · `43 4 * * *` (`00000000000043`)                                    | SQL puro sobre cola efímera: `DELETE FROM net._http_response WHERE created < now() - interval '1 day'`; cubierto por `capacity_db_high`                                    |
+| 19  | `uptime-monitor-prd`                    | `pg_cron` **solo en Supabase STG** · `*/10 * * * *` (`scripts/monitor-uptime-stg.sql`) | Corre en otro proyecto y escribe `AlertState["uptime-monitor:last-run"]` vía `/api/cron/monitor-heartbeat`; vigilado por `uptime_monitor_stale` y `uptime_monitor_failing` |
+| 20  | `backup.yml` (Backup DB + Storage → R2) | GitHub Actions · `13 7 * * *` (`.github/workflows/backup.yml`)                         | Sella `AlertState["backup:last-success"]` vía `/api/cron/backup-heartbeat`; vigilado por `backup_stale` (`> 36 h`) y por el simulacro mensual `dr-drill.yml`               |
 
 _(Nota histórica: los jobs antiguos de migración `012` —`rate_limit_cleanup` y el extinto reservador temporal— fueron retirados definitivamente en las migraciones `033` y `048`)._
 

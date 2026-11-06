@@ -189,7 +189,7 @@ jobs:
       - name: Build de producción (next start del webServer)
         run: pnpm --filter web build
       - name: "Playwright (exclusivos de Supabase real: admin/MFA/CMS/auth/retracto)"
-        run: pnpm --filter web exec playwright test admin-login.spec admin-mfa.spec admin-help.spec cms-editing-flow.spec responsive-admin-audit.spec audit-cliente.spec homolog-auth.spec retracto-garantia-cliente.spec --project=desktop-chrome
+        run: pnpm --filter web exec playwright test admin-login.spec admin-mfa.spec admin-help.spec admin-lifecycle.spec cms-editing-flow.spec responsive-admin-audit.spec audit-cliente.spec homolog-auth.spec retracto-garantia-cliente.spec --project=desktop-chrome
       - name: Cross-browser smoke (Firefox + WebKit, read-only)
         run: pnpm --filter web exec playwright test --project=desktop-firefox --project=desktop-webkit
       - name: Subir reporte Playwright (si falla)

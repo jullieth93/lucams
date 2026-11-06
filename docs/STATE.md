@@ -8,24 +8,22 @@
 - **Tienda activa (`ADR-077`):** `lucamsshop.com` vende en producción en modo **`full`**
   (`NEXT_PUBLIC_STORE_MODE=full`) con pagos Wompi, contraentrega y envíos Aveonline + Envío Lucams Bogotá.
 - **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js 16, TS strict, Tailwind v4, shadcn/ui) y
-  `packages/db` (**73 modelos Prisma**, **26 enums**, **95 migraciones Prisma** + **54 SQL Supabase**
+  `packages/db` (**77 modelos Prisma**, **31 enums**, **97 migraciones Prisma** + **56 SQL Supabase**
   con RLS y event trigger `REVOKE` automático `049` en el 100 % de las tablas).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) bajo el ruleset
   `protect-ramas-criticas` con PR obligatorio y **5 checks requeridos** (`Typecheck + Lint + Build`,
   `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`).
 - **Paquete legal vigente:** **Versión 3 (`2026-11-05`)** sincronizada en los 8 archivos de
-  `packages/db/legal-content/*.md`, sus `FALLBACK` en `app/legal/*/page.tsx`, `cms-site-map.mjs`
-  (`PRIVACY_POLICY_VERSION = "v3 · 2026-11-05"`) **y publicada en el CMS de STG y PRD** (los 9 campos
-  `legal.*` republicados como versión nueva con historial intacto; la caché pública tag `cms` se
-  renueva sola en ≤ 1 h).
+  `packages/db/legal-content/*.md`, sus `FALLBACK`, `cms-site-map.mjs` **y publicada en el CMS de STG
+  y PRD** (9 campos `legal.*` con historial intacto; la caché tag `cms` se renueva en ≤ 1 h).
 
 ## Topología de ambientes y homologación STG ↔ PRD
 
-| Ambiente  | Infraestructura                                                                                | Estado operativo actual                                                                                                                      |
-| --------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **LOCAL** | Supabase en Podman (`:54321`/`:54322`/`:54324`) + Next dev (`:4000` vía `make local-up`)       | Operativo; `make db-local-seed` 100 % idempotente; 3 crons SQL activos                                                                       |
-| **STG**   | `develop` → Vercel Preview (`VERCEL_BYPASS_TOKEN`) + Supabase STG (`mjbdiqdkykhsixvqlrrp`)     | Operativo; aloja `uptime-monitor-prd` (12 jobs `pg_cron`, incluido `lucams-fiscal-watch` de la mig `055`); reset limpio vía `make stg-reset` |
-| **PRD**   | `production` → `lucamsshop.com` en Vercel Pro (`iad1`) + Supabase PRD (`zxkucphbsfygakgxcnik`) | **En producción (`full`)**; 16 jobs `pg_cron` (incluido `lucams-fiscal-watch`, `ADR-196`) + backups diarios GPG (DB + Storage) en R2         |
+| Ambiente  | Infraestructura                                                                                | Estado operativo actual                                                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **LOCAL** | Supabase en Podman (`:54321`/`:54322`/`:54324`) + Next dev (`:4000` vía `make local-up`)       | Operativo; `make db-local-seed` 100 % idempotente; 3 crons SQL activos                                                                          |
+| **STG**   | `develop` → Vercel Preview (`VERCEL_BYPASS_TOKEN`) + Supabase STG (`mjbdiqdkykhsixvqlrrp`)     | Operativo; aloja `uptime-monitor-prd` (12 jobs `pg_cron`, incluido `lucams-fiscal-watch` de la mig `055`); reset limpio vía `make stg-reset`    |
+| **PRD**   | `production` → `lucamsshop.com` en Vercel Pro (`iad1`) + Supabase PRD (`zxkucphbsfygakgxcnik`) | **En producción (`full`)**; 17 jobs `pg_cron` (incluidos `lucams-fiscal-watch` y `lucams-lifecycle`) + backups diarios GPG (DB + Storage) en R2 |
 
 ### Excepciones deliberadas de homologación (`ADR-099`, `ADR-121`, `ADR-126`)
 
@@ -94,13 +92,16 @@
   de 3 500 UVT del año en curso (facturación electrónica e IVA por ventas con tarjeta), proyecta el
   cierre anual por ritmo reciente y alerta 70 %/90 %/100 % en `/admin/hoy`, `/admin/metricas`,
   `/admin/notificaciones` y correo al owner (una vez por cruce y año).
-- Panel `/admin` (8 roles × 34 capacidades, MFA `aal2`, `useAdminConfirm`), 31 plantillas React Email
+- Panel `/admin` (8 roles × 35 capacidades, MFA `aal2`, `useAdminConfirm`), 32 plantillas React Email
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
-    consentimiento + embudo `FunnelEventDaily`, **19 procesos programados** y **backups diarios GPG de
+    consentimiento + embudo `FunnelEventDaily`, **20 procesos programados** y **backups diarios GPG de
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.
 - **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` y ayuda contextual en todo
-  el panel con **43 guías**, búsqueda RBAC, 8 onboarding y recorridos opcionales con progreso y
+  el panel con **44 guías**, búsqueda RBAC, 8 onboarding y recorridos opcionales con progreso y
   retroalimentación persistidos por usuario; cobertura automática de todas las páginas del Admin.
+- **Lifecycle Journeys (`ADR-198`):** `/admin/lifecycle` configura recorridos por comportamiento
+  con consentimiento, horarios, límites, reintentos y atribución a 30 días. Las cinco rutas iniciales
+  están **en borrador**; activar, probar o reintentar exige MFA reciente.
 
 ## Pendientes abiertos reales
 

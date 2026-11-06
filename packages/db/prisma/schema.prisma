@@ -118,6 +118,47 @@ enum ConsentScope {
   HABEAS_DATA // autorización general tratamiento de datos personales
 }
 
+enum LifecycleTrigger {
+  FIRST_PURCHASE
+  SECOND_PURCHASE
+  REACTIVATION
+  HIGH_INTENT
+  B2B_FOLLOW_UP
+}
+
+enum LifecycleJourneyStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum LifecycleEnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  EXITED
+  SUPPRESSED
+}
+
+enum LifecycleStepCondition {
+  ALWAYS
+  NO_PAID_ORDER
+  HAS_ABANDONED_CART
+  HAS_LOYALTY_POINTS
+  HAS_DESIGN_ACTIVITY
+  HAS_OPT_IN
+  ORDER_DELIVERED
+  NO_ORDER_SINCE_ENROLLMENT
+}
+
+enum LifecycleMessageStatus {
+  PENDING
+  SENT
+  FAILED
+  SUPPRESSED
+  CANCELLED
+}
+
 // ──────────────────────── CMS (sub-bloque J) ────────────────────────
 
 // ──────────────────────── IDENTIDAD (ADR-193) ────────────────────────
@@ -205,6 +246,8 @@ model Contact {
   activities                 ContactActivity[]
   tasks                      Task[]
   opportunities              Opportunity[]
+  lifecycleEnrollments       LifecycleEnrollment[]
+  lifecycleMessages          LifecycleMessage[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -896,6 +939,7 @@ model Order {
 
   contactActivities       ContactActivity[]
   tasks                   Task[]
+  lifecycleConversions    LifecycleMessage[]
   convertedOpportunities  Opportunity[]     @relation("OpportunityConvertedOrder")
   recoveredAbandonedCarts AbandonedCart[]   @relation("AbandonedCartRecoveredOrder")
 
@@ -1553,6 +1597,113 @@ model Consent {
   @@index([email, scope])
   @@index([phone, scope])
   @@index([scope, acceptedAt])
+}
+
+model LifecycleJourney {
+  id                String                 @id @default(cuid())
+  key               String                 @unique
+  name              String
+  description       String
+  trigger           LifecycleTrigger
+  status            LifecycleJourneyStatus @default(DRAFT)
+  version           Int                    @default(1)
+  requireOptIn      Boolean                @default(true)
+  inactivityDays    Int                    @default(90)
+  entryLookbackDays Int                    @default(30)
+  cooldownDays      Int                    @default(180)
+  maxMessagesPerDay Int                    @default(2)
+  quietStartHour    Int                    @default(20)
+  quietEndHour      Int                    @default(8)
+  steps             LifecycleJourneyStep[]
+  enrollments       LifecycleEnrollment[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  createdBy         String?
+  updatedBy         String?
+
+  @@index([trigger, status])
+}
+
+model LifecycleJourneyStep {
+  id           String                 @id @default(cuid())
+  journeyId    String
+  journey      LifecycleJourney       @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  position     Int
+  delayMinutes Int                    @default(0)
+  templateKey  String                 @default("lifecycle-message")
+  subject      String
+  heading      String
+  preheader    String
+  body         String                 @db.Text
+  ctaLabel     String
+  ctaPath      String
+  commercial   Boolean                @default(true)
+  condition    LifecycleStepCondition @default(ALWAYS)
+  messages     LifecycleMessage[]
+  enrollments  LifecycleEnrollment[]  @relation("EnrollmentCurrentStep")
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@unique([journeyId, position])
+  @@index([journeyId, position])
+}
+
+model LifecycleEnrollment {
+  id            String                    @id @default(cuid())
+  journeyId     String
+  journey       LifecycleJourney          @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  contactId     String
+  contact       Contact                   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  cycle         Int                       @default(1)
+  status        LifecycleEnrollmentStatus @default(ACTIVE)
+  currentStepId String?
+  currentStep   LifecycleJourneyStep?     @relation("EnrollmentCurrentStep", fields: [currentStepId], references: [id], onDelete: SetNull)
+  nextRunAt     DateTime
+  lastRunAt     DateTime?
+  completedAt   DateTime?
+  exitReason    String?
+  triggerRef    String?
+  data          Json                      @default("{}")
+  messages      LifecycleMessage[]
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@unique([journeyId, contactId, cycle])
+  @@index([status, nextRunAt])
+  @@index([contactId, status])
+  @@index([triggerRef])
+}
+
+model LifecycleMessage {
+  id              String                 @id @default(cuid())
+  enrollmentId    String
+  enrollment      LifecycleEnrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  stepId          String
+  step            LifecycleJourneyStep   @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  contactId       String
+  contact         Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  dedupKey        String                 @unique
+  publicTokenHash String?                @unique
+  resendId        String?
+  status          LifecycleMessageStatus @default(PENDING)
+  subject         String
+  ctaUrl          String
+  error           String?
+  scheduledFor    DateTime
+  sentAt          DateTime?
+  clickedAt       DateTime?
+  convertedAt     DateTime?
+  convertedOrderId String?               @unique
+  convertedOrder   Order?                @relation(fields: [convertedOrderId], references: [id], onDelete: SetNull)
+  revenueCents    Int                    @default(0)
+  metadata        Json                   @default("{}")
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([contactId, status])
+  @@index([status, scheduledFor])
+  @@index([resendId])
+  @@index([clickedAt, convertedAt])
 }
 
 // ──────────────────────── OBSERVABILIDAD ────────────────────────

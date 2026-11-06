@@ -46,7 +46,7 @@ describe("admin help registry", () => {
   it("tiene identificadores únicos, contenido completo y relaciones válidas", () => {
     const ids = ADMIN_MODULE_GUIDES.map((guide) => guide.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ADMIN_MODULE_GUIDES).toHaveLength(43);
+    expect(ADMIN_MODULE_GUIDES).toHaveLength(44);
 
     for (const guide of ADMIN_MODULE_GUIDES) {
       expect(guide.purpose.length, guide.id).toBeGreaterThan(80);
@@ -125,6 +125,6 @@ describe("admin help registry", () => {
   });
 
   it("mantiene el catálogo RBAC alineado con las capacidades usadas por las guías", () => {
-    expect(ADMIN_CAPABILITIES).toHaveLength(34);
+    expect(ADMIN_CAPABILITIES).toHaveLength(35);
   });
 });
