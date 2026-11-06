@@ -1,6 +1,6 @@
 # Resend y Arquitectura de Correos — Lucams Shop
 
-> **Documento vivo.** Fuente canónica del subsistema de correo electrónico de **Lucams Shop**: transporte REST nativo sobre Resend, aislamiento de dominios de envío y recepción, sincronización de contactos y baja en un clic (RFC 8058), webhook firmado con Svix, catálogo completo de las **30 plantillas registradas en código**, las **2 plantillas OTP de Supabase Auth** vía SMTP de Resend, correos operativos inline y sistema de personalización en `/admin/email-templates`.
+> **Documento vivo.** Fuente canónica del subsistema de correo electrónico de **Lucams Shop**: transporte REST nativo sobre Resend, aislamiento de dominios de envío y recepción, sincronización de contactos y baja en un clic (RFC 8058), webhook firmado con Svix, catálogo completo de las **31 plantillas registradas en código**, las **2 plantillas OTP de Supabase Auth** vía SMTP de Resend, correos operativos inline y sistema de personalización en `/admin/email-templates`.
 
 ---
 
@@ -16,7 +16,7 @@ Lucams Shop opera toda su mensajería saliente sobre **Resend** mediante tres ca
 flowchart LR
   subgraph App["Next.js 16 (apps/web)"]
     Senders["Emisores de dominio\n(saga, soporte, crons, B2B)"]
-    Registry["Registry + withOverrides\n(30 plantillas TS + EmailTemplateOverride)"]
+    Registry["Registry + withOverrides\n(31 plantillas TS + EmailTemplateOverride)"]
     Client["lib/resend.ts\n(Retry + Circuit Breaker + Supresión)"]
     Contacts["features/newsletter/*\n(POST / PATCH /contacts)"]
     Webhook["POST /api/webhooks/resend\n(Verificación Svix HMAC)"]
@@ -240,9 +240,9 @@ Todas las plantillas de código residen en `apps/web/features/emails/templates/*
 - **Resolución canónica de URL (`getSiteUrl()`)**: prioriza `NEXT_PUBLIC_SITE_URL` del despliegue actual sobre el setting CMS `SITE_URL`, garantizando que correos emitidos en Preview/STG enlacen al entorno de STG y no a `lucamsshop.com`.
 - **Política de tokens públicos post-pago**: dado que `Order.publicAccessTokenHash` se almacena hasheado en reposo, los correos posteriores (`order-shipped`, `order-payment-failed`, `design-rejected`) envían `publicTrackingToken: null` y dirigen el botón principal a `/rastrear` (número de orden `LCM-YYYY-NNNN` + correo). En `order-confirmation`, los clientes registrados enlazan a `/mi-cuenta/pedidos/<number>`, los invitados Wompi reciben un token público recién rotado (`/pedido/<token>`) y los invitados contraentrega (COD) caen a `/rastrear` para no invalidar el enlace abierto en su navegador. En `order-delivered` y `review-request`, el CTA enlaza a `/resena/<token>` (token HMAC stateless con vigencia de 30 días, `features/reviews/review-token.ts`). En regalos (`isGift = true`), `order-confirmation` oculta importes monetarios.
 
-### 6.2 Las 30 plantillas registradas en `apps/web/features/emails/registry.ts`
+### 6.2 Las 31 plantillas registradas en `apps/web/features/emails/registry.ts`
 
-Las **30 plantillas** listadas a continuación están envueltas con `withOverrides(id, fn)` y admiten personalización de `SUBJECT`, `PREHEADER` y `HEADING` desde `/admin/email-templates`. Todos los montos numéricos que reciben las plantillas (`total`, `subtotal`, `shipping`, `discount`, `amount`, `unitPrice`, `lineTotal`) viajan en **centavos COP (`Int`)**.
+Las **31 plantillas** listadas a continuación están envueltas con `withOverrides(id, fn)` y admiten personalización de `SUBJECT`, `PREHEADER` y `HEADING` desde `/admin/email-templates`. Todos los montos numéricos que reciben las plantillas (`total`, `subtotal`, `shipping`, `discount`, `amount`, `unitPrice`, `lineTotal`) viajan en **centavos COP (`Int`)**.
 
 #### Grupo 1: Pedidos (9 plantillas)
 
@@ -309,6 +309,12 @@ Las **30 plantillas** listadas a continuación están envueltas con `withOverrid
 | 29  | `b2b-inquiry-received`           | Confirmación de solicitud B2B / Eventos | Solicitante B2B       | Envío exitoso de `/empresas-y-eventos` (`sendB2bInquiryEmails` vía `after()` en `features/opportunities/emails.ts`), confirmando radicado `OP-XXXXXX`.      | `opportunity:client-received:<oppId>`    | No        | `opportunityNumber`, `contactName`, `organizationName`, `eventLabel`, `expectedUnits`, `city`, `department`, `eventDateLabel`, `notes`                                                            |
 | 30  | `b2b-inquiry-admin-notification` | Aviso interno: nueva oportunidad B2B    | Admin (`ALERT_EMAIL`) | Creación de la misma `Opportunity` en `/empresas-y-eventos`. `Reply-To` al solicitante, enlace `wa.me` y acceso directo a `/admin/oportunidades/<id>`.      | `opportunity:admin-notification:<oppId>` | No        | `opportunityId`, `opportunityNumber`, `contactName`, `contactEmail`, `contactWhatsapp`, `organizationName`, `nit`, `eventLabel`, `expectedUnits`, `city`, `department`, `eventDateLabel`, `notes` |
 
+#### Grupo 8: Administración (1 plantilla)
+
+| #   | `id` (archivo `.ts`)     | Nombre en Admin                                 | Audiencia             | Disparador y módulo emisor                                                                                                                                                                                    | `Idempotency-Key`                                                                     | Comercial | Tokens `{campo}` admitidos en overrides                                                                                                                        |
+| --- | ------------------------ | ----------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 31  | `fiscal-threshold-alert` | Alerta interna: vigilancia fiscal (umbral DIAN) | Admin (`ALERT_EMAIL`) | Cron diario `lucams-fiscal-watch` (`features/fiscal-watch/service.ts`, ADR-196) al cruzar 90 % o 100 % de un umbral DIAN (3 500 UVT: facturación electrónica o IVA por tarjeta). Una vez por cruce y por año. | _(dedup por cruce en `AlertState["fiscal-watch:<regla>:<año>"]`, sin clave de envío)_ | No        | `ruleName`, `legalBasis`, `action`, `year`, `levelLabel`, `thresholdUvt`, `currentCop`, `thresholdCop`, `currentPct`, `projectedCop`, `projectedPct`, `uvtCop` |
+
 > **Nota sobre tokens nulos en tiempo de envío**: `interpolateOverrideTokens` reemplaza únicamente valores escalares `string` o `number`. Si un token documentado llega como `null` en una variante concreta de envío real (por ejemplo `publicTrackingToken` cuando cae al fallback `/rastrear`), el placeholder `{publicTrackingToken}` quedaría literal; por ello se recomienda usar en asuntos y titulares tokens siempre presentes como `{orderNumber}` o `{customerName}`.
 
 ---
@@ -368,7 +374,7 @@ Existen cuatro emisores puntuales de uso exclusivamente interno hacia los buzone
 
 ### 7.1 Modelo `EmailTemplateOverride` y caché (`features/emails/overrides.ts`)
 
-El módulo `/admin/email-templates` permite editar sin redespliegue los textos visibles más sensibles de las 30 plantillas registradas, manteniendo intactos el layout inline-CSS y los bloques legales:
+El módulo `/admin/email-templates` permite editar sin redespliegue los textos visibles más sensibles de las 31 plantillas registradas, manteniendo intactos el layout inline-CSS y los bloques legales:
 
 - **Acceso RBAC + MFA**: tanto las páginas como las Server Actions (`saveEmailOverrideAction`, `sendTestEmailAction` en `apps/web/app/admin/(panel)/email-templates/actions.ts`) y la ruta de preview exigen rol **`SUPERADMIN`** con MFA verificado (`ADMIN_ROLE_SETS.SUPER`).
 - **Claves acotadas**: tabla Prisma `EmailTemplateOverride` con clave compuesta `@@unique([templateId, key])`, donde `key` pertenece a `EMAIL_OVERRIDE_KEYS = ["SUBJECT", "PREHEADER", "HEADING"]` y `value` admite hasta 500 caracteres. Enviar `value` vacío elimina la fila (`deleteMany`) y restaura al instante el texto base del código.
