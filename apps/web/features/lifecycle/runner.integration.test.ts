@@ -148,6 +148,8 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
     });
     expect(message.status).toBe("SENT");
     expect(message.publicTokenHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(message.ctaUrl).toBe("/recomendador");
+    expect(message.ctaUrl).not.toContain("/j/");
     expect(message.metadata).toMatchObject({ targetPath: "/recomendador" });
 
     const second = await runCleanCycle(journey.id, [contact.id]);

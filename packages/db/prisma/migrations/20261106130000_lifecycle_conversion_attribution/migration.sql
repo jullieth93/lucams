@@ -1,3 +1,7 @@
+UPDATE "LifecycleMessage"
+SET "ctaUrl" = COALESCE("metadata"->>'targetPath', '/')
+WHERE "ctaUrl" LIKE '%/j/%';
+
 ALTER TABLE "LifecycleMessage" ADD COLUMN IF NOT EXISTS "convertedOrderId" TEXT;
 
 DO $$
