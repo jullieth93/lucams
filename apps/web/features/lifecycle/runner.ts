@@ -160,7 +160,6 @@ async function sendStepMessage(
     },
     data: {
       publicTokenHash: hashBearerToken(publicToken),
-      ctaUrl,
       error: "IN_FLIGHT",
     },
   });
