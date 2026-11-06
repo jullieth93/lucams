@@ -73,6 +73,7 @@ export const CRON_JOBS: Record<string, { intervalMs: number; label: string }> = 
   // Diaria 07:05 COT, antes del resumen de las 08:00 → una alerta fiscal de la
   // madrugada ya está en la bandeja cuando abre la operación.
   "fiscal-watch": { intervalMs: 24 * 60 * 60 * 1000, label: "Vigilancia fiscal (umbrales DIAN)" },
+  lifecycle: { intervalMs: 15 * 60 * 1000, label: "Recorridos de ciclo de vida" },
 };
 
 /**

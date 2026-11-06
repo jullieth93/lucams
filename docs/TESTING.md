@@ -1,6 +1,6 @@
 # Estrategia y Suites de Pruebas — Lucams Shop
 
-> **Documento vivo de Nivel 1 ([`README.md`](README.md)).** Define con exactitud la pirámide de pruebas, las guardas de seguridad e higiene del entorno (`EMAIL_SEND_DISABLED=1`, bloqueo duro anti-PRD y limpieza determinista), la regla Mock vs Real, los patrones con código real de cada capa (Vitest unit, RTL, `node --test`, integración PostgreSQL, matriz RLS y Playwright E2E), el inventario 1:1 de los **56 archivos `.spec.ts`**, las pruebas de carga/rendimiento y los workflows de certificación en GitHub Actions.
+> **Documento vivo de Nivel 1 ([`README.md`](README.md)).** Define con exactitud la pirámide de pruebas, las guardas de seguridad e higiene del entorno (`EMAIL_SEND_DISABLED=1`, bloqueo duro anti-PRD y limpieza determinista), la regla Mock vs Real, los patrones con código real de cada capa (Vitest unit, RTL, `node --test`, integración PostgreSQL, matriz RLS y Playwright E2E), el inventario 1:1 de los **57 archivos `.spec.ts`**, las pruebas de carga/rendimiento y los workflows de certificación en GitHub Actions.
 
 ## Tabla de contenido
 
@@ -11,7 +11,7 @@
 5. [Pruebas unitarias, componentes RTL y scripts de DB (ejemplos reales 1, 2 y 3)](#5-pruebas-unitarias-componentes-rtl-y-scripts-de-db-ejemplos-reales-1-2-y-3)
 6. [Pruebas de integración contra PostgreSQL real (ejemplo real 4)](#6-pruebas-de-integración-contra-postgresql-real-ejemplo-real-4)
 7. [Pruebas reales de cobertura y matriz de seguridad RLS (ejemplo real 5)](#7-pruebas-reales-de-cobertura-y-matriz-de-seguridad-rls-ejemplo-real-5)
-8. [Pruebas End-to-End con Playwright e inventario 56/56 (ejemplo real 6)](#8-pruebas-end-to-end-con-playwright-e-inventario-5656-ejemplo-real-6)
+8. [Pruebas End-to-End con Playwright e inventario 57/57 (ejemplo real 6)](#8-pruebas-end-to-end-con-playwright-e-inventario-5757-ejemplo-real-6)
 9. [Carga k6, Lighthouse CI, perfilado CDP del Estudio y arquitectura CI/CD](#9-carga-k6-lighthouse-ci-perfilado-cdp-del-estudio-y-arquitectura-cicd)
 
 ---
@@ -20,10 +20,10 @@
 
 ```text
           ╱─────────────────────────────╲
-         ╱  Playwright E2E (56 specs) +  ╲   Flujos críticos, MFA TOTP, a11y (axe),
+         ╱  Playwright E2E (57 specs) +  ╲   Flujos críticos, MFA TOTP, a11y (axe),
         ╱   k6 + Lighthouse + CDP Studio  ╲  responsive en 6 perfiles y sandbox Wompi
        ╱───────────────────────────────────╲
-      ╱   Integración PostgreSQL real (84)  ╲  Sagas, concurrencia, webhooks, Storage,
+      ╱   Integración PostgreSQL real (86)  ╲  Sagas, concurrencia, webhooks, Storage,
      ╱    + Cobertura y Matriz RLS real      ╲ GoTrue OTP/MFA y deriva Prisma ↔ SQL
     ╱─────────────────────────────────────────╲
    ╱  Unitarias, componentes RTL y gates AST   ╲ Reglas en centavos COP, Zod v4, HMAC,
@@ -50,10 +50,10 @@
 | ------------------------------ | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `<modulo>.test.ts`             | Junto al archivo bajo prueba en `apps/web/**`                         | Lógica pura, validadores Zod v4, firmas criptográficas, servicios con dependencias externas aisladas y gates estáticos AST |
 | `<componente>.test.tsx`        | Junto al componente (`// @vitest-environment jsdom` en línea 1)       | Renderizado, accesibilidad e interacciones de hojas `"use client"`                                                         |
-| `<modulo>.integration.test.ts` | Junto a la feature (`apps/web/**`) — **84 suites**                    | Consultas Prisma reales, sagas, concurrencia, webhooks, Storage y RLS contra PostgreSQL/Supabase                           |
+| `<modulo>.integration.test.ts` | Junto a la feature (`apps/web/**`) — **86 suites**                    | Consultas Prisma reales, sagas, concurrencia, webhooks, Storage y RLS contra PostgreSQL/Supabase                           |
 | `<proveedor>.live.test.ts`     | `lib/wompi.live.test.ts`, `features/shipping/aveonline*.live.test.ts` | Smokes no destructivos contra sandboxes externos reales (`skipIf` automático sin credenciales sandbox)                     |
 | `<helper>.test.mjs`            | `packages/db/scripts/lib/*.test.mjs` — **6 suites**                   | Guardas fail-closed de scripts operativos (`pnpm --filter @lucams/db test`)                                                |
-| `<flujo>.spec.ts`              | `apps/web/tests/e2e/` — **56 specs**                                  | Recorridos completos de navegador en local, `:4100`, Staging o smoke de solo lectura                                       |
+| `<flujo>.spec.ts`              | `apps/web/tests/e2e/` — **57 specs**                                  | Recorridos completos de navegador en local, `:4100`, Staging o smoke de solo lectura                                       |
 
 - **Estructura _Arrange – Act – Assert_ (AAA):** prepara datos explícitos sin magia compartida (_Arrange_), invoca una única acción observable (_Act_) y verifica el estado resultante o efecto persistido (_Assert_). Con `globals: false` en `vitest.config.ts`, importa siempre `describe`, `it`, `expect`, `vi`, `beforeEach` y `afterAll` explícitamente desde `"vitest"`.
 - **Qué pruebas NO escribimos:** no testeamos internals privados de Next.js, Prisma o Supabase; no escribimos snapshots de objetos JSON gigantes; no mockeamos funciones puras internas; y no duplicamos un spec E2E por cada producto del catálogo cuando las variantes están cubiertas en unit/integración.
@@ -166,7 +166,7 @@ describe.skipIf(!liveSandbox)("Wompi — smoke LIVE sandbox (no-destructivo)", (
 | Comando                                   | Qué ejecuta exactamente                                                                                                                                                               | Cuándo debes correrlo                                   |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | `make check`                              | `pnpm format:check` + `pnpm -r typecheck` + `pnpm -r lint` + `pnpm --filter @lucams/db test` + `make audit-script-guards` + `make audit-content` + escaneo anti-voseo (`es-CO` tuteo) | **Siempre** antes de cada commit / push                 |
-| `pnpm test`                               | `pnpm -r test`: corre las **480 suites** Vitest de `apps/web` y las **6 suites** `node --test` de `@lucams/db`                                                                        | Antes de abrir o actualizar cualquier PR                |
+| `pnpm test`                               | `pnpm -r test`: corre las **486 suites** Vitest de `apps/web` y las **6 suites** `node --test` de `@lucams/db`                                                                        | Antes de abrir o actualizar cualquier PR                |
 | `make test-local`                         | `pnpm --filter web test` contra el stack Supabase local en Podman                                                                                                                     | Validación integral con DB local arriba                 |
 | `pnpm --filter web test:coverage`         | Vitest con proveedor V8 verificando `coverage.thresholds` globales                                                                                                                    | Réplica local exacta del job `unit-tests`               |
 | `pnpm --filter @lucams/db test`           | `node --test "scripts/lib/*.test.mjs"` en `packages/db`                                                                                                                               | Al tocar scripts o helpers en `packages/db/scripts/`    |
@@ -330,7 +330,7 @@ describe("checkDestructiveAllowed (fail-closed)", () => {
 
 ### Preparación del stack local y passthrough de `next/cache`
 
-Para correr las **84 suites `*.integration.test.ts`** localmente contra Supabase en Podman:
+Para correr las **86 suites `*.integration.test.ts`** localmente contra Supabase en Podman:
 
 ```bash
 make db-local-start   # Levanta/reanuda contenedores Podman conservando volúmenes
@@ -540,7 +540,7 @@ describe.skipIf(!canRun)("RLS matrix — PostgREST cerrado para anon y authentic
 
 ---
 
-## 8. Pruebas End-to-End con Playwright e inventario 56/56 (ejemplo real 6)
+## 8. Pruebas End-to-End con Playwright e inventario 57/57 (ejemplo real 6)
 
 ### Resolución de ambientes (`E2E_ENV`), `:4100` fullmode, bypass de STG y MFA TOTP
 
@@ -620,9 +620,9 @@ test.describe("Acceso administrativo con MFA TOTP obligatorio y WCAG 2.1 AA", ()
 });
 ```
 
-### Inventario completo vigente de los 56 specs E2E (`apps/web/tests/e2e/*.spec.ts`)
+### Inventario completo vigente de los 57 specs E2E (`apps/web/tests/e2e/*.spec.ts`)
 
-El directorio `apps/web/tests/e2e/` contiene exactamente **56 archivos `.spec.ts`** verificados 1:1 en el repositorio:
+El directorio `apps/web/tests/e2e/` contiene exactamente **57 archivos `.spec.ts`** verificados 1:1 en el repositorio:
 
 #### A. Gates públicos por Pull Request en `ci.yml` (6 specs)
 
@@ -654,9 +654,10 @@ El directorio `apps/web/tests/e2e/` contiene exactamente **56 archivos `.spec.ts
 - `fullmode-stock.spec.ts` — Control de topes de inventario, quiebres de stock y mensajes nombrando el producto afectado.
 - `wompi-sandbox.spec.ts` — **Journey real de dinero** (`PW_CHANNEL=chromium`): pago aprobado con tarjeta `4242` en Wompi sandbox → webhook firmado → orden `PAID` + guía en Aveonline sandbox.
 
-#### D. Administración, MFA, CMS v2, posventa y auditorías responsive (14 specs)
+#### D. Administración, MFA, CMS v2, posventa y auditorías responsive (15 specs)
 
 - `admin-help.spec.ts` — Onboarding opcional, ayuda contextual, recorrido con progreso, búsqueda RBAC y retroalimentación persistida en `/admin/ayuda`. Los helpers MFA compartidos descartan el onboarding por defecto para aislar los demás escenarios administrativos y esta spec lo conserva explícitamente con `dismissOnboarding: false`.
+- `admin-lifecycle.spec.ts` — Creación, activación, pausa y edición versionada de un recorrido con MFA real y limpieza del administrador y recorrido sintéticos. Verifica navegación, audiencia y controles sin crear clientes ni enviar correos reales.
 - `admin-inventory.spec.ts` — Ajustes de stock auditados y umbrales de alerta en `/admin/inventario`.
 - `admin-login.spec.ts` — Flujo de login administrativo separado en `/admin/login` y guardas de acceso.
 - `admin-mfa.spec.ts` — Enrolamiento obligatorio TOTP, reto `/admin/login/mfa` (`aal2`) y _step-up_ en acciones sensibles.
@@ -766,7 +767,7 @@ El ruleset **`protect-ramas-criticas`** exige en verde estos **5 checks** antes 
 Corre diariamente a las `06:00 UTC` (`01:00 America/Bogota`, saltando limpio vía `gate-activity` si no hubo commits en las últimas 24 h) y siempre bajo demanda con `workflow_dispatch`:
 
 - **`vitest-supabase-real`:** levanta Supabase local completo y corre las 6 suites profundas de GoTrue/Storage/sandbox (`auth-actions.integration.test.ts`, `finalize-server-render.integration.test.ts`, `personalization/service.integration.test.ts`, `letter-tiles.integration.test.ts`, `retention-service.integration.test.ts` y `lib/wompi.live.test.ts`).
-- **`e2e-supabase-real`:** siembra catálogo completo + CMS v2 y ejecuta `admin-login.spec`, `admin-mfa.spec`, `cms-editing-flow.spec`, `responsive-admin-audit.spec`, `audit-cliente.spec`, `homolog-auth.spec` y `retracto-garantia-cliente.spec`, más el smoke cross-browser en Firefox y WebKit.
+- **`e2e-supabase-real`:** siembra catálogo completo + CMS v2 y ejecuta `admin-login.spec`, `admin-mfa.spec`, `admin-help.spec`, `admin-lifecycle.spec`, `cms-editing-flow.spec`, `responsive-admin-audit.spec`, `audit-cliente.spec`, `homolog-auth.spec` y `retracto-garantia-cliente.spec` (9 specs), más el smoke cross-browser en Firefox y WebKit.
 - **`e2e-wompi-sandbox`:** ejecuta `wompi-sandbox.spec.ts` con `PW_CHANNEL=chromium` contra los sandboxes reales de Wompi y Aveonline y archiva `wompi-sandbox-evidence` durante 30 días. Antes de fusionar un release PR `develop → production`, `nightly-full.yml` debe estar en verde sobre `develop` (o haberse certificado manualmente `scripts/e2e-fullmode.sh wompi-sandbox` sobre el SHA candidato si faltaran secretos sandbox en el runner), acompañado del recorrido de [`QA_CHECKLIST.md`](QA_CHECKLIST.md).
 
 #### 3. `.github/workflows/post-deploy-smoke.yml` — Verificación automática post-deploy en PRD

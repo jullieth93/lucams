@@ -10,7 +10,7 @@
 
 1. **Defensa en profundidad:** ninguna barrera actúa sola. El acceso administrativo combina redirección en borde (`apps/web/proxy.ts`), validación en layout, guardas por Server Action/Route Handler (`apps/web/lib/admin-rbac-guard.ts`), MFA TOTP obligatorio (`aal2`), re-autenticación reciente (`requireRecentMfa`) y RLS estricto en Postgres.
 2. **Fail-closed en producción:** ante ausencia de secretos críticos (`validateEnv()` en `apps/web/lib/env.ts`), marcas de inactividad administrativa faltantes o inválidas, retos anti-bot fallidos en producción o valores fuera de rango, el sistema rechaza la operación. La única excepción deliberada y documentada es la consulta externa a Have I Been Pwned (`lib/pwned-passwords.ts`), que opera _fail-open_ con timeout corto (`3 000 ms`) para que una caída de un tercero externo no bloquee el registro de clientes.
-3. **Menor privilegio:** 8 roles administrativos con 34 capacidades granulares, enmascaramiento server-side de PII antes de serializar React Server Components (RSC), buckets sensibles privados y revocación total de permisos de tabla para los roles `anon`, `authenticated` y `service_role` en el esquema `public`.
+3. **Menor privilegio:** 8 roles administrativos con 35 capacidades granulares, enmascaramiento server-side de PII antes de serializar React Server Components (RSC), buckets sensibles privados y revocación total de permisos de tabla para los roles `anon`, `authenticated` y `service_role` en el esquema `public`.
 4. **Cero confianza en el cliente:** precios, descuentos, fletes, elegibilidad de cupones, Puntos Lucams, autorizaciones y firmas se calculan o verifican exclusivamente en el servidor con aritmética entera en centavos COP (`Int`).
 5. **Privacidad por diseño:** ninguna foto ni dato personal viaja a Google Gemini, Google Analytics 4 no se carga sin consentimiento previo en la categoría **Analíticas**, las direcciones IP en rate limiting y telemetría de seguridad se almacenan truncadas en hash SHA-256 y los tokens de acceso público se guardan únicamente como digest SHA-256.
 
@@ -28,7 +28,7 @@
 | **Fraude financiero, manipulación de precios y abuso COD**    | `/checkout/*`, `/api/webhooks/wompi`, cupones, Puntos Lucams, contraentrega                         | Recálculo total server-side desde variantes reales, fletes sellados con HMAC-SHA256 (`CSRF_SECRET`), firma SHA-256 timing-safe + ventana de 25 h + idempotencia en Wompi, decremento atómico de stock post-pago (`InventoryLog`), `BlockedIdentity` y motor `assessCodRisk`                           |
 | **Bombas de descompresión y payloads maliciosos en imágenes** | Subidas del Estudio, catálogo y CMS (`/api/designs/*`, Server Actions de medios)                    | Inspección de magic bytes (`sniffImageMime`), lectura previa de dimensiones `ispe` en HEIC/HEIF antes de decodificar, `sharp` `0.35.5` con formatos peligrosos bloqueados (`sharp.block`), tope de píxeles (`25 MP`–`50 MP`), ratio `≤ 20:1`, borrado de EXIF y streaming acotado `readBodyWithLimit` |
 | **Amplificación de base de datos o denegación de servicio**   | `/api/vitals`, `/api/funnel`, `/api/log-error`, `/api/webhooks/*`, fallos masivos de login          | Límites de cuerpo por ruta (`4 KB`–`128 KB`), rate limiting transaccional en Postgres + topes globales de filas nuevas y coalescencia en memoria + upsert por minuto en `SecurityEvent` (`LUC-SEC-008`)                                                                                               |
-| **Exfiltración masiva o escalamiento interno en `/admin`**    | Exportaciones CSV, pedidos, CRM, reembolsos y gestión de staff                                      | Matriz RBAC `8 × 34`, ocultamiento server-side de PII (`lib/pii-mask.ts`), búsqueda anti-oráculo cuando el rol no posee `orders:read_pii`, step-up MFA para exportar o reembolsar, auditoría `selfDealing` y registro inmutable en `AdminActionLog`                                                   |
+| **Exfiltración masiva o escalamiento interno en `/admin`**    | Exportaciones CSV, pedidos, CRM, reembolsos y gestión de staff                                      | Matriz RBAC `8 × 35`, ocultamiento server-side de PII (`lib/pii-mask.ts`), búsqueda anti-oráculo cuando el rol no posee `orders:read_pii`, step-up MFA para exportar o reembolsar, auditoría `selfDealing` y registro inmutable en `AdminActionLog`                                                   |
 | **Bypass de la capa web hacia Supabase PostgREST**            | API REST pública de Supabase con `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`                             | `ENABLE ROW LEVEL SECURITY` + `REVOKE ALL` a `anon`/`authenticated` y revocación DML a `service_role` en el 100 % de las tablas de `public`, blindado por event trigger `enforce_rls_on_new_table_trg` y suite `make test-rls`                                                                        |
 
 ### 2.2 Superficie expuesta
@@ -42,7 +42,7 @@
 
 | Categoría OWASP Top 10                             | Controles vigentes en Lucams Shop                                                                                                                                                                                                                              |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A01 — Broken Access Control**                    | RBAC `8 × 34` (`canAccessAdminPath` por prefijo más largo + `requireCapability`/`verifyAdminRouteAccess`), `proxy.ts` sobrescribe `x-pathname`, RLS al 100 % + `REVOKE ALL`, tokens opacos SHA-256, `safeRedirectTarget` (`ADR-046`) y `LUC-SEC-001`           |
+| **A01 — Broken Access Control**                    | RBAC `8 × 35` (`canAccessAdminPath` por prefijo más largo + `requireCapability`/`verifyAdminRouteAccess`), `proxy.ts` sobrescribe `x-pathname`, RLS al 100 % + `REVOKE ALL`, tokens opacos SHA-256, `safeRedirectTarget` (`ADR-046`) y `LUC-SEC-001`           |
 | **A02 — Cryptographic Failures**                   | HSTS Preload 2 años, `checkout_state` cifrada con `AES-256-GCM` (`ADR-085`), códigos MFA con `HMAC-SHA256(CSRF_SECRET)`, tokens hasheados SHA-256 en reposo, `crypto.timingSafeEqual` en toda comparación sensible y backups R2 cifrados con GPG `AES-256`     |
 | **A03 — Injection**                                | Consultas parametrizadas con Prisma (y `$queryRaw` con tagged templates tipados), validación Zod allowlist sin `.passthrough()`, Markdown renderizado con `rehype-sanitize`, `EMAIL_PREVIEW_SANDBOX_CSP` y prohibición absoluta de `SVG` en subidas            |
 | **A04 — Insecure Design**                          | Recálculo server-side en centavos COP, decremento atómico de stock post-pago (`InventoryLog`), separación `UNVERIFIED_OBSERVED` vs `VERIFIED` en CRM (`ADR-193`), auditoría de conflicto de interés `selfDealing` y step-up MFA (`≤ 10 min`) en reembolsos     |
@@ -64,7 +64,7 @@
 | **R** | **Repudiation**            | Negar haber ejecutado una compra, autorización o mutación administrativa            | `Consent` append-only (IP, UA, versión), `AdminActionLog` con diff `before`/`after`, `WebhookEvent` y correlación `X-Request-Id`    |
 | **I** | **Information Disclosure** | Acceder a PII, fotos privadas, llaves o topología interna sin autorización          | RLS + `REVOKE ALL`, enmascaramiento RSC (`lib/pii-mask.ts`), 3 buckets privados, `scrubPii` en logs/errores y salud pública mínima  |
 | **D** | **Denial of Service**      | Agotar conexiones DB, memoria serverless, cuota de Storage o presupuesto de APIs IA | `readBodyWithLimit`, presupuestos de píxeles `sharp`, `rate_limit_buckets` + topes globales, Turnstile y coalescencia `LUC-SEC-008` |
-| **E** | **Elevation of Privilege** | Escalar de visitante/cliente a admin o de rol operativo a `SUPERADMIN`              | Matriz RBAC `8 × 34`, triggers anti-escalada en DB (`028`), esquemas Zod cerrados, step-up MFA en `staff:manage` e invariantes CRM  |
+| **E** | **Elevation of Privilege** | Escalar de visitante/cliente a admin o de rol operativo a `SUPERADMIN`              | Matriz RBAC `8 × 35`, triggers anti-escalada en DB (`028`), esquemas Zod cerrados, step-up MFA en `staff:manage` e invariantes CRM  |
 
 #### Aplicación STRIDE a los 4 flujos críticos
 
@@ -215,22 +215,22 @@ Los compradores sin cuenta consultan su orden mediante un enlace con un token op
 
 ## 5. Seguridad del panel `/admin`
 
-### 5.1 Matriz RBAC: 8 roles (`AdminRole`) × 34 capacidades (`AdminCapability`)
+### 5.1 Matriz RBAC: 8 roles (`AdminRole`) × 35 capacidades (`AdminCapability`)
 
 La fuente única de verdad vive en [`apps/web/lib/admin-rbac.ts`](../apps/web/lib/admin-rbac.ts). Todo miembro del equipo existe en `AdminUser` (`isActive = true` y `deletedAt IS NULL`). El aprovisionamiento (`provisionStaffAdmin` en `apps/web/features/admin-users/service.ts`) crea o reutiliza el usuario en `auth.users` sin insertar filas ficticias en `Customer` ni contaminar el grafo comercial `Contact`.
 
 | Rol (`AdminRole`)    | Capacidades | Propósito operativo y alcance sobre PII                                                                                                             |
 | -------------------- | :---------: | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SUPERADMIN`         | **34 / 34** | Propietaria / dirección general: control total del negocio, staff (`staff:manage`), reembolsos finales en efectivo, finanzas, seguridad y auditoría |
-| `OPERATIONS_MANAGER` | **25 / 34** | Jefatura operativa diaria (catálogo, pedidos con PII, moderación, posventa, `Contacto 360`, fusión CRM, B2B y lealtad; sin reembolsos ni staff)     |
-| `MANAGER`            | **25 / 34** | Alias de compatibilidad en Prisma con capacidades idénticas a `OPERATIONS_MANAGER`                                                                  |
-| `CUSTOMER_SUPPORT`   | **13 / 34** | Atención PQR, retractos, garantías (sin desembolso de efectivo), reseñas, moderación, cotizaciones y consulta `Contacto 360` con PII                |
-| `FINANCE_ANALYST`    | **9 / 34**  | Contabilidad, exportación CSV financiera, costos, conciliación COD, bloqueos anti-abuso, métricas y lectura de pedidos con PII enmascarada          |
-| `PRINT_WORKSHOP`     | **7 / 34**  | Taller de impresión: diseños 300 DPI, reintento `RenderJob`, paquetes ZIP e inventario, con PII enmascarada y sin acceso a guías logísticas         |
-| `FULFILLMENT`        | **6 / 34**  | Alistamiento y despacho: transiciones logísticas, impresión auditada de guías (`orders:shipping`) e inventario, con PII enmascarada en listados     |
-| `CMS_EDITOR`         | **2 / 34**  | Edición editorial CMS v2 (`cms:write` en páginas, bloques, mediateca, redirects) + seguridad de su propia cuenta (`account:self_security`)          |
+| `SUPERADMIN`         | **34 / 35** | Propietaria / dirección general: control total del negocio, staff (`staff:manage`), reembolsos finales en efectivo, finanzas, seguridad y auditoría |
+| `OPERATIONS_MANAGER` | **25 / 35** | Jefatura operativa diaria (catálogo, pedidos con PII, moderación, posventa, `Contacto 360`, fusión CRM, B2B y lealtad; sin reembolsos ni staff)     |
+| `MANAGER`            | **25 / 35** | Alias de compatibilidad en Prisma con capacidades idénticas a `OPERATIONS_MANAGER`                                                                  |
+| `CUSTOMER_SUPPORT`   | **13 / 35** | Atención PQR, retractos, garantías (sin desembolso de efectivo), reseñas, moderación, cotizaciones y consulta `Contacto 360` con PII                |
+| `FINANCE_ANALYST`    | **9 / 35**  | Contabilidad, exportación CSV financiera, costos, conciliación COD, bloqueos anti-abuso, métricas y lectura de pedidos con PII enmascarada          |
+| `PRINT_WORKSHOP`     | **7 / 35**  | Taller de impresión: diseños 300 DPI, reintento `RenderJob`, paquetes ZIP e inventario, con PII enmascarada y sin acceso a guías logísticas         |
+| `FULFILLMENT`        | **6 / 35**  | Alistamiento y despacho: transiciones logísticas, impresión auditada de guías (`orders:shipping`) e inventario, con PII enmascarada en listados     |
+| `CMS_EDITOR`         | **2 / 35**  | Edición editorial CMS v2 (`cms:write` en páginas, bloques, mediateca, redirects) + seguridad de su propia cuenta (`account:self_security`)          |
 
-#### Tabla exacta de las 34 capacidades por rol
+#### Tabla exacta de las 35 capacidades por rol
 
 Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `CUSTOMER_SUPPORT`, `FA` = `FINANCE_ANALYST`, `PW` = `PRINT_WORKSHOP`, `FU` = `FULFILLMENT`, `CE` = `CMS_EDITOR`.
 
@@ -270,6 +270,7 @@ Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `C
 | 32  | `system:read`                 |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
 | 33  | `staff:manage`                |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
 | 34  | `account:self_security`       |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
+| 35  | `lifecycle:manage`            |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
 
 ### 5.2 Guardia de rutas por prefijo más largo (`canAccessAdminPath`) y Route Handlers
 
@@ -307,6 +308,14 @@ Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `C
 - `AdminHelpProgress` y `AdminHelpFeedback` aíslan filas por `adminUserId` con unicidad `(adminUserId, guideId)` y cascada al retirar la cuenta. El comentario se limita a 1000 caracteres y la UI prohíbe expresamente incluir datos de clientes o secretos.
 - Las tablas tienen RLS y revocación completa para `anon`, `authenticated` y DML de `service_role`; el acceso legítimo ocurre solo por Prisma en servidor. Están incluidas en la matriz RLS y en la migración `00000000000056`.
 - Los recorridos nunca invocan Server Actions de negocio: su única mutación es el progreso de aprendizaje del propio administrador.
+
+### 5.6 Lifecycle Journeys (`ADR-198`)
+
+- `/admin/lifecycle` exige `lifecycle:manage`, limitado a `SUPERADMIN`, `OPERATIONS_MANAGER` y `MANAGER`, además de MFA `aal2`. Activar un recorrido, enviar una prueba y reintentar un mensaje usa `requireRecentMfa` y el modal TOTP; todas las mutaciones quedan en `AdminActionLog`.
+- Las cuatro tablas Lifecycle tienen RLS y revocación completa para `anon`, `authenticated` y DML de `service_role` en la migración `057`; el acceso ocurre exclusivamente por Prisma en servidor. El cron usa `x-cron-secret` y no acepta comandos ni destinatarios desde HTTP.
+- El consentimiento `NEWSLETTER` vigente se verifica en PostgreSQL y antes de cada paso comercial, con baja RFC 8058 y supresión por rebote/queja. Los contactos eliminados, anonimizados o `isStaff` no reciben mensajes. La semilla nunca activa recorridos.
+- El CTA solo admite `isSafeInternalPath`. El enlace `/j/[token]` usa un secreto derivado con HMAC-SHA256 de 192 bits por mensaje; en base de datos solo se conserva su hash SHA-256, nunca el token utilizable ni correos en la URL. El mismo token y contenido se conservan al reintentar, evitando cambiar un correo que pudo haber sido aceptado por Resend.
+- La deduplicación de inscripciones/mensajes y el reclamo previo al envío viven en PostgreSQL. Las conversiones requieren clic y pago dentro de 30 días; `convertedOrderId` único impide contar una orden más de una vez.
 
 ---
 

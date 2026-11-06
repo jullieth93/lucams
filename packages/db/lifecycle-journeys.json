@@ -1,0 +1,286 @@
+[
+  {
+    "key": "first-purchase",
+    "name": "Primera compra",
+    "description": "Acompaña a contactos con intención inicial hasta completar su primer pedido, sin duplicar la recuperación de carrito existente.",
+    "trigger": "FIRST_PURCHASE",
+    "status": "DRAFT",
+    "requireOptIn": true,
+    "inactivityDays": 0,
+    "entryLookbackDays": 30,
+    "cooldownDays": 365,
+    "maxMessagesPerDay": 2,
+    "quietStartHour": 20,
+    "quietEndHour": 8,
+    "steps": [
+      {
+        "position": 1,
+        "delayMinutes": 0,
+        "subject": "Aprende a crear tu primer producto",
+        "heading": "Tu primera creación empieza aquí",
+        "preheader": "Te ayudamos a convertir una idea en un producto personalizado.",
+        "body": "Hola {nombre}. Si tienes una foto, una fecha o una persona especial en mente, ya tienes el comienzo de un gran regalo. Te guiamos para elegir el producto, personalizarlo y revisar el resultado antes de comprarlo.",
+        "ctaLabel": "Encontrar mi primer producto",
+        "ctaPath": "/recomendador",
+        "commercial": true,
+        "condition": "NO_PAID_ORDER"
+      },
+      {
+        "position": 2,
+        "delayMinutes": 2880,
+        "subject": "Diseña a tu ritmo",
+        "heading": "Tu idea también puede tomar forma",
+        "preheader": "Retoma tu diseño cuando quieras y revisa cada detalle.",
+        "body": "Hola {nombre}. Vimos que empezaste a explorar una personalización. Puedes retomarla sin perder tu avance, cambiar fotos y revisar el resultado antes de decidir. Si tienes dudas sobre medidas, calidad de imagen o producción, también puedes escribirnos.",
+        "ctaLabel": "Continuar mi personalización",
+        "ctaPath": "/recomendador",
+        "commercial": true,
+        "condition": "HAS_DESIGN_ACTIVITY"
+      },
+      {
+        "position": 3,
+        "delayMinutes": 5760,
+        "subject": "Tu carrito te espera",
+        "heading": "Tu compra quedó a un paso",
+        "preheader": "Revisa tu selección y completa tu primer pedido.",
+        "body": "Hola {nombre}. Tu selección sigue esperándote. Antes de completarla puedes revisar los productos, la personalización, el envío y el total. No necesitas crear otra selección: vuelve a tu carrito y retómala donde quedaste.",
+        "ctaLabel": "Revisar mi carrito",
+        "ctaPath": "/carrito",
+        "commercial": true,
+        "condition": "HAS_ABANDONED_CART"
+      },
+      {
+        "position": 4,
+        "delayMinutes": 10080,
+        "subject": "Tu primer producto está a un paso",
+        "heading": "Convierte tu idea en algo memorable",
+        "preheader": "Elige tu producto y revisa tu diseño antes de comprarlo.",
+        "body": "Hola {nombre}. Todavía puedes crear un regalo único con tus fotos y tu estilo. Revisa las opciones disponibles, sus tiempos de producción y la vista previa antes de tomar una decisión.",
+        "ctaLabel": "Explorar productos",
+        "ctaPath": "/productos",
+        "commercial": true,
+        "condition": "NO_PAID_ORDER"
+      }
+    ]
+  },
+  {
+    "key": "second-purchase",
+    "name": "Segunda compra y cuidado",
+    "description": "Desarrolla la relación después de la entrega con cuidado del producto, recomendaciones complementarias, fidelidad y recompra.",
+    "trigger": "SECOND_PURCHASE",
+    "status": "DRAFT",
+    "requireOptIn": false,
+    "inactivityDays": 0,
+    "entryLookbackDays": 90,
+    "cooldownDays": 365,
+    "maxMessagesPerDay": 2,
+    "quietStartHour": 20,
+    "quietEndHour": 8,
+    "steps": [
+      {
+        "position": 1,
+        "delayMinutes": 2880,
+        "subject": "Cuida tu producto Lucams",
+        "heading": "Pequeños cuidados para conservar tu creación",
+        "preheader": "Revisa recomendaciones simples para mantener tu producto en buen estado.",
+        "body": "Hola {nombre}. Ya pasaron unos días desde tu entrega. Evita la exposición prolongada al sol y a la humedad, limpia la superficie con un paño suave y revisa que los imanes queden fuera del alcance de niños pequeños. Si notas cualquier defecto de fabricación, abre un caso desde tu pedido.",
+        "ctaLabel": "Consultar mi pedido",
+        "ctaPath": "/rastrear",
+        "commercial": false,
+        "condition": "ORDER_DELIVERED"
+      },
+      {
+        "position": 2,
+        "delayMinutes": 43200,
+        "subject": "Una idea para complementar tu regalo",
+        "heading": "Tu próxima creación puede contar otra historia",
+        "preheader": "Descubre productos que combinan con lo que ya elegiste.",
+        "body": "Hola {nombre}. Si tu última creación te gustó, también puedes complementarla con otros productos de la colección. El recomendador te ayuda a elegir según la ocasión, el destinatario y el estilo que buscas.",
+        "ctaLabel": "Ver ideas complementarias",
+        "ctaPath": "/recomendador",
+        "commercial": true,
+        "condition": "ALWAYS"
+      },
+      {
+        "position": 3,
+        "delayMinutes": 86400,
+        "subject": "Tus puntos pueden acercarte a otro regalo",
+        "heading": "Aprovecha lo que acumulaste con tu compra",
+        "preheader": "Revisa tus Puntos Lucams y decide cómo quieres usarlos.",
+        "body": "Hola {nombre}. Con tus compras acumulaste beneficios que puedes usar en una próxima creación. Revisa tu saldo y las condiciones de redención antes de elegir tu próximo producto.",
+        "ctaLabel": "Revisar mis beneficios",
+        "ctaPath": "/mi-cuenta",
+        "commercial": true,
+        "condition": "HAS_LOYALTY_POINTS"
+      },
+      {
+        "position": 4,
+        "delayMinutes": 129600,
+        "subject": "Es momento de crear otro recuerdo",
+        "heading": "¿Hay otra historia que quieras conservar?",
+        "preheader": "Vuelve al Estudio y crea algo diferente con tus nuevas fotos.",
+        "body": "Hola {nombre}. Si tienes nuevas fotos o una ocasión especial próxima, puedes volver al Estudio y crear otra pieza con tu estilo. Tus diseños anteriores no te limitan: cada creación puede contar una historia distinta.",
+        "ctaLabel": "Crear otro recuerdo",
+        "ctaPath": "/productos",
+        "commercial": true,
+        "condition": "ALWAYS"
+      }
+    ]
+  },
+  {
+    "key": "reactivation",
+    "name": "Reactivación de clientes inactivos",
+    "description": "Recupera contactos con más de 90 días sin comprar mediante su contexto real y salidas inmediatas por nueva compra o baja.",
+    "trigger": "REACTIVATION",
+    "status": "DRAFT",
+    "requireOptIn": true,
+    "inactivityDays": 90,
+    "entryLookbackDays": 365,
+    "cooldownDays": 180,
+    "maxMessagesPerDay": 2,
+    "quietStartHour": 20,
+    "quietEndHour": 8,
+    "steps": [
+      {
+        "position": 1,
+        "delayMinutes": 0,
+        "subject": "Vuelve a crear algo especial",
+        "heading": "Tus recuerdos también pueden tener una nueva forma",
+        "preheader": "Retoma tu estilo con un producto pensado para tu próxima ocasión.",
+        "body": "Hola {nombre}. Ha pasado un tiempo desde tu última compra y queremos ayudarte a retomar tus ideas. Revisa opciones personalizadas para tu próxima ocasión y vuelve a crear algo con tus fotos y tu estilo.",
+        "ctaLabel": "Encontrar mi próxima creación",
+        "ctaPath": "/recomendador",
+        "commercial": true,
+        "condition": "ALWAYS"
+      },
+      {
+        "position": 2,
+        "delayMinutes": 10080,
+        "subject": "Hay una nueva historia esperando tus fotos",
+        "heading": "Elige qué quieres conservar esta vez",
+        "preheader": "Explora productos y personaliza algo distinto a tu última creación.",
+        "body": "Hola {nombre}. Puedes elegir una forma, un formato o una ocasión diferente a la de tu última compra. El recomendador te ayuda a encontrar una opción acorde con lo que quieres regalar o conservar.",
+        "ctaLabel": "Ver opciones para mí",
+        "ctaPath": "/recomendador",
+        "commercial": true,
+        "condition": "ALWAYS"
+      },
+      {
+        "position": 3,
+        "delayMinutes": 20160,
+        "subject": "Te esperamos con una nueva idea",
+        "heading": "Cuando quieras, retomamos tu próxima creación",
+        "preheader": "Tu próxima historia puede empezar con una sola foto.",
+        "body": "Hola {nombre}. Si todavía no encuentras la ocasión, puedes revisar productos pensados para regalar, decorar o conservar recuerdos. Cuando estés listo, estaremos aquí para ayudarte a personalizarlos.",
+        "ctaLabel": "Volver a explorar",
+        "ctaPath": "/productos",
+        "commercial": true,
+        "condition": "ALWAYS"
+      }
+    ]
+  },
+  {
+    "key": "high-intent",
+    "name": "Alta intención sin compra",
+    "description": "Ayuda a contactos con diseños, carritos, favoritos o alertas de reposición a completar su primera compra sin duplicar recordatorios.",
+    "trigger": "HIGH_INTENT",
+    "status": "DRAFT",
+    "requireOptIn": true,
+    "inactivityDays": 0,
+    "entryLookbackDays": 14,
+    "cooldownDays": 90,
+    "maxMessagesPerDay": 2,
+    "quietStartHour": 20,
+    "quietEndHour": 8,
+    "steps": [
+      {
+        "position": 1,
+        "delayMinutes": 1440,
+        "subject": "Tu personalización ya tiene un comienzo",
+        "heading": "Retoma la idea que empezaste a crear",
+        "preheader": "Revisa tu diseño y decide si quieres convertirlo en tu próximo regalo.",
+        "body": "Hola {nombre}. Ya empezaste a explorar una personalización. Revisa tu avance y decide si quieres convertirlo en tu próximo regalo. Puedes cambiar fotos, texto y estilo antes de finalizar.",
+        "ctaLabel": "Retomar mi idea",
+        "ctaPath": "/recomendador",
+        "commercial": true,
+        "condition": "HAS_DESIGN_ACTIVITY"
+      },
+      {
+        "position": 2,
+        "delayMinutes": 4320,
+        "subject": "Revisa tu selección cuando quieras",
+        "heading": "Tu carrito sigue siendo parte de tu idea",
+        "preheader": "Vuelve a tu selección y revisa el resultado antes de comprar.",
+        "body": "Hola {nombre}. Si tu selección quedó pendiente, puedes volver al carrito para revisar productos, diseños, envío y total. No necesitas empezar de nuevo.",
+        "ctaLabel": "Volver a mi carrito",
+        "ctaPath": "/carrito",
+        "commercial": true,
+        "condition": "HAS_ABANDONED_CART"
+      },
+      {
+        "position": 3,
+        "delayMinutes": 7200,
+        "subject": "Encuentra el formato que sí te representa",
+        "heading": "Prueba otra forma de contar tu historia",
+        "preheader": "Compara opciones y revisa tu personalización antes de comprar.",
+        "body": "Hola {nombre}. Si todavía no estás seguro del formato, compara productos y encuentra el que mejor se ajusta a tu foto, a la ocasión y a la persona que lo recibirá.",
+        "ctaLabel": "Comparar productos",
+        "ctaPath": "/productos",
+        "commercial": true,
+        "condition": "NO_PAID_ORDER"
+      }
+    ]
+  },
+  {
+    "key": "b2b-follow-up",
+    "name": "Seguimiento consultivo B2B",
+    "description": "Evita que solicitudes corporativas queden sin respuesta mediante recordatorios de calificación, propuesta y cierre, con salida por resultado comercial.",
+    "trigger": "B2B_FOLLOW_UP",
+    "status": "DRAFT",
+    "requireOptIn": false,
+    "inactivityDays": 0,
+    "entryLookbackDays": 30,
+    "cooldownDays": 90,
+    "maxMessagesPerDay": 1,
+    "quietStartHour": 19,
+    "quietEndHour": 8,
+    "steps": [
+      {
+        "position": 1,
+        "delayMinutes": 2880,
+        "subject": "Revisemos los detalles de tu solicitud",
+        "heading": "Confirmemos lo que necesitas para tu evento",
+        "preheader": "Cantidades, personalización, fecha y destino nos ayudan a preparar una propuesta adecuada.",
+        "body": "Hola {nombre}. Gracias por contarnos lo que necesitas para tu empresa o evento. Revisa que tengamos las cantidades, el estilo, la fecha y el lugar de entrega para poder avanzar con una propuesta clara. Si algún dato cambió, responde este correo para actualizarlo.",
+        "ctaLabel": "Revisar mi solicitud",
+        "ctaPath": "/empresas-y-eventos",
+        "commercial": false,
+        "condition": "ALWAYS"
+      },
+      {
+        "position": 2,
+        "delayMinutes": 10080,
+        "subject": "¿Revisamos juntos la propuesta?",
+        "heading": "Ajustemos la propuesta a tu evento",
+        "preheader": "Podemos revisar cantidades, materiales y personalización antes de cerrar.",
+        "body": "Hola {nombre}. Si todavía tienes preguntas sobre la propuesta, podemos revisar las opciones y ajustar lo que sea necesario antes de tomar una decisión. Queremos que cantidades, acabados y tiempos queden claros desde el inicio.",
+        "ctaLabel": "Hablar sobre mi propuesta",
+        "ctaPath": "/empresas-y-eventos",
+        "commercial": false,
+        "condition": "ALWAYS"
+      },
+      {
+        "position": 3,
+        "delayMinutes": 20160,
+        "subject": "Definamos el siguiente paso para tu evento",
+        "heading": "Cuando estés listo, seguimos contigo",
+        "preheader": "Confírmanos si quieres avanzar o si necesitas más información.",
+        "body": "Hola {nombre}. Queremos ayudarte a cerrar el siguiente paso de tu solicitud. Si ya tienes una decisión, compártela con el equipo; si aún faltan datos, también podemos ayudarte a resolverlos para no dejar el proceso detenido.",
+        "ctaLabel": "Continuar la conversación",
+        "ctaPath": "/empresas-y-eventos",
+        "commercial": false,
+        "condition": "ALWAYS"
+      }
+    ]
+  }
+]

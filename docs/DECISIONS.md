@@ -798,12 +798,18 @@
 ### ADR-197 — Ayuda operativa integral y versionada con el Admin
 
 - **Estado:** `Vigente`
-- **Decisión:** Mantener junto al código un registro tipado de **43 guías** y **8 rutas de onboarding**, filtrado por RBAC y resuelto por la ruta actual. Integrar `/admin/ayuda`, ayuda contextual en el shell y recorridos interactivos opcionales, accesibles, reanudables y no destructivos, con onboarding lateral que recuerda el cierre por sesión y aislamiento explícito en helpers E2E. Persistir avance y retroalimentación por `AdminUser` en `AdminHelpProgress`/`AdminHelpFeedback` con RLS y validación server-side. Toda página administrativa debe tener guía: `registry.test.ts` recorre las rutas reales y rompe CI ante cobertura faltante; todo cambio de campos, estados, permisos o procedimientos debe actualizar su contenido y versión en la misma entrega.
+- **Decisión:** Mantener junto al código un registro tipado de **44 guías** y **8 rutas de onboarding**, filtrado por RBAC y resuelto por la ruta actual. Integrar `/admin/ayuda`, ayuda contextual en el shell y recorridos interactivos opcionales, accesibles, reanudables y no destructivos, con onboarding lateral que recuerda el cierre por sesión y aislamiento explícito en helpers E2E. Persistir avance y retroalimentación por `AdminUser` en `AdminHelpProgress`/`AdminHelpFeedback` con RLS y validación server-side. Toda página administrativa debe tener guía: `registry.test.ts` recorre las rutas reales y rompe CI ante cobertura faltante; todo cambio de campos, estados, permisos o procedimientos debe actualizar su contenido y versión en la misma entrega.
 - **Motivo:** Capacitar por rol y reducir errores sin depender de manuales externos ni tours bloqueantes. El contenido operativo vive con la interfaz que describe y la guarda automática impide que nuevos módulos queden sin aprendizaje ([`ARCHITECTURE.md`](ARCHITECTURE.md) § 8.6).
 
 ---
 
 ## 8. Fidelización, marketing y carritos abandonados
+
+### ADR-198 — Lifecycle Journeys configurable con consentimiento y atribución única
+
+- **Estado:** `Vigente`
+- **Decisión:** Implementar `/admin/lifecycle` como motor de recorridos por comportamiento con cuatro modelos (`LifecycleJourney`, `LifecycleJourneyStep`, `LifecycleEnrollment`, `LifecycleMessage`), cinco disparadores y cinco configuraciones iniciales siempre en `DRAFT`. La ejecución cada 15 minutos usa PostgreSQL para deduplicar inscripciones y mensajes, consentimiento vigente por aceptación no revocada, salidas por compra/resultado B2B/baja/contacto inactivo, silencio horario Colombia, límites por contacto, cooldown, reintentos acotados y conservación del contenido y enlace de cada envío. Activar, probar y reintentar exige RBAC `lifecycle:manage` y MFA reciente. La atribución es de último clic en 30 días: una orden pagada solo puede pertenecer a un mensaje mediante `LifecycleMessage.convertedOrderId` único.
+- **Motivo:** Automatizar activación, cuidado posventa, recompra, reactivación y seguimiento B2B sin introducir un proveedor externo, sin enviar promociones sin opt-in y sin inflar conversiones o duplicar correos. La activación siempre es una decisión humana, no un efecto de la semilla o del despliegue ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md)).
 
 ### ADR-006 — Atención por WhatsApp vía enlaces `wa.me`
 
@@ -960,7 +966,7 @@
 ### ADR-091 — Limpieza de tablas muertas y gobernanza de esquema
 
 - **Estado:** `Vigente`
-- **Decisión:** Retirar tablas sin uso y exigir espejo de RLS + `REVOKE` en `supabase/migrations/` (event trigger `049`) para los 73 modelos Prisma.
+- **Decisión:** Retirar tablas sin uso y exigir espejo de RLS + `REVOKE` en `supabase/migrations/` (event trigger `049`) para los 77 modelos Prisma.
 - **Motivo:** Paridad SQL/Prisma verificada por `make verify-db`.
 
 ### ADR-095 — Semillas no destructivas y guarda `env-guard.mjs` fail-closed
