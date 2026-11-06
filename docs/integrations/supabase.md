@@ -1,6 +1,6 @@
 # Supabase — PostgreSQL 17, Prisma, Auth, Storage, RLS y Procesos Programados
 
-> **Documento vivo.** Referencia técnica canónica de **Lucams Shop** para la plataforma Supabase: topología multi-entorno, pooling con Supavisor y Prisma, autenticación con códigos OTP y MFA `aal2`, los 5 buckets de Storage, postura RLS _deny-by-default_, Supabase Vault y el inventario completo de los **19 procesos programados** del sistema. Para el modelo de dominio general consulta [`../ARCHITECTURE.md`](../ARCHITECTURE.md); para controles de seguridad revisa [`../SECURITY.md`](../SECURITY.md).
+> **Documento vivo.** Referencia técnica canónica de **Lucams Shop** para la plataforma Supabase: topología multi-entorno, pooling con Supavisor y Prisma, autenticación con códigos OTP y MFA `aal2`, los 5 buckets de Storage, postura RLS _deny-by-default_, Supabase Vault y el inventario completo de los **20 procesos programados** del sistema. Para el modelo de dominio general consulta [`../ARCHITECTURE.md`](../ARCHITECTURE.md); para controles de seguridad revisa [`../SECURITY.md`](../SECURITY.md).
 
 ---
 
@@ -28,7 +28,7 @@ flowchart LR
     Supavisor["Supavisor Pooler (:6543 Transaction Mode)"]
     PG["PostgreSQL 17 (:5432 Direct / Session)"]
     Buckets["Storage (3 públicos + 2 privados)"]
-    CronVault["Vault + pg_cron + pg_net (16 jobs SQL/HTTP)"]
+    CronVault["Vault + pg_cron + pg_net (17 jobs SQL/HTTP)"]
   end
 
   Browser -- "Login / OTP / MFA" --> GoTrue
@@ -37,7 +37,7 @@ flowchart LR
   Vercel -- "SSR Auth + Service Role" --> GoTrue
   Vercel -- "Signed URLs + Uploads" --> Buckets
   GHA -- "DIRECT_URL (:5432)" --> PG
-  CronVault -- "x-cron-secret (13 jobs HTTP)" --> Vercel
+  CronVault -- "x-cron-secret (14 jobs HTTP)" --> Vercel
 ```
 
 ---
@@ -164,7 +164,7 @@ Script de solo lectura (`SELECT` contra `pg_tables`, `information_schema.role_ta
 
 ---
 
-## 7. Supabase Vault y los 18 Procesos Programados
+## 7. Supabase Vault y los 20 Procesos Programados
 
 ### Secretos almacenados en `vault.decrypted_secrets`
 
@@ -183,7 +183,7 @@ Ningún secreto ni URL se escribe en texto plano dentro de `cron.job`. Los bloqu
 
 ---
 
-### A. Los 13 jobs HTTP `pg_cron` + `pg_net` en Producción
+### A. Los 14 jobs HTTP `pg_cron` + `pg_net` en Producción
 
 Todos invocan `extensions.net.http_get` con `timeout_milliseconds := 25000` (o `55000` en jobs pesados) enviando `x-cron-secret`. En **Staging**, los 5 jobs que envían correos (`alerts`, `daily-summary`, `review-request`, `cart-recovery`, `back-in-stock`) están desprogramados y listados en `CRON_JOBS_DISABLED` para que `/api/health/crons` los reporte como `disabled: true` en vez de vencidos.
 
@@ -202,6 +202,7 @@ Todos invocan `extensions.net.http_get` con `timeout_milliseconds := 25000` (o `
 | 11  | `lucams-daily-summary`           | `0 13 * * *`         | `08:00`                            | `/api/cron/daily-summary`           | Default       | Envía el resumen operativo diario (ventas, órdenes en reconciliación, expiradas `no_txid` para cruce con Wompi, stock bajo). _(Apagado en STG)_.                                                                                                                               |
 | 12  | `lucams-review-request`          | `0 17 * * *`         | `12:00`                            | `/api/cron/review-request`          | Default       | Envía invitación de reseña con token firmado de un solo uso para pedidos `DELIVERED` elegibles. _(Apagado en STG)_.                                                                                                                                                            |
 | 13  | `lucams-fiscal-watch`            | `5 12 * * *`         | `07:05`                            | `/api/cron/fiscal-watch`            | Default       | Vigilancia fiscal proactiva (`ADR-196`, mig `055`): mide el año civil colombiano contra los umbrales DIAN de 3 500 UVT (facturación electrónica e IVA por tarjeta), proyecta el cierre anual y alerta 70 %/90 %/100 % (email al owner en 90 %/100 %, una vez por cruce y año). |
+| 14  | `lucams-lifecycle`               | `*/15 * * * *`       | Cada 15 min                        | `/api/cron/lifecycle`               | `60 s`        | Evalúa recorridos activos, pasos, consentimiento, salidas y atribución (`ADR-198`, mig `058`). Las cinco configuraciones iniciales permanecen en borrador; no hay envíos sin activación humana.                                                                                |
 
 ---
 
@@ -231,7 +232,7 @@ Corren íntegramente dentro de PostgreSQL sin despertar funciones serverless en 
 
 ### D. Monitoreo Dead-Man Switch (`features/observability/cron-heartbeat.ts`)
 
-`CRON_JOBS` en `apps/web/features/observability/cron-heartbeat.ts` vigila **15 entradas** con clave `cron:<name>` en la tabla `AlertState`: los **13 jobs HTTP** (#1–#13) + **`purge-rate-limits`** (#17, escrito desde SQL) + **`domain-watch`** (#15, escrito desde GHA). Un job no deshabilitado entra en estado `stale` cuando `Date.now() - lastSuccessAt > 2 * intervalMs` (o si nunca registró primera corrida), haciendo que `GET /api/health/crons` devuelva `HTTP 503` y activando las reglas `cron_stale_<job>` en `/admin/observability` y `/status`.
+`CRON_JOBS` en `apps/web/features/observability/cron-heartbeat.ts` vigila **16 entradas** con clave `cron:<name>` en la tabla `AlertState`: los **14 jobs HTTP** (#1–#14) + **`purge-rate-limits`** (#18, escrito desde SQL) + **`domain-watch`** (#16, escrito desde GHA). Un job no deshabilitado entra en estado `stale` cuando `Date.now() - lastSuccessAt > 2 * intervalMs` (o si nunca registró primera corrida), haciendo que `GET /api/health/crons` devuelva `HTTP 503` y activando las reglas `cron_stale_<job>` en `/admin/observability` y `/status`.
 
 ---
 
@@ -248,7 +249,7 @@ Usa este procedimiento al auditar o aprovisionar un entorno de Supabase para Luc
 ### Paso 2 — Esquema Prisma y Migraciones SQL (RLS, Storage, Crons)
 
 - [ ] Ejecutar `pnpm --filter @lucams/db exec prisma migrate deploy` usando `DIRECT_URL`.
-- [ ] Aplicar en orden las migraciones SQL de `supabase/migrations/00000000000002_*.sql` a `00000000000056_*.sql` (habilitan RLS, revocan grants, crean los 5 buckets con sus límites/MIME, instalan el event trigger `enforce_rls_on_new_table_trg` y registran los jobs `pg_cron`).
+- [ ] Aplicar en orden las migraciones SQL de `supabase/migrations/00000000000002_*.sql` a `00000000000058_*.sql` (habilitan RLS, revocan grants, crean los 5 buckets con sus límites/MIME, instalan el event trigger `enforce_rls_on_new_table_trg` y registran los jobs `pg_cron`).
 - [ ] Ejecutar `node packages/db/scripts/verify-security-posture.mjs` y confirmar que las 5 invariantes de seguridad pasan sin errores.
 
 ### Paso 3 — Extensiones y Secretos en Supabase Vault

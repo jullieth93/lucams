@@ -91,6 +91,7 @@ db-local-seed:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-letter-sets.mjs
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/backfill-contacts.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-lifecycle.mjs --apply
 
 db-local-reset:
 	podman stop $$(podman ps -q --filter name=supabase_) || true
@@ -208,6 +209,7 @@ db-stg-seed:
 	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-letter-sets.mjs
 	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/migrate-cms-v2.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/backfill-contacts.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-lifecycle.mjs --apply
 
 # ─── 4. Higiene ─────────────────────────────────────────────────────────────
 

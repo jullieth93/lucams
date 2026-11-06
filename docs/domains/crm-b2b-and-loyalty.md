@@ -166,6 +166,33 @@ Ambos programas se configuran en `/admin/fidelizacion` (exclusivo `SUPERADMIN`, 
 
 ---
 
+## 5. Lifecycle Journeys (`ADR-198`)
+
+`/admin/lifecycle` automatiza el acompañamiento por comportamiento sobre el grafo `Contact`; no es una secuencia fija de correos ni sustituye la recuperación de carritos, las reseñas o la mensajería transaccional de pedidos. Disponible para `SUPERADMIN`, `OPERATIONS_MANAGER` y `MANAGER` mediante `lifecycle:manage` y MFA `aal2`; activar, probar y reintentar exige una verificación TOTP reciente y deja `AdminActionLog`.
+
+### Modelo, disparadores y reglas
+
+- `LifecycleJourney` define disparador, versión, estado (`DRAFT`, `ACTIVE`, `PAUSED`, `ARCHIVED`), necesidad de opt-in, ventana de entrada, inactividad, cooldown, límite diario **por contacto** y silencio en hora Colombia. Solo `ACTIVE` inscribe y ejecuta; pausar conserva las inscripciones sin enviar.
+- `LifecycleJourneyStep` ordena hasta 12 pasos con espera acumulativa, condición, asunto, titular, preheader, cuerpo escapado, CTA interno y clasificación comercial/transaccional. Los pasos con historial o en uso por una inscripción activa no se pueden eliminar.
+- `LifecycleEnrollment` conserva ciclo, paso actual, próxima ejecución, datos del disparador y motivo de salida. La clave `(journeyId, contactId, cycle)` y los bloqueos de inscripción impiden duplicados. Finalizar manualmente impide la recreación automática; pausar una inscripción permite reanudarla.
+- `LifecycleMessage` conserva la instantánea de contenido y overrides, deduplicación por `(enrollmentId, stepId, cycle)`, estado, token público solo como hash, entrega Resend, clic y conversión. El token derivado con HMAC es opaco y estable durante los reintentos; `/j/[token]` solo permite una ruta interna segura.
+
+| Disparador        | Entrada y salida principales                                                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FIRST_PURCHASE`  | Contacto reciente o actividad reciente sin ninguna compra pagada histórica (incluidas las posteriormente reembolsadas); sale al comprar o perder el consentimiento exigido.   |
+| `SECOND_PURCHASE` | Compra entregada dentro de la ventana; permite cuidado transaccional sin opt-in, mientras las recomendaciones comerciales sí lo exigen. Una compra posterior cierra el ciclo. |
+| `REACTIVATION`    | Compra antigua según `inactivityDays` y ausencia de compras posteriores; una nueva compra cierra el ciclo.                                                                    |
+| `HIGH_INTENT`     | Diseño, carrito reciente, favorito, alerta de stock, cotización u oportunidad abierta sin primera compra; sale al comprar.                                                    |
+| `B2B_FOLLOW_UP`   | Oportunidad consultiva abierta reciente; sale al ganarla o perderla.                                                                                                          |
+
+Cada paso puede exigir `NO_PAID_ORDER`, `HAS_ABANDONED_CART`, `HAS_LOYALTY_POINTS`, `HAS_DESIGN_ACTIVITY`, `HAS_OPT_IN`, `ORDER_DELIVERED` o `NO_ORDER_SINCE_ENROLLMENT`. Si no se cumple, se omite sin enviar y se avanza. La audiencia se filtra en PostgreSQL por comportamiento, inscripciones vigentes, cooldown y aceptación `NEWSLETTER` no revocada; contactos eliminados, anonimizados o internos quedan fuera y sus inscripciones activas se cierran. Al fusionar contactos se conserva una sola inscripción activa y se transfiere el historial compatible al sobreviviente.
+
+El cron `/api/cron/lifecycle` (`lucams-lifecycle`, cada 15 minutos) usa `x-cron-secret`, captura errores y registra latido `cron:lifecycle`. Un ciclo con errores de ejecución responde fallo en lugar de simular éxito. El envío reclama el mensaje en base de datos antes de llamar a Resend; conserva contenido y token en los reintentos, espera 30 minutos ante fallos y pausa la inscripción tras cinco intentos para intervención humana. La baja y los rebotes/quejas se respetan por separado de los errores técnicos.
+
+La atribución usa **último clic en una ventana de 30 días** y la primera orden pagada posterior. `LifecycleMessage.convertedOrderId` tiene índice único: una orden solo puede generar una conversión y su importe una sola vez, aunque existan varios correos o ciclos. Las semillas crean cinco recorridos de referencia siempre en `DRAFT` y no sobrescriben personalizaciones ni activan mensajes en ningún ambiente.
+
+---
+
 ## Documentos Relacionados
 
 - Carrito, cupones, checkout y saga de pago: [`./checkout-payments-shipping.md`](./checkout-payments-shipping.md)

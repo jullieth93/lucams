@@ -88,7 +88,7 @@
 │   │   ├── legal/<doc>/                   # Los 8 documentos legales públicos con FALLBACK sincronizado
 │   │   ├── admin/
 │   │   │   ├── login/                     # Login separado de staff + reto TOTP (/admin/login/mfa)
-│   │   │   └── (panel)/                   # Backoffice protegido por RBAC (8 roles × 34 caps) + MFA aal2
+│   │   │   └── (panel)/                   # Backoffice protegido por RBAC (8 roles × 35 caps) + MFA aal2
 │   │   ├── api/                           # Route Handlers HTTP: webhooks/, cron/, catalog/, cms/, health/
 │   │   ├── error.tsx · global-error.tsx   # Error boundaries con reporte a /api/log-error
 │   │   └── not-found.tsx                  # 404 de marca
@@ -102,11 +102,11 @@
 │   ├── lib/                               # Infraestructura transversal (db, datetime, money, cms, errors, logger…)
 │   └── proxy.ts                           # Proxy HTTP de Next.js 16 (reemplaza middleware.ts)
 ├── packages/db/                           # Paquete workspace @lucams/db
-│   ├── prisma/schema.prisma               # 73 modelos y 26 enums + migrations/
+│   ├── prisma/schema.prisma               # 77 modelos y 31 enums + migrations/
 │   ├── legal-content/                     # Fuentes Markdown canónicas del paquete legal (Versión 3)
 │   ├── src/index.ts                       # Singleton PrismaClient con pool acotado + runWithDbRetry
 │   └── scripts/                           # Semillas, auditorías y guardas en scripts/lib/
-└── supabase/migrations/                   # 54 migraciones SQL idempotentes (RLS, REVOKE, Storage, pg_cron)
+└── supabase/migrations/                   # 56 migraciones SQL idempotentes (RLS, REVOKE, Storage, pg_cron)
 ```
 
 ### Anatomía de `apps/web/features/<dominio>/`
@@ -163,7 +163,7 @@ PostgREST está **cerrado por diseño** en el 100 % de las tablas públicas (`RE
 
 | Cliente                                       | Módulo                    | Dónde se permite importar                                    | Uso exclusivo permitido                                                                                                                           |
 | --------------------------------------------- | ------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prisma` (`PrismaClient` extendido)           | `@/lib/db` (`@lucams/db`) | RSC, `features/*/service.ts`, Route Handlers (`server-only`) | **100 % de lecturas, escrituras y transacciones SQL** sobre los 73 modelos                                                                        |
+| `prisma` (`PrismaClient` extendido)           | `@/lib/db` (`@lucams/db`) | RSC, `features/*/service.ts`, Route Handlers (`server-only`) | **100 % de lecturas, escrituras y transacciones SQL** sobre los 77 modelos                                                                        |
 | `createSupabaseServerClient()`                | `@/lib/supabase/server`   | RSC, Server Actions, Route Handlers, `proxy.ts`              | **Supabase Auth SSR** bajo cookies del usuario: `auth.getUser()`, OTP, cambio de clave y verificación MFA TOTP (`auth.mfa.*`, `aal2`)             |
 | `createSupabaseBrowserClient()`               | `@/lib/supabase/browser`  | Client Components (`"use client"`) puntuales de Auth/MFA     | **Supabase Auth en navegador** (enrolamiento/reto interactivo TOTP sobre `document.cookie`, protegido por CSP con nonce)                          |
 | `supabaseService` (Proxy lazy `service_role`) | `@/lib/supabase/service`  | Solo servidor (`import "server-only"`)                       | **Supabase Storage** (URLs firmadas, subida y purga en los 5 buckets) y **Auth Admin API** (`auth.admin.*` en borrado de cuenta Ley 1581 o tests) |
@@ -730,7 +730,7 @@ export async function buildCanvasDerivative(input: Buffer, resize: ResizeOptions
 | Capa                                                     | Propósito y alcance                                                                                                                                                    | Dónde vive y cómo se gobierna                                                                                                                |
 | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Capa 1 — Parámetros maestros y ley**                   | Settings globales `UPPER_SNAKE_CASE` (correos, tiempos de despacho, cobertura, versión legal), garantía por producto y plazos normativos interpolados con `{{tokens}}` | Configuración global (`SUPERADMIN`), `/admin/{envios,fidelizacion,carritos}` + `apps/web/lib/consumer-law.ts` y `apps/web/lib/cms-tokens.ts` |
-| **Capa 2 — Contenido editorial, comercial, SEO y legal** | **9 contenedores, 29 secciones y 166 campos** (`105 BLOCK` con flujo borrador/publicación/programación + `61 SETTING` de aplicación inmediata) y listas `CmsListItem`  | `/admin/contenido` definido declarativamente en `packages/db/scripts/cms-site-map.mjs` (más las 31 plantillas en `/admin/email-templates`)   |
+| **Capa 2 — Contenido editorial, comercial, SEO y legal** | **9 contenedores, 29 secciones y 166 campos** (`105 BLOCK` con flujo borrador/publicación/programación + `61 SETTING` de aplicación inmediata) y listas `CmsListItem`  | `/admin/contenido` definido declarativamente en `packages/db/scripts/cms-site-map.mjs` (más las 32 plantillas en `/admin/email-templates`)   |
 | **Capa 3 — Micro-UI funcional**                          | Labels de botones, `aria-label`, `placeholder`, mensajes de validación Zod y textos interactivos de Estudio, Auth, Checkout y Mi Cuenta                                | Tipados directamente en código (`studio-texts.ts`, `auth-texts.ts`, `account-texts.ts`) — **prohibido crear claves CMS para micro-UI**       |
 
 > **Allowlist fail-closed en `/api/cms/settings`:** `PUBLIC_SETTING_KEYS` en `apps/web/lib/cms.ts` expone al navegador únicamente las claves públicas explícitamente autorizadas; ajustes internos como `PICKUP_*`, `BUSINESS_NIT`, `ALERT_EMAIL` o `PRIVACY_POLICY_VERSION` jamás salen por HTTP público.

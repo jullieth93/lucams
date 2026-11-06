@@ -58,8 +58,12 @@ describe("cron-heartbeat", () => {
     else process.env.CRON_JOBS_DISABLED = originalDisabled;
   });
 
-  it("rastrea los 15 jobs, incluidos cms-publish-scheduled (5 min), expire-pending-orders (N-12), purge-rate-limits (LUC-SEC-010) y fiscal-watch (ADR-196)", () => {
-    expect(Object.keys(CRON_JOBS)).toHaveLength(15);
+  it("rastrea los 16 jobs, incluidos cms-publish-scheduled (5 min), expire-pending-orders (N-12), purge-rate-limits (LUC-SEC-010), fiscal-watch (ADR-196) y lifecycle (ADR-198)", () => {
+    expect(Object.keys(CRON_JOBS)).toHaveLength(16);
+    expect(CRON_JOBS["lifecycle"]).toEqual({
+      intervalMs: 15 * 60 * 1000,
+      label: "Recorridos de ciclo de vida",
+    });
     expect(CRON_JOBS["cms-publish-scheduled"]).toEqual({
       intervalMs: 5 * 60 * 1000,
       label: "Publicación programada CMS",

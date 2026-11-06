@@ -46,6 +46,7 @@ export const ADMIN_CAPABILITIES = [
   "cms:manage_global",
   "audit:read",
   "staff:manage",
+  "lifecycle:manage",
   "account:self_security",
 ] as const;
 
@@ -75,6 +76,7 @@ const OPS_MANAGER_CAPS: readonly AdminCapability[] = [
   "opportunities:manage",
   "catalog:write",
   "shipping:configure",
+  "lifecycle:manage",
   "account:self_security",
 ];
 
@@ -259,6 +261,7 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
     roles: rolesWithCapability("marketing:export_csv"),
   },
   { prefix: "/admin/marketing", roles: rolesWithCapability("marketing:read") },
+  { prefix: "/admin/lifecycle", roles: rolesWithCapability("lifecycle:manage") },
   { prefix: "/admin/carritos/configuracion", roles: ["SUPERADMIN"] },
   { prefix: "/admin/carritos", roles: rolesWithCapability("carts:recover") },
 

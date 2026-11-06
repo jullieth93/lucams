@@ -36,6 +36,7 @@ import {
   type MergeReasonCode,
 } from "./resolution-service";
 import { PAID_ORDER_STATUSES } from "./contact-360-service";
+import { moveLifecycleEnrollmentsForMergeTx } from "@/features/lifecycle/merge-service";
 
 const MERGE_LOCK_NS = "lucams_contact_merge_v1";
 const PAGE_SIZE = 20;
@@ -167,6 +168,7 @@ export interface MergeSnapshotPayload {
     contactActivities: string[];
     tasks: string[];
     opportunities: string[];
+    lifecycleEnrollments: string[];
   };
 }
 
@@ -809,6 +811,12 @@ export async function mergeContactsByHumanApproval(input: {
         moveOptionalDelegateContactIdsTx(tx, "task", absorbed.id, survivor.id),
         moveOptionalDelegateContactIdsTx(tx, "opportunity", absorbed.id, survivor.id),
       ]);
+      const movedLifecycleEnrollments = await moveLifecycleEnrollmentsForMergeTx(
+        tx,
+        absorbed.id,
+        survivor.id,
+        now,
+      );
 
       // Si el absorbido tenía un Customer ya eliminado lógicamente, desacoplamos su FK única.
       let detachedSoftDeletedCustomerId: string | null = null;
@@ -934,6 +942,7 @@ export async function mergeContactsByHumanApproval(input: {
           contactActivities: movedActivities,
           tasks: movedTasks,
           opportunities: movedOpportunities,
+          lifecycleEnrollments: movedLifecycleEnrollments,
         },
       };
 
@@ -1006,6 +1015,7 @@ export async function mergeContactsByHumanApproval(input: {
           contactActivities: movedActivities.length,
           tasks: movedTasks.length,
           opportunities: movedOpportunities.length,
+          lifecycleEnrollments: movedLifecycleEnrollments.length,
         },
       };
     },
