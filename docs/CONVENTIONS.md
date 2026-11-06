@@ -102,11 +102,11 @@
 │   ├── lib/                               # Infraestructura transversal (db, datetime, money, cms, errors, logger…)
 │   └── proxy.ts                           # Proxy HTTP de Next.js 16 (reemplaza middleware.ts)
 ├── packages/db/                           # Paquete workspace @lucams/db
-│   ├── prisma/schema.prisma               # 71 modelos y 26 enums + migrations/
+│   ├── prisma/schema.prisma               # 73 modelos y 26 enums + migrations/
 │   ├── legal-content/                     # Fuentes Markdown canónicas del paquete legal (Versión 3)
 │   ├── src/index.ts                       # Singleton PrismaClient con pool acotado + runWithDbRetry
 │   └── scripts/                           # Semillas, auditorías y guardas en scripts/lib/
-└── supabase/migrations/                   # 53+ migraciones SQL idempotentes (RLS, REVOKE, Storage, pg_cron)
+└── supabase/migrations/                   # 54 migraciones SQL idempotentes (RLS, REVOKE, Storage, pg_cron)
 ```
 
 ### Anatomía de `apps/web/features/<dominio>/`
@@ -114,6 +114,7 @@
 - **`service.ts` concentra la lógica de dominio y las consultas Prisma (`@/lib/db`):** no existe una capa `repository.ts` intermedia artificial. Cuando una feature crece (como `orders` o `personalization`), se divide en submódulos cohesivos (`saga.ts`, `stock.ts`, `emails.ts`, `shipment-error.ts`, `retention-service.ts`) evitando superar ~400 líneas por archivo.
 - **`actions.ts` es una frontera delgada:** nunca consulta Prisma directamente; valida entradas con Zod v4, aplica rate-limit / Turnstile / RBAC, invoca `service.ts`, invalida tags de caché y devuelve un estado tipado o llama a `redirect()`. Si una Server Action pertenece a una única pantalla, puede vivir junto a su ruta (p. ej. `app/checkout/pago/actions.ts`).
 - **Qué entra en `apps/web/lib/`:** únicamente utilidades genuinamente transversales a múltiples dominios (`db.ts`, `datetime.ts`, `money.ts`, `format.ts`, `errors.ts`, `logger.ts`, `rate-limit.ts`, `cms.ts`, `admin-rbac-guard.ts`).
+- **Ayuda administrativa obligatoria (`ADR-197`):** toda página nueva de `app/admin/(panel)` debe resolver una guía en `features/admin-help/content/` y superar `registry.test.ts`. Al cambiar campos, métricas, estados, permisos o procedimientos se actualiza en la misma entrega su guía, procedimientos interactivos y `version`; el contenido operativo no se delega a CMS ni se deja para una fase posterior.
 
 ### Singleton `prisma`, pool acotado y `runWithDbRetry` (`@lucams/db`)
 
@@ -162,7 +163,7 @@ PostgREST está **cerrado por diseño** en el 100 % de las tablas públicas (`RE
 
 | Cliente                                       | Módulo                    | Dónde se permite importar                                    | Uso exclusivo permitido                                                                                                                           |
 | --------------------------------------------- | ------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prisma` (`PrismaClient` extendido)           | `@/lib/db` (`@lucams/db`) | RSC, `features/*/service.ts`, Route Handlers (`server-only`) | **100 % de lecturas, escrituras y transacciones SQL** sobre los 71 modelos                                                                        |
+| `prisma` (`PrismaClient` extendido)           | `@/lib/db` (`@lucams/db`) | RSC, `features/*/service.ts`, Route Handlers (`server-only`) | **100 % de lecturas, escrituras y transacciones SQL** sobre los 73 modelos                                                                        |
 | `createSupabaseServerClient()`                | `@/lib/supabase/server`   | RSC, Server Actions, Route Handlers, `proxy.ts`              | **Supabase Auth SSR** bajo cookies del usuario: `auth.getUser()`, OTP, cambio de clave y verificación MFA TOTP (`auth.mfa.*`, `aal2`)             |
 | `createSupabaseBrowserClient()`               | `@/lib/supabase/browser`  | Client Components (`"use client"`) puntuales de Auth/MFA     | **Supabase Auth en navegador** (enrolamiento/reto interactivo TOTP sobre `document.cookie`, protegido por CSP con nonce)                          |
 | `supabaseService` (Proxy lazy `service_role`) | `@/lib/supabase/service`  | Solo servidor (`import "server-only"`)                       | **Supabase Storage** (URLs firmadas, subida y purga en los 5 buckets) y **Auth Admin API** (`auth.admin.*` en borrado de cuenta Ley 1581 o tests) |

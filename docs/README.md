@@ -33,7 +33,7 @@
 
 | Documento                                  | Qué documenta                                                                                                                                         |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)       | Estructura del monorepo, los **71 modelos y 26 enums** de Prisma, rutas App Router, RBAC (8 roles × 34 capacidades), RLS y caché                      |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)       | Estructura del monorepo, los **73 modelos y 26 enums** de Prisma, rutas App Router, RBAC (8 roles × 34 capacidades), RLS y caché                      |
 | [`OPERATIONS.md`](OPERATIONS.md)           | **Matriz maestra de variables de entorno**, ciclo `feature/* → develop → production`, homologación STG↔PRD, backups/DR y runbooks                     |
 | [`SECURITY.md`](SECURITY.md)               | Sesiones Auth/admin, MFA `aal2`, CSP con nonce, CORS, rate limiting en Postgres, clasificación PII, guardarraíles anti-IDOR e IRP                     |
 | [`COMPLIANCE.md`](COMPLIANCE.md)           | Estatuto del Consumidor (Ley 1480 y Ley 2439), Ley 1581 (Hábeas Data), paquete legal **Versión 3** (8 documentos + `{{tokens}}`) y régimen tributario |
@@ -41,7 +41,7 @@
 | [`CONVENTIONS.md`](CONVENTIONS.md)         | Patrones obligatorios de código: Next 16, centavos COP, `America/Bogota`, errores RFC 7807, CMS de 3 capas, migraciones duales y guardas de scripts   |
 | [`TESTING.md`](TESTING.md)                 | Pirámide de pruebas: Vitest unit/integración, suite RLS real, Playwright E2E, auditoría responsive, carga k6 y gates de CI                            |
 | [`BRANDING.md`](BRANDING.md)               | Identidad «Lucams Shop» (`ADR-138`), paleta Tailwind v4 (`@theme`), fuentes locales `.subset.woff2` / `.ttf`, reverso 3D y tono kawaii `es-CO`        |
-| [`DECISIONS.md`](DECISIONS.md)             | Registro limpio de decisiones arquitectónicas vigentes con anclas estables `ADR-001`…`ADR-196` (182 ADRs documentados)                                |
+| [`DECISIONS.md`](DECISIONS.md)             | Registro limpio de decisiones arquitectónicas vigentes con anclas estables `ADR-001`…`ADR-197` (183 ADRs documentados)                                |
 | [`PLAN_CATALOG_V2.md`](PLAN_CATALOG_V2.md) | Especificación completa de los 80 consensos de diseño del catálogo (`[1.1]`–`[8.10]`) citados en código y su vigencia actual                          |
 | [`ROADMAP.md`](ROADMAP.md)                 | Visión por etapas (`catalog` vs `full`), costos reales de infraestructura y evolución futura                                                          |
 | [`QA_CHECKLIST.md`](QA_CHECKLIST.md)       | Recorrido manual pre-release de punta a punta (storefront, Estudio, pagos, posventa invitado, B2B y 8 roles admin)                                    |

@@ -8,7 +8,7 @@
  *
  * Componentes:
  *   - Sidebar oscuro premium con blobs decorativos brand
- *   - Topbar minimal con breadcrumb + link "Ver el sitio"
+ *   - Topbar minimal con breadcrumb + accesos al Centro de ayuda y al sitio
  *   - Footer sidebar con avatar + dropdown (Cambiar contraseña + Cerrar sesión)
  *   - 11 áreas top-level: Dashboard, Ventas, Catálogo, Comercial, Producción,
  *     Canales, Finanzas, IA y Conocimiento, Analítica, Configuración
@@ -39,6 +39,7 @@ import {
   KeyRound,
   Crown,
   Sparkles,
+  CircleHelp,
 } from "lucide-react";
 import { adminLogoutAction } from "@/app/auth/logout/actions";
 import { Hint } from "@/components/ui/tooltip";
@@ -206,7 +207,7 @@ export function AdminShell({
           En ≥lg se conserva -hidden = comportamiento exacto de hoy. */}
       <div className="flex flex-1 flex-col overflow-x-clip lg:overflow-x-hidden">
         <AdminTopBar pathname={pathname} />
-        <main id="contenido" tabIndex={-1} className="flex-1">
+        <main id="contenido" data-admin-help="module" tabIndex={-1} className="flex-1">
           {children}
         </main>
       </div>
@@ -239,6 +240,13 @@ function AdminTopBar({ pathname }: { pathname: string }) {
         <span className="text-brand-purple-dark text-sm font-semibold">{crumb}</span>
       </div>
       <div className="flex items-center gap-3">
+        <Link
+          href="/admin/ayuda"
+          className="text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+        >
+          <CircleHelp className="h-3.5 w-3.5" />
+          Centro de ayuda
+        </Link>
         <Link
           href="/"
           target="_blank"
@@ -360,7 +368,7 @@ function SidebarContent({
 
       {/* Nav — filtrado por rol (RBAC). SUPERADMIN ve todo; MANAGER/FULFILLMENT
           solo lo que les corresponde (lib/admin-rbac). */}
-      <nav className="flex-1 px-3 py-4">
+      <nav data-admin-help="navigation" className="flex-1 px-3 py-4">
         <ul className="flex flex-col gap-0.5">
           {groups.map((group) => (
             <NavGroupItem

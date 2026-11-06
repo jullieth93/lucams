@@ -279,7 +279,8 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/auditoria", roles: rolesWithCapability("audit:read") },
   { prefix: "/admin/usuarios", roles: rolesWithCapability("staff:manage") },
 
-  // Seguridad de la cuenta (MFA obligatorio para todos los roles)
+  // Aprendizaje y seguridad de la cuenta (disponibles para todos los roles)
+  { prefix: "/admin/ayuda", roles: ALL_ROLES_ORDER },
   { prefix: "/admin/seguridad", roles: ALL_ROLES_ORDER },
 ];
 

@@ -300,6 +300,14 @@ Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `C
   - No registra consultas rutinarias de listado sin exportación ni acciones del cliente final sobre su propia cuenta (trazadas en `Order`, `Consent`, etc.).
   - **Segregación de funciones y detección `selfDealing`:** cuando el correo del administrador que ejecuta una de las **12 acciones sensibles** (`SELF_DEALING_SENSITIVE_ACTIONS`: `retract.*`, `warranty.*`, `cod.*`, `contact.merge*`) coincide con el correo de la orden o contacto objetivo, `recordAdminAction` inyecta automáticamente `metadata.selfDealing = true` y emite `logger.warn({ event: "admin.audit.self_dealing" })` para revisión en `/admin/auditoria`.
 
+### 5.5 Progreso y retroalimentación del Centro de Ayuda (`ADR-197`)
+
+- `/admin/ayuda` está permitido para los 8 roles, pero cada guía, relación, búsqueda y procedimiento se filtra nuevamente con `canAccessAdminPath`; ocultar contenido en el cliente no se considera una frontera de seguridad.
+- `saveHelpProgressAction` y `submitHelpFeedbackAction` usan `requireAdminAction` con MFA `aal2` y Zod. El servidor resuelve la guía autorizada, su versión y el número real de pasos; ignora cualquier intento de guardar contenido de un rol superior o pasos arbitrarios.
+- `AdminHelpProgress` y `AdminHelpFeedback` aíslan filas por `adminUserId` con unicidad `(adminUserId, guideId)` y cascada al retirar la cuenta. El comentario se limita a 1000 caracteres y la UI prohíbe expresamente incluir datos de clientes o secretos.
+- Las tablas tienen RLS y revocación completa para `anon`, `authenticated` y DML de `service_role`; el acceso legítimo ocurre solo por Prisma en servidor. Están incluidas en la matriz RLS y en la migración `00000000000056`.
+- Los recorridos nunca invocan Server Actions de negocio: su única mutación es el progreso de aprendizaje del propio administrador.
+
 ---
 
 ## 6. Invariantes de seguridad del grafo de identidad y CRM nativo (`ADR-193`)
@@ -526,7 +534,7 @@ export function isAllowedRedirectDestination(input: unknown): input is string {
 
 Toda lectura y escritura de negocio ocurre en el servidor Next.js vía Prisma (`packages/db`, rol dueño `postgres`). La API pública PostgREST de Supabase está neutralizada por diseño en `public`:
 
-1. **Cobertura del 100 % con RLS:** las **73 tablas** de `public` (**71 modelos** de `packages/db/prisma/schema.prisma` + `_prisma_migrations` + `rate_limit_buckets`) tienen `ROW LEVEL SECURITY` habilitado.
+1. **Cobertura del 100 % con RLS:** las **75 tablas** de `public` (**73 modelos** de `packages/db/prisma/schema.prisma` + `_prisma_migrations` + `rate_limit_buckets`) tienen `ROW LEVEL SECURITY` habilitado.
 2. **Revocación total de privilegios (`00000000000022`, `00000000000026`, `00000000000038`, `00000000000049`):**
    - `anon` y `authenticated` tienen **0 privilegios** (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER`) y `ALTER DEFAULT PRIVILEGES` revocados sobre todas las tablas de `public` (una consulta directa a `/rest/v1/` con la publishable key recibe `401`/`42501`).
    - `service_role` tiene revocados `SELECT, INSERT, UPDATE, DELETE` sobre las tablas de `public`, acotando el impacto de `SUPABASE_SECRET_KEY` exclusivamente a Auth Admin y Storage APIs.
