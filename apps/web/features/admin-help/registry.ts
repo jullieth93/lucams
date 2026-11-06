@@ -5,6 +5,7 @@ import { CMS_GUIDES } from "./content/cms";
 import { CONFIGURATION_GUIDES } from "./content/configuration";
 import { FINANCE_GUIDES } from "./content/finance";
 import { MARKETING_GUIDES } from "./content/marketing";
+import { LIFECYCLE_GUIDE } from "./content/lifecycle";
 import { ONBOARDING_GUIDES } from "./content/onboarding";
 import { OPERATION_GUIDES } from "./content/operations";
 import { SALES_GUIDES } from "./content/sales";
@@ -22,6 +23,7 @@ export const ADMIN_MODULE_GUIDES: AdminModuleGuide[] = [
   ...SUPPORT_GUIDES,
   ...CATALOG_GUIDES,
   ...MARKETING_GUIDES,
+  LIFECYCLE_GUIDE,
   ...FINANCE_GUIDES,
   ...CMS_GUIDES,
   ...CONFIGURATION_GUIDES,

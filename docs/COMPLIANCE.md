@@ -389,6 +389,7 @@ model Consent {
 ```
 
 - **Compuerta SQL dura en audiencias comerciales (`apps/web/features/crm/segments-service.ts`):** ninguna vista ni exportación CSV en `/admin/marketing/segmentos` (`vip`, `gift_buyers`, `winback_90d`, `annual_occasion`, `high_intent_no_order`) incluye un contacto a menos que su último `Consent(scope = 'NEWSLETTER')` por `contactId` o `email` tenga `accepted = true`, excluyendo además cuentas de staff (`AdminUser` / `Contact.isStaff = true`), certificado por `segments-service.integration.test.ts`.
+- **Lifecycle Journeys (`ADR-198`):** los pasos marcados como comerciales comprueban en cada ejecución una aceptación `NEWSLETTER` que no haya sido revocada, incluyen baja `List-Unsubscribe` RFC 8058 y aplican también la supresión de Resend por rebote o queja. La revocación cierra inscripciones que exigen opt-in y suprime el paso comercial sin convertirlo en transaccional. Los mensajes estrictamente de servicio posventa o seguimiento de una solicitud B2B se configuran por separado. Contactos eliminados, anonimizados o internos no reciben nuevos mensajes; las semillas quedan en borrador y solo un administrador autorizado con MFA reciente puede activarlas.
 
 ### 4.3 Reglas detalladas de privacidad y temporalidad del Estudio de Personalización
 

@@ -59,6 +59,7 @@ import {
   MailCheck,
   Truck,
   Award,
+  Workflow,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -271,6 +272,13 @@ export const ADMIN_NAV: NavGroup[] = [
     title: "Marketing",
     icon: Megaphone,
     items: [
+      {
+        label: "Lifecycle Journeys",
+        href: "/admin/lifecycle",
+        icon: Workflow,
+        description:
+          "Recorridos de activación, recompra, reactivación y seguimiento B2B con pasos configurables, consentimiento y atribución de conversión.",
+      },
       {
         label: "Suscriptores",
         href: "/admin/marketing/suscriptores",
