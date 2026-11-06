@@ -656,7 +656,7 @@ El directorio `apps/web/tests/e2e/` contiene exactamente **56 archivos `.spec.ts
 
 #### D. Administración, MFA, CMS v2, posventa y auditorías responsive (14 specs)
 
-- `admin-help.spec.ts` — Onboarding opcional, ayuda contextual, recorrido con progreso, búsqueda RBAC y retroalimentación persistida en `/admin/ayuda`.
+- `admin-help.spec.ts` — Onboarding opcional, ayuda contextual, recorrido con progreso, búsqueda RBAC y retroalimentación persistida en `/admin/ayuda`. Los helpers MFA compartidos descartan el onboarding por defecto para aislar los demás escenarios administrativos y esta spec lo conserva explícitamente con `dismissOnboarding: false`.
 - `admin-inventory.spec.ts` — Ajustes de stock auditados y umbrales de alerta en `/admin/inventario`.
 - `admin-login.spec.ts` — Flujo de login administrativo separado en `/admin/login` y guardas de acceso.
 - `admin-mfa.spec.ts` — Enrolamiento obligatorio TOTP, reto `/admin/login/mfa` (`aal2`) y _step-up_ en acciones sensibles.
