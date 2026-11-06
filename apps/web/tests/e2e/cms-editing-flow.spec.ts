@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import "../setup-env";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
-import { completeMfaChallengeIfNeeded, enrollTotpFactor } from "./_helpers/mfa";
+import { enrollTotpFactor, loginAdminWithTotp } from "./_helpers/mfa";
 
 /*
  * D4 — E2E del flujo de edición del CMS (roadmap D4): login admin → editar un
@@ -58,27 +58,11 @@ test.afterAll(async () => {
 });
 
 async function adminLogin(page: Page) {
-  await page.goto("/admin", { waitUntil: "domcontentloaded" });
-  const emailInput = page.locator('input[name="email"], input[type="email"]').first();
-  if (await emailInput.count()) {
-    await emailInput.fill(ADMIN_EMAIL);
-    await page
-      .locator('input[name="password"], input[type="password"]')
-      .first()
-      .fill(ADMIN_PASSWORD);
-    await page
-      .getByRole("button", { name: /Iniciar sesión|Ingresar|Entrar/i })
-      .first()
-      .click();
-    await page
-      .locator('input[name="email"], input[type="email"]')
-      .first()
-      .waitFor({ state: "detached", timeout: 30_000 })
-      .catch(() => {});
-    // Tras el login con password viene el reto TOTP (MFA obligatorio, B-1).
-    await completeMfaChallengeIfNeeded(page, totpSecret);
-  }
-  await page.waitForTimeout(2000);
+  await loginAdminWithTotp(page, {
+    email: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+    totpSecret,
+  });
 }
 
 test("D4 — flujo de edición CMS: editar → publicar → ver en / → revertir versión", async ({
