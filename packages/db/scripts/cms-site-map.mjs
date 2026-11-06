@@ -3,7 +3,7 @@
  *
  * Fuente única de verdad de la estructura del CMS v2:
  *   PÁGINA → SECCIÓN → campos (9 contenedores: 8 en /admin/contenido +
- *   «Ajustes del sitio» en Configuración; 166 campos reales).
+ *   «Ajustes del sitio» en Configuración; 168 campos reales).
  *
  * Qué entra acá (Capa 1 + Capa 2):
  *   - Capa 1 (kind SETTING): parámetros maestros de negocio, contacto, envíos,
@@ -2031,6 +2031,28 @@ export const SITE_MAP = {
               category: "COMMERCE",
               body: "24",
               sortOrder: 250,
+            },
+            {
+              key: "LIFECYCLE_ENABLED",
+              kind: "SETTING",
+              type: "BOOLEAN",
+              label: "Motor Lifecycle activo",
+              helpText:
+                "Interruptor general de Lifecycle Journeys. Al apagarlo se detienen inscripciones, ejecuciones y atribución sin borrar el historial.",
+              category: "COMMERCE",
+              body: "true",
+              sortOrder: 260,
+            },
+            {
+              key: "LIFECYCLE_MAX_MESSAGES_PER_DAY",
+              kind: "SETTING",
+              type: "NUMBER",
+              label: "Límite diario global Lifecycle",
+              helpText:
+                "Máximo combinado de mensajes Lifecycle por contacto y día en hora Colombia. También se respeta el límite individual de cada recorrido.",
+              category: "COMMERCE",
+              body: "2",
+              sortOrder: 270,
             },
           ],
         },

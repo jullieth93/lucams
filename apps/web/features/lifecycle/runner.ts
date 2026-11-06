@@ -33,6 +33,8 @@ import {
 } from "./eligibility";
 import { nextAllowedAt, nextBogotaDay, nextStepRunAt, startOfBogotaDay } from "./schedule";
 import { ensureLifecycleJourneySeeds } from "./seed";
+import { getLifecycleSettings } from "./settings";
+import { suppressLifecycleForEmails } from "./suppression";
 import type { LifecycleRunScope, LifecycleRunSummary } from "./types";
 
 type JourneyWithSteps = LifecycleJourney & { steps: LifecycleJourneyStep[] };
@@ -54,8 +56,8 @@ async function advanceEnrollment(
 ): Promise<boolean> {
   const nextStep = enrollment.journey.steps.find((candidate) => candidate.position > step.position);
   if (nextStep) {
-    await prisma.lifecycleEnrollment.update({
-      where: { id: enrollment.id },
+    await prisma.lifecycleEnrollment.updateMany({
+      where: { id: enrollment.id, status: "ACTIVE" },
       data: {
         currentStepId: nextStep.id,
         nextRunAt: nextStepRunAt(nextStep.delayMinutes, enrollment.journey, now),
@@ -64,8 +66,8 @@ async function advanceEnrollment(
     });
     return false;
   }
-  await prisma.lifecycleEnrollment.update({
-    where: { id: enrollment.id },
+  await prisma.lifecycleEnrollment.updateMany({
+    where: { id: enrollment.id, status: "ACTIVE" },
     data: {
       status: "COMPLETED",
       completedAt: now,
@@ -76,19 +78,105 @@ async function advanceEnrollment(
   return true;
 }
 
+type StepOutcome = "sent" | "suppressed" | "retry" | "skipped" | "failed" | "blocked" | "stopped";
+
+function resolveTargetPath(
+  enrollment: EnrollmentWithRelations,
+  step: LifecycleJourneyStep,
+): string {
+  if (
+    enrollment.journey.trigger !== "FIRST_PURCHASE" &&
+    enrollment.journey.trigger !== "HIGH_INTENT"
+  ) {
+    return step.ctaPath;
+  }
+  const data = enrollment.data as Record<string, unknown>;
+  const slug = typeof data.lastProductSlug === "string" ? data.lastProductSlug : null;
+  if (slug && (step.ctaPath === "/productos" || step.ctaPath === "/recomendador")) {
+    return `/producto/${encodeURIComponent(slug)}`;
+  }
+  return step.ctaPath;
+}
+
+async function ensureB2bFollowUpTask(
+  enrollment: EnrollmentWithRelations,
+  step: LifecycleJourneyStep,
+  now: Date,
+): Promise<boolean> {
+  if (enrollment.journey.trigger !== "B2B_FOLLOW_UP") return false;
+  const opportunity = enrollment.contact.opportunities[0];
+  if (!opportunity || !["NEW", "QUALIFYING", "PROPOSAL_SENT"].includes(opportunity.stage)) {
+    return false;
+  }
+  const dedupKey = `${enrollment.id}:${step.id}:${enrollment.cycle}`;
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"lifecycle-task:" + dedupKey}))`;
+    const existing = await tx.task.findFirst({
+      where: { description: { contains: dedupKey } },
+      select: { id: true },
+    });
+    if (existing) return false;
+    const task = await tx.task.create({
+      data: {
+        title: `Seguir ${opportunity.number} · ${enrollment.journey.name} · paso ${step.position}`,
+        description: `Seguimiento operativo creado por Lifecycle. Clave: ${dedupKey}`,
+        status: "OPEN",
+        priority: "HIGH",
+        dueAt: now,
+        ownerAdminId: opportunity.ownerAdminId,
+        contactId: enrollment.contactId,
+        opportunityId: opportunity.id,
+      },
+      select: { id: true },
+    });
+    await tx.contactActivity.create({
+      data: {
+        contactId: enrollment.contactId,
+        kind: "SYSTEM",
+        body: `Lifecycle creó la tarea ${task.id} para ${opportunity.number}.`,
+        metadata: {
+          source: "lifecycle",
+          dedupKey,
+          journeyId: enrollment.journeyId,
+          enrollmentId: enrollment.id,
+          stepId: step.id,
+          opportunityId: opportunity.id,
+          taskId: task.id,
+        },
+      },
+    });
+    return true;
+  });
+}
+
 async function sendStepMessage(
   enrollment: EnrollmentWithRelations,
   step: LifecycleJourneyStep,
   now: Date,
-): Promise<"sent" | "suppressed" | "retry" | "skipped" | "failed"> {
+  settings: { dryRun: boolean; maxMessagesPerDay: number },
+): Promise<StepOutcome> {
   const email = enrollment.contact.primaryEmail;
   if (!email) return "skipped";
   const dedupKey = `${enrollment.id}:${step.id}:${enrollment.cycle}`;
-  const initialMetadata = buildMessageMetadata(step, await getEmailOverrides("lifecycle-message"));
+  const targetPath = resolveTargetPath(enrollment, step);
+  const initialMetadata = {
+    ...buildMessageMetadata(step, await getEmailOverrides("lifecycle-message")),
+    targetPath,
+  };
+  const existing = await prisma.lifecycleMessage.findUnique({ where: { dedupKey } });
+  const metadata: Prisma.InputJsonObject =
+    existing?.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
+      ? existing.metadata
+      : initialMetadata;
+  if (existing && ["SENT", "SUPPRESSED", "CANCELLED"].includes(existing.status)) return "skipped";
+  if (existing?.status === "FAILED" && existing.error && existing.scheduledFor > now) {
+    return "retry";
+  }
+
   if (step.commercial && !hasNewsletterOptIn(enrollment.contact)) {
     await prisma.lifecycleMessage.upsert({
       where: { dedupKey },
-      update: {},
+      update: { status: "SUPPRESSED", error: "NO_OPT_IN" },
       create: {
         enrollmentId: enrollment.id,
         stepId: step.id,
@@ -96,7 +184,7 @@ async function sendStepMessage(
         dedupKey,
         status: "SUPPRESSED",
         subject: step.subject,
-        ctaUrl: step.ctaPath,
+        ctaUrl: targetPath,
         scheduledFor: now,
         error: "NO_OPT_IN",
         metadata: initialMetadata,
@@ -105,30 +193,50 @@ async function sendStepMessage(
     return "suppressed";
   }
 
-  const dailyCount = await prisma.lifecycleMessage.count({
-    where: {
-      contactId: enrollment.contactId,
-      enrollment: { journeyId: enrollment.journeyId },
-      sentAt: { gte: startOfBogotaDay(now) },
-      status: "SENT",
-    },
+  const suppression = await prisma.emailEvent.findFirst({
+    where: { to: email, type: { in: ["email.bounced", "email.complained"] } },
+    select: { type: true },
   });
-  if (dailyCount >= enrollment.journey.maxMessagesPerDay) {
-    await prisma.lifecycleEnrollment.update({
-      where: { id: enrollment.id },
-      data: { nextRunAt: nextAllowedAt(nextBogotaDay(now), enrollment.journey) },
+  if (suppression) {
+    const reason = suppression.type === "email.complained" ? "EMAIL_COMPLAINED" : "EMAIL_BOUNCED";
+    await prisma.lifecycleMessage.upsert({
+      where: { dedupKey },
+      update: { status: "SUPPRESSED", error: reason },
+      create: {
+        enrollmentId: enrollment.id,
+        stepId: step.id,
+        contactId: enrollment.contactId,
+        dedupKey,
+        status: "SUPPRESSED",
+        subject: step.subject,
+        ctaUrl: targetPath,
+        scheduledFor: now,
+        error: reason,
+        metadata: initialMetadata,
+      },
     });
-    return "retry";
+    await suppressLifecycleForEmails([email], reason, now);
+    return "stopped";
   }
 
-  const existing = await prisma.lifecycleMessage.findUnique({ where: { dedupKey } });
-  const metadata: Prisma.InputJsonObject =
-    existing?.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
-      ? existing.metadata
-      : initialMetadata;
-  if (existing?.status === "SENT" || existing?.status === "SUPPRESSED") return "skipped";
-  if (existing?.status === "FAILED" && existing.error && existing.scheduledFor > now) {
-    return "retry";
+  if (settings.dryRun) {
+    await prisma.lifecycleMessage.upsert({
+      where: { dedupKey },
+      update: { status: "SUPPRESSED", error: "DRY_RUN" },
+      create: {
+        enrollmentId: enrollment.id,
+        stepId: step.id,
+        contactId: enrollment.contactId,
+        dedupKey,
+        status: "SUPPRESSED",
+        subject: step.subject,
+        ctaUrl: targetPath,
+        scheduledFor: now,
+        error: "DRY_RUN",
+        metadata: initialMetadata,
+      },
+    });
+    return "suppressed";
   }
 
   const message =
@@ -140,31 +248,52 @@ async function sendStepMessage(
         contactId: enrollment.contactId,
         dedupKey,
         subject: step.subject,
-        ctaUrl: step.ctaPath,
+        ctaUrl: targetPath,
         scheduledFor: now,
         metadata,
       },
     }));
-  const siteUrl = await getSiteUrl();
   const publicToken = createLifecyclePublicToken(message.id);
-  const ctaUrl = `${siteUrl}/j/${publicToken}`;
-  const claimed = await prisma.lifecycleMessage.updateMany({
-    where: {
-      id: message.id,
-      status: { in: ["PENDING", "FAILED"] },
+  const staleClaimAt = new Date(now.getTime() - 5 * 60_000);
+  const claim = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"lifecycle-daily:" + enrollment.contactId}))`;
+    const reservedWhere: Prisma.LifecycleMessageWhereInput = {
+      contactId: enrollment.contactId,
       OR: [
-        { error: null },
-        { error: { not: "IN_FLIGHT" } },
-        { updatedAt: { lt: new Date(now.getTime() - 5 * 60_000) } },
+        { status: "SENT", sentAt: { gte: startOfBogotaDay(now) } },
+        { error: "IN_FLIGHT", updatedAt: { gte: staleClaimAt } },
       ],
-    },
-    data: {
-      publicTokenHash: hashBearerToken(publicToken),
-      error: "IN_FLIGHT",
-    },
+    };
+    const [journeyCount, globalCount] = await Promise.all([
+      tx.lifecycleMessage.count({
+        where: { AND: [reservedWhere, { enrollment: { journeyId: enrollment.journeyId } }] },
+      }),
+      tx.lifecycleMessage.count({ where: reservedWhere }),
+    ]);
+    if (
+      journeyCount >= enrollment.journey.maxMessagesPerDay ||
+      globalCount >= settings.maxMessagesPerDay
+    ) {
+      await tx.lifecycleEnrollment.updateMany({
+        where: { id: enrollment.id, status: "ACTIVE" },
+        data: { nextRunAt: nextAllowedAt(nextBogotaDay(now), enrollment.journey) },
+      });
+      return "deferred" as const;
+    }
+    const claimed = await tx.lifecycleMessage.updateMany({
+      where: {
+        id: message.id,
+        status: { in: ["PENDING", "FAILED"] },
+        OR: [{ error: null }, { error: { not: "IN_FLIGHT" } }, { updatedAt: { lt: staleClaimAt } }],
+      },
+      data: { publicTokenHash: hashBearerToken(publicToken), error: "IN_FLIGHT" },
+    });
+    return claimed.count === 1 ? ("claimed" as const) : ("busy" as const);
   });
-  if (claimed.count === 0) return "retry";
+  if (claim !== "claimed") return "retry";
 
+  const siteUrl = await getSiteUrl();
+  const ctaUrl = `${siteUrl}/j/${publicToken}`;
   const triggerData = enrollment.data as Record<string, unknown>;
   const productNames = [
     typeof triggerData.lastProductName === "string" ? triggerData.lastProductName : null,
@@ -194,16 +323,36 @@ async function sendStepMessage(
   if (result.sent) {
     await prisma.lifecycleMessage.update({
       where: { id: message.id },
-      data: { status: "SENT", resendId: result.id, sentAt: now, error: null },
+      data: {
+        status: "SENT",
+        resendId: result.id,
+        sentAt: now,
+        error: null,
+        subject: rendered.subject,
+      },
     });
     return "sent";
   }
   if (result.reason === "suppressed") {
     await prisma.lifecycleMessage.update({
       where: { id: message.id },
-      data: { status: "SUPPRESSED", error: result.reason },
+      data: { status: "SUPPRESSED", error: "EMAIL_SUPPRESSED" },
     });
-    return "suppressed";
+    await suppressLifecycleForEmails([email], "EMAIL_SUPPRESSED", now);
+    return "stopped";
+  }
+
+  const nextAttemptAt = new Date(now.getTime() + 30 * 60_000);
+  if (result.reason === "circuit-open") {
+    await prisma.lifecycleMessage.update({
+      where: { id: message.id },
+      data: { status: "FAILED", error: result.reason, scheduledFor: nextAttemptAt },
+    });
+    await prisma.lifecycleEnrollment.updateMany({
+      where: { id: enrollment.id, status: "ACTIVE" },
+      data: { nextRunAt: nextAttemptAt },
+    });
+    return "blocked";
   }
 
   const attempts =
@@ -213,7 +362,6 @@ async function sendStepMessage(
     typeof message.metadata.attempts === "number"
       ? message.metadata.attempts + 1
       : 1;
-  const nextAttemptAt = new Date(now.getTime() + 30 * 60_000);
   await prisma.lifecycleMessage.update({
     where: { id: message.id },
     data: {
@@ -224,8 +372,8 @@ async function sendStepMessage(
     },
   });
   if (attempts >= 5) {
-    await prisma.lifecycleEnrollment.update({
-      where: { id: enrollment.id },
+    await prisma.lifecycleEnrollment.updateMany({
+      where: { id: enrollment.id, status: "ACTIVE" },
       data: {
         status: "SUPPRESSED",
         exitReason: "MESSAGE_FAILED",
@@ -235,37 +383,59 @@ async function sendStepMessage(
     });
     return "failed";
   }
-  await prisma.lifecycleEnrollment.update({
-    where: { id: enrollment.id },
+  await prisma.lifecycleEnrollment.updateMany({
+    where: { id: enrollment.id, status: "ACTIVE" },
     data: { nextRunAt: nextAttemptAt },
   });
   return "retry";
 }
 
 async function loadContactBehavior(contactIds: string[]): Promise<Map<string, ContactBehavior>> {
-  const [paidOrders, deliveredOrders] = await Promise.all([
-    prisma.order.groupBy({
-      by: ["contactId"],
-      where: { contactId: { in: contactIds }, status: { in: [...PAID_ORDER_STATUSES] } },
-      _max: { createdAt: true },
+  const uniqueIds = [...new Set(contactIds)];
+  const [latestPaidOrders, paidCounts, deliveredOrders] = await Promise.all([
+    prisma.order.findMany({
+      where: {
+        contactId: { in: uniqueIds },
+        status: { in: [...PAID_ORDER_STATUSES] },
+        deletedAt: null,
+      },
+      distinct: ["contactId"],
+      orderBy: { createdAt: "desc" },
+      select: { id: true, contactId: true, createdAt: true },
     }),
     prisma.order.groupBy({
       by: ["contactId"],
-      where: { contactId: { in: contactIds }, deliveredAt: { not: null } },
+      where: {
+        contactId: { in: uniqueIds },
+        status: { in: [...PAID_ORDER_STATUSES] },
+        deletedAt: null,
+      },
+      _count: { _all: true },
+    }),
+    prisma.order.groupBy({
+      by: ["contactId"],
+      where: { contactId: { in: uniqueIds }, deliveredAt: { not: null }, deletedAt: null },
       _count: { _all: true },
     }),
   ]);
-  const paidByContact = new Map(paidOrders.map((order) => [order.contactId, order._max.createdAt]));
+  const latestByContact = new Map(latestPaidOrders.map((order) => [order.contactId, order]));
+  const countByContact = new Map(paidCounts.map((order) => [order.contactId, order._count._all]));
   const deliveredContacts = new Set(deliveredOrders.map((order) => order.contactId));
   return new Map(
-    contactIds.map((contactId) => [
-      contactId,
-      {
-        hasPaidOrder: paidByContact.has(contactId),
-        lastPaidAt: paidByContact.get(contactId) ?? null,
-        hasDeliveredOrder: deliveredContacts.has(contactId),
-      },
-    ]),
+    uniqueIds.map((contactId) => {
+      const latest = latestByContact.get(contactId);
+      const paidOrderCount = countByContact.get(contactId) ?? 0;
+      return [
+        contactId,
+        {
+          hasPaidOrder: paidOrderCount > 0,
+          paidOrderCount,
+          lastPaidAt: latest?.createdAt ?? null,
+          lastPaidOrderId: latest?.id ?? null,
+          hasDeliveredOrder: deliveredContacts.has(contactId),
+        },
+      ];
+    }),
   );
 }
 
@@ -274,8 +444,8 @@ async function exitEnrollment(
   reason: string,
   now: Date,
 ): Promise<void> {
-  await prisma.lifecycleEnrollment.update({
-    where: { id: enrollment.id },
+  const updated = await prisma.lifecycleEnrollment.updateMany({
+    where: { id: enrollment.id, status: "ACTIVE" },
     data: {
       status: "EXITED",
       exitReason: reason,
@@ -284,30 +454,37 @@ async function exitEnrollment(
       lastRunAt: now,
     },
   });
+  if (updated.count === 1) enrollment.status = "EXITED";
 }
+
+type ProcessOutcome =
+  "sent" | "suppressed" | "retry" | "completed" | "exited" | "skipped" | "failed" | "blocked";
 
 async function processEnrollment(
   enrollment: EnrollmentWithRelations,
   now: Date,
   behavior: ContactBehavior,
-): Promise<"sent" | "suppressed" | "retry" | "completed" | "skipped" | "failed"> {
+  settings: { dryRun: boolean; maxMessagesPerDay: number },
+  summary: LifecycleRunSummary,
+): Promise<ProcessOutcome> {
   const exitReason = getEnrollmentExitReason(
     enrollment.journey,
     enrollment.contact,
     behavior,
+    enrollment.triggerRef,
     enrollment.createdAt,
   );
   if (exitReason) {
     await exitEnrollment(enrollment, exitReason, now);
-    return "completed";
+    return "exited";
   }
 
   const step = enrollment.journey.steps.find(
     (candidate) => candidate.id === enrollment.currentStepId,
   );
   if (!step) {
-    await prisma.lifecycleEnrollment.update({
-      where: { id: enrollment.id },
+    await prisma.lifecycleEnrollment.updateMany({
+      where: { id: enrollment.id, status: "ACTIVE" },
       data: {
         status: "COMPLETED",
         completedAt: now,
@@ -325,7 +502,11 @@ async function processEnrollment(
     hasOptIn: hasNewsletterOptIn(enrollment.contact),
     orderDelivered: behavior.hasDeliveredOrder,
     orderSinceEnrollment:
-      behavior.lastPaidAt !== null && behavior.lastPaidAt > enrollment.createdAt,
+      behavior.lastPaidOrderId !== null &&
+      (["SECOND_PURCHASE", "REACTIVATION"].includes(enrollment.journey.trigger) &&
+      enrollment.triggerRef
+        ? behavior.lastPaidOrderId !== enrollment.triggerRef
+        : behavior.lastPaidAt! > enrollment.createdAt),
   });
   if (!conditionMet) {
     const completed = await advanceEnrollment(enrollment, step, now);
@@ -333,8 +514,12 @@ async function processEnrollment(
   }
 
   try {
-    const outcome = await sendStepMessage(enrollment, step, now);
-    if (outcome === "retry" || outcome === "failed") return outcome;
+    if (!settings.dryRun && (await ensureB2bFollowUpTask(enrollment, step, now))) {
+      summary.tasksCreated += 1;
+    }
+    const outcome = await sendStepMessage(enrollment, step, now, settings);
+    if (outcome === "stopped") return "suppressed";
+    if (outcome === "retry" || outcome === "failed" || outcome === "blocked") return outcome;
     const completed = await advanceEnrollment(enrollment, step, now);
     return completed && outcome !== "sent" && outcome !== "suppressed" ? "completed" : outcome;
   } catch (error) {
@@ -405,6 +590,7 @@ async function processEnrollmentExits(
       enrollment.journey,
       enrollment.contact,
       behavior.get(enrollment.contactId)!,
+      enrollment.triggerRef,
       enrollment.createdAt,
     );
     if (!reason) continue;
@@ -429,16 +615,15 @@ export async function attributeLifecycleConversions(
     orderBy: { clickedAt: "desc" },
     take: 200,
   });
-  const seenContacts = new Set<string>();
   let converted = 0;
   for (const message of clicked) {
-    if (seenContacts.has(message.contactId)) continue;
-    seenContacts.add(message.contactId);
+    const clickedAt = message.clickedAt!;
     const order = await prisma.order.findFirst({
       where: {
         contactId: message.contactId,
-        createdAt: { gte: message.clickedAt!, lte: now },
+        createdAt: { gte: clickedAt, lte: now },
         status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] },
+        deletedAt: null,
       },
       orderBy: { createdAt: "asc" },
       select: { id: true, createdAt: true, total: true },
@@ -472,23 +657,32 @@ export async function runLifecycleCycle(
   now = new Date(),
   scope: LifecycleRunScope = {},
 ): Promise<LifecycleRunSummary> {
+  const settings = await getLifecycleSettings();
+  const summary: LifecycleRunSummary = {
+    journeys: 0,
+    enrollmentsCreated: 0,
+    messagesSent: 0,
+    messagesSuppressed: 0,
+    messagesFailed: 0,
+    messagesDeferred: 0,
+    tasksCreated: 0,
+    enrollmentsCompleted: 0,
+    enrollmentsExited: 0,
+    errors: 0,
+    dryRun: settings.dryRun,
+  };
+  if (!settings.enabled) {
+    logger.info({ event: "lifecycle.cycle", ...summary });
+    return summary;
+  }
+
   await ensureLifecycleJourneySeeds();
   const journeys = await prisma.lifecycleJourney.findMany({
     where: { status: "ACTIVE", ...(scope.journeyId ? { id: scope.journeyId } : {}) },
     include: { steps: { orderBy: { position: "asc" } } },
     orderBy: { key: "asc" },
   });
-
-  const summary: LifecycleRunSummary = {
-    journeys: journeys.length,
-    enrollmentsCreated: 0,
-    messagesSent: 0,
-    messagesSuppressed: 0,
-    messagesFailed: 0,
-    enrollmentsCompleted: 0,
-    enrollmentsExited: 0,
-    errors: 0,
-  };
+  summary.journeys = journeys.length;
 
   for (const journey of journeys) {
     try {
@@ -522,15 +716,31 @@ export async function runLifecycleCycle(
   summary.enrollmentsExited += await processEnrollmentExits(enrollments, behavior, now);
 
   const dueEnrollments = enrollments
-    .filter((enrollment) => enrollment.nextRunAt <= now)
+    .filter((enrollment) => enrollment.status === "ACTIVE" && enrollment.nextRunAt <= now)
     .slice(0, 100);
-  for (const enrollment of dueEnrollments) {
+  const stopNewWorkAt = Date.now() + 30_000;
+  for (const [index, enrollment] of dueEnrollments.entries()) {
+    if (Date.now() >= stopNewWorkAt) {
+      summary.messagesDeferred += dueEnrollments.length - index;
+      break;
+    }
     try {
-      const outcome = await processEnrollment(enrollment, now, behavior.get(enrollment.contactId)!);
+      const outcome = await processEnrollment(
+        enrollment,
+        now,
+        behavior.get(enrollment.contactId)!,
+        settings,
+        summary,
+      );
       if (outcome === "sent") summary.messagesSent += 1;
       if (outcome === "suppressed") summary.messagesSuppressed += 1;
       if (outcome === "failed") summary.messagesFailed += 1;
       if (outcome === "completed") summary.enrollmentsCompleted += 1;
+      if (outcome === "exited") summary.enrollmentsExited += 1;
+      if (outcome === "blocked") {
+        summary.messagesDeferred += dueEnrollments.length - index;
+        break;
+      }
     } catch (error) {
       summary.errors += 1;
       logger.error({

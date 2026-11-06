@@ -234,6 +234,9 @@ jobs:
       - name: Drift check Prisma ↔ Supabase (A9-08)
         run: pnpm --filter @lucams/db exec node scripts/audit-schema-drift.mjs check --baseline "$RUNNER_TEMP/schema-post-prisma.json"
 
+      - name: Seed del CMS v2 (settings globales para integración)
+        run: pnpm --filter @lucams/db exec node scripts/migrate-cms-v2.mjs --apply
+
       - name: Run vitest (unit + integración) + gate de cobertura
         run: pnpm --filter web test:coverage
 

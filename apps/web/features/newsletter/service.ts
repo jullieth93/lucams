@@ -29,7 +29,8 @@ import { logger } from "@/lib/logger";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { resolveConsentContact } from "@/features/identity/resolution-service";
 
-const PRIVACY_VERSION = "v1-2026-05-12";
+export const NEWSLETTER_PRIVACY_VERSION = "v1-2026-05-12";
+const PRIVACY_VERSION = NEWSLETTER_PRIVACY_VERSION;
 
 export type NewsletterResult =
   | { ok: true; alreadySubscribed: boolean }

@@ -4,8 +4,8 @@
  * Eventos manejados:
  *   - email.sent           → log nada más (ya logueamos al enviar)
  *   - email.delivered      → upsert EmailEvent
- *   - email.bounced        → upsert + log warn (potencial email inválido)
- *   - email.complained     → upsert + log warn (usuario marcó como spam)
+ *   - email.bounced        → upsert + log warn + supresión Lifecycle inmediata
+ *   - email.complained     → upsert + log warn + supresión Lifecycle inmediata
  *   - email.opened         → upsert (tracking opcional)
  *   - email.clicked        → upsert (tracking opcional)
  *
@@ -36,6 +36,7 @@ import { logger } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
 import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { readBodyWithLimit, BodyTooLargeError } from "@/lib/read-body-with-limit";
+import { suppressLifecycleForEmails } from "@/features/lifecycle/suppression";
 
 // LUC-SEC-007 — techo de aplicación para el body del webhook (128 KB; un evento
 // Resend con metadata son unos pocos KB). El límite de plataforma es 2ª capa.
@@ -209,6 +210,14 @@ export async function POST(req: Request): Promise<Response> {
         },
       });
     });
+
+    if (event.type === "email.bounced" || event.type === "email.complained") {
+      await suppressLifecycleForEmails(
+        Array.isArray(event.data.to) ? event.data.to : [String(event.data.to)],
+        event.type === "email.complained" ? "EMAIL_COMPLAINED" : "EMAIL_BOUNCED",
+        occurredAt,
+      );
+    }
 
     if (event.type === "email.bounced") {
       logger.warn({

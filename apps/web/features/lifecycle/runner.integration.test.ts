@@ -3,6 +3,9 @@ import type { LifecycleStepCondition, LifecycleTrigger } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/resend";
 import { mergeContactsByHumanApproval } from "@/features/identity/merge-service";
+import { NEWSLETTER_PRIVACY_VERSION } from "@/features/newsletter/service";
+import { computeUnsubscribeToken, unsubscribeNewsletter } from "@/features/newsletter/unsubscribe";
+import { saveLifecycleSettings } from "./settings";
 import { resolveLifecycleClick } from "./attribution";
 import {
   getLifecycleJourneyMetrics,
@@ -34,7 +37,7 @@ async function createContact(optIn: boolean) {
         email: contact.primaryEmail,
         scope: "NEWSLETTER",
         accepted: true,
-        version: "lifecycle-test",
+        version: NEWSLETTER_PRIVACY_VERSION,
       },
     });
   }
@@ -115,6 +118,12 @@ async function runCleanCycle(journeyId: string, contactIds: string[]) {
 }
 
 async function cleanFixtures() {
+  await prisma.emailEvent.deleteMany({ where: { resendId: { startsWith: RUN } } });
+  await prisma.task.deleteMany({
+    where: { OR: [{ description: { contains: RUN } }, { title: { contains: RUN } }] },
+  });
+  await prisma.contactActivity.deleteMany({ where: { body: { contains: RUN } } });
+  await prisma.cart.deleteMany({ where: { sessionId: { startsWith: RUN } } });
   await prisma.lifecycleJourney.deleteMany({ where: { key: { startsWith: RUN } } });
   await prisma.adminUser.deleteMany({ where: { email: { startsWith: RUN } } });
   await prisma.order.deleteMany({ where: { email: { startsWith: RUN } } });
@@ -124,12 +133,18 @@ async function cleanFixtures() {
 
 describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeout: 30_000 }, () => {
   beforeEach(async () => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     await cleanFixtures();
+    await saveLifecycleSettings({ enabled: true, maxMessagesPerDay: 2 }, "admin-test");
     sendEmailMock.mockReset();
     sendEmailMock.mockResolvedValue({ sent: true, id: `resend-${RUN}` });
   });
 
-  afterAll(cleanFixtures);
+  afterAll(async () => {
+    await cleanFixtures();
+    await saveLifecycleSettings({ enabled: true, maxMessagesPerDay: 2 }, "admin-test");
+  });
 
   it("inscribe, envía sin duplicar, atribuye conversión y cierra por compra", async () => {
     const contact = await createContact(true);
@@ -303,7 +318,7 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
         email: contact.primaryEmail,
         scope: "NEWSLETTER",
         accepted: false,
-        version: "lifecycle-test-revoke",
+        version: NEWSLETTER_PRIVACY_VERSION,
         revokesId: accepted.id,
       },
     });
@@ -320,7 +335,7 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
         email: contact.primaryEmail,
         scope: "NEWSLETTER",
         accepted: true,
-        version: "lifecycle-test-reaccept",
+        version: NEWSLETTER_PRIVACY_VERSION,
         revokesId: revoked.id,
       },
     });
@@ -481,5 +496,338 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
         where: { enrollmentId: enrollment.id },
       }),
     ).toMatchObject({ status: "FAILED", metadata: { attempts: 1 } });
+  });
+
+  it("no inscribe segunda compra a quien ya compró de nuevo", async () => {
+    const repeatContact = await createContact(false);
+    const firstPurchaseContact = await createContact(false);
+    await createOrder(repeatContact.id, "DELIVERED");
+    await createOrder(repeatContact.id, "PAID");
+    await createOrder(firstPurchaseContact.id, "DELIVERED");
+    const journey = await createJourney("SECOND_PURCHASE", false);
+
+    await runCleanCycle(journey.id, [repeatContact.id, firstPurchaseContact.id]);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const enrollments = await prisma.lifecycleEnrollment.findMany({
+      where: { journeyId: journey.id },
+      select: { contactId: true },
+    });
+    expect(enrollments.map((item) => item.contactId)).toEqual([firstPurchaseContact.id]);
+  });
+
+  it("aplica el límite diario global entre recorridos distintos", async () => {
+    const contact = await createContact(true);
+    const firstJourney = await createJourney("FIRST_PURCHASE");
+    const secondJourney = await createJourney("FIRST_PURCHASE");
+    await saveLifecycleSettings({ enabled: true, maxMessagesPerDay: 1 }, "admin-test");
+    try {
+      await runCleanCycle(firstJourney.id, [contact.id]);
+      await runCleanCycle(secondJourney.id, [contact.id]);
+    } finally {
+      await saveLifecycleSettings({ enabled: true, maxMessagesPerDay: 2 }, "admin-test");
+    }
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const deferred = await prisma.lifecycleEnrollment.findFirstOrThrow({
+      where: { journeyId: secondJourney.id, contactId: contact.id },
+    });
+    expect(deferred.nextRunAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("ejecuta STG en DRY_RUN sin llamar a Resend", async () => {
+    const contact = await createContact(true);
+    const journey = await createJourney("FIRST_PURCHASE");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    try {
+      const summary = await runCleanCycle(journey.id, [contact.id]);
+      expect(summary.dryRun).toBe(true);
+      expect(summary.messagesSuppressed).toBe(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    const message = await prisma.lifecycleMessage.findFirstOrThrow({
+      where: { enrollment: { journeyId: journey.id, contactId: contact.id } },
+    });
+    expect(message).toMatchObject({ status: "SUPPRESSED", error: "DRY_RUN", resendId: null });
+  });
+
+  it("detiene todo el motor con el interruptor general", async () => {
+    const contact = await createContact(true);
+    const journey = await createJourney("FIRST_PURCHASE");
+    await saveLifecycleSettings({ enabled: false, maxMessagesPerDay: 2 }, "admin-test");
+    let summary;
+    try {
+      summary = await runCleanCycle(journey.id, [contact.id]);
+    } finally {
+      await saveLifecycleSettings({ enabled: true, maxMessagesPerDay: 2 }, "admin-test");
+    }
+
+    expect(summary.journeys).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(await prisma.lifecycleEnrollment.count({ where: { journeyId: journey.id } })).toBe(0);
+  });
+
+  it("suprime antes de enviar ante un rebote conocido", async () => {
+    const contact = await createContact(true);
+    await prisma.emailEvent.create({
+      data: {
+        resendId: `${RUN}-bounce`,
+        type: "email.bounced",
+        to: contact.primaryEmail!,
+        fromEmail: "hola@mail.lucamsshop.com",
+        occurredAt: new Date(),
+      },
+    });
+    const journey = await createJourney("FIRST_PURCHASE");
+
+    await runCleanCycle(journey.id, [contact.id]);
+
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    const enrollment = await prisma.lifecycleEnrollment.findFirstOrThrow({
+      where: { journeyId: journey.id, contactId: contact.id },
+    });
+    expect(enrollment).toMatchObject({ status: "SUPPRESSED", exitReason: "EMAIL_BOUNCED" });
+    expect(
+      await prisma.lifecycleMessage.findFirstOrThrow({ where: { enrollmentId: enrollment.id } }),
+    ).toMatchObject({ status: "SUPPRESSED", error: "EMAIL_BOUNCED" });
+  });
+
+  it("delega el carrito a la recuperación existente sin enviar otro recordatorio", async () => {
+    const contact = await createContact(true);
+    const cart = await prisma.cart.create({
+      data: { sessionId: `${RUN}-${crypto.randomUUID()}`, currency: "COP" },
+    });
+    await prisma.abandonedCart.create({
+      data: { cartId: cart.id, contactId: contact.id, email: contact.primaryEmail! },
+    });
+    const journey = await createJourney("FIRST_PURCHASE");
+
+    await runCleanCycle(journey.id, [contact.id]);
+
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(
+      await prisma.lifecycleEnrollment.findFirstOrThrow({
+        where: { journeyId: journey.id, contactId: contact.id },
+      }),
+    ).toMatchObject({ status: "EXITED", exitReason: "DELEGATED_CART_RECOVERY" });
+  });
+
+  it("crea una sola tarea B2B aun sin correo y sale al ganar la oportunidad", async () => {
+    const contact = await createContact(false);
+    await prisma.contact.update({ where: { id: contact.id }, data: { primaryEmail: null } });
+    const opportunity = await prisma.opportunity.create({
+      data: {
+        number: `OP-${RUN}`,
+        title: "Oportunidad Lifecycle",
+        contactId: contact.id,
+        stage: "NEW",
+        updatedAt: new Date(Date.now() - 3 * 86_400_000),
+      },
+    });
+    const journey = await createJourney("B2B_FOLLOW_UP", false);
+    await prisma.lifecycleJourney.update({
+      where: { id: journey.id },
+      data: { inactivityDays: 1 },
+    });
+
+    const first = await runCleanCycle(journey.id, [contact.id]);
+    const second = await runCleanCycle(journey.id, [contact.id]);
+
+    expect(first.tasksCreated).toBe(1);
+    expect(second.tasksCreated).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(await prisma.task.count({ where: { title: { contains: RUN } } })).toBe(1);
+    expect(
+      await prisma.contactActivity.count({ where: { body: { contains: opportunity.number } } }),
+    ).toBe(1);
+
+    await prisma.opportunity.update({ where: { id: opportunity.id }, data: { stage: "WON" } });
+    await runCleanCycle(journey.id, [contact.id]);
+    expect(
+      await prisma.lifecycleEnrollment.findFirstOrThrow({
+        where: { journeyId: journey.id, contactId: contact.id },
+      }),
+    ).toMatchObject({ status: "EXITED", exitReason: "OPPORTUNITY_WON" });
+  });
+
+  it("cierra de inmediato una inscripción al revocar el consentimiento", async () => {
+    const contact = await createContact(true);
+    const journey = await createJourney("FIRST_PURCHASE");
+    await prisma.lifecycleJourney.update({
+      where: { id: journey.id },
+      data: { requireOptIn: true },
+    });
+    await runCleanCycle(journey.id, [contact.id]);
+    vi.stubEnv("CSRF_SECRET", "lifecycle-test-secret");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+    try {
+      await unsubscribeNewsletter(
+        contact.primaryEmail!,
+        computeUnsubscribeToken(contact.primaryEmail!),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+
+    expect(
+      await prisma.lifecycleEnrollment.findFirstOrThrow({
+        where: { journeyId: journey.id, contactId: contact.id },
+      }),
+    ).toMatchObject({ status: "EXITED", exitReason: "CONSENT_REVOKED" });
+  });
+
+  it("atribuye al último clic anterior a la orden y aísla entrega y clics por recorrido", async () => {
+    const contact = await createContact(true);
+    const journey = await createJourney("SECOND_PURCHASE");
+    const step = await prisma.lifecycleJourneyStep.findFirstOrThrow({
+      where: { journeyId: journey.id, position: 1 },
+    });
+    const enrollment = await prisma.lifecycleEnrollment.create({
+      data: {
+        journeyId: journey.id,
+        contactId: contact.id,
+        currentStepId: step.id,
+        nextRunAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+    const earlyClick = new Date(Date.now() - 3 * 3_600_000);
+    const lateClick = new Date(Date.now() - 3_600_000);
+    const messages = await Promise.all(
+      [earlyClick, lateClick].map((clickedAt, index) =>
+        prisma.lifecycleMessage.create({
+          data: {
+            enrollmentId: enrollment.id,
+            stepId: step.id,
+            contactId: contact.id,
+            dedupKey: `${RUN}-last-before-order-${index}`,
+            resendId: index === 0 ? `${RUN}-delivery` : null,
+            subject: "Mensaje atribuible",
+            ctaUrl: "/productos",
+            scheduledFor: new Date(Date.now() - 5 * 3_600_000),
+            sentAt: new Date(Date.now() - 5 * 3_600_000),
+            clickedAt,
+            status: "SENT",
+            metadata: { targetPath: "/productos" },
+          },
+        }),
+      ),
+    );
+    const order = await createOrder(contact.id, "PAID");
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { createdAt: new Date(Date.now() - 2 * 3_600_000) },
+    });
+    await prisma.emailEvent.create({
+      data: {
+        resendId: `${RUN}-delivery`,
+        type: "email.delivered",
+        to: contact.primaryEmail!,
+        fromEmail: "hola@mail.lucamsshop.com",
+        occurredAt: new Date(),
+      },
+    });
+    const otherJourney = await createJourney("SECOND_PURCHASE");
+    const otherStep = await prisma.lifecycleJourneyStep.findFirstOrThrow({
+      where: { journeyId: otherJourney.id, position: 1 },
+    });
+    const otherEnrollment = await prisma.lifecycleEnrollment.create({
+      data: {
+        journeyId: otherJourney.id,
+        contactId: contact.id,
+        currentStepId: otherStep.id,
+        nextRunAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+    await prisma.lifecycleMessage.create({
+      data: {
+        enrollmentId: otherEnrollment.id,
+        stepId: otherStep.id,
+        contactId: contact.id,
+        dedupKey: `${RUN}-other-journey-click`,
+        subject: "Otro recorrido",
+        ctaUrl: "/productos",
+        scheduledFor: new Date(),
+        sentAt: new Date(),
+        clickedAt: new Date(),
+        status: "SENT",
+        metadata: { targetPath: "/productos" },
+      },
+    });
+
+    await runCleanCycle(journey.id, [contact.id]);
+
+    expect(
+      await prisma.lifecycleMessage.findUniqueOrThrow({ where: { id: messages[0].id } }),
+    ).toMatchObject({ convertedOrderId: order.id, revenueCents: order.total });
+    expect(
+      await prisma.lifecycleMessage.findUniqueOrThrow({ where: { id: messages[1].id } }),
+    ).toMatchObject({ convertedOrderId: null });
+    const metrics = await getLifecycleJourneyMetrics(journey.id);
+    expect(metrics).toMatchObject({
+      messagesSent: 2,
+      messagesClicked: 2,
+      messagesDelivered: 1,
+      conversions: 1,
+      deliveryRate: 0.5,
+    });
+  });
+
+  it("conserva historial al fusionar dos contactos con inscripciones activas", async () => {
+    const survivor = await createContact(true);
+    const absorbed = await createContact(true);
+    const journey = await createJourney("FIRST_PURCHASE");
+    await runCleanCycle(journey.id, [survivor.id, absorbed.id]);
+    const survivorEnrollment = await prisma.lifecycleEnrollment.findFirstOrThrow({
+      where: { journeyId: journey.id, contactId: survivor.id },
+    });
+    const absorbedEnrollment = await prisma.lifecycleEnrollment.findFirstOrThrow({
+      where: { journeyId: journey.id, contactId: absorbed.id },
+    });
+    const actor = await prisma.adminUser.create({
+      data: {
+        supabaseUserId: crypto.randomUUID(),
+        email: `${RUN}-merge-two-admin@lucams.test`,
+        role: "SUPERADMIN",
+      },
+    });
+    const candidate = await prisma.identityMergeCandidate.create({
+      data: {
+        primaryContactId: survivor.id,
+        secondaryContactId: absorbed.id,
+        reasonCode: "SAME_BUYER_PHONE_E164",
+        reasonCodes: ["SAME_BUYER_PHONE_E164"],
+        evidenceJson: { synthetic: true },
+      },
+    });
+
+    const merged = await mergeContactsByHumanApproval({
+      candidateId: candidate.id,
+      survivorContactId: survivor.id,
+      actorAdminId: actor.id,
+      note: "Validación de dos inscripciones activas.",
+    });
+
+    expect(merged.movedCounts.lifecycleEnrollments).toBe(1);
+    expect(
+      await prisma.lifecycleEnrollment.findUniqueOrThrow({ where: { id: survivorEnrollment.id } }),
+    ).toMatchObject({ contactId: survivor.id, status: "ACTIVE" });
+    expect(
+      await prisma.lifecycleEnrollment.findUniqueOrThrow({ where: { id: absorbedEnrollment.id } }),
+    ).toMatchObject({
+      contactId: survivor.id,
+      status: "EXITED",
+      exitReason: "CONTACT_MERGED",
+      cycle: 2,
+    });
+    expect(await prisma.lifecycleMessage.count({ where: { contactId: survivor.id } })).toBe(2);
+    expect(
+      await prisma.lifecycleEnrollment.count({
+        where: { journeyId: journey.id, contactId: survivor.id, status: "ACTIVE" },
+      }),
+    ).toBe(1);
   });
 });

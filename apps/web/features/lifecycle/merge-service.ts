@@ -30,20 +30,20 @@ export async function moveLifecycleEnrollmentsForMergeTx(
   const movedIds: string[] = [];
 
   for (const enrollment of absorbed) {
-    const key = `${enrollment.journeyId}:${enrollment.cycle}`;
     const active = enrollment.status === "ACTIVE";
-    if (active && activeJourneys.has(enrollment.journeyId)) {
+    const closeAsDuplicate = active && activeJourneys.has(enrollment.journeyId);
+    const resultingStatus = closeAsDuplicate ? "EXITED" : enrollment.status;
+    if (closeAsDuplicate) {
       await tx.lifecycleEnrollment.update({
         where: { id: enrollment.id },
         data: { status: "EXITED", exitReason: "CONTACT_MERGED", completedAt: now },
       });
-      continue;
     }
-    if (survivorCycles.has(key) && !active) continue;
 
-    const nextCycle = survivorCycles.has(key)
-      ? (nextCycles.get(enrollment.journeyId) ?? enrollment.cycle) + 1
-      : enrollment.cycle;
+    let nextCycle = enrollment.cycle;
+    while (survivorCycles.has(`${enrollment.journeyId}:${nextCycle}`)) {
+      nextCycle = Math.max(nextCycles.get(enrollment.journeyId) ?? 0, nextCycle) + 1;
+    }
     await tx.lifecycleEnrollment.update({
       where: { id: enrollment.id },
       data: { contactId: survivorContactId, cycle: nextCycle },
@@ -55,13 +55,13 @@ export async function moveLifecycleEnrollmentsForMergeTx(
     survivorCycles.set(`${enrollment.journeyId}:${nextCycle}`, {
       journeyId: enrollment.journeyId,
       cycle: nextCycle,
-      status: enrollment.status as LifecycleEnrollmentStatus,
+      status: resultingStatus as LifecycleEnrollmentStatus,
     });
     nextCycles.set(
       enrollment.journeyId,
       Math.max(nextCycles.get(enrollment.journeyId) ?? 0, nextCycle),
     );
-    if (active) activeJourneys.add(enrollment.journeyId);
+    if (active && !closeAsDuplicate) activeJourneys.add(enrollment.journeyId);
     movedIds.push(enrollment.id);
   }
   return movedIds;

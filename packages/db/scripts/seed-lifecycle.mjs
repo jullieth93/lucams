@@ -10,6 +10,53 @@ const journeys = JSON.parse(
   readFileSync(new URL("../lifecycle-journeys.json", import.meta.url), "utf8"),
 );
 
+const legacyCartSteps = [
+  {
+    journeyKey: "first-purchase",
+    legacySubject: "Tu carrito te espera",
+    nextSubject: "Tu primer producto está a un paso",
+    legacyPosition: 4,
+    nextPosition: 3,
+  },
+  {
+    journeyKey: "high-intent",
+    legacySubject: "Revisa tu selección cuando quieras",
+    nextSubject: "Encuentra el formato que sí te representa",
+    legacyPosition: 3,
+    nextPosition: 2,
+  },
+];
+
+async function reconcileLegacySeed(key) {
+  if (key === "b2b-follow-up") {
+    await prisma.lifecycleJourney.updateMany({
+      where: { key, status: "DRAFT", version: 1, inactivityDays: 0 },
+      data: { inactivityDays: 2 },
+    });
+    return;
+  }
+  const legacy = legacyCartSteps.find((item) => item.journeyKey === key);
+  if (!legacy) return;
+  const removed = await prisma.lifecycleJourneyStep.deleteMany({
+    where: {
+      journey: { key, status: "DRAFT", version: 1 },
+      condition: "HAS_ABANDONED_CART",
+      subject: legacy.legacySubject,
+      messages: { none: {} },
+      enrollments: { none: {} },
+    },
+  });
+  if (removed.count === 0) return;
+  await prisma.lifecycleJourneyStep.updateMany({
+    where: {
+      journey: { key, status: "DRAFT", version: 1 },
+      subject: legacy.nextSubject,
+      position: legacy.legacyPosition,
+    },
+    data: { position: legacy.nextPosition },
+  });
+}
+
 try {
   for (const journey of APPLY ? journeys : []) {
     await prisma.lifecycleJourney.upsert({
@@ -44,6 +91,7 @@ try {
         },
       },
     });
+    await reconcileLegacySeed(journey.key);
   }
   console.log(
     APPLY

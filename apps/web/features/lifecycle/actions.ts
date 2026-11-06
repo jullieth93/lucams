@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { recordAdminAction } from "@/lib/admin-audit";
@@ -19,8 +19,10 @@ import {
   LifecycleJourneyIdSchema,
   LifecycleJourneySchema,
   LifecycleMessageRetrySchema,
+  LifecycleSettingsSchema,
   LifecycleTestSchema,
 } from "./schemas";
+import { saveLifecycleSettings } from "./settings";
 import type { LifecycleJourneyInput } from "./types";
 
 export type LifecycleActionResult = {
@@ -147,7 +149,14 @@ export async function sendLifecycleTestAction(input: unknown): Promise<Lifecycle
       entityId: parsed.data.journeyId,
       metadata: { stepId: parsed.data.stepId ?? null },
     });
-    return { ok: true, message: "Prueba enviada a tu correo.", id: resendId };
+    return {
+      ok: true,
+      message:
+        resendId === "dry-run"
+          ? "Contenido validado en modo de prueba; no se envió ningún correo."
+          : "Prueba enviada a tu correo.",
+      id: resendId,
+    };
   } catch (error) {
     return actionFailure(error);
   }
@@ -189,6 +198,33 @@ export async function retryLifecycleMessageAction(input: unknown): Promise<Lifec
     });
     revalidatePath(`/admin/lifecycle/${message.enrollment.journeyId}`);
     return { ok: true, message: "El mensaje quedó listo para un nuevo intento." };
+  } catch (error) {
+    return actionFailure(error);
+  }
+}
+
+export async function saveLifecycleSettingsAction(input: unknown): Promise<LifecycleActionResult> {
+  const session = await requireAdminAction({ capability: "lifecycle:manage" });
+  const parsed = LifecycleSettingsSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Revisa el interruptor y el límite global." };
+  try {
+    await requireRecentMfa();
+    await saveLifecycleSettings(parsed.data, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "lifecycle.settings_update",
+      entityType: "SystemSetting",
+      entityId: "lifecycle",
+      metadata: parsed.data,
+    });
+    updateTag("cms");
+    revalidatePath("/admin/lifecycle");
+    return {
+      ok: true,
+      message: parsed.data.enabled
+        ? "Motor general activado y límite global actualizado."
+        : "Motor general pausado. No se harán nuevas inscripciones ni ejecuciones.",
+    };
   } catch (error) {
     return actionFailure(error);
   }

@@ -5,7 +5,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildCsp, isOriginAllowed, getAllowedOrigins, SECURITY_HEADERS } from "./security-headers";
+import {
+  buildCsp,
+  isOriginAllowed,
+  getAllowedOrigins,
+  isSandboxedPreviewPath,
+  SECURITY_HEADERS,
+} from "./security-headers";
 
 describe("buildCsp — prod (nonce + 'self', sin strict-dynamic)", () => {
   const csp = buildCsp("NONCE123", true);
@@ -189,6 +195,14 @@ describe("isOriginAllowed — CORS allowlist", () => {
     expect(isOriginAllowed("http://notlocalhost:4000", true)).toBe(false);
     expect(isOriginAllowed("http://localhost:4000.evil.com", true)).toBe(false);
     expect(isOriginAllowed("http://localhost", true)).toBe(false); // sin puerto explícito
+  });
+});
+
+describe("isSandboxedPreviewPath", () => {
+  it("incluye Lifecycle sin abrir otras rutas administrativas", () => {
+    expect(isSandboxedPreviewPath("/admin/lifecycle/cuid123/preview")).toBe(true);
+    expect(isSandboxedPreviewPath("/admin/lifecycle/cuid123")).toBe(false);
+    expect(isSandboxedPreviewPath("/admin/lifecycle")).toBe(false);
   });
 });
 

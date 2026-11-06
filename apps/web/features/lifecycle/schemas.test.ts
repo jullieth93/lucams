@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateStepCondition } from "./eligibility";
 import { LifecycleJourneyStepSchema } from "./schemas";
+import { isLifecycleDryRun } from "./settings";
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("lifecycle step rules", () => {
   it("evalúa todas las condiciones de paso", () => {
@@ -49,5 +52,15 @@ describe("lifecycle step rules", () => {
     expect(LifecycleJourneyStepSchema.safeParse({ ...base, ctaPath: "/\\evil.test" }).success).toBe(
       false,
     );
+  });
+
+  it("fuerza DRY_RUN en Preview y admite activación explícita en otros ambientes", () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("LIFECYCLE_DRY_RUN", "0");
+    expect(isLifecycleDryRun()).toBe(true);
+    vi.stubEnv("VERCEL_ENV", "production");
+    expect(isLifecycleDryRun()).toBe(false);
+    vi.stubEnv("LIFECYCLE_DRY_RUN", "true");
+    expect(isLifecycleDryRun()).toBe(true);
   });
 });

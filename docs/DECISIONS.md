@@ -641,11 +641,11 @@
 - **Decisión:** Colapsar intros largas a 2 líneas en `<640 px` (texto íntegro en DOM para SEO) y normalizar al `blur` en `use-debounced-commit`.
 - **Motivo:** Prioriza productos en móvil y evita valores sin formatear.
 
-### ADR-187 — CMS v2 de 3 capas (`CmsPage` → `CmsSection` → `CmsField` + `CmsListItem`, 166 campos con paridad AST)
+### ADR-187 — CMS v2 de 3 capas (`CmsPage` → `CmsSection` → `CmsField` + `CmsListItem`, 168 campos con paridad AST)
 
 - **Estado:** `Vigente`
-- **Decisión:** Organizar contenidos en **3 capas**: **(1)** ajustes maestros `global` + constantes legales (`consumer-law.ts` con `resolveCmsTokens()`); **(2)** contenido editorial, comercial, SEO y legal en `/admin/contenido` (**9 contenedores, 29 secciones y 166 campos: 105 `BLOCK` + 61 `SETTING`** + `CmsListItem` en `cms-site-map.mjs`); **(3)** micro-UI funcional en TS (`studio-texts.ts`, `auth-texts.ts`, `account-texts.ts`), leído en **1 consulta cacheada** (`cms-snapshot-v2`, tag `cms`) y verificado por AST en `cms-sitemap-parity.test.ts`.
-- **Motivo:** Cero inflación de llaves técnicas en DB, Live Edit real y paridad `166/166` garantizada en CI ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)).
+- **Decisión:** Organizar contenidos en **3 capas**: **(1)** ajustes maestros `global` + constantes legales (`consumer-law.ts` con `resolveCmsTokens()`); **(2)** contenido editorial, comercial, SEO y legal en `/admin/contenido` (**9 contenedores, 29 secciones y 168 campos: 105 `BLOCK` + 63 `SETTING`** + `CmsListItem` en `cms-site-map.mjs`); **(3)** micro-UI funcional en TS (`studio-texts.ts`, `auth-texts.ts`, `account-texts.ts`), leído en **1 consulta cacheada** (`cms-snapshot-v2`, tag `cms`) y verificado por AST en `cms-sitemap-parity.test.ts`.
+- **Motivo:** Cero inflación de llaves técnicas en DB, Live Edit real y paridad `168/168` garantizada en CI ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)).
 
 ### ADR-192 — Confirmaciones administrativas de marca (`useAdminConfirm`)
 
@@ -808,7 +808,7 @@
 ### ADR-198 — Lifecycle Journeys configurable con consentimiento y atribución única
 
 - **Estado:** `Vigente`
-- **Decisión:** Implementar `/admin/lifecycle` como motor de recorridos por comportamiento con cuatro modelos (`LifecycleJourney`, `LifecycleJourneyStep`, `LifecycleEnrollment`, `LifecycleMessage`), cinco disparadores y cinco configuraciones iniciales siempre en `DRAFT`. La ejecución cada 15 minutos usa PostgreSQL para deduplicar inscripciones y mensajes, consentimiento vigente por aceptación no revocada, salidas por compra/resultado B2B/baja/contacto inactivo, silencio horario Colombia, límites por contacto, cooldown, reintentos acotados y conservación del contenido y enlace de cada envío. Activar, probar y reintentar exige RBAC `lifecycle:manage` y MFA reciente. La atribución es de último clic en 30 días: una orden pagada solo puede pertenecer a un mensaje mediante `LifecycleMessage.convertedOrderId` único.
+- **Decisión:** Implementar `/admin/lifecycle` como motor de recorridos por comportamiento con cuatro modelos (`LifecycleJourney`, `LifecycleJourneyStep`, `LifecycleEnrollment`, `LifecycleMessage`), cinco disparadores y cinco configuraciones iniciales siempre en `DRAFT`. La ejecución cada 15 minutos usa PostgreSQL para deduplicar inscripciones/mensajes y reservar el cupo diario global por contacto, además del tope por recorrido. El consentimiento `NEWSLETTER` vigente se verifica por versión y revocación posterior; baja, rebote y queja suprimen de inmediato. Hay interruptor general, silencio horario Colombia, cooldown, salidas por compra/resultado B2B/contacto inactivo, delegación de carrito/reposición a sus flujos existentes, tareas CRM B2B idempotentes, reintentos acotados y conservación del contenido y enlace. Activar, probar, reintentar y cambiar el control general exige RBAC `lifecycle:manage` y MFA reciente. STG usa `DRY_RUN` sin Resend. La atribución es de último clic anterior a la orden en 30 días: una orden pagada solo puede pertenecer a un mensaje mediante `LifecycleMessage.convertedOrderId` único; entregas y rebotes se miden por `EmailEvent.resendId`.
 - **Motivo:** Automatizar activación, cuidado posventa, recompra, reactivación y seguimiento B2B sin introducir un proveedor externo, sin enviar promociones sin opt-in y sin inflar conversiones o duplicar correos. La activación siempre es una decisión humana, no un efecto de la semilla o del despliegue ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md)).
 
 ### ADR-006 — Atención por WhatsApp vía enlaces `wa.me`

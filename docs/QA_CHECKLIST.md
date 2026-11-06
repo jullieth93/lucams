@@ -251,7 +251,7 @@
 - [ ] «Publicar» invalida caché (`updateTag`) y refleja el cambio de inmediato en el storefront
 - [ ] «Salir» (`POST /api/admin/cms/edit-mode`) regresa a la misma ruta pública sin modo edición
 - [ ] Visitante anónimo NO descarga JavaScript adicional del editor visual
-- [ ] `/admin/contenido` opera como consola completa de las 3 capas (`9` contenedores, `29` secciones, `166` campos)
+- [ ] `/admin/contenido` opera como consola completa de las 3 capas (`9` contenedores, `29` secciones, `168` campos)
 - [ ] Versionado inmutable: cada guardado crea registro en `CmsFieldVersion`
 - [ ] Revertir a una versión previa funciona desde `/admin/contenido/campos/[id]`
 - [ ] Edición de ajustes globales funciona en `/admin/contenido/configuracion`
@@ -275,6 +275,17 @@
 - [ ] `/admin/carritos/[id]`: vista previa real del correo en iframe (con token demostrativo; el token real solo se emite al despachar el correo)
 - [ ] Envío manual individual y masivo respetan el interruptor maestro y la ventana anti-duplicación, dejando traza `cart_recovery.reminder.send` / `.bulk_send` en `AdminActionLog`
 - [ ] `/admin/carritos/configuracion` (solo `SUPERADMIN`): interruptor global, modo `automatic`/`manual`, `idleHours`, `maxReminders` e `intervalHours` aplican en la siguiente ejecución del cron sin redespliegue; en modo `manual` el cron responde `ok` con `skippedReason` sin enviar correos
+
+### Lifecycle Journeys
+
+- [ ] `/admin/lifecycle` muestra las cinco rutas en `DRAFT` y exige `lifecycle:manage` + MFA para activar, probar, reintentar y cambiar el control general
+- [ ] Interruptor general y límite diario global se guardan con auditoría e invalidación `cms`; apagar el motor detiene inscripciones y ejecuciones sin borrar historial
+- [ ] Crear/editar/reordenar pasos conserva posiciones consecutivas, versionado y mensajes históricos; audiencia y exclusiones coinciden con la ejecución
+- [ ] Cada paso abre una previsualización sandbox con su CTA; la prueba en STG responde `DRY_RUN` y no crea correo ni tarea real
+- [ ] Consentimiento por versión, baja, rebote y queja suprimen inmediatamente; carrito y reposición salen delegados a sus flujos existentes sin duplicados
+- [ ] Dos workers no duplican inscripciones/mensajes ni superan el límite global; reintentos conservan contenido, token e idempotency key
+- [ ] Segunda compra exige una sola compra histórica; una orden posterior cierra el ciclo; B2B crea una tarea idempotente aun sin correo
+- [ ] Métricas separan aceptación, entrega, rebote, queja, clic, conversión e ingreso; una orden solo se atribuye al último clic anterior dentro de 30 días
 
 ---
 

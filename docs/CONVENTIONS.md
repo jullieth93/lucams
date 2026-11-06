@@ -102,7 +102,7 @@
 │   ├── lib/                               # Infraestructura transversal (db, datetime, money, cms, errors, logger…)
 │   └── proxy.ts                           # Proxy HTTP de Next.js 16 (reemplaza middleware.ts)
 ├── packages/db/                           # Paquete workspace @lucams/db
-│   ├── prisma/schema.prisma               # 77 modelos y 31 enums + migrations/
+│   ├── prisma/schema.prisma               # 77 modelos y 33 enums + migrations/
 │   ├── legal-content/                     # Fuentes Markdown canónicas del paquete legal (Versión 3)
 │   ├── src/index.ts                       # Singleton PrismaClient con pool acotado + runWithDbRetry
 │   └── scripts/                           # Semillas, auditorías y guardas en scripts/lib/
@@ -730,7 +730,7 @@ export async function buildCanvasDerivative(input: Buffer, resize: ResizeOptions
 | Capa                                                     | Propósito y alcance                                                                                                                                                    | Dónde vive y cómo se gobierna                                                                                                                |
 | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Capa 1 — Parámetros maestros y ley**                   | Settings globales `UPPER_SNAKE_CASE` (correos, tiempos de despacho, cobertura, versión legal), garantía por producto y plazos normativos interpolados con `{{tokens}}` | Configuración global (`SUPERADMIN`), `/admin/{envios,fidelizacion,carritos}` + `apps/web/lib/consumer-law.ts` y `apps/web/lib/cms-tokens.ts` |
-| **Capa 2 — Contenido editorial, comercial, SEO y legal** | **9 contenedores, 29 secciones y 166 campos** (`105 BLOCK` con flujo borrador/publicación/programación + `61 SETTING` de aplicación inmediata) y listas `CmsListItem`  | `/admin/contenido` definido declarativamente en `packages/db/scripts/cms-site-map.mjs` (más las 32 plantillas en `/admin/email-templates`)   |
+| **Capa 2 — Contenido editorial, comercial, SEO y legal** | **9 contenedores, 29 secciones y 168 campos** (`105 BLOCK` con flujo borrador/publicación/programación + `63 SETTING` de aplicación inmediata) y listas `CmsListItem`  | `/admin/contenido` definido declarativamente en `packages/db/scripts/cms-site-map.mjs` (más las 32 plantillas en `/admin/email-templates`)   |
 | **Capa 3 — Micro-UI funcional**                          | Labels de botones, `aria-label`, `placeholder`, mensajes de validación Zod y textos interactivos de Estudio, Auth, Checkout y Mi Cuenta                                | Tipados directamente en código (`studio-texts.ts`, `auth-texts.ts`, `account-texts.ts`) — **prohibido crear claves CMS para micro-UI**       |
 
 > **Allowlist fail-closed en `/api/cms/settings`:** `PUBLIC_SETTING_KEYS` en `apps/web/lib/cms.ts` expone al navegador únicamente las claves públicas explícitamente autorizadas; ajustes internos como `PICKUP_*`, `BUSINESS_NIT`, `ALERT_EMAIL` o `PRIVACY_POLICY_VERSION` jamás salen por HTTP público.
@@ -771,7 +771,7 @@ export async function buildCanvasDerivative(input: Buffer, resize: ResizeOptions
    />
    ```
    Para metadatos SEO de páginas estáticas, usa `getPageSeo("seo.page.<slug>", { title, description })` de `@/lib/cms-tokens`.
-3. **Paso 3 — Verificar paridad AST (`166/166`):** ejecuta **`make audit-content`** (`apps/web/lib/cms-sitemap-parity.test.ts`). El test analiza el AST TypeScript de `apps/web` y falla si una clave se lee sin existir en `SITE_MAP` o si se declara en `SITE_MAP` sin lector en `apps/web` (única excepción legacy de solo lectura: `LUCAMS_SHIPPING_LOCALITIES`).
+3. **Paso 3 — Verificar paridad AST (`168/168`):** ejecuta **`make audit-content`** (`apps/web/lib/cms-sitemap-parity.test.ts`). El test analiza el AST TypeScript de `apps/web` y falla si una clave se lee sin existir en `SITE_MAP` o si se declara en `SITE_MAP` sin lector en `apps/web` (única excepción legacy de solo lectura: `LUCAMS_SHIPPING_LOCALITIES`).
 4. **Paso 4 — Sincronizar base de datos e invalidar caché:** ejecuta `make migrate-cms-v2` (upsert aditivo que nunca pisa ediciones publicadas en DB) o `node scripts/sync-and-prune-cms-v2.mjs --apply` cuando también retiras claves obsoletas. Si corriste scripts directos contra una base remota, pulsa «Actualizar caché de contenido» en `/admin/contenido` ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)).
 
 ### Sincronización obligatoria de los 8 documentos legales (`ADR-080`)

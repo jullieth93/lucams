@@ -33,7 +33,7 @@
 
 | Documento                                  | Qué documenta                                                                                                                                         |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)       | Estructura del monorepo, los **77 modelos y 31 enums** de Prisma, rutas App Router, RBAC (8 roles × 35 capacidades), RLS y caché                      |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)       | Estructura del monorepo, los **77 modelos y 33 enums** de Prisma, rutas App Router, RBAC (8 roles × 35 capacidades), RLS y caché                      |
 | [`OPERATIONS.md`](OPERATIONS.md)           | **Matriz maestra de variables de entorno**, ciclo `feature/* → develop → production`, homologación STG↔PRD, backups/DR y runbooks                     |
 | [`SECURITY.md`](SECURITY.md)               | Sesiones Auth/admin, MFA `aal2`, CSP con nonce, CORS, rate limiting en Postgres, clasificación PII, guardarraíles anti-IDOR e IRP                     |
 | [`COMPLIANCE.md`](COMPLIANCE.md)           | Estatuto del Consumidor (Ley 1480 y Ley 2439), Ley 1581 (Hábeas Data), paquete legal **Versión 3** (8 documentos + `{{tokens}}`) y régimen tributario |
@@ -54,7 +54,7 @@ Especificaciones funcionales y técnicas completas de cada subsistema de la apli
 
 | Documento                                                                        | Subsistema                                                                                                                                                                                              |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)                       | Catálogo jerárquico, variantes y gemelas `-NOMAG`, escalas mayoristas, **CMS v2 de 3 capas** (`166` campos + paridad AST), Live Edit y APIs `/api/catalog\|cms`                                         |
+| [`domains/catalog-and-cms.md`](domains/catalog-and-cms.md)                       | Catálogo jerárquico, variantes y gemelas `-NOMAG`, escalas mayoristas, **CMS v2 de 3 capas** (`168` campos + paridad AST), Live Edit y APIs `/api/catalog\|cms`                                         |
 | [`domains/studio-and-production.md`](domains/studio-and-production.md)           | Estudio Konva 2D + **7 escenas 3D**, `LetterSet`/`NameEditor`, auto-save `clientRev`, recuperación invitado+cliente, cola `RenderJob` 300 DPI, taller ZIP y retención                                   |
 | [`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md) | Carrito resiliente, checkout en 3 pasos, direcciones urbanas/rurales DANE/MinTIC, sello HMAC de fletes, saga `Order` (`LCM-YYYY-NNNN`), riesgo/conciliación COD y costeo por receta                     |
 | [`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md)               | Grafo CRM `Contact` 360° (`isStaff`, `selfDealing`, fusión asistida), bandeja `/admin/hoy`, RFM/LTV, embudo B2B `/empresas-y-eventos` → `Opportunity` → `Quote`, puntos, referidos y Lifecycle Journeys |
@@ -96,7 +96,7 @@ webhooks) **más checklists paso a paso de configuración en cada panel externo*
 Cada cambio de código o de documentación debe superar las puertas automáticas antes de entregarse:
 
 - `make check` — valida formato Prettier (incluyendo todos los `.md`), `typecheck`, `lint`, guardas
-  de scripts, ausencia total de voseo y paridad AST `166/166` del mapa CMS (`make audit-content`).
+  de scripts, ausencia total de voseo y paridad AST `168/168` del mapa CMS (`make audit-content`).
 - `make verify-db` — certifica `0` deriva entre migraciones Prisma y SQL de Supabase más los `5/5`
   invariantes de postura RLS y privilegios (`verify-supabase-posture.mjs`).
 - `pnpm test` — ejecuta la suite unitaria y de integración con cobertura gateada en `apps/web`.
