@@ -43,7 +43,12 @@ test.afterAll(async () => {
 test("ayuda contextual, onboarding, recorrido, búsqueda y feedback funcionan de punta a punta", async ({
   page,
 }) => {
-  await loginAdminWithTotp(page, { email: EMAIL, password: PASSWORD, totpSecret });
+  await loginAdminWithTotp(page, {
+    email: EMAIL,
+    password: PASSWORD,
+    totpSecret,
+    dismissOnboarding: false,
+  });
 
   await page.getByRole("button", { name: "No mostrar automáticamente esta ruta" }).click();
   await expect(
