@@ -444,9 +444,10 @@ Sigue esta lista al aprovisionar un entorno nuevo o auditar la configuración pr
    - Copia su identificador y configúralo en `RESEND_NEWSLETTER_SEGMENT_ID` en Vercel.
 4. **Configurar Webhook Svix (`RESEND_WEBHOOK_SECRET`)**:
    - En **Webhooks → Add Webhook**, define el Endpoint URL `https://lucamsshop.com/api/webhooks/resend`.
-   - Suscribe los eventos del grupo de correo: `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.complained`, `email.opened`, `email.clicked`.
+   - Suscribe `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.complained`, `email.opened`, `email.clicked` y `email.failed`; nunca uses el grupo global `emails`.
    - Copia el **Signing Secret** (`whsec_...`) y guárdalo en `RESEND_WEBHOOK_SECRET` en Vercel (`Production`).
    - Envía un evento de prueba desde el panel de Resend y verifica que responda `200 {"ok":true}`.
+   - En STG, crea un webhook separado con endpoint `https://lucams-shop-git-develop-jullieth93s-projects.vercel.app/api/webhooks/resend?x-vercel-protection-bypass=$VERCEL_BYPASS_TOKEN` y los mismos ocho eventos. Guarda su `signing_secret` en `RESEND_WEBHOOK_SECRET` de Vercel Preview (`develop`), redeploya y valida con un evento firmado `email.delivered` que se elimina después. El bypass no sustituye la firma Svix.
 5. **Vincular SMTP y plantillas OTP en Supabase Auth**:
    - Ejecuta desde tu máquina con el token de administración de Supabase:
      ```bash

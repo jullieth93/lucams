@@ -37,7 +37,7 @@
   - `uptime-monitor-prd` (cada 10 min) corre **solo en STG** (monitorea externamente a PRD).
   - Los **5 crons de correo** (`alerts`, `back-in-stock`, `cart-recovery`, `daily-summary`,
     `review-request`) están apagados en STG por `CRON_JOBS_DISABLED` y activos **solo en PRD**.
-  - `lucams-lifecycle` corre en STG y PRD, pero STG queda forzado a `DRY_RUN` sin Resend ni tareas.
+  - `lucams-lifecycle` y el webhook de Resend operan en STG y PRD; STG usa `DRY_RUN` y firma Svix.
   - `AVEONLINE_WEBHOOK_SECRET` existe solo en PRD; `CRON_JOBS_DISABLED` y `VERCEL_BYPASS_TOKEN`
     existen solo en STG.
 - **Datos exclusivos de prueba:** el cupón `LOCURA` vive únicamente en STG y nunca pasa a PRD.
