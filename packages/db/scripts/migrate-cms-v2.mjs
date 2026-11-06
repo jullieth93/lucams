@@ -4,7 +4,7 @@
  * ORIGEN: este script migró CmsBlock + SiteSetting (legacy) al modelo v2; tras
  * el drop de las tablas legacy y el aterrizaje a la arquitectura de 3 capas,
  * queda como herramienta canónica de UPSERT del site map (9 contenedores,
- * 29 secciones, 166 campos reales: 105 BLOCK + 61 SETTING).
+ * 29 secciones, 168 campos reales: 105 BLOCK + 63 SETTING).
  *
  * Idempotente y SEGURO de re-ejecutar:
  *   - Estructura (páginas/secciones): upsert completo (títulos, orden…).

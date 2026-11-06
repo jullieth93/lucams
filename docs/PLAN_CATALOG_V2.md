@@ -1193,7 +1193,7 @@ model CouponUsage {
 
 ### [8.10] Estándar UX no-técnico en todas las pantallas `/admin` (2026-05-15)
 
-> **Estado vigente en código:** reforzado en todo `/admin` con formateo canónico de fechas en `America/Bogota` (`apps/web/lib/datetime.ts`), confirmaciones unificadas de marca (`useAdminConfirm`), edición visual en el sitio del CMS v2 (`166` campos) y previsualización aislada en `/admin/email-templates`.
+> **Estado vigente en código:** reforzado en todo `/admin` con formateo canónico de fechas en `America/Bogota` (`apps/web/lib/datetime.ts`), confirmaciones unificadas de marca (`useAdminConfirm`), edición visual en el sitio del CMS v2 (`168` campos) y previsualización aislada en `/admin/email-templates`.
 
 - **Decisión**: TODAS las pantallas administrativas aplican de forma consistente el estándar de claridad para perfiles no programadores:
   - **Etiquetas en español llano** (cero jerga cruda): "Cuerpo del texto" en lugar de "MD body"; "Volver a esta versión" en lugar de "Revert".

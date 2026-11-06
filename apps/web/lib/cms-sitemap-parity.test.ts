@@ -469,6 +469,6 @@ describe("CMS v2 — paridad exacta entre apps/web y cms-site-map.mjs", () => {
     }
 
     expect(pages.length).toBe(9);
-    expect(fieldKeys.size).toBe(166);
+    expect(fieldKeys.size).toBe(168);
   });
 });

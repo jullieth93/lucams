@@ -8,7 +8,7 @@
 - **Tienda activa (`ADR-077`):** `lucamsshop.com` vende en producción en modo **`full`**
   (`NEXT_PUBLIC_STORE_MODE=full`) con pagos Wompi, contraentrega y envíos Aveonline + Envío Lucams Bogotá.
 - **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js 16, TS strict, Tailwind v4, shadcn/ui) y
-  `packages/db` (**77 modelos Prisma**, **31 enums**, **97 migraciones Prisma** + **56 SQL Supabase**
+  `packages/db` (**77 modelos Prisma**, **33 enums**, **97 migraciones Prisma** + **56 SQL Supabase**
   con RLS y event trigger `REVOKE` automático `049` en el 100 % de las tablas).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) bajo el ruleset
   `protect-ramas-criticas` con PR obligatorio y **5 checks requeridos** (`Typecheck + Lint + Build`,
@@ -28,7 +28,7 @@
 ### Excepciones deliberadas de homologación (`ADR-099`, `ADR-121`, `ADR-126`)
 
 - **Catálogo y esquema (`scripts/diag-stg/homologacion.sh`):**
-  migraciones, categorías, ocasiones, plantillas, lettersets, redirects y los `166/166` campos CMS
+  migraciones, categorías, ocasiones, plantillas, lettersets, redirects y los `168/168` campos CMS
   están homologados, incluidas las 22 variantes sin imán (`-NOMAG`) de productos activos.
   - `nombre-personalizado` permanece archivado en PRD (`set-fotoimanes-circulares` y
     `set-fotoimanes-corazon` están archivados en los 3 ambientes).
@@ -37,6 +37,7 @@
   - `uptime-monitor-prd` (cada 10 min) corre **solo en STG** (monitorea externamente a PRD).
   - Los **5 crons de correo** (`alerts`, `back-in-stock`, `cart-recovery`, `daily-summary`,
     `review-request`) están apagados en STG por `CRON_JOBS_DISABLED` y activos **solo en PRD**.
+  - `lucams-lifecycle` corre en STG y PRD, pero STG queda forzado a `DRY_RUN` sin Resend ni tareas.
   - `AVEONLINE_WEBHOOK_SECRET` existe solo en PRD; `CRON_JOBS_DISABLED` y `VERCEL_BYPASS_TOKEN`
     existen solo en STG.
 - **Datos exclusivos de prueba:** el cupón `LOCURA` vive únicamente en STG y nunca pasa a PRD.
@@ -51,8 +52,8 @@
 - 16 ocasiones dinámicas, `GlobalSearch` difuso (`shouldFilter={false}`), PDP con escalas mayoristas
   (`WholesaleTier`) y lightbox con zoom compartido (`components/preview-zoom.ts`), 404 HTTP real
   sobre slugs cacheados, feed `GET /feeds/google-merchant.xml` y APIs `/api/catalog|cms`.
-- **CMS v2 de 3 capas (`ADR-187`):** `9` contenedores, `29` secciones y `166` campos
-  (`105 BLOCK + 61 SETTING`) con paridad AST `166/166` en CI y tokens legales `{{*}}`
+- **CMS v2 de 3 capas (`ADR-187`):** `9` contenedores, `29` secciones y `168` campos
+  (`105 BLOCK + 63 SETTING`) con paridad AST `168/168` en CI y tokens legales `{{*}}`
   (`lib/consumer-law.ts`).
 
 ### Estudio 2D/3D y Producción 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md))
@@ -96,12 +97,12 @@
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
     consentimiento + embudo `FunnelEventDaily`, **20 procesos programados** y **backups diarios GPG de
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.
-- **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` y ayuda contextual en todo
-  el panel con **44 guías**, búsqueda RBAC, 8 onboarding y recorridos opcionales con progreso y
-  retroalimentación persistidos por usuario; cobertura automática de todas las páginas del Admin.
-- **Lifecycle Journeys (`ADR-198`):** `/admin/lifecycle` configura recorridos por comportamiento
-  con consentimiento, horarios, límites, reintentos y atribución a 30 días. Las cinco rutas iniciales
-  están **en borrador**; activar, probar o reintentar exige MFA reciente.
+- **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` con **44 guías**, búsqueda
+  RBAC, 8 onboarding y recorridos opcionales; progreso/retroalimentación por usuario y cobertura Admin.
+- **Lifecycle Journeys (`ADR-198`):** `/admin/lifecycle` con consentimiento versionado, interruptor
+  y límites global/por recorrido, horarios Colombia, supresión, delegación, tareas B2B, entregabilidad
+  y atribución a 30 días. STG ejecuta `DRY_RUN`. Las 5 rutas están **en borrador** y las acciones
+  sensibles exigen MFA reciente.
 
 ## Pendientes abiertos reales
 

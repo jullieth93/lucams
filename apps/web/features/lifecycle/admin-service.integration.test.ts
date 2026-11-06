@@ -110,4 +110,29 @@ describe.skipIf(!hasDb)("lifecycle admin service", { timeout: 30_000 }, () => {
       expect.objectContaining({ to: "admin@lucams.test", subject: "[PRUEBA] Segundo paso" }),
     );
   });
+
+  it("valida inactividad mínima y no envía pruebas en modo STG", async () => {
+    await expect(
+      createLifecycleJourney(
+        { ...input, key: `${RUN}-invalid`, trigger: "REACTIVATION", inactivityDays: 0 },
+        "admin-test",
+      ),
+    ).rejects.toThrow("La reactivación exige al menos un día de inactividad.");
+    const journey = await createLifecycleJourney({ ...input, key: `${RUN}-dry` }, "admin-test");
+    const detailed = await getLifecycleJourney(journey.id);
+    sendEmailMock.mockReset();
+    vi.stubEnv("VERCEL_ENV", "preview");
+    let result;
+    try {
+      result = await sendLifecycleTest(journey.id, detailed!.steps[0].id, {
+        email: "admin@lucams.test",
+        fullName: "Admin Test",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(result).toBe("dry-run");
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
 });

@@ -4,8 +4,6 @@ import type { LifecycleJourneyStep, LifecycleMessage, Prisma } from "@lucams/db"
 import {
   getEmailOverrides,
   interpolateOverrideTokens,
-  replaceHeading,
-  replacePreheader,
   type EmailOverrideMap,
 } from "@/features/emails/overrides";
 import {
@@ -61,14 +59,13 @@ export async function renderStoredLifecycleMessage(
     productNames: input.productNames,
     unsubscribeUrl: input.unsubscribeUrl,
   };
-  const rendered = await lifecycleMessageEmail(data);
-  let { subject, html } = rendered;
-  if (overrides.SUBJECT) subject = interpolateOverrideTokens(overrides.SUBJECT, data);
-  if (overrides.PREHEADER) {
-    html = replacePreheader(html, interpolateOverrideTokens(overrides.PREHEADER, data));
-  }
-  if (overrides.HEADING) {
-    html = replaceHeading(html, interpolateOverrideTokens(overrides.HEADING, data));
-  }
-  return { ...rendered, subject, html };
+  const effectiveData: LifecycleMessageData = {
+    ...data,
+    subject: overrides.SUBJECT ? interpolateOverrideTokens(overrides.SUBJECT, data) : data.subject,
+    heading: overrides.HEADING ? interpolateOverrideTokens(overrides.HEADING, data) : data.heading,
+    preheader: overrides.PREHEADER
+      ? interpolateOverrideTokens(overrides.PREHEADER, data)
+      : data.preheader,
+  };
+  return lifecycleMessageEmail(effectiveData);
 }

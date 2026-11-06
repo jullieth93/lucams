@@ -68,8 +68,8 @@ Lucams separa estrictamente el contenido administrable, los encabezados de corre
 
 ```mermaid
 flowchart LR
-  subgraph L1["Capa 1: Contenido y Ajustes en BD (166 campos)"]
-    P["CmsPage (9) -> CmsSection (29)"] --> F["CmsField (105 BLOCK + 61 SETTING)"]
+  subgraph L1["Capa 1: Contenido y Ajustes en BD (168 campos)"]
+    P["CmsPage (9) -> CmsSection (29)"] --> F["CmsField (105 BLOCK + 63 SETTING)"]
     F --> V["CmsFieldVersion (inmutable + publishAt)"]
     F --> LI["CmsListItem + CmsMedia"]
   end
@@ -86,7 +86,7 @@ flowchart LR
 
 ### Capa 1 — Contenido editorial, páginas legales y ajustes (`CmsPage` -> `CmsSection` -> `CmsField`)
 
-Las tablas legadas (`CmsBlock` y `SiteSetting`) fueron consolidadas en un único modelo jerárquico relacional manteniendo intacta la interfaz de lectura en `apps/web/lib/cms.ts` (`getCmsBlock`, `getSiteSetting`, `getSettingValue`, `getCmsList`, `getCmsImage`). El mapa canónico en `packages/db/scripts/cms-site-map.mjs` declara exactamente **9 contenedores (`CmsPage`), 29 secciones (`CmsSection`) y 166 campos (`CmsField`: 105 `BLOCK` + 61 `SETTING`)**:
+Las tablas legadas (`CmsBlock` y `SiteSetting`) fueron consolidadas en un único modelo jerárquico relacional manteniendo intacta la interfaz de lectura en `apps/web/lib/cms.ts` (`getCmsBlock`, `getSiteSetting`, `getSettingValue`, `getCmsList`, `getCmsImage`). El mapa canónico en `packages/db/scripts/cms-site-map.mjs` declara exactamente **9 contenedores (`CmsPage`), 29 secciones (`CmsSection`) y 168 campos (`CmsField`: 105 `BLOCK` + 63 `SETTING`)**:
 
 | #   | Slug (`CmsPage`) | Título en Admin                  | Ruta pública   | Secciones |  Campos | `BLOCK` | `SETTING` |
 | --- | ---------------- | -------------------------------- | -------------- | --------: | ------: | ------: | --------: |
@@ -98,10 +98,10 @@ Las tablas legadas (`CmsBlock` y `SiteSetting`) fueron consolidadas en un único
 | 6   | `checkout`       | Checkout                         | —              |         3 |      18 |      18 |         0 |
 | 7   | `sistema`        | Modo mantenimiento               | `/maintenance` |         1 |       2 |       2 |         0 |
 | 8   | `seo`            | SEO (Google)                     | —              |         1 |       6 |       6 |         0 |
-| 9   | `global`         | Ajustes del sitio (`SUPERADMIN`) | —              |         9 |      59 |       0 |        59 |
-|     | **Total**        |                                  |                |    **29** | **166** | **105** |    **61** |
+| 9   | `global`         | Ajustes del sitio (`SUPERADMIN`) | —              |         9 |      61 |       0 |        61 |
+|     | **Total**        |                                  |                |    **29** | **168** | **105** |    **63** |
 
-- **Snapshot único cacheado (`cms-snapshot-v2`)**: `apps/web/lib/cms.ts` descarga los 166 campos activos y su `publishedVersion` en **una sola consulta Prisma** cacheada con `unstable_cache` (`tags: ["cms"]`, `revalidate: 3600`). Los errores de red se capturan fuera de la caché para jamás memorizar respuestas vacías, cayendo siempre al `fallback` en código (_Regla de Oro_).
+- **Snapshot único cacheado (`cms-snapshot-v2`)**: `apps/web/lib/cms.ts` descarga los 168 campos activos y su `publishedVersion` en **una sola consulta Prisma** cacheada con `unstable_cache` (`tags: ["cms"]`, `revalidate: 3600`). Los errores de red se capturan fuera de la caché para jamás memorizar respuestas vacías, cayendo siempre al `fallback` en código (_Regla de Oro_).
 - **Versionado inmutable y publicación programada**:
   - Toda edición inserta una fila append-only en `CmsFieldVersion` (`version = max + 1`). En campos `BLOCK`, guardar borrador no altera `publishedVersionId` hasta publicar explícitamente; en campos `SETTING`, el guardado crea versión y publica en el acto.
   - `scheduleCmsFieldPublish` permite fijar `CmsFieldVersion.publishAt` en hora de Bogotá (`UTC-5`, mínimo 1 minuto en el futuro). El cron `GET /api/cron/cms-publish-scheduled` (cada 5 minutos, con omisión en SQL si no hay pendientes) publica las versiones vencidas e invoca `revalidateTag("cms", "max")`. Las acciones del panel invalidan al instante mediante `updateTag("cms")` (además del botón manual «Actualizar caché» en `/admin/contenido`).
@@ -123,7 +123,7 @@ Los textos puramente operativos de controles, validaciones y accesibilidad viven
 
 ### Guarda AST de paridad, tokens dinámicos y edición visual en vivo
 
-- **Gate AST en CI (`apps/web/lib/cms-sitemap-parity.test.ts`)**: recorre el árbol sintáctico TypeScript de todo `apps/web` y falla el build si: (a) cualquier llamada o componente JSX (`<CmsText>`, `<CmsMarkdown>`, `<CmsSetting>`, `getCmsBlock`, `getSettingValue`, `getPageSeo`, etc.) consume una clave ausente de `cms-site-map.mjs`, (b) existe cualquier campo en `cms-site-map.mjs` sin consumidor real en código, o (c) el conteo difiere de `9` páginas / `166` campos o aparece una variante inválida de marca.
+- **Gate AST en CI (`apps/web/lib/cms-sitemap-parity.test.ts`)**: recorre el árbol sintáctico TypeScript de todo `apps/web` y falla el build si: (a) cualquier llamada o componente JSX (`<CmsText>`, `<CmsMarkdown>`, `<CmsSetting>`, `getCmsBlock`, `getSettingValue`, `getPageSeo`, etc.) consume una clave ausente de `cms-site-map.mjs`, (b) existe cualquier campo en `cms-site-map.mjs` sin consumidor real en código, o (c) el conteo difiere de `9` páginas / `168` campos o aparece una variante inválida de marca.
 - **Resolución de tokens legales y operativos (`resolveCmsTokens` en `lib/cms-tokens.ts` + `lib/consumer-law.ts`)**: interpola **17 tokens dinámicos** para que las páginas legales, FAQs y avisos nunca queden desfasados frente a los parámetros reales:
   - _Buzones oficiales_: `{{email_contacto}}`, `{{email_habeas_data}}`, `{{email_retracto}}`, `{{email_security}}` (`security@lucamsshop.com`).
   - _Tiempos y operación_: `{{fab}}` (`PRODUCTION_DAYS_DEFAULT`), `{{entrega}}` (`DELIVERY_DAYS_ESTIMATE`), `{{total}}`, `{{cobertura}}`, `{{cutoff_lucams}}`, `{{ciudad}}` (contextual).

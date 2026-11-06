@@ -91,7 +91,9 @@ export function LifecycleJourneyForm({
   function removeStep(index: number) {
     setJourney((current) => ({
       ...current,
-      steps: current.steps.filter((_, stepIndex) => stepIndex !== index),
+      steps: current.steps
+        .filter((_, stepIndex) => stepIndex !== index)
+        .map((step, stepIndex) => ({ ...step, position: stepIndex + 1 })),
     }));
   }
 

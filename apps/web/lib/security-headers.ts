@@ -116,8 +116,8 @@ export function buildCsp(nonce: string, isProd: boolean): string {
 
 /**
  * CSP estricta con `sandbox` para Route Handlers que sirven documentos HTML de
- * previsualización de correos (`/admin/carritos/[id]/preview` y
- * `/admin/email-templates/[id]/preview` · [SEC-01]).
+ * previsualización de correos (`/admin/carritos/[id]/preview`,
+ * `/admin/email-templates/[id]/preview` y `/admin/lifecycle/[id]/preview` · [SEC-01]).
  *
  * Incluso si alguien abre la URL en una pestaña de nivel superior fuera del
  * `<iframe sandbox="">`, el navegador aísla el documento en un origen opaco y
@@ -135,7 +135,8 @@ export const EMAIL_PREVIEW_SANDBOX_CSP = [
   "form-action 'none'",
 ].join("; ");
 
-const SANDBOXED_PREVIEW_PATH_RE = /^\/admin\/(?:carritos|email-templates)\/[^/]+\/preview\/?$/;
+const SANDBOXED_PREVIEW_PATH_RE =
+  /^\/admin\/(?:carritos|email-templates|lifecycle)\/[^/]+\/preview\/?$/;
 
 export function isSandboxedPreviewPath(pathname: string): boolean {
   return SANDBOXED_PREVIEW_PATH_RE.test(pathname);

@@ -38,7 +38,7 @@ export type LifecycleJourneyInput = {
 
 export type LifecycleAudienceMember = {
   contactId: string;
-  email: string;
+  email: string | null;
   displayName: string | null;
   triggerRef: string | null;
 };
@@ -60,9 +60,12 @@ export type LifecycleRunSummary = {
   messagesSent: number;
   messagesSuppressed: number;
   messagesFailed: number;
+  messagesDeferred: number;
+  tasksCreated: number;
   enrollmentsCompleted: number;
   enrollmentsExited: number;
   errors: number;
+  dryRun: boolean;
 };
 
 export type LifecycleJourneyMetrics = {
@@ -72,9 +75,14 @@ export type LifecycleJourneyMetrics = {
   exited: number;
   suppressed: number;
   messagesSent: number;
+  messagesDelivered: number;
+  messagesBounced: number;
+  messagesComplained: number;
+  messagesDelayed: number;
   messagesClicked: number;
   conversions: number;
   revenueCents: number;
+  deliveryRate: number;
   clickRate: number;
   conversionRate: number;
 };
