@@ -176,7 +176,7 @@ export function AdminInteractiveGuide({
 
   return (
     <section
-      className="fixed right-4 bottom-4 z-[70] w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+      className={`fixed bottom-4 z-[70] w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl ${isOnboarding ? "left-4" : "right-4"}`}
       aria-label={`Recorrido: ${guide.title}`}
       aria-live="polite"
     >
