@@ -376,6 +376,8 @@ model AdminUser {
   ownedTasks              Task[]                   @relation("TaskOwner")
   createdTasks            Task[]                   @relation("TaskCreator")
   ownedOpportunities      Opportunity[]            @relation("OpportunityOwner")
+  helpProgress            AdminHelpProgress[]
+  helpFeedback            AdminHelpFeedback[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -403,6 +405,36 @@ model AdminRecoveryCode {
   createdAt   DateTime  @default(now())
 
   @@index([adminUserId, usedAt])
+}
+
+model AdminHelpProgress {
+  id          String    @id @default(cuid())
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  guideId     String
+  version     Int
+  currentStep Int       @default(0)
+  completedAt DateTime?
+  dismissedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([adminUserId, guideId])
+  @@index([adminUserId, updatedAt])
+}
+
+model AdminHelpFeedback {
+  id          String    @id @default(cuid())
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  guideId     String
+  isHelpful   Boolean
+  comment     String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([adminUserId, guideId])
+  @@index([guideId, isHelpful])
 }
 
 // ──────────────────────── CATÁLOGO ────────────────────────

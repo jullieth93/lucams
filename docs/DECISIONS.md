@@ -795,6 +795,12 @@
 - **Decisión:** Marcar `Contact.isStaff = true` para correos de `AdminUser` (excluidos de analítica/segmentos) y registrar `selfDealing: true` en `AdminActionLog` en autogestiones financieras.
 - **Motivo:** Permite compras reales de prueba sin sesgar métricas ni auditoría.
 
+### ADR-197 — Ayuda operativa integral y versionada con el Admin
+
+- **Estado:** `Vigente`
+- **Decisión:** Mantener junto al código un registro tipado de **43 guías** y **8 rutas de onboarding**, filtrado por RBAC y resuelto por la ruta actual. Integrar `/admin/ayuda`, ayuda contextual en el shell y recorridos interactivos opcionales, accesibles, reanudables y no destructivos. Persistir avance y retroalimentación por `AdminUser` en `AdminHelpProgress`/`AdminHelpFeedback` con RLS y validación server-side. Toda página administrativa debe tener guía: `registry.test.ts` recorre las rutas reales y rompe CI ante cobertura faltante; todo cambio de campos, estados, permisos o procedimientos debe actualizar su contenido y versión en la misma entrega.
+- **Motivo:** Capacitar por rol y reducir errores sin depender de manuales externos ni tours bloqueantes. El contenido operativo vive con la interfaz que describe y la guarda automática impide que nuevos módulos queden sin aprendizaje ([`ARCHITECTURE.md`](ARCHITECTURE.md) § 8.6).
+
 ---
 
 ## 8. Fidelización, marketing y carritos abandonados
@@ -954,7 +960,7 @@
 ### ADR-091 — Limpieza de tablas muertas y gobernanza de esquema
 
 - **Estado:** `Vigente`
-- **Decisión:** Retirar tablas sin uso y exigir espejo de RLS + `REVOKE` en `supabase/migrations/` (event trigger `049`) para los 71 modelos Prisma.
+- **Decisión:** Retirar tablas sin uso y exigir espejo de RLS + `REVOKE` en `supabase/migrations/` (event trigger `049`) para los 73 modelos Prisma.
 - **Motivo:** Paridad SQL/Prisma verificada por `make verify-db`.
 
 ### ADR-095 — Semillas no destructivas y guarda `env-guard.mjs` fail-closed

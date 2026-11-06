@@ -8,7 +8,7 @@
 - **Tienda activa (`ADR-077`):** `lucamsshop.com` vende en producción en modo **`full`**
   (`NEXT_PUBLIC_STORE_MODE=full`) con pagos Wompi, contraentrega y envíos Aveonline + Envío Lucams Bogotá.
 - **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js 16, TS strict, Tailwind v4, shadcn/ui) y
-  `packages/db` (**71 modelos Prisma**, **26 enums**, **94 migraciones Prisma** + **53 SQL Supabase**
+  `packages/db` (**73 modelos Prisma**, **26 enums**, **95 migraciones Prisma** + **54 SQL Supabase**
   con RLS y event trigger `REVOKE` automático `049` en el 100 % de las tablas).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) bajo el ruleset
   `protect-ramas-criticas` con PR obligatorio y **5 checks requeridos** (`Typecheck + Lint + Build`,
@@ -98,6 +98,9 @@
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
     consentimiento + embudo `FunnelEventDaily`, **19 procesos programados** y **backups diarios GPG de
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.
+- **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` y ayuda contextual en todo
+  el panel con **43 guías**, búsqueda RBAC, 8 onboarding y recorridos opcionales con progreso y
+  retroalimentación persistidos por usuario; cobertura automática de todas las páginas del Admin.
 
 ## Pendientes abiertos reales
 
