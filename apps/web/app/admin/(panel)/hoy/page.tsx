@@ -26,8 +26,10 @@ import {
   AdminSegmentedBar,
 } from "@/components/admin-page";
 import { requireCapability } from "@/lib/admin-rbac-guard";
+import { canAccessAdminPath } from "@/lib/admin-rbac";
 import { getTodayOperationalInbox } from "@/features/crm/today-inbox-service";
 import { TodayInboxBoard } from "./today-inbox-board";
+import { FiscalWatchCard } from "./fiscal-watch-card";
 
 export const metadata: Metadata = {
   title: "Bandeja Hoy",
@@ -129,6 +131,11 @@ export default async function AdminHoyPage() {
             </p>
           </AdminCard>
         </div>
+
+        {/* Vigilancia fiscal (ADR-196): solo visible para roles con acceso a
+            Métricas y SOLO cuando una regla DIAN está en 70 %+ o la proyección
+            anuncia cruce — en rango no agrega ruido a la bandeja. */}
+        {canAccessAdminPath(session.admin.role, "/admin/metricas") && <FiscalWatchCard />}
 
         {/* Distribución visual de la carga por frente operativo */}
         <AdminCard className="p-4">

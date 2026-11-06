@@ -255,7 +255,7 @@
 - [ ] Versionado inmutable: cada guardado crea registro en `CmsFieldVersion`
 - [ ] Revertir a una versión previa funciona desde `/admin/contenido/campos/[id]`
 - [ ] Edición de ajustes globales funciona en `/admin/contenido/configuracion`
-- [ ] `/admin/email-templates` previsualiza las 30 plantillas transaccionales/operativas en `<iframe sandbox="">` con CSP aislada y permite prueba de envío
+- [ ] `/admin/email-templates` previsualiza las 31 plantillas transaccionales/operativas en `<iframe sandbox="">` con CSP aislada y permite prueba de envío
 
 ---
 

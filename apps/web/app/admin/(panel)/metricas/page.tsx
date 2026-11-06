@@ -30,6 +30,7 @@ import { PRODUCT_SLUG_OR_ALL_REGEX } from "@/features/analytics/funnel-schema";
 import { ORDER_STATUS_LABEL } from "@/features/orders/order-status-display";
 import { FunnelPanel } from "./funnel-panel";
 import { CrmIntelligencePanel } from "./crm-intelligence-panel";
+import { FiscalWatchPanel } from "./fiscal-watch-panel";
 import {
   AdminCard,
   AdminComboBarLineChart,
@@ -266,6 +267,9 @@ export default async function AdminMetricasPage({
             />
           </div>
         )}
+
+        {/* Vigilancia fiscal (ADR-196): umbrales DIAN del año en vivo */}
+        {!catalog && <FiscalWatchPanel />}
 
         {/* Evolución diaria de ingresos y pedidos (7d / 30d) */}
         {!catalog && periodTrend && (

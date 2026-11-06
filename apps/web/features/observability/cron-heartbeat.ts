@@ -69,6 +69,10 @@ export const CRON_JOBS: Record<string, { intervalMs: number; label: string }> = 
     intervalMs: 31 * 24 * 60 * 60 * 1000,
     label: "Vigilancia del dominio (RDAP)",
   },
+  // ADR-196 — migración 055: vigilancia fiscal proactiva (umbrales DIAN 3 500 UVT).
+  // Diaria 07:05 COT, antes del resumen de las 08:00 → una alerta fiscal de la
+  // madrugada ya está en la bandeja cuando abre la operación.
+  "fiscal-watch": { intervalMs: 24 * 60 * 60 * 1000, label: "Vigilancia fiscal (umbrales DIAN)" },
 };
 
 /**
