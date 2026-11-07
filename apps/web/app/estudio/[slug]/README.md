@@ -150,8 +150,8 @@ export type MultiSlotCanvasData = {
   sizeCm?: string; // Dimensión física nominal (ej. "6.5×8", "5×15")
   magnet?: boolean; // Con imán (true) o variante gemela sin imán (false, -NOMAG)
   calendarFont?: CalendarFontKey; // Tipografía del encabezado mensual en calendarios
-  unitCount?: number; // Unidades físicas diseñables (solo cuando unitSlots > 1)
-  unitSlots?: number; // Slots por unidad física (12 calendario, 3/4 tira, 2 separador)
+  unitCount?: number; // Unidades físicas diseñables (hasta 25 bolas dúplex, 50 en otras experiencias)
+  unitSlots?: number; // Slots por unidad (12 calendario, 3/4 tira, 2 separador o bola dúplex)
   igNoBorder?: boolean; // Flag explícito del modo ancho completo en Polaroid Instagram
   clientRev?: number; // Reloj monotónico del cliente para reconciliar snapshots locales (ADR-133)
 };
@@ -729,9 +729,10 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
     hecho mientras tanto.
 - **Sustantivo exacto de pieza, Popover «qué falta» y galería de prediseñados**:
   - `resolveSlotNoun(productKind, magnet, texts)` (`lib/slot-noun.ts`) garantiza el sustantivo
-    preciso (`tarjetas`, `separadores`, `fotos`, `fichas`, `fotoimanes`) y **jamás menciona «imán»
-    cuando `magnet === false`**. Cada sección de unidad y header simple muestra el `variantLabel`
-    completo con medidas en cm (`studioPreviewVariantLabel`).
+    preciso (`tarjetas`, `separadores`, `fotos`, `fichas`, `fotoimanes`, `caras`) y **jamás menciona
+    «imán» cuando `magnet === false`**. La bola dúplex nombra cada unidad como «Bola» y la vista
+    previa muestra sus dos círculos A/B sin doblez ni textos de separadores. Cada sección de unidad
+    y header simple muestra el `variantLabel` completo con medidas en cm (`studioPreviewVariantLabel`).
   - Cuando «Ver diseño» está bloqueado, un `Popover` Radix accesible enumera exactamente las piezas
     sin foto (`selectMissingSlotIndexesKey`, exigiendo solo Cara A cuando `backOptional` está activo)
     y los campos Instagram faltantes por unidad.
@@ -776,8 +777,9 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   «Elige tu plantilla» como primer paso pendiente y pulsar «Ver diseño» abre y resalta la sección
   Plantillas hasta que el cliente elija una explícitamente. Con 1 sola plantilla se autoselecciona.
 - **Controles de unidades y réplica rápida**: `StudioUnitCountControl` ajusta `unitCount` en
-  productos multi-slot (`unitSlots > facesPerUnit`), mientras que `setPhotoSlotsPerUnit` distingue
-  entre composición (3 vs 4 fotos por tira) y tamaño de pack. El botón «Aplicar este diseño a todas»
+  productos multi-slot (`unitSlots > facesPerUnit`) y en experiencias `freeUnitDesign`, incluidas la
+  bola dúplex (25 unidades máximo) y los mini libros (50). `setPhotoSlotsPerUnit` distingue entre
+  composición (3 vs 4 fotos por tira) y tamaño de pack. El botón «Aplicar este diseño a todas»
   (`store.applyUnitToAllUnits`, reversible con Deshacer) clona fotos, encuadres, filtros, textos y
   avatar IG de una unidad hacia las restantes.
 - **Precio autoritativo en servidor y `RenderJob` asíncrono (`ADR-136`)**: el carrito recibe una

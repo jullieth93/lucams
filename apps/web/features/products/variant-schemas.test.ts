@@ -683,3 +683,21 @@ describe("describeVariantAttributes", () => {
     ).toEqual(["Sin imán"]);
   });
 });
+
+describe("describeVariantAttributes — bola navideña dúplex", () => {
+  it("describe el inserto y sus dos caras sin heredar conteos genéricos", () => {
+    expect(
+      describeVariantAttributes(
+        {
+          quantity: 1,
+          photoSlots: 1,
+          sizeCm: "8",
+          shape: "circle",
+          finish: "glossy",
+          magnet: false,
+        },
+        { experience: "christmas-ornament", facesPerUnit: 2 },
+      ),
+    ).toEqual(["8 cm", "Circular", "Brillante", "Sin imán", "Dúplex: frente y reverso"]);
+  });
+});

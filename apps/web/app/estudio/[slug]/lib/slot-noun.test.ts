@@ -71,3 +71,12 @@ describe("resolveSlotNoun", () => {
     expect(noun.many).not.toContain("imanes");
   });
 });
+
+describe("resolveSlotNoun — experiencias físicas específicas", () => {
+  it("ornaments → cara/caras del inserto dúplex, nunca separadores", () => {
+    const noun = resolveSlotNoun("ornaments", false, texts);
+    expect(noun).toEqual({ one: "cara", many: "caras", feminine: true });
+    expect(noun.one).not.toContain("separador");
+    expect(noun.many).not.toContain("separadores");
+  });
+});

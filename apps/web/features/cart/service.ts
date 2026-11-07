@@ -460,7 +460,7 @@ function describeLine(item: RawCart["items"][number]): string | null {
   const attrs = parseVariantAttributes(item.variant.attributes);
   const schema = item.variant.product.personalizationSchema;
   const delProducto = schema ? parsePhotoProductConfig(schema) : null;
-  const kind = pieceKindFor(item.variant.product.personalizationKind, item.variant.name);
+  const kind = pieceKindFor(item.variant.product.personalizationKind, item.variant.name, schema);
   const meta = (item.design?.metadata ?? null) as {
     unitCount?: unknown;
     surface?: unknown;
@@ -476,21 +476,28 @@ function describeLine(item: RawCart["items"][number]): string | null {
         ? { singular: "calendario", plural: "calendarios" }
         : kind === "strips"
           ? { singular: "tira", plural: "tiras" }
-          : isLetterSet
-            ? { singular: "set", plural: "sets" }
-            : undefined
+          : kind === "ornaments"
+            ? { singular: "bola", plural: "bolas" }
+            : isLetterSet
+              ? { singular: "set", plural: "sets" }
+              : undefined
       : undefined;
   const letterCount = Array.isArray(meta?.letters) ? meta.letters.length : 0;
   const pieces =
-    kind === "strips" || kind === "calendar"
-      ? (attrs.photoSlots ?? delProducto?.photoSlots ?? null)
-      : isLetterSet && letterCount > 0
-        ? letterCount
-        : (attrs.photoSlots ?? delProducto?.photoSlots ?? null);
+    kind === "ornaments"
+      ? (delProducto?.facesPerUnit ?? 2)
+      : kind === "strips" || kind === "calendar"
+        ? (attrs.photoSlots ?? delProducto?.photoSlots ?? null)
+        : isLetterSet && letterCount > 0
+          ? letterCount
+          : (attrs.photoSlots ?? delProducto?.photoSlots ?? null);
+  const rawSize = attrs.sizeCm ?? (schema as { sizeCm?: string } | null)?.sizeCm ?? null;
+  const sizeCm =
+    kind === "ornaments" && rawSize && !/\bcm\b/i.test(rawSize) ? `${rawSize} cm` : rawSize;
   return describePieces({
     kind,
     pieces,
-    sizeCm: attrs.sizeCm ?? (schema as { sizeCm?: string } | null)?.sizeCm ?? null,
+    sizeCm,
     units: unitNoun ? units : null,
     unitNoun,
   });
@@ -521,7 +528,10 @@ function toDetail(cart: RawCart): CartDetail {
         variantId: i.variantId,
         variantName: i.variant.name,
         variantSku: i.variant.sku,
-        variantBreakdown: describeVariantAttributes(parseVariantAttributes(i.variant.attributes)),
+        variantBreakdown: describeVariantAttributes(
+          parseVariantAttributes(i.variant.attributes),
+          i.variant.product.personalizationSchema,
+        ),
         isPersonalizable: i.variant.product.isPersonalizable,
         qty: i.qty,
         unitPrice: i.unitPrice,
@@ -546,7 +556,11 @@ function toDetail(cart: RawCart): CartDetail {
         designPreviewPages: designDisp?.pageUrls ?? null,
         designPreviewPageLabels: designPreviewPageLabels(
           i.design,
-          unitNounForLine(i.variant.product.personalizationKind, i.variant.name),
+          unitNounForLine(
+            i.variant.product.personalizationKind,
+            i.variant.name,
+            i.variant.product.personalizationSchema,
+          ),
         ),
         designWatermarked: designDisp?.watermarked ?? false,
         designUnits: designDisplayUnits(i.design),
@@ -557,6 +571,7 @@ function toDetail(cart: RawCart): CartDetail {
           isBookmark: isBookmarkGalleryTag(
             resolveGalleryTag(i.variant.product.personalizationSchema, i.variant.product.slug),
           ),
+          productSchema: i.variant.product.personalizationSchema,
         }),
         pieceSummary: describeLine(i),
         borderNote: letterSetBorderNote(i.design?.metadata),

@@ -512,7 +512,11 @@ export default async function PublicOrderPage({
                 // 2026-10-22 — rótulo por página del pager ("Set 2 · con borde").
                 const pageLabels = designPreviewPageLabels(
                   it.design,
-                  unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
+                  unitNounForLine(
+                    it.variant.product.personalizationKind,
+                    it.variant.name,
+                    it.variant.product.personalizationSchema,
+                  ),
                 );
                 // 2026-10-26 — sustantivo kind-aware del badge «N …» ("tiras",
                 // "sets"…); el bloque CMS publicado manda sobre este fallback.
@@ -521,11 +525,13 @@ export default async function PublicOrderPage({
                   variantName: it.variant.name,
                   designMetadata: it.design?.metadata,
                   isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
+                  productSchema: it.variant.product.personalizationSchema,
                 }).plural;
                 // Paquete F (2026-10-02) — desglose estructurado de la variante (el
                 // nombre libre no siempre informa Con/Sin imán, tamaño, idioma…).
                 const variantBreakdown = describeVariantAttributes(
                   parseVariantAttributes(it.variant.attributes),
+                  it.variant.product.personalizationSchema,
                 );
                 return (
                   <li key={it.id} className="flex items-start gap-3 py-3">

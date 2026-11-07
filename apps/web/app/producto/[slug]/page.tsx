@@ -237,13 +237,20 @@ export default async function ProductoDetallePage({
     parsePhotoProductConfig(product.personalizationSchema).photoSlots,
     1,
   );
+  const productExperience = readProductExperience(product.personalizationSchema);
+  const facesForCap =
+    parsePhotoProductConfig(product.personalizationSchema).facesPerUnit === 2 ? 2 : 1;
   const maxDesignUnits = isLetterSetProduct
     ? 10
     : product.personalizationKind === "CALENDAR_PHOTO_MONTH" ||
         PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug) ||
-        readProductExperience(product.personalizationSchema).freeUnitDesign
-      ? Math.max(1, Math.floor(50 / photoSlotsForCap))
+        productExperience.freeUnitDesign
+      ? Math.max(1, Math.floor(50 / (photoSlotsForCap * facesForCap)))
       : 99;
+  const designUnitNoun =
+    productExperience.experience === "christmas-ornament"
+      ? { one: "bola", many: "bolas", label: "Bolas" }
+      : undefined;
   // Etapa 1 (modo catálogo): el strip de confianza NO promete pago en línea ni
   // envío calculado — la compra se cierra por WhatsApp tras la cotización.
   const catalog = isCatalogMode();
@@ -661,10 +668,13 @@ export default async function ProductoDetallePage({
                           // desglose de fichas (1 pack = abecedario completo).
                           <CopiesQtyInput
                             max={maxDesignUnits}
+                            unitNoun={designUnitNoun}
                             hint={
                               letterSetPackLabel
                                 ? "Cada pack se diseña por separado en el Estudio"
-                                : undefined
+                                : designUnitNoun
+                                  ? "Cada bola se diseña por separado en el Estudio"
+                                  : undefined
                             }
                             unitPriceByVariantId={priceByVariantId}
                             fallbackUnitPrice={displayPrice}

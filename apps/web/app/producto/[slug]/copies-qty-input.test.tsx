@@ -120,3 +120,23 @@ describe("CopiesQtyInput", () => {
     expect(cta).toHaveAttribute("href", "/estudio/calendario-mes-a-mes-fotos?variant=v1");
   });
 });
+
+describe("CopiesQtyInput — bola navideña", () => {
+  it("cuenta bolas con su propio sustantivo y conserva el valor enviado al Estudio", () => {
+    render(
+      <SelectedVariantProvider variantIds={["v1"]} initialId="v1">
+        <CopiesQtyInput
+          max={25}
+          unitNoun={{ one: "bola", many: "bolas", label: "Bolas" }}
+          hint="Cada bola se diseña por separado en el Estudio"
+        />
+      </SelectedVariantProvider>,
+    );
+    const group = screen.getByRole("group", { name: "Bolas" });
+    expect(within(group).getByText("1 bola")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Aumentar bolas"));
+    expect(within(group).getByText("2 bolas")).toBeInTheDocument();
+    expect(qtyHidden().value).toBe("2");
+    expect(screen.getByText("Cada bola se diseña por separado en el Estudio")).toBeInTheDocument();
+  });
+});

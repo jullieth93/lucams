@@ -710,3 +710,38 @@ describe("StudioPreviewModal — ZOOM del preview (2026-10-19)", () => {
     expect(screen.queryByRole("img", { name: /Set 2 de 3/ })).not.toBeInTheDocument();
   });
 });
+
+describe("StudioPreviewModal — bola navideña dúplex", () => {
+  it("describe bolas con inserto circular A/B y nunca separadores ni doblez", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productName="Bola Navideña Personalizada"
+        productKind="ornaments"
+        slotCount={2}
+        unitCount={2}
+        sizeCm="8 cm"
+        unitNoun={{ one: "bola", many: "bolas", feminine: true }}
+      />,
+    );
+    expect(screen.getByText("Así se verán tus bolas navideñas")).toBeInTheDocument();
+    expect(
+      screen.getByText(/vista previa de las 2 bolas navideñas que vas a recibir/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.getAttribute("data-slot") === "dialog-description" &&
+          (element.textContent ?? "").includes(
+            "El inserto circular de cada bola mide 8 cm de diámetro.",
+          ),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/2 bolas navideñas personalizadas \(2 caras c\/u\)/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 bolas — cada una con su propio diseño")).toBeInTheDocument();
+    expect(screen.queryByText(/separador/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/doblez|doblado/i)).not.toBeInTheDocument();
+  });
+});

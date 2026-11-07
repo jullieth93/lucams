@@ -68,9 +68,11 @@ export function CopiesQtyInput({
   unitPriceByVariantId,
   fallbackUnitPrice,
   packLabel,
+  unitNoun,
 }: {
   /** Tope del stepper (productos con tope de diseño propio; default 99). */
   max?: number;
+  unitNoun?: { one: string; many: string; label: string };
   /** Nota bajo el stepper. La compra directa pasa su propio texto
    *  ("Copias idénticas del mismo producto"). */
   hint?: string;
@@ -112,7 +114,7 @@ export function CopiesQtyInput({
         }`
     : null;
 
-  const groupLabel = packLabel?.label ?? "Unidades";
+  const groupLabel = packLabel?.label ?? unitNoun?.label ?? "Unidades";
 
   return (
     <div className="mb-3">
@@ -135,7 +137,7 @@ export function CopiesQtyInput({
         <div className="ring-brand-purple/15 inline-flex items-center rounded-lg bg-white ring-1">
           <button
             type="button"
-            aria-label={packLabel ? "Disminuir packs" : "Disminuir unidades"}
+            aria-label={packLabel ? "Disminuir packs" : `Disminuir ${unitNoun?.many ?? "unidades"}`}
             disabled={!canDecrease}
             onClick={() => setCopies(copies - 1)}
             className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -146,11 +148,15 @@ export function CopiesQtyInput({
             aria-live="polite"
             className="text-brand-purple-dark min-w-12 text-center text-sm font-bold tabular-nums"
           >
-            {packLabel ? `${copies} ${copies === 1 ? "pack" : "packs"}` : copies}
+            {packLabel
+              ? `${copies} ${copies === 1 ? "pack" : "packs"}`
+              : unitNoun
+                ? `${copies} ${copies === 1 ? unitNoun.one : unitNoun.many}`
+                : copies}
           </span>
           <button
             type="button"
-            aria-label={packLabel ? "Aumentar packs" : "Aumentar unidades"}
+            aria-label={packLabel ? "Aumentar packs" : `Aumentar ${unitNoun?.many ?? "unidades"}`}
             disabled={!canIncrease}
             onClick={() => setCopies(Math.min(clampedMax, copies + 1))}
             className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"

@@ -181,3 +181,40 @@ describe("gate uniforme de vista previa (owner 2026-09-14)", () => {
     expect(selectIsComplete(store.getState())).toBe(false);
   });
 });
+
+describe("StudioUnitCountControl — unidades libres dúplex", () => {
+  it("agrega bolas con dos caras por unidad y respeta el tope de 25", async () => {
+    const bare = makeStripCanvas(1);
+    bare.unitSlots = 2;
+    bare.photoSlots = 1;
+    bare.slotCount = 2;
+    bare.slots = bare.slots.slice(0, 2);
+    bare.gridLayout = { cols: 2, rows: 1, gap: 12 };
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "ornament-1",
+      productSlug: "bola-navidena-personalizada",
+      canvasData: bare,
+      templates: [],
+    });
+    render(
+      <StudioUnitCountControl
+        store={store}
+        facesPerUnit={2}
+        freeUnitDesign
+        unitNoun={{ one: "bola", many: "bolas", feminine: true }}
+      />,
+    );
+    expect(screen.getByRole("group", { name: "Unidades a diseñar" })).toHaveTextContent("1 bola");
+    fireEvent.click(screen.getByLabelText("Aumentar unidades"));
+    await waitFor(() => expect(store.getState().canvasData!.unitCount).toBe(2));
+    expect(store.getState().canvasData!.slotCount).toBe(4);
+    expect(store.getState().canvasData!.unitSlots).toBe(2);
+    expect(screen.getByRole("group", { name: "Unidades a diseñar" })).toHaveTextContent("2 bolas");
+
+    store.getState().setUnitCount(25, { facesPerUnit: 2, max: 25, allowFreeUnits: true });
+    await waitFor(() => expect(store.getState().canvasData!.slotCount).toBe(50));
+    expect(screen.getByLabelText("Aumentar unidades")).toBeDisabled();
+    expect(store.getState().canvasData!.unitCount).toBe(25);
+  });
+});

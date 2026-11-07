@@ -1372,14 +1372,17 @@ export function StudioCanvasGrid({
                 <div
                   key={unitIndex}
                   role="group"
-                  aria-label={fillStudioText(texts.lienzo.unidadAria, {
+                  aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
+                    nombre: unitNoun ?? texts.unidades.nombreSeparador,
                     n: unitIndex + 1,
                     total: physicalUnits,
                   })}
                   className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
                 >
                   <span className="text-brand-purple-dark text-xs font-bold">
-                    {fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
+                    {unitNoun
+                      ? `${unitNoun} ${unitIndex + 1}`
+                      : fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
                   </span>
                   {/* Multi-unidad (2026-09-09) — progreso de la unidad + atajo
                     "Aplicar este diseño a todas" (copia las 2 caras de este

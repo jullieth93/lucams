@@ -685,10 +685,11 @@ type StudioPreviewModalProps = {
    *  Ola 3 — "bookmarks": separadores de libros (tiras 2 caras), concordancia propia.
    *  Multi-unidad (2026-09-09) — "strips": tiras photobooth (cada unidad es una
    *  tira continua de N fotos — antes se describían como "N imanes", incorrecto).
+   *  "ornaments": bolas navideñas con inserto circular dúplex, sin doblez.
    *  "tiles": fichas SIN imán. Los sets de letras y el nombre tienen variantes "Con imán" y
    *  "Sin imán"; llamarle "imán" a la que no lo lleva es una afirmación falsa sobre el producto
    *  físico, hecha justo en la pantalla de confirmación (revisión 2026-07-25, Ley 1480 art. 23). */
-  productKind?: "magnets" | "calendar" | "bookmarks" | "tiles" | "strips";
+  productKind?: "magnets" | "calendar" | "bookmarks" | "tiles" | "strips" | "ornaments";
   /** Año del calendario (solo cuando productKind==="calendar"). */
   calendarYear?: number;
   /**
@@ -788,6 +789,7 @@ export function StudioPreviewModal({
   const isCalendar = productKind === "calendar";
   const isBookmarks = productKind === "bookmarks";
   const isStrips = productKind === "strips";
+  const isOrnaments = productKind === "ornaments";
   // Cómo nombrar la pieza: con imán es un "imán"; sin él, una "ficha".
   const pieza = productKind === "tiles" ? texts.exportar.piezaFicha : texts.exportar.piezaIman;
   const piezas = productKind === "tiles" ? texts.exportar.piezaFichas : texts.exportar.piezaImanes;
@@ -816,25 +818,29 @@ export function StudioPreviewModal({
     ? isMultiUnit
       ? fillStudioText(texts.unidades.resumenCalendarios, { n: slotCount, m: perUnit })
       : fillStudioText(texts.exportar.resumenCalendario, { n: slotCount })
-    : isBookmarks
+    : isOrnaments
       ? slotCount === 1
-        ? fillStudioText(texts.exportar.resumenSeparadorUno, { n: slotCount })
-        : fillStudioText(texts.exportar.resumenSeparadores, { n: slotCount })
-      : isStrips
+        ? fillStudioText(texts.exportar.resumenBolaUno, { n: slotCount })
+        : fillStudioText(texts.exportar.resumenBolas, { n: slotCount })
+      : isBookmarks
         ? slotCount === 1
-          ? fillStudioText(texts.unidades.resumenTiraUna, { n: slotCount, m: perUnit })
-          : fillStudioText(texts.unidades.resumenTiras, { n: slotCount, m: perUnit })
-        : slotCount === 1
-          ? fillStudioText(texts.exportar.resumenUno, {
-              n: slotCount,
-              pieza,
-              o: pieza === texts.exportar.piezaFicha ? "a" : "o",
-            })
-          : fillStudioText(texts.exportar.resumenMuchos, {
-              n: slotCount,
-              piezas,
-              os: piezas === texts.exportar.piezaFichas ? "as" : "os",
-            });
+          ? fillStudioText(texts.exportar.resumenSeparadorUno, { n: slotCount })
+          : fillStudioText(texts.exportar.resumenSeparadores, { n: slotCount })
+        : isStrips
+          ? slotCount === 1
+            ? fillStudioText(texts.unidades.resumenTiraUna, { n: slotCount, m: perUnit })
+            : fillStudioText(texts.unidades.resumenTiras, { n: slotCount, m: perUnit })
+          : slotCount === 1
+            ? fillStudioText(texts.exportar.resumenUno, {
+                n: slotCount,
+                pieza,
+                o: pieza === texts.exportar.piezaFicha ? "a" : "o",
+              })
+            : fillStudioText(texts.exportar.resumenMuchos, {
+                n: slotCount,
+                piezas,
+                os: piezas === texts.exportar.piezaFichas ? "as" : "os",
+              });
   const summarySize = sizeCm
     ? isCalendar
       ? fillStudioText(texts.exportar.resumenTamano, { tamano: sizeCm })
@@ -844,11 +850,13 @@ export function StudioPreviewModal({
   // del pager — item 2.2: "{alt} — {Set 2 de 4}").
   const previewAlt = isCalendar
     ? `Vista previa de las ${slotCount} páginas de tu calendario${calendarYear ? ` ${calendarYear}` : ""}`
-    : isBookmarks
-      ? `Vista previa de ${slotCount} separadores desplegados con sus 2 caras`
-      : isStrips
-        ? `Vista previa de ${slotCount === 1 ? "tu tira" : `tus ${slotCount} tiras`} — cada una con ${perUnit} fotos`
-        : `Vista previa de ${slotCount} imanes`;
+    : isOrnaments
+      ? `Vista previa de ${slotCount === 1 ? "tu bola navideña" : `tus ${slotCount} bolas navideñas`} — frente y reverso del inserto circular`
+      : isBookmarks
+        ? `Vista previa de ${slotCount} separadores desplegados con sus 2 caras`
+        : isStrips
+          ? `Vista previa de ${slotCount === 1 ? "tu tira" : `tus ${slotCount} tiras`} — cada una con ${perUnit} fotos`
+          : `Vista previa de ${slotCount} imanes`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isFinalizing && onEdit()}>
@@ -878,9 +886,13 @@ export function StudioPreviewModal({
           <Sparkles className="text-brand-pink h-5 w-5" />
           {isCalendar
             ? texts.exportar.tituloCalendario
-            : isBookmarks
-              ? texts.exportar.tituloSeparadores
-              : texts.exportar.tituloPedido}
+            : isOrnaments
+              ? slotCount === 1
+                ? texts.exportar.tituloBola
+                : texts.exportar.tituloBolas
+              : isBookmarks
+                ? texts.exportar.tituloSeparadores
+                : texts.exportar.tituloPedido}
         </DialogTitle>
         <DialogDescription className="text-brand-purple-dark/70 text-sm">
           {isCalendar ? (
@@ -897,6 +909,23 @@ export function StudioPreviewModal({
                 </>
               )}{" "}
               {texts.exportar.descCalendarioRevisa}
+            </>
+          ) : isOrnaments ? (
+            <>
+              {slotCount === 1
+                ? texts.exportar.descBolaUna
+                : fillStudioText(texts.exportar.descBolas, { n: slotCount })}
+              {sizeCm && (
+                <>
+                  {" "}
+                  <StrongVar
+                    template={texts.exportar.descBolaTamano}
+                    varName="tamano"
+                    value={sizeCm}
+                  />
+                </>
+              )}{" "}
+              {texts.exportar.descRevisaBolas}
             </>
           ) : isBookmarks ? (
             <>

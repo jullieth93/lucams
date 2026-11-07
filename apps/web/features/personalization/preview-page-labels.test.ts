@@ -101,3 +101,22 @@ describe("unitNounForLine", () => {
     expect(unitNounForLine(null, null)).toBe("Unidad");
   });
 });
+
+describe("unitNounForLine — bola navideña", () => {
+  it("rotula cada unidad física como Bola, no como Separador o Unidad", () => {
+    const schema = { experience: "christmas-ornament", facesPerUnit: 2 };
+    expect(unitNounForLine("CUSTOM_DECOR", "Foto circular de 8 cm · Sin imán", schema)).toBe(
+      "Bola",
+    );
+    expect(
+      designPreviewPageLabels(
+        {
+          canvasData: { version: 2, slotCount: 4, unitCount: 2, unitSlots: 2 },
+          metadata: { unitCount: 2 },
+          previewPagesCount: 2,
+        },
+        "Bola",
+      ),
+    ).toEqual(["Bola 1", "Bola 2"]);
+  });
+});
