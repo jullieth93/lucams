@@ -85,7 +85,7 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
           label: "Inactividad, entrada y cooldown",
           description: "Controla antigüedad de datos, ventana de elegibilidad y reingreso.",
           interpretation:
-            "Cooldown evita repetir el mismo recorrido inmediatamente después de completar o salir de un ciclo.",
+            "La ventana de entrada limita la antigüedad máxima del evento y la inactividad exige una antigüedad mínima; ambas se aplican también en reactivación y B2B. Cooldown evita repetir el mismo recorrido inmediatamente después de completar o salir de un ciclo. La ventana de carritos recientes se recalcula en cada ejecución.",
         },
         {
           id: "frecuencia",
@@ -138,7 +138,7 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
           label: "Botón y ruta",
           description: "Define texto y destino interno del botón.",
           interpretation:
-            "La ruta debe comenzar con /. El enlace público se genera con token opaco para atribuir clics sin exponer datos personales.",
+            "La ruta debe comenzar con /. Si el recorrido tiene producto contextual, /productos y /recomendador llevan a su ficha para aprovechar los relacionados por ocasión y categoría. El enlace público se genera con token opaco para atribuir clics sin exponer datos personales.",
         },
         {
           id: "commercial",
@@ -166,7 +166,7 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
           label: "Mensajes y entrega",
           description: "Conserva estado, error, enlace, entrega Resend, clic y conversión.",
           interpretation:
-            "Enviado significa aceptado por Resend; entregado llega después por webhook. DRY_RUN es una simulación sin correo. Fallido permite reintentar; baja, rebote o queja cancelan lo pendiente.",
+            "Enviado significa aceptado por Resend; entregado llega después por webhook. DRY_RUN es una simulación sin correo. Fallido permite reintentar con la misma instantánea de contenido, destinatario, clasificación y ruta; baja, rebote o queja cancelan lo pendiente.",
         },
         {
           id: "metrics",
@@ -266,7 +266,7 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
     {
       question: "¿Se repiten mensajes al reintentar?",
       answer:
-        "No deberían: cada inscripción y mensaje tiene una clave única y el token de enlace se guarda solo como hash.",
+        "Cada inscripción y mensaje tiene una clave única. El reintento reutiliza contenido, nombre, clasificación, ruta, token e idempotency key; el token utilizable nunca se guarda, solo su hash.",
     },
     {
       question: "¿Cuándo termina una inscripción?",
@@ -298,5 +298,5 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
     "conversión",
     "atribución",
   ],
-  version: 3,
+  version: 4,
 };

@@ -99,10 +99,9 @@
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.
 - **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` con **44 guías**, búsqueda
   RBAC, 8 onboarding y recorridos opcionales; progreso/retroalimentación por usuario y cobertura Admin.
-- **Lifecycle Journeys (`ADR-198`):** `/admin/lifecycle` con consentimiento versionado, interruptor
-  y límites global/por recorrido, horarios Colombia, supresión, delegación, tareas B2B, entregabilidad
-  y atribución a 30 días. STG ejecuta `DRY_RUN`. Las 5 rutas están **en borrador** y las acciones
-  sensibles exigen MFA reciente.
+- **Lifecycle Journeys (`ADR-198`):** `/admin/lifecycle` con consentimiento versionado, interruptor/límites,
+  horarios Colombia, supresión, delegación, tareas B2B y atribución a 30 días. Ventanas acotadas, CTA a
+  relacionados y reintentos inmutables. STG `DRY_RUN`; 5 rutas **en borrador** y MFA reciente.
 
 ## Pendientes abiertos reales
 

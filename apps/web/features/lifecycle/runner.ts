@@ -20,13 +20,14 @@ import {
 } from "@/features/newsletter/unsubscribe";
 import {
   buildTriggerData,
-  CONTACT_SELECT,
+  getLifecycleContactSelect,
   evaluateStepCondition,
   findEligibleContacts,
   getEnrollmentExitReason,
   hasAbandonedCart,
   hasDesignActivity,
   hasNewsletterOptIn,
+  resolveLifecycleTargetPath,
   PAID_ORDER_STATUSES,
   type ContactBehavior,
   type EligibleContact,
@@ -84,18 +85,7 @@ function resolveTargetPath(
   enrollment: EnrollmentWithRelations,
   step: LifecycleJourneyStep,
 ): string {
-  if (
-    enrollment.journey.trigger !== "FIRST_PURCHASE" &&
-    enrollment.journey.trigger !== "HIGH_INTENT"
-  ) {
-    return step.ctaPath;
-  }
-  const data = enrollment.data as Record<string, unknown>;
-  const slug = typeof data.lastProductSlug === "string" ? data.lastProductSlug : null;
-  if (slug && (step.ctaPath === "/productos" || step.ctaPath === "/recomendador")) {
-    return `/producto/${encodeURIComponent(slug)}`;
-  }
-  return step.ctaPath;
+  return resolveLifecycleTargetPath(enrollment.journey.trigger, step.ctaPath, enrollment.data);
 }
 
 async function ensureB2bFollowUpTask(
@@ -162,18 +152,21 @@ async function sendStepMessage(
   const initialMetadata = {
     ...buildMessageMetadata(step, await getEmailOverrides("lifecycle-message")),
     targetPath,
+    recipientName: enrollment.contact.displayName ?? "",
   };
   const existing = await prisma.lifecycleMessage.findUnique({ where: { dedupKey } });
   const metadata: Prisma.InputJsonObject =
     existing?.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
       ? existing.metadata
       : initialMetadata;
+  const commercial =
+    typeof metadata.commercial === "boolean" ? metadata.commercial : step.commercial;
   if (existing && ["SENT", "SUPPRESSED", "CANCELLED"].includes(existing.status)) return "skipped";
   if (existing?.status === "FAILED" && existing.error && existing.scheduledFor > now) {
     return "retry";
   }
 
-  if (step.commercial && !hasNewsletterOptIn(enrollment.contact)) {
+  if (commercial && !hasNewsletterOptIn(enrollment.contact)) {
     await prisma.lifecycleMessage.upsert({
       where: { dedupKey },
       update: { status: "SUPPRESSED", error: "NO_OPT_IN" },
@@ -301,7 +294,7 @@ async function sendStepMessage(
   const rendered = await renderStoredLifecycleMessage({ ...message, ctaUrl }, step, {
     recipientName: enrollment.contact.displayName,
     productNames,
-    unsubscribeUrl: step.commercial
+    unsubscribeUrl: commercial
       ? `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(email)}`
       : undefined,
   });
@@ -311,8 +304,8 @@ async function sendStepMessage(
     html: rendered.html,
     text: rendered.text,
     idempotencyKey: dedupKey,
-    commercial: step.commercial,
-    headers: step.commercial ? buildCommercialEmailHeaders(email, siteUrl) : undefined,
+    commercial,
+    headers: commercial ? buildCommercialEmailHeaders(email, siteUrl) : undefined,
     tags: [
       { name: "type", value: "lifecycle" },
       { name: "journey", value: enrollment.journey.key },
@@ -706,7 +699,7 @@ export async function runLifecycleCycle(
     },
     include: {
       journey: { include: { steps: { orderBy: { position: "asc" } } } },
-      contact: { select: CONTACT_SELECT },
+      contact: { select: getLifecycleContactSelect(now) },
     },
     orderBy: { nextRunAt: "asc" },
     take: 500,

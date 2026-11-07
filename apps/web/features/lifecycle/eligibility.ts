@@ -11,103 +11,125 @@ export const PAID_ORDER_STATUSES = [
   "REFUNDED",
 ] as const;
 
-export const CONTACT_SELECT = {
-  id: true,
-  primaryEmail: true,
-  displayName: true,
-  createdAt: true,
-  deletedAt: true,
-  anonymizedAt: true,
-  isStaff: true,
-  consents: {
-    where: { scope: "NEWSLETTER", version: NEWSLETTER_PRIVACY_VERSION },
-    orderBy: { acceptedAt: "desc" },
-    take: 1,
-    select: { accepted: true, version: true },
-  },
-  customer: {
-    select: {
-      loyaltyPoints: true,
-      designs: {
-        where: { status: { in: ["DRAFT", "READY"] } },
-        orderBy: { updatedAt: "desc" },
-        take: 1,
-        select: {
-          id: true,
-          updatedAt: true,
-          product: { select: { slug: true, name: true } },
-        },
-      },
-      wishlist: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: {
-          id: true,
-          createdAt: true,
-          product: { select: { slug: true, name: true } },
-        },
-      },
-      backInStockSubs: {
-        where: {
-          notifiedAt: null,
-          product: {
-            isActive: true,
-            deletedAt: null,
-            variants: { some: { isActive: true, deletedAt: null, stock: { gt: 0 } } },
+export function getLifecycleContactSelect(now: Date) {
+  return {
+    id: true,
+    primaryEmail: true,
+    displayName: true,
+    createdAt: true,
+    deletedAt: true,
+    anonymizedAt: true,
+    isStaff: true,
+    consents: {
+      where: { scope: "NEWSLETTER", version: NEWSLETTER_PRIVACY_VERSION },
+      orderBy: { acceptedAt: "desc" },
+      take: 1,
+      select: { accepted: true, version: true },
+    },
+    customer: {
+      select: {
+        loyaltyPoints: true,
+        designs: {
+          where: { status: { in: ["DRAFT", "READY"] } },
+          orderBy: { updatedAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            updatedAt: true,
+            product: { select: { slug: true, name: true } },
           },
         },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: {
-          id: true,
-          createdAt: true,
-          product: { select: { slug: true, name: true } },
+        wishlist: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            createdAt: true,
+            product: { select: { slug: true, name: true } },
+          },
+        },
+        backInStockSubs: {
+          where: {
+            notifiedAt: null,
+            product: {
+              isActive: true,
+              deletedAt: null,
+              variants: { some: { isActive: true, deletedAt: null, stock: { gt: 0 } } },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            createdAt: true,
+            product: { select: { slug: true, name: true } },
+          },
         },
       },
     },
-  },
-  orders: {
-    where: { status: { in: [...PAID_ORDER_STATUSES] }, deletedAt: null },
-    orderBy: { createdAt: "desc" },
-    take: 1,
-    select: {
-      id: true,
-      number: true,
-      status: true,
-      deliveredAt: true,
-      createdAt: true,
-      items: {
-        take: 3,
-        select: { variant: { select: { product: { select: { slug: true, name: true } } } } },
+    orders: {
+      where: { status: { in: [...PAID_ORDER_STATUSES] }, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        deliveredAt: true,
+        createdAt: true,
+        items: {
+          take: 3,
+          select: { variant: { select: { product: { select: { slug: true, name: true } } } } },
+        },
       },
     },
-  },
-  abandonedCarts: {
-    where: {
-      recoveredAt: null,
-      closedReason: null,
-      createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) },
+    abandonedCarts: {
+      where: {
+        recoveredAt: null,
+        closedReason: null,
+        createdAt: { gte: new Date(now.getTime() - 7 * 86_400_000) },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+      select: { id: true, createdAt: true },
     },
-    orderBy: { createdAt: "desc" },
-    take: 1,
-    select: { id: true, createdAt: true },
-  },
-  opportunities: {
-    where: { deletedAt: null },
-    orderBy: { updatedAt: "desc" },
-    take: 1,
-    select: { id: true, number: true, stage: true, updatedAt: true, ownerAdminId: true },
-  },
-  quotes: {
-    orderBy: { createdAt: "desc" },
-    take: 1,
-    select: { id: true, createdAt: true },
-  },
-} satisfies Prisma.ContactSelect;
+    opportunities: {
+      where: { deletedAt: null },
+      orderBy: { updatedAt: "desc" },
+      take: 1,
+      select: { id: true, number: true, stage: true, updatedAt: true, ownerAdminId: true },
+    },
+    quotes: {
+      orderBy: { createdAt: "desc" },
+      take: 1,
+      select: { id: true, createdAt: true },
+    },
+  } satisfies Prisma.ContactSelect;
+}
 
 export type EligibleContact = Prisma.ContactGetPayload<{
-  select: typeof CONTACT_SELECT;
+  select: ReturnType<typeof getLifecycleContactSelect>;
 }>;
+
+export function resolveLifecycleTargetPath(
+  trigger: LifecycleJourney["trigger"],
+  ctaPath: string,
+  data: Prisma.JsonValue,
+): string {
+  if (!["FIRST_PURCHASE", "SECOND_PURCHASE", "REACTIVATION", "HIGH_INTENT"].includes(trigger)) {
+    return ctaPath;
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return ctaPath;
+  const slug = (data as Prisma.JsonObject).lastProductSlug;
+  if (
+    typeof slug === "string" &&
+    slug &&
+    (ctaPath === "/productos" || ctaPath === "/recomendador")
+  ) {
+    return `/producto/${encodeURIComponent(slug)}`;
+  }
+  return ctaPath;
+}
 
 export type ContactTriggerData = {
   lastOrderNumber?: string;
@@ -173,6 +195,7 @@ function eligibleWhere(journey: LifecycleJourney, now: Date): Prisma.ContactWher
               some: {
                 scope: "NEWSLETTER",
                 version: NEWSLETTER_PRIVACY_VERSION,
+                accepted: true,
                 acceptedAt: { gte: lookback },
               },
             },
@@ -204,7 +227,7 @@ function eligibleWhere(journey: LifecycleJourney, now: Date): Prisma.ContactWher
       return {
         ...base,
         orders: {
-          some: { ...paidOrder, createdAt: { lte: inactivityCutoff } },
+          some: { ...paidOrder, createdAt: { gte: lookback, lte: inactivityCutoff } },
           none: { ...paidOrder, createdAt: { gt: inactivityCutoff } },
         },
       };
@@ -267,7 +290,7 @@ function eligibleWhere(journey: LifecycleJourney, now: Date): Prisma.ContactWher
         opportunities: {
           some: {
             deletedAt: null,
-            updatedAt: { lte: inactivityCutoff },
+            updatedAt: { gte: lookback, lte: inactivityCutoff },
             stage: { in: ["NEW", "QUALIFYING", "PROPOSAL_SENT"] },
           },
         },
@@ -333,7 +356,7 @@ export async function findEligibleContacts(
   const [rows, candidateCount, optedInCount] = await Promise.all([
     prisma.contact.findMany({
       where,
-      select: CONTACT_SELECT,
+      select: getLifecycleContactSelect(now),
       orderBy: { createdAt: "asc" },
       take: options.limit ?? 100,
     }),

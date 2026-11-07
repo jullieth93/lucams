@@ -55,7 +55,8 @@ export async function renderStoredLifecycleMessage(
     body: textMetadata(message.metadata, "body", step.body),
     ctaLabel: textMetadata(message.metadata, "ctaLabel", step.ctaLabel),
     ctaUrl: message.ctaUrl,
-    recipientName: input.recipientName,
+    recipientName:
+      textMetadata(message.metadata, "recipientName", input.recipientName ?? "") || null,
     productNames: input.productNames,
     unsubscribeUrl: input.unsubscribeUrl,
   };

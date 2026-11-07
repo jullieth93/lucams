@@ -282,9 +282,11 @@
 - [ ] Interruptor general y límite diario global se guardan con auditoría e invalidación `cms`; apagar el motor detiene inscripciones y ejecuciones sin borrar historial
 - [ ] Crear/editar/reordenar pasos conserva posiciones consecutivas, versionado y mensajes históricos; audiencia y exclusiones coinciden con la ejecución
 - [ ] Cada paso abre una previsualización sandbox con su CTA; la prueba en STG responde `DRY_RUN` y no crea correo ni tarea real
-- [ ] Consentimiento por versión, baja, rebote y queja suprimen inmediatamente; carrito y reposición salen delegados a sus flujos existentes sin duplicados
-- [ ] Dos workers no duplican inscripciones/mensajes ni superan el límite global; reintentos conservan contenido, token e idempotency key
+- [ ] Consentimiento por versión, baja, rebote y queja suprimen inmediatamente; carrito y reposición salen delegados a sus flujos existentes sin duplicados; la ventana de carrito se recalcula en cada ciclo
+- [ ] Reactivación y B2B respetan tanto la inactividad mínima como la antigüedad máxima de entrada; ninguna oportunidad histórica fuera de ventana genera tareas
+- [ ] Dos workers no duplican inscripciones/mensajes ni superan el límite global; reintentos conservan HTML, nombre, clasificación comercial, ruta, token e idempotency key
 - [ ] Segunda compra exige una sola compra histórica; una orden posterior cierra el ciclo; B2B crea una tarea idempotente aun sin correo
+- [ ] Activación, recompra, reactivación y alta intención dirigen `/productos` o `/recomendador` a la PDP del producto contextual para aprovechar sus relacionados
 - [ ] Métricas separan aceptación, entrega, rebote, queja, clic, conversión e ingreso; una orden solo se atribuye al último clic anterior dentro de 30 días
 
 ---
