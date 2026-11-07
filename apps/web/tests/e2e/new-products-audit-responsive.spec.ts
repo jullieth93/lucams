@@ -1,11 +1,12 @@
-import { Prisma } from "@lucams/db";
 import type { Locator, Page } from "@playwright/test";
 import { db, disconnectDb } from "./fixtures/db";
 import { dismissCookieBanner, E2E_ENV, expect, test } from "./fixtures/auth";
+import { captureNewProductState, restoreNewProductState } from "./fixtures/product-state";
 
 const ORNAMENT_SLUG = "bola-navidena-personalizada";
 const MINI_BOOK_SLUG = "mini-libros-magneticos";
 const runStartedAt = new Date();
+let originalProductState: Awaited<ReturnType<typeof captureNewProductState>> = [];
 
 test.skip(E2E_ENV !== "local", "La auditoría de nuevos productos activa datos solo en LOCAL.");
 test.setTimeout(120_000);
@@ -52,6 +53,8 @@ async function captureModelCenter(page: Page, dialog: Locator) {
 }
 
 test.beforeAll(async () => {
+  originalProductState = await captureNewProductState();
+  expect(originalProductState).toHaveLength(2);
   await db().product.updateMany({
     where: { slug: { in: [ORNAMENT_SLUG, MINI_BOOK_SLUG] }, deletedAt: null },
     data: {
@@ -82,14 +85,7 @@ test.afterAll(async () => {
         product: { slug: { in: [ORNAMENT_SLUG, MINI_BOOK_SLUG] } },
       },
     });
-    await db().productVariant.updateMany({
-      where: { product: { slug: { in: [ORNAMENT_SLUG, MINI_BOOK_SLUG] } } },
-      data: { price: 0, stock: 100_000 },
-    });
-    await db().product.updateMany({
-      where: { slug: { in: [ORNAMENT_SLUG, MINI_BOOK_SLUG] } },
-      data: { isActive: false, basePrice: 0, physicalSpecs: Prisma.DbNull },
-    });
+    await restoreNewProductState(originalProductState);
   } finally {
     await disconnectDb();
   }

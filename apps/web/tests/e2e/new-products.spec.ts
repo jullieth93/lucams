@@ -1,9 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
-import { Prisma } from "@lucams/db";
 import type { Locator, Page } from "@playwright/test";
 import { db, disconnectDb } from "./fixtures/db";
 import { dismissCookieBanner, E2E_ENV, expect, test } from "./fixtures/auth";
+import { captureNewProductState, restoreNewProductState } from "./fixtures/product-state";
 
 const ORNAMENT_SLUG = "bola-navidena-personalizada";
 const MINI_BOOK_SLUG = "mini-libros-magneticos";
@@ -12,6 +12,7 @@ const runStartedAt = new Date();
 const cartSessions = new Set<string>();
 let miniBookId = "";
 let miniBookVariantId = "";
+let originalProductState: Awaited<ReturnType<typeof captureNewProductState>> = [];
 
 async function resolvePanel(page: Page): Promise<Locator> {
   let panel = page.locator('aside[aria-label="Herramientas del Estudio"]');
@@ -130,6 +131,7 @@ test.beforeAll(async () => {
     select: { id: true, slug: true },
   });
   expect(products).toHaveLength(2);
+  originalProductState = await captureNewProductState();
   miniBookId = products.find((product) => product.slug === MINI_BOOK_SLUG)!.id;
 
   await db().product.updateMany({
@@ -209,14 +211,7 @@ test.afterAll(async () => {
       await db().cart.deleteMany({ where: { sessionId } });
     }
     await db().wholesaleTier.deleteMany({ where: { note: TEST_NOTE } });
-    await db().productVariant.updateMany({
-      where: { product: { slug: { in: [ORNAMENT_SLUG, MINI_BOOK_SLUG] } } },
-      data: { price: 0, stock: 100_000 },
-    });
-    await db().product.updateMany({
-      where: { slug: { in: [ORNAMENT_SLUG, MINI_BOOK_SLUG] } },
-      data: { isActive: false, basePrice: 0, physicalSpecs: Prisma.DbNull },
-    });
+    await restoreNewProductState(originalProductState);
   } finally {
     await disconnectDb();
   }
