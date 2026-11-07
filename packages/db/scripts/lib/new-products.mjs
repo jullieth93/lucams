@@ -25,18 +25,32 @@ const sharedExperience = {
   volumePricingByPhysicalUnit: true,
 };
 
+export const NEW_PRODUCT_COMMERCIAL = {
+  basePrice: 1_000_000,
+  isActive: true,
+  physicalSpecs: {
+    weightGrams: 200,
+    widthCm: 8,
+    heightCm: 8,
+    depthCm: 8,
+  },
+  wholesaleTiers: [
+    { minQty: 3, unitPrice: 900_000, note: "Promoción por cantidad" },
+    { minQty: 5, unitPrice: 800_000, note: "Promoción por cantidad" },
+  ],
+};
+
 export const NEW_PRODUCTS = [
   {
     slug: CHRISTMAS_ORNAMENT_SLUG,
     sku: "NAV-BOLA-8",
     name: "Bola Navideña Personalizada",
+    ...NEW_PRODUCT_COMMERCIAL,
     description:
       "Un inserto circular plano dúplex de 8 cm dentro de una esfera transparente. Elige plantillas o sube tus diseños para el frente y el reverso, revisa cómo se ven al girar y personaliza cada bola por separado. Producto sin imán.",
-    basePrice: 0,
     compareAtPrice: null,
     categorySlug: "de-temporada",
     isPersonalizable: true,
-    isActive: false,
     isFeatured: false,
     personalizationKind: "CUSTOM_DECOR",
     personalizationSchema: {
@@ -52,7 +66,6 @@ export const NEW_PRODUCTS = [
       experience: "christmas-ornament",
       ...sharedExperience,
     },
-    physicalSpecs: null,
     images: ["/products/bola-navidena.webp"],
     seoTitle: "Bola Navideña Personalizada con tu foto | Lucams Shop",
     seoDescription:
@@ -62,7 +75,7 @@ export const NEW_PRODUCTS = [
       {
         sku: "NAV-BOLA-8CM-NOMAG",
         name: "Foto circular de 8 cm · Sin imán",
-        price: 0,
+        price: NEW_PRODUCT_COMMERCIAL.basePrice,
         attributes: {
           shape: "circle",
           magnet: false,
@@ -79,13 +92,12 @@ export const NEW_PRODUCTS = [
     slug: MINI_BOOK_SLUG,
     sku: "MINI-LIBRO",
     name: "Mini Libros Magnéticos",
+    ...NEW_PRODUCT_COMMERCIAL,
     description:
       "Mini libros decorativos con carátula envolvente personalizada: contraportada, lomo y portada. Tamaño grande extendido de 7,1 × 5 cm o pequeño extendido de 5 × 2,5 cm; ambos con 0,5 cm de grosor. Disponibles con imán o sin imán.",
-    basePrice: 0,
     compareAtPrice: null,
     categorySlug: "recuerdos",
     isPersonalizable: true,
-    isActive: false,
     isFeatured: false,
     personalizationKind: "CUSTOM_DECOR",
     personalizationSchema: {
@@ -99,7 +111,6 @@ export const NEW_PRODUCTS = [
       spineWidthCm: 0.5,
       ...sharedExperience,
     },
-    physicalSpecs: null,
     images: ["/products/mini-libros-magneticos.webp"],
     seoTitle: "Mini Libros Personalizados con imán o sin imán | Lucams Shop",
     seoDescription:
@@ -109,7 +120,7 @@ export const NEW_PRODUCTS = [
       [true, false].map((magnet) => ({
         sku: `ML-${size.key === "grande" ? "71X50" : "50X25"}${magnet ? "" : "-NOMAG"}`,
         name: `${size.label} · ${size.sizeCm.replace("×", " × ")} cm extendido · ${magnet ? "Con imán" : "Sin imán"}`,
-        price: 0,
+        price: NEW_PRODUCT_COMMERCIAL.basePrice,
         attributes: {
           shape: "rectangle",
           magnet,

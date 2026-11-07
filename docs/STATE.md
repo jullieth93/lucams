@@ -70,9 +70,10 @@
 - **Nuevas experiencias en LOCAL y STG:** Bola Navideña Personalizada (foto plana de 8 cm) y Mini
   Libros Magnéticos (carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán), con plantillas
   asistidas, prediseñados buscables, unidades libres y descuentos por cantidad física
-  (`ADR-199`/`200`/`201`). STG contiene los 2 productos, 5 variantes, 10 plantillas propias
-  (21 activas en total) y 20 prediseñados. Permanecen **pausados**: precios, escalas y logística real
-  se completan en admin antes de publicar; PRD no fue modificado.
+  (`ADR-199`/`200`/`201`). LOCAL y STG contienen los 2 productos activos, 5 variantes, 10 plantillas
+  propias (21 activas en total) y 20 prediseñados. Precio unitario de **$10.000 COP**, promociones de
+  **3 por $27.000** y **5 por $40.000**, y paquete de **8 × 8 × 8 cm / 200 g** en ambos. PRD no fue
+  modificado.
 - Auto-save serial con `clientRev` (`STALE_REVISION`), retomador `[STU-02]` para clientes e
   invitados, previews limpios (`ADR-191`) en bucket privado `design-previews` vía
   `/api/design-preview/*` (`LUC-SEC-001`) con `DesignPreviewDialog` paginado (`PagedPreviewThumb`,

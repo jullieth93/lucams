@@ -34,3 +34,24 @@ test("no inventa logística para experiencias físicas especializadas", () => {
     false,
   );
 });
+
+test("conserva los precios unitarios, promociones y logística confirmados", () => {
+  for (const product of NEW_PRODUCTS) {
+    assert.equal(product.isActive, true);
+    assert.equal(product.basePrice, 1_000_000);
+    assert.deepEqual(product.physicalSpecs, {
+      weightGrams: 200,
+      widthCm: 8,
+      heightCm: 8,
+      depthCm: 8,
+    });
+    assert.deepEqual(
+      product.wholesaleTiers.map(({ minQty, unitPrice }) => ({ minQty, unitPrice })),
+      [
+        { minQty: 3, unitPrice: 900_000 },
+        { minQty: 5, unitPrice: 800_000 },
+      ],
+    );
+    assert.ok(product.variants.every((variant) => variant.price === product.basePrice));
+  }
+});

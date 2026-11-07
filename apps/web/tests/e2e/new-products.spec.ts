@@ -165,17 +165,28 @@ test.beforeAll(async () => {
     where: { productId: { in: products.map((product) => product.id) } },
     data: { price: 1_500_000, stock: 100 },
   });
-  await db().wholesaleTier.create({
-    data: {
-      productId: miniBookId,
-      minQty: 3,
-      unitPrice: 1_200_000,
-      note: TEST_NOTE,
-      isActive: true,
-      createdBy: TEST_NOTE,
-      updatedBy: TEST_NOTE,
-    },
+  const existingTier = await db().wholesaleTier.findFirst({
+    where: { productId: miniBookId, minQty: 3, deletedAt: null },
+    select: { id: true },
   });
+  if (existingTier) {
+    await db().wholesaleTier.update({
+      where: { id: existingTier.id },
+      data: { unitPrice: 1_200_000, note: TEST_NOTE, isActive: true, updatedBy: TEST_NOTE },
+    });
+  } else {
+    await db().wholesaleTier.create({
+      data: {
+        productId: miniBookId,
+        minQty: 3,
+        unitPrice: 1_200_000,
+        note: TEST_NOTE,
+        isActive: true,
+        createdBy: TEST_NOTE,
+        updatedBy: TEST_NOTE,
+      },
+    });
+  }
 });
 
 test.afterAll(async () => {
@@ -210,7 +221,9 @@ test.afterAll(async () => {
       await db().cartItem.deleteMany({ where: { cart: { sessionId } } });
       await db().cart.deleteMany({ where: { sessionId } });
     }
-    await db().wholesaleTier.deleteMany({ where: { note: TEST_NOTE } });
+    await db().wholesaleTier.deleteMany({
+      where: { productId: miniBookId, createdBy: TEST_NOTE },
+    });
     await restoreNewProductState(originalProductState);
   } finally {
     await disconnectDb();

@@ -1205,8 +1205,13 @@ async function run(db, write) {
       console.error(`  ✗ Categoría no encontrada: ${p.categorySlug} — ${p.slug} omitido`);
       continue;
     }
-    // `variants` no es columna del modelo Product — se procesa aparte abajo.
-    const { categorySlug, variants: declaredVariants, ...rest } = p;
+    // Variantes y promociones no son columnas del modelo Product — se procesan aparte.
+    const {
+      categorySlug,
+      variants: declaredVariants,
+      wholesaleTiers: declaredWholesaleTiers,
+      ...rest
+    } = p;
     // Upsert por SKU (clave estable del catálogo): si Lucy cambia el slug pero
     // mantiene el SKU, se alinea; SKU nuevo → producto nuevo.
     const existing = await db.product.findUnique({ where: { sku: p.sku } });
@@ -1241,6 +1246,29 @@ async function run(db, write) {
           await db.product.update({
             where: { id: existing.id },
             data: { ...declared, ...(catChanged ? { categoryId } : {}) },
+          });
+        }
+      }
+    }
+
+    if (Array.isArray(declaredWholesaleTiers)) {
+      for (const tier of declaredWholesaleTiers) {
+        const existingTier = productId
+          ? await db.wholesaleTier.findFirst({
+              where: { productId, minQty: tier.minQty, deletedAt: null },
+              select: { id: true },
+            })
+          : null;
+        if (existingTier) continue;
+        console.log(`  + ${p.name}: promoción desde ${tier.minQty} unidades`);
+        if (write && productId) {
+          await db.wholesaleTier.create({
+            data: {
+              productId,
+              ...tier,
+              createdBy: "system:seed-catalog-canonical",
+              updatedBy: "system:seed-catalog-canonical",
+            },
           });
         }
       }
