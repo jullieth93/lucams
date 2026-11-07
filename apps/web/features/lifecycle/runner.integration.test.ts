@@ -104,21 +104,14 @@ async function createJourney(trigger: LifecycleTrigger, commercial = true) {
       status: "ACTIVE",
       requireOptIn: false,
       maxMessagesPerDay: 2,
-      quietStartHour: 20,
-      quietEndHour: 8,
+      quietStartHour: 0,
+      quietEndHour: 0,
       steps: { create: steps },
     },
   });
 }
 
-function outsideQuietHours(): Date {
-  const now = new Date();
-  const bogotaHour = (now.getUTCHours() + 19) % 24;
-  if (bogotaHour >= 20 || bogotaHour < 8) now.setUTCHours(17, 0, 0, 0);
-  return now;
-}
-
-async function runCleanCycle(journeyId: string, contactIds: string[], now = outsideQuietHours()) {
+async function runCleanCycle(journeyId: string, contactIds: string[], now?: Date) {
   const summary = await runLifecycleCycle(now, { journeyId, contactIds });
   expect(summary.errors).toBe(0);
   return summary;
@@ -489,9 +482,10 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
     const journey = await createJourney("FIRST_PURCHASE");
     sendEmailMock.mockResolvedValue({ sent: false, reason: "timeout", status: 503 });
 
+    const now = new Date();
     await Promise.all([
-      runCleanCycle(journey.id, [contact.id]),
-      runCleanCycle(journey.id, [contact.id]),
+      runCleanCycle(journey.id, [contact.id], now),
+      runCleanCycle(journey.id, [contact.id], now),
     ]);
 
     const enrollment = await prisma.lifecycleEnrollment.findFirstOrThrow({
@@ -852,8 +846,7 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
         nextRunAt: new Date(0),
       },
     });
-    const eightDaysLater = outsideQuietHours();
-    eightDaysLater.setUTCDate(eightDaysLater.getUTCDate() + 8);
+    const eightDaysLater = new Date(Date.now() + 8 * 86_400_000);
 
     const summary = await runCleanCycle(journey.id, [contact.id], eightDaysLater);
 
