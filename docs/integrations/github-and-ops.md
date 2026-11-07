@@ -115,7 +115,7 @@ Se activa mediante el evento nativo `deployment_status` emitido por Vercel en el
    - `/api/health/db` (conectividad PostgreSQL vía Prisma)
    - `/api/health/crons` (dead-man switch de jobs programados; devuelve `503` si alguno está vencido)
    - `/` y `/productos` — además de `HTTP 200`, exigen en el HTML los **3 marcadores estructurales del layout raíz**: `lang="es-CO"`, `href="#contenido"` (skip-link WCAG 2.4.1) e `id="contenido"` (`<main>`), detectando páginas en blanco o caídas de hidratación SSR.
-3. **Detector de deriva de migraciones en PRD:** si existe el secreto `BACKUP_DATABASE_URL`, cruza las carpetas `packages/db/prisma/migrations` de `production` contra `SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL` en PRD y falla en rojo si quedó alguna migración sin aplicar.
+3. **Detector de deriva de migraciones y agendado Lifecycle en PRD:** si existe el secreto `BACKUP_DATABASE_URL`, cruza las carpetas `packages/db/prisma/migrations` de `production` contra `SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL` en PRD y falla en rojo si quedó alguna migración sin aplicar. La misma etapa exige exactamente un `lucams-lifecycle` activo con `*/15 * * * *` en `cron.job`; si falta o tiene otra frecuencia, indica aplicar la migración `058` después del deploy `Ready`.
 
 ---
 
