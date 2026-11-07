@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evaluateStepCondition } from "./eligibility";
+import { evaluateStepCondition, resolveLifecycleTargetPath } from "./eligibility";
 import { LifecycleJourneyStepSchema } from "./schemas";
 import { isLifecycleDryRun } from "./settings";
 
@@ -52,6 +52,31 @@ describe("lifecycle step rules", () => {
     expect(LifecycleJourneyStepSchema.safeParse({ ...base, ctaPath: "/\\evil.test" }).success).toBe(
       false,
     );
+  });
+
+  it("dirige activación, recompra y reactivación al producto contextual", () => {
+    for (const trigger of [
+      "FIRST_PURCHASE",
+      "SECOND_PURCHASE",
+      "REACTIVATION",
+      "HIGH_INTENT",
+    ] as const) {
+      expect(
+        resolveLifecycleTargetPath(trigger, "/recomendador", {
+          lastProductSlug: "set fotoimanes",
+        }),
+      ).toBe("/producto/set%20fotoimanes");
+    }
+    expect(
+      resolveLifecycleTargetPath("SECOND_PURCHASE", "/mi-cuenta", {
+        lastProductSlug: "fotoimanes",
+      }),
+    ).toBe("/mi-cuenta");
+    expect(
+      resolveLifecycleTargetPath("B2B_FOLLOW_UP", "/productos", {
+        lastProductSlug: "fotoimanes",
+      }),
+    ).toBe("/productos");
   });
 
   it("fuerza DRY_RUN en Preview y admite activación explícita en otros ambientes", () => {
