@@ -75,10 +75,18 @@ export function applyVolumePricing(
   tiers: readonly VolumeTierInput[],
   productId: string,
   qty: number,
+  physicalUnitMultiplier = 1,
 ): number {
-  const tierPrice = resolveVolumeTierPrice(tiers, productId, qty);
-  if (tierPrice === null || tierPrice >= baseUnitPrice) return baseUnitPrice;
-  return tierPrice;
+  const multiplier = Math.max(1, Math.trunc(physicalUnitMultiplier) || 1);
+  if (multiplier === 1) {
+    const tierPrice = resolveVolumeTierPrice(tiers, productId, qty);
+    if (tierPrice === null || tierPrice >= baseUnitPrice) return baseUnitPrice;
+    return tierPrice;
+  }
+  const basePerPhysicalUnit = baseUnitPrice / multiplier;
+  const tierPrice = resolveVolumeTierPrice(tiers, productId, qty * multiplier);
+  if (tierPrice === null || tierPrice >= basePerPhysicalUnit) return baseUnitPrice;
+  return tierPrice * multiplier;
 }
 
 export type VisibleVolumeTier = {

@@ -137,7 +137,7 @@ export async function buildCompositedPreview(
     : slots;
   const unitSlots = range ? rangeSlots.length : (canvasData.unitSlots ?? slots.length);
   const unitCount = range ? 1 : (canvasData.unitCount ?? 1);
-  const multiUnit = !range && unitCount > 1 && unitSlots > 1;
+  const multiUnit = !range && unitCount > 1;
   // Cell size: 360×(360 * aspect) por slot en el preview
   const cellW = 360;
   const cellH = Math.floor(360 * (unitTemplate.stage.height / unitTemplate.stage.width));

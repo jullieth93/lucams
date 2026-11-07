@@ -413,7 +413,7 @@ apps/web/app/estudio/
     ├── use-prefers-reduced-motion.ts    # Hook reactivo para prefers-reduced-motion
     │
     ├── # Previsualizador 3D «Míralo en tu espacio» (React Three Fiber / Three.js)
-    ├── scene-gallery.tsx                # Galería de las 7 escenas 3D + compuerta honesta por magnet (ADR-180)
+    ├── scene-gallery.tsx                # Galería de las 10 escenas 3D + compuerta honesta por magnet (ADR-180)
     ├── scene-3d-error-boundary.tsx      # ErrorBoundary aislado por escena WebGL
     ├── studio-3d-environment.tsx        # Iluminación calibrada y entorno compartido R3F
     ├── magnet-3d.tsx                    # Malla 3D con grosor físico real y dorso ferrita #1A1A1A / papel #FAF8F5
@@ -423,6 +423,9 @@ apps/web/app/estudio/
     ├── book-view-3d.tsx                 # Escena 5: Libro 3D (separadores doblados o planos acostados + giro 180°)
     ├── shelf-3d-view.tsx                # Escena 6: Repisa 3D con piezas recostadas a escala real (ADR-172)
     ├── gift-3d-view.tsx                 # Escena 7: Caja de regalo 3D con piezas recostadas (ADR-172)
+    ├── ornament-3d-view.tsx             # Escena 8: UNA bola dúplex A/B, argolla circular, moño exterior e icopor con botones/arrastre
+    ├── mini-book-3d-view.tsx            # Escenas 9 y 10: mini libro cerrado/extendido y nevera con/sin imán
+    ├── mini-book-fields.tsx             # Asistente mini libro: título portada+lomo, autor y contraportada
     ├── calendar-card-focus.tsx          # Visor 3D focal 1 a 1 de calendario con paginador de 2 niveles (Set + Mes)
     ├── calendar-view-3d.tsx             # Escena 3D auxiliar de calendario de escritorio
     ├── fit-camera.tsx / fit-camera-polar.tsx # Encuadre automático de cámara según muebles y clúster
@@ -461,6 +464,7 @@ apps/web/app/estudio/
         ├── use-debounced-commit.ts      # Commit con debounce de 350 ms y parámetro commitEcho
         ├── apply-predesigned.ts         # Anclaje a Cara A (resolveFaceAAnchor) y reemplazo por par A+B
         ├── predesigned-variety.ts       # Reparto variado de diseños prediseñados
+        ├── predesigned-search.ts        # Búsqueda normalizada por tema/tamaño + enlace a diseño asistido
         ├── faces.ts                     # Emparejamiento de caras físicas (separadores de 2 caras)
         ├── brand-back-texture.ts        # Textura 3D CanvasTexture del patrón «Lucams» para cara B vacía (ADR-190)
         ├── book-geometry.ts             # Pose con grupos anidados de separadores doblados y planos en libro 3D
@@ -497,6 +501,7 @@ apps/web/features/personalization/
 ├── production-render-sharp.ts           # Tier 1: composición rápida con sharp para geometrías puras
 ├── production-render-canvas.ts          # Tier 2: composición @napi-rs/canvas con fuentes .ttf registradas
 ├── production-spec.ts                   # Especificación legible de unidades y piezas para el taller
+├── product-experience.ts                # Experiencias físicas, unidades libres y geometría mini libro
 ├── render-job-service.ts                # Cola asíncrona RenderJob con lease y reintentos en background
 ├── assembly-sheet.ts / staged-slots.ts  # Hoja guía de armado y tickets acotados para subidas de respaldo
 ├── preview-access.ts                    # Matriz de autorización canAccessDesignPreview (LUC-SEC-001)
@@ -1211,7 +1216,7 @@ node apps/web/scripts/profile-studio-entry.mjs
 - **`ADR-057` / `ADR-139` / `ADR-188`**: superficies `LetterSetEditor` y `NameEditor`, selección de
   idioma en PDP y render servidor a 300 DPI de un PNG individual por cada ficha.
 - **`ADR-058`**: asistente de ideas por ocasión con Google Gemini y sanitización 0-PII.
-- **`ADR-063` / `ADR-170` / `ADR-172` / `ADR-180`**: galería 3D «Míralo en tu espacio» (7 escenas en
+- **`ADR-063` / `ADR-170` / `ADR-172` / `ADR-180`**: galería 3D «Míralo en tu espacio» (10 escenas en
   React Three Fiber, incluidas repisa y regalo recostados), paginador de 2 niveles en calendario y
   compuerta honesta para variantes `-NOMAG` + dorso ferrita `#1A1A1A`.
 - **`ADR-081` / `ADR-136`**: respaldo de snapshots en cliente con masters originales y cola asíncrona

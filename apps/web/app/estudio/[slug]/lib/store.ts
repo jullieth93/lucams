@@ -166,6 +166,10 @@ export type StudioStoreState = {
     textLayerId: string,
     override: import("../types").TextOverride | null,
   ) => void;
+  setSlotTextOverrides: (
+    slotIndex: number,
+    overrides: Record<string, import("../types").TextOverride | null>,
+  ) => void;
   /** M.3.b.UX.v6 — Set parcial del transform de la foto del slot.
    *  - `transform = null` → reset al default (offsetX/Y=0, scale=1, rotation=0).
    *  - `transform = { offsetX?, offsetY?, scale?, rotation? }` → merge sobre el actual.
@@ -356,6 +360,11 @@ export function createStudioStore() {
       // había photoTransform persistido. Reset tipo clearSlot + asignación.
       // La foto de perfil IG se CONSERVA: es una capa independiente del diseño
       // anterior (su avatar lo elige el cliente, no lo trae la composición).
+      // En mini libros asistidos también se conservan título/lomo/autor/dedicatoria:
+      // son datos estructurados de la carátula, no texto sobre la foto anterior.
+      const preserveMiniBookText = canvasData.unitTemplate.layers.some(
+        (layer) => layer.id === "spine_title",
+      );
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) =>
@@ -366,7 +375,7 @@ export function createStudioStore() {
                 assetUrl: asset.signedUrl,
                 canvasUrl: asset.canvasUrl ?? null,
                 filter: null,
-                textOverrides: undefined,
+                textOverrides: preserveMiniBookText ? s.textOverrides : undefined,
                 photoTransform: undefined,
               }
             : s,
@@ -595,6 +604,26 @@ export function createStudioStore() {
       get().setCanvasData(next);
     },
 
+    setSlotTextOverrides: (slotIndex, overrides) => {
+      const { canvasData } = get();
+      if (!canvasData || Object.keys(overrides).length === 0) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) => {
+          if (s.slotIndex !== slotIndex) return s;
+          const nextOverrides = { ...(s.textOverrides ?? {}) };
+          for (const [textLayerId, override] of Object.entries(overrides)) {
+            if (override === null) delete nextOverrides[textLayerId];
+            else nextOverrides[textLayerId] = override;
+          }
+          const finalOverrides =
+            Object.keys(nextOverrides).length === 0 ? undefined : nextOverrides;
+          return { ...s, textOverrides: finalOverrides };
+        }),
+      };
+      get().setCanvasData(next);
+    },
+
     swapSlots: (a, b) => {
       const { canvasData } = get();
       if (!canvasData) return;
@@ -705,7 +734,10 @@ export function createStudioStore() {
     setPhotoSlotsPerUnit: (n, opts) => {
       const { canvasData, selectedSlotIndex, packTextValues } = get();
       if (!canvasData) return;
-      const current = canvasData.photoSlots ?? Math.ceil(canvasData.slotCount / opts.facesPerUnit);
+      const freeSingleSlotUnits = canvasData.unitSlots === 1 && opts.facesPerUnit === 1;
+      const current = freeSingleSlotUnits
+        ? (canvasData.unitCount ?? 1)
+        : (canvasData.photoSlots ?? Math.ceil(canvasData.slotCount / opts.facesPerUnit));
       const target = Math.min(opts.max, Math.max(1, Math.trunc(n)));
       if (!Number.isFinite(target) || target === current) return;
       // Modelo multi-unidad (2026-09-09): ¿el stepper cambia la COMPOSICIÓN de
@@ -748,13 +780,13 @@ export function createStudioStore() {
           : undefined;
       const next: CanvasDataV2 = {
         ...canvasData,
-        photoSlots: target,
+        photoSlots: freeSingleSlotUnits ? (canvasData.photoSlots ?? 1) : target,
         sizeCm: opts.sizeCm ?? canvasData.sizeCm,
         slotCount: newSlotCount,
         slots,
         // Multi-unidad: el modelo se re-declara con la composición nueva (solo
         // cuando unitSlots > 1 — invariante de escritura, design-units.ts).
-        ...(newUnitSlots > 1 ? { unitSlots: newUnitSlots, unitCount } : {}),
+        ...(newUnitSlots > 1 || freeSingleSlotUnits ? { unitSlots: newUnitSlots, unitCount } : {}),
         gridLayout: recalcGridLayout(
           gridSlotCountForLayout({
             unitCount,

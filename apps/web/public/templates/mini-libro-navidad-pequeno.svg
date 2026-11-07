@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="250" viewBox="0 0 500 250">
+  <defs><linearGradient id="cover" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#A62B3F"/><stop offset="1" stop-color="#F5E6A8" stop-opacity=".72"/></linearGradient></defs>
+  <rect width="500" height="250" fill="#A62B3F"/>
+  <rect x="275" width="225" height="250" fill="url(#cover)"/>
+  <rect x="225" width="50" height="250" fill="#F5E6A8" fill-opacity=".26"/>
+  <path d="M225 0V250M275 0V250" stroke="#FFF8F0" stroke-opacity=".45" stroke-width="2"/>
+  <rect x="12" y="12" width="201" height="226" rx="8" fill="none" stroke="#F5E6A8" stroke-width="2"/>
+  <g transform="translate(387.5 80) scale(0.55)"><path d="M0-45 32 0H15L40 35H10V60H-10V35H-40L-15 0H-32Z" fill="#F5E6A8"/><rect x="-7" y="48" width="14" height="20" fill="#8B5A3C"/></g>
+  <text x="387.5" y="165" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="25" font-weight="700">NAVIDAD EN CASA</text>
+  <text x="387.5" y="190" text-anchor="middle" fill="#FFF8F0" fill-opacity=".86" font-family="Inter, sans-serif" font-size="12">UNA HISTORIA PARA REGALAR</text>
+  <text x="112.5" y="65" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="17.5" font-weight="700">Navidad</text>
+  <text x="112.5" y="95" text-anchor="middle" fill="#FFF8F0" fill-opacity=".82" font-family="Inter, sans-serif" font-size="12">Recuerdos que se quedan</text>
+  <text x="112.5" y="205" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="14" font-weight="700">Lucams</text>
+  <text transform="translate(250 125) rotate(-90)" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="15" font-weight="700">NAVIDAD EN CASA</text>
+
+</svg>

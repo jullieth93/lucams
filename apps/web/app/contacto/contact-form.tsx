@@ -28,18 +28,22 @@ import {
 
 export function ContactForm({
   successNote = "Te respondemos a tu email en menos de 24h hábiles. Tu ticket es",
+  initialSubject = "CONSULTA_PRODUCTO",
+  initialMessage = "",
 }: {
   /** Texto del panel de éxito, resuelto en el server desde el CMS
    *  (`support.contacto.success-note`) — el client no lee el CMS. */
   successNote?: string;
+  initialSubject?: SupportSubject;
+  initialMessage?: string;
 }) {
   const [state, formAction, pending] = useActionState(submitContactAction, null);
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [email, setEmail] = useState("");
-  const [subject, setSubject] = useState<SupportSubject>("CONSULTA_PRODUCTO");
+  const [subject, setSubject] = useState<SupportSubject>(initialSubject);
   const [orderNumber, setOrderNumber] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(initialMessage);
   const [dataConsent, setDataConsent] = useState(false);
   const asksOrderNumber = ORDER_RELATED_SUBJECTS.includes(subject);
 

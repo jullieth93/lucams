@@ -396,6 +396,15 @@ describe("renderJobTotalUnits", () => {
     expect(renderJobTotalUnits({ facesPerUnit: 2 }, 12)).toBe(6);
     expect(renderJobTotalUnits({ facesPerUnit: 2 }, 5)).toBe(5); // impar no compone
   });
+
+  it("bola dúplex: conserva un archivo circular por cara, nunca una tira", () => {
+    expect(renderJobTotalUnits({ facesPerUnit: 2 }, 2, { experience: "christmas-ornament" })).toBe(
+      2,
+    );
+    expect(renderJobTotalUnits({ facesPerUnit: 2 }, 4, { experience: "christmas-ornament" })).toBe(
+      4,
+    );
+  });
 });
 
 describe("createOrResetRenderJob", () => {
@@ -511,6 +520,20 @@ describe("processRenderJobs — máquina de estados", () => {
     ]);
     expect(state.job).toMatchObject({ status: "DONE", doneUnits: 2 });
     expect(state.design?.productionUrls).toEqual(["design_1/tira-01.png", "design_1/tira-02.png"]);
+  });
+
+  it("bola dúplex: renderiza las dos caras circulares por separado, sin componer tiras", async () => {
+    seedDesign(2);
+    state.productSchema = { photoSlots: 1, facesPerUnit: 2, experience: "christmas-ornament" };
+    seedJob({ totalUnits: 2 });
+    const res = await processRenderJobs({ onlyDesignId: "design_1" });
+    expect(res.done).toBe(1);
+    expect(state.uploads.map((u) => u.path)).toEqual([
+      "design_1/slot-01.png",
+      "design_1/slot-02.png",
+    ]);
+    expect(state.job).toMatchObject({ status: "DONE", doneUnits: 2 });
+    expect(state.design?.productionUrls).toEqual(["design_1/slot-01.png", "design_1/slot-02.png"]);
   });
 
   it("job reclamado por nadie cuando no hay elegibles (todo terminal) → claimed 0", async () => {

@@ -25,7 +25,7 @@ El estado operativo actual y todos los pendientes abiertos viven en [`docs/STATE
 
 - **Monorepo:** `pnpm` (`apps/web` + `packages/db`) sobre Node.js ≥ 22
 - **Aplicación:** Next.js **16** (App Router, RSC, Server Actions) + TypeScript strict + **Tailwind v4** + shadcn/ui
-- **Estudio e imprenta:** Konva 2D + React Three Fiber (Three.js, 7 escenas 3D) + pipeline 300 DPI (`sharp@0.35.5` + `@napi-rs/canvas`)
+- **Estudio e imprenta:** Konva 2D + React Three Fiber (Three.js, 10 escenas 3D) + pipeline 300 DPI (`sharp@0.35.5` + `@napi-rs/canvas`)
 - **Datos, Auth y Storage:** Prisma + Supabase (Postgres con RLS en el 100 % de las tablas, Auth OTP + MFA TOTP `aal2`, 5 buckets de Storage)
 - **Background jobs:** `pg_cron` + `pg_net` → `HTTP GET` a `/api/cron/*` con secretos en Supabase Vault (no Vercel Cron — `ADR-017` `SUPERSEDED`; `pgmq` descartado)
 - **Rate limit y caché:** Postgres (`rate_limit_check`) + `unstable_cache` por tags + limpieza `pg_cron` (sin Redis externo — `ADR-016`)
@@ -63,7 +63,7 @@ pnpm install
 make db-local-start     # inicia contenedores locales con volúmenes persistentes
 make db-local-setup     # extensiones + migraciones Prisma (94) + migraciones SQL RLS (53)
 make db-local-on        # apunta .env.local al stack local
-make db-local-seed      # catálogo canónico + plantillas + ocasiones + fichas + CMS v2 + Contact backfill
+make db-local-seed      # catálogo + plantillas + galería nueva + ocasiones + fichas + CMS v2 + Contact backfill
 
 # Flujo diario (DB local + servidor Next en http://localhost:4000)
 make local-up

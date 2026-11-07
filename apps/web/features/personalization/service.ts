@@ -46,6 +46,7 @@ import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
 import { unitCountOf, letterSetUnitCount, MAX_LETTER_SET_UNITS } from "./design-units";
+import { readProductExperience } from "./product-experience";
 import { PREVIEW_ALLOWED_MIME, previewExtensionForMime, type PreviewMime } from "./sharp-safe";
 import {
   filterTemplatesByAspectRatio,
@@ -1562,7 +1563,7 @@ export async function finalizeDesign(opts: {
   // genera para cada B vacía la cara por defecto con el PATRÓN DE MARCA «Lucams»
   // (default-back-face.ts — decisión owner 2026-11-03, supersede el blanco de
   // 2026-10-07: nunca copia de la cara A).
-  const { productConfig } = await loadEffectiveProductConfig(design);
+  const { productConfig, productSchema } = await loadEffectiveProductConfig(design);
   const backOptional = productConfig.facesPerUnit === 2 && productConfig.backOptional === true;
   const emptyBackSlots = new Set<number>(
     backOptional && v2
@@ -1864,10 +1865,13 @@ export async function finalizeDesign(opts: {
   // noFold (Alargados planos): composición horizontal A|B sin rotar (histórico).
   // Solo aplica a buffers resueltos EN ESTE REQUEST (inline/staged del cliente);
   // en la vía asíncrona (ADR-131) las tiras las compone el worker, par por par.
+  const shouldComposeFaceStrips =
+    productConfig.facesPerUnit === 2 &&
+    readProductExperience(productSchema).experience !== "christmas-ornament";
   let facesComposed = false;
   if (productionBuffers && canvasData.version === 2) {
     // productConfig ya se cargó arriba (validación de slots / backOptional).
-    if (productConfig.facesPerUnit === 2 && productionBuffers.length % 2 === 0) {
+    if (shouldComposeFaceStrips && productionBuffers.length % 2 === 0) {
       try {
         // composeFaceStrips carga sharp (nativo) — import perezoso: ver nota en imports.
         // W3 (owner 2026-11-03): tiras RECTANGULARES a sangre — ya no se pasa radio
@@ -1989,7 +1993,7 @@ export async function finalizeDesign(opts: {
   const facesPending =
     asyncRenderJob &&
     canvasData.version === 2 &&
-    productConfig.facesPerUnit === 2 &&
+    shouldComposeFaceStrips &&
     expectedSlotCount % 2 === 0;
   const facesComposedOrPending = facesComposed || facesPending;
   const mergedMetadata =

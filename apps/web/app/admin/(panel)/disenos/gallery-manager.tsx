@@ -91,6 +91,7 @@ type Item = {
 type TagOption = {
   tag: string;
   label: string;
+  isActive: boolean;
   needsFaceB: boolean;
   variantFilterOptions: VariantFilterOption[];
 };

@@ -1,6 +1,6 @@
 # Estrategia y Suites de Pruebas — Lucams Shop
 
-> **Documento vivo de Nivel 1 ([`README.md`](README.md)).** Define con exactitud la pirámide de pruebas, las guardas de seguridad e higiene del entorno (`EMAIL_SEND_DISABLED=1`, bloqueo duro anti-PRD y limpieza determinista), la regla Mock vs Real, los patrones con código real de cada capa (Vitest unit, RTL, `node --test`, integración PostgreSQL, matriz RLS y Playwright E2E), el inventario 1:1 de los **57 archivos `.spec.ts`**, las pruebas de carga/rendimiento y los workflows de certificación en GitHub Actions.
+> **Documento vivo de Nivel 1 ([`README.md`](README.md)).** Define con exactitud la pirámide de pruebas, las guardas de seguridad e higiene del entorno (`EMAIL_SEND_DISABLED=1`, bloqueo duro anti-PRD y limpieza determinista), la regla Mock vs Real, los patrones con código real de cada capa (Vitest unit, RTL, `node --test`, integración PostgreSQL, matriz RLS y Playwright E2E), el inventario 1:1 de los **59 archivos `.spec.ts`**, las pruebas de carga/rendimiento y los workflows de certificación en GitHub Actions.
 
 ## Tabla de contenido
 
@@ -11,7 +11,7 @@
 5. [Pruebas unitarias, componentes RTL y scripts de DB (ejemplos reales 1, 2 y 3)](#5-pruebas-unitarias-componentes-rtl-y-scripts-de-db-ejemplos-reales-1-2-y-3)
 6. [Pruebas de integración contra PostgreSQL real (ejemplo real 4)](#6-pruebas-de-integración-contra-postgresql-real-ejemplo-real-4)
 7. [Pruebas reales de cobertura y matriz de seguridad RLS (ejemplo real 5)](#7-pruebas-reales-de-cobertura-y-matriz-de-seguridad-rls-ejemplo-real-5)
-8. [Pruebas End-to-End con Playwright e inventario 57/57 (ejemplo real 6)](#8-pruebas-end-to-end-con-playwright-e-inventario-5757-ejemplo-real-6)
+8. [Pruebas End-to-End con Playwright e inventario 59/59 (ejemplo real 6)](#8-pruebas-end-to-end-con-playwright-e-inventario-5757-ejemplo-real-6)
 9. [Carga k6, Lighthouse CI, perfilado CDP del Estudio y arquitectura CI/CD](#9-carga-k6-lighthouse-ci-perfilado-cdp-del-estudio-y-arquitectura-cicd)
 
 ---
@@ -20,10 +20,10 @@
 
 ```text
           ╱─────────────────────────────╲
-         ╱  Playwright E2E (57 specs) +  ╲   Flujos críticos, MFA TOTP, a11y (axe),
+         ╱  Playwright E2E (59 specs) +  ╲   Flujos críticos, MFA TOTP, a11y (axe),
         ╱   k6 + Lighthouse + CDP Studio  ╲  responsive en 6 perfiles y sandbox Wompi
        ╱───────────────────────────────────╲
-      ╱   Integración PostgreSQL real (86)  ╲  Sagas, concurrencia, webhooks, Storage,
+      ╱   Integración PostgreSQL real (87)  ╲  Sagas, concurrencia, webhooks, Storage,
      ╱    + Cobertura y Matriz RLS real      ╲ GoTrue OTP/MFA y deriva Prisma ↔ SQL
     ╱─────────────────────────────────────────╲
    ╱  Unitarias, componentes RTL y gates AST   ╲ Reglas en centavos COP, Zod v4, HMAC,
@@ -50,10 +50,10 @@
 | ------------------------------ | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `<modulo>.test.ts`             | Junto al archivo bajo prueba en `apps/web/**`                         | Lógica pura, validadores Zod v4, firmas criptográficas, servicios con dependencias externas aisladas y gates estáticos AST |
 | `<componente>.test.tsx`        | Junto al componente (`// @vitest-environment jsdom` en línea 1)       | Renderizado, accesibilidad e interacciones de hojas `"use client"`                                                         |
-| `<modulo>.integration.test.ts` | Junto a la feature (`apps/web/**`) — **86 suites**                    | Consultas Prisma reales, sagas, concurrencia, webhooks, Storage y RLS contra PostgreSQL/Supabase                           |
+| `<modulo>.integration.test.ts` | Junto a la feature (`apps/web/**`) — **87 suites**                    | Consultas Prisma reales, sagas, concurrencia, webhooks, Storage y RLS contra PostgreSQL/Supabase                           |
 | `<proveedor>.live.test.ts`     | `lib/wompi.live.test.ts`, `features/shipping/aveonline*.live.test.ts` | Smokes no destructivos contra sandboxes externos reales (`skipIf` automático sin credenciales sandbox)                     |
 | `<helper>.test.mjs`            | `packages/db/scripts/lib/*.test.mjs` — **6 suites**                   | Guardas fail-closed de scripts operativos (`pnpm --filter @lucams/db test`)                                                |
-| `<flujo>.spec.ts`              | `apps/web/tests/e2e/` — **57 specs**                                  | Recorridos completos de navegador en local, `:4100`, Staging o smoke de solo lectura                                       |
+| `<flujo>.spec.ts`              | `apps/web/tests/e2e/` — **59 specs**                                  | Recorridos completos de navegador en local, `:4100`, Staging o smoke de solo lectura                                       |
 
 - **Estructura _Arrange – Act – Assert_ (AAA):** prepara datos explícitos sin magia compartida (_Arrange_), invoca una única acción observable (_Act_) y verifica el estado resultante o efecto persistido (_Assert_). Con `globals: false` en `vitest.config.ts`, importa siempre `describe`, `it`, `expect`, `vi`, `beforeEach` y `afterAll` explícitamente desde `"vitest"`.
 - **Qué pruebas NO escribimos:** no testeamos internals privados de Next.js, Prisma o Supabase; no escribimos snapshots de objetos JSON gigantes; no mockeamos funciones puras internas; y no duplicamos un spec E2E por cada producto del catálogo cuando las variantes están cubiertas en unit/integración.
@@ -166,7 +166,7 @@ describe.skipIf(!liveSandbox)("Wompi — smoke LIVE sandbox (no-destructivo)", (
 | Comando                                   | Qué ejecuta exactamente                                                                                                                                                               | Cuándo debes correrlo                                   |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | `make check`                              | `pnpm format:check` + `pnpm -r typecheck` + `pnpm -r lint` + `pnpm --filter @lucams/db test` + `make audit-script-guards` + `make audit-content` + escaneo anti-voseo (`es-CO` tuteo) | **Siempre** antes de cada commit / push                 |
-| `pnpm test`                               | `pnpm -r test`: corre las **486 suites** Vitest de `apps/web` y las **6 suites** `node --test` de `@lucams/db`                                                                        | Antes de abrir o actualizar cualquier PR                |
+| `pnpm test`                               | `pnpm -r test`: corre las **487 suites** Vitest de `apps/web` y las **6 suites** `node --test` de `@lucams/db`                                                                        | Antes de abrir o actualizar cualquier PR                |
 | `make test-local`                         | `pnpm --filter web test` contra el stack Supabase local en Podman                                                                                                                     | Validación integral con DB local arriba                 |
 | `pnpm --filter web test:coverage`         | Vitest con proveedor V8 verificando `coverage.thresholds` globales                                                                                                                    | Réplica local exacta del job `unit-tests`               |
 | `pnpm --filter @lucams/db test`           | `node --test "scripts/lib/*.test.mjs"` en `packages/db`                                                                                                                               | Al tocar scripts o helpers en `packages/db/scripts/`    |
@@ -330,7 +330,7 @@ describe("checkDestructiveAllowed (fail-closed)", () => {
 
 ### Preparación del stack local y passthrough de `next/cache`
 
-Para correr las **86 suites `*.integration.test.ts`** localmente contra Supabase en Podman:
+Para correr las **87 suites `*.integration.test.ts`** localmente contra Supabase en Podman:
 
 ```bash
 make db-local-start   # Levanta/reanuda contenedores Podman conservando volúmenes
@@ -540,7 +540,7 @@ describe.skipIf(!canRun)("RLS matrix — PostgREST cerrado para anon y authentic
 
 ---
 
-## 8. Pruebas End-to-End con Playwright e inventario 57/57 (ejemplo real 6)
+## 8. Pruebas End-to-End con Playwright e inventario 59/59 (ejemplo real 6)
 
 ### Resolución de ambientes (`E2E_ENV`), `:4100` fullmode, bypass de STG y MFA TOTP
 
@@ -620,9 +620,9 @@ test.describe("Acceso administrativo con MFA TOTP obligatorio y WCAG 2.1 AA", ()
 });
 ```
 
-### Inventario completo vigente de los 57 specs E2E (`apps/web/tests/e2e/*.spec.ts`)
+### Inventario completo vigente de los 59 specs E2E (`apps/web/tests/e2e/*.spec.ts`)
 
-El directorio `apps/web/tests/e2e/` contiene exactamente **57 archivos `.spec.ts`** verificados 1:1 en el repositorio:
+El directorio `apps/web/tests/e2e/` contiene exactamente **59 archivos `.spec.ts`** verificados 1:1 en el repositorio:
 
 #### A. Gates públicos por Pull Request en `ci.yml` (6 specs)
 
@@ -674,7 +674,7 @@ El directorio `apps/web/tests/e2e/` contiene exactamente **57 archivos `.spec.ts
 
 #### E. Suite de homologación funcional punta a punta (`homolog-*.spec.ts` — 21 specs)
 
-- `homolog-3d.spec.ts` — Montaje WebGL sin errores y controles de las **7 escenas 3D** del Estudio.
+- `homolog-3d.spec.ts` — Montaje WebGL sin errores y controles de las **10 escenas 3D** del Estudio.
 - `homolog-admin-cms.spec.ts` — Integridad de lectura/escritura de bloques y settings en CMS v2.
 - `homolog-admin-cruces.spec.ts` — Consistencia cruzada entre pedidos, clientes/contactos, inventario, finanzas y métricas en `/admin`.
 - `homolog-admin-modulos.spec.ts` — Verificación funcional de los módulos operativos del panel administrativo.
@@ -695,6 +695,12 @@ El directorio `apps/web/tests/e2e/` contiene exactamente **57 archivos `.spec.ts
 - `homolog-seo.spec.ts` — Metadatos canónicos, Open Graph, JSON-LD, redirecciones CMS y feed `/merchant.xml`.
 - `homolog-webhooks.spec.ts` — Rechazo `401` ante firmas inválidas e idempotencia ante reintentos en `/api/webhooks/*`.
 - `homolog-wishlist.spec.ts` — Guardado y eliminación de favoritos en `/mi-cuenta/favoritos`.
+
+#### F. Nuevas experiencias físicas (2 specs)
+
+- `new-products.spec.ts` — Bola navideña con giro real del inserto plano y mini libros en flujo híbrido: 3 unidades, plantilla asistida, búsqueda de prediseñados, réplica, vista previa y descuento por cantidad física; también verifica la solicitud de diseño prellenada. El giro compara píxeles del modelo entre frente/perfil/reverso (no solo `aria-pressed`) y guarda capturas en los artefactos de Playwright. El escenario dúplex usa fotos roja/azul, exige cara B, comprueba UNA bola y el color real de cada cara, ejecuta arrastre con mouse o eventos táctiles, acepta el aviso de calidad cuando la UI lo exige y valida dos archivos circulares sin `faceStrips` al agregar al carrito. Activa precios/logística solo durante la corrida y restaura productos a pausa, sin escribir en PRD.
+- `new-products-audit-responsive.spec.ts` — PDP, Estudio y 3D de ambos productos en los **6 perfiles de viewport**, con carátula extendida, cambio visual real al reverso del mini libro, nevera y ausencia de desbordamiento horizontal.
+- `ornament-ribbon.test.ts` y `ornament-foam.test.ts` — Contención geométrica de ambas cintas fuera de la esfera, curvatura al descender, distribución determinista del relleno, agitación/sedimentación por botones o arrastre (incluido el cruce -π/π) y preferencia de movimiento reducido. `product-experience.test.ts`, `service.integration.test.ts` y `product-form.test.tsx` blindan las capacidades de dos caras en modelo, servicio y formulario; `production-spec.test.ts` y `render-job-service.test.ts` comprueban dúplex sin tiras en especificación y worker.
 
 ---
 

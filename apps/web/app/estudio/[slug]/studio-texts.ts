@@ -678,6 +678,9 @@ export type StudioTexts = {
     chipLibro: string;
     chipRepisa: string;
     chipRegalo: string;
+    chipOrnament: string;
+    chipMiniBook: string;
+    chipMiniBookFridge: string;
     armando: string;
     error: string;
     errorHint: string;
@@ -1493,6 +1496,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     chipLibro: "Libro",
     chipRepisa: "Repisa",
     chipRegalo: "Regalo",
+    chipOrnament: "En el árbol",
+    chipMiniBook: "Gira tu mini libro",
+    chipMiniBookFridge: "En la nevera",
     armando: "Armando la escena…",
     error: "No pudimos armar esta escena en este momento.",
     errorHint: "Prueba otra escena o vuelve al editor.",

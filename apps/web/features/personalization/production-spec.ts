@@ -35,6 +35,11 @@
 import { frameColorById, isStripTemplate } from "./frame-palette";
 import { designUnitPriceMultiplier, letterSetUnitCount } from "./design-units";
 import { MONTH_NAMES_ES } from "./calendar-grid";
+import {
+  miniBookGeometry,
+  physicalUnitsFromFaces,
+  readProductExperience,
+} from "./product-experience";
 
 /**
  * Qué es físicamente lo que sale de la impresora. Es una unión discriminada porque cada caso lleva
@@ -50,6 +55,8 @@ export type FormatoFisico =
   | { tipo: "tira-continua"; segmentos: number; tiras?: number }
   | { tipo: "tira-desplegada"; tiras: number; plana?: boolean }
   | { tipo: "caras-sueltas"; unidades: number; plana?: boolean }
+  | { tipo: "caratula-envolvente"; unidades: number }
+  | { tipo: "inserto-circular"; unidades: number; caras: 1 | 2 }
   | {
       tipo: "piezas-sueltas";
       piezas: number;
@@ -123,6 +130,19 @@ function resolverFormato(e: Entrada): FormatoFisico {
       return { tipo: "fichas-sueltas", fichas: letters.length, sets: laminas };
     }
     return { tipo: "lamina-fichas", fichas: letters.length, ...(laminas > 1 ? { laminas } : {}) };
+  }
+
+  const experience = readProductExperience(e.productSchema).experience;
+  if (experience === "mini-book") {
+    return { tipo: "caratula-envolvente", unidades: e.productionUrls.length };
+  }
+  if (experience === "christmas-ornament") {
+    const caras = n(e.productSchema?.facesPerUnit) === 2 ? 2 : 1;
+    return {
+      tipo: "inserto-circular",
+      unidades: physicalUnitsFromFaces(e.productionUrls.length, caras),
+      caras,
+    };
   }
 
   const unitTemplate = (e.canvasData?.unitTemplate ?? {}) as Record<string, unknown>;
@@ -293,6 +313,39 @@ function describirFormato(
           ...pegarImán,
         ],
       };
+    case "caratula-envolvente":
+      return {
+        frase: `${f.unidades} carátula(s) completa(s), una por mini libro. Cada archivo incluye contraportada, lomo y portada en una sola pieza extendida.`,
+        pasos: [
+          "Imprime cada carátula completa, sin separar sus regiones.",
+          "Recorta por el rectángulo exterior y marca las dos líneas del lomo sin cortar la carátula.",
+          "Envuelve el cuerpo del mini libro: contraportada a la izquierda, lomo al centro y portada a la derecha, tal como sale en el archivo.",
+          ...pegarImán,
+        ],
+      };
+    case "inserto-circular": {
+      if (f.caras === 2) {
+        return {
+          frase: `${f.unidades} inserto(s) circular(es) DÚPLEX. Cada unidad tiene una cara A y una cara B en archivos separados.`,
+          pasos: [
+            `Imprime frente y reverso a doble cara: son ${f.unidades * 2} archivos circulares para ${f.unidades} inserto(s), no para el doble de unidades.`,
+            "Alinea ambas caras por el centro de una MISMA pieza dúplex y recorta el contorno circular de 8 cm.",
+            "Mantén el inserto plano y centrado dentro de la esfera; no unas dos impresiones para formar otra unidad ni curves la pieza.",
+            "Cierra la esfera y coloca la cinta sin forzar el inserto.",
+            "⚠️ Esta variante va SIN imán: no le pegues imán.",
+          ],
+        };
+      }
+      return {
+        frase: `${f.unidades} foto(s) circular(es) PLANA(S) para insertar dentro de la esfera transparente. No es una impresión curva sobre la carcasa.`,
+        pasos: [
+          "Imprime y recorta cada foto por su contorno circular de 8 cm.",
+          "Mantén el inserto plano y centrado dentro de la esfera; no lo curves ni lo pegues contra la carcasa.",
+          "Cierra la esfera y coloca la tapa y la cinta sin forzar el inserto.",
+          "⚠️ Esta variante va SIN imán: no le pegues imán.",
+        ],
+      };
+    }
     case "piezas-sueltas": {
       if (f.unidades && f.unidades.count > 1) {
         const u = f.unidades;
@@ -362,6 +415,22 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   // 7×10 cm ahí mientras cada ficha mide 5×7.
   const medida = s(attrs.sizeCm) ?? s(e.productSchema?.sizeCm);
   if (medida) especificaciones.push({ etiqueta: "Medida de corte", valor: `${medida} cm` });
+  const experience = readProductExperience(e.productSchema);
+  if (experience.experience === "mini-book" && medida) {
+    const geometry = miniBookGeometry(medida, experience.spineWidthCm);
+    if (geometry) {
+      especificaciones.push({
+        etiqueta: "Ancho de cada tapa",
+        valor: `${geometry.coverWidthCm} cm`,
+      });
+      especificaciones.push({
+        etiqueta: "Lomo y grosor del cuerpo",
+        valor: `${geometry.spineWidthCm} cm (${geometry.spineWidthCm * 10} mm)`,
+      });
+    }
+  } else if (experience.experience === "christmas-ornament") {
+    especificaciones.push({ etiqueta: "Inserto", valor: "Circular plano, no curvar" });
+  }
   if (piezasPorPack > 1) {
     especificaciones.push({ etiqueta: "Piezas por pack", valor: String(piezasPorPack) });
   }
@@ -403,7 +472,7 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   if (designUnits > 1) {
     personalizacion.push({
       etiqueta: "Unidades del diseño",
-      valor: `${designUnits} unidades distintas — fabricar TODAS (ver «Qué es cada archivo»)`,
+      valor: `${designUnits} unidades — fabricar TODAS, sean iguales o distintas (ver «Qué es cada archivo»)`,
     });
   }
   // El color del marco lo eligió el CLIENTE en el Estudio; la variante trae un `frameStyle` que solo
@@ -455,10 +524,20 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   const slots = e.canvasData?.slots;
   if (Array.isArray(slots)) {
     const textos = slots
-      .map((sl, i) => {
+      .flatMap((sl, i) => {
         const t = sl && typeof sl === "object" ? (sl as Record<string, unknown>) : {};
-        const v = s(t.textOverride);
-        return v ? `${i + 1}: "${v}"` : null;
+        const legacy = s(t.textOverride);
+        const entries = legacy ? [`${i + 1}: "${legacy}"`] : [];
+        const overrides =
+          t.textOverrides && typeof t.textOverrides === "object"
+            ? Object.entries(t.textOverrides as Record<string, { text?: unknown }>).flatMap(
+                ([layerId, override]) => {
+                  const value = s(override?.text);
+                  return value ? [`${i + 1}.${layerId}: "${value}"`] : [];
+                },
+              )
+            : [];
+        return [...entries, ...overrides];
       })
       .filter((x): x is string => !!x);
     if (textos.length > 0) {

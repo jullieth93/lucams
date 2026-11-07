@@ -54,6 +54,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 import { confirmTargetInteractive } from "./lib/confirm-target.mjs";
+import { NEW_PRODUCTS } from "./lib/new-products.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
@@ -84,10 +85,13 @@ const DIMS_DEFAULTS_BY_KIND = {
   NONE: { weightGrams: 80, widthCm: 10, heightCm: 8, depthCm: 2 },
 };
 
-const withDefaultDims = (p) => ({
-  ...(DIMS_DEFAULTS_BY_KIND[p.personalizationKind] ?? DIMS_DEFAULTS_BY_KIND.NONE),
-  ...(p.physicalSpecs ?? {}),
-});
+const withDefaultDims = (p) =>
+  p.physicalSpecs === null
+    ? null
+    : {
+        ...(DIMS_DEFAULTS_BY_KIND[p.personalizationKind] ?? DIMS_DEFAULTS_BY_KIND.NONE),
+        ...(p.physicalSpecs ?? {}),
+      };
 
 // ── Generadores de matrices de separadores (espejo del dato vivo STG/PRD 2026-11-03) ──
 const sepSkuSize = (sizeCm) => sizeCm.replace("×", "X").replace(".", "");
@@ -1141,6 +1145,7 @@ const productsData = [
     personalizationKind: "NONE",
     images: [UNSPLASH("1503454537195-1dcabb73ffb9")],
   },
+  ...NEW_PRODUCTS,
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1211,7 +1216,12 @@ async function run(db, write) {
       console.log(`  + ${p.name}  [${p.personalizationKind}]  (${p.sku}, nuevo)`);
       if (write) {
         const created = await db.product.create({
-          data: { ...rest, physicalSpecs: withDefaultDims(rest), categoryId, isActive: true },
+          data: {
+            ...rest,
+            physicalSpecs: withDefaultDims(rest),
+            categoryId,
+            isActive: rest.isActive ?? true,
+          },
         });
         productId = created.id;
       }

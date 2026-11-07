@@ -897,7 +897,7 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         photoSlots: 6,
         facesPerUnit: 2,
         aspectRatio: "4:5",
-        galleryTag: `${RUN}-gallery`,
+        galleryTag: "separadores-magneticos",
         canvasBaseScale: 0.8,
         gridColsOverride: 3,
       });
@@ -912,9 +912,53 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         photoSlots: 6,
         facesPerUnit: 2,
         aspectRatio: "4:5",
-        galleryTag: `${RUN}-gallery`,
+        galleryTag: "separadores-magneticos",
         canvasBaseScale: 0.8,
         gridColsOverride: 3,
+      });
+    });
+
+    it("rechaza dos caras cuando el producto no tiene soporte completo", async () => {
+      const cat = await makeCategory({ label: "pz-unsupported-faces" });
+      await expect(
+        createProduct(
+          productInput(cat.id, {
+            personalizationKind: "PHOTO_GRID",
+            photoSlots: 1,
+            facesPerUnit: 2,
+            galleryTag: "fotoimanes",
+          }),
+          null,
+        ),
+      ).rejects.toMatchObject({ field: "facesPerUnit" });
+    });
+
+    it("updateProduct valida la capacidad final y permite el dúplex de la bola", async () => {
+      const cat = await makeCategory({ label: "pz-face-capability" });
+      const unsupported = await createProduct(
+        productInput(cat.id, { personalizationKind: "CUSTOM_DECOR" }),
+        null,
+      );
+      await prisma.product.update({
+        where: { id: unsupported.id },
+        data: { personalizationSchema: { experience: "mini-book", photoSlots: 1 } },
+      });
+      await expect(
+        updateProduct({ id: unsupported.id, facesPerUnit: 2 }, null),
+      ).rejects.toMatchObject({ field: "facesPerUnit" });
+
+      const duplex = await createProduct(
+        productInput(cat.id, { personalizationKind: "CUSTOM_DECOR" }),
+        null,
+      );
+      await prisma.product.update({
+        where: { id: duplex.id },
+        data: { personalizationSchema: { experience: "christmas-ornament", photoSlots: 1 } },
+      });
+      const updated = await updateProduct({ id: duplex.id, facesPerUnit: 2 }, null);
+      expect(updated.personalizationSchema).toMatchObject({
+        experience: "christmas-ornament",
+        facesPerUnit: 2,
       });
     });
 

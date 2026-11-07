@@ -146,7 +146,7 @@ export function gridSlotCountForLayout(opts: {
   slotCount: number;
   facesPerUnit?: number;
 }): number {
-  const multiUnit = opts.unitCount > 1 && opts.unitSlots > 1 && opts.facesPerUnit !== 2;
+  const multiUnit = opts.unitCount > 1 && opts.facesPerUnit !== 2;
   return multiUnit ? opts.unitSlots : opts.slotCount;
 }
 
