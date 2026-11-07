@@ -100,7 +100,14 @@ export default async function CustomerPedidoDetallePage({
               sku: true,
               // Paquete F (2026-10-02) — attributes: desglose estructurado de la variante.
               attributes: true,
-              product: { select: { slug: true, name: true, personalizationKind: true } },
+              product: {
+                select: {
+                  slug: true,
+                  name: true,
+                  personalizationKind: true,
+                  personalizationSchema: true,
+                },
+              },
             },
           },
           design: {
@@ -244,7 +251,11 @@ export default async function CustomerPedidoDetallePage({
             // 2026-10-22 — rótulo por página del pager ("Set 2 · con borde").
             const pageLabels = designPreviewPageLabels(
               it.design,
-              unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
+              unitNounForLine(
+                it.variant.product.personalizationKind,
+                it.variant.name,
+                it.variant.product.personalizationSchema,
+              ),
             );
             // 2026-10-26 — sustantivo kind-aware del badge «N …» ("tiras",
             // "sets"…); el bloque CMS publicado manda sobre este fallback.
@@ -253,6 +264,7 @@ export default async function CustomerPedidoDetallePage({
               variantName: it.variant.name,
               designMetadata: it.design?.metadata,
               isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
+              productSchema: it.variant.product.personalizationSchema,
             }).plural;
             // LUC-SEC-001 — snapshot/fallback del diseño por el handler
             // autorizado (sesión del cliente dueño del pedido).
@@ -265,6 +277,7 @@ export default async function CustomerPedidoDetallePage({
             // Paquete F (2026-10-02) — desglose estructurado de la variante.
             const variantBreakdown = describeVariantAttributes(
               parseVariantAttributes(it.variant.attributes),
+              it.variant.product.personalizationSchema,
             );
             return (
               <li key={it.id} className="flex items-start gap-3 py-3">

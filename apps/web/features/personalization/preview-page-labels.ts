@@ -43,12 +43,15 @@ export type PreviewPageLabelsDesign = {
 export function unitNounForLine(
   personalizationKind: string | null | undefined,
   variantName: string | null | undefined,
+  productSchema?: unknown,
 ): string {
-  switch (pieceKindFor(personalizationKind, variantName)) {
+  switch (pieceKindFor(personalizationKind, variantName, productSchema)) {
     case "calendar":
       return "Calendario";
     case "strips":
       return "Tira";
+    case "ornaments":
+      return "Bola";
     case "bookmarks":
       return "Separador";
     default:

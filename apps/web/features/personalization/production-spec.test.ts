@@ -579,3 +579,26 @@ describe("nuevas formas físicas", () => {
     expect(spec.pasosArmado.join(" ")).not.toMatch(/tira/i);
   });
 });
+
+describe("productionPieceGroups — bola navideña dúplex", () => {
+  it("agrupa A/B por bola y rotula frente y reverso para admin y ZIP", () => {
+    const groups = productionPieceGroups({
+      personalizationKind: "CUSTOM_DECOR",
+      productSchema: { experience: "christmas-ornament", facesPerUnit: 2 },
+      canvasData: { version: 2, slotCount: 4, unitCount: 2, unitSlots: 2 },
+      designMetadata: {},
+      productionCount: 4,
+    });
+    expect(groups).toHaveLength(2);
+    expect(groups![0]!.title).toBe("Bola 1 de 2");
+    expect(groups![0]!.note).toMatch(/frente y reverso de una misma unidad/i);
+    expect(groups![0]!.pieces).toEqual([
+      { index: 0, label: "Cara A (frente)" },
+      { index: 1, label: "Cara B (reverso)" },
+    ]);
+    expect(groups![1]!.pieces).toEqual([
+      { index: 2, label: "Cara A (frente)" },
+      { index: 3, label: "Cara B (reverso)" },
+    ]);
+  });
+});

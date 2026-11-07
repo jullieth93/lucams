@@ -593,6 +593,8 @@ export type StudioTexts = {
     tituloPedido: string;
     tituloCalendario: string;
     tituloSeparadores: string;
+    tituloBola: string;
+    tituloBolas: string;
     descCalendario: string;
     descCalendarioTamano: string;
     descCalendarioRevisa: string;
@@ -600,14 +602,20 @@ export type StudioTexts = {
     descSeparadoresTamano: string;
     /** Separadores PLANOS (noFold, Alargados): sin "doblado" — la pieza no se pliega. */
     descSeparadoresTamanoPlano: string;
+    descBolaUna: string;
+    descBolas: string;
+    descBolaTamano: string;
     descImanUno: string;
     descImanes: string;
     descImanTamano: string;
     descRevisaUno: string;
     descRevisaMuchos: string;
+    descRevisaBolas: string;
     resumenCalendario: string;
     resumenSeparadorUno: string;
     resumenSeparadores: string;
+    resumenBolaUno: string;
+    resumenBolas: string;
     resumenUno: string;
     resumenMuchos: string;
     resumenTamanoCada: string;
@@ -809,6 +817,8 @@ export type StudioTexts = {
     nombreTira: string;
     nombreCalendario: string;
     nombreSeparador: string;
+    nombreBola: string;
+    nombreMiniLibro: string;
     nombreSet: string;
     /** ADR-101 (owner 2026-09-15) — sustantivo de la unidad en familias vendidas
      *  por packs de unidades sueltas (fotoimanes: "Pack 1", "Pack 2"…). */
@@ -1427,6 +1437,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     tituloPedido: "Así se verá tu pedido",
     tituloCalendario: "Así se verá tu calendario",
     tituloSeparadores: "Así se verán tus separadores",
+    tituloBola: "Así se verá tu bola navideña",
+    tituloBolas: "Así se verán tus bolas navideñas",
     descCalendario: "Esta es la vista previa de las {n} páginas de tu calendario{año}.",
     descCalendarioTamano: "Cada página mide {tamano}.",
     descCalendarioRevisa: "Revísalas antes de continuar.",
@@ -1434,14 +1446,22 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Esta es la vista previa de los {n} separadores que vas a recibir — cada uno desplegado con sus 2 caras (así se imprime la tira).",
     descSeparadoresTamano: "Cada separador mide {tamano} doblado.",
     descSeparadoresTamanoPlano: "Cada separador mide {tamano}.",
+    descBolaUna:
+      "Esta es la vista previa de la bola navideña que vas a recibir, con el frente y el reverso de su inserto circular.",
+    descBolas:
+      "Esta es la vista previa de las {n} bolas navideñas que vas a recibir — cada una con el frente y el reverso de su inserto circular.",
+    descBolaTamano: "El inserto circular de cada bola mide {tamano} de diámetro.",
     descImanUno: "Esta es la vista previa del {pieza} que vas a recibir.",
     descImanes: "Esta es la vista previa de los {n} {piezas} que vas a recibir.",
     descImanTamano: "Cada {pieza} mide {tamano}.",
     descRevisaUno: "Revísalo antes de continuar.",
     descRevisaMuchos: "Revísalos antes de continuar.",
+    descRevisaBolas: "Revísalas antes de continuar.",
     resumenCalendario: "Calendario personalizado · {n} páginas",
     resumenSeparadorUno: "{n} separador personalizado (2 caras c/u)",
     resumenSeparadores: "{n} separadores personalizados (2 caras c/u)",
+    resumenBolaUno: "{n} bola navideña personalizada (2 caras c/u)",
+    resumenBolas: "{n} bolas navideñas personalizadas (2 caras c/u)",
     resumenUno: "{n} {pieza} personalizad{o}",
     resumenMuchos: "{n} {piezas} personalizad{os}",
     resumenTamanoCada: "📐 {tamano} c/u",
@@ -1613,6 +1633,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     nombreTira: "Tira",
     nombreCalendario: "Calendario",
     nombreSeparador: "Separador",
+    nombreBola: "Bola",
+    nombreMiniLibro: "Mini libro",
     nombreSet: "Set",
     nombrePack: "Pack",
     nombrePieza: "Pieza",

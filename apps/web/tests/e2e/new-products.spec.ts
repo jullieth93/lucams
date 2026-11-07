@@ -304,6 +304,7 @@ test("bola dúplex: A/B en una esfera, cara B obligatoria y arrastre táctil o m
 }) => {
   test.slow();
   const panel = await prepareOrnamentStudio(anonPage);
+  await expect(anonPage.getByText(/cabeza a cabeza|doblez|doblado/i)).toHaveCount(0);
   const red = await sharp({
     create: { width: 1200, height: 1200, channels: 3, background: { r: 220, g: 20, b: 60 } },
   })
@@ -386,6 +387,38 @@ test("bola dúplex: A/B en una esfera, cara B obligatoria y arrastre táctil o m
   await preview.click();
   const previewDialog = anonPage.getByRole("dialog");
   await expect(previewDialog).toBeVisible({ timeout: 60_000 });
+  await expect(previewDialog.getByText("Así se verá tu bola navideña")).toBeVisible();
+  await expect(
+    previewDialog.getByText(/frente y el reverso de su inserto circular/i),
+  ).toBeVisible();
+  await expect(
+    previewDialog.getByText("1 bola navideña personalizada (2 caras c/u)"),
+  ).toBeVisible();
+  await expect(previewDialog.getByText(/separador|doblez|doblado/i)).toHaveCount(0);
+
+  const previewSrc = await previewDialog.locator("img").first().getAttribute("src");
+  expect(previewSrc).toMatch(/^data:image\//);
+  const previewBuffer = Buffer.from(previewSrc!.split(",")[1]!, "base64");
+  const previewMeta = await sharp(previewBuffer).metadata();
+  const pixel = async (xRatio: number, yRatio: number) => {
+    const left = Math.floor(previewMeta.width! * xRatio);
+    const top = Math.floor(previewMeta.height! * yRatio);
+    const { data, info } = await sharp(previewBuffer)
+      .extract({ left, top, width: 1, height: 1 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    return [...data.subarray(0, info.channels)];
+  };
+  const [redR, redG, redB] = await pixel(0.26, 0.5);
+  expect(redR).toBeGreaterThan(redG);
+  expect(redR).toBeGreaterThan(redB);
+  const [blueR, , blueB] = await pixel(0.74, 0.5);
+  expect(blueB).toBeGreaterThan(blueR);
+  const [cornerR, cornerG, cornerB] = await pixel(0.06, 0.1);
+  expect(cornerR).toBeGreaterThanOrEqual(254);
+  expect(cornerG).toBeGreaterThanOrEqual(247);
+  expect(cornerB).toBeGreaterThanOrEqual(238);
+
   const qualityAck = previewDialog.getByRole("checkbox", {
     name: /Entiendo que estas fotos pueden imprimirse con menor calidad/i,
   });

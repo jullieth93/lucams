@@ -74,7 +74,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
             variant: {
               select: {
                 sku: true,
-                product: { select: { name: true } },
+                product: { select: { name: true, personalizationSchema: true } },
                 // Paquete H — desglose de la variante (tamaño, fotos, imán…) bajo
                 // el nombre de cada línea del correo.
                 attributes: true,
@@ -126,7 +126,10 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
         qty: it.qty,
         units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
-        breakdown: describeVariantAttributes(parseVariantAttributes(it.variant.attributes)),
+        breakdown: describeVariantAttributes(
+          parseVariantAttributes(it.variant.attributes),
+          it.variant.product.personalizationSchema,
+        ),
         warrantyMonths: it.warrantyMonths,
       })),
       shippingAddress: formatAddressLine(ship),
@@ -636,7 +639,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
           include: {
             variant: {
               select: {
-                product: { select: { name: true } },
+                product: { select: { name: true, personalizationSchema: true } },
                 // Paquete H — desglose de la variante en el aviso (qué producir).
                 attributes: true,
               },
@@ -704,7 +707,10 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
         qty: it.qty,
         units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
-        breakdown: describeVariantAttributes(parseVariantAttributes(it.variant.attributes)),
+        breakdown: describeVariantAttributes(
+          parseVariantAttributes(it.variant.attributes),
+          it.variant.product.personalizationSchema,
+        ),
       })),
     });
     const result = await sendEmail({

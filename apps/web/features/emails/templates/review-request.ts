@@ -60,7 +60,7 @@ export async function reviewRequestEmail(data: ReviewRequestData) {
     : "";
 
   const bodyHtml = `
-<h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¿Ya probaste tus imanes? ⭐</h1>
+<h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¿Ya probaste tus productos? ⭐</h1>
 <p>Hola ${escapeHtml(data.customerName)}, ya pasó una semanita desde que te llegó tu pedido <strong>${escapeHtml(data.orderNumber)}</strong>. ¡Esperamos que te encanten!</p>
 <p style="margin-top:14px;"><strong>Tu opinión nos ayuda un montón</strong> — y a otras personas a decidir. Te toma menos de un minuto:</p>
 <ul style="padding-left:18px;color:#3D2E5C;">${productList}</ul>
@@ -69,7 +69,7 @@ ${trackingNoteHtml}
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algo no salió como esperabas? Responde este correo o escríbenos por WhatsApp y lo resolvemos. 💜</p>
 `;
 
-  const text = `¿Ya probaste tus imanes?
+  const text = `¿Ya probaste tus productos?
 
 Hola ${data.customerName},
 

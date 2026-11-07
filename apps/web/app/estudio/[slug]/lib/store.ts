@@ -240,10 +240,13 @@ export type StudioStoreState = {
    * (unitCount) conservando la composición de cada una (unitSlots/photoSlots).
    * Los slots se preservan por índice (las unidades nuevas nacen vacías; al
    * reducir se caen las últimas). El precio ×N lo deriva el servidor del canvas
-   * guardado (design-units.ts), como siempre. No aplica a packs de imán suelto
-   * (unitSlots = 1: allí el stepper de fotos YA es el de unidades).
+   * guardado (design-units.ts), como siempre. Sin allowFreeUnits no aplica a
+   * packs de imán suelto (unitSlots = 1: allí el stepper de fotos YA es el de unidades).
    */
-  setUnitCount: (n: number, opts: { facesPerUnit: number; max: number }) => void;
+  setUnitCount: (
+    n: number,
+    opts: { facesPerUnit: number; max: number; allowFreeUnits?: boolean },
+  ) => void;
   /**
    * Modelo multi-unidad (owner 2026-09-09) — "Aplicar este diseño a todas": copia
    * los slots COMPLETOS de la unidad `unitIndex` (foto, encuadre, filtro, textos,
@@ -810,9 +813,9 @@ export function createStudioStore() {
       const { canvasData, selectedSlotIndex, packTextValues } = get();
       if (!canvasData) return;
       const unitSlots = canvasData.unitSlots ?? opts.facesPerUnit;
-      // Solo productos de composición (unitSlots > caras — tiras). Con imán
-      // suelto el N de unidades ya lo maneja setPhotoSlotsPerUnit.
-      if (unitSlots <= opts.facesPerUnit) return;
+      // Solo productos de composición o unidades libres. Con imán suelto el N
+      // de unidades ya lo maneja setPhotoSlotsPerUnit.
+      if (!opts.allowFreeUnits && unitSlots <= opts.facesPerUnit) return;
       const current = canvasData.unitCount ?? 1;
       const target = Math.min(opts.max, Math.max(1, Math.trunc(n)));
       if (!Number.isFinite(target) || target === current) return;

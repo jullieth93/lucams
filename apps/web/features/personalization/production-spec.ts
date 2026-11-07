@@ -598,6 +598,7 @@ export function productionPieceGroups(e: {
   canvasData: Record<string, unknown> | null;
   designMetadata: Record<string, unknown> | null;
   productionCount: number;
+  productSchema?: Record<string, unknown> | null;
   /** startMonth del schema del producto (calendario; default Enero). */
   startMonth?: number;
 }): ProductionPieceGroup[] | null {
@@ -657,6 +658,21 @@ export function productionPieceGroups(e: {
           label: `${MONTH_NAMES_ES[monthIndex0] ?? `Mes ${j + 1}`}${year ? ` ${year}` : ""}`,
         };
       }),
+    }));
+  }
+
+  if (readProductExperience(e.productSchema).experience === "christmas-ornament") {
+    const faces = n(e.productSchema?.facesPerUnit) === 2 ? 2 : 1;
+    if (e.productionCount <= 0 || e.productionCount % faces !== 0) return null;
+    const units = e.productionCount / faces;
+    return Array.from({ length: units }, (_, unit) => ({
+      key: `bola-${unit + 1}`,
+      title: units > 1 ? `Bola ${unit + 1} de ${units}` : "Bola navideña",
+      note: "Inserto circular plano dúplex de 8 cm · frente y reverso de una misma unidad",
+      pieces: Array.from({ length: faces }, (_, face) => ({
+        index: unit * faces + face,
+        label: faces === 1 ? "Foto circular" : `Cara ${face === 0 ? "A (frente)" : "B (reverso)"}`,
+      })),
     }));
   }
 

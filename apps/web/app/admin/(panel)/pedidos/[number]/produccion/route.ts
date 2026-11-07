@@ -199,6 +199,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
           canvasData: jsonRecord(item.canvasData),
           designMetadata: jsonRecord(item.designMetadata),
           productionCount: item.productionUrls.length,
+          productSchema: jsonRecord(item.productSchema),
           startMonth:
             typeof jsonRecord(item.productSchema)?.startMonth === "number"
               ? (jsonRecord(item.productSchema)!.startMonth as number)

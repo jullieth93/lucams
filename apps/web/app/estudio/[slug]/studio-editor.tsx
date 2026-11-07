@@ -125,6 +125,7 @@ import {
 } from "./lib/preview-encode";
 import {
   buildBookmarkStripPreview,
+  buildOrnamentPreview,
   buildCompositedPreview,
   buildMagnetTextures,
   clipProductionSnapshotToShape,
@@ -647,7 +648,7 @@ export function StudioEditor({
   // Ola 3 (Lucy 2026-07-22) — flags del producto, via schema (NO por slug):
   //  - allowText: el texto editable es de la Polaroid; Fotoimanes Cuadrados y
   //    separadores NO dibujan las capas de texto de la plantilla.
-  //  - facesPerUnit=2 (separadores): cada unidad física es una tira doblada con
+  //  - facesPerUnit=2 (separadores y bola dúplex): cada unidad física tiene
   //    2 caras de diseño → el Estudio trabaja con 2N slots (slot 2k=cara A,
   //    2k+1=cara B) y la grilla los agrupa por unidad.
   const allowText = productConfig.allowText === true;
@@ -657,6 +658,7 @@ export function StudioEditor({
   const frameFullBleed = (productConfig.frameOptions?.length ?? 0) > 0;
   const facesPerUnit = productConfig.facesPerUnit === 2 ? 2 : 1;
   const experience = readProductExperience(product.personalizationSchema);
+  const isOrnament = experience.experience === "christmas-ornament";
   // Cara B OPCIONAL (2026-09-22) — lo declara el personalizationSchema del
   // producto (backOptional: true vía script de BD). Se lee crudo como
   // galleryTag/startMonth porque el schema Zod (PhotoProductConfigSchema) aún
@@ -833,11 +835,13 @@ export function StudioEditor({
   // aria/fallback de slots y el onboarding (pantalla=físico).
   const slotProductKind: StudioSlotProductKind = isCalendarMonth
     ? "calendar"
-    : isBookmark
-      ? "bookmarks"
-      : liveIsStrip
-        ? "strips"
-        : "magnets";
+    : isOrnament
+      ? "ornaments"
+      : isBookmark
+        ? "bookmarks"
+        : liveIsStrip
+          ? "strips"
+          : "magnets";
   const slotNounPair = resolveSlotNoun(slotProductKind, liveMagnet, texts);
   // Fase 2 · item 2.8 (2026-10-07) — superficie del TOUR por producto: decide
   // las features del onboarding (lib/studio-tour) y su clave de localStorage.
@@ -889,13 +893,17 @@ export function StudioEditor({
   const unitNoun = isCalendarMonth
     ? // Owner 2026-09-15: el calendario multi-set se nombra «Set» ("Set 1", "Set 2").
       texts.unidades.nombreSet
-    : isBookmark
-      ? texts.unidades.nombreSeparador
-      : liveIsStrip
-        ? texts.unidades.nombreTira
-        : packUnitsPerGroup
-          ? texts.unidades.nombrePack
-          : texts.unidades.nombrePieza;
+    : isOrnament
+      ? texts.unidades.nombreBola
+      : isBookmark
+        ? texts.unidades.nombreSeparador
+        : liveIsStrip
+          ? texts.unidades.nombreTira
+          : experience.experience === "mini-book"
+            ? texts.unidades.nombreMiniLibro
+            : packUnitsPerGroup
+              ? texts.unidades.nombrePack
+              : texts.unidades.nombrePieza;
   // 2026-10-12 — el MISMO sustantivo como par {one, many, feminine} en
   // minúsculas para la línea de la Vista Previa ("1 separador", "3 separadores
   // — cada uno con su propio diseño"; antes "N unidades" para todo). El
@@ -904,13 +912,17 @@ export function StudioEditor({
   // la regla general +"es" de separador→separadores).
   const unitNounPair: SlotNoun = isCalendarMonth
     ? { one: texts.unidades.nombreSet.toLowerCase(), many: "sets" }
-    : isBookmark
-      ? { one: texts.unidades.nombreSeparador.toLowerCase(), many: "separadores" }
-      : liveIsStrip
-        ? { one: texts.unidades.nombreTira.toLowerCase(), many: "tiras", feminine: true }
-        : packUnitsPerGroup
-          ? { one: texts.unidades.nombrePack.toLowerCase(), many: "packs" }
-          : { one: texts.unidades.nombrePieza.toLowerCase(), many: "piezas", feminine: true };
+    : isOrnament
+      ? { one: texts.unidades.nombreBola.toLowerCase(), many: "bolas", feminine: true }
+      : isBookmark
+        ? { one: texts.unidades.nombreSeparador.toLowerCase(), many: "separadores" }
+        : liveIsStrip
+          ? { one: texts.unidades.nombreTira.toLowerCase(), many: "tiras", feminine: true }
+          : experience.experience === "mini-book"
+            ? { one: texts.unidades.nombreMiniLibro.toLowerCase(), many: "mini libros" }
+            : packUnitsPerGroup
+              ? { one: texts.unidades.nombrePack.toLowerCase(), many: "packs" }
+              : { one: texts.unidades.nombrePieza.toLowerCase(), many: "piezas", feminine: true };
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del libro 3D según táctil vs mouse.
   // FOTO4 — la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo) es la vista por
   // defecto del fotoimán: se muestra cuando NO es calendario ni separador (el `else` del botón).
@@ -1064,9 +1076,9 @@ export function StudioEditor({
           canvasData = {
             version: 2,
             unitTemplate,
-            // Ola 3 — con facesPerUnit=2 (separadores) hay 2 slots de diseño por
-            // unidad física: slot 2k = cara A, slot 2k+1 = cara B (convención
-            // compartida con producción y con el frente 3D).
+            // Ola 3 — con facesPerUnit=2 (separadores y bola dúplex) hay 2 slots
+            // de diseño por unidad física: slot 2k = cara A, slot 2k+1 = cara B
+            // (convención compartida con producción y con el frente 3D).
             // Multi-unidad (2026-09-09): slotCount = unitCount × unitSlots.
             slotCount: initialSlotCount,
             // Multi-unidad: declarar el modelo solo cuando la unidad tiene >1 slot
@@ -1826,14 +1838,18 @@ export function StudioEditor({
       // default-back-face.ts, features/personalization), igual que en el libro 3D.
       // Lo resuelve previewFacePairOfUnit dentro del compositor (faceB = null).
       const foldCaption = (() => {
-        if (facesPerUnit !== 2 || productConfig.noFold) return undefined;
+        if (facesPerUnit !== 2 || productConfig.noFold || isOrnament) return undefined;
         const deployed = deployedSizeCm(productConfig.sizeCm);
         return deployed
           ? fillStudioText(texts.lienzo.doblezDesplegado, { tamano: `${deployed} cm` })
           : undefined;
       })();
-      const previewUrl =
-        facesPerUnit === 2
+      const previewUrl = isOrnament
+        ? await buildOrnamentPreview(state.canvasData, slotStagesRef.current, {
+            faceA: texts.lienzo.unitCaraA,
+            faceB: texts.lienzo.unitCaraB,
+          })
+        : facesPerUnit === 2
           ? await buildBookmarkStripPreview(
               state.canvasData,
               slotStagesRef.current,
@@ -1856,21 +1872,28 @@ export function StudioEditor({
       if (unitRanges.length > 1) {
         const canvasSnapshot = state.canvasData;
         previewPageLoaderRef.current = (u) =>
-          facesPerUnit === 2
-            ? buildBookmarkStripPreview(
+          isOrnament
+            ? buildOrnamentPreview(
                 canvasSnapshot,
                 slotStagesRef.current,
-                productConfig.cornerRadiusPx,
-                {
-                  noFold: productConfig.noFold === true,
-                  backOptional,
-                  foldCaption,
-                  unitIndex: u,
-                },
+                { faceA: texts.lienzo.unitCaraA, faceB: texts.lienzo.unitCaraB },
+                u,
               )
-            : buildCompositedPreview(canvasSnapshot, slotStagesRef.current, productConfig.shape, {
-                unitRange: unitRanges[u]!,
-              });
+            : facesPerUnit === 2
+              ? buildBookmarkStripPreview(
+                  canvasSnapshot,
+                  slotStagesRef.current,
+                  productConfig.cornerRadiusPx,
+                  {
+                    noFold: productConfig.noFold === true,
+                    backOptional,
+                    foldCaption,
+                    unitIndex: u,
+                  },
+                )
+              : buildCompositedPreview(canvasSnapshot, slotStagesRef.current, productConfig.shape, {
+                  unitRange: unitRanges[u]!,
+                });
         setPreviewPagesGeneration((g) => g + 1);
         setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
       }
@@ -1900,6 +1923,7 @@ export function StudioEditor({
     backOptional,
     ensureAllStagesMounted,
     isCalendarMonth,
+    isOrnament,
     facesPerUnit,
     selectedYear,
     calendarLayout,
@@ -2661,8 +2685,11 @@ export function StudioEditor({
         productSlug={product.slug}
         productImageUrl={product.images?.[0]}
         productSizeCm={productConfig.sizeCm}
-        productSlotCount={livePhotoSlots}
+        productSlotCount={isOrnament ? liveSlotCount : livePhotoSlots}
         slotNoun={slotNounPair}
+        unitNoun={unitNounPair}
+        facesPerUnit={facesPerUnit}
+        freeUnitDesign={experience.freeUnitDesign}
         // 2026-10-12 — desglose de la variante en el header: el MISMO label de
         // la Vista Previa (ya omite tamaño/conteos, que el header enuncia en
         // sus propios chips) → llegan imán, idioma, estilo, marco, forma…
@@ -2964,8 +2991,8 @@ export function StudioEditor({
                 allowText={allowText}
                 frameFullBleed={frameFullBleed}
                 facesPerUnit={facesPerUnit}
-                // Alargados planos (noFold): sin línea de doblez en la tarjeta-unidad.
-                noFold={productConfig.noFold === true}
+                // Piezas planas y bola dúplex: sin línea de doblez en la tarjeta-unidad.
+                noFold={productConfig.noFold === true || isOrnament}
                 // Cara B opcional (separadores backOptional): el placeholder del slot
                 // vacío de Cara B avisa que puede quedar sin diseñar.
                 backOptional={backOptional}
@@ -3236,16 +3263,20 @@ export function StudioEditor({
         // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de
         // diseño (2N). Multi-unidad (2026-09-09): tiras/calendarios muestran las
         // unidades vivas del diseño y sus piezas por unidad.
-        slotCount={liveIsStrip || isCalendarMonth ? liveUnitCount : livePhotoSlots}
+        slotCount={isOrnament || liveIsStrip || isCalendarMonth ? liveUnitCount : livePhotoSlots}
         slotsPerUnit={liveIsStrip || isCalendarMonth ? liveUnitSlots : undefined}
-        sizeCm={productConfig.sizeCm}
+        sizeCm={
+          isOrnament && productConfig.sizeCm && !/\bcm\b/i.test(productConfig.sizeCm)
+            ? `${productConfig.sizeCm} cm`
+            : productConfig.sizeCm
+        }
         unitPrice={effectiveUnitPrice}
         // 2026-09-22 — multiplicador del SERVIDOR (design-units): la variante
         // puede YA ser el pack (separadores ×5 → ×1). La modal lo usa en vez
         // del unitCount crudo para el total (bug: mostraba pack × N).
         priceMultiplier={livePriceMultiplier}
-        // Separadores planos (Alargados): textos sin "doblado".
-        noFold={productConfig.noFold === true}
+        // Piezas planas y bola dúplex: textos sin "doblado".
+        noFold={productConfig.noFold === true || isOrnament}
         // Multi-unidad: el diseño YA contiene las unidades → qty 1 al carrito;
         // el total de la modal = precio unitario × unidades.
         unitCount={liveUnitCount}
@@ -3265,15 +3296,17 @@ export function StudioEditor({
         productKind={
           isCalendarMonth
             ? "calendar"
-            : facesPerUnit === 2
-              ? "bookmarks"
-              : liveIsStrip
-                ? "strips"
-                : // Fase 1A — SIN IMÁN (magnet === false) la modal dice "fichas",
-                  // nunca "imanes" (misma regla del helper resolveSlotNoun).
-                  liveMagnet === false
-                  ? "tiles"
-                  : "magnets"
+            : isOrnament
+              ? "ornaments"
+              : facesPerUnit === 2
+                ? "bookmarks"
+                : liveIsStrip
+                  ? "strips"
+                  : // Fase 1A — SIN IMÁN (magnet === false) la modal dice "fichas",
+                    // nunca "imanes" (misma regla del helper resolveSlotNoun).
+                    liveMagnet === false
+                    ? "tiles"
+                    : "magnets"
         }
         calendarYear={selectedYear}
         // Fase 2 · item 2.3 (2026-10-07) — desglose COMPLETO de la variante

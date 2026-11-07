@@ -674,3 +674,37 @@ describe("StudioCanvasGrid — allowText gobierna la pestaña Texto (owner 2026-
     ]);
   });
 });
+
+describe("StudioCanvasGrid — bola navideña dúplex", () => {
+  it("rotula la unidad como Bola y omite toda instrucción de doblez", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "ornament-1",
+      productSlug: "bola-navidena-personalizada",
+      canvasData: {
+        ...makePolaroidCanvas(2),
+        unitSlots: 2,
+        unitCount: 1,
+      },
+      templates: [],
+    });
+    renderStudio(
+      <StudioCanvasGrid
+        store={store}
+        facesPerUnit={2}
+        noFold
+        unitNoun="Bola"
+        onSlotClick={() => {}}
+        stageZoomRaw={1}
+        onStageZoomState={() => {}}
+        registerSlotStages={() => {}}
+      />,
+    );
+    expect(screen.getByText("Bola 1")).toBeInTheDocument();
+    expect(screen.getByText("Cara A")).toBeInTheDocument();
+    expect(screen.getByText("Cara B")).toBeInTheDocument();
+    expect(screen.queryByText(/cabeza a cabeza/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Doblez/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Separador/)).not.toBeInTheDocument();
+  });
+});

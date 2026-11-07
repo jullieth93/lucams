@@ -71,6 +71,9 @@ type StudioToolbarProps = {
    *  resuelto por resolveSlotNoun (productKind real + magnet — un calendario o
    *  una variante SIN IMÁN nunca dicen "imanes"). */
   slotNoun?: SlotNoun;
+  unitNoun?: SlotNoun;
+  facesPerUnit?: number;
+  freeUnitDesign?: boolean;
   /** Fase 1A — etiquetas por slot ("Ene", "1A"…) para el popover de faltantes
    *  de «Vista previa» (mismas labels de la grilla). undefined → números. */
   slotLabels?: string[];
@@ -134,6 +137,9 @@ export function StudioToolbar({
   productSlotCount,
   variantLabel,
   slotNoun = { one: "imán", many: "imanes" },
+  unitNoun,
+  facesPerUnit = 1,
+  freeUnitDesign = false,
   slotLabels,
   showRealismGuides,
   onToggleRealismGuides: _onToggleRealismGuides,
@@ -179,7 +185,8 @@ export function StudioToolbar({
   // REEMPLAZA (mismo contenido, una sola vez).
   const liveUnitSlots = useStore(store, (s) => s.canvasData?.unitSlots ?? 1);
   const photoStepper = !!photoCount && !photoCount.composition;
-  const unitStepperVisible = !photoStepper && liveUnitSlots > (photoCount?.facesPerUnit ?? 1);
+  const unitStepperVisible =
+    !photoStepper && (freeUnitDesign || liveUnitSlots > (photoCount?.facesPerUnit ?? facesPerUnit));
   // Progreso + auto-save compacto (solo <md): dentro de la fila del stepper si
   // existe, si no en la fila-info consolidada.
   const mobileChromeExtras = (
@@ -303,8 +310,8 @@ export function StudioToolbar({
           sobra ("ya se eligió en la PDP"); en su lugar va el de UNIDADES a diseñar.
           A3 (2026-09-15) — el stepper de UNIDADES es UNIVERSAL: todo producto sin
           stepper de fotos lo muestra (calendario incluido — antes no salía). El
-          control mismo se oculta cuando el producto no tiene unidades multi-slot
-          que contar (unitSlots ≤ caras — imán suelto de 1 foto).
+          control mismo se oculta fuera de freeUnitDesign cuando el producto no
+          tiene unidades multi-slot que contar (unitSlots ≤ caras — imán suelto de 1 foto).
           Ola 2 (2026-10-26) — la fila del stepper TAMBIÉN carga el chrome móvil
           (progreso + auto-save compacto + chip de variante, todo <md): una sola
           fila con wrap en vez de dos renglones apilados. */}
@@ -325,7 +332,9 @@ export function StudioToolbar({
       ) : unitStepperVisible ? (
         <StudioUnitCountControl
           store={store}
-          facesPerUnit={photoCount?.facesPerUnit ?? 1}
+          facesPerUnit={photoCount?.facesPerUnit ?? facesPerUnit}
+          freeUnitDesign={freeUnitDesign}
+          unitNoun={unitNoun}
           magnet={photoCount?.magnet}
           hint={photoCount?.composition ? undefined : "Cada unidad se diseña por separado"}
           variantLabel={variantLabel}
