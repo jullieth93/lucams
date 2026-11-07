@@ -62,6 +62,18 @@ Varios productos del catálogo (fotoimanes, tiras, separadores y calendarios) se
 
 ---
 
+## 2A. Experiencias físicas específicas (`ADR-199`/`ADR-200`/`ADR-201`)
+
+`personalizationSchema.experience` permite modelar geometría especializada sin cambiar `PersonalizationKind` ni crear migraciones Prisma. `features/personalization/product-experience.ts` es la fuente defensiva compartida por PDP, Estudio, carrito, 3D y taller.
+
+- **Bola Navideña Personalizada (`bola-navidena-personalizada`, `NAV-BOLA-8`):** una variante `NAV-BOLA-8CM-NOMAG` con inserto circular plano dúplex de 8 cm, `shape = circle`, `magnet = false` y unidades libres. La configuración canónica usa `facesPerUnit = 2` y `backOptional = false`: cada bola exige cara A y cara B, pero sigue siendo una sola unidad. El 3D mapea ambos diseños sobre un único inserto rígido, no crea dos esferas; el paginador y el rótulo cuentan unidades físicas, nunca caras.
+- **Mini Libros Magnéticos (`mini-libros-magneticos`, `MINI-LIBRO`):** cuatro variantes — dos tamaños × con/sin imán. Carátula extendida **7,1 × 5 cm** (tapas de 3,3 cm) o **5 × 2,5 cm** (tapas de 2,25 cm), lomo/grosor 0,5 cm. La variante sin imán conserva el sufijo `-NOMAG`; con imán se muestra ferrita en el reverso.
+- **Modelo comercial:** variantes de una sola pieza con `quantity = 1` y `photoSlots = 1`, cantidad libre hasta 50 unidades editables con réplica. `unitSlots = photoSlots × facesPerUnit`: dos caras agregan un lienzo, no otra unidad comercial. `volumePricingByPhysicalUnit` aplica `WholesaleTier` sobre el total físico, incluso cuando cada unidad usa otra carátula.
+- **Preparación y activación:** nacen pausados con precio cero **solo como dato pendiente**, `physicalSpecs = null` y stock made-to-order. La activación exige precio efectivo mayor que cero, al menos una opción activa y peso/dimensiones reales. `/admin/disenos` sí permite preparar prediseñados y filtros mientras están pausados, marcados con la etiqueta «pausado»; las consultas públicas siguen excluyéndolos.
+- **Activos canónicos:** `generate-new-product-assets.mjs` crea portadas y SVG originales; `seed-templates.mjs` registra 10 plantillas (4 bola + 6 mini libro); `seed-new-product-gallery.mjs` siembra 20 prediseñados (16 mini libro + 4 bola) con masters y miniaturas protegidas. El seed respeta estados administrativos y nunca inventa logística.
+
+---
+
 ## 3. Arquitectura CMS v2 de 3 Capas (`ADR-082`, `ADR-187`)
 
 Lucams separa estrictamente el contenido administrable, los encabezados de correos y el microcopy funcional de interfaz en tres capas para evitar claves rotas, consultas redundantes y riesgos de seguridad:

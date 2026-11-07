@@ -67,6 +67,7 @@ import { NamePricePicker } from "./name-price-picker";
 import { CopiesQtyInput } from "./copies-qty-input";
 import { buildProductJsonLd } from "./product-jsonld";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
+import { readProductExperience } from "@/features/personalization/product-experience";
 import {
   getStorefrontProductBySlug,
   listRelatedProducts,
@@ -239,7 +240,8 @@ export default async function ProductoDetallePage({
   const maxDesignUnits = isLetterSetProduct
     ? 10
     : product.personalizationKind === "CALENDAR_PHOTO_MONTH" ||
-        PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug)
+        PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug) ||
+        readProductExperience(product.personalizationSchema).freeUnitDesign
       ? Math.max(1, Math.floor(50 / photoSlotsForCap))
       : 99;
   // Etapa 1 (modo catálogo): el strip de confianza NO promete pago en línea ni

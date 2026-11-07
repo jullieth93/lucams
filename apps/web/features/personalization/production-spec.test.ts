@@ -202,7 +202,7 @@ describe("cuántas unidades hay que entregar", () => {
       canvasData: { version: 2, slotCount: 6, unitCount: 2, unitSlots: 3, photoSlots: 3 },
     });
     const dato = spec.personalizacion.find((x) => x.etiqueta === "Unidades del diseño");
-    expect(dato?.valor).toMatch(/2 unidades distintas/i);
+    expect(dato?.valor).toMatch(/2 unidades — fabricar TODAS/i);
   });
 });
 
@@ -490,5 +490,92 @@ describe("sets de letras POR FICHA (owner 2026-11-03) + agrupación de piezas (W
       productionCount: 3,
     });
     expect(groups).toBeNull();
+  });
+});
+
+describe("nuevas formas físicas", () => {
+  it.each([
+    { sizeCm: "7.1×5", cover: "3.3 cm" },
+    { sizeCm: "5×2.5", cover: "2.25 cm" },
+  ])("mini libro $sizeCm: una carátula envolvente completa", ({ sizeCm, cover }) => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      personalizationKind: "CUSTOM_DECOR",
+      productSchema: { experience: "mini-book", spineWidthCm: 0.5 },
+      variantAttrs: { sizeCm, magnet: true },
+      productionUrls: ["caratula-1.png", "caratula-2.png"],
+      canvasData: {
+        version: 2,
+        slotCount: 2,
+        unitCount: 2,
+        unitSlots: 1,
+        slots: [
+          {
+            slotIndex: 0,
+            textOverrides: { title: { text: "Nuestra historia" } },
+          },
+          { slotIndex: 1 },
+        ],
+      },
+    });
+
+    expect(spec.formatoFisico).toEqual({ tipo: "caratula-envolvente", unidades: 2 });
+    expect(spec.unidadesFisicas).toBe(2);
+    expect(spec.queEsCadaArchivo).toContain("contraportada, lomo y portada");
+    expect(spec.pasosArmado.join(" ")).toContain("marca las dos líneas del lomo");
+    expect(spec.especificaciones).toEqual(
+      expect.arrayContaining([
+        { etiqueta: "Medida de corte", valor: `${sizeCm} cm` },
+        { etiqueta: "Ancho de cada tapa", valor: cover },
+        { etiqueta: "Lomo y grosor del cuerpo", valor: "0.5 cm (5 mm)" },
+      ]),
+    );
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Textos del cliente")?.valor).toContain(
+      "Nuestra historia",
+    );
+  });
+
+  it("mini libro sin imán: conserva la carátula y omite el montaje magnético", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      personalizationKind: "CUSTOM_DECOR",
+      productSchema: { experience: "mini-book" },
+      variantAttrs: { sizeCm: "5×2.5", magnet: false },
+      productionUrls: ["caratula-1.png"],
+    });
+    expect(spec.pasosArmado.join(" ")).toMatch(/no le pegues imán/i);
+    expect(spec.formatoFisico.tipo).toBe("caratula-envolvente");
+  });
+
+  it("bola navideña: inserto circular plano dentro de la esfera, nunca curvado", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      personalizationKind: "CUSTOM_DECOR",
+      productSchema: { experience: "christmas-ornament" },
+      variantAttrs: { sizeCm: "8", magnet: false },
+      productionUrls: ["inserto-1.png"],
+    });
+    expect(spec.formatoFisico).toEqual({ tipo: "inserto-circular", unidades: 1, caras: 1 });
+    expect(spec.queEsCadaArchivo).toMatch(/PLANA/);
+    expect(spec.pasosArmado.join(" ")).toMatch(/no lo curves/i);
+    expect(spec.especificaciones).toContainEqual({
+      etiqueta: "Inserto",
+      valor: "Circular plano, no curvar",
+    });
+  });
+
+  it("bola dúplex: dos archivos forman una sola pieza A/B, nunca una tira", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      personalizationKind: "CUSTOM_DECOR",
+      productSchema: { experience: "christmas-ornament", facesPerUnit: 2 },
+      variantAttrs: { sizeCm: "8", magnet: false },
+      productionUrls: ["cara-a.png", "cara-b.png"],
+    });
+    expect(spec.formatoFisico).toEqual({ tipo: "inserto-circular", unidades: 1, caras: 2 });
+    expect(spec.queEsCadaArchivo).toMatch(/DÚPLEX/);
+    expect(spec.pasosArmado.join(" ")).toMatch(/doble cara/i);
+    expect(spec.pasosArmado.join(" ")).toMatch(/MISMA pieza dúplex/i);
+    expect(spec.pasosArmado.join(" ")).not.toMatch(/tira/i);
   });
 });

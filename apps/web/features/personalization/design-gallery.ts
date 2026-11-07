@@ -128,6 +128,8 @@ export type GalleryTagOption = {
   tag: string;
   /** Nombre del producto (label del selector en el admin). */
   label: string;
+  /** false = se puede preparar material antes de publicar el producto. */
+  isActive: boolean;
   /** true si el producto tiene 2 caras de diseño (facesPerUnit=2 → pares A/B, separadores). */
   needsFaceB: boolean;
   /**
@@ -153,10 +155,11 @@ export type GalleryTagOption = {
  */
 export async function listGalleryTagOptions(): Promise<GalleryTagOption[]> {
   const products = await prisma.product.findMany({
-    where: { isActive: true, deletedAt: null },
+    where: { deletedAt: null },
     select: {
       name: true,
       slug: true,
+      isActive: true,
       personalizationKind: true,
       personalizationSchema: true,
       // Fase 5 — attributes de las variantes activas: alimentan el selector
@@ -186,7 +189,8 @@ export async function listGalleryTagOptions(): Promise<GalleryTagOption[]> {
     seen.add(tag);
     options.push({
       tag,
-      label: p.name,
+      label: p.isActive ? p.name : `${p.name} (pausado)`,
+      isActive: p.isActive,
       needsFaceB: parsePhotoProductConfig(p.personalizationSchema).facesPerUnit === 2,
       variantFilterOptions: buildVariantFilterOptions(
         p.variants.map((v) => parseVariantAttributes(v.attributes)),
@@ -208,7 +212,7 @@ export async function listGalleryTagVariantAttributes(
   tag: string,
 ): Promise<Record<string, unknown>[]> {
   const products = await prisma.product.findMany({
-    where: { isActive: true, deletedAt: null },
+    where: { deletedAt: null },
     select: {
       slug: true,
       personalizationKind: true,

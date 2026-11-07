@@ -43,6 +43,11 @@ describe("scenesForKind", () => {
     expect(scenesForKind("bookmark")).toEqual(["book"]);
   });
 
+  it("ornament y mini-book: visores específicos por construcción física", () => {
+    expect(scenesForKind("ornament")).toEqual(["ornament"]);
+    expect(scenesForKind("mini-book")).toEqual(["mini-book", "mini-book-fridge"]);
+  });
+
   it("photo no polaroid: oculta la escena polaroid de la galería FOTO4", () => {
     expect(filterPhotoScenes(scenesForKind("photo"), false)).toEqual([
       "fridge",
@@ -87,6 +92,9 @@ describe("galleryScenes — gate SIN IMÁN", () => {
     // letters: su única escena (tablero memo) afirma imán → galería VACÍA
     // (la UI muestra el estado vacío coherente, texts.escenas.vacio).
     expect(galleryScenes("letters", false, false)).toEqual([]);
+    expect(galleryScenes("ornament", false, false)).toEqual(["ornament"]);
+    expect(galleryScenes("mini-book", false, false)).toEqual(["mini-book"]);
+    expect(galleryScenes("mini-book", false, true)).toEqual(["mini-book", "mini-book-fridge"]);
   });
 
   it("magnet true/undefined: mismas escenas de siempre por kind", () => {
@@ -157,6 +165,11 @@ describe("countBadgeLabel — rótulo de cantidad en la escena 3D (owner 2026-09
 
   it("kind por defecto es photo (retrocompatible)", () => {
     expect(countBadgeLabel(1)).toBe("1 unidad · tamaño real");
+  });
+
+  it("cuenta unidades físicas y no caras en bola dúplex y separadores", () => {
+    expect(countBadgeLabel(2, "ornament", 1, 2)).toBe("1 bola · foto plana de 8 cm");
+    expect(countBadgeLabel(4, "bookmark", 1, 2)).toBe("2 separadores · tamaño real");
   });
 });
 

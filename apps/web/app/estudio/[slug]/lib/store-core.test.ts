@@ -161,6 +161,30 @@ describe("assignAssetToSlot / clearSlot / setSlotFilter", () => {
     expect(slot?.photoTransform).toBeUndefined();
   });
 
+  it("mini libro: cambiar la imagen CONSERVA título, lomo y dedicatoria asistidos", () => {
+    const store = setup(
+      makeCanvasData({
+        unitTemplate: makeUnitTemplate({
+          layers: [
+            { id: "title", type: "text", x: 400, y: 420, text: "Título" },
+            { id: "spine_title", type: "text", x: 355, y: 250, text: "Título" },
+            { id: "back_message", type: "text", x: 160, y: 250, text: "Dedicatoria" },
+          ],
+        }),
+      }),
+    );
+    store.getState().setSlotTextOverrides(0, {
+      title: { text: "Nuestra historia" },
+      spine_title: { text: "Nuestra historia" },
+      back_message: { text: "Gracias" },
+    });
+    store.getState().assignAssetToSlot(0, asset("nueva-caratula"));
+    const slot = store.getState().canvasData?.slots[0];
+    expect(slot?.textOverrides?.title?.text).toBe("Nuestra historia");
+    expect(slot?.textOverrides?.spine_title?.text).toBe("Nuestra historia");
+    expect(slot?.textOverrides?.back_message?.text).toBe("Gracias");
+  });
+
   it("assignAssetToSlot CONSERVA la foto de perfil IG (capa independiente de la foto principal)", () => {
     const store = setup();
     store.getState().setSlotProfilePhoto(0, asset("avatar-1"));
@@ -794,6 +818,28 @@ describe("setPhotoSlotsPerUnit — packs de fotoimanes (N elegido en el Estudio)
     const store = createStudioStore(); // sin init
     store.getState().setPhotoSlotsPerUnit(2, { facesPerUnit: 1, max: 6 });
     expect(store.getState().canvasData).toBeNull();
+  });
+
+  it("unidades libres de un solo lienzo: N cambia unitCount sin alterar photoSlots base", () => {
+    const store = setup(
+      makeCanvasData({
+        slotCount: 1,
+        unitCount: 1,
+        unitSlots: 1,
+        photoSlots: 1,
+        slots: [{ slotIndex: 0, assetId: "foto-1", assetUrl: "https://x/foto-1.png" }],
+      }),
+    );
+    store.getState().setPhotoSlotsPerUnit(6, { facesPerUnit: 1, max: 50 });
+    const canvas = store.getState().canvasData;
+    expect(canvas?.photoSlots).toBe(1);
+    expect(canvas?.unitCount).toBe(6);
+    expect(canvas?.unitSlots).toBe(1);
+    expect(canvas?.slotCount).toBe(6);
+    expect(canvas?.slots).toHaveLength(6);
+    expect(canvas?.slots[0]?.assetId).toBe("foto-1");
+    expect(canvas?.slots[5]?.assetId).toBeNull();
+    expect(canvas?.slots.map((slot) => slot.slotIndex)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
   it("multi-unidad (tiras): el N es la COMPOSICIÓN de cada unidad — unitCount se conserva", () => {

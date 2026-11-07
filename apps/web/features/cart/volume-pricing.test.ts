@@ -146,6 +146,19 @@ describe("applyVolumePricing", () => {
     const caros = [tier({ minQty: 2, unitPrice: 45_000 })];
     expect(applyVolumePricing(40_000, caros, PRODUCT, 2)).toBe(40_000);
   });
+
+  it("modo por unidad física: evalúa el umbral total y conserva el multiplicador del diseño", () => {
+    const tiers = [tier({ minQty: 6, unitPrice: 8_000 }), tier({ minQty: 12, unitPrice: 7_000 })];
+    expect(applyVolumePricing(60_000, tiers, PRODUCT, 1, 6)).toBe(48_000);
+    expect(applyVolumePricing(120_000, tiers, PRODUCT, 1, 12)).toBe(84_000);
+    expect(applyVolumePricing(120_000, tiers, PRODUCT, 2, 6)).toBe(42_000);
+    expect(applyVolumePricing(30_000, tiers, PRODUCT, 1, 3)).toBe(30_000);
+  });
+
+  it("modo por unidad física: nunca aplica un tier más caro que la unidad base", () => {
+    const tiers = [tier({ minQty: 3, unitPrice: 11_000 })];
+    expect(applyVolumePricing(30_000, tiers, PRODUCT, 1, 3)).toBe(30_000);
+  });
 });
 
 describe("resolveVisibleVolumeTiers ([CX-01] PDP)", () => {

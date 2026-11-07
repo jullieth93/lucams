@@ -508,7 +508,7 @@
 ### ADR-172 — Galería de escenas 100 % en 3D interactivo (React Three Fiber)
 
 - **Estado:** `Vigente`
-- **Decisión:** Reemplazar montajes 2D por **7 escenas 3D reales** (`FridgeView3D`, `BookView3D`, `PolaroidTable3D`, `RoomBoardView3D`, `ShelfView3D`, `GiftView3D`, `CalendarCardFocus`) con pose física (`leaning-scene-layout.ts`).
+- **Decisión:** Reemplazar montajes 2D por escenas 3D reales con pose física (`leaning-scene-layout.ts`); hoy la galería tiene 10 contextos, incluidos árbol y mini libro/nevera.
 - **Motivo:** Zoom sin pixelado y cobertura de variantes con y sin imán ([`domains/studio-and-production.md`](domains/studio-and-production.md)).
 
 ### ADR-173 — Grosor de marco configurable por producto (`borderWidthFactor`)
@@ -1160,3 +1160,21 @@
 - **Estado:** `Vigente`
 - **Decisión:** Forzar renderizado dinámico sin prerender estático en todo el árbol `/admin/*`.
 - **Motivo:** Depende siempre de sesión autenticada `aal2` y datos vivos.
+
+### ADR-199 — Geometría física específica para bola navideña y mini libros
+
+- **Estado:** `Vigente`
+- **Decisión:** Modelar experiencias en `personalizationSchema` sin crear enums ni migraciones: `christmas-ornament` (inserto circular plano dúplex de 8 cm dentro de esfera transparente, sin imán) y `mini-book` (carátula extendida de 7,1 × 5 cm o 5 × 2,5 cm, lomo/grosor 0,5 cm, con o sin imán). La bola conserva una única pieza con dos caras obligatorias al girar (`ADR-201`), mientras el mini libro mapea contraportada/lomo/portada por regiones y ofrece carátula extendida. El asistente coordina título en portada y lomo, autor y dedicatoria; también admite carátula completa, prediseñados con búsqueda y solicitud de diseño a soporte. La preparación inicial queda pausada: precio, descuentos y logística reales se completan en admin antes de publicar.
+- **Motivo:** Fidelidad física real entre cliente, 3D e imprenta, sin pedir al comprador que coordine manualmente tres zonas de una carátula y sin activar productos con datos comerciales o logísticos ficticios.
+
+### ADR-200 — Unidades libres y precios por volumen por cantidad física
+
+- **Estado:** `Vigente`
+- **Decisión:** `freeUnitDesign` permite hasta 50 unidades con `unitSlots = 1` para mini libros o `2` para la bola dúplex, cada una editable, con réplica rápida y vista previa individual. `physicalUnitsFromFaces` evita cobrar las caras como unidades adicionales. Cuando `volumePricingByPhysicalUnit = true`, el umbral mayorista se evalúa sobre `qty × designUnits` y el precio final conserva el multiplicador: `unitPrice_tier × designUnits`. Stock, inventario, envío y taller usan también el total físico. La activación de estas experiencias exige al menos una opción activa con precio efectivo mayor que cero y las dimensiones logísticas ya requeridas, sin cambiar las reglas del catálogo estándar.
+- **Motivo:** Evitar que una línea `qty = 1` oculte unidades físicas al motor de descuentos, stock o producción, manteniendo precios enteros COP y compatibilidad con los packs históricos.
+
+### ADR-201 — Capacidades modulares para diseños de dos caras y bola dúplex
+
+- **Estado:** `Vigente`
+- **Decisión:** El selector `facesPerUnit` solo se habilita cuando Estudio, visor 3D y producción soportan la construcción: `duplex` para la bola navideña y `folded-strip` para separadores; mini libros y productos estándar no compatibles se rechazan también en `createProduct`/`updateProduct`. La bola usa una única pieza circular plana de 8 cm con cara A y cara B obligatorias (`backOptional = false`), nunca dos esferas ni dos unidades comerciales. El 3D, el paginador y los rótulos agrupan A/B por unidad física. Finalize y el worker entregan dos archivos circulares por unidad dúplex y no ejecutan `composeFaceStrips` ni escriben metadata `faceStrips`; producción imprime ambas caras alineadas en la misma pieza dúplex. La argolla es circular y transparente, el moño conserva sus cintas fuera de la esfera y el icopor usa 480 partículas con agitación por botones o arrastre de mouse/dedo y sedimentación posterior, respetando movimiento reducido.
+- **Motivo:** Evitar que un campo genérico produzca configuraciones físicamente inválidas, unidades duplicadas o archivos de taller incorrectos. La cara B vacía se presenta solo como pendiente, mientras la obligación de fotos se valida antes de finalizar; la modularidad queda condicionada por capacidades reales y no por el nombre del producto.

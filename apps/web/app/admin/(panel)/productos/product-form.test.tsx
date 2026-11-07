@@ -145,6 +145,7 @@ describe("ProductForm — tab Personalización (2026-10-02)", () => {
 
   type InitialProduct = typeof INITIAL_PRODUCT & {
     personalizationKind?: ProductPersonalizationKind;
+    personalizationSchema?: unknown;
     personalization?: PersonalizationAdminConfig;
   };
 
@@ -285,6 +286,25 @@ describe("ProductForm — tab Personalización (2026-10-02)", () => {
     fireEvent.change(screen.getByLabelText("Subtipo"), { target: { value: "phrase" } });
     expect(screen.getByLabelText(/máximo de caracteres de la frase/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/máximo de letras/i)).not.toBeInTheDocument();
+  });
+
+  it("dos caras se habilita cuando el producto tiene soporte dúplex", () => {
+    renderStudioForm({
+      ...STUDIO_PRODUCT,
+      personalizationSchema: { experience: "christmas-ornament" },
+    });
+    const select = screen.getByLabelText("Caras de diseño por unidad") as HTMLSelectElement;
+    expect(select.options[1]).toBeEnabled();
+    expect(screen.getByText(/frente y reverso de la MISMA pieza/i)).toBeInTheDocument();
+  });
+
+  it("dos caras queda bloqueada cuando el producto no tiene soporte completo", () => {
+    renderStudioForm(STUDIO_PRODUCT);
+    const select = screen.getByLabelText("Caras de diseño por unidad") as HTMLSelectElement;
+    expect(select.options[1]).toBeDisabled();
+    expect(
+      screen.getByText(/solo está disponible cuando Estudio, 3D y producción/i),
+    ).toBeInTheDocument();
   });
 
   it("el alert global nombra los campos nuevos con etiqueta humana", async () => {

@@ -1,4 +1,4 @@
-.PHONY: help local-up local-down local-status db-local-start db-local-stop db-local-setup db-local-on db-local-off db-local-seed db-local-reset web-start web-stop check verify-db audit-script-guards audit-content test-local test-rls test-e2e test-e2e-fullmode test-load build migrate-cms-v2 seed-products seed-letter-sets seed-admin admin-mfa-reset db-stg-setup db-stg-seed stg-reset stg-reset-apply clean clean-tmp
+.PHONY: help local-up local-down local-status db-local-start db-local-stop db-local-setup db-local-on db-local-off db-local-seed db-local-reset web-start web-stop check verify-db audit-script-guards audit-content test-local test-rls test-e2e test-e2e-fullmode test-load build migrate-cms-v2 seed-products seed-new-products seed-letter-sets seed-admin admin-mfa-reset db-stg-setup db-stg-seed stg-reset stg-reset-apply clean clean-tmp
 
 # Makefile operativo — Lucams Shop
 # Orquesta únicamente lo que aporta valor real sobre `pnpm`:
@@ -86,6 +86,7 @@ db-local-off:
 db-local-seed:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-canonical.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-templates.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-new-product-gallery.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-ocasiones.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-v2.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-letter-sets.mjs
@@ -183,6 +184,12 @@ migrate-cms-v2:
 seed-products:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-canonical.mjs --apply
 
+seed-new-products:
+	cd packages/db && node scripts/generate-new-product-assets.mjs
+	$(MAKE) seed-products
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-templates.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-new-product-gallery.mjs --apply
+
 seed-letter-sets:
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-letter-sets.mjs
 
@@ -204,6 +211,7 @@ stg-reset-apply:
 db-stg-seed:
 	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-canonical.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-templates.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-new-product-gallery.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-ocasiones.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-v2.mjs --apply
 	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-letter-sets.mjs

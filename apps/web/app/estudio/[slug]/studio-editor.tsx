@@ -140,6 +140,7 @@ import {
 } from "./lib/upload-with-retry";
 import { PHOTO_PACK_UNITS_PER_PACK } from "@/features/products/variant-schemas";
 import { photoTransformCoversWindow } from "@/features/personalization/photo-fit";
+import { readProductExperience } from "@/features/personalization/product-experience";
 
 // FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
 // (three.js) van diferidas DENTRO de SceneGallery, así que este import estático no infla el bundle
@@ -599,6 +600,7 @@ export function StudioEditor({
     isPolaroid?: boolean;
     facesPerUnit?: number;
     flat?: boolean;
+    spineWidthCm?: number;
     /** 2026-10-23 — calendario multi-set: tarjetas por set + labels de mes (pager de
      *  dos niveles del visor de detalle). Solo las llena handleOpenCalendar3D. */
     cardsPerSet?: number;
@@ -654,6 +656,7 @@ export function StudioEditor({
   // stroke sobre blanco. Misma regla en producción (service.ts → frameFullBleed).
   const frameFullBleed = (productConfig.frameOptions?.length ?? 0) > 0;
   const facesPerUnit = productConfig.facesPerUnit === 2 ? 2 : 1;
+  const experience = readProductExperience(product.personalizationSchema);
   // Cara B OPCIONAL (2026-09-22) — lo declara el personalizationSchema del
   // producto (backOptional: true vía script de BD). Se lee crudo como
   // galleryTag/startMonth porque el schema Zod (PhotoProductConfigSchema) aún
@@ -683,7 +686,8 @@ export function StudioEditor({
   // Unidades a diseñar: con composición multi-foto (tiras, calendario) vienen de la
   // PDP (?copies=N → initialUnits); con unidad de 1 foto (separadores/polaroid) el
   // N ya ES photoSlots (el pack size de la variante — comportamiento histórico).
-  const requestedUnits = photosPerUnit > 1 ? (initialUnits ?? 1) : Math.max(1, photoSlots);
+  const requestedUnits =
+    experience.freeUnitDesign || photosPerUnit > 1 ? (initialUnits ?? 1) : Math.max(1, photoSlots);
   const bootUnitCount = Math.min(
     maxUnitsForProduct(bootUnitSlots),
     Math.max(1, Math.trunc(requestedUnits) || 1),
@@ -1023,7 +1027,7 @@ export function StudioEditor({
               photoSlots: canvasData.photoSlots ?? photoSlots,
               unitTemplate: canvasData.unitTemplate,
             }) * facesPerUnit;
-          if (legacyUnitSlots > 1) {
+          if (legacyUnitSlots > 1 || experience.freeUnitDesign) {
             const legacyUnitCount = Math.max(1, Math.round(canvasData.slotCount / legacyUnitSlots));
             canvasData = {
               ...canvasData,
@@ -1068,7 +1072,9 @@ export function StudioEditor({
             // Multi-unidad: declarar el modelo solo cuando la unidad tiene >1 slot
             // (tiras, calendario, separadores). unitSlots = 1 (polaroid/cuadrados)
             // no se declara — la variante YA es el pack (design-units.ts).
-            ...(bootUnitSlots > 1 ? { unitCount: bootUnitCount, unitSlots: bootUnitSlots } : {}),
+            ...(bootUnitSlots > 1 || experience.freeUnitDesign
+              ? { unitCount: bootUnitCount, unitSlots: bootUnitSlots }
+              : {}),
             // Lucy 2026-09-05 — packs: el canvasData nuevo ya declara el N de
             // fotos y el tamaño en raíz (fuente de la resolución server-side
             // de la variante en el carrito). Los demás productos no lo llevan.
@@ -1303,6 +1309,7 @@ export function StudioEditor({
     texts,
     isCalendarMonth,
     facesPerUnit,
+    experience.freeUnitDesign,
     resumeOffer,
     draftResumeEnabled,
     cartAssetIdsInUse,
@@ -2010,6 +2017,13 @@ export function StudioEditor({
         // Ola 2B — la nevera/tablero escalan los imanes a su tamaño físico real (sizeCm variante).
         sizeCm: productConfig.sizeCm,
         isPolaroid,
+        kind:
+          experience.experience === "standard"
+            ? undefined
+            : experience.experience === "christmas-ornament"
+              ? "ornament"
+              : "mini-book",
+        spineWidthCm: experience.spineWidthCm,
         // Ola 10 — para separadores 2 caras: la galería necesita saber el facesPerUnit.
         facesPerUnit: productConfig.facesPerUnit,
         // Ola 17 — Alargados planos (noFold): la galería los muestra planos, no doblados
@@ -2032,6 +2046,8 @@ export function StudioEditor({
     productConfig.sizeCm,
     productConfig.facesPerUnit,
     productConfig.noFold,
+    experience.experience,
+    experience.spineWidthCm,
     ensureAllStagesMounted,
     sceneBuilding,
     isBookmark,
@@ -3034,6 +3050,7 @@ export function StudioEditor({
           isPolaroid={sceneMagnets.isPolaroid}
           facesPerUnit={sceneMagnets.facesPerUnit}
           flat={sceneMagnets.flat}
+          spineWidthCm={sceneMagnets.spineWidthCm}
           // 2026-10-23 — calendario multi-set: pager de dos niveles en el detalle.
           cardsPerSet={sceneMagnets.cardsPerSet}
           cardLabels={sceneMagnets.cardLabels}

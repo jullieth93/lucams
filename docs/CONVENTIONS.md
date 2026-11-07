@@ -81,7 +81,7 @@
 │   ├── app/                               # Enrutamiento, layouts, RSC y estados loading/error
 │   │   ├── (auth)/                        # /login, /registro, /confirmar-codigo, /recuperar-password
 │   │   ├── productos/ · producto/[slug]/  # Catálogo SSR y PDP con buy-box modular
-│   │   ├── estudio/[slug]/                # Editor Konva 2D, 7 escenas 3D (R3F) y store Zustand local
+│   │   ├── estudio/[slug]/                # Editor Konva 2D, 10 escenas 3D (R3F) y store Zustand local
 │   │   ├── checkout/                      # Flujo en 3 pasos: datos/ → envio/ → pago/ → gracias/
 │   │   ├── mi-cuenta/                     # Autoservicio autenticado (pedidos, diseños, soporte…)
 │   │   ├── pedido/[token]/                # Seguimiento y posventa 2FA para invitados

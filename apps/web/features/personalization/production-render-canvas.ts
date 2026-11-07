@@ -541,7 +541,7 @@ async function renderSlotCanvas(
     } else if (layer.type === "text") {
       // heart/circle omiten texto (igual que el editor). Ola 3 — también se omite
       // cuando el producto no admite texto (includeText=false, ej. Fotoimanes Cuadrados).
-      if (useFullStage || !includeText) continue;
+      if ((useFullStage && layer.allowOnShape !== true) || !includeText) continue;
       renderTextLayer(ctx, layer, unit.stage, slot.textOverrides?.[layer.id], cardBgHex);
     }
     // 'shape' u otras → ignoradas (raras; si aparecen, el resultado es fiel salvo esa capa).
@@ -652,22 +652,34 @@ function renderTextLayer(
     weight === "bold" ? 700 : weight === "normal" ? 400 : Number.parseInt(weight, 10) || 400;
   ctx.fontVariationSettings = `'wght' ${numericWeight}`;
   ctx.textBaseline = "top";
-  // Solo center o left: Konva right-align (sin width) extiende a la derecha desde x = left.
-  ctx.textAlign = align === "center" ? "center" : "left";
-  if (align === "center" && ctx.measureText(finalText).width > stage.width) {
+  const customWidth = typeof layer.width === "number" && layer.width > 0 ? layer.width : null;
+  const textWidth = customWidth ?? stage.width;
+  ctx.textAlign = customWidth === null && align !== "center" ? "left" : align;
+  if (ctx.measureText(finalText).width > textWidth) {
     ctx.restore();
-    throw new RenderNeedsKonvaError("texto que envolvería (ancho > stage) → cliente");
+    throw new RenderNeedsKonvaError("texto que envolvería (ancho > región) → cliente");
   }
-  // Konva right-align sobre un Text sin width extiende hacia la DERECHA desde x (el editor lo usa
-  // como no-op); replicarlo con textAlign "right" invertiría. Para center usamos el centro del
-  // stage (Konva width=stage.width). Para left/right anclamos en layer.x con align left.
-  const x = align === "center" ? stage.width / 2 : Number(layer.x) || 0;
-  const y = (Number(layer.y) || 0) - fontSize / 2; // Konva textY = layer.y - fontSize/2
+  const layerX = Number(layer.x) || 0;
+  const x =
+    customWidth === null
+      ? align === "center"
+        ? stage.width / 2
+        : layerX
+      : layerX + (align === "center" ? customWidth / 2 : align === "right" ? customWidth : 0);
+  const y = (Number(layer.y) || 0) - fontSize / 2;
+  const rotationOriginX = customWidth === null && align === "center" ? 0 : layerX;
+  const rotation = Number(layer.rotation) || 0;
 
   // El editor renderiza el texto de slot PLANO (renderText onPhoto=false, único call-site).
   // NADA de stroke/shadow — eso divergía del preview aprobado (hallazgo revisión A1b).
   ctx.fillStyle = fill;
-  ctx.fillText(finalText, x, y);
+  if (rotation !== 0) {
+    ctx.translate(rotationOriginX, y);
+    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.fillText(finalText, x - rotationOriginX, 0);
+  } else {
+    ctx.fillText(finalText, x, y);
+  }
   ctx.restore();
 }
 

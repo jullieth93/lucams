@@ -36,7 +36,7 @@ export function previewUnitRanges(opts: {
   const unitSlots = Math.trunc(opts.unitSlots ?? 1) || 1;
 
   // 1. Modelo multi-unidad declarado: un rango por unidad física.
-  if (unitCount > 1 && unitSlots > 1 && unitCount * unitSlots <= slotCount) {
+  if (unitCount > 1 && unitSlots >= 1 && unitCount * unitSlots <= slotCount) {
     return Array.from({ length: unitCount }, (_, u) => ({
       start: u * unitSlots,
       end: (u + 1) * unitSlots,

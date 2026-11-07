@@ -489,7 +489,7 @@ export function StudioCanvasGrid({
   const unitSlots = canvasData?.unitSlots ?? 1;
   const unitCount = canvasData?.unitCount ?? 1;
   const groupedForUnits = facesPerUnit === 2 && (canvasData?.slotCount ?? 0) % 2 === 0;
-  const multiUnitSections = !groupedForUnits && unitCount > 1 && unitSlots > 1;
+  const multiUnitSections = !groupedForUnits && unitCount > 1;
   // PACKS de unidades sueltas (owner 2026-09-15, ADR-101): la grilla plana se
   // divide en tarjetas-unidad de `unitGroupSlots` slots ("Pack 1" / "Pack 2"…).
   // Exige división exacta — un diseño legacy (9/20 unidades) no calza en packs

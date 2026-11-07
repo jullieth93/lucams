@@ -18,6 +18,7 @@ import { getSettingValue, getCmsBlock } from "@/lib/cms";
 import { getPageSeo, resolveCmsTokens } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { ContactForm } from "./contact-form";
+import { SUPPORT_SUBJECTS, type SupportSubject } from "@/features/support/schemas";
 
 export async function generateMetadata(): Promise<Metadata> {
   const seo = await getPageSeo("seo.page.contacto", {
@@ -30,7 +31,33 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export const dynamic = "force-dynamic";
 
-export default async function ContactoPage() {
+type ContactSearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function ContactoPage({
+  searchParams,
+}: {
+  searchParams: ContactSearchParams;
+}) {
+  const sp = await searchParams;
+  const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
+  const requestedSubject = first(sp.asunto);
+  const initialSubject: SupportSubject = SUPPORT_SUBJECTS.includes(
+    requestedSubject as SupportSubject,
+  )
+    ? (requestedSubject as SupportSubject)
+    : "CONSULTA_PRODUCTO";
+  const product = (first(sp.producto) ?? "").replace(/[^a-z0-9-]/gi, "").slice(0, 80);
+  const search = (first(sp.busqueda) ?? "").trim().slice(0, 200);
+  const initialMessage = product
+    ? [
+        "Quiero solicitar un diseño personalizado.",
+        `Producto: ${product}`,
+        search ? `Tema o referencia que no encontré: ${search}` : null,
+        "Cuéntame qué estilo buscas, qué texto debe llevar y si ya tienes una imagen de referencia.",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
   const [waSupportUrl, contactEmail, habeasDataEmail, successNoteBlock] = await Promise.all([
     buildWhatsAppUrl({ kind: "support" }),
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
@@ -139,7 +166,11 @@ export default async function ContactoPage() {
                   fallback="Te respondemos al email que nos dejes."
                 />
               </p>
-              <ContactForm successNote={successNote} />
+              <ContactForm
+                successNote={successNote}
+                initialSubject={initialSubject}
+                initialMessage={initialMessage}
+              />
             </section>
           </div>
         </div>

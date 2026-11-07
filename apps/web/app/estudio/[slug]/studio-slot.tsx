@@ -1727,9 +1727,11 @@ export function renderLayer(
       // a products rectangulares.
       // Ola 3 — además: si el producto NO admite texto (allowText=false, ej.
       // Fotoimanes Cuadrados — "el texto es de la Polaroid"), la capa no se dibuja.
-      if (shape === "heart" || shape === "circle") return null;
-      if (!allowText) return null;
       const textLayer = layer as TextLayerData;
+      if ((shape === "heart" || shape === "circle") && textLayer.allowOnShape !== true) {
+        return null;
+      }
+      if (!allowText) return null;
       const override = slotState.textOverrides?.[textLayer.id];
       // Ola 4 — contraste AUTOMÁTICO del texto por el fondo efectivo de la tarjeta
       // (generaliza el darkCard de Ola 3: Instagram fondo negro → textos blancos;
@@ -2149,6 +2151,9 @@ type TextLayerData = {
   fontWeight?: string;
   align?: "left" | "center" | "right";
   editable?: boolean;
+  width?: number;
+  rotation?: number;
+  allowOnShape?: boolean;
 };
 
 /**
@@ -2232,7 +2237,8 @@ function renderText(
   // Ola 25 — para la ZONA VACÍA (placeholder) el ancho se estima con el texto
   // base de la plantilla: la zona queda donde aparecerá el texto al escribirlo.
   const textY = layer.y - fontSize / 2;
-  const textX = align === "center" ? 0 : layer.x;
+  const textWidth = layer.width ?? stage.width;
+  const textX = layer.width !== undefined ? layer.x : align === "center" ? 0 : layer.x;
   const guideLength = (isPlaceholderGuide ? layer.text : finalText).length;
   const estHeight = fontSize * 1.2;
   const padding = Math.max(2, fontSize * 0.1);
@@ -2241,8 +2247,13 @@ function renderText(
   // stage.width), un recuadro gigante desalineado del contenido real — peor en
   // canvas con aire muerto. Con align center el texto se centra en el stage
   // (x=0 + width=stage.width), así que la zona se centra sobre ese mismo eje.
-  const estWidth = Math.min(stage.width - padding * 2, Math.max(60, guideLength * fontSize * 0.55));
-  const zoneX = align === "center" ? (stage.width - estWidth) / 2 : layer.x;
+  const estWidth = Math.min(textWidth - padding * 2, Math.max(60, guideLength * fontSize * 0.55));
+  const zoneX =
+    layer.width !== undefined
+      ? layer.x + (align === "center" ? (textWidth - estWidth) / 2 : 0)
+      : align === "center"
+        ? (stage.width - estWidth) / 2
+        : layer.x;
 
   // B4 (owner 2026-09-15) — PLACEHOLDER (capa editable sin texto del cliente):
   // la tarjeta NO imprime contenido de texto, pero en la GRILLA el default de
@@ -2261,7 +2272,15 @@ function renderText(
       height: estHeight + padding * 2,
     };
     return (
-      <Group key={layer.id} listening={true}>
+      <Group
+        key={layer.id}
+        listening={true}
+        x={textX}
+        y={textY}
+        offsetX={textX}
+        offsetY={textY}
+        rotation={layer.rotation ?? 0}
+      >
         {/* Guía "así se verá": default de la plantilla atenuado. Adorno de
             pantalla — name="placeholder-guide edit-indicator": se oculta en
             snapshots (producción + confirmación) igual que la zona dashed. */}
@@ -2270,7 +2289,8 @@ function renderText(
           name="placeholder-guide edit-indicator"
           x={textX}
           y={textY}
-          width={align === "center" ? stage.width : undefined}
+          width={layer.width ?? (align === "center" ? stage.width : undefined)}
+          rotation={0}
           text={layer.text}
           fontFamily={fontFamily}
           fontSize={fontSize}
@@ -2337,7 +2357,8 @@ function renderText(
       key={`${layer.id}-text`}
       x={textX}
       y={textY}
-      width={align === "center" ? stage.width : undefined}
+      width={layer.width ?? (align === "center" ? stage.width : undefined)}
+      rotation={isEditable ? 0 : (layer.rotation ?? 0)}
       text={finalText}
       fontFamily={fontFamily}
       fontSize={fontSize}
@@ -2397,7 +2418,15 @@ function renderText(
   // compositado (antes se horneaban en el PNG de imprenta y en la vista de confirmación). Es distinto
   // de `name="realism"` (sombra/glossy), que SÍ se conserva en el preview.
   return (
-    <Group key={layer.id} listening={true}>
+    <Group
+      key={layer.id}
+      listening={true}
+      x={textX}
+      y={textY}
+      offsetX={textX}
+      offsetY={textY}
+      rotation={layer.rotation ?? 0}
+    >
       <Rect
         name="edit-indicator"
         x={zoneX - padding}

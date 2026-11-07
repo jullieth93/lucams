@@ -36,6 +36,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { buildNewProductTemplates } from "./lib/new-products.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
@@ -216,6 +217,13 @@ const calendarioProduct = await prisma.product.findUnique({
   where: { slug: "calendario-mes-a-mes-fotos" },
   select: { id: true },
 });
+const newProductRows = await prisma.product.findMany({
+  where: { slug: { in: ["bola-navidena-personalizada", "mini-libros-magneticos"] } },
+  select: { id: true, slug: true },
+});
+const newProductIds = Object.fromEntries(
+  newProductRows.map((product) => [product.slug, product.id]),
+);
 
 // Helper para canvas blanco con foto + texto editable opcional.
 // Stage aspect ratio elegido por kind para encajar con producto físico típico.
@@ -755,6 +763,7 @@ const templatesData = [
   // con scripts/one-shot/cleanup-demo-templates.mjs (decisión del owner: "son entera-
   // mente demo, eliminarlas"). Sus kinds no tienen producto activo y las
   // superficies no-foto (name/phrase/event/logo) no consumen plantillas.
+  ...buildNewProductTemplates(newProductIds),
 ];
 
 // ──────────────────────────────────────────────────────────────────

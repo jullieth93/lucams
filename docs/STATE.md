@@ -62,9 +62,17 @@
   `borderWidth` (`ADR-173`), derivados WebP ≤800 px (`DesignAsset.canvasPath`,
   `Konva.pixelRatio <= 2`), biblioteca «Mis fotos» (`deleteDesignAssetAction`), auto-fill priorizado
   (`orderAssetsForAutoFill`) y superficies `LetterSetEditor` / `NameEditor` multi-set + IA Gemini.
-- **7 escenas 3D en React Three Fiber** (`fridge`, `polaroid`, `board`, `memo` con pager por set,
-  `book` con `flatBookmarkFit`, `shelf-3d-view` y `gift-3d-view` con `leaning-scene-layout.ts`) +
-  `CalendarCardFocus` de 2 niveles, filtrado `-NOMAG` y reverso «Lucams» (`ADR-190`).
+- **10 escenas 3D en React Three Fiber** (`fridge`, `polaroid`, `board`, `memo`, `book`, `shelf`,
+  `gift`, `ornament`, `mini-book` y `mini-book-fridge`) + `CalendarCardFocus`, filtrado `-NOMAG` y
+  reverso «Lucams» (`ADR-190`). Bola dúplex A/B obligatoria en UNA esfera, argolla circular
+  transparente, moño exterior y 480 partículas con agitación por botones o arrastre; selector de dos
+  caras limitado a capacidades reales (`ADR-201`). Mini libros con carátula extendida.
+- **Nuevas experiencias en código y LOCAL:** Bola Navideña Personalizada (foto plana de 8 cm) y Mini
+  Libros Magnéticos (carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán), con plantillas
+  asistidas, prediseñados buscables, unidades libres y descuentos por cantidad física
+  (`ADR-199`/`200`/`201`).
+  Están **pausados**: precios, escalas y logística real se completan en admin antes de publicar; STG/PRD
+  no fueron modificados en esta etapa.
 - Auto-save serial con `clientRev` (`STALE_REVISION`), retomador `[STU-02]` para clientes e
   invitados, previews limpios (`ADR-191`) en bucket privado `design-previews` vía
   `/api/design-preview/*` (`LUC-SEC-001`) con `DesignPreviewDialog` paginado (`PagedPreviewThumb`,

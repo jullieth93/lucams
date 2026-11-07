@@ -560,6 +560,10 @@ export const PhotoProductConfigSchema = z.object({
    * cuenta TARJETAS DE UNIDAD por fila. undefined/null = grilla automática.
    */
   gridColsOverride: z.number().int().min(1).max(6).optional(),
+  experience: z.enum(["standard", "christmas-ornament", "mini-book"]).optional(),
+  freeUnitDesign: z.boolean().optional(),
+  volumePricingByPhysicalUnit: z.boolean().optional(),
+  spineWidthCm: z.number().positive().max(5).optional(),
 });
 export type PhotoProductConfig = z.infer<typeof PhotoProductConfigSchema>;
 
