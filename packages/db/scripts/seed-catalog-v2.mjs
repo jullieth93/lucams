@@ -33,6 +33,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { shouldSeedDefaultPhysicalSpecs } from "./lib/catalog-defaults.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
@@ -1054,7 +1055,7 @@ async function step4_EnrichExistingProducts() {
   let enriched = 0;
   for (const product of products) {
     const updates = {};
-    if (!product.physicalSpecs || Object.keys(product.physicalSpecs).length === 0) {
+    if (shouldSeedDefaultPhysicalSpecs(product)) {
       updates.physicalSpecs =
         DEFAULT_PHYSICAL_SPECS_BY_KIND[product.personalizationKind] ||
         DEFAULT_PHYSICAL_SPECS_BY_KIND.NONE;

@@ -702,6 +702,8 @@ El directorio `apps/web/tests/e2e/` contiene exactamente **59 archivos `.spec.ts
 - `new-products-audit-responsive.spec.ts` — PDP, Estudio y 3D de ambos productos en los **6 perfiles de viewport**, con carátula extendida, cambio visual real al reverso del mini libro, nevera y ausencia de desbordamiento horizontal. Comparte `fixtures/product-state.ts` para capturar y restaurar los mismos valores administrativos originales.
 - `ornament-ribbon.test.ts` y `ornament-foam.test.ts` — Contención geométrica de ambas cintas fuera de la esfera, curvatura al descender, distribución determinista del relleno, agitación/sedimentación por botones o arrastre (incluido el cruce -π/π) y preferencia de movimiento reducido. `product-experience.test.ts`, `service.integration.test.ts` y `product-form.test.tsx` blindan las capacidades de dos caras en modelo, servicio y formulario; `production-spec.test.ts` y `render-job-service.test.ts` comprueban dúplex sin tiras en especificación y worker.
 
+**Certificación en STG:** `new-products.spec.ts` aprobó **8/8** recorridos en `desktop-chrome` y `mobile-chrome`, incluidas las fotos A/B en una sola esfera, la obligación de cara B, el arrastre con mouse/dedo y el carrito de mini libros. La matriz completa de seis viewports aprobó **12/12** recorridos en LOCAL; STG certifica los dos perfiles principales. Al finalizar se comprobó la restauración de activación, precios, stock y `physicalSpecs = null`; no se crean cuentas administrativas en esta corrida.
+
 ---
 
 ## 9. Carga k6, Lighthouse CI, perfilado CDP del Estudio y arquitectura CI/CD

@@ -423,7 +423,7 @@ apps/web/app/estudio/
     ├── book-view-3d.tsx                 # Escena 5: Libro 3D (separadores doblados o planos acostados + giro 180°)
     ├── shelf-3d-view.tsx                # Escena 6: Repisa 3D con piezas recostadas a escala real (ADR-172)
     ├── gift-3d-view.tsx                 # Escena 7: Caja de regalo 3D con piezas recostadas (ADR-172)
-    ├── ornament-3d-view.tsx             # Escena 8: UNA bola dúplex A/B, argolla circular, moño exterior e icopor con botones/arrastre
+    ├── ornament-3d-view.tsx             # Escena 8: UNA bola dúplex A/B, argolla ovalada, moño exterior e icopor con botones/arrastre
     ├── mini-book-3d-view.tsx            # Escenas 9 y 10: mini libro cerrado/extendido y nevera con/sin imán
     ├── mini-book-fields.tsx             # Asistente mini libro: título portada+lomo, autor y contraportada
     ├── calendar-card-focus.tsx          # Visor 3D focal 1 a 1 de calendario con paginador de 2 niveles (Set + Mes)

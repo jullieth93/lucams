@@ -321,7 +321,7 @@ function OrnamentModel({
           <cylinderGeometry args={[0.12, 0.16, 0.25, 40, 1, true]} />
           <ClearAcrylicMaterial />
         </mesh>
-        <mesh position={[0, 2.79, 0]} renderOrder={2}>
+        <mesh position={[0, 2.79, 0]} scale={[0.8, 1.2, 1]} renderOrder={2}>
           <torusGeometry args={[0.25, 0.04, 16, 64]} />
           <ClearAcrylicMaterial />
         </mesh>
