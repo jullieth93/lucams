@@ -64,6 +64,9 @@ overrides:
   # (medium) — la versión parchada más alta de cada línea (1.x: 1.1.21; 5.x: 5.0.12).
   # Pins previos: GHSA-3jxr-9vmj-r5cp / GHSA-mh99-v99m-4gvg / GHSA-rgw5-rvv9-x895
   # (minimatch@3 ^1.1.7 y minimatch@10 ^5.0.5).
+  # minimatch 10.2.6→11.0.1: GHSA-g3hv-75wg-m249 / CVE-2026-118764, DoS por
+  # globparts amplification. Override acotado a typescript-estree para no alterar minimatch@3.
+  "@typescript-eslint/typescript-estree>minimatch": 11.0.1
   "brace-expansion@^1.1.7": 1.1.21
   "brace-expansion@^5.0.5": 5.0.12
   # js-yaml: GHSA-52cp-r559-cp3m / GHSA-5p4m-2wfm-xmqj / GHSA-h67p-54hq-rp68.
@@ -128,10 +131,3 @@ auditConfig:
     # Chrome local que la propia corrida de Lighthouse controla. Override a zod 4
     # descartado: salto de major con breaking changes en tooling ajeno.
     - GHSA-mrhx-c7xc-m3w5
-    # GHSA-g3hv-75wg-m249 (minimatch <11.0.1, moderate, 2026-11-02): solo está
-    # parchado en 11.0.1 y los consumidores declaran líneas viejas sin patch
-    # (@eslint/config-array y @eslint/eslintrc ^3.x; glob/rimraf vía @lhci/cli
-    # en 3.x/10.x) — forzar 11 rompería los rangos declarados. Todo DEV-ONLY:
-    # eslint procesa nuestros propios globs de config y lhci corre en CI local;
-    # el DoS (globparts amplification) exige patrones hostiles que aquí no hay.
-    - GHSA-g3hv-75wg-m249
