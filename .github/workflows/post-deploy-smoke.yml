@@ -54,7 +54,7 @@ jobs:
 
       # Deriva de schema (2026-10-20): compara las migraciones de `production`
       # contra `_prisma_migrations` de PRD y falla ROJO si hay pendientes.
-      - name: Migraciones Prisma pendientes en PRD (drift check)
+      - name: Migraciones Prisma + cron Lifecycle en PRD
         env:
           HAS_DB: ${{ secrets.BACKUP_DATABASE_URL != '' }}
           BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
@@ -73,3 +73,10 @@ jobs:
             exit 1
           fi
           echo "✓ PRD al día ($(wc -l < /tmp/prd-migrations.txt) migraciones aplicadas)"
+          LIFECYCLE_CRON=$(psql "$BACKUP_DATABASE_URL" -tAc "select count(*) = 1 from cron.job where jobname = 'lucams-lifecycle' and active and schedule = '*/15 * * * *'")
+          if [ "$LIFECYCLE_CRON" != "t" ]; then
+            echo "::error::PRD debe tener un cron lucams-lifecycle activo cada 15 minutos"
+            echo "Aplicar tras un deploy Ready: psql \"\$BACKUP_DATABASE_URL\" -v ON_ERROR_STOP=1 -f supabase/migrations/00000000000058_pgcron_lifecycle.sql"
+            exit 1
+          fi
+          echo "✓ lucams-lifecycle activo (*/15 * * * *)"
