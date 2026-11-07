@@ -104,15 +104,15 @@ async function createJourney(trigger: LifecycleTrigger, commercial = true) {
       status: "ACTIVE",
       requireOptIn: false,
       maxMessagesPerDay: 2,
-      quietStartHour: 20,
-      quietEndHour: 8,
+      quietStartHour: 0,
+      quietEndHour: 0,
       steps: { create: steps },
     },
   });
 }
 
-async function runCleanCycle(journeyId: string, contactIds: string[]) {
-  const summary = await runLifecycleCycle(undefined, { journeyId, contactIds });
+async function runCleanCycle(journeyId: string, contactIds: string[], now?: Date) {
+  const summary = await runLifecycleCycle(now, { journeyId, contactIds });
   expect(summary.errors).toBe(0);
   return summary;
 }
@@ -237,11 +237,16 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
     });
     expect(failed).toMatchObject({ status: "FAILED", metadata: { attempts: 1 } });
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
-    const firstToken = sendEmailMock.mock.calls[0][0].html.match(/\/j\/([A-Za-z0-9_-]{32})/)?.[1];
+    const firstHtml = sendEmailMock.mock.calls[0][0].html;
+    const firstToken = firstHtml.match(/\/j\/([A-Za-z0-9_-]{32})/)?.[1];
     expect(firstToken).toBeTruthy();
     await prisma.lifecycleJourneyStep.update({
       where: { id: failed.stepId },
-      data: { body: "Texto cambiado posteriormente" },
+      data: { body: "Texto cambiado posteriormente", commercial: false },
+    });
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: { displayName: "Nombre editado entre intentos" },
     });
 
     await retryLifecycleMessage(failed.id);
@@ -258,8 +263,8 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
       status: "SENT",
     });
     const secondHtml = sendEmailMock.mock.calls[1][0].html;
-    expect(secondHtml).toContain("Este es un paso de prueba.");
-    expect(secondHtml).not.toContain("Texto cambiado posteriormente");
+    expect(secondHtml).toBe(firstHtml);
+    expect(sendEmailMock.mock.calls[1][0].commercial).toBe(true);
     const secondToken = secondHtml.match(/\/j\/([A-Za-z0-9_-]{32})/)?.[1];
     expect(secondToken).toBe(firstToken);
 
@@ -477,9 +482,10 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
     const journey = await createJourney("FIRST_PURCHASE");
     sendEmailMock.mockResolvedValue({ sent: false, reason: "timeout", status: 503 });
 
+    const now = new Date();
     await Promise.all([
-      runCleanCycle(journey.id, [contact.id]),
-      runCleanCycle(journey.id, [contact.id]),
+      runCleanCycle(journey.id, [contact.id], now),
+      runCleanCycle(journey.id, [contact.id], now),
     ]);
 
     const enrollment = await prisma.lifecycleEnrollment.findFirstOrThrow({
@@ -774,6 +780,81 @@ describe.skipIf(!hasDb)("lifecycle runner — integración PostgreSQL", { timeou
       conversions: 1,
       deliveryRate: 0.5,
     });
+  });
+
+  it("respeta la ventana de entrada al reactivar compras antiguas", async () => {
+    const contact = await createContact(true);
+    const order = await createOrder(contact.id, "DELIVERED");
+    const purchasedAt = new Date(Date.now() - 400 * 86_400_000);
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { createdAt: purchasedAt, deliveredAt: purchasedAt },
+    });
+    const journey = await createJourney("REACTIVATION", false);
+    await prisma.lifecycleJourney.update({
+      where: { id: journey.id },
+      data: { inactivityDays: 90, entryLookbackDays: 365 },
+    });
+
+    await runCleanCycle(journey.id, [contact.id]);
+
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(await prisma.lifecycleEnrollment.count({ where: { journeyId: journey.id } })).toBe(0);
+  });
+
+  it("respeta la ventana de entrada de oportunidades B2B inactivas", async () => {
+    const contact = await createContact(false);
+    await prisma.opportunity.create({
+      data: {
+        number: `OP-${RUN}-old`,
+        title: "Oportunidad fuera de la ventana",
+        contactId: contact.id,
+        stage: "NEW",
+        updatedAt: new Date(Date.now() - 40 * 86_400_000),
+      },
+    });
+    const journey = await createJourney("B2B_FOLLOW_UP", false);
+    await prisma.lifecycleJourney.update({
+      where: { id: journey.id },
+      data: { inactivityDays: 2, entryLookbackDays: 30 },
+    });
+
+    await runCleanCycle(journey.id, [contact.id]);
+
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(await prisma.lifecycleEnrollment.count({ where: { journeyId: journey.id } })).toBe(0);
+    expect(await prisma.task.count({ where: { title: { contains: RUN } } })).toBe(0);
+  });
+
+  it("recalcula la ventana de carritos recientes con la fecha de cada ciclo", async () => {
+    const contact = await createContact(true);
+    const cart = await prisma.cart.create({
+      data: { sessionId: `${RUN}-${crypto.randomUUID()}`, currency: "COP" },
+    });
+    await prisma.abandonedCart.create({
+      data: { cartId: cart.id, contactId: contact.id, email: contact.primaryEmail! },
+    });
+    const journey = await createJourney("FIRST_PURCHASE", false);
+    const firstStep = await prisma.lifecycleJourneyStep.findFirstOrThrow({
+      where: { journeyId: journey.id, position: 1 },
+    });
+    const enrollment = await prisma.lifecycleEnrollment.create({
+      data: {
+        journeyId: journey.id,
+        contactId: contact.id,
+        currentStepId: firstStep.id,
+        nextRunAt: new Date(0),
+      },
+    });
+    const eightDaysLater = new Date(Date.now() + 8 * 86_400_000);
+
+    const summary = await runCleanCycle(journey.id, [contact.id], eightDaysLater);
+
+    expect(summary.messagesSent).toBe(1);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(
+      await prisma.lifecycleEnrollment.findUniqueOrThrow({ where: { id: enrollment.id } }),
+    ).not.toMatchObject({ status: "EXITED", exitReason: "DELEGATED_CART_RECOVERY" });
   });
 
   it("conserva historial al fusionar dos contactos con inscripciones activas", async () => {
