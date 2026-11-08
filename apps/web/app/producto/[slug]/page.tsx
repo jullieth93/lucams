@@ -532,7 +532,7 @@ export default async function ProductoDetallePage({
                 >
                   <p className="text-brand-purple-dark flex items-center gap-1.5 text-xs font-semibold">
                     <Sparkles className="text-brand-purple h-3.5 w-3.5 flex-shrink-0" aria-hidden />
-                    Ahorra llevando más unidades (se aplica solo en tu carrito)
+                    Ahorra llevando más unidades (se aplica automáticamente en tu carrito)
                   </p>
                   <ul className="mt-2 flex flex-wrap gap-2">
                     {visibleVolumeTiers.map((vt) => (
@@ -679,6 +679,19 @@ export default async function ProductoDetallePage({
                             unitPriceByVariantId={priceByVariantId}
                             fallbackUnitPrice={displayPrice}
                             packLabel={letterSetPackLabel}
+                            // 2026-11-07 (bug owner) — el total del stepper refleja la
+                            // promo por volumen cuando el diseño multi-unidad cobra por
+                            // UNIDAD FÍSICA (volumePricingByPhysicalUnit: bola/mini
+                            // libros) — el servidor evalúa los niveles contra las
+                            // unidades del diseño (volumeUnitMultiplierForDesign), así
+                            // que el N del stepper ES el qty del nivel. Sin ese flag la
+                            // línea entra con qty=1 y ningún nivel alcanzaría: mostrarlo
+                            // acá prometería un precio que el carrito no cobra.
+                            volumeTiers={
+                              productExperience.volumePricingByPhysicalUnit
+                                ? visibleVolumeTiers
+                                : undefined
+                            }
                           />
                         )}
                         <EstudioCtaLink
@@ -696,10 +709,17 @@ export default async function ProductoDetallePage({
                           el carrito (QtyControls). */}
                         {/* A2 (2026-09-15) — total vivo ×N también en la compra
                           directa (qty clásico): mismo cálculo que el carrito. */}
+                        {/* 2026-11-07 — el stepper cuenta UNIDADES de compra
+                          (CartItem.qty) → la promo por volumen aplica directo:
+                          el total muestra el nivel alcanzado (el servidor
+                          re-pricea con la MISMA qty en addToCart/updateQty). */}
                         <CopiesQtyInput
                           hint="Copias idénticas del mismo producto"
                           unitPriceByVariantId={priceByVariantId}
                           fallbackUnitPrice={displayPrice}
+                          volumeTiers={
+                            visibleVolumeTiers.length > 0 ? visibleVolumeTiers : undefined
+                          }
                         />
                         <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
                         {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}

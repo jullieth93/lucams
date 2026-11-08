@@ -37,6 +37,7 @@
 import { Minus, Plus } from "lucide-react";
 import { formatCOP } from "@/lib/format";
 import { useSelectedVariant } from "./variant-actions";
+import { unitPriceWithVolumeTier, type VisibleVolumeTier } from "@/features/cart/volume-pricing";
 
 // Mismo rango que AddToCartSchema (min 1, max 99 "Máximo 99 por agregada").
 const MIN_COPIES = 1;
@@ -69,6 +70,7 @@ export function CopiesQtyInput({
   fallbackUnitPrice,
   packLabel,
   unitNoun,
+  volumeTiers,
 }: {
   /** Tope del stepper (productos con tope de diseño propio; default 99). */
   max?: number;
@@ -86,6 +88,15 @@ export function CopiesQtyInput({
   fallbackUnitPrice?: number;
   /** B2 — modo PACKS (sets de letras). undefined = stepper "Unidades" clásico. */
   packLabel?: CopiesPackLabel;
+  /**
+   * 2026-11-07 (bug owner) — escala de descuentos por volumen VISIBLE de la
+   * ficha (resolveVisibleVolumeTiers): el total ×N refleja la promo desde el
+   * stepper (bola: 3×$27.000 / 5×$40.000), no solo en el carrito. Solo lo
+   * pasan las superficies donde la cantidad del stepper ES la que el servidor
+   * evalúa contra los niveles (compra directa: qty; diseños multi-unidad con
+   * volumePricingByPhysicalUnit: unidades físicas).
+   */
+  volumeTiers?: readonly VisibleVolumeTier[];
 }) {
   // Estado compartido del buy-box (H12): la compra directa lo lee vía el hidden
   // input de abajo; la rama personalizable lo lee el EstudioCtaLink (?copies=N).
@@ -98,6 +109,13 @@ export function CopiesQtyInput({
   // cae al precio visible del header (coherente con lo que ya ve el cliente).
   const unitPrice =
     (selectedId ? unitPriceByVariantId?.[selectedId] : undefined) ?? fallbackUnitPrice ?? null;
+  // 2026-11-07 — el total refleja el descuento por volumen (promo por
+  // cantidad) cuando el producto lo tiene: mismo unitario que cobrará el
+  // carrito al cruzar el umbral (bola: 3+ → $9.000 c/u, 5+ → $8.000 c/u).
+  const effectiveUnitPrice =
+    unitPrice != null ? unitPriceWithVolumeTier(unitPrice, copies, volumeTiers) : null;
+  const tierApplied =
+    unitPrice != null && effectiveUnitPrice != null && effectiveUnitPrice < unitPrice;
 
   // B2 — desglose del pack: piezas por pack según la variante (idioma) o fijo.
   const perPack = packLabel
@@ -165,15 +183,23 @@ export function CopiesQtyInput({
           </button>
         </div>
         {/* A2 — total VIVO: unitario × N (mismo formato que la modal de vista
-            previa: total grande + "c/u" cuando N > 1). */}
-        {unitPrice != null && (
-          <span className="flex items-baseline gap-2">
+            previa: total grande + "c/u" cuando N > 1). 2026-11-07 — con promo
+            por volumen el total usa el unitario del nivel alcanzado y el
+            precio sin descuento queda tachado (se ve el ahorro en el sitio,
+            no solo en el carrito). */}
+        {effectiveUnitPrice != null && (
+          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="text-brand-purple-dark text-lg font-bold tabular-nums">
-              {formatCOP(unitPrice * copies)}
+              {formatCOP(effectiveUnitPrice * copies)}
             </span>
+            {tierApplied && (
+              <span className="text-brand-muted text-sm tabular-nums line-through">
+                {formatCOP(unitPrice! * copies)}
+              </span>
+            )}
             {copies > 1 && (
               <span className="text-brand-muted text-xs tabular-nums">
-                {formatCOP(unitPrice)} c/u
+                {formatCOP(effectiveUnitPrice)} c/u
               </span>
             )}
           </span>

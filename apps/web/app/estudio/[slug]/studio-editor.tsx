@@ -103,6 +103,7 @@ import {
 } from "@/features/personalization/design-units";
 import { faceSlotLabels, deployedSizeCm } from "./lib/faces";
 import { previewUnitRanges } from "./lib/preview-units";
+import type { VisibleVolumeTier } from "@/features/cart/volume-pricing";
 import {
   readStudioDraftMarker,
   writeStudioDraftId,
@@ -260,6 +261,14 @@ export type StudioEditorProps = {
   /** Precio (centavos COP) de la variante elegida — se muestra en la vista previa pre-carrito. */
   unitPriceCents: number;
   /**
+   * 2026-11-07 (bug owner) — escala de descuentos por volumen VISIBLE del
+   * producto (la resuelve page.tsx con resolveVisibleVolumeTiers), solo para
+   * experiencias volumePricingByPhysicalUnit (bola/mini libros): la modal de
+   * confirmación muestra el total con la promo aplicada, igual que el stepper
+   * de la PDP y el carrito. undefined = total plano.
+   */
+  volumeTiers?: readonly VisibleVolumeTier[];
+  /**
    * Lucy 2026-09-08 — "¿Con imán?" en los packs de foto: la elección de la PDP
    * (dimensión `magnet` de la variante, o la guardada en el diseño recuperado).
    * El Estudio la PERSISTE en el canvasData (el carrito la usa para resolver la
@@ -342,6 +351,7 @@ export function StudioEditor({
   packVariants = [],
   variantId,
   unitPriceCents,
+  volumeTiers,
   initialMagnet,
   initialUnits,
   replacesCartDesignId,
@@ -3271,6 +3281,10 @@ export function StudioEditor({
             : productConfig.sizeCm
         }
         unitPrice={effectiveUnitPrice}
+        // 2026-11-07 (bug owner) — la modal refleja la promo por volumen
+        // (misma escala visible de la PDP); el servidor cobra lo mismo vía
+        // volumeUnitMultiplierForDesign.
+        volumeTiers={volumeTiers}
         // 2026-09-22 — multiplicador del SERVIDOR (design-units): la variante
         // puede YA ser el pack (separadores ×5 → ×1). La modal lo usa en vez
         // del unitCount crudo para el total (bug: mostraba pack × N).

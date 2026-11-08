@@ -96,6 +96,32 @@ export type VisibleVolumeTier = {
 };
 
 /**
+ * Unitario con descuento por volumen para un conteo dado, sobre una escala YA
+ * resuelta/visible (resolveVisibleVolumeTiers — precedencia y niveles que no
+ * rebajan ya filtrados). Misma regla del servidor: gana el nivel con MAYOR
+ * minQty ≤ qty y nunca sube el precio. Lo usan los totales VIVOS del cliente
+ * (stepper de la PDP, modal de confirmación del Estudio) para que el precio
+ * mostrado sea el que el carrito cobrará (bug owner 2026-11-07 — la bola
+ * mostraba múltiplos de $10.000 con la promo 3×$27.000 / 5×$40.000 activa).
+ */
+export function unitPriceWithVolumeTier(
+  baseUnitPrice: number,
+  qty: number,
+  tiers?: readonly Pick<VisibleVolumeTier, "minQty" | "unitPrice">[],
+): number {
+  if (!tiers?.length || qty < 1) return baseUnitPrice;
+  let best: number | null = null;
+  let bestMinQty = 0;
+  for (const t of tiers) {
+    if (t.minQty <= qty && t.minQty > bestMinQty) {
+      best = t.unitPrice;
+      bestMinQty = t.minQty;
+    }
+  }
+  return best !== null && best < baseUnitPrice ? best : baseUnitPrice;
+}
+
+/**
  * Escala efectiva de descuentos por volumen para exhibir en la PDP ([CX-01]):
  *  - Respeta exactamente la misma precedencia (niveles propios del producto > globales).
  *  - Excluye niveles >= `baseUnitPrice` (nunca anuncia un "descuento" que no rebaja).

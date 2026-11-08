@@ -56,6 +56,7 @@ import {
   zoomPanTowardPoint,
 } from "@/components/preview-zoom";
 import { formatCOP } from "@/lib/format";
+import { unitPriceWithVolumeTier, type VisibleVolumeTier } from "@/features/cart/volume-pricing";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, splitStudioText } from "./studio-texts";
 import type { SlotNoun } from "./lib/slot-noun";
@@ -644,6 +645,14 @@ type StudioPreviewModalProps = {
   sizeCm?: string;
   unitPrice: number | null; // precio en centavos COP de la variant elegida
   /**
+   * 2026-11-07 (bug owner) — escala de descuentos por volumen VISIBLE del
+   * producto (resolveVisibleVolumeTiers), solo para experiencias que cobran
+   * por UNIDAD FÍSICA (volumePricingByPhysicalUnit): el total de la modal
+   * refleja la promo (bola: 3×$27.000 / 5×$40.000) igual que el stepper de la
+   * PDP y el carrito. undefined = total plano unitario × unidades.
+   */
+  volumeTiers?: readonly VisibleVolumeTier[];
+  /**
    * Multiplicador de precio del SERVIDOR (designUnitPriceMultiplier, mismo
    * cálculo del carrito: ceil(slotCount / cubierto-por-variante)). Es lo que
    * multiplica al unitPrice en el total mostrado. CRÍTICO para packs donde la
@@ -736,6 +745,7 @@ export function StudioPreviewModal({
   slotsPerUnit,
   sizeCm,
   unitPrice,
+  volumeTiers,
   priceMultiplier,
   noFold = false,
   unitCount,
@@ -781,6 +791,15 @@ export function StudioPreviewModal({
   const serverMultiplier = Math.min(99, Math.max(1, Math.trunc(priceMultiplier ?? 1) || 1));
   const totalMultiplier =
     priceMultiplier !== undefined ? serverMultiplier : unitCount !== undefined ? units : copies;
+  // 2026-11-07 (bug owner) — descuento por volumen en el total mostrado: con
+  // volumePricingByPhysicalUnit (bola/mini libros) el servidor evalúa los
+  // niveles contra las UNIDADES FÍSICAS del diseño (= totalMultiplier acá), así
+  // que la modal muestra el MISMO precio que cobrará el carrito (antes decía
+  // $30.000 por 3 bolas y el carrito cobraba $27.000).
+  const displayUnitPrice =
+    unitPrice != null ? unitPriceWithVolumeTier(unitPrice, totalMultiplier, volumeTiers) : null;
+  const volumeDiscountApplied =
+    unitPrice != null && displayUnitPrice != null && displayUnitPrice < unitPrice;
 
   if (!previewUrl) return null;
 
@@ -1023,17 +1042,25 @@ export function StudioPreviewModal({
                 )}
               </p>
             </div>
-            {unitPrice !== null && (
+            {displayUnitPrice !== null && (
               <div className="text-right">
                 {/* Total de la línea: unitario × unidades del diseño (modelo
                     multi-unidad; en el path legacy, × copias de la PDP) — el
-                    MISMO cálculo que el servidor aplica en el carrito. */}
+                    MISMO cálculo que el servidor aplica en el carrito.
+                    2026-11-07 — con promo por volumen (volumePricingByPhysicalUnit)
+                    el unitario es el del nivel alcanzado y el precio sin
+                    descuento queda tachado. */}
                 <p className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">
-                  {formatCOP(unitPrice * totalMultiplier)}
+                  {formatCOP(displayUnitPrice * totalMultiplier)}
                 </p>
+                {volumeDiscountApplied && (
+                  <p className="text-brand-muted text-xs tabular-nums line-through">
+                    {formatCOP(unitPrice! * totalMultiplier)}
+                  </p>
+                )}
                 {totalMultiplier > 1 && (
                   <p className="text-brand-muted text-xs tabular-nums">
-                    {formatCOP(unitPrice)} c/u
+                    {formatCOP(displayUnitPrice)} c/u
                   </p>
                 )}
               </div>

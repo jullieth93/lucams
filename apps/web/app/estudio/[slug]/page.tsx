@@ -16,7 +16,12 @@ import { StudioEditorLoader } from "./studio-editor-loader";
 import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { buildWhatsAppUrl } from "@/lib/wa";
-import { getStorefrontProductBySlug } from "@/features/products/public-service";
+import {
+  getStorefrontProductBySlug,
+  listStorefrontVolumeTiers,
+} from "@/features/products/public-service";
+import { resolveVisibleVolumeTiers } from "@/features/cart/volume-pricing";
+import { readProductExperience } from "@/features/personalization/product-experience";
 import {
   listTemplatesForKind,
   getOwnedDesign,
@@ -157,6 +162,18 @@ export default async function EstudioPage({
         parseVariantAttributes(selectedVariant.attributes),
       )
     : (product.personalizationSchema as Record<string, unknown>);
+
+  // 2026-11-07 (bug owner) — promo por volumen en la modal de confirmación del
+  // Estudio: solo para experiencias que cobran por UNIDAD FÍSICA (bola/mini
+  // libros — el carrito evalúa los niveles contra las unidades del diseño vía
+  // volumeUnitMultiplierForDesign). Misma escala VISIBLE de la PDP.
+  const studioVolumeTiers = readProductExperience(mergedSchema).volumePricingByPhysicalUnit
+    ? resolveVisibleVolumeTiers(
+        await listStorefrontVolumeTiers(product.id),
+        product.id,
+        selectedVariant?.price ?? product.basePrice,
+      )
+    : undefined;
 
   // ADR-057 — Enrutador de superficie: cada tipo de producto (y variante) abre la
   // experiencia correcta, no el editor de foto genérico.
@@ -793,6 +810,9 @@ export default async function EstudioPage({
           variantId={selectedVariant?.id}
           // Precio de la variante elegida (o base) → fallback de la vista previa.
           unitPriceCents={selectedVariant?.price ?? product.basePrice}
+          // 2026-11-07 — promo por volumen en la modal (solo experiencias por
+          // unidad física; la página ya la resolvió).
+          volumeTiers={studioVolumeTiers}
           // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
           // 2026-09-09) → unidades A DISEÑAR: el Estudio abre con N unidades
           // (cada una editable; la Vista previa las muestra todas; el carrito
