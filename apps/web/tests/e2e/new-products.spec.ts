@@ -243,7 +243,7 @@ test("bola navideña: la escena 3D permite frente, canto, reverso y giro complet
   await expect(anonPage.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
   await dismissCookieBanner(anonPage);
   const panel = await resolvePanel(anonPage);
-  await panel.getByRole("radio", { name: /Nieve y estrellas/ }).click();
+  await panel.getByRole("radio", { name: /Foto circular/ }).click();
   await anonPage.keyboard.press("Escape");
   await anonPage.getByRole("button", { name: /Ver en tu espacio/i }).click();
 

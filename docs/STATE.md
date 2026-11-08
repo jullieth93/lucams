@@ -58,9 +58,10 @@
 - **Nuevas experiencias en LOCAL y STG (`ADR-199`/`200`/`201`):** Bola Navideña (inserto dúplex
   plano de 8 cm) y Mini Libros (carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán), con
   plantillas, prediseñados, unidades libres y descuentos físicos. La bola usa previews A/B sin doblez
-  ni taxonomía de separadores en todo el ciclo (máx. 25). Hay 2 productos activos, 5 variantes, 10
-  plantillas propias (21 activas) y 20 prediseñados: **$10.000 c/u**, **3 × $27.000**, **5 × $40.000**,
-  paquete **8 × 8 × 8 cm / 200 g**. PRD intacto.
+  ni taxonomía de separadores en todo el ciclo (máx. 25). Hay 2 productos activos, 5 variantes, 7
+  plantillas propias (18 activas) y 20 prediseñados: **$10.000 c/u**, **3 × $27.000**, **5 × $40.000**,
+  paquete **8 × 8 × 8 cm / 200 g**. La bola ofrece solo la plantilla «Foto circular» (owner
+  2026-11-07: nieve/luces/reno archivadas por básicas; viene un diseño más elaborado). PRD intacto.
 - Auto-save serial con `clientRev` (`STALE_REVISION`), retomador `[STU-02]` para clientes e
   invitados, previews limpios (`ADR-191`) en bucket privado `design-previews` vía
   `/api/design-preview/*` (`LUC-SEC-001`) con `DesignPreviewDialog` paginado (`PagedPreviewThumb`,
