@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
 /*
- * useStudioChecklist — paso «Elige tu plantilla» (5.1, owner 2026-10-22):
- * ninguna plantilla viene seleccionada por defecto, así que con >1 plantillas
- * el paso nace PENDIENTE (primero del checklist — es la primera decisión del
- * flujo) y se completa al aplicar una. Con 0 o 1 plantilla el paso no aplica
- * (0 = nada que elegir; 1 = elección trivial que el boot auto-selecciona).
+ * useStudioChecklist — paso «Elige tu plantilla» (5.1, owner 2026-10-22;
+ * endurecido 2026-11-07): ninguna plantilla viene seleccionada por defecto,
+ * así que con plantillas visibles el paso nace PENDIENTE (primero del
+ * checklist — es la primera decisión del flujo) y se completa al aplicar una,
+ * INCLUSO con una sola opción. Solo con 0 plantillas el paso no aplica
+ * (nada que elegir).
  *
  * Los textos CMS caen al DEFAULT_STUDIO_TEXTS sin provider (mismo patrón que
  * studio-style-toolbar.test.tsx); el store corre real (zustand vanilla).
@@ -68,9 +69,15 @@ describe("useStudioChecklist — paso «Elige tu plantilla»", () => {
     expect(result.current.steps.find((s) => s.id === "plantillas")).toBeUndefined();
   });
 
-  it("ausente con 1 sola plantilla (elección trivial, auto-seleccionada en el boot)", () => {
+  it("con 1 sola plantilla SIN elección: paso pendiente (owner 2026-11-07 — obligatoria aunque sea única)", () => {
+    const { result } = setup({ templates: [tpl("a")] });
+    const step = result.current.steps.find((s) => s.id === "plantillas");
+    expect(step?.state).toBe("pending");
+  });
+
+  it("con 1 sola plantilla ya elegida: paso completo", () => {
     const { result } = setup({ templates: [tpl("a")], selectedTemplateId: "a" });
-    expect(result.current.steps.find((s) => s.id === "plantillas")).toBeUndefined();
+    expect(result.current.steps.find((s) => s.id === "plantillas")?.state).toBe("complete");
   });
 
   it(">1 plantillas sin selección: paso pendiente y PRIMERO del checklist", () => {

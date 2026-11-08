@@ -564,12 +564,14 @@ export function StudioEditor({
     store.getState().clearAllSlots();
     setClearDesignOpen(false);
   }, [store]);
-  // 2026-10-29 (owner) — con >1 plantillas y SIN elección, el LIENZO queda
+  // 2026-10-29 (owner) — con plantillas visibles y SIN elección, el LIENZO queda
   // deshabilitado (overlay guía): editar slots sin plantilla era trabajo
   // perdido (el boot solo presta la geometría de render, ADR-167). El bloqueo
   // de «Ver diseño» (templateNudge) sigue como segunda red.
+  // 2026-11-07 (owner) — la elección es obligatoria INCLUSO con 1 sola
+  // plantilla: homologa todos los lienzos con plantillas.
   const selectedTemplateId = useStore(store, (s) => s.selectedTemplateId);
-  const templatePending = templates.length > 1 && !selectedTemplateId;
+  const templatePending = templates.length > 0 && !selectedTemplateId;
   // Si el finalize ya pasó pero el CARRITO falló, reintentar desde la modal no puede volver a
   // finalizar: el diseño quedó en READY y `finalizeDesign` solo acepta borradores, así que el
   // reintento moría con «Design is READY — only DRAFT can be finalized» y no había salida. Se
@@ -1061,9 +1063,10 @@ export function StudioEditor({
           // 5.1 (owner 2026-10-22) — SIN plantilla seleccionada por defecto:
           // la primera plantilla solo presta su GEOMETRÍA para dibujar el
           // lienzo; la selección (selectedTemplateId) arranca en null y la
-          // pide el checklist «Tu diseño». Excepciones dentro de
-          // resolveBootTemplate: deep-link ?template= (elección explícita) y
-          // producto de 1 sola plantilla (elección trivial → auto-selección).
+          // pide el checklist «Tu diseño». Única excepción dentro de
+          // resolveBootTemplate: el deep-link ?template= (elección explícita).
+          // 2026-11-07 (owner): con 1 sola plantilla ya NO hay auto-selección
+          // — la elección explícita es obligatoria en todos los lienzos.
           const bootTemplate = resolveBootTemplate(templates, initialTemplateId);
           designId = null;
           const unitTemplate = bootTemplate.geometry?.canvasData ?? {
@@ -1705,11 +1708,12 @@ export function StudioEditor({
     let state = store.getState();
     if (!state.canvasData || state.isFinalizing || previewBuilding) return;
     // Ola 2 (2026-10-26) — plantilla OBLIGATORIA con bloqueo GUIADO (decisión
-    // owner): con >1 plantillas y sin elección (5.1: ninguna viene
-    // pre-seleccionada), «Ver diseño» no procede — abre el panel de plantillas
+    // owner): con plantillas visibles y sin elección (5.1: ninguna viene
+    // pre-seleccionada; 2026-11-07: incluso con UNA sola), «Ver diseño» no
+    // procede — abre el panel de plantillas
     // (sheet «Editar» en móvil; scroll a la sección en desktop), la resalta y
     // avisa. El botón NO se deshabilita: el bloqueo guía, no castiga.
-    if (templates.length > 1 && !state.selectedTemplateId) {
+    if (templates.length > 0 && !state.selectedTemplateId) {
       toast.error(texts.plantillas.elegirParaContinuar);
       setTemplateNudgeAt(Date.now());
       if (

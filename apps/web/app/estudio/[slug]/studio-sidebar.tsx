@@ -629,7 +629,7 @@ export function StudioSidebar({
           <Sparkles className="text-brand-purple h-4 w-4" />
           {texts.plantillas.titulo}
           <span className="text-brand-muted text-xs font-normal">({templates.length})</span>
-          {templates.length > 1 && !selectedTemplateId && (
+          {templates.length > 0 && !selectedTemplateId && (
             <span className="bg-brand-yellow/40 text-brand-purple-dark rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase">
               {texts.checklist.pendiente}
             </span>
