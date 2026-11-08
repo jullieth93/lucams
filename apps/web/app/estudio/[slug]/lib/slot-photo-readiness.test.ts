@@ -10,7 +10,7 @@
  * los tiempos usan el timeoutMs acotado del propio helper (sin fake timers).
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { waitForSlotPhotosReady } from "./slot-photo-readiness";
 
 type FakeStage = { findOne: (selector: string) => object | null };
@@ -82,5 +82,44 @@ describe("waitForSlotPhotosReady", () => {
     const start = performance.now();
     await waitForSlotPhotosReady([slot(0, "https://x/0.png")], stages, 2000);
     expect(performance.now() - start).toBeGreaterThanOrEqual(40);
+  });
+
+  // 2026-11-07 (bug owner — celular real): el nodo existe pero el bitmap pudo
+  // ser descartado por presión de memoria → se fuerza image.decode() antes de
+  // rasterizar (sin él, el snapshot re-dibuja vacío: preview/3D sin fotos).
+  it("fuerza decode() de las imágenes presentes (bitmap descartado en móvil)", async () => {
+    const decode = vi.fn().mockResolvedValue(undefined);
+    const profileDecode = vi.fn().mockResolvedValue(undefined);
+    const stage: FakeStage = {
+      findOne: (selector) =>
+        selector === ".slot-photo"
+          ? { image: () => ({ decode }) }
+          : selector === ".slot-profile-photo"
+            ? { image: () => ({ decode: profileDecode }) }
+            : null,
+    };
+    const stages = new Map<number, FakeStage | null>([[0, stage]]);
+    await waitForSlotPhotosReady(
+      [slot(0, "https://x/0.png", "https://x/avatar.png")],
+      stages,
+      2000,
+    );
+    expect(decode).toHaveBeenCalledTimes(1);
+    expect(profileDecode).toHaveBeenCalledTimes(1);
+  });
+
+  it("decode() que rechaza (foto rota) no rompe ni cuelga el rasterizado", async () => {
+    const decode = vi.fn().mockRejectedValue(new Error("broken"));
+    const stage: FakeStage = {
+      findOne: (selector) => (selector === ".slot-photo" ? { image: () => ({ decode }) } : null),
+    };
+    const stages = new Map<number, FakeStage | null>([[0, stage]]);
+    await waitForSlotPhotosReady([slot(0, "https://x/rota.png")], stages, 2000);
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
+
+  it("nodos sin image()/decode() (fake mínimo) pasan el re-decode como no-op", async () => {
+    const stages = new Map<number, FakeStage | null>([[0, fakeStage([".slot-photo"])]]);
+    await waitForSlotPhotosReady([slot(0, "https://x/0.png")], stages);
   });
 });
