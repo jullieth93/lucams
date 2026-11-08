@@ -27,21 +27,26 @@
  *      mínimo de impresión por caber). Ver decisión HEIC abajo.
  *   4. uploadDesignAssetAction — la misma Server Action de siempre.
  *
- * DECISIÓN HEIC (robustez 2026-10-13): los HEIC de iPhone (1-5 MB) no pasaban
- * por el compresor (el navegador típico no los decodifica) y los de >4.5 MB
- * reventaban con el 413 genérico de Vercel. Se evaluó subida directa a Storage
- * con signed upload URL (createSignedUploadUrl + transcode posterior) y se
- * DESCARTÓ por invasiva: exige una acción nueva de firma, mover la validación
- * de ownership/límites a dos pasos y un transcode-or-delete sobre objetos ya
- * persistidos. La ruta elegida cubre los casos reales sin ese costo:
+ * DECISIÓN HEIC (robustez 2026-10-13; ampliada en la auditoría 2026-11-08): los
+ * HEIC de iPhone (1-5 MB) no pasaban por el compresor (el navegador típico no
+ * los decodifica) y los de >4.5 MB reventaban con el 413 genérico de Vercel.
+ * La subida directa a Storage como ÚNICO camino se descartó por invasiva (doble
+ * salto ticket + PUT + ingest, validación en dos pasos), pero quedó como
+ * FALLBACK del único caso sin salida:
  *   - Safari decodea HEIC nativamente → el shrink del paso 3 lo convierte a
  *     WebP/JPEG en cliente y cabe siempre.
  *   - Chrome/Firefox no decodean HEIC → el HEIC típico de iPhone (1-2.5 MB)
- *     cabe en el payload y el SERVIDOR lo transcodifica a JPEG q92 con
- *     heic-decode antes de persistir (uploadCustomerPhoto, lib/storage.ts) —
- *     el asset y su metadata quedan web-compatible.
- *   - HEIC >4 MB en navegador sin decode → FAIL-CLOSED honesto (paso 3
- *     devuelve null): error claro al usuario ANTES de subir, no el 413 mudo.
+ *     cabe en el payload y el SERVIDOR lo normaliza con heic-decode antes de
+ *     persistir (uploadCustomerPhoto, lib/storage.ts: intermedio JPEG q92,
+ *     master final WebP q92 desde 2026-11-08) — el asset y su metadata quedan
+ *     web-compatible.
+ *   - HEIC entre ~4.5 y 10 MB sin decode en el navegador → SUBIDA DIRECTA a
+ *     Storage (2026-11-08): ticket firmado al área de paso
+ *     `<ownerId>/_staging/` + PUT sin techo de función + ingest server-side con
+ *     el MISMO pipeline (transcode incluido). El caller inyecta `uploadDirect`.
+ *   - Sin `uploadDirect` (o formato no-HEIC) >4 MB en navegador sin decode →
+ *     FAIL-CLOSED honesto (paso 3 devuelve null): error claro al usuario ANTES
+ *     de subir, no el 413 mudo.
  *
  * Multi-archivo: `processPhotoFiles` corre hasta 3 archivos en vuelo
  * (mapWithConcurrency de upload-with-retry) y entrega los resultados EN EL
@@ -85,6 +90,34 @@ export type UploadAssetFailure = { ok: false; message: string };
 export type UploadAssetFn = (
   formData: FormData,
 ) => Promise<UploadAssetSuccess | UploadAssetFailure>;
+
+/**
+ * Subida DIRECTA a Storage (ticket firmado + PUT + ingest), inyectada por el
+ * caller (2026-11-08 — auditoría: HEIC ~4.5–10 MB que el navegador no
+ * decodifica). Recibe el archivo ORIGINAL (sin preparar: el servidor lo
+ * normaliza igual que el camino clásico).
+ */
+export type DirectUploadFn = (
+  file: File,
+  opts: {
+    designId: string | null;
+    rightsAccepted: boolean;
+    productSlug?: string;
+    productSizeCm?: string;
+  },
+) => Promise<UploadAssetSuccess | UploadAssetFailure>;
+
+/**
+ * Tope de negocio del bucket customer-uploads (10 MB — espejo de
+ * CUSTOMER_UPLOAD_MAX_BYTES del servidor, que es server-only y no se puede
+ * importar acá). Una foto por encima de esto no tiene camino: fail-closed.
+ */
+export const DIRECT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+
+/** ¿HEIC/HEIF? Por mime o por extensión (iOS a veces entrega file.type vacío). */
+export function isHeicLike(file: Pick<File, "type" | "name">): boolean {
+  return /^image\/hei[cf]$/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+}
 
 /** Concurrencia del pipeline multi-archivo (mismo tope que los PUT de Storage). */
 export const UPLOAD_PIPELINE_CONCURRENCY = 3;
@@ -203,6 +236,11 @@ export type ProcessPhotoFilesOptions = {
   rightsAccepted: boolean;
   /** Server Action de subida, inyectada (testeable + sin import de servidor). */
   upload: UploadAssetFn;
+  /**
+   * Subida directa a Storage para el fallback HEIC (2026-11-08), inyectada.
+   * Sin ella, un archivo que no cabe en el payload falla cerrado como antes.
+   */
+  uploadDirect?: DirectUploadFn;
   /** Tope de archivos en vuelo (default UPLOAD_PIPELINE_CONCURRENCY). */
   concurrency?: number;
   /**
@@ -212,13 +250,68 @@ export type ProcessPhotoFilesOptions = {
   onReady: (outcome: ProcessedPhoto) => void;
 };
 
+/** Outcome de éxito a partir del resultado de la acción de subida (cualquiera de los dos caminos). */
+function successOutcome(
+  result: UploadAssetSuccess,
+  fileName: string,
+  prepared: {
+    improved: boolean;
+    improvedButLow: boolean;
+    originalWidth?: number;
+    originalHeight?: number;
+  },
+): ProcessedPhoto {
+  return {
+    ok: true,
+    fileName,
+    asset: {
+      id: result.assetId,
+      signedUrl: result.signedUrl,
+      canvasUrl: result.canvasUrl ?? null,
+      width: result.width,
+      height: result.height,
+      // Si hubo upscale local, las dimensiones de la ORIGINAL (metadata de
+      // sesión): el chip de calidad mide la nitidez real, no los píxeles
+      // re-muestreados (que no crean detalle).
+      ...(prepared.improved
+        ? { originalWidth: prepared.originalWidth, originalHeight: prepared.originalHeight }
+        : {}),
+      validationLevel: result.validationLevel,
+      validationMessage: result.validationMessage,
+      validationRecommendation: result.validationRecommendation,
+      validationChecks: result.validationChecks,
+    },
+    improved: prepared.improved,
+    improvedButLow: prepared.improvedButLow,
+  };
+}
+
 async function processOne(file: File, opts: ProcessPhotoFilesOptions): Promise<ProcessedPhoto> {
   const prepared = await preparePhotoForUpload(file, opts.productSizeCm);
   // Fail-closed honesto (robustez 2026-10-13): si el preparado no cupo en el
   // presupuesto del payload ni tras la reducción obligatoria, NO se intenta el
-  // upload — el request moriría con el 413 genérico de la plataforma y el
-  // usuario no entendería nada. El caller muestra el mensaje de tamaño claro.
+  // upload clásico — el request moriría con el 413 genérico de la plataforma.
   if (!prepared.fitsBudget) {
+    // Auditoría 2026-11-08 — única salida para un HEIC ~4.5–10 MB que el
+    // navegador no decodifica: subida DIRECTA a Storage (ticket firmado + PUT +
+    // ingest server-side con el mismo pipeline). El archivo viaja ORIGINAL.
+    if (opts.uploadDirect && isHeicLike(file) && file.size <= DIRECT_UPLOAD_MAX_BYTES) {
+      try {
+        const direct = await opts.uploadDirect(file, {
+          designId: opts.designId,
+          rightsAccepted: opts.rightsAccepted,
+          productSlug: opts.productSlug,
+          productSizeCm: opts.productSizeCm,
+        });
+        if (direct.ok) {
+          return successOutcome(direct, file.name, { improved: false, improvedButLow: false });
+        }
+        return { ok: false, fileName: file.name, kind: "server", serverMessage: direct.message };
+      } catch {
+        return { ok: false, fileName: file.name, kind: "network" };
+      }
+    }
+    // Sin salida directa: error de tamaño claro al usuario, no el 413 mudo.
     return { ok: false, fileName: file.name, kind: "too-big" };
   }
   let result: UploadAssetSuccess | UploadAssetFailure;
@@ -245,29 +338,7 @@ async function processOne(file: File, opts: ProcessPhotoFilesOptions): Promise<P
   if (!result.ok) {
     return { ok: false, fileName: file.name, kind: "server", serverMessage: result.message };
   }
-  return {
-    ok: true,
-    fileName: file.name,
-    asset: {
-      id: result.assetId,
-      signedUrl: result.signedUrl,
-      canvasUrl: result.canvasUrl ?? null,
-      width: result.width,
-      height: result.height,
-      // Si hubo upscale local, las dimensiones de la ORIGINAL (metadata de
-      // sesión): el chip de calidad mide la nitidez real, no los píxeles
-      // re-muestreados (que no crean detalle).
-      ...(prepared.improved
-        ? { originalWidth: prepared.originalWidth, originalHeight: prepared.originalHeight }
-        : {}),
-      validationLevel: result.validationLevel,
-      validationMessage: result.validationMessage,
-      validationRecommendation: result.validationRecommendation,
-      validationChecks: result.validationChecks,
-    },
-    improved: prepared.improved,
-    improvedButLow: prepared.improvedButLow,
-  };
+  return successOutcome(result, file.name, prepared);
 }
 
 /**

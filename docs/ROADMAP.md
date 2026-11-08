@@ -30,18 +30,18 @@ Una única base de código soporta dos modos controlados por `NEXT_PUBLIC_STORE_
 
 ## Stack y costos
 
-| Capa                                       | Servicio      | Dev / STG                 | Producción                         | Costo prod USD/mes                                                                   |
-| ------------------------------------------ | ------------- | ------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------ |
-| App y Compute serverless                   | Vercel        | Preview (incluido)        | **Pro (`iad1`)**                   | **$20** (obligatorio: plan Hobby prohíbe uso comercial)                              |
-| DB + Auth + Storage + `pg_cron`            | Supabase      | Free (`lucams-stg`)       | Free hoy (`lucams-prod`)           | **$0** (Pro **$25** cuando se requiera PITR continuo o se supere 500 MB DB / 1 GB)   |
-| Email transaccional y marketing            | Resend        | Free / suprimido en tests | Free hoy (`mail.lucamsshop.com`)   | **$0** (Pro **$20** si el volumen supera 100 correos/día o 3.000/mes)                |
-| DNS + CDN + Email Routing + Turnstile + R2 | Cloudflare    | Free                      | Free (R2 ≤ 10 GB para backups GPG) | **$0** (cero costo de salida en R2)                                                  |
-| Dominio (`lucamsshop.com`)                 | Registrador   | —                         | Activo                             | **~$1–5** prorrateado mensual                                                        |
-| Inteligencia Artificial                    | Google Gemini | Free / Pay-as-you-go      | `gemini-2.5-flash-lite`            | **~$0–2** según volumen (Estudio + Copiloto de soporte 0-PII)                        |
-| Pasarela de pagos                          | Wompi         | Sandbox                   | Producción                         | **2,65 % + $700 COP + IVA** por trx aprobada (plan Avanzado, sin mensualidad) + ret. |
-| Logística nacional                         | Aveonline     | Cuenta demo               | Producción (`GENERATE_REAL=true`)  | Costo por guía facturada (**0 % comisión** adicional de plataforma)                  |
+| Capa                                       | Servicio      | Dev / STG                 | Producción                                             | Costo prod USD/mes                                                                   |
+| ------------------------------------------ | ------------- | ------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| App y Compute serverless                   | Vercel        | Preview (incluido)        | **Pro (`iad1`)**                                       | **$20** (obligatorio: plan Hobby prohíbe uso comercial)                              |
+| DB + Auth + Storage + `pg_cron`            | Supabase      | Free (`lucams-stg`)       | **Pro** (`lucams-prod`, desde la auditoría 2026-11-08) | **$25**/mes ya vigente en PRD                                                        |
+| Email transaccional y marketing            | Resend        | Free / suprimido en tests | Free hoy (`mail.lucamsshop.com`)                       | **$0** (Pro **$20** si el volumen supera 100 correos/día o 3.000/mes)                |
+| DNS + CDN + Email Routing + Turnstile + R2 | Cloudflare    | Free                      | Free (R2 ≤ 10 GB para backups GPG)                     | **$0** (cero costo de salida en R2)                                                  |
+| Dominio (`lucamsshop.com`)                 | Registrador   | —                         | Activo                                                 | **~$1–5** prorrateado mensual                                                        |
+| Inteligencia Artificial                    | Google Gemini | Free / Pay-as-you-go      | `gemini-2.5-flash-lite`                                | **~$0–2** según volumen (Estudio + Copiloto de soporte 0-PII)                        |
+| Pasarela de pagos                          | Wompi         | Sandbox                   | Producción                                             | **2,65 % + $700 COP + IVA** por trx aprobada (plan Avanzado, sin mensualidad) + ret. |
+| Logística nacional                         | Aveonline     | Cuenta demo               | Producción (`GENERATE_REAL=true`)                      | Costo por guía facturada (**0 % comisión** adicional de plataforma)                  |
 
-Hitos de upgrade: pasar `lucams-prod` a **Supabase Pro** cuando se requiera PITR continuo nativo o se acerque al tope de cuota Free (la cuota de DB y Storage se vigila en `/admin/observability` y con alertas automáticas, mientras los backups diarios cifrados en Cloudflare R2 + DR drill mensual cubren recuperación); pasar a **Resend Pro** al superar 3.000 correos/mes; evaluar monitoreo externo de errores (`ADR-022`) solo si el volumen de tráfico lo justifica.
+Hitos de upgrade: `lucams-prod` ya opera en **Supabase Pro** (auditoría 2026-11-08; 100 GB Storage / 8 GB DB / 250 GB egress — la cuota se vigila en `/admin/observability` y con alertas automáticas, mientras los backups diarios cifrados en Cloudflare R2 + DR drill mensual cubren recuperación); activar el **PITR continuo nativo de 7 días** en el dashboard cuando se decida (es opt-in del plan); pasar a **Resend Pro** al superar 3.000 correos/mes; evaluar monitoreo externo de errores (`ADR-022`) solo si el volumen de tráfico lo justifica.
 
 ## Estado de las fases (completadas)
 
@@ -74,7 +74,7 @@ Hitos de upgrade: pasar `lucams-prod` a **Supabase Pro** cuando se requiera PITR
 
 ### Plataforma
 
-- Upgrade a Supabase Pro en `lucams-prod` para habilitar PITR continuo nativo de 7 días y ampliar cuotas de almacenamiento y transferencia.
+- ~~Upgrade a Supabase Pro en `lucams-prod`~~ — **hecho** (auditoría 2026-11-08: 100 GB Storage / 8 GB DB / 250 GB egress vigentes). Pendiente derivado: activar el PITR continuo nativo de 7 días (opt-in del plan) si el negocio lo decide.
 - Evaluación de monitoreo externo de errores (`ADR-022`, pendiente de volumen; hoy cubierto por registro propio en PostgreSQL + 12 reglas de alerta operativas).
 - Pentest externo por firma independiente como complemento de las auditorías internas y suites automatizadas RLS/E2E.
 - ~~Automatización de series de email lifecycle~~ → **Construida (`ADR-198`):** recorridos configurables por comportamiento, consentimiento `NEWSLETTER`, salidas automáticas, reintentos, baja RFC 8058 y atribución de último clic a 30 días. Las rutas iniciales permanecen en borrador hasta su activación humana.

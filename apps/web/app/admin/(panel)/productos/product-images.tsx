@@ -26,6 +26,11 @@ import {
   reorderProductImagesAction,
   deleteProductImageAction,
 } from "./image-actions";
+import {
+  compressImageForUpload,
+  shrinkToFitUploadBudget,
+  UPLOAD_PAYLOAD_BUDGET_BYTES,
+} from "@/app/estudio/[slug]/client-image-compress";
 
 export function ProductImages({ productId, images }: { productId: string; images: string[] }) {
   const [pending, startTransition] = useTransition();
@@ -36,19 +41,31 @@ export function ProductImages({ productId, images }: { productId: string; images
   const handleUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setError(null);
-    // LUC-SEC-006 (2026-10-30) — lotes de ≤4 imágenes por llamada (≤20 MB por
-    // request bajo el límite global de 32 MB de Server Actions; antes un lote
-    // de 10×5 MB exigía el tope viejo de 50 MB). Secuencial y conservando el
-    // orden: el error por foto sigue nombrando cuál falló.
-    const chunks: File[][] = [];
+    // Auditoría 2026-11-08 — UNA foto comprimida por request: el lote de ≤4
+    // imágenes × 5 MB (LUC-SEC-006) exigía ~20 MB por request y Vercel corta
+    // el body de toda función en ~4.5 MB con un 413 genérico. Se comprime en
+    // el navegador (mismo pipeline del Estudio: WebP ≤2400 px q0.85 — el
+    // servidor reduce a ≤2000 px q82 de todos modos) y si aun así no cabe en
+    // el presupuesto del payload se reduce obligatoriamente; solo entonces se
+    // sube, en serie y conservando el orden (el error nombra la foto que falló).
     const all = Array.from(files);
-    for (let i = 0; i < all.length; i += 4) chunks.push(all.slice(i, i + 4));
     startTransition(async () => {
       try {
-        for (const chunk of chunks) {
+        for (const original of all) {
+          const compressed = await compressImageForUpload(original);
+          const prepared =
+            compressed.size > UPLOAD_PAYLOAD_BUDGET_BYTES
+              ? await shrinkToFitUploadBudget(compressed)
+              : compressed;
+          if (!prepared) {
+            setError(
+              `"${original.name}" es demasiado grande y este navegador no pudo comprimirla. Exporta la foto como JPG o WebP e inténtalo de nuevo.`,
+            );
+            break;
+          }
           const formData = new FormData();
           formData.set("productId", productId);
-          for (const f of chunk) formData.append("files", f);
+          formData.append("files", prepared);
           const res = await uploadProductImagesAction(formData);
           if (res?.error) {
             setError(res.error);
@@ -172,7 +189,7 @@ export function ProductImages({ productId, images }: { productId: string; images
                   >
                     <button
                       type="button"
-                      className="text-brand-purple-dark inline-flex items-center gap-1 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold shadow-sm hover:bg-white disabled:opacity-40"
+                      className="text-brand-purple-dark inline-flex items-center gap-1 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold shadow-sm hover:bg-white disabled:opacity-40 pointer-coarse:min-h-11 pointer-coarse:px-2.5 pointer-coarse:text-xs"
                       onClick={() => handleReorder(idx, 0)}
                       disabled={pending}
                     >
@@ -181,13 +198,13 @@ export function ProductImages({ productId, images }: { productId: string; images
                   </span>
                 </Hint>
               )}
-              <div className="absolute right-1.5 bottom-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="absolute right-1.5 bottom-1.5 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
                 <Hint content="Mover una posición arriba">
                   {/* span wrapper: el button disabled no recibe hover/foco, el span sí. */}
                   <span tabIndex={pending || idx === 0 ? 0 : undefined} className="inline-flex">
                     <button
                       type="button"
-                      className="text-brand-purple-dark/80 rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40"
+                      className="text-brand-purple-dark/80 inline-flex items-center justify-center rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                       onClick={() => handleReorder(idx, idx - 1)}
                       disabled={pending || idx === 0}
                       aria-label="Mover arriba"
@@ -198,7 +215,7 @@ export function ProductImages({ productId, images }: { productId: string; images
                 </Hint>
                 <button
                   type="button"
-                  className="text-brand-purple-dark/80 rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40"
+                  className="text-brand-purple-dark/80 inline-flex items-center justify-center rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                   onClick={() => handleReorder(idx, idx + 1)}
                   disabled={pending || idx === images.length - 1}
                   aria-label="Mover abajo"
@@ -207,7 +224,7 @@ export function ProductImages({ productId, images }: { productId: string; images
                 </button>
                 <button
                   type="button"
-                  className="rounded bg-white/95 p-1.5 text-red-700 hover:bg-red-50"
+                  className="inline-flex items-center justify-center rounded bg-white/95 p-1.5 text-red-700 hover:bg-red-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                   onClick={() => handleDelete(url)}
                   disabled={pending}
                   aria-label="Borrar imagen"

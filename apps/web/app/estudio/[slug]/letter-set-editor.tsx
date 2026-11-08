@@ -1000,14 +1000,10 @@ export function LetterSetEditor({
       // fallo silencioso dejaba pedidos sin pager sin que nadie se enterara).
       if (previewPages && previewPages.length > 1) {
         try {
-          await uploadPreviewPagesWithRetry(created.designId, () => {
-            const pagesForm = new FormData();
-            pagesForm.set("designId", created.designId);
-            previewPages.forEach((page, i) => {
-              pagesForm.set(`page_${i}`, dataUrlToBlob(page.dataUrl), `set-${i + 1}.webp`);
-            });
-            return pagesForm;
-          });
+          await uploadPreviewPagesWithRetry(
+            created.designId,
+            previewPages.map((page) => dataUrlToBlob(page.dataUrl)),
+          );
         } catch (pagesErr) {
           console.error("[studio.letter-set.preview-pages]", pagesErr);
         }

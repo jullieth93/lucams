@@ -114,12 +114,25 @@ async function encodeResized(
  * o un WebP (JPEG si el navegador no codifica WebP) redimensionado/comprimido
  * si superaba el umbral. Si el navegador no puede procesarlo (raro), devuelve
  * el original y que decida el servidor.
+ *
+ * `spec` (auditoría 2026-11-08 — uploads admin): permite reutilizar el
+ * compresor con otra calidad de salida — los masters de la galería de
+ * prediseñados son print-grade (≤4000 px q0.90, espejo de
+ * optimizeGalleryMasterImage del servidor), no de catálogo (≤2400 px q0.85).
  */
-export async function compressImageForUpload(file: File): Promise<File> {
+export async function compressImageForUpload(
+  file: File,
+  spec?: { maxEdgePx?: number; quality?: number },
+): Promise<File> {
   if (!shouldCompress(file)) return file;
   try {
     const bitmap = await createImageBitmap(file);
-    const out = await encodeResized(bitmap, MAX_EDGE_PX, ENCODE_QUALITY, file);
+    const out = await encodeResized(
+      bitmap,
+      spec?.maxEdgePx ?? MAX_EDGE_PX,
+      spec?.quality ?? ENCODE_QUALITY,
+      file,
+    );
     bitmap.close();
     return out ?? file;
   } catch {
@@ -156,12 +169,18 @@ export function computeShrinkAttempts(opts: {
   width: number;
   height: number;
   minEdgeFloorPx?: number;
+  /** Tope del borde largo del primer intento (default MAX_EDGE_PX del Estudio).
+   *  La galería de prediseñados lo sube a 4000/8000 (master/tira print-grade). */
+  maxEdgePx?: number;
+  /** Escalera de calidades (default SHRINK_QUALITY_STEPS). */
+  qualities?: readonly number[];
 }): ShrinkAttempt[] {
   const { width, height } = opts;
   const longEdge = Math.max(width, height);
   const minEdge = Math.min(width, height);
   const floor = Math.min(opts.minEdgeFloorPx ?? SHRINK_MIN_EDGE_FLOOR_PX, minEdge);
-  const baseEdge = Math.min(MAX_EDGE_PX, longEdge);
+  const baseEdge = Math.min(opts.maxEdgePx ?? MAX_EDGE_PX, longEdge);
+  const qualities = opts.qualities ?? SHRINK_QUALITY_STEPS;
 
   const attempts: ShrinkAttempt[] = [];
   for (const edgeStep of SHRINK_EDGE_STEPS) {
@@ -169,7 +188,7 @@ export function computeShrinkAttempts(opts: {
     // Lado menor que resultaría de este borde largo (aspect conservado).
     const resultMinEdge = Math.round(minEdge * Math.min(1, maxEdgePx / longEdge));
     if (resultMinEdge < floor) continue; // nunca bajo el piso de impresión
-    for (const quality of SHRINK_QUALITY_STEPS) {
+    for (const quality of qualities) {
       attempts.push({ maxEdgePx, quality });
     }
   }
@@ -194,7 +213,7 @@ export function computeShrinkAttempts(opts: {
  */
 export async function shrinkToFitUploadBudget(
   file: File,
-  opts?: { minEdgeFloorPx?: number },
+  opts?: { minEdgeFloorPx?: number; maxEdgePx?: number; qualities?: readonly number[] },
 ): Promise<File | null> {
   if (file.size <= UPLOAD_PAYLOAD_BUDGET_BYTES) return file;
   let bitmap: ImageBitmap;
@@ -208,6 +227,8 @@ export async function shrinkToFitUploadBudget(
       width: bitmap.width,
       height: bitmap.height,
       minEdgeFloorPx: opts?.minEdgeFloorPx,
+      maxEdgePx: opts?.maxEdgePx,
+      qualities: opts?.qualities,
     });
     for (const attempt of attempts) {
       const out = await encodeResized(bitmap, attempt.maxEdgePx, attempt.quality, file);

@@ -564,13 +564,21 @@ export async function purgeIdleReadyDesigns(
  * Reglas de orfandad — MISMAS del one-shot `packages/db/scripts/one-shot/
  * purge-orphan-storage-20261012.mjs` (convención de paths de apps/web/lib/storage.ts):
  *   - production-assets:  <designId>/…           → huérfano si designId ∉ Design
+ *                         _bundles/…             → NUNCA huérfano (2026-11-08: ZIPs de
+ *                                                  taller regenerables por descarga; su
+ *                                                  limpieza la hace el propio re-upload)
  *   - design-previews:    <designId>/…           → huérfano si designId ∉ Design
  *   - customer-uploads:   <ownerId>/<designId>/… → huérfano si designId ∉ Design
  *                         <ownerId>/pending/…    → huérfano solo si tiene > 7 días
  *                                                  (upload temporal aún asociable)
+ *                         <ownerId>/_staging/…   → idem pending (2026-11-08: área de paso
+ *                                                  de la subida directa HEIC — el ingest
+ *                                                  corre segundos después del PUT; sin la
+ *                                                  gracia el barrido podría borrarla a
+ *                                                  mitad de camino)
  */
 
-/** Gracia para uploads `pending/` de customer-uploads antes de tratarlos como huérfanos. */
+/** Gracia para uploads `pending/` y `_staging/` de customer-uploads antes de huérfanos. */
 export const ORPHAN_PENDING_AFTER_DAYS = 7;
 
 /** Techo de objetos procesados por corrida — el cron corre a diario y barre el resto después. */
@@ -595,11 +603,16 @@ export function classifyStorageOrphan(
 ): OrphanReason | null {
   const parts = name.split("/");
   if (bucket === PRODUCTION_BUCKET || bucket === PREVIEWS_BUCKET) {
+    // `_bundles/` (ZIPs de taller, 2026-11-08) no ancla a ningún Design: su
+    // higiene es por re-upload del mismo pedido, no por este barrido.
+    if (bucket === PRODUCTION_BUCKET && parts[0] === "_bundles") return null;
     return !designIds.has(parts[0]) ? "design-inexistente" : null;
   }
   if (bucket === CUSTOMER_UPLOADS_BUCKET) {
     const designPart = parts[1] ?? "";
-    if (designPart === "pending") {
+    // `pending/` (upload temporal aún asociable) y `_staging/` (área de paso
+    // de la subida directa, 2026-11-08) tienen gracia de 7 días.
+    if (designPart === "pending" || designPart === "_staging") {
       return now.getTime() - createdAt.getTime() > ORPHAN_PENDING_AFTER_DAYS * DAY_MS
         ? "pending-vencido"
         : null;
@@ -639,13 +652,14 @@ export async function sweepOrphanStorageObjects(opts?: {
     FROM storage.objects o
     WHERE (
         o.bucket_id IN ('production-assets', 'design-previews')
+        AND (o.bucket_id <> 'production-assets' OR split_part(o.name, '/', 1) <> '_bundles')
         AND NOT EXISTS (SELECT 1 FROM "Design" d WHERE d.id = split_part(o.name, '/', 1))
       ) OR (
         o.bucket_id = 'customer-uploads'
         AND (
-          (split_part(o.name, '/', 2) = 'pending' AND o.created_at < ${pendingCutoff})
+          (split_part(o.name, '/', 2) IN ('pending', '_staging') AND o.created_at < ${pendingCutoff})
           OR (
-            split_part(o.name, '/', 2) <> 'pending'
+            split_part(o.name, '/', 2) NOT IN ('pending', '_staging')
             AND NOT EXISTS (SELECT 1 FROM "Design" d WHERE d.id = split_part(o.name, '/', 2))
           )
         )
@@ -662,7 +676,7 @@ export async function sweepOrphanStorageObjects(opts?: {
           const parts = c.name.split("/");
           return c.bucket === CUSTOMER_UPLOADS_BUCKET ? (parts[1] ?? "") : parts[0];
         })
-        .filter((id) => id !== "" && id !== "pending"),
+        .filter((id) => id !== "" && id !== "pending" && id !== "_staging"),
     ),
   ];
   const existing = referencedIds.length

@@ -32,7 +32,11 @@ import {
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
-import { getStorageQuota, getTechHealth } from "@/features/observability/service";
+import {
+  getStorageQuota,
+  getTechHealth,
+  SUPABASE_STORAGE_WARN_BYTES,
+} from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
 import { getSloStatus, type SloResult } from "@/features/observability/slos";
 import {
@@ -241,7 +245,7 @@ export default async function AdminObservabilityPage() {
         {/*
          * Fase 3D — cuota de Supabase Storage por bucket. Va FUERA del
          * <details> técnico a propósito (mismo criterio que entregabilidad):
-         * llenar el plan Free (1 GB) tumba las subidas de fotos de clientas —
+         * llenar la cuota del plan tumba las subidas de fotos de clientas —
          * es negocio, no solo técnica. Los bytes salen de la tabla
          * storage.objects del propio Supabase (tamaño real de cada objeto,
          * incluidos huérfanos aún no barridos); si esa consulta falla se
@@ -264,7 +268,7 @@ export default async function AdminObservabilityPage() {
             <VitalPill
               label={storage.degraded ? "Total medido (piso)" : "Total real"}
               value={formatBytes(storage.measuredBytes)}
-              tone={storage.measuredBytes > 800 * 1024 * 1024 ? "amber" : "emerald"}
+              tone={storage.measuredBytes > SUPABASE_STORAGE_WARN_BYTES ? "amber" : "emerald"}
             />
           </div>
           <p className="text-brand-muted mt-2 text-xs">
@@ -282,8 +286,9 @@ export default async function AdminObservabilityPage() {
                 5 buckets) — el total es el consumo real, no un piso.{" "}
               </>
             )}
-            Límite del plan Supabase: <strong>1 GB (Free)</strong> · <strong>100 GB (Pro)</strong>.
-            Si el total se acerca al límite, limpia la mediateca (
+            Plan actual de Supabase en producción: <strong>Pro</strong> (100 GB de Storage · 8 GB de
+            base de datos; el aviso ámbar se enciende al 80%). Si el total se acerca al límite,
+            limpia la mediateca (
             <Link
               href="/admin/contenido/mediateca"
               className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"

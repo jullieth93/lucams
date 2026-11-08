@@ -194,7 +194,7 @@ export async function setErrorReportStatus(id: string, status: ErrorReportStatus
  * los 5 buckets reportan bytes reales — antes `production-assets` (el más
  * pesado), `design-previews` y `product-images` solo contaban archivos y el
  * total era un piso que dejaba por fuera ~300 MB de huérfanos (la alerta ámbar
- * de >800 MB nunca los veía). Además el conteo refleja los objetos REALES del
+ * de capacidad nunca los veía). Además el conteo refleja los objetos REALES del
  * bucket, incluidos los huérfanos que el barrido de retención aún no alcanzó.
  *
  * Fallback: si la consulta a `storage.objects` falla (permisos, pooler), se
@@ -217,6 +217,19 @@ export type StorageQuota = {
   /** true si el número vino del fallback (sin bytes de todos los buckets). */
   degraded: boolean;
 };
+
+/*
+ * Referencias de capacidad del plan Supabase Pro de `lucams-prod` (verificado en
+ * auditoría 2026-11-08): 100 GB de Storage y 8 GB de base de datos (Free: 1 GB /
+ * 500 MB). Única fuente de verdad: las consume la alerta `capacity_storage_high` /
+ * `capacity_db_high` (features/observability/alerts.ts) y el tile ámbar de
+ * /admin/observability. Umbral de aviso: 80% del plan, para detectar la tendencia
+ * ANTES de la barra roja del proveedor.
+ */
+export const SUPABASE_STORAGE_PLAN_BYTES = 100 * 1024 * 1024 * 1024;
+export const SUPABASE_STORAGE_WARN_BYTES = Math.round(SUPABASE_STORAGE_PLAN_BYTES * 0.8);
+export const SUPABASE_DB_PLAN_BYTES = 8 * 1024 * 1024 * 1024;
+export const SUPABASE_DB_WARN_BYTES = Math.round(SUPABASE_DB_PLAN_BYTES * 0.8);
 
 /** Buckets conocidos, en orden fijo para el tile. Lista literal en el SQL (constantes, sin input). */
 const STORAGE_BUCKETS = [

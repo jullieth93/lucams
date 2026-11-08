@@ -16,7 +16,7 @@
  */
 
 import { config as dotenvConfig } from "dotenv";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 export type E2EEnv = "local" | "stg" | "prd";
@@ -87,8 +87,24 @@ export function authStatePath(env: E2EEnv, role: "admin" | "client"): string {
   return resolve(authStateDir(env), `${role}.json`);
 }
 
-export function authManifestPath(env: E2EEnv): string {
-  return resolve(authStateDir(env), "manifest.json");
+/**
+ * Manifiesto de usuarios efímeros del global.setup. POR RUN desde la auditoría
+ * 2026-11-08 (`manifest-<run>.json`): antes era UN solo `manifest.json` por
+ * ambiente y dos corridas concurrentes del mismo ambiente se pisaban — el
+ * teardown de la primera borraba los usuarios de la segunda (teardown inseguro
+ * entre procesos). Sin `run` devuelve el path legacy (el teardown lo limpia
+ * como residuo de corridas viejas).
+ */
+export function authManifestPath(env: E2EEnv, run?: string): string {
+  return resolve(authStateDir(env), run ? `manifest-${run}.json` : "manifest.json");
+}
+
+/** Todos los manifiestos presentes en el directorio de auth del ambiente. */
+export function listAuthManifests(env: E2EEnv): string[] {
+  if (!existsSync(authStateDir(env))) return [];
+  return readdirSync(authStateDir(env)).filter(
+    (f) => f === "manifest.json" || (f.startsWith("manifest-") && f.endsWith(".json")),
+  );
 }
 
 export function ensureAuthStateDir(env: E2EEnv): void {

@@ -1,11 +1,16 @@
 /*
  * ADR-063 T7 — Descarga del ZIP de producción de un pedido.
  *
- * GET /admin/pedidos/<number>/produccion → un .zip con:
+ * GET /admin/pedidos/<number>/produccion → arma un .zip con:
  *   - los PNG 300 DPI de cada pieza, nombrados por mes (calendario) o "pieza-NN", en una carpeta
  *     por item del pedido;
  *   - armado.png (hoja de armado: miniaturas + etiquetas + estado de moderación);
  *   - LEEME.txt (resumen + advertencias).
+ * y lo entrega como REDIRECT 302 a una URL firmada del bucket privado
+ * production-assets (área `_bundles/<orderId>/`), NO en el response de la
+ * función: Vercel corta cualquier response en ~4.5 MB y el ZIP de un pedido
+ * real lo supera siempre (auditoría 2026-11-08; migración 059 habilita
+ * application/zip en el bucket).
  *
  * Reemplaza el flujo manual (bajar pieza por pieza) del detalle. Ruta bajo /admin/* → protegida por
  * el middleware; además valida rol + MFA con requireRole (defensa en profundidad).
@@ -16,7 +21,11 @@ import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { getOrderProductionBundle } from "@/features/orders/service";
-import { downloadProductionAsset } from "@/lib/storage";
+import {
+  downloadProductionAsset,
+  signOrderProductionBundle,
+  uploadOrderProductionBundle,
+} from "@/lib/storage";
 import {
   composeAssemblySheet,
   type AssemblyPiece,
@@ -271,6 +280,30 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
   const content = await zip.generateAsync({ type: "nodebuffer" });
   const filename = `pedido-${slug(bundle.number)}-produccion.zip`;
 
+  // Auditoría 2026-11-08 — el ZIP NO viaja en el response de la función: Vercel
+  // corta cualquier response en ~4.5 MB y un pedido real lo supera siempre. Se
+  // sube al bucket privado production-assets (`_bundles/<orderId>/`, migración
+  // 059) y se redirige a una URL firmada de TTL corto (5 min). El detalle del
+  // pedido enlaza esta ruta con <a href>: el 302 resuelve la descarga igual.
+  let downloadUrl: string;
+  try {
+    const bundlePath = await uploadOrderProductionBundle({
+      orderId: bundle.id,
+      filename,
+      content,
+    });
+    downloadUrl = await signOrderProductionBundle(bundlePath, filename);
+  } catch (err) {
+    logger.error(
+      { event: "order.production_zip.bundle_fail", orderNumber: bundle.number, err: String(err) },
+      "No se pudo publicar el ZIP de producción en Storage",
+    );
+    return new Response(
+      "No pudimos preparar el ZIP de descarga. Intenta de nuevo en unos minutos.",
+      { status: 500 },
+    );
+  }
+
   await recordAdminAction({
     actorId: auth.session.admin.id,
     action: "order.design_zip_download",
@@ -284,11 +317,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
     },
   });
 
-  return new Response(new Uint8Array(content), {
-    status: 200,
+  return new Response(null, {
+    status: 302,
     headers: {
-      "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      Location: downloadUrl,
       "Cache-Control": "no-store",
     },
   });

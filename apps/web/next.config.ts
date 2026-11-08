@@ -116,20 +116,26 @@ const nextConfig: NextConfig = {
   //
   // LUC-SEC-006 (auditoría 2026-10-30) — el 50 MB cubría un flujo MUERTO (los
   // PNG de producción ya van por tickets firmados directo a Storage, ADR-081).
-  // Inventario REAL por action (tope de su propia validación):
-  //   - uploadGalleryImageAction (admin): ≤2 masters × 15 MB = 30 MB (strip
-  //     2-caras) — la EXCEPCIÓN que fija el global. Autenticada + role-gated
-  //     (MANAGER_UP), sin superficie anónima.
-  //   - finalizeDesignAction: preview ≤8 MB + slot inline ≤20 MB (name-editor)
-  //     = 28 MB tope de validación (observado PRD: ~1 MB).
-  //   - uploadDesignPreviewPagesAction: ≤24 páginas × 1 MB = 24 MB (cap por
-  //     página bajado de 2 MB: 2× el máximo observado en PRD, 0.49 MB).
-  //   - uploadProductImagesAction (admin): lotes de ≤4 × 5 MB = 20 MB
-  //     (chunked en el cliente desde LUC-SEC-006).
-  //   - uploadDesignAssetAction: 1 foto ≤10 MB + overhead multipart.
+  //
+  // Auditoría 2026-11-08 — el techo REAL no es este número sino el de la
+  // plataforma: Vercel corta el body de TODA función en ~4.5 MB (413) por encima
+  // de cualquier bodySizeLimit. Por eso los uploads grandes ya no dependen del
+  // tope global: se comprimen/normalizan en el navegador antes de subir y
+  // viajan en requests que caben en el presupuesto de 4 MB del payload:
+  //   - uploadGalleryImageAction (admin): masters normalizados en cliente a
+  //     WebP q0.90 ≤4000 px por cara (≤8000 px la tira) ajustados al presupuesto.
+  //   - uploadProductImagesAction (admin): 1 foto comprimida por request
+  //     (antes lotes de ≤4 × 5 MB = 20 MB — reventaban en Vercel).
+  //   - uploadDesignPreviewPagesAction: LOTES de páginas ≤3 MB con
+  //     pageOffset/totalPages (antes ≤24 × 1 MB = 24 MB en un solo request).
+  //   - finalizeDesignAction: preview ≤8 MB (observado PRD: ~1 MB) + slot
+  //     inline ≤20 MB (name-editor, una sola lámina).
+  //   - uploadDesignAssetAction: 1 foto preparada en cliente ≤4 MB (las HEIC
+  //     que el navegador no decodifica van por ticket firmado directo a
+  //     Storage — misma auditoría).
   //   - saveCanvasAction y demás: JSON ≤2 MB.
-  // Global = 32 MB: la excepción de galería (30 MB) + overhead. Bajar más exige
-  // partir la subida de masters 2-caras en dos llamadas — diferido, documentado.
+  // El global queda en 32 MB como colchón defensivo, no como contrato: ningún
+  // flujo puede acercarse a él en producción sin morir antes en la plataforma.
   //
   // POR QUÉ FormData en finalize en vez de dataURL JSON:
   //   - React Flight protocol (Server Actions wire format) tiene un límite

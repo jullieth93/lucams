@@ -70,6 +70,11 @@ import {
   reorderGalleryImageAction,
 } from "./actions";
 import { GalleryDetailModal } from "./gallery-detail-modal";
+import {
+  compressImageForUpload,
+  shrinkToFitUploadBudget,
+  UPLOAD_PAYLOAD_BUDGET_BYTES,
+} from "@/app/estudio/[slug]/client-image-compress";
 
 type Item = {
   id: string;
@@ -244,28 +249,58 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
       setError("Ponle un nombre al diseño (2–60 caracteres).");
       return;
     }
-    const fd = new FormData();
-    fd.set("tag", tag);
-    fd.set("name", name.trim());
-    // Fase 5 — "Aplica a": "" = todas las variantes (sin clave en el FormData).
-    if (variantFilterJson) fd.set("variantFilter", variantFilterJson);
-    if (effectiveMode === "strip") {
-      if (!stripFile) {
-        setError("Selecciona la tira con las dos caras.");
-        return;
-      }
-      fd.set("mode", "strip");
-      fd.set("file", stripFile);
-      if (swapFaces) fd.set("swapFaces", "1");
-    } else {
-      if (!fileA) {
-        setError("Selecciona la imagen principal (cara A).");
-        return;
-      }
-      fd.set("file", fileA);
-      if (needsFaceB && fileB) fd.set("fileB", fileB);
+    if (effectiveMode === "strip" && !stripFile) {
+      setError("Selecciona la tira con las dos caras.");
+      return;
+    }
+    if (effectiveMode !== "strip" && !fileA) {
+      setError("Selecciona la imagen principal (cara A).");
+      return;
     }
     startTransition(async () => {
+      // Auditoría 2026-11-08 — Vercel corta el body de la Server Action en
+      // ~4.5 MB y el master print-grade admite entradas de hasta 15 MB: se
+      // normaliza en el navegador al MISMO spec del servidor (WebP q0.90,
+      // borde largo ≤4000 px por cara; la tira doble-altura ≤8000 px) y si
+      // aun así no cabe en el presupuesto del payload se reduce en escalera
+      // sin bajar de q0.68. El servidor re-valida y re-codifica igual que
+      // antes (uploadGalleryMasterImage) — esto solo evita el 413.
+      const strip = effectiveMode === "strip";
+      const spec = { maxEdgePx: strip ? 8000 : 4000, quality: 0.9 };
+      const shrinkOpts = { maxEdgePx: spec.maxEdgePx, qualities: [0.9, 0.82, 0.75, 0.68] };
+      const prepare = async (f: File): Promise<File | null> => {
+        const compressed = await compressImageForUpload(f, spec);
+        if (compressed.size <= UPLOAD_PAYLOAD_BUDGET_BYTES) return compressed;
+        return shrinkToFitUploadBudget(compressed, shrinkOpts);
+      };
+      const tooBig =
+        "es demasiado grande y este navegador no pudo comprimirla. Exporta el diseño como WebP o JPG de máximo 4000 px por cara e inténtalo de nuevo.";
+      const preparedA = await prepare(strip ? stripFile! : fileA!);
+      if (!preparedA) {
+        setError(`La imagen ${strip ? "de la tira " : "principal "}${tooBig}`);
+        return;
+      }
+      let preparedB: File | null = null;
+      if (!strip && needsFaceB && fileB) {
+        preparedB = await prepare(fileB);
+        if (!preparedB) {
+          setError(`La imagen de la cara B ${tooBig}`);
+          return;
+        }
+      }
+      const fd = new FormData();
+      fd.set("tag", tag);
+      fd.set("name", name.trim());
+      // Fase 5 — "Aplica a": "" = todas las variantes (sin clave en el FormData).
+      if (variantFilterJson) fd.set("variantFilter", variantFilterJson);
+      if (strip) {
+        fd.set("mode", "strip");
+        fd.set("file", preparedA);
+        if (swapFaces) fd.set("swapFaces", "1");
+      } else {
+        fd.set("file", preparedA);
+        if (preparedB) fd.set("fileB", preparedB);
+      }
       const res = await uploadGalleryImageAction(fd);
       if (res.error) setError(res.error);
       else resetForm();

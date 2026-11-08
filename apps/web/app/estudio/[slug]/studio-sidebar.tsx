@@ -74,6 +74,7 @@ import {
 } from "./lib/store";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 import { processPhotoFiles } from "./lib/upload-photo-pipeline";
+import { uploadPhotoDirectToStorage } from "./lib/upload-photo-direct";
 import { trackStudioFunnelStep } from "@/lib/funnel-client";
 import type { StudioAsset, StudioTemplate } from "./types";
 import { PhotoQualityModal } from "./photo-quality-modal";
@@ -484,6 +485,9 @@ export function StudioSidebar({
         designId,
         rightsAccepted,
         upload: uploadDesignAssetAction,
+        // 2026-11-08 — fallback HEIC ~4.5–10 MB sin decode en el navegador:
+        // subida directa a Storage con ticket firmado (ver lib/upload-photo-direct).
+        uploadDirect: uploadPhotoDirectToStorage,
         onReady: (outcome) => {
           setUploading((n) => Math.max(0, n - 1));
           if (!outcome.ok) {

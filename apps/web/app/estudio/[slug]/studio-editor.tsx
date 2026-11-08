@@ -2369,8 +2369,10 @@ export function StudioEditor({
         }
         finalizedRef.current = true;
 
-        // 2026-10-13 — páginas POR UNIDAD del preview: se suben en un request
-        // APARTE (uploadDesignPreviewPagesAction) para el "Ver" paginado del
+        // 2026-10-13 — páginas POR UNIDAD del preview: se suben en requests
+        // APARTE del finalize (uploadDesignPreviewPagesAction, por lotes desde
+        // la auditoría 2026-11-08 — un set completo no cabe en el body de
+        // ~4.5 MB que Vercel admite por request) para el "Ver" paginado del
         // carrito y la miniatura representativa de la línea. Reusa el loader
         // perezoso de la modal (las páginas ya navegadas vienen cacheadas en
         // previewPages; las pendientes se generan acá, una sola vez — el
@@ -2385,14 +2387,7 @@ export function StudioEditor({
             const pageBlobs = await Promise.all(
               previewPages.map(async (p, i) => dataUrlToBlob(p.dataUrl ?? (await loader(i)))),
             );
-            await uploadPreviewPagesWithRetry(designId, () => {
-              const pagesForm = new FormData();
-              pagesForm.set("designId", designId);
-              pageBlobs.forEach((blob, i) =>
-                pagesForm.set(`page_${i}`, blob, `page-${i + 1}.webp`),
-              );
-              return pagesForm;
-            });
+            await uploadPreviewPagesWithRetry(designId, pageBlobs);
           } catch (pagesErr) {
             console.error("[studio.preview.pages-upload]", pagesErr);
           }

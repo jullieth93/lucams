@@ -201,8 +201,12 @@ export default async function globalSetup() {
   }
 
   // 4. Manifiesto para el teardown (borrado garantizado de los efímeros).
+  // POR RUN (auditoría 2026-11-08): dos corridas concurrentes del mismo
+  // ambiente ya no se pisan el manifest.json único. El run queda en
+  // process.env para que el teardown de ESTE proceso sepa cuál es el suyo.
+  process.env.E2E_SETUP_RUN = run;
   writeFileSync(
-    authManifestPath(env),
+    authManifestPath(env, run),
     JSON.stringify(
       {
         run,

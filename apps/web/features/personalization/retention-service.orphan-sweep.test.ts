@@ -80,6 +80,35 @@ describe("classifyStorageOrphan (reglas del one-shot 2026-10-12)", () => {
     ).toBe("pending-vencido");
   });
 
+  // 2026-11-08 — área de paso de la subida directa HEIC: misma gracia que
+  // pending/ (el ingest corre segundos después del PUT; sin gracia el barrido
+  // podría borrar el objeto a mitad de camino).
+  it("customer-uploads _staging/: misma gracia de 7 días que pending/", () => {
+    const fresh = daysAgo(ORPHAN_PENDING_AFTER_DAYS - 1);
+    const stale = daysAgo(ORPHAN_PENDING_AFTER_DAYS + 1);
+    expect(
+      classifyStorageOrphan("customer-uploads", "owner1/_staging/uuid-1", fresh, live, NOW),
+    ).toBeNull();
+    expect(
+      classifyStorageOrphan("customer-uploads", "owner1/_staging/uuid-1", stale, live, NOW),
+    ).toBe("pending-vencido");
+  });
+
+  // 2026-11-08 — los ZIPs de taller (_bundles/<orderId>/) no anclan a ningún
+  // Design y se regeneran por descarga: NUNCA son huérfanos de este barrido
+  // (su higiene la hace el re-upload del mismo pedido).
+  it("production-assets _bundles/ nunca es huérfano", () => {
+    expect(
+      classifyStorageOrphan(
+        "production-assets",
+        "_bundles/ord_123/pedido-x.zip",
+        daysAgo(400),
+        live,
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
   it("bucket desconocido nunca es huérfano", () => {
     expect(classifyStorageOrphan("cms-media", "x/y.jpg", daysAgo(999), new Set(), NOW)).toBeNull();
   });

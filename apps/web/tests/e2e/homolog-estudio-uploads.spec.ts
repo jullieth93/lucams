@@ -305,8 +305,10 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
     );
 
     // 9. Verificación DB de la ventana de la corrida: exactamente 5 assets,
-    // en orden, con los formatos esperados (HEIC→JPEG transcodificado) y la
-    // compresión del grande aplicada (≤2400px, <4 MB).
+    // en orden, con el master UNIFORME WebP (auditoría 2026-11-08: el servidor
+    // normaliza TODO a WebP q92 conservando dimensiones — antes el formato
+    // quedaba según la entrada y el HEIC salía JPEG) y la compresión del grande
+    // aplicada (≤2400px, <4 MB).
     const assets = await db().designAsset.findMany({
       where: { createdAt: { gte: new Date(windowStart) } },
       orderBy: { createdAt: "asc" },
@@ -316,21 +318,20 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
     createdStoragePaths.push(...assets.map((a) => a.storageUrl));
 
     const [jpg, png, webp, heic, big] = assets;
-    // El JPG del fixture (800×600) queda bajo la resolución de impresión del
-    // Polaroid (~709px @300DPI para 6cm) y el upscale en línea (C2, 2026-09-15)
-    // lo re-codifica a WebP cuando el browser lo soporta: ambos mimes son el
-    // comportamiento correcto.
-    expect(["image/jpeg", "image/webp"]).toContain(jpg!.mimeType);
-    expect(png!.mimeType).toBe("image/png");
+    // Masters uniformes WebP q92 (2026-11-08): jpg/png/webp/heic convergen al
+    // mismo codec — imprenta recibe los mismos píxeles (300 DPI intactos) y el
+    // bucket deja de mezclar formatos.
+    expect(jpg!.mimeType).toBe("image/webp");
+    expect(png!.mimeType).toBe("image/webp");
     expect(webp!.mimeType).toBe("image/webp");
-    expect(heic!.mimeType, "el HEIC quedó transcodificado a JPEG").toBe("image/jpeg");
+    expect(heic!.mimeType, "el HEIC quedó normalizado a WebP").toBe("image/webp");
     record(
       "db-formats",
       true,
       `jpg=${jpg!.mimeType} png=${png!.mimeType} webp=${webp!.mimeType} heic→${heic!.mimeType}`,
     );
-    // El bigJpg (>2 MB) pasa por el compresor en línea, que también entrega WebP.
-    expect(["image/jpeg", "image/webp"]).toContain(big!.mimeType);
+    // El bigJpg (>2 MB) pasa por el compresor en línea y el servidor sella WebP.
+    expect(big!.mimeType).toBe("image/webp");
     expect(Math.max(big!.width, big!.height)).toBeLessThanOrEqual(2400);
     expect(big!.sizeBytes).toBeLessThan(4 * MB);
     record(

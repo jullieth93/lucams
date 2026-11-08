@@ -426,7 +426,7 @@ export async function listGalleryThumbPaths(folder: string): Promise<Set<string>
 // con la columna metadata.owner_id que las policies RLS verifican.
 
 const CUSTOMER_UPLOADS_BUCKET = "customer-uploads";
-const CUSTOMER_UPLOAD_MAX_BYTES = 10 * 1024 * 1024; // 10 MB (alineado con M.1.b)
+export const CUSTOMER_UPLOAD_MAX_BYTES = 10 * 1024 * 1024; // 10 MB (alineado con M.1.b)
 const CUSTOMER_UPLOAD_ALLOWED_MIME = new Set([
   "image/jpeg",
   "image/png",
@@ -484,7 +484,9 @@ export function customerUploadCanvasPath(masterPath: string): string {
  * Pipeline:
  *   1. Valida tamaño + mime
  *   2. Strip EXIF con sharp + normalize orientation
- *   3. Convierte HEIC/HEIF a JPEG (Safari iOS los sube en este formato)
+ *   3. Master UNIFORME WebP q92 (auditoría 2026-11-08 — antes conservaba el
+ *      formato de entrada y el HEIC salía JPEG): las dimensiones no se tocan,
+ *      así que los px de 300 DPI que exige imprenta quedan intactos.
  *   4. Upload a Supabase Storage con metadata.owner_id (alineado RLS)
  *   5. Genera signed URL TTL 1h para uso en editor
  *
@@ -539,7 +541,12 @@ export async function uploadCustomerPhoto(opts: {
     const out = await normalizeRasterImage(opts.buffer, {
       maxPixels: RASTER_PIXEL_BUDGET.photo,
       maxInputBytes: CUSTOMER_UPLOAD_MAX_BYTES,
-      output: { format: "keep" }, // formato REAL sniffado (HEIC ya mapea a JPEG adentro)
+      // Auditoría 2026-11-08 — master UNIFORME WebP q92: las dimensiones (los px
+      // de 300 DPI que exige imprenta) NO se tocan; solo cambia el codec. Antes
+      // "keep" conservaba el formato sniffado (JPEG/PNG pesados) y la política
+      // quedaba inconsistente con los masters de galería (WebP q90 print-grade).
+      // WebP q92 iguala o supera a JPEG q92 con ~30% menos bytes.
+      output: { format: "webp", quality: 92 },
     });
     processed = out.buffer;
     finalMime = out.mime;
@@ -700,6 +707,69 @@ export async function refreshCustomerUploadSignedUrl(path: string): Promise<stri
   return data.signedUrl;
 }
 
+// ──────────── Área de paso de subidas DIRECTAS del cliente (auditoría 2026-11-08) ────────────
+//
+// Un HEIC de iPhone entre ~4.5 y 10 MB no cabe en el body de una Server Action
+// (techo de plataforma de Vercel) y Chrome/Firefox no lo decodifican para
+// comprimirlo en el navegador — ese upload moría con el 413 genérico o con el
+// fail-closed del pipeline. La salida es el patrón de staged-slots (ADR-081):
+// el servidor emite una URL firmada de subida para `<ownerId>/_staging/<uuid>`,
+// el navegador hace PUT directo a Storage (sin techo de función) y una segunda
+// acción lo ingiere con el MISMO pipeline de uploadCustomerPhoto (transcode
+// HEIC→JPEG incluido) y borra el área de paso.
+//
+// El segmento `_staging` queda cubierto por la higiene de siempre: el barrido
+// de huérfanos de retention-service recoge los objetos que ningún DesignAsset
+// referencia (fotos personales — Ley 1581: no se conservan sin finalidad).
+
+export const CUSTOMER_UPLOAD_STAGING_SEGMENT = "_staging";
+
+/** Path del área de paso de una subida directa (uuid sin extensión; el mime viaja aparte). */
+export function customerPhotoStagingPath(ownerId: string): string {
+  return `${ownerId}/${CUSTOMER_UPLOAD_STAGING_SEGMENT}/${randomUUID()}`;
+}
+
+/** ¿`path` pertenece al área de paso de ESTE dueño? Guardia anti-traversal del ingest. */
+export function isCustomerPhotoStagingPath(ownerId: string, path: string): boolean {
+  return new RegExp(
+    `^${ownerId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/${CUSTOMER_UPLOAD_STAGING_SEGMENT}/[0-9a-f-]{36}$`,
+  ).test(path);
+}
+
+/** Emite la URL firmada de subida para el área de paso (una por foto). */
+export async function createCustomerPhotoStagingTicket(
+  ownerId: string,
+): Promise<{ path: string; uploadUrl: string }> {
+  const path = customerPhotoStagingPath(ownerId);
+  const { data, error } = await supabaseService.storage
+    .from(CUSTOMER_UPLOADS_BUCKET)
+    .createSignedUploadUrl(path);
+  if (error || !data) {
+    throw new StorageError("UPLOAD_FAILED", `No se pudo firmar la subida: ${error?.message}`);
+  }
+  return { path, uploadUrl: data.signedUrl };
+}
+
+/** Descarga el objeto del área de paso (service role). null si no existe o falla. */
+export async function downloadStagedCustomerPhoto(path: string): Promise<Buffer | null> {
+  const { data, error } = await supabaseService.storage
+    .from(CUSTOMER_UPLOADS_BUCKET)
+    .download(path);
+  if (error || !data) return null;
+  return Buffer.from(await data.arrayBuffer());
+}
+
+/** Borra el objeto del área de paso. Best-effort: el barrido de huérfanos lo recoge si falla. */
+export async function discardStagedCustomerPhoto(path: string): Promise<void> {
+  const { error } = await supabaseService.storage.from(CUSTOMER_UPLOADS_BUCKET).remove([path]);
+  if (error) {
+    logger.warn(
+      { event: "storage.customer_upload.staging_cleanup_fail", path, err: error.message },
+      "No se pudo limpiar el área de paso de la subida directa",
+    );
+  }
+}
+
 const PRODUCTION_ASSETS_BUCKET = "production-assets";
 
 /**
@@ -734,4 +804,83 @@ export async function downloadProductionAsset(path: string): Promise<Buffer | nu
     .download(path);
   if (error || !data) return null;
   return Buffer.from(await data.arrayBuffer());
+}
+
+// ──────────── ZIP de taller fuera del response de la función (auditoría 2026-11-08) ────────────
+//
+// Vercel corta cualquier response de función en ~4.5 MB y el ZIP de un pedido
+// real (N PNG 300 DPI de 5-10 MB + hoja de armado) lo supera siempre. La ruta
+// /admin/pedidos/<n>/produccion lo sube a `_bundles/<orderId>/` del bucket
+// PRIVADO production-assets (migración 059: mime application/zip, 200 MB) y
+// responde 302 a una URL firmada de TTL corto — el admin lo recibe como
+// descarga igual (el detalle enlaza la ruta con <a href>).
+
+/** Carpeta del ZIP de un pedido dentro de production-assets. */
+function orderBundlePrefix(orderId: string): string {
+  return `_bundles/${orderId}`;
+}
+
+/**
+ * Sube el ZIP de producción del pedido y devuelve su path. Antes borra los
+ * ZIPs previos del MISMO pedido: el área se regenera por descarga y ninguna
+ * purga de retención conoce `_bundles/` — sin la limpieza cada click dejaba
+ * un ZIP huérfano. La limpieza es best-effort: un fallo ahí no bloquea la
+ * descarga (a lo sumo queda un ZIP viejo extra hasta la próxima).
+ */
+export async function uploadOrderProductionBundle(opts: {
+  orderId: string;
+  filename: string;
+  content: Buffer;
+}): Promise<string> {
+  const prefix = orderBundlePrefix(opts.orderId);
+  try {
+    const { data: prev } = await supabaseService.storage
+      .from(PRODUCTION_ASSETS_BUCKET)
+      .list(prefix);
+    if (prev && prev.length > 0) {
+      await supabaseService.storage
+        .from(PRODUCTION_ASSETS_BUCKET)
+        .remove(prev.map((f) => `${prefix}/${f.name}`));
+    }
+  } catch (err) {
+    logger.warn(
+      { event: "storage.production_bundle.cleanup_fail", orderId: opts.orderId, err: String(err) },
+      "No se pudieron limpiar los ZIPs previos del pedido",
+    );
+  }
+
+  const path = `${prefix}/${opts.filename}`;
+  const { error } = await supabaseService.storage
+    .from(PRODUCTION_ASSETS_BUCKET)
+    .upload(path, opts.content, {
+      contentType: "application/zip",
+      cacheControl: "0", // se regenera por descarga; el signed URL de TTL corto es la puerta
+      upsert: true,
+    });
+  if (error) {
+    throw new StorageError("UPLOAD_FAILED", `Error guardando el ZIP: ${error.message}`);
+  }
+  return path;
+}
+
+/**
+ * URL firmada de descarga del ZIP (TTL corto: la ruta la genera al momento del
+ * click). `download` fuerza attachment con el nombre de archivo — el navegador
+ * guarda el ZIP en vez de navegar a él.
+ */
+export async function signOrderProductionBundle(
+  path: string,
+  filename: string,
+  ttlSeconds = 300,
+): Promise<string> {
+  const { data, error } = await supabaseService.storage
+    .from(PRODUCTION_ASSETS_BUCKET)
+    .createSignedUrl(path, ttlSeconds, { download: filename });
+  if (error || !data) {
+    throw new StorageError(
+      "UPLOAD_FAILED",
+      `No se pudo firmar la descarga del ZIP: ${error?.message ?? "unknown"}`,
+    );
+  }
+  return data.signedUrl;
 }

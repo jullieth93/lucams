@@ -2430,8 +2430,12 @@ export async function getSharedDesign(shareToken: string) {
 export async function saveDesignPreviewPages(opts: {
   designId: string;
   owner: { customerId: string | null; sessionId: string | null };
-  /** Buffers de las páginas EN ORDEN (página 1 = primera unidad). */
+  /** Buffers del LOTE de páginas EN ORDEN (página offset+1 = primera del lote). */
   pages: Buffer[];
+  /** Posición 0-based del lote dentro del set completo (default 0 — set único). */
+  offset?: number;
+  /** Total de páginas del set (default: las de este lote — compat pre-lotes). */
+  totalPages?: number;
 }): Promise<{ ok: true; pagesCount: number } | { ok: false; message: string }> {
   const design = await getOwnedDesign(opts.designId, opts.owner);
   // Solo diseños finalizados: las páginas son del canvas CONFIRMADO (un DRAFT
@@ -2440,22 +2444,40 @@ export async function saveDesignPreviewPages(opts: {
   if (!design || (design.status !== "READY" && design.status !== "USED_IN_ORDER")) {
     return { ok: false, message: "Diseño no encontrado" };
   }
-  if (opts.pages.length < 1 || opts.pages.length > PREVIEW_PAGES_MAX) {
+  const offset = opts.offset ?? 0;
+  const totalPages = opts.totalPages ?? opts.pages.length;
+  if (
+    opts.pages.length < 1 ||
+    offset < 0 ||
+    totalPages > PREVIEW_PAGES_MAX ||
+    offset + opts.pages.length > totalPages
+  ) {
     return { ok: false, message: "Número de páginas inválido" };
   }
-  const uploaded = await uploadPreviewPages(design.id, opts.pages);
+  const uploaded = await uploadPreviewPages(design.id, opts.pages, offset);
   if (uploaded === null) {
     return { ok: false, message: "No pudimos procesar las páginas del preview" };
   }
-  await prisma.design.update({
-    where: { id: design.id },
-    // 2026-11-03 (ADR-191): ya no se generan artefactos watermark — solo se
-    // sella el conteo de páginas limpias.
-    data: { previewPagesCount: uploaded },
-  });
+  // Lotes (2026-11-08): solo el lote FINAL sella previewPagesCount — sellar
+  // antes exhibiría un pager con huecos si un lote intermedio no llega.
+  if (offset + uploaded === totalPages) {
+    await prisma.design.update({
+      where: { id: design.id },
+      // 2026-11-03 (ADR-191): ya no se generan artefactos watermark — solo se
+      // sella el conteo de páginas limpias.
+      data: { previewPagesCount: totalPages },
+    });
+  }
   logger.info(
-    { event: "design.preview_pages.saved", designId: design.id, pagesCount: uploaded },
-    "Páginas por unidad del preview subidas",
+    {
+      event: "design.preview_pages.saved",
+      designId: design.id,
+      offset,
+      batchCount: uploaded,
+      totalPages,
+      sealed: offset + uploaded === totalPages,
+    },
+    "Lote de páginas del preview subido",
   );
-  return { ok: true, pagesCount: uploaded };
+  return { ok: true, pagesCount: totalPages };
 }

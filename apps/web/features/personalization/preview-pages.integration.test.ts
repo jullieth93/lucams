@@ -184,4 +184,58 @@ describe.skipIf(!hasDb)("saveDesignPreviewPages (2026-10-13)", () => {
     // Nada quedó subido del lote (el decode corre antes de subir cada página).
     expect(mock.uploads.slice(before).filter((u) => u.path.startsWith(designId))).toHaveLength(0);
   });
+
+  // Auditoría 2026-11-08 — subida POR LOTES (el body de una Server Action en
+  // Vercel tiene techo ~4.5 MB): cada lote lleva offset + totalPages y solo el
+  // lote final sella Design.previewPagesCount.
+  it("lotes: las páginas caen en su posición y el conteo solo se sella con el lote final", async () => {
+    const designId = await makeDesign("READY");
+    const before = mock.uploads.length;
+
+    const b1 = await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 10, g: 10, b: 10 }), await tinyWebp({ r: 20, g: 20, b: 20 })],
+      offset: 0,
+      totalPages: 3,
+    });
+    expect(b1).toEqual({ ok: true, pagesCount: 3 });
+    let design = await prisma.design.findUnique({ where: { id: designId } });
+    expect(design?.previewPagesCount).toBeNull(); // lote intermedio: NO se sella
+
+    const b2 = await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 30, g: 30, b: 30 })],
+      offset: 2,
+      totalPages: 3,
+    });
+    expect(b2).toEqual({ ok: true, pagesCount: 3 });
+    design = await prisma.design.findUnique({ where: { id: designId } });
+    expect(design?.previewPagesCount).toBe(3); // lote final: sella el TOTAL
+    const paths = mock.uploads.slice(before).map((u) => u.path);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        `${designId}/pages/01.webp`,
+        `${designId}/pages/02.webp`,
+        `${designId}/pages/03.webp`,
+      ]),
+    );
+  });
+
+  it("lote que excede el total declarado → ok:false sin subir nada", async () => {
+    const designId = await makeDesign("READY");
+    const before = mock.uploads.length;
+
+    const result = await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 1, g: 1, b: 1 }), await tinyWebp({ r: 2, g: 2, b: 2 })],
+      offset: 2,
+      totalPages: 3,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(mock.uploads.slice(before).filter((u) => u.path.startsWith(designId))).toHaveLength(0);
+  });
 });

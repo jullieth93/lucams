@@ -50,19 +50,13 @@ describe.skipIf(!HAS_SUPABASE)(
       const suffix = randomUUID().slice(0, 8);
       const staffEmail = `staff-taller-${suffix}@lucams.test`;
 
-      const [customersBefore, contactsBefore] = await Promise.all([
-        prisma.customer.count(),
-        prisma.contact.count(),
-      ]);
-
       const provisioned = await provisionStaffAdmin(staffEmail, "PRINT_WORKSHOP", "actor_super_1");
       createdAdminIds.push(provisioned.id);
       createdAuthUserIds.push(provisioned.supabaseUserId);
 
-      const [customersAfter, contactsAfter, customerMatch] = await Promise.all([
-        prisma.customer.count(),
-        prisma.contact.count(),
+      const [customerMatch, contactMatches] = await Promise.all([
         prisma.customer.findUnique({ where: { email: staffEmail } }),
+        prisma.contact.count({ where: { primaryEmail: staffEmail } }),
       ]);
 
       expect(provisioned.email).toBe(staffEmail);
@@ -70,10 +64,13 @@ describe.skipIf(!HAS_SUPABASE)(
       expect(provisioned.isActive).toBe(true);
       expect(provisioned.supabaseUserId).toBeTruthy();
 
-      // Invariante crítica: 0 filas creadas en Customer y 0 filas creadas en Contact
+      // Invariante crítica: 0 filas creadas en Customer y 0 filas creadas en Contact.
+      // La verificación va sobre el CORREO del staff, no sobre el conteo global de la
+      // tabla: los archivos de test corren en paralelo contra la MISMA base y crean
+      // customers/contacts propios entre el before y el after (flake medido
+      // 2026-11-08: 11→13 sin que este spec tocara nada).
       expect(customerMatch).toBeNull();
-      expect(customersAfter).toBe(customersBefore);
-      expect(contactsAfter).toBe(contactsBefore);
+      expect(contactMatches).toBe(0);
 
       // Segundo intento sobre un admin ya existente → rechazo limpio de validación
       await expect(
