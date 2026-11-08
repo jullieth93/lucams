@@ -400,7 +400,7 @@
 - [ ] Workflow mensual `.github/workflows/dr-drill.yml` en verde: descarga el último respaldo real desde R2, descifra, restaura en PostgreSQL aislado y verifica integridad de tablas y conteos
 - [ ] Simulacro manual de restauración documentado temporalmente en `tmp/dr-drill-<fecha>.md` (limpiar luego con `make clean-tmp`)
 - [ ] Tiempo total de recuperación (RTO) medido `< 30 min`
-- [ ] PITR continuo nativo de 7 días en Supabase Pro verificado cuando `lucams-prod` opere en plan Pro
+- [ ] PITR en `lucams-prod` — add-on pago NO incluido en Pro ($100/mes por 7 días + compute Small; verificado por Management API 2026-11-08). **Decisión owner 2026-11-08: no activado**; la cobertura actual es backups diarios nativos (7 días) + dumps cifrados en R2 (30 días).
 
 ---
 

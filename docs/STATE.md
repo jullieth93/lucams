@@ -110,9 +110,9 @@
 
 1. **Recovery codes MFA admin:** regenerar códigos de cuentas antiguas para retirar el fallback
    legacy SHA-256 en `apps/web/features/admin-mfa/recovery-codes.ts`.
-2. **Leaked Password Protection nativo:** el proyecto `lucams-prod` ya está en plan Pro
-   (auditoría 2026-11-08), así que la activación en Supabase Auth queda DESBLOQUEADA — pendiente
-   decidir y activar (hoy cubierto por `apps/web/lib/pwned-passwords.ts` con HIBP k-anonymity).
+2. **Leaked Password Protection nativo:** ACTIVO en `lucams-prod` desde la auditoría 2026-11-08
+   (`password_hibp_enabled: true` vía Management API — el proyecto ya está en plan Pro). El fallback
+   `apps/web/lib/pwned-passwords.ts` (HIBP k-anonymity) queda como segunda capa.
 3. **Mejoras opcionales:** evaluar `ADR-118` (unificar preview cliente con renderer servidor),
    conectar `lib/texture-resolution.ts` en `buildMagnetTextures`, aplicar `Category.visibleFilters`
    en `GET /api/catalog/filters` y sumar vectores `.svg` en `apps/web/public/brand/`.
