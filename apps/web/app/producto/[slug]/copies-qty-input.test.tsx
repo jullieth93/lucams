@@ -139,4 +139,61 @@ describe("CopiesQtyInput — bola navideña", () => {
     expect(qtyHidden().value).toBe("2");
     expect(screen.getByText("Cada bola se diseña por separado en el Estudio")).toBeInTheDocument();
   });
+
+  // Bug owner 2026-11-07: el stepper mostraba siempre múltiplos del precio base
+  // (3 bolas = $30.000) aunque la promo por volumen cobra $27.000 en el carrito.
+  it("aplica la promo por volumen al total vivo (3×$27.000, 5×$40.000) con el base tachado", () => {
+    render(
+      <SelectedVariantProvider variantIds={["v1"]} initialId="v1">
+        <CopiesQtyInput
+          max={25}
+          unitNoun={{ one: "bola", many: "bolas", label: "Bolas" }}
+          fallbackUnitPrice={1_000_000}
+          volumeTiers={[
+            { minQty: 3, unitPrice: 900_000, savingsPct: 10 },
+            { minQty: 5, unitPrice: 800_000, savingsPct: 20 },
+          ]}
+        />
+      </SelectedVariantProvider>,
+    );
+    // 1-2 bolas: sin nivel alcanzado → total plano, nada tachado.
+    expect(screen.getByText("$ 10.000")).toBeInTheDocument();
+    expect(document.querySelector(".line-through")).toBeNull();
+
+    const increase = screen.getByLabelText("Aumentar bolas");
+    fireEvent.click(increase);
+    expect(screen.getByText("$ 20.000")).toBeInTheDocument();
+
+    fireEvent.click(increase); // 3 bolas → nivel 3+ ($9.000 c/u)
+    expect(screen.getByText("$ 27.000")).toBeInTheDocument();
+    expect(screen.getByText("$ 30.000")).toHaveClass("line-through");
+    expect(screen.getByText("$ 9.000 c/u")).toBeInTheDocument();
+
+    fireEvent.click(increase);
+    fireEvent.click(increase); // 5 bolas → nivel 5+ ($8.000 c/u)
+    expect(screen.getByText("$ 40.000")).toBeInTheDocument();
+    expect(screen.getByText("$ 50.000")).toHaveClass("line-through");
+    expect(screen.getByText("$ 8.000 c/u")).toBeInTheDocument();
+
+    // Bajar del umbral restaura el precio base sin tachado.
+    fireEvent.click(screen.getByLabelText("Disminuir bolas"));
+    fireEvent.click(screen.getByLabelText("Disminuir bolas"));
+    fireEvent.click(screen.getByLabelText("Disminuir bolas")); // 2 bolas
+    expect(screen.getByText("$ 20.000")).toBeInTheDocument();
+    expect(document.querySelector(".line-through")).toBeNull();
+  });
+
+  it("un nivel que no rebaja el unitario de la variante NO se aplica (nunca subir el precio)", () => {
+    render(
+      <SelectedVariantProvider variantIds={["v1"]} initialId="v1">
+        <CopiesQtyInput
+          unitPriceByVariantId={{ v1: 700_000 }}
+          volumeTiers={[{ minQty: 2, unitPrice: 800_000, savingsPct: 1 }]}
+        />
+      </SelectedVariantProvider>,
+    );
+    fireEvent.click(screen.getByLabelText("Aumentar unidades"));
+    expect(screen.getByText("$ 14.000")).toBeInTheDocument();
+    expect(document.querySelector(".line-through")).toBeNull();
+  });
 });

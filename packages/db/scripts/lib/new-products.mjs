@@ -301,9 +301,11 @@ export function buildNewProductTemplates(productIds) {
   const ornamentId = productIds[CHRISTMAS_ORNAMENT_SLUG] ?? null;
   const miniBookId = productIds[MINI_BOOK_SLUG] ?? null;
   return [
-    ...["foto-circular", "nieve", "luces", "reno"].map((style, index) =>
-      ornamentTemplate(style, ornamentId, index + 1),
-    ),
+    // 2026-11-07 (owner): la bola ofrece SOLO «Foto circular» — nieve/luces/reno
+    // eran «muy básicos» y salen del catálogo (soft-delete en STG/LOCAL; un
+    // diseño más elaborado llega después). ornamentTemplate conserva el
+    // machinery de estilos para esa futura plantilla.
+    ...["foto-circular"].map((style, index) => ornamentTemplate(style, ornamentId, index + 1)),
     ...MINI_BOOK_SIZES.flatMap((size) => [
       miniTemplate(size, "clasico", miniBookId),
       miniTemplate(size, "fantasia", miniBookId),

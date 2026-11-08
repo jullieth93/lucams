@@ -627,7 +627,18 @@ export async function buildMagnetTextures(
       const path = buildShapePath(shape, 0, 0, texW, texH);
       ctx.save();
       ctx.clip(path);
+      // 2026-11-07 (bug owner — bola 3D con el diseño «totalmente negro»): un
+      // píxel TRANSPARENTE dentro de la silueta se renderiza NEGRO en las
+      // escenas 3D (los materiales no mezclan alfa; mismo modo de falla
+      // documentado en magnet-3d.ts: «transparente (0,0,0,0) → negro»), aunque
+      // en el lienzo 2D se vea "correcto" por el fondo claro de la página.
+      // Relleno crema BAJO el diseño (destination-over, solo dentro de la
+      // silueta): coincide con el inserto/vinilo físico blanco y no toca la
+      // transparencia de afuera, que las escenas usan para la forma.
       ctx.drawImage(img, 0, 0, texW, texH);
+      ctx.globalCompositeOperation = "destination-over";
+      ctx.fillStyle = "#FAF8F5"; // crema del inserto físico de la bola / vinilo
+      ctx.fillRect(0, 0, texW, texH);
       ctx.restore();
       resolve(c.toDataURL("image/png"));
     });

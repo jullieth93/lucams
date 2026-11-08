@@ -744,4 +744,46 @@ describe("StudioPreviewModal — bola navideña dúplex", () => {
     expect(screen.queryByText(/separador/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/doblez|doblado/i)).not.toBeInTheDocument();
   });
+
+  // Bug owner 2026-11-07 — la modal mostraba unitario × N plano ($30.000 por 3
+  // bolas) mientras el carrito cobraba la promo por volumen ($27.000).
+  it("aplica la promo por volumen al total (3 bolas → $27.000 con el plano tachado)", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productName="Bola Navideña Personalizada"
+        productKind="ornaments"
+        slotCount={6}
+        unitCount={3}
+        unitPrice={1_000_000}
+        priceMultiplier={3}
+        unitNoun={{ one: "bola", many: "bolas", feminine: true }}
+        volumeTiers={[
+          { minQty: 3, unitPrice: 900_000, savingsPct: 10 },
+          { minQty: 5, unitPrice: 800_000, savingsPct: 20 },
+        ]}
+      />,
+    );
+    expect(screen.getByText(cop(2_700_000))).toBeInTheDocument();
+    expect(screen.getByText(cop(3_000_000))).toHaveClass("line-through");
+    expect(screen.getByText(`${cop(900_000)} c/u`)).toBeInTheDocument();
+  });
+
+  it("sin nivel alcanzado (2 bolas) el total queda plano y nada se tacha", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productName="Bola Navideña Personalizada"
+        productKind="ornaments"
+        slotCount={4}
+        unitCount={2}
+        unitPrice={1_000_000}
+        priceMultiplier={2}
+        unitNoun={{ one: "bola", many: "bolas", feminine: true }}
+        volumeTiers={[{ minQty: 3, unitPrice: 900_000, savingsPct: 10 }]}
+      />,
+    );
+    expect(screen.getByText(cop(2_000_000))).toBeInTheDocument();
+    expect(document.querySelector(".line-through")).toBeNull();
+  });
 });
