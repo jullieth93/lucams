@@ -6,12 +6,12 @@
 
 ## 1. Topología de los 3 entornos
 
-Lucams opera tres entornos aislados sobre **PostgreSQL 17** (los planes alojados corren en AWS `us-east-1`, co-localizados con las funciones `iad1` de Vercel; ver [`./vercel.md`](./vercel.md)):
+Lucams opera tres entornos aislados sobre **PostgreSQL 17** (los proyectos alojados corren en AWS **`us-east-2` (Ohio)** — corregido en la auditoría 2026-11-08: la doc decía `us-east-1`, pero ambos poolers resuelven en `us-east-2`, `aws-0` STG / `aws-1` PRD; las funciones de Vercel siguen en `iad1`/`us-east-1`, ver [`./vercel.md`](./vercel.md)):
 
 | Entorno                | Identificador (`project_ref` / ID)                     | Región / Puertos                                                     | Propósito y llaves                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ------------------------------------------------------ | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Producción (`PRD`)** | `zxkucphbsfygakgxcnik`                                 | `us-east-1` (Virginia del Norte)                                     | Base de datos viva de `lucamsshop.com`. Usa llaves modernas de Supabase (`sb_publishable_*` en `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `sb_secret_*` en `SUPABASE_SERVICE_ROLE_KEY`; doc oficial: https://supabase.com/docs/guides/api/api-keys, verificado 2026-10-20). La introspección del esquema OpenAPI en `/rest/v1/` está bloqueada para la llave publishable. |
-| **Staging (`STG`)**    | `mjbdiqdkykhsixvqlrrp`                                 | `us-east-1` (Virginia del Norte)                                     | Respalda los despliegues Preview de Vercel (`develop` y PRs). Tiene desprogramados los 5 crons que emiten correos a clientes y aloja además el job `uptime-monitor-prd` que vigila externamente a Producción cada 10 minutos.                                                                                                                                    |
+| **Producción (`PRD`)** | `zxkucphbsfygakgxcnik`                                 | `us-east-2` (Ohio)                                                   | Base de datos viva de `lucamsshop.com`. Usa llaves modernas de Supabase (`sb_publishable_*` en `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `sb_secret_*` en `SUPABASE_SERVICE_ROLE_KEY`; doc oficial: https://supabase.com/docs/guides/api/api-keys, verificado 2026-10-20). La introspección del esquema OpenAPI en `/rest/v1/` está bloqueada para la llave publishable. |
+| **Staging (`STG`)**    | `mjbdiqdkykhsixvqlrrp`                                 | `us-east-2` (Ohio)                                                   | Respalda los despliegues Preview de Vercel (`develop` y PRs). Tiene desprogramados los 5 crons que emiten correos a clientes y aloja además el job `uptime-monitor-prd` que vigila externamente a Producción cada 10 minutos.                                                                                                                                    |
 | **Local (`Podman`)**   | `lucams-local` (`supabase-local/supabase/config.toml`) | API Kong `:54321` · DB `:54322` · Studio `:54323` · Mailpit `:54324` | Stack local reproducible sobre contenedores Podman (`major_version = 17`, `site_url = "http://192.168.20.180:4000"`). Captura todos los correos OTP/Auth en el buzón local `:54324` sin consumir cuota de Resend.                                                                                                                                                |
 
 ```mermaid
@@ -22,7 +22,7 @@ flowchart LR
     GHA["GitHub Actions / CLI (prisma migrate + pg_dump 17)"]
   end
 
-  subgraph SupabasePlatform["Proyecto Supabase (us-east-1)"]
+  subgraph SupabasePlatform["Proyecto Supabase (us-east-2)"]
     GoTrue["Supabase Auth (PKCE + OTP + MFA aal2)"]
     PostgREST["PostgREST (/rest/v1 · bloqueado en public por RLS/REVOKE)"]
     Supavisor["Supavisor Pooler (:6543 Transaction Mode)"]
@@ -242,7 +242,7 @@ Usa este procedimiento al auditar o aprovisionar un entorno de Supabase para Luc
 
 ### Paso 1 — Proyecto, Región y Llaves API
 
-- [ ] Crear el proyecto en región **`us-east-1` (North Virginia)** con PostgreSQL 17.
+- [ ] Crear el proyecto en región **`us-east-2` (Ohio)** con PostgreSQL 17 (la región vigente de PRD/STG desde la auditoría 2026-11-08).
 - [ ] En **Project Settings → API**, copiar `Project URL`, llave `sb_publishable_*` (`NEXT_PUBLIC_SUPABASE_ANON_KEY`) y llave `sb_secret_*` (`SUPABASE_SERVICE_ROLE_KEY`).
 - [ ] En **Project Settings → Database → Connection string**, copiar la URI de **Transaction Pooler (`:6543`)** agregando `?pgbouncer=true` para `DATABASE_URL`, y la URI de **Session/Direct (`:5432`)** para `DIRECT_URL`.
 
