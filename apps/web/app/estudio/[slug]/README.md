@@ -1164,7 +1164,8 @@ Validado en CI con Lighthouse CI (`lighthouserc.json`) y perfilado por producto 
 - Super-resolución y enfoque `3×3` fuera del hilo principal en Web Worker + `OffscreenCanvas`
   (`client-photo-upscale.worker.ts`).
 - Caché de snapshots a `720 px` fijos (`lib/slot-snapshot-cache.ts`) con cesión al _event loop_
-  (`yieldToMain`), espera de decodificación real `waitForSlotPhotosReady` (`4 s`), re-cache de
+  (`yieldToMain`), espera de decodificación real `waitForSlotPhotosReady` (`8 s` + re-decode
+  forzado de bitmaps descartados por presión de memoria en móviles, bug owner 2026-11-07), re-cache de
   filtros Konva con debounce al soltar el zoom (`lib/filter-recache.ts`) y análisis `smartcrop`
   restringido a copias `<= 256 px`.
 
