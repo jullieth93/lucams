@@ -294,26 +294,52 @@ async function laminaToPreviewPageDataUrl(blob: Blob): Promise<string> {
  * para la vista previa de confirmación (el cliente ve exactamente lo que va a
  * recibir). Apiladas en vertical con el mismo fondo crema del compositor; la
  * línea del carrito/checkout muestra esta misma imagen.
+ *
+ * Tope de resolución (auditoría 2026-11-08): el montaje es SOLO de exhibición —
+ * las láminas de imprenta viajan aparte a 300 DPI. Sin tope, un pedido de 8+
+ * sets apilaba láminas 300 DPI y superaba el presupuesto de píxeles del
+ * normalizador del servidor (25 MP): el finalize moría con "No pudimos procesar
+ * la imagen del preview" y la compra quedaba bloqueada. Ahora el ancho se topa
+ * en 1600 px y el total en 20 MP (holgado bajo el presupuesto).
  */
+const PREVIEW_MONTAGE_MAX_WIDTH_PX = 1600;
+const PREVIEW_MONTAGE_MAX_PIXELS = 20_000_000;
+
 async function montageLaminaBlobs(blobs: Blob[]): Promise<string> {
   const imgs = await Promise.all(blobs.map(blobToImage));
   const gap = 36;
-  const w = Math.max(...imgs.map((i) => i.naturalWidth));
-  const h = imgs.reduce((sum, i) => sum + i.naturalHeight, 0) + gap * (imgs.length - 1);
+  const maxW = Math.max(...imgs.map((i) => i.naturalWidth));
+  const wScale = Math.min(1, PREVIEW_MONTAGE_MAX_WIDTH_PX / maxW);
+  const w = Math.round(maxW * wScale);
+  let h = Math.round(
+    imgs.reduce((sum, i) => sum + i.naturalHeight * wScale, 0) + gap * (imgs.length - 1),
+  );
+  // Segunda reducción proporcional si el apilado aun supera el tope de píxeles.
+  const pxScale = Math.min(1, Math.sqrt(PREVIEW_MONTAGE_MAX_PIXELS / (w * h)));
+  const finalScale = wScale * pxScale;
+  const finalW = Math.max(1, Math.round(maxW * finalScale));
+  const finalH = Math.max(
+    1,
+    Math.round(
+      imgs.reduce((sum, i) => sum + i.naturalHeight * finalScale, 0) + gap * (imgs.length - 1),
+    ),
+  );
   const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = finalW;
+  canvas.height = finalH;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas 2d no disponible");
   ctx.fillStyle = "#FFF8F0";
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, finalW, finalH);
   let y = 0;
   for (const img of imgs) {
-    const x = Math.round((w - img.naturalWidth) / 2);
-    ctx.drawImage(img, x, y);
-    y += img.naturalHeight + gap;
+    const dw = Math.round(img.naturalWidth * finalScale);
+    const dh = Math.round(img.naturalHeight * finalScale);
+    const x = Math.round((finalW - dw) / 2);
+    ctx.drawImage(img, x, y, dw, dh);
+    y += dh + gap;
   }
-  return canvas.toDataURL("image/png");
+  return canvas.toDataURL("image/webp", 0.85);
 }
 
 /** Emoji del chip según la clave de tema (fallback 🎨 para temas nuevos). */

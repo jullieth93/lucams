@@ -4,9 +4,11 @@
  * ante fallos):
  *
  *   consentimiento Ley 1581 OBLIGATORIO para subir → JPG / PNG / WebP / HEIC
- *   (transcodifica a JPEG server-side) / >4.5 MB (compresión cliente → JPEG
- *   ≤2400px y <4 MB en DB) / >10 MB (rechazo visible, sin asset) / no-imagen
- *   renombrada (rechazo por magic bytes con mensaje, sin asset).
+ *   (normaliza a WebP server-side; el HEIC grande de iPhone que el navegador no
+ *   decodifica sube DIRECTO a Storage por ticket firmado, 2026-11-08) / >4.5 MB
+ *   (compresión cliente → ≤2400px y <4 MB en DB) / >10 MB (rechazo visible, sin
+ *   asset) / no-imagen renombrada (rechazo por magic bytes con mensaje, sin
+ *   asset).
  *
  * Corre en LOCAL y STG × desktop/mobile. En PRD PROHIBIDO (crea assets y
  * objetos en storage). Producto real de fotos leído de la DB del ambiente
@@ -270,7 +272,7 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
     await uploadOk(fx.smallWebp, "WebP");
     record("upload-webp", true);
 
-    // 5. HEIC de iPhone (fixture real) → el server transcodifica (regresión §4b).
+    // 5. HEIC de iPhone (fixture real) → el server normaliza (regresión §4b).
     // El payload lleva mime explícito: el browser no infiere image/heic por extensión.
     await uploadOk(
       {
@@ -281,6 +283,26 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
       "HEIC",
     );
     record("upload-heic", true, undefined, await shot(anonPage, "1-heic-thumb"));
+
+    // 5b. HEIC 4.5–10 MB que el navegador NO decodifica (Chromium): subida
+    // DIRECTA a Storage por ticket firmado + ingest server-side (2026-11-08).
+    // Antes de la auditoría este caso moría con 413/fail-closed.
+    const heicBuf0 = readFileSync(HEIC_FIXTURE);
+    const directHeicBytes = Math.ceil(5.5 * MB);
+    const bigHeicOkBuffer = Buffer.concat([
+      heicBuf0,
+      Buffer.alloc(directHeicBytes - heicBuf0.length, 0),
+    ]);
+    await uploadOk(
+      { name: "IMG_DIRECT.heic", mimeType: "image/heic", buffer: bigHeicOkBuffer },
+      "HEIC-directo",
+    );
+    record(
+      "upload-heic-direct",
+      true,
+      `${(bigHeicOkBuffer.length / MB).toFixed(2)} MB vía ticket firmado`,
+      await shot(anonPage, "1b-heic-direct-thumb"),
+    );
 
     // 6. >4.5 MB → compresión cliente (regresión §4c): en DB JPEG ≤2400px y <4 MB.
     await uploadOk(fx.bigJpg, ">4.5MB");
@@ -304,20 +326,21 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
       await shot(anonPage, "3-reject-fake"),
     );
 
-    // 9. Verificación DB de la ventana de la corrida: exactamente 5 assets,
+    // 9. Verificación DB de la ventana de la corrida: exactamente 6 assets,
     // en orden, con el master UNIFORME WebP (auditoría 2026-11-08: el servidor
     // normaliza TODO a WebP q92 conservando dimensiones — antes el formato
-    // quedaba según la entrada y el HEIC salía JPEG) y la compresión del grande
+    // quedaba según la entrada y el HEIC salía JPEG; el HEIC 5.5 MB entra por
+    // el ticket firmado y sale igual de normalizado) y la compresión del grande
     // aplicada (≤2400px, <4 MB).
     const assets = await db().designAsset.findMany({
       where: { createdAt: { gte: new Date(windowStart) } },
       orderBy: { createdAt: "asc" },
     });
-    expect(assets, "5 assets en la ventana de la corrida (ni más ni menos)").toHaveLength(5);
+    expect(assets, "6 assets en la ventana de la corrida (ni más ni menos)").toHaveLength(6);
     createdAssetIds.push(...assets.map((a) => a.id));
     createdStoragePaths.push(...assets.map((a) => a.storageUrl));
 
-    const [jpg, png, webp, heic, big] = assets;
+    const [jpg, png, webp, heic, heicDirect, big] = assets;
     // Masters uniformes WebP q92 (2026-11-08): jpg/png/webp/heic convergen al
     // mismo codec — imprenta recibe los mismos píxeles (300 DPI intactos) y el
     // bucket deja de mezclar formatos.
@@ -325,10 +348,13 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
     expect(png!.mimeType).toBe("image/webp");
     expect(webp!.mimeType).toBe("image/webp");
     expect(heic!.mimeType, "el HEIC quedó normalizado a WebP").toBe("image/webp");
+    expect(heicDirect!.mimeType, "el HEIC directo (ticket) quedó normalizado a WebP").toBe(
+      "image/webp",
+    );
     record(
       "db-formats",
       true,
-      `jpg=${jpg!.mimeType} png=${png!.mimeType} webp=${webp!.mimeType} heic→${heic!.mimeType}`,
+      `jpg=${jpg!.mimeType} png=${png!.mimeType} webp=${webp!.mimeType} heic→${heic!.mimeType} heic-direct→${heicDirect!.mimeType}`,
     );
     // El bigJpg (>2 MB) pasa por el compresor en línea y el servidor sella WebP.
     expect(big!.mimeType).toBe("image/webp");
