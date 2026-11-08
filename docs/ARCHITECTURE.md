@@ -157,7 +157,7 @@ lucams-shop/
 ├── supabase/
 │   ├── config.toml                 # Configuración del stack Supabase CLI local sobre Podman rootless
 │   ├── auth-templates/             # Plantillas HTML en español con código OTP para Supabase Auth
-│   └── migrations/                 # 56 migraciones SQL (00000000000002..00000000000056): RLS, grants, Storage, triggers y pg_cron
+│   └── migrations/                 # 58 migraciones SQL (00000000000002..00000000000059): RLS, grants, Storage, triggers y pg_cron
 ├── scripts/                        # Scripts bash/node de infraestructura local, STG, diagnóstico SQL y hooks Git
 ├── .github/workflows/              # 6 workflows: ci.yml, nightly-full.yml, post-deploy-smoke.yml, backup.yml, dr-drill.yml, domain-watch.yml
 ├── docs/                           # Documentación viva en 3 niveles (STATE.md, transversales, domains/* e integrations/*)
@@ -401,7 +401,7 @@ Cada directorio en `apps/web/features/` encapsula la lógica de un subdominio (`
 
 ## 4. Modelo de datos completo en PostgreSQL y Prisma (77 modelos + 33 enums)
 
-La fuente canónica del esquema es `packages/db/prisma/schema.prisma`, respaldada por **97 migraciones de Prisma** y **56 migraciones SQL de Supabase**. En el esquema `public` conviven exactamente **79 tablas**: **77 modelos Prisma**, **1 tabla SQL operativa** (`rate_limit_buckets`) y la tabla interna `_prisma_migrations`.
+La fuente canónica del esquema es `packages/db/prisma/schema.prisma`, respaldada por **97 migraciones de Prisma** y **58 migraciones SQL de Supabase**. En el esquema `public` conviven exactamente **79 tablas**: **77 modelos Prisma**, **1 tabla SQL operativa** (`rate_limit_buckets`) y la tabla interna `_prisma_migrations`.
 
 ### 4.1 Reglas globales e invariantes de modelado
 

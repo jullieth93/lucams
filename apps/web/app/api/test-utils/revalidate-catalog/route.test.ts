@@ -19,10 +19,19 @@ function req(token?: string) {
 
 afterEach(() => {
   delete process.env.E2E_UTILS_TOKEN;
+  delete process.env.VERCEL_ENV;
   revalidateTag.mockClear();
 });
 
 describe("POST /api/test-utils/revalidate-catalog", () => {
+  it("en producción la ruta NO existe aunque haya token (guarda dura, auditoría 2026-11-08)", async () => {
+    process.env.VERCEL_ENV = "production";
+    process.env.E2E_UTILS_TOKEN = TOKEN;
+    const res = await POST(req(TOKEN));
+    expect(res.status).toBe(404);
+    expect(revalidateTag).not.toHaveBeenCalled();
+  });
+
   it("sin E2E_UTILS_TOKEN en el servidor → 404 (la ruta no existe a efectos prácticos)", async () => {
     const res = await POST(req(TOKEN));
     expect(res.status).toBe(404);

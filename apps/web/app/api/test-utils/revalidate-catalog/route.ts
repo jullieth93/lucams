@@ -26,6 +26,9 @@ function tokenMatches(provided: string, expected: string): boolean {
 }
 
 export async function POST(req: Request) {
+  // Guarda dura: en producción la ruta NO existe aunque alguien configure la
+  // variable por error (auditoría 2026-11-08 — utilidad exclusiva de E2E).
+  if (process.env.VERCEL_ENV === "production") return new Response("Not found", { status: 404 });
   const expected = process.env.E2E_UTILS_TOKEN;
   if (!expected) return new Response("Not found", { status: 404 });
   if (!tokenMatches(req.headers.get("x-e2e-utils-token") ?? "", expected)) {

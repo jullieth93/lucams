@@ -49,7 +49,10 @@ import { test, expect, dismissCookieBanner, E2E_ENV } from "./fixtures/auth";
  */
 
 const OUT_DIR = path.resolve(__dirname, "../../../../tmp/audit-20261013");
-const PARTS_DIR = path.join(OUT_DIR, "parts");
+// 2026-11-08 — parts POR CORRIDA (E2E_RUN lo fija playwright.config.ts): dos
+// procesos Playwright concurrentes ya no se pisan ni se borran las partes
+// (antes compartían parts/ y el teardown de una corrida borraba las de la otra).
+const PARTS_DIR = path.join(OUT_DIR, "parts", process.env.E2E_RUN ?? "sin-run");
 
 type Severidad = "critical" | "medium" | "info";
 

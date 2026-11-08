@@ -52,10 +52,9 @@ import { useRouter } from "next/navigation";
 import nextDynamic from "next/dynamic";
 import { Box, ChevronLeft, ChevronRight, Copy, Loader2, Minus, Plus, X } from "lucide-react";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
-import {
-  createLetterSetDesignAction,
-  finalizeDesignAction,
-} from "@/features/personalization/actions";
+import { createLetterSetDesignAction } from "@/features/personalization/actions";
+import { finalizeWithStagedProduction } from "./lib/finalize-staged-production";
+import { shrinkBlobToFitUploadBudget } from "./client-image-compress";
 import { uploadPreviewPagesWithRetry } from "./preview-pages-upload";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { stashPersonalizedAddToCart } from "@/lib/analytics";
@@ -967,19 +966,40 @@ export function LetterSetEditor({
         setSubmitting(false);
         return;
       }
-      const fd = new FormData();
-      fd.set("designId", created.designId);
-      // La lámina de cada set sube como FALLBACK inmediato (un archivo POR SET);
-      // el RenderJob la reemplaza con el render server-side POR FICHA (300 DPI,
-      // owner 2026-11-03, ADR-188). La modal le cuenta al cliente las fichas
-      // que va a recibir.
-      fd.set("slotCount", String(unitCount));
-      // Preview = montaje de todas las láminas (el MISMO PNG que aprobó el cliente).
-      fd.set("preview", dataUrlToBlob(previewDataUrl!), "preview.png");
-      previewBlobs.forEach((blob, i) => {
-        fd.set(`production_${i}`, blob, `produccion-set-${i + 1}.png`);
+      // Las láminas 300 DPI ya NO viajan en el body del finalize (auditoría
+      // 2026-11-08: N sets × PNG de imprenta superan el techo real de la
+      // plataforma, ~4.5 MB por request). Van por tickets firmados directo a
+      // Storage (finalizeWithStagedProduction: finalize → NEEDS_CLIENT_SLOTS →
+      // PUTs → finalize con useStagedSlots). La lámina de cada set sigue siendo
+      // el FALLBACK inmediato que el RenderJob reemplaza con el render por ficha
+      // (300 DPI, owner 2026-11-03, ADR-188). La modal le cuenta al cliente las
+      // fichas que va a recibir.
+      // Preview = montaje de todas las láminas (el MISMO que aprobó el cliente);
+      // es solo exhibición → se ajusta al presupuesto del payload si hiciera falta.
+      const previewBlob = await shrinkBlobToFitUploadBudget(
+        dataUrlToBlob(previewDataUrl!),
+        "preview.webp",
+      );
+      if (!previewBlob) {
+        setPreviewError(texts.errores.generico);
+        setSubmitting(false);
+        return;
+      }
+      const buildForm = () => {
+        const fd = new FormData();
+        fd.set("designId", created.designId);
+        fd.set("slotCount", String(unitCount));
+        fd.set(
+          "preview",
+          previewBlob,
+          previewBlob.type === "image/webp" ? "preview.webp" : "preview.png",
+        );
+        return fd;
+      };
+      const finalized = await finalizeWithStagedProduction({
+        buildForm,
+        productionBlobs: previewBlobs,
       });
-      const finalized = await finalizeDesignAction(fd);
       if (!finalized.ok) {
         trackStudioFunnelStep({
           eventName: "studio_finalize_failed",

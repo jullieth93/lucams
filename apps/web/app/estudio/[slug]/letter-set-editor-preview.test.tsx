@@ -34,6 +34,13 @@ vi.mock("next/image", () => ({
 
 type ActionResult = { ok: boolean; message?: string };
 
+// 2026-11-08 — las láminas de producción suben por tickets firmados
+// (uploadAllWithRetry) cuando el finalize pide NEEDS_CLIENT_SLOTS.
+const uploadAllWithRetry = vi.fn(async (_reqs: unknown[]): Promise<void> => {});
+vi.mock("@/app/estudio/[slug]/lib/upload-with-retry", () => ({
+  uploadAllWithRetry: (reqs: unknown[]) => uploadAllWithRetry(reqs),
+}));
+
 const createLetterSetDesignAction = vi.fn(
   async (_input: unknown): Promise<ActionResult & { designId: string }> => ({
     ok: true,
@@ -123,6 +130,7 @@ beforeEach(() => {
   finalizeDesignAction.mockClear();
   addPersonalizedToCartAction.mockClear();
   uploadDesignPreviewPagesAction.mockClear();
+  uploadAllWithRetry.mockClear();
 });
 
 function renderEditor(
@@ -275,11 +283,14 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
 
     // El set sube como UNA lámina aprobada (preview + fallback de producción son el
     // mismo PNG); el RenderJob la reemplaza con el render por ficha (ADR-188).
+    // 2026-11-08: la lámina ya NO viaja en el body (techo ~4.5 MB de Vercel) —
+    // va por tickets firmados solo si el finalize responde NEEDS_CLIENT_SLOTS.
     const fd = finalizeDesignAction.mock.calls[0]![0];
     expect(fd.get("designId")).toBe("design-1");
     expect(fd.get("slotCount")).toBe("1");
     expect(fd.get("preview")).toBeInstanceOf(Blob);
-    expect(fd.get("production_0")).toBeInstanceOf(Blob);
+    expect(fd.get("production_0")).toBeNull();
+    expect(fd.get("useStagedSlots")).toBeNull(); // sin fallback: el mock responde ok directo
   });
 
   // Edición desde el carrito (?designId=, 2026-10-05): el editor propaga el designId
@@ -482,11 +493,56 @@ describe("LetterSetEditor — recover flow (?designId=)", () => {
       }),
     );
     // Y se sube UNA lámina por set como fallback de producción (2 sets = 2 archivos;
-    // el RenderJob las reemplaza por fichas individuales — ADR-188).
+    // el RenderJob las reemplaza por fichas individuales — ADR-188). Desde
+    // 2026-11-08 las láminas NO viajan en el body (techo ~4.5 MB de Vercel):
+    // el finalize va sin production_i y las sube por tickets solo si el servidor
+    // pide NEEDS_CLIENT_SLOTS (el mock responde ok directo → sin staging).
     const fd = finalizeDesignAction.mock.calls[0]![0];
     expect(fd.get("slotCount")).toBe("2");
-    expect(fd.get("production_0")).toBeInstanceOf(Blob);
-    expect(fd.get("production_1")).toBeInstanceOf(Blob);
+    expect(fd.get("production_0")).toBeNull();
+    expect(fd.get("production_1")).toBeNull();
+  });
+
+  // 2026-11-08 (auditoría: techo real de ~4.5 MB de Vercel) — camino staged:
+  // el finalize pide NEEDS_CLIENT_SLOTS, las láminas suben DIRECTO a Storage
+  // por los tickets firmados y el finalize se reintenta con useStagedSlots=1.
+  it("con NEEDS_CLIENT_SLOTS: las láminas suben por tickets firmados y el finalize se reintenta staged", async () => {
+    finalizeDesignAction
+      .mockResolvedValueOnce({
+        ok: false,
+        code: "NEEDS_CLIENT_SLOTS",
+        message: "Necesitamos las imágenes de imprenta desde tu navegador.",
+        uploads: [
+          { slotIndex: 0, url: "https://signed.example/slot-01" },
+          { slotIndex: 1, url: "https://signed.example/slot-02" },
+        ],
+      } as unknown as ActionResult)
+      .mockResolvedValueOnce({ ok: true });
+
+    renderEditor({ initialUnits: 2 });
+    await openPreview();
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/carrito?personalized=1"));
+    expect(finalizeDesignAction).toHaveBeenCalledTimes(2);
+    expect(uploadAllWithRetry).toHaveBeenCalledTimes(1);
+    const reqs = uploadAllWithRetry.mock.calls[0]![0] as Array<{
+      url: string;
+      body: Blob;
+      contentType: string;
+    }>;
+    expect(reqs).toHaveLength(2);
+    expect(reqs[0]).toMatchObject({
+      url: "https://signed.example/slot-01",
+      contentType: "image/png",
+    });
+    expect(reqs[1]).toMatchObject({ url: "https://signed.example/slot-02" });
+    expect(reqs[0]!.body).toBeInstanceOf(Blob);
+    // El reintento NO lleva láminas inline: solo la bandera staged.
+    const fdRetry = finalizeDesignAction.mock.calls[1]![0];
+    expect(fdRetry.get("useStagedSlots")).toBe("1");
+    expect(fdRetry.get("production_0")).toBeNull();
+    expect(fdRetry.get("slotCount")).toBe("2");
   });
 
   it("diseño de UN set: los colores raíz (metadata.colors) se restauran en el set único", async () => {
@@ -565,7 +621,7 @@ describe("LetterSetEditor — stepper de cantidad de sets (2026-10-12)", () => {
     );
     const fd = finalizeDesignAction.mock.calls[0]![0];
     expect(fd.get("slotCount")).toBe("2");
-    expect(fd.get("production_1")).toBeInstanceOf(Blob);
+    expect(fd.get("production_1")).toBeNull(); // las láminas van por tickets (2026-11-08)
   });
 
   it("al REDUCIR se recortan los sets del final: el set 3 (con sus colores) se descarta", async () => {

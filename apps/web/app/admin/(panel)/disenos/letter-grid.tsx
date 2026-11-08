@@ -9,6 +9,11 @@ import { useRef, useState, useTransition } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadLetterTileAction, deleteLetterTileAction } from "./fichas-actions";
+import {
+  compressImageForUpload,
+  shrinkToFitUploadBudget,
+  UPLOAD_PAYLOAD_BUDGET_BYTES,
+} from "@/app/estudio/[slug]/client-image-compress";
 
 type Tile = { imageUrl: string; label: string | null };
 
@@ -36,10 +41,26 @@ export function LetterGrid({
     const char = activeChar;
     if (!file || !char) return;
     startTransition(async () => {
+      // Auditoría 2026-11-08 — compresión en el navegador antes de la Server
+      // Action: el techo real de la plataforma (~4.5 MB por request) corta
+      // archivos de 4.5–5 MB ANTES de que el servidor valide (5 MB) y optimice.
+      // WebP conserva el alpha de la ilustración; si no cabe ni reducida, error claro.
+      const compressed = await compressImageForUpload(file);
+      const prepared =
+        compressed.size > UPLOAD_PAYLOAD_BUDGET_BYTES
+          ? await shrinkToFitUploadBudget(compressed)
+          : compressed;
+      if (!prepared) {
+        toast.error(
+          `"${file.name}" es demasiado grande y este navegador no pudo comprimirla. Exporta la ilustración como PNG o WebP e inténtalo de nuevo.`,
+        );
+        setActiveChar(null);
+        return;
+      }
       const fd = new FormData();
       fd.set("setId", setId);
       fd.set("char", char);
-      fd.set("file", file);
+      fd.set("file", prepared);
       const r = await uploadLetterTileAction(fd);
       if (r.error) toast.error(r.error);
       else toast.success(`Ficha ${char} lista ✨`);

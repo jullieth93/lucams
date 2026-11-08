@@ -213,9 +213,16 @@ export function computeShrinkAttempts(opts: {
  */
 export async function shrinkToFitUploadBudget(
   file: File,
-  opts?: { minEdgeFloorPx?: number; maxEdgePx?: number; qualities?: readonly number[] },
+  opts?: {
+    minEdgeFloorPx?: number;
+    maxEdgePx?: number;
+    qualities?: readonly number[];
+    /** Presupuesto alternativo (auditoría 2026-11-08: galería A+B comparte el request). */
+    budgetBytes?: number;
+  },
 ): Promise<File | null> {
-  if (file.size <= UPLOAD_PAYLOAD_BUDGET_BYTES) return file;
+  const budget = opts?.budgetBytes ?? UPLOAD_PAYLOAD_BUDGET_BYTES;
+  if (file.size <= budget) return file;
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
@@ -232,7 +239,7 @@ export async function shrinkToFitUploadBudget(
     });
     for (const attempt of attempts) {
       const out = await encodeResized(bitmap, attempt.maxEdgePx, attempt.quality, file);
-      if (out && out.size <= UPLOAD_PAYLOAD_BUDGET_BYTES) return out;
+      if (out && out.size <= budget) return out;
     }
     return null; // ni en el piso de impresión cabe: fail-closed honesto
   } catch {
@@ -240,4 +247,52 @@ export async function shrinkToFitUploadBudget(
   } finally {
     bitmap.close();
   }
+}
+
+/**
+ * Ajuste COMBINADO para uploads multi-archivo en UN request (auditoría
+ * 2026-11-08 — galería de prediseñados cara A+B): el techo de plataforma
+ * (~4.5 MB) aplica al request COMPLETO, no a cada archivo. Si la suma excede el
+ * presupuesto, cada archivo se reduce en proporción a su peso actual (el más
+ * pesado cede más). null si alguno no cabe ni reducido — fail-closed, el
+ * caller muestra el error y NO envía.
+ */
+export async function shrinkFilesToFitCombinedBudget(
+  files: File[],
+  opts?: {
+    budgetBytes?: number;
+    maxEdgePx?: number;
+    qualities?: readonly number[];
+    minEdgeFloorPx?: number;
+  },
+): Promise<File[] | null> {
+  const budget = opts?.budgetBytes ?? UPLOAD_PAYLOAD_BUDGET_BYTES;
+  const total = files.reduce((sum, f) => sum + f.size, 0);
+  if (total <= budget) return files;
+  const out = await Promise.all(
+    files.map((f) =>
+      shrinkToFitUploadBudget(f, {
+        ...opts,
+        // Piso de 256 KB por archivo: que el reparto proporcional nunca pida lo imposible.
+        budgetBytes: Math.max(256 * 1024, Math.floor((budget * f.size) / total)),
+      }),
+    ),
+  );
+  return out.some((f) => f === null) ? null : (out as File[]);
+}
+
+/**
+ * Variante para Blobs sin nombre de archivo (auditoría 2026-11-08 — previews
+ * del finalize de los editores de fichas, que nacen de canvas.toBlob/toDataURL
+ * y no son File). El preview es SOLO de exhibición (imprenta usa las láminas
+ * staged), así que no hay piso de impresión; el tope de borde largo es 4000 px
+ * para no rebajar resolución cuando alcanza con bajar calidad.
+ */
+export async function shrinkBlobToFitUploadBudget(
+  blob: Blob,
+  name = "preview.png",
+): Promise<Blob | null> {
+  if (blob.size <= UPLOAD_PAYLOAD_BUDGET_BYTES) return blob;
+  const file = new File([blob], name, { type: blob.type || "image/png" });
+  return shrinkToFitUploadBudget(file, { maxEdgePx: 4000 });
 }

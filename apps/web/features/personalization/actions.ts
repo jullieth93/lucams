@@ -290,25 +290,28 @@ export async function reopenDesignForEditAction(designId: string) {
 // server". El preview sí cabe de sobra: el mayor medido en Storage pesa 0.61 MB.
 //
 // Dos caminos siguen aceptando snapshots del cliente:
-//   · inline (`production_i`) — lo usan los editores de fichas (nombre, abecedario, vocales):
-//     la LÁMINA por set que suben queda como fallback inmediato y el RenderJob la reemplaza
-//     con el render server-side POR FICHA (owner 2026-11-03, ADR-188);
+//   · inline (`production_i`) — LEGACY para clientes con JS cacheado previo a
+//     2026-11-08 (los editores actuales suben por tickets). El tope bajó de
+//     20 MB a 4 MB por slot: por encima de eso el request nunca llega (Vercel
+//     corta el body en ~4.5 MB), así que el tope viejo era un contrato falso;
 //   · `useStagedSlots` — segunda pasada del fallback: el cliente ya los subió DIRECTO a Storage con
 //     una URL firmada, así que no pasan por el body y no tienen techo de tamaño.
 //
 // Códigos de error para el cliente: `INCOMPLETE_SLOTS` (slots vacíos → modal específica) y
 // `NEEDS_CLIENT_SLOTS` (ningún tier server-side reproduce el diseño → el cliente sube los suyos).
 
-const MAX_PRODUCTION_BUFFER_BYTES = 20 * 1024 * 1024; // 20 MB por slot
+const MAX_PRODUCTION_BUFFER_BYTES = 4 * 1024 * 1024; // 4 MB por slot (techo real de plataforma)
 // Techo del preview YA aceptado: por debajo de los 4.5 MB de Vercel, con margen
 // para el resto del multipart (y max file size del bucket design-previews).
 const MAX_PREVIEW_BUFFER_BYTES = 3 * 1024 * 1024;
-// Límite ABSOLUTO de entrada del preview (T2, 2026-09-22): entre 3 MB y 8 MB se
+// Límite ABSOLUTO de entrada del preview (T2, 2026-09-22): entre 3 MB y 4 MB se
 // RE-COMPRIME con sharp (compressPreviewImage, sharp-safe.ts) en vez de rechazar
-// al cliente. >8 MB sí se rechaza — en producción el cap de 4.5 MB del body de
-// Vercel corta antes de que llegue, así que este guard solo acota memoria/CPU en
-// dev/self-host frente a un multipart armado a mano.
-const MAX_PREVIEW_INPUT_BYTES = 8 * 1024 * 1024;
+// al cliente. >4 MB sí se rechaza — en producción el cap de ~4.5 MB del body de
+// Vercel corta antes de que llegue (el tope viejo de 8 MB era inalcanzable),
+// así que este guard acota memoria/CPU en dev/self-host frente a un multipart
+// armado a mano. Los clientes actuales ajustan el preview al presupuesto de 4 MB
+// en el navegador antes de enviarlo (shrinkBlobToFitUploadBudget).
+const MAX_PREVIEW_INPUT_BYTES = 4 * 1024 * 1024;
 
 export async function finalizeDesignAction(formData: FormData): Promise<
   | { ok: true; previewUrl: string | null; status: string; productionSlotsCount: number }
@@ -366,7 +369,7 @@ export async function finalizeDesignAction(formData: FormData): Promise<
     return {
       ok: false,
       code: "VALIDATION",
-      message: `preview demasiado grande (${Math.round(previewBlob.size / 1024 / 1024)}MB, max 8MB)`,
+      message: `preview demasiado grande (${Math.round(previewBlob.size / 1024 / 1024)}MB, max ${MAX_PREVIEW_INPUT_BYTES / 1024 / 1024}MB)`,
     };
   }
 
@@ -388,7 +391,7 @@ export async function finalizeDesignAction(formData: FormData): Promise<
         return {
           ok: false,
           code: "VALIDATION",
-          message: `slot ${i + 1} demasiado grande (${Math.round(blob.size / 1024 / 1024)}MB, max 20MB)`,
+          message: `slot ${i + 1} demasiado grande (${Math.round(blob.size / 1024 / 1024)}MB, max ${MAX_PRODUCTION_BUFFER_BYTES / 1024 / 1024}MB)`,
         };
       }
       productionBuffers.push(Buffer.from(await blob.arrayBuffer()));

@@ -72,6 +72,7 @@ import {
 import { GalleryDetailModal } from "./gallery-detail-modal";
 import {
   compressImageForUpload,
+  shrinkFilesToFitCombinedBudget,
   shrinkToFitUploadBudget,
   UPLOAD_PAYLOAD_BUDGET_BYTES,
 } from "@/app/estudio/[slug]/client-image-compress";
@@ -262,9 +263,11 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
       // ~4.5 MB y el master print-grade admite entradas de hasta 15 MB: se
       // normaliza en el navegador al MISMO spec del servidor (WebP q0.90,
       // borde largo ≤4000 px por cara; la tira doble-altura ≤8000 px) y si
-      // aun así no cabe en el presupuesto del payload se reduce en escalera
-      // sin bajar de q0.68. El servidor re-valida y re-codifica igual que
-      // antes (uploadGalleryMasterImage) — esto solo evita el 413.
+      // aun así no cabe se reduce en escalera sin bajar de q0.68. Con las DOS
+      // caras en el mismo request, el presupuesto es COMBINADO (A+B+overhead ≤
+      // 4 MB — shrinkFilesToFitCombinedBudget). El servidor re-valida y
+      // re-codifica igual que antes (uploadGalleryMasterImage) — esto solo
+      // evita el 413.
       const strip = effectiveMode === "strip";
       const spec = { maxEdgePx: strip ? 8000 : 4000, quality: 0.9 };
       const shrinkOpts = { maxEdgePx: spec.maxEdgePx, qualities: [0.9, 0.82, 0.75, 0.68] };
@@ -288,6 +291,26 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
           return;
         }
       }
+      // El techo de la plataforma aplica al REQUEST COMPLETO (campos + A + B),
+      // no a cada cara: si juntas superan el presupuesto, ambas se reducen en
+      // proporción a su peso antes de enviar (nada sale si no caben).
+      let finalA = preparedA;
+      let finalB = preparedB;
+      if (preparedB) {
+        const pair = await shrinkFilesToFitCombinedBudget([preparedA, preparedB], {
+          // Los campos del form (tag/nombre/filtro) y el overhead multipart.
+          budgetBytes: UPLOAD_PAYLOAD_BUDGET_BYTES - 128 * 1024,
+          maxEdgePx: spec.maxEdgePx,
+          qualities: [0.9, 0.82, 0.75, 0.68],
+        });
+        if (!pair) {
+          setError(
+            "Las dos caras juntas son demasiado grandes y este navegador no pudo comprimirlas lo suficiente. Exporta los diseños como WebP o JPG de máximo 4000 px por cara e inténtalo de nuevo.",
+          );
+          return;
+        }
+        [finalA, finalB] = pair as [File, File];
+      }
       const fd = new FormData();
       fd.set("tag", tag);
       fd.set("name", name.trim());
@@ -295,11 +318,11 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
       if (variantFilterJson) fd.set("variantFilter", variantFilterJson);
       if (strip) {
         fd.set("mode", "strip");
-        fd.set("file", preparedA);
+        fd.set("file", finalA);
         if (swapFaces) fd.set("swapFaces", "1");
       } else {
-        fd.set("file", preparedA);
-        if (preparedB) fd.set("fileB", preparedB);
+        fd.set("file", finalA);
+        if (finalB) fd.set("fileB", finalB);
       }
       const res = await uploadGalleryImageAction(fd);
       if (res.error) setError(res.error);

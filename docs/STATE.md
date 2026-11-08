@@ -8,7 +8,7 @@
 - **Tienda activa (`ADR-077`):** `lucamsshop.com` vende en producción en modo **`full`**
   (`NEXT_PUBLIC_STORE_MODE=full`) con pagos Wompi, contraentrega y envíos Aveonline + Envío Lucams Bogotá.
 - **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js 16, TS strict, Tailwind v4, shadcn/ui) y
-  `packages/db` (**77 modelos Prisma**, **33 enums**, **97 migraciones Prisma** + **56 SQL Supabase**
+  `packages/db` (**77 modelos Prisma**, **33 enums**, **97 migraciones Prisma** + **58 SQL Supabase**
   con RLS y event trigger `REVOKE` automático `049` en el 100 % de las tablas).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) bajo el ruleset
   `protect-ramas-criticas` con PR obligatorio y **5 checks requeridos** (`Typecheck + Lint + Build`,

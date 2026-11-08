@@ -62,7 +62,7 @@ import {
   RENDER_JOB_KICK_BUDGET_MS,
 } from "./render-job-service";
 import { ALPHABET } from "./letter-tiles";
-import { uploadPreviewPages } from "./preview-artifacts-server";
+import { previewPagesAreComplete, uploadPreviewPages } from "./preview-artifacts-server";
 import { PREVIEW_PAGES_MAX, designPreviewDerivedPaths } from "./preview-artifacts";
 import { PREVIEW_ROUTE_PREFIX } from "./preview-access";
 import { normalizeRasterImage, RasterRejected, RASTER_PIXEL_BUDGET } from "./normalize-raster";
@@ -1309,7 +1309,14 @@ export async function createClientSlotUploadTickets(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be finalized`);
   }
   const canvasData = design.canvasData as unknown as CanvasData;
-  const slotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
+  // 2026-11-08 — los editores de fichas (canvas v1 stub: nombre y sets de
+  // letras) también suben sus láminas por tickets desde que el body de la
+  // Server Action quedó bajo el techo real de la plataforma (~4.5 MB): para
+  // v1 el conteo lo manda la metadata (1 lámina de nombre, N de letterset).
+  const slotCount =
+    canvasData.version === 2
+      ? (canvasData as CanvasDataV2).slotCount
+      : letterSetUnitCount(design.metadata);
   const declaredUnits = canvasData.version === 2 ? unitCountOf(canvasData as CanvasDataV2) : 1;
   const { productConfig, effectiveVariant, metadataVariantId } =
     await loadEffectiveProductConfig(design);
@@ -1317,7 +1324,9 @@ export async function createClientSlotUploadTickets(opts: {
   // `facesPerUnit: 2` (separadores) manda 2 snapshots por unidad: el tope es por CARA, no por pieza.
   const faces = productConfig.facesPerUnit ?? 1;
   const maxSlots = Math.max(1, allowed * faces * declaredUnits);
-  if (slotCount > maxSlots) {
+  // La guarda de tope solo aplica a canvas V2: en productos de fichas (v1)
+  // photoSlots no existe en el schema y el conteo legítimo sale de la metadata.
+  if (canvasData.version === 2 && slotCount > maxSlots) {
     throw new Error(
       `INCOMPLETE_SLOTS: el diseño declara ${slotCount} piezas y el producto admite ${maxSlots}`,
     );
@@ -2458,9 +2467,20 @@ export async function saveDesignPreviewPages(opts: {
   if (uploaded === null) {
     return { ok: false, message: "No pudimos procesar las páginas del preview" };
   }
-  // Lotes (2026-11-08): solo el lote FINAL sella previewPagesCount — sellar
-  // antes exhibiría un pager con huecos si un lote intermedio no llega.
+  // Lotes (2026-11-08): solo el lote FINAL puede sellar previewPagesCount, y
+  // solo si la continuidad REAL en Storage está completa — un lote intermedio
+  // omitido o dos llamadas concurrentes no dejan un pager con huecos.
   if (offset + uploaded === totalPages) {
+    if (!(await previewPagesAreComplete(design.id, totalPages))) {
+      logger.warn(
+        { event: "design.preview_pages.incomplete", designId: design.id, totalPages },
+        "Lote final recibido pero faltan páginas en Storage — no se sella",
+      );
+      return {
+        ok: false,
+        message: "Faltan páginas del preview. Reintenta la subida.",
+      };
+    }
     await prisma.design.update({
       where: { id: design.id },
       // 2026-11-03 (ADR-191): ya no se generan artefactos watermark — solo se

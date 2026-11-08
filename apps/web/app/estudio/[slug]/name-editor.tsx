@@ -22,7 +22,9 @@ import { Loader2, Sparkles, Minus, Plus, Box, X } from "lucide-react";
 import { normalizeName, type NameLanguage } from "@/features/personalization/name-input";
 import type { Magnet3D } from "./fridge-3d-view";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
-import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
+import { createNameDesignAction } from "@/features/personalization/actions";
+import { finalizeWithStagedProduction } from "./lib/finalize-staged-production";
+import { shrinkBlobToFitUploadBudget } from "./client-image-compress";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { stashPersonalizedAddToCart } from "@/lib/analytics";
 import { trackStudioFunnelStep } from "@/lib/funnel-client";
@@ -548,16 +550,36 @@ export function NameEditor({
         pendingDesignIdRef.current = designId;
       }
 
-      // El MISMO PNG que el cliente acaba de aprobar va como previa y como archivo de producción.
-      const blob = dataUrlToBlob(previewDataUrl);
-      const fd = new FormData();
-      fd.set("designId", designId);
-      fd.set("slotCount", "1");
-      fd.set("preview", blob, "preview.png");
-      fd.set("production_0", blob, "produccion.png");
+      // El MISMO PNG que el cliente acaba de aprobar es el archivo de producción,
+      // pero ya NO viaja en el body del finalize (auditoría 2026-11-08: una lámina
+      // 300 DPI puede superar el techo real de la plataforma, ~4.5 MB por request).
+      // Va por tickets firmados directo a Storage (finalizeWithStagedProduction).
+      // El preview sí viaja en el body — es solo exhibición, así que se ajusta al
+      // presupuesto del payload si hiciera falta (la lámina NUNCA se reduce).
+      const productionBlob = dataUrlToBlob(previewDataUrl);
+      const previewBlob = await shrinkBlobToFitUploadBudget(productionBlob);
+      if (!previewBlob) {
+        setPreviewError(texts.errores.generico);
+        setSubmitting(false);
+        return;
+      }
+      const buildForm = () => {
+        const fd = new FormData();
+        fd.set("designId", designId);
+        fd.set("slotCount", "1");
+        fd.set(
+          "preview",
+          previewBlob,
+          previewBlob.type === "image/webp" ? "preview.webp" : "preview.png",
+        );
+        return fd;
+      };
 
       if (!finalizedRef.current) {
-        const finalized = await finalizeDesignAction(fd);
+        const finalized = await finalizeWithStagedProduction({
+          buildForm,
+          productionBlobs: [productionBlob],
+        });
         if (!finalized.ok) {
           trackStudioFunnelStep({
             eventName: "studio_finalize_failed",

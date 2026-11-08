@@ -39,6 +39,33 @@ async function uploadWebp(path: string, data: Buffer): Promise<boolean> {
 }
 
 /**
+ * ¿Están TODAS las páginas 01..totalPages en Storage? Verificación de
+ * continuidad antes de sellar Design.previewPagesCount (auditoría 2026-11-08):
+ * con la subida por lotes, un lote omitido o dos llamadas concurrentes podían
+ * dejar el lote final llegando sin las páginas del medio — y el sellado
+ * exhibiría un pager con huecos en el carrito. Fail-closed: si no se puede
+ * listar, NO se sella (el cliente reintenta).
+ */
+export async function previewPagesAreComplete(
+  designId: string,
+  totalPages: number,
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseService.storage
+      .from(PREVIEWS_BUCKET)
+      .list(`${designId}/pages`);
+    if (error || !data) return false;
+    const present = new Set(data.map((f) => f.name));
+    for (let p = 1; p <= totalPages; p++) {
+      if (!present.has(`${String(p).padStart(2, "0")}.webp`)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Sube las páginas por unidad del preview (las compone el Estudio con el MISMO
  * compositor de la modal «Vista previa» — fidelidad WYSIWYG), re-codificadas a
  * WebP en pages/NN.webp. Devuelve el número de páginas subidas, o null si falló

@@ -26,6 +26,11 @@ import {
   uploadCmsMediaAction,
   type CmsMediaActionState,
 } from "@/app/admin/(panel)/contenido/actions";
+import {
+  compressImageForUpload,
+  shrinkToFitUploadBudget,
+  UPLOAD_PAYLOAD_BUDGET_BYTES,
+} from "@/app/estudio/[slug]/client-image-compress";
 
 export type CmsMediaLite = {
   id: string;
@@ -74,10 +79,28 @@ export function CmsImageControl({
 
   function handleUpload() {
     if (!file || !alt.trim()) return;
-    const fd = new FormData();
-    fd.set("file", file);
-    fd.set("alt", alt.trim());
-    startTransition(() => dispatch(fd));
+    const altValue = alt.trim();
+    startTransition(async () => {
+      // Auditoría 2026-11-08 — compresión en el navegador antes de la Server
+      // Action (techo real ~4.5 MB de Vercel; el servidor reduce a WebP ≤2000 px
+      // q82 de todos modos — no hay pérdida adicional). Mismo tratamiento que
+      // la mediateca.
+      const compressed = await compressImageForUpload(file);
+      const prepared =
+        compressed.size > UPLOAD_PAYLOAD_BUDGET_BYTES
+          ? await shrinkToFitUploadBudget(compressed)
+          : compressed;
+      if (!prepared) {
+        toast.error(
+          `"${file.name}" es demasiado grande y este navegador no pudo comprimirla. Exporta la imagen como JPG o WebP e inténtalo de nuevo.`,
+        );
+        return;
+      }
+      const fd = new FormData();
+      fd.set("file", prepared);
+      fd.set("alt", altValue);
+      dispatch(fd);
+    });
   }
 
   useEffect(() => {

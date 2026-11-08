@@ -28,6 +28,14 @@ const mock = vi.hoisted(() => {
       });
       return { data: { path }, error: null };
     },
+    // 2026-11-08 — verificación de continuidad antes del sellado: el mock lista
+    // lo que se "subió" bajo el prefijo pedido (misma semántica que Storage).
+    list: async (prefix: string) => ({
+      data: uploads
+        .filter((u) => u.bucket === bucket && u.path.startsWith(`${prefix}/`))
+        .map((u) => ({ name: u.path.slice(prefix.length + 1) })),
+      error: null,
+    }),
     getPublicUrl: (path: string) => ({
       data: { publicUrl: `https://mock.supabase/storage/v1/object/public/${bucket}/${path}` },
     }),
@@ -237,5 +245,31 @@ describe.skipIf(!hasDb)("saveDesignPreviewPages (2026-10-13)", () => {
 
     expect(result.ok).toBe(false);
     expect(mock.uploads.slice(before).filter((u) => u.path.startsWith(designId))).toHaveLength(0);
+  });
+
+  // Auditoría 2026-11-08 — continuidad REAL: el lote final llega pero la página
+  // 02 nunca se subió (lote omitido o carrera) → NO se sella el pager.
+  it("lote final con una página faltante en Storage → ok:false y SIN sello", async () => {
+    const designId = await makeDesign("READY");
+
+    // Lote 1: página 01. Lote "final" salta a la 03 (offset 2, total 3).
+    await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 11, g: 11, b: 11 })],
+      offset: 0,
+      totalPages: 3,
+    });
+    const result = await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 33, g: 33, b: 33 })],
+      offset: 2,
+      totalPages: 3,
+    });
+
+    expect(result.ok).toBe(false);
+    const design = await prisma.design.findUnique({ where: { id: designId } });
+    expect(design?.previewPagesCount).toBeNull();
   });
 });

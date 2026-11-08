@@ -56,9 +56,12 @@ type CmsGuard = {
 /*
  * Merge del reporte de la auditoría responsive (Fase 5.1-5.2, 2026-10-13):
  * audit-responsive.spec.ts escribe una parte por perfil×grupo en
- * tmp/audit-20261013/parts/ (los workers corren perfiles en paralelo — cada
- * uno escribe su archivo); acá se consolidan en tmp/audit-20261013/report.json
- * y se borran las partes. No-op si la corrida no incluyó el spec.
+ * tmp/audit-20261013/parts/<E2E_RUN>/ (los workers corren perfiles en paralelo
+ * — cada uno escribe su archivo). Acá se consolidan en
+ * tmp/audit-20261013/report-<E2E_RUN>.json y se borra SOLO el subdirectorio de
+ * ESTA corrida (2026-11-08: antes se compartía parts/ y report.json entre
+ * procesos — el teardown de una corrida borraba las partes de otra en vuelo).
+ * No-op si la corrida no incluyó el spec.
  */
 type AuditHallazgo = { severidad: "critical" | "medium" | "info"; tipo: string; detalle: string };
 type AuditPantalla = { ruta: string; grupo: string; hallazgos: AuditHallazgo[] };
@@ -74,7 +77,9 @@ type AuditParte = {
 function mergeAuditResponsiveReport(): void {
   // __dirname = tests/e2e/_setup (un nivel más que el spec) → 5 niveles al root.
   const outDir = resolve(__dirname, "../../../../../tmp/audit-20261013");
-  const partsDir = resolve(outDir, "parts");
+  const run = process.env.E2E_RUN;
+  if (!run) return; // corrida sin config nueva (no debería ocurrir) → no tocar nada
+  const partsDir = resolve(outDir, "parts", run);
   if (!existsSync(partsDir)) return;
   try {
     const porPerfil = new Map<string, AuditParte>();
@@ -100,10 +105,10 @@ function mergeAuditResponsiveReport(): void {
       })),
       perfiles,
     };
-    writeFileSync(resolve(outDir, "report.json"), JSON.stringify(reporte, null, 2));
+    writeFileSync(resolve(outDir, `report-${run}.json`), JSON.stringify(reporte, null, 2));
     rmSync(partsDir, { recursive: true, force: true });
     console.log(
-      `[e2e teardown] reporte responsive consolidado (${perfiles.length} perfiles) en tmp/audit-20261013/report.json`,
+      `[e2e teardown] reporte responsive consolidado (${perfiles.length} perfiles) en tmp/audit-20261013/report-${run}.json`,
     );
   } catch (err) {
     // El merge nunca debe romper la limpieza de la homologación.
