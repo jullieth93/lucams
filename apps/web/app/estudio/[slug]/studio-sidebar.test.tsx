@@ -583,7 +583,8 @@ describe("StudioSidebar — prediseñado como primera acción SIN draft (draft L
  *   1. density="compact" (instancia del sheet móvil): grillas de 4 columnas y
  *      paddings menores; el aside desktop (default) no cambia.
  *   2. La sección «Plantillas» va ANTES de «Mis fotos» (es el primer paso del
- *      checklist) y, con >1 plantillas sin elección, lleva el chip «Pendiente».
+ *      checklist) y, con plantillas sin elección (incluso UNA sola,
+ *      owner 2026-11-07), lleva el chip «Pendiente».
  *   3. Bloqueo guiado: templateNudgeSignal (intento de «Ver diseño» sin
  *      plantilla) scrollea a la sección y la resalta (ring turquesa).
  */
@@ -689,6 +690,12 @@ describe("StudioSidebar — Ola 2: densidad compacta y plantilla prominente (202
 
     act(() => store.getState().setSelectedTemplate("t1"));
     expect(within(section).queryByText("Pendiente")).toBeNull();
+  });
+
+  it("con 1 sola plantilla sin elección también lleva el chip «Pendiente» (owner 2026-11-07)", () => {
+    renderOla2({ templates: [tpl("t1")] });
+    const section = screen.getByText("Plantillas").closest("section")!;
+    expect(within(section).getByText("Pendiente").className).toContain("bg-brand-yellow/40");
   });
 
   it("templateNudgeSignal (bloqueo guiado): la sección de plantillas se resalta y scrollea a la vista", async () => {

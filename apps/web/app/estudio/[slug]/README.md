@@ -772,10 +772,11 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   porque su variante ya representa el tamaño del pack.
 - **Arranque sin plantilla preseleccionada y bloqueo guiado (`lib/boot-template.ts`, `ADR-167`)**:
   `resolveBootTemplate` separa la geometría inicial de render de la elección del usuario. Si el
-  producto tiene **más de 1 plantilla activa** y la URL no trae `?template=<slug>` ni `?designId=`,
+  producto tiene **1 o más plantillas activas** y la URL no trae `?template=<slug>` ni `?designId=`,
   `templateId` inicia en `null` (`Design.templateId = null` en BD), el checklist «Tu diseño» marca
   «Elige tu plantilla» como primer paso pendiente y pulsar «Ver diseño» abre y resalta la sección
-  Plantillas hasta que el cliente elija una explícitamente. Con 1 sola plantilla se autoselecciona.
+  Plantillas hasta que el cliente elija una explícitamente. La elección es obligatoria incluso con
+  una única plantilla (owner 2026-11-07 — homologación de todos los lienzos con plantillas).
 - **Controles de unidades y réplica rápida**: `StudioUnitCountControl` ajusta `unitCount` en
   productos multi-slot (`unitSlots > facesPerUnit`) y en experiencias `freeUnitDesign`, incluidas la
   bola dúplex (25 unidades máximo) y los mini libros (50). `setPhotoSlotsPerUnit` distingue entre
