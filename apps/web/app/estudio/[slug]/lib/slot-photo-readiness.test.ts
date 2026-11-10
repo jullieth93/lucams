@@ -11,7 +11,13 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { waitForSlotPhotosReady } from "./slot-photo-readiness";
+import {
+  FORCE_DECODE_BUDGET_BASE_MS,
+  FORCE_DECODE_BUDGET_MAX_MS,
+  FORCE_DECODE_BUDGET_PER_PHOTO_MS,
+  forceDecodeBudgetMs,
+  waitForSlotPhotosReady,
+} from "./slot-photo-readiness";
 
 type FakeStage = { findOne: (selector: string) => object | null };
 
@@ -121,5 +127,32 @@ describe("waitForSlotPhotosReady", () => {
   it("nodos sin image()/decode() (fake mínimo) pasan el re-decode como no-op", async () => {
     const stages = new Map<number, FakeStage | null>([[0, fakeStage([".slot-photo"])]]);
     await waitForSlotPhotosReady([slot(0, "https://x/0.png")], stages);
+  });
+});
+
+// 2026-11-10 (bug STG bola navideña 5× = 10 fotos en celular): el techo fijo
+// de 3 s se agotaba con muchas fotos y el bake salía con caras vacías. El
+// presupuesto ahora escala por foto, con piso y tope.
+describe("forceDecodeBudgetMs", () => {
+  it("sin fotos (o valores inválidos) → piso histórico de 3 s", () => {
+    expect(forceDecodeBudgetMs(0)).toBe(3000);
+    expect(forceDecodeBudgetMs(-3)).toBe(3000);
+    expect(forceDecodeBudgetMs(Number.NaN)).toBe(3000);
+  });
+
+  it("escala por foto: base + 700 ms por imagen", () => {
+    expect(forceDecodeBudgetMs(1)).toBe(
+      FORCE_DECODE_BUDGET_BASE_MS + FORCE_DECODE_BUDGET_PER_PHOTO_MS,
+    );
+    expect(forceDecodeBudgetMs(2)).toBe(
+      FORCE_DECODE_BUDGET_BASE_MS + 2 * FORCE_DECODE_BUDGET_PER_PHOTO_MS,
+    );
+    expect(forceDecodeBudgetMs(10)).toBe(
+      FORCE_DECODE_BUDGET_BASE_MS + 10 * FORCE_DECODE_BUDGET_PER_PHOTO_MS,
+    );
+  });
+
+  it("muchas fotos → topa en el máximo (nunca cuelga el click)", () => {
+    expect(forceDecodeBudgetMs(100)).toBe(FORCE_DECODE_BUDGET_MAX_MS);
   });
 });

@@ -81,6 +81,14 @@ export type StudioTexts = {
     finalizePopoverFotos: string;
     finalizePopoverTextos: string;
     finalizeGuardando: string;
+    /** 2026-11-10 — compuerta de decodificación: «Ver diseño»/«Ver en tu
+     *  espacio» ocupados mientras las fotos asignadas decodifican en el lienzo
+     *  (la subida termina antes que el decode). {listas}/{total} = progreso. */
+    cargandoFotos: string;
+    /** 2026-11-10 — overlay del slot con foto asignada AÚN decodificando (≠
+     *  slot vacío): evita la lectura "mi diseño desapareció" al volver del
+     *  carrito o en celulares lentos. */
+    fotoCargando: string;
     /** Paquete C (2026-10-02) — chip resumen de avisos de calidad junto a
      *  «Vista previa» (toolbar). {n} = fotos asignadas con aviso. */
     calidadChipTexto: string;
@@ -1006,6 +1014,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     finalizePopoverFotos: "Fotos por cargar:",
     finalizePopoverTextos: "Textos por completar:",
     finalizeGuardando: "Guardando diseño...",
+    // 2026-11-10 — compuerta de decodificación de fotos (bug STG bola navideña:
+    // bakes vacíos al pulsar 3D/«Ver diseño» antes de que el lienzo decodifique).
+    cargandoFotos: "Cargando tus fotos… {listas} de {total}",
+    fotoCargando: "Cargando tu foto…",
     // Paquete C (2026-10-02) — chip resumen de avisos de calidad junto a «Vista previa».
     calidadChipTexto: "{n} por revisar",
     calidadChipAria: "{n} fotos tienen avisos de calidad. Click para ver cuáles son.",
