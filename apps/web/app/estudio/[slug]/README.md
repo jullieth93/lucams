@@ -729,7 +729,7 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
     inmediatamente antes de cada `snapshotSlotForPreview` / `stage.toDataURL()`), evitando que el
     desalojo LRU de bitmaps decodificados en Chrome Android (al decodificar 10 caras de una bola 5× o
     al ceder el hilo entre iteraciones con `yieldToMain()`) deje en blanco las primeras caras (`Bola 1
-    de 5`) y contamine `slotSnapshotCache`.
+de 5`) y contamine `slotSnapshotCache`.
   - **Instancia única de imagen por slot y preservación de montaje en grilla (2026-11-10)**:
     `StudioSlot` comparte su `HTMLImageElement` ya cargado (`preloadedPhotoImage` / `preloadedPhoto`)
     con `ImagePlaceholder` y `CalendarCardLayer` dentro del árbol Konva (excepto en modo
