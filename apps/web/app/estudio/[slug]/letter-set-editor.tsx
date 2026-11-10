@@ -311,7 +311,7 @@ async function montageLaminaBlobs(blobs: Blob[]): Promise<string> {
   const maxW = Math.max(...imgs.map((i) => i.naturalWidth));
   const wScale = Math.min(1, PREVIEW_MONTAGE_MAX_WIDTH_PX / maxW);
   const w = Math.round(maxW * wScale);
-  let h = Math.round(
+  const h = Math.round(
     imgs.reduce((sum, i) => sum + i.naturalHeight * wScale, 0) + gap * (imgs.length - 1),
   );
   // Segunda reducción proporcional si el apilado aun supera el tope de píxeles.

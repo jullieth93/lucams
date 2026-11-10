@@ -47,8 +47,11 @@ type TrackedRequest = { url: string; method: string; size: number };
 function trackRequests(page: import("@playwright/test").Page): TrackedRequest[] {
   const tracked: TrackedRequest[] = [];
   page.on("request", (req) => {
-    const size = req.postDataBuffer()?.length ?? 0;
-    if (size > 0) tracked.push({ url: req.url(), method: req.method(), size });
+    if (req.method() === "GET" || req.method() === "HEAD") return;
+    // postDataBuffer() puede ser null en PUTs cross-origin con Blob (Chromium no
+    // siempre reporta el body) — se registran con size -1 para no perderlos.
+    const size = req.postDataBuffer()?.length ?? -1;
+    if (size !== 0) tracked.push({ url: req.url(), method: req.method(), size });
   });
   return tracked;
 }
@@ -158,19 +161,23 @@ test.beforeAll(async ({ baseURL }) => {
     }
   }
 
-  const set = await db().letterTileSet.findFirst({
+  // Primer set con al menos una letra libre (un set completo no tiene celda
+  // "Subir ficha X" — visto en STG con «Kawaii Animales · Español» 27/27).
+  const sets = await db().letterTileSet.findMany({
     where: { isActive: true, deletedAt: null },
     select: { id: true, name: true, language: true, tiles: { select: { char: true } } },
-    orderBy: { createdAt: "asc" },
+    orderBy: { order: "asc" },
   });
-  if (set) {
-    letterSet = { id: set.id, name: set.name };
-    const taken = new Set(set.tiles.map((t) => t.char.toUpperCase()));
+  for (const s of sets) {
+    const taken = new Set(s.tiles.map((t) => t.char.toUpperCase()));
     const alphabet =
-      set.language === "es"
-        ? [..."ABCDEFGHIJKLMNÑOPQRSTUVWXYZ"]
-        : [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
-    fichaChar = alphabet.find((c) => !taken.has(c)) ?? "Z";
+      s.language === "es" ? [..."ABCDEFGHIJKLMNÑOPQRSTUVWXYZ"] : [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
+    const free = alphabet.find((c) => !taken.has(c));
+    if (free) {
+      letterSet = { id: s.id, name: s.name };
+      fichaChar = free;
+      break;
+    }
   }
 
   // Admin efímero con TOTP (MFA obligatorio, B-1).
@@ -302,8 +309,35 @@ test("finalize letter-set ×10: las láminas van por Storage y NINGÚN request a
   await page.waitForURL(/\/carrito/, { timeout: 240_000 });
 
   const puts = storagePuts(tracked);
+  const appPosts = tracked.filter((r) => r.method === "POST" && new URL(r.url).host === baseHost);
   console.log(
-    `[techo] letterset ×10: ${puts.length} PUTs a Storage, total ${(puts.reduce((s, p) => s + p.size, 0) / MB).toFixed(2)} MB`,
+    `[techo] letterset ×10: ${puts.length} PUTs a Storage (${(puts.reduce((s, p) => s + p.size, 0) / MB).toFixed(2)} MB) · ${appPosts.length} POSTs a la app (máx ${(Math.max(0, ...appPosts.map((p) => p.size)) / MB).toFixed(2)} MB)`,
+  );
+  console.log(
+    "[techo] POSTs:",
+    JSON.stringify(
+      appPosts.map((p) => ({ u: new URL(p.url).pathname, kb: Math.round(p.size / 1024) })),
+    ),
+  );
+  console.log(
+    "[techo] otros con body:",
+    JSON.stringify(
+      tracked
+        .filter((r) => r.method !== "GET" && new URL(r.url).host !== baseHost)
+        .map((r) => ({ m: r.method, host: new URL(r.url).host, kb: Math.round(r.size / 1024) })),
+    ),
+  );
+  console.log(
+    "[techo] TODOS >100KB:",
+    JSON.stringify(
+      tracked
+        .filter((r) => r.size > 100 * 1024)
+        .map((r) => ({
+          m: r.method,
+          u: new URL(r.url).host + new URL(r.url).pathname.slice(0, 80),
+          kb: Math.round(r.size / 1024),
+        })),
+    ),
   );
   // 10 sets → 10 láminas por tickets (el fallback NEEDS_CLIENT_SLOTS).
   expect(puts.length, "las 10 láminas subieron por tickets firmados").toBeGreaterThanOrEqual(10);
@@ -442,15 +476,15 @@ test("fichas: una ilustración >4.5 MB sube comprimida en el navegador sin tocar
     totpSecret,
   });
   await page.goto("/admin/disenos?tab=fichas", { waitUntil: "domcontentloaded" });
-  const cell = page.getByRole("button", { name: `Subir ficha ${fichaChar}` }).first();
+  // El set elegido por NOMBRE (varias LetterGrid en la página, cada una con su
+  // input oculto y su estado): sin el scope, el click y el archivo caían en
+  // instancias distintas y el upload no arrancaba (fallo visto contra STG).
+  const section = page.locator("section").filter({ hasText: letterSet!.name }).first();
+  const cell = section.getByRole("button", { name: `Subir ficha ${fichaChar}` });
   await expect(cell).toBeVisible({ timeout: 30_000 });
   await cell.click();
-  // El input de la grilla usa el ATRIBUTO hidden (el de la galería, en el otro
-  // tab, usa className="hidden") — sin el atributo en el selector el archivo
-  // caía en el input equivocado (fallo E2E detectado en la primera corrida).
-  await page
+  await section
     .locator('input[type="file"][hidden]')
-    .first()
     .setInputFiles({ name: `ficha-${run}.png`, mimeType: "image/png", buffer: big });
 
   await expect(page.getByText(`Ficha ${fichaChar} lista`, { exact: false })).toBeVisible({
