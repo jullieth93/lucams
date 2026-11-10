@@ -90,6 +90,7 @@
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
     consentimiento + embudo `FunnelEventDaily`, **20 procesos programados** y **backups diarios GPG de
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.
+- **E2E administrativo:** `loginAdminWithTotp` espera `load` y reintenta el diligenciamiento con aserciones de valores antes del MFA, evitando la carrera de hidratación en formularios controlados.
 - **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` con **44 guías**, búsqueda
   RBAC, 8 onboarding y recorridos opcionales; progreso/retroalimentación por usuario y cobertura Admin.
 - **Lifecycle Journeys (`ADR-198`):** `/admin/lifecycle` con consentimiento versionado, interruptor/límites,

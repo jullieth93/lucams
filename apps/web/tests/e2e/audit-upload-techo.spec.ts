@@ -459,9 +459,7 @@ test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al ca
     // 3. Archivar de nuevo por la UI admin (instrucción explícita: el producto
     //    vive archivado en STG — corridas parciales anteriores no cambian eso).
     //    El archivado lo deja además inactivo.
-    await page.goto("/admin/productos", { waitUntil: "domcontentloaded" });
-    const row = page.locator("tr", { hasText: initial!.name });
-    await row.getByRole("link").first().click();
+    await page.goto(`/admin/productos/${initial!.id}`, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: /Archivar/ }).click();
     await page.getByRole("button", { name: "Confirmar" }).click();
     await expect
