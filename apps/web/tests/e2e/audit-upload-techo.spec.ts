@@ -394,31 +394,44 @@ const NAME_PRODUCT_SLUG = "nombre-personalizado";
 test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al carrito, archivar de nuevo", async ({
   browser,
 }) => {
-  const exists = await db().product.findFirst({
+  const initial = await db().product.findFirst({
     where: { slug: NAME_PRODUCT_SLUG },
-    select: { id: true, name: true },
+    select: { id: true, name: true, isActive: true, deletedAt: true },
   });
-  test.skip(!exists, `no existe el producto ${NAME_PRODUCT_SLUG} en el ambiente`);
-  studioProductIds.add(exists!.id);
+  test.skip(!initial, `no existe el producto ${NAME_PRODUCT_SLUG} en el ambiente`);
+  studioProductIds.add(initial!.id);
   const page = await (await sharedAdminContext(browser)).newPage();
   const tracked = await trackRequests(page);
 
-  // 1. Restaurar + activar por la UI admin (NUNCA directo en DB: las acciones
-  //    invalidan el tag "catalog" — ver la nota del test). El login admin ya
-  //    se hizo UNA vez en el contexto compartido (rate limit del panel).
-  await page.goto("/admin/productos?status=archived", { waitUntil: "domcontentloaded" });
-  const archivedRow = page.locator("tr", { hasText: exists!.name });
-  await expect(archivedRow).toBeVisible({ timeout: 30_000 });
-  await archivedRow.getByRole("button", { name: "Restaurar" }).click();
-  await expect(page).toHaveURL(/restored=1/, { timeout: 30_000 });
+  // Estado original al arrancar (idempotencia: corridas parciales anteriores
+  // pueden haberlo dejado restaurado). Las aserciones de transición se hacen
+  // por DB (deterministas), no por la URL de redirect (frágil).
+  const originallyArchived = initial!.deletedAt !== null;
+  const originallyInactive = !initial!.isActive;
+  const pollProduct = () =>
+    db().product.findFirst({
+      where: { slug: NAME_PRODUCT_SLUG },
+      select: { isActive: true, deletedAt: true },
+    });
 
-  await page.goto("/admin/productos?status=inactive", { waitUntil: "domcontentloaded" });
-  const inactiveRow = page.locator("tr", { hasText: exists!.name });
-  await expect(inactiveRow).toBeVisible({ timeout: 30_000 });
-  await inactiveRow.getByRole("button", { name: "Activar" }).click();
-  await expect(inactiveRow.getByRole("button", { name: "Pausar" })).toBeVisible({
-    timeout: 30_000,
-  });
+  // 1. Restaurar (si está archivado) + activar (si está pausado) por la UI
+  //    admin — NUNCA directo en DB: las acciones invalidan el tag "catalog".
+  if (originallyArchived) {
+    await page.goto("/admin/productos?status=archived", { waitUntil: "domcontentloaded" });
+    const archivedRow = page.locator("tr", { hasText: initial!.name });
+    await expect(archivedRow).toBeVisible({ timeout: 30_000 });
+    await archivedRow.getByRole("button", { name: "Restaurar" }).click();
+    await expect
+      .poll(async () => (await pollProduct())!.deletedAt === null, { timeout: 30_000 })
+      .toBe(true);
+  }
+  if (originallyInactive || originallyArchived) {
+    await page.goto("/admin/productos?status=inactive", { waitUntil: "domcontentloaded" });
+    const inactiveRow = page.locator("tr", { hasText: initial!.name });
+    await expect(inactiveRow).toBeVisible({ timeout: 30_000 });
+    await inactiveRow.getByRole("button", { name: "Activar" }).click();
+    await expect.poll(async () => (await pollProduct())!.isActive, { timeout: 30_000 }).toBe(true);
+  }
 
   try {
     // 2. Flujo del Estudio: nombre → Vista previa → confirmar → carrito.
@@ -443,22 +456,16 @@ test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al ca
     assertNoOversizedAppRequest(tracked, baseHost);
     await collectStudioDesigns();
   } finally {
-    // 3. Archivar de nuevo por la UI admin (STG queda como estaba).
+    // 3. Archivar de nuevo por la UI admin (instrucción explícita: el producto
+    //    vive archivado en STG — corridas parciales anteriores no cambian eso).
+    //    El archivado lo deja además inactivo.
     await page.goto("/admin/productos", { waitUntil: "domcontentloaded" });
-    const row = page.locator("tr", { hasText: exists!.name });
+    const row = page.locator("tr", { hasText: initial!.name });
     await row.getByRole("link").first().click();
     await page.getByRole("button", { name: /Archivar/ }).click();
     await page.getByRole("button", { name: "Confirmar" }).click();
-    // Verificación por DB: archived = deletedAt sellado de nuevo.
     await expect
-      .poll(
-        async () =>
-          (await db().product.findFirst({
-            where: { slug: NAME_PRODUCT_SLUG },
-            select: { deletedAt: true },
-          }))!.deletedAt !== null,
-        { timeout: 30_000 },
-      )
+      .poll(async () => (await pollProduct())!.deletedAt !== null, { timeout: 30_000 })
       .toBe(true);
     await page.close();
   }
