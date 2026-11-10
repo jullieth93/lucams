@@ -39,6 +39,13 @@ const E2E_ENV = currentEnv();
 // webServer). No-op si el archivo no existe (CI inyecta sus propias vars).
 loadEnvFor(E2E_ENV);
 
+// Auditoría 2026-11-08 — id único POR CORRIDA: los artefactos que comparten
+// directorio entre procesos (parts/report del audit responsive) se aíslan con
+// él para que dos corridas concurrentes no se borren entre sí en el teardown.
+// Se fija en el runner y los workers lo heredan por process.env.
+process.env.E2E_RUN =
+  process.env.E2E_RUN ?? `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 const PORT = process.env.PORT ?? "4000";
 const BASE_URL = baseUrlFor(E2E_ENV);
 const isCI = !!process.env.CI;

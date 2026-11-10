@@ -6,16 +6,17 @@
  * layers, rect del placeholder), así que SIEMPRE se devuelve una plantilla de
  * geometría (la primera de la lista visible). Pero la SELECCIÓN
  * (`selectedTemplateId`) es otra cosa: es la elección del cliente y el
- * checklist «Tu diseño» la exige como primer paso — con >1 plantillas arranca
- * en null y el paso «Elige tu plantilla» queda pendiente hasta que toque una.
+ * checklist «Tu diseño» la exige como primer paso — con plantillas visibles
+ * arranca en null y el paso «Elige tu plantilla» queda pendiente hasta que
+ * toque una.
  *
  * Casos:
  *  (a) Deep-link `?template=` de la PDP (`initialTemplateId` ya validado en
  *      page.tsx contra la lista visible): cuenta como elección EXPLÍCITA →
  *      seleccionada desde el boot.
- *  (b) `templates.length === 1`: la elección es trivial → se auto-selecciona
- *      (fricción sin beneficio; el paso del checklist tampoco aplica).
- *  (c) Resto: geometría = templates[0], selección = null.
+ *  (b) Resto: geometría = templates[0], selección = null — INCLUSO con una
+ *      sola plantilla (owner 2026-11-07: la elección explícita es obligatoria
+ *      aunque sea la única opción; homologa todos los lienzos con plantillas).
  *
  * El recover (?designId=) NO pasa por acá: la plantilla persistida del diseño
  * manda (studio-editor), con el match por dimensiones como fallback legacy.
@@ -38,9 +39,6 @@ export function resolveBootTemplate(
   if (initialTemplateId) {
     const explicit = templates.find((t) => t.id === initialTemplateId);
     if (explicit) return { geometry: explicit, templateId: explicit.id };
-  }
-  if (templates.length === 1 && geometry) {
-    return { geometry, templateId: geometry.id };
   }
   return { geometry, templateId: null };
 }

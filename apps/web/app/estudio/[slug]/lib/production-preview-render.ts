@@ -5,8 +5,8 @@
  * Contiene:
  *   - buildShapePath / clipProductionSnapshotToShape: silueta física del imán
  *     (heart/circle/rectangle) como Path2D y recorte de snapshots a esa forma.
- *   - buildCompositedPreview / buildBookmarkStripPreview: montajes Canvas2D de
- *     la "Vista previa" (grid de slots, tiras de separadores 2 caras).
+ *   - buildCompositedPreview / buildBookmarkStripPreview / buildOrnamentPreview:
+ *     montajes Canvas2D de la "Vista previa" (grid, separadores y bola dúplex).
  *   - buildMagnetTextures / combineStripTextures / rotateTextures90: texturas
  *     PNG por slot para las escenas 3D (nevera, libro).
  *
@@ -137,7 +137,7 @@ export async function buildCompositedPreview(
     : slots;
   const unitSlots = range ? rangeSlots.length : (canvasData.unitSlots ?? slots.length);
   const unitCount = range ? 1 : (canvasData.unitCount ?? 1);
-  const multiUnit = !range && unitCount > 1 && unitSlots > 1;
+  const multiUnit = !range && unitCount > 1;
   // Cell size: 360×(360 * aspect) por slot en el preview
   const cellW = 360;
   const cellH = Math.floor(360 * (unitTemplate.stage.height / unitTemplate.stage.width));
@@ -282,12 +282,21 @@ export async function buildCompositedPreview(
  *    nunca espejo de la cara A ni con el placeholder del editor.
  *  - foldCaption: indicación del tamaño desplegado bajo cada tira (texto CMS
  *    ya resuelto por el caller, ej. "Doblez · Desplegado: 2×12 cm").
+ *  - shape/faceCaptions: `buildOrnamentPreview` reutiliza el montaje noFold para
+ *    mostrar frente y reverso circulares de una bola, sin doblez ni rotación.
  */
 export async function buildBookmarkStripPreview(
   canvasData: CanvasDataV2,
   stages: Map<number, Konva.Stage | null>,
   cornerRadiusPx?: number,
-  opts?: { noFold?: boolean; backOptional?: boolean; foldCaption?: string; unitIndex?: number },
+  opts?: {
+    noFold?: boolean;
+    backOptional?: boolean;
+    foldCaption?: string;
+    unitIndex?: number;
+    shape?: "rectangle" | "circle" | "heart" | "custom";
+    faceCaptions?: { faceA: string; faceB: string };
+  },
 ): Promise<string> {
   const { unitTemplate, slots } = canvasData;
   // Ronda 2 QA (2026-10-08) — misma carrera que el libro 3D: esperar a que las
@@ -296,6 +305,8 @@ export async function buildBookmarkStripPreview(
   const noFold = opts?.noFold === true;
   const backOptional = opts?.backOptional === true;
   const foldCaption = opts?.foldCaption;
+  const shape = opts?.shape;
+  const faceCaptions = opts?.faceCaptions;
   const totalUnits = Math.floor(slots.length / 2);
   // Fase 2 · item 2.2 (2026-10-07) — `unitIndex`: componer SOLO esa unidad (la
   // página del pager de la modal) en vez del montaje con todas.
@@ -308,17 +319,19 @@ export async function buildBookmarkStripPreview(
   const faceH = Math.round(faceW * (unitTemplate.stage.height / unitTemplate.stage.width));
   const pad = 24;
   const gap = 18;
-  const captionH = foldCaption ? 20 : 0; // renglón de la indicación bajo la tira
+  const faceGap = shape === "circle" && noFold ? gap : 0;
+  const captionH = foldCaption ? 20 : 0;
+  const faceCaptionH = faceCaptions ? 24 : 0;
   // Geometría de la tira por unidad: plegable = VERTICAL (A sobre B, 1 cara de
   // ancho × 2 de alto); noFold = horizontal (A | B) como siempre.
-  const stripW = noFold ? faceW * 2 : faceW;
+  const stripW = noFold ? faceW * 2 + faceGap : faceW;
   const stripH = noFold ? faceH : faceH * 2;
   // Montaje: plegables → unidades LADO A LADO (cada tira es alta); noFold →
   // unidades apiladas en vertical (cada tira es ancha).
   const canvasW = noFold ? stripW + pad * 2 : pad * 2 + units * stripW + (units - 1) * gap;
   const canvasH = noFold
-    ? pad * 2 + units * (stripH + captionH) + (units - 1) * gap
-    : pad * 2 + stripH + captionH;
+    ? pad * 2 + units * (stripH + faceCaptionH + captionH) + (units - 1) * gap
+    : pad * 2 + stripH + faceCaptionH + captionH;
 
   const compositeCanvas = document.createElement("canvas");
   compositeCanvas.width = canvasW;
@@ -373,88 +386,60 @@ export async function buildBookmarkStripPreview(
   await Promise.all(faceJobs);
 
   for (let ui = 0; ui < unitIndexes.length; ui++) {
-    // Cara B vacía (backOptional) → faceB = null: su rect se pinta EN BLANCO,
-    // exactamente lo que producción imprime (REGLA ÚNICA, owner 2026-10-07 —
-    // previewFacePairOfUnit, lib/faces.ts). `ui` = posición en el montaje (con
-    // unitIndex siempre 0 — una sola tira centrada en su página).
     const { faceA, faceB } = unitFaces[ui]!;
     const x = noFold ? pad : pad + ui * (stripW + gap);
-    const y = noFold ? pad + ui * (stripH + captionH + gap) : pad;
-    // Rect de cada cara dentro de la tira: plegable = apiladas con CABEZAS AL
-    // DOBLEZ (2026-09-25, corrección del owner — la convención anterior A arriba
-    // / B abajo estaba mal): Cara B en la MITAD SUPERIOR (se rota 180° al pintar,
-    // abajo) y Cara A en la MITAD INFERIOR derecha — ambas cabezas apuntan al
-    // doblez horizontal central, así al doblar la tira sobre el borde superior de
-    // la página ambas caras cuelgan leyéndose derechas (igual que producción y
-    // el 3D). Bonus UX: la cara principal del cliente se ve derecha en la
-    // preview. noFold = lado a lado (A izquierda, B derecha), sin rotar.
+    const y = noFold ? pad + ui * (stripH + faceCaptionH + captionH + gap) : pad;
     const faceRect = (i: number) =>
       noFold
-        ? { fx: x + i * faceW, fy: y, fw: faceW, fh: faceH }
+        ? { fx: x + i * (faceW + faceGap), fy: y, fw: faceW, fh: faceH }
         : { fx: x, fy: y + (1 - i) * faceH, fw: faceW, fh: faceH };
-    // Troquel redondeado de la tira: clipeamos A+B al mismo roundRect → la
-    // silueta impresa coincide con la de producción (WYSIWYG).
     ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(x, y, stripW, stripH, radius);
-    ctx.clip();
+    if (shape !== "circle") {
+      ctx.beginPath();
+      ctx.roundRect(x, y, stripW, stripH, radius);
+      ctx.clip();
+    }
     for (const [i, slotIndex] of [faceA, faceB].entries()) {
       const { fx, fy, fw, fh } = faceRect(i);
       if (slotIndex === null) {
-        // Cara B vacía → patrón de marca «Lucams» (decisión owner 2026-11-03 —
-        // supersede el blanco del 2026-10-07): el MISMO dibujo que imprenta
-        // recibe (default-back-face.ts) y que muestra el 3D (book-view-3d).
-        // CLIP al rect de la cara: la grilla del patrón siembra wordmarks con
-        // margen de cobertura MÁS ALLÁ del lienzo — sin clip, el texto se
-        // desbordaba sobre la cara A del montaje (bug STG 2026-11-03).
         ctx.save();
         ctx.translate(fx, fy);
-        ctx.beginPath();
-        ctx.rect(0, 0, fw, fh);
-        ctx.clip();
+        ctx.clip(buildShapePath(shape, 0, 0, fw, fh));
         drawBrandBackFace(ctx, fw, fh, brandBackFont);
         ctx.restore();
         continue;
       }
       const img = faceImages.get(slotIndex);
       if (!img) continue;
+      ctx.save();
+      if (shape) ctx.clip(buildShapePath(shape, fx, fy, fw, fh));
       if (!noFold && i === 1) {
-        // 2026-09-25 — "cabezas al doblez": la Cara B va en la MITAD
-        // SUPERIOR de la tira, ROTADA 180° — al doblar la tira sobre el
-        // borde superior de la página ambas caras cuelgan leyéndose
-        // derechas. Igual que producción (composeFaceStrips) y el libro
-        // 3D — la preview es fiel a imprenta (la heredan
-        // carrito/admin/correos).
-        ctx.save();
         ctx.translate(fx + fw / 2, fy + fh / 2);
         ctx.rotate(Math.PI);
         ctx.drawImage(img, -fw / 2, -fh / 2, fw, fh);
-        ctx.restore();
       } else {
         ctx.drawImage(img, fx, fy, fw, fh);
       }
+      ctx.restore();
     }
     ctx.restore();
-    // Filete del doblez (pliegue central de la tira) + borde sutil de la
-    // silueta. Plegables: filete HORIZONTAL en la unión (a mitad de la tira
-    // vertical). noFold (Alargados): pieza PLANA → sin filete.
-    // 2026-11-03 (owner) — delimitación POR CARA en noFold: A y B van pegadas
-    // sin filete y, con foto a sangre o el patrón de marca, la B no se leía
-    // como pieza — cada cara lleva su propio contorno redondeado sutil (misma
-    // familia visual del borde exterior, un punto más tenue).
     ctx.save();
     if (noFold) {
-      ctx.strokeStyle = "rgba(124, 106, 173, 0.45)"; // brand-purple/45
+      ctx.strokeStyle = "rgba(124, 106, 173, 0.45)";
       ctx.lineWidth = 1.5;
       for (const i of [0, 1]) {
         const { fx, fy, fw, fh } = faceRect(i);
-        ctx.beginPath();
-        ctx.roundRect(fx + 0.75, fy + 0.75, fw - 1.5, fh - 1.5, Math.max(4, radius - 1));
-        ctx.stroke();
+        if (shape === "circle") {
+          ctx.stroke(buildShapePath(shape, fx + 0.75, fy + 0.75, fw - 1.5, fh - 1.5));
+        } else {
+          ctx.beginPath();
+          ctx.roundRect(fx + 0.75, fy + 0.75, fw - 1.5, fh - 1.5, Math.max(4, radius - 1));
+          ctx.stroke();
+        }
       }
     }
     if (!noFold) {
-      ctx.strokeStyle = "rgba(124, 106, 173, 0.55)"; // brand-purple/55
+      ctx.strokeStyle = "rgba(124, 106, 173, 0.55)";
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
@@ -463,25 +448,51 @@ export async function buildBookmarkStripPreview(
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(x, y, stripW, stripH, radius);
-    ctx.stroke();
+    if (shape !== "circle") {
+      ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(x, y, stripW, stripH, radius);
+      ctx.stroke();
+    }
     ctx.restore();
-    // Indicación del tamaño total desplegado bajo la tira (mismo texto CMS que
-    // la tarjeta-unidad del lienzo).
+    if (faceCaptions) {
+      ctx.save();
+      ctx.fillStyle = "rgba(60, 45, 100, 0.85)";
+      ctx.font = "600 12px Inter, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      for (const [i, slotIndex] of [faceA, faceB].entries()) {
+        if (slotIndex === null) continue;
+        const { fx, fy, fw, fh } = faceRect(i);
+        ctx.fillText(i === 0 ? faceCaptions.faceA : faceCaptions.faceB, fx + fw / 2, fy + fh + 16);
+      }
+      ctx.restore();
+    }
     if (foldCaption) {
       ctx.save();
       ctx.fillStyle = "rgba(60, 45, 100, 0.85)";
       ctx.font = "600 12px Inter, system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(foldCaption, x + stripW / 2, y + stripH + 14);
+      ctx.fillText(foldCaption, x + stripW / 2, y + stripH + faceCaptionH + 14);
       ctx.restore();
     }
   }
 
   return canvasToPreviewDataUrl(compositeCanvas);
+}
+
+export async function buildOrnamentPreview(
+  canvasData: CanvasDataV2,
+  stages: Map<number, Konva.Stage | null>,
+  faceCaptions: { faceA: string; faceB: string },
+  unitIndex?: number,
+): Promise<string> {
+  return buildBookmarkStripPreview(canvasData, stages, 0, {
+    noFold: true,
+    shape: "circle",
+    faceCaptions,
+    unitIndex,
+  });
 }
 
 /**
@@ -616,7 +627,18 @@ export async function buildMagnetTextures(
       const path = buildShapePath(shape, 0, 0, texW, texH);
       ctx.save();
       ctx.clip(path);
+      // 2026-11-07 (bug owner — bola 3D con el diseño «totalmente negro»): un
+      // píxel TRANSPARENTE dentro de la silueta se renderiza NEGRO en las
+      // escenas 3D (los materiales no mezclan alfa; mismo modo de falla
+      // documentado en magnet-3d.ts: «transparente (0,0,0,0) → negro»), aunque
+      // en el lienzo 2D se vea "correcto" por el fondo claro de la página.
+      // Relleno crema BAJO el diseño (destination-over, solo dentro de la
+      // silueta): coincide con el inserto/vinilo físico blanco y no toca la
+      // transparencia de afuera, que las escenas usan para la forma.
       ctx.drawImage(img, 0, 0, texW, texH);
+      ctx.globalCompositeOperation = "destination-over";
+      ctx.fillStyle = "#FAF8F5"; // crema del inserto físico de la bola / vinilo
+      ctx.fillRect(0, 0, texW, texH);
       ctx.restore();
       resolve(c.toDataURL("image/png"));
     });

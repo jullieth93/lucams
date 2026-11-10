@@ -710,3 +710,80 @@ describe("StudioPreviewModal — ZOOM del preview (2026-10-19)", () => {
     expect(screen.queryByRole("img", { name: /Set 2 de 3/ })).not.toBeInTheDocument();
   });
 });
+
+describe("StudioPreviewModal — bola navideña dúplex", () => {
+  it("describe bolas con inserto circular A/B y nunca separadores ni doblez", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productName="Bola Navideña Personalizada"
+        productKind="ornaments"
+        slotCount={2}
+        unitCount={2}
+        sizeCm="8 cm"
+        unitNoun={{ one: "bola", many: "bolas", feminine: true }}
+      />,
+    );
+    expect(screen.getByText("Así se verán tus bolas navideñas")).toBeInTheDocument();
+    expect(
+      screen.getByText(/vista previa de las 2 bolas navideñas que vas a recibir/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.getAttribute("data-slot") === "dialog-description" &&
+          (element.textContent ?? "").includes(
+            "El inserto circular de cada bola mide 8 cm de diámetro.",
+          ),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/2 bolas navideñas personalizadas \(2 caras c\/u\)/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 bolas — cada una con su propio diseño")).toBeInTheDocument();
+    expect(screen.queryByText(/separador/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/doblez|doblado/i)).not.toBeInTheDocument();
+  });
+
+  // Bug owner 2026-11-07 — la modal mostraba unitario × N plano ($30.000 por 3
+  // bolas) mientras el carrito cobraba la promo por volumen ($27.000).
+  it("aplica la promo por volumen al total (3 bolas → $27.000 con el plano tachado)", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productName="Bola Navideña Personalizada"
+        productKind="ornaments"
+        slotCount={6}
+        unitCount={3}
+        unitPrice={1_000_000}
+        priceMultiplier={3}
+        unitNoun={{ one: "bola", many: "bolas", feminine: true }}
+        volumeTiers={[
+          { minQty: 3, unitPrice: 900_000, savingsPct: 10 },
+          { minQty: 5, unitPrice: 800_000, savingsPct: 20 },
+        ]}
+      />,
+    );
+    expect(screen.getByText(cop(2_700_000))).toBeInTheDocument();
+    expect(screen.getByText(cop(3_000_000))).toHaveClass("line-through");
+    expect(screen.getByText(`${cop(900_000)} c/u`)).toBeInTheDocument();
+  });
+
+  it("sin nivel alcanzado (2 bolas) el total queda plano y nada se tacha", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productName="Bola Navideña Personalizada"
+        productKind="ornaments"
+        slotCount={4}
+        unitCount={2}
+        unitPrice={1_000_000}
+        priceMultiplier={2}
+        unitNoun={{ one: "bola", many: "bolas", feminine: true }}
+        volumeTiers={[{ minQty: 3, unitPrice: 900_000, savingsPct: 10 }]}
+      />,
+    );
+    expect(screen.getByText(cop(2_000_000))).toBeInTheDocument();
+    expect(document.querySelector(".line-through")).toBeNull();
+  });
+});

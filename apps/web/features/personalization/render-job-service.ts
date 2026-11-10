@@ -40,6 +40,7 @@ import { resolveBorderWidthFactor } from "./frame-palette";
 import { loadEffectiveProductConfig } from "./effective-variant-server";
 import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
 import { letterSetUnitCount } from "./design-units";
+import { readProductExperience } from "./product-experience";
 import { LETTER_TILE_FALLBACK_COLOR } from "./letter-tile-draw";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
 import type { CanvasDataV2 } from "./schemas";
@@ -104,8 +105,11 @@ export function staticClientFallbackReason(canvasData: CanvasDataV2): string | n
 export function renderJobTotalUnits(
   productConfig: { facesPerUnit?: number | null },
   slotCount: number,
+  productSchema?: unknown,
 ): number {
-  return productConfig.facesPerUnit === 2 && slotCount % 2 === 0
+  return productConfig.facesPerUnit === 2 &&
+    readProductExperience(productSchema).experience !== "christmas-ornament" &&
+    slotCount % 2 === 0
     ? Math.max(1, slotCount / 2)
     : slotCount;
 }
@@ -128,8 +132,8 @@ export async function createOrResetRenderJob(opts: {
   if (!design || design.productId !== opts.productId) {
     throw new Error(`RenderJob inválido para el diseño ${opts.designId}`);
   }
-  const { productConfig } = await loadEffectiveProductConfig(design);
-  const totalUnits = renderJobTotalUnits(productConfig, opts.slotCount);
+  const { productConfig, productSchema } = await loadEffectiveProductConfig(design);
+  const totalUnits = renderJobTotalUnits(productConfig, opts.slotCount, productSchema);
   return prisma.renderJob.upsert({
     where: { designId: opts.designId },
     create: {
@@ -303,7 +307,10 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
     slots,
     emptyBackSlots,
     isCalendar,
-    faces2: productConfig.facesPerUnit === 2 && canvasData.slotCount % 2 === 0,
+    faces2:
+      productConfig.facesPerUnit === 2 &&
+      readProductExperience(productSchema).experience !== "christmas-ornament" &&
+      canvasData.slotCount % 2 === 0,
     letterset: null,
     productConfig,
     productSchema,

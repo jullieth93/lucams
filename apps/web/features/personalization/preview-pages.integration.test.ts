@@ -28,6 +28,14 @@ const mock = vi.hoisted(() => {
       });
       return { data: { path }, error: null };
     },
+    // 2026-11-08 — verificación de continuidad antes del sellado: el mock lista
+    // lo que se "subió" bajo el prefijo pedido (misma semántica que Storage).
+    list: async (prefix: string) => ({
+      data: uploads
+        .filter((u) => u.bucket === bucket && u.path.startsWith(`${prefix}/`))
+        .map((u) => ({ name: u.path.slice(prefix.length + 1) })),
+      error: null,
+    }),
     getPublicUrl: (path: string) => ({
       data: { publicUrl: `https://mock.supabase/storage/v1/object/public/${bucket}/${path}` },
     }),
@@ -183,5 +191,85 @@ describe.skipIf(!hasDb)("saveDesignPreviewPages (2026-10-13)", () => {
     expect(design?.previewPagesCount).toBeNull();
     // Nada quedó subido del lote (el decode corre antes de subir cada página).
     expect(mock.uploads.slice(before).filter((u) => u.path.startsWith(designId))).toHaveLength(0);
+  });
+
+  // Auditoría 2026-11-08 — subida POR LOTES (el body de una Server Action en
+  // Vercel tiene techo ~4.5 MB): cada lote lleva offset + totalPages y solo el
+  // lote final sella Design.previewPagesCount.
+  it("lotes: las páginas caen en su posición y el conteo solo se sella con el lote final", async () => {
+    const designId = await makeDesign("READY");
+    const before = mock.uploads.length;
+
+    const b1 = await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 10, g: 10, b: 10 }), await tinyWebp({ r: 20, g: 20, b: 20 })],
+      offset: 0,
+      totalPages: 3,
+    });
+    expect(b1).toEqual({ ok: true, pagesCount: 3 });
+    let design = await prisma.design.findUnique({ where: { id: designId } });
+    expect(design?.previewPagesCount).toBeNull(); // lote intermedio: NO se sella
+
+    const b2 = await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 30, g: 30, b: 30 })],
+      offset: 2,
+      totalPages: 3,
+    });
+    expect(b2).toEqual({ ok: true, pagesCount: 3 });
+    design = await prisma.design.findUnique({ where: { id: designId } });
+    expect(design?.previewPagesCount).toBe(3); // lote final: sella el TOTAL
+    const paths = mock.uploads.slice(before).map((u) => u.path);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        `${designId}/pages/01.webp`,
+        `${designId}/pages/02.webp`,
+        `${designId}/pages/03.webp`,
+      ]),
+    );
+  });
+
+  it("lote que excede el total declarado → ok:false sin subir nada", async () => {
+    const designId = await makeDesign("READY");
+    const before = mock.uploads.length;
+
+    const result = await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 1, g: 1, b: 1 }), await tinyWebp({ r: 2, g: 2, b: 2 })],
+      offset: 2,
+      totalPages: 3,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(mock.uploads.slice(before).filter((u) => u.path.startsWith(designId))).toHaveLength(0);
+  });
+
+  // Auditoría 2026-11-08 — continuidad REAL: el lote final llega pero la página
+  // 02 nunca se subió (lote omitido o carrera) → NO se sella el pager.
+  it("lote final con una página faltante en Storage → ok:false y SIN sello", async () => {
+    const designId = await makeDesign("READY");
+
+    // Lote 1: página 01. Lote "final" salta a la 03 (offset 2, total 3).
+    await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 11, g: 11, b: 11 })],
+      offset: 0,
+      totalPages: 3,
+    });
+    const result = await saveDesignPreviewPages({
+      designId,
+      owner: { customerId: ownerId, sessionId: null },
+      pages: [await tinyWebp({ r: 33, g: 33, b: 33 })],
+      offset: 2,
+      totalPages: 3,
+    });
+
+    expect(result.ok).toBe(false);
+    const design = await prisma.design.findUnique({ where: { id: designId } });
+    expect(design?.previewPagesCount).toBeNull();
   });
 });

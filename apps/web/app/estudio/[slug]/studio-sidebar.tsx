@@ -28,6 +28,7 @@ import {
   Eye,
   GripVertical,
   Trash2,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { StoreApi } from "zustand";
@@ -57,6 +58,8 @@ import { StudioReplaceSlotModal, type ReplaceSlotOption } from "./studio-replace
 import { PredesignedHoverPreview } from "./predesigned-hover-preview";
 import { PredesignedViewDialog } from "./predesigned-view-dialog";
 import { StudioMessageField } from "./studio-message-field";
+import { MiniBookFields } from "./mini-book-fields";
+import { assistedDesignRequestHref, filterPredesignedByName } from "./lib/predesigned-search";
 import { ConsentText } from "./studio-consent-text";
 import {
   StudioChecklist,
@@ -71,6 +74,7 @@ import {
 } from "./lib/store";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 import { processPhotoFiles } from "./lib/upload-photo-pipeline";
+import { uploadPhotoDirectToStorage } from "./lib/upload-photo-direct";
 import { trackStudioFunnelStep } from "@/lib/funnel-client";
 import type { StudioAsset, StudioTemplate } from "./types";
 import { PhotoQualityModal } from "./photo-quality-modal";
@@ -182,6 +186,8 @@ export function StudioSidebar({
   const [predesignedOpen, setPredesignedOpen] = useState(
     () => predesigned.length <= PREDESIGNED_COLLAPSE_THRESHOLD,
   );
+  const [predesignedQuery, setPredesignedQuery] = useState("");
+  const visiblePredesigned = filterPredesignedByName(predesigned, predesignedQuery);
   // 2026-10-26 — prediseñado en preview «Ver» (Dialog): la ÚNICA vía de ver el
   // diseño en grande en táctil (el HoverCard es hover-only); en desktop
   // coexiste con el hover.
@@ -479,6 +485,9 @@ export function StudioSidebar({
         designId,
         rightsAccepted,
         upload: uploadDesignAssetAction,
+        // 2026-11-08 — fallback HEIC ~4.5–10 MB sin decode en el navegador:
+        // subida directa a Storage con ticket firmado (ver lib/upload-photo-direct).
+        uploadDirect: uploadPhotoDirectToStorage,
         onReady: (outcome) => {
           setUploading((n) => Math.max(0, n - 1));
           if (!outcome.ok) {
@@ -624,7 +633,7 @@ export function StudioSidebar({
           <Sparkles className="text-brand-purple h-4 w-4" />
           {texts.plantillas.titulo}
           <span className="text-brand-muted text-xs font-normal">({templates.length})</span>
-          {templates.length > 1 && !selectedTemplateId && (
+          {templates.length > 0 && !selectedTemplateId && (
             <span className="bg-brand-yellow/40 text-brand-purple-dark rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase">
               {texts.checklist.pendiente}
             </span>
@@ -829,6 +838,7 @@ export function StudioSidebar({
       {/* ──────── Tu mensaje (Ola 3c — Polaroid Clásica: campo directo en la sidebar;
           tocar el texto del canvas sigue abriendo el editor completo como atajo) ──────── */}
       {allowText && <StudioMessageField store={store} />}
+      {allowText && <MiniBookFields store={store} />}
 
       {/* ──────── Diseños prediseñados (galería admin) ──────── */}
       {predesigned.length > 0 && (
@@ -869,9 +879,23 @@ export function StudioSidebar({
               <p className="text-brand-muted mb-2 text-[11px]">
                 {texts.plantillas.predisenadosHint}
               </p>
+              <div className="relative mb-3">
+                <Search
+                  className="text-brand-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+                  aria-hidden
+                />
+                <input
+                  type="search"
+                  value={predesignedQuery}
+                  onChange={(event) => setPredesignedQuery(event.target.value)}
+                  placeholder="Busca por tema, ocasión o tamaño"
+                  aria-label="Buscar diseños prediseñados"
+                  className="border-brand-purple/20 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 h-11 w-full rounded-md border bg-white pr-3 pl-9 text-sm focus:ring-2 focus:outline-none"
+                />
+              </div>
               {/* Paquete A — llenado VARIADO de los slots vacíos (round-robin del
               catálogo: nunca N slots con el mismo diseño habiendo variedad). */}
-              {emptySlots > 0 && (
+              {emptySlots > 0 && visiblePredesigned.length > 0 && (
                 <button
                   type="button"
                   onClick={handleFillWithVariety}
@@ -887,8 +911,22 @@ export function StudioSidebar({
                   {texts.plantillas.predisenadosLlenarCta}
                 </button>
               )}
+              {visiblePredesigned.length === 0 && (
+                <div role="status" className="bg-brand-cream/70 mb-3 rounded-lg p-3 text-center">
+                  <p className="text-brand-purple-dark text-sm font-semibold">
+                    No encontramos un diseño con esa búsqueda.
+                  </p>
+                  <p className="text-brand-muted mt-1 text-xs">Puedes pedir ayuda para crearlo.</p>
+                  <a
+                    href={assistedDesignRequestHref(productSlug ?? "producto", predesignedQuery)}
+                    className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 mt-3 inline-flex min-h-11 items-center rounded-md border bg-white px-4 text-xs font-semibold"
+                  >
+                    Solicitar este diseño
+                  </a>
+                </div>
+              )}
               <div className={`grid ${compact ? "grid-cols-4 gap-1.5" : "grid-cols-3 gap-2"}`}>
-                {predesigned.map((item) => {
+                {visiblePredesigned.map((item) => {
                   const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
                   return (
                     // Preview emergente (owner 2026-10-19): sostener el mouse

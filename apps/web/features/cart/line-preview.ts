@@ -13,8 +13,10 @@
  * componente de servidor como desde el formulario cliente.
  */
 
+import { readProductExperience } from "@/features/personalization/product-experience";
+
 /** Cómo se llama la pieza física. Mismo criterio que la modal del Estudio. */
-export type PieceKind = "magnets" | "calendar" | "bookmarks" | "tiles" | "strips";
+export type PieceKind = "magnets" | "calendar" | "bookmarks" | "tiles" | "strips" | "ornaments";
 
 const NOMBRES: Record<PieceKind, { singular: string; plural: string }> = {
   magnets: { singular: "imán", plural: "imanes" },
@@ -26,6 +28,7 @@ const NOMBRES: Record<PieceKind, { singular: string; plural: string }> = {
   // Multi-unidad (2026-09-09) — tiras photobooth: la pieza es la TIRA continua;
   // las "piezas" dentro de ella son fotos (antes se leían como "imanes", incorrecto).
   strips: { singular: "foto", plural: "fotos" },
+  ornaments: { singular: "bola", plural: "bolas" },
 };
 
 /** Sustantivo de la UNIDAD cuando el diseño trae varias (multi-unidad). */
@@ -53,15 +56,17 @@ export function unitCountNounForLine(input: {
   designMetadata?: unknown;
   /** El producto es de la familia separadores (galleryTag/slug "separadores*"). */
   isBookmark?: boolean;
+  productSchema?: unknown;
 }): UnitNoun {
   const meta =
     input.designMetadata && typeof input.designMetadata === "object"
       ? (input.designMetadata as { surface?: unknown })
       : null;
   if (meta?.surface === "letterset") return { singular: "set", plural: "sets" };
-  const kind = pieceKindFor(input.personalizationKind, input.variantName);
+  const kind = pieceKindFor(input.personalizationKind, input.variantName, input.productSchema);
   if (kind === "calendar") return { singular: "calendario", plural: "calendarios" };
   if (kind === "strips") return { singular: "tira", plural: "tiras" };
+  if (kind === "ornaments") return { singular: "bola", plural: "bolas" };
   if (kind === "bookmarks" || input.isBookmark) {
     return { singular: "separador", plural: "separadores" };
   }
@@ -74,7 +79,9 @@ export function unitCountNounForLine(input: {
 export function pieceKindFor(
   personalizationKind: string | null | undefined,
   variantName: string | null | undefined,
+  productSchema?: unknown,
 ): PieceKind {
+  if (readProductExperience(productSchema).experience === "christmas-ornament") return "ornaments";
   if (personalizationKind === "CALENDAR_PHOTO_MONTH") return "calendar";
   if (personalizationKind === "BOOKMARK_PHOTO") return "bookmarks";
   // Tiras photobooth: la variante se llama "Tira de N fotos…" — la unidad es la tira.
@@ -172,6 +179,13 @@ export function describePieces(input: {
   unitNoun?: UnitNoun;
 }): string | null {
   const { singular, plural } = NOMBRES[input.kind];
+
+  if (input.kind === "ornaments") {
+    const units = input.units && input.units > 1 ? input.units : 1;
+    const faces = input.pieces && input.pieces > 0 ? input.pieces : 2;
+    const base = `${units} ${units === 1 ? "bola" : "bolas"} · ${faces} ${faces === 1 ? "cara" : "caras"} por bola`;
+    return input.sizeCm ? `${base} · ${input.sizeCm} cada bola` : base;
+  }
 
   // Tiras photobooth: la unidad es la tira; las piezas son las fotos que lleva.
   if (input.kind === "strips") {

@@ -27,6 +27,11 @@ import {
   deleteVariantImageAction,
   unifyVariantCoverGroupAction,
 } from "./image-actions";
+import {
+  compressImageForUpload,
+  shrinkToFitUploadBudget,
+  UPLOAD_PAYLOAD_BUDGET_BYTES,
+} from "@/app/estudio/[slug]/client-image-compress";
 
 export function VariantImages({
   variantId,
@@ -55,13 +60,38 @@ export function VariantImages({
   const handleUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setError(null);
-    const formData = new FormData();
-    formData.set("variantId", variantId);
-    for (const f of Array.from(files)) formData.append("files", f);
+    // Auditoría 2026-11-08 — mismo fix de product-images.tsx: UNA foto
+    // comprimida por request (antes TODO el lote viajaba en un solo FormData y
+    // Vercel corta el body en ~4.5 MB → 413 genérico). Compresión en el
+    // navegador con el pipeline del Estudio; si no cabe ni reducida, error
+    // claro nombrando la foto.
+    const all = Array.from(files);
     startTransition(async () => {
-      const res = await uploadVariantImagesAction(formData);
-      if (res?.error) setError(res.error);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      try {
+        for (const original of all) {
+          const compressed = await compressImageForUpload(original);
+          const prepared =
+            compressed.size > UPLOAD_PAYLOAD_BUDGET_BYTES
+              ? await shrinkToFitUploadBudget(compressed)
+              : compressed;
+          if (!prepared) {
+            setError(
+              `"${original.name}" es demasiado grande y este navegador no pudo comprimirla. Exporta la foto como JPG o WebP e inténtalo de nuevo.`,
+            );
+            break;
+          }
+          const formData = new FormData();
+          formData.set("variantId", variantId);
+          formData.append("files", prepared);
+          const res = await uploadVariantImagesAction(formData);
+          if (res?.error) {
+            setError(res.error);
+            break;
+          }
+        }
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
     });
   };
 
@@ -238,7 +268,7 @@ export function VariantImages({
                   >
                     <button
                       type="button"
-                      className="text-brand-purple-dark inline-flex items-center gap-1 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold shadow-sm hover:bg-white disabled:opacity-40"
+                      className="text-brand-purple-dark inline-flex items-center gap-1 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold shadow-sm hover:bg-white disabled:opacity-40 pointer-coarse:min-h-11 pointer-coarse:px-2.5 pointer-coarse:text-xs"
                       onClick={() => handleReorder(idx, 0)}
                       disabled={pending}
                     >
@@ -247,13 +277,13 @@ export function VariantImages({
                   </span>
                 </Hint>
               )}
-              <div className="absolute right-1.5 bottom-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="absolute right-1.5 bottom-1.5 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
                 <Hint content="Mover una posición arriba">
                   {/* span wrapper: el button disabled no recibe hover/foco, el span sí. */}
                   <span tabIndex={pending || idx === 0 ? 0 : undefined} className="inline-flex">
                     <button
                       type="button"
-                      className="text-brand-purple-dark/80 rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40"
+                      className="text-brand-purple-dark/80 inline-flex items-center justify-center rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                       onClick={() => handleReorder(idx, idx - 1)}
                       disabled={pending || idx === 0}
                       aria-label="Mover arriba"
@@ -264,7 +294,7 @@ export function VariantImages({
                 </Hint>
                 <button
                   type="button"
-                  className="text-brand-purple-dark/80 rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40"
+                  className="text-brand-purple-dark/80 inline-flex items-center justify-center rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                   onClick={() => handleReorder(idx, idx + 1)}
                   disabled={pending || idx === images.length - 1}
                   aria-label="Mover abajo"
@@ -273,7 +303,7 @@ export function VariantImages({
                 </button>
                 <button
                   type="button"
-                  className="rounded bg-white/95 p-1.5 text-red-700 hover:bg-red-50"
+                  className="inline-flex items-center justify-center rounded bg-white/95 p-1.5 text-red-700 hover:bg-red-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                   onClick={() => handleDelete(url)}
                   disabled={pending}
                   aria-label="Borrar foto"

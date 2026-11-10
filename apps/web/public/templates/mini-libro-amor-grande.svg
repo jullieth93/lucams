@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="710" height="500" viewBox="0 0 710 500">
+  <defs><linearGradient id="cover" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#8E2F59"/><stop offset="1" stop-color="#FFB8D9" stop-opacity=".72"/></linearGradient></defs>
+  <rect width="710" height="500" fill="#8E2F59"/>
+  <rect x="380" width="330" height="500" fill="url(#cover)"/>
+  <rect x="330" width="50" height="500" fill="#FFB8D9" fill-opacity=".26"/>
+  <path d="M330 0V500M380 0V500" stroke="#FFF8F0" stroke-opacity=".45" stroke-width="3"/>
+  <rect x="22" y="22" width="286" height="456" rx="14" fill="none" stroke="#FFB8D9" stroke-width="3"/>
+  <g transform="translate(545 160) scale(0.95)"><path d="M0 18 C-35-5-55 20 0 55 C55 20 35-5 0 18Z" fill="#FFB8D9"/></g>
+  <text x="545" y="330" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="42" font-weight="700">AMOR ENTRE PÁGINAS</text>
+  <text x="545" y="380" text-anchor="middle" fill="#FFF8F0" fill-opacity=".86" font-family="Inter, sans-serif" font-size="19">UNA HISTORIA PARA REGALAR</text>
+  <text x="165" y="130" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="29.4" font-weight="700">Romance</text>
+  <text x="165" y="190" text-anchor="middle" fill="#FFF8F0" fill-opacity=".82" font-family="Inter, sans-serif" font-size="19">Recuerdos que se quedan</text>
+  <text x="165" y="410" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="21" font-weight="700">Lucams</text>
+  <text transform="translate(355 250) rotate(-90)" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="22" font-weight="700">AMOR ENTRE PÁGINAS</text>
+
+</svg>

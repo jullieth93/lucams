@@ -22,7 +22,16 @@ import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ownerKey, ipKey } from "@/lib/rate-limit-keys";
-import { StorageError, refreshCustomerUploadSignedUrl, uploadCustomerPhoto } from "@/lib/storage";
+import {
+  createCustomerPhotoStagingTicket,
+  CUSTOMER_UPLOAD_MAX_BYTES,
+  discardStagedCustomerPhoto,
+  downloadStagedCustomerPhoto,
+  isCustomerPhotoStagingPath,
+  StorageError,
+  refreshCustomerUploadSignedUrl,
+  uploadCustomerPhoto,
+} from "@/lib/storage";
 import { supabaseService } from "@/lib/supabase/service";
 import { getGalleryImageById } from "./design-gallery";
 import { prisma } from "@/lib/db";
@@ -281,25 +290,28 @@ export async function reopenDesignForEditAction(designId: string) {
 // server". El preview sí cabe de sobra: el mayor medido en Storage pesa 0.61 MB.
 //
 // Dos caminos siguen aceptando snapshots del cliente:
-//   · inline (`production_i`) — lo usan los editores de fichas (nombre, abecedario, vocales):
-//     la LÁMINA por set que suben queda como fallback inmediato y el RenderJob la reemplaza
-//     con el render server-side POR FICHA (owner 2026-11-03, ADR-188);
+//   · inline (`production_i`) — LEGACY para clientes con JS cacheado previo a
+//     2026-11-08 (los editores actuales suben por tickets). El tope bajó de
+//     20 MB a 4 MB por slot: por encima de eso el request nunca llega (Vercel
+//     corta el body en ~4.5 MB), así que el tope viejo era un contrato falso;
 //   · `useStagedSlots` — segunda pasada del fallback: el cliente ya los subió DIRECTO a Storage con
 //     una URL firmada, así que no pasan por el body y no tienen techo de tamaño.
 //
 // Códigos de error para el cliente: `INCOMPLETE_SLOTS` (slots vacíos → modal específica) y
 // `NEEDS_CLIENT_SLOTS` (ningún tier server-side reproduce el diseño → el cliente sube los suyos).
 
-const MAX_PRODUCTION_BUFFER_BYTES = 20 * 1024 * 1024; // 20 MB por slot
+const MAX_PRODUCTION_BUFFER_BYTES = 4 * 1024 * 1024; // 4 MB por slot (techo real de plataforma)
 // Techo del preview YA aceptado: por debajo de los 4.5 MB de Vercel, con margen
 // para el resto del multipart (y max file size del bucket design-previews).
 const MAX_PREVIEW_BUFFER_BYTES = 3 * 1024 * 1024;
-// Límite ABSOLUTO de entrada del preview (T2, 2026-09-22): entre 3 MB y 8 MB se
+// Límite ABSOLUTO de entrada del preview (T2, 2026-09-22): entre 3 MB y 4 MB se
 // RE-COMPRIME con sharp (compressPreviewImage, sharp-safe.ts) en vez de rechazar
-// al cliente. >8 MB sí se rechaza — en producción el cap de 4.5 MB del body de
-// Vercel corta antes de que llegue, así que este guard solo acota memoria/CPU en
-// dev/self-host frente a un multipart armado a mano.
-const MAX_PREVIEW_INPUT_BYTES = 8 * 1024 * 1024;
+// al cliente. >4 MB sí se rechaza — en producción el cap de ~4.5 MB del body de
+// Vercel corta antes de que llegue (el tope viejo de 8 MB era inalcanzable),
+// así que este guard acota memoria/CPU en dev/self-host frente a un multipart
+// armado a mano. Los clientes actuales ajustan el preview al presupuesto de 4 MB
+// en el navegador antes de enviarlo (shrinkBlobToFitUploadBudget).
+const MAX_PREVIEW_INPUT_BYTES = 4 * 1024 * 1024;
 
 export async function finalizeDesignAction(formData: FormData): Promise<
   | { ok: true; previewUrl: string | null; status: string; productionSlotsCount: number }
@@ -357,7 +369,7 @@ export async function finalizeDesignAction(formData: FormData): Promise<
     return {
       ok: false,
       code: "VALIDATION",
-      message: `preview demasiado grande (${Math.round(previewBlob.size / 1024 / 1024)}MB, max 8MB)`,
+      message: `preview demasiado grande (${Math.round(previewBlob.size / 1024 / 1024)}MB, max ${MAX_PREVIEW_INPUT_BYTES / 1024 / 1024}MB)`,
     };
   }
 
@@ -379,7 +391,7 @@ export async function finalizeDesignAction(formData: FormData): Promise<
         return {
           ok: false,
           code: "VALIDATION",
-          message: `slot ${i + 1} demasiado grande (${Math.round(blob.size / 1024 / 1024)}MB, max 20MB)`,
+          message: `slot ${i + 1} demasiado grande (${Math.round(blob.size / 1024 / 1024)}MB, max ${MAX_PRODUCTION_BUFFER_BYTES / 1024 / 1024}MB)`,
         };
       }
       productionBuffers.push(Buffer.from(await blob.arrayBuffer()));
@@ -522,8 +534,9 @@ export async function finalizeDesignAction(formData: FormData): Promise<
 
 /** Tope por página (la componición por unidad es mucho menor que el montaje global). */
 // LUC-SEC-006 (2026-10-30) — 1 MB por página (2× el máximo observado en PRD,
-// 0.49 MB): las 24 páginas de un calendario quedan ≤24 MB por request, bajo el
-// límite global de 32 MB. Antes 2 MB/página (48 MB teóricos — exigía el 50 MB).
+// 0.49 MB). Auditoría 2026-11-08: el request ya NO trae todas las páginas —
+// el Estudio las envía en LOTES (pageOffset/totalPages) porque Vercel corta el
+// body de una Server Action en ~4.5 MB y 24 × 1 MB no caben en uno solo.
 const MAX_PREVIEW_PAGE_BYTES = 1 * 1024 * 1024;
 
 export async function uploadDesignPreviewPagesAction(
@@ -535,29 +548,49 @@ export async function uploadDesignPreviewPagesAction(
   // Mismo blindaje que finalize (escribe a Storage); generoso con reintentos.
   const rl = await rateLimit(
     ipKey("design_preview_pages", getClientIp(await headers())),
-    process.env.VERCEL_ENV === "production" ? 20 : 100,
+    process.env.VERCEL_ENV === "production" ? 40 : 200,
     600,
   );
   if (!rl.allowed) return { ok: false, message: "Demasiados intentos. Espera un momento." };
 
+  // Lotes (2026-11-08): pageOffset/totalPages ubican el lote dentro del set.
+  // Clientes viejos no los mandan → offset 0 y total = páginas del request.
+  const pageOffsetRaw = Number(formData.get("pageOffset") ?? 0);
+  const totalPagesRaw = Number(formData.get("totalPages") ?? 0);
+  const pageOffset = Number.isInteger(pageOffsetRaw) && pageOffsetRaw >= 0 ? pageOffsetRaw : -1;
+  if (pageOffset < 0) return { ok: false, message: "pageOffset inválido" };
+
   const pages: Buffer[] = [];
   for (let i = 0; i < PREVIEW_PAGES_MAX; i++) {
     const blob = formData.get(`page_${i}`);
-    if (!(blob instanceof Blob)) break; // las páginas vienen contiguas desde 0
+    if (!(blob instanceof Blob)) break; // las páginas del lote vienen contiguas desde 0
     if (
       blob.size === 0 ||
       blob.size > MAX_PREVIEW_PAGE_BYTES ||
       !(PREVIEW_ALLOWED_MIME as readonly string[]).includes(blob.type)
     ) {
-      return { ok: false, message: `página ${i + 1} inválida` };
+      return { ok: false, message: `página ${pageOffset + i + 1} inválida` };
     }
     pages.push(Buffer.from(await blob.arrayBuffer()));
   }
   if (pages.length < 1) return { ok: false, message: "sin páginas" };
+  const totalPages =
+    Number.isInteger(totalPagesRaw) && totalPagesRaw >= pages.length
+      ? Math.min(totalPagesRaw, PREVIEW_PAGES_MAX)
+      : pageOffset + pages.length;
+  if (pageOffset + pages.length > totalPages) {
+    return { ok: false, message: "el lote excede el total de páginas declarado" };
+  }
 
   const { customerId, sessionId } = await resolveOwner();
   try {
-    return await saveDesignPreviewPages({ designId, owner: { customerId, sessionId }, pages });
+    return await saveDesignPreviewPages({
+      designId,
+      owner: { customerId, sessionId },
+      pages,
+      offset: pageOffset,
+      totalPages,
+    });
   } catch (err) {
     logger.warn(
       {
@@ -713,93 +746,19 @@ export async function createLetterSetDesignAction(
 //   2. Strip EXIF + auto-orient + persists DesignAsset
 //   3. Devuelve signed URL para uso en editor
 
-export async function uploadDesignAssetAction(formData: FormData) {
-  const file = formData.get("file");
-  const designId = formData.get("designId");
-  if (!(file instanceof File)) {
-    return { ok: false as const, code: "VALIDATION" as const, message: "Archivo faltante" };
-  }
-  const metaParsed = UploadAssetMetadataSchema.safeParse({
-    designId: typeof designId === "string" && designId.length > 0 ? designId : undefined,
-    mimeType: file.type,
-    sizeBytes: file.size,
-    rightsAccepted: formData.get("rightsAccepted") === "true",
-  });
-  if (!metaParsed.success) {
-    return {
-      ok: false as const,
-      code: "VALIDATION" as const,
-      message: metaParsed.error.issues[0]?.message ?? "Metadata inválida",
-    };
-  }
-
-  // F-08 — same ipKey layer as createDraftDesignAction: a cookieless bot gets a fresh sessionId
-  // per request and would rotate the owner bucket; the IP bucket it cannot.
-  const isProd = process.env.VERCEL_ENV === "production";
-  const ipRl = await rateLimit(
-    ipKey("upload_design_asset", getClientIp(await headers())),
-    isProd ? 40 : 200,
-    600,
-  );
-  if (!ipRl.allowed) {
-    logger.warn({ event: "design.asset.upload.rate_limited", layer: "ip", count: ipRl.count });
-    return {
-      ok: false as const,
-      code: "RATE_LIMIT" as const,
-      message:
-        "Has subido muchas imágenes en poco tiempo. Espera unos minutos e inténtalo de nuevo.",
-    };
-  }
-
-  const { customerId, sessionId: anonSession } = await resolveOwner();
-  // sessionId garantizado: si no hay aún, lo creamos (anon sube → necesita cookie).
-  const sessionId = anonSession ?? (await getOrCreateCartSession());
-  const ownerId = customerId ?? sessionId;
-
-  // F2 — rate-limit de subida por dueño (sesión/cliente): el estudio es público,
-  // así que limitamos el flood de storage por bots. Generoso para un diseño real.
-  const rl = await rateLimit(ownerKey("upload_design_asset", ownerId), isProd ? 30 : 200, 600);
-  if (!rl.allowed) {
-    logger.warn({ event: "design.asset.upload.rate_limited", ownerId, count: rl.count });
-    return {
-      ok: false as const,
-      code: "RATE_LIMIT" as const,
-      message:
-        "Has subido muchas imágenes en poco tiempo. Espera unos minutos e inténtalo de nuevo.",
-    };
-  }
-
-  // Si pasaron designId, verificar ownership.
-  let design = null;
-  if (metaParsed.data.designId) {
-    design = await getOwnedDesign(metaParsed.data.designId, { customerId, sessionId });
-    if (!design) {
-      return {
-        ok: false as const,
-        code: "FORBIDDEN" as const,
-        message: "Diseño no encontrado o no autorizado",
-      };
-    }
-  }
-
-  // M.3.b.B.2 + [STU-02] — Resolver `productSizeCm` para validación 300 DPI desde la
-  // PRIMERA foto (incluso antes de crear el `Design` lazy en servidor):
-  //   1. Si ya existe `design`, toma el `sizeCm` efectivo de su variante (`metadata.variantId`)
-  //      sobre `product.personalizationSchema.sizeCm`.
-  //   2. Si aún no existe `design` (`designId === null`), consulta el producto activo por
-  //      `productSlug` y solo acepta un `productSizeCm` declarado en el producto o en sus
-  //      variantes activas (nunca un string arbitrario del cliente).
-  let productSizeCm: string | undefined;
-  const rawSlug = formData.get("productSlug");
-  const requestedSlug =
-    typeof rawSlug === "string" && /^[a-z0-9-]{1,120}$/.test(rawSlug.trim())
-      ? rawSlug.trim()
-      : null;
-  const rawSizeHint = formData.get("productSizeCm");
-  const requestedSizeHint =
-    typeof rawSizeHint === "string" && rawSizeHint.trim().length > 0
-      ? rawSizeHint.trim().slice(0, 32)
-      : null;
+// M.3.b.B.2 + [STU-02] — Resolución del `productSizeCm` para la validación 300 DPI,
+// compartida por uploadDesignAssetAction y el ingest de subida directa (2026-11-08):
+//   1. Si ya existe `design`, toma el `sizeCm` efectivo de su variante (`metadata.variantId`)
+//      sobre `product.personalizationSchema.sizeCm`.
+//   2. Si aún no existe `design` (`designId === null`), consulta el producto activo por
+//      `productSlug` y solo acepta un `productSizeCm` declarado en el producto o en sus
+//      variantes activas (nunca un string arbitrario del cliente).
+async function resolveUploadProductSizeCm(opts: {
+  design: { productId: string; metadata: unknown } | null;
+  productSlug: string | null;
+  productSizeCmHint: string | null;
+}): Promise<string | undefined> {
+  const { design, productSlug: requestedSlug, productSizeCmHint: requestedSizeHint } = opts;
 
   if (design) {
     const product = await prisma.product.findUnique({
@@ -830,13 +789,13 @@ export async function uploadDesignAssetAction(formData: FormData) {
           ? (matchedVariant.attributes as { sizeCm?: unknown }).sizeCm
           : undefined;
       if (typeof variantSizeCm === "string" && variantSizeCm.trim().length > 0) {
-        productSizeCm = variantSizeCm.trim();
+        return variantSizeCm.trim();
       } else if (
         baseCfg &&
         typeof baseCfg.sizeCm === "string" &&
         baseCfg.sizeCm.trim().length > 0
       ) {
-        productSizeCm = baseCfg.sizeCm.trim();
+        return baseCfg.sizeCm.trim();
       } else if (requestedSizeHint) {
         const validSizes = new Set<string>();
         for (const v of product.variants) {
@@ -846,10 +805,13 @@ export async function uploadDesignAssetAction(formData: FormData) {
               : undefined;
           if (typeof s === "string" && s.trim().length > 0) validSizes.add(s.trim());
         }
-        if (validSizes.has(requestedSizeHint)) productSizeCm = requestedSizeHint;
+        if (validSizes.has(requestedSizeHint)) return requestedSizeHint;
       }
     }
-  } else if (requestedSlug) {
+    return undefined;
+  }
+
+  if (requestedSlug) {
     const product = await prisma.product.findFirst({
       where: { slug: requestedSlug, deletedAt: null, isActive: true },
       select: {
@@ -877,14 +839,120 @@ export async function uploadDesignAssetAction(formData: FormData) {
         if (typeof s === "string" && s.trim().length > 0) validSizes.add(s.trim());
       }
       if (requestedSizeHint && validSizes.has(requestedSizeHint)) {
-        productSizeCm = requestedSizeHint;
+        return requestedSizeHint;
       } else if (typeof baseSizeCm === "string" && baseSizeCm.trim().length > 0) {
-        productSizeCm = baseSizeCm.trim();
+        return baseSizeCm.trim();
       } else if (validSizes.size === 1) {
-        productSizeCm = [...validSizes][0];
+        return [...validSizes][0];
       }
     }
   }
+  return undefined;
+}
+
+/** Rate limit de subida por IP — ANTES de crear sesión (un bot sin cookie no la obtiene). */
+async function checkUploadIpRateLimit(): Promise<
+  { ok: true } | { ok: false; code: "RATE_LIMIT"; message: string }
+> {
+  const isProd = process.env.VERCEL_ENV === "production";
+  const ipRl = await rateLimit(
+    ipKey("upload_design_asset", getClientIp(await headers())),
+    isProd ? 40 : 200,
+    600,
+  );
+  if (!ipRl.allowed) {
+    logger.warn({ event: "design.asset.upload.rate_limited", layer: "ip", count: ipRl.count });
+    return {
+      ok: false,
+      code: "RATE_LIMIT",
+      message:
+        "Has subido muchas imágenes en poco tiempo. Espera unos minutos e inténtalo de nuevo.",
+    };
+  }
+  return { ok: true };
+}
+
+/** Rate limit de subida por dueño (sesión/cliente) — flood de storage por bots. */
+async function checkUploadOwnerRateLimit(
+  ownerId: string,
+): Promise<{ ok: true } | { ok: false; code: "RATE_LIMIT"; message: string }> {
+  const isProd = process.env.VERCEL_ENV === "production";
+  const rl = await rateLimit(ownerKey("upload_design_asset", ownerId), isProd ? 30 : 200, 600);
+  if (!rl.allowed) {
+    logger.warn({ event: "design.asset.upload.rate_limited", ownerId, count: rl.count });
+    return {
+      ok: false,
+      code: "RATE_LIMIT",
+      message:
+        "Has subido muchas imágenes en poco tiempo. Espera unos minutos e inténtalo de nuevo.",
+    };
+  }
+  return { ok: true };
+}
+
+export async function uploadDesignAssetAction(formData: FormData) {
+  const file = formData.get("file");
+  const designId = formData.get("designId");
+  if (!(file instanceof File)) {
+    return { ok: false as const, code: "VALIDATION" as const, message: "Archivo faltante" };
+  }
+  const metaParsed = UploadAssetMetadataSchema.safeParse({
+    designId: typeof designId === "string" && designId.length > 0 ? designId : undefined,
+    mimeType: file.type,
+    sizeBytes: file.size,
+    rightsAccepted: formData.get("rightsAccepted") === "true",
+  });
+  if (!metaParsed.success) {
+    return {
+      ok: false as const,
+      code: "VALIDATION" as const,
+      message: metaParsed.error.issues[0]?.message ?? "Metadata inválida",
+    };
+  }
+
+  // F-08 — same ipKey layer as createDraftDesignAction: a cookieless bot gets a fresh sessionId
+  // per request and would rotate the owner bucket; the IP bucket it cannot.
+  const ipCheck = await checkUploadIpRateLimit();
+  if (!ipCheck.ok) return ipCheck;
+
+  const { customerId, sessionId: anonSession } = await resolveOwner();
+  // sessionId garantizado: si no hay aún, lo creamos (anon sube → necesita cookie).
+  const sessionId = anonSession ?? (await getOrCreateCartSession());
+  const ownerId = customerId ?? sessionId;
+
+  // F2 — rate-limit de subida por dueño (sesión/cliente): el estudio es público,
+  // así que limitamos el flood de storage por bots. Generoso para un diseño real.
+  const ownerCheck = await checkUploadOwnerRateLimit(ownerId);
+  if (!ownerCheck.ok) return ownerCheck;
+
+  // Si pasaron designId, verificar ownership.
+  let design = null;
+  if (metaParsed.data.designId) {
+    design = await getOwnedDesign(metaParsed.data.designId, { customerId, sessionId });
+    if (!design) {
+      return {
+        ok: false as const,
+        code: "FORBIDDEN" as const,
+        message: "Diseño no encontrado o no autorizado",
+      };
+    }
+  }
+
+  const rawSlug = formData.get("productSlug");
+  const requestedSlug =
+    typeof rawSlug === "string" && /^[a-z0-9-]{1,120}$/.test(rawSlug.trim())
+      ? rawSlug.trim()
+      : null;
+  const rawSizeHint = formData.get("productSizeCm");
+  const requestedSizeHint =
+    typeof rawSizeHint === "string" && rawSizeHint.trim().length > 0
+      ? rawSizeHint.trim().slice(0, 32)
+      : null;
+  const productSizeCm = await resolveUploadProductSizeCm({
+    design,
+    productSlug: requestedSlug,
+    productSizeCmHint: requestedSizeHint,
+  });
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -957,6 +1025,259 @@ export async function uploadDesignAssetAction(formData: FormData) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn({ event: "design.asset.upload.fail", err: msg }, "uploadCustomerPhoto failed");
+    return {
+      ok: false as const,
+      code: "INTERNAL" as const,
+      message: safeUploadMessage(
+        err,
+        "No pudimos subir la imagen. Intenta con otra foto; si el problema sigue, escríbenos por WhatsApp.",
+      ),
+    };
+  }
+}
+
+// ──────────── Subida DIRECTA a Storage (auditoría 2026-11-08) ────────────
+//
+// Un HEIC de iPhone entre ~4.5 y 10 MB no cabe en el body de una Server Action
+// (techo de plataforma de Vercel) y Chrome/Firefox no lo decodifican para
+// comprimirlo en el navegador: ese upload moría con el 413 genérico o con el
+// fail-closed del pipeline. Patrón de staged-slots (ADR-081) en dos pasos:
+//   1. createCustomerPhotoUploadTicketAction — valida metadata (MISMO schema del
+//      upload clásico: mime/tamaño/consentimiento), rate limits y ownership, y
+//      emite una URL firmada de subida al área de paso `<ownerId>/_staging/`.
+//   2. El navegador hace PUT directo a Storage (sin techo de función) y llama
+//      ingestStagedCustomerPhotoAction, que descarga el objeto, lo procesa con
+//      el MISMO pipeline de uploadCustomerPhoto (normalización HEIC→WebP q92
+//      incluida), crea el DesignAsset y limpia el área de paso.
+
+export async function createCustomerPhotoUploadTicketAction(input: {
+  designId?: string;
+  mimeType: string;
+  sizeBytes: number;
+  rightsAccepted: boolean;
+}): Promise<
+  | { ok: true; path: string; uploadUrl: string }
+  | { ok: false; code: "VALIDATION" | "RATE_LIMIT" | "FORBIDDEN" | "INTERNAL"; message: string }
+> {
+  const parsed = UploadAssetMetadataSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      code: "VALIDATION" as const,
+      message: parsed.error.issues[0]?.message ?? "Metadata inválida",
+    };
+  }
+
+  const ipCheck = await checkUploadIpRateLimit();
+  if (!ipCheck.ok) return ipCheck;
+
+  const { customerId, sessionId: anonSession } = await resolveOwner();
+  const sessionId = anonSession ?? (await getOrCreateCartSession());
+  const ownerId = customerId ?? sessionId;
+
+  const ownerCheck = await checkUploadOwnerRateLimit(ownerId);
+  if (!ownerCheck.ok) return ownerCheck;
+
+  if (parsed.data.designId) {
+    const design = await getOwnedDesign(parsed.data.designId, { customerId, sessionId });
+    if (!design) {
+      return {
+        ok: false as const,
+        code: "FORBIDDEN" as const,
+        message: "Diseño no encontrado o no autorizado",
+      };
+    }
+  }
+
+  try {
+    const ticket = await createCustomerPhotoStagingTicket(ownerId);
+    logger.info(
+      {
+        event: "design.asset.direct_upload.ticket",
+        designId: parsed.data.designId,
+        ownerType: customerId ? "customer" : "session",
+        sizeBytes: parsed.data.sizeBytes,
+      },
+      "Ticket de subida directa emitido",
+    );
+    return { ok: true as const, path: ticket.path, uploadUrl: ticket.uploadUrl };
+  } catch (err) {
+    logger.warn(
+      {
+        event: "design.asset.direct_upload.ticket_fail",
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "No se pudo emitir el ticket de subida directa",
+    );
+    return {
+      ok: false as const,
+      code: "INTERNAL" as const,
+      message: "No pudimos preparar la subida de tu foto. Intenta de nuevo en unos minutos.",
+    };
+  }
+}
+
+// Mismo allowlist del upload clásico (schemas.ts lo mantiene privado a su módulo).
+const DIRECT_INGEST_MIME = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+] as const;
+
+const IngestStagedPhotoSchema = z.object({
+  path: z.string().min(10).max(200),
+  designId: z.string().min(1).optional(),
+  productSlug: z
+    .string()
+    .regex(/^[a-z0-9-]{1,120}$/)
+    .optional(),
+  productSizeCm: z.string().trim().min(1).max(32).optional(),
+  mimeType: z.enum(DIRECT_INGEST_MIME),
+  rightsAccepted: z.literal(true, {
+    error: "Confirma que tienes derecho a usar la imagen que subes.",
+  }),
+});
+
+export async function ingestStagedCustomerPhotoAction(input: {
+  path: string;
+  designId?: string;
+  productSlug?: string;
+  productSizeCm?: string;
+  mimeType: string;
+  rightsAccepted: boolean;
+}) {
+  const parsed = IngestStagedPhotoSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      code: "VALIDATION" as const,
+      message: parsed.error.issues[0]?.message ?? "Datos inválidos",
+    };
+  }
+
+  const ipCheck = await checkUploadIpRateLimit();
+  if (!ipCheck.ok) return ipCheck;
+
+  const { customerId, sessionId: anonSession } = await resolveOwner();
+  const sessionId = anonSession ?? (await getOrCreateCartSession());
+  const ownerId = customerId ?? sessionId;
+
+  const ownerCheck = await checkUploadOwnerRateLimit(ownerId);
+  if (!ownerCheck.ok) return ownerCheck;
+
+  // Anti-traversal: solo se ingiere el área de paso del PROPIO dueño — un path
+  // de otro owner o fuera de `_staging/` se rechaza antes de tocar Storage.
+  if (!isCustomerPhotoStagingPath(ownerId, parsed.data.path)) {
+    logger.warn({ event: "design.asset.direct_upload.forbidden_path", path: parsed.data.path });
+    return { ok: false as const, code: "FORBIDDEN" as const, message: "Subida no autorizada" };
+  }
+
+  let design = null;
+  if (parsed.data.designId) {
+    design = await getOwnedDesign(parsed.data.designId, { customerId, sessionId });
+    if (!design) {
+      return {
+        ok: false as const,
+        code: "FORBIDDEN" as const,
+        message: "Diseño no encontrado o no autorizado",
+      };
+    }
+  }
+
+  const productSizeCm = await resolveUploadProductSizeCm({
+    design,
+    productSlug: parsed.data.productSlug ?? null,
+    productSizeCmHint: parsed.data.productSizeCm ?? null,
+  });
+
+  const buffer = await downloadStagedCustomerPhoto(parsed.data.path);
+  if (!buffer || buffer.length === 0) {
+    return {
+      ok: false as const,
+      code: "INTERNAL" as const,
+      message: "No encontramos la foto que subiste. Inténtala subir de nuevo.",
+    };
+  }
+  if (buffer.length > CUSTOMER_UPLOAD_MAX_BYTES) {
+    await discardStagedCustomerPhoto(parsed.data.path);
+    return {
+      ok: false as const,
+      code: "VALIDATION" as const,
+      message: `El archivo excede ${CUSTOMER_UPLOAD_MAX_BYTES / 1024 / 1024} MB`,
+    };
+  }
+
+  try {
+    const uploaded = await uploadCustomerPhoto({
+      buffer,
+      originalMimeType: parsed.data.mimeType,
+      ownerId,
+      designId: parsed.data.designId ?? null,
+      productSizeCm,
+    });
+
+    const asset = await prisma.designAsset.create({
+      data: {
+        designId: parsed.data.designId ?? null,
+        customerId,
+        sessionId,
+        storageUrl: uploaded.path,
+        canvasPath: uploaded.canvasPath,
+        mimeType: uploaded.mimeType,
+        sizeBytes: uploaded.sizeBytes,
+        width: uploaded.width,
+        height: uploaded.height,
+        exifStripped: uploaded.exifStripped,
+        malwareScanned: false,
+        rightsAcceptedAt: new Date(),
+        rightsPolicyVersion: IMAGE_RIGHTS_POLICY_VERSION,
+      },
+    });
+
+    // El objeto del área de paso ya quedó procesado y persistido en su path
+    // definitivo — limpiar (best-effort: el barrido de huérfanos lo recoge).
+    await discardStagedCustomerPhoto(parsed.data.path);
+
+    logger.info(
+      {
+        event: "design.asset.upload.success",
+        via: "direct-storage",
+        assetId: asset.id,
+        designId: parsed.data.designId,
+        ownerType: customerId ? "customer" : "session",
+        sizeBytes: uploaded.sizeBytes,
+        validationLevel: uploaded.validation?.level,
+      },
+      "Customer photo uploaded (direct-to-storage)",
+    );
+
+    return {
+      ok: true as const,
+      assetId: asset.id,
+      signedUrl: uploaded.signedUrl,
+      canvasUrl: uploaded.canvasSignedUrl,
+      width: uploaded.width,
+      height: uploaded.height,
+      validationLevel: uploaded.validation?.level,
+      validationMessage: uploaded.validation?.message,
+      validationRecommendation: uploaded.validation?.recommendation,
+      validationChecks: uploaded.validation
+        ? {
+            resolution: uploaded.validation.resolution.passed,
+            brightness: uploaded.validation.brightness.passed,
+            blur: uploaded.validation.blur.passed,
+          }
+        : undefined,
+    };
+  } catch (err) {
+    await discardStagedCustomerPhoto(parsed.data.path);
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      { event: "design.asset.upload.fail", via: "direct-storage", err: msg },
+      "ingestStagedCustomerPhoto failed",
+    );
     return {
       ok: false as const,
       code: "INTERNAL" as const,

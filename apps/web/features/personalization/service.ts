@@ -46,6 +46,7 @@ import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
 import { unitCountOf, letterSetUnitCount, MAX_LETTER_SET_UNITS } from "./design-units";
+import { readProductExperience } from "./product-experience";
 import { PREVIEW_ALLOWED_MIME, previewExtensionForMime, type PreviewMime } from "./sharp-safe";
 import {
   filterTemplatesByAspectRatio,
@@ -61,7 +62,7 @@ import {
   RENDER_JOB_KICK_BUDGET_MS,
 } from "./render-job-service";
 import { ALPHABET } from "./letter-tiles";
-import { uploadPreviewPages } from "./preview-artifacts-server";
+import { previewPagesAreComplete, uploadPreviewPages } from "./preview-artifacts-server";
 import { PREVIEW_PAGES_MAX, designPreviewDerivedPaths } from "./preview-artifacts";
 import { PREVIEW_ROUTE_PREFIX } from "./preview-access";
 import { normalizeRasterImage, RasterRejected, RASTER_PIXEL_BUDGET } from "./normalize-raster";
@@ -1308,7 +1309,14 @@ export async function createClientSlotUploadTickets(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be finalized`);
   }
   const canvasData = design.canvasData as unknown as CanvasData;
-  const slotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
+  // 2026-11-08 — los editores de fichas (canvas v1 stub: nombre y sets de
+  // letras) también suben sus láminas por tickets desde que el body de la
+  // Server Action quedó bajo el techo real de la plataforma (~4.5 MB): para
+  // v1 el conteo lo manda la metadata (1 lámina de nombre, N de letterset).
+  const slotCount =
+    canvasData.version === 2
+      ? (canvasData as CanvasDataV2).slotCount
+      : letterSetUnitCount(design.metadata);
   const declaredUnits = canvasData.version === 2 ? unitCountOf(canvasData as CanvasDataV2) : 1;
   const { productConfig, effectiveVariant, metadataVariantId } =
     await loadEffectiveProductConfig(design);
@@ -1316,7 +1324,9 @@ export async function createClientSlotUploadTickets(opts: {
   // `facesPerUnit: 2` (separadores) manda 2 snapshots por unidad: el tope es por CARA, no por pieza.
   const faces = productConfig.facesPerUnit ?? 1;
   const maxSlots = Math.max(1, allowed * faces * declaredUnits);
-  if (slotCount > maxSlots) {
+  // La guarda de tope solo aplica a canvas V2: en productos de fichas (v1)
+  // photoSlots no existe en el schema y el conteo legítimo sale de la metadata.
+  if (canvasData.version === 2 && slotCount > maxSlots) {
     throw new Error(
       `INCOMPLETE_SLOTS: el diseño declara ${slotCount} piezas y el producto admite ${maxSlots}`,
     );
@@ -1562,7 +1572,7 @@ export async function finalizeDesign(opts: {
   // genera para cada B vacía la cara por defecto con el PATRÓN DE MARCA «Lucams»
   // (default-back-face.ts — decisión owner 2026-11-03, supersede el blanco de
   // 2026-10-07: nunca copia de la cara A).
-  const { productConfig } = await loadEffectiveProductConfig(design);
+  const { productConfig, productSchema } = await loadEffectiveProductConfig(design);
   const backOptional = productConfig.facesPerUnit === 2 && productConfig.backOptional === true;
   const emptyBackSlots = new Set<number>(
     backOptional && v2
@@ -1864,10 +1874,13 @@ export async function finalizeDesign(opts: {
   // noFold (Alargados planos): composición horizontal A|B sin rotar (histórico).
   // Solo aplica a buffers resueltos EN ESTE REQUEST (inline/staged del cliente);
   // en la vía asíncrona (ADR-131) las tiras las compone el worker, par por par.
+  const shouldComposeFaceStrips =
+    productConfig.facesPerUnit === 2 &&
+    readProductExperience(productSchema).experience !== "christmas-ornament";
   let facesComposed = false;
   if (productionBuffers && canvasData.version === 2) {
     // productConfig ya se cargó arriba (validación de slots / backOptional).
-    if (productConfig.facesPerUnit === 2 && productionBuffers.length % 2 === 0) {
+    if (shouldComposeFaceStrips && productionBuffers.length % 2 === 0) {
       try {
         // composeFaceStrips carga sharp (nativo) — import perezoso: ver nota en imports.
         // W3 (owner 2026-11-03): tiras RECTANGULARES a sangre — ya no se pasa radio
@@ -1989,7 +2002,7 @@ export async function finalizeDesign(opts: {
   const facesPending =
     asyncRenderJob &&
     canvasData.version === 2 &&
-    productConfig.facesPerUnit === 2 &&
+    shouldComposeFaceStrips &&
     expectedSlotCount % 2 === 0;
   const facesComposedOrPending = facesComposed || facesPending;
   const mergedMetadata =
@@ -2426,8 +2439,12 @@ export async function getSharedDesign(shareToken: string) {
 export async function saveDesignPreviewPages(opts: {
   designId: string;
   owner: { customerId: string | null; sessionId: string | null };
-  /** Buffers de las páginas EN ORDEN (página 1 = primera unidad). */
+  /** Buffers del LOTE de páginas EN ORDEN (página offset+1 = primera del lote). */
   pages: Buffer[];
+  /** Posición 0-based del lote dentro del set completo (default 0 — set único). */
+  offset?: number;
+  /** Total de páginas del set (default: las de este lote — compat pre-lotes). */
+  totalPages?: number;
 }): Promise<{ ok: true; pagesCount: number } | { ok: false; message: string }> {
   const design = await getOwnedDesign(opts.designId, opts.owner);
   // Solo diseños finalizados: las páginas son del canvas CONFIRMADO (un DRAFT
@@ -2436,22 +2453,51 @@ export async function saveDesignPreviewPages(opts: {
   if (!design || (design.status !== "READY" && design.status !== "USED_IN_ORDER")) {
     return { ok: false, message: "Diseño no encontrado" };
   }
-  if (opts.pages.length < 1 || opts.pages.length > PREVIEW_PAGES_MAX) {
+  const offset = opts.offset ?? 0;
+  const totalPages = opts.totalPages ?? opts.pages.length;
+  if (
+    opts.pages.length < 1 ||
+    offset < 0 ||
+    totalPages > PREVIEW_PAGES_MAX ||
+    offset + opts.pages.length > totalPages
+  ) {
     return { ok: false, message: "Número de páginas inválido" };
   }
-  const uploaded = await uploadPreviewPages(design.id, opts.pages);
+  const uploaded = await uploadPreviewPages(design.id, opts.pages, offset);
   if (uploaded === null) {
     return { ok: false, message: "No pudimos procesar las páginas del preview" };
   }
-  await prisma.design.update({
-    where: { id: design.id },
-    // 2026-11-03 (ADR-191): ya no se generan artefactos watermark — solo se
-    // sella el conteo de páginas limpias.
-    data: { previewPagesCount: uploaded },
-  });
+  // Lotes (2026-11-08): solo el lote FINAL puede sellar previewPagesCount, y
+  // solo si la continuidad REAL en Storage está completa — un lote intermedio
+  // omitido o dos llamadas concurrentes no dejan un pager con huecos.
+  if (offset + uploaded === totalPages) {
+    if (!(await previewPagesAreComplete(design.id, totalPages))) {
+      logger.warn(
+        { event: "design.preview_pages.incomplete", designId: design.id, totalPages },
+        "Lote final recibido pero faltan páginas en Storage — no se sella",
+      );
+      return {
+        ok: false,
+        message: "Faltan páginas del preview. Reintenta la subida.",
+      };
+    }
+    await prisma.design.update({
+      where: { id: design.id },
+      // 2026-11-03 (ADR-191): ya no se generan artefactos watermark — solo se
+      // sella el conteo de páginas limpias.
+      data: { previewPagesCount: totalPages },
+    });
+  }
   logger.info(
-    { event: "design.preview_pages.saved", designId: design.id, pagesCount: uploaded },
-    "Páginas por unidad del preview subidas",
+    {
+      event: "design.preview_pages.saved",
+      designId: design.id,
+      offset,
+      batchCount: uploaded,
+      totalPages,
+      sealed: offset + uploaded === totalPages,
+    },
+    "Lote de páginas del preview subido",
   );
-  return { ok: true, pagesCount: uploaded };
+  return { ok: true, pagesCount: totalPages };
 }

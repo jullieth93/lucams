@@ -28,6 +28,10 @@ import {
   mergePersonalizationAdminInput,
 } from "./personalization-schema";
 import { getEffectiveShippingDims } from "./shipping-schemas";
+import {
+  readProductExperience,
+  supportsTwoFaceDesign,
+} from "@/features/personalization/product-experience";
 
 export type ProductListItem = {
   id: string;
@@ -248,6 +252,7 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
     input.personalizationKind !== undefined
       ? personalizationKind !== "NONE"
       : input.isPersonalizable;
+  assertSupportedTwoFaces(buildPersonalizationSchemaFromInput(input), input.slug);
 
   // Crear producto + variante default en la misma transacción.
   // CartItem y OrderItem requieren variantId — sin variante el producto
@@ -418,7 +423,7 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     needsPhysicalSpecs || needsPersonalizationSchema
       ? await prisma.product.findUnique({
           where: { id },
-          select: { physicalSpecs: true, personalizationSchema: true },
+          select: { slug: true, physicalSpecs: true, personalizationSchema: true },
         })
       : null;
 
@@ -448,11 +453,15 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
       current,
       personalizationFields,
     ) as Prisma.InputJsonValue;
+    assertSupportedTwoFaces(
+      personalizationSchemaUpdate,
+      rest.slug ?? existingJson?.slug ?? prevSlug ?? "",
+    );
   }
 
   // idealFor es Json — necesita tratamiento especial para tipos Prisma.
   const { idealFor, ...restWithoutJson } = restWithoutStudio;
-  const updated = await prisma.product.update({
+  const updateArgs: Prisma.ProductUpdateArgs = {
     where: { id },
     data: {
       ...restWithoutJson,
@@ -471,7 +480,15 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
       }),
       ...(updatedBy ? { updatedBy } : {}),
     },
-  });
+  };
+  const updated = await (async () => {
+    if (rest.isActive !== true) return prisma.product.update(updateArgs);
+    return prisma.$transaction(async (tx) => {
+      const next = await tx.product.update(updateArgs);
+      await assertProductsQuotable([id], tx);
+      return next;
+    });
+  })();
   updateTag("catalog");
 
   // A11-02 — rename de slug público: la URL vieja (/producto/<slug>) quedaría
@@ -592,16 +609,42 @@ export async function hardDeleteProduct(id: string): Promise<boolean> {
  * (revisión adversarial #1, 2026-07-11). Se corre SOLO al activar (isActive=true);
  * desactivar/archivar nunca se bloquea.
  */
-async function assertProductsQuotable(ids: string[]): Promise<void> {
+async function assertProductsQuotable(
+  ids: string[],
+  db: Prisma.TransactionClient = prisma,
+): Promise<void> {
   if (ids.length === 0) return;
-  const products = await prisma.product.findMany({
+  const products = await db.product.findMany({
     where: { id: { in: ids }, deletedAt: null },
     select: {
       name: true,
+      basePrice: true,
       physicalSpecs: true,
-      variants: { where: { deletedAt: null }, select: { attributes: true } },
+      personalizationSchema: true,
+      variants: {
+        where: { deletedAt: null },
+        select: { attributes: true, price: true, isActive: true },
+      },
     },
   });
+  const missingPrice = products.filter((p) => {
+    if (readProductExperience(p.personalizationSchema).experience === "standard") return false;
+    const activeVariants = p.variants.filter((variant) => variant.isActive);
+    return (
+      activeVariants.length === 0 ||
+      activeVariants.some((variant) => (variant.price ?? p.basePrice) <= 0)
+    );
+  });
+  if (missingPrice.length > 0) {
+    const names = missingPrice
+      .slice(0, 5)
+      .map((p) => `"${p.name}"`)
+      .join(", ");
+    throw new ProductValidationError(
+      "general",
+      `No puedes publicar ${names} sin precios mayores que cero y al menos una opción activa. Configura los precios de las opciones antes de activarlo.`,
+    );
+  }
   const missing = products.filter((p) => {
     // Sin variantes vivas, evaluamos solo las dims base (una Default implícita).
     const variants = p.variants.length > 0 ? p.variants : [{ attributes: {} }];
@@ -872,9 +915,19 @@ export class VariantValidationError extends Error {
 // Errores específicos del dominio products. Se mapean a fieldErrors en
 // las server actions.
 
+function assertSupportedTwoFaces(schema: unknown, slug: string) {
+  const faces = (schema as { facesPerUnit?: unknown } | null | undefined)?.facesPerUnit;
+  if (faces === 2 && !supportsTwoFaceDesign(schema, slug)) {
+    throw new ProductValidationError(
+      "facesPerUnit",
+      "Este producto no admite dos caras de diseño. La opción solo está disponible cuando Estudio, el visor 3D y producción soportan frente y reverso de una misma pieza.",
+    );
+  }
+}
+
 export class ProductValidationError extends Error {
   constructor(
-    public field: "slug" | "sku" | "categoryId" | "general",
+    public field: "slug" | "sku" | "categoryId" | "general" | "facesPerUnit",
     message: string,
   ) {
     super(message);

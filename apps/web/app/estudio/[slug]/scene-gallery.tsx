@@ -61,6 +61,7 @@ import { CALENDAR_CARD_THICKNESS_CM } from "./magnet-3d";
 import type { Magnet3D } from "./fridge-3d-view";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
+import { physicalUnitsFromFaces } from "@/features/personalization/product-experience";
 
 // Roadmap B1 — los "Cargando … 3D…" de los dynamic imports son texto CMS
 // (estudio.escenas.loading-*); sin provider caen al default exacto pre-CMS.
@@ -104,6 +105,14 @@ const GiftView3D = nextDynamic(() => import("./gift-3d-view"), {
   ssr: false,
   loading: () => <SceneLoading textKey="armando" />,
 });
+const OrnamentView3D = nextDynamic(() => import("./ornament-3d-view"), {
+  ssr: false,
+  loading: () => <SceneLoading textKey="armando" />,
+});
+const MiniBookView3D = nextDynamic(() => import("./mini-book-3d-view"), {
+  ssr: false,
+  loading: () => <SceneLoading textKey="armando" />,
+});
 // Ola 2C — visor de detalle tarjeta-a-tarjeta del calendario (WebGL, client-only).
 const CalendarCardFocus = nextDynamic(() => import("./calendar-card-focus"), {
   ssr: false,
@@ -111,10 +120,20 @@ const CalendarCardFocus = nextDynamic(() => import("./calendar-card-focus"), {
 });
 
 /** Escena disponible en la galería (el calendario de pared NO está: queda archivado). */
-export type Scene = "fridge" | "polaroid" | "board" | "memo" | "book" | "shelf" | "gift";
+export type Scene =
+  | "fridge"
+  | "polaroid"
+  | "board"
+  | "memo"
+  | "book"
+  | "shelf"
+  | "gift"
+  | "ornament"
+  | "mini-book"
+  | "mini-book-fridge";
 
 /** Tipo de producto que abre la galería (deriva del personalizationKind del producto). */
-export type SceneKind = "photo" | "calendar" | "letters" | "bookmark";
+export type SceneKind = "photo" | "calendar" | "letters" | "bookmark" | "ornament" | "mini-book";
 
 // Emoji de cada escena. El LABEL es texto CMS (estudio.escenas.chip-*) y se resuelve
 // dentro del componente via contexto (roadmap B1).
@@ -126,6 +145,9 @@ const SCENE_EMOJI: Record<Scene, string> = {
   book: "📖",
   shelf: "📚",
   gift: "🎁",
+  ornament: "🎄",
+  "mini-book": "📕",
+  "mini-book-fridge": "🧲",
 };
 
 /**
@@ -146,6 +168,10 @@ export function scenesForKind(kind: SceneKind = "photo"): Scene[] {
     case "bookmark":
       // Los separadores no son imanes de nevera: su hogar es un libro.
       return ["book"];
+    case "ornament":
+      return ["ornament"];
+    case "mini-book":
+      return ["mini-book", "mini-book-fridge"];
     case "photo":
     default:
       return ["fridge", "polaroid", "board", "shelf", "gift"];
@@ -203,19 +229,29 @@ export function sceneThicknessCm(kind: SceneKind): number | undefined {
  * Las fichas de letras NO llevan claim de tamaño real: no tienen dato de cm (su escena usa el
  * ajuste-a-celda histórico, no la escala física).
  */
-export function countBadgeLabel(count: number, kind: SceneKind = "photo", cols = 1): string {
-  const one = count === 1;
+export function countBadgeLabel(
+  count: number,
+  kind: SceneKind = "photo",
+  cols = 1,
+  facesPerUnit = 1,
+): string {
+  const units = physicalUnitsFromFaces(count, facesPerUnit);
+  const one = units === 1;
   switch (kind) {
     case "bookmark":
-      return `${count} ${one ? "separador" : "separadores"} · tamaño real`;
+      return `${units} ${one ? "separador" : "separadores"} · tamaño real`;
     case "calendar":
-      return `${count} ${one ? "tarjeta" : "tarjetas"} · tamaño real`;
+      return `${units} ${one ? "tarjeta" : "tarjetas"} · tamaño real`;
     case "letters":
-      return `${count} ${one ? "ficha" : "fichas"}`;
+      return `${units} ${one ? "ficha" : "fichas"}`;
+    case "ornament":
+      return `${units} ${one ? "bola" : "bolas"} · foto plana de 8 cm`;
+    case "mini-book":
+      return `${units} ${one ? "mini libro" : "mini libros"} · tamaño real`;
     case "photo":
     default:
-      if (!one && cols <= 1) return `${count} tiras · tamaño real`;
-      return `${count} ${one ? "unidad" : "unidades"} · tamaño real`;
+      if (!one && cols <= 1) return `${units} tiras · tamaño real`;
+      return `${units} ${one ? "unidad" : "unidades"} · tamaño real`;
   }
 }
 
@@ -229,7 +265,7 @@ export function countBadgeLabel(count: number, kind: SceneKind = "photo", cols =
  * las piezas van APOYADAS (contra la pared / contra la caja), nunca
  * adheridas — igual el libro (`book`).
  */
-const MAGNET_SCENES: ReadonlySet<Scene> = new Set(["fridge", "board", "memo"]);
+const MAGNET_SCENES: ReadonlySet<Scene> = new Set(["fridge", "board", "memo", "mini-book-fridge"]);
 
 /**
  * ¿La escena se renderiza como vista 3D interactiva (react-three-fiber, con pill de gestos y
@@ -291,6 +327,7 @@ export function SceneGallery({
    *  goma ferrita en las escenas (owner 2026-10-29 — MAGNET_BACK_COLOR).
    *  undefined conserva el comportamiento de siempre. */
   magnet,
+  spineWidthCm = 0.5,
   /** 2026-10-23 — calendario multi-set: tarjetas por set (unitSlots) y sus labels de mes,
    *  para el pager de dos niveles del visor de detalle (CalendarCardFocus). */
   cardsPerSet,
@@ -311,6 +348,7 @@ export function SceneGallery({
   flat?: boolean;
   /** Fase 1A/2.10 — variante SIN IMÁN (false): sin escenas que afirman imán. */
   magnet?: boolean;
+  spineWidthCm?: number;
   /** 2026-10-23 — calendario multi-set: tarjetas por set y labels de mes por tarjeta. */
   cardsPerSet?: number;
   cardLabels?: readonly string[];
@@ -337,6 +375,9 @@ export function SceneGallery({
     book: texts.escenas.chipLibro,
     shelf: texts.escenas.chipRepisa,
     gift: texts.escenas.chipRegalo,
+    ornament: texts.escenas.chipOrnament,
+    "mini-book": texts.escenas.chipMiniBook,
+    "mini-book-fridge": texts.escenas.chipMiniBookFridge,
   };
   // Ola 3 — detalle PRIMERO del calendario: con kind="calendar" el modal abre en el visor
   // tarjeta-a-tarjeta y la galería queda un nivel arriba ("Míralo en tu espacio"). focusIndex
@@ -455,7 +496,17 @@ export function SceneGallery({
              amigable en vez de un lienzo negro/colgado. Desde 2026-10-26 TODAS las escenas son
              3D (repisa/regalo incluidas) → esta es la única rama de render de escena. */
           <Scene3DErrorBoundary>
-            {activeScene === "fridge" ? (
+            {activeScene === "ornament" ? (
+              <OrnamentView3D magnets={magnets} facesPerUnit={facesPerUnit} />
+            ) : activeScene === "mini-book" || activeScene === "mini-book-fridge" ? (
+              <MiniBookView3D
+                magnets={magnets}
+                sizeCm={sizeCm}
+                spineWidthCm={spineWidthCm}
+                magnet={magnet}
+                context={activeScene === "mini-book-fridge" ? "fridge" : "detail"}
+              />
+            ) : activeScene === "fridge" ? (
               <FridgeView3D
                 magnets={magnets}
                 cols={cols}
@@ -511,7 +562,7 @@ export function SceneGallery({
           DOM como los hints, sin tocar texturas ni el canvas WebGL. Solo en escenas 3D. */}
         {is3D && magnets.length > 0 && (
           <p className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-center text-xs font-bold text-white">
-            {countBadgeLabel(magnets.length, kind, cols)}
+            {countBadgeLabel(magnets.length, kind, cols, facesPerUnit)}
           </p>
         )}
 

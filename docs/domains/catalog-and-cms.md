@@ -62,6 +62,18 @@ Varios productos del catálogo (fotoimanes, tiras, separadores y calendarios) se
 
 ---
 
+## 2A. Experiencias físicas específicas (`ADR-199`/`ADR-200`/`ADR-201`)
+
+`personalizationSchema.experience` permite modelar geometría especializada sin cambiar `PersonalizationKind` ni crear migraciones Prisma. `features/personalization/product-experience.ts` es la fuente defensiva compartida por PDP, Estudio, carrito, 3D y taller.
+
+- **Bola Navideña Personalizada (`bola-navidena-personalizada`, `NAV-BOLA-8`):** una variante `NAV-BOLA-8CM-NOMAG` con inserto circular plano dúplex de 8 cm, `shape = circle`, `magnet = false` y unidades libres. La configuración canónica usa `facesPerUnit = 2` y `backOptional = false`: cada bola exige cara A y cara B, pero sigue siendo una sola unidad. El 3D mapea ambos diseños sobre un único inserto rígido, no crea dos esferas; el paginador y el rótulo cuentan unidades físicas, nunca caras. La vista previa 2D presenta los dos círculos A/B sin doblez ni textos de separadores, y esa misma terminología llega a carrito, pedidos, posventa, correos y taller.
+- **Mini Libros Magnéticos (`mini-libros-magneticos`, `MINI-LIBRO`):** cuatro variantes — dos tamaños × con/sin imán. Carátula extendida **7,1 × 5 cm** (tapas de 3,3 cm) o **5 × 2,5 cm** (tapas de 2,25 cm), lomo/grosor 0,5 cm. La variante sin imán conserva el sufijo `-NOMAG`; con imán se muestra ferrita en el reverso.
+- **Modelo comercial:** variantes de una sola pieza con `quantity = 1` y `photoSlots = 1`, hasta 25 bolas (50 lienzos A/B) o 50 mini libros editables con réplica. `unitSlots = photoSlots × facesPerUnit`: dos caras agregan un lienzo, no otra unidad comercial. `volumePricingByPhysicalUnit` aplica `WholesaleTier` sobre el total físico, incluso cuando cada unidad usa otra carátula.
+- **Configuración comercial:** ambos están activos en LOCAL y STG con precio unitario de **$10.000 COP**, promociones de **3 por $27.000** (`unitPrice = 900000`) y **5 por $40.000** (`unitPrice = 800000`), paquete de **8 × 8 × 8 cm / 200 g** y stock made-to-order. Estos valores son los confirmados por el owner; no se promueven a PRD. El peso y las dimensiones del paquete final se ingresan en **Productos → Editar → Detalles → Empaque para el envío**; si cambian por variante, se usan los valores logísticos específicos de Variantes. El seed canónico crea las promociones que faltan sin sobrescribir niveles existentes, y `seed-catalog-v2.mjs` no rellena valores genéricos cuando una experiencia física especializada mantiene estos datos pendientes.
+- **Activos canónicos:** `generate-new-product-assets.mjs` crea portadas y SVG originales; `seed-templates.mjs` registra 7 plantillas (1 bola + 6 mini libro — la bola conserva solo «Foto circular» desde 2026-11-07, owner); `seed-new-product-gallery.mjs` siembra 20 prediseñados (16 mini libro + 4 bola) con masters y miniaturas protegidas. El seed respeta estados administrativos y nunca inventa logística.
+
+---
+
 ## 3. Arquitectura CMS v2 de 3 Capas (`ADR-082`, `ADR-187`)
 
 Lucams separa estrictamente el contenido administrable, los encabezados de correos y el microcopy funcional de interfaz en tres capas para evitar claves rotas, consultas redundantes y riesgos de seguridad:

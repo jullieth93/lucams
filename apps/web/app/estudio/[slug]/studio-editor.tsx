@@ -103,6 +103,7 @@ import {
 } from "@/features/personalization/design-units";
 import { faceSlotLabels, deployedSizeCm } from "./lib/faces";
 import { previewUnitRanges } from "./lib/preview-units";
+import type { VisibleVolumeTier } from "@/features/cart/volume-pricing";
 import {
   readStudioDraftMarker,
   writeStudioDraftId,
@@ -125,6 +126,7 @@ import {
 } from "./lib/preview-encode";
 import {
   buildBookmarkStripPreview,
+  buildOrnamentPreview,
   buildCompositedPreview,
   buildMagnetTextures,
   clipProductionSnapshotToShape,
@@ -140,6 +142,7 @@ import {
 } from "./lib/upload-with-retry";
 import { PHOTO_PACK_UNITS_PER_PACK } from "@/features/products/variant-schemas";
 import { photoTransformCoversWindow } from "@/features/personalization/photo-fit";
+import { readProductExperience } from "@/features/personalization/product-experience";
 
 // FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
 // (three.js) van diferidas DENTRO de SceneGallery, así que este import estático no infla el bundle
@@ -258,6 +261,14 @@ export type StudioEditorProps = {
   /** Precio (centavos COP) de la variante elegida — se muestra en la vista previa pre-carrito. */
   unitPriceCents: number;
   /**
+   * 2026-11-07 (bug owner) — escala de descuentos por volumen VISIBLE del
+   * producto (la resuelve page.tsx con resolveVisibleVolumeTiers), solo para
+   * experiencias volumePricingByPhysicalUnit (bola/mini libros): la modal de
+   * confirmación muestra el total con la promo aplicada, igual que el stepper
+   * de la PDP y el carrito. undefined = total plano.
+   */
+  volumeTiers?: readonly VisibleVolumeTier[];
+  /**
    * Lucy 2026-09-08 — "¿Con imán?" en los packs de foto: la elección de la PDP
    * (dimensión `magnet` de la variante, o la guardada en el diseño recuperado).
    * El Estudio la PERSISTE en el canvasData (el carrito la usa para resolver la
@@ -340,6 +351,7 @@ export function StudioEditor({
   packVariants = [],
   variantId,
   unitPriceCents,
+  volumeTiers,
   initialMagnet,
   initialUnits,
   replacesCartDesignId,
@@ -552,12 +564,14 @@ export function StudioEditor({
     store.getState().clearAllSlots();
     setClearDesignOpen(false);
   }, [store]);
-  // 2026-10-29 (owner) — con >1 plantillas y SIN elección, el LIENZO queda
+  // 2026-10-29 (owner) — con plantillas visibles y SIN elección, el LIENZO queda
   // deshabilitado (overlay guía): editar slots sin plantilla era trabajo
   // perdido (el boot solo presta la geometría de render, ADR-167). El bloqueo
   // de «Ver diseño» (templateNudge) sigue como segunda red.
+  // 2026-11-07 (owner) — la elección es obligatoria INCLUSO con 1 sola
+  // plantilla: homologa todos los lienzos con plantillas.
   const selectedTemplateId = useStore(store, (s) => s.selectedTemplateId);
-  const templatePending = templates.length > 1 && !selectedTemplateId;
+  const templatePending = templates.length > 0 && !selectedTemplateId;
   // Si el finalize ya pasó pero el CARRITO falló, reintentar desde la modal no puede volver a
   // finalizar: el diseño quedó en READY y `finalizeDesign` solo acepta borradores, así que el
   // reintento moría con «Design is READY — only DRAFT can be finalized» y no había salida. Se
@@ -599,6 +613,7 @@ export function StudioEditor({
     isPolaroid?: boolean;
     facesPerUnit?: number;
     flat?: boolean;
+    spineWidthCm?: number;
     /** 2026-10-23 — calendario multi-set: tarjetas por set + labels de mes (pager de
      *  dos niveles del visor de detalle). Solo las llena handleOpenCalendar3D. */
     cardsPerSet?: number;
@@ -645,7 +660,7 @@ export function StudioEditor({
   // Ola 3 (Lucy 2026-07-22) — flags del producto, via schema (NO por slug):
   //  - allowText: el texto editable es de la Polaroid; Fotoimanes Cuadrados y
   //    separadores NO dibujan las capas de texto de la plantilla.
-  //  - facesPerUnit=2 (separadores): cada unidad física es una tira doblada con
+  //  - facesPerUnit=2 (separadores y bola dúplex): cada unidad física tiene
   //    2 caras de diseño → el Estudio trabaja con 2N slots (slot 2k=cara A,
   //    2k+1=cara B) y la grilla los agrupa por unidad.
   const allowText = productConfig.allowText === true;
@@ -654,6 +669,8 @@ export function StudioEditor({
   // stroke sobre blanco. Misma regla en producción (service.ts → frameFullBleed).
   const frameFullBleed = (productConfig.frameOptions?.length ?? 0) > 0;
   const facesPerUnit = productConfig.facesPerUnit === 2 ? 2 : 1;
+  const experience = readProductExperience(product.personalizationSchema);
+  const isOrnament = experience.experience === "christmas-ornament";
   // Cara B OPCIONAL (2026-09-22) — lo declara el personalizationSchema del
   // producto (backOptional: true vía script de BD). Se lee crudo como
   // galleryTag/startMonth porque el schema Zod (PhotoProductConfigSchema) aún
@@ -683,7 +700,8 @@ export function StudioEditor({
   // Unidades a diseñar: con composición multi-foto (tiras, calendario) vienen de la
   // PDP (?copies=N → initialUnits); con unidad de 1 foto (separadores/polaroid) el
   // N ya ES photoSlots (el pack size de la variante — comportamiento histórico).
-  const requestedUnits = photosPerUnit > 1 ? (initialUnits ?? 1) : Math.max(1, photoSlots);
+  const requestedUnits =
+    experience.freeUnitDesign || photosPerUnit > 1 ? (initialUnits ?? 1) : Math.max(1, photoSlots);
   const bootUnitCount = Math.min(
     maxUnitsForProduct(bootUnitSlots),
     Math.max(1, Math.trunc(requestedUnits) || 1),
@@ -829,11 +847,13 @@ export function StudioEditor({
   // aria/fallback de slots y el onboarding (pantalla=físico).
   const slotProductKind: StudioSlotProductKind = isCalendarMonth
     ? "calendar"
-    : isBookmark
-      ? "bookmarks"
-      : liveIsStrip
-        ? "strips"
-        : "magnets";
+    : isOrnament
+      ? "ornaments"
+      : isBookmark
+        ? "bookmarks"
+        : liveIsStrip
+          ? "strips"
+          : "magnets";
   const slotNounPair = resolveSlotNoun(slotProductKind, liveMagnet, texts);
   // Fase 2 · item 2.8 (2026-10-07) — superficie del TOUR por producto: decide
   // las features del onboarding (lib/studio-tour) y su clave de localStorage.
@@ -885,13 +905,17 @@ export function StudioEditor({
   const unitNoun = isCalendarMonth
     ? // Owner 2026-09-15: el calendario multi-set se nombra «Set» ("Set 1", "Set 2").
       texts.unidades.nombreSet
-    : isBookmark
-      ? texts.unidades.nombreSeparador
-      : liveIsStrip
-        ? texts.unidades.nombreTira
-        : packUnitsPerGroup
-          ? texts.unidades.nombrePack
-          : texts.unidades.nombrePieza;
+    : isOrnament
+      ? texts.unidades.nombreBola
+      : isBookmark
+        ? texts.unidades.nombreSeparador
+        : liveIsStrip
+          ? texts.unidades.nombreTira
+          : experience.experience === "mini-book"
+            ? texts.unidades.nombreMiniLibro
+            : packUnitsPerGroup
+              ? texts.unidades.nombrePack
+              : texts.unidades.nombrePieza;
   // 2026-10-12 — el MISMO sustantivo como par {one, many, feminine} en
   // minúsculas para la línea de la Vista Previa ("1 separador", "3 separadores
   // — cada uno con su propio diseño"; antes "N unidades" para todo). El
@@ -900,13 +924,17 @@ export function StudioEditor({
   // la regla general +"es" de separador→separadores).
   const unitNounPair: SlotNoun = isCalendarMonth
     ? { one: texts.unidades.nombreSet.toLowerCase(), many: "sets" }
-    : isBookmark
-      ? { one: texts.unidades.nombreSeparador.toLowerCase(), many: "separadores" }
-      : liveIsStrip
-        ? { one: texts.unidades.nombreTira.toLowerCase(), many: "tiras", feminine: true }
-        : packUnitsPerGroup
-          ? { one: texts.unidades.nombrePack.toLowerCase(), many: "packs" }
-          : { one: texts.unidades.nombrePieza.toLowerCase(), many: "piezas", feminine: true };
+    : isOrnament
+      ? { one: texts.unidades.nombreBola.toLowerCase(), many: "bolas", feminine: true }
+      : isBookmark
+        ? { one: texts.unidades.nombreSeparador.toLowerCase(), many: "separadores" }
+        : liveIsStrip
+          ? { one: texts.unidades.nombreTira.toLowerCase(), many: "tiras", feminine: true }
+          : experience.experience === "mini-book"
+            ? { one: texts.unidades.nombreMiniLibro.toLowerCase(), many: "mini libros" }
+            : packUnitsPerGroup
+              ? { one: texts.unidades.nombrePack.toLowerCase(), many: "packs" }
+              : { one: texts.unidades.nombrePieza.toLowerCase(), many: "piezas", feminine: true };
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del libro 3D según táctil vs mouse.
   // FOTO4 — la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo) es la vista por
   // defecto del fotoimán: se muestra cuando NO es calendario ni separador (el `else` del botón).
@@ -1023,7 +1051,7 @@ export function StudioEditor({
               photoSlots: canvasData.photoSlots ?? photoSlots,
               unitTemplate: canvasData.unitTemplate,
             }) * facesPerUnit;
-          if (legacyUnitSlots > 1) {
+          if (legacyUnitSlots > 1 || experience.freeUnitDesign) {
             const legacyUnitCount = Math.max(1, Math.round(canvasData.slotCount / legacyUnitSlots));
             canvasData = {
               ...canvasData,
@@ -1035,9 +1063,10 @@ export function StudioEditor({
           // 5.1 (owner 2026-10-22) — SIN plantilla seleccionada por defecto:
           // la primera plantilla solo presta su GEOMETRÍA para dibujar el
           // lienzo; la selección (selectedTemplateId) arranca en null y la
-          // pide el checklist «Tu diseño». Excepciones dentro de
-          // resolveBootTemplate: deep-link ?template= (elección explícita) y
-          // producto de 1 sola plantilla (elección trivial → auto-selección).
+          // pide el checklist «Tu diseño». Única excepción dentro de
+          // resolveBootTemplate: el deep-link ?template= (elección explícita).
+          // 2026-11-07 (owner): con 1 sola plantilla ya NO hay auto-selección
+          // — la elección explícita es obligatoria en todos los lienzos.
           const bootTemplate = resolveBootTemplate(templates, initialTemplateId);
           designId = null;
           const unitTemplate = bootTemplate.geometry?.canvasData ?? {
@@ -1060,15 +1089,17 @@ export function StudioEditor({
           canvasData = {
             version: 2,
             unitTemplate,
-            // Ola 3 — con facesPerUnit=2 (separadores) hay 2 slots de diseño por
-            // unidad física: slot 2k = cara A, slot 2k+1 = cara B (convención
-            // compartida con producción y con el frente 3D).
+            // Ola 3 — con facesPerUnit=2 (separadores y bola dúplex) hay 2 slots
+            // de diseño por unidad física: slot 2k = cara A, slot 2k+1 = cara B
+            // (convención compartida con producción y con el frente 3D).
             // Multi-unidad (2026-09-09): slotCount = unitCount × unitSlots.
             slotCount: initialSlotCount,
             // Multi-unidad: declarar el modelo solo cuando la unidad tiene >1 slot
             // (tiras, calendario, separadores). unitSlots = 1 (polaroid/cuadrados)
             // no se declara — la variante YA es el pack (design-units.ts).
-            ...(bootUnitSlots > 1 ? { unitCount: bootUnitCount, unitSlots: bootUnitSlots } : {}),
+            ...(bootUnitSlots > 1 || experience.freeUnitDesign
+              ? { unitCount: bootUnitCount, unitSlots: bootUnitSlots }
+              : {}),
             // Lucy 2026-09-05 — packs: el canvasData nuevo ya declara el N de
             // fotos y el tamaño en raíz (fuente de la resolución server-side
             // de la variante en el carrito). Los demás productos no lo llevan.
@@ -1303,6 +1334,7 @@ export function StudioEditor({
     texts,
     isCalendarMonth,
     facesPerUnit,
+    experience.freeUnitDesign,
     resumeOffer,
     draftResumeEnabled,
     cartAssetIdsInUse,
@@ -1676,11 +1708,12 @@ export function StudioEditor({
     let state = store.getState();
     if (!state.canvasData || state.isFinalizing || previewBuilding) return;
     // Ola 2 (2026-10-26) — plantilla OBLIGATORIA con bloqueo GUIADO (decisión
-    // owner): con >1 plantillas y sin elección (5.1: ninguna viene
-    // pre-seleccionada), «Ver diseño» no procede — abre el panel de plantillas
+    // owner): con plantillas visibles y sin elección (5.1: ninguna viene
+    // pre-seleccionada; 2026-11-07: incluso con UNA sola), «Ver diseño» no
+    // procede — abre el panel de plantillas
     // (sheet «Editar» en móvil; scroll a la sección en desktop), la resalta y
     // avisa. El botón NO se deshabilita: el bloqueo guía, no castiga.
-    if (templates.length > 1 && !state.selectedTemplateId) {
+    if (templates.length > 0 && !state.selectedTemplateId) {
       toast.error(texts.plantillas.elegirParaContinuar);
       setTemplateNudgeAt(Date.now());
       if (
@@ -1819,14 +1852,18 @@ export function StudioEditor({
       // default-back-face.ts, features/personalization), igual que en el libro 3D.
       // Lo resuelve previewFacePairOfUnit dentro del compositor (faceB = null).
       const foldCaption = (() => {
-        if (facesPerUnit !== 2 || productConfig.noFold) return undefined;
+        if (facesPerUnit !== 2 || productConfig.noFold || isOrnament) return undefined;
         const deployed = deployedSizeCm(productConfig.sizeCm);
         return deployed
           ? fillStudioText(texts.lienzo.doblezDesplegado, { tamano: `${deployed} cm` })
           : undefined;
       })();
-      const previewUrl =
-        facesPerUnit === 2
+      const previewUrl = isOrnament
+        ? await buildOrnamentPreview(state.canvasData, slotStagesRef.current, {
+            faceA: texts.lienzo.unitCaraA,
+            faceB: texts.lienzo.unitCaraB,
+          })
+        : facesPerUnit === 2
           ? await buildBookmarkStripPreview(
               state.canvasData,
               slotStagesRef.current,
@@ -1849,21 +1886,28 @@ export function StudioEditor({
       if (unitRanges.length > 1) {
         const canvasSnapshot = state.canvasData;
         previewPageLoaderRef.current = (u) =>
-          facesPerUnit === 2
-            ? buildBookmarkStripPreview(
+          isOrnament
+            ? buildOrnamentPreview(
                 canvasSnapshot,
                 slotStagesRef.current,
-                productConfig.cornerRadiusPx,
-                {
-                  noFold: productConfig.noFold === true,
-                  backOptional,
-                  foldCaption,
-                  unitIndex: u,
-                },
+                { faceA: texts.lienzo.unitCaraA, faceB: texts.lienzo.unitCaraB },
+                u,
               )
-            : buildCompositedPreview(canvasSnapshot, slotStagesRef.current, productConfig.shape, {
-                unitRange: unitRanges[u]!,
-              });
+            : facesPerUnit === 2
+              ? buildBookmarkStripPreview(
+                  canvasSnapshot,
+                  slotStagesRef.current,
+                  productConfig.cornerRadiusPx,
+                  {
+                    noFold: productConfig.noFold === true,
+                    backOptional,
+                    foldCaption,
+                    unitIndex: u,
+                  },
+                )
+              : buildCompositedPreview(canvasSnapshot, slotStagesRef.current, productConfig.shape, {
+                  unitRange: unitRanges[u]!,
+                });
         setPreviewPagesGeneration((g) => g + 1);
         setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
       }
@@ -1893,6 +1937,7 @@ export function StudioEditor({
     backOptional,
     ensureAllStagesMounted,
     isCalendarMonth,
+    isOrnament,
     facesPerUnit,
     selectedYear,
     calendarLayout,
@@ -2010,6 +2055,13 @@ export function StudioEditor({
         // Ola 2B — la nevera/tablero escalan los imanes a su tamaño físico real (sizeCm variante).
         sizeCm: productConfig.sizeCm,
         isPolaroid,
+        kind:
+          experience.experience === "standard"
+            ? undefined
+            : experience.experience === "christmas-ornament"
+              ? "ornament"
+              : "mini-book",
+        spineWidthCm: experience.spineWidthCm,
         // Ola 10 — para separadores 2 caras: la galería necesita saber el facesPerUnit.
         facesPerUnit: productConfig.facesPerUnit,
         // Ola 17 — Alargados planos (noFold): la galería los muestra planos, no doblados
@@ -2032,6 +2084,8 @@ export function StudioEditor({
     productConfig.sizeCm,
     productConfig.facesPerUnit,
     productConfig.noFold,
+    experience.experience,
+    experience.spineWidthCm,
     ensureAllStagesMounted,
     sceneBuilding,
     isBookmark,
@@ -2315,8 +2369,10 @@ export function StudioEditor({
         }
         finalizedRef.current = true;
 
-        // 2026-10-13 — páginas POR UNIDAD del preview: se suben en un request
-        // APARTE (uploadDesignPreviewPagesAction) para el "Ver" paginado del
+        // 2026-10-13 — páginas POR UNIDAD del preview: se suben en requests
+        // APARTE del finalize (uploadDesignPreviewPagesAction, por lotes desde
+        // la auditoría 2026-11-08 — un set completo no cabe en el body de
+        // ~4.5 MB que Vercel admite por request) para el "Ver" paginado del
         // carrito y la miniatura representativa de la línea. Reusa el loader
         // perezoso de la modal (las páginas ya navegadas vienen cacheadas en
         // previewPages; las pendientes se generan acá, una sola vez — el
@@ -2331,14 +2387,7 @@ export function StudioEditor({
             const pageBlobs = await Promise.all(
               previewPages.map(async (p, i) => dataUrlToBlob(p.dataUrl ?? (await loader(i)))),
             );
-            await uploadPreviewPagesWithRetry(designId, () => {
-              const pagesForm = new FormData();
-              pagesForm.set("designId", designId);
-              pageBlobs.forEach((blob, i) =>
-                pagesForm.set(`page_${i}`, blob, `page-${i + 1}.webp`),
-              );
-              return pagesForm;
-            });
+            await uploadPreviewPagesWithRetry(designId, pageBlobs);
           } catch (pagesErr) {
             console.error("[studio.preview.pages-upload]", pagesErr);
           }
@@ -2645,8 +2694,11 @@ export function StudioEditor({
         productSlug={product.slug}
         productImageUrl={product.images?.[0]}
         productSizeCm={productConfig.sizeCm}
-        productSlotCount={livePhotoSlots}
+        productSlotCount={isOrnament ? liveSlotCount : livePhotoSlots}
         slotNoun={slotNounPair}
+        unitNoun={unitNounPair}
+        facesPerUnit={facesPerUnit}
+        freeUnitDesign={experience.freeUnitDesign}
         // 2026-10-12 — desglose de la variante en el header: el MISMO label de
         // la Vista Previa (ya omite tamaño/conteos, que el header enuncia en
         // sus propios chips) → llegan imán, idioma, estilo, marco, forma…
@@ -2948,8 +3000,8 @@ export function StudioEditor({
                 allowText={allowText}
                 frameFullBleed={frameFullBleed}
                 facesPerUnit={facesPerUnit}
-                // Alargados planos (noFold): sin línea de doblez en la tarjeta-unidad.
-                noFold={productConfig.noFold === true}
+                // Piezas planas y bola dúplex: sin línea de doblez en la tarjeta-unidad.
+                noFold={productConfig.noFold === true || isOrnament}
                 // Cara B opcional (separadores backOptional): el placeholder del slot
                 // vacío de Cara B avisa que puede quedar sin diseñar.
                 backOptional={backOptional}
@@ -3034,6 +3086,7 @@ export function StudioEditor({
           isPolaroid={sceneMagnets.isPolaroid}
           facesPerUnit={sceneMagnets.facesPerUnit}
           flat={sceneMagnets.flat}
+          spineWidthCm={sceneMagnets.spineWidthCm}
           // 2026-10-23 — calendario multi-set: pager de dos niveles en el detalle.
           cardsPerSet={sceneMagnets.cardsPerSet}
           cardLabels={sceneMagnets.cardLabels}
@@ -3219,16 +3272,24 @@ export function StudioEditor({
         // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de
         // diseño (2N). Multi-unidad (2026-09-09): tiras/calendarios muestran las
         // unidades vivas del diseño y sus piezas por unidad.
-        slotCount={liveIsStrip || isCalendarMonth ? liveUnitCount : livePhotoSlots}
+        slotCount={isOrnament || liveIsStrip || isCalendarMonth ? liveUnitCount : livePhotoSlots}
         slotsPerUnit={liveIsStrip || isCalendarMonth ? liveUnitSlots : undefined}
-        sizeCm={productConfig.sizeCm}
+        sizeCm={
+          isOrnament && productConfig.sizeCm && !/\bcm\b/i.test(productConfig.sizeCm)
+            ? `${productConfig.sizeCm} cm`
+            : productConfig.sizeCm
+        }
         unitPrice={effectiveUnitPrice}
+        // 2026-11-07 (bug owner) — la modal refleja la promo por volumen
+        // (misma escala visible de la PDP); el servidor cobra lo mismo vía
+        // volumeUnitMultiplierForDesign.
+        volumeTiers={volumeTiers}
         // 2026-09-22 — multiplicador del SERVIDOR (design-units): la variante
         // puede YA ser el pack (separadores ×5 → ×1). La modal lo usa en vez
         // del unitCount crudo para el total (bug: mostraba pack × N).
         priceMultiplier={livePriceMultiplier}
-        // Separadores planos (Alargados): textos sin "doblado".
-        noFold={productConfig.noFold === true}
+        // Piezas planas y bola dúplex: textos sin "doblado".
+        noFold={productConfig.noFold === true || isOrnament}
         // Multi-unidad: el diseño YA contiene las unidades → qty 1 al carrito;
         // el total de la modal = precio unitario × unidades.
         unitCount={liveUnitCount}
@@ -3248,15 +3309,17 @@ export function StudioEditor({
         productKind={
           isCalendarMonth
             ? "calendar"
-            : facesPerUnit === 2
-              ? "bookmarks"
-              : liveIsStrip
-                ? "strips"
-                : // Fase 1A — SIN IMÁN (magnet === false) la modal dice "fichas",
-                  // nunca "imanes" (misma regla del helper resolveSlotNoun).
-                  liveMagnet === false
-                  ? "tiles"
-                  : "magnets"
+            : isOrnament
+              ? "ornaments"
+              : facesPerUnit === 2
+                ? "bookmarks"
+                : liveIsStrip
+                  ? "strips"
+                  : // Fase 1A — SIN IMÁN (magnet === false) la modal dice "fichas",
+                    // nunca "imanes" (misma regla del helper resolveSlotNoun).
+                    liveMagnet === false
+                    ? "tiles"
+                    : "magnets"
         }
         calendarYear={selectedYear}
         // Fase 2 · item 2.3 (2026-10-07) — desglose COMPLETO de la variante

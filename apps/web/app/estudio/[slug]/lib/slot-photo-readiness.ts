@@ -18,6 +18,18 @@
  * decodificada el nodo siempre está (studio-slot.tsx). Se espera con rAF y un
  * deadline (best-effort, misma filosofía que ensureAllStagesMounted: si una
  * imagen falló de verdad, no colgamos el click — se rasteriza lo que haya).
+ *
+ * 2026-11-07 (bug owner — preview/3D sin fotos en CELULAR REAL): los
+ * navegadores móviles DESCARTAN los bitmaps decodificados bajo presión de
+ * memoria (Chrome Android conserva solo los bytes codificados). El lienzo en
+ * pantalla sigue mostrando el último frame compuesto (las fotos "se ven
+ * bien"), pero el snapshot RE-DIBUJA la escena desde cero (Konva
+ * `_toKonvaCanvas` → drawScene) y un `drawImage` sobre una imagen descartada
+ * no pinta NADA → texturas vacías (antes negras; con el relleno crema de
+ * buildMagnetTextures, blancas). Por eso, tras la espera de nodos, se fuerza
+ * `image.decode()` de cada foto presente: si el bitmap fue descartado, se
+ * re-decodifica desde los bytes en cache ANTES de rasterizar. Best-effort con
+ * techo global: una foto que no decodifica no cuelga el click.
  */
 
 /**
@@ -27,6 +39,21 @@
  */
 export type SlotPhotoReadinessStage = { findOne(selector: string): unknown };
 
+/** Nodo Konva mínimo con la imagen rasterizable (Konva.Image la expone). */
+type MaybeImageNode = { image?: () => { decode?: () => Promise<void> } | null | undefined };
+
+/** Techo del re-decode forzado (2026-11-07 — todas las fotos a la vez). */
+const FORCE_DECODE_BUDGET_MS = 3000;
+
+/** Fuerza `decode()` de la imagen de un nodo si existe (no-op defensivo). */
+function decodeNodeImage(node: unknown): Promise<void> {
+  const img = (node as MaybeImageNode | null | undefined)?.image?.();
+  if (!img || typeof img.decode !== "function") return Promise.resolve();
+  return img.decode().catch(() => {
+    // Una foto rota no bloquea el snapshot: se rasteriza lo que haya.
+  });
+}
+
 export async function waitForSlotPhotosReady(
   slots: readonly {
     slotIndex: number;
@@ -34,7 +61,7 @@ export async function waitForSlotPhotosReady(
     profileAssetUrl?: string | null;
   }[],
   stages: Map<number, SlotPhotoReadinessStage | null>,
-  timeoutMs = 4000,
+  timeoutMs = 8000,
 ): Promise<void> {
   const pending = () =>
     slots.some((s) => {
@@ -46,13 +73,30 @@ export async function waitForSlotPhotosReady(
       if (s.profileAssetUrl && stage && !stage.findOne(".slot-profile-photo")) return true;
       return false;
     });
-  if (!pending()) return;
-  const deadline = performance.now() + timeoutMs;
-  await new Promise<void>((resolve) => {
-    const tick = () => {
-      if (!pending() || performance.now() > deadline) resolve();
-      else requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
+  if (pending()) {
+    const deadline = performance.now() + timeoutMs;
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        if (!pending() || performance.now() > deadline) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  }
+  // 2026-11-07 — re-decode forzado (ver header): en celulares reales el nodo
+  // `.slot-photo` ya EXISTE pero su bitmap pudo ser descartado por presión de
+  // memoria; sin este decode el snapshot re-dibuja y pinta vacío.
+  const decodeJobs: Promise<void>[] = [];
+  for (const s of slots) {
+    const stage = stages.get(s.slotIndex);
+    if (!stage) continue;
+    if (s.assetUrl) decodeJobs.push(decodeNodeImage(stage.findOne(".slot-photo")));
+    if (s.profileAssetUrl) decodeJobs.push(decodeNodeImage(stage.findOne(".slot-profile-photo")));
+  }
+  if (decodeJobs.length > 0) {
+    await Promise.race([
+      Promise.all(decodeJobs),
+      new Promise<void>((resolve) => setTimeout(resolve, FORCE_DECODE_BUDGET_MS)),
+    ]);
+  }
 }

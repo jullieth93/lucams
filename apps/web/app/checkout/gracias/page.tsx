@@ -566,7 +566,11 @@ async function ApprovedPage({
               // 2026-10-22 — rótulo por página del pager ("Set 2 · con borde").
               const pageLabels = designPreviewPageLabels(
                 it.design,
-                unitNounForLine(it.variant.product.personalizationKind, it.variant.name),
+                unitNounForLine(
+                  it.variant.product.personalizationKind,
+                  it.variant.name,
+                  it.variant.product.personalizationSchema,
+                ),
               );
               // 2026-10-26 — sustantivo kind-aware del badge «N …» ("tiras",
               // "sets"…).
@@ -575,6 +579,7 @@ async function ApprovedPage({
                 variantName: it.variant.name,
                 designMetadata: it.design?.metadata,
                 isBookmark: isBookmarkGalleryTag(it.variant.product.slug),
+                productSchema: it.variant.product.personalizationSchema,
               }).plural;
               // LUC-SEC-001 — los refs del DISEÑO salen por el handler
               // autorizado (cookie de sesión del comprador); las fotos de

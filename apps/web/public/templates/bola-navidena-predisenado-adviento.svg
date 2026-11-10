@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
+  <rect width="800" height="800" fill="#243B69"/>
+  <circle cx="400" cy="400" r="385" fill="none" stroke="#FFD93D" stroke-width="16"/>
+  <circle cx="400" cy="400" r="350" fill="none" stroke="#FFD93D" stroke-opacity=".4" stroke-width="4" stroke-dasharray="8 18"/>
+  <g transform="translate(400 290) scale(2.4)"><path d="M0-45 10-12 45-10 17 10 27 45 0 25-27 45-17 10-45-10-10-12Z" fill="#FFD93D"/><circle cx="-42" cy="-28" r="6" fill="#FFD93D"/><circle cx="45" cy="38" r="5" fill="#FFD93D"/></g>
+  <text x="400" y="570" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="64" font-weight="700">NOCHE DE ADVIENTO</text>
+  <text x="400" y="635" text-anchor="middle" fill="#FFF8F0" fill-opacity=".85" font-family="Inter, sans-serif" font-size="30">Un recuerdo para siempre</text>
+  <text x="400" y="710" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="30" font-weight="700">Lucams</text>
+</svg>

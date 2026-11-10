@@ -425,4 +425,31 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
       }),
     ).rejects.toThrow(/not owned/i);
   }, 600_000);
+
+  /*
+   * Auditoría 2026-11-08 — los editores de fichas (nombre, sets de letras) ya no
+   * mandan las láminas en el body del finalize (techo real ~4.5 MB de Vercel):
+   * las suben por tickets. En canvas V1 (stub) el conteo de tickets NO sale del
+   * canvas sino de metadata.unitCount (1 lámina por set) y la guarda de tope por
+   * photoSlots no aplica (esos productos no la declaran).
+   */
+  it("canvas v1 (letterset): emite un ticket por SET según metadata.unitCount", async () => {
+    const d = await prisma.design.create({
+      data: {
+        productId,
+        templateId: null,
+        sessionId: RUN,
+        status: "DRAFT",
+        canvasData: { version: 1 },
+        metadata: { kind: "LETTER_SET", surface: "letterset", unitCount: 3 },
+      },
+      select: { id: true },
+    });
+    creados.push(d.id);
+
+    const tickets = await createClientSlotUploadTickets({ designId: d.id, ...OWNER });
+
+    expect(tickets).toHaveLength(3);
+    expect(tickets.map((t) => t.slotIndex)).toEqual([0, 1, 2]);
+  }, 600_000);
 });

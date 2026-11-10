@@ -110,6 +110,9 @@ export type TextLayer = {
   fontWeight?: string;
   align?: "left" | "center" | "right";
   editable?: boolean;
+  width?: number;
+  rotation?: number;
+  allowOnShape?: boolean;
 };
 
 export type ShapeLayer = {

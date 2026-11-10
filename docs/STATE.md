@@ -8,14 +8,13 @@
 - **Tienda activa (`ADR-077`):** `lucamsshop.com` vende en producción en modo **`full`**
   (`NEXT_PUBLIC_STORE_MODE=full`) con pagos Wompi, contraentrega y envíos Aveonline + Envío Lucams Bogotá.
 - **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js 16, TS strict, Tailwind v4, shadcn/ui) y
-  `packages/db` (**77 modelos Prisma**, **33 enums**, **97 migraciones Prisma** + **56 SQL Supabase**
+  `packages/db` (**77 modelos Prisma**, **33 enums**, **97 migraciones Prisma** + **58 SQL Supabase**
   con RLS y event trigger `REVOKE` automático `049` en el 100 % de las tablas).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) bajo el ruleset
   `protect-ramas-criticas` con PR obligatorio y **5 checks requeridos** (`Typecheck + Lint + Build`,
   `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`).
-- **Paquete legal vigente:** **Versión 3 (`2026-11-05`)** sincronizada en los 8 archivos de
-  `packages/db/legal-content/*.md`, sus `FALLBACK`, `cms-site-map.mjs` **y publicada en el CMS de STG
-  y PRD** (9 campos `legal.*` con historial intacto; la caché tag `cms` se renueva en ≤ 1 h).
+- **Paquete legal vigente:** **Versión 3 (`2026-11-05`)** sincronizada en `packages/db/legal-content`,
+  `FALLBACK`, `cms-site-map.mjs` y el CMS de STG/PRD (9 campos `legal.*`, historial intacto).
 
 ## Topología de ambientes y homologación STG ↔ PRD
 
@@ -27,20 +26,14 @@
 
 ### Excepciones deliberadas de homologación (`ADR-099`, `ADR-121`, `ADR-126`)
 
-- **Catálogo y esquema (`scripts/diag-stg/homologacion.sh`):**
-  migraciones, categorías, ocasiones, plantillas, lettersets, redirects y los `168/168` campos CMS
-  están homologados, incluidas las 22 variantes sin imán (`-NOMAG`) de productos activos.
-  - `nombre-personalizado` permanece archivado en PRD (`set-fotoimanes-circulares` y
-    `set-fotoimanes-corazon` están archivados en los 3 ambientes).
-  - El stock real de bodega no se sincroniza por rutina entre ambientes.
-- **Crons y secretos por ambiente:**
-  - `uptime-monitor-prd` (cada 10 min) corre **solo en STG** (monitorea externamente a PRD).
-  - Los **5 crons de correo** (`alerts`, `back-in-stock`, `cart-recovery`, `daily-summary`,
-    `review-request`) están apagados en STG por `CRON_JOBS_DISABLED` y activos **solo en PRD**.
-  - `lucams-lifecycle` y el webhook de Resend operan en STG y PRD; STG usa `DRY_RUN` y firma Svix.
-  - `AVEONLINE_WEBHOOK_SECRET` existe solo en PRD; `CRON_JOBS_DISABLED` y `VERCEL_BYPASS_TOKEN`
-    existen solo en STG.
-- **Datos exclusivos de prueba:** el cupón `LOCURA` vive únicamente en STG y nunca pasa a PRD.
+- **Catálogo y esquema (`scripts/diag-stg/homologacion.sh`):** migraciones, categorías, ocasiones,
+  plantillas, lettersets, redirects, `168/168` campos CMS y 22 variantes `-NOMAG` homologados.
+  `nombre-personalizado` está archivado en PRD; `set-fotoimanes-circulares` y `set-fotoimanes-corazon`,
+  en los 3 ambientes. El stock real no se sincroniza.
+- **Crons y secretos:** `uptime-monitor-prd` solo en STG; los 5 crons de correo apagados en STG por
+  `CRON_JOBS_DISABLED` y activos en PRD; `lucams-lifecycle` y Resend en ambos, con `DRY_RUN` en STG.
+  `AVEONLINE_WEBHOOK_SECRET` solo en PRD; `CRON_JOBS_DISABLED` y `VERCEL_BYPASS_TOKEN` solo en STG.
+- **Datos de prueba:** el cupón `LOCURA` vive solo en STG y nunca pasa a PRD.
 
 ## Capacidades operativas por dominio
 
@@ -58,13 +51,17 @@
 
 ### Estudio 2D/3D y Producción 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md))
 
-- Lienzo Konva multi-unidad con elección explícita cuando hay >1 plantilla (`ADR-167`), slider
-  `borderWidth` (`ADR-173`), derivados WebP ≤800 px (`DesignAsset.canvasPath`,
-  `Konva.pixelRatio <= 2`), biblioteca «Mis fotos» (`deleteDesignAssetAction`), auto-fill priorizado
-  (`orderAssetsForAutoFill`) y superficies `LetterSetEditor` / `NameEditor` multi-set + IA Gemini.
-- **7 escenas 3D en React Three Fiber** (`fridge`, `polaroid`, `board`, `memo` con pager por set,
-  `book` con `flatBookmarkFit`, `shelf-3d-view` y `gift-3d-view` con `leaning-scene-layout.ts`) +
-  `CalendarCardFocus` de 2 niveles, filtrado `-NOMAG` y reverso «Lucams» (`ADR-190`).
+- Konva multi-unidad (`ADR-167`/`173`), derivados WebP ≤800 px, biblioteca «Mis fotos», auto-fill y
+  editores de letras/nombre + IA. **10 escenas 3D** + `CalendarCardFocus`, filtrado `-NOMAG` y reverso
+  «Lucams» (`ADR-190`). Bola A/B obligatoria en UNA esfera, argolla transparente, moño exterior y 480
+  partículas; selector de dos caras por capacidad real (`ADR-201`). Mini libros con carátula extendida.
+- **Nuevas experiencias en LOCAL y STG (`ADR-199`/`200`/`201`):** Bola Navideña (inserto dúplex
+  plano de 8 cm) y Mini Libros (carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán), con
+  plantillas, prediseñados, unidades libres y descuentos físicos. La bola usa previews A/B sin doblez
+  ni taxonomía de separadores en todo el ciclo (máx. 25). Hay 2 productos activos, 5 variantes, 7
+  plantillas propias (18 activas) y 20 prediseñados: **$10.000 c/u**, **3 × $27.000**, **5 × $40.000**,
+  paquete **8 × 8 × 8 cm / 200 g**. La bola ofrece solo la plantilla «Foto circular» (owner
+  2026-11-07: nieve/luces/reno archivadas por básicas; viene un diseño más elaborado). PRD intacto.
 - Auto-save serial con `clientRev` (`STALE_REVISION`), retomador `[STU-02]` para clientes e
   invitados, previews limpios (`ADR-191`) en bucket privado `design-previews` vía
   `/api/design-preview/*` (`LUC-SEC-001`) con `DesignPreviewDialog` paginado (`PagedPreviewThumb`,
@@ -72,14 +69,10 @@
 
 ### Carrito, Checkout, Pagos y Logística ([`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md))
 
-- Carrito con auto-sanado `rotateCartSession` y recuperación al re-login (`ADR-171`), checkout en 3
-  pasos con identidad de sesión (`ADR-155`), direcciones estructuradas (`destinationType` DANE + CP
-  MinTIC 171/171 ciudades) y modo regalo (`isGift`).
-- Fletes sellados con HMAC y filtrados por peso (`SHIPPING_CARRIER_RULES`), ledger Wompi por intento
-  - webhook 25 h ([`integrations/wompi.md`](integrations/wompi.md)), COD con blocklist y
-    conciliación, alertas de venta perdida por stock (`notifyStockSaleLost`), Aveonline con PDFs en
-    Storage + historial `ShipmentEvent` ([`integrations/aveonline.md`](integrations/aveonline.md)),
-    «Envío Lucams» Bogotá y costeo por receta.
+- Carrito auto-sanado (`ADR-171`), checkout en 3 pasos (`ADR-155`), direcciones DANE + CP MinTIC
+  (171/171 ciudades) y modo regalo. Fletes HMAC por peso, ledger Wompi por intento + webhook 25 h,
+  COD con blocklist/conciliación, alertas de stock, Aveonline con PDFs + `ShipmentEvent`, Envío Lucams
+  Bogotá y costeo por receta.
 
 ### CRM 360°, B2B, Posventa y Operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 
@@ -117,8 +110,9 @@
 
 1. **Recovery codes MFA admin:** regenerar códigos de cuentas antiguas para retirar el fallback
    legacy SHA-256 en `apps/web/features/admin-mfa/recovery-codes.ts`.
-2. **Leaked Password Protection nativo:** activar en Supabase Auth al pasar a plan Pro (hoy cubierto
-   por `apps/web/lib/pwned-passwords.ts` con HIBP k-anonymity).
+2. **Leaked Password Protection nativo:** ACTIVO en `lucams-prod` desde la auditoría 2026-11-08
+   (`password_hibp_enabled: true` vía Management API — el proyecto ya está en plan Pro). El fallback
+   `apps/web/lib/pwned-passwords.ts` (HIBP k-anonymity) queda como segunda capa.
 3. **Mejoras opcionales:** evaluar `ADR-118` (unificar preview cliente con renderer servidor),
    conectar `lib/texture-resolution.ts` en `buildMagnetTextures`, aplicar `Category.visibleFilters`
    en `GET /api/catalog/filters` y sumar vectores `.svg` en `apps/web/public/brand/`.

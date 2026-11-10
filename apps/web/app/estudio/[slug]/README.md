@@ -150,8 +150,8 @@ export type MultiSlotCanvasData = {
   sizeCm?: string; // Dimensión física nominal (ej. "6.5×8", "5×15")
   magnet?: boolean; // Con imán (true) o variante gemela sin imán (false, -NOMAG)
   calendarFont?: CalendarFontKey; // Tipografía del encabezado mensual en calendarios
-  unitCount?: number; // Unidades físicas diseñables (solo cuando unitSlots > 1)
-  unitSlots?: number; // Slots por unidad física (12 calendario, 3/4 tira, 2 separador)
+  unitCount?: number; // Unidades físicas diseñables (hasta 25 bolas dúplex, 50 en otras experiencias)
+  unitSlots?: number; // Slots por unidad (12 calendario, 3/4 tira, 2 separador o bola dúplex)
   igNoBorder?: boolean; // Flag explícito del modo ancho completo en Polaroid Instagram
   clientRev?: number; // Reloj monotónico del cliente para reconciliar snapshots locales (ADR-133)
 };
@@ -413,7 +413,7 @@ apps/web/app/estudio/
     ├── use-prefers-reduced-motion.ts    # Hook reactivo para prefers-reduced-motion
     │
     ├── # Previsualizador 3D «Míralo en tu espacio» (React Three Fiber / Three.js)
-    ├── scene-gallery.tsx                # Galería de las 7 escenas 3D + compuerta honesta por magnet (ADR-180)
+    ├── scene-gallery.tsx                # Galería de las 10 escenas 3D + compuerta honesta por magnet (ADR-180)
     ├── scene-3d-error-boundary.tsx      # ErrorBoundary aislado por escena WebGL
     ├── studio-3d-environment.tsx        # Iluminación calibrada y entorno compartido R3F
     ├── magnet-3d.tsx                    # Malla 3D con grosor físico real y dorso ferrita #1A1A1A / papel #FAF8F5
@@ -423,6 +423,9 @@ apps/web/app/estudio/
     ├── book-view-3d.tsx                 # Escena 5: Libro 3D (separadores doblados o planos acostados + giro 180°)
     ├── shelf-3d-view.tsx                # Escena 6: Repisa 3D con piezas recostadas a escala real (ADR-172)
     ├── gift-3d-view.tsx                 # Escena 7: Caja de regalo 3D con piezas recostadas (ADR-172)
+    ├── ornament-3d-view.tsx             # Escena 8: UNA bola dúplex A/B, argolla ovalada, moño exterior e icopor con botones/arrastre
+    ├── mini-book-3d-view.tsx            # Escenas 9 y 10: mini libro cerrado/extendido y nevera con/sin imán
+    ├── mini-book-fields.tsx             # Asistente mini libro: título portada+lomo, autor y contraportada
     ├── calendar-card-focus.tsx          # Visor 3D focal 1 a 1 de calendario con paginador de 2 niveles (Set + Mes)
     ├── calendar-view-3d.tsx             # Escena 3D auxiliar de calendario de escritorio
     ├── fit-camera.tsx / fit-camera-polar.tsx # Encuadre automático de cámara según muebles y clúster
@@ -461,6 +464,7 @@ apps/web/app/estudio/
         ├── use-debounced-commit.ts      # Commit con debounce de 350 ms y parámetro commitEcho
         ├── apply-predesigned.ts         # Anclaje a Cara A (resolveFaceAAnchor) y reemplazo por par A+B
         ├── predesigned-variety.ts       # Reparto variado de diseños prediseñados
+        ├── predesigned-search.ts        # Búsqueda normalizada por tema/tamaño + enlace a diseño asistido
         ├── faces.ts                     # Emparejamiento de caras físicas (separadores de 2 caras)
         ├── brand-back-texture.ts        # Textura 3D CanvasTexture del patrón «Lucams» para cara B vacía (ADR-190)
         ├── book-geometry.ts             # Pose con grupos anidados de separadores doblados y planos en libro 3D
@@ -497,6 +501,7 @@ apps/web/features/personalization/
 ├── production-render-sharp.ts           # Tier 1: composición rápida con sharp para geometrías puras
 ├── production-render-canvas.ts          # Tier 2: composición @napi-rs/canvas con fuentes .ttf registradas
 ├── production-spec.ts                   # Especificación legible de unidades y piezas para el taller
+├── product-experience.ts                # Experiencias físicas, unidades libres y geometría mini libro
 ├── render-job-service.ts                # Cola asíncrona RenderJob con lease y reintentos en background
 ├── assembly-sheet.ts / staged-slots.ts  # Hoja guía de armado y tickets acotados para subidas de respaldo
 ├── preview-access.ts                    # Matriz de autorización canAccessDesignPreview (LUC-SEC-001)
@@ -724,9 +729,10 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
     hecho mientras tanto.
 - **Sustantivo exacto de pieza, Popover «qué falta» y galería de prediseñados**:
   - `resolveSlotNoun(productKind, magnet, texts)` (`lib/slot-noun.ts`) garantiza el sustantivo
-    preciso (`tarjetas`, `separadores`, `fotos`, `fichas`, `fotoimanes`) y **jamás menciona «imán»
-    cuando `magnet === false`**. Cada sección de unidad y header simple muestra el `variantLabel`
-    completo con medidas en cm (`studioPreviewVariantLabel`).
+    preciso (`tarjetas`, `separadores`, `fotos`, `fichas`, `fotoimanes`, `caras`) y **jamás menciona
+    «imán» cuando `magnet === false`**. La bola dúplex nombra cada unidad como «Bola» y la vista
+    previa muestra sus dos círculos A/B sin doblez ni textos de separadores. Cada sección de unidad
+    y header simple muestra el `variantLabel` completo con medidas en cm (`studioPreviewVariantLabel`).
   - Cuando «Ver diseño» está bloqueado, un `Popover` Radix accesible enumera exactamente las piezas
     sin foto (`selectMissingSlotIndexesKey`, exigiendo solo Cara A cuando `backOptional` está activo)
     y los campos Instagram faltantes por unidad.
@@ -766,13 +772,15 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   porque su variante ya representa el tamaño del pack.
 - **Arranque sin plantilla preseleccionada y bloqueo guiado (`lib/boot-template.ts`, `ADR-167`)**:
   `resolveBootTemplate` separa la geometría inicial de render de la elección del usuario. Si el
-  producto tiene **más de 1 plantilla activa** y la URL no trae `?template=<slug>` ni `?designId=`,
+  producto tiene **1 o más plantillas activas** y la URL no trae `?template=<slug>` ni `?designId=`,
   `templateId` inicia en `null` (`Design.templateId = null` en BD), el checklist «Tu diseño» marca
   «Elige tu plantilla» como primer paso pendiente y pulsar «Ver diseño» abre y resalta la sección
-  Plantillas hasta que el cliente elija una explícitamente. Con 1 sola plantilla se autoselecciona.
+  Plantillas hasta que el cliente elija una explícitamente. La elección es obligatoria incluso con
+  una única plantilla (owner 2026-11-07 — homologación de todos los lienzos con plantillas).
 - **Controles de unidades y réplica rápida**: `StudioUnitCountControl` ajusta `unitCount` en
-  productos multi-slot (`unitSlots > facesPerUnit`), mientras que `setPhotoSlotsPerUnit` distingue
-  entre composición (3 vs 4 fotos por tira) y tamaño de pack. El botón «Aplicar este diseño a todas»
+  productos multi-slot (`unitSlots > facesPerUnit`) y en experiencias `freeUnitDesign`, incluidas la
+  bola dúplex (25 unidades máximo) y los mini libros (50). `setPhotoSlotsPerUnit` distingue entre
+  composición (3 vs 4 fotos por tira) y tamaño de pack. El botón «Aplicar este diseño a todas»
   (`store.applyUnitToAllUnits`, reversible con Deshacer) clona fotos, encuadres, filtros, textos y
   avatar IG de una unidad hacia las restantes.
 - **Precio autoritativo en servidor y `RenderJob` asíncrono (`ADR-136`)**: el carrito recibe una
@@ -1156,7 +1164,8 @@ Validado en CI con Lighthouse CI (`lighthouserc.json`) y perfilado por producto 
 - Super-resolución y enfoque `3×3` fuera del hilo principal en Web Worker + `OffscreenCanvas`
   (`client-photo-upscale.worker.ts`).
 - Caché de snapshots a `720 px` fijos (`lib/slot-snapshot-cache.ts`) con cesión al _event loop_
-  (`yieldToMain`), espera de decodificación real `waitForSlotPhotosReady` (`4 s`), re-cache de
+  (`yieldToMain`), espera de decodificación real `waitForSlotPhotosReady` (`8 s` + re-decode
+  forzado de bitmaps descartados por presión de memoria en móviles, bug owner 2026-11-07), re-cache de
   filtros Konva con debounce al soltar el zoom (`lib/filter-recache.ts`) y análisis `smartcrop`
   restringido a copias `<= 256 px`.
 
@@ -1211,7 +1220,7 @@ node apps/web/scripts/profile-studio-entry.mjs
 - **`ADR-057` / `ADR-139` / `ADR-188`**: superficies `LetterSetEditor` y `NameEditor`, selección de
   idioma en PDP y render servidor a 300 DPI de un PNG individual por cada ficha.
 - **`ADR-058`**: asistente de ideas por ocasión con Google Gemini y sanitización 0-PII.
-- **`ADR-063` / `ADR-170` / `ADR-172` / `ADR-180`**: galería 3D «Míralo en tu espacio» (7 escenas en
+- **`ADR-063` / `ADR-170` / `ADR-172` / `ADR-180`**: galería 3D «Míralo en tu espacio» (10 escenas en
   React Three Fiber, incluidas repisa y regalo recostados), paginador de 2 niveles en calendario y
   compuerta honesta para variantes `-NOMAG` + dorso ferrita `#1A1A1A`.
 - **`ADR-081` / `ADR-136`**: respaldo de snapshots en cliente con masters originales y cola asíncrona

@@ -43,6 +43,7 @@ import {
   type ProductPersonalizationKind,
   type TextOnlyVariant,
 } from "@/features/products/personalization-schema";
+import { supportsTwoFaceDesign } from "@/features/personalization/product-experience";
 
 type Category = { id: string; name: string; slug: string; isSub?: boolean };
 
@@ -109,6 +110,7 @@ type Props = {
     depthCm?: number | null;
     /** Tipo de personalización persistido (columna, 2026-10-02). */
     personalizationKind?: ProductPersonalizationKind;
+    personalizationSchema?: unknown;
     /** Config del personalizationSchema ya leída por-key (readPersonalizationAdminConfig). */
     personalization?: PersonalizationAdminConfig;
   };
@@ -139,6 +141,10 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
     initialProduct?.personalization?.textOnlyVariant ?? "name",
   );
   const personalization = initialProduct?.personalization;
+  const twoFacesSupported = supportsTwoFaceDesign(
+    initialProduct?.personalizationSchema,
+    initialProduct?.slug ?? "",
+  );
   // Grosor del borde (2026-10-26): el rango solo se edita cuando el checkbox
   // está marcado; al apagarlo, la action manda null y el service borra la key.
   const [borderWidthEnabled, setBorderWidthEnabled] = useState(
@@ -647,7 +653,11 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
               <Field
                 id="facesPerUnit"
                 label="Caras de diseño por unidad"
-                hint="2 = la pieza tiene frente y reverso (ej. separadores: cara A / cara B)."
+                hint={
+                  twoFacesSupported
+                    ? "2 = frente y reverso de la MISMA pieza, no dos unidades."
+                    : "2 caras solo está disponible cuando Estudio, 3D y producción soportan frente y reverso."
+                }
                 error={state?.fieldErrors?.facesPerUnit?.[0]}
               >
                 <select
@@ -658,7 +668,9 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                   className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="1">1 cara</option>
-                  <option value="2">2 caras (frente y reverso)</option>
+                  <option value="2" disabled={!twoFacesSupported}>
+                    2 caras (frente y reverso)
+                  </option>
                 </select>
               </Field>
               <Field

@@ -18,13 +18,14 @@
  * Conteos (el chip cuenta lo que diseña el cliente por unidad):
  *  - calendar → tarjetas mes (12). bookmarks → separadores (unidades físicas).
  *  - strips → el conteo del chip son las FOTOS por tira (la composición), no
- *    tiras → "foto"/"fotos".
+ *    tiras → "foto"/"fotos". ornaments → caras del inserto dúplex.
  */
 
 import type { StudioTexts } from "../studio-texts";
 
 /** Mismo union que productKind de StudioPreviewModal. */
-export type StudioSlotProductKind = "magnets" | "calendar" | "bookmarks" | "tiles" | "strips";
+export type StudioSlotProductKind =
+  "magnets" | "calendar" | "bookmarks" | "tiles" | "strips" | "ornaments";
 
 export type SlotNoun = {
   /** Singular ("imán", "tarjeta", "ficha", "separador", "foto"). */
@@ -55,6 +56,8 @@ export function resolveSlotNoun(
     case "strips":
       // El conteo del chip es la composición (fotos por tira), no unidades.
       return { one: "foto", many: "fotos", feminine: true };
+    case "ornaments":
+      return { one: "cara", many: "caras", feminine: true };
     case "tiles":
       return { one: texts.exportar.piezaFicha, many: texts.exportar.piezaFichas, feminine: true };
     case "magnets":

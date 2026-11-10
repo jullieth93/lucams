@@ -112,9 +112,12 @@ describe("gridSlotCountForLayout — gridLayout por unidad o por diseño", () =>
     expect(
       gridSlotCountForLayout({ unitCount: 1, unitSlots: 3, slotCount: 3, facesPerUnit: 1 }),
     ).toBe(3);
+  });
+
+  it("unidades libres de un slot → layout de UNA unidad por sección", () => {
     expect(
       gridSlotCountForLayout({ unitCount: 6, unitSlots: 1, slotCount: 6, facesPerUnit: 1 }),
-    ).toBe(6);
+    ).toBe(1);
   });
 });
 
@@ -150,6 +153,18 @@ describe("designUnitPriceMultiplier — la ruta del dinero", () => {
     // Invariante de escritura: los packs de imán suelto NO declaran unidades.
     const polaroid = { version: 2, slotCount: 10, photoSlots: 10 };
     expect(designUnitPriceMultiplier(polaroid, 1)).toBe(1);
+  });
+
+  it("unidad libre de un solo lienzo ×6 → ×6 aunque la variante tenga photoSlots=1", () => {
+    const miniBooks = {
+      version: 2,
+      slotCount: 6,
+      unitCount: 6,
+      unitSlots: 1,
+      photoSlots: 1,
+    };
+    expect(designUnitPriceMultiplier(miniBooks, 1)).toBe(6);
+    expect(inventoryUnitsForOrderItem({ qty: 2, customDesign: miniBooks })).toBe(12);
   });
 
   it("tampering no cobra de menos: slotCount inflado con variante de 1 tira → se paga por pieza", () => {

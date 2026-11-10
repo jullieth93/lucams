@@ -27,9 +27,11 @@
  * cambia. BACKFILL: NO hay script — los masters subidos antes ya quedaron
  * reducidos a ≤2000 px y no se pueden inventar píxeles; los prediseños
  * existentes deben RESUBIRSE desde este admin para quedar print-grade.
- * Caveat de plataforma: la Server Action corre bajo el techo de Vercel
- * (~4.5 MB por request) — un original por encima de eso no llega a la acción;
- * exportar el diseño a ≤4000 px (WebP/JPEG) antes de subirlo.
+ * Plataforma (auditoría 2026-11-08): Vercel corta el body de la Server Action
+ * en ~4.5 MB, así que el CLIENTE (gallery-manager.tsx) normaliza el archivo al
+ * mismo spec (WebP q0.90 ≤4000 px por cara, ≤8000 px la tira) y lo ajusta al
+ * presupuesto del payload antes de subirlo; el servidor conserva su validación
+ * y re-codificación como segunda línea.
  */
 
 "use server";

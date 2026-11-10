@@ -54,6 +54,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 import { confirmTargetInteractive } from "./lib/confirm-target.mjs";
+import { NEW_PRODUCTS } from "./lib/new-products.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
@@ -84,10 +85,13 @@ const DIMS_DEFAULTS_BY_KIND = {
   NONE: { weightGrams: 80, widthCm: 10, heightCm: 8, depthCm: 2 },
 };
 
-const withDefaultDims = (p) => ({
-  ...(DIMS_DEFAULTS_BY_KIND[p.personalizationKind] ?? DIMS_DEFAULTS_BY_KIND.NONE),
-  ...(p.physicalSpecs ?? {}),
-});
+const withDefaultDims = (p) =>
+  p.physicalSpecs === null
+    ? null
+    : {
+        ...(DIMS_DEFAULTS_BY_KIND[p.personalizationKind] ?? DIMS_DEFAULTS_BY_KIND.NONE),
+        ...(p.physicalSpecs ?? {}),
+      };
 
 // ── Generadores de matrices de separadores (espejo del dato vivo STG/PRD 2026-11-03) ──
 const sepSkuSize = (sizeCm) => sizeCm.replace("×", "X").replace(".", "");
@@ -1141,6 +1145,7 @@ const productsData = [
     personalizationKind: "NONE",
     images: [UNSPLASH("1503454537195-1dcabb73ffb9")],
   },
+  ...NEW_PRODUCTS,
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1200,8 +1205,13 @@ async function run(db, write) {
       console.error(`  ✗ Categoría no encontrada: ${p.categorySlug} — ${p.slug} omitido`);
       continue;
     }
-    // `variants` no es columna del modelo Product — se procesa aparte abajo.
-    const { categorySlug, variants: declaredVariants, ...rest } = p;
+    // Variantes y promociones no son columnas del modelo Product — se procesan aparte.
+    const {
+      categorySlug,
+      variants: declaredVariants,
+      wholesaleTiers: declaredWholesaleTiers,
+      ...rest
+    } = p;
     // Upsert por SKU (clave estable del catálogo): si Lucy cambia el slug pero
     // mantiene el SKU, se alinea; SKU nuevo → producto nuevo.
     const existing = await db.product.findUnique({ where: { sku: p.sku } });
@@ -1211,7 +1221,12 @@ async function run(db, write) {
       console.log(`  + ${p.name}  [${p.personalizationKind}]  (${p.sku}, nuevo)`);
       if (write) {
         const created = await db.product.create({
-          data: { ...rest, physicalSpecs: withDefaultDims(rest), categoryId, isActive: true },
+          data: {
+            ...rest,
+            physicalSpecs: withDefaultDims(rest),
+            categoryId,
+            isActive: rest.isActive ?? true,
+          },
         });
         productId = created.id;
       }
@@ -1231,6 +1246,29 @@ async function run(db, write) {
           await db.product.update({
             where: { id: existing.id },
             data: { ...declared, ...(catChanged ? { categoryId } : {}) },
+          });
+        }
+      }
+    }
+
+    if (Array.isArray(declaredWholesaleTiers)) {
+      for (const tier of declaredWholesaleTiers) {
+        const existingTier = productId
+          ? await db.wholesaleTier.findFirst({
+              where: { productId, minQty: tier.minQty, deletedAt: null },
+              select: { id: true },
+            })
+          : null;
+        if (existingTier) continue;
+        console.log(`  + ${p.name}: promoción desde ${tier.minQty} unidades`);
+        if (write && productId) {
+          await db.wholesaleTier.create({
+            data: {
+              productId,
+              ...tier,
+              createdBy: "system:seed-catalog-canonical",
+              updatedBy: "system:seed-catalog-canonical",
+            },
           });
         }
       }

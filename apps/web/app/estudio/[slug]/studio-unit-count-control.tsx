@@ -7,11 +7,10 @@
  * composición (fotos por tira, meses del calendario) se elige en la PDP o la
  * fija el producto, y no se repite acá; lo que el cliente ajusta en el lienzo
  * es CUÁNTAS unidades diseñar. A3 (2026-09-15): el control es UNIVERSAL — la
- * toolbar lo monta para TODO producto que no usa el stepper de fotos
- * (StudioPhotoCountControl sigue para los packs de imán suelto, donde el N de
- * fotos ES el nº de unidades). Cuando el producto no tiene unidades multi-slot
- * que contar (unitSlots ≤ caras — imán suelto de 1 foto), el control se oculta
- * solo: no hay N que elegir (el store.setUnitCount sería no-op de todos modos).
+ * toolbar lo monta para productos de composición fija y experiencias freeUnitDesign
+ * que no usan el stepper de fotos (StudioPhotoCountControl sigue para los packs
+ * de imán suelto, donde el N de fotos ES el nº de unidades). Fuera de esas
+ * experiencias, el control se oculta cuando unitSlots ≤ caras.
  *
  * Al cambiar N se redeclara el modelo multi-unidad (store.setUnitCount):
  * slotCount = unitSlots × N, secciones "Tira 1 de N"… El precio ×N lo deriva
@@ -24,12 +23,15 @@ import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { maxUnitsForProduct } from "@/features/personalization/design-units";
 import type { StudioStoreState } from "./lib/store";
+import type { SlotNoun } from "./lib/slot-noun";
 import { useStudioTexts } from "./studio-texts-provider";
 
 export type StudioUnitCountControlProps = {
   store: StoreApi<StudioStoreState>;
   /** Caras de diseño por unidad física (tiras/calendario: 1). Default 1. */
   facesPerUnit?: number;
+  freeUnitDesign?: boolean;
+  unitNoun?: SlotNoun;
   /** "¿Con imán?" — badge READ-ONLY de la elección de la PDP (mismo criterio
    *  que StudioPhotoCountControl: no es un control, se muestra para que el
    *  cliente vea qué va a recibir). undefined = no mostrar. */
@@ -53,6 +55,8 @@ export type StudioUnitCountControlProps = {
 export function StudioUnitCountControl({
   store,
   facesPerUnit = 1,
+  freeUnitDesign = false,
+  unitNoun,
   magnet,
   hint,
   variantLabel,
@@ -86,24 +90,26 @@ export function StudioUnitCountControl({
   useEffect(() => {
     if (pendingDir === null) return;
     const raf = requestAnimationFrame(() => {
-      store.getState().setUnitCount(value + pendingDir, { facesPerUnit, max: clampedMax });
+      store.getState().setUnitCount(value + pendingDir, {
+        facesPerUnit,
+        max: clampedMax,
+        allowFreeUnits: freeUnitDesign,
+      });
       setPendingDir(null);
     });
     return () => cancelAnimationFrame(raf);
-  }, [pendingDir, store, value, facesPerUnit, clampedMax]);
+  }, [pendingDir, store, value, facesPerUnit, clampedMax, freeUnitDesign]);
 
   const busy = pendingDir !== null;
+  const groupLabel = unitNoun
+    ? `${unitNoun.many.charAt(0).toUpperCase()}${unitNoun.many.slice(1)}`
+    : texts.lienzo.unitsCountLabel;
 
-  // A3 — sin unidades multi-slot que contar (unitSlots ≤ caras: imán suelto de
-  // 1 foto, o boot aún sin canvasData) el stepper no aplica: setUnitCount sería
-  // no-op y mostrarlo prometería una elección que no existe.
-  if (unitSlots <= facesPerUnit) return null;
+  if (!freeUnitDesign && unitSlots <= facesPerUnit) return null;
 
   return (
     <div className="border-brand-purple/10 bg-brand-cream/50 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t px-4 py-2">
-      <span className="text-brand-purple-dark text-sm font-bold">
-        {texts.lienzo.unitsCountLabel}
-      </span>
+      <span className="text-brand-purple-dark text-sm font-bold">{groupLabel}</span>
       <div
         role="group"
         aria-label={texts.lienzo.unitsCountGroupAria}
@@ -126,7 +132,11 @@ export function StudioUnitCountControl({
           {busy ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
           ) : (
-            `${value} ${value === 1 ? texts.lienzo.unitsCountOne : texts.lienzo.unitsCountMany}`
+            `${value} ${
+              value === 1
+                ? (unitNoun?.one ?? texts.lienzo.unitsCountOne)
+                : (unitNoun?.many ?? texts.lienzo.unitsCountMany)
+            }`
           )}
         </span>
         <button

@@ -133,6 +133,11 @@ function jsonRecord(value: unknown): Record<string, unknown> | null {
 
 function productionPieceLabel(index: number, spec: ProductionSpec): string {
   const base = `Pieza ${String(index + 1).padStart(2, "0")}`;
+  if (spec.formatoFisico.tipo === "inserto-circular") {
+    const unit = spec.formatoFisico.caras === 2 ? Math.floor(index / 2) + 1 : index + 1;
+    const face = spec.formatoFisico.caras === 2 && index % 2 === 1 ? "B (reverso)" : "A (frente)";
+    return `Inserto ${String(unit).padStart(2, "0")} · cara ${face}`;
+  }
   if (spec.formatoFisico.tipo === "tira-desplegada" && spec.formatoFisico.plana) {
     return spec.reversosConMarcaAgua.includes(index + 1)
       ? `${base} · frente A + reverso B con marca de agua Lucams`
@@ -351,6 +356,7 @@ export default async function AdminPedidoDetallePage({
                   // Paquete F (2026-10-02) — desglose estructurado de la variante.
                   const variantBreakdown = describeVariantAttributes(
                     parseVariantAttributes(it.variant.attributes),
+                    it.variant.product.personalizationSchema,
                   );
                   const productionSpec = it.design
                     ? resolveProductionSpec({
@@ -374,6 +380,7 @@ export default async function AdminPedidoDetallePage({
                           canvasData: jsonRecord(it.design.canvasData),
                           designMetadata: jsonRecord(it.design.metadata),
                           productionCount: it.design.productionUrls.length,
+                          productSchema: jsonRecord(it.variant.product.personalizationSchema),
                           startMonth:
                             typeof jsonRecord(it.variant.product.personalizationSchema)
                               ?.startMonth === "number"

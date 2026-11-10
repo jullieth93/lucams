@@ -260,6 +260,7 @@ export default async function ProductoDetallePage({
                 heightCm: parsePhysicalSpecs(product.physicalSpecs).heightCm ?? null,
                 depthCm: parsePhysicalSpecs(product.physicalSpecs).depthCm ?? null,
                 personalizationKind: product.personalizationKind,
+                personalizationSchema: product.personalizationSchema,
                 personalization,
               }}
               action={updateProductAction}

@@ -171,3 +171,38 @@ describe("dedupeCartLineDetail — cada hecho se muestra UNA vez (owner 2026-10-
     ).toBeNull();
   });
 });
+
+describe("bola navideña dúplex — terminología y unidades físicas", () => {
+  const schema = { experience: "christmas-ornament", facesPerUnit: 2 };
+
+  it("tiene un PieceKind propio aunque la variante sea sin imán", () => {
+    expect(pieceKindFor("CUSTOM_DECOR", "Foto circular de 8 cm · Sin imán", schema)).toBe(
+      "ornaments",
+    );
+  });
+
+  it("cuenta bolas y caras por bola, no separadores ni fichas", () => {
+    expect(
+      describePieces({
+        kind: "ornaments",
+        pieces: 2,
+        sizeCm: "8 cm",
+        units: 2,
+        unitNoun: { singular: "bola", plural: "bolas" },
+      }),
+    ).toBe("2 bolas · 2 caras por bola · 8 cm cada bola");
+    expect(describePieces({ kind: "ornaments", pieces: 2, sizeCm: "8 cm" })).toBe(
+      "1 bola · 2 caras por bola · 8 cm cada bola",
+    );
+  });
+
+  it("usa bola/bolas en badges y conteos de las superficies posteriores", () => {
+    expect(
+      unitCountNounForLine({
+        personalizationKind: "CUSTOM_DECOR",
+        variantName: "Foto circular de 8 cm · Sin imán",
+        productSchema: schema,
+      }),
+    ).toEqual({ singular: "bola", plural: "bolas" });
+  });
+});

@@ -29,7 +29,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, X, Image as ImageIcon, Loader2, Sparkles, Eye } from "lucide-react";
+import { Upload, X, Image as ImageIcon, Loader2, Sparkles, Eye, Search } from "lucide-react";
 import {
   uploadDesignAssetAction,
   assignPredesignedToDesignAction,
@@ -37,6 +37,7 @@ import {
 import type { StudioAsset } from "./types";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 import { processPhotoFiles } from "./lib/upload-photo-pipeline";
+import { uploadPhotoDirectToStorage } from "./lib/upload-photo-direct";
 import { predesignedFaceBadge } from "./lib/predesigned-variety";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -45,6 +46,7 @@ import { PhotoQualityModal } from "./photo-quality-modal";
 import { PredesignedViewDialog } from "./predesigned-view-dialog";
 import { Hint } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { assistedDesignRequestHref, filterPredesignedByName } from "./lib/predesigned-search";
 
 /** Niveles de validación que abren el modal de calidad antes de asignar. */
 function hasQualityWarning(asset: StudioAsset): boolean {
@@ -202,6 +204,8 @@ export function StudioAssetPickerModal({
   // en táctil; el HoverCard del sidebar es hover-only). Mismo Dialog que el
   // sidebar; «Usar este diseño» = la misma acción del click de la tarjeta.
   const [viewingItem, setViewingItem] = useState<PredesignedItem | null>(null);
+  const [predesignedQuery, setPredesignedQuery] = useState("");
+  const visiblePredesigned = filterPredesignedByName(predesigned, predesignedQuery);
   // Consentimiento de derechos de imagen (Ley 1581): obligatorio antes de subir.
   const [rightsAccepted, setRightsAccepted] = useState(false);
   const texts = useStudioTexts();
@@ -342,6 +346,9 @@ export function StudioAssetPickerModal({
         designId,
         rightsAccepted,
         upload: uploadDesignAssetAction,
+        // 2026-11-08 — fallback HEIC ~4.5–10 MB sin decode en el navegador:
+        // subida directa a Storage con ticket firmado (ver lib/upload-photo-direct).
+        uploadDirect: uploadPhotoDirectToStorage,
         onReady: (outcome) => {
           if (!outcome.ok) {
             // El loop viejo cortaba en el PRIMER error (break): con el pipeline
@@ -408,88 +415,118 @@ export function StudioAssetPickerModal({
     los handlers quedan en el cuerpo del componente — como función llamada
     durante render, el análisis de react-hooks/refs marca falsos positivos. */
   const predesignedContent = (
-    <div className="grid grid-cols-3 gap-2">
-      {predesigned.map((item) => {
-        const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
-        return (
-          <div key={item.id} className="relative">
-            <Hint content={item.name}>
-              <button
-                type="button"
-                onClick={() => handleApplyPredesigned(item)}
-                disabled={applyingId !== null}
-                aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
-                  nombre: item.name,
-                })}
-                className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square w-full overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={item.thumbUrl ?? item.imageUrl}
-                  alt={item.name}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  // 3.10 — disuasión anti-copia: sin drag al escritorio ni menú
-                  // contextual ("Guardar imagen como…") sobre la miniatura.
-                  draggable={false}
-                  onContextMenu={(e) => e.preventDefault()}
-                />
-                {/* Paquete A — badge 1/2 caras (solo productos de
+    <>
+      <div className="relative mb-3">
+        <Search
+          className="text-brand-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+          aria-hidden
+        />
+        <input
+          type="search"
+          value={predesignedQuery}
+          onChange={(event) => setPredesignedQuery(event.target.value)}
+          placeholder="Busca por tema, ocasión o tamaño"
+          aria-label="Buscar diseños prediseñados"
+          className="border-brand-purple/20 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 h-11 w-full rounded-md border bg-white pr-3 pl-9 text-sm focus:ring-2 focus:outline-none"
+        />
+      </div>
+      {visiblePredesigned.length === 0 && (
+        <div role="status" className="bg-brand-cream/70 rounded-lg p-4 text-center">
+          <p className="text-brand-purple-dark text-sm font-semibold">
+            No encontramos un diseño con esa búsqueda.
+          </p>
+          <p className="text-brand-muted mt-1 text-xs">Puedes pedir ayuda para crearlo.</p>
+          <a
+            href={assistedDesignRequestHref(productSlug ?? "producto", predesignedQuery)}
+            className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 mt-3 inline-flex min-h-11 items-center rounded-md border bg-white px-4 text-xs font-semibold"
+          >
+            Solicitar este diseño
+          </a>
+        </div>
+      )}
+      <div className="grid grid-cols-3 gap-2">
+        {visiblePredesigned.map((item) => {
+          const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
+          return (
+            <div key={item.id} className="relative">
+              <Hint content={item.name}>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPredesigned(item)}
+                  disabled={applyingId !== null}
+                  aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                    nombre: item.name,
+                  })}
+                  className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square w-full overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={item.thumbUrl ?? item.imageUrl}
+                    alt={item.name}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    // 3.10 — disuasión anti-copia: sin drag al escritorio ni menú
+                    // contextual ("Guardar imagen como…") sobre la miniatura.
+                    draggable={false}
+                    onContextMenu={(e) => e.preventDefault()}
+                  />
+                  {/* Paquete A — badge 1/2 caras (solo productos de
                 2 caras): "1 cara" = respaldo EN BLANCO (regla única
                 de cara B vacía, owner 2026-10-07). */}
-                {faceBadge && (
-                  <Hint
-                    content={
-                      faceBadge === "two"
-                        ? texts.plantillas.badgeDosCarasTitle
-                        : texts.plantillas.badgeUnaCaraTitle
-                    }
-                  >
-                    {/* stopPropagation: el badge vive DENTRO del botón
+                  {faceBadge && (
+                    <Hint
+                      content={
+                        faceBadge === "two"
+                          ? texts.plantillas.badgeDosCarasTitle
+                          : texts.plantillas.badgeUnaCaraTitle
+                      }
+                    >
+                      {/* stopPropagation: el badge vive DENTRO del botón
                       con su propio Hint — sin esto el hover abriría
                       ambos tooltips. */}
-                    <span
-                      onPointerMove={(e) => e.stopPropagation()}
-                      className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
-                    >
-                      {faceBadge === "two"
-                        ? texts.plantillas.badgeDosCaras
-                        : texts.plantillas.badgeUnaCara}
-                    </span>
-                  </Hint>
-                )}
-                {applyingId === item.id && (
-                  <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-white" />
-                  </div>
-                )}
-              </button>
-            </Hint>
-            {/* 2026-10-26 — «Ver» (ojo): el picker no tiene hover preview; este
+                      <span
+                        onPointerMove={(e) => e.stopPropagation()}
+                        className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
+                      >
+                        {faceBadge === "two"
+                          ? texts.plantillas.badgeDosCaras
+                          : texts.plantillas.badgeUnaCara}
+                      </span>
+                    </Hint>
+                  )}
+                  {applyingId === item.id && (
+                    <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    </div>
+                  )}
+                </button>
+              </Hint>
+              {/* 2026-10-26 — «Ver» (ojo): el picker no tiene hover preview; este
                 botón abre el preview en Dialog (PredesignedViewDialog) — la
                 única vía de ver el diseño en grande antes de aplicarlo en
                 táctil. stopPropagation + área 44×44 para no disparar la
                 aplicación al tocarlo. */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewingItem(item);
-              }}
-              onPointerDown={(e) => e.stopPropagation()}
-              aria-label={fillStudioText(texts.plantillas.verDisenoAria, {
-                nombre: item.name,
-              })}
-              className="focus:ring-brand-turquoise absolute right-0 bottom-0 z-10 flex h-11 w-11 items-center justify-center rounded-full focus:ring-2 focus:outline-none"
-            >
-              <span className="text-brand-purple-dark flex h-7 w-7 items-center justify-center rounded-full bg-white/90 shadow">
-                <Eye className="h-4 w-4" aria-hidden />
-              </span>
-            </button>
-          </div>
-        );
-      })}
-    </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setViewingItem(item);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                aria-label={fillStudioText(texts.plantillas.verDisenoAria, {
+                  nombre: item.name,
+                })}
+                className="focus:ring-brand-turquoise absolute right-0 bottom-0 z-10 flex h-11 w-11 items-center justify-center rounded-full focus:ring-2 focus:outline-none"
+              >
+                <span className="text-brand-purple-dark flex h-7 w-7 items-center justify-center rounded-full bg-white/90 shadow">
+                  <Eye className="h-4 w-4" aria-hidden />
+                </span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 
   /* Tab "Mis fotos" (assets ya subidos) — elemento const, sin encabezado: con

@@ -1,7 +1,8 @@
 /*
- * resolveBootTemplate (5.1, owner 2026-10-22) — sin plantilla seleccionada por
- * defecto: con >1 plantillas la selección arranca en null (el checklist la
- * pide como primer paso) pero el lienzo SIEMPRE tiene geometría de render.
+ * resolveBootTemplate (5.1, owner 2026-10-22; endurecido 2026-11-07) — sin
+ * plantilla seleccionada por defecto: con plantillas visibles la selección
+ * arranca en null (el checklist la pide como primer paso), INCLUSO con una
+ * sola opción, pero el lienzo SIEMPRE tiene geometría de render.
  */
 
 import { describe, expect, it } from "vitest";
@@ -29,9 +30,9 @@ describe("resolveBootTemplate", () => {
     expect(res.geometry?.id).toBe("a");
   });
 
-  it("1 sola plantilla: auto-selección (elección trivial)", () => {
+  it("1 sola plantilla: SIN auto-selección (owner 2026-11-07 — elección obligatoria homologada)", () => {
     const res = resolveBootTemplate([tpl("a")], null);
-    expect(res.templateId).toBe("a");
+    expect(res.templateId).toBeNull();
     expect(res.geometry?.id).toBe("a");
   });
 

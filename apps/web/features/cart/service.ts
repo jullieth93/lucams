@@ -47,6 +47,7 @@ import { designIdentity, sameLineContent } from "./design-identity";
 import { describePieces, pieceKindFor, unitCountNounForLine, type UnitNoun } from "./line-preview";
 import { isBookmarkGalleryTag, resolveGalleryTag } from "@/app/estudio/[slug]/lib/product-kind";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
+import { readProductExperience } from "@/features/personalization/product-experience";
 import {
   designDisplayUnits,
   designUnitPriceMultiplier,
@@ -243,6 +244,12 @@ function currentLineBaseUnitPrice(item: RawCart["items"][number]): number | null
   base *= designUnitPriceMultiplier(item.design.canvasData, facesPerUnit);
   base *= letterSetUnitCount(item.design.metadata);
   return base;
+}
+
+function volumeUnitMultiplierForDesign(productSchema: unknown, canvasData: unknown): number {
+  if (!readProductExperience(productSchema).volumePricingByPhysicalUnit) return 1;
+  const facesPerUnit = parsePhotoProductConfig(productSchema).facesPerUnit ?? 1;
+  return designUnitPriceMultiplier(canvasData, facesPerUnit);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -453,7 +460,7 @@ function describeLine(item: RawCart["items"][number]): string | null {
   const attrs = parseVariantAttributes(item.variant.attributes);
   const schema = item.variant.product.personalizationSchema;
   const delProducto = schema ? parsePhotoProductConfig(schema) : null;
-  const kind = pieceKindFor(item.variant.product.personalizationKind, item.variant.name);
+  const kind = pieceKindFor(item.variant.product.personalizationKind, item.variant.name, schema);
   const meta = (item.design?.metadata ?? null) as {
     unitCount?: unknown;
     surface?: unknown;
@@ -469,21 +476,28 @@ function describeLine(item: RawCart["items"][number]): string | null {
         ? { singular: "calendario", plural: "calendarios" }
         : kind === "strips"
           ? { singular: "tira", plural: "tiras" }
-          : isLetterSet
-            ? { singular: "set", plural: "sets" }
-            : undefined
+          : kind === "ornaments"
+            ? { singular: "bola", plural: "bolas" }
+            : isLetterSet
+              ? { singular: "set", plural: "sets" }
+              : undefined
       : undefined;
   const letterCount = Array.isArray(meta?.letters) ? meta.letters.length : 0;
   const pieces =
-    kind === "strips" || kind === "calendar"
-      ? (attrs.photoSlots ?? delProducto?.photoSlots ?? null)
-      : isLetterSet && letterCount > 0
-        ? letterCount
-        : (attrs.photoSlots ?? delProducto?.photoSlots ?? null);
+    kind === "ornaments"
+      ? (delProducto?.facesPerUnit ?? 2)
+      : kind === "strips" || kind === "calendar"
+        ? (attrs.photoSlots ?? delProducto?.photoSlots ?? null)
+        : isLetterSet && letterCount > 0
+          ? letterCount
+          : (attrs.photoSlots ?? delProducto?.photoSlots ?? null);
+  const rawSize = attrs.sizeCm ?? (schema as { sizeCm?: string } | null)?.sizeCm ?? null;
+  const sizeCm =
+    kind === "ornaments" && rawSize && !/\bcm\b/i.test(rawSize) ? `${rawSize} cm` : rawSize;
   return describePieces({
     kind,
     pieces,
-    sizeCm: attrs.sizeCm ?? (schema as { sizeCm?: string } | null)?.sizeCm ?? null,
+    sizeCm,
     units: unitNoun ? units : null,
     unitNoun,
   });
@@ -514,7 +528,10 @@ function toDetail(cart: RawCart): CartDetail {
         variantId: i.variantId,
         variantName: i.variant.name,
         variantSku: i.variant.sku,
-        variantBreakdown: describeVariantAttributes(parseVariantAttributes(i.variant.attributes)),
+        variantBreakdown: describeVariantAttributes(
+          parseVariantAttributes(i.variant.attributes),
+          i.variant.product.personalizationSchema,
+        ),
         isPersonalizable: i.variant.product.isPersonalizable,
         qty: i.qty,
         unitPrice: i.unitPrice,
@@ -539,7 +556,11 @@ function toDetail(cart: RawCart): CartDetail {
         designPreviewPages: designDisp?.pageUrls ?? null,
         designPreviewPageLabels: designPreviewPageLabels(
           i.design,
-          unitNounForLine(i.variant.product.personalizationKind, i.variant.name),
+          unitNounForLine(
+            i.variant.product.personalizationKind,
+            i.variant.name,
+            i.variant.product.personalizationSchema,
+          ),
         ),
         designWatermarked: designDisp?.watermarked ?? false,
         designUnits: designDisplayUnits(i.design),
@@ -550,6 +571,7 @@ function toDetail(cart: RawCart): CartDetail {
           isBookmark: isBookmarkGalleryTag(
             resolveGalleryTag(i.variant.product.personalizationSchema, i.variant.product.slug),
           ),
+          productSchema: i.variant.product.personalizationSchema,
         }),
         pieceSummary: describeLine(i),
         borderNote: letterSetBorderNote(i.design?.metadata),
@@ -829,10 +851,18 @@ export async function addPersonalizedToCart(opts: {
     variant = design.product.variants[0];
   }
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
+  const facesPerUnit =
+    parsePhotoProductConfig(design.product.personalizationSchema).facesPerUnit ?? 1;
+  const designUnits =
+    designUnitPriceMultiplier(design.canvasData, facesPerUnit) *
+    letterSetUnitCount(design.metadata);
   // Fase 1 (stock por variante): misma regla que addProductToCart — la variante
   // agotada no entra al carrito (el checkout sigue como backstop de concurrencia).
-  if (variant.stock <= 0) {
-    throw new CartError("STOCK_UNAVAILABLE", `«${design.product.name}» está agotado por ahora.`);
+  if (variant.stock < designUnits) {
+    throw new CartError(
+      "STOCK_UNAVAILABLE",
+      stockLimitMessage(design.product.name, variant.stock, 0),
+    );
   }
 
   // ADR-057 — precio POR FICHA. El gate es la VARIANTE (verdad del servidor, anti-tamper),
@@ -863,15 +893,16 @@ export async function addPersonalizedToCart(opts: {
   // variante — design-units.ts) y de metadata.unitCount validado al crear
   // (sets de letras): nunca de un multiplicador que mande el cliente.
   // Diseños legacy/packs (la variante ya cubre el pack) → 1, precio intacto.
-  const facesPerUnit =
-    parsePhotoProductConfig(design.product.personalizationSchema).facesPerUnit ?? 1;
-  unitPrice *= designUnitPriceMultiplier(design.canvasData, facesPerUnit);
-  unitPrice *= letterSetUnitCount(design.metadata);
+  unitPrice *= designUnits;
   // Precio por volumen (2026-10-02): el tier REEMPLAZA el unitPrice FINAL por
   // unidad (tras multiplicadores por-ficha / multi-unidad). La "qty" del nivel
   // es la cantidad de la LÍNEA (diseños/packs que paga el cliente), no las
   // unidades internas del diseño — es lo que el cliente ve en el stepper.
   const baseUnitPrice = unitPrice;
+  const volumeUnitMultiplier = volumeUnitMultiplierForDesign(
+    design.product.personalizationSchema,
+    design.canvasData,
+  );
   const volumeTiers = await loadActiveVolumeTiers(design.product.id);
   const cart = await ensureCart(opts.sessionId, opts.customerId);
 
@@ -888,7 +919,13 @@ export async function addPersonalizedToCart(opts: {
         designId: opts.designId,
         variantId: variant.id,
         // La línea conserva su qty; el tier se re-evalúa con esa qty.
-        unitPrice: applyVolumePricing(baseUnitPrice, volumeTiers, design.product.id, replacing.qty),
+        unitPrice: applyVolumePricing(
+          baseUnitPrice,
+          volumeTiers,
+          design.product.id,
+          replacing.qty,
+          volumeUnitMultiplier,
+        ),
       },
     });
   } else {
@@ -931,7 +968,7 @@ export async function addPersonalizedToCart(opts: {
       // Mismo tope min(99, stock) con clamp que addProductToCart (2026-09-29):
       // agrupar un diseño idéntico SUMA qty sobre la misma variante; se rechaza
       // solo cuando la línea ya está en el tope (sin margen).
-      const cap = Math.min(MAX_QTY_PER_ITEM, variant.stock);
+      const cap = Math.min(MAX_QTY_PER_ITEM, Math.floor(variant.stock / designUnits));
       const inCart = existing.qty;
       if (inCart >= cap) {
         throw new CartError(
@@ -948,21 +985,33 @@ export async function addPersonalizedToCart(opts: {
           qty: newQty,
           unitPrice:
             volumeTiers.length > 0
-              ? applyVolumePricing(baseUnitPrice, volumeTiers, design.product.id, newQty)
+              ? applyVolumePricing(
+                  baseUnitPrice,
+                  volumeTiers,
+                  design.product.id,
+                  newQty,
+                  volumeUnitMultiplier,
+                )
               : existing.unitPrice,
         },
       });
     } else {
       // Alta nueva: el stock>0 ya se validó arriba, así que hay margen; la qty
       // pedida se topa al stock disponible (clamp, no rechazo).
-      const newQty = Math.min(MAX_QTY_PER_ITEM, variant.stock, opts.qty);
+      const newQty = Math.min(MAX_QTY_PER_ITEM, Math.floor(variant.stock / designUnits), opts.qty);
       await prisma.cartItem.create({
         data: {
           cartId: cart.id,
           variantId: variant.id,
           designId: opts.designId,
           qty: newQty,
-          unitPrice: applyVolumePricing(baseUnitPrice, volumeTiers, design.product.id, newQty),
+          unitPrice: applyVolumePricing(
+            baseUnitPrice,
+            volumeTiers,
+            design.product.id,
+            newQty,
+            volumeUnitMultiplier,
+          ),
         },
       });
     }
@@ -1006,7 +1055,26 @@ export async function updateCartItemQty(
         `«${item.variant.product.name}» está agotado por ahora.`,
       );
     }
-    const newQty = Math.min(qty, item.variant.stock);
+    const designUnits = item.design
+      ? designUnitPriceMultiplier(
+          item.design.canvasData,
+          parsePhotoProductConfig(item.variant.product.personalizationSchema).facesPerUnit ?? 1,
+        )
+      : 1;
+    const maxQtyByStock = Math.floor(item.variant.stock / designUnits);
+    if (maxQtyByStock < 1) {
+      throw new CartError(
+        "STOCK_UNAVAILABLE",
+        stockLimitMessage(item.variant.product.name, item.variant.stock, 0),
+      );
+    }
+    const newQty = Math.min(qty, maxQtyByStock);
+    const volumeUnitMultiplier = item.design
+      ? volumeUnitMultiplierForDesign(
+          item.variant.product.personalizationSchema,
+          item.design.canvasData,
+        )
+      : 1;
     // Re-priceo por volumen (2026-10-02): cruzar un umbral de WholesaleTier al
     // cambiar la qty debe cambiar el unitPrice de la línea (bajar al subir de
     // nivel, volver al base al quedar por debajo). El base se recalcula con el
@@ -1020,7 +1088,13 @@ export async function updateCartItemQty(
     if (baseUnitPrice !== null) {
       const volumeTiers = await loadActiveVolumeTiers(item.variant.product.id);
       if (volumeTiers.length > 0) {
-        unitPrice = applyVolumePricing(baseUnitPrice, volumeTiers, item.variant.product.id, newQty);
+        unitPrice = applyVolumePricing(
+          baseUnitPrice,
+          volumeTiers,
+          item.variant.product.id,
+          newQty,
+          volumeUnitMultiplier,
+        );
       }
     }
     await prisma.cartItem.update({

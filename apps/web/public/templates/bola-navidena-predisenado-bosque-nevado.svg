@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
+  <rect width="800" height="800" fill="#B8DCE5"/>
+  <circle cx="400" cy="400" r="385" fill="none" stroke="#FFFFFF" stroke-width="16"/>
+  <circle cx="400" cy="400" r="350" fill="none" stroke="#FFFFFF" stroke-opacity=".4" stroke-width="4" stroke-dasharray="8 18"/>
+  <g transform="translate(400 290) scale(2.4)"><path d="M0-45 32 0H15L40 35H10V60H-10V35H-40L-15 0H-32Z" fill="#FFFFFF"/><rect x="-7" y="48" width="14" height="20" fill="#8B5A3C"/></g>
+  <text x="400" y="570" text-anchor="middle" fill="#3D2E5C" font-family="Fredoka, sans-serif" font-size="64" font-weight="700">BOSQUE NEVADO</text>
+  <text x="400" y="635" text-anchor="middle" fill="#3D2E5C" fill-opacity=".85" font-family="Inter, sans-serif" font-size="30">Un recuerdo para siempre</text>
+  <text x="400" y="710" text-anchor="middle" fill="#3D2E5C" font-family="Fredoka, sans-serif" font-size="30" font-weight="700">Lucams</text>
+</svg>

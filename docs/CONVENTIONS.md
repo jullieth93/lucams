@@ -81,7 +81,7 @@
 │   ├── app/                               # Enrutamiento, layouts, RSC y estados loading/error
 │   │   ├── (auth)/                        # /login, /registro, /confirmar-codigo, /recuperar-password
 │   │   ├── productos/ · producto/[slug]/  # Catálogo SSR y PDP con buy-box modular
-│   │   ├── estudio/[slug]/                # Editor Konva 2D, 7 escenas 3D (R3F) y store Zustand local
+│   │   ├── estudio/[slug]/                # Editor Konva 2D, 10 escenas 3D (R3F) y store Zustand local
 │   │   ├── checkout/                      # Flujo en 3 pasos: datos/ → envio/ → pago/ → gracias/
 │   │   ├── mi-cuenta/                     # Autoservicio autenticado (pedidos, diseños, soporte…)
 │   │   ├── pedido/[token]/                # Seguimiento y posventa 2FA para invitados
@@ -106,7 +106,7 @@
 │   ├── legal-content/                     # Fuentes Markdown canónicas del paquete legal (Versión 3)
 │   ├── src/index.ts                       # Singleton PrismaClient con pool acotado + runWithDbRetry
 │   └── scripts/                           # Semillas, auditorías y guardas en scripts/lib/
-└── supabase/migrations/                   # 56 migraciones SQL idempotentes (RLS, REVOKE, Storage, pg_cron)
+└── supabase/migrations/                   # 58 migraciones SQL idempotentes (RLS, REVOKE, Storage, pg_cron)
 ```
 
 ### Anatomía de `apps/web/features/<dominio>/`

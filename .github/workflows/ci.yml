@@ -338,6 +338,11 @@ jobs:
       WOMPI_INTEGRITY_SECRET: test_integrity_ci
       WOMPI_EVENTS_SECRET: test_events_ci
       PORT: "4000"
+      # Auditoría 2026-11-08 — habilita /api/test-utils/revalidate-catalog en el
+      # server efímero del job: los fixtures crean productos por DB directa y sin
+      # invalidar el tag "catalog" el proxy 404 de PDP (SEO-001) los escondía
+      # hasta el TTL. Valor estático: el server vive solo durante el job.
+      E2E_UTILS_TOKEN: e2e-ci-catalog-revalidate
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

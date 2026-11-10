@@ -17,6 +17,7 @@
  */
 
 import { z } from "zod";
+import { readProductExperience } from "@/features/personalization/product-experience";
 
 export const ProductVariantAttributesSchema = z.object({
   /** Tamaño físico del producto. Override de product.personalizationSchema.sizeCm. */
@@ -636,7 +637,16 @@ const VARIANT_BREAKDOWN_THEME_LABELS: Record<string, string> = {
   profesiones: "Profesiones",
 };
 
-export function describeVariantAttributes(attrs: ProductVariantAttributes): string[] {
+export function describeVariantAttributes(
+  attrs: ProductVariantAttributes,
+  productSchema?: unknown,
+): string[] {
+  if (readProductExperience(productSchema).experience === "christmas-ornament") {
+    return [
+      ...describeVariantAttributes({ ...attrs, quantity: undefined, photoSlots: undefined }),
+      "Dúplex: frente y reverso",
+    ];
+  }
   const parts: string[] = [];
   if (attrs.quantity)
     parts.push(`${attrs.quantity} ${attrs.quantity === 1 ? "unidad" : "unidades"}`);

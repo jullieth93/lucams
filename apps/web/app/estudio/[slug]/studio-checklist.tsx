@@ -65,9 +65,9 @@ export function useStudioChecklist(
   const texts = useStudioTexts();
   // «Elige tu plantilla» (5.1, 2026-10-22) — primera decisión del flujo: sin
   // plantilla seleccionada por defecto, el paso nace pendiente y se completa
-  // al aplicar una (applyTemplate fija selectedTemplateId). Con 0 o 1
-  // plantilla no aplica: 0 = nada que elegir; 1 = elección trivial que el
-  // boot auto-selecciona (resolveBootTemplate).
+  // al aplicar una (applyTemplate fija selectedTemplateId). Con 0 plantillas
+  // no aplica (nada que elegir); con 1+ SÍ aplica aunque sea una sola opción
+  // (owner 2026-11-07 — elección obligatoria homologada en todos los lienzos).
   const selectedTemplateId = useStore(store, (s) => s.selectedTemplateId);
   const templatesCount = useStore(store, (s) => s.templates.length);
   const filled = useStore(store, selectFilledSlotCount);
@@ -111,7 +111,7 @@ export function useStudioChecklist(
   });
 
   const steps: StudioChecklistStep[] = [];
-  if (templatesCount > 1) {
+  if (templatesCount > 0) {
     steps.push({
       id: "plantillas",
       label: texts.checklist.pasoPlantillas,

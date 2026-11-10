@@ -4,8 +4,8 @@
  * acá la compra SÍ se concretó, así que la finalidad de las fotos crudas y de los renders 300 DPI
  * era producir y entregar el pedido. Cumplida esa finalidad —y vencida la ventana operativa de
  * reposición— conservarlos para siempre no lo justifica nada: un pedido puede dejar ~57 MB entre
- * fotos crudas (`customer-uploads`) y renders (`production-assets`), y el plan Free de Supabase
- * tiene 1 GB de Storage.
+ * fotos crudas (`customer-uploads`) y renders (`production-assets`) que se acumulan contra la
+ * cuota de Storage del plan (100 GB en Pro).
  *
  * POLÍTICA (decisión de negocio 2026-09-18): un diseño USED_IN_ORDER —incluido uno
  * ARCHIVED desde USED_IN_ORDER— cuya orden asociada está
@@ -46,6 +46,7 @@ import "server-only";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { supabaseService } from "@/lib/supabase/service";
 import { listStagedSlotPaths } from "./staged-slots";
 import { capRetentionDaysNonProd, removeStorage } from "./retention-service";
 
@@ -207,12 +208,53 @@ export async function purgeDeliveredDesignAssets(opts?: {
     prisma.designAsset.deleteMany({ where: { designId: { in: designIds } } }),
   ]);
 
+  // ZIPs de taller `_bundles/<orderId>/` (auditoría 2026-11-08): contienen los MISMOS renders
+  // PII recién purgados. Son regenerables a demanda (la descarga los reconstruye con lo que
+  // quede y lo advierte en el LEEME), así que se borran DESPUÉS del sellado y best-effort:
+  // un fallo acá no bloquea la idempotencia de la purga principal.
+  const bundlesPurged = await purgeOrderBundlesBestEffort(designIds);
+
   logger.info({
     event: "retention.purge_delivered_designs",
     designsPurged: candidates.length,
     assetsPurged: uploadPaths.length,
     productionFilesPurged: productionPaths.length + stagedPaths.length,
+    orderBundlesPurged: bundlesPurged,
     olderThanDays: days,
   });
   return { designsPurged: candidates.length, assetsPurged: uploadPaths.length };
+}
+
+/**
+ * Borra los ZIPs de taller (`production-assets/_bundles/<orderId>/`) de las órdenes de los
+ * diseños purgados (auditoría 2026-11-08). Best-effort extremo a extremo: nunca lanza (el
+ * cliente de Storage se crea perezoso y puede lanzar sin envs en CI — mismo motivo del
+ * try/catch de listStagedSlotPaths). Devuelve cuántos objetos se borraron.
+ */
+async function purgeOrderBundlesBestEffort(designIds: string[]): Promise<number> {
+  let removed = 0;
+  try {
+    const items = await prisma.orderItem.findMany({
+      where: { designId: { in: designIds } },
+      select: { orderId: true },
+      distinct: ["orderId"],
+    });
+    for (const { orderId } of items) {
+      const prefix = `_bundles/${orderId}`;
+      try {
+        const { data, error } = await supabaseService.storage.from(PRODUCTION_BUCKET).list(prefix);
+        if (error || !data || data.length === 0) continue;
+        const paths = data.map((f) => `${prefix}/${f.name}`);
+        if (await removeStorage(PRODUCTION_BUCKET, paths)) removed += paths.length;
+      } catch {
+        continue; // storage inalcanzable: el próximo ciclo lo reintenta
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      { event: "retention.purge_delivered_designs.bundles_fail", err: String(err) },
+      "No se pudieron purgar los ZIPs de taller de los diseños entregados",
+    );
+  }
+  return removed;
 }
