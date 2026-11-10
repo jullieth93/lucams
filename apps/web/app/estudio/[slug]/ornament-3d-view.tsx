@@ -272,7 +272,7 @@ function OrnamentModel({
 
   useEffect(() => {
     invalidate();
-  }, [invalidate, reducedMotion, rotation]);
+  }, [invalidate, reducedMotion, rotation, texture, backDesignTexture, backHasDesign]);
 
   useFrame((_, delta) => {
     if (!group.current) return;

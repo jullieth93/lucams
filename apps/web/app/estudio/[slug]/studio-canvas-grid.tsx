@@ -317,8 +317,21 @@ export function StudioCanvasGrid({
   // #16 — respeta "reducir movimiento": las entradas escalonadas del grid se apagan.
   const reducedMotion = usePrefersReducedMotion();
   // ADR-063 T5 — slots ya montados (una vez montados, permanecen; el store es la fuente de verdad,
-  // así que re-montar desde slotState no pierde nada).
-  const [mountedSlots, setMountedSlots] = useState<Set<number>>(() => new Set());
+  // así que re-montar desde slotState no pierde nada). Se siembra con los slots iniciales cuando
+  // el conteo está bajo el umbral lazy o cuando ya traen foto asignada.
+  const [mountedSlots, setMountedSlots] = useState<Set<number>>(() => {
+    const init = store.getState().canvasData;
+    if (!init) return new Set();
+    const isLazy =
+      init.slotCount > LAZY_MOUNT_THRESHOLD && typeof IntersectionObserver !== "undefined";
+    const seeded = new Set<number>();
+    for (const s of init.slots) {
+      if (!isLazy || s.assetUrl || s.profileAssetUrl) {
+        seeded.add(s.slotIndex);
+      }
+    }
+    return seeded;
+  });
   // Ola 6 — modal unificado de edición por slot (tabs Foto/Texto).
   const [editModal, setEditModal] = useState<{
     slotIndex: number;
@@ -383,6 +396,7 @@ export function StudioCanvasGrid({
 
   // Selectores zustand: solo re-render al cambiar slices específicos.
   const canvasData = useStore(store, (s) => s.canvasData);
+  const hasCanvas = Boolean(canvasData);
   const selectedSlotIndex = useStore(store, (s) => s.selectedSlotIndex);
   const assignAssetToSlot = useStore(store, (s) => s.assignAssetToSlot);
   const clearSlot = useStore(store, (s) => s.clearSlot);
@@ -432,7 +446,10 @@ export function StudioCanvasGrid({
     [store, applyingPredesigned, texts, facesPerUnit],
   );
 
-  // Responsive scale (ancho del contenedor, cap MAX_VIEWPORT_WIDTH)
+  // Responsive scale (ancho del contenedor, cap MAX_VIEWPORT_WIDTH).
+  // `hasCanvas` en deps: en el primer render antes de que termine `boot`,
+  // `canvasData` es null y el componente retorna el skeleton sin montar
+  // `containerRef`; re-correr al hidratarse engancha el ResizeObserver real.
   useEffect(() => {
     if (!containerRef.current) return;
     const update = () => {
@@ -443,7 +460,7 @@ export function StudioCanvasGrid({
     const ro = new ResizeObserver(update);
     ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, []);
+  }, [hasCanvas]);
 
   // Ola 4 — alto del viewport para el marco máximo en alto (null hasta hidratar:
   // el primer render usa solo el ancho, como antes; luego entra el cap de alto).
@@ -652,6 +669,46 @@ export function StudioCanvasGrid({
     (canvasData?.slotCount ?? 0) > LAZY_MOUNT_THRESHOLD &&
     typeof IntersectionObserver !== "undefined";
 
+  // 2026-11-10 — preservar en `mountedSlots` todo slot que ya se montó en modo
+  // eager (`!isLazy`, p.ej. 1..3 bolas = 2..6 slots) o por tener foto asignada
+  // (`assetUrl`/`profileAssetUrl`). Sin esto, al subir de 3 a 4 o 5 bolas
+  // (8..10 slots > LAZY_MOUNT_THRESHOLD), `lazy` pasaba a `true` con
+  // `mountedSlots` vacío y desmontaba las Bolas 1..3 ya diseñadas.
+  useEffect(() => {
+    return store.subscribe((state, prev) => {
+      const cd = state.canvasData;
+      if (!cd || cd === prev.canvasData) return;
+      const isLazy =
+        cd.slotCount > LAZY_MOUNT_THRESHOLD && typeof IntersectionObserver !== "undefined";
+      setMountedSlots((current) => {
+        let next: Set<number> | null = null;
+        for (const s of cd.slots) {
+          if ((!isLazy || s.assetUrl || s.profileAssetUrl) && !current.has(s.slotIndex)) {
+            if (!next) next = new Set(current);
+            next.add(s.slotIndex);
+          }
+        }
+        return next ?? current;
+      });
+    });
+  }, [store]);
+
+  const registerSlotStagesRef = useRef(registerSlotStages);
+  useEffect(() => {
+    registerSlotStagesRef.current = registerSlotStages;
+  }, [registerSlotStages]);
+  useEffect(() => {
+    const count = canvasData?.slotCount ?? 0;
+    let pruned = false;
+    for (const key of Array.from(stagesRef.current.keys())) {
+      if (key >= count) {
+        stagesRef.current.delete(key);
+        pruned = true;
+      }
+    }
+    if (pruned) registerSlotStagesRef.current(stagesRef.current);
+  }, [canvasData?.slotCount]);
+
   // IntersectionObserver: monta los slots que se acercan al viewport (prefetch 400px). Una vez
   // vistos, quedan en `mountedSlots` para siempre (no se re-observan ni se desmontan).
   useEffect(() => {
@@ -789,7 +846,7 @@ export function StudioCanvasGrid({
       el.removeEventListener("touchcancel", onTouchEndOrCancel);
       el.removeEventListener("gesturestart", onGestureStart);
     };
-  }, [interactiveSlots]);
+  }, [interactiveSlots, hasCanvas]);
   // Anclaje del pinch: tras el re-render con el nuevo zoom, corregir el scroll
   // (wrapper horizontal + ventana) para que el punto del contenido bajo el
   // punto medio del gesto quede donde estaba.
@@ -1025,8 +1082,12 @@ export function StudioCanvasGrid({
 
   // Celda de un slot (montaje perezoso + StudioSlot o placeholder). Compartida por el
   // grid plano y por las tarjetas-unidad del modo agrupado (separadores 2 caras).
+  // Los slots con foto asignada (`hasPhoto`) montan siempre su Stage para que
+  // decodifiquen de inmediato al volver del carrito o usar «Llenar todo» /
+  // «Aplicar a todas» sin quedar atrapados en LazySlotPlaceholder.
   const renderSlotCell = (slot: CanvasDataV2["slots"][number]) => {
-    const mounted = !lazy || forceMountAll || mountedSlots.has(slot.slotIndex);
+    const hasPhoto = Boolean(slot.assetUrl || slot.profileAssetUrl);
+    const mounted = !lazy || forceMountAll || hasPhoto || mountedSlots.has(slot.slotIndex);
     // 2026-09-24 — dimensiones de la foto ORIGINAL si el asset pasó por el
     // upscale local (chip de calidad medido sobre la nitidez real, no sobre
     // los píxeles re-muestreados).
@@ -1145,7 +1206,7 @@ export function StudioCanvasGrid({
           />
         ) : (
           <LazySlotPlaceholder
-            assetUrl={slot.assetUrl}
+            assetUrl={slot.canvasUrl ?? slot.assetUrl}
             displaySize={zoomedSlotW}
             displayHeight={zoomedSlotH}
             shape={shape}

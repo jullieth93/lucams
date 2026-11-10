@@ -707,4 +707,54 @@ describe("StudioCanvasGrid — bola navideña dúplex", () => {
     expect(screen.queryByText(/Doblez/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Separador/)).not.toBeInTheDocument();
   });
+
+  it("cruzar LAZY_MOUNT_THRESHOLD (3 → 5 bolas = 6 → 10 slots) conserva los slots ya montados y monta de inmediato todo slot con foto", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "ornament-lazy",
+      productSlug: "bola-navidena-personalizada",
+      canvasData: {
+        ...makePolaroidCanvas(6),
+        unitSlots: 2,
+        unitCount: 3,
+      },
+      templates: [],
+    });
+
+    const { container } = renderStudio(
+      <StudioCanvasGrid
+        store={store}
+        facesPerUnit={2}
+        noFold
+        unitNoun="Bola"
+        onSlotClick={() => {}}
+        stageZoomRaw={1}
+        onStageZoomState={() => {}}
+        registerSlotStages={() => {}}
+      />,
+    );
+
+    // Con 3 bolas (6 slots <= LAZY_MOUNT_THRESHOLD), los 6 slots están montados.
+    for (let i = 0; i < 6; i++) {
+      expect(container.querySelector(`[data-testid="studio-slot-${i}"]`)).not.toBeNull();
+    }
+
+    // Subir a 5 bolas (10 slots > LAZY_MOUNT_THRESHOLD) y asignar foto a la Bola 5 (slot 8).
+    act(() => {
+      store.getState().setUnitCount(5, { max: 5, facesPerUnit: 2, allowFreeUnits: true });
+      store.getState().assignAssetToSlot(8, {
+        id: "asset-8",
+        signedUrl: "https://cdn.example.com/8.jpg",
+        width: 1000,
+        height: 1000,
+      });
+    });
+
+    // Bolas 1..3 (slots 0..5) NUNCA se desmontan al cruzar el umbral, y el slot 8
+    // (con foto) monta directo sin quedar atrapado en LazySlotPlaceholder.
+    for (let i = 0; i < 6; i++) {
+      expect(container.querySelector(`[data-testid="studio-slot-${i}"]`)).not.toBeNull();
+    }
+    expect(container.querySelector('[data-testid="studio-slot-8"]')).not.toBeNull();
+  });
 });

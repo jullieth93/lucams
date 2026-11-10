@@ -379,11 +379,34 @@ function StudioSlotImpl({
     if (!decodedUrl) return;
     const active = getActiveStudioStore()?.getState();
     if (!active) return;
-    if (photoImage || photoStatus === "failed") {
+    if (photoStatus === "failed") {
       active.markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
-    } else {
-      active.markPhotoLoading(slotState.slotIndex, "main", decodedUrl);
+      return;
     }
+    if (!photoImage) {
+      active.markPhotoLoading(slotState.slotIndex, "main", decodedUrl);
+      return;
+    }
+    if (typeof photoImage.decode === "function") {
+      active.markPhotoLoading(slotState.slotIndex, "main", decodedUrl);
+      let cancelled = false;
+      photoImage
+        .decode()
+        .catch(() => {
+          // Best-effort: una foto que rechaza decode() no bloquea la compuerta.
+        })
+        .finally(() => {
+          if (!cancelled) {
+            getActiveStudioStore()
+              ?.getState()
+              .markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    active.markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
   }, [photoImage, photoStatus, decodedUrl, slotState.slotIndex]);
   const photoQuality = useMemo(() => {
     if (!photoImage || !slotState.assetUrl) return null;
@@ -398,13 +421,19 @@ function StudioSlotImpl({
     return checkPhotoQuality(photoImage, sizeCm, originalDims);
   }, [photoImage, slotState.assetUrl, sizeCm, assetOriginalWidth, assetOriginalHeight]);
 
-  // Expose Konva stage to parent (para snapshot al finalizar)
+  // Expose Konva stage to parent (para snapshot al finalizar). Ref estable para
+  // no des-registrar el stage en cada re-render cuando el padre pasa un closure
+  // inline; el cleanup solo corre al desmontar el slot de verdad.
+  const onRegisterStageRef = useRef(onRegisterStage);
   useEffect(() => {
-    if (onRegisterStage) onRegisterStage(stageRef.current);
-    return () => {
-      if (onRegisterStage) onRegisterStage(null);
-    };
+    onRegisterStageRef.current = onRegisterStage;
+    onRegisterStage?.(stageRef.current);
   }, [onRegisterStage]);
+  useEffect(() => {
+    return () => {
+      onRegisterStageRef.current?.(null);
+    };
+  }, []);
 
   // FIX-1 — Aspect ratio físico del slot.
   // El motion.div + Konva Stage DEBEN respetar las proporciones físicas del
@@ -968,6 +997,7 @@ function StudioSlotImpl({
             scaleY={stageScale}
             ref={(s: Konva.Stage | null) => {
               stageRef.current = s;
+              onRegisterStageRef.current?.(s);
             }}
             // M.3.b.D — Stage debe escuchar eventos para captar clicks sobre
             // text layers editables. M.3.b.UX.v4+: también si hay drag/zoom de foto
@@ -1021,6 +1051,7 @@ function StudioSlotImpl({
                   touchDrag={touchPanEnabled}
                   onPhotoDragStart={handlePhotoDragStart}
                   onPhotoDragEnd={handlePhotoDragEnd}
+                  preloadedPhoto={photoImage ?? null}
                 />
               ) : (
                 unitTemplate.layers.map((layer) =>
@@ -1064,6 +1095,11 @@ function StudioSlotImpl({
                       // 2026-09-22 — drag táctil inline de la foto (solo con zoom
                       // aplicado; desktop sigue con interactiveSlots).
                       touchDrag: touchPanEnabled,
+                      // 2026-11-10 — imagen pre-cargada del slot para evitar
+                      // duplicar HTMLImageElement en KonvaRenderer y mantener
+                      // sincronizado el ciclo DOM («Cargando tu foto…») con el
+                      // nodo `.slot-photo` del stage.
+                      preloadedPhotoImage: photoImage ?? null,
                     },
                   ),
                 )
@@ -1639,6 +1675,11 @@ export function renderLayer(
      * (foto con zoom ≠ 1). Desktop sigue gobernado por interactiveSlots.
      */
     touchDrag?: boolean;
+    /**
+     * 2026-11-10 — instancia HTMLImageElement ya cargada por StudioSlot para
+     * compartirla con ImagePlaceholder sin crear un segundo `<img>` por slot.
+     */
+    preloadedPhotoImage?: HTMLImageElement | null;
   },
 ) {
   const borderColor = opts?.borderColor ?? null;
@@ -1763,6 +1804,7 @@ export function renderLayer(
           onPhotoDragEnd={onPhotoDragEnd}
           interactiveSlots={interactiveSlots}
           touchDrag={opts?.touchDrag}
+          preloadedImage={opts?.preloadedPhotoImage}
         />
       );
     }
@@ -1941,11 +1983,34 @@ function ProfilePhotoLayerRenderer({
     if (printMaster || !profileDecodedUrl) return;
     const active = getActiveStudioStore()?.getState();
     if (!active) return;
-    if (image || imageStatus === "failed") {
+    if (imageStatus === "failed") {
       active.markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
-    } else {
-      active.markPhotoLoading(slotIndex, "profile", profileDecodedUrl);
+      return;
     }
+    if (!image) {
+      active.markPhotoLoading(slotIndex, "profile", profileDecodedUrl);
+      return;
+    }
+    if (typeof image.decode === "function") {
+      active.markPhotoLoading(slotIndex, "profile", profileDecodedUrl);
+      let cancelled = false;
+      image
+        .decode()
+        .catch(() => {
+          // Best-effort: un avatar que rechaza decode() no bloquea la compuerta.
+        })
+        .finally(() => {
+          if (!cancelled) {
+            getActiveStudioStore()
+              ?.getState()
+              .markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    active.markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
   }, [image, imageStatus, printMaster, profileDecodedUrl, slotIndex]);
   const [hover, setHover] = useState(false);
   const interactive = !!onEdit;
@@ -2712,6 +2777,7 @@ function ImagePlaceholder({
   onPhotoDragEnd,
   interactiveSlots = true,
   touchDrag = false,
+  preloadedImage,
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
@@ -2744,16 +2810,26 @@ function ImagePlaceholder({
    * el scroll lo bloquea el `touch-action:none` del wrapper, no Konva.
    */
   touchDrag?: boolean;
+  /**
+   * 2026-11-10 — imagen pre-cargada por StudioSlot para compartir una única
+   * instancia HTMLImageElement entre el DOM y el árbol Konva (salvo en modo
+   * printMaster, donde sí se carga el master desde `slotState.assetUrl`).
+   */
+  preloadedImage?: HTMLImageElement | null;
 }) {
   // ADR-166 — el lienzo carga el derivado ≤800px (canvasUrl) cuando existe;
   // el MASTER solo durante el snapshot de imprenta del finalize (fallback
   // ADR-081: los PNG de producción se rasterizan de este stage a 3× y no
   // pueden salir del derivado — ver lib/print-master-mode).
   const printMaster = usePrintMasterMode();
-  const [image] = useImage(
-    (printMaster ? slotState.assetUrl : (slotState.canvasUrl ?? slotState.assetUrl)) ?? "",
+  const usePreloaded = !printMaster && preloadedImage !== undefined;
+  const [loadedImage] = useImage(
+    usePreloaded
+      ? ""
+      : ((printMaster ? slotState.assetUrl : (slotState.canvasUrl ?? slotState.assetUrl)) ?? ""),
     "anonymous",
   );
+  const image = usePreloaded ? (preloadedImage ?? undefined) : loadedImage;
   const imageNodeRef = useRef<Konva.Image | null>(null);
   // Convención del seed (verificada): image-placeholder usa x/y como TOP-LEFT
   // del slot (esquina superior izquierda). Ej. polaroid-clasico tiene

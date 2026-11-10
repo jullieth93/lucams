@@ -21,7 +21,7 @@ import { previewFacePairOfUnit } from "./faces";
 import { loadImage } from "./image-utils";
 import { canvasToPreviewDataUrl } from "./preview-encode";
 import type { PreviewUnitRange } from "./preview-units";
-import { waitForSlotPhotosReady } from "./slot-photo-readiness";
+import { ensureStagePhotosDecoded, waitForSlotPhotosReady } from "./slot-photo-readiness";
 import { snapshotSlotForPreview, yieldToMain } from "./slot-snapshot-cache";
 import { MAGNET_TEXTURE_WIDTH_DEFAULT } from "./texture-resolution";
 import { drawBrandBackFace } from "@/features/personalization/brand-back-pattern";
@@ -122,9 +122,6 @@ export async function buildCompositedPreview(
   opts?: { unitRange?: PreviewUnitRange },
 ): Promise<string> {
   const { gridLayout, unitTemplate, slots } = canvasData;
-  // Ronda 2 QA (2026-10-08) — misma carrera que el libro 3D: sin la espera, un
-  // preview abierto justo tras subir fotos hornea el placeholder de carga.
-  await waitForSlotPhotosReady(slots, stages);
   // Modelo multi-unidad (2026-09-09): con N unidades multi-slot el gridLayout
   // describe UNA unidad — la Vista previa muestra TODAS las unidades (lo que el
   // cliente va a recibir): las TIRAS se disponen lado a lado (cada una es una
@@ -135,6 +132,9 @@ export async function buildCompositedPreview(
   const rangeSlots = range
     ? slots.filter((s) => s.slotIndex >= range.start && s.slotIndex < range.end)
     : slots;
+  // Ronda 2 QA (2026-10-08) — misma carrera que el libro 3D: sin la espera, un
+  // preview abierto justo tras subir fotos hornea el placeholder de carga.
+  await waitForSlotPhotosReady(rangeSlots, stages);
   const unitSlots = range ? rangeSlots.length : (canvasData.unitSlots ?? slots.length);
   const unitCount = range ? 1 : (canvasData.unitCount ?? 1);
   const multiUnit = !range && unitCount > 1;
@@ -187,6 +187,7 @@ export async function buildCompositedPreview(
   for (const slot of rangeSlots) {
     const stage = stages.get(slot.slotIndex);
     if (!stage) continue;
+    await ensureStagePhotosDecoded(stage, slot);
     slotShots.push({
       slot,
       dataUrl: snapshotSlotForPreview(stage, slot, {
@@ -299,9 +300,6 @@ export async function buildBookmarkStripPreview(
   },
 ): Promise<string> {
   const { unitTemplate, slots } = canvasData;
-  // Ronda 2 QA (2026-10-08) — misma carrera que el libro 3D: esperar a que las
-  // fotos estén decodificadas antes de rasterizar (si no, placeholder lila).
-  await waitForSlotPhotosReady(slots, stages);
   const noFold = opts?.noFold === true;
   const backOptional = opts?.backOptional === true;
   const foldCaption = opts?.foldCaption;
@@ -315,6 +313,27 @@ export async function buildBookmarkStripPreview(
       ? [Math.min(Math.max(0, opts.unitIndex), Math.max(0, totalUnits - 1))]
       : Array.from({ length: totalUnits }, (_, u) => u);
   const units = unitIndexes.length;
+  // Paquete J (2026-10-02) — snapshots cacheados por slot + decodificación EN
+  // PARALELO antes de pintar (antes: toDataURL + decode secuencial por cara en
+  // el mismo click). La cara B vacía (backOptional) NO se rasteriza: su rect se
+  // pinta con el patrón de marca «Lucams» (faceB = null — owner 2026-11-03,
+  // supersede el blanco del 2026-10-07).
+  const unitFaces: Array<{ faceA: number; faceB: number | null }> = [];
+  const faceSlotIndices = new Set<number>();
+  for (const unit of unitIndexes) {
+    const pair = previewFacePairOfUnit(slots, unit, backOptional);
+    unitFaces.push(pair);
+    faceSlotIndices.add(pair.faceA);
+    if (pair.faceB !== null) faceSlotIndices.add(pair.faceB);
+  }
+  // Ronda 2 QA (2026-10-08) — misma carrera que el libro 3D: esperar a que las
+  // fotos estén decodificadas antes de rasterizar (si no, placeholder lila).
+  // Con `unitIndex` solo se esperan los slots de esa unidad para no desalojar
+  // bitmaps ajenos en móvil.
+  await waitForSlotPhotosReady(
+    slots.filter((s) => faceSlotIndices.has(s.slotIndex)),
+    stages,
+  );
   const faceW = 300;
   const faceH = Math.round(faceW * (unitTemplate.stage.height / unitTemplate.stage.width));
   const pad = 24;
@@ -347,19 +366,6 @@ export async function buildBookmarkStripPreview(
   const scale = faceW / unitTemplate.stage.width;
   const radius = Math.max(6, Math.round((cornerRadiusPx ?? 0) * scale));
 
-  // Paquete J (2026-10-02) — snapshots cacheados por slot + decodificación EN
-  // PARALELO antes de pintar (antes: toDataURL + decode secuencial por cara en
-  // el mismo click). La cara B vacía (backOptional) NO se rasteriza: su rect se
-  // pinta con el patrón de marca «Lucams» (faceB = null — owner 2026-11-03,
-  // supersede el blanco del 2026-10-07).
-  const unitFaces: Array<{ faceA: number; faceB: number | null }> = [];
-  const faceSlotIndices = new Set<number>();
-  for (const unit of unitIndexes) {
-    const pair = previewFacePairOfUnit(slots, unit, backOptional);
-    unitFaces.push(pair);
-    faceSlotIndices.add(pair.faceA);
-    if (pair.faceB !== null) faceSlotIndices.add(pair.faceB);
-  }
   // Fuente script del patrón de la cara B por defecto: cargarla ANTES de pintar
   // (anti-FOUT; misma vía del título del calendario — resolveCalendarTitleFont).
   const brandBackFont = unitFaces.some((p) => p.faceB === null)
@@ -371,6 +377,7 @@ export async function buildBookmarkStripPreview(
     const stage = stages.get(slotIndex);
     const slot = slots.find((s) => s.slotIndex === slotIndex);
     if (!stage || !slot) continue;
+    await ensureStagePhotosDecoded(stage, slot);
     const dataUrl = snapshotSlotForPreview(stage, slot, {
       unitTemplate,
       borderColor: canvasData.borderColor ?? null,
@@ -599,6 +606,7 @@ export async function buildMagnetTextures(
   for (const slot of slots) {
     const stage = stages.get(slot.slotIndex);
     if (!stage) continue;
+    await ensureStagePhotosDecoded(stage, slot);
     slotShots.push({
       slot,
       dataUrl: snapshotSlotForPreview(stage, slot, {

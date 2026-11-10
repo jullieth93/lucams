@@ -151,9 +151,11 @@ export function snapshotSlotForPreview(
   const borderWidthFactor = ctx.borderWidthFactor ?? null;
   const fontsStatus = currentFontsStatus();
   // ¿El slot quiere foto pero el stage aún la está cargando? (rama placeholder —
-  // ver CacheEntry.photoPending). El nodo `slot-photo` solo existe con la foto
-  // ya decodificada y renderizada (studio-slot.tsx).
-  const photoPending = !!slot.assetUrl && stage.find(".slot-photo").length === 0;
+  // ver CacheEntry.photoPending). Los nodos `slot-photo` y `slot-profile-photo`
+  // solo existen con la imagen ya decodificada y renderizada (studio-slot.tsx).
+  const photoPending =
+    (!!slot.assetUrl && stage.find(".slot-photo").length === 0) ||
+    (!!slot.profileAssetUrl && stage.find(".slot-profile-photo").length === 0);
 
   const hit = cache.get(slot.slotIndex);
   if (
