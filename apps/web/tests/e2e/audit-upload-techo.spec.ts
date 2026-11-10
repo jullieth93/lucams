@@ -40,18 +40,28 @@ test.setTimeout(300_000);
 const run = newRunId("techo");
 const OUT_DIR = resolve(__dirname, "../../../../tmp/e2e-homologacion", `techo-${run}`);
 
-// ──────────── Request spy: tamaños de TODOS los requests con body ────────────
+// ──────────── Request spy: tamaños REALES vía CDP (no postDataBuffer) ────────────
 
 type TrackedRequest = { url: string; method: string; size: number };
 
-function trackRequests(page: import("@playwright/test").Page): TrackedRequest[] {
+/**
+ * Auditoría 2026-11-08 (2ª pasada): `request.postDataBuffer()` de Playwright
+ * devuelve null/0 incluso para bodies multipart reales — medir con eso daba un
+ * FALSO POSITIVO del límite. Ahora el tamaño sale del header `content-length`
+ * vía CDP (`Network.requestWillBeSent`): es el tamaño REAL del body que viaja.
+ * Si el header no viene (chunked), queda -1 = desconocido (se loguea, nunca se
+ * usa como prueba del límite).
+ */
+async function trackRequests(page: import("@playwright/test").Page): Promise<TrackedRequest[]> {
   const tracked: TrackedRequest[] = [];
-  page.on("request", (req) => {
-    if (req.method() === "GET" || req.method() === "HEAD") return;
-    // postDataBuffer() puede ser null en PUTs cross-origin con Blob (Chromium no
-    // siempre reporta el body) — se registran con size -1 para no perderlos.
-    const size = req.postDataBuffer()?.length ?? -1;
-    if (size !== 0) tracked.push({ url: req.url(), method: req.method(), size });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.enable");
+  cdp.on("Network.requestWillBeSent", (params) => {
+    const method = params.request.method;
+    if (method === "GET" || method === "HEAD") return;
+    const headers = (params.request.headers ?? {}) as Record<string, string>;
+    const raw = headers["content-length"] ?? headers["Content-Length"];
+    tracked.push({ url: params.request.url, method, size: raw ? Number(raw) : -1 });
   });
   return tracked;
 }
@@ -94,7 +104,6 @@ async function bigNoisePng(width: number, height: number): Promise<Buffer> {
 
 let baseHost = "";
 let letterset: { slug: string; id: string; name: string } | null = null;
-let nameProduct: { slug: string; id: string; name: string } | null = null;
 let gallery2Faces: { tag: string; name: string } | null = null;
 let letterSet: { id: string; name: string } | null = null;
 let fichaChar = "Z";
@@ -113,6 +122,31 @@ const ADMIN_PASSWORD = "Techo-Audit-918273650";
 let adminAuthUserId = "";
 let adminId = "";
 let totpSecret = "";
+
+// UN solo login admin por corrida (worker): el rate limit del panel es 5
+// intentos/15 min por IP y por email — loguear en cada test (hasta 8 veces por
+// corrida desktop+móvil) lo agotaba y el login moría antes del reto TOTP
+// (fallo visto en la primera corrida de esta spec).
+let adminCtx: import("@playwright/test").BrowserContext | null = null;
+async function sharedAdminContext(
+  browser: import("@playwright/test").Browser,
+): Promise<import("@playwright/test").BrowserContext> {
+  if (adminCtx) return adminCtx;
+  const { baseUrlFor, extraHeadersFor } = await import("./_setup/env");
+  adminCtx = await browser.newContext({
+    baseURL: baseUrlFor(E2E_ENV),
+    extraHTTPHeaders: extraHeadersFor(E2E_ENV),
+    ignoreHTTPSErrors: true,
+  });
+  const page = await adminCtx.newPage();
+  await loginAdminWithTotp(page, {
+    email: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+    totpSecret,
+  });
+  await page.close();
+  return adminCtx;
+}
 
 test.beforeAll(async ({ baseURL }) => {
   mkdirSync(OUT_DIR, { recursive: true });
@@ -143,8 +177,6 @@ test.beforeAll(async ({ baseURL }) => {
     );
     if (!letterset && surface.surface === "letterset")
       letterset = { slug: p.slug, id: p.id, name: p.name };
-    if (!nameProduct && surface.surface === "name")
-      nameProduct = { slug: p.slug, id: p.id, name: p.name };
     // Galería 2 caras: galleryTag explícito o superficie de foto, con facesPerUnit=2.
     const schema = p.personalizationSchema as {
       galleryTag?: unknown;
@@ -262,6 +294,7 @@ test.afterAll(async () => {
   }
   if (adminId) await safe(db().adminUser.deleteMany({ where: { id: adminId } }));
   if (adminAuthUserId) await safe(supabase.auth.admin.deleteUser(adminAuthUserId));
+  if (adminCtx) await adminCtx.close();
   await disconnectDb();
 });
 
@@ -277,8 +310,9 @@ async function dismissCookies(page: import("@playwright/test").Page): Promise<vo
 }
 
 /** Registra en cleanup los diseños del Estudio creados en la ventana. */
+const studioProductIds = new Set<string>();
 async function collectStudioDesigns(): Promise<void> {
-  const ids = [letterset?.id, nameProduct?.id].filter((x): x is string => Boolean(x));
+  const ids = [...studioProductIds];
   if (ids.length === 0) return;
   const designs = await db().design.findMany({
     where: { productId: { in: ids }, createdAt: { gte: new Date(windowStart) } },
@@ -295,7 +329,8 @@ test("finalize letter-set ×10: las láminas van por Storage y NINGÚN request a
   page,
 }) => {
   test.skip(!letterset, "no hay producto con superficie letterset activo en el ambiente");
-  const tracked = trackRequests(page);
+  studioProductIds.add(letterset!.id);
+  const tracked = await trackRequests(page);
 
   await page.goto(`/estudio/${letterset!.slug}?copies=10`, { waitUntil: "domcontentloaded" });
   await dismissCookies(page);
@@ -346,40 +381,97 @@ test("finalize letter-set ×10: las láminas van por Storage y NINGÚN request a
 });
 
 // ──────────── 2. Finalize nombre (una lámina 300 DPI por ticket) ────────────
+//
+// Cobertura E2E del editor de nombre (2026-11-09): el producto
+// `nombre-personalizado` está ARCHIVADO en STG — este test lo RESTAURA y ACTIVA
+// por la UI admin (las acciones del panel invalidan la caché del storefront: el
+// proxy deja de 404 el slug), ejerce el flujo finalize → carrito y lo ARCHIVA
+// de nuevo. Nada queda residual en STG: ni el estado del producto ni los
+// objetos de prueba (los diseños los limpia el afterAll).
 
-test("finalize nombre: la lámina va por Storage y NINGÚN request a la app supera 4.5 MB", async ({
-  page,
+const NAME_PRODUCT_SLUG = "nombre-personalizado";
+
+test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al carrito, archivar de nuevo", async ({
+  browser,
 }) => {
-  test.skip(!nameProduct, "no hay producto con superficie name activo en el ambiente");
-  const tracked = trackRequests(page);
+  const exists = await db().product.findFirst({
+    where: { slug: NAME_PRODUCT_SLUG },
+    select: { id: true, name: true },
+  });
+  test.skip(!exists, `no existe el producto ${NAME_PRODUCT_SLUG} en el ambiente`);
+  studioProductIds.add(exists!.id);
+  const page = await (await sharedAdminContext(browser)).newPage();
+  const tracked = await trackRequests(page);
 
-  await page.goto(`/estudio/${nameProduct!.slug}`, { waitUntil: "domcontentloaded" });
-  await dismissCookies(page);
-  const input = page.locator("input.uppercase").first();
-  await expect(input).toBeVisible({ timeout: 60_000 });
-  await input.fill("VALENTINA");
-  const cta = page.getByRole("button", { name: /Ver diseño/ }).first();
-  await cta.click();
-  const dialog = page.getByRole("dialog", { name: /Así se verá/i });
-  await expect(dialog).toBeVisible({ timeout: 60_000 });
-  await dialog.getByRole("button", { name: /agregar al carrito/i }).click();
+  // 1. Restaurar + activar por la UI admin (NUNCA directo en DB: las acciones
+  //    invalidan el tag "catalog" — ver la nota del test). El login admin ya
+  //    se hizo UNA vez en el contexto compartido (rate limit del panel).
+  await page.goto("/admin/productos?status=archived", { waitUntil: "domcontentloaded" });
+  const archivedRow = page.locator("tr", { hasText: exists!.name });
+  await expect(archivedRow).toBeVisible({ timeout: 30_000 });
+  await archivedRow.getByRole("button", { name: "Restaurar" }).click();
+  await expect(page).toHaveURL(/restored=1/, { timeout: 30_000 });
 
-  await page.waitForURL(/\/carrito/, { timeout: 240_000 });
+  await page.goto("/admin/productos?status=inactive", { waitUntil: "domcontentloaded" });
+  const inactiveRow = page.locator("tr", { hasText: exists!.name });
+  await expect(inactiveRow).toBeVisible({ timeout: 30_000 });
+  await inactiveRow.getByRole("button", { name: "Activar" }).click();
+  await expect(inactiveRow.getByRole("button", { name: "Pausar" })).toBeVisible({
+    timeout: 30_000,
+  });
 
-  const puts = storagePuts(tracked);
-  console.log(`[techo] nombre: ${puts.length} PUT(s) a Storage`);
-  expect(puts.length, "la lámina del nombre subió por ticket firmado").toBeGreaterThanOrEqual(1);
-  assertNoOversizedAppRequest(tracked, baseHost);
-  await collectStudioDesigns();
+  try {
+    // 2. Flujo del Estudio: nombre → Vista previa → confirmar → carrito.
+    await page.goto(`/estudio/${NAME_PRODUCT_SLUG}`, { waitUntil: "domcontentloaded" });
+    await dismissCookies(page);
+    const input = page.locator("input.uppercase").first();
+    await expect(input).toBeVisible({ timeout: 60_000 });
+    await input.fill("VALENTINA");
+    const cta = page.getByRole("button", { name: /Ver diseño/ }).first();
+    await cta.click();
+    const dialog = page.getByRole("dialog", { name: /Así se verá/i });
+    await expect(dialog).toBeVisible({ timeout: 60_000 });
+    await dialog.getByRole("button", { name: /agregar al carrito/i }).click();
+
+    await page.waitForURL(/\/carrito/, { timeout: 240_000 });
+
+    const puts = storagePuts(tracked);
+    console.log(
+      `[techo] nombre: ${puts.length} PUT(s) a Storage · ${tracked.filter((r) => r.method === "POST" && new URL(r.url).host === baseHost).length} POSTs a la app`,
+    );
+    expect(puts.length, "la lámina del nombre subió por ticket firmado").toBeGreaterThanOrEqual(1);
+    assertNoOversizedAppRequest(tracked, baseHost);
+    await collectStudioDesigns();
+  } finally {
+    // 3. Archivar de nuevo por la UI admin (STG queda como estaba).
+    await page.goto("/admin/productos", { waitUntil: "domcontentloaded" });
+    const row = page.locator("tr", { hasText: exists!.name });
+    await row.getByRole("link").first().click();
+    await page.getByRole("button", { name: /Archivar/ }).click();
+    await page.getByRole("button", { name: "Confirmar" }).click();
+    // Verificación por DB: archived = deletedAt sellado de nuevo.
+    await expect
+      .poll(
+        async () =>
+          (await db().product.findFirst({
+            where: { slug: NAME_PRODUCT_SLUG },
+            select: { deletedAt: true },
+          }))!.deletedAt !== null,
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    await page.close();
+  }
 });
 
 // ──────────── 3. Galería A+B con total >4.5 MB (presupuesto combinado) ────────────
 
 test("galería A+B >4.5 MB combinados: el upload entra bajo el techo y el diseño se crea", async ({
-  page,
+  browser,
 }) => {
   test.skip(!gallery2Faces, "no hay producto de 2 caras con galería en el ambiente");
-  const tracked = trackRequests(page);
+  const page = await (await sharedAdminContext(browser)).newPage();
+  const tracked = await trackRequests(page);
 
   // Dos caras de ruido ~5.5 MB c/u → combinado ~11 MB (muy por encima del techo).
   const faceA = await bigNoiseJpeg(4000, 2800, 92);
@@ -390,11 +482,6 @@ test("galería A+B >4.5 MB combinados: el upload entra bajo el techo y el diseñ
   );
   expect(totalMb).toBeGreaterThan(4.5);
 
-  await loginAdminWithTotp(page, {
-    email: ADMIN_EMAIL,
-    password: ADMIN_PASSWORD,
-    totpSecret,
-  });
   await page.goto("/admin/disenos", { waitUntil: "domcontentloaded" });
   await page.locator("select").first().selectOption(gallery2Faces!.tag);
   await page.getByPlaceholder("Ej: Flores acuarela").fill(`Audit ${run}`);
@@ -428,18 +515,14 @@ test("galería A+B >4.5 MB combinados: el upload entra bajo el techo y el diseñ
 // ──────────── 4. CMS mediateca con archivo >4.5 MB ────────────
 
 test("mediateca: un archivo >4.5 MB sube comprimido en el navegador sin tocar el techo", async ({
-  page,
+  browser,
 }) => {
-  const tracked = trackRequests(page);
+  const page = await (await sharedAdminContext(browser)).newPage();
+  const tracked = await trackRequests(page);
   const big = await bigNoiseJpeg(4200, 3200, 92);
   console.log(`[techo] mediateca: archivo original ${(big.length / MB).toFixed(2)} MB`);
   expect(big.length).toBeGreaterThan(4.5 * MB);
 
-  await loginAdminWithTotp(page, {
-    email: ADMIN_EMAIL,
-    password: ADMIN_PASSWORD,
-    totpSecret,
-  });
   await page.goto("/admin/contenido/mediateca", { waitUntil: "domcontentloaded" });
   await page
     .locator('input[type="file"]')
@@ -462,19 +545,15 @@ test("mediateca: un archivo >4.5 MB sube comprimido en el navegador sin tocar el
 // ──────────── 5. Ficha del abecedario con archivo >4.5 MB ────────────
 
 test("fichas: una ilustración >4.5 MB sube comprimida en el navegador sin tocar el techo", async ({
-  page,
+  browser,
 }) => {
   test.skip(!letterSet, "no hay set de fichas en el ambiente");
-  const tracked = trackRequests(page);
+  const page = await (await sharedAdminContext(browser)).newPage();
+  const tracked = await trackRequests(page);
   const big = await bigNoisePng(1400, 1800);
   console.log(`[techo] ficha: PNG original ${(big.length / MB).toFixed(2)} MB`);
   expect(big.length).toBeGreaterThan(4.5 * MB);
 
-  await loginAdminWithTotp(page, {
-    email: ADMIN_EMAIL,
-    password: ADMIN_PASSWORD,
-    totpSecret,
-  });
   await page.goto("/admin/disenos?tab=fichas", { waitUntil: "domcontentloaded" });
   // El set elegido por NOMBRE (varias LetterGrid en la página, cada una con su
   // input oculto y su estado): sin el scope, el click y el archivo caían en
