@@ -514,19 +514,20 @@ test("galería A+B >4.5 MB combinados: el upload entra bajo el techo y el diseñ
   // La fila se lee con polling: la escritura de la acción y la lectura del test
   // van por conexiones distintas del pooler (race real vista en mobile-chrome:
   // la fila existía segundos después de la lectura única).
-  let row: { id: string } | null = null;
   await expect
     .poll(
-      async () => {
-        row = await db().designGalleryImage.findFirst({
+      async () =>
+        (await db().designGalleryImage.findFirst({
           where: { name: `Audit ${run}`, tag: gallery2Faces!.tag },
           select: { id: true },
-        });
-        return row !== null;
-      },
+        })) !== null,
       { timeout: 30_000 },
     )
     .toBe(true);
+  const row = await db().designGalleryImage.findFirst({
+    where: { name: `Audit ${run}`, tag: gallery2Faces!.tag },
+    select: { id: true },
+  });
   expect(row, "la fila de la galería existe con A+B").toBeTruthy();
   if (row) createdGalleryImageIds.push(row.id);
 });
