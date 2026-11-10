@@ -1156,3 +1156,130 @@ describe("clearAllSlots — «Borrar el diseño» (2026-10-19)", () => {
     expect(store.getState().canvasData).toBeNull();
   });
 });
+
+// 2026-11-10 — compuerta de decodificación de fotos (bug STG bola navideña:
+// bake de preview/3D vacío al pulsar antes de que el lienzo decodifique).
+// StudioSlot reporta markPhotoLoading (carga en vuelo) y markPhotoDecoded
+// (resuelta). La compuerta solo cuenta cargas EN VUELO conocidas: un slot
+// fuera del viewport no está montado (grid lazy, ADR-063 T5) y no puede
+// decodificar — contarlo bloquearía «Ver diseño»/3D para siempre.
+describe("compuerta de decodificación (loading/decoded + selectores)", () => {
+  it("recién hidratado sin slots montados no bloquea (nada en vuelo conocido)", async () => {
+    const { selectPhotoDecodePending, selectPhotoDecodeTotal } = await import("./store");
+    const store = setup();
+    expect(selectPhotoDecodeTotal(store.getState())).toBe(0);
+    expect(selectPhotoDecodePending(store.getState())).toBe(0);
+  });
+
+  it("carga en vuelo cuenta como pendiente; al decodificar deja de contar", async () => {
+    const { selectPhotoDecodePending, selectPhotoDecodeTotal } = await import("./store");
+    const store = setup();
+    store.getState().markPhotoLoading(0, "main", "https://x/0.png");
+    store.getState().markPhotoLoading(3, "main", "https://x/3.png");
+    expect(selectPhotoDecodeTotal(store.getState())).toBe(2);
+    expect(selectPhotoDecodePending(store.getState())).toBe(2);
+    store.getState().markPhotoDecoded(0, "main", "https://x/0.png");
+    expect(selectPhotoDecodePending(store.getState())).toBe(1);
+    store.getState().markPhotoDecoded(3, "main", "https://x/3.png");
+    expect(selectPhotoDecodePending(store.getState())).toBe(0);
+  });
+
+  it("marcas con URL VIEJA no aplican a la foto vigente (re-firma del recover)", async () => {
+    const { selectPhotoDecodePending, selectPhotoDecodeTotal } = await import("./store");
+    const store = setup();
+    store.getState().markPhotoLoading(0, "main", "https://x/0-VIEJA.png");
+    store.getState().markPhotoDecoded(0, "main", "https://x/0-VIEJA.png");
+    expect(selectPhotoDecodeTotal(store.getState())).toBe(0);
+    expect(selectPhotoDecodePending(store.getState())).toBe(0);
+  });
+
+  it("la URL esperada es el derivado canvasUrl cuando existe (ADR-166)", async () => {
+    const { selectPhotoDecodePending } = await import("./store");
+    const store = setup(
+      makeCanvasData({
+        slots: [
+          {
+            slotIndex: 0,
+            assetId: "a0",
+            assetUrl: "https://x/master.png",
+            canvasUrl: "https://x/canvas.webp",
+          },
+          { slotIndex: 1, assetId: null, assetUrl: null },
+          { slotIndex: 2, assetId: null, assetUrl: null },
+          { slotIndex: 3, assetId: null, assetUrl: null },
+        ],
+      }),
+    );
+    // El master solo carga en modo imprenta (runWithPrintMasters): no cuenta.
+    store.getState().markPhotoLoading(0, "main", "https://x/master.png");
+    expect(selectPhotoDecodePending(store.getState())).toBe(0);
+    store.getState().markPhotoLoading(0, "main", "https://x/canvas.webp");
+    expect(selectPhotoDecodePending(store.getState())).toBe(1);
+    store.getState().markPhotoDecoded(0, "main", "https://x/canvas.webp");
+    expect(selectPhotoDecodePending(store.getState())).toBe(0);
+  });
+
+  it("el avatar IG (profile) también cuenta para la compuerta", async () => {
+    const { selectPhotoDecodePending, selectPhotoDecodeTotal } = await import("./store");
+    const store = setup(
+      makeCanvasData({
+        slots: [
+          {
+            slotIndex: 0,
+            assetId: "a0",
+            assetUrl: "https://x/0.png",
+            profileAssetId: "p0",
+            profileAssetUrl: "https://x/p0.png",
+          },
+          { slotIndex: 1, assetId: null, assetUrl: null },
+          { slotIndex: 2, assetId: null, assetUrl: null },
+          { slotIndex: 3, assetId: null, assetUrl: null },
+        ],
+      }),
+    );
+    store.getState().markPhotoLoading(0, "main", "https://x/0.png");
+    store.getState().markPhotoLoading(0, "profile", "https://x/p0.png");
+    expect(selectPhotoDecodeTotal(store.getState())).toBe(2);
+    expect(selectPhotoDecodePending(store.getState())).toBe(2);
+    store.getState().markPhotoDecoded(0, "main", "https://x/0.png");
+    expect(selectPhotoDecodePending(store.getState())).toBe(1); // falta el avatar
+    store.getState().markPhotoDecoded(0, "profile", "https://x/p0.png");
+    expect(selectPhotoDecodePending(store.getState())).toBe(0);
+  });
+
+  it("reportar la misma URL dos veces es no-op (sin set ni re-render)", async () => {
+    const store = setup();
+    store.getState().markPhotoLoading(0, "main", "https://x/0.png");
+    const loadingBefore = store.getState().loadingPhotoUrls;
+    store.getState().markPhotoLoading(0, "main", "https://x/0.png");
+    expect(store.getState().loadingPhotoUrls).toBe(loadingBefore);
+    store.getState().markPhotoDecoded(0, "main", "https://x/0.png");
+    const decodedBefore = store.getState().decodedPhotoUrls;
+    store.getState().markPhotoDecoded(0, "main", "https://x/0.png");
+    expect(store.getState().decodedPhotoUrls).toBe(decodedBefore);
+  });
+
+  it("no marca dirty ni toca el undo stack (es señal de UI, no de diseño)", async () => {
+    const store = setup();
+    store.getState().markClean();
+    const undoBefore = store.getState().undoStack;
+    store.getState().markPhotoLoading(0, "main", "https://x/0.png");
+    store.getState().markPhotoDecoded(0, "main", "https://x/0.png");
+    expect(store.getState().isDirty).toBe(false);
+    expect(store.getState().undoStack).toBe(undoBefore);
+  });
+
+  it("init reinicia el registro (las URLs del recover se re-firman en el boot)", () => {
+    const store = setup();
+    store.getState().markPhotoLoading(0, "main", "https://x/0.png");
+    store.getState().markPhotoDecoded(0, "main", "https://x/0.png");
+    store.getState().init({
+      designId: "d2",
+      productSlug: "set-fotoimanes",
+      canvasData: makeCanvasData(),
+      templates: [],
+    });
+    expect(store.getState().decodedPhotoUrls).toEqual({});
+    expect(store.getState().loadingPhotoUrls).toEqual({});
+  });
+});

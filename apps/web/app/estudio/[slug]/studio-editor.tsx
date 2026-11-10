@@ -87,7 +87,7 @@ import {
   CALENDAR_PAGE,
   calendarLayoutFromUnitTemplate,
 } from "@/features/personalization/calendar-layout";
-import { SceneGallery, type SceneKind } from "./scene-gallery";
+import { SceneGallery, SceneTextureLoadingOverlay, type SceneKind } from "./scene-gallery";
 import {
   initialFrameColorFromSchema,
   isInstagramTemplate,
@@ -156,7 +156,7 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   ssr: false,
   loading: () => <Book3DLoadingFallback />,
 });
-import { createStudioStore } from "./lib/store";
+import { createStudioStore, selectPhotoDecodePending, selectPhotoDecodeTotal } from "./lib/store";
 import { createSerialTaskQueue } from "./lib/serial-task-queue";
 import { waitForSlotPhotosReady } from "./lib/slot-photo-readiness";
 import { MasterPhotoLoadError, runWithPrintMasters } from "./lib/print-master-mode";
@@ -620,6 +620,12 @@ export function StudioEditor({
     cardLabels?: readonly string[];
   } | null>(null);
   const [sceneBuilding, setSceneBuilding] = useState(false);
+  // 2026-11-10 — compuerta de DECODIFICACIÓN para los visores (bug STG bola
+  // navideña multi-unidad en celular): abrir el 3D/libro antes de que las fotos
+  // decodifiquen horneaba texturas vacías (la espera pre-bake es best-effort
+  // con techo; la compuerta elimina la carrera de raíz). Primitivos del store.
+  const photoDecodePending = useStore(store, selectPhotoDecodePending);
+  const photoDecodeTotal = useStore(store, selectPhotoDecodeTotal);
   // CAL4 — construcción perezosa de las tarjetas mes para la galería (botón "Ver mi calendario").
   const [calendarBuilding, setCalendarBuilding] = useState(false);
   // SEP1 — preview inmersivo de separadores en un libro. null = cerrado; array = texturas de marcador.
@@ -1956,6 +1962,9 @@ export function StudioEditor({
   const handleOpen3D = useCallback(async () => {
     const state = store.getState();
     if (!state.canvasData || bookBuilding) return;
+    // 2026-11-10 — defensa de la compuerta de decodificación (el botón ya se
+    // bloquea con progreso; esto cubre cualquier vía alterna de invocación).
+    if (selectPhotoDecodePending(state) > 0) return;
     setBookBuilding(true);
     try {
       await ensureAllStagesMounted(); // T5: la vista 3D necesita la textura de TODOS los slots
@@ -2006,6 +2015,9 @@ export function StudioEditor({
   const handleOpenScene = useCallback(async () => {
     const state = store.getState();
     if (!state.canvasData || sceneBuilding) return;
+    // 2026-11-10 — defensa de la compuerta de decodificación (el botón ya se
+    // bloquea con progreso; esto cubre cualquier vía alterna de invocación).
+    if (selectPhotoDecodePending(state) > 0) return;
     setSceneBuilding(true);
     try {
       await ensureAllStagesMounted(); // T5: la galería necesita la textura de TODOS los slots
@@ -2885,16 +2897,25 @@ export function StudioEditor({
               <button
                 type="button"
                 onClick={handleOpen3D}
-                disabled={bookBuilding}
-                aria-busy={bookBuilding}
+                disabled={bookBuilding || photoDecodePending > 0}
+                aria-busy={bookBuilding || photoDecodePending > 0}
                 className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
               >
-                {bookBuilding ? (
+                {bookBuilding || photoDecodePending > 0 ? (
                   <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
                 ) : (
                   <Box className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
                 )}
-                <span>{bookBuilding ? texts.comun.armando : texts.lienzo.btnLibro}</span>
+                <span>
+                  {bookBuilding
+                    ? texts.comun.armando
+                    : photoDecodePending > 0
+                      ? fillStudioText(texts.lienzo.cargandoFotos, {
+                          listas: photoDecodeTotal - photoDecodePending,
+                          total: photoDecodeTotal,
+                        })
+                      : texts.lienzo.btnLibro}
+                </span>
                 <span className="sr-only">&nbsp;{texts.lienzo.libroBtnSr}</span>
               </button>
             ) : (
@@ -2902,16 +2923,25 @@ export function StudioEditor({
               <button
                 type="button"
                 onClick={handleOpenScene}
-                disabled={sceneBuilding}
-                aria-busy={sceneBuilding}
+                disabled={sceneBuilding || photoDecodePending > 0}
+                aria-busy={sceneBuilding || photoDecodePending > 0}
                 className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
               >
-                {sceneBuilding ? (
+                {sceneBuilding || photoDecodePending > 0 ? (
                   <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
                 ) : (
                   <Box className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
                 )}
-                <span>{sceneBuilding ? texts.comun.armando : texts.lienzo.btnEspacio}</span>
+                <span>
+                  {sceneBuilding
+                    ? texts.comun.armando
+                    : photoDecodePending > 0
+                      ? fillStudioText(texts.lienzo.cargandoFotos, {
+                          listas: photoDecodeTotal - photoDecodePending,
+                          total: photoDecodeTotal,
+                        })
+                      : texts.lienzo.btnEspacio}
+                </span>
                 <span className="sr-only">{texts.lienzo.espacioBtnSr}</span>
               </button>
             )}
@@ -3125,6 +3155,9 @@ export function StudioEditor({
               facesPerUnit={productConfig.facesPerUnit}
               flat={productConfig.noFold}
             />
+            {/* 2026-11-10 — anunciar la decodificación de texturas en vez de
+                canvas en blanco (mismo overlay de la galería de escenas). */}
+            <SceneTextureLoadingOverlay />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
             </p>

@@ -457,7 +457,7 @@ apps/web/app/estudio/
         ├── konva-pixel-ratio.ts         # Tope Konva.pixelRatio <= 2 en pantalla (ADR-166)
         ├── chrome-bitmap-cache.ts       # Raster compartido único para cromos SVG repetidos entre slots
         ├── slot-snapshot-cache.ts       # Caché de snapshots a 720 px fijos con invalidación por referencia
-        ├── slot-photo-readiness.ts      # Espera de decodificación de nodos slot-photo (4 s) antes de hornear
+        ├── slot-photo-readiness.ts      # Espera de decodificación de nodos slot-photo (8 s) + re-decode escalado
         ├── calendar-card-preview.ts     # Resolución de CSS vars --font-fredoka/--font-inter para canvas 2D
         ├── compose-calendar-page.ts     # Caché LRU (48 páginas) de tarjetas mensuales WebP para 3D y preview
         ├── ig-post-fields.ts            # Transformaciones puras de campos Polaroid Instagram (igLocationOverride…)
@@ -722,8 +722,18 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
     con `pixelRatio <= 2`, de modo que cambiar el zoom visual del lienzo jamás invalida la caché
     compartida entre confirmación y visor 3D.
   - `lib/slot-photo-readiness.ts` espera la decodificación real de los nodos `name="slot-photo"`
-    (plazo máximo `4 s`) y marca entradas `photoPending` para nunca hornear en caché el fondo lila
-    de carga.
+    (plazo máximo `8 s`) y marca entradas `photoPending` para nunca hornear en caché el fondo lila
+    de carga; el re-decode forzado de bitmaps descartados (móviles) corre con presupuesto escalado
+    por foto (`forceDecodeBudgetMs`: `1 500 ms + 700 ms × fotos`, tope `12 s` — el techo fijo de
+    `3 s` se agotaba con las 10 caras de una bola 5× en celular, bug STG 2026-11-10).
+  - **Compuerta de decodificación (2026-11-10)**: «Ver diseño», «Ver en tu espacio» y el libro 3D
+    se bloquean como estado ocupado con progreso («Cargando tus fotos… n/N») mientras alguna foto
+    asignada no ha decodificado en el lienzo. StudioSlot reporta el decode al store
+    (`markPhotoDecoded`, registro `decodedPhotoUrls` validado por URL vigente) y los selectores
+    atómicos `selectPhotoDecodePending/Total` alimentan los botones; el slot con foto aún sin
+    decodificar muestra el overlay «Cargando tu foto…» (distinto del estado vacío) y las escenas 3D
+    anuncian la decodificación de texturas con `SceneTextureLoadingOverlay` (`useProgress`) en vez
+    del `Suspense fallback={null}` a ciegas.
   - `lib/smart-crop.ts` ejecuta `smartcrop` sobre una copia `<= 256 px` y verifica al resolver
     `shouldApplySmartCropResult` contra `photoTransformRef` para no sobrescribir un encuadre manual
     hecho mientras tanto.
@@ -1165,7 +1175,8 @@ Validado en CI con Lighthouse CI (`lighthouserc.json`) y perfilado por producto 
   (`client-photo-upscale.worker.ts`).
 - Caché de snapshots a `720 px` fijos (`lib/slot-snapshot-cache.ts`) con cesión al _event loop_
   (`yieldToMain`), espera de decodificación real `waitForSlotPhotosReady` (`8 s` + re-decode
-  forzado de bitmaps descartados por presión de memoria en móviles, bug owner 2026-11-07), re-cache de
+  forzado de bitmaps descartados por presión de memoria en móviles con presupuesto escalado por
+  foto, bugs owner 2026-11-07 y 2026-11-10), re-cache de
   filtros Konva con debounce al soltar el zoom (`lib/filter-recache.ts`) y análisis `smartcrop`
   restringido a copias `<= 256 px`.
 
