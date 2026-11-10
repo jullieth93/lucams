@@ -9,7 +9,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { totp } from "./totp";
 
 const strip = (v: string | undefined) => v?.replace(/^["']|["']$/g, "");
@@ -84,9 +84,15 @@ export async function loginAdminWithTotp(
   opts: { email: string; password: string; totpSecret: string; dismissOnboarding?: boolean },
 ): Promise<void> {
   const { dismissOnboarding = true } = opts;
-  await page.goto("/admin/login", { waitUntil: "domcontentloaded" });
-  await page.locator('input[name="email"]').fill(opts.email);
-  await page.locator('input[name="password"]').fill(opts.password);
+  await page.goto("/admin/login", { waitUntil: "load" });
+  const email = page.locator('input[name="email"]');
+  const password = page.locator('input[name="password"]');
+  await expect(async () => {
+    await email.fill(opts.email);
+    await password.fill(opts.password);
+    await expect(email).toHaveValue(opts.email, { timeout: 1_500 });
+    await expect(password).toHaveValue(opts.password, { timeout: 1_500 });
+  }).toPass({ timeout: 20_000 });
   await page.getByRole("button", { name: /iniciar sesión/i }).click();
   await page.waitForURL(/\/admin\/login\/mfa/, { timeout: 20_000 });
   await page.getByPlaceholder("123456").fill(totp(opts.totpSecret, Date.now()));
