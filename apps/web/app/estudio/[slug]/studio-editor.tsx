@@ -585,8 +585,8 @@ export function StudioEditor({
   // Konva registre sus stages, para no snapshotear un slot vacío.
   const [forceMountAll, setForceMountAll] = useState(false);
   const ensureAllStagesMounted = useCallback(async () => {
-    const expected = store.getState().canvasData?.slotCount ?? 0;
     const allPresent = () => {
+      const expected = store.getState().canvasData?.slotCount ?? 0;
       if (expected <= 0) return true;
       for (let i = 0; i < expected; i++) if (!slotStagesRef.current.get(i)) return false;
       return true;
@@ -1424,10 +1424,22 @@ export function StudioEditor({
         }
 
         let draftPreviewDataUrl: string | undefined;
-        if (
+        // 2026-11-10 — no construir la miniatura del borrador durante el
+        // auto-save si aún hay fotos decodificando o stages sin montar: evita
+        // bloquear la cola de guardado 8 s en `waitForSlotPhotosReady` o
+        // rasterizar lienzos a medio hidratar. El próximo auto-save con las
+        // fotos listas generará la miniatura sin fricción.
+        const canBuildDraftThumb =
           Date.now() - lastDraftThumbAt >= DRAFT_THUMB_INTERVAL_MS &&
-          canvasData.slots.some((slot) => slot.assetUrl)
-        ) {
+          canvasData.slots.some((slot) => slot.assetUrl) &&
+          selectPhotoDecodePending(store.getState()) === 0 &&
+          canvasData.slots.every((slot) => {
+            const stage = slotStagesRef.current.get(slot.slotIndex);
+            if (slot.assetUrl && !stage?.findOne(".slot-photo")) return false;
+            if (slot.profileAssetUrl && !stage?.findOne(".slot-profile-photo")) return false;
+            return true;
+          });
+        if (canBuildDraftThumb) {
           try {
             const montage = await buildCompositedPreview(
               canvasData,
@@ -1827,13 +1839,20 @@ export function StudioEditor({
         // reusan — el costo por navegación es solo el montaje de su set).
         if (unitRanges.length > 1) {
           const unitSlots = state.canvasData.unitSlots ?? 12;
-          previewPageLoaderRef.current = (u) =>
+          const loader = (u: number) =>
             buildCalendarPreviewMontage(pages.slice(u * unitSlots, (u + 1) * unitSlots), {
               cellW: 240,
               maxCols: 3,
             });
+          previewPageLoaderRef.current = loader;
+          const firstPageUrl = await loader(0);
           setPreviewPagesGeneration((g) => g + 1);
-          setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
+          setPreviewPages(
+            unitRanges.map((_, u) => ({
+              dataUrl: u === 0 ? firstPageUrl : null,
+              label: pageLabel(u),
+            })),
+          );
         }
         setPreviewModalOpen(true);
         trackStudioFunnelStep({
@@ -1891,7 +1910,7 @@ export function StudioEditor({
       // la modal (antes se generaban TODAS acá — el long task del botón).
       if (unitRanges.length > 1) {
         const canvasSnapshot = state.canvasData;
-        previewPageLoaderRef.current = (u) =>
+        const loader = (u: number) =>
           isOrnament
             ? buildOrnamentPreview(
                 canvasSnapshot,
@@ -1914,8 +1933,15 @@ export function StudioEditor({
               : buildCompositedPreview(canvasSnapshot, slotStagesRef.current, productConfig.shape, {
                   unitRange: unitRanges[u]!,
                 });
+        previewPageLoaderRef.current = loader;
+        const firstPageUrl = await loader(0);
         setPreviewPagesGeneration((g) => g + 1);
-        setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
+        setPreviewPages(
+          unitRanges.map((_, u) => ({
+            dataUrl: u === 0 ? firstPageUrl : null,
+            label: pageLabel(u),
+          })),
+        );
       }
       setPreviewModalOpen(true);
       trackStudioFunnelStep({

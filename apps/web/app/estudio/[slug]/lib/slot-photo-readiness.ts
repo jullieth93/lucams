@@ -74,6 +74,32 @@ function decodeNodeImage(node: unknown): Promise<void> {
   });
 }
 
+/**
+ * 2026-11-10 — Re-decodifica las imágenes de UN stage puntual justo antes de su
+ * `stage.toDataURL()`. En Chrome Android la caché de bitmaps decodificados es
+ * acotada (~32-64 MB): decodificar 10 fotos en bloque (`Promise.all` en
+ * `waitForSlotPhotosReady`) puede desalojar en orden LRU las primeras caras
+ * (`Bola 1 de 5`) mientras terminan las últimas, o ceder el hilo (`yieldToMain`
+ * + `loadImage` de snapshots previos) puede desalojar las siguientes a mitad
+ * del bucle. Llamar este helper inmediatamente antes de `snapshotSlotForPreview`
+ * garantiza que el bitmap de ESE stage esté residente en el mismo turno del
+ * event loop en que Konva ejecuta `drawScene()`.
+ */
+export async function ensureStagePhotosDecoded(
+  stage: SlotPhotoReadinessStage | null | undefined,
+  slot: { assetUrl?: string | null; profileAssetUrl?: string | null },
+): Promise<void> {
+  if (!stage) return;
+  const jobs: Promise<void>[] = [];
+  if (slot.assetUrl) jobs.push(decodeNodeImage(stage.findOne(".slot-photo")));
+  if (slot.profileAssetUrl) jobs.push(decodeNodeImage(stage.findOne(".slot-profile-photo")));
+  if (jobs.length === 0) return;
+  await Promise.race([
+    Promise.all(jobs),
+    new Promise<void>((resolve) => setTimeout(resolve, forceDecodeBudgetMs(jobs.length))),
+  ]);
+}
+
 export async function waitForSlotPhotosReady(
   slots: readonly {
     slotIndex: number;

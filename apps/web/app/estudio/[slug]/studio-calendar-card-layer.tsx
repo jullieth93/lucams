@@ -72,6 +72,7 @@ export function CalendarCardLayer({
   onPhotoDragStart,
   onPhotoDragEnd,
   touchDrag = false,
+  preloadedPhoto,
 }: {
   assetUrl?: string | null;
   /** ADR-166 — derivado ≤800px para el lienzo (null/ausente → master de assetUrl). */
@@ -96,11 +97,21 @@ export function CalendarCardLayer({
    * bloquea el touch-action:none del wrapper, no Konva.
    */
   touchDrag?: boolean;
+  /**
+   * 2026-11-10 — imagen pre-cargada por StudioSlot para compartir una única
+   * instancia HTMLImageElement con la capa de calendario.
+   */
+  preloadedPhoto?: HTMLImageElement | null;
 }) {
   // ADR-166 — derivado en el lienzo; master solo durante el snapshot de
   // imprenta (lib/print-master-mode, fallback ADR-081).
   const printMaster = usePrintMasterMode();
-  const [photo] = useImage((printMaster ? assetUrl : (canvasUrl ?? assetUrl)) ?? "", "anonymous");
+  const usePreloaded = !printMaster && preloadedPhoto !== undefined;
+  const [loadedPhoto] = useImage(
+    usePreloaded ? "" : ((printMaster ? assetUrl : (canvasUrl ?? assetUrl)) ?? ""),
+    "anonymous",
+  );
+  const photo = usePreloaded ? (preloadedPhoto ?? undefined) : loadedPhoto;
   const imageNodeRef = useRef<Konva.Image | null>(null);
   const [brandFonts, setBrandFonts] = useState<BrandCanvasFonts | null>(null);
   // Familia real del TÍTULO según el selector de tipo de letra (null hasta resolver →

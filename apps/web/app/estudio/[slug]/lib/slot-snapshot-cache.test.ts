@@ -253,4 +253,27 @@ describe("photoPending — snapshot a medio cargar (placeholder #F4ECFF)", () =>
     snapshotSlotForPreview(stage, slot, ctx);
     expect(stage.toDataURL).toHaveBeenCalledTimes(1);
   });
+
+  it("profileAssetUrl pendiente de .slot-profile-photo se marca provisional y se auto-cura al cargar", () => {
+    const profileLoaded = { value: false };
+    const indicator = { hide: vi.fn(), show: vi.fn() };
+    const node = { hide: vi.fn(), show: vi.fn() };
+    const stage: SnapshotStageSource & { toDataURL: ReturnType<typeof vi.fn> } = {
+      width: () => 450,
+      height: () => 575,
+      find: vi.fn((selector: string) => {
+        if (selector === ".slot-photo") return [node];
+        if (selector === ".slot-profile-photo") return profileLoaded.value ? [node] : [];
+        return [indicator];
+      }),
+      toDataURL: vi.fn(() => `data:image/png;base64,shot-${Math.random()}`),
+    };
+    const slot = makeSlot(0, { profileAssetUrl: "https://x/avatar.png" });
+    const ctx = { unitTemplate: makeTemplate("t1"), borderColor: null };
+    snapshotSlotForPreview(stage, slot, ctx);
+    expect(stage.toDataURL).toHaveBeenCalledTimes(1);
+    profileLoaded.value = true;
+    snapshotSlotForPreview(stage, slot, ctx);
+    expect(stage.toDataURL).toHaveBeenCalledTimes(2);
+  });
 });

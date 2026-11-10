@@ -853,6 +853,38 @@ describe("renderLayer — image-placeholder", () => {
     );
     expect(mocks.konvaProps.some((k) => k.name === "Rect")).toBe(false);
   });
+
+  it("preloadedPhotoImage reutiliza el HTMLImageElement del slot sin duplicar la carga en useImage", () => {
+    const sharedImg = {
+      width: 600,
+      height: 600,
+      naturalWidth: 600,
+      naturalHeight: 600,
+    } as unknown as HTMLImageElement;
+    // Aunque el mock de useImage esté en null/loading, ImagePlaceholder usa
+    // directamente la instancia pre-cargada y pasa "" a su useImage interno.
+    mocks.image = null;
+    mocks.status = "loading";
+    render(
+      renderLayer(
+        phLayer,
+        slot({ assetUrl: "https://x/bola-1a.png" }),
+        STAGE,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { preloadedPhotoImage: sharedImg },
+      ) as React.ReactElement,
+    );
+    expect(mocks.imageSrcs).toEqual([""]);
+    const img = lastKonva("Image");
+    expect(img).toBeDefined();
+    expect(img!.image).toBe(sharedImg);
+    expect(img!.name).toBe("slot-photo");
+  });
 });
 
 // ── renderLayer — texto editable ─────────────────────────────────────

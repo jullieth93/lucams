@@ -15,6 +15,7 @@ import {
   FORCE_DECODE_BUDGET_BASE_MS,
   FORCE_DECODE_BUDGET_MAX_MS,
   FORCE_DECODE_BUDGET_PER_PHOTO_MS,
+  ensureStagePhotosDecoded,
   forceDecodeBudgetMs,
   waitForSlotPhotosReady,
 } from "./slot-photo-readiness";
@@ -154,5 +155,31 @@ describe("forceDecodeBudgetMs", () => {
 
   it("muchas fotos → topa en el máximo (nunca cuelga el click)", () => {
     expect(forceDecodeBudgetMs(100)).toBe(FORCE_DECODE_BUDGET_MAX_MS);
+  });
+});
+
+describe("ensureStagePhotosDecoded — re-decode puntual pre-toDataURL", () => {
+  it("decodifica foto principal y avatar del stage antes de rasterizar", async () => {
+    const decodeMain = vi.fn().mockResolvedValue(undefined);
+    const decodeProfile = vi.fn().mockResolvedValue(undefined);
+    const stage: FakeStage = {
+      findOne: (selector) =>
+        selector === ".slot-photo"
+          ? { image: () => ({ decode: decodeMain }) }
+          : selector === ".slot-profile-photo"
+            ? { image: () => ({ decode: decodeProfile }) }
+            : null,
+    };
+    await ensureStagePhotosDecoded(stage, {
+      assetUrl: "https://x/0.png",
+      profileAssetUrl: "https://x/avatar.png",
+    });
+    expect(decodeMain).toHaveBeenCalledTimes(1);
+    expect(decodeProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it("stage nulo o slot sin fotos es no-op inmediato", async () => {
+    await ensureStagePhotosDecoded(null, { assetUrl: "https://x/0.png" });
+    await ensureStagePhotosDecoded(fakeStage(), { assetUrl: null });
   });
 });

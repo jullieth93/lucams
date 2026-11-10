@@ -721,11 +721,25 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   - `lib/slot-snapshot-cache.ts` rasteriza a un ancho objetivo fijo `SNAPSHOT_TARGET_WIDTH = 720 px`
     con `pixelRatio <= 2`, de modo que cambiar el zoom visual del lienzo jamás invalida la caché
     compartida entre confirmación y visor 3D.
-  - `lib/slot-photo-readiness.ts` espera la decodificación real de los nodos `name="slot-photo"`
-    (plazo máximo `8 s`) y marca entradas `photoPending` para nunca hornear en caché el fondo lila
-    de carga; el re-decode forzado de bitmaps descartados (móviles) corre con presupuesto escalado
-    por foto (`forceDecodeBudgetMs`: `1 500 ms + 700 ms × fotos`, tope `12 s` — el techo fijo de
-    `3 s` se agotaba con las 10 caras de una bola 5× en celular, bug STG 2026-11-10).
+  - `lib/slot-photo-readiness.ts` espera la decodificación real de los nodos `name="slot-photo"` y
+    `name="slot-profile-photo"` (plazo máximo `8 s`) y marca entradas `photoPending` en
+    `lib/slot-snapshot-cache.ts` para nunca hornear en caché el fondo de carga. Además, el re-decode
+    forzado corre tanto en el pre-chequeo por lote (`forceDecodeBudgetMs`: `1 500 ms + 700 ms × fotos`,
+    tope `12 s`) como de forma puntual en cada iteración (`ensureStagePhotosDecoded(stage, slot)`
+    inmediatamente antes de cada `snapshotSlotForPreview` / `stage.toDataURL()`), evitando que el
+    desalojo LRU de bitmaps decodificados en Chrome Android (al decodificar 10 caras de una bola 5× o
+    al ceder el hilo entre iteraciones con `yieldToMain()`) deje en blanco las primeras caras (`Bola 1
+de 5`) y contamine `slotSnapshotCache`.
+  - **Instancia única de imagen por slot y preservación de montaje en grilla (2026-11-10)**:
+    `StudioSlot` comparte su `HTMLImageElement` ya cargado (`preloadedPhotoImage` / `preloadedPhoto`)
+    con `ImagePlaceholder` y `CalendarCardLayer` dentro del árbol Konva (excepto en modo
+    `printMaster`), eliminando la doble descarga/decodificación por slot y esperando `image.decode()`
+    antes de invocar `markPhotoDecoded`. En `StudioCanvasGrid`, cruzar `LAZY_MOUNT_THRESHOLD = 6` (p.
+    ej. pasar de 3 a 4 o 5 bolas = 8..10 slots) conserva en `mountedSlots` los slots ya montados y
+    monta de inmediato todo slot con foto asignada (`assetUrl` o `profileAssetUrl`). Al abrir la
+    vista previa paginada (`unitRanges.length > 1`), `handleFinalize` resuelve la página `0` antes de
+    abrir `StudioPreviewModal` para que la primera unidad (`Bola 1 de N`) aparezca renderizada desde
+    el primer frame.
   - **Compuerta de decodificación (2026-11-10)**: «Ver diseño», «Ver en tu espacio» y el libro 3D
     se bloquean como estado ocupado con progreso («Cargando tus fotos… n/N») mientras alguna foto
     asignada no ha decodificado en el lienzo. StudioSlot reporta el decode al store
