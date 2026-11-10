@@ -52,10 +52,9 @@ import { useRouter } from "next/navigation";
 import nextDynamic from "next/dynamic";
 import { Box, ChevronLeft, ChevronRight, Copy, Loader2, Minus, Plus, X } from "lucide-react";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
-import {
-  createLetterSetDesignAction,
-  finalizeDesignAction,
-} from "@/features/personalization/actions";
+import { createLetterSetDesignAction } from "@/features/personalization/actions";
+import { finalizeWithStagedProduction } from "./lib/finalize-staged-production";
+import { shrinkBlobToFitUploadBudget } from "./client-image-compress";
 import { uploadPreviewPagesWithRetry } from "./preview-pages-upload";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { stashPersonalizedAddToCart } from "@/lib/analytics";
@@ -295,26 +294,52 @@ async function laminaToPreviewPageDataUrl(blob: Blob): Promise<string> {
  * para la vista previa de confirmación (el cliente ve exactamente lo que va a
  * recibir). Apiladas en vertical con el mismo fondo crema del compositor; la
  * línea del carrito/checkout muestra esta misma imagen.
+ *
+ * Tope de resolución (auditoría 2026-11-08): el montaje es SOLO de exhibición —
+ * las láminas de imprenta viajan aparte a 300 DPI. Sin tope, un pedido de 8+
+ * sets apilaba láminas 300 DPI y superaba el presupuesto de píxeles del
+ * normalizador del servidor (25 MP): el finalize moría con "No pudimos procesar
+ * la imagen del preview" y la compra quedaba bloqueada. Ahora el ancho se topa
+ * en 1600 px y el total en 20 MP (holgado bajo el presupuesto).
  */
+const PREVIEW_MONTAGE_MAX_WIDTH_PX = 1600;
+const PREVIEW_MONTAGE_MAX_PIXELS = 20_000_000;
+
 async function montageLaminaBlobs(blobs: Blob[]): Promise<string> {
   const imgs = await Promise.all(blobs.map(blobToImage));
   const gap = 36;
-  const w = Math.max(...imgs.map((i) => i.naturalWidth));
-  const h = imgs.reduce((sum, i) => sum + i.naturalHeight, 0) + gap * (imgs.length - 1);
+  const maxW = Math.max(...imgs.map((i) => i.naturalWidth));
+  const wScale = Math.min(1, PREVIEW_MONTAGE_MAX_WIDTH_PX / maxW);
+  const w = Math.round(maxW * wScale);
+  const h = Math.round(
+    imgs.reduce((sum, i) => sum + i.naturalHeight * wScale, 0) + gap * (imgs.length - 1),
+  );
+  // Segunda reducción proporcional si el apilado aun supera el tope de píxeles.
+  const pxScale = Math.min(1, Math.sqrt(PREVIEW_MONTAGE_MAX_PIXELS / (w * h)));
+  const finalScale = wScale * pxScale;
+  const finalW = Math.max(1, Math.round(maxW * finalScale));
+  const finalH = Math.max(
+    1,
+    Math.round(
+      imgs.reduce((sum, i) => sum + i.naturalHeight * finalScale, 0) + gap * (imgs.length - 1),
+    ),
+  );
   const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = finalW;
+  canvas.height = finalH;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas 2d no disponible");
   ctx.fillStyle = "#FFF8F0";
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, finalW, finalH);
   let y = 0;
   for (const img of imgs) {
-    const x = Math.round((w - img.naturalWidth) / 2);
-    ctx.drawImage(img, x, y);
-    y += img.naturalHeight + gap;
+    const dw = Math.round(img.naturalWidth * finalScale);
+    const dh = Math.round(img.naturalHeight * finalScale);
+    const x = Math.round((finalW - dw) / 2);
+    ctx.drawImage(img, x, y, dw, dh);
+    y += dh + gap;
   }
-  return canvas.toDataURL("image/png");
+  return canvas.toDataURL("image/webp", 0.85);
 }
 
 /** Emoji del chip según la clave de tema (fallback 🎨 para temas nuevos). */
@@ -967,19 +992,40 @@ export function LetterSetEditor({
         setSubmitting(false);
         return;
       }
-      const fd = new FormData();
-      fd.set("designId", created.designId);
-      // La lámina de cada set sube como FALLBACK inmediato (un archivo POR SET);
-      // el RenderJob la reemplaza con el render server-side POR FICHA (300 DPI,
-      // owner 2026-11-03, ADR-188). La modal le cuenta al cliente las fichas
-      // que va a recibir.
-      fd.set("slotCount", String(unitCount));
-      // Preview = montaje de todas las láminas (el MISMO PNG que aprobó el cliente).
-      fd.set("preview", dataUrlToBlob(previewDataUrl!), "preview.png");
-      previewBlobs.forEach((blob, i) => {
-        fd.set(`production_${i}`, blob, `produccion-set-${i + 1}.png`);
+      // Las láminas 300 DPI ya NO viajan en el body del finalize (auditoría
+      // 2026-11-08: N sets × PNG de imprenta superan el techo real de la
+      // plataforma, ~4.5 MB por request). Van por tickets firmados directo a
+      // Storage (finalizeWithStagedProduction: finalize → NEEDS_CLIENT_SLOTS →
+      // PUTs → finalize con useStagedSlots). La lámina de cada set sigue siendo
+      // el FALLBACK inmediato que el RenderJob reemplaza con el render por ficha
+      // (300 DPI, owner 2026-11-03, ADR-188). La modal le cuenta al cliente las
+      // fichas que va a recibir.
+      // Preview = montaje de todas las láminas (el MISMO que aprobó el cliente);
+      // es solo exhibición → se ajusta al presupuesto del payload si hiciera falta.
+      const previewBlob = await shrinkBlobToFitUploadBudget(
+        dataUrlToBlob(previewDataUrl!),
+        "preview.webp",
+      );
+      if (!previewBlob) {
+        setPreviewError(texts.errores.generico);
+        setSubmitting(false);
+        return;
+      }
+      const buildForm = () => {
+        const fd = new FormData();
+        fd.set("designId", created.designId);
+        fd.set("slotCount", String(unitCount));
+        fd.set(
+          "preview",
+          previewBlob,
+          previewBlob.type === "image/webp" ? "preview.webp" : "preview.png",
+        );
+        return fd;
+      };
+      const finalized = await finalizeWithStagedProduction({
+        buildForm,
+        productionBlobs: previewBlobs,
       });
-      const finalized = await finalizeDesignAction(fd);
       if (!finalized.ok) {
         trackStudioFunnelStep({
           eventName: "studio_finalize_failed",
@@ -1000,14 +1046,10 @@ export function LetterSetEditor({
       // fallo silencioso dejaba pedidos sin pager sin que nadie se enterara).
       if (previewPages && previewPages.length > 1) {
         try {
-          await uploadPreviewPagesWithRetry(created.designId, () => {
-            const pagesForm = new FormData();
-            pagesForm.set("designId", created.designId);
-            previewPages.forEach((page, i) => {
-              pagesForm.set(`page_${i}`, dataUrlToBlob(page.dataUrl), `set-${i + 1}.webp`);
-            });
-            return pagesForm;
-          });
+          await uploadPreviewPagesWithRetry(
+            created.designId,
+            previewPages.map((page) => dataUrlToBlob(page.dataUrl)),
+          );
         } catch (pagesErr) {
           console.error("[studio.letter-set.preview-pages]", pagesErr);
         }

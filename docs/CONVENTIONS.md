@@ -106,7 +106,7 @@
 │   ├── legal-content/                     # Fuentes Markdown canónicas del paquete legal (Versión 3)
 │   ├── src/index.ts                       # Singleton PrismaClient con pool acotado + runWithDbRetry
 │   └── scripts/                           # Semillas, auditorías y guardas en scripts/lib/
-└── supabase/migrations/                   # 56 migraciones SQL idempotentes (RLS, REVOKE, Storage, pg_cron)
+└── supabase/migrations/                   # 58 migraciones SQL idempotentes (RLS, REVOKE, Storage, pg_cron)
 ```
 
 ### Anatomía de `apps/web/features/<dominio>/`

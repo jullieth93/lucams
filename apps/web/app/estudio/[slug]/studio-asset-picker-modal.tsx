@@ -37,6 +37,7 @@ import {
 import type { StudioAsset } from "./types";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 import { processPhotoFiles } from "./lib/upload-photo-pipeline";
+import { uploadPhotoDirectToStorage } from "./lib/upload-photo-direct";
 import { predesignedFaceBadge } from "./lib/predesigned-variety";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -345,6 +346,9 @@ export function StudioAssetPickerModal({
         designId,
         rightsAccepted,
         upload: uploadDesignAssetAction,
+        // 2026-11-08 — fallback HEIC ~4.5–10 MB sin decode en el navegador:
+        // subida directa a Storage con ticket firmado (ver lib/upload-photo-direct).
+        uploadDirect: uploadPhotoDirectToStorage,
         onReady: (outcome) => {
           if (!outcome.ok) {
             // El loop viejo cortaba en el PRIMER error (break): con el pipeline

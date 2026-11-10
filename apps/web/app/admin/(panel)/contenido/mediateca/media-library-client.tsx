@@ -27,6 +27,11 @@ import {
   type CmsMediaActionState,
 } from "@/app/admin/(panel)/contenido/actions";
 import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
+import {
+  compressImageForUpload,
+  shrinkToFitUploadBudget,
+  UPLOAD_PAYLOAD_BUDGET_BYTES,
+} from "@/app/estudio/[slug]/client-image-compress";
 
 /** Referencia de uso (misma forma que CmsMediaUsageRef de lib/cms-media.ts). */
 export type MediaUsageRef = {
@@ -74,10 +79,29 @@ function UploadCard() {
 
   function handleUpload() {
     if (!file || !alt.trim()) return;
-    const fd = new FormData();
-    fd.set("file", file);
-    fd.set("alt", alt.trim());
-    startTransition(() => dispatch(fd));
+    const altValue = alt.trim();
+    startTransition(async () => {
+      // Auditoría 2026-11-08 — la Server Action corre bajo el techo real de
+      // plataforma (~4.5 MB por request): un archivo de 4.5–5 MB pasaba la
+      // regla de negocio (5 MB) pero moría con el 413 de Vercel ANTES de sharp.
+      // Se comprime en el navegador (el servidor reduce a WebP ≤2000 px q82 de
+      // todos modos — no hay pérdida adicional) y si aun así no cabe, error claro.
+      const compressed = await compressImageForUpload(file);
+      const prepared =
+        compressed.size > UPLOAD_PAYLOAD_BUDGET_BYTES
+          ? await shrinkToFitUploadBudget(compressed)
+          : compressed;
+      if (!prepared) {
+        toast.error(
+          `"${file.name}" es demasiado grande y este navegador no pudo comprimirla. Exporta la imagen como JPG o WebP e inténtalo de nuevo.`,
+        );
+        return;
+      }
+      const fd = new FormData();
+      fd.set("file", prepared);
+      fd.set("alt", altValue);
+      dispatch(fd);
+    });
   }
 
   useEffect(() => {

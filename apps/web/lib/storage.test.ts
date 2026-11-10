@@ -797,8 +797,9 @@ describe("uploadCustomerPhoto — camino feliz + firma de URL", () => {
       designId: "design-7",
     });
 
-    // ── Path scheme: <ownerId>/<designId>/<uuid>.<ext> ──
-    expect(result.path).toMatch(/^owner-123\/design-7\/[0-9a-f-]{36}\.png$/);
+    // ── Path scheme: <ownerId>/<designId>/<uuid>.<ext> — masters uniformes
+    // WebP desde la auditoría 2026-11-08 (antes conservaba el formato de entrada) ──
+    expect(result.path).toMatch(/^owner-123\/design-7\/[0-9a-f-]{36}\.webp$/);
 
     // ── upload() recibió path, buffer procesado y opts correctos ──
     expect(uploadMock).toHaveBeenCalledTimes(1);
@@ -807,7 +808,7 @@ describe("uploadCustomerPhoto — camino feliz + firma de URL", () => {
     expect(Buffer.isBuffer(uploadedBuffer)).toBe(true);
     // metadata.owner_id DEBE coincidir con ownerId (lo verifican las RLS policies).
     expect(opts).toMatchObject({
-      contentType: "image/png",
+      contentType: "image/webp",
       cacheControl: "3600",
       upsert: false,
       metadata: { owner_id: ownerId },
@@ -830,8 +831,10 @@ describe("uploadCustomerPhoto — camino feliz + firma de URL", () => {
     expect(result.sizeBytes).toBeGreaterThan(0);
 
     // ── exifStripped siempre true (sharp.rotate() descarta EXIF) ──
+    // Master normalizado a WebP (auditoría 2026-11-08): el codec de salida ya
+    // no depende del formato de entrada.
     expect(result.exifStripped).toBe(true);
-    expect(result.mimeType).toBe("image/png");
+    expect(result.mimeType).toBe("image/webp");
 
     // ── validation presente y bien formada (no bloquea, solo informa) ──
     expect(result.validation).toBeDefined();
@@ -845,7 +848,7 @@ describe("uploadCustomerPhoto — camino feliz + firma de URL", () => {
       ownerId,
       designId: null,
     });
-    expect(result.path).toMatch(/^owner-123\/pending\/[0-9a-f-]{36}\.png$/);
+    expect(result.path).toMatch(/^owner-123\/pending\/[0-9a-f-]{36}\.webp$/);
     // El path firmado y el subido comparten el segmento "pending".
     expect(uploadMock.mock.calls[0][0]).toContain("/pending/");
   });
@@ -889,36 +892,37 @@ describe("uploadCustomerPhoto — camino feliz + firma de URL", () => {
     expect(createSignedUrlMock).not.toHaveBeenCalled();
   });
 
-  it("el MIME REAL manda sobre el declarado: JPEG declarado image/heic se guarda como image/jpeg", async () => {
+  it("el MIME REAL manda sobre el declarado: JPEG declarado image/heic se acepta y queda normalizado a WebP", async () => {
     // El sniff de magic bytes gana: un JPEG real declarado image/heic se detecta
-    // como jpeg (no dispara la rama HEIC), y el contentType/mimeType/ext salen del
-    // formato REAL, no del declarado. Corrige el bug de metadata (antes guardaba el
-    // MIME declarado por el cliente).
+    // como jpeg (no dispara la rama HEIC) y se acepta. Desde la auditoría
+    // 2026-11-08 la SALIDA es siempre WebP q92 (master uniforme): el contentType/
+    // mimeType/ext reflejan el normalizado, nunca el declarado por el cliente.
     const result = await uploadCustomerPhoto({
       buffer: realJpeg,
       originalMimeType: "image/heic",
       ownerId,
       designId: "design-heic",
     });
-    expect(result.mimeType).toBe("image/jpeg");
-    expect(result.path).toMatch(/^owner-123\/design-heic\/[0-9a-f-]{36}\.jpg$/);
-    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/jpeg" });
+    expect(result.mimeType).toBe("image/webp");
+    expect(result.path).toMatch(/^owner-123\/design-heic\/[0-9a-f-]{36}\.webp$/);
+    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/webp" });
     expect(result.width).toBe(80);
     expect(result.height).toBe(60);
   });
 
-  it("PNG real declarado image/webp se guarda como image/png (metadata correcta)", async () => {
-    // Mismatch benigno (imagen real, tipo declarado equivocado): se acepta usando el
-    // formato REAL. No rompemos subidas legítimas por un content-type mal etiquetado.
+  it("PNG real declarado image/webp se acepta y queda normalizado a WebP (metadata correcta)", async () => {
+    // Mismatch benigno (imagen real, tipo declarado equivocado): se acepta usando
+    // el formato REAL para el gate y se sella WebP en la salida. No rompemos
+    // subidas legítimas por un content-type mal etiquetado.
     const result = await uploadCustomerPhoto({
       buffer: realPng,
       originalMimeType: "image/webp",
       ownerId,
       designId: "design-mismatch",
     });
-    expect(result.mimeType).toBe("image/png");
-    expect(result.path).toMatch(/\.png$/);
-    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/png" });
+    expect(result.mimeType).toBe("image/webp");
+    expect(result.path).toMatch(/\.webp$/);
+    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/webp" });
   });
 });
 
@@ -953,12 +957,13 @@ describe("uploadCustomerPhoto — derivado de lienzo (ADR-166)", () => {
     });
 
     // El MASTER sigue siendo el path principal (imprenta lo lee por este path).
-    expect(result.path).toMatch(/^owner-123\/design-7\/[0-9a-f-]{36}\.png$/);
+    // Masters uniformes WebP desde la auditoría 2026-11-08 (antes .png aquí).
+    expect(result.path).toMatch(/^owner-123\/design-7\/[0-9a-f-]{36}\.webp$/);
     expect(result.width).toBe(1600);
     expect(result.height).toBe(1200);
 
     // Derivado: hermano <uuid>.canvas.webp, firmado con el mismo TTL 1h.
-    expect(result.canvasPath).toBe(result.path.replace(/\.png$/, ".canvas.webp"));
+    expect(result.canvasPath).toBe(result.path.replace(/\.webp$/, ".canvas.webp"));
     expect(result.canvasSignedUrl).toBe(
       `https://ref.supabase.co/sign/${result.canvasPath}?token=tok`,
     );
@@ -1009,7 +1014,7 @@ describe("uploadCustomerPhoto — derivado de lienzo (ADR-166)", () => {
       ownerId,
       designId: "design-7",
     });
-    expect(result.path).toMatch(/\.png$/);
+    expect(result.path).toMatch(/\.webp$/);
     expect(result.signedUrl).toContain("?token=tok");
     expect(result.canvasPath).toBeNull();
     expect(result.canvasSignedUrl).toBeNull();
@@ -1057,7 +1062,7 @@ describe("uploadCustomerPhoto — HEIC de iPhone (heic-decode)", () => {
   const FIXTURE = new URL("../tests/fixtures/sample.heic", import.meta.url);
   const heic = existsSync(FIXTURE) ? readFileSync(FIXTURE) : null;
 
-  it("decodifica HEIC real y sube JPEG (contentType forzado a image/jpeg)", async (ctx) => {
+  it("decodifica HEIC real y sube WebP (master uniforme, contentType image/webp)", async (ctx) => {
     if (!heic) return ctx.skip();
     const result = await uploadCustomerPhoto({
       buffer: heic,
@@ -1065,18 +1070,20 @@ describe("uploadCustomerPhoto — HEIC de iPhone (heic-decode)", () => {
       ownerId: "owner-123",
       designId: null,
     });
-    expect(result.mimeType).toBe("image/jpeg");
+    // 2026-11-08: el HEIC se decodifica con heic-decode (intermedio JPEG q92) y
+    // el master final sale WebP q92 como todo el resto de entradas.
+    expect(result.mimeType).toBe("image/webp");
     expect(result.width).toBe(1280);
     expect(result.height).toBe(854);
     expect(result.exifStripped).toBe(true);
-    // El upload se hizo con el JPEG procesado, no con el HEIC original.
+    // El upload se hizo con la imagen procesada, no con el HEIC original.
     // (1280×854 > 800px → también se sube el derivado de lienzo, ADR-166: 2 uploads;
     // el PRIMERO es siempre el master que lee imprenta.)
     expect(uploadMock).toHaveBeenCalledTimes(2);
     const [, body, opts] = uploadMock.mock.calls[0];
-    expect((opts as { contentType?: string }).contentType).toBe("image/jpeg");
+    expect((opts as { contentType?: string }).contentType).toBe("image/webp");
     expect(Buffer.isBuffer(body)).toBe(true);
-    expect((body as Buffer).length).toBeGreaterThan(10_000); // JPEG real, no el HEIC
+    expect((body as Buffer).length).toBeGreaterThan(10_000); // imagen real, no el HEIC
     expect(result.signedUrl).toContain("https://ref.supabase.co/sign/");
   });
 

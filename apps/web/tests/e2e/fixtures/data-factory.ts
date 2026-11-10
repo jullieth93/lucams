@@ -10,6 +10,33 @@
  * deterministas y locales (no se agregan dependencias para esto).
  */
 import { db } from "./db";
+import { baseUrlFor, currentEnv, loadEnvFor, strip } from "../_setup/env";
+
+/**
+ * Invalida el tag "catalog" del servidor bajo prueba (auditoría 2026-11-08).
+ *
+ * Los fixtures escriben productos DIRECTO en la DB: las server actions que
+ * invalidan la caché del storefront nunca corren, y el proxy 404 de PDP
+ * (SEO-001) decide contra el set CACHEADO de slugs vivos → el producto de test
+ * caía en falso 404 hasta el TTL (fallo E2E del harness, no del negocio).
+ * La utilidad /api/test-utils/revalidate-catalog solo existe si el servidor
+ * tiene E2E_UTILS_TOKEN configurada; sin token esto es no-op silencioso
+ * (en `next dev` la caché no persiste entre requests y no hace falta).
+ */
+export async function invalidateCatalogCache(): Promise<void> {
+  const env = currentEnv();
+  loadEnvFor(env);
+  const token = strip(process.env.E2E_UTILS_TOKEN);
+  if (!token) return;
+  try {
+    await fetch(`${baseUrlFor(env)}/api/test-utils/revalidate-catalog`, {
+      method: "POST",
+      headers: { "x-e2e-utils-token": token },
+    });
+  } catch {
+    // best-effort: un server caído ya tumba el test por su propio camino
+  }
+}
 
 export type EphemeralProduct = {
   productId: string;
@@ -63,6 +90,9 @@ export async function createEphemeralProduct(
     },
     select: { id: true, slug: true, name: true, variants: { select: { id: true } } },
   });
+  // El proxy decide el 404 de PDP contra el set cacheado de slugs vivos: sin
+  // invalidar, la PDP del producto recién creado 404 hasta el TTL.
+  await invalidateCatalogCache();
   return {
     productId: product.id,
     categoryId: category.id,
@@ -93,6 +123,7 @@ export async function deleteEphemeralProduct(p: EphemeralProduct): Promise<void>
   await db()
     .category.deleteMany({ where: { id: p.categoryId } })
     .catch(() => {});
+  await invalidateCatalogCache();
 }
 
 /**
@@ -144,6 +175,7 @@ export async function deleteEphemeralProductsByTag(tag: string): Promise<void> {
   await db()
     .category.deleteMany({ where: { id: { in: catIds } } })
     .catch(() => {});
+  await invalidateCatalogCache();
 }
 
 /** Datos de cliente/cotización de prueba. Email en .test → red de limpieza. */

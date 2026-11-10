@@ -8,7 +8,7 @@
 - **Tienda activa (`ADR-077`):** `lucamsshop.com` vende en producción en modo **`full`**
   (`NEXT_PUBLIC_STORE_MODE=full`) con pagos Wompi, contraentrega y envíos Aveonline + Envío Lucams Bogotá.
 - **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js 16, TS strict, Tailwind v4, shadcn/ui) y
-  `packages/db` (**77 modelos Prisma**, **33 enums**, **97 migraciones Prisma** + **56 SQL Supabase**
+  `packages/db` (**77 modelos Prisma**, **33 enums**, **97 migraciones Prisma** + **58 SQL Supabase**
   con RLS y event trigger `REVOKE` automático `049` en el 100 % de las tablas).
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) bajo el ruleset
   `protect-ramas-criticas` con PR obligatorio y **5 checks requeridos** (`Typecheck + Lint + Build`,
@@ -110,8 +110,9 @@
 
 1. **Recovery codes MFA admin:** regenerar códigos de cuentas antiguas para retirar el fallback
    legacy SHA-256 en `apps/web/features/admin-mfa/recovery-codes.ts`.
-2. **Leaked Password Protection nativo:** activar en Supabase Auth al pasar a plan Pro (hoy cubierto
-   por `apps/web/lib/pwned-passwords.ts` con HIBP k-anonymity).
+2. **Leaked Password Protection nativo:** ACTIVO en `lucams-prod` desde la auditoría 2026-11-08
+   (`password_hibp_enabled: true` vía Management API — el proyecto ya está en plan Pro). El fallback
+   `apps/web/lib/pwned-passwords.ts` (HIBP k-anonymity) queda como segunda capa.
 3. **Mejoras opcionales:** evaluar `ADR-118` (unificar preview cliente con renderer servidor),
    conectar `lib/texture-resolution.ts` en `buildMagnetTextures`, aplicar `Category.visibleFilters`
    en `GET /api/catalog/filters` y sumar vectores `.svg` en `apps/web/public/brand/`.

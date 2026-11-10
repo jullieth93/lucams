@@ -109,7 +109,12 @@ vi.mock("./cron-heartbeat", () => ({
   BACKUP_STALE_MS: 36 * 60 * 60 * 1000,
 }));
 vi.mock("./email-deliverability", () => ({ getEmailDeliverabilityStats }));
-vi.mock("./service", () => ({ getStorageQuota }));
+// Las constantes de capacidad se conservan reales (umbrales del plan Pro) — solo
+// se mockea la medición.
+vi.mock("./service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./service")>()),
+  getStorageQuota,
+}));
 
 import { evaluateAlerts } from "./alerts";
 import { PENDING_PAYMENT_EXPIRY_HOURS } from "@/features/orders/constants";
@@ -501,10 +506,12 @@ describe("evaluateAlerts — capacidad de Supabase (auditoría 2026-10-20)", () 
     expect(firing.some((a) => a.key === "capacity_storage_high")).toBe(false);
   });
 
-  it("storage sobre 800 MB → ALTA con el consumo en MB", async () => {
+  // Umbrales del plan Pro de lucams-prod (auditoría 2026-11-08): 80% de 100 GB
+  // Storage / 8 GB DB (constantes SUPABASE_*_WARN_BYTES en ./service).
+  it("storage sobre el 80% del plan Pro (80 GB) → ALTA con el consumo en GB", async () => {
     getStorageQuota.mockResolvedValue({
       buckets: [],
-      measuredBytes: 900 * 1024 * 1024,
+      measuredBytes: 90 * 1024 * 1024 * 1024,
       degraded: false,
     });
 
@@ -512,13 +519,13 @@ describe("evaluateAlerts — capacidad de Supabase (auditoría 2026-10-20)", () 
 
     const alert = firing.find((a) => a.key === "capacity_storage_high");
     expect(alert?.severity).toBe("alta");
-    expect(alert?.title).toContain("900 MB");
+    expect(alert?.title).toContain("90.0 GB");
   });
 
   it("medición degradada → lo advierte en el detalle", async () => {
     getStorageQuota.mockResolvedValue({
       buckets: [],
-      measuredBytes: 900 * 1024 * 1024,
+      measuredBytes: 90 * 1024 * 1024 * 1024,
       degraded: true,
     });
 
@@ -527,12 +534,12 @@ describe("evaluateAlerts — capacidad de Supabase (auditoría 2026-10-20)", () 
     expect(firing.find((a) => a.key === "capacity_storage_high")?.detail).toContain("DEGRADADA");
   });
 
-  it("BD sobre 400 MB → ALTA; bajo el umbral → NO dispara", async () => {
-    queryRaw.mockResolvedValue([{ dbBytes: BigInt(500 * 1024 * 1024) }]);
+  it("BD sobre el 80% del plan Pro (6.4 GB) → ALTA; bajo el umbral → NO dispara", async () => {
+    queryRaw.mockResolvedValue([{ dbBytes: BigInt(7 * 1024 * 1024 * 1024) }]);
     let firing = await evaluateAlerts(new Date());
     expect(firing.find((a) => a.key === "capacity_db_high")?.severity).toBe("alta");
 
-    queryRaw.mockResolvedValue([{ dbBytes: BigInt(48 * 1024 * 1024) }]);
+    queryRaw.mockResolvedValue([{ dbBytes: BigInt(500 * 1024 * 1024) }]);
     firing = await evaluateAlerts(new Date());
     expect(firing.some((a) => a.key === "capacity_db_high")).toBe(false);
   });

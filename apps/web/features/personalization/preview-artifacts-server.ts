@@ -39,21 +39,55 @@ async function uploadWebp(path: string, data: Buffer): Promise<boolean> {
 }
 
 /**
+ * ¿Están TODAS las páginas 01..totalPages en Storage? Verificación de
+ * continuidad antes de sellar Design.previewPagesCount (auditoría 2026-11-08):
+ * con la subida por lotes, un lote omitido o dos llamadas concurrentes podían
+ * dejar el lote final llegando sin las páginas del medio — y el sellado
+ * exhibiría un pager con huecos en el carrito. Fail-closed: si no se puede
+ * listar, NO se sella (el cliente reintenta).
+ */
+export async function previewPagesAreComplete(
+  designId: string,
+  totalPages: number,
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseService.storage
+      .from(PREVIEWS_BUCKET)
+      .list(`${designId}/pages`);
+    if (error || !data) return false;
+    const present = new Set(data.map((f) => f.name));
+    for (let p = 1; p <= totalPages; p++) {
+      if (!present.has(`${String(p).padStart(2, "0")}.webp`)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Sube las páginas por unidad del preview (las compone el Estudio con el MISMO
  * compositor de la modal «Vista previa» — fidelidad WYSIWYG), re-codificadas a
  * WebP en pages/NN.webp. Devuelve el número de páginas subidas, o null si falló
  * todo.
+ *
+ * `offset` (auditoría 2026-11-08 — subida por lotes): el Estudio envía las
+ * páginas en varios requests porque Vercel corta el body de una Server Action
+ * en ~4.5 MB y 24 páginas × 1 MB no caben en uno solo. Cada lote se escribe en
+ * su posición real (offset+i+1) y es todo-o-nada EN SU LOTE (un lote a medias
+ * dejaría un pager con huecos); el sellado de Design.previewPagesCount lo hace
+ * el llamador solo con el lote final.
  */
 export async function uploadPreviewPages(
   designId: string,
   pages: Buffer[],
+  offset = 0,
 ): Promise<number | null> {
-  if (pages.length === 0 || pages.length > PREVIEW_PAGES_MAX) return null;
+  if (pages.length === 0 || offset < 0 || offset + pages.length > PREVIEW_PAGES_MAX) return null;
   try {
     const sharp = (await import("./sharp-safe")).default;
-    // Decode de TODAS las páginas primero: si una no decodifica se aborta sin
-    // subir nada (todo-o-nada — un set de páginas a medias dejaría un pager con
-    // huecos en el carrito).
+    // Decode de TODAS las páginas del lote primero: si una no decodifica se
+    // aborta sin subir nada del lote (todo-o-nada por lote).
     const processed = await Promise.all(
       pages.map((page) =>
         // LUC-SEC-005 — presupuesto explícito por página (las compone el
@@ -70,7 +104,7 @@ export async function uploadPreviewPages(
       ),
     );
     for (const [i, p] of processed.entries()) {
-      if (!(await uploadWebp(designPreviewPagePath(designId, i + 1), p))) return null;
+      if (!(await uploadWebp(designPreviewPagePath(designId, offset + i + 1), p))) return null;
     }
     return processed.length;
   } catch (err) {

@@ -14,9 +14,11 @@ import { describe, expect, it, vi } from "vitest";
 import { UPLOAD_PAYLOAD_BUDGET_BYTES } from "../client-image-compress";
 import {
   buildAssetFormData,
+  DIRECT_UPLOAD_MAX_BYTES,
   isTooBigUploadError,
   processPhotoFiles,
   UPLOAD_PIPELINE_CONCURRENCY,
+  type DirectUploadFn,
   type ProcessedPhoto,
   type UploadAssetFn,
 } from "./upload-photo-pipeline";
@@ -274,5 +276,119 @@ describe("processPhotoFiles — presupuesto del payload (fail-closed honesto)", 
 
     expect(outcome.ok).toBe(true);
     expect(upload).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fallback de subida DIRECTA a Storage (auditoría 2026-11-08): un HEIC
+// ~4.5–10 MB que el navegador no decodifica (jsdom = mismo comportamiento) ya
+// no muere fail-closed: viaja ORIGINAL por ticket firmado + PUT + ingest.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("processPhotoFiles — fallback HEIC de subida directa (2026-11-08)", () => {
+  const overBudget = UPLOAD_PAYLOAD_BUDGET_BYTES + 1;
+
+  it("un HEIC que no cabe ni se reduce va por la subida directa con el archivo ORIGINAL", async () => {
+    const big = new File([new Uint8Array(overBudget)], "foto.heic", { type: "image/heic" });
+    const upload = vi.fn<UploadAssetFn>();
+    const uploadDirect = vi.fn<DirectUploadFn>(async () => okResult("direct-1"));
+
+    const [outcome] = await processPhotoFiles([big], {
+      designId: "d1",
+      rightsAccepted: true,
+      upload,
+      uploadDirect,
+      onReady: () => {},
+    });
+
+    expect(outcome).toMatchObject({ ok: true, fileName: "foto.heic", improved: false });
+    expect(upload).not.toHaveBeenCalled();
+    expect(uploadDirect).toHaveBeenCalledTimes(1);
+    // El archivo ORIGINAL, sin preparar (el servidor lo normaliza al ingerir).
+    expect((uploadDirect.mock.calls[0]![0] as File).size).toBe(overBudget);
+    expect(uploadDirect.mock.calls[0]![1]).toMatchObject({ designId: "d1", rightsAccepted: true });
+  });
+
+  it("HEIC por extensión (file.type vacío de iOS) también toma la subida directa", async () => {
+    const big = new File([new Uint8Array(overBudget)], "IMG_1234.HEIC", { type: "" });
+    const upload = vi.fn<UploadAssetFn>();
+    const uploadDirect = vi.fn<DirectUploadFn>(async () => okResult("direct-2"));
+
+    const [outcome] = await processPhotoFiles([big], {
+      designId: null,
+      rightsAccepted: true,
+      upload,
+      uploadDirect,
+      onReady: () => {},
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(uploadDirect).toHaveBeenCalledTimes(1);
+  });
+
+  it("un HEIC sobre el tope del bucket (10 MB) NO usa la subida directa: fail-closed", async () => {
+    const huge = new File([new Uint8Array(DIRECT_UPLOAD_MAX_BYTES + 1)], "enorme.heic", {
+      type: "image/heic",
+    });
+    const upload = vi.fn<UploadAssetFn>();
+    const uploadDirect = vi.fn<DirectUploadFn>();
+
+    const [outcome] = await processPhotoFiles([huge], {
+      designId: null,
+      rightsAccepted: true,
+      upload,
+      uploadDirect,
+      onReady: () => {},
+    });
+
+    expect(outcome).toMatchObject({ ok: false, kind: "too-big" });
+    expect(upload).not.toHaveBeenCalled();
+    expect(uploadDirect).not.toHaveBeenCalled();
+  });
+
+  it("un JPEG grande irreductible NO usa la subida directa (fail-closed como antes)", async () => {
+    const big = new File([new Uint8Array(overBudget)], "grande.jpg", { type: "image/jpeg" });
+    const upload = vi.fn<UploadAssetFn>();
+    const uploadDirect = vi.fn<DirectUploadFn>();
+
+    const [outcome] = await processPhotoFiles([big], {
+      designId: null,
+      rightsAccepted: true,
+      upload,
+      uploadDirect,
+      onReady: () => {},
+    });
+
+    expect(outcome).toMatchObject({ ok: false, kind: "too-big" });
+    expect(upload).not.toHaveBeenCalled();
+    expect(uploadDirect).not.toHaveBeenCalled();
+  });
+
+  it("ok:false de la subida directa llega como kind server; una excepción, como network", async () => {
+    const big = new File([new Uint8Array(overBudget)], "foto.heic", { type: "image/heic" });
+    const upload = vi.fn<UploadAssetFn>();
+    const rejected = vi.fn<DirectUploadFn>(async () => ({ ok: false, message: "rate limit" }));
+    const crashed = vi.fn<DirectUploadFn>(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    const [serverOutcome] = await processPhotoFiles([big], {
+      designId: null,
+      rightsAccepted: true,
+      upload,
+      uploadDirect: rejected,
+      onReady: () => {},
+    });
+    expect(serverOutcome).toMatchObject({ ok: false, kind: "server", serverMessage: "rate limit" });
+
+    const [networkOutcome] = await processPhotoFiles([big], {
+      designId: null,
+      rightsAccepted: true,
+      upload,
+      uploadDirect: crashed,
+      onReady: () => {},
+    });
+    expect(networkOutcome).toMatchObject({ ok: false, kind: "network" });
+    expect(upload).not.toHaveBeenCalled();
   });
 });

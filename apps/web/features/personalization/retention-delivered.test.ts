@@ -313,6 +313,12 @@ vi.mock("@/lib/db", () => ({
         return { count: where.designId.in.length };
       },
     },
+    // ZIPs de taller por orden (2026-11-08): cada diseño cuelga de una orden
+    // sintética ord-<designId>; el purge best-effort lista `_bundles/ord-*`.
+    orderItem: {
+      findMany: async ({ where }: { where: { designId: { in: string[] } } }) =>
+        where.designId.in.map((id) => ({ orderId: `ord-${id}` })),
+    },
     $transaction: async (ops: Array<Promise<unknown>>) => Promise.all(ops),
   },
 }));
@@ -379,6 +385,29 @@ describe("purga post-entrega — qué se borra y qué se conserva", () => {
   it("NUNCA toca el bucket de previews (previewUrl se conserva por política)", async () => {
     await runPurge();
     expect(removeCalls.some((c) => c.bucket === "design-previews")).toBe(false);
+  });
+
+  // 2026-11-08 — los ZIPs de taller (`_bundles/<orderId>/`) contienen los mismos
+  // renders PII: se borran con la purga (regenerables a demanda, best-effort).
+  it("borra los ZIPs de taller de las órdenes de los diseños purgados", async () => {
+    listMock.mockImplementation(async (prefix: string) =>
+      prefix.startsWith("_bundles/")
+        ? { data: [{ name: "pedido-x-produccion.zip" }], error: null }
+        : { data: [], error: null },
+    );
+
+    await runPurge();
+
+    const production = removeCalls
+      .filter((c) => c.bucket === "production-assets")
+      .flatMap((c) => c.paths);
+    for (const id of expectedPurged()) {
+      expect(production).toContain(`_bundles/ord-${id}/pedido-x-produccion.zip`);
+    }
+    // Nada de órdenes de diseños conservados.
+    for (const c of CASES.filter((x) => !x.purge)) {
+      expect(production).not.toContain(`_bundles/ord-${c.design.id}/pedido-x-produccion.zip`);
+    }
   });
 
   it("no borra la fila Design ni toca el snapshot del pedido: solo marca purgedAt y limpia punteros", async () => {

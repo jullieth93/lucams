@@ -6,19 +6,35 @@ const {
   recordAdminAction,
   getOrderProductionBundle,
   downloadProductionAsset,
+  uploadOrderProductionBundle,
+  signOrderProductionBundle,
   composeAssemblySheet,
 } = vi.hoisted(() => ({
   verifyAdminRouteAccess: vi.fn(),
   recordAdminAction: vi.fn(async () => {}),
   getOrderProductionBundle: vi.fn(),
   downloadProductionAsset: vi.fn(async () => new Uint8Array([137, 80, 78, 71])),
+  // Auditoría 2026-11-08 — el ZIP ya no viaja en el response: se publica en
+  // production-assets (`_bundles/`) y la ruta redirige a su URL firmada.
+  uploadOrderProductionBundle: vi.fn(
+    async (opts: { orderId: string; filename: string }) =>
+      `_bundles/${opts.orderId}/${opts.filename}`,
+  ),
+  signOrderProductionBundle: vi.fn(
+    async (path: string) =>
+      `https://mock.supabase/storage/v1/object/sign/production-assets/${path}?token=abc`,
+  ),
   composeAssemblySheet: vi.fn(async () => Buffer.from([137, 80, 78, 71])),
 }));
 
 vi.mock("@/lib/admin-rbac-guard", () => ({ verifyAdminRouteAccess }));
 vi.mock("@/lib/admin-audit", () => ({ recordAdminAction }));
 vi.mock("@/features/orders/service", () => ({ getOrderProductionBundle }));
-vi.mock("@/lib/storage", () => ({ downloadProductionAsset }));
+vi.mock("@/lib/storage", () => ({
+  downloadProductionAsset,
+  uploadOrderProductionBundle,
+  signOrderProductionBundle,
+}));
 vi.mock("@/features/personalization/assembly-sheet", () => ({ composeAssemblySheet }));
 vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -73,8 +89,22 @@ describe("GET /admin/pedidos/[number]/produccion (S11 · [OPS-01] / [SEC-02])", 
       req,
       checkIdle: true,
     });
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toBe("application/zip");
+    // El ZIP NO viaja en el response (techo de ~4.5 MB de Vercel): se publica
+    // en Storage y la ruta redirige a la URL firmada de TTL corto.
+    expect(uploadOrderProductionBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: "ord_123",
+        filename: "pedido-lcm-2026-0099-produccion.zip",
+      }),
+    );
+    expect(signOrderProductionBundle).toHaveBeenCalledWith(
+      "_bundles/ord_123/pedido-lcm-2026-0099-produccion.zip",
+      "pedido-lcm-2026-0099-produccion.zip",
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe(
+      "https://mock.supabase/storage/v1/object/sign/production-assets/_bundles/ord_123/pedido-lcm-2026-0099-produccion.zip?token=abc",
+    );
     expect(recordAdminAction).toHaveBeenCalledWith({
       actorId: "adm_ful",
       action: "order.design_zip_download",
@@ -87,6 +117,16 @@ describe("GET /admin/pedidos/[number]/produccion (S11 · [OPS-01] / [SEC-02])", 
         missingPieces: 0,
       },
     });
+  });
+
+  it("si el ZIP no se puede publicar en Storage responde 500 claro (sin redirect roto)", async () => {
+    uploadOrderProductionBundle.mockRejectedValueOnce(new Error("bucket lleno"));
+
+    const req = new Request("http://localhost/admin/pedidos/LCM-2026-0099/produccion");
+    const res = await GET(req, { params: Promise.resolve({ number: "LCM-2026-0099" }) });
+
+    expect(res.status).toBe(500);
+    expect(recordAdminAction).not.toHaveBeenCalled();
   });
 
   it("responde 403 JSON sin consultar el pedido si verifyAdminRouteAccess rechaza (ej. CMS_EDITOR o aal1)", async () => {

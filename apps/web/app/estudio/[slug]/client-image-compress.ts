@@ -114,12 +114,25 @@ async function encodeResized(
  * o un WebP (JPEG si el navegador no codifica WebP) redimensionado/comprimido
  * si superaba el umbral. Si el navegador no puede procesarlo (raro), devuelve
  * el original y que decida el servidor.
+ *
+ * `spec` (auditoría 2026-11-08 — uploads admin): permite reutilizar el
+ * compresor con otra calidad de salida — los masters de la galería de
+ * prediseñados son print-grade (≤4000 px q0.90, espejo de
+ * optimizeGalleryMasterImage del servidor), no de catálogo (≤2400 px q0.85).
  */
-export async function compressImageForUpload(file: File): Promise<File> {
+export async function compressImageForUpload(
+  file: File,
+  spec?: { maxEdgePx?: number; quality?: number },
+): Promise<File> {
   if (!shouldCompress(file)) return file;
   try {
     const bitmap = await createImageBitmap(file);
-    const out = await encodeResized(bitmap, MAX_EDGE_PX, ENCODE_QUALITY, file);
+    const out = await encodeResized(
+      bitmap,
+      spec?.maxEdgePx ?? MAX_EDGE_PX,
+      spec?.quality ?? ENCODE_QUALITY,
+      file,
+    );
     bitmap.close();
     return out ?? file;
   } catch {
@@ -156,12 +169,18 @@ export function computeShrinkAttempts(opts: {
   width: number;
   height: number;
   minEdgeFloorPx?: number;
+  /** Tope del borde largo del primer intento (default MAX_EDGE_PX del Estudio).
+   *  La galería de prediseñados lo sube a 4000/8000 (master/tira print-grade). */
+  maxEdgePx?: number;
+  /** Escalera de calidades (default SHRINK_QUALITY_STEPS). */
+  qualities?: readonly number[];
 }): ShrinkAttempt[] {
   const { width, height } = opts;
   const longEdge = Math.max(width, height);
   const minEdge = Math.min(width, height);
   const floor = Math.min(opts.minEdgeFloorPx ?? SHRINK_MIN_EDGE_FLOOR_PX, minEdge);
-  const baseEdge = Math.min(MAX_EDGE_PX, longEdge);
+  const baseEdge = Math.min(opts.maxEdgePx ?? MAX_EDGE_PX, longEdge);
+  const qualities = opts.qualities ?? SHRINK_QUALITY_STEPS;
 
   const attempts: ShrinkAttempt[] = [];
   for (const edgeStep of SHRINK_EDGE_STEPS) {
@@ -169,7 +188,7 @@ export function computeShrinkAttempts(opts: {
     // Lado menor que resultaría de este borde largo (aspect conservado).
     const resultMinEdge = Math.round(minEdge * Math.min(1, maxEdgePx / longEdge));
     if (resultMinEdge < floor) continue; // nunca bajo el piso de impresión
-    for (const quality of SHRINK_QUALITY_STEPS) {
+    for (const quality of qualities) {
       attempts.push({ maxEdgePx, quality });
     }
   }
@@ -194,9 +213,16 @@ export function computeShrinkAttempts(opts: {
  */
 export async function shrinkToFitUploadBudget(
   file: File,
-  opts?: { minEdgeFloorPx?: number },
+  opts?: {
+    minEdgeFloorPx?: number;
+    maxEdgePx?: number;
+    qualities?: readonly number[];
+    /** Presupuesto alternativo (auditoría 2026-11-08: galería A+B comparte el request). */
+    budgetBytes?: number;
+  },
 ): Promise<File | null> {
-  if (file.size <= UPLOAD_PAYLOAD_BUDGET_BYTES) return file;
+  const budget = opts?.budgetBytes ?? UPLOAD_PAYLOAD_BUDGET_BYTES;
+  if (file.size <= budget) return file;
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
@@ -208,10 +234,12 @@ export async function shrinkToFitUploadBudget(
       width: bitmap.width,
       height: bitmap.height,
       minEdgeFloorPx: opts?.minEdgeFloorPx,
+      maxEdgePx: opts?.maxEdgePx,
+      qualities: opts?.qualities,
     });
     for (const attempt of attempts) {
       const out = await encodeResized(bitmap, attempt.maxEdgePx, attempt.quality, file);
-      if (out && out.size <= UPLOAD_PAYLOAD_BUDGET_BYTES) return out;
+      if (out && out.size <= budget) return out;
     }
     return null; // ni en el piso de impresión cabe: fail-closed honesto
   } catch {
@@ -219,4 +247,52 @@ export async function shrinkToFitUploadBudget(
   } finally {
     bitmap.close();
   }
+}
+
+/**
+ * Ajuste COMBINADO para uploads multi-archivo en UN request (auditoría
+ * 2026-11-08 — galería de prediseñados cara A+B): el techo de plataforma
+ * (~4.5 MB) aplica al request COMPLETO, no a cada archivo. Si la suma excede el
+ * presupuesto, cada archivo se reduce en proporción a su peso actual (el más
+ * pesado cede más). null si alguno no cabe ni reducido — fail-closed, el
+ * caller muestra el error y NO envía.
+ */
+export async function shrinkFilesToFitCombinedBudget(
+  files: File[],
+  opts?: {
+    budgetBytes?: number;
+    maxEdgePx?: number;
+    qualities?: readonly number[];
+    minEdgeFloorPx?: number;
+  },
+): Promise<File[] | null> {
+  const budget = opts?.budgetBytes ?? UPLOAD_PAYLOAD_BUDGET_BYTES;
+  const total = files.reduce((sum, f) => sum + f.size, 0);
+  if (total <= budget) return files;
+  const out = await Promise.all(
+    files.map((f) =>
+      shrinkToFitUploadBudget(f, {
+        ...opts,
+        // Piso de 256 KB por archivo: que el reparto proporcional nunca pida lo imposible.
+        budgetBytes: Math.max(256 * 1024, Math.floor((budget * f.size) / total)),
+      }),
+    ),
+  );
+  return out.some((f) => f === null) ? null : (out as File[]);
+}
+
+/**
+ * Variante para Blobs sin nombre de archivo (auditoría 2026-11-08 — previews
+ * del finalize de los editores de fichas, que nacen de canvas.toBlob/toDataURL
+ * y no son File). El preview es SOLO de exhibición (imprenta usa las láminas
+ * staged), así que no hay piso de impresión; el tope de borde largo es 4000 px
+ * para no rebajar resolución cuando alcanza con bajar calidad.
+ */
+export async function shrinkBlobToFitUploadBudget(
+  blob: Blob,
+  name = "preview.png",
+): Promise<Blob | null> {
+  if (blob.size <= UPLOAD_PAYLOAD_BUDGET_BYTES) return blob;
+  const file = new File([blob], name, { type: blob.type || "image/png" });
+  return shrinkToFitUploadBudget(file, { maxEdgePx: 4000 });
 }

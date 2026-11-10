@@ -22,7 +22,13 @@ import {
   BACKUP_STALE_MS,
 } from "./cron-heartbeat";
 import { getEmailDeliverabilityStats } from "./email-deliverability";
-import { getStorageQuota } from "./service";
+import {
+  getStorageQuota,
+  SUPABASE_DB_PLAN_BYTES,
+  SUPABASE_DB_WARN_BYTES,
+  SUPABASE_STORAGE_PLAN_BYTES,
+  SUPABASE_STORAGE_WARN_BYTES,
+} from "./service";
 import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
 import { SECURITY_EVENT } from "@/lib/security-events";
@@ -32,10 +38,16 @@ import { notify, type NotificationSeverity } from "@/features/notifications/serv
 const DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 min
 
 // Auditoría 2026-10-20 — umbrales de capacidad de Supabase: detectar la tendencia ANTES
-// de la barra roja del proveedor. Mismo criterio que el tile ámbar del panel
-// (/admin/observability usa 800 MB sobre la referencia de 1 GB del plan).
-const STORAGE_QUOTA_WARN_BYTES = 800 * 1024 * 1024; // 80% de 1 GB
-const DB_SIZE_WARN_BYTES = 400 * 1024 * 1024; // 80% de los 500 MB del tier Free
+// de la barra roja del proveedor. Las referencias del plan Pro de lucams-prod (100 GB
+// Storage / 8 GB DB) y los umbrales al 80% viven en ./service (SUPABASE_*_WARN_BYTES),
+// compartidos con el tile ámbar de /admin/observability. Corrección auditoría 2026-11-08:
+// antes apuntaban al tier Free (800 MB / 400 MB) aunque lucams-prod ya está en Pro.
+
+/** Bytes → texto corto para títulos/detalle de las alertas de capacidad (MB o GB). */
+function formatCapacityBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
 
 // F-07 (2026-09-19) — umbrales de las reglas de seguridad sobre SecurityEvent.
 // El de logins admin es coherente con el rate limit del panel (5/15 min por IP
@@ -328,23 +340,23 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
       SELECT pg_database_size(current_database()) AS "dbBytes"
     `,
   ]);
-  if (storageQuota.measuredBytes > STORAGE_QUOTA_WARN_BYTES) {
+  if (storageQuota.measuredBytes > SUPABASE_STORAGE_WARN_BYTES) {
     firing.push({
       key: "capacity_storage_high",
       severity: "alta",
-      title: `Storage de Supabase en ${Math.round(storageQuota.measuredBytes / (1024 * 1024))} MB`,
-      detail: `El consumo real de los buckets supera ${STORAGE_QUOTA_WARN_BYTES / (1024 * 1024)} MB (80% de la referencia de 1 GB del plan)${storageQuota.degraded ? " — medición DEGRADADA (fallback a tablas de la app; el real puede ser mayor)" : ""}.`,
+      title: `Storage de Supabase en ${formatCapacityBytes(storageQuota.measuredBytes)}`,
+      detail: `El consumo real de los buckets supera ${formatCapacityBytes(SUPABASE_STORAGE_WARN_BYTES)} (80% de los ${formatCapacityBytes(SUPABASE_STORAGE_PLAN_BYTES)} del plan Pro)${storageQuota.degraded ? " — medición DEGRADADA (fallback a tablas de la app; el real puede ser mayor)" : ""}.`,
       action:
         "Abre /admin/observability (cuota por bucket) y revisa el log del cron purge-anon-designs (orphanObjectsDeleted): si production-assets domina, verifica que las retenciones de diseños estén corriendo antes de subir de plan.",
     });
   }
   const dbBytes = Number(dbSizeRows[0]?.dbBytes ?? 0);
-  if (dbBytes > DB_SIZE_WARN_BYTES) {
+  if (dbBytes > SUPABASE_DB_WARN_BYTES) {
     firing.push({
       key: "capacity_db_high",
       severity: "alta",
-      title: `Base de datos en ${Math.round(dbBytes / (1024 * 1024))} MB`,
-      detail: `pg_database_size supera ${DB_SIZE_WARN_BYTES / (1024 * 1024)} MB (80% de los 500 MB del tier Free). Históricamente el crecimiento desbocado vino de tablas INTERNAS (cron.job_run_details, net._http_response), no del negocio.`,
+      title: `Base de datos en ${formatCapacityBytes(dbBytes)}`,
+      detail: `pg_database_size supera ${formatCapacityBytes(SUPABASE_DB_WARN_BYTES)} (80% de los ${formatCapacityBytes(SUPABASE_DB_PLAN_BYTES)} del plan Pro). Históricamente el crecimiento desbocado vino de tablas INTERNAS (cron.job_run_details, net._http_response), no del negocio.`,
       action:
         "Consulta los top por tamaño (pg_total_relation_size por schema) y verifica que los jobs lucams-internal-* de higiene estén agendados y corriendo (supabase/migrations/00000000000043).",
     });
