@@ -194,18 +194,18 @@ La validación tipada vive en `apps/web/lib/env.ts` y la plantilla canónica en 
 
 #### B. `PROD_REQUIRED` — Obligatorias cuando `NODE_ENV=production` en deploy real (10 variables)
 
-| Variable                         | Visibilidad        | Valor en `STG` (Preview)                                   | Valor en `PRD` (Production)                   | Propósito                                                                                                        |
-| -------------------------------- | ------------------ | ---------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_STORE_MODE`         | Cliente + Servidor | `"full"` o `"catalog"` explícito                           | `"full"` (o `"catalog"` en Etapa 1)           | Define etapa funcional (`ADR-077`). En `production` no tiene default: si falta, aborta el arranque.              |
-| `NEXT_PUBLIC_SITE_URL`           | Cliente + Servidor | _(Usa `VERCEL_URL` automático)_                            | `https://lucamsshop.com`                      | **Fuente única de URL canónica** (`lib/origin.ts`): sitemap, robots, canonicals, OpenGraph y enlaces en correos. |
-| `NEXT_PUBLIC_WA_NUMBER`          | Cliente + Servidor | _(Lee `WA_NUMBER` de CMS STG)_                             | `573208873826`                                | Número oficial de WhatsApp (código de país sin `+`) para respaldo pre-CMS.                                       |
-| `RESEND_API_KEY`                 | **Solo servidor**  | Llave Resend (con crons de email apagados)                 | `re_...` de producción                        | Envío HTTP transaccional hacia la API de Resend (`lib/resend.ts`).                                               |
-| `EMAIL_FROM`                     | **Solo servidor**  | `Lucams Shop <hola@mail.lucamsshop.com>`                   | `Lucams Shop <hola@mail.lucamsshop.com>`      | Remitente verificado con SPF, DKIM y DMARC.                                                                      |
-| `EMAIL_REPLY_TO`                 | **Solo servidor**  | `hola@lucamsshop.com`                                      | `hola@lucamsshop.com`                         | Buzón al que llegan las respuestas de clientes.                                                                  |
-| `RESEND_WEBHOOK_SECRET`          | **Solo servidor**  | `whsec_...` propio de STG                                  | `whsec_...` propio de PRD                     | Verificación de firma Svix en `/api/webhooks/resend` (fail-closed en producción).                                |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cliente + Servidor | Site key de prueba Cloudflare (`1x00000000000000000000AA`) | Site key real atada a `lucamsshop.com`        | Widget anti-bot invisible en checkout, registro, soporte y B2B.                                                  |
-| `TURNSTILE_SECRET_KEY`           | **Solo servidor**  | Secret key de prueba Cloudflare                            | Secret key real de Cloudflare                 | Verificación server-side contra `/turnstile/v0/siteverify`.                                                      |
-| `CRON_SECRET`                    | **Solo servidor**  | Hex `>=32` propio de STG (igual en Vault STG)              | Hex `>=32` propio de PRD (igual en Vault PRD) | Autenticación timing-safe de `/api/cron/*` y detalle de `/api/health/*`.                                         |
+| Variable                         | Visibilidad        | Valor en `STG` (Preview)                                   | Valor en `PRD` (Production)                   | Propósito                                                                                                                                                          |
+| -------------------------------- | ------------------ | ---------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_STORE_MODE`         | Cliente + Servidor | `"full"` o `"catalog"` explícito                           | `"full"` (o `"catalog"` en Etapa 1)           | Define etapa funcional (`ADR-077`). En `production` no tiene default: si falta, aborta el arranque. LOCAL corre en `full` homologado desde 2026-11-11 (`ADR-203`). |
+| `NEXT_PUBLIC_SITE_URL`           | Cliente + Servidor | _(Usa `VERCEL_URL` automático)_                            | `https://lucamsshop.com`                      | **Fuente única de URL canónica** (`lib/origin.ts`): sitemap, robots, canonicals, OpenGraph y enlaces en correos.                                                   |
+| `NEXT_PUBLIC_WA_NUMBER`          | Cliente + Servidor | _(Lee `WA_NUMBER` de CMS STG)_                             | `573208873826`                                | Número oficial de WhatsApp (código de país sin `+`) para respaldo pre-CMS.                                                                                         |
+| `RESEND_API_KEY`                 | **Solo servidor**  | Llave Resend (con crons de email apagados)                 | `re_...` de producción                        | Envío HTTP transaccional hacia la API de Resend (`lib/resend.ts`).                                                                                                 |
+| `EMAIL_FROM`                     | **Solo servidor**  | `Lucams Shop <hola@mail.lucamsshop.com>`                   | `Lucams Shop <hola@mail.lucamsshop.com>`      | Remitente verificado con SPF, DKIM y DMARC.                                                                                                                        |
+| `EMAIL_REPLY_TO`                 | **Solo servidor**  | `hola@lucamsshop.com`                                      | `hola@lucamsshop.com`                         | Buzón al que llegan las respuestas de clientes.                                                                                                                    |
+| `RESEND_WEBHOOK_SECRET`          | **Solo servidor**  | `whsec_...` propio de STG                                  | `whsec_...` propio de PRD                     | Verificación de firma Svix en `/api/webhooks/resend` (fail-closed en producción).                                                                                  |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cliente + Servidor | Site key de prueba Cloudflare (`1x00000000000000000000AA`) | Site key real atada a `lucamsshop.com`        | Widget anti-bot invisible en checkout, registro, soporte y B2B.                                                                                                    |
+| `TURNSTILE_SECRET_KEY`           | **Solo servidor**  | Secret key de prueba Cloudflare                            | Secret key real de Cloudflare                 | Verificación server-side contra `/turnstile/v0/siteverify`.                                                                                                        |
+| `CRON_SECRET`                    | **Solo servidor**  | Hex `>=32` propio de STG (igual en Vault STG)              | Hex `>=32` propio de PRD (igual en Vault PRD) | Autenticación timing-safe de `/api/cron/*` y detalle de `/api/health/*`.                                                                                           |
 
 #### C. `FULL_MODE_REQUIRED` — Exigidas adicionalmente en `production` cuando `NEXT_PUBLIC_STORE_MODE=full` (8 variables + `AVEONLINE_ENV`)
 
@@ -418,12 +418,16 @@ make stg-reset-apply   # Paso 2: ejecuta el borrado atómico en STG (exige confi
    ```
 4. **Promoción puntual de curaduría `STG → PRD` (`sync-catalog-stg-to-prd.mjs` y `sync-gallery-stg-to-prd.mjs`):**
    - Empareja por claves naturales (`slug`, `sku`, `key`, `(tag, name)`) preservando los CUIDs existentes en PRD para no romper FKs históricas, y copia binarios nuevos de Storage.
+   - `--only=<slug>` (2026-11-11, `ADR-203`): promoción quirúrgica de un solo producto (su cadena de categorías + producto + variantes + plantillas; el CMS no se toca — su saneamiento estructural en PRD corre con `sync-and-prune-cms-v2.mjs` y la autorización remota explícita).
    ```bash
    cd packages/db
    # Siempre correr primero en dry-run y revisar línea por línea el diff antes de --apply:
    node scripts/sync-catalog-stg-to-prd.mjs
    LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 DATABASE_URL="$DIRECT_URL" node scripts/sync-catalog-stg-to-prd.mjs --apply
+   # Promoción de un solo producto (ej. la bola navideña):
+   node scripts/sync-catalog-stg-to-prd.mjs --only=bola-navidena-personalizada
    ```
+5. **Catálogo ACTIVO de referencia (`ADR-203`, owner 2026-11-11):** los 8 activos de PRD + `bola-navidena-personalizada` son los únicos `isActive = true` en LOCAL/STG/PRD. El seed canónico ya siembra inactivo todo lo demás; el estado vivo de los ambientes se alinea con `homologate-catalog-from-prd.mjs` más el ajuste puntual de los productos que no existen en PRD.
 
 ### 6.2 Reglas invariantes de homologación
 
