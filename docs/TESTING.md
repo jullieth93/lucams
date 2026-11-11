@@ -27,7 +27,7 @@
      ╱    + Cobertura y Matriz RLS real      ╲ GoTrue OTP/MFA y deriva Prisma ↔ SQL
     ╱─────────────────────────────────────────╲
    ╱  Unitarias, componentes RTL y gates AST   ╲ Reglas en centavos COP, Zod v4, HMAC,
-  ╱     (Vitest 4 en web + node --test en db)   ╲ paridad CMS 168/168, textos legales y guards
+  ╱     (Vitest 4 en web + node --test en db)   ╲ paridad CMS 169/169, textos legales y guards
  ╱───────────────────────────────────────────────╲
 ```
 
@@ -171,7 +171,7 @@ describe.skipIf(!liveSandbox)("Wompi — smoke LIVE sandbox (no-destructivo)", (
 | `pnpm --filter web test:coverage`         | Vitest con proveedor V8 verificando `coverage.thresholds` globales                                                                                                                    | Réplica local exacta del job `unit-tests`               |
 | `pnpm --filter @lucams/db test`           | `node --test "scripts/lib/*.test.mjs"` en `packages/db`                                                                                                                               | Al tocar scripts o helpers en `packages/db/scripts/`    |
 | `make audit-script-guards`                | `node scripts/lib/check-script-guards.mjs` (exige `env-guard.mjs` en scripts con escritura)                                                                                           | Al crear o modificar scripts `.mjs`                     |
-| `make audit-content`                      | `vitest run lib/cms-sitemap-parity.test.ts` (paridad AST `168/168` del CMS v2)                                                                                                        | Al tocar `<CmsText>`, `lib/cms.ts` o `cms-site-map.mjs` |
+| `make audit-content`                      | `vitest run lib/cms-sitemap-parity.test.ts` (paridad AST `169/169` del CMS v2)                                                                                                        | Al tocar `<CmsText>`, `lib/cms.ts` o `cms-site-map.mjs` |
 | `make verify-db`                          | `audit-schema-drift.mjs check` + `verify-security-posture.mjs` (5/5 invariantes RLS/grants/buckets)                                                                                   | Al crear o editar migraciones Prisma o SQL              |
 | `make test-rls`                           | `vitest run` de `rls-coverage.integration.test.ts` + `rls-matrix.integration.test.ts`                                                                                                 | Al crear tablas, buckets o políticas RLS                |
 | `make test-e2e`                           | `pnpm --filter web test:e2e` (`playwright test` según `E2E_ENV=local\|stg\|prd`)                                                                                                      | Validación E2E sobre `:4000` o Staging                  |
@@ -188,7 +188,7 @@ describe.skipIf(!liveSandbox)("Wompi — smoke LIVE sandbox (no-destructivo)", (
 - **Entorno por defecto:** `environment: "node"` para máxima velocidad; el módulo virtual `"server-only"` de Next.js se redirige mediante alias al stub `apps/web/tests/stubs/server-only.ts`.
 - **Umbrales globales obligatorios (`coverage.thresholds` con V8):** **`lines: 71 %`**, **`statements: 69.5 %`**, **`functions: 68.5 %`** y **`branches: 62 %`**. Están calibrados sobre la medición real de CI y operan como _ratchet_ (cualquier regresión rompe `unit-tests`). Las metas orientativas por capa son: `lib/` utilitario `≥ 90 %`, `features/*/service.ts` `≥ 80 %`, `app/api/*/route.ts` `≥ 70 %` y `components/` `≥ 50 %`.
 - **Suites transversales de regresión crítica:**
-  - Paridad estática y cumplimiento: `lib/cms-sitemap-parity.test.ts` (`168/168`), `app/legal/legal-content-sync.test.ts` (paquete legal Versión 3 `2026-11-05` + uso obligatorio de `{{tokens}}`), `lib/datetime-convention.test.ts` (`America/Bogota`) y `tests/a11y-contrast.test.ts`.
+  - Paridad estática y cumplimiento: `lib/cms-sitemap-parity.test.ts` (`169/169`), `app/legal/legal-content-sync.test.ts` (paquete legal Versión 3 `2026-11-05` + uso obligatorio de `{{tokens}}`), `lib/datetime-convention.test.ts` (`America/Bogota`) y `tests/a11y-contrast.test.ts`.
   - Artefactos de imprenta 300 DPI y promesas de entrega: `photo-fit.test.ts` (encuadre cover sin bordes blancos descubiertos, rotación 90° y topes de paneo), `production-spec.test.ts` (reverso B opcional vacío reportado como blanco y nunca espejo) y `delivery-estimate.test.ts` (corte horario y lenguaje estimado).
 
 ### Ejemplo real 1 — Test unitario puro en Vitest (centavos COP y firmas SHA-256/HMAC)

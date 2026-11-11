@@ -6,7 +6,7 @@
  *      `EmailTemplateOverride` (`templateId = "newsletter-welcome"`) si algún
  *      ambiente tenía personalización manual y aún no existe override.
  *   2. Upsert estructural del `SITE_MAP` canónico (10 páginas, 32 secciones,
- *      176 campos reales): crea los campos faltantes con v1 publicada (+ filas
+ *      169 campos reales): crea los campos faltantes con v1 publicada (+ filas
  *      `CmsListItem` por defecto) y reubica/alinea metadatos de los existentes
  *      SIN pisar jamás su contenido publicado ni su historial de versiones.
  *   3. Republicación controlada (`version + 1`, `createdBy = "cms-v2-tokens-sync"`)
@@ -148,7 +148,7 @@ async function main() {
     }
   }
 
-  // ── 2. Upsert de páginas, secciones y 176 campos del SITE_MAP ──────────────
+  // ── 2. Upsert de páginas, secciones y 169 campos del SITE_MAP ──────────────
   const canonicalPageSlugs = new Set();
   const canonicalSectionKeys = new Set();
   const canonicalFieldDefs = new Map();
