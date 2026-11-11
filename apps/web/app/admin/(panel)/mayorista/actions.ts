@@ -36,6 +36,10 @@ const TierCreateSchema = z.object({
   isActive: z.boolean(),
 });
 
+// 2026-11-11 (owner) — edición de niveles existentes: mismo contrato que la
+// creación salvo el alcance (productId) y el estado, que no se editan acá.
+const TierUpdateSchema = TierCreateSchema.omit({ productId: true, isActive: true });
+
 function parsePayload(formData: FormData) {
   const productIdRaw = String(formData.get("productId") ?? "").trim();
   const unitPricePesos = Number(formData.get("unitPricePesos") ?? 0);
@@ -120,6 +124,81 @@ export async function createWholesaleTierAction(
       err: err instanceof Error ? err.message : String(err),
     });
     return { error: "Error al crear el nivel. Reintenta." };
+  }
+}
+
+/**
+ * 2026-11-11 (owner) — EDITAR un nivel existente (antes solo se podía
+ * desactivar/eliminar y recrear). Edita cantidad mínima, precio y nota; el
+ * alcance (producto/global) y el estado activo no cambian acá. Misma defensa
+ * anti-duplicados de la creación, excluyendo el propio nivel.
+ */
+export async function updateWholesaleTierAction(
+  _prev: TierActionState | null,
+  formData: FormData,
+): Promise<TierActionState> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const id = String(formData.get("id") ?? "");
+
+  const parsed = TierUpdateSchema.safeParse(parsePayload(formData));
+  if (!parsed.success) {
+    const flat = z.flattenError(parsed.error);
+    return {
+      error: "Revisa los datos del formulario.",
+      fieldErrors: flat.fieldErrors as TierActionState["fieldErrors"],
+    };
+  }
+  const data = parsed.data;
+
+  try {
+    const tier = await prisma.wholesaleTier.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, productId: true },
+    });
+    if (!tier) return { error: "El nivel ya no existe." };
+
+    const duplicate = await prisma.wholesaleTier.findFirst({
+      where: {
+        productId: tier.productId,
+        minQty: data.minQty,
+        deletedAt: null,
+        id: { not: tier.id },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      return {
+        error: "Ya existe un nivel con esa cantidad mínima para ese alcance.",
+        fieldErrors: { minQty: ["Ya existe un nivel con esta cantidad mínima."] },
+      };
+    }
+
+    await prisma.wholesaleTier.update({
+      where: { id: tier.id },
+      data: {
+        minQty: data.minQty,
+        unitPrice: data.unitPrice,
+        note: data.note,
+        updatedBy: session.admin.id,
+      },
+    });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "wholesale_tier.update",
+      entityType: "WholesaleTier",
+      entityId: tier.id,
+      metadata: { minQty: data.minQty, unitPrice: data.unitPrice },
+    });
+    revalidatePath("/admin/mayorista");
+    redirect("/admin/mayorista?updated=1");
+  } catch (err) {
+    if (isNextRedirect(err)) throw err;
+    logger.error({
+      event: "admin.wholesale_tier.update_fail",
+      adminId: session.admin.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: "Error al actualizar el nivel. Reintenta." };
   }
 }
 

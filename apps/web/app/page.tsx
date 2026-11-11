@@ -7,7 +7,8 @@
  * Secciones (en orden):
  *   1. SiteHeader (mega-menú + búsqueda)
  *   2. Hero kawaii
- *   3. Banners/promos (roadmap B6 — solo si hay banners activos en el CMS)
+ *   3. Banners/promos como ventana emergente al abrir la portada (owner
+ *      2026-11-11 — antes franja inline; solo si hay banners activos en el CMS)
  *   4. Categorías visuales (7)
  *   5. "Así de fácil" — 3 pasos
  *   6. Productos destacados (Embla)
@@ -23,7 +24,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CategoryGrid } from "@/components/home/category-grid";
 import { FeaturedCarousel } from "@/components/home/featured-carousel";
-import { HomeBanners } from "@/components/home/banners";
+import { PromoPopup } from "@/components/home/promo-popup";
 import { HomeHero } from "@/components/home/hero";
 import { HowItWorks } from "@/components/home/how-it-works";
 import { ReviewsCarousel } from "@/components/home/reviews-carousel";
@@ -139,8 +140,10 @@ export default async function Home() {
           <HomeHero />
         </div>
 
-        {/* Banners/promos (B6) — no renderiza nada si no hay banners activos */}
-        <HomeBanners items={banners} />
+        {/* Banners/promos como VENTANA EMERGENTE al abrir la portada (owner
+            2026-11-11 — antes franja inline bajo el hero). No monta nada si no
+            hay banners activos. */}
+        <PromoPopup items={banners} />
 
         {/* Categorías */}
         <section className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">

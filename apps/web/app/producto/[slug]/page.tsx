@@ -279,12 +279,14 @@ export default async function ProductoDetallePage({
   const visibleVolumeTiers = isNamePerTile
     ? []
     : resolveVisibleVolumeTiers(rawVolumeTiers, product.id, displayPrice);
-  // 2026-11-10 (owner) — familias por PACKS sin WholesaleTier (polaroid/
-  // cuadrados): la escala se DERIVA de las presentaciones (precio por pack que
-  // baja o promo compareAt de la opción) y se muestra con el MISMO bloque
-  // «Ahorra llevando más» (VolumeTiersNote), reactivo al tamaño elegido.
+  // 2026-11-10/11 (owner) — familias sin WholesaleTier (polaroid/cuadrados por
+  // packs, separadores por cantidad): la escala se DERIVE de las presentaciones
+  // (precio por unidad que baja al llevar más) y se muestra con el MISMO bloque
+  // «Ahorra llevando más» (VolumeTiersNote), reactivo al tamaño elegido. El
+  // bloque reporta SOLO ahorro por volumen real; la promo (compareAt) va como
+  // precio tachado por presentación — dos mecanismos, dos visuales.
   const packTierGroups =
-    !isNamePerTile && isPhotoPack && visibleVolumeTiers.length === 0
+    !isNamePerTile && visibleVolumeTiers.length === 0
       ? derivePackVolumeTiers(selectable, product.basePrice)
       : [];
   const packTierGroupKeyByVariantId =

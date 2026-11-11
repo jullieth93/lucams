@@ -373,28 +373,37 @@ const productsData = [
     },
     images: [UNSPLASH("1530541930197-ff16ac917b0e"), UNSPLASH("1502920917128-1aa500764cbd")],
     variants: [
+      // Curva de volumen REAL (owner 2026-11-11): el precio por pack baja al
+      // llevar más (−6% / −11% / −15%) y cada presentación lleva su compareAt
+      // proporcional (promo pareja en toda la escala). El seed NUNCA pisa
+      // precios de variantes existentes (son del admin): en LOCAL/STG/PRD los
+      // alinea el one-shot scripts/one-shot/packs-volume-pricing-20261111.mjs.
       {
         sku: "FI-POL-12-V1",
         name: "1 pack (6 unidades) · 6×8 cm",
         price: 2250000,
+        compareAtPrice: 2750000,
         attributes: { photoSlots: 6, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
       },
       {
         sku: "FI-POL-12-V3",
         name: "2 packs (12 unidades) · 6×8 cm",
-        price: 4500000,
+        price: 4230000,
+        compareAtPrice: 5500000,
         attributes: { photoSlots: 12, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
       },
       {
         sku: "FI-POL-12-V5",
         name: "3 packs (18 unidades) · 6×8 cm",
-        price: 6750000,
+        price: 6010000,
+        compareAtPrice: 8250000,
         attributes: { photoSlots: 18, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
       },
       {
         sku: "FI-POL-12-V6",
         name: "4 packs (24 unidades) · 6×8 cm",
-        price: 9000000,
+        price: 7650000,
+        compareAtPrice: 11000000,
         attributes: { photoSlots: 24, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
       },
     ],
@@ -457,7 +466,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V13",
         name: "2 packs (12 unidades) · 4×4 cm",
-        price: 4800000,
+        price: 4510000,
         attributes: {
           photoSlots: 12,
           sizeCm: "4×4",
@@ -469,7 +478,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V14",
         name: "3 packs (18 unidades) · 4×4 cm",
-        price: 7200000,
+        price: 6410000,
         attributes: {
           photoSlots: 18,
           sizeCm: "4×4",
@@ -481,7 +490,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V15",
         name: "4 packs (24 unidades) · 4×4 cm",
-        price: 9600000,
+        price: 8160000,
         attributes: {
           photoSlots: 24,
           sizeCm: "4×4",
@@ -506,7 +515,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V23",
         name: "2 packs (12 unidades) · 5×5 cm",
-        price: 5400000,
+        price: 5080000,
         attributes: {
           photoSlots: 12,
           sizeCm: "5×5",
@@ -518,7 +527,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V24",
         name: "3 packs (18 unidades) · 5×5 cm",
-        price: 8100000,
+        price: 7210000,
         attributes: {
           photoSlots: 18,
           sizeCm: "5×5",
@@ -530,7 +539,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V25",
         name: "4 packs (24 unidades) · 5×5 cm",
-        price: 10800000,
+        price: 9180000,
         attributes: {
           photoSlots: 24,
           sizeCm: "5×5",
@@ -555,7 +564,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V33",
         name: "2 packs (12 unidades) · 7×7 cm",
-        price: 7200000,
+        price: 6770000,
         attributes: {
           photoSlots: 12,
           sizeCm: "7×7",
@@ -567,7 +576,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V34",
         name: "3 packs (18 unidades) · 7×7 cm",
-        price: 10800000,
+        price: 9610000,
         attributes: {
           photoSlots: 18,
           sizeCm: "7×7",
@@ -579,7 +588,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V35",
         name: "4 packs (24 unidades) · 7×7 cm",
-        price: 14400000,
+        price: 12240000,
         attributes: {
           photoSlots: 24,
           sizeCm: "7×7",
@@ -610,7 +619,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V13-NOMAG",
         name: "2 packs (12 unidades) · 4×4 cm — Sin imán",
-        price: 4800000,
+        price: 4510000,
         isActive: false,
         attributes: {
           photoSlots: 12,
@@ -623,7 +632,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V14-NOMAG",
         name: "3 packs (18 unidades) · 4×4 cm — Sin imán",
-        price: 7200000,
+        price: 6410000,
         isActive: false,
         attributes: {
           photoSlots: 18,
@@ -636,7 +645,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V15-NOMAG",
         name: "4 packs (24 unidades) · 4×4 cm — Sin imán",
-        price: 9600000,
+        price: 8160000,
         isActive: false,
         attributes: {
           photoSlots: 24,
@@ -662,7 +671,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V23-NOMAG",
         name: "2 packs (12 unidades) · 5×5 cm — Sin imán",
-        price: 5400000,
+        price: 5080000,
         isActive: false,
         attributes: {
           photoSlots: 12,
@@ -675,7 +684,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V24-NOMAG",
         name: "3 packs (18 unidades) · 5×5 cm — Sin imán",
-        price: 8100000,
+        price: 7210000,
         isActive: false,
         attributes: {
           photoSlots: 18,
@@ -688,7 +697,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V25-NOMAG",
         name: "4 packs (24 unidades) · 5×5 cm — Sin imán",
-        price: 10800000,
+        price: 9180000,
         isActive: false,
         attributes: {
           photoSlots: 24,
@@ -714,7 +723,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V33-NOMAG",
         name: "2 packs (12 unidades) · 7×7 cm — Sin imán",
-        price: 7200000,
+        price: 6770000,
         isActive: false,
         attributes: {
           photoSlots: 12,
@@ -727,7 +736,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V34-NOMAG",
         name: "3 packs (18 unidades) · 7×7 cm — Sin imán",
-        price: 10800000,
+        price: 9610000,
         isActive: false,
         attributes: {
           photoSlots: 18,
@@ -740,7 +749,7 @@ const productsData = [
       {
         sku: "FI-CUAD-12-V35-NOMAG",
         name: "4 packs (24 unidades) · 7×7 cm — Sin imán",
-        price: 14400000,
+        price: 12240000,
         isActive: false,
         attributes: {
           photoSlots: 24,

@@ -171,7 +171,7 @@ lucams-shop/
 ```text
 apps/web/app/
 ├── layout.tsx                                      # Root layout (lang="es-CO", fuentes, CSP nonce, Analytics bajo consentimiento, <CmsEditOverlay>)
-├── page.tsx                                        # Home comercial dinámica (hero, categorías, destacados, ocasiones, reseñas, banners CMS)
+├── page.tsx                                        # Home comercial dinámica (hero, categorías, destacados, ocasiones, reseñas, popup de banners CMS)
 ├── error.tsx / global-error.tsx / not-found.tsx    # Fronteras globales de error (con captura a ErrorLog) y 404
 ├── manifest.ts / robots.ts / sitemap.ts            # Metadatos PWA, directivas de rastreo y mapa XML dinámico
 ├── feeds/google-merchant.xml/route.ts              # Feed RSS/XML de catálogo activo para Google Merchant Center y Meta Catalog

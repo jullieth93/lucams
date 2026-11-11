@@ -186,7 +186,7 @@ export const SITE_MAP = {
           key: "banners",
           title: "Banners / promos",
           description:
-            "Franja promocional bajo la portada (solo aparece si hay al menos un banner activo).",
+            "Ventana emergente al abrir la portada (solo aparece si hay al menos un banner activo; se muestra una vez por sesión del navegador).",
           prefixes: ["home.banners"],
           sortOrder: 15,
           fields: [
@@ -196,7 +196,7 @@ export const SITE_MAP = {
               type: "JSON",
               label: "Banners de la portada",
               helpText:
-                "Promos y campañas de la portada. Cada banner tiene imagen (de la mediateca), título, enlace y estado activo. Lista vacía = la franja no se muestra.",
+                "Promos y campañas de la portada, como ventana emergente al abrirla (una vez por sesión). Cada banner tiene imagen (de la mediateca), título, enlace y estado activo. Lista vacía = la ventana no se muestra.",
               category: "MARKETING",
               metadata: {
                 listSchema: [

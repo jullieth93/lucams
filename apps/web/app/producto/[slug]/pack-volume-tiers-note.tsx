@@ -30,15 +30,20 @@ export function PackVolumeTiersNote({
   if (groups.length === 0) return null;
   const selectedKey = selectedId ? groupKeyByVariantId[selectedId] : undefined;
   const group = groups.find((g) => g.key === selectedKey) ?? groups[0]!;
+  const isPack = group.noun === "pack";
   return (
     <VolumeTiersNote
       className={className}
-      title="Ahorra llevando más packs (el descuento ya viene en el precio de cada presentación)"
+      title={
+        isPack
+          ? "Ahorra llevando más packs (el descuento ya viene en el precio de cada presentación)"
+          : "Ahorra llevando más unidades (el descuento ya viene en el precio de cada presentación)"
+      }
       items={group.tiers.map((t) => ({
-        key: String(t.packs),
-        qtyLabel: `${t.packs} ${t.packs === 1 ? "pack" : "packs"}`,
-        unitPrice: t.packPrice,
-        priceSuffix: "c/pack",
+        key: String(t.units),
+        qtyLabel: isPack ? `${t.units} ${t.units === 1 ? "pack" : "packs"}` : `${t.units} unid.`,
+        unitPrice: t.unitPrice,
+        priceSuffix: isPack ? "c/pack" : "c/u",
         savingsPct: t.savingsPct,
       }))}
     />
