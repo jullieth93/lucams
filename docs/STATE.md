@@ -137,13 +137,14 @@
 
 ### Higiene técnica diferida (no bloqueante)
 
-1. **Recovery codes MFA admin:** regenerar códigos de cuentas antiguas para retirar el fallback
+1. **Costo de minutos de CI (GitHub Actions):** observar el consumo real del mes en Settings → Billing → Actions minutes antes de actuar; las opciones evaluadas (concurrency con cancelación, E2E solo en ramas protegidas, runner self-hosted en la VM, Renovate) están documentadas en [`integrations/github-and-ops.md`](integrations/github-and-ops.md) § 7 (owner 2026-11-11).
+2. **Recovery codes MFA admin:** regenerar códigos de cuentas antiguas para retirar el fallback
    legacy SHA-256 en `apps/web/features/admin-mfa/recovery-codes.ts`.
-2. **Leaked Password Protection nativo:** ACTIVO en `lucams-prod` desde la auditoría 2026-11-08
+3. **Leaked Password Protection nativo:** ACTIVO en `lucams-prod` desde la auditoría 2026-11-08
    (`password_hibp_enabled: true` vía Management API — el proyecto ya está en plan Pro). El fallback
    `apps/web/lib/pwned-passwords.ts` (HIBP k-anonymity) queda como segunda capa.
-3. **Mejoras opcionales:** evaluar `ADR-118` (unificar preview cliente con renderer servidor),
+4. **Mejoras opcionales:** evaluar `ADR-118` (unificar preview cliente con renderer servidor),
    conectar `lib/texture-resolution.ts` en `buildMagnetTextures`, aplicar `Category.visibleFilters`
    en `GET /api/catalog/filters` y sumar vectores `.svg` en `apps/web/public/brand/`.
-4. **DR drill extendido:** documentar/validar restauración de `auth.users` y ajustes de proyecto
+5. **DR drill extendido:** documentar/validar restauración de `auth.users` y ajustes de proyecto
    Supabase junto al simulacro mensual de DB + Storage desde R2.
