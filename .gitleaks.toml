@@ -14,9 +14,15 @@ useDefault = true
 [[rules]]
 id = "supabase-secret-key-pattern"
 description = "Supabase service_role / secret key"
-# Detecta SUPABASE_SECRET_KEY=eyJ... fuera de .env.example
+# Detecta SUPABASE_SECRET_KEY=eyJ... incluso en .env.example / README.md
 regex = '''(?i)SUPABASE_SECRET_KEY\s*=\s*['"]?(eyJ[A-Za-z0-9_\-]{20,})['"]?'''
 keywords = ["SUPABASE_SECRET_KEY"]
+[rules.allowlist]
+regexTarget = "line"
+regexes = [
+    # Placeholder explícito de .env.example (header HS256 estándar + literal .placeholder).
+    '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.placeholder\b''',
+]
 
 [[rules]]
 id = "wompi-private-key"
@@ -66,19 +72,19 @@ keywords = ["postgresql://", "postgres://"]
 regexTarget = "line"
 regexes = [
     '''postgres(?:ql)?://[^@\s]+@(?:localhost|127\.0\.0\.1|host\.docker\.internal|::1)''',
-    # Placeholder de docs: postgresql://postgres:[password]@…
+    # Placeholders explícitos de docs y .env.example:
     '''\[password\]''',
+    '''postgres(?:ql)?://postgres:PASSWORD@''',
 ]
 
 [allowlist]
-description = "Placeholders y ejemplos en docs/env.example son seguros"
-# 2026-08-29 (A-2): se quitó la exención por path '''docs/.*\.md$''' — un secreto
-# REAL pegado en cualquier doc pasaba el escáner. Los placeholders de docs siguen
-# cubiertos por los regexes de abajo.
+description = "Placeholders explícitos e inequívocos (sin exenciones amplias por archivo)"
+# SEC-02 (2026-11-11): se eliminaron las exenciones de path para `.env.example` y
+# `README.md` (igual que `docs/*.md` en 2026-08-29). Cualquier credencial real
+# pegada por accidente en plantillas o README rompe el escáner; solo la propia
+# definición de reglas `.gitleaks.toml` en la raíz queda exenta por ruta.
 paths = [
-    '''\.env\.example$''',
-    '''README\.md$''',
-    '''\.gitleaks\.toml$''',
+    '''^\.gitleaks\.toml$''',
 ]
 regexes = [
     '''PLACEHOLDER''',

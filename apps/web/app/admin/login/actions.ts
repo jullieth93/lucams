@@ -178,18 +178,17 @@ export async function adminLoginAction(
   // bucle: la página quedaba en blanco hasta un refresh manual. Con el redirect
   // directo, el payload del action incluye el árbol completo del grupo (panel)
   // con su layout (login NO está en (panel)) y la página enrola de una.
-  const { data: factors } = await supabase.auth.mfa.listFactors();
-  const hasVerifiedTotp = (factors?.all ?? []).some(
+  const { data: factors, error: factorsErr } = await supabase.auth.mfa.listFactors();
+  if (factorsErr || !factors) redirect("/admin/login/mfa");
+  const hasVerifiedTotp = (factors.all ?? []).some(
     (f) => f.factor_type === "totp" && f.status === "verified",
   );
   if (!hasVerifiedTotp) redirect("/admin/seguridad?enroll=required");
-  // Misma clase de fix para el reto aal2 (2026-10-30, visto en el setup e2e):
-  // con factor verificado pero sesión aal1, el destino es /admin/login/mfa
-  // DIRECTO — antes lo hacía el candado del layout con redirect() en medio de
-  // la navegación RSC al home (misma fragilidad: redirect desde layout
-  // compartido durante soft-nav).
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aal && aal.nextLevel === "aal2" && aal.currentLevel === "aal1") {
+  // Misma clase de fix para el reto aal2 (2026-10-30, visto en el setup e2e + SEC-03):
+  // con factor verificado, cualquier nivel distinto de `aal2` (aal1, null o error)
+  // va directo a /admin/login/mfa (fail-closed).
+  const { data: aal, error: aalErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aalErr || !aal || aal.currentLevel !== "aal2") {
     redirect("/admin/login/mfa");
   }
   redirect(adminHomePath(admin.role));

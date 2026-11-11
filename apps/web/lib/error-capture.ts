@@ -8,7 +8,7 @@
 
 import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
-import { logger, scrubPii } from "@/lib/logger";
+import { logger, sanitizeLoggedPath, scrubPii } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 
 export type CapturedError = {
@@ -25,14 +25,13 @@ export async function captureServerError(e: CapturedError): Promise<void> {
   try {
     await prisma.errorLog.create({
       data: {
-        // scrubPii (F-6): un error de DB/validación puede traer PII embebida
-        // (`Key (email)=(cliente@x.com) already exists`) — la misma redacción
-        // que el logger aplica a stdout se aplica a lo que persiste en DB.
+        // scrubPii (F-6 + SEC-05): un error de DB/validación puede traer PII o tokens
+        // embebidos y requestPath puede incluir query strings sensibles (?code=, ?token=).
         message: scrubPii((e.message || "unknown").slice(0, 2000)),
         digest: e.digest ?? null,
         stack: e.stack ? scrubPii(e.stack.slice(0, 4000)) : null,
-        routePath: e.routePath ?? null,
-        requestPath: e.requestPath ?? null,
+        routePath: sanitizeLoggedPath(e.routePath),
+        requestPath: sanitizeLoggedPath(e.requestPath),
         method: e.method ?? null,
         routeType: e.routeType ?? null,
       },
@@ -147,8 +146,8 @@ export async function captureClientError(e: ClientErrorReport): Promise<void> {
         fingerprint,
         message,
         stack,
-        url: e.url?.slice(0, 500) ?? null,
-        userAgent: e.userAgent?.slice(0, 500) ?? null,
+        url: sanitizeLoggedPath(e.url),
+        userAgent: e.userAgent ? scrubPii(e.userAgent.slice(0, 500)) : null,
         userId: e.userId ?? null,
         digest: e.digest ?? null,
       },

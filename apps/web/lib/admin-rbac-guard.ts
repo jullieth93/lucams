@@ -65,16 +65,35 @@ export async function verifyAdminRouteAccess(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: factors } = await supabase.auth.mfa.listFactors();
-  const hasVerifiedTotp = (factors?.all ?? []).some(
+  let factors: { all?: Array<{ factor_type: string; status: string }> } | null = null;
+  try {
+    const res = await supabase.auth.mfa.listFactors();
+    if (res.error || !res.data) {
+      return { ok: false, status: 403, reason: "MFA_REQUIRED" };
+    }
+    factors = res.data;
+  } catch {
+    return { ok: false, status: 403, reason: "MFA_REQUIRED" };
+  }
+
+  const hasVerifiedTotp = (factors.all ?? []).some(
     (f) => f.factor_type === "totp" && f.status === "verified",
   );
   if (!hasVerifiedTotp) {
     return { ok: false, status: 403, reason: "MFA_NOT_ENROLLED" };
   }
 
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (!aal || aal.currentLevel !== "aal2") {
+  let currentAal: string | null = null;
+  try {
+    const { data: aal, error: aalErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalErr || !aal) {
+      return { ok: false, status: 403, reason: "MFA_REQUIRED" };
+    }
+    currentAal = aal.currentLevel;
+  } catch {
+    return { ok: false, status: 403, reason: "MFA_REQUIRED" };
+  }
+  if (currentAal !== "aal2") {
     return { ok: false, status: 403, reason: "MFA_REQUIRED" };
   }
 
@@ -103,27 +122,70 @@ export async function requireAdminAction(
     roles?: readonly AdminRole[];
     capability?: AdminCapability;
     aal2?: boolean;
+    /**
+     * Reservado EXCLUSIVAMENTE para el Server Component de `/admin/seguridad`
+     * (enrolamiento TOTP inicial cuando `listFactors()` confirma 0 factores
+     * verificados). Jamás activar en Server Actions mutantes.
+     */
+    allowMfaEnrollment?: boolean;
   } = {},
 ) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
   const supabase = await createSupabaseServerClient();
-
-  const { data: factors } = await supabase.auth.mfa.listFactors();
-  const hasVerifiedTotp = (factors?.all ?? []).some(
-    (f) => f.factor_type === "totp" && f.status === "verified",
-  );
-  if (!hasVerifiedTotp) {
-    const pathname = (await headers()).get("x-pathname") ?? "";
-    if (!pathname.startsWith("/admin/seguridad")) {
-      redirect("/admin/seguridad?enroll=required");
+  const readIsSecurityEnrollmentPath = async (): Promise<boolean> => {
+    try {
+      const pathname = (await headers()).get("x-pathname") ?? "";
+      return pathname.startsWith("/admin/seguridad");
+    } catch {
+      return false;
     }
+  };
+
+  let factors: { all?: Array<{ factor_type: string; status: string }> } | null = null;
+  let factorsFailed = false;
+  try {
+    const res = await supabase.auth.mfa.listFactors();
+    if (res.error || !res.data) {
+      factorsFailed = true;
+    } else {
+      factors = res.data;
+    }
+  } catch {
+    factorsFailed = true;
   }
 
-  if (opts.aal2 !== false) {
-    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aal && aal.nextLevel === "aal2" && aal.currentLevel === "aal1") {
+  if (factorsFailed || !factors) {
+    // Fail-closed: si no podemos consultar factores MFA, jamás asumimos "sin
+    // factor" en /admin/seguridad (eso degradaría una cuenta enrolada a aal1
+    // ni provocaría un bucle redirigiendo a la misma ruta).
+    const isSecurityEnrollmentPath = await readIsSecurityEnrollmentPath();
+    redirect(isSecurityEnrollmentPath ? "/admin/login" : "/admin/seguridad?enroll=required");
+  }
+
+  const hasVerifiedTotp = (factors.all ?? []).some(
+    (f) => f.factor_type === "totp" && f.status === "verified",
+  );
+
+  const isInitialEnrollmentView =
+    !hasVerifiedTotp && opts.allowMfaEnrollment === true && (await readIsSecurityEnrollmentPath());
+
+  if (!hasVerifiedTotp && !isInitialEnrollmentView) {
+    redirect("/admin/seguridad?enroll=required");
+  }
+
+  if (opts.aal2 !== false && !isInitialEnrollmentView) {
+    let currentAal: string | null = null;
+    try {
+      const { data: aal, error: aalErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!aalErr && aal) {
+        currentAal = aal.currentLevel;
+      }
+    } catch {
+      currentAal = null;
+    }
+    if (currentAal !== "aal2") {
       redirect("/admin/login/mfa");
     }
   }

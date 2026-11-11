@@ -119,8 +119,12 @@ jobs:
       - name: Prettier format check
         run: pnpm format:check
 
-      - name: Audit production dependencies (high+)
-        run: pnpm audit --prod --audit-level=high
+      # SEC-01 (2026-11-11): umbral endurecido de high → moderate en dependencias de
+      # producción. Los advisories de framework (ej. cache leak / SVG bypass en Next)
+      # suelen publicarse como `moderate`; excepciones sin parche disponible se gestionan
+      # explícitamente con justificación y revisión en `pnpm-workspace.yaml` (`ignoreGhsas`).
+      - name: Audit production dependencies (moderate+)
+        run: pnpm audit --prod --audit-level=moderate
 
       - name: Typecheck
         if: needs.changes.outputs.docs_only != 'true'

@@ -44,8 +44,8 @@ export function WebhookRegistrationForm({
         </Button>
       </div>
       <p className="text-brand-muted text-[10px]">
-        Aveonline va a recibir:{" "}
-        <code>{`{baseUrl}/api/webhooks/aveonline?secret=<AVEONLINE_WEBHOOK_SECRET>`}</code>
+        Aveonline enviará notificaciones a <code>{`{baseUrl}/api/webhooks/aveonline`}</code>{" "}
+        autenticadas por token en el cuerpo JSON (sin secreto en la URL).
       </p>
       {state?.ok && (
         <div className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-800">{state.ok}</div>

@@ -98,32 +98,26 @@ async function makeFulfillingOrder(trackingNumber: string): Promise<string> {
 }
 
 function webhookRequest(payload: unknown, secret: string = SECRET): Request {
-  return new Request(
-    `http://localhost/api/webhooks/aveonline?secret=${encodeURIComponent(secret)}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: typeof payload === "string" ? payload : JSON.stringify(payload),
+  return new Request("http://localhost/api/webhooks/aveonline", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-aveonline-secret": secret,
     },
-  );
+    body: typeof payload === "string" ? payload : JSON.stringify(payload),
+  });
 }
 
 describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numérica", () => {
   const prevSecret = process.env.AVEONLINE_WEBHOOK_SECRET;
-  const prevAllowQuery = process.env.AVEONLINE_ALLOW_QUERY_SECRET;
 
   beforeAll(() => {
     process.env.AVEONLINE_WEBHOOK_SECRET = SECRET;
-    // webhookRequest autentica por ?secret= → encender la vía query (D-1, default OFF)
-    // salvo en el test que valida explícitamente el flag apagado.
-    process.env.AVEONLINE_ALLOW_QUERY_SECRET = "true";
   });
 
   afterAll(async () => {
     if (prevSecret === undefined) delete process.env.AVEONLINE_WEBHOOK_SECRET;
     else process.env.AVEONLINE_WEBHOOK_SECRET = prevSecret;
-    if (prevAllowQuery === undefined) delete process.env.AVEONLINE_ALLOW_QUERY_SECRET;
-    else process.env.AVEONLINE_ALLOW_QUERY_SECRET = prevAllowQuery;
 
     if (createdGuias.length > 0) {
       await prisma.webhookEvent
@@ -407,8 +401,8 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     expect(res.status).toBe(413);
   });
 
-  it("D-1: con AVEONLINE_ALLOW_QUERY_SECRET ausente, ?secret= NO autentica (401) y el header sí", async () => {
-    delete process.env.AVEONLINE_ALLOW_QUERY_SECRET; // default OFF
+  it("SEC-06: ?secret= en query-string NUNCA autentica (401 incluso con AVEONLINE_ALLOW_QUERY_SECRET=true); header y payload.token sí", async () => {
+    process.env.AVEONLINE_ALLOW_QUERY_SECRET = "true";
     try {
       const guia = freshGuia();
       const orderId = await makeFulfillingOrder(String(guia));
@@ -418,7 +412,16 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
         estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }],
       };
 
-      const byQuery = await POST(webhookRequest(payload)); // auth por ?secret=…
+      const byQuery = await POST(
+        new Request(
+          `http://localhost/api/webhooks/aveonline?secret=${encodeURIComponent(SECRET)}`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        ),
+      );
       expect(byQuery.status).toBe(401);
       let order = await prisma.order.findUnique({
         where: { id: orderId },
@@ -426,21 +429,21 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
       });
       expect(order?.status).toBe("FULFILLING"); // intacta
 
-      const byHeader = await POST(
+      const byTokenInBody = await POST(
         new Request("http://localhost/api/webhooks/aveonline", {
           method: "POST",
-          headers: { "content-type": "application/json", "x-aveonline-secret": SECRET },
-          body: JSON.stringify(payload),
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...payload, token: SECRET }),
         }),
       );
-      expect(byHeader.status).toBe(200);
+      expect(byTokenInBody.status).toBe(200);
       order = await prisma.order.findUnique({
         where: { id: orderId },
         select: { status: true },
       });
       expect(order?.status).toBe("SHIPPED");
     } finally {
-      process.env.AVEONLINE_ALLOW_QUERY_SECRET = "true";
+      delete process.env.AVEONLINE_ALLOW_QUERY_SECRET;
     }
   });
 });

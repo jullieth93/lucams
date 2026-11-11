@@ -24,22 +24,21 @@ export async function registerAveonlineWebhookAction(
     return { error: "AVEONLINE_WEBHOOK_SECRET no está en .env" };
   }
 
-  const fullUrl = `${baseUrl.replace(/\/+$/, "")}/api/webhooks/aveonline?secret=${encodeURIComponent(secret)}`;
+  // SEC-06: jamás incrustar el secreto en la query string (?secret=). Aveonline recibe
+  // la URL limpia y reenvía el secreto por body (`param1_value` / `payload.token`).
+  const fullUrl = `${baseUrl.replace(/\/+$/, "")}/api/webhooks/aveonline`;
   try {
     const result = await createAveonlineWebhook({
       url: fullUrl,
       secret,
       extra: { tenant: "lucams_shop" },
     });
-    // Auditoría 2026-07-13: NO persistir el secreto en el audit log. fullUrl lleva
-    // ?secret=<valor> → se redacta antes de guardarlo.
-    const redactedUrl = fullUrl.replace(/([?&]secret=)[^&]*/i, "$1***");
     await recordAdminAction({
       actorId: session.admin.id,
       action: "shipping.aveonline.webhook.register",
       entityType: "Integration",
       entityId: "aveonline",
-      metadata: { url: redactedUrl, ok: result.ok, message: result.message },
+      metadata: { url: fullUrl, ok: result.ok, message: result.message },
     });
     logger.info({
       event: "admin.aveonline.webhook.register",

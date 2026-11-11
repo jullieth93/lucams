@@ -16,7 +16,11 @@ const { state } = vi.hoisted(() => ({
   state: {
     session: null as { admin: { id: string; role: string } } | null,
     aal: null as { currentLevel: string; nextLevel: string } | null,
+    aalError: null as Error | null,
+    aalThrows: false,
     factors: null as { all: Array<{ factor_type: string; status: string }> } | null,
+    factorsError: null as Error | null,
+    factorsThrows: false,
     pathname: "",
   },
 }));
@@ -42,8 +46,14 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
     auth: {
       mfa: {
-        getAuthenticatorAssuranceLevel: async () => ({ data: state.aal }),
-        listFactors: async () => ({ data: state.factors }),
+        getAuthenticatorAssuranceLevel: async () => {
+          if (state.aalThrows) throw new Error("mfa aal transport error");
+          return { data: state.aal, error: state.aalError };
+        },
+        listFactors: async () => {
+          if (state.factorsThrows) throw new Error("mfa factors transport error");
+          return { data: state.factors, error: state.factorsError };
+        },
       },
     },
   }),
@@ -57,7 +67,11 @@ const VERIFIED_TOTP = { all: [{ factor_type: "totp", status: "verified" }] };
 beforeEach(() => {
   state.session = null;
   state.aal = null;
+  state.aalError = null;
+  state.aalThrows = false;
   state.factors = VERIFIED_TOTP;
+  state.factorsError = null;
+  state.factorsThrows = false;
   state.pathname = "";
 });
 
@@ -138,13 +152,93 @@ describe("requireAdminAction", () => {
     await expectRedirect(() => requireAdminAction(), "/admin/seguridad?enroll=required");
   });
 
-  it("B-1: sin factor PERO ya en /admin/seguridad → no redirige (anti-loop: es la pantalla de enrolamiento)", async () => {
+  it("B-1 + SEC-03: sin factor en /admin/seguridad BLOQUEA acciones mutantes por defecto (exige allowMfaEnrollment explícito)", async () => {
     state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
     state.aal = { currentLevel: "aal1", nextLevel: "aal1" };
     state.factors = { all: [] };
     state.pathname = "/admin/seguridad";
-    const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
+
+    // Cualquier Server Action privilegiada invocada vía POST /admin/seguridad debe abortar.
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS }),
+      "/admin/seguridad?enroll=required",
+    );
+
+    // Solo la página de enrolamiento inicial (allowMfaEnrollment: true) puede renderizarse sin factor.
+    const s = await requireAdminAction({
+      roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS,
+      allowMfaEnrollment: true,
+    });
     expect(s.admin.id).toBe("a1");
+  });
+
+  it("SEC-03: admin YA enrolado en /admin/seguridad con allowMfaEnrollment:true pero en aal1 o aal null → exige MFA", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+    state.factors = VERIFIED_TOTP;
+    state.pathname = "/admin/seguridad";
+
+    state.aal = { currentLevel: "aal1", nextLevel: "aal2" };
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS, allowMfaEnrollment: true }),
+      "/admin/login/mfa",
+    );
+
+    state.aal = null;
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS, allowMfaEnrollment: true }),
+      "/admin/login/mfa",
+    );
+  });
+
+  it("SEC-03: listFactors con error o null en /admin/seguridad falla cerrado a /admin/login (sin loop)", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+    state.pathname = "/admin/seguridad";
+    state.factors = null;
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS, allowMfaEnrollment: true }),
+      "/admin/login",
+    );
+
+    state.factors = { all: [] };
+    state.factorsError = new Error("auth down");
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS, allowMfaEnrollment: true }),
+      "/admin/login",
+    );
+  });
+
+  it("SEC-03: AAL null, error de API, excepción o currentLevel !== aal2 → falla cerrado a /admin/login/mfa", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+
+    // 1. data = null
+    state.aal = null;
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER }),
+      "/admin/login/mfa",
+    );
+
+    // 2. aal1 + nextLevel aal1 (inconsistencia de claims con factor verificado)
+    state.aal = { currentLevel: "aal1", nextLevel: "aal1" };
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER }),
+      "/admin/login/mfa",
+    );
+
+    // 3. Error devuelto por Supabase Auth incluso si data viniera poblada
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    state.aalError = new Error("jwt decode failed");
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER }),
+      "/admin/login/mfa",
+    );
+
+    // 4. Excepción de transporte en getAuthenticatorAssuranceLevel
+    state.aalError = null;
+    state.aalThrows = true;
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER }),
+      "/admin/login/mfa",
+    );
   });
 
   it("B-1: el check de enrolamiento también aplica con aal2:false (es anterior e independiente)", async () => {
@@ -219,6 +313,49 @@ describe("verifyAdminRouteAccess ([SEC-01] — Route Handlers)", () => {
   it("sesión aal1 (solo contraseña, sin 2º factor) → 403 MFA_REQUIRED", async () => {
     state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
     state.aal = { currentLevel: "aal1", nextLevel: "aal2" };
+    expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
+      ok: false,
+      status: 403,
+      reason: "MFA_REQUIRED",
+    });
+  });
+
+  it("SEC-03: verifyAdminRouteAccess falla cerrado ante AAL null, error o excepción, y ante error en listFactors", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+
+    state.aal = null;
+    expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
+      ok: false,
+      status: 403,
+      reason: "MFA_REQUIRED",
+    });
+
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    state.aalError = new Error("auth error");
+    expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
+      ok: false,
+      status: 403,
+      reason: "MFA_REQUIRED",
+    });
+
+    state.aalError = null;
+    state.aalThrows = true;
+    expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
+      ok: false,
+      status: 403,
+      reason: "MFA_REQUIRED",
+    });
+
+    state.aalThrows = false;
+    state.factorsError = new Error("factors error");
+    expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
+      ok: false,
+      status: 403,
+      reason: "MFA_REQUIRED",
+    });
+
+    state.factorsError = null;
+    state.factorsThrows = true;
     expect(await verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL })).toEqual({
       ok: false,
       status: 403,
