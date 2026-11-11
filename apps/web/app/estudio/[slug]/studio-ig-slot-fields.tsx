@@ -52,7 +52,7 @@ import {
   sanitizeIgLocationInput,
   sanitizeIgUsernameInput,
 } from "./lib/ig-post-fields";
-import { getActiveStudioStore } from "./lib/active-studio-store";
+import { useActiveStudioStore } from "./lib/active-studio-store";
 import type { StudioStore } from "./lib/store";
 import { IG_INPUT_CLASS as INPUT_CLASS, IgDebouncedInput } from "./ig-debounced-input";
 import { IgHashtagsEditor, igFieldLabel } from "./studio-ig-post-fields";
@@ -74,7 +74,8 @@ type StudioIgSlotFieldsProps = {
 type IgSlotLayer = { id: string; text: string };
 
 export function StudioIgSlotFields(props: StudioIgSlotFieldsProps) {
-  const store = props.store ?? getActiveStudioStore();
+  const activeStore = useActiveStudioStore();
+  const store = props.store ?? activeStore;
   if (!store || props.slotIndex === null) return null;
   return <StudioIgSlotFieldsInner {...props} slotIndex={props.slotIndex} store={store} />;
 }

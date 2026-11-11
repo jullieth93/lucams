@@ -302,6 +302,7 @@ function DraftDesignCard({
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <Link
+            prefetch={false}
             href={`/estudio/${design.productSlug}?designId=${design.id}`}
             className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white"
           >
@@ -462,6 +463,7 @@ function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountT
               venía del carrito, la línea se reemplaza en sitio; desde aquí se
               agrega como línea nueva al confirmar. */}
           <Link
+            prefetch={false}
             href={`/estudio/${design.productSlug}?designId=${design.id}`}
             className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white"
           >

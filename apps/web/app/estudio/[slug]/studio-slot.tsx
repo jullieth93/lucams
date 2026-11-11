@@ -35,7 +35,7 @@ import { Trash2, RotateCcw, Pencil, Loader2 } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
-import { getActiveStudioStore } from "./lib/active-studio-store";
+import { useActiveStudioStore } from "./lib/active-studio-store";
 import { useChromeBitmap } from "./lib/chrome-bitmap-cache";
 import type Konva from "konva";
 import type { FilterFunction } from "konva/lib/Node";
@@ -367,17 +367,18 @@ function StudioSlotImpl({
   // archivo decodificado, así que el derivado no falsea el aviso.
   const decodedUrl = slotState.canvasUrl ?? slotState.assetUrl ?? null;
   const [photoImage, photoStatus] = useImage(decodedUrl ?? "", "anonymous");
+  const activeStudioStore = useActiveStudioStore();
   // 2026-11-10 — reportar al store la carga/decodificación de la foto (compuerta
   // de «Ver diseño»/3D + overlay «Cargando tu foto…»): la subida termina con
   // assetUrl, pero el bake solo es fiel cuando la imagen decodificó. Misma URL
   // que carga el PhotoLayer (use-image deduplica por URL) → este ciclo equivale
-  // al del nodo slot-photo. Cruza la grilla vía getActiveStudioStore (patrón
-  // documentado en lib/active-studio-store.ts). Una foto ROTA ("failed") se
-  // reporta como resuelta para no bloquear la compuerta para siempre — el slot
-  // ya muestra su estado de error y el bake conserva sus techos.
+  // al del nodo slot-photo. Cruza la grilla vía StudioStoreContext / fallback
+  // activo (lib/active-studio-store.ts). Una foto ROTA ("failed") se reporta
+  // como resuelta para no bloquear la compuerta para siempre — el slot ya
+  // muestra su estado de error y el bake conserva sus techos.
   useEffect(() => {
     if (!decodedUrl) return;
-    const active = getActiveStudioStore()?.getState();
+    const active = activeStudioStore?.getState();
     if (!active) return;
     if (photoStatus === "failed") {
       active.markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
@@ -397,9 +398,7 @@ function StudioSlotImpl({
         })
         .finally(() => {
           if (!cancelled) {
-            getActiveStudioStore()
-              ?.getState()
-              .markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
+            activeStudioStore?.getState().markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
           }
         });
       return () => {
@@ -407,7 +406,7 @@ function StudioSlotImpl({
       };
     }
     active.markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
-  }, [photoImage, photoStatus, decodedUrl, slotState.slotIndex]);
+  }, [activeStudioStore, photoImage, photoStatus, decodedUrl, slotState.slotIndex]);
   const photoQuality = useMemo(() => {
     if (!photoImage || !slotState.assetUrl) return null;
     // 2026-09-24 (auditoría honestidad): si la foto subida pasó por upscale
@@ -1979,9 +1978,10 @@ function ProfilePhotoLayerRenderer({
   // imprenta la URL es el master: no cuenta para el lienzo y no se reporta.
   // Un avatar roto ("failed") se reporta resuelto para no trabar la compuerta.
   const profileDecodedUrl = profileCanvasUrl ?? profileAssetUrl;
+  const activeStudioStore = useActiveStudioStore();
   useEffect(() => {
     if (printMaster || !profileDecodedUrl) return;
-    const active = getActiveStudioStore()?.getState();
+    const active = activeStudioStore?.getState();
     if (!active) return;
     if (imageStatus === "failed") {
       active.markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
@@ -2001,9 +2001,7 @@ function ProfilePhotoLayerRenderer({
         })
         .finally(() => {
           if (!cancelled) {
-            getActiveStudioStore()
-              ?.getState()
-              .markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
+            activeStudioStore?.getState().markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
           }
         });
       return () => {
@@ -2011,7 +2009,7 @@ function ProfilePhotoLayerRenderer({
       };
     }
     active.markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
-  }, [image, imageStatus, printMaster, profileDecodedUrl, slotIndex]);
+  }, [activeStudioStore, image, imageStatus, printMaster, profileDecodedUrl, slotIndex]);
   const [hover, setHover] = useState(false);
   const interactive = !!onEdit;
   // Fase 2 · 2.7a — pulso de descubrimiento: visible solo la PRIMERA vez. El

@@ -42,8 +42,10 @@ import { igTextFill } from "@/features/personalization/instagram-template-spec";
 import {
   selectUnitFilledCount,
   selectUnitImagePlaceholder,
+  type StudioStore,
   type StudioStoreState,
 } from "./lib/store";
+import { StudioStoreContext } from "./lib/active-studio-store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { unitIndexOfSlot, deployedSizeCm } from "./lib/faces";
 import { generateGridLayout } from "./lib/grid-layout";
@@ -317,20 +319,16 @@ export function StudioCanvasGrid({
   // #16 — respeta "reducir movimiento": las entradas escalonadas del grid se apagan.
   const reducedMotion = usePrefersReducedMotion();
   // ADR-063 T5 — slots ya montados (una vez montados, permanecen; el store es la fuente de verdad,
-  // así que re-montar desde slotState no pierde nada). Se siembra con los slots iniciales cuando
-  // el conteo está bajo el umbral lazy o cuando ya traen foto asignada.
+  // así que re-montar desde slotState no pierde nada). Bajo LAZY_MOUNT_THRESHOLD se siembran todos;
+  // sobre el umbral arranca vacío y el IntersectionObserver (rootMargin 400px) monta únicamente las
+  // celdas visibles mientras las demás muestran su foto con LazySlotPlaceholder (<img> nativo).
   const [mountedSlots, setMountedSlots] = useState<Set<number>>(() => {
     const init = store.getState().canvasData;
     if (!init) return new Set();
     const isLazy =
       init.slotCount > LAZY_MOUNT_THRESHOLD && typeof IntersectionObserver !== "undefined";
-    const seeded = new Set<number>();
-    for (const s of init.slots) {
-      if (!isLazy || s.assetUrl || s.profileAssetUrl) {
-        seeded.add(s.slotIndex);
-      }
-    }
-    return seeded;
+    if (isLazy) return new Set();
+    return new Set(init.slots.map((s) => s.slotIndex));
   });
   // Ola 6 — modal unificado de edición por slot (tabs Foto/Texto).
   const [editModal, setEditModal] = useState<{
@@ -669,21 +667,22 @@ export function StudioCanvasGrid({
     (canvasData?.slotCount ?? 0) > LAZY_MOUNT_THRESHOLD &&
     typeof IntersectionObserver !== "undefined";
 
-  // 2026-11-10 — preservar en `mountedSlots` todo slot que ya se montó en modo
-  // eager (`!isLazy`, p.ej. 1..3 bolas = 2..6 slots) o por tener foto asignada
-  // (`assetUrl`/`profileAssetUrl`). Sin esto, al subir de 3 a 4 o 5 bolas
-  // (8..10 slots > LAZY_MOUNT_THRESHOLD), `lazy` pasaba a `true` con
-  // `mountedSlots` vacío y desmontaba las Bolas 1..3 ya diseñadas.
+  // 2026-11-10 — preservar en `mountedSlots` todo slot que ya estuvo en modo
+  // eager (`!isLazy`, p.ej. 1..3 bolas = 2..6 slots). Así, al subir de 3 a 4 o 5
+  // bolas (8..10 slots > LAZY_MOUNT_THRESHOLD), las Bolas 1..3 nunca se desmontan,
+  // mientras las celdas nuevas fuera del viewport quedan en LazySlotPlaceholder
+  // hasta intersectar o tocarse (presupuesto acotado de stages Konva en móvil).
   useEffect(() => {
     return store.subscribe((state, prev) => {
       const cd = state.canvasData;
       if (!cd || cd === prev.canvasData) return;
       const isLazy =
         cd.slotCount > LAZY_MOUNT_THRESHOLD && typeof IntersectionObserver !== "undefined";
+      if (isLazy) return;
       setMountedSlots((current) => {
         let next: Set<number> | null = null;
         for (const s of cd.slots) {
-          if ((!isLazy || s.assetUrl || s.profileAssetUrl) && !current.has(s.slotIndex)) {
+          if (!current.has(s.slotIndex)) {
             if (!next) next = new Set(current);
             next.add(s.slotIndex);
           }
@@ -1081,13 +1080,12 @@ export function StudioCanvasGrid({
   };
 
   // Celda de un slot (montaje perezoso + StudioSlot o placeholder). Compartida por el
-  // grid plano y por las tarjetas-unidad del modo agrupado (separadores 2 caras).
-  // Los slots con foto asignada (`hasPhoto`) montan siempre su Stage para que
-  // decodifiquen de inmediato al volver del carrito o usar «Llenar todo» /
-  // «Aplicar a todas» sin quedar atrapados en LazySlotPlaceholder.
+  // grid plano y por las tarjetas-unidad del modo agrupado (separadores 2 caras / bolas).
+  // Los slots fuera del viewport en diseños > LAZY_MOUNT_THRESHOLD muestran su foto en
+  // LazySlotPlaceholder (<img> nativo) hasta entrar en pantalla o tocarse; previews y 3D
+  // renderizan desde CanvasDataV2 vía Canvas2D sin depender de montar los stages ocultos.
   const renderSlotCell = (slot: CanvasDataV2["slots"][number]) => {
-    const hasPhoto = Boolean(slot.assetUrl || slot.profileAssetUrl);
-    const mounted = !lazy || forceMountAll || hasPhoto || mountedSlots.has(slot.slotIndex);
+    const mounted = !lazy || forceMountAll || mountedSlots.has(slot.slotIndex);
     // 2026-09-24 — dimensiones de la foto ORIGINAL si el asset pasó por el
     // upscale local (chip de calidad medido sobre la nitidez real, no sobre
     // los píxeles re-muestreados).
@@ -1228,435 +1226,437 @@ export function StudioCanvasGrid({
   };
 
   return (
-    <div
-      ref={containerRef}
-      className="relative mx-auto w-full"
-      style={{
-        maxWidth: MAX_VIEWPORT_WIDTH,
-        // Item 2.1 — grilla táctil: el navegador maneja SOLO los pans nativos
-        // (scroll de página y del wrapper); el pinch-zoom del navegador queda
-        // apagado para que el gesto de 2 dedos sea nuestro zoom de lienzo.
-        touchAction: interactiveSlots ? undefined : "pan-x pan-y",
-      }}
-      aria-label={texts.lienzo.lienzoAria}
-    >
-      {/* Modelo multi-unidad (2026-09-09) — pager de unidades: pastillas "Tira 1",
+    <StudioStoreContext.Provider value={store as StudioStore}>
+      <div
+        ref={containerRef}
+        className="relative mx-auto w-full"
+        style={{
+          maxWidth: MAX_VIEWPORT_WIDTH,
+          // Item 2.1 — grilla táctil: el navegador maneja SOLO los pans nativos
+          // (scroll de página y del wrapper); el pinch-zoom del navegador queda
+          // apagado para que el gesto de 2 dedos sea nuestro zoom de lienzo.
+          touchAction: interactiveSlots ? undefined : "pan-x pan-y",
+        }}
+        aria-label={texts.lienzo.lienzoAria}
+      >
+        {/* Modelo multi-unidad (2026-09-09) — pager de unidades: pastillas "Tira 1",
           "Tira 2"… con el progreso de cada una; saltan a su sección (scroll).
           Las secciones quedan TODAS montadas y visibles (apiladas): el cliente
           ve todo lo que va a recibir y los stages Konva viven en el DOM para el
           snapshot de producción/preview (WYSIWYG).
           Owner 2026-09-18: con UN solo pack el pager es ruido (una pastilla
           sola que no salta a nada) — solo multi-unidad o multi-pack. */}
-      {(multiUnitSections || (packGroups && packCount > 1)) && (
-        <UnitPager
-          store={store}
-          unitCount={multiUnitSections ? unitCount : packCount}
-          unitSlots={multiUnitSections ? unitSlots : packSlots}
-          noun={unitNoun ?? texts.unidades.nombrePieza}
-        />
-      )}
+        {(multiUnitSections || (packGroups && packCount > 1)) && (
+          <UnitPager
+            store={store}
+            unitCount={multiUnitSections ? unitCount : packCount}
+            unitSlots={multiUnitSections ? unitSlots : packSlots}
+            noun={unitNoun ?? texts.unidades.nombrePieza}
+          />
+        )}
 
-      {/* Ola 33 (owner 2026-09-18) — wrapper del scroll HORIZONTAL del zoom de
+        {/* Ola 33 (owner 2026-09-18) — wrapper del scroll HORIZONTAL del zoom de
           lienzo: cuando el contenido zoomado excede el ancho del marco, ESTE
           contenedor scrollea (overflow-x-auto), nunca la página. Solo se activa
           con overflow real (needsStageHScroll): a zoom ≤100% queda en visible y
           no clipea anillos de selección ni sombras. */}
-      <div
-        ref={scrollWrapperRef}
-        className={needsStageHScroll ? "w-full overflow-x-auto" : undefined}
-        onClick={(e) => {
-          // 4.4 (2026-10-22) — modo TIRA: tap FUERA de cualquier celda suelta
-          // la selección (su barra de acciones flotante se oculta y la tira
-          // vuelve a leerse continua). Los taps en una celda no llegan acá como
-          // deselección porque su wrapper lleva data-slot-observe.
-          if (!stripMode) return;
-          const target = e.target as HTMLElement | null;
-          if (!target?.closest?.("[data-slot-observe]")) selectSlot(null);
-        }}
-      >
-        {multiUnitSections ? (
-          // Ola 29 (owner 2026-09-11) — las secciones de TIRA van en grilla
-          // horizontal de 2-3 por fila (wrap): 4 unidades → 3 + 1. El resto de
-          // productos multi-unidad (calendarios) sigue apilado una por fila.
-          <div
-            className={
-              sectionsPerRow > 1
-                ? "grid w-full justify-items-center"
-                : "flex w-full flex-col items-center gap-10"
-            }
-            style={
-              sectionsPerRow > 1
-                ? {
-                    gridTemplateColumns: `repeat(${sectionsPerRow}, minmax(0, 1fr))`,
-                    gap: UNIT_SECTION_GAP,
-                  }
-                : undefined
-            }
-          >
-            {Array.from({ length: unitCount }, (_, u) => {
-              const { start, end } = unitSlotRange(u, unitSlots);
-              const calCollapsed = isCalendar && collapsedCalUnits.has(u);
-              return (
-                <section
-                  key={u}
-                  id={`studio-unit-${u}`}
-                  aria-label={fillStudioText(texts.unidades.unidadDe, {
-                    nombre: unitNoun ?? texts.unidades.nombrePieza,
-                    n: u + 1,
-                    total: unitCount,
-                  })}
-                  className="w-full scroll-mt-32"
-                >
-                  <UnitSectionHeader
-                    store={store}
-                    unitIndex={u}
-                    unitSlots={unitSlots}
-                    unitCount={unitCount}
-                    noun={unitNoun ?? texts.unidades.nombrePieza}
-                    variantLabel={unitVariantLabel}
-                    onApplied={announceApplied}
-                    collapsible={isCalendar}
-                    collapsed={calCollapsed}
-                    onToggleCollapse={() => toggleCalUnitCollapsed(u)}
-                  />
-                  {calCollapsed ? (
-                    <CalendarMonthChips
-                      slots={canvasData.slots.slice(start, end)}
-                      labels={slotLabels}
-                      onJump={(slotIndex) => jumpToCalendarSlot(u, slotIndex)}
+        <div
+          ref={scrollWrapperRef}
+          className={needsStageHScroll ? "w-full overflow-x-auto" : undefined}
+          onClick={(e) => {
+            // 4.4 (2026-10-22) — modo TIRA: tap FUERA de cualquier celda suelta
+            // la selección (su barra de acciones flotante se oculta y la tira
+            // vuelve a leerse continua). Los taps en una celda no llegan acá como
+            // deselección porque su wrapper lleva data-slot-observe.
+            if (!stripMode) return;
+            const target = e.target as HTMLElement | null;
+            if (!target?.closest?.("[data-slot-observe]")) selectSlot(null);
+          }}
+        >
+          {multiUnitSections ? (
+            // Ola 29 (owner 2026-09-11) — las secciones de TIRA van en grilla
+            // horizontal de 2-3 por fila (wrap): 4 unidades → 3 + 1. El resto de
+            // productos multi-unidad (calendarios) sigue apilado una por fila.
+            <div
+              className={
+                sectionsPerRow > 1
+                  ? "grid w-full justify-items-center"
+                  : "flex w-full flex-col items-center gap-10"
+              }
+              style={
+                sectionsPerRow > 1
+                  ? {
+                      gridTemplateColumns: `repeat(${sectionsPerRow}, minmax(0, 1fr))`,
+                      gap: UNIT_SECTION_GAP,
+                    }
+                  : undefined
+              }
+            >
+              {Array.from({ length: unitCount }, (_, u) => {
+                const { start, end } = unitSlotRange(u, unitSlots);
+                const calCollapsed = isCalendar && collapsedCalUnits.has(u);
+                return (
+                  <section
+                    key={u}
+                    id={`studio-unit-${u}`}
+                    aria-label={fillStudioText(texts.unidades.unidadDe, {
+                      nombre: unitNoun ?? texts.unidades.nombrePieza,
+                      n: u + 1,
+                      total: unitCount,
+                    })}
+                    className="w-full scroll-mt-32"
+                  >
+                    <UnitSectionHeader
+                      store={store}
+                      unitIndex={u}
+                      unitSlots={unitSlots}
+                      unitCount={unitCount}
+                      noun={unitNoun ?? texts.unidades.nombrePieza}
+                      variantLabel={unitVariantLabel}
+                      onApplied={announceApplied}
+                      collapsible={isCalendar}
+                      collapsed={calCollapsed}
+                      onToggleCollapse={() => toggleCalUnitCollapsed(u)}
                     />
-                  ) : (
-                    <div
-                      id={`studio-unit-${u}-grid`}
-                      className={
-                        stripMode
-                          ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza
-                            // entera (las celdas no llevan sombra). Multi-unidad: una
-                            // sombra por TIRA (cada sección es una pieza física).
-                            "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
-                          : "grid"
-                      }
-                      style={{
-                        gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
-                        gap: layout.gap,
-                        ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
-                      }}
-                    >
-                      <AnimatePresence>
-                        {canvasData.slots.slice(start, end).map((slot) => renderSlotCell(slot))}
-                      </AnimatePresence>
-                    </div>
+                    {calCollapsed ? (
+                      <CalendarMonthChips
+                        slots={canvasData.slots.slice(start, end)}
+                        labels={slotLabels}
+                        onJump={(slotIndex) => jumpToCalendarSlot(u, slotIndex)}
+                      />
+                    ) : (
+                      <div
+                        id={`studio-unit-${u}-grid`}
+                        className={
+                          stripMode
+                            ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza
+                              // entera (las celdas no llevan sombra). Multi-unidad: una
+                              // sombra por TIRA (cada sección es una pieza física).
+                              "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
+                            : "grid"
+                        }
+                        style={{
+                          gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                          gap: layout.gap,
+                          ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+                        }}
+                      >
+                        <AnimatePresence>
+                          {canvasData.slots.slice(start, end).map((slot) => renderSlotCell(slot))}
+                        </AnimatePresence>
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          ) : packGroups ? (
+            // PACKS (owner 2026-09-15, ADR-101) — tarjeta por pack con el MISMO
+            // patrón visual de las tarjetas-unidad de separadores (borde sutil de
+            // marca + rótulo + progreso): "Pack 1" slots 1-6, "Pack 2" slots 7-12.
+            // Owner 2026-09-18: con UN solo pack la tarjeta se queda (el fondo que
+            // recubre) pero SIN rótulo "Pack 1" — ruido para una sola tarjeta.
+            <motion.div
+              className="flex w-full flex-col items-center gap-6"
+              initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
+            >
+              {Array.from({ length: packCount }, (_, p) => (
+                <section
+                  key={p}
+                  id={`studio-unit-${p}`}
+                  role="group"
+                  aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
+                    nombre: unitNoun ?? texts.unidades.nombrePieza,
+                    n: p + 1,
+                    total: packCount,
+                  })}
+                  className="border-brand-purple/15 flex w-full scroll-mt-32 flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
+                >
+                  {packCount > 1 && (
+                    <span className="text-brand-purple-dark text-xs font-bold">
+                      {fillStudioText(texts.lienzo.unitPack, { n: p + 1 })}
+                    </span>
                   )}
-                </section>
-              );
-            })}
-          </div>
-        ) : packGroups ? (
-          // PACKS (owner 2026-09-15, ADR-101) — tarjeta por pack con el MISMO
-          // patrón visual de las tarjetas-unidad de separadores (borde sutil de
-          // marca + rótulo + progreso): "Pack 1" slots 1-6, "Pack 2" slots 7-12.
-          // Owner 2026-09-18: con UN solo pack la tarjeta se queda (el fondo que
-          // recubre) pero SIN rótulo "Pack 1" — ruido para una sola tarjeta.
-          <motion.div
-            className="flex w-full flex-col items-center gap-6"
-            initial={reducedMotion ? false : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
-          >
-            {Array.from({ length: packCount }, (_, p) => (
-              <section
-                key={p}
-                id={`studio-unit-${p}`}
-                role="group"
-                aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
-                  nombre: unitNoun ?? texts.unidades.nombrePieza,
-                  n: p + 1,
-                  total: packCount,
-                })}
-                className="border-brand-purple/15 flex w-full scroll-mt-32 flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
-              >
-                {packCount > 1 && (
-                  <span className="text-brand-purple-dark text-xs font-bold">
-                    {fillStudioText(texts.lienzo.unitPack, { n: p + 1 })}
-                  </span>
-                )}
-                {/* Sin «Aplicar este diseño a todas»: la acción del store opera con
+                  {/* Sin «Aplicar este diseño a todas»: la acción del store opera con
                   canvasData.unitSlots y los packs de imán suelto NO lo declaran
                   (cada imán es su unidad) — copiar pack-a-pack requeriría soporte
                   nuevo en el store. Solo progreso, como pide la delimitación. */}
-                <UnitMiniActions
-                  store={store}
-                  unitIndex={p}
-                  unitSlots={packSlots}
-                  unitCount={packCount}
-                  onApplied={announceApplied}
-                  allowApply={false}
-                />
+                  <UnitMiniActions
+                    store={store}
+                    unitIndex={p}
+                    unitSlots={packSlots}
+                    unitCount={packCount}
+                    onApplied={announceApplied}
+                    allowApply={false}
+                  />
+                  <div
+                    className="grid"
+                    style={{
+                      gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                      gap: layout.gap,
+                      ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+                    }}
+                  >
+                    <AnimatePresence>
+                      {canvasData.slots
+                        .slice(p * packSlots, (p + 1) * packSlots)
+                        .map((slot) => renderSlotCell(slot))}
+                    </AnimatePresence>
+                  </div>
+                </section>
+              ))}
+            </motion.div>
+          ) : grouped ? (
+            // Ola 3 — tarjeta por UNIDAD física: "Separador N" con sus 2 caras (la
+            // tira desplegada que se imprime). (Referencia POSITIVA del owner:
+            // este patrón de tarjeta-unidad es el estándar de todo el Estudio.)
+            // 2026-09-22 — orientación REAL del doblez (feedback QA STG): el
+            // separador plegable se pliega por la MITAD de la tira vertical 2×12
+            // (doblez en la punta de 2cm) → las caras van APILADAS (Cara A arriba,
+            // Cara B abajo) con el filete de doblez HORIZONTAL en la unión.
+            // Alargados (noFold): la pieza es plana → caras lado a lado, sin doblez.
+            <motion.div
+              className="grid"
+              style={{
+                gridTemplateColumns: `repeat(${unitCols}, 1fr)`,
+                gap: layout.gap,
+              }}
+              initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
+            >
+              <AnimatePresence>
+                {Array.from({ length: physicalUnits }, (_, unitIndex) => (
+                  <div
+                    key={unitIndex}
+                    role="group"
+                    aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
+                      nombre: unitNoun ?? texts.unidades.nombreSeparador,
+                      n: unitIndex + 1,
+                      total: physicalUnits,
+                    })}
+                    className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
+                  >
+                    <span className="text-brand-purple-dark text-xs font-bold">
+                      {unitNoun
+                        ? `${unitNoun} ${unitIndex + 1}`
+                        : fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
+                    </span>
+                    {/* Multi-unidad (2026-09-09) — progreso de la unidad + atajo
+                    "Aplicar este diseño a todas" (copia las 2 caras de este
+                    separador a los demás). */}
+                    <UnitMiniActions
+                      store={store}
+                      unitIndex={unitIndex}
+                      unitSlots={2}
+                      unitCount={physicalUnits}
+                      onApplied={announceApplied}
+                    />
+                    <div
+                      className={
+                        noFold
+                          ? "flex items-start justify-center gap-2"
+                          : "flex flex-col items-center"
+                      }
+                    >
+                      {canvasData.slots
+                        .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
+                        .map((slot, i) => (
+                          <div
+                            key={slot.slotIndex}
+                            className={
+                              noFold
+                                ? i === 0
+                                  ? // Alargados planos: SIN línea de doblez (la pieza no
+                                    // se pliega) — separación sutil entre frente y reverso.
+                                    "border-brand-purple/10 flex flex-col items-center gap-1 border-r pr-2"
+                                  : "flex flex-col items-center gap-1"
+                                : i === 0
+                                  ? // Línea de DOBLEZ horizontal (2026-09-22): la tira se
+                                    // pliega por la mitad — el filete marca la unión
+                                    // entre Cara A (arriba) y Cara B (abajo).
+                                    "border-brand-purple/50 flex flex-col items-center gap-1 border-b-2 border-dashed pb-2"
+                                  : "flex flex-col items-center gap-1 pt-2"
+                            }
+                          >
+                            <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
+                              {i === 0 ? texts.lienzo.unitCaraA : texts.lienzo.unitCaraB}
+                            </span>
+                            {renderSlotCell(slot)}
+                          </div>
+                        ))}
+                    </div>
+                    {/* Indicación del tamaño total DESPLEGADO junto al doblez
+                      (2026-09-22): "Doblez · Desplegado: 2×12 cm". Solo
+                      plegables — los Alargados (noFold) no se despliegan. */}
+                    {!noFold &&
+                      (() => {
+                        const deployed = deployedSizeCm(sizeCm);
+                        if (!deployed) return null;
+                        return (
+                          <span className="text-brand-purple-dark/80 text-[10px] font-semibold">
+                            {fillStudioText(texts.lienzo.doblezDesplegado, {
+                              tamano: `${deployed} cm`,
+                            })}
+                          </span>
+                        );
+                      })()}
+                    {/* Nota de la rotación de imprenta (2026-09-25): en el canvas
+                      ambas caras se ven derechas (para editar), pero la Cara B se
+                      imprime girada 180° — el cliente lo entiende antes de la
+                      vista previa. Solo plegables. */}
+                    {!noFold && (
+                      <span className="text-brand-muted max-w-52 text-center text-[9px] leading-tight">
+                        {texts.lienzo.doblezNotaRotacion}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
+          ) : (
+            // MODO PLANO con tarjeta (owner 2026-09-18) — la grilla suelta (cuadro
+            // de 3 fotos, planner, fotoimán suelto sin pack completo, tira de 1
+            // unidad) va envuelta en el MISMO visual de tarjeta-unidad de
+            // separadores/packs: todo estudio foto tiene el fondo que recubre.
+            <motion.div
+              className="border-brand-purple/15 flex w-full flex-col items-center rounded-2xl border bg-white/70 p-2 shadow-sm"
+              initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
+            >
+              {/* 2026-10-29 (owner) — calendario de UN set: encabezado colapsable
+                con ayuda visual (resumen «N de 12 meses con foto» + chevron;
+                colapsado = mapa de chips por mes). */}
+              {isCalendar &&
+                (() => {
+                  const totalSlotsCal = canvasData.slots.length;
+                  const filledCal = canvasData.slots.filter((s) => s.assetUrl).length;
+                  const collapsed = collapsedCalUnits.has(0);
+                  return (
+                    <>
+                      <div className="mb-2 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-1 pt-1">
+                        <h2 className="text-brand-purple-dark font-display text-sm font-bold">
+                          {texts.unidades.calMesesTitulo}
+                        </h2>
+                        <span
+                          role="status"
+                          className={[
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums",
+                            filledCal === totalSlotsCal
+                              ? "bg-emerald-100 text-emerald-700"
+                              : filledCal === 0
+                                ? "bg-red-50 text-red-700"
+                                : "bg-brand-purple/10 text-brand-purple-dark",
+                          ].join(" ")}
+                        >
+                          {filledCal === totalSlotsCal && <Check className="h-3 w-3" aria-hidden />}
+                          {fillStudioText(texts.unidades.calMesesResumen, {
+                            filled: filledCal,
+                            total: totalSlotsCal,
+                          })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleCalUnitCollapsed(0)}
+                          aria-expanded={!collapsed}
+                          aria-controls="studio-unit-0-grid"
+                          aria-label={texts.unidades.calMesesToggleAria}
+                          className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple inline-flex h-8 w-8 items-center justify-center rounded-full text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+                        >
+                          <ChevronDown
+                            className={`h-4 w-4 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+                            aria-hidden
+                          />
+                        </button>
+                      </div>
+                      {collapsed && (
+                        <CalendarMonthChips
+                          slots={canvasData.slots}
+                          labels={slotLabels}
+                          onJump={(slotIndex) => jumpToCalendarSlot(0, slotIndex)}
+                        />
+                      )}
+                    </>
+                  );
+                })()}
+              {!(isCalendar && collapsedCalUnits.has(0)) && (
                 <div
-                  className="grid"
+                  id="studio-unit-0-grid"
+                  className={
+                    stripMode
+                      ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza entera (las
+                        // celdas individuales no llevan sombra — separaban la tira visualmente).
+                        // Sin overflow-hidden: el anillo de selección del slot no debe cortarse.
+                        "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
+                      : "grid"
+                  }
                   style={{
                     gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
                     gap: layout.gap,
+                    // Ola 4 — ancho explícito + margin auto: el grid siempre centrado en
+                    // el marco, sin estirarse cuando el cap de alto achica las celdas.
                     ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
                   }}
                 >
                   <AnimatePresence>
-                    {canvasData.slots
-                      .slice(p * packSlots, (p + 1) * packSlots)
-                      .map((slot) => renderSlotCell(slot))}
+                    {canvasData.slots.map((slot) => renderSlotCell(slot))}
                   </AnimatePresence>
                 </div>
-              </section>
-            ))}
-          </motion.div>
-        ) : grouped ? (
-          // Ola 3 — tarjeta por UNIDAD física: "Separador N" con sus 2 caras (la
-          // tira desplegada que se imprime). (Referencia POSITIVA del owner:
-          // este patrón de tarjeta-unidad es el estándar de todo el Estudio.)
-          // 2026-09-22 — orientación REAL del doblez (feedback QA STG): el
-          // separador plegable se pliega por la MITAD de la tira vertical 2×12
-          // (doblez en la punta de 2cm) → las caras van APILADAS (Cara A arriba,
-          // Cara B abajo) con el filete de doblez HORIZONTAL en la unión.
-          // Alargados (noFold): la pieza es plana → caras lado a lado, sin doblez.
-          <motion.div
-            className="grid"
-            style={{
-              gridTemplateColumns: `repeat(${unitCols}, 1fr)`,
-              gap: layout.gap,
-            }}
-            initial={reducedMotion ? false : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
-          >
-            <AnimatePresence>
-              {Array.from({ length: physicalUnits }, (_, unitIndex) => (
-                <div
-                  key={unitIndex}
-                  role="group"
-                  aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
-                    nombre: unitNoun ?? texts.unidades.nombreSeparador,
-                    n: unitIndex + 1,
-                    total: physicalUnits,
-                  })}
-                  className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
-                >
-                  <span className="text-brand-purple-dark text-xs font-bold">
-                    {unitNoun
-                      ? `${unitNoun} ${unitIndex + 1}`
-                      : fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
-                  </span>
-                  {/* Multi-unidad (2026-09-09) — progreso de la unidad + atajo
-                    "Aplicar este diseño a todas" (copia las 2 caras de este
-                    separador a los demás). */}
-                  <UnitMiniActions
-                    store={store}
-                    unitIndex={unitIndex}
-                    unitSlots={2}
-                    unitCount={physicalUnits}
-                    onApplied={announceApplied}
-                  />
-                  <div
-                    className={
-                      noFold
-                        ? "flex items-start justify-center gap-2"
-                        : "flex flex-col items-center"
-                    }
-                  >
-                    {canvasData.slots
-                      .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
-                      .map((slot, i) => (
-                        <div
-                          key={slot.slotIndex}
-                          className={
-                            noFold
-                              ? i === 0
-                                ? // Alargados planos: SIN línea de doblez (la pieza no
-                                  // se pliega) — separación sutil entre frente y reverso.
-                                  "border-brand-purple/10 flex flex-col items-center gap-1 border-r pr-2"
-                                : "flex flex-col items-center gap-1"
-                              : i === 0
-                                ? // Línea de DOBLEZ horizontal (2026-09-22): la tira se
-                                  // pliega por la mitad — el filete marca la unión
-                                  // entre Cara A (arriba) y Cara B (abajo).
-                                  "border-brand-purple/50 flex flex-col items-center gap-1 border-b-2 border-dashed pb-2"
-                                : "flex flex-col items-center gap-1 pt-2"
-                          }
-                        >
-                          <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
-                            {i === 0 ? texts.lienzo.unitCaraA : texts.lienzo.unitCaraB}
-                          </span>
-                          {renderSlotCell(slot)}
-                        </div>
-                      ))}
-                  </div>
-                  {/* Indicación del tamaño total DESPLEGADO junto al doblez
-                      (2026-09-22): "Doblez · Desplegado: 2×12 cm". Solo
-                      plegables — los Alargados (noFold) no se despliegan. */}
-                  {!noFold &&
-                    (() => {
-                      const deployed = deployedSizeCm(sizeCm);
-                      if (!deployed) return null;
-                      return (
-                        <span className="text-brand-purple-dark/80 text-[10px] font-semibold">
-                          {fillStudioText(texts.lienzo.doblezDesplegado, {
-                            tamano: `${deployed} cm`,
-                          })}
-                        </span>
-                      );
-                    })()}
-                  {/* Nota de la rotación de imprenta (2026-09-25): en el canvas
-                      ambas caras se ven derechas (para editar), pero la Cara B se
-                      imprime girada 180° — el cliente lo entiende antes de la
-                      vista previa. Solo plegables. */}
-                  {!noFold && (
-                    <span className="text-brand-muted max-w-52 text-center text-[9px] leading-tight">
-                      {texts.lienzo.doblezNotaRotacion}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        ) : (
-          // MODO PLANO con tarjeta (owner 2026-09-18) — la grilla suelta (cuadro
-          // de 3 fotos, planner, fotoimán suelto sin pack completo, tira de 1
-          // unidad) va envuelta en el MISMO visual de tarjeta-unidad de
-          // separadores/packs: todo estudio foto tiene el fondo que recubre.
-          <motion.div
-            className="border-brand-purple/15 flex w-full flex-col items-center rounded-2xl border bg-white/70 p-2 shadow-sm"
-            initial={reducedMotion ? false : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
-          >
-            {/* 2026-10-29 (owner) — calendario de UN set: encabezado colapsable
-                con ayuda visual (resumen «N de 12 meses con foto» + chevron;
-                colapsado = mapa de chips por mes). */}
-            {isCalendar &&
-              (() => {
-                const totalSlotsCal = canvasData.slots.length;
-                const filledCal = canvasData.slots.filter((s) => s.assetUrl).length;
-                const collapsed = collapsedCalUnits.has(0);
-                return (
-                  <>
-                    <div className="mb-2 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-1 pt-1">
-                      <h2 className="text-brand-purple-dark font-display text-sm font-bold">
-                        {texts.unidades.calMesesTitulo}
-                      </h2>
-                      <span
-                        role="status"
-                        className={[
-                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums",
-                          filledCal === totalSlotsCal
-                            ? "bg-emerald-100 text-emerald-700"
-                            : filledCal === 0
-                              ? "bg-red-50 text-red-700"
-                              : "bg-brand-purple/10 text-brand-purple-dark",
-                        ].join(" ")}
-                      >
-                        {filledCal === totalSlotsCal && <Check className="h-3 w-3" aria-hidden />}
-                        {fillStudioText(texts.unidades.calMesesResumen, {
-                          filled: filledCal,
-                          total: totalSlotsCal,
-                        })}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleCalUnitCollapsed(0)}
-                        aria-expanded={!collapsed}
-                        aria-controls="studio-unit-0-grid"
-                        aria-label={texts.unidades.calMesesToggleAria}
-                        className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple inline-flex h-8 w-8 items-center justify-center rounded-full text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
-                      >
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform ${collapsed ? "-rotate-90" : ""}`}
-                          aria-hidden
-                        />
-                      </button>
-                    </div>
-                    {collapsed && (
-                      <CalendarMonthChips
-                        slots={canvasData.slots}
-                        labels={slotLabels}
-                        onJump={(slotIndex) => jumpToCalendarSlot(0, slotIndex)}
-                      />
-                    )}
-                  </>
-                );
-              })()}
-            {!(isCalendar && collapsedCalUnits.has(0)) && (
-              <div
-                id="studio-unit-0-grid"
-                className={
-                  stripMode
-                    ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza entera (las
-                      // celdas individuales no llevan sombra — separaban la tira visualmente).
-                      // Sin overflow-hidden: el anillo de selección del slot no debe cortarse.
-                      "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
-                    : "grid"
-                }
-                style={{
-                  gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
-                  gap: layout.gap,
-                  // Ola 4 — ancho explícito + margin auto: el grid siempre centrado en
-                  // el marco, sin estirarse cuando el cap de alto achica las celdas.
-                  ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
-                }}
-              >
-                <AnimatePresence>
-                  {canvasData.slots.map((slot) => renderSlotCell(slot))}
-                </AnimatePresence>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </div>
+              )}
+            </motion.div>
+          )}
+        </div>
 
-      {/* Feedback aria-live del atajo "Aplicar este diseño a todas". */}
-      <span aria-live="polite" role="status" className="sr-only">
-        {appliedTick > 0 ? texts.unidades.aplicadaFeedback : ""}
-      </span>
+        {/* Feedback aria-live del atajo "Aplicar este diseño a todas". */}
+        <span aria-live="polite" role="status" className="sr-only">
+          {appliedTick > 0 ? texts.unidades.aplicadaFeedback : ""}
+        </span>
 
-      {/* Ola 22 (Lucy 2026-09-09) — el control del zoom de LIENZO vive en la fila de
+        {/* Ola 22 (Lucy 2026-09-09) — el control del zoom de LIENZO vive en la fila de
         pills superior del editor (junto a «Ideas» / «Ver en tu espacio»), NUNCA flotando
         sobre el canvas. Acá solo se REPORTA el estado efectivo (zoom clampado; Ola 33:
         tope fijo STAGE_ZOOM_MAX con scroll-x interno en el wrapper) para que aquel
         control pinte el % y habilite −/+. Display-only: la exportación usa el tamaño
         LÓGICO del stage (pixelRatio relativo), así el PNG de imprenta sale igual con
         cualquier zoom. */}
-      <StageZoomReporter zoom={stageZoom} cap={stageZoomCap} onReport={onStageZoomState} />
+        <StageZoomReporter zoom={stageZoom} cap={stageZoomCap} onReport={onStageZoomState} />
 
-      {/* Ola 6 — Modal unificado de edición por slot (tabs Foto/Texto). */}
-      <StudioSlotEditModalWrapper
-        store={store}
-        editModal={editModal}
-        onClose={() => {
-          setEditModal(null);
-          onEditClose?.();
-        }}
-        allowFilters={!calendarPreview}
-        slotLabels={slotLabels}
-        allowText={allowText}
-        frameFullBleed={frameFullBleed}
-        requirePhotoCoverage={noFold}
-        calendarPreview={calendarPreview}
-        onChangePhoto={onRequestChangePhoto}
-        onRequestChangeProfilePhoto={onRequestChangeProfilePhoto}
-      />
+        {/* Ola 6 — Modal unificado de edición por slot (tabs Foto/Texto). */}
+        <StudioSlotEditModalWrapper
+          store={store}
+          editModal={editModal}
+          onClose={() => {
+            setEditModal(null);
+            onEditClose?.();
+          }}
+          allowFilters={!calendarPreview}
+          slotLabels={slotLabels}
+          allowText={allowText}
+          frameFullBleed={frameFullBleed}
+          requirePhotoCoverage={noFold}
+          calendarPreview={calendarPreview}
+          onChangePhoto={onRequestChangePhoto}
+          onRequestChangeProfilePhoto={onRequestChangeProfilePhoto}
+        />
 
-      {/* A2.6 — Overlay de transición al cambiar plantilla */}
-      <AnimatePresence>
-        {transitioning && !reducedMotion && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.7, 0] }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, times: [0, 0.3, 1], ease: "easeOut" }}
-            className="from-brand-turquoise/15 via-brand-cream/60 to-brand-purple/15 pointer-events-none absolute inset-0 bg-gradient-to-br backdrop-blur-[2px]"
-            aria-hidden
-          />
-        )}
-      </AnimatePresence>
-    </div>
+        {/* A2.6 — Overlay de transición al cambiar plantilla */}
+        <AnimatePresence>
+          {transitioning && !reducedMotion && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 0.7, 0] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, times: [0, 0.3, 1], ease: "easeOut" }}
+              className="from-brand-turquoise/15 via-brand-cream/60 to-brand-purple/15 pointer-events-none absolute inset-0 bg-gradient-to-br backdrop-blur-[2px]"
+              aria-hidden
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    </StudioStoreContext.Provider>
   );
 }
 
