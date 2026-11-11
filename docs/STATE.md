@@ -27,7 +27,7 @@
 ### Excepciones deliberadas de homologación (`ADR-099`, `ADR-121`, `ADR-126`)
 
 - **Catálogo y esquema (`scripts/diag-stg/homologacion.sh`):** migraciones, categorías (84=84,
-  jerarquía aplanada espejo de PRD), ocasiones, redirects, `168/168` campos CMS y variantes `-NOMAG`
+  jerarquía aplanada espejo de PRD), ocasiones, redirects, `169/169` campos CMS y variantes `-NOMAG`
   homologados. **Catálogo ACTIVO de referencia (`ADR-203`, owner 2026-11-11): los 8 activos de PRD +
   `bola-navidena-personalizada` (9 activos) en los 3 ambientes**; el resto queda pausado en STG/DEV.
   Cuadrados tiene sus 12 gemelas `-NOMAG` sembradas **inactivas** (listas para toggle admin).
@@ -56,8 +56,8 @@
 - 16 ocasiones dinámicas, `GlobalSearch` difuso (`shouldFilter={false}`), PDP con escalas mayoristas
   (`WholesaleTier`) y lightbox con zoom compartido (`components/preview-zoom.ts`), 404 HTTP real
   sobre slugs cacheados, feed `GET /feeds/google-merchant.xml` y APIs `/api/catalog|cms`.
-- **CMS v2 de 3 capas (`ADR-187`):** `9` contenedores, `29` secciones y `168` campos
-  (`105 BLOCK + 63 SETTING`) con paridad AST `168/168` en CI y tokens legales `{{*}}`
+- **CMS v2 de 3 capas (`ADR-187`):** `9` contenedores, `30` secciones y `169` campos
+  (`105 BLOCK + 64 SETTING`) con paridad AST `169/169` en CI y tokens legales `{{*}}`
   (`lib/consumer-law.ts`).
 
 ### Estudio 2D/3D y Producción 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md))
@@ -77,9 +77,11 @@
   **curva de volumen real en packs Polaroid/Cuadrados** (2 packs −6 %, 3 −11 %, 4 −15 %; one-shot
   `packs-volume-pricing-20261111.mjs`), `magnet: true` explícito en Polaroid/Cuadrados, calendario
   renombrado «Calendario Set 12 Tarjetas», **banners de la portada como ventana emergente** (una vez
-  por sesión; `components/home/promo-popup.tsx`), códigos de respaldo MFA que ya no desaparecen en
-  el enrolamiento inicial (sin `revalidatePath` a mitad del flujo), edición inline en
-  `/admin/mayorista`,
+  por sesión y DESPUÉS del consentimiento de cookies — `components/home/promo-popup.tsx`), códigos de
+  respaldo MFA que ya no desaparecen en el enrolamiento inicial (sin `revalidatePath` a mitad del
+  flujo), edición inline en `/admin/mayorista`, **logo grande de la portada administrable** vía CMS
+  `site.logo` (estacional) y **caída de nieve a pantalla completa** activable en
+  `/admin/contenido/paginas/inicio` → «Efectos de temporada» (`home.seasonal.snowfall`),
   CTA final de portada hacia `/empresas-y-eventos` (`home.cta.b2b-label`) y embudo B2B desde 25 unidades.
 - **Bola Navideña y Mini Libros (`ADR-199`/`200`/`201` + `ADR-203`):** Bola Navideña (inserto dúplex
   plano de 8 cm) **activa en los 3 ambientes** con 2 variantes — Sin imán **$10.000** y Con imán

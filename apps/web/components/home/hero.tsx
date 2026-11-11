@@ -11,7 +11,7 @@
 import Link from "next/link";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { CmsText } from "@/components/cms/cms-text";
-import { getSettingValue } from "@/lib/cms";
+import { getCmsImage, getSettingValue } from "@/lib/cms";
 
 export async function HomeHero() {
   // #3 — mismo toggle que usa el checkout (/admin/contenido/paginas/global → campo
@@ -23,9 +23,14 @@ export async function HomeHero() {
 
   // Destinos de los CTAs, editables desde /admin/contenido (settings). Los
   // fallbacks conservan el comportamiento actual si la DB no responde.
-  const [ctaPrimaryHref, ctaSecondaryHref] = await Promise.all([
+  const [ctaPrimaryHref, ctaSecondaryHref, siteLogo] = await Promise.all([
     getSettingValue("home.hero.cta-primary.href", "/productos"),
     getSettingValue("home.hero.cta-secondary.href", "/productos?personalizable=1"),
+    // 2026-11-11 (owner) — el logo GRANDE del hero también obedece al CMS
+    // `site.logo` (antes solo el header/panel admin lo leían): así el logo
+    // estacional (gorro navideño, halloween, amor y amistad…) se cambia desde
+    // /admin/contenido sin despliegue. Vacío → asset estático de siempre.
+    getCmsImage("site.logo"),
   ]);
 
   return (
@@ -40,11 +45,18 @@ export async function HomeHero() {
       <div className="grid items-center gap-4 px-2 py-6 sm:gap-8 sm:py-12 md:grid-cols-2 md:py-16 lg:py-20">
         <div className="order-1 flex justify-center md:order-2">
           <div className="motion-safe:animate-[var(--animate-float)] motion-safe:[animation-duration:4s]">
-            <LucamsLogo variant="full" size={140} priority className="drop-shadow-xl md:hidden" />
+            <LucamsLogo
+              variant="full"
+              size={140}
+              priority
+              src={siteLogo?.url ?? null}
+              className="drop-shadow-xl md:hidden"
+            />
             <LucamsLogo
               variant="full"
               size={280}
               priority
+              src={siteLogo?.url ?? null}
               className="hidden drop-shadow-2xl md:block"
             />
           </div>

@@ -469,6 +469,7 @@ describe("CMS v2 — paridad exacta entre apps/web y cms-site-map.mjs", () => {
     }
 
     expect(pages.length).toBe(9);
-    expect(fieldKeys.size).toBe(168);
+    // 2026-11-11 — 169 campos: +`home.seasonal.snowfall` (efectos de temporada).
+    expect(fieldKeys.size).toBe(169);
   });
 });
