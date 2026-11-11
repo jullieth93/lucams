@@ -12,6 +12,7 @@ import { publishCmsFieldAction } from "@/app/admin/(panel)/contenido/actions";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { formatDateTimeCO } from "@/lib/datetime";
+import type { CmsListSubfield } from "@/features/cms/service";
 
 type Version = {
   id: string;
@@ -29,10 +30,20 @@ export function VersionHistory({
   fieldId,
   versions,
   currentPublishedVersionId,
+  listSchema = null,
+  mediaById = {},
 }: {
   fieldId: string;
   versions: Version[];
   currentPublishedVersionId: string | null;
+  /**
+   * 2026-11-11 (owner) — campos LISTA (ej. home.banners): el historial muestra
+   * las filas en VISUAL (miniatura + título + enlace + activo), no el JSON
+   * crudo — lo lee también quien no es técnico.
+   */
+  listSchema?: CmsListSubfield[] | null;
+  /** Media id → {url, alt} para las miniaturas de los subcampos IMAGE. */
+  mediaById?: Record<string, { url: string; alt: string }>;
 }) {
   if (versions.length === 0) {
     return (
@@ -84,11 +95,15 @@ export function VersionHistory({
               <p className="text-brand-muted mt-1 text-xs">
                 Guardada el {formatDateHuman(v.createdAt)}
               </p>
-              <p className="text-brand-purple-dark/75 mt-2 line-clamp-2 text-sm">
-                {v.title && <b className="text-brand-purple-dark">{v.title}: </b>}
-                {v.body.replace(/[#*_`>-]/g, "").slice(0, 200)}
-                {v.body.length > 200 && "…"}
-              </p>
+              {listSchema ? (
+                <ListVersionPreview body={v.body} listSchema={listSchema} mediaById={mediaById} />
+              ) : (
+                <p className="text-brand-purple-dark/75 mt-2 line-clamp-2 text-sm">
+                  {v.title && <b className="text-brand-purple-dark">{v.title}: </b>}
+                  {v.body.replace(/[#*_`>-]/g, "").slice(0, 200)}
+                  {v.body.length > 200 && "…"}
+                </p>
+              )}
             </div>
             {!isCurrent && (
               <form action={publishCmsFieldAction}>
@@ -122,4 +137,83 @@ export function VersionHistory({
 function formatDateHuman(d: Date): string {
   // Hora de Colombia fija vía helper compartido (lib/datetime — bug LCM-2026-0004).
   return formatDateTimeCO(d);
+}
+
+/**
+ * Vista HUMANA de una versión de campo LISTA (2026-11-11, owner — antes el
+ * historial mostraba el JSON crudo del body, ilegible para quien no es
+ * técnico). Cada fila del array se muestra como tarjeta: miniatura del
+ * subcampo IMAGE + una línea por subcampo con su ETIQUETA del schema
+ * («Título», «Enlace», «Activo»). JSON inválido o vacío → nota en texto plano.
+ */
+function ListVersionPreview({
+  body,
+  listSchema,
+  mediaById,
+}: {
+  body: string;
+  listSchema: CmsListSubfield[];
+  mediaById: Record<string, { url: string; alt: string }>;
+}) {
+  let items: unknown;
+  try {
+    items = JSON.parse(body);
+  } catch {
+    items = null;
+  }
+  if (!Array.isArray(items)) {
+    return <p className="text-brand-muted mt-2 text-xs italic">Contenido no legible como lista.</p>;
+  }
+  if (items.length === 0) {
+    return (
+      <p className="text-brand-muted mt-2 text-xs italic">
+        Lista vacía (no se muestra en el sitio).
+      </p>
+    );
+  }
+  const imageField = listSchema.find((s) => s.type === "IMAGE");
+  return (
+    <ul className="mt-2 space-y-2">
+      {items.map((raw, i) => {
+        const item =
+          typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+        const media = imageField ? mediaById[String(item[imageField.name] ?? "")] : undefined;
+        return (
+          <li
+            key={i}
+            className="border-brand-purple/10 flex items-center gap-3 rounded-lg border bg-white p-2"
+          >
+            {imageField &&
+              (media ? (
+                // eslint-disable-next-line @next/next/no-img-element -- miniatura del historial admin; la URL pública ya viene resuelta
+                <img
+                  src={media.url}
+                  alt={media.alt}
+                  className="h-10 w-10 flex-shrink-0 rounded-md object-cover"
+                />
+              ) : (
+                <span className="bg-brand-cream text-brand-muted flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md text-[9px]">
+                  sin imagen
+                </span>
+              ))}
+            <div className="min-w-0 flex-1 space-y-0.5">
+              {listSchema
+                .filter((s) => s.type !== "IMAGE")
+                .map((s) => {
+                  const value = String(item[s.name] ?? "").trim();
+                  const display =
+                    s.type === "BOOLEAN" ? (value === "false" ? "No" : "Sí") : value || "—";
+                  return (
+                    <p key={s.name} className="text-brand-purple-dark/85 truncate text-xs">
+                      <span className="text-brand-muted">{s.label}:</span>{" "}
+                      <span className={s.type === "URL" ? "break-all" : undefined}>{display}</span>
+                    </p>
+                  );
+                })}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
