@@ -10,7 +10,7 @@
  */
 
 import type { Instrumentation } from "next";
-import { logger } from "@/lib/logger";
+import { logger, sanitizeLoggedPath } from "@/lib/logger";
 
 /**
  * register() corre UNA vez al iniciar el servidor. Validamos las variables de entorno
@@ -40,12 +40,14 @@ export async function register() {
 
 export const onRequestError: Instrumentation.onRequestError = async (err, request, context) => {
   const e = err as { digest?: string } & Error;
+  const safeRequestPath = sanitizeLoggedPath(request.path);
+  const safeRoutePath = sanitizeLoggedPath(context.routePath);
   logger.error({
     event: "server.error",
     message: e.message,
     digest: e.digest ?? null,
-    requestPath: request.path,
-    routePath: context.routePath,
+    requestPath: safeRequestPath,
+    routePath: safeRoutePath,
     routeType: context.routeType,
   });
   // error-capture usa prisma + node:crypto → es NODE-only. Import perezoso GUARDADO por runtime:
@@ -57,9 +59,9 @@ export const onRequestError: Instrumentation.onRequestError = async (err, reques
       message: e.message,
       digest: e.digest,
       stack: e.stack,
-      requestPath: request.path,
+      requestPath: safeRequestPath ?? undefined,
       method: request.method,
-      routePath: context.routePath,
+      routePath: safeRoutePath ?? undefined,
       routeType: context.routeType,
     });
   }

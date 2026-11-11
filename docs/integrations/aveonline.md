@@ -230,10 +230,10 @@ sequenceDiagram
 ### 1. Webhook `POST /api/webhooks/aveonline` (`apps/web/app/api/webhooks/aveonline/route.ts`)
 
 - **Techo de lectura**: `32 KB` (`AVEONLINE_MAX_BODY_BYTES`).
-- **Autenticación en tiempo constante (`secureEquals`)**: Aveonline no firma webhooks con HMAC (doc oficial: https://integraciones.aveonline.co/docs/avecrm/crearWebhook/, verificada 2026-10-20). Se exige coincidencia con `AVEONLINE_WEBHOOK_SECRET` por:
+- **Autenticación en tiempo constante (`secureEquals`)**: Aveonline no firma webhooks con HMAC (doc oficial: https://integraciones.aveonline.co/docs/avecrm/crearWebhook/, verificada 2026-10-20). Se exige coincidencia con `AVEONLINE_WEBHOOK_SECRET` exclusivamente por:
   1. Header `x-aveonline-secret`, o
   2. Propiedad `payload.token` del JSON (el campo _Token_ configurado en _Mis integraciones_ del panel Aveonline).
-  3. Query string `?secret=` **deshabilitado por defecto**; solo se acepta si `AVEONLINE_ALLOW_QUERY_SECRET === "true"` durante migraciones puntuales (evita filtrar el secreto en logs de proxy/CDN).
+  3. El canal legacy por query string (`?secret=`) fue **retirado definitivamente** (`SEC-06`) y `validateEnv` aborta el arranque si `AVEONLINE_ALLOW_QUERY_SECRET=true` aparece en producción (evita filtrar el secreto en logs de proxy/CDN).
   - Cualquier intento inválido persiste un `SecurityEvent` (`WEBHOOK_INVALID_SIGNATURE`) y devuelve `HTTP 401` (`HTTP 503` en producción si `AVEONLINE_WEBHOOK_SECRET` no estuviera configurada).
 - **Doble formato soportado y fechas en hora Colombia (`-05:00`)**: `handleWebhook` convierte `guia` numérica a `String` y soporta tanto el formato legacy (`estado: [{ estado_id, nombre_estado, fecha }]`) como AveCRM (`estado: [{ nombre, timestamp }]` u objeto único). `parseAveonlineDate` interpreta cadenas sin zona horaria (`YYYY-MM-DD HH:mm:ss` del webhook y `MM/DD/YYYY HH:mm:ss` de `fechamostrar` en polling) fijándoles explícitamente el offset **`-05:00` (`America/Bogota`)** para evitar desfases de 5 horas en servidores UTC.
 - **Deduplicación y privacidad (`LUC-SEC-003`)**: crea `WebhookEvent` con `source: "AVEONLINE"` y `externalId: "${trackingNumber}-${status}-${hasCarrierTimestamp ? timestampMs : 'no-ts'}"` (capturando `P2002` en carreras). El `payload` guardado aplica allowlist estricta sin almacenar jamás `payload.token` ni texto crudo.
@@ -305,7 +305,7 @@ Ejecuta esta verificación al configurar la cuenta comercial de Lucams o auditar
 
 ### Paso 3 — Registro del Webhook de Estados
 
-- [ ] Generar un secreto aleatorio criptográfico (`≥ 32` caracteres) y guardarlo en Vercel como `AVEONLINE_WEBHOOK_SECRET` (manteniendo `AVEONLINE_ALLOW_QUERY_SECRET` ausente o `"false"`).
+- [ ] Generar un secreto aleatorio criptográfico (`≥ 32` caracteres) y guardarlo en Vercel como `AVEONLINE_WEBHOOK_SECRET`.
 - [ ] En el panel de Aveonline (**Mis integraciones → Webhooks de estados de guías** — o mediante la herramienta administrativa que invoca `createAveonlineWebhook`), registrar:
   - **URL**: `https://lucamsshop.com/api/webhooks/aveonline`
   - **Token**: pegar exactamente el valor de `AVEONLINE_WEBHOOK_SECRET` (Aveonline lo reenviará en `payload.token` en cada notificación).

@@ -11,7 +11,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Plug, Trash2, Truck, Webhook } from "lucide-react";
 import {
   AdminPage,
@@ -27,7 +26,7 @@ import {
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { listAveonlineWebhooks } from "@/features/shipping/aveonline";
 import { WebhookRegistrationForm } from "./webhook-form";
 import { deleteAveonlineWebhookAction } from "./actions";
@@ -42,8 +41,7 @@ export default async function AveonlineIntegrationPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireRole(["SUPERADMIN"]);
 
   const sp = await searchParams;
   const errorMsg = typeof sp.error === "string" ? sp.error : null;

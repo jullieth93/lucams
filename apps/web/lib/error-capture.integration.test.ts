@@ -33,7 +33,7 @@ describe.skipIf(!hasDb)("captureClientError — dedup por fingerprint", { timeou
     await prisma.errorReport
       .deleteMany({
         where: {
-          OR: [{ message: { startsWith: RUN } }, { url: { startsWith: `itest://${RUN}` } }],
+          OR: [{ message: { startsWith: RUN } }, { url: { startsWith: `/__itest__/${RUN}` } }],
         },
       })
       .catch(() => {});
@@ -70,26 +70,26 @@ describe.skipIf(!hasDb)("captureClientError — dedup por fingerprint", { timeou
     expect(new Set(rows.map((r) => r.fingerprint)).size).toBe(2);
   });
 
-  it("persiste url/userAgent/digest y trunca campos largos", async () => {
+  it("persiste pathname limpio en url (sin query/hash), userAgent y digest", async () => {
     const message = `${RUN}-meta`;
     await captureClientError({
       message,
       stack: "at M (m.js:1)",
-      url: "https://lucamsshop.com/estudio/algo",
+      url: "https://lucamsshop.com/estudio/algo?token=secreto_999#access_token=jwt",
       userAgent: "Mozilla/5.0 test",
       digest: "digest-123",
     });
     const row = await prisma.errorReport.findFirst({ where: { message } });
-    expect(row?.url).toBe("https://lucamsshop.com/estudio/algo");
+    expect(row?.url).toBe("/estudio/algo");
     expect(row?.userAgent).toBe("Mozilla/5.0 test");
     expect(row?.digest).toBe("digest-123");
   });
 
   it("no lanza aunque el message venga vacío (best-effort)", async () => {
-    // url RUN-prefijada para que afterAll pueda borrar la fila "unknown" resultante
-    // (su message pierde el prefijo RUN al caer al fallback "unknown").
+    // url RUN-prefijada en el pathname para que afterAll pueda borrar la fila "unknown"
+    // resultante (su message pierde el prefijo RUN al caer al fallback "unknown").
     await expect(
-      captureClientError({ message: "", url: `itest://${RUN}/empty` }),
+      captureClientError({ message: "", url: `/__itest__/${RUN}/empty` }),
     ).resolves.toBeUndefined();
   });
 
