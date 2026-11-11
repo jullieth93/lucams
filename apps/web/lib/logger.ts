@@ -87,23 +87,60 @@ function shouldRedactKey(key: string): boolean {
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 // Teléfono colombiano (+57 opcional, 3XX XXX XXXX) y genérico de 7-12 dígitos con espacios/guiones.
 const PHONE_RE = /(\+?57[\s-]?)?3\d{2}[\s-]?\d{3}[\s-]?\d{4}|\b\d{3}[\s-]\d{3}[\s-]\d{4}\b/g;
+// Credenciales embebidas en strings libres (headers Bearer, query/hash tokens y prefijos de llaves).
+const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi;
+const SENSITIVE_QUERY_RE =
+  /([?&#](?:token|access_token|refresh_token|id_token|secret|code|key|api_key|apikey|password|sig|signature|x-amz-signature|x-amz-credential|email|phone)=)[^&#\s'")]+/gi;
+const SECRET_PREFIX_RE =
+  /\b(?:sb_secret_[A-Za-z0-9_-]{12,}|sbp_[A-Za-z0-9]{16,}|re_[A-Za-z0-9_]{16,}|prv_(?:prod|test)_[A-Za-z0-9]{16,})\b/g;
 
 /**
- * Redacción de PII DENTRO de strings (auditoría experto 2026-07-26, P1): la redacción por key no
- * alcanza el CONTENIDO de un mensaje — un unique-violation de Postgres trae la PII embebida
- * (`Key (email)=(cliente@x.com) already exists`). Se enmascaran emails y teléfonos antes de
- * serializar Error.message/stack para que los logs de Vercel no registren datos personales.
- *
- * Exportada (auditoría 2026-08-24, F-6): lib/error-capture.ts la aplica a message/stack ANTES
- * de persistir en ErrorLog/ErrorReport — la misma PII tampoco debe quedar en claro en DB.
+ * Redacción de PII y secretos DENTRO de strings (F-6 + SEC-05): la redacción por key no
+ * alcanza strings libres, mensajes directos (`logger.info("...")`) ni valores dentro de
+ * objetos cuya clave sea genérica (`message`, `detail`, `err`). Se enmascaran emails,
+ * teléfonos, tokens Bearer, parámetros sensibles en URL y prefijos de llaves conocidas.
  */
 export function scrubPii(text: string): string {
-  return text.replace(EMAIL_RE, "[EMAIL]").replace(PHONE_RE, "[PHONE]");
+  return text
+    .replace(SENSITIVE_QUERY_RE, "$1[REDACTED]")
+    .replace(BEARER_RE, "Bearer [REDACTED]")
+    .replace(SECRET_PREFIX_RE, "[REDACTED]")
+    .replace(EMAIL_RE, "[EMAIL]")
+    .replace(PHONE_RE, "[PHONE]");
+}
+
+/**
+ * Normaliza una URL o ruta potencialmente sensible a únicamente su `pathname` limpio
+ * (sin esquema, host, query string ni fragmento `#`) y le aplica `scrubPii` por si algún
+ * segmento dinámico contuviera un email o teléfono (SEC-05).
+ */
+export function sanitizeLoggedPath(rawUrlOrPath: string | null | undefined): string | null {
+  if (!rawUrlOrPath) return null;
+  const trimmed = rawUrlOrPath.trim();
+  if (!trimmed) return null;
+
+  let pathname: string;
+  try {
+    const parsed = new URL(trimmed, "http://placeholder.local");
+    pathname = parsed.pathname || "/";
+  } catch {
+    pathname = trimmed.split(/[?#]/)[0]?.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, "") || "/";
+  }
+
+  let decoded = pathname;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    decoded = pathname;
+  }
+
+  return scrubPii(decoded).slice(0, 500);
 }
 
 function redact(value: unknown, depth = 0): unknown {
   if (depth > 6) return "[DEEP]";
   if (value === null || value === undefined) return value;
+  if (typeof value === "string") return scrubPii(value);
   if (typeof value !== "object") return value;
   if (value instanceof Date) return value.toISOString();
   if (value instanceof Error) {
@@ -132,10 +169,10 @@ function emit(level: LogLevel, payload: LogObject | string, msg?: string): void 
   if (LEVEL_VALUE[level] < minLevel) return;
   let body: LogObject;
   if (typeof payload === "string") {
-    body = { msg: payload };
+    body = { msg: scrubPii(payload) };
   } else {
     body = redact(payload) as LogObject;
-    if (msg && !body.msg) body.msg = msg;
+    if (msg && !body.msg) body.msg = scrubPii(msg);
   }
   const record = {
     level,

@@ -129,4 +129,14 @@ export function validateEnv(): void {
         "de Wompi. Quítalo o ponlo en false antes de arrancar.",
     );
   }
+
+  // SEC-06: el canal legacy `?secret=` en /api/webhooks/aveonline fue retirado definitivamente.
+  // Si alguien configura AVEONLINE_ALLOW_QUERY_SECRET=true en producción creyendo que aún
+  // habilita query-string auth, fallamos cerrado en el arranque en lugar de ignorarlo en silencio.
+  if (isProd && process.env.AVEONLINE_ALLOW_QUERY_SECRET === "true") {
+    throw new Error(
+      "[env] AVEONLINE_ALLOW_QUERY_SECRET=true está prohibido en producción (SEC-06): " +
+        "el webhook de Aveonline solo acepta x-aveonline-secret o payload.token.",
+    );
+  }
 }

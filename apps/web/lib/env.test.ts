@@ -220,4 +220,13 @@ describe("validateEnv — CORE (ambos modos)", () => {
     const validateEnv = await loadValidateEnv();
     expect(() => validateEnv()).not.toThrow();
   });
+
+  it("SEC-06: AVEONLINE_ALLOW_QUERY_SECRET=true falla cerrado en producción", async () => {
+    stubEnvBase();
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_STORE_MODE", "full");
+    vi.stubEnv("AVEONLINE_ALLOW_QUERY_SECRET", "true");
+    const validateEnv = await loadValidateEnv();
+    expect(() => validateEnv()).toThrowError(/AVEONLINE_ALLOW_QUERY_SECRET/);
+  });
 });

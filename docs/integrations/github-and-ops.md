@@ -24,15 +24,16 @@ flowchart LR
 
 ---
 
-### 1.2 Ruleset `protect-ramas-criticas` (`id: 26248226`, `ADR-105`)
+### 1.2 Ruleset `protect-ramas-criticas` (`id: 26248226`, `ADR-105`) y requisito de plan
 
-Ambas ramas (`develop` y `production`) están blindadas en GitHub Settings → Repository → Rulesets bajo las siguientes reglas inmutables:
+Ambas ramas (`develop` y `production`) están declaradas bajo GitHub Settings → Repository → Rulesets con las siguientes reglas:
 
-- **Cero excepciones (`bypass_actors: []`):** ni siquiera los administradores de la organización pueden hacer push directo, _force-push_ o eliminar `develop` o `production`.
+- **Requisito operativo crítico (`SEC-07`):** mientras `jullieth93/lucams` permanezca como repositorio **privado**, GitHub exige tener activo **GitHub Pro** (o GitHub Team) en la cuenta propietaria para aplicar en servidor tanto Rulesets como Required Reviewers en Environments (`HTTP 403` en GitHub Free sobre repositorios privados). Además, `production` requiere barrera humana independiente (aprobación humana en `protect-production` o promoción manual controlada en Vercel).
+- **Cero excepciones (`bypass_actors: []`):** ni siquiera los administradores pueden hacer push directo, _force-push_ o eliminar `develop` o `production` cuando el ruleset está activo.
 - **Pull Request obligatorio y rama al día (`strict: true`):** toda fusión exige que la rama origen esté actualizada contra la cabeza de la rama destino antes de permitir el _merge_.
 - **5 status checks obligatorios consolidados:**
   1. `Gitleaks secret scan` (job `secrets-scan`)
-  2. `Typecheck + Lint + Build` (job `quality`)
+  2. `Typecheck + Lint + Build` (job `quality`, con `pnpm audit --prod --audit-level=moderate`)
   3. `Vitest tests (unit + integración con Postgres)` (job `unit-tests`)
   4. `RLS behavior (rls-matrix contra Supabase local)` (job `rls-behavior`)
   5. `E2E + a11y + Lighthouse — Playwright` (job `e2e`)

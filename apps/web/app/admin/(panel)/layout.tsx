@@ -43,19 +43,24 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
   // este gate cubre al admin sin MFA (antes operaba el panel solo con
   // contraseña). /admin/seguridad es la excepción: es la pantalla de
   // enrolamiento misma (sin ella esto sería un loop de redirects).
-  const { data: factors } = await supabase.auth.mfa.listFactors();
-  const hasVerifiedTotp = (factors?.all ?? []).some(
+  const { data: factors, error: factorsErr } = await supabase.auth.mfa.listFactors();
+  if (factorsErr || !factors) {
+    redirect("/admin/login");
+  }
+  const hasVerifiedTotp = (factors.all ?? []).some(
     (f) => f.factor_type === "totp" && f.status === "verified",
   );
-  if (!hasVerifiedTotp && !pathname.startsWith("/admin/seguridad")) {
-    redirect("/admin/seguridad?enroll=required");
-  }
-
-  // Candado MFA (Bloque C / A6): si la cuenta tiene 2 pasos activos pero la
-  // sesión sigue en aal1 (solo contraseña), exigir el reto antes del panel.
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aal && aal.nextLevel === "aal2" && aal.currentLevel === "aal1") {
-    redirect("/admin/login/mfa");
+  if (!hasVerifiedTotp) {
+    if (!pathname.startsWith("/admin/seguridad")) {
+      redirect("/admin/seguridad?enroll=required");
+    }
+  } else {
+    // Candado MFA fail-closed (Bloque C / A6 + SEC-03): toda cuenta con factor TOTP
+    // verificado requiere sesión estrictamente en `aal2`; null/error/aal1 van al reto.
+    const { data: aal, error: aalErr } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalErr || !aal || aal.currentLevel !== "aal2") {
+      redirect("/admin/login/mfa");
+    }
   }
 
   // Guard RBAC server-side (auditoría 2026-07-13): la matriz ruta→rol se ENFORCEA aquí,

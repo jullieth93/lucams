@@ -4,9 +4,8 @@
  * Aveonline NO documenta HMAC. Mitigación (ADR-039, docs/integrations/aveonline.md):
  *   1. Credencial compartida — header `x-aveonline-secret` o `payload.token` (el Token
  *      del registro en el panel Mis integraciones, re-enviado en cada notificación).
- *      La vía `?secret=<AVEONLINE_WEBHOOK_SECRET>` solo se acepta durante la transición
- *      con AVEONLINE_ALLOW_QUERY_SECRET=true (default OFF — el secreto por query-string
- *      queda en access logs de CDN/proxy y en el Referer; auditoría D-1).
+ *      La vía legacy `?secret=` en query-string fue retirada definitivamente (SEC-06)
+ *      para impedir exposición del secreto en access logs de CDN/proxy y Referer.
  *   2. trackingNumber debe existir en DB (la saga lo persistió al crear guía).
  *   3. Estados monotónicos: NO retroceder de DELIVERED → SHIPPED, etc.
  *
@@ -58,12 +57,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
 
-  // 1) Validar credencial compartida (3 vías):
+  // 1) Validar credencial compartida (2 vías seguras — SEC-06):
   //    - header x-aveonline-secret
   //    - payload.token (registro desde el panel Mis integraciones: el Token que
   //      Lucy pega ahí se re-envía en cada notificación — doc webhookEstadosGuias)
-  //    - ?secret=<AVEONLINE_WEBHOOK_SECRET> — SOLO si AVEONLINE_ALLOW_QUERY_SECRET=true
-  //      (transición; el secreto por query viaja en logs de infraestructura, D-1)
   const expected = process.env.AVEONLINE_WEBHOOK_SECRET?.trim();
   if (!expected) {
     logger.warn({ event: "webhook.aveonline.no_secret_configured" });
@@ -74,7 +71,7 @@ export async function POST(req: Request) {
     }
   } else {
     const url = new URL(req.url);
-    const providedQ = url.searchParams.get("secret");
+    const hasLegacyQueryParam = url.searchParams.has("secret");
     const providedH = req.headers.get("x-aveonline-secret");
     const providedT = (() => {
       try {
@@ -86,15 +83,11 @@ export async function POST(req: Request) {
     })();
     // Comparación en tiempo constante (ADR-062 P1): `!==` filtraba bytes correctos por timing.
     const okH = providedH != null && secureEquals(providedH, expected);
-    // D-1: query-string secret only during the panel migration, explicit opt-in (default
-    // OFF). Once Aveonline sends the header/payload token, drop this path entirely.
-    const allowQuerySecret = process.env.AVEONLINE_ALLOW_QUERY_SECRET === "true";
-    const okQ = allowQuerySecret && providedQ != null && secureEquals(providedQ, expected);
     const okT = providedT != null && secureEquals(providedT, expected);
-    if (!okH && !okQ && !okT) {
+    if (!okH && !okT) {
       logger.warn({
         event: "webhook.aveonline.invalid_secret",
-        gotQ: !!providedQ,
+        gotQ: hasLegacyQueryParam,
         gotH: !!providedH,
         gotT: !!providedT,
       });
@@ -104,15 +97,14 @@ export async function POST(req: Request) {
         event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
         outcome: "rejected",
         ip: getClientIp(req.headers),
-        metadata: { source: "aveonline", gotQ: !!providedQ, gotH: !!providedH, gotT: !!providedT },
+        metadata: {
+          source: "aveonline",
+          gotQ: hasLegacyQueryParam,
+          gotH: !!providedH,
+          gotT: !!providedT,
+        },
       });
       return NextResponse.json({ error: "invalid secret" }, { status: 401 });
-    }
-    // El secreto por query-string viaja en logs de CDN/proxy y en el Referer → preferir el
-    // header o el payload token. ACCIÓN HUMANA: reconfigurar el webhook en Aveonline para que
-    // mande el header en vez de ?secret=. Se registra para dar visibilidad al pendiente.
-    if (okQ && !okH && !okT) {
-      logger.warn({ event: "webhook.aveonline.secret_via_query_string" });
     }
   }
 

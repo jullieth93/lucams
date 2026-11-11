@@ -16,7 +16,7 @@ import {
   AdminCard,
   AdminNotice,
 } from "@/components/admin-page";
-import { requireRole } from "@/lib/admin-rbac-guard";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { countUnusedRecoveryCodes } from "@/features/admin-mfa/recovery-codes";
@@ -30,7 +30,10 @@ export const metadata: Metadata = { title: "Seguridad" };
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 export default async function AdminSeguridadPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await requireRole(ADMIN_ROLE_SETS.ALL_PLUS_CMS);
+  const session = await requireAdminAction({
+    roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS,
+    allowMfaEnrollment: true,
+  });
   const sp = await searchParams;
 
   const supabase = await createSupabaseServerClient();

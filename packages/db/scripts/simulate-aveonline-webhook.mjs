@@ -21,7 +21,7 @@ if (!tracking) {
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() ?? "http://localhost:4000";
 const secret = process.env.AVEONLINE_WEBHOOK_SECRET?.trim();
-const webhookUrl = `${siteUrl}/api/webhooks/aveonline${secret ? `?secret=${encodeURIComponent(secret)}` : ""}`;
+const webhookUrl = `${siteUrl}/api/webhooks/aveonline`;
 
 const prisma = new PrismaClient();
 
@@ -59,7 +59,10 @@ console.log("Payload:", JSON.stringify(payload));
 
 const res = await fetch(webhookUrl, {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    ...(secret ? { "x-aveonline-secret": secret } : {}),
+  },
   body: JSON.stringify(payload),
 });
 console.log("HTTP", res.status, "Body:", await res.text());
