@@ -291,10 +291,10 @@ export default async function Home() {
                 <CmsText blockKey="home.cta.whatsapp-label" fallback="Háblanos por WhatsApp" />
               </a>
               <Link
-                href="/productos"
+                href="/empresas-y-eventos"
                 className="inline-block rounded-full border border-white/30 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
               >
-                <CmsText blockKey="home.cta.catalog-label" fallback="Ver catálogo" />
+                <CmsText blockKey="home.cta.b2b-label" fallback="Empresas y eventos" />
               </Link>
             </div>
           </div>

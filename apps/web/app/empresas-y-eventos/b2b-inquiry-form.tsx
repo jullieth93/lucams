@@ -214,7 +214,7 @@ export function B2bInquiryForm({
             name="expectedUnits"
             type="number"
             inputMode="numeric"
-            min={10}
+            min={25}
             max={100000}
             required
             value={units}

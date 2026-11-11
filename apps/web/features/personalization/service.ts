@@ -66,6 +66,7 @@ import { previewPagesAreComplete, uploadPreviewPages } from "./preview-artifacts
 import { PREVIEW_PAGES_MAX, designPreviewDerivedPaths } from "./preview-artifacts";
 import { PREVIEW_ROUTE_PREFIX } from "./preview-access";
 import { normalizeRasterImage, RasterRejected, RASTER_PIXEL_BUDGET } from "./normalize-raster";
+import { isStripTemplate } from "./frame-palette";
 import {
   mergeVariantOverProduct,
   parseVariantAttributes,
@@ -1969,7 +1970,20 @@ export async function finalizeDesign(opts: {
   const shouldComposeFaceStrips =
     productConfig.facesPerUnit === 2 &&
     readProductExperience(productSchema).experience !== "christmas-ornament";
+  // Tiras photobooth (owner 2026-11-10): la pieza física es UNA tira continua;
+  // los buffers llegan por slot (segmento) y acá se componen en un PNG por tira
+  // (misma entrega agrupada que los separadores). En la vía asíncrona (ADR-131)
+  // las compone el worker, tira por tira.
+  const stripSlotsPerUnit =
+    !shouldComposeFaceStrips &&
+    canvasData.version === 2 &&
+    typeof canvasData.unitSlots === "number" &&
+    canvasData.unitSlots > 1 &&
+    isStripTemplate(canvasData.unitTemplate as { gridCols?: unknown; gridGap?: unknown })
+      ? Math.trunc(canvasData.unitSlots)
+      : null;
   let facesComposed = false;
+  let photoStripsComposed = false;
   if (productionBuffers && canvasData.version === 2) {
     // productConfig ya se cargó arriba (validación de slots / backOptional).
     if (shouldComposeFaceStrips && productionBuffers.length % 2 === 0) {
@@ -2000,6 +2014,38 @@ export async function finalizeDesign(opts: {
             err: err instanceof Error ? err.message : String(err),
           },
           "No se pudieron componer las tiras 2-caras — se suben las caras sueltas",
+        );
+      }
+    } else if (
+      stripSlotsPerUnit !== null &&
+      productionBuffers.length > stripSlotsPerUnit &&
+      productionBuffers.length % stripSlotsPerUnit === 0
+    ) {
+      try {
+        // composePhotoStrips carga sharp (nativo) — import perezoso: ver nota en imports.
+        const { composePhotoStrips } = await import("./photo-strips");
+        productionBuffers = await composePhotoStrips(productionBuffers, {
+          perStrip: stripSlotsPerUnit,
+        });
+        photoStripsComposed = true;
+        logger.info(
+          {
+            event: "design.finalize.photo_strips_ok",
+            designId: design.id,
+            strips: productionBuffers.length,
+          },
+          "Tiras photobooth compuestas para producción (un PNG por tira)",
+        );
+      } catch (err) {
+        // No rompemos el finalize: si la composición falla, se suben los
+        // segmentos sueltos (la ficha de producción explica la unión a tope).
+        logger.warn(
+          {
+            event: "design.finalize.photo_strips_error",
+            designId: design.id,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "No se pudieron componer las tiras photobooth — se suben los segmentos sueltos",
         );
       }
     }
@@ -2040,11 +2086,13 @@ export async function finalizeDesign(opts: {
       while (nextUploadIndex < buffersToRelease.length && uploadErrors.length === 0) {
         const i = nextUploadIndex++;
         const buf = buffersToRelease[i]!;
-        // Ola 3 — con tiras compuestas (separadores 2 caras) el archivo es la TIRA desplegada
-        // de la unidad (cara A + cara B), no una cara suelta: nombre explícito para imprenta.
-        const path = facesComposed
-          ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
-          : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
+        // Ola 3 — con tiras compuestas (separadores 2 caras, y photobooth desde
+        // 2026-11-10) el archivo es la TIRA de la unidad, no una cara/segmento
+        // suelto: nombre explícito para imprenta.
+        const path =
+          facesComposed || photoStripsComposed
+            ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
+            : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
         const { error: prodErr } = await supabase.storage
           .from(BUCKET_PRODUCTION)
           .upload(path, buf, {
@@ -2097,8 +2145,19 @@ export async function finalizeDesign(opts: {
     shouldComposeFaceStrips &&
     expectedSlotCount % 2 === 0;
   const facesComposedOrPending = facesComposed || facesPending;
+  // Tiras photobooth: mismo sello — el admin/imprenta sabe que cada PNG es la
+  // tira COMPLETA (compuesta acá o por el worker al terminar el job).
+  const photoStripsPending =
+    asyncRenderJob &&
+    canvasData.version === 2 &&
+    stripSlotsPerUnit !== null &&
+    expectedSlotCount % stripSlotsPerUnit === 0;
+  const photoStripsComposedOrPending = photoStripsComposed || photoStripsPending;
   const mergedMetadata =
-    typeof opts.calendarYear === "number" || facesComposedOrPending || canvasData.version === 2
+    typeof opts.calendarYear === "number" ||
+    facesComposedOrPending ||
+    photoStripsComposedOrPending ||
+    canvasData.version === 2
       ? {
           ...((design.metadata as Record<string, unknown> | null) ?? {}),
           ...(typeof opts.calendarYear === "number" ? { calendarYear: opts.calendarYear } : {}),
@@ -2107,6 +2166,16 @@ export async function finalizeDesign(opts: {
                 faceStrips: {
                   facesPerUnit: 2,
                   strips: facesComposed ? productionPaths.length : expectedSlotCount / 2,
+                },
+              }
+            : {}),
+          ...(photoStripsComposedOrPending && stripSlotsPerUnit !== null
+            ? {
+                photoStrips: {
+                  perStrip: stripSlotsPerUnit,
+                  strips: photoStripsComposed
+                    ? productionPaths.length
+                    : expectedSlotCount / stripSlotsPerUnit,
                 },
               }
             : {}),

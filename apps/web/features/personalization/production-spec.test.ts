@@ -36,9 +36,9 @@ describe("formato físico — qué es realmente lo que sale de la impresora", ()
   });
 
   /*
-   * `tiras-magneticas-fotos`: N PNG (3 ó 4) que son segmentos de UNA tira (5×15 /
-   * 5×16.5 cm, medidas vigentes 2026-11-03). Contar archivos diría "3 imanes" —
-   * tres piezas donde va una.
+   * `tiras-magneticas-fotos` LEGACY (pedidos anteriores a 2026-11-10, sin
+   * metadata.photoStrips): N PNG (3 ó 4) que son segmentos de UNA tira (5×15 /
+   * 5×16.5 cm). Contar archivos diría "3 imanes" — tres piezas donde va una.
    */
   it("una tira continua son segmentos de UNA pieza, no varias piezas", () => {
     const spec = resolveProductionSpec({
@@ -101,6 +101,34 @@ describe("formato físico — qué es realmente lo que sale de la impresora", ()
     expect(spec.queEsCadaArchivo).toMatch(/2 tiras/i);
     expect(spec.queEsCadaArchivo).toMatch(/3 por tira/i);
     expect(spec.pasosArmado.join(" ")).toMatch(/3 por tira/i);
+  });
+
+  /*
+   * Tiras COMPUESTAS (owner 2026-11-10 — metadata.photoStrips del finalize /
+   * worker con composePhotoStrips): cada archivo ES la tira completa; la ficha
+   * ya no pide unir segmentos a tope (ese paso manual desaparece).
+   */
+  it("tiras compuestas: cada archivo es UNA tira completa lista para imprimir", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      productionUrls: ["d/tira-01.png", "d/tira-02.png"],
+      canvasData: {
+        unitTemplate: { gridCols: 1, gridGap: 0 },
+        gridLayout: { cols: 1, gap: 0 },
+        unitCount: 2,
+        unitSlots: 3,
+        slotCount: 6,
+      },
+      designMetadata: { photoStrips: { perStrip: 3, strips: 2 } },
+    });
+    expect(spec.formatoFisico).toEqual({
+      tipo: "tira-continua",
+      segmentos: 3,
+      tiras: 2,
+      compuesta: true,
+    });
+    expect(spec.queEsCadaArchivo).toMatch(/tira COMPLETA por archivo/i);
+    expect(spec.pasosArmado.join(" ")).not.toMatch(/a tope/i);
   });
 
   /*
@@ -480,6 +508,25 @@ describe("sets de letras POR FICHA (owner 2026-11-03) + agrupación de piezas (W
       "Segmento 2",
       "Segmento 3",
     ]);
+  });
+
+  it("productionPieceGroups — tiras ×2 COMPUESTAS: una pieza por tira", () => {
+    const groups = productionPieceGroups({
+      personalizationKind: "PHOTO_PACK",
+      canvasData: {
+        version: 2,
+        slotCount: 6,
+        unitCount: 2,
+        unitSlots: 3,
+        unitTemplate: { gridCols: 1, gridGap: 0 },
+      },
+      designMetadata: { photoStrips: { perStrip: 3, strips: 2 } },
+      productionCount: 2,
+    });
+    expect(groups).toHaveLength(2);
+    expect(groups![0]!.title).toBe("Tira 1 de 2");
+    expect(groups![0]!.pieces.map((p) => p.label)).toEqual(["Tira completa"]);
+    expect(groups![1]!.pieces[0]!.index).toBe(1);
   });
 
   it("productionPieceGroups — producto plano (fotoimán suelto) → null (grilla histórica)", () => {

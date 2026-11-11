@@ -622,4 +622,59 @@ describe("renderSlotToDataUrl2D + buildOrnamentPreview + buildMagnetTextures (@n
     expect(bb).toBeGreaterThan(130);
     expect(br).toBeGreaterThan(90);
   });
+
+  it("packGrid (packs de fotoimanes): la página del pack sale en grilla balanceada 3×2 aunque el canvas tenga un modelo degenerado", async () => {
+    // Bug owner 2026-11-10 — con gridLayout degenerado (1 columna) la página del
+    // pack apilaba las 6 polaroids en vertical; con unidad-por-foto el montaje
+    // dejaba slots fuera del lienzo («solo se ve 1 de las 6»). packGrid fuerza
+    // el preset balanceado (6 → 3×2).
+    const { buildCompositedPreview } = await import("./production-preview-render");
+    const squareTemplate: CanvasDataV1 = {
+      version: 1,
+      stage: { width: 480, height: 480 },
+      background: "#FFFFFF",
+      layers: [{ id: "photo", type: "image-placeholder", x: 0, y: 0, width: 480, height: 480 }],
+    };
+    const mkSlots = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        slotIndex: i,
+        assetId: `asset-${i}`,
+        assetUrl: makeSolidDataUrl(20 + i * 30, 40, 200),
+      }));
+    const degenerate: CanvasDataV2 = {
+      version: 2,
+      slotCount: 12,
+      unitCount: 12,
+      unitSlots: 1,
+      photoSlots: 12,
+      gridLayout: { cols: 1, rows: 12, gap: 16 },
+      unitTemplate: squareTemplate,
+      slots: mkSlots(12),
+    };
+
+    // Página del pack 1 (slots 0-5): 3×2 → el ancho supera el alto.
+    const page = await buildCompositedPreview(degenerate, new Map(), "rectangle", {
+      unitRange: { start: 0, end: 6 },
+      packGrid: true,
+    });
+    const pageDecoded = await decodePixels(page);
+    expect(pageDecoded.width).toBeGreaterThan(pageDecoded.height);
+
+    // Montaje completo (sin rango): grilla plana de 12 (preset 3×4), no apilado
+    // por unidad degenerada (12 celdas en columna → alto ≈ 12 celdas).
+    const full = await buildCompositedPreview(degenerate, new Map(), "rectangle", {
+      packGrid: true,
+    });
+    const fullDecoded = await decodePixels(full);
+    expect(fullDecoded.width).toBeGreaterThanOrEqual(3 * 360);
+    expect(fullDecoded.height / fullDecoded.width).toBeGreaterThan(1.2);
+    expect(fullDecoded.height / fullDecoded.width).toBeLessThan(1.5);
+
+    // Sin packGrid el comportamiento histórico no cambia (regresión de la guardia).
+    const legacy = await buildCompositedPreview(degenerate, new Map(), "rectangle", {
+      unitRange: { start: 0, end: 6 },
+    });
+    const legacyDecoded = await decodePixels(legacy);
+    expect(legacyDecoded.height).toBeGreaterThan(legacyDecoded.width);
+  });
 });

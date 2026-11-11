@@ -583,6 +583,13 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   selecciona la celda y revela acciones; el segundo toque abre el modal de edición; tocar fuera
   libera la selección). Si una celda no seleccionada tiene advertencia de calidad, conserva visible
   únicamente un badge compacto `⚠` conectado al modal en portal.
+- **Producción = la tira COMPLETA compuesta (2026-11-10, owner)**: `composePhotoStrips`
+  (`features/personalization/photo-strips.ts`) apila los segmentos renderizados en UN PNG por tira
+  (a sangre, sin separación), tanto en la vía síncrona del finalize como en el worker del
+  `RenderJob` (unidad de salida = tira; `renderJobTotalUnits` la cuenta como tal). El diseño se
+  sella con `metadata.photoStrips` y la ficha de producción (`production-spec.ts`) la describe como
+  «tira completa lista para imprimir» — antes la imprenta recibía los segmentos sueltos con la
+  instrucción manual de «unir a tope» (los pedidos históricos conservan ese formato legacy).
 
 ### 5.3 Polaroid Instagram: fondo binario, avatar circular, modo sin borde y campos asistidos
 
@@ -700,6 +707,11 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
     próximo libre (mostrando antes `PhotoQualityModal` si tiene advertencia), y cada miniatura
     permite eliminación individual confirmada vía `deleteDesignAssetAction` (protegiendo bytes en
     Storage si están compartidos con otros diseños).
+  - **Solo fotos del cliente (2026-11-10)**: los assets nacidos de prediseñados (`DesignAsset.galleryImageId`
+    sellado al aplicar; `StudioAsset.fromGallery` en el cliente) quedan FUERA del panel «Mis fotos»,
+    del tab homólogo del picker y del auto-fill — antes un prediseño aplicado en un tamaño se sugería
+    al llenar los demás estudios/tamaños (contaminación cruzada). Los slots que los referencian los
+    conservan (la hidratación los marca, no los excluye del diseño).
   - «Llenar slots con mis fotos» (`orderAssetsForAutoFill` en `lib/store.ts`) permanece deshabilitado
     mientras haya subidas en vuelo y prioriza: **(1)** fotos aún no usadas ni en este diseño ni en el
     carrito, **(2)** fotos usadas en otras líneas del carrito (`listCartDesignAssetIdsInUse`), y
@@ -744,6 +756,12 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
     montada del store frente al doble render de React 19 Strict Mode. Al abrir la vista previa paginada
     (`unitRanges.length > 1`), `handleFinalize` resuelve la página `0` antes de mostrar
     `StudioPreviewModal`.
+  - **Previews de packs balanceadas (2026-11-10, owner)**: `previewUnitRanges` particiona los packs
+    de fotoimanes por PACK primero (regla 0), inmune al modelo degenerado `unitCount = N fotos /
+unitSlots = 1` de diseños legacy (paginaba una página POR foto). Y `buildCompositedPreview` con
+    `packGrid: true` (lo pasa el editor cuando `packUnitsPerGroup` aplica) compone la página del pack
+    y el montaje del pack único con la grilla balanceada del preset por conteo (`generateGridLayout`:
+    6 → 3×2), no con el `gridLayout` crudo del canvas.
   - **Autocontención de activos «Mis fotos» y protección ante prefetch al editar**:
     `ensureDesignOwnsReferencedAssets` (`features/personalization/service.ts`) adhiere activos sueltos y
     clona idempotentemente por `(designId, storageUrl)` cualquier `DesignAsset` del mismo dueño
@@ -789,10 +807,12 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   resuelve en cliente las familias reales desde `--font-fredoka`, `--font-inter` y las 6 variables de
   `app/estudio/fonts.ts` (`calendarFont` seleccionable tanto en el banner como dentro de «Ajustar
   foto»), mientras que el servidor usa las mismas 8 fuentes `.ttf` registradas en `@napi-rs/canvas`.
-- **Caché LRU y colapsado por set**: `lib/compose-calendar-page.ts` mantiene una caché LRU por valor
+- **Caché LRU y colapsado por unidad**: `lib/compose-calendar-page.ts` mantiene una caché LRU por valor
   de hasta **48 páginas WebP** (`calendarPageCacheKey`), recomponiendo únicamente los meses que
-  cambiaron al abrir Vista previa o 3D. En el lienzo, cada calendario puede colapsarse mostrando un
-  mapa rápido de chips por mes (`CalendarMonthChips`, «N de 12»).
+  cambiaron al abrir Vista previa o 3D. En el lienzo, **toda sección de unidad puede colapsarse**
+  (2026-11-10 — unificado: nació solo para los sets del calendario y hoy aplica también a tiras,
+  packs y separadores agrupados): header con chevron + mapa rápido de chips por slot
+  (`UnitSlotChips`, «N de M»), con salto al slot elegido al expandir.
 
 ### 5.7 Modelo multi-unidad («Unidades»), layout fluido, editores de letras y asistente IA
 
@@ -808,7 +828,10 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   `templateId` inicia en `null` (`Design.templateId = null` en BD), el checklist «Tu diseño» marca
   «Elige tu plantilla» como primer paso pendiente y pulsar «Ver diseño» abre y resalta la sección
   Plantillas hasta que el cliente elija una explícitamente. La elección es obligatoria incluso con
-  una única plantilla (owner 2026-11-07 — homologación de todos los lienzos con plantillas).
+  una única plantilla (owner 2026-11-07 — homologación de todos los lienzos con plantillas). El
+  overlay «Elige tu plantilla» sobre el lienzo va anclado a la PARTE SUPERIOR (`items-start` +
+  `sticky top-4`; owner 2026-11-10) — antes se centraba en la altura total del grid y con muchas
+  unidades quedaba invisible «muy abajo».
 - **Controles de unidades y réplica rápida**: `StudioUnitCountControl` ajusta `unitCount` en
   productos multi-slot (`unitSlots > facesPerUnit`) y en experiencias `freeUnitDesign`, incluidas la
   bola dúplex (25 unidades máximo) y los mini libros (50). `setPhotoSlotsPerUnit` distingue entre
@@ -849,15 +872,15 @@ Todas las vistas contextuales del Estudio son escenas 3D interactivas en tiempo 
 **React Three Fiber / Three.js** (`is3DScene`, cero composiciones 2D planas), iluminadas mediante
 `studio-3d-environment.tsx` y protegidas individualmente con `scene-3d-error-boundary.tsx`:
 
-| ID escena    | Componente (`app/estudio/[slug]/`) | Geometría física y comportamiento a escala real                                                                                                                                             |
-| ------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `"fridge"`   | `fridge-3d-view.tsx`               | Nevecón **French Door `178×91×75 cm`** (dos puertas superiores, dispensador izquierdo y gaveta inferior libre). `frenchDoorClusterLayout` reparte piezas sin cruzar jamás la junta central. |
-| `"polaroid"` | `polaroid-3d-view.tsx`             | Tarjetas dispuestas boca arriba sobre una mesa cálida con sombras suaves; compatible tanto con variantes magnéticas como sin imán.                                                          |
-| `"board"`    | `room-board-view-3d.tsx` (`cork`)  | Mural de corcho de pared **`120×80 cm`** con marco de `5.5 cm` (`0.1 u/cm`), clúster multi-columna balanceado (`clusterLayout`) y encuadre ponderado `boardFitHalf`.                        |
-| `"memo"`     | `room-board-view-3d.tsx` (`memo`)  | Tablero metálico magnético para sets de letras con **paginador por set** («Anterior / Siguiente», flechas `← →`, wrap-around e indicador «Set N de M»).                                     |
-| `"book"`     | `book-view-3d.tsx`                 | Libro abierto con separadores doblados montados sobre la hoja o **separadores planos acostados** (`noFold`) + botón `aria-pressed` «Ver respaldo / Ver frente» (giro `180°`).               |
-| `"shelf"`    | `shelf-3d-view.tsx` (`ADR-172`)    | Repisa decorativa 3D con piezas **recostadas a tamaño real** (`lib/leaning-scene-layout.ts`: arista inferior apoyada en la repisa y superior contra la pared).                              |
-| `"gift"`     | `gift-3d-view.tsx` (`ADR-172`)     | Caja de regalo abierta 3D con las piezas personalizadas recostadas en fila centrada a escala física real (`lib/leaning-scene-layout.ts`).                                                   |
+| ID escena    | Componente (`app/estudio/[slug]/`) | Geometría física y comportamiento a escala real                                                                                                                                                                                                                 |
+| ------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"fridge"`   | `fridge-3d-view.tsx`               | Nevecón **French Door `178×91×75 cm`** (dos puertas superiores, dispensador izquierdo y gaveta inferior libre). `frenchDoorClusterLayout` reparte piezas sin cruzar jamás la junta central.                                                                     |
+| `"polaroid"` | `polaroid-3d-view.tsx`             | Tarjetas boca arriba sobre una mesa cálida con sombras suaves; la composición crece con la cantidad comprada (pila de hasta 3 + hasta 6 sueltas, tope 9) y un badge enuncia el total («2 packs · 12 unidades»); compatible con variantes magnéticas y sin imán. |
+| `"board"`    | `room-board-view-3d.tsx` (`cork`)  | Mural de corcho de pared **`120×80 cm`** con marco de `5.5 cm` (`0.1 u/cm`), clúster multi-columna balanceado (`clusterLayout`) y encuadre ponderado `boardFitHalf`.                                                                                            |
+| `"memo"`     | `room-board-view-3d.tsx` (`memo`)  | Tablero metálico magnético para sets de letras con **paginador por set** («Anterior / Siguiente», flechas `← →`, wrap-around e indicador «Set N de M»).                                                                                                         |
+| `"book"`     | `book-view-3d.tsx`                 | Libro abierto con separadores doblados montados sobre la hoja o **separadores planos acostados** (`noFold`) + botón `aria-pressed` «Ver respaldo / Ver frente» (giro `180°`).                                                                                   |
+| `"shelf"`    | `shelf-3d-view.tsx` (`ADR-172`)    | Repisa decorativa 3D con piezas **recostadas a tamaño real** (`lib/leaning-scene-layout.ts`: arista inferior apoyada en la repisa y superior contra la pared).                                                                                                  |
+| `"gift"`     | `gift-3d-view.tsx` (`ADR-172`)     | Caja de regalo abierta 3D con las piezas personalizadas recostadas en fila centrada a escala física real (`lib/leaning-scene-layout.ts`).                                                                                                                       |
 
 ### Reglas de fidelidad física, material y calibración 3D
 

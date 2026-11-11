@@ -57,6 +57,13 @@
   **10 escenas 3D** + `CalendarCardFocus`, filtrado `-NOMAG` y reverso «Lucams» (`ADR-190`). Bola A/B
   en UNA esfera, argolla transparente, moño exterior y 480 partículas; dos caras por capacidad (`ADR-201`).
   Mini libros con carátula extendida.
+- **Madurez de ciclo completo (`ADR-202`, owner 2026-11-10):** tiras photobooth compuestas como tira
+  completa para imprenta (`composePhotoStrips` + `metadata.photoStrips`), previews de packs en grilla
+  balanceada 3×2 (`packGrid` + partición por pack), «Mis fotos»/auto-fill sin prediseñados
+  (`fromGallery`), colapso de secciones por unidad unificado, escena 3D Polaroid con conteo de packs,
+  bloque «Ahorra llevando más» unificado en toda la PDP (`VolumeTiersNote` + escala derivada de packs),
+  `magnet: true` explícito en Polaroid/Cuadrados, calendario renombrado «Calendario Set 12 Tarjetas»,
+  CTA final de portada hacia `/empresas-y-eventos` (`home.cta.b2b-label`) y embudo B2B desde 25 unidades.
 - **Nuevas experiencias en LOCAL y STG (`ADR-199`/`200`/`201`):** Bola Navideña (inserto dúplex
   plano de 8 cm) y Mini Libros (carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán), con
   plantillas, prediseñados, unidades libres y descuentos físicos. La bola usa previews A/B sin doblez

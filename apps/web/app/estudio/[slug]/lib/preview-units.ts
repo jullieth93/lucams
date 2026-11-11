@@ -9,13 +9,17 @@
  * SUBE al servidor al confirmar sigue siendo el montaje único (contrato intacto).
  *
  * Reglas de partición (espejo del lienzo, studio-canvas-grid):
+ *  0. Packs de unidades sueltas PRIMERO (fotoimanes packs de 6, ADR-101): un
+ *     rango por PACK (packGroupSlots, solo si divide exacto). Va antes que la
+ *     regla multi-unidad porque un diseño de packs puede declarar un modelo
+ *     degenerado (unitCount=N fotos, unitSlots=1 — legacy o stepper sobre un
+ *     diseño viejo) y la regla 1 lo partiría en una página POR FOTO (bug owner
+ *     2026-11-10: «el paginado muestra las 6 polaroids por separado, en
+ *     vertical» — debe paginar por PACK de 6).
  *  1. Modelo multi-unidad declarado (unitCount > 1, unitSlots > 1): un rango por
  *     unidad — calendario (12/set), tiras (fotos/tira), separadores (2 caras:
  *     su unidad son los 2 slots de caras).
- *  2. Packs de unidades sueltas (fotoimanes packs de 6, ADR-101): un rango por
- *     PACK (packGroupSlots, solo si divide exacto — diseños legacy quedan en una
- *     sola página, igual que la grilla).
- *  3. Cualquier otro caso (1 unidad, packs de imán suelto sin delimitación):
+ *  2. Cualquier otro caso (1 unidad, packs de imán suelto sin delimitación):
  *     UNA página — la modal no muestra navegación.
  *
  * Módulo PURO → testeable sin canvas ni DOM.
@@ -35,6 +39,13 @@ export function previewUnitRanges(opts: {
   const unitCount = Math.trunc(opts.unitCount ?? 1) || 1;
   const unitSlots = Math.trunc(opts.unitSlots ?? 1) || 1;
 
+  // 0. Packs de unidades sueltas (fotoimanes): un rango por pack completo.
+  const pack = opts.packGroupSlots;
+  if (typeof pack === "number" && pack > 1 && slotCount > pack && slotCount % pack === 0) {
+    const packs = slotCount / pack;
+    return Array.from({ length: packs }, (_, p) => ({ start: p * pack, end: (p + 1) * pack }));
+  }
+
   // 1. Modelo multi-unidad declarado: un rango por unidad física.
   if (unitCount > 1 && unitSlots >= 1 && unitCount * unitSlots <= slotCount) {
     return Array.from({ length: unitCount }, (_, u) => ({
@@ -43,14 +54,7 @@ export function previewUnitRanges(opts: {
     }));
   }
 
-  // 2. Packs de unidades sueltas (fotoimanes): un rango por pack completo.
-  const pack = opts.packGroupSlots;
-  if (typeof pack === "number" && pack > 1 && slotCount > pack && slotCount % pack === 0) {
-    const packs = slotCount / pack;
-    return Array.from({ length: packs }, (_, p) => ({ start: p * pack, end: (p + 1) * pack }));
-  }
-
-  // 3. Una sola página (sin navegación en la modal).
+  // 2. Una sola página (sin navegación en la modal).
   return [{ start: 0, end: slotCount }];
 }
 

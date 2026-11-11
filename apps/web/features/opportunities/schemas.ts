@@ -122,7 +122,7 @@ export const B2bInquirySchema = z.object({
   expectedUnits: z.coerce
     .number()
     .int("Ingresa un número entero de unidades.")
-    .min(10, "Para proyectos B2B o eventos atendemos desde 10 unidades.")
+    .min(25, "Para proyectos B2B o eventos atendemos desde 25 unidades.")
     .max(100000, "Si superas 100.000 unidades indícalo en los detalles."),
   eventDate: z
     .string()

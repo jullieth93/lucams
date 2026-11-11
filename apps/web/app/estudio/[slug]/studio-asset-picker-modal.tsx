@@ -25,7 +25,7 @@
  *   - Asset hover: scale 1.04
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { motion, AnimatePresence } from "framer-motion";
@@ -166,6 +166,10 @@ export function StudioAssetPickerModal({
   // no haber funcionado. Spinner sobre la miniatura + resto deshabilitado,
   // mismo patrón Loader2 del botón «Aplicar» (texto/filtros).
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  // 2026-11-10 (owner) — el tab «Mis fotos» lista SOLO fotos del cliente: los
+  // assets de prediseñados (fromGallery) quedan fuera del picker y del
+  // auto-fill (bug de sugerencias cruzadas entre productos/tamaños).
+  const ownPhotos = useMemo(() => assets.filter((a) => !a.fromGallery), [assets]);
   const assigningTimerRef = useRef<number | null>(null);
   useEffect(
     () => () => {
@@ -534,9 +538,9 @@ export function StudioAssetPickerModal({
     sitio de uso (ver rama `showPredesignedTab` del cuerpo). */
   const misFotosContent = (
     <>
-      {assets.length > 0 && (
+      {ownPhotos.length > 0 && (
         <div role="grid" aria-label={texts.fotos.tusFotosAria} className="grid grid-cols-3 gap-2">
-          {assets.map((asset) => (
+          {ownPhotos.map((asset) => (
             // 2026-10-02 — misma decisión que la sidebar: los badges
             // de texto van en una fila-caption DEBAJO del thumbnail
             // (fuera del overflow-hidden), no flotando sobre la imagen.
@@ -601,7 +605,7 @@ export function StudioAssetPickerModal({
         </div>
       )}
 
-      {assets.length === 0 && !uploading && (
+      {ownPhotos.length === 0 && !uploading && (
         <p className="text-brand-muted mt-4 text-center text-xs italic">
           {texts.fotos.pickerVacio}
         </p>
@@ -745,7 +749,7 @@ export function StudioAssetPickerModal({
                             >
                               <ImageIcon className="h-3.5 w-3.5" aria-hidden />
                               {texts.fotos.pickerTabFotos}
-                              <span className="tabular-nums">({assets.length})</span>
+                              <span className="tabular-nums">({ownPhotos.length})</span>
                             </TabsTrigger>
                             <TabsTrigger
                               value="predisenados"
@@ -766,10 +770,10 @@ export function StudioAssetPickerModal({
                       </Tabs>
                     ) : (
                       <>
-                        {assets.length > 0 && (
+                        {ownPhotos.length > 0 && (
                           <h3 className="text-brand-purple-dark mt-5 mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
                             <ImageIcon className="text-brand-purple h-3.5 w-3.5" />
-                            {texts.fotos.titulo} ({assets.length})
+                            {texts.fotos.titulo} ({ownPhotos.length})
                           </h3>
                         )}
                         {misFotosContent}

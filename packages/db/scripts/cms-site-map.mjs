@@ -462,13 +462,14 @@ export const SITE_MAP = {
               sortOrder: 30,
             },
             {
-              key: "home.cta.catalog-label",
+              key: "home.cta.b2b-label",
               kind: "BLOCK",
               type: "TEXT",
-              label: "Botón de catálogo",
-              helpText: "Texto del botón que lleva al catálogo en la sección final de la portada.",
+              label: "Botón de Empresas y eventos",
+              helpText:
+                "Texto del botón que lleva a /empresas-y-eventos (cotización por volumen) en la sección final de la portada.",
               category: "HOME",
-              body: "Ver catálogo",
+              body: "Empresas y eventos",
               sortOrder: 40,
             },
           ],

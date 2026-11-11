@@ -682,7 +682,14 @@ export default async function EstudioPage({
           ownerScope && referencedAssetIds.length > 0
             ? { OR: [{ designId: design.id }, { id: { in: referencedAssetIds }, ...ownerScope }] }
             : { designId: design.id },
-        select: { id: true, storageUrl: true, canvasPath: true, width: true, height: true },
+        select: {
+          id: true,
+          storageUrl: true,
+          canvasPath: true,
+          width: true,
+          height: true,
+          galleryImageId: true,
+        },
       });
       initialDesignAssets = await Promise.all(
         dbAssets.map(async (a) => ({
@@ -693,6 +700,9 @@ export default async function EstudioPage({
           canvasUrl: a.canvasPath ? await refreshCustomerUploadSignedUrl(a.canvasPath) : null,
           width: a.width,
           height: a.height,
+          // 2026-11-10 — los assets nacidos de prediseñados NO son «Mis fotos»
+          // (quedan fuera del panel y del auto-fill; los slots los conservan).
+          ...(a.galleryImageId ? { fromGallery: true } : {}),
         })),
       );
     }
@@ -910,6 +920,11 @@ async function loadOwnerLibraryAssets(params: {
     where: {
       ...params.ownerFilter,
       createdAt: { gte: sevenDaysAgo },
+      // 2026-11-10 (owner) — los assets nacidos de prediseñados NUNCA entran a
+      // la biblioteca «Mis fotos»: sin este filtro, un prediseño aplicado en un
+      // producto/tamaño se sugería en «Llenar slots con mis fotos» de otros
+      // tamaños/estudios (bug de contaminación cruzada).
+      galleryImageId: null,
       ...(params.excludeIds.length > 0 ? { id: { notIn: params.excludeIds } } : {}),
       OR: [
         { designId: null },

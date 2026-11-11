@@ -36,7 +36,7 @@ import { supabaseService } from "@/lib/supabase/service";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
 import { parsePhotoProductConfig, readBorderWidthConfig } from "./schemas";
-import { resolveBorderWidthFactor } from "./frame-palette";
+import { resolveBorderWidthFactor, isStripTemplate } from "./frame-palette";
 import { loadEffectiveProductConfig } from "./effective-variant-server";
 import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
 import { letterSetUnitCount } from "./design-units";
@@ -99,19 +99,49 @@ export function staticClientFallbackReason(canvasData: CanvasDataV2): string | n
 }
 
 /**
- * Unidades de salida del job = archivos finales de imprenta: una por slot, salvo separadores
- * de 2 caras, donde la unidad es la TIRA desplegada (cara A + cara B compuestas).
+ * Unidades de salida del job = archivos finales de imprenta: una por slot, salvo:
+ *   - separadores de 2 caras, donde la unidad es la TIRA desplegada (cara A + cara B
+ *     compuestas), y
+ *   - tiras photobooth (owner 2026-11-10), donde la unidad es la TIRA COMPLETA
+ *     (sus `unitSlots` fotos apiladas en un solo PNG vía composePhotoStrips), como
+ *     cualquier otro producto agrupado.
  */
 export function renderJobTotalUnits(
   productConfig: { facesPerUnit?: number | null },
   slotCount: number,
   productSchema?: unknown,
+  canvasData?: unknown,
 ): number {
-  return productConfig.facesPerUnit === 2 &&
+  if (
+    productConfig.facesPerUnit === 2 &&
     readProductExperience(productSchema).experience !== "christmas-ornament" &&
     slotCount % 2 === 0
-    ? Math.max(1, slotCount / 2)
-    : slotCount;
+  ) {
+    return Math.max(1, slotCount / 2);
+  }
+  const perStrip = stripSlotsPerUnitOf(canvasData, productConfig);
+  if (perStrip !== null && slotCount % perStrip === 0) {
+    return Math.max(1, slotCount / perStrip);
+  }
+  return slotCount;
+}
+
+/**
+ * Fotos por TIRA cuando el diseño es photobooth (plantilla con gridCols=1 +
+ * gridGap=0, mismo detector de production-spec) y declara el modelo
+ * multi-unidad (unitSlots > 1). null en cualquier otro producto.
+ */
+function stripSlotsPerUnitOf(
+  canvasData: unknown,
+  productConfig: { facesPerUnit?: number | null },
+): number | null {
+  if (productConfig.facesPerUnit === 2) return null;
+  const cd = canvasData as {
+    unitSlots?: unknown;
+    unitTemplate?: { gridCols?: unknown; gridGap?: unknown };
+  } | null;
+  if (!cd || typeof cd.unitSlots !== "number" || cd.unitSlots <= 1) return null;
+  return isStripTemplate(cd.unitTemplate ?? {}) ? Math.trunc(cd.unitSlots) : null;
 }
 
 /**
@@ -133,7 +163,12 @@ export async function createOrResetRenderJob(opts: {
     throw new Error(`RenderJob inválido para el diseño ${opts.designId}`);
   }
   const { productConfig, productSchema } = await loadEffectiveProductConfig(design);
-  const totalUnits = renderJobTotalUnits(productConfig, opts.slotCount, productSchema);
+  const totalUnits = renderJobTotalUnits(
+    productConfig,
+    opts.slotCount,
+    productSchema,
+    design.canvasData,
+  );
   return prisma.renderJob.upsert({
     where: { designId: opts.designId },
     create: {
@@ -188,6 +223,8 @@ type RenderContext = {
   emptyBackSlots: Set<number>;
   isCalendar: boolean;
   faces2: boolean;
+  /** Fotos por tira cuando el diseño es photobooth (unidad de salida = tira completa). */
+  stripSlotsPerUnit: number | null;
   /** Si viene, el diseño es de SET DE LETRAS (canvasData V1 stub): el render es
    *  por ficha y los campos de slots/plantilla no aplican. */
   letterset: LettersetPlan | null;
@@ -311,6 +348,10 @@ async function buildRenderContext(designId: string): Promise<RenderContext> {
       productConfig.facesPerUnit === 2 &&
       readProductExperience(productSchema).experience !== "christmas-ornament" &&
       canvasData.slotCount % 2 === 0,
+    stripSlotsPerUnit:
+      isCalendar || productConfig.facesPerUnit === 2
+        ? null
+        : stripSlotsPerUnitOf(canvasData, productConfig),
     letterset: null,
     productConfig,
     productSchema,
@@ -409,6 +450,7 @@ async function buildLettersetRenderContext(
     emptyBackSlots: new Set<number>(),
     isCalendar: false,
     faces2: false,
+    stripSlotsPerUnit: null,
     letterset: { letters, units, sizeCm, tileBytes },
     productConfig: parsePhotoProductConfig(undefined),
     productSchema: productSchema as Record<string, unknown> | undefined,
@@ -473,9 +515,9 @@ async function renderOneSlot(ctx: RenderContext, slot: CanvasDataV2["slots"][num
   return buf;
 }
 
-function productionFileName(faces2: boolean, unitIndex: number): string {
+function productionFileName(faces2: boolean, unitIndex: number, strip = false): string {
   const n = String(unitIndex + 1).padStart(2, "0");
-  return faces2 ? `tira-${n}.png` : `slot-${n}.png`;
+  return faces2 || strip ? `tira-${n}.png` : `slot-${n}.png`;
 }
 
 /**
@@ -509,13 +551,32 @@ async function renderLettersetTile(ctx: RenderContext, unitIndex: number): Promi
   });
 }
 
-/** Renderiza y sube la unidad `unitIndex` (página de calendario, slot, tira 2-caras o ficha). */
+/** Renderiza y sube la unidad `unitIndex` (página de calendario, slot, tira photobooth, tira 2-caras o ficha). */
 async function renderAndUploadUnit(ctx: RenderContext, unitIndex: number): Promise<string> {
   let buffer: Buffer;
   let fileName: string;
   if (ctx.letterset) {
     buffer = await renderLettersetTile(ctx, unitIndex);
     fileName = `ficha-${String(unitIndex + 1).padStart(2, "0")}.png`;
+  } else if (ctx.stripSlotsPerUnit !== null) {
+    // Tiras photobooth (owner 2026-11-10): la unidad de imprenta es la TIRA
+    // COMPLETA — sus fotos apiladas en un solo PNG (composePhotoStrips), como
+    // la tira desplegada de los separadores. Antes iba un archivo por foto y
+    // el armado («únelos a tope») quedaba manual en el taller.
+    const perStrip = ctx.stripSlotsPerUnit;
+    const segments: Buffer[] = [];
+    for (let j = 0; j < perStrip; j++) {
+      const slot = ctx.slots[unitIndex * perStrip + j];
+      if (!slot) {
+        throw new Error(`segmento ${j + 1} faltante en la tira ${unitIndex + 1}`);
+      }
+      segments.push(await renderOneSlot(ctx, slot));
+    }
+    const { composePhotoStrips } = await import("./photo-strips");
+    const [strip] = await composePhotoStrips(segments, { perStrip });
+    if (!strip) throw new Error(`composePhotoStrips vacío en la tira ${unitIndex + 1}`);
+    buffer = strip;
+    fileName = productionFileName(false, unitIndex, true);
   } else if (ctx.faces2) {
     const slotA = ctx.slots[unitIndex * 2];
     const slotB = ctx.slots[unitIndex * 2 + 1];

@@ -15,7 +15,7 @@
  * El sidebar es store-aware: lee de zustand selectivamente.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
@@ -150,6 +150,11 @@ export function StudioSidebar({
 
   // Suscripciones selectivas zustand
   const assets = useStore(store, (s) => s.assets);
+  // 2026-11-10 (owner) — «Mis fotos» muestra SOLO fotos del cliente: los assets
+  // que nacen de prediseñados (fromGallery) siguen en el store (los slots los
+  // referencian) pero no se listan ni alimentan el auto-fill — antes un
+  // prediseño aplicado en un producto/tamaño se sugería en los demás estudios.
+  const ownPhotos = useMemo(() => assets.filter((a) => !a.fromGallery), [assets]);
   const templates = useStore(store, (s) => s.templates);
   const selectedTemplateId = useStore(store, (s) => s.selectedTemplateId);
   const designId = useStore(store, (s) => s.designId);
@@ -553,7 +558,7 @@ export function StudioSidebar({
   // llenar con un set incompleto de fotos repartía mal y confundía ("no puso
   // todas"). El botón se ve (feedback de que existe) pero no actúa hasta que
   // terminen de subir.
-  const canAutoFill = assets.length > 0 && emptySlots > 0;
+  const canAutoFill = ownPhotos.length > 0 && emptySlots > 0;
 
   // 2026-10-29 (owner) — «Mis fotos» como biblioteca USABLE: el tap asigna al
   // lienzo seleccionado si está libre, si no al próximo libre; sin libre, aviso
@@ -689,14 +694,14 @@ export function StudioSidebar({
           <span className="flex items-center gap-2">
             <ImageIcon className="text-brand-purple h-4 w-4" />
             {texts.fotos.titulo}
-            {assets.length > 0 && (
+            {ownPhotos.length > 0 && (
               <span className="text-brand-muted text-[10px] font-medium tabular-nums">
-                ({assets.length})
+                ({ownPhotos.length})
               </span>
             )}
           </span>
           {/* P0.2 — Toggle "Solo no usadas" (Mixbook Hide Used) — solo visible si hay fotos */}
-          {assets.length > 1 && (
+          {ownPhotos.length > 1 && (
             <Hint
               content={hideUsed ? texts.fotos.toggleTitleTodas : texts.fotos.toggleTitleOcultar}
             >
@@ -781,7 +786,7 @@ export function StudioSidebar({
             onClick={autoFillSlots}
             disabled={uploading > 0}
             aria-label={fillStudioText(texts.fotos.autofillAria, {
-              n: Math.min(emptySlots, assets.length),
+              n: Math.min(emptySlots, ownPhotos.length),
             })}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -797,15 +802,16 @@ export function StudioSidebar({
           </motion.button>
         )}
 
-        {/* Lista de assets con drag handle + checkmark "usada" + filtro Hide Used */}
-        {assets.length > 0 && (
+        {/* Lista de assets con drag handle + checkmark "usada" + filtro Hide Used
+            (2026-11-10: solo fotos del cliente — los prediseñados aplicados no se listan) */}
+        {ownPhotos.length > 0 && (
           <div
             role="list"
             aria-label={texts.fotos.listaAria}
             className={`grid ${compact ? "mt-2 grid-cols-4 gap-1.5" : "mt-3 grid-cols-3 gap-2"}`}
           >
             <AnimatePresence>
-              {assets.map((asset, idx) => (
+              {ownPhotos.map((asset, idx) => (
                 <AssetThumb
                   key={asset.id}
                   store={store}
@@ -822,13 +828,13 @@ export function StudioSidebar({
           </div>
         )}
 
-        {assets.length === 0 && uploading === 0 && (
+        {ownPhotos.length === 0 && uploading === 0 && (
           <p className="text-brand-muted mt-3 text-xs italic">{texts.fotos.tipVacio}</p>
         )}
 
         {/* M.3.b.UX.6 — Microcopy cuando todos los slots están llenos pero
             hay fotos sin asignar: explicar que se pueden cambiar arrastrando. */}
-        {assets.length > 0 && emptySlots === 0 && totalSlots > 0 && (
+        {ownPhotos.length > 0 && emptySlots === 0 && totalSlots > 0 && (
           <p className="text-brand-muted bg-brand-turquoise/10 mt-3 rounded-md px-2.5 py-2 text-xs">
             {texts.fotos.todoLleno}
           </p>
