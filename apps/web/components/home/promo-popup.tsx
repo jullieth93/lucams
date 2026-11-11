@@ -61,10 +61,7 @@ export function PromoPopup({ items }: { items: CmsBannerItem[] }) {
         if (!next) close();
       }}
     >
-      <DialogContent
-        aria-label={current.titulo}
-        className="overflow-hidden p-0 sm:max-w-xl"
-      >
+      <DialogContent aria-label={current.titulo} className="overflow-hidden p-0 sm:max-w-xl">
         <DialogTitle className="sr-only">{current.titulo}</DialogTitle>
         <Link
           href={current.enlace}
