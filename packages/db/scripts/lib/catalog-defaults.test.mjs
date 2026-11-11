@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { shouldSeedDefaultPhysicalSpecs } from "./catalog-defaults.mjs";
-import { NEW_PRODUCTS } from "./new-products.mjs";
+import { NEW_PRODUCTS, CHRISTMAS_ORNAMENT_SLUG, MINI_BOOK_SLUG } from "./new-products.mjs";
 
 test("conserva los valores logísticos existentes", () => {
   assert.equal(
@@ -37,7 +37,6 @@ test("no inventa logística para experiencias físicas especializadas", () => {
 
 test("conserva los precios unitarios, promociones y logística confirmados", () => {
   for (const product of NEW_PRODUCTS) {
-    assert.equal(product.isActive, true);
     assert.equal(product.basePrice, 1_000_000);
     assert.deepEqual(product.physicalSpecs, {
       weightGrams: 200,
@@ -52,6 +51,18 @@ test("conserva los precios unitarios, promociones y logística confirmados", () 
         { minQty: 5, unitPrice: 800_000 },
       ],
     );
-    assert.ok(product.variants.every((variant) => variant.price === product.basePrice));
   }
+  // 2026-11-11 (owner): la bola se vende Sin imán ($10.000) y Con imán
+  // ($11.000, +$1.000) — es la única excepción al precio único por variante.
+  const bola = NEW_PRODUCTS.find((p) => p.slug === CHRISTMAS_ORNAMENT_SLUG);
+  assert.equal(bola.isActive, true);
+  assert.deepEqual(Object.fromEntries(bola.variants.map((v) => [v.attributes.magnet, v.price])), {
+    false: 1_000_000,
+    true: 1_100_000,
+  });
+  // Los mini libros quedan sembrados pero INACTIVOS (fuera del catálogo
+  // activo de referencia: los 8 de PRD + la bola) con precio único.
+  const miniLibros = NEW_PRODUCTS.find((p) => p.slug === MINI_BOOK_SLUG);
+  assert.equal(miniLibros.isActive, false);
+  assert.ok(miniLibros.variants.every((variant) => variant.price === miniLibros.basePrice));
 });

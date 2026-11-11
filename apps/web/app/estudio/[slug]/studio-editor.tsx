@@ -1954,7 +1954,9 @@ export function StudioEditor({
               state.canvasData,
               slotStagesRef.current,
               productConfig.shape,
-              slotPreviewRenderOpts,
+              // 2026-11-10 — packs: grilla balanceada por pack (3×2), inmune a
+              // modelos degenerados del canvas (unitSlots=1 legacy).
+              { ...slotPreviewRenderOpts, packGrid: packUnitsPerGroup != null },
             );
       setPreviewDataUrl(previewUrl);
       if (unitRanges.length > 1) {
@@ -1984,6 +1986,7 @@ export function StudioEditor({
               : buildCompositedPreview(canvasSnapshot, slotStagesRef.current, productConfig.shape, {
                   unitRange: unitRanges[u]!,
                   ...slotPreviewRenderOpts,
+                  packGrid: packUnitsPerGroup != null,
                 });
         previewPageLoaderRef.current = loader;
         const firstPageUrl = await loader(0);
@@ -3172,8 +3175,11 @@ export function StudioEditor({
                 />
               </div>
               {templatePending && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/70 backdrop-blur-[2px]">
-                  <div className="border-brand-purple/20 mx-4 flex max-w-xs flex-col items-center gap-3 rounded-2xl border bg-white p-5 text-center shadow-xl">
+                /* 2026-11-10 (owner) — el cuadro va ANCLADO ARRIBA del lienzo,
+                   no centrado en su altura total: con muchas unidades el grid es
+                   altísimo y el centrado lo dejaba invisible «muy abajo». */
+                <div className="absolute inset-0 z-10 flex items-start justify-center rounded-2xl bg-white/70 pt-6 backdrop-blur-[2px]">
+                  <div className="border-brand-purple/20 sticky top-4 mx-4 flex max-w-xs flex-col items-center gap-3 rounded-2xl border bg-white p-5 text-center shadow-xl">
                     <Sparkles className="text-brand-purple h-6 w-6" aria-hidden />
                     <p className="text-brand-purple-dark font-display text-base font-bold">
                       {texts.checklist.pasoPlantillas}

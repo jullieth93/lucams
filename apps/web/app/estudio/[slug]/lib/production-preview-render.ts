@@ -35,6 +35,7 @@ import { loadImage } from "./image-utils";
 import { loadCanvasImage } from "./canvas-image";
 import { canvasToPreviewDataUrl } from "./preview-encode";
 import type { PreviewUnitRange } from "./preview-units";
+import { generateGridLayout } from "./grid-layout";
 import { ensureStagePhotosDecoded, waitForSlotPhotosReady } from "./slot-photo-readiness";
 import {
   evictSlotSnapshotCache,
@@ -74,6 +75,15 @@ export type SlotPreviewRenderOptions = {
   allowText?: boolean;
   /** `true` cuando el producto ofrece `frameOptions` (tarjeta full-bleed con foto inserta). */
   frameFullBleed?: boolean;
+  /**
+   * 2026-11-10 (owner) — packs de fotoimanes: la página por pack (y el montaje
+   * de un solo pack) usan la grilla BALANCEADA del preset por conteo
+   * (generateGridLayout: 6 → 3×2), no el gridLayout crudo del canvas — un
+   * modelo degenerado (unitSlots=1 por foto, legacy) dibujaba las 6 polaroids
+   * apiladas en vertical o fuera del lienzo («solo se ve 1 de las 6»).
+   * Nunca la pasa un producto tira (su grilla vertical continua manda).
+   */
+  packGrid?: boolean;
   /**
    * Refresco single-flight de URLs firmadas expiradas: si falla la carga de una
    * foto referenciada por `assetId`/`profileAssetId`, se invoca una sola vez y
@@ -992,19 +1002,30 @@ export async function buildCompositedPreview(
     ? slots.filter((s) => s.slotIndex >= range.start && s.slotIndex < range.end)
     : slots;
   const slotImages = await renderSlotsToImages(canvasData, rangeSlots, stages, shape, opts);
+  const packGrid = opts?.packGrid === true;
   const unitSlots = range ? rangeSlots.length : (canvasData.unitSlots ?? slots.length);
-  const unitCount = range ? 1 : (canvasData.unitCount ?? 1);
+  // packGrid: el montaje completo del pack es una grilla PLANA balanceada (el
+  // modelo unitCount×unitSlots de los packs NO apila por unidad — cada imán es
+  // su pieza; apilar por unidad degenerada producía la columna vertical).
+  const unitCount = range || packGrid ? 1 : (canvasData.unitCount ?? 1);
   const multiUnit = !range && unitCount > 1;
   // Cell size: 360×(360 * aspect) por slot en el preview
   const cellW = 360;
   const cellH = Math.floor(360 * (unitTemplate.stage.height / unitTemplate.stage.width));
-  const gap = gridLayout.gap;
-  const layoutCols = range
-    ? Math.max(1, Math.min(gridLayout.cols, rangeSlots.length))
-    : gridLayout.cols;
-  const layoutRows = range
-    ? Math.max(1, Math.ceil(rangeSlots.length / layoutCols))
-    : gridLayout.rows;
+  const packLayout = packGrid
+    ? generateGridLayout(range ? rangeSlots.length : slots.length, unitTemplate.stage)
+    : null;
+  const gap = packLayout?.gap ?? gridLayout.gap;
+  const layoutCols = packLayout
+    ? packLayout.cols
+    : range
+      ? Math.max(1, Math.min(gridLayout.cols, rangeSlots.length))
+      : gridLayout.cols;
+  const layoutRows = packLayout
+    ? Math.max(1, Math.ceil((range ? rangeSlots.length : slots.length) / layoutCols))
+    : range
+      ? Math.max(1, Math.ceil(rangeSlots.length / layoutCols))
+      : gridLayout.rows;
   const isStripPreview = layoutCols === 1 && gridLayout.gap === 0 && rangeSlots.length > 1;
   const unitGap = 32;
   const unitGridW = layoutCols * cellW + (layoutCols - 1) * gap;

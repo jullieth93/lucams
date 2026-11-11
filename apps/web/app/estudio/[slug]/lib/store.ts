@@ -684,7 +684,11 @@ export function createStudioStore() {
 
     autoFillSlots: () => {
       const { canvasData, assets, cartAssetIdsInUse } = get();
-      if (!canvasData || assets.length === 0) return;
+      // 2026-11-10 — el auto-fill «Llenar slots con mis fotos» SOLO usa fotos
+      // del cliente: los assets de prediseñados (fromGallery) quedan fuera —
+      // antes un prediseño aplicado en un tamaño se sugería al llenar otros.
+      const ownPhotos = assets.filter((a) => !a.fromGallery);
+      if (!canvasData || ownPhotos.length === 0) return;
       // Tomar assets PRIORIZADOS (2026-10-26 — bug "segundo pack repite las
       // fotos del primero") y asignarlos a slots vacíos en orden. Slots ya
       // llenos se preservan (no se pisan).
@@ -692,7 +696,7 @@ export function createStudioStore() {
         .filter((s) => !s.assetUrl)
         .map((s) => s.slotIndex)
         .sort((x, y) => x - y);
-      const orderedAssets = orderAssetsForAutoFill(assets, canvasData.slots, cartAssetIdsInUse);
+      const orderedAssets = orderAssetsForAutoFill(ownPhotos, canvasData.slots, cartAssetIdsInUse);
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) => {

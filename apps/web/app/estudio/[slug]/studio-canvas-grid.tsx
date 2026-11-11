@@ -340,23 +340,25 @@ export function StudioCanvasGrid({
   // este diseño a todas" (cada aplicación lo incrementa → se anuncia de nuevo).
   const [appliedTick, setAppliedTick] = useState(0);
   const announceApplied = useCallback(() => setAppliedTick((t) => t + 1), []);
-  // 2026-10-29 (owner) — calendario: las secciones de meses se pueden
-  // colapsar/expandir (header con chevron + chips-mapa de meses al colapsar).
+  // 2026-10-29 (owner) — las secciones de unidad se pueden colapsar/expandir
+  // (header con chevron + chips-mapa al colapsar). 2026-11-10 (owner): se
+  // UNIFICA a TODOS los estudios con unidades (calendario sets, tiras, packs,
+  // separadores agrupados) — antes solo el calendario lo tenía.
   // Los slots colapsados quedan montados si ya lo estaban (el set de
   // mountedSlots no se limpia) y el finalize fuerza el montaje total
   // (forceMountAll, ADR-063 T5) antes de cualquier snapshot.
-  const [collapsedCalUnits, setCollapsedCalUnits] = useState<ReadonlySet<number>>(new Set());
-  const toggleCalUnitCollapsed = useCallback((u: number) => {
-    setCollapsedCalUnits((prev) => {
+  const [collapsedUnits, setCollapsedUnits] = useState<ReadonlySet<number>>(new Set());
+  const toggleUnitCollapsed = useCallback((u: number) => {
+    setCollapsedUnits((prev) => {
       const next = new Set(prev);
       if (next.has(u)) next.delete(u);
       else next.add(u);
       return next;
     });
   }, []);
-  // Chip del mapa de meses: expande la unidad y salta al mes elegido.
-  const jumpToCalendarSlot = useCallback((unit: number, slotIndex: number) => {
-    setCollapsedCalUnits((prev) => {
+  // Chip del mapa de la unidad: la expande y salta al slot elegido.
+  const jumpToUnitSlot = useCallback((unit: number, slotIndex: number) => {
+    setCollapsedUnits((prev) => {
       if (!prev.has(unit)) return prev;
       const next = new Set(prev);
       next.delete(unit);
@@ -1294,7 +1296,7 @@ export function StudioCanvasGrid({
             >
               {Array.from({ length: unitCount }, (_, u) => {
                 const { start, end } = unitSlotRange(u, unitSlots);
-                const calCollapsed = isCalendar && collapsedCalUnits.has(u);
+                const unitCollapsed = collapsedUnits.has(u);
                 return (
                   <section
                     key={u}
@@ -1314,15 +1316,20 @@ export function StudioCanvasGrid({
                       noun={unitNoun ?? texts.unidades.nombrePieza}
                       variantLabel={unitVariantLabel}
                       onApplied={announceApplied}
-                      collapsible={isCalendar}
-                      collapsed={calCollapsed}
-                      onToggleCollapse={() => toggleCalUnitCollapsed(u)}
+                      collapsible
+                      collapsed={unitCollapsed}
+                      onToggleCollapse={() => toggleUnitCollapsed(u)}
+                      toggleAriaLabel={
+                        isCalendar
+                          ? texts.unidades.calMesesToggleAria
+                          : texts.unidades.unidadToggleAria
+                      }
                     />
-                    {calCollapsed ? (
-                      <CalendarMonthChips
+                    {unitCollapsed ? (
+                      <UnitSlotChips
                         slots={canvasData.slots.slice(start, end)}
                         labels={slotLabels}
-                        onJump={(slotIndex) => jumpToCalendarSlot(u, slotIndex)}
+                        onJump={(slotIndex) => jumpToUnitSlot(u, slotIndex)}
                       />
                     ) : (
                       <div
@@ -1362,51 +1369,82 @@ export function StudioCanvasGrid({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
             >
-              {Array.from({ length: packCount }, (_, p) => (
-                <section
-                  key={p}
-                  id={`studio-unit-${p}`}
-                  role="group"
-                  aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
-                    nombre: unitNoun ?? texts.unidades.nombrePieza,
-                    n: p + 1,
-                    total: packCount,
-                  })}
-                  className="border-brand-purple/15 flex w-full scroll-mt-32 flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
-                >
-                  {packCount > 1 && (
-                    <span className="text-brand-purple-dark text-xs font-bold">
-                      {fillStudioText(texts.lienzo.unitPack, { n: p + 1 })}
-                    </span>
-                  )}
-                  {/* Sin «Aplicar este diseño a todas»: la acción del store opera con
+              {Array.from({ length: packCount }, (_, p) => {
+                const packCollapsed = collapsedUnits.has(p);
+                return (
+                  <section
+                    key={p}
+                    id={`studio-unit-${p}`}
+                    role="group"
+                    aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
+                      nombre: unitNoun ?? texts.unidades.nombrePieza,
+                      n: p + 1,
+                      total: packCount,
+                    })}
+                    className="border-brand-purple/15 flex w-full scroll-mt-32 flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
+                  >
+                    {packCount > 1 && (
+                      <span className="text-brand-purple-dark text-xs font-bold">
+                        {fillStudioText(texts.lienzo.unitPack, { n: p + 1 })}
+                      </span>
+                    )}
+                    {/* Sin «Aplicar este diseño a todas»: la acción del store opera con
                   canvasData.unitSlots y los packs de imán suelto NO lo declaran
                   (cada imán es su unidad) — copiar pack-a-pack requeriría soporte
-                  nuevo en el store. Solo progreso, como pide la delimitación. */}
-                  <UnitMiniActions
-                    store={store}
-                    unitIndex={p}
-                    unitSlots={packSlots}
-                    unitCount={packCount}
-                    onApplied={announceApplied}
-                    allowApply={false}
-                  />
-                  <div
-                    className="grid"
-                    style={{
-                      gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
-                      gap: layout.gap,
-                      ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
-                    }}
-                  >
-                    <AnimatePresence>
-                      {canvasData.slots
-                        .slice(p * packSlots, (p + 1) * packSlots)
-                        .map((slot) => renderSlotCell(slot))}
-                    </AnimatePresence>
-                  </div>
-                </section>
-              ))}
+                  nuevo en el store. Solo progreso, como pide la delimitación.
+                  2026-11-10 (owner) — colapso por pack UNIFICADO con los sets del
+                  calendario: chevron + chips-mapa al colapsar (multi-pack). */}
+                    <div className="flex items-center gap-2">
+                      <UnitMiniActions
+                        store={store}
+                        unitIndex={p}
+                        unitSlots={packSlots}
+                        unitCount={packCount}
+                        onApplied={announceApplied}
+                        allowApply={false}
+                      />
+                      {packCount > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => toggleUnitCollapsed(p)}
+                          aria-expanded={!packCollapsed}
+                          aria-controls={`studio-unit-${p}-grid`}
+                          aria-label={texts.unidades.unidadToggleAria}
+                          className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple inline-flex h-8 w-8 items-center justify-center rounded-full text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+                        >
+                          <ChevronDown
+                            className={`h-4 w-4 transition-transform ${packCollapsed ? "-rotate-90" : ""}`}
+                            aria-hidden
+                          />
+                        </button>
+                      )}
+                    </div>
+                    {packCollapsed ? (
+                      <UnitSlotChips
+                        slots={canvasData.slots.slice(p * packSlots, (p + 1) * packSlots)}
+                        labels={slotLabels}
+                        onJump={(slotIndex) => jumpToUnitSlot(p, slotIndex)}
+                      />
+                    ) : (
+                      <div
+                        id={`studio-unit-${p}-grid`}
+                        className="grid"
+                        style={{
+                          gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                          gap: layout.gap,
+                          ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+                        }}
+                      >
+                        <AnimatePresence>
+                          {canvasData.slots
+                            .slice(p * packSlots, (p + 1) * packSlots)
+                            .map((slot) => renderSlotCell(slot))}
+                        </AnimatePresence>
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
             </motion.div>
           ) : grouped ? (
             // Ola 3 — tarjeta por UNIDAD física: "Separador N" con sus 2 caras (la
@@ -1428,92 +1466,127 @@ export function StudioCanvasGrid({
               transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
             >
               <AnimatePresence>
-                {Array.from({ length: physicalUnits }, (_, unitIndex) => (
-                  <div
-                    key={unitIndex}
-                    role="group"
-                    aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
-                      nombre: unitNoun ?? texts.unidades.nombreSeparador,
-                      n: unitIndex + 1,
-                      total: physicalUnits,
-                    })}
-                    className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
-                  >
-                    <span className="text-brand-purple-dark text-xs font-bold">
-                      {unitNoun
-                        ? `${unitNoun} ${unitIndex + 1}`
-                        : fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
-                    </span>
-                    {/* Multi-unidad (2026-09-09) — progreso de la unidad + atajo
+                {Array.from({ length: physicalUnits }, (_, unitIndex) => {
+                  // 2026-11-10 (owner) — colapso por unidad UNIFICADO también en
+                  // separadores agrupados (misma mecánica de sets/packs).
+                  const unitCollapsed = collapsedUnits.has(unitIndex);
+                  return (
+                    <div
+                      key={unitIndex}
+                      role="group"
+                      aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
+                        nombre: unitNoun ?? texts.unidades.nombreSeparador,
+                        n: unitIndex + 1,
+                        total: physicalUnits,
+                      })}
+                      className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
+                    >
+                      <span className="text-brand-purple-dark text-xs font-bold">
+                        {unitNoun
+                          ? `${unitNoun} ${unitIndex + 1}`
+                          : fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
+                      </span>
+                      {/* Multi-unidad (2026-09-09) — progreso de la unidad + atajo
                     "Aplicar este diseño a todas" (copia las 2 caras de este
                     separador a los demás). */}
-                    <UnitMiniActions
-                      store={store}
-                      unitIndex={unitIndex}
-                      unitSlots={2}
-                      unitCount={physicalUnits}
-                      onApplied={announceApplied}
-                    />
-                    <div
-                      className={
-                        noFold
-                          ? "flex items-start justify-center gap-2"
-                          : "flex flex-col items-center"
-                      }
-                    >
-                      {canvasData.slots
-                        .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
-                        .map((slot, i) => (
+                      <div className="flex items-center gap-2">
+                        <UnitMiniActions
+                          store={store}
+                          unitIndex={unitIndex}
+                          unitSlots={2}
+                          unitCount={physicalUnits}
+                          onApplied={announceApplied}
+                        />
+                        {physicalUnits > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => toggleUnitCollapsed(unitIndex)}
+                            aria-expanded={!unitCollapsed}
+                            aria-controls={`studio-unit-${unitIndex}-grid`}
+                            aria-label={texts.unidades.unidadToggleAria}
+                            className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple inline-flex h-8 w-8 items-center justify-center rounded-full text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+                          >
+                            <ChevronDown
+                              className={`h-4 w-4 transition-transform ${unitCollapsed ? "-rotate-90" : ""}`}
+                              aria-hidden
+                            />
+                          </button>
+                        )}
+                      </div>
+                      {unitCollapsed ? (
+                        <UnitSlotChips
+                          slots={canvasData.slots.filter(
+                            (slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex,
+                          )}
+                          labels={slotLabels}
+                          onJump={(slotIndex) => jumpToUnitSlot(unitIndex, slotIndex)}
+                        />
+                      ) : (
+                        <>
                           <div
-                            key={slot.slotIndex}
+                            id={`studio-unit-${unitIndex}-grid`}
                             className={
                               noFold
-                                ? i === 0
-                                  ? // Alargados planos: SIN línea de doblez (la pieza no
-                                    // se pliega) — separación sutil entre frente y reverso.
-                                    "border-brand-purple/10 flex flex-col items-center gap-1 border-r pr-2"
-                                  : "flex flex-col items-center gap-1"
-                                : i === 0
-                                  ? // Línea de DOBLEZ horizontal (2026-09-22): la tira se
-                                    // pliega por la mitad — el filete marca la unión
-                                    // entre Cara A (arriba) y Cara B (abajo).
-                                    "border-brand-purple/50 flex flex-col items-center gap-1 border-b-2 border-dashed pb-2"
-                                  : "flex flex-col items-center gap-1 pt-2"
+                                ? "flex items-start justify-center gap-2"
+                                : "flex flex-col items-center"
                             }
                           >
-                            <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
-                              {i === 0 ? texts.lienzo.unitCaraA : texts.lienzo.unitCaraB}
-                            </span>
-                            {renderSlotCell(slot)}
+                            {canvasData.slots
+                              .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
+                              .map((slot, i) => (
+                                <div
+                                  key={slot.slotIndex}
+                                  className={
+                                    noFold
+                                      ? i === 0
+                                        ? // Alargados planos: SIN línea de doblez (la pieza no
+                                          // se pliega) — separación sutil entre frente y reverso.
+                                          "border-brand-purple/10 flex flex-col items-center gap-1 border-r pr-2"
+                                        : "flex flex-col items-center gap-1"
+                                      : i === 0
+                                        ? // Línea de DOBLEZ horizontal (2026-09-22): la tira se
+                                          // pliega por la mitad — el filete marca la unión
+                                          // entre Cara A (arriba) y Cara B (abajo).
+                                          "border-brand-purple/50 flex flex-col items-center gap-1 border-b-2 border-dashed pb-2"
+                                        : "flex flex-col items-center gap-1 pt-2"
+                                  }
+                                >
+                                  <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
+                                    {i === 0 ? texts.lienzo.unitCaraA : texts.lienzo.unitCaraB}
+                                  </span>
+                                  {renderSlotCell(slot)}
+                                </div>
+                              ))}
                           </div>
-                        ))}
-                    </div>
-                    {/* Indicación del tamaño total DESPLEGADO junto al doblez
+                          {/* Indicación del tamaño total DESPLEGADO junto al doblez
                       (2026-09-22): "Doblez · Desplegado: 2×12 cm". Solo
                       plegables — los Alargados (noFold) no se despliegan. */}
-                    {!noFold &&
-                      (() => {
-                        const deployed = deployedSizeCm(sizeCm);
-                        if (!deployed) return null;
-                        return (
-                          <span className="text-brand-purple-dark/80 text-[10px] font-semibold">
-                            {fillStudioText(texts.lienzo.doblezDesplegado, {
-                              tamano: `${deployed} cm`,
-                            })}
-                          </span>
-                        );
-                      })()}
-                    {/* Nota de la rotación de imprenta (2026-09-25): en el canvas
+                          {!noFold &&
+                            (() => {
+                              const deployed = deployedSizeCm(sizeCm);
+                              if (!deployed) return null;
+                              return (
+                                <span className="text-brand-purple-dark/80 text-[10px] font-semibold">
+                                  {fillStudioText(texts.lienzo.doblezDesplegado, {
+                                    tamano: `${deployed} cm`,
+                                  })}
+                                </span>
+                              );
+                            })()}
+                          {/* Nota de la rotación de imprenta (2026-09-25): en el canvas
                       ambas caras se ven derechas (para editar), pero la Cara B se
                       imprime girada 180° — el cliente lo entiende antes de la
                       vista previa. Solo plegables. */}
-                    {!noFold && (
-                      <span className="text-brand-muted max-w-52 text-center text-[9px] leading-tight">
-                        {texts.lienzo.doblezNotaRotacion}
-                      </span>
-                    )}
-                  </div>
-                ))}
+                          {!noFold && (
+                            <span className="text-brand-muted max-w-52 text-center text-[9px] leading-tight">
+                              {texts.lienzo.doblezNotaRotacion}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </AnimatePresence>
             </motion.div>
           ) : (
@@ -1534,7 +1607,7 @@ export function StudioCanvasGrid({
                 (() => {
                   const totalSlotsCal = canvasData.slots.length;
                   const filledCal = canvasData.slots.filter((s) => s.assetUrl).length;
-                  const collapsed = collapsedCalUnits.has(0);
+                  const collapsed = collapsedUnits.has(0);
                   return (
                     <>
                       <div className="mb-2 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-1 pt-1">
@@ -1560,7 +1633,7 @@ export function StudioCanvasGrid({
                         </span>
                         <button
                           type="button"
-                          onClick={() => toggleCalUnitCollapsed(0)}
+                          onClick={() => toggleUnitCollapsed(0)}
                           aria-expanded={!collapsed}
                           aria-controls="studio-unit-0-grid"
                           aria-label={texts.unidades.calMesesToggleAria}
@@ -1573,16 +1646,16 @@ export function StudioCanvasGrid({
                         </button>
                       </div>
                       {collapsed && (
-                        <CalendarMonthChips
+                        <UnitSlotChips
                           slots={canvasData.slots}
                           labels={slotLabels}
-                          onJump={(slotIndex) => jumpToCalendarSlot(0, slotIndex)}
+                          onJump={(slotIndex) => jumpToUnitSlot(0, slotIndex)}
                         />
                       )}
                     </>
                   );
                 })()}
-              {!(isCalendar && collapsedCalUnits.has(0)) && (
+              {!(isCalendar && collapsedUnits.has(0)) && (
                 <div
                   id="studio-unit-0-grid"
                   className={
@@ -1771,6 +1844,7 @@ function UnitSectionHeader({
   collapsible = false,
   collapsed = false,
   onToggleCollapse,
+  toggleAriaLabel,
 }: {
   store: StoreApi<StudioStoreState>;
   unitIndex: number;
@@ -1781,11 +1855,13 @@ function UnitSectionHeader({
    *  imán"): cada sección enuncia QUÉ es la unidad que se está diseñando. */
   variantLabel?: string;
   onApplied: () => void;
-  /** 2026-10-29 (owner) — calendario: la sección se puede colapsar/expandir
-   *  (ayuda visual: chevron + resumen de meses listos). */
+  /** 2026-10-29 (owner) — la sección se puede colapsar/expandir (chevron +
+   *  mapa de chips al colapsar). 2026-11-10: unificado a TODAS las unidades. */
   collapsible?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  /** Aria del toggle: calendario pasa el suyo (meses); el resto el genérico. */
+  toggleAriaLabel?: string;
 }) {
   const texts = useStudioTexts();
   const filled = useStore(store, selectUnitFilledCount(unitIndex, unitSlots));
@@ -1845,7 +1921,7 @@ function UnitSectionHeader({
           onClick={onToggleCollapse}
           aria-expanded={!collapsed}
           aria-controls={`studio-unit-${unitIndex}-grid`}
-          aria-label={texts.unidades.calMesesToggleAria}
+          aria-label={toggleAriaLabel ?? texts.unidades.unidadToggleAria}
           className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple inline-flex h-8 w-8 items-center justify-center rounded-full text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
         >
           <ChevronDown
@@ -1859,11 +1935,13 @@ function UnitSectionHeader({
 }
 
 /**
- * 2026-10-29 (owner) — ayuda visual del calendario COLAPSADO: una fila de
- * chips por mes (lleno = verde, pendiente = contorno ámbar) que sirve de mapa
- * del set; tocar un chip expande la grilla y salta a ese mes.
+ * 2026-10-29 (owner) — ayuda visual de la unidad COLAPSADA: una fila de chips
+ * por slot (lleno = verde, pendiente = contorno ámbar) que sirve de mapa de la
+ * unidad; tocar un chip la expande y salta a ese slot. Nació como mapa de meses
+ * del calendario; 2026-11-10 (owner) se unifica a toda unidad colapsable
+ * (sets, tiras, packs) — sin labels propios usa el número de slot.
  */
-function CalendarMonthChips({
+function UnitSlotChips({
   slots,
   labels,
   onJump,

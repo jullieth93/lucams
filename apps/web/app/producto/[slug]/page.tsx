@@ -19,7 +19,7 @@ import { TrackAddToCartSuccess, TrackViewItem } from "@/components/analytics-tra
 import { breadcrumbList } from "@/lib/seo/structured-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, RotateCcw, Sparkles, Truck, Wallet, ShieldCheck } from "lucide-react";
+import { ChevronRight, RotateCcw, Truck, Wallet, ShieldCheck } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -48,6 +48,9 @@ import { isCatalogMode } from "@/lib/store-mode";
 import { getSettingValue } from "@/lib/cms";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { resolveVisibleVolumeTiers } from "@/features/cart/volume-pricing";
+import { derivePackVolumeTiers, packVolumeTierGroupKey } from "@/features/cart/volume-pricing";
+import { VolumeTiersNote } from "@/components/volume-tiers-note";
+import { PackVolumeTiersNote } from "./pack-volume-tiers-note";
 import { addToCartAction } from "@/app/carrito/actions";
 import {
   selectableVariants,
@@ -276,6 +279,18 @@ export default async function ProductoDetallePage({
   const visibleVolumeTiers = isNamePerTile
     ? []
     : resolveVisibleVolumeTiers(rawVolumeTiers, product.id, displayPrice);
+  // 2026-11-10 (owner) — familias por PACKS sin WholesaleTier (polaroid/
+  // cuadrados): la escala se DERIVA de las presentaciones (precio por pack que
+  // baja o promo compareAt de la opción) y se muestra con el MISMO bloque
+  // «Ahorra llevando más» (VolumeTiersNote), reactivo al tamaño elegido.
+  const packTierGroups =
+    !isNamePerTile && isPhotoPack && visibleVolumeTiers.length === 0
+      ? derivePackVolumeTiers(selectable, product.basePrice)
+      : [];
+  const packTierGroupKeyByVariantId =
+    packTierGroups.length > 0
+      ? Object.fromEntries(selectable.map((v) => [v.id, packVolumeTierGroupKey(v.attributes)]))
+      : {};
 
   // Precio tachado con REFLEJO TOTAL (owner 2026-09-14): la promo vive por
   // opción en el admin y el front la refleja SIEMPRE — tachado si la opción
@@ -525,46 +540,43 @@ export default async function ProductoDetallePage({
                 )}
               </div>
 
-              {visibleVolumeTiers.length > 0 && (
-                <div
-                  aria-label="Descuentos por cantidad"
-                  className="border-brand-purple/15 bg-brand-purple/5 order-2 rounded-xl border p-3"
-                >
-                  <p className="text-brand-purple-dark flex items-center gap-1.5 text-xs font-semibold">
-                    <Sparkles className="text-brand-purple h-3.5 w-3.5 flex-shrink-0" aria-hidden />
-                    Ahorra llevando más unidades (se aplica automáticamente en tu carrito)
-                  </p>
-                  <ul className="mt-2 flex flex-wrap gap-2">
-                    {visibleVolumeTiers.map((vt) => (
-                      <li
-                        key={vt.minQty}
-                        className="border-brand-purple/15 inline-flex items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs"
-                      >
-                        <span className="text-brand-muted font-medium">{vt.minQty}+ unid.</span>
-                        <span className="text-brand-purple-dark font-bold tabular-nums">
-                          {formatCOP(vt.unitPrice)} c/u
-                        </span>
-                        <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
-                          −{vt.savingsPct}%
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {/* H12 — el bloque de descuentos de packs es reactivo a la variante
+                  elegida (cuadrados: la escala cambia con el tamaño), así que el
+                  Provider abre ANTES del bloque y envuelve también selector y
+                  acciones. No renderiza nodo DOM: los order-* siguen aplicando
+                  sobre el flex padre. */}
+              <SelectedVariantProvider variantIds={variantIds} initialId={firstVariantId}>
+                {visibleVolumeTiers.length > 0 ? (
+                  <VolumeTiersNote
+                    className="order-2"
+                    title="Ahorra llevando más unidades (se aplica automáticamente en tu carrito)"
+                    items={visibleVolumeTiers.map((vt) => ({
+                      key: String(vt.minQty),
+                      qtyLabel: `${vt.minQty}+ unid.`,
+                      unitPrice: vt.unitPrice,
+                      priceSuffix: "c/u",
+                      savingsPct: vt.savingsPct,
+                    }))}
+                  />
+                ) : (
+                  // 2026-11-10 — packs sin WholesaleTier (polaroid/cuadrados):
+                  // misma pieza visual alimentada por la escala derivada de las
+                  // presentaciones; se oculta (null) cuando no hay ahorro real.
+                  <PackVolumeTiersNote
+                    className="order-2"
+                    groups={packTierGroups}
+                    groupKeyByVariantId={packTierGroupKeyByVariantId}
+                  />
+                )}
 
-              <p className="text-brand-purple-dark/80 order-4 text-base leading-relaxed whitespace-pre-line md:order-3">
-                {product.description}
-              </p>
+                <p className="text-brand-purple-dark/80 order-4 text-base leading-relaxed whitespace-pre-line md:order-3">
+                  {product.description}
+                </p>
 
-              {/* #16 — wrapper flex para mover el buy-box como una unidad (order-3 md:order-4): en
-                  móvil sube por encima de la descripción; en md+ vuelve a su sitio. El
-                  SelectedVariantProvider no renderiza nodo DOM, por eso hace falta este contenedor;
+                {/* #16 — wrapper flex para mover el buy-box como una unidad (order-3 md:order-4): en
+                  móvil sube por encima de la descripción; en md+ vuelve a su sitio.
                   su flex-col gap-5 preserva la separación entre selector y acciones. */}
-              <div className="order-3 flex flex-col gap-5 md:order-4">
-                {/* H12 — el selector y las acciones comparten la variante elegida vía Context (sync
-                  instantáneo), sin depender del re-render del RSC ni de la URL. */}
-                <SelectedVariantProvider variantIds={variantIds} initialId={firstVariantId}>
+                <div className="order-3 flex flex-col gap-5 md:order-4">
                   {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+.
                       Lucy 2026-07-22: también con 1 sola variante — el selector
                       decide solo: sin dimensiones visibles devuelve null (Default
@@ -746,8 +758,8 @@ export default async function ProductoDetallePage({
                       </a>
                     )}
                   </div>
-                </SelectedVariantProvider>
-              </div>
+                </div>
+              </SelectedVariantProvider>
 
               {/* #15 — strip de confianza: tiempo de producción/entrega + pago + garantía. Datos que
                 ya viven en el producto; el costo de envío NO se inventa (cotización dinámica). */}

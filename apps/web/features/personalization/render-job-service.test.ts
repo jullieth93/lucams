@@ -405,6 +405,26 @@ describe("renderJobTotalUnits", () => {
       4,
     );
   });
+
+  it("tiras photobooth: la unidad es la TIRA completa (slotCount / unitSlots)", () => {
+    const stripCanvas = {
+      unitSlots: 3,
+      unitTemplate: { gridCols: 1, gridGap: 0 },
+    };
+    expect(renderJobTotalUnits({}, 6, undefined, stripCanvas)).toBe(2);
+    expect(renderJobTotalUnits({}, 3, undefined, stripCanvas)).toBe(1);
+    // No divide exacto → no compone (diseño corrupto queda por slot).
+    expect(renderJobTotalUnits({}, 7, undefined, stripCanvas)).toBe(7);
+    // Plantilla no-tira con unitSlots (calendario 3×4) → por slot, como siempre.
+    expect(
+      renderJobTotalUnits({}, 12, undefined, {
+        unitSlots: 12,
+        unitTemplate: { gridCols: 3, gridGap: 12 },
+      }),
+    ).toBe(12);
+    // Sin canvasData (legacy) → comportamiento histórico.
+    expect(renderJobTotalUnits({}, 6)).toBe(6);
+  });
 });
 
 describe("createOrResetRenderJob", () => {

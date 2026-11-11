@@ -70,15 +70,20 @@
  * Uso (desde packages/db):
  *   node scripts/sync-catalog-stg-to-prd.mjs           # DRY-RUN (plan)
  *   LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 node scripts/sync-catalog-stg-to-prd.mjs --apply
+ *
+ * Promoción QUIRÚRGICA de un solo producto (2026-11-11, owner — la bola
+ * navideña se promovió a PRD sin arrastrar el resto del catálogo de STG):
+ *   node scripts/sync-catalog-stg-to-prd.mjs --only=<slug-de-producto>
+ * Con --only se sincronizan ÚNICAMENTE: la cadena de categorías del producto
+ * (ella y sus ancestros), el producto, sus variantes y sus plantillas. El CMS
+ * NO se toca (su saneamiento estructural corre aparte con
+ * sync-and-prune-cms-v2.mjs). Combinable con --to=prd|local.
  */
 
 import { PrismaClient } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import {
-  assertDestructiveAllowed,
-  classifyUrl,
-} from "./lib/env-guard.mjs";
+import { assertDestructiveAllowed, classifyUrl } from "./lib/env-guard.mjs";
 import {
   ENTITY_DEFS,
   diffEntity,
@@ -96,13 +101,21 @@ const APPLY = process.argv.includes("--apply");
 // histórico intacto) o --to=local (espejo del stack de desarrollo). El resto
 // del script opera sobre "prdEnv"/"db" como ALIAS del destino elegido.
 let TARGET = "prd";
+// --only=<slug>: promoción quirúrgica de UN producto (ver header).
+let ONLY = null;
 for (const arg of process.argv.slice(2)) {
   if (arg === "--apply") continue;
   if (arg === "--to=prd" || arg === "--to=local") {
     TARGET = arg.slice(5);
     continue;
   }
-  console.error(`✗ argumento no reconocido: ${arg} (válidos: --apply, --to=prd, --to=local)`);
+  if (arg.startsWith("--only=")) {
+    ONLY = arg.slice("--only=".length).trim() || null;
+    continue;
+  }
+  console.error(
+    `✗ argumento no reconocido: ${arg} (válidos: --apply, --to=prd, --to=local, --only=<slug>)`,
+  );
   process.exit(1);
 }
 
@@ -171,7 +184,9 @@ const stgPublicBase = stgEnv.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
 const prdPublicBase = prdEnv.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
 const prdSecret = prdEnv.SUPABASE_SECRET_KEY;
 if (!stgPublicBase || !prdPublicBase || !prdSecret) {
-  console.error("✗ faltan NEXT_PUBLIC_SUPABASE_URL (stg/prd) o SUPABASE_SECRET_KEY (prd) en los .env");
+  console.error(
+    "✗ faltan NEXT_PUBLIC_SUPABASE_URL (stg/prd) o SUPABASE_SECRET_KEY (prd) en los .env",
+  );
   process.exit(1);
 }
 const supabasePrd = createClient(prdPublicBase, prdSecret, {
@@ -207,48 +222,137 @@ async function withRetry(label, fn) {
 /** select plano + relaciones para aplanar FKs a su clave natural. */
 const SELECTS = {
   category: {
-    id: true, slug: true, name: true, description: true, richDescription: true,
-    useCase: true, image: true, icon: true, gradient: true, visibleFilters: true,
-    defaultSort: true, featuredProductSlug: true, activeFrom: true, activeUntil: true,
-    order: true, isActive: true, createdAt: true, createdBy: true, deletedAt: true,
+    id: true,
+    slug: true,
+    name: true,
+    description: true,
+    richDescription: true,
+    useCase: true,
+    image: true,
+    icon: true,
+    gradient: true,
+    visibleFilters: true,
+    defaultSort: true,
+    featuredProductSlug: true,
+    activeFrom: true,
+    activeUntil: true,
+    order: true,
+    isActive: true,
+    createdAt: true,
+    createdBy: true,
+    deletedAt: true,
     parent: { select: { slug: true } },
   },
   product: {
-    id: true, slug: true, sku: true, name: true, description: true, basePrice: true,
-    compareAtPrice: true, cost: true, isPersonalizable: true, personalizationKind: true,
-    personalizationSchema: true, richDescription: true, whyChooseThis: true, idealFor: true,
-    physicalSpecs: true, warrantyMonths: true, productionDays: true, shippingDaysMin: true,
-    shippingDaysMax: true, minimumQuantity: true, maximumQuantity: true, images: true,
-    isActive: true, isFeatured: true, seoTitle: true, seoDescription: true,
-    createdAt: true, createdBy: true, deletedAt: true,
+    id: true,
+    slug: true,
+    sku: true,
+    name: true,
+    description: true,
+    basePrice: true,
+    compareAtPrice: true,
+    cost: true,
+    isPersonalizable: true,
+    personalizationKind: true,
+    personalizationSchema: true,
+    richDescription: true,
+    whyChooseThis: true,
+    idealFor: true,
+    physicalSpecs: true,
+    warrantyMonths: true,
+    productionDays: true,
+    shippingDaysMin: true,
+    shippingDaysMax: true,
+    minimumQuantity: true,
+    maximumQuantity: true,
+    images: true,
+    isActive: true,
+    isFeatured: true,
+    seoTitle: true,
+    seoDescription: true,
+    createdAt: true,
+    createdBy: true,
+    deletedAt: true,
     category: { select: { slug: true } },
   },
   variant: {
-    id: true, sku: true, name: true, description: true, price: true, compareAtPrice: true,
-    stock: true, images: true, attributes: true, isActive: true,
-    createdAt: true, createdBy: true, deletedAt: true,
+    id: true,
+    sku: true,
+    name: true,
+    description: true,
+    price: true,
+    compareAtPrice: true,
+    stock: true,
+    images: true,
+    attributes: true,
+    isActive: true,
+    createdAt: true,
+    createdBy: true,
+    deletedAt: true,
     product: { select: { slug: true } },
   },
   cmsPage: {
-    id: true, slug: true, title: true, description: true, path: true, icon: true,
-    sortOrder: true, createdAt: true,
+    id: true,
+    slug: true,
+    title: true,
+    description: true,
+    path: true,
+    icon: true,
+    sortOrder: true,
+    createdAt: true,
   },
   cmsSection: {
-    id: true, key: true, title: true, description: true, sortOrder: true, createdAt: true,
+    id: true,
+    key: true,
+    title: true,
+    description: true,
+    sortOrder: true,
+    createdAt: true,
     page: { select: { slug: true } },
   },
   cmsField: {
-    id: true, key: true, kind: true, label: true, helpText: true, type: true, body: true,
-    metadata: true, category: true, sortOrder: true, isPublished: true, publishedVersionId: true,
-    createdAt: true, createdBy: true, deletedAt: true,
+    id: true,
+    key: true,
+    kind: true,
+    label: true,
+    helpText: true,
+    type: true,
+    body: true,
+    metadata: true,
+    category: true,
+    sortOrder: true,
+    isPublished: true,
+    publishedVersionId: true,
+    createdAt: true,
+    createdBy: true,
+    deletedAt: true,
     section: { select: { key: true, page: { select: { slug: true } } } },
-    publishedVersion: { select: { id: true, title: true, body: true, metadata: true, publishedAt: true, version: true } },
+    publishedVersion: {
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        metadata: true,
+        publishedAt: true,
+        version: true,
+      },
+    },
     items: { select: { id: true, position: true, values: true } },
   },
   template: {
-    id: true, slug: true, kind: true, mode: true, name: true, description: true,
-    previewUrl: true, canvasData: true, isActive: true, order: true,
-    createdAt: true, createdBy: true, deletedAt: true,
+    id: true,
+    slug: true,
+    kind: true,
+    mode: true,
+    name: true,
+    description: true,
+    previewUrl: true,
+    canvasData: true,
+    isActive: true,
+    order: true,
+    createdAt: true,
+    createdBy: true,
+    deletedAt: true,
     product: { select: { slug: true } },
   },
 };
@@ -276,8 +380,13 @@ async function main() {
   // ── 1. Lectura de ambas DBs (solo lectura — seguro en dry-run) ──
   const raw = {};
   const models = {
-    category: "category", product: "product", variant: "productVariant",
-    cmsPage: "cmsPage", cmsSection: "cmsSection", cmsField: "cmsField", template: "personalizationTemplate",
+    category: "category",
+    product: "product",
+    variant: "productVariant",
+    cmsPage: "cmsPage",
+    cmsSection: "cmsSection",
+    cmsField: "cmsField",
+    template: "personalizationTemplate",
   };
   for (const [entity, model] of Object.entries(models)) {
     const [stgRows, prdRows] = await Promise.all([
@@ -288,6 +397,40 @@ async function main() {
       stg: stgRows.map((r) => FLATTEN[entity](r)),
       prd: prdRows.map((r) => FLATTEN[entity](r)),
     };
+  }
+  // --only=<slug>: recorta la lectura de STG al producto pedido, su cadena de
+  // categorías (él + ancestros), sus variantes y sus plantillas. El CMS queda
+  // fuera del diff (0 filas STG → todo PRD se reporta como "solo-PRD" y no se
+  // toca). El destino sí se lee completo: el cruce por clave natural lo exige.
+  if (ONLY) {
+    const product = raw.product.stg.find((p) => p.slug === ONLY);
+    if (!product) {
+      console.error(`✗ --only: el producto '${ONLY}' no existe en STG. Abortando.`);
+      process.exit(1);
+    }
+    const catBySlug = new Map(raw.category.stg.map((c) => [c.slug, c]));
+    if (!catBySlug.has(product.categorySlug)) {
+      console.error(
+        `✗ --only: la categoría '${product.categorySlug}' del producto no existe en STG. Abortando.`,
+      );
+      process.exit(1);
+    }
+    const neededCats = new Set();
+    let cursor = catBySlug.get(product.categorySlug);
+    while (cursor && !neededCats.has(cursor.slug)) {
+      neededCats.add(cursor.slug);
+      cursor = cursor.parentSlug ? catBySlug.get(cursor.parentSlug) : null;
+    }
+    raw.product.stg = [product];
+    raw.variant.stg = raw.variant.stg.filter((v) => v.productSlug === ONLY);
+    raw.template.stg = raw.template.stg.filter((t) => t.productSlug === ONLY);
+    raw.category.stg = raw.category.stg.filter((c) => neededCats.has(c.slug));
+    raw.cmsPage.stg = [];
+    raw.cmsSection.stg = [];
+    raw.cmsField.stg = [];
+    console.log(
+      `Modo --only=${ONLY}: ${raw.variant.stg.length} variante(s), ${raw.template.stg.length} plantilla(s), categorías: ${[...neededCats].join(", ")}. CMS intacto.`,
+    );
   }
   // CmsMedia: los CmsField type=IMAGE guardan en body un CmsMedia.id (cuid
   // por ambiente) → remap por (bucket, path).
@@ -319,7 +462,8 @@ async function main() {
     for (const row of diffs[entity].inserts) map.set(row.id, row.id);
     idMaps[entity] = map;
   }
-  const stgIdByKey = (entity) => new Map(raw[entity].stg.map((r) => [ENTITY_DEFS[entity].keyOf(r), r.id]));
+  const stgIdByKey = (entity) =>
+    new Map(raw[entity].stg.map((r) => [ENTITY_DEFS[entity].keyOf(r), r.id]));
   const catIdBySlug = stgIdByKey("category");
   const productIdBySlug = stgIdByKey("product");
   const pageIdBySlug = stgIdByKey("cmsPage");
@@ -366,7 +510,8 @@ async function main() {
   const remapImageBody = (body) => {
     const mapped = remapMediaId(body);
     if (mapped === undefined) return { body, note: null }; // no es media id
-    if (mapped === null) return { body: null, note: `CmsMedia ${body} sin equivalente en PRD (body queda null)` };
+    if (mapped === null)
+      return { body: null, note: `CmsMedia ${body} sin equivalente en PRD (body queda null)` };
     return { body: mapped, note: null };
   };
 
@@ -389,10 +534,13 @@ async function main() {
         (restores.length ? ` · ${restores.length} restauración(es)` : ""),
     );
     for (const row of inserts) {
-      console.log(`  + INSERT ${def.keyOf(row)}${row.isActive === false ? " (inactiva)" : ""}${row.deletedAt ? " (archivada)" : ""}`);
+      console.log(
+        `  + INSERT ${def.keyOf(row)}${row.isActive === false ? " (inactiva)" : ""}${row.deletedAt ? " (archivada)" : ""}`,
+      );
     }
     for (const { row, prdRow, fields, matchedBy } of updates) {
-      const idNote = matchedBy === "id" ? row.id : `${prdRow.id} (cruce por clave; id STG ${row.id})`;
+      const idNote =
+        matchedBy === "id" ? row.id : `${prdRow.id} (cruce por clave; id STG ${row.id})`;
       const sd = fields.includes("deletedAt") && row.deletedAt ? " ⚠ SOFT-DELETE" : "";
       console.log(`  ~ UPDATE ${def.keyOf(row)} → ${idNote} · campos: ${fields.join(", ")}${sd}`);
     }
@@ -439,7 +587,10 @@ async function main() {
   // Notas de remap de CmsMedia en campos IMAGE tocados.
   for (const { row } of cmsFieldTouched) {
     if (row.type !== "IMAGE") continue;
-    for (const [label, body] of [["body", row.body], ["publishedVersion.body", row.publishedVersion?.body]]) {
+    for (const [label, body] of [
+      ["body", row.body],
+      ["publishedVersion.body", row.publishedVersion?.body],
+    ]) {
       if (!body) continue;
       const { note } = remapImageBody(body);
       if (note) mediaRemapNotes.push(`${row.key} (${label}): ${note}`);
@@ -458,7 +609,9 @@ async function main() {
   );
 
   if (!APPLY) {
-    console.log("\nDRY-RUN (sin cambios). Para ejecutar: LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 … --apply");
+    console.log(
+      "\nDRY-RUN (sin cambios). Para ejecutar: LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 … --apply",
+    );
     return;
   }
 
@@ -499,32 +652,60 @@ async function main() {
   const buildData = {
     category: (row, fields) => {
       const all = {
-        slug: row.slug, name: row.name, description: row.description,
-        richDescription: row.richDescription, useCase: row.useCase, image: img(row.image),
-        icon: row.icon, gradient: row.gradient, visibleFilters: row.visibleFilters,
-        defaultSort: row.defaultSort, featuredProductSlug: row.featuredProductSlug,
-        activeFrom: row.activeFrom, activeUntil: row.activeUntil, order: row.order,
-        isActive: row.isActive, deletedAt: row.deletedAt,
-        parentId: row.parentSlug ? resolveFk(catIdBySlug.get(row.parentSlug), idMaps.category) : null,
+        slug: row.slug,
+        name: row.name,
+        description: row.description,
+        richDescription: row.richDescription,
+        useCase: row.useCase,
+        image: img(row.image),
+        icon: row.icon,
+        gradient: row.gradient,
+        visibleFilters: row.visibleFilters,
+        defaultSort: row.defaultSort,
+        featuredProductSlug: row.featuredProductSlug,
+        activeFrom: row.activeFrom,
+        activeUntil: row.activeUntil,
+        order: row.order,
+        isActive: row.isActive,
+        deletedAt: row.deletedAt,
+        parentId: row.parentSlug
+          ? resolveFk(catIdBySlug.get(row.parentSlug), idMaps.category)
+          : null,
       };
       if (!fields) return all;
       const data = {};
-      for (const f of fields) data[f === "parentSlug" ? "parentId" : f] = all[f === "parentSlug" ? "parentId" : f];
+      for (const f of fields)
+        data[f === "parentSlug" ? "parentId" : f] = all[f === "parentSlug" ? "parentId" : f];
       return data;
     },
     product: (row, fields) => {
       const all = {
-        slug: row.slug, sku: row.sku, name: row.name, description: row.description,
-        basePrice: row.basePrice, compareAtPrice: row.compareAtPrice, cost: row.cost,
-        isPersonalizable: row.isPersonalizable, personalizationKind: row.personalizationKind,
+        slug: row.slug,
+        sku: row.sku,
+        name: row.name,
+        description: row.description,
+        basePrice: row.basePrice,
+        compareAtPrice: row.compareAtPrice,
+        cost: row.cost,
+        isPersonalizable: row.isPersonalizable,
+        personalizationKind: row.personalizationKind,
         personalizationSchema: row.personalizationSchema,
-        richDescription: row.richDescription, whyChooseThis: row.whyChooseThis,
-        idealFor: row.idealFor, physicalSpecs: row.physicalSpecs,
-        warrantyMonths: row.warrantyMonths, productionDays: row.productionDays,
-        shippingDaysMin: row.shippingDaysMin, shippingDaysMax: row.shippingDaysMax,
-        minimumQuantity: row.minimumQuantity, maximumQuantity: row.maximumQuantity,
-        images: img(row.images), isActive: row.isActive, isFeatured: row.isFeatured,
-        seoTitle: row.seoTitle, seoDescription: row.seoDescription, deletedAt: row.deletedAt,
+        richDescription: row.richDescription,
+        whyChooseThis: row.whyChooseThis,
+        idealFor: row.idealFor,
+        physicalSpecs: row.physicalSpecs,
+        warrantyMonths: row.warrantyMonths,
+        productionDays: row.productionDays,
+        shippingDaysMin: row.shippingDaysMin,
+        shippingDaysMax: row.shippingDaysMax,
+        minimumQuantity: row.minimumQuantity,
+        maximumQuantity: row.maximumQuantity,
+        images: img(row.images),
+        isActive: row.isActive,
+        isFeatured: row.isFeatured,
+        seoTitle: row.seoTitle,
+        seoDescription: row.seoDescription,
+        deletedAt: row.deletedAt,
         categoryId: resolveFk(catIdBySlug.get(row.categorySlug), idMaps.category),
       };
       if (!fields) return all;
@@ -538,9 +719,16 @@ async function main() {
     variant: (row, fields) => {
       // stock NUNCA en updates; en inserts entra con 0 (ver header ⚠ STOCK).
       const all = {
-        sku: row.sku, name: row.name, description: row.description, price: row.price,
-        compareAtPrice: row.compareAtPrice, stock: 0, images: img(row.images),
-        attributes: row.attributes, isActive: row.isActive, deletedAt: row.deletedAt,
+        sku: row.sku,
+        name: row.name,
+        description: row.description,
+        price: row.price,
+        compareAtPrice: row.compareAtPrice,
+        stock: 0,
+        images: img(row.images),
+        attributes: row.attributes,
+        isActive: row.isActive,
+        deletedAt: row.deletedAt,
         productId: resolveFk(productIdBySlug.get(row.productSlug), idMaps.product),
       };
       if (!fields) return all;
@@ -553,15 +741,22 @@ async function main() {
     },
     cmsPage: (row, fields) => {
       const all = {
-        slug: row.slug, title: row.title, description: row.description,
-        path: row.path, icon: row.icon, sortOrder: row.sortOrder,
+        slug: row.slug,
+        title: row.title,
+        description: row.description,
+        path: row.path,
+        icon: row.icon,
+        sortOrder: row.sortOrder,
       };
       if (!fields) return all;
       return Object.fromEntries(fields.map((f) => [f, all[f]]));
     },
     cmsSection: (row, fields) => {
       const all = {
-        key: row.key, title: row.title, description: row.description, sortOrder: row.sortOrder,
+        key: row.key,
+        title: row.title,
+        description: row.description,
+        sortOrder: row.sortOrder,
         pageId: resolveFk(pageIdBySlug.get(row.pageSlug), idMaps.cmsPage),
       };
       if (!fields) return all;
@@ -572,9 +767,17 @@ async function main() {
     cmsField: (row, fields) => {
       const body = row.type === "IMAGE" ? remapImageBody(row.body).body : row.body;
       const all = {
-        key: row.key, kind: row.kind, label: row.label, helpText: row.helpText,
-        type: row.type, body, metadata: row.metadata, category: row.category,
-        sortOrder: row.sortOrder, isPublished: row.isPublished, deletedAt: row.deletedAt,
+        key: row.key,
+        kind: row.kind,
+        label: row.label,
+        helpText: row.helpText,
+        type: row.type,
+        body,
+        metadata: row.metadata,
+        category: row.category,
+        sortOrder: row.sortOrder,
+        isPublished: row.isPublished,
+        deletedAt: row.deletedAt,
         sectionId: resolveFk(sectionIdByRef.get(row.sectionRef), idMaps.cmsSection),
       };
       if (!fields) return all;
@@ -587,11 +790,19 @@ async function main() {
     },
     template: (row, fields) => {
       const all = {
-        slug: row.slug, kind: row.kind, mode: row.mode, name: row.name,
-        description: row.description, previewUrl: img(row.previewUrl),
-        canvasData: row.canvasData, isActive: row.isActive, order: row.order,
+        slug: row.slug,
+        kind: row.kind,
+        mode: row.mode,
+        name: row.name,
+        description: row.description,
+        previewUrl: img(row.previewUrl),
+        canvasData: row.canvasData,
+        isActive: row.isActive,
+        order: row.order,
         deletedAt: row.deletedAt,
-        productId: row.productSlug ? resolveFk(productIdBySlug.get(row.productSlug), idMaps.product) : null,
+        productId: row.productSlug
+          ? resolveFk(productIdBySlug.get(row.productSlug), idMaps.product)
+          : null,
       };
       if (!fields) return all;
       const data = {};
