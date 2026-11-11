@@ -45,6 +45,18 @@ export type EditableListField = {
   items: Record<string, unknown>[];
 };
 
+/**
+ * Destino elegible para subcampos URL (2026-11-11, owner): lista desplegable
+ * por grupo (Productos / Categorías / Páginas) — nunca texto libre por defecto
+ * (una URL absoluta con host de desarrollo se coló en un banner: la página
+ * pública habría mandado clientes a una IP interna). La opción «URL
+ * personalizada…» sigue disponible como escape explícito.
+ */
+export type LinkOptionGroup = {
+  group: string;
+  options: { value: string; label: string }[];
+};
+
 type Row = {
   /** Key React estable (no viaja al servidor). */
   rowId: string;
@@ -84,10 +96,13 @@ function toRowValues(
 export function ListEditorForm({
   field,
   mediaLibrary = [],
+  linkOptions = [],
 }: {
   field: EditableListField;
   /** Mediateca reciente para subcampos IMAGE (roadmap B6). */
   mediaLibrary?: CmsMediaLite[];
+  /** Destinos internos para subcampos URL (2026-11-11 — desplegable). */
+  linkOptions?: LinkOptionGroup[];
 }) {
   const isSetting = field.kind === "SETTING";
   const { confirm, confirmDialog } = useAdminConfirm();
@@ -297,6 +312,17 @@ export function ListEditorForm({
                         <option value="true">Sí</option>
                         <option value="false">No</option>
                       </select>
+                    ) : sub.type === "URL" && linkOptions.length > 0 ? (
+                      // 2026-11-11 (owner) — destino como DESPLEGABLE de páginas
+                      // del ambiente (productos/categorías/páginas): nada de URLs
+                      // absolutas escritas a mano (con host de desarrollo incluido).
+                      <UrlSubfield
+                        id={`${row.rowId}-${sub.name}`}
+                        value={row.values[sub.name] ?? ""}
+                        linkOptions={linkOptions}
+                        disabled={pending}
+                        onChange={(value) => updateCell(index, sub.name, value)}
+                      />
                     ) : (
                       <Input
                         id={`${row.rowId}-${sub.name}`}
@@ -424,5 +450,85 @@ export function ListEditorForm({
       </div>
       {confirmDialog}
     </form>
+  );
+}
+
+/** Valor centinela del escape manual en el desplegable de destinos. */
+const CUSTOM_URL = "__custom__";
+
+/**
+ * Subcampo URL como DESPLEGABLE de destinos internos del ambiente
+ * (2026-11-11, owner): productos activos, categorías y páginas del sitio.
+ * El escape «URL personalizada…» revela el input libre (y se auto-selecciona
+ * si el valor actual no está entre los destinos conocidos — contenido legado).
+ */
+function UrlSubfield({
+  id,
+  value,
+  linkOptions,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  linkOptions: LinkOptionGroup[];
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const known = linkOptions.some((g) => g.options.some((o) => o.value === value));
+  const [custom, setCustom] = useState(value !== "" && !known);
+
+  if (custom) {
+    return (
+      <div className="space-y-1.5">
+        <Input
+          id={id}
+          type="url"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          placeholder="/productos o https://…"
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            setCustom(false);
+            onChange("");
+          }}
+          className="text-brand-purple hover:text-brand-purple-dark text-[11px] font-semibold underline underline-offset-2"
+        >
+          ← Elegir de la lista de destinos
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <select
+      id={id}
+      value={value}
+      onChange={(e) => {
+        if (e.target.value === CUSTOM_URL) {
+          setCustom(true);
+          return;
+        }
+        onChange(e.target.value);
+      }}
+      disabled={disabled}
+      className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-3 py-1 text-sm shadow-sm focus:ring-2 focus:outline-none"
+    >
+      <option value="">Elige el destino…</option>
+      {linkOptions.map((g) => (
+        <optgroup key={g.group} label={g.group}>
+          {g.options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+      <option value={CUSTOM_URL}>URL personalizada…</option>
+    </select>
   );
 }

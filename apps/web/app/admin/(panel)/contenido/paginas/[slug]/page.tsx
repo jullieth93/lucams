@@ -43,7 +43,10 @@ import {
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { isCatalogMode } from "@/lib/store-mode";
-import { cmsFieldHasDraft, getCmsPageBySlug } from "@/features/cms/service";
+import { cmsFieldHasDraft, getCmsListSchema, getCmsPageBySlug } from "@/features/cms/service";
+import { CmsListPreview } from "@/components/admin/cms-list-preview";
+import { cmsMediaPublicUrl } from "@/lib/cms-media";
+import { prisma } from "@/lib/db";
 import { refreshCmsCacheAction } from "../../actions";
 import {
   CMS_PAGE_ICONS,
@@ -102,6 +105,39 @@ export default async function EditarPaginaCmsPage({
   );
 
   const Icon = CMS_PAGE_ICONS[page.icon ?? ""] ?? FileText;
+
+  // Tarjetas visuales de campos LISTA (2026-11-11, owner): la fila del editor
+  // de página muestra las filas como tarjetas (miniatura + etiquetas), no el
+  // JSON crudo. Las miniaturas se resuelven en UNA consulta para todos los
+  // campos lista de la página.
+  const listMediaIds = new Set<string>();
+  for (const s of page.sections) {
+    for (const f of s.fields) {
+      const schema = getCmsListSchema(f.metadata);
+      if (!schema?.some((sf) => sf.type === "IMAGE")) continue;
+      const imageKeys = schema.filter((sf) => sf.type === "IMAGE").map((sf) => sf.name);
+      try {
+        const parsed: unknown = JSON.parse(f.publishedVersion?.body ?? f.body);
+        if (!Array.isArray(parsed)) continue;
+        for (const item of parsed) {
+          if (typeof item !== "object" || item === null) continue;
+          for (const k of imageKeys) {
+            const val = (item as Record<string, unknown>)[k];
+            if (typeof val === "string" && val.trim()) listMediaIds.add(val.trim());
+          }
+        }
+      } catch {
+        // Body no-JSON: la tarjeta cae a la nota de texto plano.
+      }
+    }
+  }
+  const listMediaById: Record<string, { url: string; alt: string }> = {};
+  if (listMediaIds.size > 0) {
+    const media = await prisma.cmsMedia.findMany({ where: { id: { in: [...listMediaIds] } } });
+    for (const m of media) {
+      listMediaById[m.id] = { url: cmsMediaPublicUrl(m.bucket, m.path), alt: m.alt };
+    }
+  }
 
   return (
     <AdminPage>
@@ -239,15 +275,37 @@ export default async function EditarPaginaCmsPage({
                                   <p className="text-brand-muted mt-0.5 font-mono text-[10px]">
                                     {f.key}
                                   </p>
-                                  <p className="text-brand-purple-dark/60 mt-2 line-clamp-2 text-xs">
-                                    {plainPreview(publishedBody ?? f.body)}
-                                    {!publishedBody && (
-                                      <span className="text-amber-700">
-                                        {" "}
-                                        (borrador sin publicar)
-                                      </span>
-                                    )}
-                                  </p>
+                                  {(() => {
+                                    const schema = getCmsListSchema(f.metadata);
+                                    if (schema) {
+                                      return (
+                                        <div className="mt-2">
+                                          <CmsListPreview
+                                            body={publishedBody ?? f.body}
+                                            listSchema={schema}
+                                            mediaById={listMediaById}
+                                            maxItems={2}
+                                          />
+                                          {!publishedBody && (
+                                            <span className="text-xs text-amber-700">
+                                              (borrador sin publicar)
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <p className="text-brand-purple-dark/60 mt-2 line-clamp-2 text-xs">
+                                        {plainPreview(publishedBody ?? f.body)}
+                                        {!publishedBody && (
+                                          <span className="text-amber-700">
+                                            {" "}
+                                            (borrador sin publicar)
+                                          </span>
+                                        )}
+                                      </p>
+                                    );
+                                  })()}
                                 </div>
                                 <Link
                                   href={`/admin/contenido/campos/${f.id}`}
