@@ -26,17 +26,24 @@
 
 ### Excepciones deliberadas de homologación (`ADR-099`, `ADR-121`, `ADR-126`)
 
-- **Catálogo y esquema (`scripts/diag-stg/homologacion.sh`):** migraciones, categorías, ocasiones,
-  plantillas, lettersets, redirects, `168/168` campos CMS y variantes `-NOMAG` homologados.
-  **Catálogo ACTIVO de referencia (`ADR-203`, owner 2026-11-11): los 8 activos de PRD +
-  `bola-navidena-personalizada` (9 activos) en los 3 ambientes**; el resto queda pausado en STG/DEV
-  y las categorías no referencia archivadas como en PRD. Cuadrados tiene sus 12 gemelas `-NOMAG`
-  sembradas **inactivas** (listas para toggle admin). `nombre-personalizado` está archivado en PRD;
-  `set-fotoimanes-circulares` y `set-fotoimanes-corazon`, en los 3 ambientes. El stock real no se
-  sincroniza.
-- **Crons y secretos:** `uptime-monitor-prd` solo en STG; los 5 crons de correo apagados en STG por
-  `CRON_JOBS_DISABLED` y activos en PRD; `lucams-lifecycle` y Resend en ambos, con `DRY_RUN` en STG.
-  `AVEONLINE_WEBHOOK_SECRET` solo en PRD; `CRON_JOBS_DISABLED` y `VERCEL_BYPASS_TOKEN` solo en STG.
+- **Catálogo y esquema (`scripts/diag-stg/homologacion.sh`):** migraciones, categorías (84=84,
+  jerarquía aplanada espejo de PRD), ocasiones, redirects, `168/168` campos CMS y variantes `-NOMAG`
+  homologados. **Catálogo ACTIVO de referencia (`ADR-203`, owner 2026-11-11): los 8 activos de PRD +
+  `bola-navidena-personalizada` (9 activos) en los 3 ambientes**; el resto queda pausado en STG/DEV.
+  Cuadrados tiene sus 12 gemelas `-NOMAG` sembradas **inactivas** (listas para toggle admin).
+  `nombre-personalizado` está archivado en PRD; `set-fotoimanes-circulares` y `set-fotoimanes-corazon`,
+  en los 3 ambientes. El stock real no se sincroniza.
+- **Topología deliberada de catálogo pausado:** PRD conserva solo el catálogo vigente y sus
+  históricos archivados (13 productos); STG y LOCAL conservan además el catálogo completo pausado
+  (54 productos, listos para reactivar). Por eso las plantillas y tramos mayoristas de
+  `mini-libros-magneticos` (inactivo) viven solo en STG/LOCAL, y PRD guarda 9 filas archivadas
+  históricas de galería `separadores-alargados` (S10–S18) como auditoría — contenido vivo idéntico.
+- **Crons y secretos:** `uptime-monitor-prd` solo en STG (con sus tablas `uptime_monitor_*`); los 5
+  crons de correo existen solo en PRD y STG además tiene `CRON_JOBS_DISABLED` y
+  `CART_RECOVERY_MODE=manual` (automatización de correo inerte en STG); `lucams-lifecycle` y Resend
+  en ambos, con `DRY_RUN` en STG. `AVEONLINE_WEBHOOK_SECRET` solo en PRD; `CRON_JOBS_DISABLED` y
+  `VERCEL_BYPASS_TOKEN` solo en STG. `pg_net` 0.20.4 (STG) vs 0.20.0 (PRD): deriva de plataforma
+  gestionada por Supabase, sin impacto funcional.
 - **Datos de prueba:** el cupón `LOCURA` vive solo en STG y nunca pasa a PRD.
 
 ## Capacidades operativas por dominio
