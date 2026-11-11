@@ -47,7 +47,7 @@ export const NEW_PRODUCTS = [
     name: "Bola Navideña Personalizada",
     ...NEW_PRODUCT_COMMERCIAL,
     description:
-      "Un inserto circular plano dúplex de 8 cm dentro de una esfera transparente. Elige plantillas o sube tus diseños para el frente y el reverso, revisa cómo se ven al girar y personaliza cada bola por separado. Producto sin imán.",
+      "Un inserto circular plano dúplex de 8 cm dentro de una esfera transparente. Elige plantillas o sube tus diseños para el frente y el reverso, revisa cómo se ven al girar y personaliza cada bola por separado. Disponible sin imán o con imán: con imán, los 2 diseños (frente y reverso) van imantados cada uno.",
     compareAtPrice: null,
     categorySlug: "de-temporada",
     isPersonalizable: true,
@@ -69,7 +69,7 @@ export const NEW_PRODUCTS = [
     images: ["/products/bola-navidena.webp"],
     seoTitle: "Bola Navideña Personalizada con tu foto | Lucams Shop",
     seoDescription:
-      "Crea una bola navideña dúplex con tus fotos de frente y reverso en un inserto circular plano de 8 cm y revisa su vista 3D.",
+      "Crea una bola navideña dúplex con tus fotos de frente y reverso en un inserto circular plano de 8 cm, con imán o sin imán, y revisa su vista 3D.",
     idealFor: ["regalo navidad familia", "decoración árbol navidad", "recuerdo fin de año"],
     variants: [
       {
@@ -86,6 +86,24 @@ export const NEW_PRODUCTS = [
           variantShape: "foto-plana-en-esfera",
         },
       },
+      {
+        // 2026-11-11 (owner): la bola también se vende CON imán (+$1.000). Con
+        // imán los 2 diseños (frente y reverso) van imantados cada uno. Las
+        // promos por volumen (3×$27.000 / 5×$40.000) son a nivel producto y
+        // aplican igual a ambas variantes (decisión del owner).
+        sku: "NAV-BOLA-8CM-MAG",
+        name: "Foto circular de 8 cm · Con imán",
+        price: 1_100_000,
+        attributes: {
+          shape: "circle",
+          magnet: true,
+          sizeCm: "8",
+          quantity: 1,
+          photoSlots: 1,
+          aspectRatio: "1:1",
+          variantShape: "foto-plana-en-esfera",
+        },
+      },
     ],
   },
   {
@@ -93,6 +111,11 @@ export const NEW_PRODUCTS = [
     sku: "MINI-LIBRO",
     name: "Mini Libros Magnéticos",
     ...NEW_PRODUCT_COMMERCIAL,
+    // 2026-11-11 (owner): el catálogo ACTIVO de referencia es el de PRD + la
+    // bola navideña; los mini libros quedan sembrados pero INACTIVOS en
+    // ambientes frescos hasta nueva decisión comercial (el update del seed
+    // nunca toca isActive — en STG/PRD el estado vivo manda).
+    isActive: false,
     description:
       "Mini libros decorativos con carátula envolvente personalizada: contraportada, lomo y portada. Tamaño grande extendido de 7,1 × 5 cm o pequeño extendido de 5 × 2,5 cm; ambos con 0,5 cm de grosor. Disponibles con imán o sin imán.",
     compareAtPrice: null,

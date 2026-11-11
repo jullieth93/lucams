@@ -193,6 +193,11 @@ const MADE_TO_ORDER_STOCK = 100_000;
 // ─────────── Categorías (9) ───────────
 // Slugs estables. Cambiar un slug significa archivar la categoría vieja
 // (esto lo hace automáticamente el bloque legacy más abajo).
+//
+// 2026-11-11 (owner) — categorías ACTIVAS de referencia: las 4 vivas de PRD
+// (foto-imanes, calendarios, separadores, juegos-aprendizaje) + de-temporada
+// (categoría de la bola navideña). Las otras 6 se siembran INACTIVAS en
+// ambientes frescos; el update nunca toca isActive (el estado vivo manda).
 
 // 10 categorías. Naming rules (M.3.b.CAT.10, 2026-05-14):
 //  - Display name corto, sin redundancias (no "Magnéticos" si la categoría
@@ -216,7 +221,7 @@ const categoriesData = [
     description:
       "Detalles personalizados para bodas, baby showers, cumpleaños, graduaciones y quinceañeras. Empaque incluido.",
     order: 2,
-    isActive: true,
+    isActive: false,
   },
   {
     slug: "calendarios",
@@ -232,7 +237,7 @@ const categoriesData = [
     description:
       "Imanes para tu marca, evento corporativo o campaña. Tu logo + datos de contacto. Mínimo 50 unidades.",
     order: 4,
-    isActive: true,
+    isActive: false,
   },
   {
     slug: "organizate",
@@ -240,7 +245,7 @@ const categoriesData = [
     description:
       "Planners semanales, mensuales y notas magnéticas borrables. Para tu día a día sobre la nevera.",
     order: 5,
-    isActive: true,
+    isActive: false,
   },
   {
     // Categoría de los separadores personalizables (Estudio) — nació por
@@ -259,7 +264,7 @@ const categoriesData = [
     description:
       "Cajas y kits temáticos para regalar con cariño. Pareja, recién nacido, sorpresa Lucams.",
     order: 6,
-    isActive: true,
+    isActive: false,
   },
   {
     slug: "de-temporada",
@@ -275,7 +280,7 @@ const categoriesData = [
     description:
       "Cuadros magnéticos con fotos, frases personalizadas y marcos. Para personalizar la nevera y más allá.",
     order: 8,
-    isActive: true,
+    isActive: false,
   },
   {
     slug: "coleccionables",
@@ -283,7 +288,7 @@ const categoriesData = [
     description:
       "Diseños propios temáticos: ciudades de Colombia, comida típica, frases motivacionales, animalitos. Coleccionable, no personalizable.",
     order: 9,
-    isActive: true,
+    isActive: false,
   },
   {
     slug: "juegos-aprendizaje",
@@ -367,25 +372,25 @@ const productsData = [
         sku: "FI-POL-12-V1",
         name: "1 pack (6 unidades) · 6×8 cm",
         price: 2250000,
-        attributes: { photoSlots: 6, sizeCm: "6×8", aspectRatio: "6:8" },
+        attributes: { photoSlots: 6, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
       },
       {
         sku: "FI-POL-12-V3",
         name: "2 packs (12 unidades) · 6×8 cm",
         price: 4500000,
-        attributes: { photoSlots: 12, sizeCm: "6×8", aspectRatio: "6:8" },
+        attributes: { photoSlots: 12, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
       },
       {
         sku: "FI-POL-12-V5",
         name: "3 packs (18 unidades) · 6×8 cm",
         price: 6750000,
-        attributes: { photoSlots: 18, sizeCm: "6×8", aspectRatio: "6:8" },
+        attributes: { photoSlots: 18, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
       },
       {
         sku: "FI-POL-12-V6",
         name: "4 packs (24 unidades) · 6×8 cm",
         price: 9000000,
-        attributes: { photoSlots: 24, sizeCm: "6×8", aspectRatio: "6:8" },
+        attributes: { photoSlots: 24, sizeCm: "6×8", aspectRatio: "6:8", magnet: true },
       },
     ],
   },
@@ -432,75 +437,309 @@ const productsData = [
         sku: "FI-CUAD-12-V11",
         name: "1 pack (6 unidades) · 4×4 cm",
         price: 2400000,
-        attributes: { photoSlots: 6, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 6,
+          sizeCm: "4×4",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       {
         sku: "FI-CUAD-12-V13",
         name: "2 packs (12 unidades) · 4×4 cm",
         price: 4800000,
-        attributes: { photoSlots: 12, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 12,
+          sizeCm: "4×4",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       {
         sku: "FI-CUAD-12-V14",
         name: "3 packs (18 unidades) · 4×4 cm",
         price: 7200000,
-        attributes: { photoSlots: 18, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 18,
+          sizeCm: "4×4",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       {
         sku: "FI-CUAD-12-V15",
         name: "4 packs (24 unidades) · 4×4 cm",
         price: 9600000,
-        attributes: { photoSlots: 24, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 24,
+          sizeCm: "4×4",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       // ── 5×5 cm ──
       {
         sku: "FI-CUAD-12-V21",
         name: "1 pack (6 unidades) · 5×5 cm",
         price: 2700000,
-        attributes: { photoSlots: 6, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 6,
+          sizeCm: "5×5",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       {
         sku: "FI-CUAD-12-V23",
         name: "2 packs (12 unidades) · 5×5 cm",
         price: 5400000,
-        attributes: { photoSlots: 12, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 12,
+          sizeCm: "5×5",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       {
         sku: "FI-CUAD-12-V24",
         name: "3 packs (18 unidades) · 5×5 cm",
         price: 8100000,
-        attributes: { photoSlots: 18, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 18,
+          sizeCm: "5×5",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       {
         sku: "FI-CUAD-12-V25",
         name: "4 packs (24 unidades) · 5×5 cm",
         price: 10800000,
-        attributes: { photoSlots: 24, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 24,
+          sizeCm: "5×5",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       // ── 7×7 cm ──
       {
         sku: "FI-CUAD-12-V31",
         name: "1 pack (6 unidades) · 7×7 cm",
         price: 3600000,
-        attributes: { photoSlots: 6, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 6,
+          sizeCm: "7×7",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       {
         sku: "FI-CUAD-12-V33",
         name: "2 packs (12 unidades) · 7×7 cm",
         price: 7200000,
-        attributes: { photoSlots: 12, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 12,
+          sizeCm: "7×7",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       {
         sku: "FI-CUAD-12-V34",
         name: "3 packs (18 unidades) · 7×7 cm",
         price: 10800000,
-        attributes: { photoSlots: 18, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 18,
+          sizeCm: "7×7",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
       },
       {
         sku: "FI-CUAD-12-V35",
         name: "4 packs (24 unidades) · 7×7 cm",
         price: 14400000,
-        attributes: { photoSlots: 24, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
+        attributes: {
+          photoSlots: 24,
+          sizeCm: "7×7",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: true,
+        },
+      },
+      // ── Gemelas «Sin imán» INACTIVAS (owner 2026-11-11) ──
+      // Cuadrados se vende hoy únicamente CON imán, pero las 12 gemelas -NOMAG
+      // quedan sembradas INACTIVAS (mismo precio, patrón histórico de tiras /
+      // separadores / cuadrados legacy 6.5 cm) para que activarlas sea un
+      // toggle en /admin/productos cuando el negocio lo decida — sin seed ni
+      // despliegue de por medio. El update del seed nunca toca isActive.
+      {
+        sku: "FI-CUAD-12-V11-NOMAG",
+        name: "1 pack (6 unidades) · 4×4 cm — Sin imán",
+        price: 2400000,
+        isActive: false,
+        attributes: {
+          photoSlots: 6,
+          sizeCm: "4×4",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V13-NOMAG",
+        name: "2 packs (12 unidades) · 4×4 cm — Sin imán",
+        price: 4800000,
+        isActive: false,
+        attributes: {
+          photoSlots: 12,
+          sizeCm: "4×4",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V14-NOMAG",
+        name: "3 packs (18 unidades) · 4×4 cm — Sin imán",
+        price: 7200000,
+        isActive: false,
+        attributes: {
+          photoSlots: 18,
+          sizeCm: "4×4",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V15-NOMAG",
+        name: "4 packs (24 unidades) · 4×4 cm — Sin imán",
+        price: 9600000,
+        isActive: false,
+        attributes: {
+          photoSlots: 24,
+          sizeCm: "4×4",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V21-NOMAG",
+        name: "1 pack (6 unidades) · 5×5 cm — Sin imán",
+        price: 2700000,
+        isActive: false,
+        attributes: {
+          photoSlots: 6,
+          sizeCm: "5×5",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V23-NOMAG",
+        name: "2 packs (12 unidades) · 5×5 cm — Sin imán",
+        price: 5400000,
+        isActive: false,
+        attributes: {
+          photoSlots: 12,
+          sizeCm: "5×5",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V24-NOMAG",
+        name: "3 packs (18 unidades) · 5×5 cm — Sin imán",
+        price: 8100000,
+        isActive: false,
+        attributes: {
+          photoSlots: 18,
+          sizeCm: "5×5",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V25-NOMAG",
+        name: "4 packs (24 unidades) · 5×5 cm — Sin imán",
+        price: 10800000,
+        isActive: false,
+        attributes: {
+          photoSlots: 24,
+          sizeCm: "5×5",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V31-NOMAG",
+        name: "1 pack (6 unidades) · 7×7 cm — Sin imán",
+        price: 3600000,
+        isActive: false,
+        attributes: {
+          photoSlots: 6,
+          sizeCm: "7×7",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V33-NOMAG",
+        name: "2 packs (12 unidades) · 7×7 cm — Sin imán",
+        price: 7200000,
+        isActive: false,
+        attributes: {
+          photoSlots: 12,
+          sizeCm: "7×7",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V34-NOMAG",
+        name: "3 packs (18 unidades) · 7×7 cm — Sin imán",
+        price: 10800000,
+        isActive: false,
+        attributes: {
+          photoSlots: 18,
+          sizeCm: "7×7",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
+      },
+      {
+        sku: "FI-CUAD-12-V35-NOMAG",
+        name: "4 packs (24 unidades) · 7×7 cm — Sin imán",
+        price: 14400000,
+        isActive: false,
+        attributes: {
+          photoSlots: 24,
+          sizeCm: "7×7",
+          aspectRatio: "1:1",
+          shape: "rectangle",
+          magnet: false,
+        },
       },
     ],
   },
@@ -681,11 +920,14 @@ const productsData = [
   {
     slug: "calendario-mes-a-mes-fotos",
     sku: "CAL-FOT-12",
-    name: "Calendario Foto-Mes",
+    // Nombre unificado en los 3 ambientes (owner 2026-11-10): «Calendario Set
+    // 12 Tarjetas» (en PRD ya vivía así; STG/LOCAL lo llamaban «Calendario
+    // Foto-Mes»). El seed lo alinea en el próximo make *-seed de cada ambiente.
+    name: "Calendario Set 12 Tarjetas",
     // Dims reales del paquete en PRD (fuente de verdad comercial, audit 2026-10-22).
     physicalSpecs: { weightGrams: 90, widthCm: 8, heightCm: 10, depthCm: 1 },
     description:
-      "Calendario magnético anual con una foto distinta por mes. 12 imanes intercambiables A4. Subís las 12 fotos en el Estudio.",
+      "Calendario magnético anual con una foto distinta por mes: 12 tarjetas intercambiables. Subes las 12 fotos en el Estudio.",
     basePrice: 4500000,
     compareAtPrice: 5500000,
     categorySlug: "calendarios",
@@ -1148,6 +1390,29 @@ const productsData = [
   ...NEW_PRODUCTS,
 ];
 
+// ─────────── Catálogo ACTIVO de referencia (owner 2026-11-11) ───────────
+// Lo que debe quedar activo en los 3 ambientes = los 8 activos de PRD +
+// `bola-navidena-personalizada`. De los 8 de PRD, `abecedario-completo` y
+// `pack-vocales` NO se declaran acá (nacen vía sync desde STG); los otros 6
+// sí. Todo producto declarado fuera de la referencia se siembra INACTIVO en
+// ambientes frescos (los ya existentes conservan su isActive vivo: el update
+// del seed jamás lo toca — la desactivación en STG se hizo con un one-shot
+// SQL de la misma fecha, no versionado por efímero).
+const REFERENCE_ACTIVE_PRODUCT_SLUGS = new Set([
+  "calendario-mes-a-mes-fotos",
+  "separadores-alargados",
+  "separadores-magneticos",
+  "set-fotoimanes-cuadrados",
+  "set-fotoimanes-polaroid",
+  "tiras-magneticas-fotos",
+  "bola-navidena-personalizada",
+]);
+for (const p of productsData) {
+  if (!REFERENCE_ACTIVE_PRODUCT_SLUGS.has(p.slug) && p.isActive === undefined) {
+    p.isActive = false;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  EJECUCIÓN — dry-run imprime el plan; --apply aplica en transacción única
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1290,6 +1555,10 @@ async function run(db, write) {
                 price: v.price ?? null,
                 stock: p.isPersonalizable ? MADE_TO_ORDER_STOCK : 0,
                 attributes: v.attributes ?? {},
+                // Gemelas -NOMAG sembradas INACTIVAS (p. ej. cuadrados,
+                // 2026-11-11): nacen listas para un toggle del admin. El
+                // UPDATE sigue sin tocar isActive (VARIANT_UPDATE_FIELDS).
+                isActive: v.isActive ?? true,
               },
             });
           }
