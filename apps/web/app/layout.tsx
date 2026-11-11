@@ -14,6 +14,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WebVitalsReporter } from "@/components/web-vitals";
 import { CookiesBanner } from "@/components/cookies-banner";
+import { Snowfall } from "@/components/snowfall";
 import { RouteToasts } from "@/components/route-toasts";
 import { AnalyticsGa4 } from "@/components/analytics-ga4";
 import { UtmTracker } from "@/components/utm-tracker";
@@ -21,7 +22,7 @@ import { getCanonicalSiteUrl } from "@/lib/origin";
 import { SITE_NAME, SITE_TITLE } from "@/lib/site";
 import { isCatalogMode } from "@/lib/store-mode";
 import { isCmsEditMode } from "@/lib/cms-edit-mode";
-import { getSiteSetting } from "@/lib/cms";
+import { getSettingValue, getSiteSetting } from "@/lib/cms";
 import { CmsEditOverlay } from "@/components/cms/cms-edit-overlay";
 import "./globals.css";
 
@@ -125,9 +126,12 @@ export default async function RootLayout({
   // admin de contenido; monta el overlay (banner + click → editor del campo).
   // PRIVACY_POLICY_VERSION (cacheada, tag `cms`) alimenta el re-consent del
   // banner de cookies (N-15): si falta el setting, `null` = no re-mostrar.
-  const [editMode, privacyPolicy] = await Promise.all([
+  const [editMode, privacyPolicy, snowfallSetting] = await Promise.all([
     isCmsEditMode(),
     getSiteSetting("PRIVACY_POLICY_VERSION"),
+    // 2026-11-11 (owner) — caída de nieve a pantalla completa (tema Navidad),
+    // activable en /admin/contenido/paginas/inicio → «Efectos de temporada».
+    getSettingValue("home.seasonal.snowfall", "false"),
   ]);
   return (
     <html lang="es-CO" className={`${fredoka.variable} ${inter.variable} h-full antialiased`}>
@@ -154,6 +158,7 @@ export default async function RootLayout({
             <UtmTracker />
           </Suspense>
           <CookiesBanner policyVersion={privacyPolicy?.value ?? null} />
+          {snowfallSetting === "true" ? <Snowfall /> : null}
           {editMode ? <CmsEditOverlay /> : null}
         </TooltipProvider>
       </body>

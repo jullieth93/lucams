@@ -21,10 +21,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { readClientCookiePreferences } from "@/lib/cookie-consent";
 import type { CmsBannerItem } from "@/lib/cms";
 
 /** Marca de "ya vista" por sesión de navegador (pestaña). */
 const SEEN_KEY = "lucams-promo-popup-v1";
+/** El banner de cookies la emite al aceptar/rechazar (lib/cookie-consent). */
+const CONSENT_EVENT = "cookie-consent-changed";
 
 export function PromoPopup({ items }: { items: CmsBannerItem[] }) {
   const [open, setOpen] = useState(false);
@@ -40,10 +43,26 @@ export function PromoPopup({ items }: { items: CmsBannerItem[] }) {
       // importa más que el recuerdo de la marca.
     }
     if (seen) return;
-    // setTimeout (no setState síncrono en el efecto — regla react-hooks): la
-    // ventana abre tras el primer paint, sin parpadeo ni renders en cascada.
-    const t = window.setTimeout(() => setOpen(true), 400);
-    return () => window.clearTimeout(t);
+    // 2026-11-11 (owner) — SECUENCIA legal → comercial: si falta el
+    // consentimiento de cookies, el popup ESPERA al evento de decisión. Antes
+    // ambos competían en pantalla y al aceptar las cookies la promo se perdía
+    // sin interacción.
+    let t: number | undefined;
+    const open = () => {
+      // setTimeout (no setState síncrono en el efecto — regla react-hooks): la
+      // ventana abre tras el primer paint, sin parpadeo ni renders en cascada.
+      t = window.setTimeout(() => setOpen(true), 400);
+    };
+    if (readClientCookiePreferences()) {
+      open();
+      return () => window.clearTimeout(t);
+    }
+    const onConsent = () => open();
+    window.addEventListener(CONSENT_EVENT, onConsent);
+    return () => {
+      window.removeEventListener(CONSENT_EVENT, onConsent);
+      if (t !== undefined) window.clearTimeout(t);
+    };
   }, [items.length]);
 
   if (items.length === 0) return null;

@@ -37,7 +37,15 @@ function banner(n: number): CmsBannerItem {
 }
 
 describe("PromoPopup — ventana emergente de la portada", () => {
-  beforeEach(() => sessionStorage.clear());
+  beforeEach(() => {
+    sessionStorage.clear();
+    // Consentimiento de cookies dado de fábrica (el popup espera la decisión).
+    document.cookie =
+      "cookie_consent_v1=" + encodeURIComponent(JSON.stringify({ v: 1 })) + "; path=/";
+  });
+  afterEach(() => {
+    document.cookie = "cookie_consent_v1=; Max-Age=0; path=/";
+  });
 
   it("sin banners activos no monta nada", () => {
     render(<PromoPopup items={[]} />);
@@ -53,6 +61,23 @@ describe("PromoPopup — ventana emergente de la portada", () => {
     expect(screen.getByRole("img", { name: "Banner 1" })).toBeInTheDocument();
     // Un solo banner: sin pager.
     expect(screen.queryByRole("button", { name: "Banner siguiente" })).not.toBeInTheDocument();
+  });
+
+  it("sin consentimiento de cookies: espera la decisión y abre DESPUÉS (secuencia legal → comercial)", async () => {
+    document.cookie = "cookie_consent_v1=; Max-Age=0; path=/";
+    vi.useFakeTimers();
+    render(<PromoPopup items={[banner(1)]} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // El visitante decide las cookies → la promo abre justo después.
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("cookie-consent-changed"));
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    vi.useRealTimers();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   it("ya vista en la sesión (sessionStorage): no se abre", async () => {

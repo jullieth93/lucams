@@ -3,7 +3,7 @@
  *
  * Fuente única de verdad de la estructura del CMS v2:
  *   PÁGINA → SECCIÓN → campos (9 contenedores: 8 en /admin/contenido +
- *   «Ajustes del sitio» en Configuración; 168 campos reales).
+ *   «Ajustes del sitio» en Configuración; 169 campos reales).
  *
  * Qué entra acá (Capa 1 + Capa 2):
  *   - Capa 1 (kind SETTING): parámetros maestros de negocio, contacto, envíos,
@@ -471,6 +471,27 @@ export const SITE_MAP = {
               category: "HOME",
               body: "Empresas y eventos",
               sortOrder: 40,
+            },
+          ],
+        },
+        {
+          key: "efectos-temporada",
+          title: "Efectos de temporada",
+          description:
+            "Efectos visuales estacionales de la tienda (Navidad, Halloween, etc.). Cada efecto se enciende/apaga sin despliegue.",
+          prefixes: ["home.seasonal."],
+          sortOrder: 70,
+          fields: [
+            {
+              key: "home.seasonal.snowfall",
+              kind: "SETTING",
+              type: "BOOLEAN",
+              label: "Caída de nieve (pantalla completa)",
+              helpText:
+                "Al activarla, cae nieve suave sobre toda la tienda (no en /admin ni en el Estudio). Pensada para la temporada navideña; respeta la preferencia de movimiento reducido del visitante.",
+              category: "HOME",
+              body: "false",
+              sortOrder: 10,
             },
           ],
         },
@@ -1424,7 +1445,7 @@ export const SITE_MAP = {
               type: "IMAGE",
               label: "Logo del sitio",
               helpText:
-                "Aparece en el encabezado del sitio y del panel admin. Si está vacío, se usa el logo oficial del repositorio.",
+                "Aparece en el encabezado del sitio, el logo grande de la portada y el panel admin (2026-11-11). Ideal para logos estacionales (Navidad, Halloween, Amor y Amistad…). Si está vacío, se usa el logo oficial del repositorio.",
               category: "BUSINESS",
               body: "",
               sortOrder: 10,

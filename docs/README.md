@@ -96,7 +96,7 @@ webhooks) **más checklists paso a paso de configuración en cada panel externo*
 Cada cambio de código o de documentación debe superar las puertas automáticas antes de entregarse:
 
 - `make check` — valida formato Prettier (incluyendo todos los `.md`), `typecheck`, `lint`, guardas
-  de scripts, ausencia total de voseo y paridad AST `168/168` del mapa CMS (`make audit-content`).
+  de scripts, ausencia total de voseo y paridad AST `169/169` del mapa CMS (`make audit-content`).
 - `make verify-db` — certifica `0` deriva entre migraciones Prisma y SQL de Supabase más los `5/5`
   invariantes de postura RLS y privilegios (`verify-supabase-posture.mjs`).
 - `pnpm test` — ejecuta la suite unitaria y de integración con cobertura gateada en `apps/web`.

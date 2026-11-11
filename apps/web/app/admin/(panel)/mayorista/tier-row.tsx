@@ -72,7 +72,7 @@ export function TierRow({ tier }: { tier: TierRowData }) {
                   type="number"
                   name="unitPricePesos"
                   min={1}
-                  step={100}
+                  step={1}
                   required
                   defaultValue={Math.round(tier.unitPrice / 100)}
                   className={inputClass}
