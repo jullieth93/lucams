@@ -58,14 +58,41 @@ function makeCanvasData(filled: number, total = 2): CanvasDataV2 {
   };
 }
 
-function setup(opts?: { filled?: number; isPreviewBuilding?: boolean }) {
+// 2026-11-10 — compuerta de decodificación: en la app real StudioSlot reporta
+// markPhotoDecoded al resolver useImage. Los escenarios que asumen "fotos
+// listas" lo simulan acá; con decodePending: true quedan a propósito sin
+// decodificar (la compuerta bloquea «Ver diseño»).
+function markAllPhotosDecoded(store: ReturnType<typeof createStudioStore>) {
+  for (const s of store.getState().canvasData?.slots ?? []) {
+    if (s.assetUrl)
+      store.getState().markPhotoDecoded(s.slotIndex, "main", s.canvasUrl ?? s.assetUrl);
+    if (s.profileAssetUrl)
+      store
+        .getState()
+        .markPhotoDecoded(s.slotIndex, "profile", s.profileCanvasUrl ?? s.profileAssetUrl);
+  }
+}
+
+function setup(opts?: { filled?: number; isPreviewBuilding?: boolean; decodePending?: boolean }) {
   const store = createStudioStore();
+  const canvasData = makeCanvasData(opts?.filled ?? 2);
   store.getState().init({
     designId: "d1",
     productSlug: "fotoimanes-cuadrados",
-    canvasData: makeCanvasData(opts?.filled ?? 2),
+    canvasData,
     templates: [],
   });
+  // 2026-11-10 — compuerta de decodificación: en la app real StudioSlot reporta
+  // markPhotoLoading (carga en vuelo) y markPhotoDecoded (resuelta). Los
+  // escenarios con fotos listas las marcan decodificadas; con decodePending:
+  // true quedan EN VUELO a propósito (la compuerta bloquea «Ver diseño»).
+  if (opts?.decodePending === true) {
+    for (const s of store.getState().canvasData?.slots ?? []) {
+      if (s.assetUrl) store.getState().markPhotoLoading(s.slotIndex, "main", s.assetUrl);
+    }
+  } else {
+    markAllPhotosDecoded(store);
+  }
   const onFinalize = vi.fn();
   renderStudio(
     <StudioToolbar
@@ -145,6 +172,30 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
     expect(btn).toBeEnabled();
   });
 
+  // 2026-11-10 (bug STG bola navideña en celular) — compuerta de DECODIFICACIÓN:
+  // fotos asignadas pero aún no decodificadas en el lienzo → «Ver diseño»
+  // ocupado CON PROGRESO (nunca bake vacío en la preview/3D).
+  it("fotos asignadas sin decodificar: bloqueado con «Cargando tus fotos… 0 de 2» + aria-busy", () => {
+    const { store, onFinalize } = setup({ filled: 2, decodePending: true });
+    const btn = screen.getByRole("button", { name: "Ver diseño de tu pedido" });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("aria-busy", "true");
+    expect(btn).toHaveTextContent("Cargando tus fotos… 0 de 2");
+    btn.click();
+    expect(onFinalize).not.toHaveBeenCalled();
+    // Cuando el lienzo reporta el decode de ambas, el botón se habilita solo.
+    act(() => {
+      store.getState().markPhotoDecoded(0, "main", "https://img/0.jpg");
+    });
+    expect(screen.getByRole("button", { name: "Ver diseño de tu pedido" })).toHaveTextContent(
+      "Cargando tus fotos… 1 de 2",
+    );
+    act(() => {
+      store.getState().markPhotoDecoded(1, "main", "https://img/1.jpg");
+    });
+    expect(screen.getByRole("button", { name: "Ver diseño de tu pedido" })).toBeEnabled();
+  });
+
   it("Ola 26 — finalizeBlockReason (textos requeridos IG): bloqueado CON las fotos completas, tooltip con los campos", async () => {
     const store = createStudioStore();
     store.getState().init({
@@ -153,6 +204,7 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
       canvasData: makeCanvasData(2), // fotos completas: el bloqueo es por TEXTOS
       templates: [],
     });
+    markAllPhotosDecoded(store); // 2026-11-10 — compuerta de decodificación: fotos listas
     const onFinalize = vi.fn();
     const reason = "Completa los textos de tu diseño para ver la vista previa: usuario, hashtags";
     const { rerender } = renderStudio(
@@ -217,6 +269,7 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
       },
       templates: [],
     });
+    markAllPhotosDecoded(store); // 2026-11-10 — compuerta de decodificación: caras A listas
     const onFinalize = vi.fn();
     renderStudio(
       <StudioToolbar

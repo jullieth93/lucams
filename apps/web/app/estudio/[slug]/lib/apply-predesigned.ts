@@ -89,6 +89,8 @@ async function resolvePredesignedAssets(
     canvasUrl: res.canvasUrl ?? null,
     width: res.width,
     height: res.height,
+    // 2026-11-10 — nace de la galería: fuera de «Mis fotos»/auto-fill.
+    fromGallery: true,
   };
   const b: StudioAsset | undefined = res.assetB
     ? {
@@ -97,6 +99,7 @@ async function resolvePredesignedAssets(
         canvasUrl: res.assetB.canvasUrl ?? null,
         width: res.assetB.width,
         height: res.assetB.height,
+        fromGallery: true,
       }
     : undefined;
   const after = store.getState();

@@ -83,6 +83,22 @@ describe("previewUnitRanges", () => {
     expect(ranges).toEqual([{ start: 0, end: 10 }]);
   });
 
+  it("packs con modelo degenerado (unitCount=fotos, unitSlots=1): pagina por PACK, no por foto", () => {
+    // Bug owner 2026-11-10 — un diseño de packs con el modelo multi-unidad
+    // degenerado (cada foto declarada «unidad») paginaba una página POR FOTO
+    // (12 páginas de 1 polaroid vertical) en vez de una por pack.
+    const ranges = previewUnitRanges({
+      slotCount: 12,
+      unitCount: 12,
+      unitSlots: 1,
+      packGroupSlots: 6,
+    });
+    expect(ranges).toEqual([
+      { start: 0, end: 6 },
+      { start: 6, end: 12 },
+    ]);
+  });
+
   it("sin slots: sin rangos", () => {
     expect(previewUnitRanges({ slotCount: 0 })).toEqual([]);
   });

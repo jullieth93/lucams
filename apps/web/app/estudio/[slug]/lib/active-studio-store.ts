@@ -14,11 +14,19 @@
  * reemplaza el registro (el store del test queda activo).
  */
 
+import { createContext, useContext } from "react";
 import type { StudioStore } from "./store";
 
 let activeStore: StudioStore | null = null;
 
-/** Lo llama createStudioStore() al crear cada instancia. */
+/**
+ * Contexto explícito del store del Estudio para componentes descendientes.
+ * Evita que el doble render de React 19 Strict Mode (`useMemo(() => createStudioStore(), [])`)
+ * deje `activeStore` apuntando a una instancia descartada cuando un hijo lee el store.
+ */
+export const StudioStoreContext = createContext<StudioStore | null>(null);
+
+/** Lo llama createStudioStore() y StudioEditor (en useEffect) para mantener el fallback al día. */
 export function registerActiveStudioStore(store: StudioStore): void {
   activeStore = store;
 }
@@ -26,4 +34,9 @@ export function registerActiveStudioStore(store: StudioStore): void {
 /** Store activo del Estudio; null si ningún editor lo creó todavía. */
 export function getActiveStudioStore(): StudioStore | null {
   return activeStore;
+}
+
+/** Hook React que prioriza el contexto del árbol montado y cae al registro global en tests aislados. */
+export function useActiveStudioStore(): StudioStore | null {
+  return useContext(StudioStoreContext) ?? activeStore;
 }

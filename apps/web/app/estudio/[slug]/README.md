@@ -457,7 +457,7 @@ apps/web/app/estudio/
         ├── konva-pixel-ratio.ts         # Tope Konva.pixelRatio <= 2 en pantalla (ADR-166)
         ├── chrome-bitmap-cache.ts       # Raster compartido único para cromos SVG repetidos entre slots
         ├── slot-snapshot-cache.ts       # Caché de snapshots a 720 px fijos con invalidación por referencia
-        ├── slot-photo-readiness.ts      # Espera de decodificación de nodos slot-photo (4 s) antes de hornear
+        ├── slot-photo-readiness.ts      # Espera de decodificación de nodos slot-photo (8 s) + re-decode escalado
         ├── calendar-card-preview.ts     # Resolución de CSS vars --font-fredoka/--font-inter para canvas 2D
         ├── compose-calendar-page.ts     # Caché LRU (48 páginas) de tarjetas mensuales WebP para 3D y preview
         ├── ig-post-fields.ts            # Transformaciones puras de campos Polaroid Instagram (igLocationOverride…)
@@ -583,6 +583,13 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   selecciona la celda y revela acciones; el segundo toque abre el modal de edición; tocar fuera
   libera la selección). Si una celda no seleccionada tiene advertencia de calidad, conserva visible
   únicamente un badge compacto `⚠` conectado al modal en portal.
+- **Producción = la tira COMPLETA compuesta (2026-11-10, owner)**: `composePhotoStrips`
+  (`features/personalization/photo-strips.ts`) apila los segmentos renderizados en UN PNG por tira
+  (a sangre, sin separación), tanto en la vía síncrona del finalize como en el worker del
+  `RenderJob` (unidad de salida = tira; `renderJobTotalUnits` la cuenta como tal). El diseño se
+  sella con `metadata.photoStrips` y la ficha de producción (`production-spec.ts`) la describe como
+  «tira completa lista para imprimir» — antes la imprenta recibía los segmentos sueltos con la
+  instrucción manual de «unir a tope» (los pedidos históricos conservan ese formato legacy).
 
 ### 5.3 Polaroid Instagram: fondo binario, avatar circular, modo sin borde y campos asistidos
 
@@ -700,6 +707,11 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
     próximo libre (mostrando antes `PhotoQualityModal` si tiene advertencia), y cada miniatura
     permite eliminación individual confirmada vía `deleteDesignAssetAction` (protegiendo bytes en
     Storage si están compartidos con otros diseños).
+  - **Solo fotos del cliente (2026-11-10)**: los assets nacidos de prediseñados (`DesignAsset.galleryImageId`
+    sellado al aplicar; `StudioAsset.fromGallery` en el cliente) quedan FUERA del panel «Mis fotos»,
+    del tab homólogo del picker y del auto-fill — antes un prediseño aplicado en un tamaño se sugería
+    al llenar los demás estudios/tamaños (contaminación cruzada). Los slots que los referencian los
+    conservan (la hidratación los marca, no los excluye del diseño).
   - «Llenar slots con mis fotos» (`orderAssetsForAutoFill` en `lib/store.ts`) permanece deshabilitado
     mientras haya subidas en vuelo y prioriza: **(1)** fotos aún no usadas ni en este diseño ni en el
     carrito, **(2)** fotos usadas en otras líneas del carrito (`listCartDesignAssetIdsInUse`), y
@@ -718,12 +730,50 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   - `fitPreviewToBudget` (`lib/preview-encode.ts`) mantiene el preview por debajo de **`3.5 MB`**
     antes de enviarlo para respetar el límite duro (~4.5 MB) del payload en funciones serverless
     (`page.tsx` exporta además `maxDuration = 60`).
-  - `lib/slot-snapshot-cache.ts` rasteriza a un ancho objetivo fijo `SNAPSHOT_TARGET_WIDTH = 720 px`
-    con `pixelRatio <= 2`, de modo que cambiar el zoom visual del lienzo jamás invalida la caché
-    compartida entre confirmación y visor 3D.
-  - `lib/slot-photo-readiness.ts` espera la decodificación real de los nodos `name="slot-photo"`
-    (plazo máximo `4 s`) y marca entradas `photoPending` para nunca hornear en caché el fondo lila
-    de carga.
+  - **Motor Canvas2D determinista para vistas previas, 3D y borradores (`lib/production-preview-render.ts`)**:
+    `renderSlotToDataUrl2D` y `renderSlotsToImages` componen cada slot directamente desde el estado puro
+    `CanvasDataV2` (`unitTemplate` + `SlotState`) sobre **un único `<canvas>` compartido** reutilizado
+    secuencialmente (y un único `clipCanvas` en `buildMagnetTextures`), con caché LRU por referencia
+    (`slot2DCache`), paridad geométrica con las 7 capas de `StudioSlot` y `production-render-canvas.ts`,
+    y refresco single-flight de URLs firmadas expiradas (`refreshDesignAssetUrlsAction`). Los diseños
+    sin filtros Konva activos no montan `<Stage>` ocultos para «Ver diseño», «Míralo en tu espacio» ni
+    `draftPreviewDataUrl`, evitando agotar el presupuesto de memoria Canvas2D de Chrome móvil al editar
+    diseños multi-unidad desde `/carrito`. Cuando un slot usa `slot.filter`, aprovecha
+    `snapshotSlotForPreview` (`lib/slot-snapshot-cache.ts`, `SNAPSHOT_TARGET_WIDTH = 720 px`,
+    `pixelRatio <= 2`, `ensureStagePhotosDecoded`) tras verificar `isValidRasterDataUrl` + sonda de
+    alfa `hasVisiblePixels`, y degrada limpiamente a `renderSlotToDataUrl2D` con `ctx.filter` si el
+    stage no está montado o devuelve un raster transparente. En `lib/canvas-image.ts`,
+    `canvasSafeImageSrc` envía directas las rutas `/storage/v1/object/sign/` (CORS nativo del bucket
+    privado, fuera de `images.remotePatterns`) y `loadCanvasImage` espera `img.decode()`.
+  - **Instancia única de imagen por slot, lazy-mount real y contexto del store**:
+    `StudioSlot` comparte su `HTMLImageElement` decodificado (`preloadedPhotoImage` / `preloadedPhoto`)
+    con `ImagePlaceholder` y `CalendarCardLayer` (excepto en modo `printMaster`), evitando doble
+    descarga/decodificación por slot. En `StudioCanvasGrid`, cuando `slotCount > LAZY_MOUNT_THRESHOLD`
+    (`6`), los slots fuera de pantalla permanecen en `LazySlotPlaceholder` (`<img loading="lazy">`)
+    hasta que `IntersectionObserver` (`rootMargin: "400px 0px"`) o un clic los active, mientras que
+    escalar desde `<= 6` a `> 6` conserva en `mountedSlots` las unidades ya montadas.
+    `StudioStoreContext` + `useActiveStudioStore()` (`lib/active-studio-store.ts`) aíslan la instancia
+    montada del store frente al doble render de React 19 Strict Mode. Al abrir la vista previa paginada
+    (`unitRanges.length > 1`), `handleFinalize` resuelve la página `0` antes de mostrar
+    `StudioPreviewModal`.
+  - **Previews de packs balanceadas (2026-11-10, owner)**: `previewUnitRanges` particiona los packs
+    de fotoimanes por PACK primero (regla 0), inmune al modelo degenerado `unitCount = N fotos /
+unitSlots = 1` de diseños legacy (paginaba una página POR foto). Y `buildCompositedPreview` con
+    `packGrid: true` (lo pasa el editor cuando `packUnitsPerGroup` aplica) compone la página del pack
+    y el montaje del pack único con la grilla balanceada del preset por conteo (`generateGridLayout`:
+    6 → 3×2), no con el `gridLayout` crudo del canvas.
+  - **Autocontención de activos «Mis fotos» y protección ante prefetch al editar**:
+    `ensureDesignOwnsReferencedAssets` (`features/personalization/service.ts`) adhiere activos sueltos y
+    clona idempotentemente por `(designId, storageUrl)` cualquier `DesignAsset` del mismo dueño
+    referenciado desde otro diseño en `saveCanvas`, `finalizeDesign` y `cloneDesignForEdit`. Los
+    enlaces de edición hacia `/estudio/[slug]?designId=...` o `?draft=...` declaran `prefetch={false}` y
+    `estudio/[slug]/page.tsx` bloquea `cloneDesignForEdit` en requests de prefetch (`next-router-prefetch`,
+    `purpose: prefetch`) para impedir clones prematuros y podas `trimExcessDraftDesigns`.
+  - **Compuerta de decodificación en vuelo**: «Ver diseño», «Ver en tu espacio» y el libro 3D se
+    muestran ocupados («Cargando tus fotos… n/N») únicamente mientras existan decodificaciones activas
+    en vuelo en los stages montados (`loadingPhotoUrls` / `decodedPhotoUrls` reportados por
+    `StudioSlot`), sin bloquear por slots perezosos fuera de pantalla; las escenas 3D anuncian la carga
+    de texturas con `SceneTextureLoadingOverlay` (`useProgress`).
   - `lib/smart-crop.ts` ejecuta `smartcrop` sobre una copia `<= 256 px` y verifica al resolver
     `shouldApplySmartCropResult` contra `photoTransformRef` para no sobrescribir un encuadre manual
     hecho mientras tanto.
@@ -757,10 +807,12 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   resuelve en cliente las familias reales desde `--font-fredoka`, `--font-inter` y las 6 variables de
   `app/estudio/fonts.ts` (`calendarFont` seleccionable tanto en el banner como dentro de «Ajustar
   foto»), mientras que el servidor usa las mismas 8 fuentes `.ttf` registradas en `@napi-rs/canvas`.
-- **Caché LRU y colapsado por set**: `lib/compose-calendar-page.ts` mantiene una caché LRU por valor
+- **Caché LRU y colapsado por unidad**: `lib/compose-calendar-page.ts` mantiene una caché LRU por valor
   de hasta **48 páginas WebP** (`calendarPageCacheKey`), recomponiendo únicamente los meses que
-  cambiaron al abrir Vista previa o 3D. En el lienzo, cada calendario puede colapsarse mostrando un
-  mapa rápido de chips por mes (`CalendarMonthChips`, «N de 12»).
+  cambiaron al abrir Vista previa o 3D. En el lienzo, **toda sección de unidad puede colapsarse**
+  (2026-11-10 — unificado: nació solo para los sets del calendario y hoy aplica también a tiras,
+  packs y separadores agrupados): header con chevron + mapa rápido de chips por slot
+  (`UnitSlotChips`, «N de M»), con salto al slot elegido al expandir.
 
 ### 5.7 Modelo multi-unidad («Unidades»), layout fluido, editores de letras y asistente IA
 
@@ -776,7 +828,10 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   `templateId` inicia en `null` (`Design.templateId = null` en BD), el checklist «Tu diseño» marca
   «Elige tu plantilla» como primer paso pendiente y pulsar «Ver diseño» abre y resalta la sección
   Plantillas hasta que el cliente elija una explícitamente. La elección es obligatoria incluso con
-  una única plantilla (owner 2026-11-07 — homologación de todos los lienzos con plantillas).
+  una única plantilla (owner 2026-11-07 — homologación de todos los lienzos con plantillas). El
+  overlay «Elige tu plantilla» sobre el lienzo va anclado a la PARTE SUPERIOR (`items-start` +
+  `sticky top-4`; owner 2026-11-10) — antes se centraba en la altura total del grid y con muchas
+  unidades quedaba invisible «muy abajo».
 - **Controles de unidades y réplica rápida**: `StudioUnitCountControl` ajusta `unitCount` en
   productos multi-slot (`unitSlots > facesPerUnit`) y en experiencias `freeUnitDesign`, incluidas la
   bola dúplex (25 unidades máximo) y los mini libros (50). `setPhotoSlotsPerUnit` distingue entre
@@ -817,15 +872,15 @@ Todas las vistas contextuales del Estudio son escenas 3D interactivas en tiempo 
 **React Three Fiber / Three.js** (`is3DScene`, cero composiciones 2D planas), iluminadas mediante
 `studio-3d-environment.tsx` y protegidas individualmente con `scene-3d-error-boundary.tsx`:
 
-| ID escena    | Componente (`app/estudio/[slug]/`) | Geometría física y comportamiento a escala real                                                                                                                                             |
-| ------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `"fridge"`   | `fridge-3d-view.tsx`               | Nevecón **French Door `178×91×75 cm`** (dos puertas superiores, dispensador izquierdo y gaveta inferior libre). `frenchDoorClusterLayout` reparte piezas sin cruzar jamás la junta central. |
-| `"polaroid"` | `polaroid-3d-view.tsx`             | Tarjetas dispuestas boca arriba sobre una mesa cálida con sombras suaves; compatible tanto con variantes magnéticas como sin imán.                                                          |
-| `"board"`    | `room-board-view-3d.tsx` (`cork`)  | Mural de corcho de pared **`120×80 cm`** con marco de `5.5 cm` (`0.1 u/cm`), clúster multi-columna balanceado (`clusterLayout`) y encuadre ponderado `boardFitHalf`.                        |
-| `"memo"`     | `room-board-view-3d.tsx` (`memo`)  | Tablero metálico magnético para sets de letras con **paginador por set** («Anterior / Siguiente», flechas `← →`, wrap-around e indicador «Set N de M»).                                     |
-| `"book"`     | `book-view-3d.tsx`                 | Libro abierto con separadores doblados montados sobre la hoja o **separadores planos acostados** (`noFold`) + botón `aria-pressed` «Ver respaldo / Ver frente» (giro `180°`).               |
-| `"shelf"`    | `shelf-3d-view.tsx` (`ADR-172`)    | Repisa decorativa 3D con piezas **recostadas a tamaño real** (`lib/leaning-scene-layout.ts`: arista inferior apoyada en la repisa y superior contra la pared).                              |
-| `"gift"`     | `gift-3d-view.tsx` (`ADR-172`)     | Caja de regalo abierta 3D con las piezas personalizadas recostadas en fila centrada a escala física real (`lib/leaning-scene-layout.ts`).                                                   |
+| ID escena    | Componente (`app/estudio/[slug]/`) | Geometría física y comportamiento a escala real                                                                                                                                                                                                                 |
+| ------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"fridge"`   | `fridge-3d-view.tsx`               | Nevecón **French Door `178×91×75 cm`** (dos puertas superiores, dispensador izquierdo y gaveta inferior libre). `frenchDoorClusterLayout` reparte piezas sin cruzar jamás la junta central.                                                                     |
+| `"polaroid"` | `polaroid-3d-view.tsx`             | Tarjetas boca arriba sobre una mesa cálida con sombras suaves; la composición crece con la cantidad comprada (pila de hasta 3 + hasta 6 sueltas, tope 9) y un badge enuncia el total («2 packs · 12 unidades»); compatible con variantes magnéticas y sin imán. |
+| `"board"`    | `room-board-view-3d.tsx` (`cork`)  | Mural de corcho de pared **`120×80 cm`** con marco de `5.5 cm` (`0.1 u/cm`), clúster multi-columna balanceado (`clusterLayout`) y encuadre ponderado `boardFitHalf`.                                                                                            |
+| `"memo"`     | `room-board-view-3d.tsx` (`memo`)  | Tablero metálico magnético para sets de letras con **paginador por set** («Anterior / Siguiente», flechas `← →`, wrap-around e indicador «Set N de M»).                                                                                                         |
+| `"book"`     | `book-view-3d.tsx`                 | Libro abierto con separadores doblados montados sobre la hoja o **separadores planos acostados** (`noFold`) + botón `aria-pressed` «Ver respaldo / Ver frente» (giro `180°`).                                                                                   |
+| `"shelf"`    | `shelf-3d-view.tsx` (`ADR-172`)    | Repisa decorativa 3D con piezas **recostadas a tamaño real** (`lib/leaning-scene-layout.ts`: arista inferior apoyada en la repisa y superior contra la pared).                                                                                                  |
+| `"gift"`     | `gift-3d-view.tsx` (`ADR-172`)     | Caja de regalo abierta 3D con las piezas personalizadas recostadas en fila centrada a escala física real (`lib/leaning-scene-layout.ts`).                                                                                                                       |
 
 ### Reglas de fidelidad física, material y calibración 3D
 
@@ -1165,7 +1220,8 @@ Validado en CI con Lighthouse CI (`lighthouserc.json`) y perfilado por producto 
   (`client-photo-upscale.worker.ts`).
 - Caché de snapshots a `720 px` fijos (`lib/slot-snapshot-cache.ts`) con cesión al _event loop_
   (`yieldToMain`), espera de decodificación real `waitForSlotPhotosReady` (`8 s` + re-decode
-  forzado de bitmaps descartados por presión de memoria en móviles, bug owner 2026-11-07), re-cache de
+  forzado de bitmaps descartados por presión de memoria en móviles con presupuesto escalado por
+  foto, bugs owner 2026-11-07 y 2026-11-10), re-cache de
   filtros Konva con debounce al soltar el zoom (`lib/filter-recache.ts`) y análisis `smartcrop`
   restringido a copias `<= 256 px`.
 

@@ -54,7 +54,7 @@ import {
   preferProductSpecific,
 } from "./template-visibility";
 import { normalizeName } from "./name-input";
-import { remapCanvasAssetIds } from "./canvas-remap";
+import { extractCanvasReferencedAssetIds, remapCanvasAssetIds } from "./canvas-remap";
 import {
   createOrResetRenderJob,
   processRenderJobs,
@@ -66,6 +66,7 @@ import { previewPagesAreComplete, uploadPreviewPages } from "./preview-artifacts
 import { PREVIEW_PAGES_MAX, designPreviewDerivedPaths } from "./preview-artifacts";
 import { PREVIEW_ROUTE_PREFIX } from "./preview-access";
 import { normalizeRasterImage, RasterRejected, RASTER_PIXEL_BUDGET } from "./normalize-raster";
+import { isStripTemplate } from "./frame-palette";
 import {
   mergeVariantOverProduct,
   parseVariantAttributes,
@@ -160,13 +161,108 @@ export async function getOwnedDesign(
  * (cart/service.ts), y si NO está (flujo Mis diseños) el alta es una línea
  * nueva — el original READY sigue listado y coherente (nunca se toca).
  */
+function ownerAssetScope(owner: {
+  customerId: string | null;
+  sessionId: string | null;
+}): Prisma.DesignAssetWhereInput | null {
+  if (owner.customerId) return { customerId: owner.customerId };
+  if (owner.sessionId) return { customerId: null, sessionId: owner.sessionId };
+  return null;
+}
+
+/**
+ * Garantiza que todo `DesignAsset` referenciado por `canvasData` pertenezca a `designId`:
+ * - Si el asset estaba suelto (`designId: null`), se adhiere a `designId`.
+ * - Si pertenecía a otro diseño del MISMO dueño (reuso desde «Mis fotos»), se crea/reusa una
+ *   fila propia en `designId` compartiendo `storageUrl` + `canvasPath` y se remapean los IDs.
+ * Así cada diseño (DRAFT o READY) es autocontenido frente a `cloneDesignForEdit`, la poda
+ * «últimos N borradores» y las validaciones/renders de imprenta, mientras `retention-service`
+ * preserva los bytes compartidos en Storage.
+ */
+async function ensureDesignOwnsReferencedAssets<T>(
+  designId: string,
+  canvasData: T,
+  owner: { customerId: string | null; sessionId: string | null },
+): Promise<T> {
+  const referencedIds = extractCanvasReferencedAssetIds(canvasData);
+  if (referencedIds.length === 0) return canvasData;
+  const scope = ownerAssetScope(owner);
+  if (!scope) return canvasData;
+
+  const referencedAssets = await prisma.designAsset.findMany({
+    where: { id: { in: referencedIds }, ...scope },
+  });
+  if (referencedAssets.length === 0) return canvasData;
+
+  const unassignedIds = referencedAssets.filter((a) => a.designId === null).map((a) => a.id);
+  if (unassignedIds.length > 0) {
+    await prisma.designAsset.updateMany({
+      where: { id: { in: unassignedIds }, designId: null, ...scope },
+      data: { designId },
+    });
+  }
+
+  const foreignOwned = referencedAssets.filter(
+    (a) => a.designId !== null && a.designId !== designId,
+  );
+  if (foreignOwned.length === 0) return canvasData;
+
+  const existingOwn = await prisma.designAsset.findMany({
+    where: {
+      designId,
+      storageUrl: { in: foreignOwned.map((a) => a.storageUrl) },
+    },
+    select: { id: true, storageUrl: true },
+  });
+  const ownByStorageUrl = new Map(existingOwn.map((a) => [a.storageUrl, a.id]));
+  const idMap = new Map<string, string>();
+
+  await prisma.$transaction(async (tx) => {
+    for (const src of foreignOwned) {
+      const existingId = ownByStorageUrl.get(src.storageUrl);
+      if (existingId) {
+        idMap.set(src.id, existingId);
+        continue;
+      }
+      const copy = await tx.designAsset.create({
+        data: {
+          designId,
+          customerId: src.customerId,
+          sessionId: src.sessionId,
+          storageUrl: src.storageUrl,
+          canvasPath: src.canvasPath,
+          mimeType: src.mimeType,
+          sizeBytes: src.sizeBytes,
+          width: src.width,
+          height: src.height,
+          exifStripped: src.exifStripped,
+          malwareScanned: src.malwareScanned,
+        },
+        select: { id: true },
+      });
+      ownByStorageUrl.set(src.storageUrl, copy.id);
+      idMap.set(src.id, copy.id);
+    }
+  });
+
+  if (idMap.size === 0) return canvasData;
+  return remapCanvasAssetIds(canvasData, idMap) as T;
+}
+
 export async function cloneDesignForEdit(
   originalId: string,
   owner: { customerId: string | null; sessionId: string | null },
 ): Promise<{ id: string } | null> {
   const original = await getOwnedDesign(originalId, owner);
   if (!original || original.status !== "READY") return null;
-  const assets = await prisma.designAsset.findMany({ where: { designId: original.id } });
+  const referencedIds = extractCanvasReferencedAssetIds(original.canvasData);
+  const scope = ownerAssetScope(owner);
+  const assets = await prisma.designAsset.findMany({
+    where:
+      scope && referencedIds.length > 0
+        ? { OR: [{ designId: original.id }, { id: { in: referencedIds }, ...scope }] }
+        : { designId: original.id },
+  });
 
   const clone = await prisma.$transaction(async (tx) => {
     const clone = await tx.design.create({
@@ -1056,26 +1152,10 @@ export async function saveCanvas(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be edited`);
   }
 
-  const referencedAssetIds =
-    opts.canvasData.version === 2
-      ? [
-          ...new Set(
-            opts.canvasData.slots.flatMap((slot) =>
-              [slot.assetId, slot.profileAssetId].filter((id): id is string => Boolean(id)),
-            ),
-          ),
-        ]
-      : [];
-  if (referencedAssetIds.length > 0) {
-    await prisma.designAsset.updateMany({
-      where: {
-        id: { in: referencedAssetIds },
-        designId: null,
-        ...(opts.customerId ? { customerId: opts.customerId } : { sessionId: opts.sessionId }),
-      },
-      data: { designId: design.id },
-    });
-  }
+  const normalizedCanvasData = await ensureDesignOwnsReferencedAssets(design.id, opts.canvasData, {
+    customerId: opts.customerId,
+    sessionId: opts.sessionId,
+  });
 
   let templateId: string | undefined;
   if (opts.templateId) {
@@ -1144,7 +1224,8 @@ export async function saveCanvas(opts: {
     }
   }
 
-  const incomingClientRev = opts.canvasData.version === 2 ? opts.canvasData.clientRev : undefined;
+  const incomingClientRev =
+    normalizedCanvasData.version === 2 ? normalizedCanvasData.clientRev : undefined;
   const update = await prisma.design.updateMany({
     where: {
       id: design.id,
@@ -1152,7 +1233,7 @@ export async function saveCanvas(opts: {
       clientRev: incomingClientRev === undefined ? BigInt(0) : { lte: BigInt(incomingClientRev) },
     },
     data: {
-      canvasData: opts.canvasData as unknown as Prisma.InputJsonValue,
+      canvasData: normalizedCanvasData as unknown as Prisma.InputJsonValue,
       ...(incomingClientRev === undefined ? {} : { clientRev: BigInt(incomingClientRev) }),
       ...(templateId ? { templateId } : {}),
       ...(variantId
@@ -1554,8 +1635,20 @@ export async function finalizeDesign(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be finalized`);
   }
 
-  // Si el cliente mandó snapshots, deben ser exactamente uno por slot REQUERIDO.
-  const canvasData = design.canvasData as unknown as CanvasData;
+  // Defensa en profundidad: si el borrador llegó a finalize con referencias a assets
+  // de otros diseños del mismo dueño («Mis fotos» antes de un saveCanvas normalizado),
+  // se adoptan/clonan en sitio antes de validar cobertura o encolar el RenderJob.
+  const rawCanvasData = design.canvasData as unknown as CanvasData;
+  const canvasData = await ensureDesignOwnsReferencedAssets(design.id, rawCanvasData, {
+    customerId: design.customerId,
+    sessionId: design.sessionId,
+  });
+  if (canvasData !== rawCanvasData) {
+    await prisma.design.update({
+      where: { id: design.id },
+      data: { canvasData: canvasData as unknown as Prisma.InputJsonValue },
+    });
+  }
   const v2 = canvasData.version === 2 ? (canvasData as CanvasDataV2) : null;
   // Sets de letras (canvasData V1 stub + metadata.surface="letterset"): el Estudio
   // sube UNA lámina de producción POR SET (production_i, 1 lámina/unidad — el set
@@ -1877,7 +1970,20 @@ export async function finalizeDesign(opts: {
   const shouldComposeFaceStrips =
     productConfig.facesPerUnit === 2 &&
     readProductExperience(productSchema).experience !== "christmas-ornament";
+  // Tiras photobooth (owner 2026-11-10): la pieza física es UNA tira continua;
+  // los buffers llegan por slot (segmento) y acá se componen en un PNG por tira
+  // (misma entrega agrupada que los separadores). En la vía asíncrona (ADR-131)
+  // las compone el worker, tira por tira.
+  const stripSlotsPerUnit =
+    !shouldComposeFaceStrips &&
+    canvasData.version === 2 &&
+    typeof canvasData.unitSlots === "number" &&
+    canvasData.unitSlots > 1 &&
+    isStripTemplate(canvasData.unitTemplate as { gridCols?: unknown; gridGap?: unknown })
+      ? Math.trunc(canvasData.unitSlots)
+      : null;
   let facesComposed = false;
+  let photoStripsComposed = false;
   if (productionBuffers && canvasData.version === 2) {
     // productConfig ya se cargó arriba (validación de slots / backOptional).
     if (shouldComposeFaceStrips && productionBuffers.length % 2 === 0) {
@@ -1908,6 +2014,38 @@ export async function finalizeDesign(opts: {
             err: err instanceof Error ? err.message : String(err),
           },
           "No se pudieron componer las tiras 2-caras — se suben las caras sueltas",
+        );
+      }
+    } else if (
+      stripSlotsPerUnit !== null &&
+      productionBuffers.length > stripSlotsPerUnit &&
+      productionBuffers.length % stripSlotsPerUnit === 0
+    ) {
+      try {
+        // composePhotoStrips carga sharp (nativo) — import perezoso: ver nota en imports.
+        const { composePhotoStrips } = await import("./photo-strips");
+        productionBuffers = await composePhotoStrips(productionBuffers, {
+          perStrip: stripSlotsPerUnit,
+        });
+        photoStripsComposed = true;
+        logger.info(
+          {
+            event: "design.finalize.photo_strips_ok",
+            designId: design.id,
+            strips: productionBuffers.length,
+          },
+          "Tiras photobooth compuestas para producción (un PNG por tira)",
+        );
+      } catch (err) {
+        // No rompemos el finalize: si la composición falla, se suben los
+        // segmentos sueltos (la ficha de producción explica la unión a tope).
+        logger.warn(
+          {
+            event: "design.finalize.photo_strips_error",
+            designId: design.id,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "No se pudieron componer las tiras photobooth — se suben los segmentos sueltos",
         );
       }
     }
@@ -1948,11 +2086,13 @@ export async function finalizeDesign(opts: {
       while (nextUploadIndex < buffersToRelease.length && uploadErrors.length === 0) {
         const i = nextUploadIndex++;
         const buf = buffersToRelease[i]!;
-        // Ola 3 — con tiras compuestas (separadores 2 caras) el archivo es la TIRA desplegada
-        // de la unidad (cara A + cara B), no una cara suelta: nombre explícito para imprenta.
-        const path = facesComposed
-          ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
-          : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
+        // Ola 3 — con tiras compuestas (separadores 2 caras, y photobooth desde
+        // 2026-11-10) el archivo es la TIRA de la unidad, no una cara/segmento
+        // suelto: nombre explícito para imprenta.
+        const path =
+          facesComposed || photoStripsComposed
+            ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
+            : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
         const { error: prodErr } = await supabase.storage
           .from(BUCKET_PRODUCTION)
           .upload(path, buf, {
@@ -2005,8 +2145,19 @@ export async function finalizeDesign(opts: {
     shouldComposeFaceStrips &&
     expectedSlotCount % 2 === 0;
   const facesComposedOrPending = facesComposed || facesPending;
+  // Tiras photobooth: mismo sello — el admin/imprenta sabe que cada PNG es la
+  // tira COMPLETA (compuesta acá o por el worker al terminar el job).
+  const photoStripsPending =
+    asyncRenderJob &&
+    canvasData.version === 2 &&
+    stripSlotsPerUnit !== null &&
+    expectedSlotCount % stripSlotsPerUnit === 0;
+  const photoStripsComposedOrPending = photoStripsComposed || photoStripsPending;
   const mergedMetadata =
-    typeof opts.calendarYear === "number" || facesComposedOrPending || canvasData.version === 2
+    typeof opts.calendarYear === "number" ||
+    facesComposedOrPending ||
+    photoStripsComposedOrPending ||
+    canvasData.version === 2
       ? {
           ...((design.metadata as Record<string, unknown> | null) ?? {}),
           ...(typeof opts.calendarYear === "number" ? { calendarYear: opts.calendarYear } : {}),
@@ -2015,6 +2166,16 @@ export async function finalizeDesign(opts: {
                 faceStrips: {
                   facesPerUnit: 2,
                   strips: facesComposed ? productionPaths.length : expectedSlotCount / 2,
+                },
+              }
+            : {}),
+          ...(photoStripsComposedOrPending && stripSlotsPerUnit !== null
+            ? {
+                photoStrips: {
+                  perStrip: stripSlotsPerUnit,
+                  strips: photoStripsComposed
+                    ? productionPaths.length
+                    : expectedSlotCount / stripSlotsPerUnit,
                 },
               }
             : {}),

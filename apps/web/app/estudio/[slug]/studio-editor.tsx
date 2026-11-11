@@ -87,7 +87,7 @@ import {
   CALENDAR_PAGE,
   calendarLayoutFromUnitTemplate,
 } from "@/features/personalization/calendar-layout";
-import { SceneGallery, type SceneKind } from "./scene-gallery";
+import { SceneGallery, SceneTextureLoadingOverlay, type SceneKind } from "./scene-gallery";
 import {
   initialFrameColorFromSchema,
   isInstagramTemplate,
@@ -131,8 +131,11 @@ import {
   buildMagnetTextures,
   clipProductionSnapshotToShape,
   combineStripTextures,
+  renderSlotToDataUrl2D,
   rotateTextures90,
+  type SlotPreviewRenderOptions,
 } from "./lib/production-preview-render";
+import { StudioStoreContext, registerActiveStudioStore } from "./lib/active-studio-store";
 import { dataUrlToBlob } from "./lib/image-utils";
 import {
   isNetworkError,
@@ -156,7 +159,7 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   ssr: false,
   loading: () => <Book3DLoadingFallback />,
 });
-import { createStudioStore } from "./lib/store";
+import { createStudioStore, selectPhotoDecodePending, selectPhotoDecodeTotal } from "./lib/store";
 import { createSerialTaskQueue } from "./lib/serial-task-queue";
 import { waitForSlotPhotosReady } from "./lib/slot-photo-readiness";
 import { MasterPhotoLoadError, runWithPrintMasters } from "./lib/print-master-mode";
@@ -372,6 +375,9 @@ export function StudioEditor({
     });
   }, [product.slug]);
   const store = useMemo(() => createStudioStore(), []);
+  useEffect(() => {
+    registerActiveStudioStore(store);
+  }, [store]);
   // Roadmap B1 — textos CMS del Estudio (fallback exacto pre-CMS vía contexto).
   const texts = useStudioTexts();
   // DEBUG e2e: exponer el store en dev para que Playwright pueda inspeccionar/auto-fill sin depender de clicks frágiles.
@@ -585,8 +591,8 @@ export function StudioEditor({
   // Konva registre sus stages, para no snapshotear un slot vacío.
   const [forceMountAll, setForceMountAll] = useState(false);
   const ensureAllStagesMounted = useCallback(async () => {
-    const expected = store.getState().canvasData?.slotCount ?? 0;
     const allPresent = () => {
+      const expected = store.getState().canvasData?.slotCount ?? 0;
       if (expected <= 0) return true;
       for (let i = 0; i < expected; i++) if (!slotStagesRef.current.get(i)) return false;
       return true;
@@ -620,6 +626,12 @@ export function StudioEditor({
     cardLabels?: readonly string[];
   } | null>(null);
   const [sceneBuilding, setSceneBuilding] = useState(false);
+  // 2026-11-10 — compuerta de DECODIFICACIÓN para los visores (bug STG bola
+  // navideña multi-unidad en celular): abrir el 3D/libro antes de que las fotos
+  // decodifiquen horneaba texturas vacías (la espera pre-bake es best-effort
+  // con techo; la compuerta elimina la carrera de raíz). Primitivos del store.
+  const photoDecodePending = useStore(store, selectPhotoDecodePending);
+  const photoDecodeTotal = useStore(store, selectPhotoDecodeTotal);
   // CAL4 — construcción perezosa de las tarjetas mes para la galería (botón "Ver mi calendario").
   const [calendarBuilding, setCalendarBuilding] = useState(false);
   // SEP1 — preview inmersivo de separadores en un libro. null = cerrado; array = texturas de marcador.
@@ -668,6 +680,50 @@ export function StudioEditor({
   // tarjeta se pinta ENTERA del color y la foto va inserta ("fin del papel"), no un
   // stroke sobre blanco. Misma regla en producción (service.ts → frameFullBleed).
   const frameFullBleed = (productConfig.frameOptions?.length ?? 0) > 0;
+  const refreshStudioAssetUrls = useCallback(
+    async (overrideDesignId?: string): Promise<CanvasDataV2 | null> => {
+      const snap = store.getState();
+      const targetDesignId = overrideDesignId ?? snap.designId;
+      if (!snap.canvasData || !targetDesignId) return null;
+      const referencedIds = snap.canvasData.slots.flatMap((s) =>
+        [s.assetId, s.profileAssetId].filter((id): id is string => Boolean(id)),
+      );
+      const refreshed = await refreshDesignAssetUrlsAction({
+        designId: targetDesignId,
+        assetIds: referencedIds,
+      });
+      if (!refreshed.ok) return null;
+      const freshById = new Map(refreshed.assets.map((a) => [a.id, a]));
+      const mergedAssets: StudioAsset[] = snap.assets.map((existing) => {
+        const fresh = freshById.get(existing.id);
+        return fresh
+          ? { ...existing, signedUrl: fresh.signedUrl, canvasUrl: fresh.canvasUrl }
+          : existing;
+      });
+      for (const a of refreshed.assets) {
+        if (!mergedAssets.some((m) => m.id === a.id)) mergedAssets.push(a);
+      }
+      const latestCanvas = store.getState().canvasData ?? snap.canvasData;
+      const remapped = remapCanvasAssetUrls(latestCanvas, mergedAssets);
+      store.setState({ assets: mergedAssets });
+      store.getState().setCanvasData(remapped.canvasData, { skipUndo: true });
+      assetUrlsRefreshedAtRef.current = Date.now();
+      void saveCanvasAction({
+        designId: targetDesignId,
+        canvasData: remapped.canvasData as unknown as Record<string, unknown>,
+      }).catch(() => {});
+      return remapped.canvasData;
+    },
+    [store],
+  );
+  const slotPreviewRenderOpts = useMemo<SlotPreviewRenderOptions>(
+    () => ({
+      allowText,
+      frameFullBleed,
+      refreshExpiredAssets: () => refreshStudioAssetUrls(),
+    }),
+    [allowText, frameFullBleed, refreshStudioAssetUrls],
+  );
   const facesPerUnit = productConfig.facesPerUnit === 2 ? 2 : 1;
   const experience = readProductExperience(product.personalizationSchema);
   const isOrnament = experience.experience === "christmas-ornament";
@@ -1418,15 +1474,29 @@ export function StudioEditor({
         }
 
         let draftPreviewDataUrl: string | undefined;
-        if (
+        // 2026-11-10 — no construir la miniatura del borrador durante el
+        // auto-save si aún hay fotos decodificando o stages sin montar: evita
+        // bloquear la cola de guardado 8 s en `waitForSlotPhotosReady` o
+        // rasterizar lienzos a medio hidratar. El próximo auto-save con las
+        // fotos listas generará la miniatura sin fricción.
+        const canBuildDraftThumb =
           Date.now() - lastDraftThumbAt >= DRAFT_THUMB_INTERVAL_MS &&
-          canvasData.slots.some((slot) => slot.assetUrl)
-        ) {
+          canvasData.slots.some((slot) => slot.assetUrl) &&
+          selectPhotoDecodePending(store.getState()) === 0 &&
+          canvasData.slots.every((slot) => {
+            if (!slot.filter) return true;
+            const stage = slotStagesRef.current.get(slot.slotIndex);
+            if (slot.assetUrl && !stage?.findOne(".slot-photo")) return false;
+            if (slot.profileAssetUrl && !stage?.findOne(".slot-profile-photo")) return false;
+            return true;
+          });
+        if (canBuildDraftThumb) {
           try {
             const montage = await buildCompositedPreview(
               canvasData,
               slotStagesRef.current,
               productConfig.shape,
+              slotPreviewRenderOpts,
             );
             draftPreviewDataUrl = await fitDraftThumbnail(montage);
             lastDraftThumbAt = Date.now();
@@ -1588,6 +1658,7 @@ export function StudioEditor({
     variantId,
     draftResumeEnabled,
     texts.exportar.errorGuardar,
+    slotPreviewRenderOpts,
   ]);
 
   // ──────────── Click slot → picker si está vacío, editor unificado si está lleno ────────────
@@ -1821,13 +1892,20 @@ export function StudioEditor({
         // reusan — el costo por navegación es solo el montaje de su set).
         if (unitRanges.length > 1) {
           const unitSlots = state.canvasData.unitSlots ?? 12;
-          previewPageLoaderRef.current = (u) =>
+          const loader = (u: number) =>
             buildCalendarPreviewMontage(pages.slice(u * unitSlots, (u + 1) * unitSlots), {
               cellW: 240,
               maxCols: 3,
             });
+          previewPageLoaderRef.current = loader;
+          const firstPageUrl = await loader(0);
           setPreviewPagesGeneration((g) => g + 1);
-          setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
+          setPreviewPages(
+            unitRanges.map((_, u) => ({
+              dataUrl: u === 0 ? firstPageUrl : null,
+              label: pageLabel(u),
+            })),
+          );
         }
         setPreviewModalOpen(true);
         trackStudioFunnelStep({
@@ -1837,20 +1915,11 @@ export function StudioEditor({
         });
         return;
       }
-      await ensureAllStagesMounted(); // T5: montar todos los slots antes del snapshot compositado
-      // Pasar shape del producto para que el preview compositado respete
-      // la silueta real (corazón, círculo, etc.) y no se vea un rectángulo
-      // Lucy 2026-05-21 feedback: "se ve completa, no como corazón".
-      // Ola 3 — separadores 2 caras: el preview de confirmación muestra las TIRAS
-      // desplegadas (plegables: "cabezas al doblez" — Cara B arriba rotada 180°,
-      // Cara A abajo derecha, doblez horizontal en la unión, igual que imprenta;
-      // noFold: frente | reverso lado a lado), no una grilla de caras sueltas —
-      // es la pieza física que el cliente va a recibir.
-      // 2026-09-22 — noFold (Alargados): sin doblez ni "desplegado"; backOptional:
-      // cara B vacía se pinta con el PATRÓN DE MARCA «Lucams» (REGLA ÚNICA,
-      // decisión owner 2026-11-03 — supersede el blanco de 2026-10-07; producción:
-      // default-back-face.ts, features/personalization), igual que en el libro 3D.
-      // Lo resuelve previewFacePairOfUnit dentro del compositor (faceB = null).
+      // Solo se fuerzan todos los stages Konva cuando algún slot usa filtro Konva:
+      // el resto de slots renderiza directo en Canvas2D sobre un único <canvas>.
+      if (state.canvasData.slots.some((s) => Boolean(s.filter))) {
+        await ensureAllStagesMounted();
+      }
       const foldCaption = (() => {
         if (facesPerUnit !== 2 || productConfig.noFold || isOrnament) return undefined;
         const deployed = deployedSizeCm(productConfig.sizeCm);
@@ -1859,39 +1928,47 @@ export function StudioEditor({
           : undefined;
       })();
       const previewUrl = isOrnament
-        ? await buildOrnamentPreview(state.canvasData, slotStagesRef.current, {
-            faceA: texts.lienzo.unitCaraA,
-            faceB: texts.lienzo.unitCaraB,
-          })
+        ? await buildOrnamentPreview(
+            state.canvasData,
+            slotStagesRef.current,
+            {
+              faceA: texts.lienzo.unitCaraA,
+              faceB: texts.lienzo.unitCaraB,
+            },
+            undefined,
+            slotPreviewRenderOpts,
+          )
         : facesPerUnit === 2
           ? await buildBookmarkStripPreview(
               state.canvasData,
               slotStagesRef.current,
               productConfig.cornerRadiusPx,
-              { noFold: productConfig.noFold === true, backOptional, foldCaption },
+              {
+                noFold: productConfig.noFold === true,
+                backOptional,
+                foldCaption,
+                ...slotPreviewRenderOpts,
+              },
             )
           : await buildCompositedPreview(
               state.canvasData,
               slotStagesRef.current,
               productConfig.shape,
+              // 2026-11-10 — packs: grilla balanceada por pack (3×2), inmune a
+              // modelos degenerados del canvas (unitSlots=1 legacy).
+              { ...slotPreviewRenderOpts, packGrid: packUnitsPerGroup != null },
             );
       setPreviewDataUrl(previewUrl);
-      // Item 2.2 — una página por UNIDAD (separador con sus 2 caras, tira, pack):
-      // reusar el mismo compositor con el rango de slots de la unidad (los
-      // snapshots de slot están cacheados — cada unidad cuesta solo el
-      // dibujo del lienzo de su página).
-      // PERF (2026-10-07) — PEREZOSO: en el click solo se siembra el loader;
-      // la página de cada unidad se genera cuando el cliente NAVEGA a ella en
-      // la modal (antes se generaban TODAS acá — el long task del botón).
       if (unitRanges.length > 1) {
-        const canvasSnapshot = state.canvasData;
-        previewPageLoaderRef.current = (u) =>
+        const canvasSnapshot = store.getState().canvasData ?? state.canvasData;
+        const loader = (u: number) =>
           isOrnament
             ? buildOrnamentPreview(
                 canvasSnapshot,
                 slotStagesRef.current,
                 { faceA: texts.lienzo.unitCaraA, faceB: texts.lienzo.unitCaraB },
                 u,
+                slotPreviewRenderOpts,
               )
             : facesPerUnit === 2
               ? buildBookmarkStripPreview(
@@ -1903,13 +1980,23 @@ export function StudioEditor({
                     backOptional,
                     foldCaption,
                     unitIndex: u,
+                    ...slotPreviewRenderOpts,
                   },
                 )
               : buildCompositedPreview(canvasSnapshot, slotStagesRef.current, productConfig.shape, {
                   unitRange: unitRanges[u]!,
+                  ...slotPreviewRenderOpts,
+                  packGrid: packUnitsPerGroup != null,
                 });
+        previewPageLoaderRef.current = loader;
+        const firstPageUrl = await loader(0);
         setPreviewPagesGeneration((g) => g + 1);
-        setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
+        setPreviewPages(
+          unitRanges.map((_, u) => ({
+            dataUrl: u === 0 ? firstPageUrl : null,
+            label: pageLabel(u),
+          })),
+        );
       }
       setPreviewModalOpen(true);
       trackStudioFunnelStep({
@@ -1948,6 +2035,7 @@ export function StudioEditor({
     unitNoun,
     previewBuilding,
     texts,
+    slotPreviewRenderOpts,
   ]);
 
   // SEP1 — Abrir el libro 3D del separador: captura un snapshot recortado a la silueta física
@@ -1956,14 +2044,20 @@ export function StudioEditor({
   const handleOpen3D = useCallback(async () => {
     const state = store.getState();
     if (!state.canvasData || bookBuilding) return;
+    // 2026-11-10 — defensa de la compuerta de decodificación (el botón ya se
+    // bloquea con progreso; esto cubre cualquier vía alterna de invocación).
+    if (selectPhotoDecodePending(state) > 0) return;
     setBookBuilding(true);
     try {
-      await ensureAllStagesMounted(); // T5: la vista 3D necesita la textura de TODOS los slots
+      if (state.canvasData.slots.some((s) => Boolean(s.filter))) {
+        await ensureAllStagesMounted();
+      }
       let textures = await buildMagnetTextures(
         state.canvasData,
         slotStagesRef.current,
         productConfig.shape,
         magnetTextureWidth({ sizeCm: productConfig.sizeCm }),
+        slotPreviewRenderOpts,
       );
       if (
         isBookmark &&
@@ -1998,6 +2092,7 @@ export function StudioEditor({
     isBookmark,
     bookBuilding,
     texts,
+    slotPreviewRenderOpts,
   ]);
 
   // FOTO4 — Abrir la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo). Calcula UNA vez
@@ -2006,14 +2101,20 @@ export function StudioEditor({
   const handleOpenScene = useCallback(async () => {
     const state = store.getState();
     if (!state.canvasData || sceneBuilding) return;
+    // 2026-11-10 — defensa de la compuerta de decodificación (el botón ya se
+    // bloquea con progreso; esto cubre cualquier vía alterna de invocación).
+    if (selectPhotoDecodePending(state) > 0) return;
     setSceneBuilding(true);
     try {
-      await ensureAllStagesMounted(); // T5: la galería necesita la textura de TODOS los slots
+      if (state.canvasData.slots.some((s) => Boolean(s.filter))) {
+        await ensureAllStagesMounted();
+      }
       let textures = await buildMagnetTextures(
         state.canvasData,
         slotStagesRef.current,
         productConfig.shape,
         magnetTextureWidth({ sizeCm: productConfig.sizeCm }),
+        slotPreviewRenderOpts,
       );
       // Ola 6 — los separadores se renderizan de PIE en el libro 3D: la textura horizontal
       // del Estudio debe rotarse 90° para que el diseño lea derecho sobre la cara 2×6 cm.
@@ -2090,6 +2191,7 @@ export function StudioEditor({
     sceneBuilding,
     isBookmark,
     texts,
+    slotPreviewRenderOpts,
   ]);
 
   // CAL4 (rediseño 2026-07-22) — "Ver mi calendario": el set de 12 TARJETAS mes 7.5×10 se ve como
@@ -2258,99 +2360,122 @@ export function StudioEditor({
         // marco SVG con fuentes horneadas): el servidor nos devuelve URLs firmadas y los PNG suben
         // DIRECTO a Storage. Ese camino no pasa por la Function, así que no tiene techo de tamaño.
         if (!result.ok && result.code === "NEEDS_CLIENT_SLOTS") {
-          await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
-          // ADR-166 (2026-10-22): el lienzo carga el derivado ≤800px; los PNG de
-          // IMPRENTA de este fallback se rasterizan de los stages, así que durante
-          // el snapshot los slots conmutan al MASTER (runWithPrintMasters hace
-          // preload + espera determinista por src del nodo slot-photo).
-          // (capturado antes del wrapper: el narrowing de `result` no cruza el async)
           const stagedUploads = result.uploads;
-          const refreshExpiredStudioMasters = async () => {
-            const snap = store.getState();
-            if (!snap.canvasData) return null;
-            const referencedIds = snap.canvasData.slots.flatMap((s) =>
-              [s.assetId, s.profileAssetId].filter((id): id is string => Boolean(id)),
-            );
-            const refreshed = await refreshDesignAssetUrlsAction({
-              designId,
-              assetIds: referencedIds,
-            });
-            if (!refreshed.ok) return null;
-            const freshById = new Map(refreshed.assets.map((a) => [a.id, a]));
-            const mergedAssets: StudioAsset[] = snap.assets.map((existing) => {
-              const fresh = freshById.get(existing.id);
-              return fresh
-                ? { ...existing, signedUrl: fresh.signedUrl, canvasUrl: fresh.canvasUrl }
-                : existing;
-            });
-            for (const a of refreshed.assets) {
-              if (!mergedAssets.some((m) => m.id === a.id)) mergedAssets.push(a);
+          const forceRefreshFirst =
+            assetUrlsRefreshedAtRef.current !== null &&
+            Date.now() - assetUrlsRefreshedAtRef.current >= 40 * 60 * 1000;
+          if (forceRefreshFirst) {
+            await refreshStudioAssetUrls(designId);
+          }
+          const activeCanvasForExport = () => store.getState().canvasData ?? canvasData;
+          const activeSlotsForExport = () => activeCanvasForExport().slots;
+          const hasFilteredUpload = stagedUploads.some(({ slotIndex }) =>
+            Boolean(activeSlotsForExport().find((s) => s.slotIndex === slotIndex)?.filter),
+          );
+          const logicalStageW = canvasData.unitTemplate.stage.width;
+
+          const exportSlotVia2D = async (slotIndex: number): Promise<string> => {
+            let curCanvas = activeCanvasForExport();
+            let slot = curCanvas.slots.find((s) => s.slotIndex === slotIndex);
+            if (!slot) {
+              throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
             }
-            const remapped = remapCanvasAssetUrls(snap.canvasData, mergedAssets);
-            store.setState({ assets: mergedAssets });
-            store.getState().setCanvasData(remapped.canvasData, { skipUndo: true });
-            assetUrlsRefreshedAtRef.current = Date.now();
-            void saveCanvasAction({
-              designId,
-              canvasData: remapped.canvasData as unknown as Record<string, unknown>,
-            }).catch(() => {});
-            return remapped.canvasData.slots;
-          };
-
-          const activeSlotsForExport = () => store.getState().canvasData?.slots ?? canvasData.slots;
-
-          await runWithPrintMasters(
-            activeSlotsForExport(),
-            slotStagesRef.current,
-            async () => {
-              // Misma espera de decodificación que los previews/3D (slot-photo-readiness):
-              // el PNG de imprenta NO puede hornear el placeholder lila — el stage
-              // montado no implica foto decodificada (useImage es async).
-              await waitForSlotPhotosReady(activeSlotsForExport(), slotStagesRef.current);
-              // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
-              // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
-              // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
-              // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
-              const logicalStageW = canvasData.unitTemplate.stage.width;
-              const uploadRequests: StoragePutRequest[] = [];
-              for (const { slotIndex, url } of stagedUploads) {
-                const stage = slotStagesRef.current.get(slotIndex);
-                if (!stage) {
-                  throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
-                }
-                const hiddenForSnapshot = [
-                  ...stage.find(".realism"),
-                  ...stage.find(".edit-indicator"),
-                ];
-                hiddenForSnapshot.forEach((l) => l.hide());
-                let dataUrl: string;
-                try {
-                  const displayW = stage.width() || logicalStageW;
-                  const pixelRatio = (logicalStageW * 3) / displayW;
-                  dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
-                } finally {
-                  hiddenForSnapshot.forEach((l) => l.show());
-                }
-                dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
-                uploadRequests.push({
-                  url,
-                  body: dataUrlToBlob(dataUrl),
-                  contentType: "image/png",
+            let rendered = await renderSlotToDataUrl2D({
+              unitTemplate: curCanvas.unitTemplate,
+              slot,
+              totalSlots: curCanvas.slots.length,
+              shape: productConfig.shape,
+              borderColor: curCanvas.borderColor ?? null,
+              borderWidthFactor: curCanvas.borderWidthFactor ?? null,
+              allowText,
+              frameFullBleed,
+              targetWidth: logicalStageW * 3,
+              preferMaster: true,
+            });
+            if (rendered.assetMissing) {
+              const refreshed = await refreshStudioAssetUrls(designId);
+              if (refreshed) {
+                curCanvas = refreshed;
+                slot = refreshed.slots.find((s) => s.slotIndex === slotIndex) ?? slot;
+                rendered = await renderSlotToDataUrl2D({
+                  unitTemplate: curCanvas.unitTemplate,
+                  slot,
+                  totalSlots: curCanvas.slots.length,
+                  shape: productConfig.shape,
+                  borderColor: curCanvas.borderColor ?? null,
+                  borderWidthFactor: curCanvas.borderWidthFactor ?? null,
+                  allowText,
+                  frameFullBleed,
+                  targetWidth: logicalStageW * 3,
+                  preferMaster: true,
                 });
               }
-              try {
-                await uploadAllWithRetry(uploadRequests);
-              } catch {
-                throw new Error(texts.exportar.errorSubidaArchivos);
-              }
-            },
-            {
-              forceRefreshFirst:
-                assetUrlsRefreshedAtRef.current !== null &&
-                Date.now() - assetUrlsRefreshedAtRef.current >= 40 * 60 * 1000,
-              refreshMasters: refreshExpiredStudioMasters,
-            },
-          );
+            }
+            return clipProductionSnapshotToShape(rendered.dataUrl, productConfig.shape);
+          };
+
+          if (!hasFilteredUpload) {
+            const uploadRequests: StoragePutRequest[] = [];
+            for (const { slotIndex, url } of stagedUploads) {
+              const dataUrl = await exportSlotVia2D(slotIndex);
+              uploadRequests.push({
+                url,
+                body: dataUrlToBlob(dataUrl),
+                contentType: "image/png",
+              });
+            }
+            try {
+              await uploadAllWithRetry(uploadRequests);
+            } catch {
+              throw new Error(texts.exportar.errorSubidaArchivos);
+            }
+          } else {
+            await ensureAllStagesMounted();
+            await runWithPrintMasters(
+              activeSlotsForExport(),
+              slotStagesRef.current,
+              async () => {
+                await waitForSlotPhotosReady(activeSlotsForExport(), slotStagesRef.current);
+                const uploadRequests: StoragePutRequest[] = [];
+                for (const { slotIndex, url } of stagedUploads) {
+                  const slot = activeSlotsForExport().find((s) => s.slotIndex === slotIndex);
+                  const stage = slotStagesRef.current.get(slotIndex);
+                  let dataUrl: string;
+                  if (slot?.filter && stage) {
+                    const hiddenForSnapshot = [
+                      ...stage.find(".realism"),
+                      ...stage.find(".edit-indicator"),
+                    ];
+                    hiddenForSnapshot.forEach((l) => l.hide());
+                    try {
+                      const displayW = stage.width() || logicalStageW;
+                      const pixelRatio = (logicalStageW * 3) / displayW;
+                      dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
+                    } finally {
+                      hiddenForSnapshot.forEach((l) => l.show());
+                    }
+                    dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
+                  } else {
+                    dataUrl = await exportSlotVia2D(slotIndex);
+                  }
+                  uploadRequests.push({
+                    url,
+                    body: dataUrlToBlob(dataUrl),
+                    contentType: "image/png",
+                  });
+                }
+                try {
+                  await uploadAllWithRetry(uploadRequests);
+                } catch {
+                  throw new Error(texts.exportar.errorSubidaArchivos);
+                }
+              },
+              {
+                forceRefreshFirst: false,
+                refreshMasters: async () => (await refreshStudioAssetUrls(designId))?.slots ?? null,
+              },
+            );
+          }
           const retry = buildFinalizeForm();
           retry.set("useStagedSlots", "1");
           result = await finalizeDesignAction(retry);
@@ -2513,6 +2638,9 @@ export function StudioEditor({
       selectedYear,
       ensureAllStagesMounted,
       texts,
+      allowText,
+      frameFullBleed,
+      refreshStudioAssetUrls,
     ],
   );
 
@@ -2683,60 +2811,61 @@ export function StudioEditor({
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      {/* h1 de la página del editor (WCAG 1.3.1): el nombre del producto visible vive en la
+    <StudioStoreContext.Provider value={store}>
+      <div className="flex flex-1 flex-col">
+        {/* h1 de la página del editor (WCAG 1.3.1): el nombre del producto visible vive en la
           toolbar como <p>; la página necesita un encabezado de nivel 1 aunque sea sr-only.
           Las rutas gate y los editores name/letter-set ya traen su propio h1. */}
-      <h1 className="sr-only">Personalizando {product.name}</h1>
-      <StudioToolbar
-        store={store}
-        productName={product.name}
-        productSlug={product.slug}
-        productImageUrl={product.images?.[0]}
-        productSizeCm={productConfig.sizeCm}
-        productSlotCount={isOrnament ? liveSlotCount : livePhotoSlots}
-        slotNoun={slotNounPair}
-        unitNoun={unitNounPair}
-        facesPerUnit={facesPerUnit}
-        freeUnitDesign={experience.freeUnitDesign}
-        // 2026-10-12 — desglose de la variante en el header: el MISMO label de
-        // la Vista Previa (ya omite tamaño/conteos, que el header enuncia en
-        // sus propios chips) → llegan imán, idioma, estilo, marco, forma…
-        variantLabel={previewVariantLabel}
-        // Fase 1A — labels por slot para el popover de faltantes de «Vista
-        // previa» (mismas de la grilla: "Ene", "1A"…).
-        slotLabels={resolvedSlotLabels}
-        showRealismGuides={false}
-        photoCount={
-          isPhotoPack
-            ? {
-                min: packMinSlots,
-                max: packMaxSlots,
-                facesPerUnit,
-                sizeCm: packSizeCm,
-                // "¿Con imán?" (2026-09-08): badge read-only junto al stepper —
-                // lo fija la PDP, el Estudio solo lo muestra y lo persiste.
-                magnet: liveMagnet,
-                // Ola 28 (owner 2026-09-11, 1.3.A) — composición fija (tiras:
-                // unitSlots > caras, misma regla del store): el stepper de fotos
-                // sobra (la composición se eligió en la PDP) → va el de UNIDADES.
-                composition: liveUnitSlots > facesPerUnit,
-              }
-            : undefined
-        }
-        onOpenGesturesHint={() => {
-          setGesturesHintPersistent(true);
-          setGesturesHintOpen(true);
-        }}
-        isPreviewBuilding={previewBuilding}
-        finalizeBlockReason={igFinalizeBlockReason}
-        // Cara B opcional (separadores): el guard exige solo las caras A.
-        backOptional={backOptional}
-        onFinalize={handleFinalize}
-      />
+        <h1 className="sr-only">Personalizando {product.name}</h1>
+        <StudioToolbar
+          store={store}
+          productName={product.name}
+          productSlug={product.slug}
+          productImageUrl={product.images?.[0]}
+          productSizeCm={productConfig.sizeCm}
+          productSlotCount={isOrnament ? liveSlotCount : livePhotoSlots}
+          slotNoun={slotNounPair}
+          unitNoun={unitNounPair}
+          facesPerUnit={facesPerUnit}
+          freeUnitDesign={experience.freeUnitDesign}
+          // 2026-10-12 — desglose de la variante en el header: el MISMO label de
+          // la Vista Previa (ya omite tamaño/conteos, que el header enuncia en
+          // sus propios chips) → llegan imán, idioma, estilo, marco, forma…
+          variantLabel={previewVariantLabel}
+          // Fase 1A — labels por slot para el popover de faltantes de «Vista
+          // previa» (mismas de la grilla: "Ene", "1A"…).
+          slotLabels={resolvedSlotLabels}
+          showRealismGuides={false}
+          photoCount={
+            isPhotoPack
+              ? {
+                  min: packMinSlots,
+                  max: packMaxSlots,
+                  facesPerUnit,
+                  sizeCm: packSizeCm,
+                  // "¿Con imán?" (2026-09-08): badge read-only junto al stepper —
+                  // lo fija la PDP, el Estudio solo lo muestra y lo persiste.
+                  magnet: liveMagnet,
+                  // Ola 28 (owner 2026-09-11, 1.3.A) — composición fija (tiras:
+                  // unitSlots > caras, misma regla del store): el stepper de fotos
+                  // sobra (la composición se eligió en la PDP) → va el de UNIDADES.
+                  composition: liveUnitSlots > facesPerUnit,
+                }
+              : undefined
+          }
+          onOpenGesturesHint={() => {
+            setGesturesHintPersistent(true);
+            setGesturesHintOpen(true);
+          }}
+          isPreviewBuilding={previewBuilding}
+          finalizeBlockReason={igFinalizeBlockReason}
+          // Cara B opcional (separadores): el guard exige solo las caras A.
+          backOptional={backOptional}
+          onFinalize={handleFinalize}
+        />
 
-      <div className="flex flex-1 flex-col lg:flex-row">
-        {/* Sidebar desktop (visible lg+, oculto en mobile — usa sheet drawer).
+        <div className="flex flex-1 flex-col lg:flex-row">
+          {/* Sidebar desktop (visible lg+, oculto en mobile — usa sheet drawer).
             2026-10-02 (UX scroll) — sticky con scroll PROPIO acotado al viewport:
             el sidebar puede crecer largo (prediseñados + mis fotos + plantillas)
             y antes arrastraba el scroll del documento entero, sacando el canvas
@@ -2744,94 +2873,94 @@ export function StudioEditor({
             (sin él, stretch le da la altura de la fila y no pega). top-16 ≈ alto
             del SiteHeader sticky (py-3 + BrandMark sm). Móvil intacto (el sheet
             ya tiene max-h + overflow propios). */}
-        <aside
-          className="border-brand-purple/10 hidden bg-white lg:sticky lg:top-16 lg:block lg:max-h-[calc(100vh-4rem)] lg:w-72 lg:self-start lg:overflow-y-auto lg:border-r"
-          aria-label={texts.lienzo.herramientasAria}
-        >
-          <StudioSidebar
-            store={store}
-            productSlug={product.slug}
-            productName={product.name}
-            productSku={product.sku}
-            productSizeCm={productConfig.sizeCm}
-            productShape={productConfig.shape}
-            allowText={allowText}
-            predesigned={predesigned}
-            facesPerUnit={facesPerUnit}
-            backOptional={backOptional}
-            templateNudgeSignal={templateNudgeAt}
-          />
-        </aside>
+          <aside
+            className="border-brand-purple/10 hidden bg-white lg:sticky lg:top-16 lg:block lg:max-h-[calc(100vh-4rem)] lg:w-72 lg:self-start lg:overflow-y-auto lg:border-r"
+            aria-label={texts.lienzo.herramientasAria}
+          >
+            <StudioSidebar
+              store={store}
+              productSlug={product.slug}
+              productName={product.name}
+              productSku={product.sku}
+              productSizeCm={productConfig.sizeCm}
+              productShape={productConfig.shape}
+              allowText={allowText}
+              predesigned={predesigned}
+              facesPerUnit={facesPerUnit}
+              backOptional={backOptional}
+              templateNudgeSignal={templateNudgeAt}
+            />
+          </aside>
 
-        {/* Auditoría v3 · H15: flex-COL para que el banner del calendario quede ARRIBA del grid (antes
+          {/* Auditoría v3 · H15: flex-COL para que el banner del calendario quede ARRIBA del grid (antes
             era flex-row → banner y grid en fila → overflow horizontal y slots sangrando). El banner ya
             trae mb-3, pensado para apilado. */}
-        {/* Owner 2026-09-18 · overflow real @1024-1280: `min-w-0` es INNEGOCIABLE acá.
+          {/* Owner 2026-09-18 · overflow real @1024-1280: `min-w-0` es INNEGOCIABLE acá.
             Como flex item del row lg (con el aside), el default min-width:auto dejaba
             que la sección se ESTIRARA con su contenido: el grid medía el ancho ya
             estirado (ResizeObserver), lo fijaba y el documento desbordaba en bucle
             (el aside llegaba a encogerse de 288 a ~153px). Con min-w-0 la sección
             respeta su parte del flex y el observer mide el ancho útil real. */}
-        <section className="flex min-w-0 flex-1 flex-col items-center p-4 pb-28 sm:pb-24 lg:p-8 lg:pb-16">
-          <StudioStyleToolbar
-            store={store}
-            frameOptions={productConfig.frameOptions}
-            borderWidth={borderWidthConfig}
-          />
+          <section className="flex min-w-0 flex-1 flex-col items-center p-4 pb-28 sm:pb-24 lg:p-8 lg:pb-16">
+            <StudioStyleToolbar
+              store={store}
+              frameOptions={productConfig.frameOptions}
+              borderWidth={borderWidthConfig}
+            />
 
-          {/* ADR-057 Fase D + CAL2 — banner de calendario: el cliente elige el AÑO (selector) y
+            {/* ADR-057 Fase D + CAL2 — banner de calendario: el cliente elige el AÑO (selector) y
               pone una foto por mes. Ola 2A (Lucy 2026-07-22): el selector de año se perdía
               visualmente → card blanca con borde marcado + año GRANDE en el dropdown. */}
-          {isCalendarMonth && (
-            <div className="border-brand-purple/30 text-brand-purple-dark mb-4 flex w-full max-w-xl flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-2xl border-2 bg-white px-5 py-3 shadow-md">
-              <span className="text-base font-bold">{texts.lienzo.calBannerTitulo}</span>
-              <label className="flex items-center gap-2">
-                <span className="text-brand-purple-dark/80 text-sm font-semibold">
-                  {texts.lienzo.calBannerAno}
-                </span>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="border-brand-purple/50 focus-visible:ring-brand-purple/40 text-brand-purple-dark font-display cursor-pointer rounded-xl border-2 bg-white px-3 py-1.5 text-xl font-bold focus-visible:ring-2 focus-visible:outline-none"
-                  aria-label={texts.lienzo.calAnoAria}
-                >
-                  {yearOptions.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {/* Lucy 2026-09-07 — selector de TIPO DE LETRA del título/mes ("sería bueno que
+            {isCalendarMonth && (
+              <div className="border-brand-purple/30 text-brand-purple-dark mb-4 flex w-full max-w-xl flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-2xl border-2 bg-white px-5 py-3 shadow-md">
+                <span className="text-base font-bold">{texts.lienzo.calBannerTitulo}</span>
+                <label className="flex items-center gap-2">
+                  <span className="text-brand-purple-dark/80 text-sm font-semibold">
+                    {texts.lienzo.calBannerAno}
+                  </span>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="border-brand-purple/50 focus-visible:ring-brand-purple/40 text-brand-purple-dark font-display cursor-pointer rounded-xl border-2 bg-white px-3 py-1.5 text-xl font-bold focus-visible:ring-2 focus-visible:outline-none"
+                    aria-label={texts.lienzo.calAnoAria}
+                  >
+                    {yearOptions.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {/* Lucy 2026-09-07 — selector de TIPO DE LETRA del título/mes ("sería bueno que
                   el usuario pudiera ser más versátil, como es coger el tipo de letra").
                   Persiste en canvasData.calendarFont → el preview y producción lo usan. El
                   body/grilla siempre es Inter; acá solo cambia el lettering del mes. */}
-              <label className="flex items-center gap-2">
-                <span className="text-brand-purple-dark/80 text-sm font-semibold">
-                  {texts.lienzo.calFontLabel}
+                <label className="flex items-center gap-2">
+                  <span className="text-brand-purple-dark/80 text-sm font-semibold">
+                    {texts.lienzo.calFontLabel}
+                  </span>
+                  <select
+                    value={liveCalendarFont}
+                    onChange={(e) =>
+                      setCalendarFont(e.target.value as (typeof CALENDAR_FONT_OPTIONS)[number])
+                    }
+                    className="border-brand-purple/50 focus-visible:ring-brand-purple/40 text-brand-purple-dark font-display cursor-pointer rounded-xl border-2 bg-white px-3 py-1.5 text-xl font-bold focus-visible:ring-2 focus-visible:outline-none"
+                    aria-label={texts.lienzo.calFontAria}
+                  >
+                    {CALENDAR_FONT_OPTIONS.map((key) => (
+                      <option key={key} value={key}>
+                        {calendarFontLabels[key] ?? key}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="text-brand-purple-dark/70 text-sm font-medium">
+                  {texts.lienzo.calBannerHint}
                 </span>
-                <select
-                  value={liveCalendarFont}
-                  onChange={(e) =>
-                    setCalendarFont(e.target.value as (typeof CALENDAR_FONT_OPTIONS)[number])
-                  }
-                  className="border-brand-purple/50 focus-visible:ring-brand-purple/40 text-brand-purple-dark font-display cursor-pointer rounded-xl border-2 bg-white px-3 py-1.5 text-xl font-bold focus-visible:ring-2 focus-visible:outline-none"
-                  aria-label={texts.lienzo.calFontAria}
-                >
-                  {CALENDAR_FONT_OPTIONS.map((key) => (
-                    <option key={key} value={key}>
-                      {calendarFontLabels[key] ?? key}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span className="text-brand-purple-dark/70 text-sm font-medium">
-                {texts.lienzo.calBannerHint}
-              </span>
-            </div>
-          )}
+              </div>
+            )}
 
-          {/* P1.4/P1.5 — Botones de acción global: Ideas (IA) + Ver en 3D/tu espacio.
+            {/* P1.4/P1.5 — Botones de acción global: Ideas (IA) + Ver en 3D/tu espacio.
               Ahora siempre fluyen dentro del section: en mobile quedan justo debajo del banner
               y arriba del grid para no tapar los slots; en desktop se sientan debajo del banner.
               Se elimina el posicionamiento fixed que superponía los botones de edición/eliminación.
@@ -2844,545 +2973,570 @@ export function StudioEditor({
               centrada sin scroll; ≥sm conserva el tamaño original (h-12, ring-4).
               Ola 2 (2026-10-26) — mínimo vertical en <sm: gaps y margen inferior
               aún más finos (los targets táctiles de 44px se conservan). */}
-          <div className="mt-1 mb-2 flex flex-wrap items-center justify-center gap-1 px-2 sm:mt-2 sm:mb-6 sm:gap-2 sm:px-4 lg:mb-8">
-            {aiEnabled && (
-              // 2026-10-29 (owner) — «Ideas» pasa a pill SECUNDARIO discreto:
-              // el primario visual es «Ver en tu espacio»/3D; el asistente IA
-              // queda disponible pero sin competir (outline, sin sombra XL).
-              <button
-                type="button"
-                onClick={() => setAiOpen(true)}
-                // El nombre accesible sale del CONTENIDO (no de aria-label) para que
-                // contenga el texto visible — WCAG 2.5.3, control por voz dice lo que ve.
-                className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple hover:bg-brand-purple/5 focus:ring-brand-purple inline-flex h-11 items-center gap-1.5 rounded-full border-2 bg-white/95 px-3 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none sm:h-12 sm:gap-2 sm:px-4 sm:text-sm"
-              >
-                <Sparkles className="text-brand-purple h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
-                <span>{texts.lienzo.btnIdeas}</span>
-                <span className="sr-only">&nbsp;{texts.lienzo.ideasSr}</span>
-              </button>
-            )}
-            {isCalendarMonth ? (
-              <button
-                type="button"
-                onClick={handleOpenCalendar3D}
-                disabled={calendarBuilding}
-                aria-busy={calendarBuilding}
-                className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
-              >
-                {/* Lucy 2026-09-09 — spinner visible mientras se componen las 12 tarjetas
+            <div className="mt-1 mb-2 flex flex-wrap items-center justify-center gap-1 px-2 sm:mt-2 sm:mb-6 sm:gap-2 sm:px-4 lg:mb-8">
+              {aiEnabled && (
+                // 2026-10-29 (owner) — «Ideas» pasa a pill SECUNDARIO discreto:
+                // el primario visual es «Ver en tu espacio»/3D; el asistente IA
+                // queda disponible pero sin competir (outline, sin sombra XL).
+                <button
+                  type="button"
+                  onClick={() => setAiOpen(true)}
+                  // El nombre accesible sale del CONTENIDO (no de aria-label) para que
+                  // contenga el texto visible — WCAG 2.5.3, control por voz dice lo que ve.
+                  className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple hover:bg-brand-purple/5 focus:ring-brand-purple inline-flex h-11 items-center gap-1.5 rounded-full border-2 bg-white/95 px-3 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none sm:h-12 sm:gap-2 sm:px-4 sm:text-sm"
+                >
+                  <Sparkles className="text-brand-purple h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+                  <span>{texts.lienzo.btnIdeas}</span>
+                  <span className="sr-only">&nbsp;{texts.lienzo.ideasSr}</span>
+                </button>
+              )}
+              {isCalendarMonth ? (
+                <button
+                  type="button"
+                  onClick={handleOpenCalendar3D}
+                  disabled={calendarBuilding}
+                  aria-busy={calendarBuilding}
+                  className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
+                >
+                  {/* Lucy 2026-09-09 — spinner visible mientras se componen las 12 tarjetas
                     (antes solo cambiaba el texto y parecía no haber pasado nada). */}
-                {calendarBuilding ? (
-                  <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
-                ) : (
-                  <CalendarDays className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
-                )}
-                <span>{calendarBuilding ? texts.comun.armando : texts.lienzo.btnCalendario}</span>
-                <span className="sr-only">{texts.lienzo.calBtnSr}</span>
-              </button>
-            ) : // Sin imán (owner 2026-10-07): el botón 3D sigue visible; la
-            // galería filtra las escenas magnéticas por dentro (ver nota junto a liveMagnet).
-            isBookmark ? (
-              <button
-                type="button"
-                onClick={handleOpen3D}
-                disabled={bookBuilding}
-                aria-busy={bookBuilding}
-                className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
-              >
-                {bookBuilding ? (
-                  <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
-                ) : (
-                  <Box className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
-                )}
-                <span>{bookBuilding ? texts.comun.armando : texts.lienzo.btnLibro}</span>
-                <span className="sr-only">&nbsp;{texts.lienzo.libroBtnSr}</span>
-              </button>
-            ) : (
-              // FOTO4 — un solo botón abre la galería con TODAS las escenas (nevera/mural/repisa/regalo).
-              <button
-                type="button"
-                onClick={handleOpenScene}
-                disabled={sceneBuilding}
-                aria-busy={sceneBuilding}
-                className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
-              >
-                {sceneBuilding ? (
-                  <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
-                ) : (
-                  <Box className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
-                )}
-                <span>{sceneBuilding ? texts.comun.armando : texts.lienzo.btnEspacio}</span>
-                <span className="sr-only">{texts.lienzo.espacioBtnSr}</span>
-              </button>
-            )}
-            {/* Ola 22 (Lucy 2026-09-09) — zoom de lienzo: pill INLINE en esta misma
+                  {calendarBuilding ? (
+                    <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
+                  ) : (
+                    <CalendarDays className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+                  )}
+                  <span>{calendarBuilding ? texts.comun.armando : texts.lienzo.btnCalendario}</span>
+                  <span className="sr-only">{texts.lienzo.calBtnSr}</span>
+                </button>
+              ) : // Sin imán (owner 2026-10-07): el botón 3D sigue visible; la
+              // galería filtra las escenas magnéticas por dentro (ver nota junto a liveMagnet).
+              isBookmark ? (
+                <button
+                  type="button"
+                  onClick={handleOpen3D}
+                  disabled={bookBuilding || photoDecodePending > 0}
+                  aria-busy={bookBuilding || photoDecodePending > 0}
+                  className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
+                >
+                  {bookBuilding || photoDecodePending > 0 ? (
+                    <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
+                  ) : (
+                    <Box className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+                  )}
+                  <span>
+                    {bookBuilding
+                      ? texts.comun.armando
+                      : photoDecodePending > 0
+                        ? fillStudioText(texts.lienzo.cargandoFotos, {
+                            listas: photoDecodeTotal - photoDecodePending,
+                            total: photoDecodeTotal,
+                          })
+                        : texts.lienzo.btnLibro}
+                  </span>
+                  <span className="sr-only">&nbsp;{texts.lienzo.libroBtnSr}</span>
+                </button>
+              ) : (
+                // FOTO4 — un solo botón abre la galería con TODAS las escenas (nevera/mural/repisa/regalo).
+                <button
+                  type="button"
+                  onClick={handleOpenScene}
+                  disabled={sceneBuilding || photoDecodePending > 0}
+                  aria-busy={sceneBuilding || photoDecodePending > 0}
+                  className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
+                >
+                  {sceneBuilding || photoDecodePending > 0 ? (
+                    <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
+                  ) : (
+                    <Box className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+                  )}
+                  <span>
+                    {sceneBuilding
+                      ? texts.comun.armando
+                      : photoDecodePending > 0
+                        ? fillStudioText(texts.lienzo.cargandoFotos, {
+                            listas: photoDecodeTotal - photoDecodePending,
+                            total: photoDecodeTotal,
+                          })
+                        : texts.lienzo.btnEspacio}
+                  </span>
+                  <span className="sr-only">{texts.lienzo.espacioBtnSr}</span>
+                </button>
+              )}
+              {/* Ola 22 (Lucy 2026-09-09) — zoom de lienzo: pill INLINE en esta misma
                 fila (antes flotaba sobre la esquina superior derecha del lienzo e
                 "invadía el canvas"). Display-only; el grid aplica y clampa el valor. */}
-            <StudioStageZoomControl
-              zoom={stageZoomState.zoom}
-              cap={stageZoomState.cap}
-              onStep={(dir) => setStageZoomRaw((z) => stepStageZoom(z, dir, stageZoomState.cap))}
-              onReset={() => setStageZoomRaw(1)}
-            />
-            {/* 2026-10-19 — «Borrar el diseño»: acción destructiva GLOBAL (faltaba;
+              <StudioStageZoomControl
+                zoom={stageZoomState.zoom}
+                cap={stageZoomState.cap}
+                onStep={(dir) => setStageZoomRaw((z) => stepStageZoom(z, dir, stageZoomState.cap))}
+                onReset={() => setStageZoomRaw(1)}
+              />
+              {/* 2026-10-19 — «Borrar el diseño»: acción destructiva GLOBAL (faltaba;
                 solo existía el borrado por slot). Solo se muestra con contenido
                 real en el lienzo; pide confirmación (StudioClearDesignModal) y
                 queda deshacible con Ctrl+Z/undo (va por setCanvasData).
                 2026-10-29 (owner) — solo el icono de basura (44px táctil) con
                 tooltip: el texto completo hacía la fila de pills demasiado
                 invasiva en móvil. */}
-            {hasDesignContent && (
-              <Hint content={texts.lienzo.borrarDisenoCta}>
-                <button
-                  type="button"
-                  onClick={() => setClearDesignOpen(true)}
-                  aria-label={texts.lienzo.borrarDisenoCta}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border-2 border-red-300 bg-white text-red-700 shadow-sm transition-transform hover:scale-105 hover:border-red-400 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:outline-none active:scale-95 sm:h-12 sm:w-12"
-                >
-                  <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
-                </button>
-              </Hint>
-            )}
-          </div>
+              {hasDesignContent && (
+                <Hint content={texts.lienzo.borrarDisenoCta}>
+                  <button
+                    type="button"
+                    onClick={() => setClearDesignOpen(true)}
+                    aria-label={texts.lienzo.borrarDisenoCta}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border-2 border-red-300 bg-white text-red-700 shadow-sm transition-transform hover:scale-105 hover:border-red-400 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:outline-none active:scale-95 sm:h-12 sm:w-12"
+                  >
+                    <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+                  </button>
+                </Hint>
+              )}
+            </div>
 
-          {/* Ola 2 (2026-10-26) — pista de descubribilidad de la edición DIRECTA
+            {/* Ola 2 (2026-10-26) — pista de descubribilidad de la edición DIRECTA
               de texto en el lienzo (tap sobre el texto → editor): pill en flujo
               (no bloquea gestos ni el canvas), dismissible y persistida en
               localStorage. Solo si la plantilla tiene textos editables. */}
-          {hasEditableTextLayers && <StudioTextEditHint />}
+            {hasEditableTextLayers && <StudioTextEditHint />}
 
-          {/* 2026-10-29 (owner) — lienzo DESHABILITADO hasta elegir plantilla
+            {/* 2026-10-29 (owner) — lienzo DESHABILITADO hasta elegir plantilla
               (con >1): el overlay bloquea la interacción con los slots y guía
               hacia el panel de plantillas (en <lg abre el sheet «Editar»; en
               desktop dispara el nudge que scrollea y resalta la sección). */}
-          <div className="relative w-full">
-            <div
-              aria-hidden={templatePending || undefined}
-              className={templatePending ? "pointer-events-none select-none" : undefined}
-            >
-              <StudioCanvasGrid
-                store={store}
-                canvasDisabled={templatePending}
-                sizeCm={productConfig.sizeCm}
-                shape={productConfig.shape}
-                finish={productConfig.finish}
-                cornerRadiusPx={productConfig.cornerRadiusPx}
-                showRealismGuides={showRealismGuides}
-                // Ola 3 — calendario: meses; separadores 2 caras: "1A","1B",… por unidad.
-                // Multi-unidad (2026-09-09): con N calendarios los meses se repiten por
-                // unidad (cada una vuelve a empezar en Enero). Fase 1A — la expresión
-                // vive en resolvedSlotLabels (compartida con toolbar/FAB).
-                slotLabels={resolvedSlotLabels}
-                // Multi-unidad — sustantivo de la unidad para pager/headers de sección.
-                unitNoun={unitNoun}
-                // 4.5 — chip de variante/tamaño en el header de cada sección de
-                // unidad (multi-unidad: cada sección enuncia qué es).
-                unitVariantLabel={unitVariantLabel}
-                // PACKS (owner 2026-09-15, ADR-101) — tamaño del pack para que la
-                // grilla plana se delimite en tarjetas "Pack N" (fotoimanes packs
-                // de 6); null = grilla plana de siempre.
-                unitGroupSlots={packUnitsPerGroup}
-                // Ola 4 (Lucy 2026-07-23) — calendario: cada slot previsualiza la TARJETA
-                // compuesta del mes (foto + título + grilla), no la foto a sangre.
-                calendarPreview={
-                  isCalendarMonth
-                    ? {
-                        year: selectedYear,
-                        startMonth:
-                          (product.personalizationSchema as { startMonth?: number })?.startMonth ??
-                          0,
-                        layout: calendarLayout,
-                        font: liveCalendarFont,
-                      }
-                    : null
-                }
-                slotNoun={slotNounPair.one}
-                allowText={allowText}
-                frameFullBleed={frameFullBleed}
-                facesPerUnit={facesPerUnit}
-                // Piezas planas y bola dúplex: sin línea de doblez en la tarjeta-unidad.
-                noFold={productConfig.noFold === true || isOrnament}
-                // Cara B opcional (separadores backOptional): el placeholder del slot
-                // vacío de Cara B avisa que puede quedar sin diseñar.
-                backOptional={backOptional}
-                interactiveSlots={!isTouch}
-                onSlotClick={handleSlotClick}
-                stageZoomRaw={stageZoomRaw}
-                onStageZoomState={setStageZoomState}
-                // Fase 2 · item 2.1 — pinch-to-zoom del lienzo en táctil: el grid
-                // pide el nuevo zoom (mismo estado de los botones −/+).
-                onStageZoomChange={setStageZoomRaw}
-                // Overrides por producto (owner 2026-09-24, admin → Avanzado):
-                // columnas de la grilla (fuerza N columnas en desktop) y tamaño
-                // base del lienzo (el "100%" del cliente). null = automático.
-                gridColsOverride={productConfig.gridColsOverride ?? null}
-                canvasBaseScale={productConfig.canvasBaseScale ?? null}
-                openEditSlot={openEditSlot}
-                onEditClose={() => setOpenEditSlot(null)}
-                onRequestChangePhoto={handleRequestChangePhoto}
-                onRequestChangeProfilePhoto={handleRequestChangeProfilePhoto}
-                registerSlotStages={(stages) => {
-                  slotStagesRef.current = stages;
-                }}
-                forceMountAll={forceMountAll}
-              />
-            </div>
-            {templatePending && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/70 backdrop-blur-[2px]">
-                <div className="border-brand-purple/20 mx-4 flex max-w-xs flex-col items-center gap-3 rounded-2xl border bg-white p-5 text-center shadow-xl">
-                  <Sparkles className="text-brand-purple h-6 w-6" aria-hidden />
-                  <p className="text-brand-purple-dark font-display text-base font-bold">
-                    {texts.checklist.pasoPlantillas}
-                  </p>
-                  <p className="text-brand-muted text-xs leading-snug">
-                    {texts.plantillas.elegirParaContinuar}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTemplateNudgeAt(Date.now());
-                      if (
-                        typeof window !== "undefined" &&
-                        typeof window.matchMedia === "function" &&
-                        window.matchMedia("(max-width: 1023.98px)").matches
-                      ) {
-                        setMobileSheetOpen(true);
-                      }
-                    }}
-                    className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
-                  >
-                    {texts.checklist.pasoPlantillas}
-                  </button>
-                </div>
+            <div className="relative w-full">
+              <div
+                aria-hidden={templatePending || undefined}
+                className={templatePending ? "pointer-events-none select-none" : undefined}
+              >
+                <StudioCanvasGrid
+                  store={store}
+                  canvasDisabled={templatePending}
+                  sizeCm={productConfig.sizeCm}
+                  shape={productConfig.shape}
+                  finish={productConfig.finish}
+                  cornerRadiusPx={productConfig.cornerRadiusPx}
+                  showRealismGuides={showRealismGuides}
+                  // Ola 3 — calendario: meses; separadores 2 caras: "1A","1B",… por unidad.
+                  // Multi-unidad (2026-09-09): con N calendarios los meses se repiten por
+                  // unidad (cada una vuelve a empezar en Enero). Fase 1A — la expresión
+                  // vive en resolvedSlotLabels (compartida con toolbar/FAB).
+                  slotLabels={resolvedSlotLabels}
+                  // Multi-unidad — sustantivo de la unidad para pager/headers de sección.
+                  unitNoun={unitNoun}
+                  // 4.5 — chip de variante/tamaño en el header de cada sección de
+                  // unidad (multi-unidad: cada sección enuncia qué es).
+                  unitVariantLabel={unitVariantLabel}
+                  // PACKS (owner 2026-09-15, ADR-101) — tamaño del pack para que la
+                  // grilla plana se delimite en tarjetas "Pack N" (fotoimanes packs
+                  // de 6); null = grilla plana de siempre.
+                  unitGroupSlots={packUnitsPerGroup}
+                  // Ola 4 (Lucy 2026-07-23) — calendario: cada slot previsualiza la TARJETA
+                  // compuesta del mes (foto + título + grilla), no la foto a sangre.
+                  calendarPreview={
+                    isCalendarMonth
+                      ? {
+                          year: selectedYear,
+                          startMonth:
+                            (product.personalizationSchema as { startMonth?: number })
+                              ?.startMonth ?? 0,
+                          layout: calendarLayout,
+                          font: liveCalendarFont,
+                        }
+                      : null
+                  }
+                  slotNoun={slotNounPair.one}
+                  allowText={allowText}
+                  frameFullBleed={frameFullBleed}
+                  facesPerUnit={facesPerUnit}
+                  // Piezas planas y bola dúplex: sin línea de doblez en la tarjeta-unidad.
+                  noFold={productConfig.noFold === true || isOrnament}
+                  // Cara B opcional (separadores backOptional): el placeholder del slot
+                  // vacío de Cara B avisa que puede quedar sin diseñar.
+                  backOptional={backOptional}
+                  interactiveSlots={!isTouch}
+                  onSlotClick={handleSlotClick}
+                  stageZoomRaw={stageZoomRaw}
+                  onStageZoomState={setStageZoomState}
+                  // Fase 2 · item 2.1 — pinch-to-zoom del lienzo en táctil: el grid
+                  // pide el nuevo zoom (mismo estado de los botones −/+).
+                  onStageZoomChange={setStageZoomRaw}
+                  // Overrides por producto (owner 2026-09-24, admin → Avanzado):
+                  // columnas de la grilla (fuerza N columnas en desktop) y tamaño
+                  // base del lienzo (el "100%" del cliente). null = automático.
+                  gridColsOverride={productConfig.gridColsOverride ?? null}
+                  canvasBaseScale={productConfig.canvasBaseScale ?? null}
+                  openEditSlot={openEditSlot}
+                  onEditClose={() => setOpenEditSlot(null)}
+                  onRequestChangePhoto={handleRequestChangePhoto}
+                  onRequestChangeProfilePhoto={handleRequestChangeProfilePhoto}
+                  registerSlotStages={(stages) => {
+                    slotStagesRef.current = stages;
+                  }}
+                  forceMountAll={forceMountAll}
+                />
               </div>
-            )}
-          </div>
-        </section>
-      </div>
+              {templatePending && (
+                /* 2026-11-10 (owner) — el cuadro va ANCLADO ARRIBA del lienzo,
+                   no centrado en su altura total: con muchas unidades el grid es
+                   altísimo y el centrado lo dejaba invisible «muy abajo». */
+                <div className="absolute inset-0 z-10 flex items-start justify-center rounded-2xl bg-white/70 pt-6 backdrop-blur-[2px]">
+                  <div className="border-brand-purple/20 sticky top-4 mx-4 flex max-w-xs flex-col items-center gap-3 rounded-2xl border bg-white p-5 text-center shadow-xl">
+                    <Sparkles className="text-brand-purple h-6 w-6" aria-hidden />
+                    <p className="text-brand-purple-dark font-display text-base font-bold">
+                      {texts.checklist.pasoPlantillas}
+                    </p>
+                    <p className="text-brand-muted text-xs leading-snug">
+                      {texts.plantillas.elegirParaContinuar}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTemplateNudgeAt(Date.now());
+                        if (
+                          typeof window !== "undefined" &&
+                          typeof window.matchMedia === "function" &&
+                          window.matchMedia("(max-width: 1023.98px)").matches
+                        ) {
+                          setMobileSheetOpen(true);
+                        }
+                      }}
+                      className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+                    >
+                      {texts.checklist.pasoPlantillas}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
 
-      {/* P1.5 — Panel del asistente IA de ideas (apagado en modo catálogo) */}
-      {aiEnabled && (
-        <StudioAiPanel
-          open={aiOpen}
-          onClose={() => setAiOpen(false)}
-          productName={product.name}
-          slotCount={liveSlotCount}
-          allowText={allowText}
-        />
-      )}
+        {/* P1.5 — Panel del asistente IA de ideas (apagado en modo catálogo) */}
+        {aiEnabled && (
+          <StudioAiPanel
+            open={aiOpen}
+            onClose={() => setAiOpen(false)}
+            productName={product.name}
+            slotCount={liveSlotCount}
+            allowText={allowText}
+          />
+        )}
 
-      {/* FOTO4/CAL4 — Galería de escenas "en tu espacio" en un solo modal (kind decide las escenas:
+        {/* FOTO4/CAL4 — Galería de escenas "en tu espacio" en un solo modal (kind decide las escenas:
           fotoimanes → nevera/polaroid/mural/repisa/regalo · calendario → abre en el DETALLE
           tarjeta-a-tarjeta y sube a nevera/tablero con "Míralo en tu espacio", ola 3).
           Fase 1A (2026-09-27) — el calendario SIN IMÁN SÍ abre: su visor de detalle
           tarjeta-a-tarjeta es válido sin imán; la galería recibe `magnet` y gatea
           INTERNO las escenas nevera/tablero (que sí asumen imán). */}
-      {sceneMagnets !== null && (
-        <SceneGallery
-          magnets={sceneMagnets.magnets}
-          cols={sceneMagnets.cols}
-          kind={sceneMagnets.kind}
-          sizeCm={sceneMagnets.sizeCm}
-          isPolaroid={sceneMagnets.isPolaroid}
-          facesPerUnit={sceneMagnets.facesPerUnit}
-          flat={sceneMagnets.flat}
-          spineWidthCm={sceneMagnets.spineWidthCm}
-          // 2026-10-23 — calendario multi-set: pager de dos niveles en el detalle.
-          cardsPerSet={sceneMagnets.cardsPerSet}
-          cardLabels={sceneMagnets.cardLabels}
-          // Fase 1A — calendario "Sin imán": la galería oculta las escenas que
-          // asumen imán (nevera/tablero); el detalle sigue disponible.
-          magnet={liveMagnet}
-          onClose={() => setSceneMagnets(null)}
-        />
-      )}
+        {sceneMagnets !== null && (
+          <SceneGallery
+            magnets={sceneMagnets.magnets}
+            cols={sceneMagnets.cols}
+            kind={sceneMagnets.kind}
+            sizeCm={sceneMagnets.sizeCm}
+            isPolaroid={sceneMagnets.isPolaroid}
+            facesPerUnit={sceneMagnets.facesPerUnit}
+            flat={sceneMagnets.flat}
+            spineWidthCm={sceneMagnets.spineWidthCm}
+            // 2026-10-23 — calendario multi-set: pager de dos niveles en el detalle.
+            cardsPerSet={sceneMagnets.cardsPerSet}
+            cardLabels={sceneMagnets.cardLabels}
+            // Fase 1A — calendario "Sin imán": la galería oculta las escenas que
+            // asumen imán (nevera/tablero); el detalle sigue disponible.
+            magnet={liveMagnet}
+            onClose={() => setSceneMagnets(null)}
+          />
+        )}
 
-      {/* SEP1 — Modal del separador en un libro 3D (lazy, client-only). */}
-      {book3D !== null && (
-        <div
-          ref={book3DRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={texts.lienzo.libroAria}
-          tabIndex={-1}
-          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
-        >
-          <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
-            <span className="font-display text-lg font-bold">{texts.lienzo.libroTitulo}</span>
-            <button
-              type="button"
-              onClick={closeBook3D}
-              aria-label={texts.comun.cerrarVista3d}
-              className={CLOSE_X_CLASS + " h-10 w-10"}
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="relative flex-1">
-            <BookView3D
-              bookmarks={book3D}
-              sizeCm={productConfig.sizeCm}
-              facesPerUnit={productConfig.facesPerUnit}
-              flat={productConfig.noFold}
-            />
-            <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
-              {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* A2.8 — FAB mobile + Sheet drawer bottom para la sidebar */}
-      <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
-        <SheetTrigger asChild>
-          <button
-            type="button"
-            // A11Y — el texto blanco sobre bg-brand-turquoise daba 1.71:1 (WCAG 1.4.3 AA pide
-            // 4.5:1). No se toca el turquesa (paleta = ADR): se oscurece el TEXTO a
-            // brand-purple-dark → 7.06:1. Y el nombre accesible sale del CONTENIDO en vez de un
-            // aria-label que no decía "Editar": con control por voz "haz clic en Editar" no
-            // activaba nada (WCAG 2.5.3 Label in Name).
-            className={`bg-brand-turquoise ring-brand-turquoise/30 text-brand-purple-dark fixed ${fabRaisedForCookies ? "bottom-28" : "bottom-4"} left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold shadow-xl ring-4 transition-all hover:scale-105 active:scale-95 lg:hidden`}
+        {/* SEP1 — Modal del separador en un libro 3D (lazy, client-only). */}
+        {book3D !== null && (
+          <div
+            ref={book3DRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={texts.lienzo.libroAria}
+            tabIndex={-1}
+            className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
           >
-            <Sparkles className="h-5 w-5" aria-hidden />
-            <span>{texts.comun.editar}</span>
-            <span className="sr-only">{texts.comun.editarSr}</span>
-            {/* 5.1 — badge de pasos pendientes (fotos requeridas / datos IG):
-                el FAB deja de ser mudo y comunica «te falta X» sin abrir el
-                sheet. Solo pasos bloqueantes; los opcionales no agobian. */}
-            {checklistPendingCount > 0 && (
-              <>
-                <span
-                  aria-hidden
-                  className="bg-brand-yellow text-brand-purple-dark absolute -top-1.5 -right-1.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-bold tabular-nums shadow ring-2 ring-white"
-                >
-                  {checklistPendingCount}
-                </span>
-                <span className="sr-only">
-                  {fillStudioText(texts.checklist.badgePendientes, { n: checklistPendingCount })}
-                </span>
-              </>
-            )}
-          </button>
-        </SheetTrigger>
-        <SheetContent
-          side="bottom"
-          // #6 — la X por defecto del sheet queda ENTERRADA bajo este header sticky (sin z-index) →
-          // invisible e intappable en móvil. La suprimimos y ponemos una propia DENTRO del header,
-          // en el mismo contexto de apilamiento, con target de 44px (antes 28px, bajo el mínimo táctil).
-          showCloseButton={false}
-          className="border-brand-purple/10 max-h-[88vh] overflow-y-auto rounded-t-2xl border-t bg-white p-0 lg:hidden"
-        >
-          <SheetHeader className="border-brand-purple/10 sticky top-0 z-20 flex-row items-center justify-between border-b bg-white/95 px-4 py-3 backdrop-blur">
-            <SheetTitle className="text-brand-purple-dark text-base font-bold">
-              {texts.lienzo.sheetTitulo}
-            </SheetTitle>
-            <SheetClose asChild>
+            <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
+              <span className="font-display text-lg font-bold">{texts.lienzo.libroTitulo}</span>
               <button
                 type="button"
-                aria-label={texts.comun.cerrarPersonalizacion}
-                className={CLOSE_X_CLASS + " -mr-2 size-11 shrink-0"}
+                onClick={closeBook3D}
+                aria-label={texts.comun.cerrarVista3d}
+                className={CLOSE_X_CLASS + " h-10 w-10"}
               >
-                <X className="size-5" aria-hidden />
+                <X className="h-5 w-5" />
               </button>
-            </SheetClose>
-          </SheetHeader>
-          {/* Reusa el mismo StudioSidebar — no se duplica el código.
+            </div>
+            <div className="relative flex-1">
+              <BookView3D
+                bookmarks={book3D}
+                sizeCm={productConfig.sizeCm}
+                facesPerUnit={productConfig.facesPerUnit}
+                flat={productConfig.noFold}
+              />
+              {/* 2026-11-10 — anunciar la decodificación de texturas en vez de
+                canvas en blanco (mismo overlay de la galería de escenas). */}
+              <SceneTextureLoadingOverlay />
+              <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
+                {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* A2.8 — FAB mobile + Sheet drawer bottom para la sidebar */}
+        <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
+          <SheetTrigger asChild>
+            <button
+              type="button"
+              // A11Y — el texto blanco sobre bg-brand-turquoise daba 1.71:1 (WCAG 1.4.3 AA pide
+              // 4.5:1). No se toca el turquesa (paleta = ADR): se oscurece el TEXTO a
+              // brand-purple-dark → 7.06:1. Y el nombre accesible sale del CONTENIDO en vez de un
+              // aria-label que no decía "Editar": con control por voz "haz clic en Editar" no
+              // activaba nada (WCAG 2.5.3 Label in Name).
+              className={`bg-brand-turquoise ring-brand-turquoise/30 text-brand-purple-dark fixed ${fabRaisedForCookies ? "bottom-28" : "bottom-4"} left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold shadow-xl ring-4 transition-all hover:scale-105 active:scale-95 lg:hidden`}
+            >
+              <Sparkles className="h-5 w-5" aria-hidden />
+              <span>{texts.comun.editar}</span>
+              <span className="sr-only">{texts.comun.editarSr}</span>
+              {/* 5.1 — badge de pasos pendientes (fotos requeridas / datos IG):
+                el FAB deja de ser mudo y comunica «te falta X» sin abrir el
+                sheet. Solo pasos bloqueantes; los opcionales no agobian. */}
+              {checklistPendingCount > 0 && (
+                <>
+                  <span
+                    aria-hidden
+                    className="bg-brand-yellow text-brand-purple-dark absolute -top-1.5 -right-1.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-bold tabular-nums shadow ring-2 ring-white"
+                  >
+                    {checklistPendingCount}
+                  </span>
+                  <span className="sr-only">
+                    {fillStudioText(texts.checklist.badgePendientes, { n: checklistPendingCount })}
+                  </span>
+                </>
+              )}
+            </button>
+          </SheetTrigger>
+          <SheetContent
+            side="bottom"
+            // #6 — la X por defecto del sheet queda ENTERRADA bajo este header sticky (sin z-index) →
+            // invisible e intappable en móvil. La suprimimos y ponemos una propia DENTRO del header,
+            // en el mismo contexto de apilamiento, con target de 44px (antes 28px, bajo el mínimo táctil).
+            showCloseButton={false}
+            className="border-brand-purple/10 max-h-[88vh] overflow-y-auto rounded-t-2xl border-t bg-white p-0 lg:hidden"
+          >
+            <SheetHeader className="border-brand-purple/10 sticky top-0 z-20 flex-row items-center justify-between border-b bg-white/95 px-4 py-3 backdrop-blur">
+              <SheetTitle className="text-brand-purple-dark text-base font-bold">
+                {texts.lienzo.sheetTitulo}
+              </SheetTitle>
+              <SheetClose asChild>
+                <button
+                  type="button"
+                  aria-label={texts.comun.cerrarPersonalizacion}
+                  className={CLOSE_X_CLASS + " -mr-2 size-11 shrink-0"}
+                >
+                  <X className="size-5" aria-hidden />
+                </button>
+              </SheetClose>
+            </SheetHeader>
+            {/* Reusa el mismo StudioSidebar — no se duplica el código.
               Debe recibir las MISMAS props que la instancia desktop (paridad:
               sin `predesigned` la galería de diseños no aparecía en móvil).
               Ola 2 (2026-10-26) — `density="compact"`: el sheet es full-width y
               las miniaturas crecían demasiado (~110px); grilla de 4 columnas,
               gaps y paddings menores SOLO acá (el aside desktop no cambia). */}
-          <div className="pb-6">
-            <StudioSidebar
-              store={store}
-              productSlug={product.slug}
-              productName={product.name}
-              productSku={product.sku}
-              productSizeCm={productConfig.sizeCm}
-              productShape={productConfig.shape}
-              allowText={allowText}
-              predesigned={predesigned}
-              facesPerUnit={facesPerUnit}
-              backOptional={backOptional}
-              density="compact"
-              templateNudgeSignal={templateNudgeAt}
-            />
-          </div>
-          {/* Ola 2 (2026-10-26) — «Listo» sticky: cierre explícito del sheet
+            <div className="pb-6">
+              <StudioSidebar
+                store={store}
+                productSlug={product.slug}
+                productName={product.name}
+                productSku={product.sku}
+                productSizeCm={productConfig.sizeCm}
+                productShape={productConfig.shape}
+                allowText={allowText}
+                predesigned={predesigned}
+                facesPerUnit={facesPerUnit}
+                backOptional={backOptional}
+                density="compact"
+                templateNudgeSignal={templateNudgeAt}
+              />
+            </div>
+            {/* Ola 2 (2026-10-26) — «Listo» sticky: cierre explícito del sheet
               (mismo patrón del sheet de estilo y del picker de fotos — antes el
               sheet de Personalizar era el único sin salida clara abajo). La X
               del header se conserva. */}
-          <div className="border-brand-purple/10 sticky bottom-0 z-20 mt-auto border-t bg-white px-4 py-3">
-            <SheetClose asChild>
-              <button
-                type="button"
-                className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
-              >
-                {texts.texto.estiloSheetListo}
-              </button>
-            </SheetClose>
-          </div>
-        </SheetContent>
-      </Sheet>
+            <div className="border-brand-purple/10 sticky bottom-0 z-20 mt-auto border-t bg-white px-4 py-3">
+              <SheetClose asChild>
+                <button
+                  type="button"
+                  className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+                >
+                  {texts.texto.estiloSheetListo}
+                </button>
+              </SheetClose>
+            </div>
+          </SheetContent>
+        </Sheet>
 
-      <StudioAssetPickerModal
-        isOpen={pickerRequest !== null}
-        slotIndex={pickerRequest?.slotIndex ?? null}
-        // Ola 17 — propósito del picker: foto principal o foto de perfil.
-        mode={pickerRequest?.purpose ?? "photo"}
-        // Ola 3 — con separadores 2 caras hay 2N slots de diseño (cara A/B por unidad).
-        totalSlots={liveSlotCount}
-        assets={modalAssets}
-        designId={modalDesignId}
-        ensureDesignId={ensureDesignIdForPicker}
-        predesigned={predesigned}
-        productSizeCm={productConfig.sizeCm}
-        productSlug={product.slug}
-        facesPerUnit={facesPerUnit}
-        onClose={() => setPickerRequest(null)}
-        onSelectAsset={handleAssetSelected}
-        onSelectAssetB={handleAssetBSelected}
-        onAssetUploaded={handleAssetUploaded}
-        getCachedPredesigned={getCachedPredesigned}
-        rememberPredesigned={rememberPredesigned}
-      />
+        <StudioAssetPickerModal
+          isOpen={pickerRequest !== null}
+          slotIndex={pickerRequest?.slotIndex ?? null}
+          // Ola 17 — propósito del picker: foto principal o foto de perfil.
+          mode={pickerRequest?.purpose ?? "photo"}
+          // Ola 3 — con separadores 2 caras hay 2N slots de diseño (cara A/B por unidad).
+          totalSlots={liveSlotCount}
+          assets={modalAssets}
+          designId={modalDesignId}
+          ensureDesignId={ensureDesignIdForPicker}
+          predesigned={predesigned}
+          productSizeCm={productConfig.sizeCm}
+          productSlug={product.slug}
+          facesPerUnit={facesPerUnit}
+          onClose={() => setPickerRequest(null)}
+          onSelectAsset={handleAssetSelected}
+          onSelectAssetB={handleAssetBSelected}
+          onAssetUploaded={handleAssetUploaded}
+          getCachedPredesigned={getCachedPredesigned}
+          rememberPredesigned={rememberPredesigned}
+        />
 
-      {/* 2026-10-19 — confirmación de «Borrar el diseño» (reset global de slots). */}
-      <StudioClearDesignModal
-        open={clearDesignOpen}
-        onConfirm={handleClearDesign}
-        onClose={() => setClearDesignOpen(false)}
-      />
+        {/* 2026-10-19 — confirmación de «Borrar el diseño» (reset global de slots). */}
+        <StudioClearDesignModal
+          open={clearDesignOpen}
+          onConfirm={handleClearDesign}
+          onClose={() => setClearDesignOpen(false)}
+        />
 
-      {/* PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito */}
-      <StudioPreviewModal
-        isOpen={previewModalOpen}
-        previewUrl={previewDataUrl}
-        // Fase 2 · item 2.2 — páginas por unidad para el pager de la modal
-        // (null/1 página = montaje único de siempre, sin navegación).
-        // PERF — páginas perezosas: la modal pide cada una al navegar a ella.
-        pages={previewPages}
-        onRequestPage={handleRequestPreviewPage}
-        // Generación del set de páginas: el pager resetea a la 1ª página solo
-        // cuando se regenera de verdad, no al cachear una página perezosa.
-        pagesGeneration={previewPagesGeneration}
-        productName={product.name}
-        // Ola 3 — en separadores la unidad física es la tira (2 caras): el conteo
-        // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de
-        // diseño (2N). Multi-unidad (2026-09-09): tiras/calendarios muestran las
-        // unidades vivas del diseño y sus piezas por unidad.
-        slotCount={isOrnament || liveIsStrip || isCalendarMonth ? liveUnitCount : livePhotoSlots}
-        slotsPerUnit={liveIsStrip || isCalendarMonth ? liveUnitSlots : undefined}
-        sizeCm={
-          isOrnament && productConfig.sizeCm && !/\bcm\b/i.test(productConfig.sizeCm)
-            ? `${productConfig.sizeCm} cm`
-            : productConfig.sizeCm
-        }
-        unitPrice={effectiveUnitPrice}
-        // 2026-11-07 (bug owner) — la modal refleja la promo por volumen
-        // (misma escala visible de la PDP); el servidor cobra lo mismo vía
-        // volumeUnitMultiplierForDesign.
-        volumeTiers={volumeTiers}
-        // 2026-09-22 — multiplicador del SERVIDOR (design-units): la variante
-        // puede YA ser el pack (separadores ×5 → ×1). La modal lo usa en vez
-        // del unitCount crudo para el total (bug: mostraba pack × N).
-        priceMultiplier={livePriceMultiplier}
-        // Piezas planas y bola dúplex: textos sin "doblado".
-        noFold={productConfig.noFold === true || isOrnament}
-        // Multi-unidad: el diseño YA contiene las unidades → qty 1 al carrito;
-        // el total de la modal = precio unitario × unidades.
-        unitCount={liveUnitCount}
-        // 2026-10-12 — sustantivo de la unidad para la línea de la modal
-        // ("3 separadores — cada uno con su propio diseño", nunca "N unidades").
-        unitNoun={unitNounPair}
-        isFinalizing={isFinalizingFlag}
-        errorMessage={previewError}
-        renderProgressLabel={
-          renderProgress
-            ? fillStudioText(texts.exportar.preparandoArchivos, {
-                hechas: renderProgress.done,
-                total: renderProgress.total,
-              })
-            : null
-        }
-        productKind={
-          isCalendarMonth
-            ? "calendar"
-            : isOrnament
-              ? "ornaments"
-              : facesPerUnit === 2
-                ? "bookmarks"
-                : liveIsStrip
-                  ? "strips"
-                  : // Fase 1A — SIN IMÁN (magnet === false) la modal dice "fichas",
-                    // nunca "imanes" (misma regla del helper resolveSlotNoun).
-                    liveMagnet === false
-                    ? "tiles"
-                    : "magnets"
-        }
-        calendarYear={selectedYear}
-        // Fase 2 · item 2.3 (2026-10-07) — desglose COMPLETO de la variante
-        // efectiva (describeVariantAttributes, mismo de name/letterset): imán,
-        // idioma, estilo, marco, forma… Se omiten conteos/tamaño porque el
-        // resumen propio de la modal ya los enuncia (ver preview-variant-label).
-        variantLabel={previewVariantLabel}
-        // Paquete C — fotos con aviso de calidad asignadas al diseño: la modal
-        // exige la aceptación explícita antes de habilitar el confirmar.
-        qualityWarnings={qualityWarnings}
-        onEdit={handleClosePreviewModal}
-        onConfirm={handleConfirmFinalize}
-      />
+        {/* PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito */}
+        <StudioPreviewModal
+          isOpen={previewModalOpen}
+          previewUrl={previewDataUrl}
+          // Fase 2 · item 2.2 — páginas por unidad para el pager de la modal
+          // (null/1 página = montaje único de siempre, sin navegación).
+          // PERF — páginas perezosas: la modal pide cada una al navegar a ella.
+          pages={previewPages}
+          onRequestPage={handleRequestPreviewPage}
+          // Generación del set de páginas: el pager resetea a la 1ª página solo
+          // cuando se regenera de verdad, no al cachear una página perezosa.
+          pagesGeneration={previewPagesGeneration}
+          productName={product.name}
+          // Ola 3 — en separadores la unidad física es la tira (2 caras): el conteo
+          // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de
+          // diseño (2N). Multi-unidad (2026-09-09): tiras/calendarios muestran las
+          // unidades vivas del diseño y sus piezas por unidad.
+          slotCount={isOrnament || liveIsStrip || isCalendarMonth ? liveUnitCount : livePhotoSlots}
+          slotsPerUnit={liveIsStrip || isCalendarMonth ? liveUnitSlots : undefined}
+          sizeCm={
+            isOrnament && productConfig.sizeCm && !/\bcm\b/i.test(productConfig.sizeCm)
+              ? `${productConfig.sizeCm} cm`
+              : productConfig.sizeCm
+          }
+          unitPrice={effectiveUnitPrice}
+          // 2026-11-07 (bug owner) — la modal refleja la promo por volumen
+          // (misma escala visible de la PDP); el servidor cobra lo mismo vía
+          // volumeUnitMultiplierForDesign.
+          volumeTiers={volumeTiers}
+          // 2026-09-22 — multiplicador del SERVIDOR (design-units): la variante
+          // puede YA ser el pack (separadores ×5 → ×1). La modal lo usa en vez
+          // del unitCount crudo para el total (bug: mostraba pack × N).
+          priceMultiplier={livePriceMultiplier}
+          // Piezas planas y bola dúplex: textos sin "doblado".
+          noFold={productConfig.noFold === true || isOrnament}
+          // Multi-unidad: el diseño YA contiene las unidades → qty 1 al carrito;
+          // el total de la modal = precio unitario × unidades.
+          unitCount={liveUnitCount}
+          // 2026-10-12 — sustantivo de la unidad para la línea de la modal
+          // ("3 separadores — cada uno con su propio diseño", nunca "N unidades").
+          unitNoun={unitNounPair}
+          isFinalizing={isFinalizingFlag}
+          errorMessage={previewError}
+          renderProgressLabel={
+            renderProgress
+              ? fillStudioText(texts.exportar.preparandoArchivos, {
+                  hechas: renderProgress.done,
+                  total: renderProgress.total,
+                })
+              : null
+          }
+          productKind={
+            isCalendarMonth
+              ? "calendar"
+              : isOrnament
+                ? "ornaments"
+                : facesPerUnit === 2
+                  ? "bookmarks"
+                  : liveIsStrip
+                    ? "strips"
+                    : // Fase 1A — SIN IMÁN (magnet === false) la modal dice "fichas",
+                      // nunca "imanes" (misma regla del helper resolveSlotNoun).
+                      liveMagnet === false
+                      ? "tiles"
+                      : "magnets"
+          }
+          calendarYear={selectedYear}
+          // Fase 2 · item 2.3 (2026-10-07) — desglose COMPLETO de la variante
+          // efectiva (describeVariantAttributes, mismo de name/letterset): imán,
+          // idioma, estilo, marco, forma… Se omiten conteos/tamaño porque el
+          // resumen propio de la modal ya los enuncia (ver preview-variant-label).
+          variantLabel={previewVariantLabel}
+          // Paquete C — fotos con aviso de calidad asignadas al diseño: la modal
+          // exige la aceptación explícita antes de habilitar el confirmar.
+          qualityWarnings={qualityWarnings}
+          onEdit={handleClosePreviewModal}
+          onConfirm={handleConfirmFinalize}
+        />
 
-      {/* M.3.b.UX.1 — FAB «Vista previa» mobile (visible solo <sm, fixed bottom-right) */}
-      <StudioFinalizeFab
-        store={store}
-        isPreviewBuilding={previewBuilding}
-        finalizeBlockReason={igFinalizeBlockReason}
-        // Cara B opcional (separadores): el guard exige solo las caras A.
-        backOptional={backOptional}
-        // Fase 1A — labels por slot para el popover de faltantes (móvil).
-        slotLabels={resolvedSlotLabels}
-        onFinalize={handleFinalize}
-      />
+        {/* M.3.b.UX.1 — FAB «Vista previa» mobile (visible solo <sm, fixed bottom-right) */}
+        <StudioFinalizeFab
+          store={store}
+          isPreviewBuilding={previewBuilding}
+          finalizeBlockReason={igFinalizeBlockReason}
+          // Cara B opcional (separadores): el guard exige solo las caras A.
+          backOptional={backOptional}
+          // Fase 1A — labels por slot para el popover de faltantes (móvil).
+          slotLabels={resolvedSlotLabels}
+          onFinalize={handleFinalize}
+        />
 
-      {/* M.3.b.UX.5 — Onboarding tutorial primera vez. Fase 2 · item 2.8 —
+        {/* M.3.b.UX.5 — Onboarding tutorial primera vez. Fase 2 · item 2.8 —
           tour POR PRODUCTO (features del lienzo + clave por superficie); el
           editor suprime el banner de gestos mientras está abierto. */}
-      <StudioOnboarding
-        slotNoun={slotNounPair.one}
-        surface={tourSurface}
-        onOpenChange={setOnboardingOpen}
-      />
+        <StudioOnboarding
+          slotNoun={slotNounPair.one}
+          surface={tourSurface}
+          onOpenChange={setOnboardingOpen}
+        />
 
-      {/* M.3.b.UX.v11/v12 — Banner de gestos. Auto-trigger 1ª vez cuando hay
+        {/* M.3.b.UX.v11/v12 — Banner de gestos. Auto-trigger 1ª vez cuando hay
         foto + abierto manualmente desde botón "?" del toolbar. */}
-      <StudioGesturesHintWrapper
-        store={store}
-        open={gesturesHintOpen}
-        persistent={gesturesHintPersistent}
-        // Item 2.8 — el tour por producto tapa la pantalla: sin auto-trigger
-        // del banner de gestos mientras está abierto.
-        suppressAutoTrigger={onboardingOpen}
-        onClose={() => {
-          setGesturesHintOpen(false);
-          setGesturesHintPersistent(false);
-          // Marca como visto al cerrar (tanto auto como manual close cuentan).
-          try {
-            window.localStorage.setItem(GESTURES_HINT_STORAGE_KEY, "true");
-          } catch {
-            // localStorage puede no estar disponible (incognito).
-          }
-        }}
-        onAutoTrigger={() => {
-          setGesturesHintPersistent(false);
-          setGesturesHintOpen(true);
-        }}
-      />
-      {/* M.3.b.UX.v13 (Lucy 2026-05-15) — Vista Previa eliminada. La preview
+        <StudioGesturesHintWrapper
+          store={store}
+          open={gesturesHintOpen}
+          persistent={gesturesHintPersistent}
+          // Item 2.8 — el tour por producto tapa la pantalla: sin auto-trigger
+          // del banner de gestos mientras está abierto.
+          suppressAutoTrigger={onboardingOpen}
+          onClose={() => {
+            setGesturesHintOpen(false);
+            setGesturesHintPersistent(false);
+            // Marca como visto al cerrar (tanto auto como manual close cuentan).
+            try {
+              window.localStorage.setItem(GESTURES_HINT_STORAGE_KEY, "true");
+            } catch {
+              // localStorage puede no estar disponible (incognito).
+            }
+          }}
+          onAutoTrigger={() => {
+            setGesturesHintPersistent(false);
+            setGesturesHintOpen(true);
+          }}
+        />
+        {/* M.3.b.UX.v13 (Lucy 2026-05-15) — Vista Previa eliminada. La preview
         compositada se hace solo al finalizar (snapshot pipeline). En el editor
         el cliente ya ve cada imán a tamaño físico real con su shape. */}
-    </div>
+      </div>
+    </StudioStoreContext.Provider>
   );
 }
 

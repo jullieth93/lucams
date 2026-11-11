@@ -30,4 +30,10 @@ describe("canvasSafeImageSrc", () => {
   it("el ancho de la imagen optimizada es parametrizable", () => {
     expect(canvasSafeImageSrc("https://x.co/a.png", 300)).toContain("&w=300&");
   });
+
+  it("URLs firmadas de Supabase Storage (/storage/v1/object/sign/) van directas sin pasar por /_next/image", () => {
+    const signedUrl =
+      "https://proj.supabase.co/storage/v1/object/sign/customer-uploads/u1/photo.webp?token=eyJ";
+    expect(canvasSafeImageSrc(signedUrl)).toBe(signedUrl);
+  });
 });

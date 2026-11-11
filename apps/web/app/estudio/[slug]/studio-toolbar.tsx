@@ -37,6 +37,8 @@ import {
   selectFilledSlotCount,
   selectIsComplete,
   selectMissingSlotIndexesKey,
+  selectPhotoDecodePending,
+  selectPhotoDecodeTotal,
   selectTotalSlotCount,
   type StudioStoreState,
 } from "./lib/store";
@@ -170,8 +172,25 @@ export function StudioToolbar({
   // En estado error el botón QUEDA habilitado: handleFinalize hace flushSaves,
   // que reintenta el guardado al pulsar (el indicador de error sigue visible).
   const isSaving = autoSaveStatus.kind === "saving";
+  // 2026-11-10 — compuerta de DECODIFICACIÓN (bug STG bola navideña): la subida
+  // termina al fijar assetUrl, pero la foto tarda un tramo más en decodificarse
+  // en el lienzo (re-descarga de la signed URL al volver del carrito, celular
+  // lento con N fotos). Un bake (preview/3D) tomado en esa ventana sale con las
+  // caras VACÍAS. «Ver diseño» se bloquea (estado ocupado con progreso) hasta
+  // que todas las fotos asignadas decodificaron — los selectores son primitivos.
+  const photoDecodePending = useStore(store, selectPhotoDecodePending);
+  const photoDecodeTotal = useStore(store, selectPhotoDecodeTotal);
+  // El decode solo pone el botón OCUPADO cuando el diseño ya está completo:
+  // con fotos faltantes el estado dominante sigue siendo el bloqueo por
+  // faltantes (tooltip + popover «qué falta» intactos).
+  const photosDecoding = photoDecodePending > 0 && complete && !finalizeBlockReason;
   const canFinalize =
-    complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding && !isSaving;
+    complete &&
+    !finalizeBlockReason &&
+    !isFinalizing &&
+    !isPreviewBuilding &&
+    !isSaving &&
+    !photosDecoding;
   // Fase 1A — detalle de faltantes para el popover de «Vista previa» (fotos por
   // slot con su label + textos IG por unidad). null cuando no falta nada.
   const missing = useFinalizeMissing(store, backOptional, slotLabels);
@@ -294,6 +313,9 @@ export function StudioToolbar({
               isFinalizing={isFinalizing}
               isPreparing={isPreviewBuilding}
               isSaving={isSaving}
+              photosDecoding={photosDecoding}
+              photosPending={photoDecodePending}
+              photosTotal={photoDecodeTotal}
               canFinalize={canFinalize}
               disabledTooltip={disabledTooltip}
               missing={missing}
@@ -587,6 +609,9 @@ export function FinalizeButton({
   isFinalizing,
   isPreparing = false,
   isSaving = false,
+  photosDecoding = false,
+  photosPending = 0,
+  photosTotal = 0,
   canFinalize,
   disabledTooltip,
   missing = null,
@@ -600,6 +625,13 @@ export function FinalizeButton({
    *  En estado de ERROR del auto-save el botón queda habilitado: el finalize
    *  hace flushSaves, que reintenta el guardado al pulsar. */
   isSaving?: boolean;
+  /** 2026-11-10 — fotos asignadas aún decodificando en el lienzo (compuerta
+   *  anti-bake-vacío). Ocupado CON PROGRESO «Cargando tus fotos… n/N», mismo
+   *  patrón busy que el guardado: el botón no muere en silencio. Los callers
+   *  solo la activan con el diseño completo (con faltantes manda el popover). */
+  photosDecoding?: boolean;
+  photosPending?: number;
+  photosTotal?: number;
   canFinalize: boolean;
   disabledTooltip?: string;
   /** Fase 1A — detalle de faltantes para el popover (null/undefined = sin popover). */
@@ -608,7 +640,7 @@ export function FinalizeButton({
   variant: "inline" | "fab";
 }) {
   const texts = useStudioTexts();
-  const busy = isFinalizing || isPreparing || isSaving;
+  const busy = isFinalizing || isPreparing || isSaving || photosDecoding;
   // Mientras procesa, el nombre audible se mantiene en la acción real (no en
   // el de "bloqueado"): el botón está OCUPADO, no inhabilitado por faltantes.
   // WCAG 2.5.3 (nightly 2026-10-31): bloqueado, el nombre audible empieza por
@@ -617,13 +649,19 @@ export function FinalizeButton({
     canFinalize || busy
       ? texts.lienzo.finalizeAria
       : `${texts.lienzo.finalizeBtn}: ${disabledTooltip ?? texts.lienzo.finalizeAriaBloqueado}`;
-  // Texto del estado ocupado: preparando la vista previa o guardando tras
-  // confirmar (inline lleva el texto largo; el FAB, el corto compartido).
+  // Texto del estado ocupado: preparando la vista previa, fotos decodificando
+  // (2026-11-10 — con progreso n/N) o guardando tras confirmar (inline lleva
+  // el texto largo; el FAB, el corto compartido).
   const busyText = isPreparing
     ? texts.comun.preparando
-    : variant === "fab"
-      ? texts.comun.guardando
-      : texts.lienzo.finalizeGuardando;
+    : photosDecoding
+      ? fillStudioText(texts.lienzo.cargandoFotos, {
+          listas: photosTotal - photosPending,
+          total: photosTotal,
+        })
+      : variant === "fab"
+        ? texts.comun.guardando
+        : texts.lienzo.finalizeGuardando;
   const label = busy ? (
     <>
       <Loader2
@@ -802,8 +840,20 @@ export function StudioFinalizeFab({
   );
   const texts = useStudioTexts();
   const complete = backOptional ? total > 0 && missingFaceA === 0 : completeAll;
+  // 2026-11-10 — el FAB comparte la compuerta de decodificación del toolbar
+  // inline (bug STG bola navideña: bake vacío si se abre antes del decode).
+  const photoDecodePending = useStore(store, selectPhotoDecodePending);
+  const photoDecodeTotal = useStore(store, selectPhotoDecodeTotal);
+  // Misma regla que el toolbar inline: el decode ocupa el FAB solo con el
+  // diseño ya completo (con faltantes manda el popover «qué falta»).
+  const photosDecoding = photoDecodePending > 0 && complete && !finalizeBlockReason;
   const canFinalize =
-    complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding && !isSaving;
+    complete &&
+    !finalizeBlockReason &&
+    !isFinalizing &&
+    !isPreviewBuilding &&
+    !isSaving &&
+    !photosDecoding;
   // Fase 1A — mismo detalle de faltantes del toolbar, para la variante móvil.
   const missing = useFinalizeMissing(store, backOptional, slotLabels);
   const disabledTooltip = !complete
@@ -816,6 +866,9 @@ export function StudioFinalizeFab({
       isFinalizing={isFinalizing}
       isPreparing={isPreviewBuilding}
       isSaving={isSaving}
+      photosDecoding={photosDecoding}
+      photosPending={photoDecodePending}
+      photosTotal={photoDecodeTotal}
       canFinalize={canFinalize}
       disabledTooltip={disabledTooltip}
       missing={missing}

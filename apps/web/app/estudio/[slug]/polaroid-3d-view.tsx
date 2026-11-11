@@ -4,12 +4,18 @@
  * PolaroidView3D — escena "abanico/pila de polaroids" sobre una mesa de madera clara
  * (catálogo WhatsApp 2026-07-22: la Polaroid es producto FOCO → merecía su propia escena 3D).
  *
- * 4–6 tarjetas polaroid (proporción real del producto, ej. 7.5×10 cm) dispersas con
- * rotaciones naturales: una pila de 3 al centro y 2 sueltas a los lados. La de ARRIBA de la pila
- * lleva el primer diseño del cliente; las demás rotan por el resto (mismo mecanismo de texturas
- * que nevera/mural: snapshots Magnet3D recortados a su silueta). La textura ya contiene el diseño
- * completo (foto + marco/borde + texto), por lo que la geometría 3D es una tarjeta física del
- * tamaño real mapeada 1:1 con la textura.
+ * 2026-11-10 (owner) — la escena REFLEJA la cantidad comprada: la composición
+ * crece con los packs (pila de hasta 3 al centro + hasta 6 sueltas alrededor,
+ * tope 9 tarjetas) y un badge sobre la mesa enuncia el total («2 packs · 12
+ * unidades»). Antes era una composición fija de 5 tarjetas para cualquier
+ * cantidad (2 packs = 12 diseños se veían como 5).
+ *
+ * Tarjetas polaroid (proporción real del producto, ej. 7.5×10 cm) dispersas con
+ * rotaciones naturales. La de ARRIBA de la pila lleva el primer diseño del
+ * cliente; las demás rotan por el resto (mismo mecanismo de texturas que
+ * nevera/mural: snapshots Magnet3D recortados a su silueta). La textura ya
+ * contiene el diseño completo (foto + marco/borde + texto), por lo que la
+ * geometría 3D es una tarjeta física del tamaño real mapeada 1:1 con la textura.
  *
  * Mesa de madera procedural (vetas + tablas + nudos, canvas 2D). Sombras de contacto suaves
  * horneadas una vez (frames=1: la escena es estática; el autoRotate mueve la CÁMARA, no las
@@ -26,6 +32,8 @@ import { FitCameraPolar } from "./fit-camera-polar";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { StudioEnvironment } from "./studio-3d-environment";
 import { getWoodTexture } from "./lib/procedural-textures";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
 import type { Magnet3D } from "./fridge-3d-view";
 
 // Escala del mundo 3D: 0.25 unidades por cm (coincide con la escala de libro, suficiente para
@@ -119,18 +127,45 @@ function Cards({ magnets, sizeCm }: { magnets: Magnet3D[]; sizeCm?: string }) {
 
   const { cardW, cardH, cardT } = dims;
 
-  // Pila de 3 al centro (la de arriba = primer diseño del cliente) + 2 sueltas a los lados.
-  // Las posiciones escalan con el tamaño físico para que la pila se vea real en cualquier variante.
+  // 2026-11-10 (owner) — la composición CRECE con la cantidad comprada (antes
+  // era fija: 5 tarjetas aunque el cliente llevara 4 packs). Pila de hasta 3 al
+  // centro (arriba = primer diseño) + hasta 6 sueltas alrededor; tope 9
+  // tarjetas (más allá la mesa se satura y el badge del total ya lo enuncia).
   const specs = useMemo<CardSpec[]>(() => {
     const at = (i: number) => magnets[((i % magnets.length) + magnets.length) % magnets.length]!;
     const lift = cardT + 0.006;
-    return [
-      { design: at(2), position: [-cardW * 0.75, lift, cardH * 0.35], spin: -0.18 },
-      { design: at(1), position: [cardW * 0.65, lift * 2, -cardH * 0.25], spin: 0.12 },
-      { design: at(0), position: [0, lift * 3, 0], spin: -0.05 }, // arriba: el diseño principal
-      { design: at(3), position: [-cardW * 2.2, lift, -cardH * 0.15], spin: 0.42 },
-      { design: at(4), position: [cardW * 2.1, lift, cardH * 0.55], spin: -0.32 },
+    const pileCount = Math.min(3, magnets.length);
+    const pileSpins = [-0.18, 0.12, -0.05];
+    // La de ARRIBA de la pila (índice de apilado más alto) lleva el primer diseño.
+    const pileOffsets: Array<[number, number]> = [
+      [-cardW * 0.75, cardH * 0.35],
+      [cardW * 0.65, -cardH * 0.25],
+      [0, 0],
     ];
+    const specs: CardSpec[] = [];
+    for (let i = 0; i < pileCount; i++) {
+      const [ox, oz] = pileOffsets[i]!;
+      specs.push({
+        design: at(pileCount - 1 - i),
+        position: [ox, lift * (i + 1), oz],
+        spin: pileSpins[i]!,
+      });
+    }
+    // Sueltas alrededor de la pila (hasta 6), con los diseños siguientes.
+    const loose: Array<[number, number, number]> = [
+      [-cardW * 2.2, -cardH * 0.15, 0.42],
+      [cardW * 2.1, cardH * 0.55, -0.32],
+      [-cardW * 1.5, cardH * 1.25, 0.2],
+      [cardW * 1.6, -cardH * 1.15, -0.15],
+      [0, -cardH * 1.7, 0.3],
+      [-cardW * 3.2, cardH * 0.85, -0.4],
+    ];
+    const looseCount = Math.min(loose.length, magnets.length - pileCount, 9 - pileCount);
+    for (let i = 0; i < looseCount; i++) {
+      const [x, z, spin] = loose[i]!;
+      specs.push({ design: at(pileCount + i), position: [x, lift, z], spin });
+    }
+    return specs;
   }, [magnets, cardW, cardH, cardT]);
   const textures = useTexture(useMemo(() => specs.map((s) => s.design.dataUrl), [specs]));
   const list = useMemo(() => (Array.isArray(textures) ? textures : [textures]), [textures]);
@@ -160,9 +195,10 @@ function Scene({ magnets, sizeCm }: { magnets: Magnet3D[]; sizeCm?: string }) {
   }, [sizeCm]);
   const { cardW, cardH } = dims;
 
-  // Spread de la escena: la pila central + 2 tarjetas a los lados. Se usa para encuadrar la cámara
-  // y dimensionar la mesa de madera.
-  const spreadHalfW = cardW * 3.0;
+  // Spread de la escena: la pila central + las sueltas alrededor (hasta ±3.2
+  // cardW con la composición que crece por packs, 2026-11-10). Se usa para
+  // encuadrar la cámara y dimensionar la mesa de madera.
+  const spreadHalfW = cardW * 3.8;
   const spreadHalfH = cardH * 1.2;
   const tableSize = Math.max(20, spreadHalfW * 3.5, spreadHalfH * 3.5);
   const shadowScale = Math.max(10, spreadHalfW * 2.4, spreadHalfH * 2.4);
@@ -241,6 +277,7 @@ export default function PolaroidView3D({
   magnets: Magnet3D[];
   sizeCm?: string;
 }) {
+  const texts = useStudioTexts();
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -248,22 +285,40 @@ export default function PolaroidView3D({
       </div>
     );
   }
+  // 2026-11-10 (owner) — badge con el total comprado: la escena muestra hasta 9
+  // tarjetas, así que con 2+ packs el conteo exacto va escrito (la Polaroid se
+  // vende en packs de 6; si el conteo no es múltiplo — diseño legacy — solo
+  // enunciamos las unidades).
+  const total = magnets.length;
+  const packs = total % 6 === 0 ? total / 6 : null;
+  const totalLabel =
+    packs !== null
+      ? fillStudioText(texts.escenas.polaroidTotal, {
+          packs: `${packs} ${packs === 1 ? "pack" : "packs"}`,
+          n: total,
+        })
+      : `${total} unidades`;
   return (
-    <Canvas
-      shadows
-      // dpr hasta 2 también en táctil (2026-10-05): con el zoom cercano nuevo
-      // (minDistance 4 → 3.0) el cap 1.5 se veía borroso en retina móvil.
-      // Trade-off rendimiento: ×1.78 más píxeles/frame en GPU móvil — aceptable
-      // en escena estática con sombra horneada.
-      dpr={[1, 2]}
-      camera={{ position: [0, 5.2, 7.5], fov: 42 }}
-      gl={{ preserveDrawingBuffer: false, antialias: true }}
-      style={{ width: "100%", height: "100%" }}
-    >
-      <color attach="background" args={["#EBDFCF"]} />
-      <Suspense fallback={null}>
-        <Scene magnets={magnets} sizeCm={sizeCm} />
-      </Suspense>
-    </Canvas>
+    <div className="relative h-full w-full">
+      <Canvas
+        shadows
+        // dpr hasta 2 también en táctil (2026-10-05): con el zoom cercano nuevo
+        // (minDistance 4 → 3.0) el cap 1.5 se veía borroso en retina móvil.
+        // Trade-off rendimiento: ×1.78 más píxeles/frame en GPU móvil — aceptable
+        // en escena estática con sombra horneada.
+        dpr={[1, 2]}
+        camera={{ position: [0, 5.2, 7.5], fov: 42 }}
+        gl={{ preserveDrawingBuffer: false, antialias: true }}
+        style={{ width: "100%", height: "100%" }}
+      >
+        <color attach="background" args={["#EBDFCF"]} />
+        <Suspense fallback={null}>
+          <Scene magnets={magnets} sizeCm={sizeCm} />
+        </Suspense>
+      </Canvas>
+      <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#3D2E5C]/85 px-3.5 py-1.5 text-xs font-bold whitespace-nowrap text-white shadow-md">
+        {totalLabel}
+      </div>
+    </div>
   );
 }

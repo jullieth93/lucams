@@ -136,7 +136,7 @@ export function PhoneInput({
           aria-describedby={error && id ? `${id}-error` : undefined}
           onChange={(e) => emit(e.target.value.replace(/\D/g, "").slice(0, 15), dial)}
           onBlur={onBlur}
-          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 bg-white"
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 min-w-0 flex-1 bg-white"
         />
       </div>
       {/* Lo que valida/persiste el server: indicativo + dígitos nacionales. */}

@@ -20,16 +20,20 @@
 
 | Ambiente  | Infraestructura                                                                                | Estado operativo actual                                                                                                                         |
 | --------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **LOCAL** | Supabase en Podman (`:54321`/`:54322`/`:54324`) + Next dev (`:4000` vía `make local-up`)       | Operativo; `make db-local-seed` 100 % idempotente; 3 crons SQL activos                                                                          |
+| **LOCAL** | Supabase en Podman (`:54321`/`:54322`/`:54324`) + Next dev (`:4000` vía `make local-up`)       | Operativo en modo **`full`** homologado (`ADR-203`); `make db-local-seed` 100 % idempotente; 3 crons SQL activos                                |
 | **STG**   | `develop` → Vercel Preview (`VERCEL_BYPASS_TOKEN`) + Supabase STG (`mjbdiqdkykhsixvqlrrp`)     | Operativo; aloja `uptime-monitor-prd` (12 jobs `pg_cron`, incluido `lucams-fiscal-watch` de la mig `055`); reset limpio vía `make stg-reset`    |
 | **PRD**   | `production` → `lucamsshop.com` en Vercel Pro (`iad1`) + Supabase PRD (`zxkucphbsfygakgxcnik`) | **En producción (`full`)**; 17 jobs `pg_cron` (incluidos `lucams-fiscal-watch` y `lucams-lifecycle`) + backups diarios GPG (DB + Storage) en R2 |
 
 ### Excepciones deliberadas de homologación (`ADR-099`, `ADR-121`, `ADR-126`)
 
 - **Catálogo y esquema (`scripts/diag-stg/homologacion.sh`):** migraciones, categorías, ocasiones,
-  plantillas, lettersets, redirects, `168/168` campos CMS y 22 variantes `-NOMAG` homologados.
-  `nombre-personalizado` está archivado en PRD; `set-fotoimanes-circulares` y `set-fotoimanes-corazon`,
-  en los 3 ambientes. El stock real no se sincroniza.
+  plantillas, lettersets, redirects, `168/168` campos CMS y variantes `-NOMAG` homologados.
+  **Catálogo ACTIVO de referencia (`ADR-203`, owner 2026-11-11): los 8 activos de PRD +
+  `bola-navidena-personalizada` (9 activos) en los 3 ambientes**; el resto queda pausado en STG/DEV
+  y las categorías no referencia archivadas como en PRD. Cuadrados tiene sus 12 gemelas `-NOMAG`
+  sembradas **inactivas** (listas para toggle admin). `nombre-personalizado` está archivado en PRD;
+  `set-fotoimanes-circulares` y `set-fotoimanes-corazon`, en los 3 ambientes. El stock real no se
+  sincroniza.
 - **Crons y secretos:** `uptime-monitor-prd` solo en STG; los 5 crons de correo apagados en STG por
   `CRON_JOBS_DISABLED` y activos en PRD; `lucams-lifecycle` y Resend en ambos, con `DRY_RUN` en STG.
   `AVEONLINE_WEBHOOK_SECRET` solo en PRD; `CRON_JOBS_DISABLED` y `VERCEL_BYPASS_TOKEN` solo en STG.
@@ -51,17 +55,26 @@
 
 ### Estudio 2D/3D y Producción 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md))
 
-- Konva multi-unidad (`ADR-167`/`173`), derivados WebP ≤800 px, biblioteca «Mis fotos», auto-fill y
-  editores de letras/nombre + IA. **10 escenas 3D** + `CalendarCardFocus`, filtrado `-NOMAG` y reverso
-  «Lucams» (`ADR-190`). Bola A/B obligatoria en UNA esfera, argolla transparente, moño exterior y 480
-  partículas; selector de dos caras por capacidad real (`ADR-201`). Mini libros con carátula extendida.
-- **Nuevas experiencias en LOCAL y STG (`ADR-199`/`200`/`201`):** Bola Navideña (inserto dúplex
-  plano de 8 cm) y Mini Libros (carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán), con
-  plantillas, prediseñados, unidades libres y descuentos físicos. La bola usa previews A/B sin doblez
-  ni taxonomía de separadores en todo el ciclo (máx. 25). Hay 2 productos activos, 5 variantes, 7
-  plantillas propias (18 activas) y 20 prediseñados: **$10.000 c/u**, **3 × $27.000**, **5 × $40.000**,
-  paquete **8 × 8 × 8 cm / 200 g**. La bola ofrece solo la plantilla «Foto circular» (owner
-  2026-11-07: nieve/luces/reno archivadas por básicas; viene un diseño más elaborado). PRD intacto.
+- Konva multi-unidad (`ADR-167`/`173`), derivados WebP ≤800 px, `HTMLImageElement` por slot, lazy-mount
+  `> 6` slots, `StudioStoreContext` y motor Canvas2D (`renderSlotToDataUrl2D` en `<canvas>` compartido +
+  refresco de firmas y activos propios al editar desde `/carrito`), «Mis fotos», auto-fill y letras + IA.
+  **10 escenas 3D** + `CalendarCardFocus`, filtrado `-NOMAG` y reverso «Lucams» (`ADR-190`). Bola A/B
+  en UNA esfera, argolla transparente, moño exterior y 480 partículas; dos caras por capacidad (`ADR-201`).
+  Mini libros con carátula extendida.
+- **Madurez de ciclo completo (`ADR-202`, owner 2026-11-10):** tiras photobooth compuestas como tira
+  completa para imprenta (`composePhotoStrips` + `metadata.photoStrips`), previews de packs en grilla
+  balanceada 3×2 (`packGrid` + partición por pack), «Mis fotos»/auto-fill sin prediseñados
+  (`fromGallery`), colapso de secciones por unidad unificado, escena 3D Polaroid con conteo de packs,
+  bloque «Ahorra llevando más» unificado en toda la PDP (`VolumeTiersNote` + escala derivada de packs),
+  `magnet: true` explícito en Polaroid/Cuadrados, calendario renombrado «Calendario Set 12 Tarjetas»,
+  CTA final de portada hacia `/empresas-y-eventos` (`home.cta.b2b-label`) y embudo B2B desde 25 unidades.
+- **Bola Navideña y Mini Libros (`ADR-199`/`200`/`201` + `ADR-203`):** Bola Navideña (inserto dúplex
+  plano de 8 cm) **activa en los 3 ambientes** con 2 variantes — Sin imán **$10.000** y Con imán
+  **$11.000** (+$1.000; los 2 diseños van imantados cada uno) — y Mini Libros (carátulas 7,1 × 5 y
+  5 × 2,5 cm, lomo 0,5 cm, con/sin imán) **inactivos** fuera del catálogo de referencia. La bola usa
+  previews A/B sin doblez ni taxonomía de separadores en todo el ciclo (máx. 25) y ofrece solo la
+  plantilla «Foto circular» (nieve/luces/reno archivadas). Promos a nivel producto: **3 × $27.000**,
+  **5 × $40.000** (aplican a ambas variantes); paquete **8 × 8 × 8 cm / 200 g**.
 - Auto-save serial con `clientRev` (`STALE_REVISION`), retomador `[STU-02]` para clientes e
   invitados, previews limpios (`ADR-191`) en bucket privado `design-previews` vía
   `/api/design-preview/*` (`LUC-SEC-001`) con `DesignPreviewDialog` paginado (`PagedPreviewThumb`,
@@ -90,6 +103,7 @@
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
     consentimiento + embudo `FunnelEventDaily`, **20 procesos programados** y **backups diarios GPG de
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.
+- **E2E administrativo:** `loginAdminWithTotp` espera `load` y reintenta el diligenciamiento con aserciones de valores antes del MFA, evitando la carrera de hidratación en formularios controlados.
 - **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` con **44 guías**, búsqueda
   RBAC, 8 onboarding y recorridos opcionales; progreso/retroalimentación por usuario y cobertura Admin.
 - **Lifecycle Journeys (`ADR-198`):** `/admin/lifecycle` con consentimiento versionado, interruptor/límites,

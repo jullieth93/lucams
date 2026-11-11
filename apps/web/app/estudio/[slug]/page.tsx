@@ -12,6 +12,7 @@
  */
 
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { StudioEditorLoader } from "./studio-editor-loader";
 import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
@@ -27,6 +28,7 @@ import {
   getOwnedDesign,
   cloneDesignForEdit,
 } from "@/features/personalization/service";
+import { extractCanvasReferencedAssetIds } from "@/features/personalization/canvas-remap";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { declaresUnits, unitCountOf } from "@/features/personalization/design-units";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
@@ -117,7 +119,11 @@ export default async function EstudioPage({
   params: Params;
   searchParams: SearchParams;
 }) {
-  const [{ slug }, sp] = await Promise.all([params, searchParams]);
+  const [{ slug }, sp, reqHeaders] = await Promise.all([params, searchParams, headers()]);
+  const isPrefetchRequest =
+    reqHeaders.get("next-router-prefetch") === "1" ||
+    Boolean(reqHeaders.get("purpose")?.toLowerCase().includes("prefetch")) ||
+    Boolean(reqHeaders.get("sec-purpose")?.toLowerCase().includes("prefetch"));
   const product = await getStorefrontProductBySlug(slug);
   if (!product) notFound();
   // Nota: NO bloqueamos por kind===NONE aquí. Un producto NONE con marcador `letterSet`
@@ -630,7 +636,10 @@ export default async function EstudioPage({
     // diseño ya se finalizó (p.ej. en otro dispositivo) → draft nuevo abajo y
     // el boot LIMPIA el marcador huérfano (2026-10-13), en vez de clonar una
     // copia sorpresa.
-    if (design && design.status === "READY" && sp.resume !== "1") {
+    // Un prefetch de Next.js Router es de solo lectura: jamás debe mutar BD ni
+    // clonar diseños READY (lo que además disparaba la poda de borradores antes de
+    // que el cliente tocara «Editar»).
+    if (design && design.status === "READY" && sp.resume !== "1" && !isPrefetchRequest) {
       const clone = await cloneDesignForEdit(sp.designId, owner);
       if (clone) {
         replacesCartDesignId = sp.designId;
@@ -660,10 +669,27 @@ export default async function EstudioPage({
       initialDesignId = design.id;
       initialDesignCanvas = design.canvasData as unknown as CanvasData;
       initialDesignTemplateId = design.templateId ?? null;
-      // Hidratar DesignAssets existentes con signed URLs refrescadas
+      const referencedAssetIds = extractCanvasReferencedAssetIds(initialDesignCanvas);
+      const ownerScope = owner.customerId
+        ? { customerId: owner.customerId }
+        : owner.sessionId
+          ? { customerId: null, sessionId: owner.sessionId }
+          : null;
+      // Hidratar DesignAssets existentes con signed URLs refrescadas (incluidos
+      // assets referenciados desde otros diseños del mismo dueño vía «Mis fotos»).
       const dbAssets = await prisma.designAsset.findMany({
-        where: { designId: design.id },
-        select: { id: true, storageUrl: true, canvasPath: true, width: true, height: true },
+        where:
+          ownerScope && referencedAssetIds.length > 0
+            ? { OR: [{ designId: design.id }, { id: { in: referencedAssetIds }, ...ownerScope }] }
+            : { designId: design.id },
+        select: {
+          id: true,
+          storageUrl: true,
+          canvasPath: true,
+          width: true,
+          height: true,
+          galleryImageId: true,
+        },
       });
       initialDesignAssets = await Promise.all(
         dbAssets.map(async (a) => ({
@@ -674,6 +700,9 @@ export default async function EstudioPage({
           canvasUrl: a.canvasPath ? await refreshCustomerUploadSignedUrl(a.canvasPath) : null,
           width: a.width,
           height: a.height,
+          // 2026-11-10 — los assets nacidos de prediseñados NO son «Mis fotos»
+          // (quedan fuera del panel y del auto-fill; los slots los conservan).
+          ...(a.galleryImageId ? { fromGallery: true } : {}),
         })),
       );
     }
@@ -891,16 +920,32 @@ async function loadOwnerLibraryAssets(params: {
     where: {
       ...params.ownerFilter,
       createdAt: { gte: sevenDaysAgo },
+      // 2026-11-10 (owner) — los assets nacidos de prediseñados NUNCA entran a
+      // la biblioteca «Mis fotos»: sin este filtro, un prediseño aplicado en un
+      // producto/tamaño se sugería en «Llenar slots con mis fotos» de otros
+      // tamaños/estudios (bug de contaminación cruzada).
+      galleryImageId: null,
       ...(params.excludeIds.length > 0 ? { id: { notIn: params.excludeIds } } : {}),
-      OR: [{ designId: null }, { design: { productId: params.productId, status: "DRAFT" } }],
+      OR: [
+        { designId: null },
+        { design: { productId: params.productId, status: { in: ["DRAFT", "READY"] } } },
+      ],
     },
     orderBy: { createdAt: "asc" },
-    take: 60,
+    take: 80,
     select: { id: true, storageUrl: true, canvasPath: true, width: true, height: true },
   });
   if (libraryRows.length === 0) return [];
+  // Deduplicar por storageUrl (los clones READY→DRAFT y re-usos de «Mis fotos»
+  // crean filas propias compartiendo bytes para preservar retención independiente).
+  const seenStorageUrls = new Set<string>();
+  const uniqueRows = libraryRows.filter((row) => {
+    if (seenStorageUrls.has(row.storageUrl)) return false;
+    seenStorageUrls.add(row.storageUrl);
+    return true;
+  });
   return Promise.all(
-    libraryRows.map(async (a) => ({
+    uniqueRows.slice(0, 60).map(async (a) => ({
       id: a.id,
       signedUrl: await refreshCustomerUploadSignedUrl(a.storageUrl),
       canvasUrl: a.canvasPath ? await refreshCustomerUploadSignedUrl(a.canvasPath) : null,

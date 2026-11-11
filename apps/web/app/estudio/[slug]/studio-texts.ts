@@ -81,6 +81,14 @@ export type StudioTexts = {
     finalizePopoverFotos: string;
     finalizePopoverTextos: string;
     finalizeGuardando: string;
+    /** 2026-11-10 — compuerta de decodificación: «Ver diseño»/«Ver en tu
+     *  espacio» ocupados mientras las fotos asignadas decodifican en el lienzo
+     *  (la subida termina antes que el decode). {listas}/{total} = progreso. */
+    cargandoFotos: string;
+    /** 2026-11-10 — overlay del slot con foto asignada AÚN decodificando (≠
+     *  slot vacío): evita la lectura "mi diseño desapareció" al volver del
+     *  carrito o en celulares lentos. */
+    fotoCargando: string;
     /** Paquete C (2026-10-02) — chip resumen de avisos de calidad junto a
      *  «Vista previa» (toolbar). {n} = fotos asignadas con aviso. */
     calidadChipTexto: string;
@@ -705,6 +713,10 @@ export type StudioTexts = {
     hintMouse: string;
     loadingNevera: string;
     loadingTablero: string;
+    /** 2026-11-10 (owner) — la escena Polaroid refleja la cantidad comprada:
+     *  badge con el total ("2 packs · 12 unidades"). {packs} ya trae la
+     *  palabra «pack/packs», {n} es el conteo de tarjetas. */
+    polaroidTotal: string;
     loadingPolaroid: string;
     loadingLibro: string;
     regaloEtiqueta: string;
@@ -837,6 +849,9 @@ export type StudioTexts = {
     calMesesTitulo: string;
     calMesesResumen: string;
     calMesesToggleAria: string;
+    /** 2026-11-10 (owner) — el colapso por unidad se UNIFICA a todos los
+     *  estudios con sets/packs/tiras (no solo calendario): aria genérico. */
+    unidadToggleAria: string;
     /**
      * Modal de confirmación: línea de unidades del diseño (se muestra siempre
      * que el modelo multi-unidad está activo, también con 1 unidad).
@@ -1006,6 +1021,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     finalizePopoverFotos: "Fotos por cargar:",
     finalizePopoverTextos: "Textos por completar:",
     finalizeGuardando: "Guardando diseño...",
+    // 2026-11-10 — compuerta de decodificación de fotos (bug STG bola navideña:
+    // bakes vacíos al pulsar 3D/«Ver diseño» antes de que el lienzo decodifique).
+    cargandoFotos: "Cargando tus fotos… {listas} de {total}",
+    fotoCargando: "Cargando tu foto…",
     // Paquete C (2026-10-02) — chip resumen de avisos de calidad junto a «Vista previa».
     calidadChipTexto: "{n} por revisar",
     calidadChipAria: "{n} fotos tienen avisos de calidad. Click para ver cuáles son.",
@@ -1535,6 +1554,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     loadingNevera: "Cargando la nevera 3D…",
     loadingTablero: "Cargando tu tablero 3D…",
     loadingPolaroid: "Cargando tus polaroids 3D…",
+    polaroidTotal: "{packs} · {n} unidades",
     loadingLibro: "Cargando el libro 3D…",
     regaloEtiqueta: "Para ti",
     calTitulo: "Tarjeta {n} de {total}",
@@ -1646,6 +1666,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     calMesesTitulo: "Tus meses",
     calMesesResumen: "{filled} de {total} meses con foto",
     calMesesToggleAria: "Mostrar u ocultar los meses del calendario",
+    unidadToggleAria: "Mostrar u ocultar las piezas de esta unidad",
     modalUnidades: "{n} {sustantivo} — cada {uno} con su propio diseño",
     descTiras:
       "Esta es la vista previa de las {n} tiras que vas a recibir — cada una con {m} fotos.",

@@ -457,6 +457,15 @@ export type StudioAsset = {
    * decir "qué falló" sin re-analizar el mensaje. undefined = no validada.
    */
   validationChecks?: { resolution: boolean; brightness: boolean; blur: boolean };
+  /**
+   * 2026-11-10 (owner) — el asset nació de un PREDISEÑADO de galería
+   * (DesignAsset.galleryImageId sellado en el server), no de una foto del
+   * cliente. «Mis fotos» y el auto-fill «Llenar slots con mis fotos» lo
+   * EXCLUYEN: sin la marca, un prediseño aplicado en un producto/tamaño se
+   * sugería en los estudios de otros tamaños (bug de contaminación cruzada).
+   * El asset sigue existiendo en el store porque los slots lo referencian.
+   */
+  fromGallery?: boolean;
 };
 
 /**

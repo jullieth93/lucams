@@ -454,6 +454,290 @@ test("bola dúplex: A/B en una esfera, cara B obligatoria y arrastre táctil o m
   expect(canvas.slots.every((slot) => Boolean(slot.assetId))).toBe(true);
 });
 
+test("bola navideña (5 bolas): editar desde /carrito conserva las fotos reales en 3D y Ver diseño (Bola 1 y Bola 5)", async ({
+  anonPage,
+}) => {
+  test.slow();
+  const testStartedAt = new Date();
+  await anonPage.addInitScript(() => {
+    for (const surface of ["default", "cards", "bookmarks", "strips", "calendar", "polaroid-ig"]) {
+      window.localStorage.setItem(`lucams_studio_onboarded_${surface}`, "v1");
+    }
+  });
+  await anonPage.goto(`/estudio/${ORNAMENT_SLUG}?copies=5`, { waitUntil: "domcontentloaded" });
+  await expect(anonPage.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
+  await dismissCookieBanner(anonPage);
+  const panel = await resolvePanel(anonPage);
+  await panel.getByRole("radio", { name: /Foto circular/ }).click();
+
+  const red = await sharp({
+    create: { width: 1200, height: 1200, channels: 3, background: { r: 220, g: 20, b: 60 } },
+  })
+    .png()
+    .toBuffer();
+  const blue = await sharp({
+    create: { width: 1200, height: 1200, channels: 3, background: { r: 30, g: 80, b: 220 } },
+  })
+    .png()
+    .toBuffer();
+
+  const consent = panel.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
+  if (await consent.count()) await consent.first().check();
+
+  // Subir Cara A (rojo carmesí) primero y Cara B (azul real) después de forma secuencial
+  // para garantizar determinísticamente Slot 0 = rojo y Slot 1 = azul en ambos viewports.
+  await panel
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({ name: "edit-cara-a.png", mimeType: "image/png", buffer: red });
+  await expect
+    .poll(() => db().designAsset.count({ where: { createdAt: { gte: testStartedAt } } }), {
+      timeout: 60_000,
+    })
+    .toBeGreaterThanOrEqual(1);
+  await panel
+    .getByRole("button", { name: /Llenar \d+ slots vacíos con mis fotos/i })
+    .click({ timeout: 20_000 });
+  await expect
+    .poll(
+      async () => {
+        const draft = await db().design.findFirst({
+          where: { product: { slug: ORNAMENT_SLUG }, createdAt: { gte: testStartedAt } },
+          orderBy: { createdAt: "desc" },
+          select: { canvasData: true },
+        });
+        const canvas = draft?.canvasData as { slots?: Array<{ assetId?: string | null }> } | null;
+        return Boolean(canvas?.slots?.[0]?.assetId);
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+
+  const assetCountAfterA = await db().designAsset.count({
+    where: { createdAt: { gte: testStartedAt } },
+  });
+  await panel
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({ name: "edit-cara-b.png", mimeType: "image/png", buffer: blue });
+  await expect
+    .poll(() => db().designAsset.count({ where: { createdAt: { gte: testStartedAt } } }), {
+      timeout: 60_000,
+    })
+    .toBeGreaterThanOrEqual(assetCountAfterA + 1);
+  await panel
+    .getByRole("button", { name: /Llenar \d+ slots vacíos con mis fotos/i })
+    .click({ timeout: 20_000 });
+  await expect
+    .poll(
+      async () => {
+        const draft = await db().design.findFirst({
+          where: { product: { slug: ORNAMENT_SLUG }, createdAt: { gte: testStartedAt } },
+          orderBy: { createdAt: "desc" },
+          select: { canvasData: true },
+        });
+        const canvas = draft?.canvasData as { slots?: Array<{ assetId?: string | null }> } | null;
+        return (
+          Boolean(canvas?.slots?.[0]?.assetId) &&
+          Boolean(canvas?.slots?.[1]?.assetId) &&
+          canvas?.slots?.[0]?.assetId !== canvas?.slots?.[1]?.assetId
+        );
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+
+  await anonPage.keyboard.press("Escape");
+  const replicate = anonPage
+    .getByRole("button", {
+      name: /Aplicar el diseño de esta unidad a todas las unidades|Aplicar este diseño a todas/i,
+    })
+    .first();
+  await expect(replicate).toBeVisible({ timeout: 60_000 });
+  await replicate.click();
+
+  await expect
+    .poll(
+      async () => {
+        const draft = await db().design.findFirst({
+          where: { product: { slug: ORNAMENT_SLUG }, createdAt: { gte: testStartedAt } },
+          orderBy: { createdAt: "desc" },
+          select: { canvasData: true },
+        });
+        const canvas = draft?.canvasData as { slots?: Array<{ assetId?: string | null }> } | null;
+        return canvas?.slots?.length === 10 && canvas.slots.every((slot) => Boolean(slot.assetId));
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+
+  const previewBtn = anonPage
+    .getByRole("button", {
+      name: /Ver diseño de tu pedido|Vista previa|Listo, generar diseño final/i,
+    })
+    .and(anonPage.locator(":visible"))
+    .last();
+  await expect(previewBtn).toBeEnabled({ timeout: 90_000 });
+  await previewBtn.click();
+
+  const initialPreviewDialog = anonPage.getByRole("dialog");
+  await expect(initialPreviewDialog).toBeVisible({ timeout: 60_000 });
+  const qualityAck = initialPreviewDialog.getByRole("checkbox", {
+    name: /Entiendo que estas fotos pueden imprimirse con menor calidad/i,
+  });
+  if (await qualityAck.count()) await qualityAck.check();
+  await initialPreviewDialog
+    .getByRole("button", { name: /agregar al carrito/i })
+    .click({ timeout: 20_000 });
+  await expect(anonPage).toHaveURL(/\/carrito/, { timeout: 180_000 });
+
+  const sessionId = (await anonPage.context().cookies()).find(
+    (cookie) => cookie.name === "cart_session",
+  )?.value;
+  expect(sessionId).toBeTruthy();
+  cartSessions.add(sessionId!);
+
+  // Camino exacto del reporte: pulsar «Editar» en `/carrito` y abrir 3D + Ver diseño de inmediato
+  // sin hacer scroll hasta la Bola 5 (sus slots 8 y 9 permanecen en LazySlotPlaceholder).
+  await anonPage.getByRole("link", { name: "Editar" }).first().click();
+  await expect(anonPage).toHaveURL(new RegExp(`/estudio/${ORNAMENT_SLUG}\\?designId=`), {
+    timeout: 60_000,
+  });
+  const view3DBtn = anonPage.getByRole("button", { name: /Ver en tu espacio/i });
+  await expect(view3DBtn).toBeVisible({ timeout: 60_000 });
+  await view3DBtn.click();
+
+  const sceneDialog = anonPage.locator('[role="dialog"][aria-modal="true"]');
+  await expect(sceneDialog).toBeVisible({ timeout: 60_000 });
+  await expect(sceneDialog.getByText("5 bolas · foto plana de 8 cm")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(sceneDialog.getByText("1 / 5", { exact: true })).toBeVisible();
+
+  const sceneCanvas = sceneDialog.locator("canvas").first();
+  await expect(sceneCanvas).toBeVisible({ timeout: 30_000 });
+  const captureModel = async () => {
+    const box = await sceneCanvas.boundingBox();
+    if (!box || box.width <= 320 || box.height <= 200) return null;
+    return anonPage.screenshot({
+      clip: {
+        x: box.x + box.width * 0.22,
+        y: box.y + box.height * 0.18,
+        width: box.width * 0.56,
+        height: box.height * 0.58,
+      },
+    });
+  };
+
+  // Bola 1: Frente rojo carmesí (no crema #FAF8F5, r-g≈2), Reverso azul real (a través del acrílico 3D, b-r≈24).
+  await expect
+    .poll(
+      async () => {
+        const shot = await captureModel();
+        if (!shot) return false;
+        const [r, g, b] = await centerColor(shot);
+        return r - g > 12 && r - b > 10;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  await sceneDialog.getByRole("button", { name: "Reverso" }).click();
+  await expect
+    .poll(
+      async () => {
+        const shot = await captureModel();
+        if (!shot) return false;
+        const [r, , b] = await centerColor(shot);
+        return b - r > 12;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+
+  // Avanzar a Bola 5 (slots 8 y 9 nunca montados en Konva Stage).
+  for (let step = 0; step < 4; step++) {
+    await sceneDialog.getByRole("button", { name: "Unidad siguiente" }).click();
+  }
+  await expect(sceneDialog.getByText("5 / 5", { exact: true })).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        const shot = await captureModel();
+        if (!shot) return false;
+        const [r, , b] = await centerColor(shot);
+        return b - r > 12;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  await sceneDialog.getByRole("button", { name: "Frente" }).click();
+  await expect
+    .poll(
+      async () => {
+        const shot = await captureModel();
+        if (!shot) return false;
+        const [r, g, b] = await centerColor(shot);
+        return r - g > 12 && r - b > 10;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+
+  await anonPage.keyboard.press("Escape");
+  await expect(sceneDialog).toHaveCount(0, { timeout: 15_000 });
+
+  // «Ver diseño» tras editar desde carrito: validar píxeles en Bola 1 de 5 y Bola 5 de 5.
+  const editedPreviewBtn = anonPage
+    .getByRole("button", {
+      name: /Ver diseño de tu pedido|Vista previa|Listo, generar diseño final/i,
+    })
+    .and(anonPage.locator(":visible"))
+    .last();
+  await expect(editedPreviewBtn).toBeEnabled({ timeout: 60_000 });
+  await editedPreviewBtn.click();
+
+  const editedPreviewDialog = anonPage.getByRole("dialog");
+  await expect(editedPreviewDialog).toBeVisible({ timeout: 60_000 });
+  await expect(editedPreviewDialog.getByText("Así se verán tus bolas navideñas")).toBeVisible();
+  await expect(editedPreviewDialog.getByText("Bola 1 de 5")).toBeVisible();
+
+  const assertPreviewFaces = async () => {
+    await expect
+      .poll(
+        async () => {
+          const src = await editedPreviewDialog.locator("img").first().getAttribute("src");
+          if (!src || !src.startsWith("data:image/")) return false;
+          const buf = Buffer.from(src.split(",")[1]!, "base64");
+          const meta = await sharp(buf).metadata();
+          const readPx = async (xr: number, yr: number) => {
+            const { data, info } = await sharp(buf)
+              .extract({
+                left: Math.floor(meta.width! * xr),
+                top: Math.floor(meta.height! * yr),
+                width: 1,
+                height: 1,
+              })
+              .raw()
+              .toBuffer({ resolveWithObject: true });
+            return [...data.subarray(0, info.channels)];
+          };
+          const [ar, ag, ab] = await readPx(0.26, 0.5);
+          const [br, , bb] = await readPx(0.74, 0.5);
+          return ar > ag && ar > ab && bb > br;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+  };
+
+  await assertPreviewFaces();
+  for (let step = 0; step < 4; step++) {
+    await editedPreviewDialog.getByRole("button", { name: "Unidad siguiente" }).click();
+  }
+  await expect(editedPreviewDialog.getByText("Bola 5 de 5")).toBeVisible();
+  await assertPreviewFaces();
+});
+
 test("mini libros: 3 unidades, asistido, prediseñado, réplica y promoción por cantidad", async ({
   anonPage,
 }) => {

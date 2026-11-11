@@ -45,6 +45,26 @@ type MaybeImageNode = { image?: () => { decode?: () => Promise<void> } | null | 
 /** Techo del re-decode forzado (2026-11-07 — todas las fotos a la vez). */
 const FORCE_DECODE_BUDGET_MS = 3000;
 
+/**
+ * 2026-11-10 (bug STG bola navideña 5× = 10 fotos en celular real) — el techo
+ * FIJO de 3 s se agotaba con muchas fotos: el re-decode tras bitmap-discard de
+ * Chrome Android se serializa en el decodificador del dispositivo (~200-500 ms
+ * por foto en gama media) y al vencer el presupuesto el bake salía con caras
+ * vacías. Ahora el presupuesto escala por foto con un piso y un tope.
+ */
+export const FORCE_DECODE_BUDGET_BASE_MS = 1500;
+export const FORCE_DECODE_BUDGET_PER_PHOTO_MS = 700;
+export const FORCE_DECODE_BUDGET_MAX_MS = 12000;
+
+/** Presupuesto del re-decode forzado según fotos presentes (puro — testeado). */
+export function forceDecodeBudgetMs(photoCount: number): number {
+  if (!Number.isFinite(photoCount) || photoCount <= 0) return FORCE_DECODE_BUDGET_MS;
+  return Math.min(
+    FORCE_DECODE_BUDGET_MAX_MS,
+    FORCE_DECODE_BUDGET_BASE_MS + FORCE_DECODE_BUDGET_PER_PHOTO_MS * photoCount,
+  );
+}
+
 /** Fuerza `decode()` de la imagen de un nodo si existe (no-op defensivo). */
 function decodeNodeImage(node: unknown): Promise<void> {
   const img = (node as MaybeImageNode | null | undefined)?.image?.();
@@ -52,6 +72,32 @@ function decodeNodeImage(node: unknown): Promise<void> {
   return img.decode().catch(() => {
     // Una foto rota no bloquea el snapshot: se rasteriza lo que haya.
   });
+}
+
+/**
+ * 2026-11-10 — Re-decodifica las imágenes de UN stage puntual justo antes de su
+ * `stage.toDataURL()`. En Chrome Android la caché de bitmaps decodificados es
+ * acotada (~32-64 MB): decodificar 10 fotos en bloque (`Promise.all` en
+ * `waitForSlotPhotosReady`) puede desalojar en orden LRU las primeras caras
+ * (`Bola 1 de 5`) mientras terminan las últimas, o ceder el hilo (`yieldToMain`
+ * + `loadImage` de snapshots previos) puede desalojar las siguientes a mitad
+ * del bucle. Llamar este helper inmediatamente antes de `snapshotSlotForPreview`
+ * garantiza que el bitmap de ESE stage esté residente en el mismo turno del
+ * event loop en que Konva ejecuta `drawScene()`.
+ */
+export async function ensureStagePhotosDecoded(
+  stage: SlotPhotoReadinessStage | null | undefined,
+  slot: { assetUrl?: string | null; profileAssetUrl?: string | null },
+): Promise<void> {
+  if (!stage) return;
+  const jobs: Promise<void>[] = [];
+  if (slot.assetUrl) jobs.push(decodeNodeImage(stage.findOne(".slot-photo")));
+  if (slot.profileAssetUrl) jobs.push(decodeNodeImage(stage.findOne(".slot-profile-photo")));
+  if (jobs.length === 0) return;
+  await Promise.race([
+    Promise.all(jobs),
+    new Promise<void>((resolve) => setTimeout(resolve, forceDecodeBudgetMs(jobs.length))),
+  ]);
 }
 
 export async function waitForSlotPhotosReady(
@@ -94,9 +140,11 @@ export async function waitForSlotPhotosReady(
     if (s.profileAssetUrl) decodeJobs.push(decodeNodeImage(stage.findOne(".slot-profile-photo")));
   }
   if (decodeJobs.length > 0) {
+    // 2026-11-10 — presupuesto escalado por foto (antes 3 s fijos: con 10 fotos
+    // de una bola 5× en celular se agotaba y el bake salía vacío).
     await Promise.race([
       Promise.all(decodeJobs),
-      new Promise<void>((resolve) => setTimeout(resolve, FORCE_DECODE_BUDGET_MS)),
+      new Promise<void>((resolve) => setTimeout(resolve, forceDecodeBudgetMs(decodeJobs.length))),
     ]);
   }
 }

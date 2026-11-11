@@ -31,10 +31,11 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2, RotateCcw, Pencil } from "lucide-react";
+import { Trash2, RotateCcw, Pencil, Loader2 } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
+import { useActiveStudioStore } from "./lib/active-studio-store";
 import { useChromeBitmap } from "./lib/chrome-bitmap-cache";
 import type Konva from "konva";
 import type { FilterFunction } from "konva/lib/Node";
@@ -364,7 +365,48 @@ function StudioSlotImpl({
   // DPI usa las dimensiones del MASTER (assetOriginalWidth/Height, que el
   // canvas-grid alimenta con las dims reales del asset), no los píxeles del
   // archivo decodificado, así que el derivado no falsea el aviso.
-  const [photoImage] = useImage(slotState.canvasUrl ?? slotState.assetUrl ?? "", "anonymous");
+  const decodedUrl = slotState.canvasUrl ?? slotState.assetUrl ?? null;
+  const [photoImage, photoStatus] = useImage(decodedUrl ?? "", "anonymous");
+  const activeStudioStore = useActiveStudioStore();
+  // 2026-11-10 — reportar al store la carga/decodificación de la foto (compuerta
+  // de «Ver diseño»/3D + overlay «Cargando tu foto…»): la subida termina con
+  // assetUrl, pero el bake solo es fiel cuando la imagen decodificó. Misma URL
+  // que carga el PhotoLayer (use-image deduplica por URL) → este ciclo equivale
+  // al del nodo slot-photo. Cruza la grilla vía StudioStoreContext / fallback
+  // activo (lib/active-studio-store.ts). Una foto ROTA ("failed") se reporta
+  // como resuelta para no bloquear la compuerta para siempre — el slot ya
+  // muestra su estado de error y el bake conserva sus techos.
+  useEffect(() => {
+    if (!decodedUrl) return;
+    const active = activeStudioStore?.getState();
+    if (!active) return;
+    if (photoStatus === "failed") {
+      active.markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
+      return;
+    }
+    if (!photoImage) {
+      active.markPhotoLoading(slotState.slotIndex, "main", decodedUrl);
+      return;
+    }
+    if (typeof photoImage.decode === "function") {
+      active.markPhotoLoading(slotState.slotIndex, "main", decodedUrl);
+      let cancelled = false;
+      photoImage
+        .decode()
+        .catch(() => {
+          // Best-effort: una foto que rechaza decode() no bloquea la compuerta.
+        })
+        .finally(() => {
+          if (!cancelled) {
+            activeStudioStore?.getState().markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    active.markPhotoDecoded(slotState.slotIndex, "main", decodedUrl);
+  }, [activeStudioStore, photoImage, photoStatus, decodedUrl, slotState.slotIndex]);
   const photoQuality = useMemo(() => {
     if (!photoImage || !slotState.assetUrl) return null;
     // 2026-09-24 (auditoría honestidad): si la foto subida pasó por upscale
@@ -378,13 +420,19 @@ function StudioSlotImpl({
     return checkPhotoQuality(photoImage, sizeCm, originalDims);
   }, [photoImage, slotState.assetUrl, sizeCm, assetOriginalWidth, assetOriginalHeight]);
 
-  // Expose Konva stage to parent (para snapshot al finalizar)
+  // Expose Konva stage to parent (para snapshot al finalizar). Ref estable para
+  // no des-registrar el stage en cada re-render cuando el padre pasa un closure
+  // inline; el cleanup solo corre al desmontar el slot de verdad.
+  const onRegisterStageRef = useRef(onRegisterStage);
   useEffect(() => {
-    if (onRegisterStage) onRegisterStage(stageRef.current);
-    return () => {
-      if (onRegisterStage) onRegisterStage(null);
-    };
+    onRegisterStageRef.current = onRegisterStage;
+    onRegisterStage?.(stageRef.current);
   }, [onRegisterStage]);
+  useEffect(() => {
+    return () => {
+      onRegisterStageRef.current?.(null);
+    };
+  }, []);
 
   // FIX-1 — Aspect ratio físico del slot.
   // El motion.div + Konva Stage DEBEN respetar las proporciones físicas del
@@ -948,6 +996,7 @@ function StudioSlotImpl({
             scaleY={stageScale}
             ref={(s: Konva.Stage | null) => {
               stageRef.current = s;
+              onRegisterStageRef.current?.(s);
             }}
             // M.3.b.D — Stage debe escuchar eventos para captar clicks sobre
             // text layers editables. M.3.b.UX.v4+: también si hay drag/zoom de foto
@@ -1001,6 +1050,7 @@ function StudioSlotImpl({
                   touchDrag={touchPanEnabled}
                   onPhotoDragStart={handlePhotoDragStart}
                   onPhotoDragEnd={handlePhotoDragEnd}
+                  preloadedPhoto={photoImage ?? null}
                 />
               ) : (
                 unitTemplate.layers.map((layer) =>
@@ -1044,6 +1094,11 @@ function StudioSlotImpl({
                       // 2026-09-22 — drag táctil inline de la foto (solo con zoom
                       // aplicado; desktop sigue con interactiveSlots).
                       touchDrag: touchPanEnabled,
+                      // 2026-11-10 — imagen pre-cargada del slot para evitar
+                      // duplicar HTMLImageElement en KonvaRenderer y mantener
+                      // sincronizado el ciclo DOM («Cargando tu foto…») con el
+                      // nodo `.slot-photo` del stage.
+                      preloadedPhotoImage: photoImage ?? null,
                     },
                   ),
                 )
@@ -1186,6 +1241,33 @@ function StudioSlotImpl({
                 )}
 
                 {/* Indicador del slot: mes (calendario) o "Imán #N". */}
+                <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
+                  {slotIndicatorText}
+                </span>
+              </motion.div>
+            )}
+
+            {/* 2026-11-10 — estado «foto CARGANDO», distinto del slot vacío:
+                la foto ya se subió (assetUrl existe) pero aún decodifica en el
+                lienzo (re-descarga de la signed URL al volver del carrito, o
+                celular lento). Sin este overlay el slot se veía idéntico a uno
+                VACÍO y el cliente creía que su diseño se había perdido (bug
+                STG bola navideña: los círculos gigantes quedaban "en blanco").
+                pointer-events-none: nunca bloquea el tap ni el scroll. */}
+            {slotState.assetUrl && !photoImage && (
+              <motion.div
+                key="photo-loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="from-brand-cream/95 to-brand-cream/80 pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br"
+                aria-hidden="true"
+              >
+                <Loader2 className="text-brand-purple h-6 w-6 animate-spin" />
+                <span className="text-brand-purple-dark/75 px-2 text-center text-[11px] leading-tight font-semibold">
+                  {texts.lienzo.fotoCargando}
+                </span>
                 <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
                   {slotIndicatorText}
                 </span>
@@ -1592,6 +1674,11 @@ export function renderLayer(
      * (foto con zoom ≠ 1). Desktop sigue gobernado por interactiveSlots.
      */
     touchDrag?: boolean;
+    /**
+     * 2026-11-10 — instancia HTMLImageElement ya cargada por StudioSlot para
+     * compartirla con ImagePlaceholder sin crear un segundo `<img>` por slot.
+     */
+    preloadedPhotoImage?: HTMLImageElement | null;
   },
 ) {
   const borderColor = opts?.borderColor ?? null;
@@ -1716,6 +1803,7 @@ export function renderLayer(
           onPhotoDragEnd={onPhotoDragEnd}
           interactiveSlots={interactiveSlots}
           touchDrag={opts?.touchDrag}
+          preloadedImage={opts?.preloadedPhotoImage}
         />
       );
     }
@@ -1780,6 +1868,7 @@ export function renderLayer(
         <ProfilePhotoLayerRenderer
           key={layer.id}
           layer={layer as ProfilePhotoLayer}
+          slotIndex={slotState.slotIndex}
           profileAssetUrl={slotState.profileAssetUrl ?? null}
           profileCanvasUrl={slotState.profileCanvasUrl ?? null}
           profileTransform={slotState.profileTransform ?? null}
@@ -1853,6 +1942,7 @@ function ProfileAvatarPulse({ x, y, radius }: { x: number; y: number; radius: nu
 
 function ProfilePhotoLayerRenderer({
   layer,
+  slotIndex,
   profileAssetUrl,
   profileCanvasUrl,
   profileTransform,
@@ -1861,6 +1951,9 @@ function ProfilePhotoLayerRenderer({
   hint,
 }: {
   layer: ProfilePhotoLayer;
+  /** 2026-11-10 — para reportar al store cuándo el avatar decodificó (compuerta
+   *  de «Ver diseño»/3D; mismo patrón que la foto principal del slot). */
+  slotIndex: number;
   profileAssetUrl: string | null;
   /** ADR-166 — derivado ≤800px del avatar para el lienzo (null → master). */
   profileCanvasUrl?: string | null;
@@ -1876,10 +1969,47 @@ function ProfilePhotoLayerRenderer({
   // ADR-166 — derivado en el lienzo; master solo durante el snapshot de
   // imprenta (lib/print-master-mode, fallback ADR-081).
   const printMaster = usePrintMasterMode();
-  const [image] = useImage(
+  const [image, imageStatus] = useImage(
     (printMaster ? profileAssetUrl : (profileCanvasUrl ?? profileAssetUrl)) ?? "",
     "anonymous",
   );
+  // 2026-11-10 — reportar el avatar cargando/decodificado (compuerta
+  // «Ver diseño»/3D; mismo patrón que la foto principal del slot). En modo
+  // imprenta la URL es el master: no cuenta para el lienzo y no se reporta.
+  // Un avatar roto ("failed") se reporta resuelto para no trabar la compuerta.
+  const profileDecodedUrl = profileCanvasUrl ?? profileAssetUrl;
+  const activeStudioStore = useActiveStudioStore();
+  useEffect(() => {
+    if (printMaster || !profileDecodedUrl) return;
+    const active = activeStudioStore?.getState();
+    if (!active) return;
+    if (imageStatus === "failed") {
+      active.markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
+      return;
+    }
+    if (!image) {
+      active.markPhotoLoading(slotIndex, "profile", profileDecodedUrl);
+      return;
+    }
+    if (typeof image.decode === "function") {
+      active.markPhotoLoading(slotIndex, "profile", profileDecodedUrl);
+      let cancelled = false;
+      image
+        .decode()
+        .catch(() => {
+          // Best-effort: un avatar que rechaza decode() no bloquea la compuerta.
+        })
+        .finally(() => {
+          if (!cancelled) {
+            activeStudioStore?.getState().markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    active.markPhotoDecoded(slotIndex, "profile", profileDecodedUrl);
+  }, [activeStudioStore, image, imageStatus, printMaster, profileDecodedUrl, slotIndex]);
   const [hover, setHover] = useState(false);
   const interactive = !!onEdit;
   // Fase 2 · 2.7a — pulso de descubrimiento: visible solo la PRIMERA vez. El
@@ -2645,6 +2775,7 @@ function ImagePlaceholder({
   onPhotoDragEnd,
   interactiveSlots = true,
   touchDrag = false,
+  preloadedImage,
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
@@ -2677,16 +2808,26 @@ function ImagePlaceholder({
    * el scroll lo bloquea el `touch-action:none` del wrapper, no Konva.
    */
   touchDrag?: boolean;
+  /**
+   * 2026-11-10 — imagen pre-cargada por StudioSlot para compartir una única
+   * instancia HTMLImageElement entre el DOM y el árbol Konva (salvo en modo
+   * printMaster, donde sí se carga el master desde `slotState.assetUrl`).
+   */
+  preloadedImage?: HTMLImageElement | null;
 }) {
   // ADR-166 — el lienzo carga el derivado ≤800px (canvasUrl) cuando existe;
   // el MASTER solo durante el snapshot de imprenta del finalize (fallback
   // ADR-081: los PNG de producción se rasterizan de este stage a 3× y no
   // pueden salir del derivado — ver lib/print-master-mode).
   const printMaster = usePrintMasterMode();
-  const [image] = useImage(
-    (printMaster ? slotState.assetUrl : (slotState.canvasUrl ?? slotState.assetUrl)) ?? "",
+  const usePreloaded = !printMaster && preloadedImage !== undefined;
+  const [loadedImage] = useImage(
+    usePreloaded
+      ? ""
+      : ((printMaster ? slotState.assetUrl : (slotState.canvasUrl ?? slotState.assetUrl)) ?? ""),
     "anonymous",
   );
+  const image = usePreloaded ? (preloadedImage ?? undefined) : loadedImage;
   const imageNodeRef = useRef<Konva.Image | null>(null);
   // Convención del seed (verificada): image-placeholder usa x/y como TOP-LEFT
   // del slot (esquina superior izquierda). Ej. polaroid-clasico tiene

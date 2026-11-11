@@ -14,10 +14,13 @@
  *     las 27 fichas dibujadas juntas ("1 lámina para recortar en 27 fichas"). Contar archivos
  *     sin distinguir ambos mundos diría "1 pieza" o "27 piezas sueltas" — las dos lecturas
  *     incompletas producen mal.
- *   · `tiras-magneticas-fotos` sube N PNG (3 ó 4 según la variante) que son
- *     segmentos de UNA tira continua de 5×15 o 5×16.5 cm (medidas vigentes
- *     2026-11-03). Contar archivos diría "3 imanes". Serían tres piezas donde
- *     va una.
+ *   · `tiras-magneticas-fotos` llega de dos formas según su fecha: COMPUESTA
+ *     (2026-11-10 en adelante — un PNG por tira, fotos apiladas, marcado con
+ *     `metadata.photoStrips`; la compone el finalize o el worker con
+ *     composePhotoStrips) o, en pedidos históricos, N PNG (3 ó 4 según la
+ *     variante) que son segmentos de UNA tira continua de 5×15 o 5×16.5 cm
+ *     para unir a tope. Contar archivos sin distinguir ambos mundos diría
+ *     "3 imanes" o "1 pieza" — las dos lecturas incompletas producen mal.
  *   · `separadores-libros` puede llegar de dos formas FÍSICAMENTE distintas y visualmente idénticas:
  *     la tira desplegada (se dobla por el centro) o las dos caras sueltas (se pegan espalda con
  *     espalda). Depende de si `composeFaceStrips` alcanzó a componerlas, que es best-effort.
@@ -52,7 +55,7 @@ import {
 export type FormatoFisico =
   | { tipo: "lamina-fichas"; fichas: number; laminas?: number }
   | { tipo: "fichas-sueltas"; fichas: number; sets: number }
-  | { tipo: "tira-continua"; segmentos: number; tiras?: number }
+  | { tipo: "tira-continua"; segmentos: number; tiras?: number; compuesta?: boolean }
   | { tipo: "tira-desplegada"; tiras: number; plana?: boolean }
   | { tipo: "caras-sueltas"; unidades: number; plana?: boolean }
   | { tipo: "caratula-envolvente"; unidades: number }
@@ -151,9 +154,26 @@ function resolverFormato(e: Entrada): FormatoFisico {
     isStripTemplate(unitTemplate as { gridCols?: unknown; gridGap?: unknown }) ||
     (grid.cols === 1 && grid.gap === 0);
   if (esTira && e.productionUrls.length > 0) {
+    // Tiras COMPUESTAS (2026-11-10, metadata.photoStrips del finalize/worker):
+    // cada archivo ES una tira completa — no hay segmentos que unir.
+    const photoStrips = e.designMetadata?.photoStrips;
+    if (photoStrips && typeof photoStrips === "object") {
+      const ps = photoStrips as { perStrip?: unknown; strips?: unknown };
+      const perStrip = n(ps.perStrip);
+      const strips = n(ps.strips) ?? e.productionUrls.length;
+      if (perStrip !== null && perStrip > 1) {
+        return {
+          tipo: "tira-continua",
+          segmentos: perStrip,
+          ...(strips > 1 ? { tiras: strips } : {}),
+          compuesta: true,
+        };
+      }
+    }
     // Multi-unidad (2026-09-09): el diseño declara cuántas fotos lleva CADA tira
     // (unitSlots) → los archivos se agrupan en tiras independientes (2 tiras de
-    // 3 segmentos ≠ 6 segmentos de una tira).
+    // 3 segmentos ≠ 6 segmentos de una tira). LEGACY: pedidos anteriores a la
+    // composición server-side (2026-11-10) traen un archivo por segmento.
     const unitSlots =
       typeof e.canvasData?.unitSlots === "number" && e.canvasData.unitSlots >= 1
         ? e.canvasData.unitSlots
@@ -265,6 +285,23 @@ function describirFormato(
     }
     case "tira-continua": {
       const tiras = f.tiras ?? 1;
+      if (f.compuesta) {
+        // Tiras COMPUESTAS (2026-11-10): cada archivo ya es la tira completa
+        // (fotos apiladas a tope), lista para imprimir — sin unión manual.
+        return {
+          frase:
+            tiras > 1
+              ? `${tiras} archivos: UNA tira COMPLETA por archivo (${f.segmentos} fotos apiladas por tira), en orden.`
+              : `1 archivo con la tira COMPLETA (${f.segmentos} fotos apiladas), lista para imprimir.`,
+          pasos: [
+            tiras > 1
+              ? `Imprime las ${tiras} tiras (cada archivo es una tira final).`
+              : "Imprime la tira completa, tal cual.",
+            "Recorta cada tira por su contorno — sin separación entre fotos, la tira es una sola pieza.",
+            ...pegarImán,
+          ],
+        };
+      }
       const porTira = tiras > 1 ? Math.round(f.segmentos / tiras) : f.segmentos;
       return {
         frase:
@@ -676,7 +713,8 @@ export function productionPieceGroups(e: {
     }));
   }
 
-  // Tiras photobooth multi-unidad: grupos por tira con sus segmentos.
+  // Tiras photobooth multi-unidad: grupos por tira. COMPUESTAS (2026-11-10):
+  // una pieza por tira (el archivo ya es la tira completa); legacy: sus segmentos.
   const formato = resolverFormato({
     personalizationKind: e.personalizationKind,
     productSchema: null,
@@ -687,6 +725,16 @@ export function productionPieceGroups(e: {
     productionUrls: Array.from({ length: e.productionCount }, () => "x"),
     lineQty: 1,
   });
+  if (formato.tipo === "tira-continua" && formato.compuesta === true) {
+    const tiras = formato.tiras ?? 1;
+    if (tiras <= 1) return null;
+    return Array.from({ length: tiras }, (_, t) => ({
+      key: `tira-${t + 1}`,
+      title: `Tira ${t + 1} de ${tiras}`,
+      note: `${formato.segmentos} fotos apiladas — tira completa, lista para imprimir`,
+      pieces: [{ index: t, label: "Tira completa" }],
+    }));
+  }
   if (formato.tipo === "tira-continua" && (formato.tiras ?? 1) > 1) {
     const tiras = formato.tiras ?? 1;
     const porTira = Math.round(formato.segmentos / tiras);

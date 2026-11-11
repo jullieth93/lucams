@@ -853,6 +853,38 @@ describe("renderLayer — image-placeholder", () => {
     );
     expect(mocks.konvaProps.some((k) => k.name === "Rect")).toBe(false);
   });
+
+  it("preloadedPhotoImage reutiliza el HTMLImageElement del slot sin duplicar la carga en useImage", () => {
+    const sharedImg = {
+      width: 600,
+      height: 600,
+      naturalWidth: 600,
+      naturalHeight: 600,
+    } as unknown as HTMLImageElement;
+    // Aunque el mock de useImage esté en null/loading, ImagePlaceholder usa
+    // directamente la instancia pre-cargada y pasa "" a su useImage interno.
+    mocks.image = null;
+    mocks.status = "loading";
+    render(
+      renderLayer(
+        phLayer,
+        slot({ assetUrl: "https://x/bola-1a.png" }),
+        STAGE,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { preloadedPhotoImage: sharedImg },
+      ) as React.ReactElement,
+    );
+    expect(mocks.imageSrcs).toEqual([""]);
+    const img = lastKonva("Image");
+    expect(img).toBeDefined();
+    expect(img!.image).toBe(sharedImg);
+    expect(img!.name).toBe("slot-photo");
+  });
 });
 
 // ── renderLayer — texto editable ─────────────────────────────────────
@@ -1545,5 +1577,31 @@ describe("nextWheelScale — paso fino de zoom por rueda (Ola 24)", () => {
     expect(nextWheelScale(0.51, 100)).toBe(0.5);
     // Respeta límites personalizados si el caller los pasa.
     expect(nextWheelScale(1, -100, 1, 2)).toBe(1.04);
+  });
+});
+
+describe("StudioStoreContext + useActiveStudioStore — aislamiento React 19 Strict Mode", () => {
+  it("prioriza el store provisto por StudioStoreContext aunque createStudioStore() pise el singleton global en un segundo render descartado", async () => {
+    const { createStudioStore } = await import("./lib/store");
+    const { StudioStoreContext, useActiveStudioStore } = await import("./lib/active-studio-store");
+
+    const mountedStore = createStudioStore();
+    // Simula el segundo render descartado de React 19 Strict Mode que pisa `activeStore` global.
+    const discardedStrictModeStore = createStudioStore();
+    expect(discardedStrictModeStore).not.toBe(mountedStore);
+
+    let resolved: unknown = null;
+    function Probe() {
+      resolved = useActiveStudioStore();
+      return null;
+    }
+
+    render(
+      <StudioStoreContext.Provider value={mountedStore}>
+        <Probe />
+      </StudioStoreContext.Provider>,
+    );
+
+    expect(resolved).toBe(mountedStore);
   });
 });

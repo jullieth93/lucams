@@ -112,7 +112,7 @@ sequenceDiagram
 
 ### Captura consultiva en `/empresas-y-eventos` (`features/opportunities/`)
 
-- Valida en cliente y servidor cantidad estimada (`10..100 000` unidades), fecha del evento, teléfono con indicativo hacia E.164, municipio DANE, y NIT empresarial mediante el algoritmo oficial DIAN **módulo 11** (`normalizeAndValidateNit` en `lib/colombia-validators.ts`).
+- Valida en cliente y servidor cantidad estimada (**`25..100 000` unidades** — mínimo unificado en todo el embudo el 2026-11-10: hero, beneficios, atajos rápidos y esquema Zod), fecha del evento, teléfono con indicativo hacia E.164, municipio DANE, y NIT empresarial mediante el algoritmo oficial DIAN **módulo 11** (`normalizeAndValidateNit` en `lib/colombia-validators.ts`).
 - Protegido con Cloudflare Turnstile, doble rate-limit de 24 h (`5/día` por IP y `3/día` por correo) y aislamiento de sesión (`getStorefrontCustomerForForm`, que ignora sesiones administrativas o de terceros).
 - En una sola transacción crea o enlaza `Contact` (`source: "B2B_INQUIRY"`), `Organization` (deduplicada por NIT), `Opportunity` con consecutivo `OP-XXXXXX` y snapshot inmutable del solicitante, autorizaciones Ley 1581, atribución UTM y una **`Task` automática con SLA comercial de 24 horas** (prioridad `URGENT` si supera 100 unidades, `HIGH` en el resto). En segundo plano despacha los correos `b2b-inquiry-received` y `b2b-inquiry-admin-notification` (ver [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md)) y alerta en la campana del panel.
 

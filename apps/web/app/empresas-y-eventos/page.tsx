@@ -89,7 +89,7 @@ export default async function EmpresasYEventosPage({
               <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white/90">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
                   <CheckCircle2 className="h-4 w-4 text-[#5DD9D1]" />
-                  Desde 10 hasta +5.000 unidades
+                  Desde 25 hasta +5.000 unidades
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
                   <CheckCircle2 className="h-4 w-4 text-[#5DD9D1]" />

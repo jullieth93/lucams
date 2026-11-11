@@ -34,6 +34,11 @@
  * que el helper sea correcto aunque el caller pase tiers sin filtrar.
  */
 
+import {
+  parseVariantAttributes,
+  PHOTO_PACK_UNITS_PER_PACK,
+} from "@/features/products/variant-schemas";
+
 export type VolumeTierInput = {
   /** null = nivel global ("todo el catálogo"). */
   productId: string | null;
@@ -94,7 +99,6 @@ export type VisibleVolumeTier = {
   unitPrice: number;
   savingsPct: number;
 };
-
 /**
  * Unitario con descuento por volumen para un conteo dado, sobre una escala YA
  * resuelta/visible (resolveVisibleVolumeTiers — precedencia y niveles que no
@@ -153,6 +157,113 @@ export function resolveVisibleVolumeTiers(
       out.push({ minQty: t.minQty, unitPrice: t.unitPrice, savingsPct });
       runningCeiling = t.unitPrice;
     }
+  }
+  return out;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Packs de fotoimanes (ADR-101) — escala DERIVADA de las presentaciones
+// (owner 2026-11-10): familias como Polaroid/Cuadrados venden por packs (1
+// pack = 6 unidades) y su descuento vive en el PRECIO DE LA VARIANTE (y/o su
+// compareAt de promo), no en WholesaleTier. Para que la PDP muestre el MISMO
+// bloque «Ahorra llevando más» de los productos con tiers reales, derivamos la
+// escala de las variantes: una entrada por presentación con ahorro real
+// (unitario por pack que baja al subir de pack, o promo compareAt de esa
+// opción). Sin ahorro real (precio lineal sin promo) no se muestra nada —
+// anunciar «ahorro» donde no lo hay sería publicidad engañosa (Ley 1480).
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type PackVolumeTier = {
+  /** Número de packs de la presentación (1, 2, 3…). */
+  packs: number;
+  /** Precio TOTAL de la presentación (centavos COP). */
+  totalPrice: number;
+  /** Precio por pack (centavos COP). */
+  packPrice: number;
+  /** % de ahorro: el MAYOR entre la baja del precio por pack vs la presentación base y la promo (compareAt) de la opción. 0 si no hay ahorro real. */
+  savingsPct: number;
+};
+
+export type PackVolumeTierGroup = {
+  /** Clave del grupo (sizeCm + magnet) — la PDP la cruza con la variante elegida. */
+  key: string;
+  sizeCm: string | null;
+  magnet: boolean | null;
+  tiers: PackVolumeTier[];
+};
+
+type PackTierVariantInput = {
+  price: number | null;
+  compareAtPrice?: number | null;
+  attributes: unknown;
+};
+
+/** Clave de grupo (tamaño × imán) de una variante pack — la misma que usa derivePackVolumeTiers. */
+export function packVolumeTierGroupKey(attributes: unknown): string {
+  const attrs = parseVariantAttributes(attributes);
+  const sizeCm = typeof attrs.sizeCm === "string" ? attrs.sizeCm : null;
+  const magnet = typeof attrs.magnet === "boolean" ? attrs.magnet : null;
+  return `${sizeCm ?? ""}|${magnet ?? ""}`;
+}
+
+/**
+ * Escala de presentaciones con ahorro para productos vendidos por packs de
+ * unidades sueltas (variants con `photoSlots`). Agrupa por tamaño × imán,
+ * ordena por photoSlots y calcula el ahorro de cada presentación. Entran solo
+ * las presentaciones con ahorro ≥ 1 % (baja real del precio por pack al subir
+ * de presentación o promo compareAt propia).
+ */
+export function derivePackVolumeTiers(
+  variants: readonly PackTierVariantInput[],
+  basePrice: number,
+): PackVolumeTierGroup[] {
+  type Entry = { photoSlots: number; totalPrice: number; compareAt: number | null };
+  const groups = new Map<
+    string,
+    { sizeCm: string | null; magnet: boolean | null; list: Entry[] }
+  >();
+  for (const v of variants) {
+    const attrs = parseVariantAttributes(v.attributes);
+    const photoSlots = attrs.photoSlots;
+    if (typeof photoSlots !== "number" || photoSlots <= 0) continue;
+    const sizeCm = typeof attrs.sizeCm === "string" ? attrs.sizeCm : null;
+    const magnet = typeof attrs.magnet === "boolean" ? attrs.magnet : null;
+    const key = packVolumeTierGroupKey(v.attributes);
+    const totalPrice = v.price ?? basePrice;
+    const compareAt =
+      v.compareAtPrice != null && v.compareAtPrice > totalPrice ? v.compareAtPrice : null;
+    const group = groups.get(key) ?? { sizeCm, magnet, list: [] };
+    group.list.push({ photoSlots, totalPrice, compareAt });
+    groups.set(key, group);
+  }
+
+  const out: PackVolumeTierGroup[] = [];
+  for (const [key, group] of groups) {
+    const sorted = [...group.list].sort((a, b) => a.photoSlots - b.photoSlots);
+    const packSize = sorted[0]?.photoSlots ?? 0;
+    const baseEntry = sorted[0];
+    if (packSize <= 0 || !baseEntry) continue;
+    // Solo familias con semántica de PACK (unidades sueltas de a 6, ADR-101):
+    // las tiras photobooth (3/4 fotos por tira) NO son packs — su photoSlots
+    // cuenta fotos por tira y la etiqueta "packs" sería engañosa.
+    if (packSize % PHOTO_PACK_UNITS_PER_PACK !== 0) continue;
+    const basePackPrice = baseEntry.totalPrice; // la presentación mínima = 1 pack
+    const tiers: PackVolumeTier[] = [];
+    for (const entry of sorted) {
+      const packs = entry.photoSlots / packSize;
+      if (!Number.isInteger(packs) || packs < 1) continue;
+      const packPrice = Math.round(entry.totalPrice / packs);
+      const volumePct =
+        packs > 1 && basePackPrice > 0 ? ((basePackPrice - packPrice) / basePackPrice) * 100 : 0;
+      const promoPct =
+        entry.compareAt !== null && entry.compareAt > 0
+          ? ((entry.compareAt - entry.totalPrice) / entry.compareAt) * 100
+          : 0;
+      const savingsPct = Math.max(0, Math.round(Math.max(volumePct, promoPct)));
+      if (savingsPct < 1) continue; // nunca anunciar «ahorro» sin rebaja real
+      tiers.push({ packs, totalPrice: entry.totalPrice, packPrice, savingsPct });
+    }
+    if (tiers.length > 0) out.push({ key, sizeCm: group.sizeCm, magnet: group.magnet, tiers });
   }
   return out;
 }

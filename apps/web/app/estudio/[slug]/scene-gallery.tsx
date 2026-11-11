@@ -53,7 +53,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
-import { X, ZoomIn } from "lucide-react";
+import { Loader2, X, ZoomIn } from "lucide-react";
+import { useProgress } from "@react-three/drei";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { CLOSE_X_CLASS } from "@/components/ui/close-x-button";
 import { Scene3DErrorBoundary } from "./scene-3d-error-boundary";
@@ -76,6 +77,30 @@ function SceneLoading({
   return (
     <div className="text-brand-muted flex h-full items-center justify-center text-sm">
       {texts.escenas[textKey]}
+    </div>
+  );
+}
+
+/**
+ * 2026-11-10 (bug STG bola navideña en celular) — las escenas suspenden con
+ * `Suspense fallback={null}` mientras `useTexture` decodifica los PNG del
+ * diseño: el canvas quedaba EN BLANCO (sin bola ni piezas) varios segundos en
+ * dispositivos lentos, leyéndose como "se perdió el diseño". Este overlay
+ * escucha el LoadingManager global de three (useProgress) y anuncia la carga
+ * de texturas. pointer-events-none: nunca bloquea la escena; si el indicador
+ * quedara pegado por un loader colgado, la escena sigue usable debajo.
+ */
+export function SceneTextureLoadingOverlay() {
+  const active = useProgress((s) => s.active);
+  const texts = useStudioTexts();
+  if (!active) return null;
+  return (
+    <div
+      role="status"
+      className="text-brand-purple-dark pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 text-sm font-semibold"
+    >
+      <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+      <span>{texts.escenas.armando}</span>
     </div>
   );
 }
@@ -557,6 +582,11 @@ export function SceneGallery({
             )}
           </Scene3DErrorBoundary>
         ) : null}
+
+        {/* 2026-11-10 — mientras las texturas del diseño decodifican (Suspense
+            fallback=null dentro del Canvas), el overlay anuncia la carga en vez
+            de dejar el canvas en blanco (bug STG bola navideña en celular). */}
+        {is3D && <SceneTextureLoadingOverlay />}
 
         {/* Rótulo de cantidad (owner 2026-09-15): "N tiras/unidades · tamaño real" — overlay
           DOM como los hints, sin tocar texturas ni el canvas WebGL. Solo en escenas 3D. */}

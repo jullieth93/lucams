@@ -99,6 +99,28 @@ export type StudioStoreState = {
   isDirty: boolean;
   autoSaveStatus: AutoSaveStatus;
 
+  /**
+   * 2026-11-10 — registro de fotos YA DECODIFICADAS en el lienzo Konva, por
+   * slotIndex y clase ("main" | "profile"), guardando la URL que decodificó.
+   * La subida termina cuando existe slot.assetUrl, pero la foto tarda un tramo
+   * adicional en decodificarse (fetch del derivado + decode); los bakes de
+   * preview/3D tomados en esa ventana salen vacíos (bug STG bola navideña).
+   * Lo reporta StudioSlot cuando su useImage resuelve (vía getActiveStudioStore,
+   * el patrón documentado para cruzar studio-canvas-grid). Una entrada vale solo
+   * si su URL coincide con la vigente del slot — un cambio de foto invalida solo.
+   * NO viaja en canvasData ni al undo/auto-save: es estado de sesión del lienzo.
+   */
+  decodedPhotoUrls: Record<number, { main?: string; profile?: string }>;
+  /**
+   * 2026-11-10 — fotos cuya carga ya ARRANCÓ en el lienzo (slot montado,
+   * useImage en vuelo) pero aún no resuelven. La compuerta de «Ver diseño»/3D
+   * solo cuenta cargas EN VUELO conocidas: un slot fuera del viewport no está
+   * montado (grid lazy, ADR-063 T5) y no puede decodificar — contarlo dejaría
+   * la compuerta bloqueada para siempre (esa ventana la cubre el bake con
+   * ensureAllStagesMounted + waitForSlotPhotosReady).
+   */
+  loadingPhotoUrls: Record<number, { main?: string; profile?: string }>;
+
   // Finalize tracking
   isFinalizing: boolean;
 
@@ -258,6 +280,16 @@ export type StudioStoreState = {
   applyUnitToAllUnits: (unitIndex: number) => void;
   addAsset: (asset: StudioAsset) => void;
   /**
+   * 2026-11-10 — StudioSlot reporta acá cuando la imagen de un slot terminó de
+   * decodificarse en el lienzo (useImage resuelto). No marca dirty ni dispara
+   * auto-save: es una señal de UI para la compuerta de «Ver diseño»/3D.
+   */
+  markPhotoDecoded: (slotIndex: number, kind: "main" | "profile", url: string) => void;
+  /** 2026-11-10 — StudioSlot reporta que la carga de la foto del slot ya
+   *  ARRANCÓ (slot montado, useImage en vuelo). La compuerta solo cuenta
+   *  cargas en vuelo conocidas (ver loadingPhotoUrls). */
+  markPhotoLoading: (slotIndex: number, kind: "main" | "profile", url: string) => void;
+  /**
    * Paquete A — registra los assets (cara A y, si hay, cara B) ya subidos para
    * un diseño prediseñado, para que la próxima aplicación del mismo
    * galleryImageId los reutilice (dedupe, ver apply-predesigned.ts).
@@ -304,6 +336,8 @@ const initialState = {
   booted: false,
   isDirty: false,
   autoSaveStatus: { kind: "idle" } as AutoSaveStatus,
+  decodedPhotoUrls: {},
+  loadingPhotoUrls: {},
   isFinalizing: false,
   ensureDesignId: null as StudioStoreState["ensureDesignId"],
   undoStack: [],
@@ -336,6 +370,10 @@ export function createStudioStore() {
         redoStack: [],
         booted: true,
         isDirty: input.startDirty === true,
+        // Las URLs del recover se re-firman en el boot: cualquier marca de
+        // decodición de una sesión anterior queda inválida por URL distinta.
+        decodedPhotoUrls: {},
+        loadingPhotoUrls: {},
       });
     },
 
@@ -646,7 +684,11 @@ export function createStudioStore() {
 
     autoFillSlots: () => {
       const { canvasData, assets, cartAssetIdsInUse } = get();
-      if (!canvasData || assets.length === 0) return;
+      // 2026-11-10 — el auto-fill «Llenar slots con mis fotos» SOLO usa fotos
+      // del cliente: los assets de prediseñados (fromGallery) quedan fuera —
+      // antes un prediseño aplicado en un tamaño se sugería al llenar otros.
+      const ownPhotos = assets.filter((a) => !a.fromGallery);
+      if (!canvasData || ownPhotos.length === 0) return;
       // Tomar assets PRIORIZADOS (2026-10-26 — bug "segundo pack repite las
       // fotos del primero") y asignarlos a slots vacíos en orden. Slots ya
       // llenos se preservan (no se pisan).
@@ -654,7 +696,7 @@ export function createStudioStore() {
         .filter((s) => !s.assetUrl)
         .map((s) => s.slotIndex)
         .sort((x, y) => x - y);
-      const orderedAssets = orderAssetsForAutoFill(assets, canvasData.slots, cartAssetIdsInUse);
+      const orderedAssets = orderAssetsForAutoFill(ownPhotos, canvasData.slots, cartAssetIdsInUse);
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) => {
@@ -896,6 +938,28 @@ export function createStudioStore() {
         }),
       };
       get().setCanvasData(next);
+    },
+
+    markPhotoDecoded: (slotIndex, kind, url) => {
+      const current = get().decodedPhotoUrls[slotIndex];
+      if (current?.[kind] === url) return; // sin cambio → sin re-render
+      set({
+        decodedPhotoUrls: {
+          ...get().decodedPhotoUrls,
+          [slotIndex]: { ...current, [kind]: url },
+        },
+      });
+    },
+
+    markPhotoLoading: (slotIndex, kind, url) => {
+      const current = get().loadingPhotoUrls[slotIndex];
+      if (current?.[kind] === url) return; // sin cambio → sin re-render
+      set({
+        loadingPhotoUrls: {
+          ...get().loadingPhotoUrls,
+          [slotIndex]: { ...current, [kind]: url },
+        },
+      });
     },
 
     addAsset: (asset) => {
@@ -1244,4 +1308,54 @@ export function selectUnitImagePlaceholder(state: StudioStoreState): ImagePlaceh
   if (!state.canvasData) return null;
   const layer = state.canvasData.unitTemplate.layers.find((l) => l.type === "image-placeholder");
   return (layer as ImagePlaceholderLayer) ?? null;
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Selectores de decodificación de fotos (2026-11-10 — compuerta de
+//  «Ver diseño»/3D: los bakes tomados antes de que el lienzo decodifique
+//  salen vacíos — bug STG bola navideña multi-unidad en celular).
+//  Primitivos (number) → suscripción atómica, patrón selectFilledSlotCount.
+//
+//  SOLO cuentan cargas EN VUELO conocidas (loadingPhotoUrls): un slot fuera
+//  del viewport no está montado (grid lazy, ADR-063 T5) y no puede decodificar
+//  — contarlo bloquearía la compuerta para siempre. Esa ventana la cubre el
+//  bake con ensureAllStagesMounted + waitForSlotPhotosReady.
+// ──────────────────────────────────────────────────────────────────
+
+/** Fotos con carga arrancada o ya decodificada (base del progreso «n/N»). */
+export function selectPhotoDecodeTotal(state: StudioStoreState): number {
+  if (!state.canvasData) return 0;
+  let total = 0;
+  for (const s of state.canvasData.slots) {
+    const loading = state.loadingPhotoUrls[s.slotIndex];
+    const decoded = state.decodedPhotoUrls[s.slotIndex];
+    if (s.assetUrl) {
+      const expected = s.canvasUrl ?? s.assetUrl;
+      if (loading?.main === expected || decoded?.main === expected) total++;
+    }
+    if (s.profileAssetUrl) {
+      const expectedProfile = s.profileCanvasUrl ?? s.profileAssetUrl;
+      if (loading?.profile === expectedProfile || decoded?.profile === expectedProfile) total++;
+    }
+  }
+  return total;
+}
+
+/** Fotos con carga en vuelo AÚN sin decodificar (0 = listo para bake). */
+export function selectPhotoDecodePending(state: StudioStoreState): number {
+  if (!state.canvasData) return 0;
+  let pending = 0;
+  for (const s of state.canvasData.slots) {
+    const loading = state.loadingPhotoUrls[s.slotIndex];
+    const decoded = state.decodedPhotoUrls[s.slotIndex];
+    if (s.assetUrl) {
+      const expected = s.canvasUrl ?? s.assetUrl;
+      if (loading?.main === expected && decoded?.main !== expected) pending++;
+    }
+    if (s.profileAssetUrl) {
+      const expectedProfile = s.profileCanvasUrl ?? s.profileAssetUrl;
+      if (loading?.profile === expectedProfile && decoded?.profile !== expectedProfile) pending++;
+    }
+  }
+  return pending;
 }
