@@ -178,7 +178,7 @@ describe("resolveVisibleVolumeTiers ([CX-01] PDP)", () => {
   });
 });
 
-describe("derivePackVolumeTiers (packs de fotoimanes — escala derivada de variantes)", () => {
+describe("derivePackVolumeTiers (escala derivada de variantes — SOLO ahorro por volumen)", () => {
   const packVariant = (
     photoSlots: number,
     price: number,
@@ -192,9 +192,14 @@ describe("derivePackVolumeTiers (packs de fotoimanes — escala derivada de vari
       ...(typeof extra?.magnet === "boolean" ? { magnet: extra.magnet } : {}),
     },
   });
+  const qtyVariant = (quantity: number, price: number, sizeCm?: string) => ({
+    price,
+    compareAtPrice: null,
+    attributes: { quantity, ...(sizeCm ? { sizeCm } : {}) },
+  });
 
-  it("precio lineal sin promo → sin escala (nunca anuncia ahorro que no existe)", () => {
-    // Polaroid del seed: $22.500 por pack, lineal.
+  it("precio lineal → sin escala (nunca anuncia ahorro que no existe)", () => {
+    // Polaroid pre-2026-11-11: $22.500 por pack, lineal.
     const groups = derivePackVolumeTiers(
       [packVariant(6, 2_250_000), packVariant(12, 4_500_000), packVariant(18, 6_750_000)],
       2_250_000,
@@ -208,20 +213,19 @@ describe("derivePackVolumeTiers (packs de fotoimanes — escala derivada de vari
       2_250_000,
     );
     expect(groups).toHaveLength(1);
+    expect(groups[0]!.noun).toBe("pack");
     expect(groups[0]!.tiers).toEqual([
-      { packs: 2, totalPrice: 4_000_000, packPrice: 2_000_000, savingsPct: 11 },
-      { packs: 3, totalPrice: 5_400_000, packPrice: 1_800_000, savingsPct: 20 },
+      { units: 2, totalPrice: 4_000_000, unitPrice: 2_000_000, savingsPct: 11 },
+      { units: 3, totalPrice: 5_400_000, unitPrice: 1_800_000, savingsPct: 20 },
     ]);
   });
 
-  it("promo compareAt de la opción cuenta como ahorro aunque el precio sea lineal", () => {
+  it("la promo (compareAt) NO alimenta el bloque — eso lo muestra el tachado por presentación", () => {
     const groups = derivePackVolumeTiers(
       [packVariant(6, 2_250_000, { compareAtPrice: 2_750_000 }), packVariant(12, 4_500_000)],
       2_250_000,
     );
-    expect(groups[0]!.tiers).toEqual([
-      { packs: 1, totalPrice: 2_250_000, packPrice: 2_250_000, savingsPct: 18 },
-    ]);
+    expect(groups).toEqual([]);
   });
 
   it("agrupa por tamaño × imán (cuadrados: 3 tamaños; tiras: con/sin imán)", () => {
@@ -239,14 +243,32 @@ describe("derivePackVolumeTiers (packs de fotoimanes — escala derivada de vari
     expect(groups).toHaveLength(1);
     expect(groups[0]!.sizeCm).toBe("4×4");
     expect(groups[0]!.tiers).toEqual([
-      { packs: 2, totalPrice: 4_200_000, packPrice: 2_100_000, savingsPct: 13 },
+      { units: 2, totalPrice: 4_200_000, unitPrice: 2_100_000, savingsPct: 13 },
     ]);
   });
 
-  it("ignora variantes sin photoSlots y presentaciones no múltiplo del pack", () => {
+  it("modo cantidad (separadores 1-6): precio por unidad no lineal → escala derivada", () => {
     const groups = derivePackVolumeTiers(
       [
-        { price: 1_000_000, compareAtPrice: null, attributes: { quantity: 30 } },
+        qtyVariant(1, 300_000, "2×6"),
+        qtyVariant(2, 600_000, "2×6"),
+        qtyVariant(3, 800_000, "2×6"), // $2.667 c/u → −11%
+        qtyVariant(6, 1_600_000, "2×6"), // $2.667 c/u → −11%
+      ],
+      300_000,
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.noun).toBe("unidad");
+    expect(groups[0]!.tiers).toEqual([
+      { units: 3, totalPrice: 800_000, unitPrice: 266_667, savingsPct: 11 },
+      { units: 6, totalPrice: 1_600_000, unitPrice: 266_667, savingsPct: 11 },
+    ]);
+  });
+
+  it("ignora variantes sin photoSlots/quantity comparable y packs no enteros", () => {
+    const groups = derivePackVolumeTiers(
+      [
+        { price: 1_000_000, compareAtPrice: null, attributes: { quantity: 30 } }, // solo 1 variante
         packVariant(6, 2_250_000),
         packVariant(9, 2_700_000), // 9/6 no es entero → fuera
       ],

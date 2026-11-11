@@ -95,7 +95,18 @@ export async function changeMfaDeviceAction(): Promise<{ reauthRequired: true } 
 
 export type RecoveryCodesState = { codes?: string[]; error?: string; reauthRequired?: boolean };
 
-/** Genera (o regenera) los códigos de respaldo y los devuelve para mostrarlos una vez. */
+/**
+ * Genera (o regenera) los códigos de respaldo y los devuelve para mostrarlos una vez.
+ *
+ * SIN revalidatePath (bug owner 2026-11-11): en el enrolamiento INICIAL la página
+ * aún renderiza la rama «MFA desactivado» (<MfaEnroll>); invalidar la ruta en
+ * mitad del flujo re-renderizaba el server component YA con el factor verificado,
+ * cambiaba de rama y DESMONTABA <MfaEnroll> — los códigos recién generados
+ * desaparecían de la pantalla al instante (el cliente solo veía «Regenerar
+ * códigos de respaldo»). El conteo del panel se actualiza en cliente con
+ * `state.codes.length` (recovery-codes-panel) y la página se refresca al
+ * finalizar el enrolamiento (router.refresh en mfa-enroll.finish).
+ */
 export async function generateRecoveryCodesAction(): Promise<RecoveryCodesState> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
 
@@ -110,7 +121,6 @@ export async function generateRecoveryCodesAction(): Promise<RecoveryCodesState>
     entityType: "AdminUser",
     entityId: session.admin.id,
   });
-  revalidatePath("/admin/seguridad");
   return { codes };
 }
 

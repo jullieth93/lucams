@@ -12,6 +12,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { revalidatePath } from "next/cache";
 
 const {
   state,
@@ -348,5 +349,9 @@ describe("autogestión MFA — step-up (F-06)", () => {
     expect(recordAdminAction).toHaveBeenCalledWith(
       expect.objectContaining({ action: "admin.mfa.recovery_codes.generate" }),
     );
+    // Bug owner 2026-11-11: la acción NO debe revalidar /admin/seguridad — en el
+    // enrolamiento inicial la revalidación cambiaba la rama server (MFA ya
+    // activo) y desmontaba <MfaEnroll> con los códigos recién mostrados.
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 });

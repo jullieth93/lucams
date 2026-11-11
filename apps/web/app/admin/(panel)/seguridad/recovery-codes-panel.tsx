@@ -19,7 +19,10 @@ export function RecoveryCodesPanel({ unusedCount }: { unusedCount: number }) {
   const [state, formAction, pending, reauthModal] = useMfaReauthAction<RecoveryCodesState>(
     async () => generateRecoveryCodesAction(),
   );
-  const hasCodes = unusedCount > 0;
+  // 2026-11-11 — sin revalidatePath en la acción (ver actions.ts): tras generar,
+  // el conteo vivo sale del set recién creado, no del prop del server (stale).
+  const displayCount = state?.codes ? state.codes.length : unusedCount;
+  const hasCodes = displayCount > 0;
 
   return (
     <div className="space-y-3">
@@ -31,7 +34,7 @@ export function RecoveryCodesPanel({ unusedCount }: { unusedCount: number }) {
       <p className="text-brand-purple-dark/70 text-sm">
         Son códigos de un solo uso para entrar si pierdes el teléfono. Guárdalos en un lugar seguro.{" "}
         {hasCodes ? (
-          <span className="font-semibold">Te quedan {unusedCount} sin usar.</span>
+          <span className="font-semibold">Te quedan {displayCount} sin usar.</span>
         ) : (
           <span className="text-brand-coral font-semibold">
             Todavía no tienes códigos generados.
