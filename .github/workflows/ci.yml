@@ -376,18 +376,25 @@ jobs:
       - name: Seed del catálogo (productos para PDP/carrito/estudio/Lighthouse)
         run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
 
-      - name: Instalar navegador Playwright (chromium + deps)
+      # 2026-11-11 — el paso `playwright install --with-deps` moría en apt por DNS
+      # de los mirrors de Ubuntu (azure/archive/security.ubuntu.com) en 5 corridas
+      # seguidas — NADA que ver con el código. Ahora: (1) caché de navegadores por
+      # lockfile, (2) el binario baja del CDN de Playwright (inmune al apt de
+      # Ubuntu), (3) install-deps queda BEST-EFFORT: ubuntu-latest ya trae las libs
+      # GUI que Chromium headless necesita; si el apt sigue caído, el job sigue.
+      - name: Cache navegadores Playwright
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Instalar navegador Playwright (chromium — CDN de Playwright)
+        run: pnpm --filter web exec playwright install chromium
+
+      - name: Dependencias del SO para Chromium (best-effort; ubuntu-latest ya las trae)
         run: |
-          for i in 1 2 3 4; do
-            if pnpm --filter web exec playwright install --with-deps chromium; then
-              exit 0
-            fi
-            echo "::warning::playwright install falló (intento $i/4) — reintentando tras apt-get update"
-            sudo apt-get update || true
-            sleep 15
-          done
-          echo "::error::playwright install falló tras 4 intentos"
-          exit 1
+          pnpm --filter web exec playwright install-deps chromium || \
+            echo "::warning::install-deps falló (apt/DNS de los mirrors de Ubuntu) — el runner ubuntu-latest ya trae las libs GUI que Chromium headless necesita; el job continúa."
 
       - name: Build de producción (compartido por Playwright y Lighthouse)
         run: pnpm --filter web build
