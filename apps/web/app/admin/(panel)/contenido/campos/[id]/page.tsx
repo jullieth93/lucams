@@ -143,6 +143,37 @@ export default async function EditarCampoPage({
         }))
       : null;
 
+  // Historial visual de campos LISTA (2026-11-11, owner): el historial muestra
+  // las filas en tarjetas (miniatura + etiquetas), no el JSON crudo. Las
+  // miniaturas se resuelven de TODAS las versiones (no solo la mediateca
+  // reciente — una imagen vieja sigue siendo referenciable en el historial).
+  let historyMediaById: Record<string, { url: string; alt: string }> = {};
+  if (listHasImage) {
+    const imageKeys = (listSchema ?? []).filter((s) => s.type === "IMAGE").map((s) => s.name);
+    const ids = new Set<string>();
+    for (const v of field.versions) {
+      try {
+        const parsed: unknown = JSON.parse(v.body);
+        if (!Array.isArray(parsed)) continue;
+        for (const item of parsed) {
+          if (typeof item !== "object" || item === null) continue;
+          for (const k of imageKeys) {
+            const val = (item as Record<string, unknown>)[k];
+            if (typeof val === "string" && val.trim()) ids.add(val.trim());
+          }
+        }
+      } catch {
+        // Versión con body no-JSON: el historial cae a la nota de texto plano.
+      }
+    }
+    if (ids.size > 0) {
+      const media = await prisma.cmsMedia.findMany({ where: { id: { in: [...ids] } } });
+      historyMediaById = Object.fromEntries(
+        media.map((m) => [m.id, { url: cmsMediaPublicUrl(m.bucket, m.path), alt: m.alt }]),
+      );
+    }
+  }
+
   return (
     <AdminPage>
       <AdminPageHeader
@@ -374,6 +405,8 @@ export default async function EditarCampoPage({
                 createdBy: v.createdBy,
               }))}
               currentPublishedVersionId={field.publishedVersionId}
+              listSchema={listSchema}
+              mediaById={historyMediaById}
             />
           </AdminCard>
         </section>
