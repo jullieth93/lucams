@@ -24,3 +24,28 @@ export function remapCanvasAssetIds(node: unknown, idMap: Map<string, string>): 
   }
   return node;
 }
+
+/**
+ * Extrae recursivamente todos los IDs de `DesignAsset` referenciados en un `canvasData`
+ * (`assetId` y `profileAssetId` en V1 o V2), deduplicados y en orden de aparición.
+ */
+export function extractCanvasReferencedAssetIds(node: unknown): string[] {
+  const seen = new Set<string>();
+  const visit = (cur: unknown): void => {
+    if (Array.isArray(cur)) {
+      for (const item of cur) visit(item);
+      return;
+    }
+    if (cur && typeof cur === "object") {
+      for (const [k, v] of Object.entries(cur as Record<string, unknown>)) {
+        if ((k === "assetId" || k === "profileAssetId") && typeof v === "string" && v.trim()) {
+          seen.add(v);
+        } else {
+          visit(v);
+        }
+      }
+    }
+  };
+  visit(node);
+  return [...seen];
+}

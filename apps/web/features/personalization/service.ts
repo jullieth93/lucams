@@ -54,7 +54,7 @@ import {
   preferProductSpecific,
 } from "./template-visibility";
 import { normalizeName } from "./name-input";
-import { remapCanvasAssetIds } from "./canvas-remap";
+import { extractCanvasReferencedAssetIds, remapCanvasAssetIds } from "./canvas-remap";
 import {
   createOrResetRenderJob,
   processRenderJobs,
@@ -160,13 +160,108 @@ export async function getOwnedDesign(
  * (cart/service.ts), y si NO está (flujo Mis diseños) el alta es una línea
  * nueva — el original READY sigue listado y coherente (nunca se toca).
  */
+function ownerAssetScope(owner: {
+  customerId: string | null;
+  sessionId: string | null;
+}): Prisma.DesignAssetWhereInput | null {
+  if (owner.customerId) return { customerId: owner.customerId };
+  if (owner.sessionId) return { customerId: null, sessionId: owner.sessionId };
+  return null;
+}
+
+/**
+ * Garantiza que todo `DesignAsset` referenciado por `canvasData` pertenezca a `designId`:
+ * - Si el asset estaba suelto (`designId: null`), se adhiere a `designId`.
+ * - Si pertenecía a otro diseño del MISMO dueño (reuso desde «Mis fotos»), se crea/reusa una
+ *   fila propia en `designId` compartiendo `storageUrl` + `canvasPath` y se remapean los IDs.
+ * Así cada diseño (DRAFT o READY) es autocontenido frente a `cloneDesignForEdit`, la poda
+ * «últimos N borradores» y las validaciones/renders de imprenta, mientras `retention-service`
+ * preserva los bytes compartidos en Storage.
+ */
+async function ensureDesignOwnsReferencedAssets<T>(
+  designId: string,
+  canvasData: T,
+  owner: { customerId: string | null; sessionId: string | null },
+): Promise<T> {
+  const referencedIds = extractCanvasReferencedAssetIds(canvasData);
+  if (referencedIds.length === 0) return canvasData;
+  const scope = ownerAssetScope(owner);
+  if (!scope) return canvasData;
+
+  const referencedAssets = await prisma.designAsset.findMany({
+    where: { id: { in: referencedIds }, ...scope },
+  });
+  if (referencedAssets.length === 0) return canvasData;
+
+  const unassignedIds = referencedAssets.filter((a) => a.designId === null).map((a) => a.id);
+  if (unassignedIds.length > 0) {
+    await prisma.designAsset.updateMany({
+      where: { id: { in: unassignedIds }, designId: null, ...scope },
+      data: { designId },
+    });
+  }
+
+  const foreignOwned = referencedAssets.filter(
+    (a) => a.designId !== null && a.designId !== designId,
+  );
+  if (foreignOwned.length === 0) return canvasData;
+
+  const existingOwn = await prisma.designAsset.findMany({
+    where: {
+      designId,
+      storageUrl: { in: foreignOwned.map((a) => a.storageUrl) },
+    },
+    select: { id: true, storageUrl: true },
+  });
+  const ownByStorageUrl = new Map(existingOwn.map((a) => [a.storageUrl, a.id]));
+  const idMap = new Map<string, string>();
+
+  await prisma.$transaction(async (tx) => {
+    for (const src of foreignOwned) {
+      const existingId = ownByStorageUrl.get(src.storageUrl);
+      if (existingId) {
+        idMap.set(src.id, existingId);
+        continue;
+      }
+      const copy = await tx.designAsset.create({
+        data: {
+          designId,
+          customerId: src.customerId,
+          sessionId: src.sessionId,
+          storageUrl: src.storageUrl,
+          canvasPath: src.canvasPath,
+          mimeType: src.mimeType,
+          sizeBytes: src.sizeBytes,
+          width: src.width,
+          height: src.height,
+          exifStripped: src.exifStripped,
+          malwareScanned: src.malwareScanned,
+        },
+        select: { id: true },
+      });
+      ownByStorageUrl.set(src.storageUrl, copy.id);
+      idMap.set(src.id, copy.id);
+    }
+  });
+
+  if (idMap.size === 0) return canvasData;
+  return remapCanvasAssetIds(canvasData, idMap) as T;
+}
+
 export async function cloneDesignForEdit(
   originalId: string,
   owner: { customerId: string | null; sessionId: string | null },
 ): Promise<{ id: string } | null> {
   const original = await getOwnedDesign(originalId, owner);
   if (!original || original.status !== "READY") return null;
-  const assets = await prisma.designAsset.findMany({ where: { designId: original.id } });
+  const referencedIds = extractCanvasReferencedAssetIds(original.canvasData);
+  const scope = ownerAssetScope(owner);
+  const assets = await prisma.designAsset.findMany({
+    where:
+      scope && referencedIds.length > 0
+        ? { OR: [{ designId: original.id }, { id: { in: referencedIds }, ...scope }] }
+        : { designId: original.id },
+  });
 
   const clone = await prisma.$transaction(async (tx) => {
     const clone = await tx.design.create({
@@ -1056,26 +1151,10 @@ export async function saveCanvas(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be edited`);
   }
 
-  const referencedAssetIds =
-    opts.canvasData.version === 2
-      ? [
-          ...new Set(
-            opts.canvasData.slots.flatMap((slot) =>
-              [slot.assetId, slot.profileAssetId].filter((id): id is string => Boolean(id)),
-            ),
-          ),
-        ]
-      : [];
-  if (referencedAssetIds.length > 0) {
-    await prisma.designAsset.updateMany({
-      where: {
-        id: { in: referencedAssetIds },
-        designId: null,
-        ...(opts.customerId ? { customerId: opts.customerId } : { sessionId: opts.sessionId }),
-      },
-      data: { designId: design.id },
-    });
-  }
+  const normalizedCanvasData = await ensureDesignOwnsReferencedAssets(design.id, opts.canvasData, {
+    customerId: opts.customerId,
+    sessionId: opts.sessionId,
+  });
 
   let templateId: string | undefined;
   if (opts.templateId) {
@@ -1144,7 +1223,8 @@ export async function saveCanvas(opts: {
     }
   }
 
-  const incomingClientRev = opts.canvasData.version === 2 ? opts.canvasData.clientRev : undefined;
+  const incomingClientRev =
+    normalizedCanvasData.version === 2 ? normalizedCanvasData.clientRev : undefined;
   const update = await prisma.design.updateMany({
     where: {
       id: design.id,
@@ -1152,7 +1232,7 @@ export async function saveCanvas(opts: {
       clientRev: incomingClientRev === undefined ? BigInt(0) : { lte: BigInt(incomingClientRev) },
     },
     data: {
-      canvasData: opts.canvasData as unknown as Prisma.InputJsonValue,
+      canvasData: normalizedCanvasData as unknown as Prisma.InputJsonValue,
       ...(incomingClientRev === undefined ? {} : { clientRev: BigInt(incomingClientRev) }),
       ...(templateId ? { templateId } : {}),
       ...(variantId
@@ -1554,8 +1634,20 @@ export async function finalizeDesign(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be finalized`);
   }
 
-  // Si el cliente mandó snapshots, deben ser exactamente uno por slot REQUERIDO.
-  const canvasData = design.canvasData as unknown as CanvasData;
+  // Defensa en profundidad: si el borrador llegó a finalize con referencias a assets
+  // de otros diseños del mismo dueño («Mis fotos» antes de un saveCanvas normalizado),
+  // se adoptan/clonan en sitio antes de validar cobertura o encolar el RenderJob.
+  const rawCanvasData = design.canvasData as unknown as CanvasData;
+  const canvasData = await ensureDesignOwnsReferencedAssets(design.id, rawCanvasData, {
+    customerId: design.customerId,
+    sessionId: design.sessionId,
+  });
+  if (canvasData !== rawCanvasData) {
+    await prisma.design.update({
+      where: { id: design.id },
+      data: { canvasData: canvasData as unknown as Prisma.InputJsonValue },
+    });
+  }
   const v2 = canvasData.version === 2 ? (canvasData as CanvasDataV2) : null;
   // Sets de letras (canvasData V1 stub + metadata.surface="letterset"): el Estudio
   // sube UNA lámina de producción POR SET (production_i, 1 lámina/unidad — el set

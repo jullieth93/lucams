@@ -130,6 +130,17 @@ function currentFontsStatus(): string {
 }
 
 /**
+ * Verifica que un `toDataURL` haya producido un data URL de imagen no vacío
+ * (descarta `"data:,"`, cadenas vacías o payloads truncados cuando el presupuesto
+ * de memoria de canvas 2D del navegador falla en móvil).
+ */
+export function isValidRasterDataUrl(dataUrl: string): boolean {
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return false;
+  const commaIdx = dataUrl.indexOf(",");
+  return commaIdx > "data:image/".length && dataUrl.length - commaIdx - 1 > 0;
+}
+
+/**
  * Devuelve el dataURL PNG del stage del slot, usando el cache si nada de lo
  * que afecta el render cambió desde la última rasterización. Los indicadores
  * de edición (.edit-indicator) se ocultan SOLO cuando se rasteriza de verdad.
@@ -192,22 +203,29 @@ export function snapshotSlotForPreview(
     indicators.forEach((l) => l.show());
   }
 
-  if (cache.size >= SLOT_SNAPSHOT_CACHE_LIMIT && !cache.has(slot.slotIndex)) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
+  if (isValidRasterDataUrl(dataUrl)) {
+    if (cache.size >= SLOT_SNAPSHOT_CACHE_LIMIT && !cache.has(slot.slotIndex)) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
+    cache.set(slot.slotIndex, {
+      slot,
+      unitTemplate: ctx.unitTemplate,
+      borderColor,
+      borderWidthFactor,
+      outW,
+      outH,
+      fontsStatus,
+      dataUrl,
+      photoPending,
+    });
   }
-  cache.set(slot.slotIndex, {
-    slot,
-    unitTemplate: ctx.unitTemplate,
-    borderColor,
-    borderWidthFactor,
-    outW,
-    outH,
-    fontsStatus,
-    dataUrl,
-    photoPending,
-  });
   return dataUrl;
+}
+
+/** Invalida un slot puntual (ej. si un snapshot con filtro salió transparente por presión de memoria). */
+export function evictSlotSnapshotCache(slotIndex: number): void {
+  cache.delete(slotIndex);
 }
 
 /** Vacía el cache (tests; el editor no lo necesita: la clave se auto-invalida). */

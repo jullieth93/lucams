@@ -51,11 +51,12 @@
 
 ### Estudio 2D/3D y Producción 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md))
 
-- Konva multi-unidad (`ADR-167`/`173`), derivados WebP ≤800 px, `HTMLImageElement` compartido por slot
-  y re-decode pre-snapshot (`ensureStagePhotosDecoded`), biblioteca «Mis fotos», auto-fill y editores
-  de letras/nombre + IA. **10 escenas 3D** + `CalendarCardFocus`, filtrado `-NOMAG` y reverso «Lucams»
-  (`ADR-190`). Bola A/B obligatoria en UNA esfera, argolla transparente, moño exterior y 480 partículas;
-  selector de dos caras por capacidad real (`ADR-201`). Mini libros con carátula extendida.
+- Konva multi-unidad (`ADR-167`/`173`), derivados WebP ≤800 px, `HTMLImageElement` por slot, lazy-mount
+  `> 6` slots, `StudioStoreContext` y motor Canvas2D (`renderSlotToDataUrl2D` en `<canvas>` compartido +
+  refresco de firmas y activos propios al editar desde `/carrito`), «Mis fotos», auto-fill y letras + IA.
+  **10 escenas 3D** + `CalendarCardFocus`, filtrado `-NOMAG` y reverso «Lucams» (`ADR-190`). Bola A/B
+  en UNA esfera, argolla transparente, moño exterior y 480 partículas; dos caras por capacidad (`ADR-201`).
+  Mini libros con carátula extendida.
 - **Nuevas experiencias en LOCAL y STG (`ADR-199`/`200`/`201`):** Bola Navideña (inserto dúplex
   plano de 8 cm) y Mini Libros (carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán), con
   plantillas, prediseñados, unidades libres y descuentos físicos. La bola usa previews A/B sin doblez

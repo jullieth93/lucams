@@ -23,20 +23,35 @@
 export function canvasSafeImageSrc(url: string, width = 640): string {
   // data:, blob: y relativas (mismo origen por definición) van directas.
   if (!/^https?:\/\//i.test(url)) return url;
+  // Las URLs firmadas de Supabase Storage (`/storage/v1/object/sign/...`, bucket
+  // privado `customer-uploads`) responden CORS nativo y NO están en
+  // `images.remotePatterns` de `next.config.ts`: pasarlas por `/_next/image`
+  // producía un `400 Bad Request` garantizado por foto antes del fallback directo.
+  if (url.includes("/storage/v1/object/sign/")) return url;
   return `/_next/image?url=${encodeURIComponent(url)}&w=${width}&q=80`;
 }
 
 /**
  * Carga una imagen para canvas: primero por el optimizador de Next (mismo
  * origen → sin exigencia de CORS del bucket), luego la URL directa (camino
- * histórico). null si ambas fallan.
+ * histórico). Espera `img.decode()` cuando existe para garantizar píxeles
+ * decodificados antes de `ctx.drawImage`. `null` si ambas fallan.
  */
 export function loadCanvasImage(url: string, width = 640): Promise<HTMLImageElement | null> {
   const attempt = (src: string) =>
     new Promise<HTMLImageElement | null>((resolve) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.onload = () => resolve(img);
+      img.onload = () => {
+        if (typeof img.decode === "function") {
+          img
+            .decode()
+            .catch(() => {})
+            .finally(() => resolve(img));
+          return;
+        }
+        resolve(img);
+      };
       img.onerror = () => resolve(null);
       img.src = src;
     });

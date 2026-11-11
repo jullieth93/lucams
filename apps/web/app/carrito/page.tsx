@@ -221,6 +221,7 @@ export default async function CarritoPage() {
                                     className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark"
                                   >
                                     <Link
+                                      prefetch={false}
                                       href={`/estudio/${item.productSlug}?designId=${item.designId}`}
                                     >
                                       <Pencil aria-hidden="true" />

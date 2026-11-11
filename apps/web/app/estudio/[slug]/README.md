@@ -718,36 +718,44 @@ borderless: true })` expande cada foto a sangre total de su celda, logrando una 
   - `fitPreviewToBudget` (`lib/preview-encode.ts`) mantiene el preview por debajo de **`3.5 MB`**
     antes de enviarlo para respetar el límite duro (~4.5 MB) del payload en funciones serverless
     (`page.tsx` exporta además `maxDuration = 60`).
-  - `lib/slot-snapshot-cache.ts` rasteriza a un ancho objetivo fijo `SNAPSHOT_TARGET_WIDTH = 720 px`
-    con `pixelRatio <= 2`, de modo que cambiar el zoom visual del lienzo jamás invalida la caché
-    compartida entre confirmación y visor 3D.
-  - `lib/slot-photo-readiness.ts` espera la decodificación real de los nodos `name="slot-photo"` y
-    `name="slot-profile-photo"` (plazo máximo `8 s`) y marca entradas `photoPending` en
-    `lib/slot-snapshot-cache.ts` para nunca hornear en caché el fondo de carga. Además, el re-decode
-    forzado corre tanto en el pre-chequeo por lote (`forceDecodeBudgetMs`: `1 500 ms + 700 ms × fotos`,
-    tope `12 s`) como de forma puntual en cada iteración (`ensureStagePhotosDecoded(stage, slot)`
-    inmediatamente antes de cada `snapshotSlotForPreview` / `stage.toDataURL()`), evitando que el
-    desalojo LRU de bitmaps decodificados en Chrome Android (al decodificar 10 caras de una bola 5× o
-    al ceder el hilo entre iteraciones con `yieldToMain()`) deje en blanco las primeras caras (`Bola 1
-de 5`) y contamine `slotSnapshotCache`.
-  - **Instancia única de imagen por slot y preservación de montaje en grilla (2026-11-10)**:
-    `StudioSlot` comparte su `HTMLImageElement` ya cargado (`preloadedPhotoImage` / `preloadedPhoto`)
-    con `ImagePlaceholder` y `CalendarCardLayer` dentro del árbol Konva (excepto en modo
-    `printMaster`), eliminando la doble descarga/decodificación por slot y esperando `image.decode()`
-    antes de invocar `markPhotoDecoded`. En `StudioCanvasGrid`, cruzar `LAZY_MOUNT_THRESHOLD = 6` (p.
-    ej. pasar de 3 a 4 o 5 bolas = 8..10 slots) conserva en `mountedSlots` los slots ya montados y
-    monta de inmediato todo slot con foto asignada (`assetUrl` o `profileAssetUrl`). Al abrir la
-    vista previa paginada (`unitRanges.length > 1`), `handleFinalize` resuelve la página `0` antes de
-    abrir `StudioPreviewModal` para que la primera unidad (`Bola 1 de N`) aparezca renderizada desde
-    el primer frame.
-  - **Compuerta de decodificación (2026-11-10)**: «Ver diseño», «Ver en tu espacio» y el libro 3D
-    se bloquean como estado ocupado con progreso («Cargando tus fotos… n/N») mientras alguna foto
-    asignada no ha decodificado en el lienzo. StudioSlot reporta el decode al store
-    (`markPhotoDecoded`, registro `decodedPhotoUrls` validado por URL vigente) y los selectores
-    atómicos `selectPhotoDecodePending/Total` alimentan los botones; el slot con foto aún sin
-    decodificar muestra el overlay «Cargando tu foto…» (distinto del estado vacío) y las escenas 3D
-    anuncian la decodificación de texturas con `SceneTextureLoadingOverlay` (`useProgress`) en vez
-    del `Suspense fallback={null}` a ciegas.
+  - **Motor Canvas2D determinista para vistas previas, 3D y borradores (`lib/production-preview-render.ts`)**:
+    `renderSlotToDataUrl2D` y `renderSlotsToImages` componen cada slot directamente desde el estado puro
+    `CanvasDataV2` (`unitTemplate` + `SlotState`) sobre **un único `<canvas>` compartido** reutilizado
+    secuencialmente (y un único `clipCanvas` en `buildMagnetTextures`), con caché LRU por referencia
+    (`slot2DCache`), paridad geométrica con las 7 capas de `StudioSlot` y `production-render-canvas.ts`,
+    y refresco single-flight de URLs firmadas expiradas (`refreshDesignAssetUrlsAction`). Los diseños
+    sin filtros Konva activos no montan `<Stage>` ocultos para «Ver diseño», «Míralo en tu espacio» ni
+    `draftPreviewDataUrl`, evitando agotar el presupuesto de memoria Canvas2D de Chrome móvil al editar
+    diseños multi-unidad desde `/carrito`. Cuando un slot usa `slot.filter`, aprovecha
+    `snapshotSlotForPreview` (`lib/slot-snapshot-cache.ts`, `SNAPSHOT_TARGET_WIDTH = 720 px`,
+    `pixelRatio <= 2`, `ensureStagePhotosDecoded`) tras verificar `isValidRasterDataUrl` + sonda de
+    alfa `hasVisiblePixels`, y degrada limpiamente a `renderSlotToDataUrl2D` con `ctx.filter` si el
+    stage no está montado o devuelve un raster transparente. En `lib/canvas-image.ts`,
+    `canvasSafeImageSrc` envía directas las rutas `/storage/v1/object/sign/` (CORS nativo del bucket
+    privado, fuera de `images.remotePatterns`) y `loadCanvasImage` espera `img.decode()`.
+  - **Instancia única de imagen por slot, lazy-mount real y contexto del store**:
+    `StudioSlot` comparte su `HTMLImageElement` decodificado (`preloadedPhotoImage` / `preloadedPhoto`)
+    con `ImagePlaceholder` y `CalendarCardLayer` (excepto en modo `printMaster`), evitando doble
+    descarga/decodificación por slot. En `StudioCanvasGrid`, cuando `slotCount > LAZY_MOUNT_THRESHOLD`
+    (`6`), los slots fuera de pantalla permanecen en `LazySlotPlaceholder` (`<img loading="lazy">`)
+    hasta que `IntersectionObserver` (`rootMargin: "400px 0px"`) o un clic los active, mientras que
+    escalar desde `<= 6` a `> 6` conserva en `mountedSlots` las unidades ya montadas.
+    `StudioStoreContext` + `useActiveStudioStore()` (`lib/active-studio-store.ts`) aíslan la instancia
+    montada del store frente al doble render de React 19 Strict Mode. Al abrir la vista previa paginada
+    (`unitRanges.length > 1`), `handleFinalize` resuelve la página `0` antes de mostrar
+    `StudioPreviewModal`.
+  - **Autocontención de activos «Mis fotos» y protección ante prefetch al editar**:
+    `ensureDesignOwnsReferencedAssets` (`features/personalization/service.ts`) adhiere activos sueltos y
+    clona idempotentemente por `(designId, storageUrl)` cualquier `DesignAsset` del mismo dueño
+    referenciado desde otro diseño en `saveCanvas`, `finalizeDesign` y `cloneDesignForEdit`. Los
+    enlaces de edición hacia `/estudio/[slug]?designId=...` o `?draft=...` declaran `prefetch={false}` y
+    `estudio/[slug]/page.tsx` bloquea `cloneDesignForEdit` en requests de prefetch (`next-router-prefetch`,
+    `purpose: prefetch`) para impedir clones prematuros y podas `trimExcessDraftDesigns`.
+  - **Compuerta de decodificación en vuelo**: «Ver diseño», «Ver en tu espacio» y el libro 3D se
+    muestran ocupados («Cargando tus fotos… n/N») únicamente mientras existan decodificaciones activas
+    en vuelo en los stages montados (`loadingPhotoUrls` / `decodedPhotoUrls` reportados por
+    `StudioSlot`), sin bloquear por slots perezosos fuera de pantalla; las escenas 3D anuncian la carga
+    de texturas con `SceneTextureLoadingOverlay` (`useProgress`).
   - `lib/smart-crop.ts` ejecuta `smartcrop` sobre una copia `<= 256 px` y verifica al resolver
     `shouldApplySmartCropResult` contra `photoTransformRef` para no sobrescribir un encuadre manual
     hecho mientras tanto.

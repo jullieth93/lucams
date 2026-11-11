@@ -1579,3 +1579,29 @@ describe("nextWheelScale — paso fino de zoom por rueda (Ola 24)", () => {
     expect(nextWheelScale(1, -100, 1, 2)).toBe(1.04);
   });
 });
+
+describe("StudioStoreContext + useActiveStudioStore — aislamiento React 19 Strict Mode", () => {
+  it("prioriza el store provisto por StudioStoreContext aunque createStudioStore() pise el singleton global en un segundo render descartado", async () => {
+    const { createStudioStore } = await import("./lib/store");
+    const { StudioStoreContext, useActiveStudioStore } = await import("./lib/active-studio-store");
+
+    const mountedStore = createStudioStore();
+    // Simula el segundo render descartado de React 19 Strict Mode que pisa `activeStore` global.
+    const discardedStrictModeStore = createStudioStore();
+    expect(discardedStrictModeStore).not.toBe(mountedStore);
+
+    let resolved: unknown = null;
+    function Probe() {
+      resolved = useActiveStudioStore();
+      return null;
+    }
+
+    render(
+      <StudioStoreContext.Provider value={mountedStore}>
+        <Probe />
+      </StudioStoreContext.Provider>,
+    );
+
+    expect(resolved).toBe(mountedStore);
+  });
+});

@@ -10,7 +10,8 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { cloneDesignForEdit } from "./service";
+import { cloneDesignForEdit, saveCanvas } from "./service";
+import { extractCanvasReferencedAssetIds } from "./canvas-remap";
 import { addPersonalizedToCart } from "@/features/cart/service";
 
 const RUN = `clone${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
@@ -208,6 +209,111 @@ describe("cloneDesignForEdit", { timeout: 30000 }, () => {
     });
     const clone = await cloneDesignForEdit(draft.id, { customerId: ownerId, sessionId: null });
     expect(clone).toBeNull();
+  });
+
+  it("reuso «Mis fotos» entre diseños: saveCanvas y cloneDesignForEdit clonan assets propios del dueño sin permitir IDOR", async () => {
+    // Diseño fuente («Mis fotos» previo del mismo owner) + asset ajeno de stranger (anti-IDOR).
+    const libraryDesign = await prisma.design.create({
+      data: { customerId: ownerId, productId, status: "READY", canvasData: {} },
+      select: { id: true },
+    });
+    const strangerDesign = await prisma.design.create({
+      data: { customerId: strangerId, productId, status: "READY", canvasData: {} },
+      select: { id: true },
+    });
+    const sharedPhotoId = await makeAsset(libraryDesign.id, ownerId);
+    const sharedPhotoRow = await prisma.designAsset.findUniqueOrThrow({
+      where: { id: sharedPhotoId },
+      select: { storageUrl: true },
+    });
+    const strangerPhotoId = await makeAsset(strangerDesign.id, strangerId);
+
+    const draft = await prisma.design.create({
+      data: { customerId: ownerId, productId, status: "DRAFT", canvasData: {} },
+      select: { id: true },
+    });
+
+    await saveCanvas({
+      designId: draft.id,
+      customerId: ownerId,
+      sessionId: null,
+      canvasData: {
+        version: 2,
+        clientRev: 1,
+        slotCount: 2,
+        unitCount: 1,
+        unitSlots: 2,
+        photoSlots: 2,
+        gridLayout: { cols: 2, rows: 1, gap: 16 },
+        unitTemplate: {
+          version: 1,
+          stage: { width: 480, height: 480, dpiPreview: 72, dpiProduction: 300 },
+          layers: [],
+        },
+        slots: [
+          { slotIndex: 0, assetId: sharedPhotoId, assetUrl: "https://x/shared" },
+          // Intento de referenciar un asset de OTRO usuario → NO debe copiarse.
+          { slotIndex: 1, assetId: strangerPhotoId, assetUrl: "https://x/stranger" },
+        ],
+      },
+    });
+
+    const savedDraft = await prisma.design.findUniqueOrThrow({
+      where: { id: draft.id },
+      select: { canvasData: true },
+    });
+    const ownDraftAssets = await prisma.designAsset.findMany({
+      where: { designId: draft.id },
+      select: { id: true, storageUrl: true, customerId: true },
+    });
+    // Solo el asset del mismo owner se materializó como fila propia del borrador.
+    expect(ownDraftAssets).toHaveLength(1);
+    expect(ownDraftAssets[0]!.storageUrl).toBe(sharedPhotoRow.storageUrl);
+    expect(ownDraftAssets[0]!.id).not.toBe(sharedPhotoId);
+    expect(ownDraftAssets[0]!.customerId).toBe(ownerId);
+
+    const savedSlots = (savedDraft.canvasData as { slots: { assetId: string }[] }).slots;
+    expect(savedSlots[0]!.assetId).toBe(ownDraftAssets[0]!.id);
+    // El asset de stranger NO fue adoptado ni copiado.
+    expect(savedSlots[1]!.assetId).toBe(strangerPhotoId);
+    expect(extractCanvasReferencedAssetIds(savedDraft.canvasData)).toEqual([
+      ownDraftAssets[0]!.id,
+      strangerPhotoId,
+    ]);
+
+    // Incluso en un diseño histórico READY cuyo canvasData apuntaba directo al assetId de otro
+    // diseño del mismo owner, cloneDesignForEdit lo resuelve y le crea su DesignAsset propio.
+    const legacyReady = await prisma.design.create({
+      data: {
+        customerId: ownerId,
+        productId,
+        status: "READY",
+        canvasData: {
+          version: 2,
+          slots: [{ slotIndex: 0, assetId: sharedPhotoId, assetUrl: "https://x/shared" }],
+        },
+      },
+      select: { id: true },
+    });
+
+    const clonedLegacy = await cloneDesignForEdit(legacyReady.id, {
+      customerId: ownerId,
+      sessionId: null,
+    });
+    expect(clonedLegacy).not.toBeNull();
+    const clonedLegacyAssets = await prisma.designAsset.findMany({
+      where: { designId: clonedLegacy!.id },
+      select: { id: true, storageUrl: true },
+    });
+    expect(clonedLegacyAssets).toHaveLength(1);
+    expect(clonedLegacyAssets[0]!.storageUrl).toBe(sharedPhotoRow.storageUrl);
+    const clonedLegacyDesign = await prisma.design.findUniqueOrThrow({
+      where: { id: clonedLegacy!.id },
+      select: { canvasData: true },
+    });
+    const clonedLegacySlots = (clonedLegacyDesign.canvasData as { slots: { assetId: string }[] })
+      .slots;
+    expect(clonedLegacySlots[0]!.assetId).toBe(clonedLegacyAssets[0]!.id);
   });
 });
 

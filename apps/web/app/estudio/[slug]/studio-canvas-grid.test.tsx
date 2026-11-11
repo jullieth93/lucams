@@ -18,7 +18,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StudioCanvasGrid } from "./studio-canvas-grid";
 import { createStudioStore } from "./lib/store";
 import type { CanvasDataV2 } from "./types";
@@ -708,7 +708,7 @@ describe("StudioCanvasGrid — bola navideña dúplex", () => {
     expect(screen.queryByText(/Separador/)).not.toBeInTheDocument();
   });
 
-  it("cruzar LAZY_MOUNT_THRESHOLD (3 → 5 bolas = 6 → 10 slots) conserva los slots ya montados y monta de inmediato todo slot con foto", () => {
+  it("cruzar LAZY_MOUNT_THRESHOLD (3 → 5 bolas = 6 → 10 slots) conserva los slots above-the-fold y mantiene fuera de pantalla en LazySlotPlaceholder hasta interacción/viewport", () => {
     const store = createStudioStore();
     store.getState().init({
       designId: "ornament-lazy",
@@ -750,11 +750,71 @@ describe("StudioCanvasGrid — bola navideña dúplex", () => {
       });
     });
 
-    // Bolas 1..3 (slots 0..5) NUNCA se desmontan al cruzar el umbral, y el slot 8
-    // (con foto) monta directo sin quedar atrapado en LazySlotPlaceholder.
+    // Bolas 1..3 (slots 0..5) NUNCA se desmontan al cruzar el umbral; el slot 8
+    // muestra su foto con LazySlotPlaceholder (<img> nativo, sin Stage Konva offscreen)
+    // hasta que el cliente scrollea o toca la celda.
     for (let i = 0; i < 6; i++) {
       expect(container.querySelector(`[data-testid="studio-slot-${i}"]`)).not.toBeNull();
     }
+    expect(container.querySelector('[data-testid="studio-slot-8"]')).toBeNull();
+    const lazyCell8 = container.querySelector('[data-slot-observe="8"]');
+    expect(lazyCell8?.querySelector('img[src="https://cdn.example.com/8.jpg"]')).not.toBeNull();
+
+    // Al tocar el placeholder del slot 8, monta el StudioSlot interactivo al instante.
+    fireEvent.click(lazyCell8!.querySelector("button")!);
     expect(container.querySelector('[data-testid="studio-slot-8"]')).not.toBeNull();
+  });
+
+  it("hidratar 5 bolas llenas desde carrito («Editar») monta solo los slots visibles por IntersectionObserver y deja el resto en LazySlotPlaceholder con su <img>", async () => {
+    const base = makePolaroidCanvas(10);
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "ornament-cart-edit",
+      productSlug: "bola-navidena-personalizada",
+      canvasData: {
+        ...base,
+        unitSlots: 2,
+        unitCount: 5,
+        slots: base.slots.map((s) => ({
+          ...s,
+          assetId: `asset-${s.slotIndex}`,
+          assetUrl: `https://cdn.example.com/master-${s.slotIndex}.jpg`,
+          canvasUrl: `https://cdn.example.com/canvas-${s.slotIndex}.webp`,
+        })),
+      },
+      templates: [],
+    });
+
+    const { container } = renderStudio(
+      <StudioCanvasGrid
+        store={store}
+        facesPerUnit={2}
+        noFold
+        shape="circle"
+        unitNoun="Bola"
+        onSlotClick={() => {}}
+        stageZoomRaw={1}
+        onStageZoomState={() => {}}
+        registerSlotStages={() => {}}
+      />,
+    );
+
+    // En frame 0 ningún slot offscreen fuerza Konva: los 10 observan y muestran <img> nativo.
+    await waitFor(() => expect(io.observed).toHaveLength(10));
+    fireIntersection(0, 1, 2, 3); // Bolas 1 y 2 visibles en móvil
+
+    await waitFor(() => {
+      for (let i = 0; i < 4; i++) {
+        expect(container.querySelector(`[data-testid="studio-slot-${i}"]`)).not.toBeNull();
+      }
+    });
+    for (let i = 4; i < 10; i++) {
+      expect(container.querySelector(`[data-testid="studio-slot-${i}"]`)).toBeNull();
+      expect(
+        container.querySelector(
+          `[data-slot-observe="${i}"] img[src="https://cdn.example.com/canvas-${i}.webp"]`,
+        ),
+      ).not.toBeNull();
+    }
   });
 });
