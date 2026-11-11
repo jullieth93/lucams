@@ -72,8 +72,11 @@
   completa para imprenta (`composePhotoStrips` + `metadata.photoStrips`), previews de packs en grilla
   balanceada 3×2 (`packGrid` + partición por pack), «Mis fotos»/auto-fill sin prediseñados
   (`fromGallery`), colapso de secciones por unidad unificado, escena 3D Polaroid con conteo de packs,
-  bloque «Ahorra llevando más» unificado en toda la PDP (`VolumeTiersNote` + escala derivada de packs),
-  `magnet: true` explícito en Polaroid/Cuadrados, calendario renombrado «Calendario Set 12 Tarjetas»,
+  bloque «Ahorra llevando más» unificado en toda la PDP (`VolumeTiersNote` + escala derivada de
+  presentaciones; **solo ahorro por volumen real** — la promo va como tachado por presentación) con
+  **curva de volumen real en packs Polaroid/Cuadrados** (2 packs −6 %, 3 −11 %, 4 −15 %; one-shot
+  `packs-volume-pricing-20261111.mjs`), `magnet: true` explícito en Polaroid/Cuadrados, calendario
+  renombrado «Calendario Set 12 Tarjetas»,
   CTA final de portada hacia `/empresas-y-eventos` (`home.cta.b2b-label`) y embudo B2B desde 25 unidades.
 - **Bola Navideña y Mini Libros (`ADR-199`/`200`/`201` + `ADR-203`):** Bola Navideña (inserto dúplex
   plano de 8 cm) **activa en los 3 ambientes** con 2 variantes — Sin imán **$10.000** y Con imán

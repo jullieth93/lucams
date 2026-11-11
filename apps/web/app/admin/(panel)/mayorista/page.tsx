@@ -28,14 +28,11 @@ import {
   AdminTable,
   AdminTableBody,
   AdminTableHead,
-  AdminTableRow,
 } from "@/components/admin-page";
-import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { formatCOP } from "@/lib/format";
-import { deleteWholesaleTierAction, toggleWholesaleTierAction } from "./actions";
 import { CreateTierForm } from "./create-tier-form";
+import { TierRow } from "./tier-row";
 import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
@@ -110,6 +107,7 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
         </AdminNotice>
 
         {sp.created === "1" && <AdminNotice tone="success">Nivel mayorista creado.</AdminNotice>}
+        {sp.updated === "1" && <AdminNotice tone="success">Nivel actualizado.</AdminNotice>}
         {sp.activated === "1" && <AdminNotice tone="success">Nivel activado.</AdminNotice>}
         {sp.deactivated === "1" && (
           <AdminNotice tone="warning">Nivel desactivado (no se aplica).</AdminNotice>
@@ -153,56 +151,17 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
                 </AdminTableHead>
                 <AdminTableBody>
                   {group.tiers.map((t) => (
-                    <AdminTableRow key={t.id}>
-                      <td className="text-brand-purple-dark px-4 py-3 align-top font-semibold tabular-nums">
-                        {t.minQty.toLocaleString("es-CO")}+ unidades
-                      </td>
-                      <td className="text-brand-purple-dark px-4 py-3 text-right align-top font-semibold tabular-nums">
-                        {formatCOP(t.unitPrice)}
-                      </td>
-                      <td className="text-brand-muted px-4 py-3 align-top text-xs">
-                        {t.note ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-center align-top">
-                        {t.isActive ? (
-                          <AdminBadge tone="emerald">Activo</AdminBadge>
-                        ) : (
-                          <AdminBadge tone="amber">Desactivado</AdminBadge>
-                        )}
-                      </td>
-                      <td className="text-brand-muted px-4 py-3 align-top text-xs">
-                        {formatDateCO(t.createdAt)}
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                          <form action={toggleWholesaleTierAction}>
-                            <input type="hidden" name="id" value={t.id} />
-                            <button
-                              type="submit"
-                              className={
-                                t.isActive
-                                  ? "text-[11px] font-medium text-amber-700 hover:text-amber-900"
-                                  : "text-[11px] font-medium text-emerald-700 hover:text-emerald-900"
-                              }
-                            >
-                              {t.isActive ? "Desactivar" : "Activar"}
-                            </button>
-                          </form>
-                          <ConfirmAction
-                            action={deleteWholesaleTierAction}
-                            message="¿Eliminar este nivel de precio? Dejará de aplicar de inmediato."
-                          >
-                            <input type="hidden" name="id" value={t.id} />
-                            <button
-                              type="submit"
-                              className="text-brand-muted text-[11px] font-medium hover:text-rose-600"
-                            >
-                              Eliminar
-                            </button>
-                          </ConfirmAction>
-                        </div>
-                      </td>
-                    </AdminTableRow>
+                    <TierRow
+                      key={t.id}
+                      tier={{
+                        id: t.id,
+                        minQty: t.minQty,
+                        unitPrice: t.unitPrice,
+                        note: t.note,
+                        isActive: t.isActive,
+                        createdLabel: formatDateCO(t.createdAt),
+                      }}
+                    />
                   ))}
                 </AdminTableBody>
               </AdminTable>
