@@ -212,7 +212,7 @@ const categoriesData = [
     name: "Fotoimanes",
     description:
       "Imanes con tus fotos favoritas. Polaroids, cuadrados, circulares, corazones, glass-magnets. El core de Lucams.",
-    order: 1,
+    order: 2,
     isActive: true,
   },
   {
@@ -228,7 +228,7 @@ const categoriesData = [
     name: "Calendarios Magnéticos",
     description:
       "Calendarios anuales con 12 fotos (una por mes) o foto-hero. Para la nevera, el escritorio o de regalo.",
-    order: 3,
+    order: 0,
     isActive: true,
   },
   {
@@ -295,7 +295,7 @@ const categoriesData = [
     name: "Juegos y Aprendizaje",
     description:
       "Abecedario, números, rutinas y planners de emociones para que los peques jueguen y aprendan.",
-    order: 10,
+    order: 3,
     isActive: true,
   },
 ];
@@ -343,7 +343,7 @@ const productsData = [
     // Dims reales del paquete en PRD (fuente de verdad comercial, audit 2026-10-22).
     physicalSpecs: { weightGrams: 30, widthCm: 15, heightCm: 10, depthCm: 3 },
     description:
-      "Fotoimanes con tus fotos en formato polaroid clásico (6×8 cm). Bordes blancos icónicos, impresión alta resolución, acabado mate. Se venden por packs: 1 pack = 6 unidades. El estilo (Clásica/Instagram) lo eliges como plantilla en el Estudio.",
+      "Fotoimanes con tus fotos en formato polaroid clásico (6×8 cm). Se venden por packs: 1 pack = 6 unidades. El estilo (Polaroid Clásica/Instagram) lo eliges como plantilla en el Estudio.",
     basePrice: 2250000,
     // Promo de referencia: mismo % que la tabla vieja (45.000 → 55.000 ≈ +22%).
     // OJO: el update del seed NUNCA pisa basePrice/compareAtPrice (son del admin);
@@ -358,6 +358,11 @@ const productsData = [
       aspectRatio: "6:8",
       allowText: true,
       sizeCm: "6×8",
+      // Vivos de PRD (referencia comercial, ADR-203): el Estudio los usa para el
+      // lienzo base y el modelo de caras. Declarados para que un ambiente
+      // fresco nazca homologado y el seed no los borre al re-correr.
+      facesPerUnit: 1,
+      canvasBaseScale: 0.75,
       // Ola 2A — paleta de marcos del Estudio (borde/color de tarjeta). Si falta,
       // el Estudio pierde «Color de tarjeta» (bug 2026-09-15: un one-shot que
       // reemplazó el schema la borró — el seed la declara para no recaer).
@@ -403,7 +408,7 @@ const productsData = [
     // Dims reales del paquete en PRD (fuente de verdad comercial, audit 2026-10-22).
     physicalSpecs: { weightGrams: 30, widthCm: 15, heightCm: 10, depthCm: 3 },
     description:
-      "Fotoimanes cuadrados con tus fotos a sangre total (sin bordes). Si quieres, agrégale un marco de color en el Estudio: blanco, negro o el color exacto que quieras con «Personalizado». Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
+      "Fotoimanes cuadrados con tus fotos. Si quieres, agrégale un marco de color en el Estudio: blanco, negro o el color exacto que quieras con «Personalizado». Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
     basePrice: 2700000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
@@ -423,7 +428,11 @@ const productsData = [
       // habilitado en las DBs vía /admin/productos la semana del 2026-10-26; el
       // seed lo declara para que un ambiente fresco nazca homologado (el mismo
       // dato lo alinea el one-shot border-width-tiras-cuadrados-20261029.mjs).
-      borderWidth: { enabled: true, min: 1, max: 2.5, default: 1 },
+      // 2026-11-11 (ADR-203): max alineado al valor vivo de PRD (2, no 2.5).
+      borderWidth: { enabled: true, min: 1, max: 2, default: 1 },
+      // Vivos de PRD (referencia comercial, ADR-203).
+      facesPerUnit: 1,
+      canvasBaseScale: 0.75,
     },
     images: [UNSPLASH("1554080353-a576cf803bda")],
     // Variants modulares: Tamaño (4×4 / 5×5 / 7×7) × PACKS de 6 (1-4 packs).
@@ -757,7 +766,7 @@ const productsData = [
     sku: "FI-TIRA-01",
     name: "Tiras Magnéticas",
     description:
-      "Tira vertical estilo photobooth con 3 o 4 de tus fotos apiladas (5×15 cm o 5×16.5 cm) sobre un fondo de color a tu gusto (blanco o negro). La diseñas en el Estudio: subes tus fotos y eliges el color del marco.",
+      "Set de 3 tiras vertical estilo photobooth con 3 o 4 de tus fotos apiladas (5×15 cm o 5×16.5 cm) sobre un fondo de color a tu gusto. La diseñas en el Estudio: subes tus fotos y eliges el color del marco.",
     basePrice: 1900000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
@@ -770,6 +779,8 @@ const productsData = [
       canvasBaseScale: 0.5,
       frameOptions: ["blanco", "negro"],
       borderWidth: { enabled: true, min: 1, max: 2.5, default: 1 },
+      // Vivo de PRD (referencia comercial, ADR-203).
+      facesPerUnit: 1,
     },
     physicalSpecs: { weightGrams: 43, widthCm: 6, heightCm: 17, depthCm: 1 },
     images: [UNSPLASH("1530541930197-ff16ac917b0e")],
@@ -927,14 +938,24 @@ const productsData = [
     // Dims reales del paquete en PRD (fuente de verdad comercial, audit 2026-10-22).
     physicalSpecs: { weightGrams: 90, widthCm: 8, heightCm: 10, depthCm: 1 },
     description:
-      "Calendario magnético anual con una foto distinta por mes: 12 tarjetas intercambiables. Subes las 12 fotos en el Estudio.",
+      "Tú eliges las fotos de cada mes y nosotros las convertimos en un calendario magnético único para tu hogar.\r\nSet de 12 tarjetas mensuales de 7.5×10 cm: tu foto arriba y el mes abajo en lettering grande, con los festivos de Colombia marcados. Subes las 12 fotos en el Estudio y eliges el año de tu calendario.",
     basePrice: 4500000,
     compareAtPrice: 5500000,
     categorySlug: "calendarios",
     isPersonalizable: true,
     isFeatured: true,
     personalizationKind: "CALENDAR_PHOTO_MONTH",
-    personalizationSchema: { photoSlots: 12, year: 2026, monthLabels: true },
+    // Vivo de PRD (referencia comercial, ADR-203): incluye geometría y año
+    // vigente; el seed ya no los borra al re-correr.
+    personalizationSchema: {
+      photoSlots: 12,
+      year: 2027,
+      monthLabels: true,
+      aspectRatio: "3:4",
+      sizeCm: "7.5×10",
+      shape: "rectangle",
+      canvasBaseScale: 0.75,
+    },
     images: [UNSPLASH("1577563908411-5077b6dc7624")],
   },
   {
@@ -1099,7 +1120,7 @@ const productsData = [
     sku: "SEP-ALR",
     name: "Separadores Largos",
     description:
-      "Marcapáginas alargados, ideales para regalar. Elige el tamaño y la cantidad; personalízalos con tus fotos en el estudio. Doble cara, doble imagen.",
+      "Marcapáginas alargados, ideales para regalar. Elige el tamaño y la cantidad; personalízalos con tus fotos en el estudio.",
     basePrice: 400000,
     categorySlug: "separadores",
     isPersonalizable: true,
