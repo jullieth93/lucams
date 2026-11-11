@@ -32,13 +32,18 @@ export function PromoPopup({ items }: { items: CmsBannerItem[] }) {
 
   useEffect(() => {
     if (items.length === 0) return;
+    let seen = false;
     try {
-      if (sessionStorage.getItem(SEEN_KEY) === "1") return;
+      seen = sessionStorage.getItem(SEEN_KEY) === "1";
     } catch {
       // sessionStorage bloqueado (modo estricto): mostrar igual — la promo
       // importa más que el recuerdo de la marca.
     }
-    setOpen(true);
+    if (seen) return;
+    // setTimeout (no setState síncrono en el efecto — regla react-hooks): la
+    // ventana abre tras el primer paint, sin parpadeo ni renders en cascada.
+    const t = window.setTimeout(() => setOpen(true), 400);
+    return () => window.clearTimeout(t);
   }, [items.length]);
 
   if (items.length === 0) return null;
