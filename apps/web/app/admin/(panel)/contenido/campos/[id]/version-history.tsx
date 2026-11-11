@@ -11,7 +11,9 @@ import { History, RotateCcw } from "lucide-react";
 import { publishCmsFieldAction } from "@/app/admin/(panel)/contenido/actions";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
+import { CmsListPreview } from "@/components/admin/cms-list-preview";
 import { formatDateTimeCO } from "@/lib/datetime";
+import type { CmsListSubfield } from "@/features/cms/service";
 
 type Version = {
   id: string;
@@ -29,10 +31,20 @@ export function VersionHistory({
   fieldId,
   versions,
   currentPublishedVersionId,
+  listSchema = null,
+  mediaById = {},
 }: {
   fieldId: string;
   versions: Version[];
   currentPublishedVersionId: string | null;
+  /**
+   * 2026-11-11 (owner) — campos LISTA (ej. home.banners): el historial muestra
+   * las filas en VISUAL (miniatura + título + enlace + activo), no el JSON
+   * crudo — lo lee también quien no es técnico.
+   */
+  listSchema?: CmsListSubfield[] | null;
+  /** Media id → {url, alt} para las miniaturas de los subcampos IMAGE. */
+  mediaById?: Record<string, { url: string; alt: string }>;
 }) {
   if (versions.length === 0) {
     return (
@@ -84,11 +96,15 @@ export function VersionHistory({
               <p className="text-brand-muted mt-1 text-xs">
                 Guardada el {formatDateHuman(v.createdAt)}
               </p>
-              <p className="text-brand-purple-dark/75 mt-2 line-clamp-2 text-sm">
-                {v.title && <b className="text-brand-purple-dark">{v.title}: </b>}
-                {v.body.replace(/[#*_`>-]/g, "").slice(0, 200)}
-                {v.body.length > 200 && "…"}
-              </p>
+              {listSchema ? (
+                <CmsListPreview body={v.body} listSchema={listSchema} mediaById={mediaById} />
+              ) : (
+                <p className="text-brand-purple-dark/75 mt-2 line-clamp-2 text-sm">
+                  {v.title && <b className="text-brand-purple-dark">{v.title}: </b>}
+                  {v.body.replace(/[#*_`>-]/g, "").slice(0, 200)}
+                  {v.body.length > 200 && "…"}
+                </p>
+              )}
             </div>
             {!isCurrent && (
               <form action={publishCmsFieldAction}>

@@ -122,6 +122,50 @@ export default async function EditarCampoPage({
   const listSchema = getCmsListSchema(field.metadata);
   const listItems = listSchema ? await getCmsFieldItems(field.id) : null;
 
+  // Destinos del desplegable de subcampos URL (2026-11-11, owner): productos
+  // activos, categorías activas y páginas clave DEL AMBIENTE — el banner ya no
+  // acepta URLs absolutas escritas a mano (una con la IP de desarrollo llegó a
+  // publicarse; la página pública habría mandado clientes a un host interno).
+  const linkOptions = listSchema?.some((s) => s.type === "URL")
+    ? await (async () => {
+        const [linkProducts, linkCategories] = await Promise.all([
+          prisma.product.findMany({
+            where: { deletedAt: null, isActive: true },
+            select: { name: true, slug: true },
+            orderBy: { name: "asc" },
+          }),
+          prisma.category.findMany({
+            where: { deletedAt: null, isActive: true },
+            select: { name: true, slug: true },
+            orderBy: { name: "asc" },
+          }),
+        ]);
+        return [
+          {
+            group: "Productos",
+            options: linkProducts.map((p) => ({ value: `/producto/${p.slug}`, label: p.name })),
+          },
+          {
+            group: "Categorías",
+            options: linkCategories.map((c) => ({
+              value: `/productos?categoria=${c.slug}`,
+              label: c.name,
+            })),
+          },
+          {
+            group: "Páginas del sitio",
+            options: [
+              { value: "/productos", label: "Catálogo completo" },
+              { value: "/empresas-y-eventos", label: "Empresas y eventos" },
+              { value: "/ayuda", label: "Centro de ayuda" },
+              { value: "/contacto", label: "Contacto" },
+              { value: "/soporte", label: "Soporte" },
+            ],
+          },
+        ];
+      })()
+    : [];
+
   // Campo IMAGE (roadmap B5): body = CmsMedia.id. Se resuelve el asset actual
   // y la mediateca reciente para el control (subir / reutilizar).
   const isImage = field.type === "IMAGE" && !listSchema;
@@ -142,6 +186,37 @@ export default async function EditarCampoPage({
           height: m.height,
         }))
       : null;
+
+  // Historial visual de campos LISTA (2026-11-11, owner): el historial muestra
+  // las filas en tarjetas (miniatura + etiquetas), no el JSON crudo. Las
+  // miniaturas se resuelven de TODAS las versiones (no solo la mediateca
+  // reciente — una imagen vieja sigue siendo referenciable en el historial).
+  let historyMediaById: Record<string, { url: string; alt: string }> = {};
+  if (listHasImage) {
+    const imageKeys = (listSchema ?? []).filter((s) => s.type === "IMAGE").map((s) => s.name);
+    const ids = new Set<string>();
+    for (const v of field.versions) {
+      try {
+        const parsed: unknown = JSON.parse(v.body);
+        if (!Array.isArray(parsed)) continue;
+        for (const item of parsed) {
+          if (typeof item !== "object" || item === null) continue;
+          for (const k of imageKeys) {
+            const val = (item as Record<string, unknown>)[k];
+            if (typeof val === "string" && val.trim()) ids.add(val.trim());
+          }
+        }
+      } catch {
+        // Versión con body no-JSON: el historial cae a la nota de texto plano.
+      }
+    }
+    if (ids.size > 0) {
+      const media = await prisma.cmsMedia.findMany({ where: { id: { in: [...ids] } } });
+      historyMediaById = Object.fromEntries(
+        media.map((m) => [m.id, { url: cmsMediaPublicUrl(m.bucket, m.path), alt: m.alt }]),
+      );
+    }
+  }
 
   return (
     <AdminPage>
@@ -322,6 +397,7 @@ export default async function EditarCampoPage({
               items: listItems.map((item) => item.values),
             }}
             mediaLibrary={imageLibrary ?? []}
+            linkOptions={linkOptions}
           />
         ) : (
           <FieldEditorForm
@@ -374,6 +450,8 @@ export default async function EditarCampoPage({
                 createdBy: v.createdBy,
               }))}
               currentPublishedVersionId={field.publishedVersionId}
+              listSchema={listSchema}
+              mediaById={historyMediaById}
             />
           </AdminCard>
         </section>
