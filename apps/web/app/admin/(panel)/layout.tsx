@@ -73,9 +73,10 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
 
   // Badge del centro de notificaciones (2026-08-05): conteo de no leídas en el
   // item del sidebar. Count con índice (readAt, createdAt) — barato por request.
-  // Solo SUPERADMIN ve ese módulo (deny-by-default en la matriz) → no se consulta
-  // para otros roles.
-  const unreadNotifications = session.admin.role === "SUPERADMIN" ? await getUnreadCount() : 0;
+  // Solo se consulta para roles con acceso a /admin/notificaciones.
+  const unreadNotifications = canAccessAdminPath(session.admin.role, "/admin/notificaciones")
+    ? await getUnreadCount()
+    : 0;
 
   // Logo administrable del shell (Fase 3 · 3.9 — setting CMS `site.logo`,
   // cacheado con tag "cms"; null = insignia gradiente + wordmark de siempre).

@@ -14,6 +14,7 @@ import type { AdminRole } from "@lucams/db";
  */
 export const ADMIN_CAPABILITIES = [
   "dashboard:read",
+  "notifications:manage",
   "orders:read_operational",
   "orders:read_pii",
   "orders:transition",
@@ -54,6 +55,7 @@ export type AdminCapability = (typeof ADMIN_CAPABILITIES)[number];
 
 const OPS_MANAGER_CAPS: readonly AdminCapability[] = [
   "dashboard:read",
+  "notifications:manage",
   "orders:read_operational",
   "orders:read_pii",
   "orders:transition",
@@ -116,14 +118,12 @@ export const ROLE_CAPABILITY_MATRIX: Record<AdminRole, ReadonlySet<AdminCapabili
     "dashboard:read",
     "orders:read_operational",
     "orders:transition",
-    "production:download_assets",
     "crm:manage_tasks",
     "account:self_security",
   ]),
   FINANCE_ANALYST: new Set<AdminCapability>([
     "dashboard:read",
     "orders:read_operational",
-    "orders:read_pii",
     "finance:read",
     "finance:reconcile_cod",
     "finance:export_csv",
@@ -202,6 +202,8 @@ export const ADMIN_ROLE_SETS = {
   METRICS: rolesWithCapability("metrics:read"),
   /** Contenido editorial CMS v2 (`SUPERADMIN`, `CMS_EDITOR`). */
   CONTENT: rolesWithCapability("cms:write"),
+  /** Centro de notificaciones operativas (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
+  NOTIFICATIONS: rolesWithCapability("notifications:manage"),
   /** Exclusivo `SUPERADMIN` (usuarios, auditoría, reembolsos finales, config global). */
   SUPER: ["SUPERADMIN"] as const,
   /** Autoservicio de seguridad de cuenta (MFA obligatorio para el 100 % de roles). */
@@ -211,6 +213,7 @@ export const ADMIN_ROLE_SETS = {
 const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/dashboard", roles: rolesWithCapability("dashboard:read") },
   { prefix: "/admin/hoy", roles: rolesWithCapability("dashboard:read") },
+  { prefix: "/admin/notificaciones", roles: rolesWithCapability("notifications:manage") },
   { prefix: "/admin/pedidos", roles: rolesWithCapability("orders:read_operational") },
 
   // Posventa y soporte al cliente (incluye CUSTOMER_SUPPORT)
@@ -239,9 +242,10 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
     roles: rolesWithCapability("production:manage_AssetsCatalog"),
   },
 
-  // Catálogo y transporte
+  // Catálogo, insumos y transporte
   { prefix: "/admin/productos", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/inventario", roles: rolesWithCapability("catalog:write") },
+  { prefix: "/admin/materiales", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/categorias", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/ocasiones", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/resenas", roles: rolesWithCapability("catalog:write") },
@@ -278,6 +282,7 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/contenido/paginas/global", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido/configuracion", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido", roles: rolesWithCapability("cms:write") },
+  { prefix: "/admin/redirects", roles: rolesWithCapability("cms:write") },
   { prefix: "/admin/email-templates", roles: ["SUPERADMIN"] },
   { prefix: "/admin/auditoria", roles: rolesWithCapability("audit:read") },
   { prefix: "/admin/usuarios", roles: rolesWithCapability("staff:manage") },

@@ -136,6 +136,13 @@ export async function adminLoginAction(
       ip,
       userId: authData.user.id,
     });
+    await recordSecurityEvent({
+      event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
+      outcome: "failure",
+      ip,
+      actorId: authData.user.id,
+      metadata: { code: "not_admin" },
+    });
     // Mismo mensaje que credenciales mal — anti-enumeration.
     return { error: "Credenciales incorrectas." };
   }

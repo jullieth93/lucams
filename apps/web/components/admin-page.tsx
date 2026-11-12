@@ -339,7 +339,7 @@ export function AdminBadge({
 }) {
   const styles: Record<BadgeTone, string> = {
     purple: "bg-brand-purple/10 text-brand-purple-dark",
-    pink: "bg-brand-pink/10 text-brand-pink",
+    pink: "bg-brand-pink/12 text-brand-pink-ink",
     turquoise: "bg-brand-turquoise/15 text-cyan-700",
     emerald: "bg-emerald-50 text-emerald-700",
     amber: "bg-amber-50 text-amber-700",
@@ -402,14 +402,22 @@ export function OpsCard({
 }) {
   const colors: Record<typeof tone, { text: string; bg: string; ring: string }> = {
     purple: { text: "text-brand-purple", bg: "bg-brand-purple/10", ring: "ring-brand-purple/30" },
-    pink: { text: "text-brand-pink", bg: "bg-brand-pink/10", ring: "ring-brand-pink/30" },
+    pink: {
+      text: "text-brand-pink-ink",
+      bg: "bg-brand-pink/10",
+      ring: "ring-brand-pink/30",
+    },
     turquoise: {
-      text: "text-cyan-600",
+      text: "text-cyan-700",
       bg: "bg-brand-turquoise/15",
       ring: "ring-brand-turquoise/30",
     },
-    coral: { text: "text-orange-600", bg: "bg-brand-coral/15", ring: "ring-brand-coral/30" },
-    amber: { text: "text-amber-600", bg: "bg-amber-100", ring: "ring-amber-300" },
+    coral: {
+      text: "text-brand-coral-ink",
+      bg: "bg-brand-coral/15",
+      ring: "ring-brand-coral/30",
+    },
+    amber: { text: "text-amber-700", bg: "bg-amber-100", ring: "ring-amber-300" },
   };
   const c = colors[tone];
   return (

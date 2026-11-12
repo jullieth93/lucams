@@ -13,13 +13,12 @@
 import { revalidatePath } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { markRead, markAllRead } from "@/features/notifications/service";
 import { logger } from "@/lib/logger";
 
 /** Marca UNA notificación como leída (botón por fila del feed). */
 export async function markReadAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "notifications:manage" });
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return;
 
@@ -37,7 +36,7 @@ export async function markReadAction(formData: FormData): Promise<void> {
 
 /** Marca TODAS las notificaciones como leídas (botón del header). */
 export async function markAllReadAction(): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "notifications:manage" });
 
   await markAllRead();
   await recordAdminAction({

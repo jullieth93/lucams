@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import {
   RedirectValidationError,
   archiveRedirect,
@@ -29,7 +28,7 @@ export async function createRedirectAction(
   _prev: RedirectActionState | null,
   formData: FormData,
 ): Promise<RedirectActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
 
   const fromPath = String(formData.get("fromPath") ?? "").trim();
   const toPath = String(formData.get("toPath") ?? "").trim();
@@ -77,7 +76,7 @@ export async function updateRedirectAction(
   _prev: RedirectActionState | null,
   formData: FormData,
 ): Promise<RedirectActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
 
   const id = String(formData.get("id") ?? "");
   const toPath = String(formData.get("toPath") ?? "").trim();
@@ -112,7 +111,7 @@ export async function updateRedirectAction(
 }
 
 export async function toggleRedirectActiveAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
   const id = String(formData.get("id") ?? "");
   try {
     const updated = await toggleRedirectActive(id, session.admin.id);
@@ -132,7 +131,7 @@ export async function toggleRedirectActiveAction(formData: FormData): Promise<vo
 }
 
 export async function archiveRedirectAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
   const id = String(formData.get("id") ?? "");
   await archiveRedirect(id, session.admin.id);
   await recordAdminAction({
@@ -146,7 +145,7 @@ export async function archiveRedirectAction(formData: FormData): Promise<void> {
 }
 
 export async function restoreRedirectAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
   const id = String(formData.get("id") ?? "");
   await restoreRedirect(id, session.admin.id);
   await recordAdminAction({

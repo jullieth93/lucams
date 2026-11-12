@@ -20,7 +20,6 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import { pesosToCents } from "@/lib/format";
 
@@ -88,7 +87,7 @@ export async function createMaterialAction(
   _prev: MaterialActionState | null,
   formData: FormData,
 ): Promise<MaterialActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const parsed = parseMaterialForm(formData);
   if ("error" in parsed) return parsed;
@@ -134,7 +133,7 @@ export async function updateMaterialAction(
   _prev: MaterialActionState | null,
   formData: FormData,
 ): Promise<MaterialActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Falta el material a editar." };
@@ -180,7 +179,7 @@ export async function updateMaterialAction(
 }
 
 export async function toggleMaterialActiveAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "catalog:write" });
   const id = String(formData.get("id") ?? "");
   try {
     const current = await prisma.material.findUniqueOrThrow({
@@ -214,7 +213,7 @@ export async function toggleMaterialActiveAction(formData: FormData): Promise<vo
 // Soft delete (deletedAt/deletedBy): la fila se conserva para trazabilidad de
 // costos históricos y se puede restaurar desde la vista "Papelera".
 export async function deleteMaterialAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "catalog:write" });
   const id = String(formData.get("id") ?? "");
   try {
     await prisma.material.update({
@@ -242,7 +241,7 @@ export async function deleteMaterialAction(formData: FormData): Promise<void> {
 }
 
 export async function restoreMaterialAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "catalog:write" });
   const id = String(formData.get("id") ?? "");
   try {
     await prisma.material.update({

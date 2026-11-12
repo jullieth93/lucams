@@ -291,7 +291,7 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
   );
 
   it.each(["full", "catalog"] as const)(
-    "modo %s: ve exactamente Páginas del sitio, Mediateca y Seguridad (Ajustes del sitio y Plantillas de correo son SUPERADMIN)",
+    "modo %s: ve exactamente Páginas del sitio, Mediateca, Redirects y Seguridad (Ajustes del sitio y Plantillas de correo son SUPERADMIN)",
     async (mode) => {
       const { nav } = await getNavForMode(mode);
       const visible = filterNavByRole(nav, "CMS_EDITOR");
@@ -303,10 +303,10 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
       ]);
 
       const config = visible.find((g) => g.title === "Configuración");
-      // Seguridad (autoservicio MFA) quedó abierta a todos los roles en B-1.
+      // Seguridad (autoservicio MFA + contraseña) + Redirects (cms:write) están habilitados para CMS_EDITOR.
       // Ajustes del sitio (/admin/contenido/paginas/global) y /admin/email-templates
       // son solo-SUPERADMIN.
-      expect(config?.items?.map((it) => it.href)).toEqual(["/admin/seguridad"]);
+      expect(config?.items?.map((it) => it.href)).toEqual(["/admin/seguridad", "/admin/redirects"]);
     },
   );
 
@@ -324,11 +324,13 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
       expect(allHrefs).not.toContain("/admin/usuarios");
       expect(allHrefs).not.toContain("/admin/finanzas");
       expect(allHrefs).not.toContain("/admin/cupones");
-      // Y todo lo visible es contenido o autoservicio de cuenta (coherente con la matriz;
-      // /admin/email-templates ya no entra acá — Fase 4 lo subió a solo-SUPERADMIN).
       expect(allHrefs).not.toContain("/admin/email-templates");
       for (const href of allHrefs) {
-        expect(href.startsWith("/admin/contenido") || href === "/admin/seguridad").toBe(true);
+        expect(
+          href.startsWith("/admin/contenido") ||
+            href === "/admin/redirects" ||
+            href === "/admin/seguridad",
+        ).toBe(true);
       }
     },
   );

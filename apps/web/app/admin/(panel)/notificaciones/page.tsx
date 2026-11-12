@@ -21,7 +21,8 @@ import {
   ShoppingBag,
   type LucideIcon,
 } from "lucide-react";
-import { requireRole } from "@/lib/admin-rbac-guard";
+import { canAccessAdminPath } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import {
   listNotifications,
   getUnreadCount,
@@ -99,7 +100,8 @@ export default async function AdminNotificacionesPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireRole(["SUPERADMIN"]);
+  const session = await requireCapability("notifications:manage");
+  const canSeeObservability = canAccessAdminPath(session.admin.role, "/admin/observability");
 
   const sp = await searchParams;
   const view = pickString(sp, "vista") === "all" ? "all" : "unread";
@@ -122,15 +124,20 @@ export default async function AdminNotificacionesPage({
             Todo lo que pasa en el sistema llega acá: alertas, crons que fallan, cotizaciones nuevas
             y tu resumen diario — sin llenar tu correo.
             <span className="mt-1 block text-xs text-slate-500">
-              Acá queda el historial de avisos del sistema. Para ver cómo está el sistema AHORA, ve
-              a{" "}
-              <Link
-                href="/admin/observability"
-                className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
-              >
-                Salud técnica
-              </Link>
-              .
+              Acá queda el historial de avisos del sistema.
+              {canSeeObservability && (
+                <>
+                  {" "}
+                  Para ver cómo está el sistema AHORA, ve a{" "}
+                  <Link
+                    href="/admin/observability"
+                    className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
+                  >
+                    Salud técnica
+                  </Link>
+                  .
+                </>
+              )}
             </span>
           </>
         }
@@ -242,14 +249,16 @@ export default async function AdminNotificacionesPage({
                         {n.detail}
                       </p>
                       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                        {n.actionUrl && (
-                          <Link
-                            href={n.actionUrl}
-                            className="text-brand-pink-ink hover:bg-brand-pink/10 inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors"
-                          >
-                            {n.actionLabel ?? "Ver detalle"} →
-                          </Link>
-                        )}
+                        {n.actionUrl &&
+                          (!n.actionUrl.startsWith("/admin") ||
+                            canAccessAdminPath(session.admin.role, n.actionUrl)) && (
+                            <Link
+                              href={n.actionUrl}
+                              className="text-brand-pink-ink hover:bg-brand-pink/10 inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors"
+                            >
+                              {n.actionLabel ?? "Ver detalle"} →
+                            </Link>
+                          )}
                         {unread && (
                           <form action={markReadAction}>
                             <input type="hidden" name="id" value={n.id} />

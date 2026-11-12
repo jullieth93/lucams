@@ -10,7 +10,7 @@
 
 1. **Defensa en profundidad:** ninguna barrera actúa sola. El acceso administrativo combina redirección en borde (`apps/web/proxy.ts`), validación en layout, guardas por Server Action/Route Handler (`apps/web/lib/admin-rbac-guard.ts`), MFA TOTP obligatorio (`aal2`), re-autenticación reciente (`requireRecentMfa`) y RLS estricto en Postgres.
 2. **Fail-closed en producción:** ante ausencia de secretos críticos (`validateEnv()` en `apps/web/lib/env.ts`), marcas de inactividad administrativa faltantes o inválidas, retos anti-bot fallidos en producción o valores fuera de rango, el sistema rechaza la operación. La única excepción deliberada y documentada es la consulta externa a Have I Been Pwned (`lib/pwned-passwords.ts`), que opera _fail-open_ con timeout corto (`3 000 ms`) para que una caída de un tercero externo no bloquee el registro de clientes.
-3. **Menor privilegio:** 8 roles administrativos con 35 capacidades granulares, enmascaramiento server-side de PII antes de serializar React Server Components (RSC), buckets sensibles privados y revocación total de permisos de tabla para los roles `anon`, `authenticated` y `service_role` en el esquema `public`.
+3. **Menor privilegio:** 8 roles administrativos con 36 capacidades granulares (`ADMIN_ASSIGNABLE_ROLES` expone los 7 roles vigentes y mantiene `MANAGER` como alias legado), enmascaramiento server-side de PII antes de serializar React Server Components (RSC), buckets sensibles privados y revocación total de permisos de tabla para los roles `anon`, `authenticated` y `service_role` en el esquema `public`.
 4. **Cero confianza en el cliente:** precios, descuentos, fletes, elegibilidad de cupones, Puntos Lucams, autorizaciones y firmas se calculan o verifican exclusivamente en el servidor con aritmética entera en centavos COP (`Int`).
 5. **Privacidad por diseño:** ninguna foto ni dato personal viaja a Google Gemini, Google Analytics 4 no se carga sin consentimiento previo en la categoría **Analíticas**, las direcciones IP en rate limiting y telemetría de seguridad se almacenan truncadas en hash SHA-256 y los tokens de acceso público se guardan únicamente como digest SHA-256.
 
@@ -28,7 +28,7 @@
 | **Fraude financiero, manipulación de precios y abuso COD**    | `/checkout/*`, `/api/webhooks/wompi`, cupones, Puntos Lucams, contraentrega                         | Recálculo total server-side desde variantes reales, fletes sellados con HMAC-SHA256 (`CSRF_SECRET`), firma SHA-256 timing-safe + ventana de 25 h + idempotencia en Wompi, decremento atómico de stock post-pago (`InventoryLog`), `BlockedIdentity` y motor `assessCodRisk`                           |
 | **Bombas de descompresión y payloads maliciosos en imágenes** | Subidas del Estudio, catálogo y CMS (`/api/designs/*`, Server Actions de medios)                    | Inspección de magic bytes (`sniffImageMime`), lectura previa de dimensiones `ispe` en HEIC/HEIF antes de decodificar, `sharp` `0.35.5` con formatos peligrosos bloqueados (`sharp.block`), tope de píxeles (`25 MP`–`50 MP`), ratio `≤ 20:1`, borrado de EXIF y streaming acotado `readBodyWithLimit` |
 | **Amplificación de base de datos o denegación de servicio**   | `/api/vitals`, `/api/funnel`, `/api/log-error`, `/api/webhooks/*`, fallos masivos de login          | Límites de cuerpo por ruta (`4 KB`–`128 KB`), rate limiting transaccional en Postgres + topes globales de filas nuevas y coalescencia en memoria + upsert por minuto en `SecurityEvent` (`LUC-SEC-008`)                                                                                               |
-| **Exfiltración masiva o escalamiento interno en `/admin`**    | Exportaciones CSV, pedidos, CRM, reembolsos y gestión de staff                                      | Matriz RBAC `8 × 35`, ocultamiento server-side de PII (`lib/pii-mask.ts`), búsqueda anti-oráculo cuando el rol no posee `orders:read_pii`, step-up MFA para exportar o reembolsar, auditoría `selfDealing` y registro inmutable en `AdminActionLog`                                                   |
+| **Exfiltración masiva o escalamiento interno en `/admin`**    | Exportaciones CSV, pedidos, CRM, reembolsos y gestión de staff                                      | Matriz RBAC `8 × 36`, ocultamiento server-side de PII (`lib/pii-mask.ts`), búsqueda anti-oráculo cuando el rol no posee `orders:read_pii`, step-up MFA para exportar o reembolsar, auditoría `selfDealing` y registro inmutable en `AdminActionLog`                                                   |
 | **Bypass de la capa web hacia Supabase PostgREST**            | API REST pública de Supabase con `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`                             | `ENABLE ROW LEVEL SECURITY` + `REVOKE ALL` a `anon`/`authenticated` y revocación DML a `service_role` en el 100 % de las tablas de `public`, blindado por event trigger `enforce_rls_on_new_table_trg` y suite `make test-rls`                                                                        |
 
 ### 2.2 Superficie expuesta
@@ -42,7 +42,7 @@
 
 | Categoría OWASP Top 10                             | Controles vigentes en Lucams Shop                                                                                                                                                                                                                              |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A01 — Broken Access Control**                    | RBAC `8 × 35` (`canAccessAdminPath` por prefijo más largo + `requireCapability`/`verifyAdminRouteAccess`), `proxy.ts` sobrescribe `x-pathname`, RLS al 100 % + `REVOKE ALL`, tokens opacos SHA-256, `safeRedirectTarget` (`ADR-046`) y `LUC-SEC-001`           |
+| **A01 — Broken Access Control**                    | RBAC `8 × 36` (`canAccessAdminPath` por prefijo más largo + `requireCapability`/`verifyAdminRouteAccess`), `proxy.ts` sobrescribe `x-pathname`, RLS al 100 % + `REVOKE ALL`, tokens opacos SHA-256, `safeRedirectTarget` (`ADR-046`) y `LUC-SEC-001`           |
 | **A02 — Cryptographic Failures**                   | HSTS Preload 2 años, `checkout_state` cifrada con `AES-256-GCM` (`ADR-085`), códigos MFA con `HMAC-SHA256(CSRF_SECRET)`, tokens hasheados SHA-256 en reposo, `crypto.timingSafeEqual` en toda comparación sensible y backups R2 cifrados con GPG `AES-256`     |
 | **A03 — Injection**                                | Consultas parametrizadas con Prisma (y `$queryRaw` con tagged templates tipados), validación Zod allowlist sin `.passthrough()`, Markdown renderizado con `rehype-sanitize`, `EMAIL_PREVIEW_SANDBOX_CSP` y prohibición absoluta de `SVG` en subidas            |
 | **A04 — Insecure Design**                          | Recálculo server-side en centavos COP, decremento atómico de stock post-pago (`InventoryLog`), separación `UNVERIFIED_OBSERVED` vs `VERIFIED` en CRM (`ADR-193`), auditoría de conflicto de interés `selfDealing` y step-up MFA (`≤ 10 min`) en reembolsos     |
@@ -64,7 +64,7 @@
 | **R** | **Repudiation**            | Negar haber ejecutado una compra, autorización o mutación administrativa            | `Consent` append-only (IP, UA, versión), `AdminActionLog` con diff `before`/`after`, `WebhookEvent` y correlación `X-Request-Id`    |
 | **I** | **Information Disclosure** | Acceder a PII, fotos privadas, llaves o topología interna sin autorización          | RLS + `REVOKE ALL`, enmascaramiento RSC (`lib/pii-mask.ts`), 3 buckets privados, `scrubPii` en logs/errores y salud pública mínima  |
 | **D** | **Denial of Service**      | Agotar conexiones DB, memoria serverless, cuota de Storage o presupuesto de APIs IA | `readBodyWithLimit`, presupuestos de píxeles `sharp`, `rate_limit_buckets` + topes globales, Turnstile y coalescencia `LUC-SEC-008` |
-| **E** | **Elevation of Privilege** | Escalar de visitante/cliente a admin o de rol operativo a `SUPERADMIN`              | Matriz RBAC `8 × 35`, triggers anti-escalada en DB (`028`), esquemas Zod cerrados, step-up MFA en `staff:manage` e invariantes CRM  |
+| **E** | **Elevation of Privilege** | Escalar de visitante/cliente a admin o de rol operativo a `SUPERADMIN`              | Matriz RBAC `8 × 36`, triggers anti-escalada en DB (`028`), esquemas Zod cerrados, step-up MFA en `staff:manage` e invariantes CRM  |
 
 #### Aplicación STRIDE a los 4 flujos críticos
 
@@ -215,62 +215,63 @@ Los compradores sin cuenta consultan su orden mediante un enlace con un token op
 
 ## 5. Seguridad del panel `/admin`
 
-### 5.1 Matriz RBAC: 8 roles (`AdminRole`) × 35 capacidades (`AdminCapability`)
+### 5.1 Matriz RBAC: 8 roles (`AdminRole`) × 36 capacidades (`AdminCapability`)
 
-La fuente única de verdad vive en [`apps/web/lib/admin-rbac.ts`](../apps/web/lib/admin-rbac.ts). Todo miembro del equipo existe en `AdminUser` (`isActive = true` y `deletedAt IS NULL`). El aprovisionamiento (`provisionStaffAdmin` en `apps/web/features/admin-users/service.ts`) crea o reutiliza el usuario en `auth.users` sin insertar filas ficticias en `Customer` ni contaminar el grafo comercial `Contact`.
+La fuente única de verdad vive en [`apps/web/lib/admin-rbac.ts`](../apps/web/lib/admin-rbac.ts). Todo miembro del equipo existe en `AdminUser` (`isActive = true` y `deletedAt IS NULL`). El aprovisionamiento (`provisionStaffAdmin` en `apps/web/features/admin-users/service.ts`) crea o reutiliza el usuario en `auth.users` sin insertar filas ficticias en `Customer` ni contaminar el grafo comercial `Contact`. En `/admin/usuarios`, `ADMIN_ASSIGNABLE_ROLES` expone los 7 roles vigentes y mantiene `MANAGER` solo por compatibilidad retroactiva; al desactivar un `AdminUser`, se revocan sus sesiones globalmente (`supabaseService.auth.admin.signOut(userId, "global")`).
 
-| Rol (`AdminRole`)    | Capacidades | Propósito operativo y alcance sobre PII                                                                                                             |
-| -------------------- | :---------: | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SUPERADMIN`         | **34 / 35** | Propietaria / dirección general: control total del negocio, staff (`staff:manage`), reembolsos finales en efectivo, finanzas, seguridad y auditoría |
-| `OPERATIONS_MANAGER` | **25 / 35** | Jefatura operativa diaria (catálogo, pedidos con PII, moderación, posventa, `Contacto 360`, fusión CRM, B2B y lealtad; sin reembolsos ni staff)     |
-| `MANAGER`            | **25 / 35** | Alias de compatibilidad en Prisma con capacidades idénticas a `OPERATIONS_MANAGER`                                                                  |
-| `CUSTOMER_SUPPORT`   | **13 / 35** | Atención PQR, retractos, garantías (sin desembolso de efectivo), reseñas, moderación, cotizaciones y consulta `Contacto 360` con PII                |
-| `FINANCE_ANALYST`    | **9 / 35**  | Contabilidad, exportación CSV financiera, costos, conciliación COD, bloqueos anti-abuso, métricas y lectura de pedidos con PII enmascarada          |
-| `PRINT_WORKSHOP`     | **7 / 35**  | Taller de impresión: diseños 300 DPI, reintento `RenderJob`, paquetes ZIP e inventario, con PII enmascarada y sin acceso a guías logísticas         |
-| `FULFILLMENT`        | **6 / 35**  | Alistamiento y despacho: transiciones logísticas, impresión auditada de guías (`orders:shipping`) e inventario, con PII enmascarada en listados     |
-| `CMS_EDITOR`         | **2 / 35**  | Edición editorial CMS v2 (`cms:write` en páginas, bloques, mediateca, redirects) + seguridad de su propia cuenta (`account:self_security`)          |
+| Rol (`AdminRole`)    | Capacidades | Propósito operativo y alcance sobre PII                                                                                                                                |
+| -------------------- | :---------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPERADMIN`         | **36 / 36** | Propietaria / dirección general: control total del negocio, staff (`staff:manage`), reembolsos finales, promociones, finanzas, configuración, seguridad y auditoría    |
+| `OPERATIONS_MANAGER` | **26 / 36** | Jefatura operativa diaria (notificaciones, catálogo + materiales, pedidos con PII, moderación, posventa, `Contacto 360`, fusión CRM, B2B y lifecycle; sin staff)       |
+| `MANAGER`            | **26 / 36** | Alias legado en Prisma con capacidades idénticas a `OPERATIONS_MANAGER` (oculto en nuevas asignaciones)                                                                |
+| `CUSTOMER_SUPPORT`   | **13 / 36** | Atención PQR, retractos, garantías (sin desembolso), oportunidades B2B, recuperación de carritos y consulta `Contacto 360` con PII                                     |
+| `FINANCE_ANALYST`    | **8 / 36**  | Contabilidad, exportación CSV financiera, costos, conciliación COD, bloqueos anti-abuso, métricas y lectura operativa de pedidos con PII enmascarada                   |
+| `PRINT_WORKSHOP`     | **7 / 36**  | Taller de impresión: paquetes ZIP 300 DPI (`production:download_assets`), moderación e inventario, con PII enmascarada y sin acceso a guías logísticas                 |
+| `FULFILLMENT`        | **5 / 36**  | Alistamiento y despacho: transiciones logísticas, impresión auditada de guías e inventario, con PII enmascarada y sin descarga de artes originales 300 DPI             |
+| `CMS_EDITOR`         | **2 / 36**  | Edición editorial CMS v2 (`cms:write` en páginas, bloques, mediateca y redirecciones SEO `/admin/redirects`) + seguridad de su propia cuenta (`account:self_security`) |
 
-#### Tabla exacta de las 35 capacidades por rol
+#### Tabla exacta de las 36 capacidades por rol
 
 Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `CUSTOMER_SUPPORT`, `FA` = `FINANCE_ANALYST`, `PW` = `PRINT_WORKSHOP`, `FU` = `FULFILLMENT`, `CE` = `CMS_EDITOR`.
 
-| #   | Capacidad (`AdminCapability`) | SA  | OM  | CS  | FA  | PW  | FU  | CE  |
-| --- | ----------------------------- | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| 1   | `dashboard:read`              |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
-| 2   | `orders:read`                 |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
-| 3   | `orders:read_pii`             |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 4   | `orders:update_status`        |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
-| 5   | `orders:shipping`             |  ✓  |  ✓  |  —  |  —  |  —  |  ✓  |  —  |
-| 6   | `orders:reconcile`            |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 7   | `orders:refund`               |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 8   | `orders:delete`               |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 9   | `designs:read_production`     |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
-| 10  | `designs:rerender`            |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
-| 11  | `moderation:manage`           |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 12  | `products:write`              |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 13  | `products:delete`             |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 14  | `inventory:write`             |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
-| 15  | `costs:manage`                |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
-| 16  | `quotes:manage`               |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 17  | `customers:read`              |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 18  | `contacts:read`               |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 19  | `contacts:read_pii`           |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 20  | `contacts:write`              |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 21  | `contacts:merge`              |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 22  | `opportunities:manage`        |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 23  | `support:manage`              |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 24  | `posventa:manage`             |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 25  | `posventa:refund`             |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 26  | `marketing:manage`            |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 27  | `marketing:export_pii`        |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 28  | `cms:write`                   |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  ✓  |
-| 29  | `finance:read`                |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
-| 30  | `finance:manage`              |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
-| 31  | `metrics:read`                |  ✓  |  ✓  |  —  |  ✓  |  —  |  —  |  —  |
-| 32  | `system:read`                 |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 33  | `staff:manage`                |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 34  | `account:self_security`       |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
-| 35  | `lifecycle:manage`            |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| #   | Capacidad (`AdminCapability`)     | SA  | OM  | CS  | FA  | PW  | FU  | CE  |
+| --- | --------------------------------- | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| 1   | `dashboard:read`                  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 2   | `notifications:manage`            |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 3   | `orders:read_operational`         |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 4   | `orders:read_pii`                 |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 5   | `orders:transition`               |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
+| 6   | `orders:reconcile`                |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 7   | `production:download_assets`      |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
+| 8   | `production:moderate`             |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
+| 9   | `production:manage_AssetsCatalog` |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 10  | `contacts:read_360`               |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 11  | `contacts:read_pii`               |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 12  | `contacts:merge`                  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 13  | `crm:manage_activities`           |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 14  | `crm:manage_tasks`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 15  | `support:manage`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 16  | `warranty:manage`                 |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 17  | `warranty:refund`                 |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 18  | `retract:manage`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 19  | `retract:refund`                  |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 20  | `carts:recover`                   |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 21  | `carts:configure`                 |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 22  | `marketing:read`                  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 23  | `marketing:export_csv`            |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 24  | `opportunities:manage`            |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 25  | `finance:read`                    |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 26  | `finance:reconcile_cod`           |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 27  | `finance:export_csv`              |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 28  | `metrics:read`                    |  ✓  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 29  | `catalog:write`                   |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 30  | `shipping:configure`              |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 31  | `cms:write`                       |  ✓  |  —  |  —  |  —  |  —  |  —  |  ✓  |
+| 32  | `cms:manage_global`               |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 33  | `audit:read`                      |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 34  | `staff:manage`                    |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 35  | `lifecycle:manage`                |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 36  | `account:self_security`           |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
 
 ### 5.2 Guardia de rutas por prefijo más largo (`canAccessAdminPath`) y Route Handlers
 
@@ -290,7 +291,7 @@ Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `C
    - El consumo en `/admin/login/mfa/recovery` está limitado a **5 intentos cada 15 min** por IP y por administrador, reclama el código de forma atómica con `updateMany({ where: { id, usedAt: null } })`, desenrola los factores TOTP previos vía `supabaseService.auth.admin` y obliga a registrar un nuevo autenticador en `/admin/seguridad?reconfig=1`.
 3. **Step-up MFA para acciones destructivas o sensibles (`apps/web/lib/admin-reauth.ts`):**
    - `requireRecentMfa()` inspecciona el timestamp del método `totp` dentro del claim `amr` del JWT y exige verificación en los últimos **10 minutos** (`MFA_REAUTH_WINDOW_MINUTES = 10`, fail-closed). Si venció, lanza `MfaReauthRequiredError` y la UI abre `MfaReauthModal` (`verifyAdminMfaReauthAction`, rate limit `5 / 15 min` IP + admin y auditoría `mfa.reauth.success/failure`) reintentando la acción sin perder el formulario.
-   - **Acciones protegidas con step-up MFA:** reembolso de pedido (`refundOrderAction`), reembolso de retracto (`refundRetractAction`), aprobación o resolución de garantía con devolución de dinero (`approveWarrantyAction` / `resolveWarrantyAction` con `resolution === "REFUND"`), exportaciones CSV (`/admin/marketing/suscriptores/export`, `/admin/marketing/segmentos/export`, `/admin/finanzas/export`), gestión de staff (`provisionStaffAdmin`, promoción/cambio de rol y desactivación de `AdminUser`), fusión de duplicados CRM (`contacts:merge`), operaciones sensibles de COD (`markCodRemittedAction`, `flagCodDiscrepancyAction`, `setCodEnabledAction`) y autogestión de MFA (`disableMfaAction`, `changeMfaDeviceAction`, `generateRecoveryCodesAction`). El enrolamiento inicial no pide step-up porque acaba de ejecutar `challengeAndVerify`.
+   - **Acciones protegidas con step-up MFA:** reembolso de pedido (`refundOrderAction`), reembolso de retracto (`refundRetractAction`), aprobación o resolución de garantía con devolución de dinero (`approveWarrantyAction` / `resolveWarrantyAction` con `resolution === "REFUND"`), exportaciones CSV (`/admin/marketing/suscriptores/export`, `/admin/marketing/segmentos/export`, `/admin/finanzas/export`), gestión de staff (`provisionStaffAdmin`, cambio de rol y desactivación de `AdminUser`), fusión de duplicados CRM (`contacts:merge`), operaciones sensibles de COD (`markCodRemittedAction`, `flagCodDiscrepancyAction`, `setCodEnabledAction`) y autogestión de seguridad en `/admin/seguridad` (`changeMfaDeviceAction`, `generateRecoveryCodesAction` y rotación de contraseña `changeAdminPasswordAction`, que verifica la clave actual con cliente efímero sin degradar `aal2`, bloquea claves filtradas en HIBP y cierra otras sesiones con `signOut({ scope: "others" })`; no existe acción para desactivar MFA permanentemente). El enrolamiento inicial no pide step-up porque acaba de ejecutar `challengeAndVerify`.
 
 ### 5.4 Enmascaramiento server-side de PII, confirmaciones `ADR-192` y auditoría `AdminActionLog` (`selfDealing`)
 

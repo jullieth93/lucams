@@ -12,7 +12,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { ArrowRightLeft, Plus } from "lucide-react";
 import {
   AdminBadge,
@@ -30,7 +29,7 @@ import {
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { listRedirects } from "@/features/redirects/service";
 import {
   archiveRedirectAction,
@@ -68,8 +67,7 @@ const SORT_LABEL: Record<(typeof SORT_OPTIONS)[number], string> = {
 };
 
 export default async function AdminRedirectsPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireCapability("cms:write");
 
   const sp = await searchParams;
   const q = pickString(sp, "q");
@@ -98,15 +96,15 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
           </>
         }
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
-          { label: "Comercial" },
+          { label: "Admin", href: "/admin" },
+          { label: "Configuración" },
           { label: "Redirects" },
         ]}
       />
 
       <AdminPageBody>
         <AdminNotice tone="info">
-          <strong>¿Para qué sirve?</strong> Si renombrás una URL (categoría, blog, página legal),
+          <strong>¿Para qué sirve?</strong> Si renombras una URL (categoría, blog, página legal),
           crea un redirect <strong>301 permanente</strong> para no perder visitas ni SEO de Google.
           Los redirects 301 transfieren la autoridad de la URL vieja a la nueva. Usa 302 solo si el
           cambio es temporal (ej. mantenimiento).

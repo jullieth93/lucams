@@ -1,8 +1,10 @@
 "use server";
 
+import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
@@ -10,16 +12,19 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getClientIp } from "@/lib/client-ip";
 import { logger } from "@/lib/logger";
+import { calculatePasswordStrength } from "@/lib/password-strength";
+import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey, ownerKey } from "@/lib/rate-limit-keys";
+import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { generateRecoveryCodes } from "@/features/admin-mfa/recovery-codes";
 
 /**
- * F-06 (auditoría integral 2026-09-19): la autogestión de MFA (desactivar,
- * cambiar de dispositivo, regenerar recovery codes) exige aal2 RECIENTE — una
- * sesión robada con aal2 viejo no puede enrolar el TOTP del atacante ni
- * cosechar recovery codes nuevos (que se devuelven en claro al cliente).
+ * F-06 (auditoría integral 2026-09-19): la autogestión de seguridad (cambiar de
+ * dispositivo MFA, regenerar recovery codes, cambiar contraseña) exige aal2 RECIENTE —
+ * una sesión robada con aal2 viejo no puede enrolar el TOTP del atacante, cosechar
+ * recovery codes nuevos ni rotar la contraseña.
  * Si la elevación es vieja, devuelve el marcador `reauthRequired`: la UI abre
  * el modal TOTP (components/admin/mfa-reauth) y reintenta la acción una vez.
  *
@@ -47,33 +52,14 @@ async function unenrollAllTotp(): Promise<void> {
   }
 }
 
-/** Desactiva (unenroll) los factores TOTP del admin actual + borra recovery codes. */
-export async function disableMfaAction(): Promise<{ reauthRequired: true } | void> {
-  // Autoservicio de la PROPIA cuenta (session.admin.id): con MFA obligatorio para
-  // todo rol (B-1), la pantalla y sus acciones son ALL_PLUS_CMS. aal2 se mantiene.
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
-
-  const reauth = await requireRecentMfaOrMarker();
-  if (reauth) return reauth;
-
-  await unenrollAllTotp();
-  await prismaDeleteRecoveryCodes(session.admin.id);
-
-  logger.info({ event: "security.admin_mfa_disabled", adminId: session.admin.id });
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "admin.mfa.disable",
-    entityType: "AdminUser",
-    entityId: session.admin.id,
-  });
-  revalidatePath("/admin/seguridad");
-}
-
 /**
  * Cambiar de autenticador/dispositivo: desactiva el TOTP actual y manda a
  * configurar uno nuevo. Tras el unenroll la sesión queda sin factor: el gate de
  * enrolamiento obligatorio (B-1) la deja justo donde va el redirect de abajo
  * (/admin/seguridad, la excepción abierta a todos los roles).
+ *
+ * Nota de seguridad: no existe acción para «desactivar MFA» de forma permanente;
+ * la verificación en 2 pasos es obligatoria para el 100 % de cuentas admin.
  */
 export async function changeMfaDeviceAction(): Promise<{ reauthRequired: true } | void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
@@ -124,10 +110,198 @@ export async function generateRecoveryCodesAction(): Promise<RecoveryCodesState>
   return { codes };
 }
 
-// Import perezoso para no acoplar el delete al feature module en disable.
-async function prismaDeleteRecoveryCodes(adminUserId: string): Promise<void> {
-  const { prisma } = await import("@/lib/db");
-  await prisma.adminRecoveryCode.deleteMany({ where: { adminUserId } });
+const AdminPasswordChangeSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Ingresa tu contraseña actual."),
+    newPassword: z
+      .string()
+      .min(10, "Usa al menos 10 caracteres para cuentas administrativas.")
+      .max(72, "Máximo 72 caracteres."),
+    confirmPassword: z.string().min(1, "Confirma la nueva contraseña."),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Las contraseñas no coinciden.",
+  })
+  .refine((d) => d.newPassword !== d.currentPassword, {
+    path: ["newPassword"],
+    message: "La nueva contraseña debe ser diferente de la actual.",
+  });
+
+export type AdminPasswordChangeState = {
+  error?: string;
+  success?: string;
+  reauthRequired?: boolean;
+  fieldErrors?: Partial<Record<"currentPassword" | "newPassword" | "confirmPassword", string[]>>;
+};
+
+const PASSWORD_RL_SCOPE = "admin-change-password";
+const PASSWORD_RL_WINDOW_SECONDS = 15 * 60;
+
+/**
+ * Autoservicio de cambio de contraseña para cuentas administrativas:
+ *   1. Exige sesión admin con MFA `aal2` activo (`requireAdminAction`) + elevación TOTP reciente
+ *      (`requireRecentMfa` ≤ 10 min; si venció devuelve `reauthRequired` para abrir el modal).
+ *   2. Rate-limit doble bucket (IP + admin, 5 intentos / 15 min en prod).
+ *   3. Valida longitud (10–72), fortaleza mínima (score ≥ 2) y no-reutilización.
+ *   4. Verifica la contraseña actual con un cliente Supabase efímero SIN cookies (`persistSession: false`),
+ *      evitando degradar el JWT `aal2` de la sesión actual a `aal1`.
+ *   5. Verifica k-anonymity contra HaveIBeenPwned (`checkPwnedPassword`).
+ *   6. Actualiza la contraseña bajo la sesión `aal2` actual y revoca todas las OTRAS sesiones
+ *      (`signOut({ scope: "others" })`), auditando en `AdminActionLog`.
+ */
+export async function changeAdminPasswordAction(
+  _prev: AdminPasswordChangeState | null,
+  formData: FormData,
+): Promise<AdminPasswordChangeState> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
+
+  const parsed = AdminPasswordChangeSchema.safeParse({
+    currentPassword: String(formData.get("currentPassword") ?? ""),
+    newPassword: String(formData.get("newPassword") ?? ""),
+    confirmPassword: String(formData.get("confirmPassword") ?? ""),
+  });
+  if (!parsed.success) {
+    const flat = z.flattenError(parsed.error);
+    return {
+      error: "Revisa los campos marcados.",
+      fieldErrors: flat.fieldErrors as AdminPasswordChangeState["fieldErrors"],
+    };
+  }
+
+  const strength = calculatePasswordStrength(parsed.data.newPassword);
+  if (strength.score < 2) {
+    return {
+      error: "Elige una contraseña más robusta.",
+      fieldErrors: {
+        newPassword: [
+          "La contraseña es muy predecible. Combina mayúsculas, minúsculas, números o símbolos.",
+        ],
+      },
+    };
+  }
+
+  const reauth = await requireRecentMfaOrMarker();
+  if (reauth) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+
+  const ip = getClientIp(await headers());
+  const limit = process.env.VERCEL_ENV === "production" ? 5 : 30;
+  const [rlIp, rlAdmin] = await Promise.all([
+    rateLimit(ipKey(PASSWORD_RL_SCOPE, ip), limit, PASSWORD_RL_WINDOW_SECONDS),
+    rateLimit(ownerKey(PASSWORD_RL_SCOPE, session.admin.id), limit, PASSWORD_RL_WINDOW_SECONDS),
+  ]);
+  if (!rlIp.allowed || !rlAdmin.allowed) {
+    logger.warn({
+      event: "security.admin_change_password.rate_limited",
+      ip,
+      adminId: session.admin.id,
+    });
+    return { error: "Demasiados intentos. Espera unos minutos antes de reintentar." };
+  }
+
+  const email = session.user.email ?? session.admin.email;
+  if (!email) {
+    return { error: "Tu cuenta no tiene correo asociado." };
+  }
+
+  // Verificar contraseña actual en cliente efímero sin estado (NO toca las cookies aal2 del request).
+  const verifier = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } },
+  );
+  const { error: signInErr } = await verifier.auth.signInWithPassword({
+    email,
+    password: parsed.data.currentPassword,
+  });
+  if (signInErr) {
+    logger.warn({
+      event: "security.admin_change_password.reauth_fail",
+      ip,
+      adminId: session.admin.id,
+    });
+    await Promise.all([
+      recordSecurityEvent({
+        event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
+        outcome: "failure",
+        ip,
+        actorId: session.admin.id,
+        metadata: { code: "password_change_wrong_current" },
+      }),
+      recordAdminAction({
+        actorId: session.admin.id,
+        action: "admin.password.change_failure",
+        entityType: "AdminUser",
+        entityId: session.admin.id,
+      }),
+    ]);
+    return { fieldErrors: { currentPassword: ["La contraseña actual no es correcta."] } };
+  }
+  await verifier.auth.signOut({ scope: "local" }).catch(() => {});
+
+  // Bloquear contraseñas filtradas en brechas públicas (HIBP k-anonymity; fail-open si HIBP cae).
+  const pwned = await checkPwnedPassword(parsed.data.newPassword);
+  if (pwned.pwned === true && "count" in pwned) {
+    return {
+      fieldErrors: {
+        newPassword: [
+          "Esta contraseña apareció en filtraciones públicas conocidas. Elige una clave única.",
+        ],
+      },
+    };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error: updateErr } = await supabase.auth.updateUser({
+    password: parsed.data.newPassword,
+  });
+  if (updateErr) {
+    logger.error({
+      event: "security.admin_change_password.update_fail",
+      adminId: session.admin.id,
+      err: updateErr.message,
+    });
+    return { error: "No pudimos actualizar tu contraseña. Intenta de nuevo." };
+  }
+
+  let othersClosed = true;
+  try {
+    const { error: signOutErr } = await supabase.auth.signOut({ scope: "others" });
+    if (signOutErr) {
+      othersClosed = false;
+      logger.warn({
+        event: "security.admin_change_password.signout_others_fail",
+        adminId: session.admin.id,
+        err: signOutErr.message,
+      });
+    }
+  } catch (err) {
+    othersClosed = false;
+    logger.warn({
+      event: "security.admin_change_password.signout_others_throw",
+      adminId: session.admin.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "admin.password.change",
+    entityType: "AdminUser",
+    entityId: session.admin.id,
+    metadata: { othersClosed },
+  });
+  logger.info({
+    event: "security.admin_change_password.success",
+    adminId: session.admin.id,
+    othersClosed,
+  });
+
+  return {
+    success: othersClosed
+      ? "Tu contraseña quedó actualizada y cerramos tus sesiones en otros dispositivos."
+      : "Tu contraseña quedó actualizada.",
+  };
 }
 
 /*

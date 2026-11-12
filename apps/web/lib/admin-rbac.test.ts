@@ -23,6 +23,7 @@ import {
 const CATALOG_PATHS = [
   "/admin/productos",
   "/admin/inventario",
+  "/admin/materiales",
   "/admin/categorias",
   "/admin/ocasiones",
   "/admin/resenas",
@@ -31,13 +32,11 @@ const CATALOG_PATHS = [
 // Compartidas por los tres roles operativos (N-21, 2026-09-11: garantías y
 // retractos ya NO están acá — la ruta replica lo que su página exige).
 const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos"];
-// Garantías y Retractos: SUPER+MANAGER — la página y las acciones operativas piden
-// MANAGER_UP (refundRetractAction exige SUPERADMIN + requireRecentMfa).
-const MANAGER_UP_PATHS = ["/admin/garantias", "/admin/retractos"];
-// Contenido del sitio: SUPERADMIN + CMS_EDITOR (set CONTENT). La página
-// "emails" del CMS (newsletter welcome, Ruta A) sigue acá; el módulo NUEVO
-// /admin/email-templates (Fase 4, 2026-09-18) subió a solo-SUPERADMIN.
-const CONTENT_PATHS = ["/admin/contenido"];
+// Garantías, Retractos y Notificaciones: SUPER+MANAGER/OPERATIONS_MANAGER.
+const MANAGER_UP_PATHS = ["/admin/garantias", "/admin/retractos", "/admin/notificaciones"];
+// Contenido del sitio y redirecciones SEO: SUPERADMIN + CMS_EDITOR (set CONTENT).
+// El módulo /admin/email-templates sigue en solo-SUPERADMIN.
+const CONTENT_PATHS = ["/admin/contenido", "/admin/redirects"];
 // Autoservicio de cuenta (MFA obligatorio, B-1): los cuatro roles.
 const ACCOUNT_PATHS = ["/admin/seguridad"];
 // Rutas solo-SUPERADMIN: las NO listadas (deny-by-default) +
@@ -50,12 +49,10 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/integraciones",
   "/admin/auditoria",
   "/admin/mayorista",
-  "/admin/materiales",
   "/admin/costos",
   "/admin/canales",
   "/admin/metricas",
   "/admin/performance",
-  "/admin/redirects",
   "/admin/email-templates",
   "/admin/contenido/paginas/global",
 ];
@@ -239,7 +236,10 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     ["/admin/ocasiones", true, true, false, false],
     ["/admin/resenas", true, true, false, false],
     ["/admin/clientes", true, true, false, false],
+    ["/admin/notificaciones", true, true, false, false],
+    ["/admin/materiales", true, true, false, false],
     ["/admin/contenido", true, false, false, true],
+    ["/admin/redirects", true, false, false, true],
     ["/admin/contenido/paginas/global", true, false, false, false],
     // Fase 4 (2026-09-18): el módulo de plantillas es config sensible → SUPER.
     ["/admin/email-templates", true, false, false, false],
@@ -456,10 +456,10 @@ describe("filterNavByRole — CMS_EDITOR", () => {
     expect(out.map((g) => g.label)).toEqual(["Contenido", "Configuración"]);
   });
 
-  it("Contenido queda solo con 'Páginas del sitio' (Redirecciones URL es solo-SUPERADMIN)", () => {
+  it("Contenido incluye 'Páginas del sitio' y 'Redirecciones URL' (cms:write)", () => {
     const out = filterNavByRole(buildNavConContenido(), "CMS_EDITOR");
     const contenido = out.find((g) => g.label === "Contenido");
-    expect(contenido?.items?.map((i) => i.href)).toEqual(["/admin/contenido"]);
+    expect(contenido?.items?.map((i) => i.href)).toEqual(["/admin/contenido", "/admin/redirects"]);
   });
 
   it("Configuración queda solo con 'Seguridad' (B-1); 'Ajustes del sitio' y 'Plantillas de correo' son solo SUPERADMIN", () => {
@@ -596,6 +596,8 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/clientes")).toBe(false);
     expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/finanzas")).toBe(false);
     expect(ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT).not.toContain("PRINT_WORKSHOP");
+    expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).not.toContain("FULFILLMENT");
+    expect(ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT).toContain("FULFILLMENT");
   });
 
   it("CUSTOMER_SUPPORT atiende tickets, garantías, retractos y Contacto 360, pero NO fusiona duplicados, NO reembolsa ni exporta CSV", () => {
@@ -623,12 +625,13 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/productos")).toBe(false);
   });
 
-  it("FINANCE_ANALYST opera finanzas, conciliación COD, costos, métricas y export contable sin poder tocar catálogo ni staff", () => {
+  it("FINANCE_ANALYST opera finanzas, conciliación COD, costos, métricas y export contable con PII enmascarado y sin tocar catálogo ni staff", () => {
     expect(hasCapability("FINANCE_ANALYST", "finance:read")).toBe(true);
     expect(hasCapability("FINANCE_ANALYST", "finance:reconcile_cod")).toBe(true);
     expect(hasCapability("FINANCE_ANALYST", "finance:export_csv")).toBe(true);
     expect(hasCapability("FINANCE_ANALYST", "metrics:read")).toBe(true);
-    expect(hasCapability("FINANCE_ANALYST", "orders:read_pii")).toBe(true);
+    expect(hasCapability("FINANCE_ANALYST", "orders:read_pii")).toBe(false);
+    expect(ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT).not.toContain("FINANCE_ANALYST");
     expect(hasCapability("FINANCE_ANALYST", "orders:transition")).toBe(false);
     expect(hasCapability("FINANCE_ANALYST", "catalog:write")).toBe(false);
     expect(hasCapability("FINANCE_ANALYST", "staff:manage")).toBe(false);
@@ -644,7 +647,9 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/usuarios")).toBe(false);
   });
 
-  it("OPERATIONS_MANAGER equivale funcionalmente a gerencia operativa (incluye fusión de duplicados y marketing)", () => {
+  it("OPERATIONS_MANAGER equivale funcionalmente a gerencia operativa (incluye notificaciones, materiales, fusión de duplicados y marketing)", () => {
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/notificaciones")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/materiales")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/clientes")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/clientes/duplicados")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/marketing/suscriptores")).toBe(true);

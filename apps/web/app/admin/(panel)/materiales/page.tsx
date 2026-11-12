@@ -13,7 +13,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Boxes, Plus, TriangleAlert } from "lucide-react";
 import {
   AdminBadge,
@@ -29,7 +28,7 @@ import {
   AdminTableRow,
 } from "@/components/admin-page";
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { deleteMaterialAction, restoreMaterialAction, toggleMaterialActiveAction } from "./actions";
@@ -61,8 +60,7 @@ export default async function AdminMaterialesPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireCapability("catalog:write");
 
   const sp = await searchParams;
   const statusRaw = typeof sp.status === "string" ? sp.status : "active";
@@ -105,7 +103,7 @@ export default async function AdminMaterialesPage({
               }`
         }
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: "/admin" },
           { label: "Producción" },
           { label: "Materiales e insumos" },
         ]}

@@ -17,13 +17,16 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { recordAdminAction } from "@/lib/admin-audit";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getClientIp } from "@/lib/client-ip";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey, ownerKey } from "@/lib/rate-limit-keys";
+import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { supabaseService } from "@/lib/supabase/service";
 import { consumeRecoveryCode } from "@/features/admin-mfa/recovery-codes";
+import { notify } from "@/features/notifications/service";
 
 export type RecoveryLoginState = { error?: string };
 
@@ -66,10 +69,26 @@ export async function useRecoveryCodeAction(
   if (!ok) {
     // Con la IP el intento fallido sirve de rastro forense del brute force, no solo de contador.
     logger.warn({ event: "security.admin_recovery_code_failed", ip, adminId: session.admin.id });
+    await Promise.all([
+      recordSecurityEvent({
+        event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
+        outcome: "failure",
+        ip,
+        actorId: session.admin.id,
+        metadata: { code: "invalid_recovery_code" },
+      }),
+      recordAdminAction({
+        actorId: session.admin.id,
+        action: "admin.mfa.recovery_code_failure",
+        entityType: "AdminUser",
+        entityId: session.admin.id,
+      }),
+    ]);
     return { error: "Código de respaldo inválido o ya usado." };
   }
 
   // Desactivar el TOTP vía service role (auth.admin) — la sesión aal1 no puede.
+  let unenrolledCount = 0;
   try {
     const { data } = await supabaseService.auth.admin.mfa.listFactors({
       userId: session.user.id,
@@ -77,6 +96,7 @@ export async function useRecoveryCodeAction(
     for (const f of data?.factors ?? []) {
       if (f.factor_type === "totp") {
         await supabaseService.auth.admin.mfa.deleteFactor({ id: f.id, userId: session.user.id });
+        unenrolledCount += 1;
       }
     }
   } catch (err) {
@@ -91,6 +111,32 @@ export async function useRecoveryCodeAction(
   }
 
   logger.info({ event: "security.admin_recovery_code_used", adminId: session.admin.id });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "admin.mfa.recovery_code_used",
+    entityType: "AdminUser",
+    entityId: session.admin.id,
+    metadata: { unenrolledCount },
+  });
+  try {
+    await notify({
+      type: "ALERT",
+      severity: "warning",
+      title: "Acceso de emergencia con código de respaldo MFA",
+      detail: `El administrador ${session.admin.email} utilizó un código de respaldo y reinició su segundo factor TOTP. Verifica que la actividad sea legítima.`,
+      actionUrl: `/admin/auditoria?admin=${encodeURIComponent(session.admin.id)}`,
+      actionLabel: "Revisar auditoría",
+      metadata: { adminId: session.admin.id, email: session.admin.email, unenrolledCount },
+      dedupKey: `mfa-recovery-used:${session.admin.id}`,
+    });
+  } catch (notifyErr) {
+    logger.warn({
+      event: "security.admin_recovery_notify_fail",
+      adminId: session.admin.id,
+      err: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+    });
+  }
+
   // Sin factor → la sesión queda aal1=aal1 (el candado aal2 no se dispara) y
   // /admin/seguridad es la excepción del gate de enrolamiento obligatorio (B-1):
   // aterriza directo a reconfigurar el 2º factor.

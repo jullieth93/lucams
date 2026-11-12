@@ -4,10 +4,10 @@
  * label + estado de cada link para mostrar info contextual cuando el
  * cliente clickea un módulo "Próximo").
  *
- * Si agregás una página admin nueva:
+ * Si agregas una página admin nueva:
  *   1. Crea apps/web/app/admin/(panel)/<ruta>/page.tsx
- *   2. Si no estaba en el NAV (link nuevo), agregalo acá
- *   3. Si SÍ estaba con badge "Próximo", quitá el badge y opcionalmente
+ *   2. Si no estaba en el NAV (link nuevo), agrégalo acá
+ *   3. Si SÍ estaba con badge "Próximo", quita el badge y opcionalmente
  *      el campo `phase` (para que ya no caiga al catch-all como "en desarrollo")
  */
 
@@ -416,17 +416,18 @@ export const ADMIN_NAV: NavGroup[] = [
     items: [
       { label: "Ajustes del sitio", href: "/admin/contenido/paginas/global", icon: Cog },
       {
-        label: "Seguridad (2 pasos)",
+        label: "Seguridad y clave",
         href: "/admin/seguridad",
         icon: ShieldCheck,
-        description: "Verificación en 2 pasos (MFA/TOTP) de tu cuenta admin: activar, desactivar.",
+        description:
+          "Protección de tu cuenta admin: segundo factor obligatorio (TOTP), códigos de respaldo, cambio de dispositivo y rotación de contraseña.",
       },
       {
         label: "Usuarios y acceso",
         href: "/admin/usuarios",
         icon: UserPlus,
         description:
-          "Gestión de admins: listar, promover clientes existentes, cambiar rol (Superadmin/Manager/Fulfillment), activar/desactivar. Solo Superadmin.",
+          "Gestión del equipo administrativo: altas, postura 2FA, asignación de los 7 roles operativos y activación/revocación de acceso. Solo Superadmin.",
       },
       {
         // Casa de la configuración de transporte del checkout (owner 2026-09-29):

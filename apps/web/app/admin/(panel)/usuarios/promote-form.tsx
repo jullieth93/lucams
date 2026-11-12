@@ -2,7 +2,11 @@
 
 import { promoteAdminAction, type PromoteAdminState } from "./actions";
 import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
-import { ADMIN_ROLES_ALL, ADMIN_ROLE_DESCRIPTION, ADMIN_ROLE_LABEL } from "@/lib/admin-roles";
+import {
+  ADMIN_ASSIGNABLE_ROLES,
+  ADMIN_ROLE_DESCRIPTION,
+  ADMIN_ROLE_LABEL,
+} from "@/lib/admin-roles";
 
 export function PromoteForm() {
   // F-10: promover exige aal2 reciente; si el server pide re-auth, el hook abre
@@ -49,7 +53,7 @@ export function PromoteForm() {
             defaultValue="OPERATIONS_MANAGER"
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
           >
-            {ADMIN_ROLES_ALL.map((r) => (
+            {ADMIN_ASSIGNABLE_ROLES.map((r) => (
               <option key={r} value={r}>
                 {ADMIN_ROLE_LABEL[r]} — {ADMIN_ROLE_DESCRIPTION[r]}
               </option>

@@ -53,6 +53,7 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
   const cacheRefreshed = sp.cache === "refreshed";
+  const denied = sp.denied === "1";
 
   // «Ajustes del sitio» (`global`) vive en Configuración → Ajustes del sitio;
   // acá se muestran únicamente las páginas y bloques editoriales del storefront.
@@ -81,7 +82,7 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
         icon={<BookOpen className="h-5 w-5" />}
         title="Páginas del sitio"
         subtitle="Edita el contenido de tu sitio por página: elige una tarjeta y cambia los textos sin tocar código."
-        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Contenido" }]}
+        breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Contenido" }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {/* C1 paso 2 — modo edición in-place: siembra la cookie y abre la
@@ -115,6 +116,12 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
       />
 
       <AdminPageBody>
+        {denied && (
+          <AdminNotice tone="warning">
+            No tienes permiso para esa sección. Si crees que es un error, pídele acceso a un
+            administrador.
+          </AdminNotice>
+        )}
         {cacheRefreshed && (
           <AdminNotice tone="success">
             Caché de contenido actualizado. El sitio público ya sirve la versión más reciente.

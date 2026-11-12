@@ -25,7 +25,12 @@ export default async function PlantillaPreviewPage({ params }: { params: Params 
   // a la BD de producción real. En vivo los previews se sirven desde Storage
   // (`previewUrl`), jamás desde esta ruta. `VERCEL_ENV` está definido en cualquier
   // deploy Vercel y es undefined en dev local (donde el generador corre). Ver ADR-048.
-  if (process.env.VERCEL_ENV) notFound();
+  if (
+    process.env.VERCEL_ENV ||
+    (process.env.NODE_ENV === "production" && process.env.ALLOW_INTERNAL_PREVIEW !== "1")
+  ) {
+    notFound();
+  }
 
   const { slug } = await params;
   const tpl = await prisma.personalizationTemplate.findUnique({

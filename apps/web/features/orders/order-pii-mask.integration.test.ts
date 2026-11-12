@@ -69,7 +69,12 @@ describe("S17 — Enmascaramiento server-side y anti-oráculo PII en getOrderFor
     // El mensaje impreso de regalo sí llega al taller:
     expect(json).toContain("Para que recuerdes este viaje siempre");
 
-    // Mientras que CUSTOMER_SUPPORT y FINANCE_ANALYST reciben los datos completos:
+    // FINANCE_ANALYST también recibe PII enmascarado (principio de mínimo privilegio):
+    const financeView = await getOrderForActor(orderNumber, "FINANCE_ANALYST");
+    expect(JSON.stringify(financeView)).not.toContain(rawEmail);
+    expect(JSON.stringify(financeView)).not.toContain("1098765432");
+
+    // Mientras que CUSTOMER_SUPPORT recibe los datos completos para atender al cliente:
     const supportView = await getOrderForActor(orderNumber, "CUSTOMER_SUPPORT");
     expect(supportView?.email).toBe(rawEmail);
     expect(supportView?.billingDocumentNumber).toBe("1098765432");

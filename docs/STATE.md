@@ -114,7 +114,8 @@
   de 3 500 UVT del año en curso (facturación electrónica e IVA por ventas con tarjeta), proyecta el
   cierre anual por ritmo reciente y alerta 70 %/90 %/100 % en `/admin/hoy`, `/admin/metricas`,
   `/admin/notificaciones` y correo al owner (una vez por cruce y año).
-- Panel `/admin` (8 roles × 35 capacidades, MFA `aal2`, `useAdminConfirm`), 32 plantillas React Email
+- Panel `/admin` (8 roles × 36 capacidades, MFA `aal2` sin desactivación permanente + rotación de
+  contraseña verificada en HIBP, buscador `⌘K`, `useAdminConfirm`), 32 plantillas React Email
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
     consentimiento + embudo `FunnelEventDaily`, **20 procesos programados** y **backups diarios GPG de
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.
