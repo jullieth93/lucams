@@ -241,13 +241,13 @@ export default async function EditarCampoPage({
         breadcrumbs={
           page.slug === "global"
             ? [
-                { label: "Admin", href: "/admin/dashboard" },
+                { label: "Admin", href: "/admin" },
                 { label: "Configuración" },
                 { label: page.title, href: pageHref },
                 { label: field.label },
               ]
             : [
-                { label: "Admin", href: "/admin/dashboard" },
+                { label: "Admin", href: "/admin" },
                 { label: "Contenido", href: "/admin/contenido" },
                 { label: page.title, href: pageHref },
                 { label: field.label },

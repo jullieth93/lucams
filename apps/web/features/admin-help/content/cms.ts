@@ -181,13 +181,14 @@ export const CMS_GUIDES: AdminModuleGuide[] = [
     title: "Plantillas de correo",
     area: "Contenido",
     route: "/admin/email-templates",
-    summary: "Personalización y previsualización de correos transaccionales y operativos.",
+    summary:
+      "Personalización, filtro por familia y previsualización de las 32 plantillas transaccionales.",
     purpose:
-      "Permite ajustar textos editoriales de las plantillas registradas sin modificar su lógica de envío ni variables obligatorias. Cada plantilla conserva una finalidad y eventos de negocio concretos.",
+      "Permite buscar, previsualizar y ajustar asunto, preheader y titular de las 32 plantillas de correo transaccionales y de ciclo de vida sin modificar su código base ni sus variables dinámicas.",
     whenToUse: [
-      "Para editar asunto, preheader o titular de una plantilla.",
-      "Para revisar cómo se verá un correo antes de activar cambios.",
-      "Para diagnosticar diferencias entre contenido editorial y datos variables.",
+      "Para editar asunto, preheader o titular de cualquiera de las 32 plantillas.",
+      "Para revisar cómo se verá un correo en escritorio y móvil con recarga automática.",
+      "Para enviarte una prueba controlada a tu correo administrativo (máximo 12 por hora).",
     ],
     concepts: [
       {
@@ -307,15 +308,18 @@ export const CMS_GUIDES: AdminModuleGuide[] = [
           {
             id: "origen",
             label: "URL de origen",
-            description: "Ruta antigua que debe dejar de responder como contenido independiente.",
+            description:
+              "Ruta interna antigua que dejó de existir y debe redirigir hacia el contenido nuevo.",
             interpretation:
-              "Escríbela exactamente como se enlazaba, sin dominio si el módulo espera ruta interna.",
+              "Escríbela con barra inicial (/ruta); las rutas operativas como /admin, /api o /checkout están protegidas.",
           },
           {
             id: "destino",
             label: "URL de destino",
-            description: "Página vigente que mejor reemplaza el contenido anterior.",
-            interpretation: "Debe responder correctamente y ser equivalente para el visitante.",
+            description:
+              "Ruta interna vigente (/nueva-ruta) o URL externa autorizada que reemplaza la anterior.",
+            caution:
+              "Los destinos hacia dominios externos (https://...) están reservados exclusivamente a Superadmin.",
           },
           {
             id: "tipo",

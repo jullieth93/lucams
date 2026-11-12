@@ -9,6 +9,7 @@ type Props = {
   statusCode: number;
   description: string | null;
   isActive: boolean;
+  canUseExternalUrls?: boolean;
 };
 
 /*
@@ -42,8 +43,14 @@ export function EditRedirectForm(props: Props) {
             name="toPath"
             required
             defaultValue={props.toPath}
+            placeholder={props.canUseExternalUrls ? "/ruta o https://..." : "/ruta-interna"}
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 font-mono text-xs focus:ring-2 focus:outline-none"
           />
+          {!props.canUseExternalUrls && (
+            <p className="text-brand-muted mt-1 text-[10px]">
+              Solo rutas internas con <code>/</code> (destinos externos reservados a Superadmin).
+            </p>
+          )}
           {state?.fieldErrors?.toPath && (
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.toPath[0]}</p>
           )}

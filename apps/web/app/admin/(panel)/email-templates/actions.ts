@@ -17,6 +17,7 @@ import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { rateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/resend";
 import { EMAIL_OVERRIDE_KEYS } from "@/features/emails/overrides";
 import { getEmailTemplate } from "@/features/emails/registry";
@@ -106,6 +107,14 @@ export async function sendTestEmailAction(
 
   const to = session.user.email;
   if (!to) return { error: "Tu usuario no tiene email asociado." };
+
+  const rl = await rateLimit(`admin_email_test:${session.admin.id}`, 12, 3600);
+  if (!rl.allowed) {
+    return {
+      error:
+        "Alcanzaste el límite de 12 correos de prueba por hora para proteger la cuota de envío. Espera unos minutos e intenta de nuevo.",
+    };
+  }
 
   const rendered = await tpl.renderSample();
   const result = await sendEmail({

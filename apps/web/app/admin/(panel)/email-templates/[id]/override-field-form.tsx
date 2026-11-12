@@ -55,6 +55,7 @@ export function OverrideFieldForm({
         <input type="hidden" name="templateId" value={templateId} />
         <input type="hidden" name="key" value={fieldKey} />
         <input
+          key={overrideValue ?? "__base__"}
           id={`ov-${fieldKey}`}
           name="value"
           type="text"

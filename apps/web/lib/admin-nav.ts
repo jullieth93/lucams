@@ -333,7 +333,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/canales/tienda",
         icon: Store,
         description:
-          "Estado del canal Tienda online: URL, modo de tienda y salud de integraciones.",
+          "Estado del canal Tienda online: dominio, modo de tienda, feeds públicos y cobertura de catálogo.",
       },
       {
         label: "Mercado Libre",
@@ -451,7 +451,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/email-templates",
         icon: Mail,
         description:
-          "Las 27 plantillas transaccionales (pedidos, retracto, soporte, garantías, marketing): preview renderizado, edición de asunto/preheader/titular y envío de prueba. Solo Superadmin.",
+          "Las 32 plantillas transaccionales y de ciclo de vida (pedidos, retracto, soporte, garantías, marketing): preview renderizado, edición de asunto/preheader/titular y envío de prueba. Solo Superadmin.",
       },
       // P1-17: movido desde "Promociones" — es plumbing SEO, no oferta comercial.
       {

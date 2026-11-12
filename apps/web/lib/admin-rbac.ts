@@ -242,13 +242,15 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
     roles: rolesWithCapability("production:manage_AssetsCatalog"),
   },
 
-  // Catálogo, insumos y transporte
+  // Catálogo, canales de venta, insumos y transporte
   { prefix: "/admin/productos", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/inventario", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/materiales", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/categorias", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/ocasiones", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/resenas", roles: rolesWithCapability("catalog:write") },
+  { prefix: "/admin/canales/mercadolibre", roles: ["SUPERADMIN"] },
+  { prefix: "/admin/canales", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/envios", roles: rolesWithCapability("shipping:configure") },
 
   // Contactos 360 vs Bandeja de fusión de duplicados (longest-prefix match protege /duplicados)
@@ -279,6 +281,7 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
 
   // Configuración sensible y CMS v2
   { prefix: "/admin/fidelizacion", roles: ["SUPERADMIN"] },
+  { prefix: "/admin/integraciones", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido/paginas/global", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido/configuracion", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido", roles: rolesWithCapability("cms:write") },

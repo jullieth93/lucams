@@ -197,6 +197,22 @@ describe("getAdminNav", () => {
     },
   );
 
+  it("filterNavByRole: MANAGER y OPERATIONS_MANAGER ven Canales > Tienda Lucams y Envíos, pero NO Integraciones", async () => {
+    const { nav } = await getNavForMode("full");
+
+    for (const role of ["MANAGER", "OPERATIONS_MANAGER"] as const) {
+      const visible = filterNavByRole(nav, role);
+      const canales = visible.find((g) => g.title === "Canales");
+      expect(canales?.items?.map((it) => it.href)).toEqual(["/admin/canales/tienda"]);
+
+      const config = visible.find((g) => g.title === "Configuración");
+      const configHrefs = config?.items?.map((it) => it.href) ?? [];
+      expect(configHrefs).toContain("/admin/envios");
+      expect(configHrefs).not.toContain("/admin/integraciones");
+      expect(configHrefs).not.toContain("/admin/email-templates");
+    }
+  });
+
   it("filterNavByRole: MANAGER ve diseños (con tab fichas; permiso CATALOG); FULFILLMENT no", async () => {
     const { nav } = await getNavForMode("catalog");
 

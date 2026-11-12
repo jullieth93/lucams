@@ -38,7 +38,14 @@ export async function createRedirectAction(
 
   try {
     const created = await createRedirect(
-      { fromPath, toPath, statusCode, description, isActive },
+      {
+        fromPath,
+        toPath,
+        statusCode,
+        description,
+        isActive,
+        actorRole: session.admin.role,
+      },
       session.admin.id,
     );
     await recordAdminAction({
@@ -86,7 +93,14 @@ export async function updateRedirectAction(
 
   try {
     const updated = await updateRedirect(
-      { id, toPath, statusCode, description, isActive },
+      {
+        id,
+        toPath,
+        statusCode,
+        description,
+        isActive,
+        actorRole: session.admin.role,
+      },
       session.admin.id,
     );
     await recordAdminAction({
@@ -114,7 +128,9 @@ export async function toggleRedirectActiveAction(formData: FormData): Promise<vo
   const session = await requireAdminAction({ capability: "cms:write" });
   const id = String(formData.get("id") ?? "");
   try {
-    const updated = await toggleRedirectActive(id, session.admin.id);
+    const updated = await toggleRedirectActive(id, session.admin.id, {
+      actorRole: session.admin.role,
+    });
     await recordAdminAction({
       actorId: session.admin.id,
       action: updated.isActive ? "redirect.activate" : "redirect.deactivate",
@@ -133,27 +149,41 @@ export async function toggleRedirectActiveAction(formData: FormData): Promise<vo
 export async function archiveRedirectAction(formData: FormData): Promise<void> {
   const session = await requireAdminAction({ capability: "cms:write" });
   const id = String(formData.get("id") ?? "");
-  await archiveRedirect(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "redirect.archive",
-    entityType: "UrlRedirect",
-    entityId: id,
-  });
-  revalidatePath("/admin/redirects");
-  redirect("/admin/redirects?archived=1");
+  try {
+    await archiveRedirect(id, session.admin.id, { actorRole: session.admin.role });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "redirect.archive",
+      entityType: "UrlRedirect",
+      entityId: id,
+    });
+    revalidatePath("/admin/redirects");
+    redirect("/admin/redirects?archived=1");
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const msg =
+      err instanceof RedirectValidationError ? err.message : "Error al archivar redirect.";
+    redirect(`/admin/redirects?error=${encodeURIComponent(msg)}`);
+  }
 }
 
 export async function restoreRedirectAction(formData: FormData): Promise<void> {
   const session = await requireAdminAction({ capability: "cms:write" });
   const id = String(formData.get("id") ?? "");
-  await restoreRedirect(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "redirect.restore",
-    entityType: "UrlRedirect",
-    entityId: id,
-  });
-  revalidatePath("/admin/redirects");
-  redirect("/admin/redirects?restored=1");
+  try {
+    await restoreRedirect(id, session.admin.id, { actorRole: session.admin.role });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "redirect.restore",
+      entityType: "UrlRedirect",
+      entityId: id,
+    });
+    revalidatePath("/admin/redirects");
+    redirect("/admin/redirects?restored=1");
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const msg =
+      err instanceof RedirectValidationError ? err.message : "Error al restaurar redirect.";
+    redirect(`/admin/redirects?error=${encodeURIComponent(msg)}`);
+  }
 }

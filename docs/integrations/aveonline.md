@@ -306,9 +306,9 @@ Ejecuta esta verificación al configurar la cuenta comercial de Lucams o auditar
 ### Paso 3 — Registro del Webhook de Estados
 
 - [ ] Generar un secreto aleatorio criptográfico (`≥ 32` caracteres) y guardarlo en Vercel como `AVEONLINE_WEBHOOK_SECRET`.
-- [ ] En el panel de Aveonline (**Mis integraciones → Webhooks de estados de guías** — o mediante la herramienta administrativa que invoca `createAveonlineWebhook`), registrar:
+- [ ] En el panel de Aveonline (**Mis integraciones → Webhooks de estados de guías**) o desde `/admin/integraciones/aveonline` (`registerAveonlineWebhookAction` / `deleteAveonlineWebhookAction`, protegidas con step-up MFA `requireRecentMfa` y candado de origen al dominio oficial en entornos desplegados para impedir exfiltrar el secreto), registrar:
   - **URL**: `https://lucamsshop.com/api/webhooks/aveonline`
-  - **Token**: pegar exactamente el valor de `AVEONLINE_WEBHOOK_SECRET` (Aveonline lo reenviará en `payload.token` en cada notificación).
+  - **Token**: `AVEONLINE_WEBHOOK_SECRET` (Aveonline lo reenviará en `payload.token` en cada notificación).
 
 ### Paso 4 — Variables de Producción y Doble Compuerta
 

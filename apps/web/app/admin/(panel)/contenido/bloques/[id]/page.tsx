@@ -5,7 +5,10 @@
  */
 
 import { redirect } from "next/navigation";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 
-export default function EditorBloqueLegacyRedirect() {
+export default async function EditorBloqueLegacyRedirect() {
+  await requireRole(ADMIN_ROLE_SETS.CONTENT);
   redirect("/admin/contenido");
 }

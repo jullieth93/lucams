@@ -7,68 +7,76 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     area: "Configuración y seguridad",
     route: "/admin/envios",
     summary:
-      "Transportadoras, tarifas de respaldo, envío gratis, zonas locales y preferencias de despacho.",
+      "Transportadoras de Aveonline, límites de peso, Envío Lucams por localidades, hora límite y origen.",
     purpose:
-      "Configura qué opciones logísticas se ofrecen y bajo qué condiciones. Reúne reglas de negocio para Aveonline y Envío Lucams, incluidos parámetros que afectan el checkout y la estimación de entrega.",
+      "Configura qué opciones logísticas se ofrecen en el checkout y bajo qué reglas operativas: transportadoras nacionales vía Aveonline con límites de peso mínimo y máximo, mensajería propia Envío Lucams por localidades y verificación del punto de origen de despacho.",
     whenToUse: [
-      "Para activar o ajustar una opción de envío.",
-      "Para configurar tarifas, tope de envío gratis o zonas locales.",
-      "Para revisar preferencias que afectan cotización y despacho.",
+      "Para activar o desactivar una transportadora nacional o definir sus rangos de peso en kg.",
+      "Para ajustar tarifa, hora límite de despacho o localidades cubiertas de Envío Lucams.",
+      "Para verificar que el punto de origen de recogida (PICKUP_*) esté completo antes de cotizar.",
     ],
     concepts: [
       {
-        term: "Tarifa de respaldo",
+        term: "Rango de peso por transportadora",
         definition:
-          "Valor utilizado cuando la cotización externa no está disponible y las reglas permiten ofrecer una alternativa.",
+          "Límites opcionales de peso mínimo y máximo en kilogramos dentro de los cuales esa transportadora puede cotizarse.",
       },
       {
         term: "Envío Lucams",
         definition:
-          "Modalidad de mensajería interna para zonas habilitadas, distinta de Aveonline.",
+          "Modalidad de mensajería propia con tarifa fija para localidades habilitadas de Bogotá y Soacha.",
       },
       {
-        term: "Hora límite",
-        definition: "Corte que influye en la estimación y compromiso de entrega local.",
+        term: "Punto de origen (PICKUP_*)",
+        definition:
+          "Ciudad, departamento, dirección, teléfono y contacto en Ajustes del sitio desde donde Aveonline cotiza y recoge.",
       },
     ],
     sections: [
       {
         id: "reglas",
         title: "Reglas de cotización y cobertura",
-        summary: "Determina disponibilidad, precio y compromiso mostrado al cliente.",
+        summary: "Determina disponibilidad por peso, cobertura local, tarifa y corte horario.",
         topics: [
           {
             id: "activa",
             label: "Transportadora activa",
-            description: "Controla si la modalidad puede ofrecerse.",
+            description:
+              "Controla si el operador nacional puede aparecer entre las opciones cotizadas en el checkout.",
             caution:
-              "Desactivarla afecta checkouts futuros; no cambia guías ni pedidos existentes.",
+              "Si desactivas todas las transportadoras y también Envío Lucams, ningún cliente podrá finalizar envíos a domicilio.",
           },
           {
-            id: "gratis",
-            label: "Tope de envío gratis",
-            description: "Umbral comercial a partir del cual puede aplicarse el beneficio.",
-            interpretation: "Simula carritos cerca del umbral y revisa interacción con descuentos.",
-          },
-          {
-            id: "respaldo",
-            label: "Tarifa de respaldo",
-            description: "Precio alternativo bajo las condiciones configuradas.",
+            id: "pesos",
+            label: "Peso mínimo y máximo (kg)",
+            description:
+              "Filtra la transportadora según el peso total del carrito antes de ofrecerla al comprador.",
             interpretation:
-              "Debe cubrir costo y ser coherente con la cobertura; no es la tarifa viva del carrier.",
+              "Deja vacío cuando no aplique restricción; si defines ambos, el máximo debe ser mayor o igual al mínimo.",
           },
           {
             id: "zonas",
-            label: "Zonas locales",
-            description: "Ciudades o sectores donde Envío Lucams está habilitado.",
-            interpretation: "La dirección del cliente debe coincidir con una zona operativa real.",
+            label: "Localidades de Envío Lucams",
+            description:
+              "Sectores específicos de Bogotá y Soacha donde opera la entrega local directa.",
+            interpretation:
+              "Activa únicamente localidades con capacidad real de ruta; usa los selectores rápidos por ciudad.",
           },
           {
             id: "corte",
-            label: "Hora límite y preferencias",
-            description: "Parámetros para calcular y organizar despachos.",
+            label: "Tarifa local y hora límite",
+            description:
+              "Precio fijo en pesos colombianos y hora de corte en zona horaria de Bogotá para promesa del día.",
             interpretation:
-              "Usa la zona horaria de Colombia y valida el mensaje de entrega resultante.",
+              "Los pedidos pagados después de la hora límite pasan automáticamente al siguiente día hábil.",
+          },
+          {
+            id: "origen",
+            label: "Punto de origen de despacho",
+            description:
+              "Resumen del remitente logístico configurado en Ajustes del sitio para cotización y recogida.",
+            interpretation:
+              "Si falta ciudad, dirección o teléfono de recogida, el panel muestra alerta preventiva.",
           },
         ],
       },
@@ -77,28 +85,40 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
       {
         id: "configurar-envio",
         title: "Actualizar reglas de envío",
-        goal: "Ofrecer tarifas y compromisos que operación puede cumplir.",
+        goal: "Ofrecer modalidades, pesos y coberturas que operación puede cumplir.",
         steps: [
-          "Revisa cobertura y capacidad logística antes de cambiar parámetros.",
-          "Actualiza transportadora, tarifas, umbral, zonas u hora límite.",
-          "Guarda y prueba un checkout para una dirección cubierta y otra no cubierta.",
-          "Compara valores por debajo y por encima del envío gratis.",
-          "Verifica pedido resultante, tarifa y preferencias de despacho.",
+          "Comprueba en el bloque superior que el punto de origen de despacho esté completo y quede al menos un método activo.",
+          "Activa o desactiva cada transportadora nacional y ajusta sus rangos de peso mínimo o máximo si aplica.",
+          "En Envío Lucams revisa tarifa en COP, hora límite en formato 24h y localidades seleccionadas.",
+          "Guarda los cambios de la sección modificada y confirma el aviso de éxito.",
+          "Simula un checkout hacia una localidad cubierta y hacia otra ciudad nacional para validar la cotización.",
         ],
         expected:
-          "El checkout solo ofrece modalidades operables con precio y estimación correctos.",
+          "El checkout ofrece únicamente las modalidades habilitadas con tarifas, pesos y tiempos coherentes.",
       },
     ],
-    cautions: ["No actives una zona o tarifa sin confirmar capacidad real de entrega."],
+    cautions: [
+      "No desactives simultáneamente todas las transportadoras de Aveonline y Envío Lucams en una tienda activa.",
+    ],
     faqs: [
       {
-        question: "¿Cambiar una tarifa modifica pedidos anteriores?",
+        question: "¿Cambiar una tarifa o transportadora modifica pedidos anteriores?",
         answer:
-          "No debe alterar condiciones ya selladas de un pedido; aplica a cotizaciones futuras.",
+          "No altera pedidos ni guías ya emitidas; aplica únicamente a cotizaciones nuevas en el checkout.",
       },
     ],
     related: ["integraciones", "pedidos", "conciliacion", "canales"],
-    keywords: ["Aveonline", "Envío Lucams", "flete", "tarifa", "gratis", "zona", "cobertura"],
+    keywords: [
+      "Aveonline",
+      "Envío Lucams",
+      "flete",
+      "tarifa",
+      "peso",
+      "localidad",
+      "zona",
+      "cobertura",
+      "origen",
+    ],
     version: 1,
   },
   {
@@ -255,22 +275,24 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
       },
       {
         id: "aveonline",
-        title: "Diagnóstico Aveonline",
-        summary: "Prueba conectividad y cobertura con datos controlados.",
+        title: "Diagnóstico y webhook de Aveonline",
+        summary: "Verifica autenticación en vivo y administra el webhook de eventos de guía.",
         topics: [
           {
-            id: "cobertura",
-            label: "Prueba de cobertura",
-            description: "Consulta si el carrier ofrece servicio para el escenario indicado.",
-            interpretation:
-              "Una cobertura positiva no crea guía ni garantiza disponibilidad futura.",
+            id: "webhook",
+            label: "Registro y retiro de webhook",
+            description:
+              "Suscribe la URL oficial del sitio para recibir novedades automáticas de estados de envío.",
+            caution:
+              "Exige re-autenticación TOTP reciente y en ambientes desplegados bloquea dominios distintos al oficial.",
           },
           {
             id: "error",
-            label: "Respuesta del proveedor",
-            description: "Detalle sanitizado del fallo o validación.",
+            label: "Sonda de autenticación y latencia",
+            description:
+              "Mide conectividad real y tiempo de respuesta contra Aveonline sin emitir guías comerciales.",
             interpretation:
-              "Contrasta dirección, peso, dimensiones y credenciales antes de reintentar.",
+              "Contrasta credenciales, secreto compartido del webhook y dirección de recogida antes de reintentar.",
           },
         ],
       },

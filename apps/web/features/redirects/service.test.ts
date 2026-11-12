@@ -198,3 +198,123 @@ describe("lookupActiveRedirectCached — caché del proxy (B-8; lista completa A
     await expect(lookupActiveRedirectCached(nextPath())).rejects.toThrow("db down");
   });
 });
+
+describe("redirects/service — blindaje Bloque 1 (prefijos críticos, cadenas inversas, reactivación y D2)", () => {
+  it.each([
+    "/admin",
+    "/admin/pedidos",
+    "/api/webhooks/wompi",
+    "/checkout",
+    "/checkout/confirmacion",
+    "/auth/callback",
+    "/mi-cuenta/pedidos",
+    "/estudio/editor",
+    "/pedido/abc123",
+    "/feeds/google-merchant.xml",
+    "/sitemap.xml",
+    "/robots.txt",
+  ])("bloquea crear redirect sobre ruta reservada o crítica (%s)", async (reservedPath) => {
+    await expect(
+      createRedirect({ fromPath: reservedPath, toPath: "/productos", statusCode: 301 }, ACTOR),
+    ).rejects.toMatchObject({ field: "fromPath" });
+    expect(mockPrisma.urlRedirect.create).not.toHaveBeenCalled();
+    expect(updateTagSpy).not.toHaveBeenCalled();
+  });
+
+  it("bloquea cadena entrante (X→A activo y se intenta crear A→B)", async () => {
+    const a = nextPath("-mid");
+    const b = nextPath("-end");
+    mockPrisma.urlRedirect.findFirst.mockResolvedValueOnce({
+      id: "r-incoming",
+      fromPath: "/viejo-link",
+      toPath: a,
+    });
+
+    await expect(
+      createRedirect({ fromPath: a, toPath: b, statusCode: 301 }, ACTOR),
+    ).rejects.toMatchObject({ field: "fromPath" });
+    expect(mockPrisma.urlRedirect.create).not.toHaveBeenCalled();
+  });
+
+  it("toggleRedirectActive al REACTIVAR (false → true) revalida ruta reservada y cadenas", async () => {
+    mockPrisma.urlRedirect.findFirst.mockResolvedValueOnce({
+      id: "r-stale",
+      fromPath: "/checkout/paso-viejo",
+      toPath: "/productos",
+      isActive: false,
+    });
+
+    await expect(toggleRedirectActive("r-stale", ACTOR)).rejects.toMatchObject({
+      field: "fromPath",
+    });
+    expect(mockPrisma.urlRedirect.update).not.toHaveBeenCalled();
+    expect(updateTagSpy).not.toHaveBeenCalled();
+  });
+
+  it("D2: CMS_EDITOR puede crear y editar destinos internos, pero NO externos (https://)", async () => {
+    const internalFrom = nextPath("-cms-ok");
+    await createRedirect(
+      {
+        fromPath: internalFrom,
+        toPath: "/legal/garantias",
+        statusCode: 301,
+        actorRole: "CMS_EDITOR",
+      },
+      ACTOR,
+    );
+    expect(mockPrisma.urlRedirect.create).toHaveBeenCalledTimes(1);
+
+    await expect(
+      createRedirect(
+        {
+          fromPath: nextPath("-cms-ext"),
+          toPath: "https://evil.example/promo",
+          statusCode: 301,
+          actorRole: "CMS_EDITOR",
+        },
+        ACTOR,
+      ),
+    ).rejects.toMatchObject({ field: "toPath" });
+
+    // SUPERADMIN sí puede crear destinos externos explícitos
+    await createRedirect(
+      {
+        fromPath: nextPath("-sa-ext"),
+        toPath: "https://aliado.lucamsshop.com/evento",
+        statusCode: 302,
+        actorRole: "SUPERADMIN",
+      },
+      ACTOR,
+    );
+    expect(mockPrisma.urlRedirect.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("D2: CMS_EDITOR no puede activar, editar ni archivar un redirect externo preexistente", async () => {
+    mockPrisma.urlRedirect.findFirst.mockResolvedValue({
+      id: "r-ext",
+      fromPath: "/link-externo",
+      toPath: "https://partner.example/landing",
+      isActive: false,
+    });
+
+    await expect(
+      toggleRedirectActive("r-ext", ACTOR, { actorRole: "CMS_EDITOR" }),
+    ).rejects.toMatchObject({ field: "toPath" });
+
+    await expect(
+      updateRedirect(
+        {
+          id: "r-ext",
+          toPath: "/legal/ayuda",
+          statusCode: 301,
+          actorRole: "CMS_EDITOR",
+        },
+        ACTOR,
+      ),
+    ).rejects.toMatchObject({ field: "toPath" });
+
+    await expect(
+      archiveRedirect("r-ext", ACTOR, { actorRole: "CMS_EDITOR" }),
+    ).rejects.toMatchObject({ field: "toPath" });
+  });
+});

@@ -11,10 +11,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
+  ArrowRightLeft,
   BookOpen,
   ExternalLink,
   FileText,
   FileWarning,
+  Globe,
+  Image as ImageIcon,
+  Mail,
   Pencil,
   RefreshCw,
   Search,
@@ -28,13 +32,16 @@ import {
   AdminButton,
   AdminEmpty,
   AdminPageHeader,
+  AdminSegmentedBar,
   AdminTable,
   AdminTableBody,
   AdminTableHead,
   AdminTableRow,
+  KpiCard,
+  QuickLink,
 } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, canAccessAdminPath } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { cmsFieldHasDraft, listCmsPages, searchCmsFields } from "@/features/cms/service";
 import { refreshCmsCacheAction } from "./actions";
@@ -68,13 +75,14 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
       )
     : null;
   // Total de cambios sin publicar (roadmap C4 — enlace a la vista «Solo borradores»).
-  const totalPending = pages.reduce(
-    (acc, p) =>
-      acc +
-      p.sections.flatMap((s) => s.fields).filter((f) => !f.isPublished || cmsFieldHasDraft(f))
-        .length,
-    0,
-  );
+  const allEditorialFields = pages.flatMap((p) => p.sections.flatMap((s) => s.fields));
+  const totalFields = allEditorialFields.length;
+  const neverPublishedCount = allEditorialFields.filter((f) => !f.isPublished).length;
+  const draftOverLiveCount = allEditorialFields.filter(
+    (f) => f.isPublished && cmsFieldHasDraft(f),
+  ).length;
+  const cleanLiveCount = totalFields - neverPublishedCount - draftOverLiveCount;
+  const totalPending = neverPublishedCount + draftOverLiveCount;
 
   return (
     <AdminPage>
@@ -126,6 +134,85 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
           <AdminNotice tone="success">
             Caché de contenido actualizado. El sitio público ya sirve la versión más reciente.
           </AdminNotice>
+        )}
+
+        {/* Resumen ejecutivo editorial */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            label="Páginas editoriales"
+            value={pages.length}
+            trend="neutral"
+            trendLabel={`${totalFields} campos activos en total`}
+          />
+          <KpiCard
+            label="Al día en vivo"
+            value={cleanLiveCount}
+            trend={cleanLiveCount === totalFields && totalFields > 0 ? "up" : "neutral"}
+            trendLabel={
+              totalFields > 0
+                ? `${Math.round((cleanLiveCount / totalFields) * 100)}% del contenido publicado`
+                : "Sin campos cargados"
+            }
+          />
+          <KpiCard
+            label="Cambios sin publicar"
+            value={draftOverLiveCount}
+            trend={draftOverLiveCount > 0 ? "down" : "up"}
+            trendLabel={
+              draftOverLiveCount > 0
+                ? "Borradores más nuevos que el sitio"
+                : "Sin ediciones retenidas"
+            }
+          />
+          <KpiCard
+            label="Nunca publicados"
+            value={neverPublishedCount}
+            trend="neutral"
+            trendLabel="Campos en estado borrador inicial"
+          />
+        </div>
+
+        {totalFields > 0 && (
+          <AdminCard className="p-5">
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-brand-purple-dark text-base font-bold">
+                Salud editorial del sitio
+              </h2>
+              {totalPending > 0 && (
+                <Link
+                  href="/admin/contenido/borradores"
+                  className="text-brand-purple hover:text-brand-purple-dark text-xs font-semibold hover:underline"
+                >
+                  Revisar {totalPending} pendiente{totalPending === 1 ? "" : "s"} →
+                </Link>
+              )}
+            </div>
+            <AdminSegmentedBar
+              ariaLabel="Estado de publicación de los campos del CMS"
+              items={[
+                {
+                  key: "clean",
+                  label: "Publicados al día",
+                  count: cleanLiveCount,
+                  tone: "emerald",
+                },
+                {
+                  key: "draft_over_live",
+                  label: "Con borrador pendiente",
+                  count: draftOverLiveCount,
+                  tone: "amber",
+                  href: "/admin/contenido/borradores",
+                },
+                {
+                  key: "unpublished",
+                  label: "Borrador sin publicar",
+                  count: neverPublishedCount,
+                  tone: "purple",
+                  href: "/admin/contenido/borradores",
+                },
+              ]}
+            />
+          </AdminCard>
         )}
 
         {/* Buscador global de campos */}
@@ -229,6 +316,8 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
               const Icon = CMS_PAGE_ICONS[page.icon ?? ""] ?? FileText;
               const fields = page.sections.flatMap((s) => s.fields);
               const pending = fields.filter((f) => !f.isPublished || cmsFieldHasDraft(f)).length;
+              const clean = fields.length - pending;
+              const cleanPct = fields.length > 0 ? Math.round((clean / fields.length) * 100) : 100;
               return (
                 <AdminCard key={page.id} hover className="flex flex-col overflow-hidden">
                   <Hint content={`Editar el contenido de ${page.title}`}>
@@ -249,15 +338,35 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
                           {page.description}
                         </p>
                       )}
-                      <p className="text-brand-purple-dark/60 mt-2 text-xs font-medium">
-                        {fields.length} campo{fields.length === 1 ? "" : "s"} ·{" "}
-                        {page.sections.length} seccione{page.sections.length === 1 ? "s" : "s"}
-                      </p>
+                      <div className="mt-3 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-brand-purple-dark/60 font-medium">
+                            {fields.length} campo{fields.length === 1 ? "" : "s"} ·{" "}
+                            {page.sections.length}{" "}
+                            {page.sections.length === 1 ? "sección" : "secciones"}
+                          </span>
+                          <span className="text-brand-muted font-semibold tabular-nums">
+                            {cleanPct}% al día
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className={`admin-bar-grow-x h-full rounded-full ${
+                              pending === 0 ? "bg-emerald-500" : "bg-brand-purple"
+                            }`}
+                            style={{ width: `${cleanPct}%` }}
+                          />
+                        </div>
+                      </div>
                     </Link>
                   </Hint>
                   <div className="border-brand-purple/10 flex items-center justify-between gap-2 border-t px-5 py-2.5">
                     <div>
-                      {pending > 0 && <AdminBadge tone="amber">{pending} sin publicar</AdminBadge>}
+                      {pending > 0 ? (
+                        <AdminBadge tone="amber">{pending} sin publicar</AdminBadge>
+                      ) : (
+                        <AdminBadge tone="emerald">Al día</AdminBadge>
+                      )}
                     </div>
                     {page.path && (
                       <Hint content={`Abrir ${page.path} en una pestaña nueva`}>
@@ -278,6 +387,45 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
             })}
           </div>
         )}
+
+        {/* Herramientas editoriales conectadas (filtradas por RBAC) */}
+        <section>
+          <h2 className="font-display text-brand-purple-dark mb-3 text-lg font-bold">
+            Herramientas editoriales conectadas
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <QuickLink
+              href="/admin/contenido/mediateca"
+              icon={ImageIcon}
+              label="Mediateca"
+              description="Sube y reutiliza banners, fotos editoriales y logos con control de uso."
+            />
+            {canAccessAdminPath(session.admin.role, "/admin/redirects") && (
+              <QuickLink
+                href="/admin/redirects"
+                icon={ArrowRightLeft}
+                label="Redirecciones URL"
+                description="Cuida el SEO cuando cambias enlaces de campañas o páginas antiguas."
+              />
+            )}
+            {canAccessAdminPath(session.admin.role, "/admin/contenido/paginas/global") && (
+              <QuickLink
+                href="/admin/contenido/paginas/global"
+                icon={Globe}
+                label="Ajustes del sitio"
+                description="WhatsApp, correo de soporte, NIT, dirección de recogida y redes sociales."
+              />
+            )}
+            {canAccessAdminPath(session.admin.role, "/admin/email-templates") && (
+              <QuickLink
+                href="/admin/email-templates"
+                icon={Mail}
+                label="Plantillas de correo"
+                description="Personaliza asunto, preheader y titular de los 32 correos automáticos."
+              />
+            )}
+          </div>
+        </section>
       </AdminPageBody>
     </AdminPage>
   );

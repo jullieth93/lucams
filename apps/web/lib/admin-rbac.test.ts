@@ -28,6 +28,9 @@ const CATALOG_PATHS = [
   "/admin/ocasiones",
   "/admin/resenas",
   "/admin/clientes",
+  "/admin/canales",
+  "/admin/canales/tienda",
+  "/admin/envios",
 ];
 // Compartidas por los tres roles operativos (N-21, 2026-09-11: garantías y
 // retractos ya NO están acá — la ruta replica lo que su página exige).
@@ -47,10 +50,11 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/cupones",
   "/admin/usuarios",
   "/admin/integraciones",
+  "/admin/integraciones/aveonline",
   "/admin/auditoria",
   "/admin/mayorista",
   "/admin/costos",
-  "/admin/canales",
+  "/admin/canales/mercadolibre",
   "/admin/metricas",
   "/admin/performance",
   "/admin/email-templates",
@@ -647,9 +651,15 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/usuarios")).toBe(false);
   });
 
-  it("OPERATIONS_MANAGER equivale funcionalmente a gerencia operativa (incluye notificaciones, materiales, fusión de duplicados y marketing)", () => {
+  it("OPERATIONS_MANAGER equivale funcionalmente a gerencia operativa (incluye notificaciones, materiales, canales de tienda, envíos, fusión de duplicados y marketing)", () => {
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/notificaciones")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/materiales")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/canales")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/canales/tienda")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/canales/mercadolibre")).toBe(false);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/envios")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/integraciones")).toBe(false);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/integraciones/aveonline")).toBe(false);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/clientes")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/clientes/duplicados")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/marketing/suscriptores")).toBe(true);

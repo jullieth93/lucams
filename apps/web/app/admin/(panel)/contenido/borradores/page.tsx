@@ -60,7 +60,7 @@ export default async function BorradoresPage({ searchParams }: { searchParams: S
         title="Solo borradores"
         subtitle="Todos los cambios guardados que todavía no se ven en el sitio. Publícalos uno a uno o todos de una vez."
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: "/admin" },
           { label: "Contenido", href: "/admin/contenido" },
           { label: "Solo borradores" },
         ]}
