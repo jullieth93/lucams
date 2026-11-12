@@ -53,54 +53,57 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
               "Contrasta el estado con pago, producción y envío en el detalle antes de decidir.",
           },
           {
-            id: "lote",
-            label: "Acciones por lote",
+            id: "pulso-etapas",
+            label: "Pulso de 14 días y barra de etapas",
             description:
-              "Aplican una misma transición a varios pedidos seleccionados cuando las reglas lo permiten.",
-            caution:
-              "Revisa cada selección: una acción masiva puede afectar varios clientes y no sustituye la validación individual.",
+              "Muestra la evolución diaria de órdenes y la distribución interactiva por estado del pipeline.",
+            interpretation:
+              "Haz clic en un segmento de etapa o filtro rápido (Pendientes de taller, COD sin conciliar) para enfocar la cola.",
           },
         ],
       },
       {
         id: "detalle",
         title: "Detalle del pedido",
-        summary: "Reúne los datos y procesos que explican la situación real de la orden.",
+        summary: "Reúne los datos, el stepper de ciclo de vida y los vínculos 360° de la orden.",
         topics: [
           {
             id: "pago",
-            label: "Pago y conciliación",
-            description: "Muestra la información disponible del medio y resultado del recaudo.",
+            label: "Pago y confidencialidad comercial",
+            description:
+              "Muestra medio de pago, intentos Wompi o monto COD a recaudar según los permisos de tu rol.",
             interpretation:
-              "Un pedido creado no prueba un pago aprobado; verifica el resultado registrado por el proveedor o la conciliación COD.",
+              "Taller opera sin importes comerciales; Alistamiento solo visualiza el valor a cobrar cuando el pedido es contraentrega.",
           },
           {
             id: "disenos",
-            label: "Diseños y producción",
+            label: "Diseños, moderación y renders 300 DPI",
             description:
-              "Relaciona los ítems personalizados con sus diseños, moderación y paquete de taller.",
+              "Relaciona los ítems personalizados con su estado de moderación, progreso de RenderJob y paquete ZIP de taller.",
             interpretation:
-              "Descarga el paquete únicamente cuando el pedido esté listo según el flujo operativo.",
+              "Descarga el ZIP de taller únicamente cuando los diseños estén aprobados y los renders hayan completado.",
           },
           {
             id: "envio",
-            label: "Envío y guía",
+            label: "Envío y guía térmica",
             description:
-              "Presenta transportadora, dirección, guía, eventos y novedades logísticas.",
+              "Presenta transportadora, dirección, guía Aveonline, eventos y etiqueta imprimible (sin precios cuando es regalo).",
             interpretation:
-              "El último evento del carrier y el estado interno deben interpretarse juntos.",
+              "El último evento del carrier y el estado interno deben interpretarse juntos antes de reintentar una guía.",
           },
           {
-            id: "timeline",
-            label: "Historial",
-            description: "Conserva eventos y cambios para reconstruir qué ocurrió y cuándo.",
-            interpretation: "Úsalo antes de repetir una acción o atribuir una incidencia.",
+            id: "ecosistema",
+            label: "Ecosistema 360° vinculado",
+            description:
+              "Conecta con Contacto 360, cotización origen, retractos, garantías, tickets de soporte, cupón y remesa COD.",
+            interpretation:
+              "Solo aparecen enlaces hacia submódulos habilitados para tu rol actual.",
           },
           {
             id: "pii",
             label: "Datos del cliente",
             description:
-              "La visibilidad de identidad y contacto depende de capacidades específicas.",
+              "La visibilidad de identidad y dirección depende de capacidades específicas de lectura de PII.",
             caution:
               "No copies ni compartas datos personales fuera del canal autorizado, incluso si puedes verlos.",
           },
@@ -162,9 +165,9 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
       },
     ],
     cautions: [
-      "No anticipes estados: producción, despacho y entrega deben registrar hechos que ya ocurrieron.",
-      "Una cancelación, reembolso o modificación de pago puede exigir otro procedimiento y permisos adicionales.",
-      "Las acciones por lote exigen la misma validación que una acción individual.",
+      "No anticipes estados: producción, despacho y entrega deben registrar hechos físicos que ya ocurrieron.",
+      "Cada rol opera su tramo: Taller prepara e imprime 300 DPI; Alistamiento despacha y gestiona guías; Dirección/Operaciones concilia y cancela.",
+      "Bloquear una dirección por no-show COD exige confirmación reciente con segundo factor (MFA).",
     ],
     faqs: [
       {
@@ -173,19 +176,19 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
           "No. Todavía deben cumplirse personalización, moderación, producción, alistamiento y generación de guía.",
       },
       {
-        question: "¿Por qué no veo los datos de contacto?",
+        question: "¿Por qué no veo los datos de contacto o el desglose comercial?",
         answer:
-          "Tu rol puede tener acceso operativo sin permiso para datos personales. Trabaja con el número de pedido y escala si necesitas validación adicional.",
+          "Tu rol recibe únicamente la información necesaria para su etapa (privacidad de PII y confidencialidad comercial). Trabaja con el número de pedido y escala si necesitas validación adicional.",
       },
       {
         question: "¿Dónde corrijo una guía fallida?",
         answer:
-          "Abre el detalle, revisa el error y sigue el diagnóstico de Integraciones o Envíos según la causa antes de reintentar.",
+          "Abre el detalle del pedido con un rol de Alistamiento u Operaciones, revisa el error reportado y reintenta la guía tras corregir la causa.",
       },
     ],
     related: ["moderacion", "envios", "soporte", "finanzas", "conciliacion"],
     keywords: ["orden", "LCM", "pago", "taller", "ZIP", "guía", "despacho", "entrega", "estado"],
-    version: 1,
+    version: 2,
   },
   {
     id: "clientes",

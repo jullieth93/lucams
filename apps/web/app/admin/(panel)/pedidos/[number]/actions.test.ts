@@ -14,29 +14,48 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   state,
   refundOrder,
+  transitionOrder,
   recordAdminAction,
   processPaidOrder,
   sealManuallyResolvedWebhookEvents,
+  orderFindUnique,
+  orderUpdate,
   orderUpdateMany,
   renderJobFindUnique,
   renderJobUpdate,
   processRenderJobs,
+  addBlockedIdentity,
 } = vi.hoisted(() => ({
   state: {
+    role: "SUPERADMIN" as string,
     aal: null as {
       currentLevel: string | null;
       nextLevel: string | null;
       currentAuthenticationMethods: unknown;
     } | null,
   },
-  refundOrder: vi.fn(async () => ({ status: "refunded", amount: 150_000 })),
+  refundOrder: vi.fn(async () => ({
+    status: "refunded",
+    amount: 150_000,
+    orderNumber: "LCM-2026-0001",
+  })),
+  transitionOrder: vi.fn(async () => ({ id: "order_1", number: "LCM-2026-0001" })),
   recordAdminAction: vi.fn(async () => {}),
   processPaidOrder: vi.fn(async () => ({ status: "ok", trackingNumber: "TRK-1" })),
   sealManuallyResolvedWebhookEvents: vi.fn(async () => ({ sealed: 2 })),
+  orderFindUnique: vi.fn(async () => ({
+    id: "order_1",
+    number: "LCM-2026-0001",
+    paymentMethod: "COD",
+    shippingAddressKey: "bogota|calle85|110221",
+    noShowAt: null,
+  })),
+  orderUpdate: vi.fn(async () => ({})),
   orderUpdateMany: vi.fn(async () => ({ count: 1 })),
   renderJobFindUnique: vi.fn(),
   renderJobUpdate: vi.fn(async () => ({})),
   processRenderJobs: vi.fn(async () => ({ processed: 1 })),
+  addBlockedIdentity: vi.fn(async () => ({})),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -45,7 +64,11 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@/lib/db", () => ({
   prisma: {
-    order: { updateMany: orderUpdateMany },
+    order: {
+      findUnique: orderFindUnique,
+      update: orderUpdate,
+      updateMany: orderUpdateMany,
+    },
     renderJob: { findUnique: renderJobFindUnique, update: renderJobUpdate },
   },
 }));
@@ -54,10 +77,15 @@ vi.mock("@/features/personalization/render-job-service", () => ({
   RENDER_JOB_KICK_BUDGET_MS: 8_000,
 }));
 vi.mock("@/lib/admin-rbac-guard", () => ({
-  requireAdminAction: vi.fn(async () => ({
-    user: { id: "sb_user_1" },
-    admin: { id: "adm_1", role: "SUPERADMIN" },
-  })),
+  requireAdminAction: vi.fn(async (opts?: { roles?: readonly string[] }) => {
+    if (opts?.roles && !opts.roles.includes(state.role)) {
+      throw new Error(`FORBIDDEN:${state.role}`);
+    }
+    return {
+      user: { id: "sb_user_1" },
+      admin: { id: "adm_1", role: state.role },
+    };
+  }),
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
@@ -67,7 +95,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/admin-audit", () => ({ recordAdminAction }));
 vi.mock("@/features/orders/service", () => ({
   refundOrder,
-  transitionOrder: vi.fn(),
+  transitionOrder,
 }));
 vi.mock("@/features/orders/webhook-seal", () => ({ sealManuallyResolvedWebhookEvents }));
 vi.mock("@/features/orders/saga", () => ({ processPaidOrder }));
@@ -76,17 +104,21 @@ vi.mock("@/features/orders/emails", () => ({
   sendOrderDelivered: vi.fn(),
   sendOrderCancelled: vi.fn(),
 }));
-vi.mock("@/features/moderation/service", () => ({ orderHasUnmoderatedDesigns: vi.fn() }));
+vi.mock("@/features/moderation/service", () => ({
+  orderHasUnmoderatedDesigns: vi.fn(async () => false),
+}));
 vi.mock("@/features/anti-abuse/blocklist-service", () => ({
-  addBlockedIdentity: vi.fn(),
+  addBlockedIdentity,
   BlocklistError: class BlocklistError extends Error {},
 }));
 
 import {
-  refundOrderAction,
-  retryShipmentAction,
+  blockOrderAddressAction,
   markOrderReconciledAction,
+  refundOrderAction,
   retryRenderJobAction,
+  retryShipmentAction,
+  transitionOrderAction,
 } from "./actions";
 
 const NOW = new Date("2026-09-04T15:00:00Z");
@@ -116,6 +148,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   vi.clearAllMocks();
+  state.role = "SUPERADMIN";
   state.aal = aal2WithTotp(60);
 });
 
@@ -380,5 +413,106 @@ describe("retryRenderJobAction — reintento 1-clic de RenderJob FAILED (S11)", 
     expect(renderJobUpdate).not.toHaveBeenCalled();
     expect(processRenderJobs).not.toHaveBeenCalled();
     expect(recordAdminAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("Bloque 5 — segregación por etapa en transitionOrderAction y step-up MFA en blockOrderAddressAction", () => {
+  function transitionForm(to: string, reason = "avance operativo"): FormData {
+    const fd = new FormData();
+    fd.set("orderId", "order_1");
+    fd.set("to", to);
+    fd.set("reason", reason);
+    return fd;
+  }
+
+  it("PRINT_WORKSHOP puede pasar a FULFILLING pero NO a SHIPPED ni CANCELLED", async () => {
+    state.role = "PRINT_WORKSHOP";
+
+    const okRes = await transitionOrderAction(null, transitionForm("FULFILLING"));
+    expect(okRes.success).toMatch(/En preparación/i);
+    expect(transitionOrder).toHaveBeenCalledWith(
+      "order_1",
+      "FULFILLING",
+      expect.objectContaining({ actorAdminId: "adm_1" }),
+    );
+
+    transitionOrder.mockClear();
+    const deniedShipped = await transitionOrderAction(null, transitionForm("SHIPPED"));
+    expect(deniedShipped.error).toMatch(/no tiene permiso/i);
+    expect(transitionOrder).not.toHaveBeenCalled();
+
+    const deniedCancel = await transitionOrderAction(null, transitionForm("CANCELLED"));
+    expect(deniedCancel.error).toMatch(/Operaciones o Administradora/i);
+    expect(transitionOrder).not.toHaveBeenCalled();
+  });
+
+  it("FULFILLMENT puede despachar (SHIPPED) pero NO cancelar (CANCELLED)", async () => {
+    state.role = "FULFILLMENT";
+
+    const shipped = await transitionOrderAction(null, transitionForm("SHIPPED"));
+    expect(shipped.success).toMatch(/Enviado/i);
+    expect(transitionOrder).toHaveBeenCalledWith(
+      "order_1",
+      "SHIPPED",
+      expect.objectContaining({ actorAdminId: "adm_1" }),
+    );
+
+    transitionOrder.mockClear();
+    const deniedCancel = await transitionOrderAction(null, transitionForm("CANCELLED"));
+    expect(deniedCancel.error).toMatch(/Operaciones o Administradora/i);
+    expect(transitionOrder).not.toHaveBeenCalled();
+  });
+
+  it("OPERATIONS_MANAGER puede cancelar y registra orderNumber en auditoría", async () => {
+    state.role = "OPERATIONS_MANAGER";
+
+    const res = await transitionOrderAction(null, transitionForm("CANCELLED", "solicitud cliente"));
+    expect(res.success).toMatch(/Cancelado/i);
+    expect(recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "order.transition",
+        entityId: "order_1",
+        metadata: expect.objectContaining({
+          orderNumber: "LCM-2026-0001",
+          to: "CANCELLED",
+          reason: "solicitud cliente",
+        }),
+      }),
+    );
+  });
+
+  it("blockOrderAddressAction exige FINANCE_COD (FINANCE_ANALYST / SUPERADMIN) + step-up MFA reciente", async () => {
+    const fd = new FormData();
+    fd.set("orderId", "order_1");
+
+    // 1. Rol no autorizado (OPERATIONS_MANAGER) rebota en el guard RBAC
+    state.role = "OPERATIONS_MANAGER";
+    await expect(blockOrderAddressAction(null, fd)).rejects.toThrow(/FORBIDDEN:OPERATIONS_MANAGER/);
+
+    // 2. FINANCE_ANALYST con aal2 vencido (15 min) pide re-auth sin bloquear la dirección
+    state.role = "FINANCE_ANALYST";
+    state.aal = aal2WithTotp(15 * 60);
+    const staleRes = await blockOrderAddressAction(null, fd);
+    expect(staleRes.reauthRequired).toBe(true);
+    expect(addBlockedIdentity).not.toHaveBeenCalled();
+
+    // 3. FINANCE_ANALYST con aal2 fresco bloquea la dirección server-side y audita orderNumber
+    state.aal = aal2WithTotp(45);
+    const freshRes = await blockOrderAddressAction(null, fd);
+    expect(freshRes.reauthRequired).toBeUndefined();
+    expect(freshRes.success).toMatch(/Dirección bloqueada/);
+    expect(addBlockedIdentity).toHaveBeenCalledWith({
+      kind: "ADDRESS",
+      value: "bogota|calle85|110221",
+      reason: "Dirección del pedido LCM-2026-0001",
+      createdBy: "adm_1",
+    });
+    expect(recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "cod.blocklist.add_address",
+        entityId: "order_1",
+        metadata: { orderNumber: "LCM-2026-0001" },
+      }),
+    );
   });
 });

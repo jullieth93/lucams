@@ -13,6 +13,11 @@ import {
   ADMIN_CAPABILITIES,
   ADMIN_ROLE_SETS,
   canAccessAdminPath,
+  canManageOrderRenderJobs,
+  canRetryOrderShipment,
+  canSeeOrderCodCollectionAmount,
+  canSeeOrderCommercialBreakdown,
+  canTransitionOrderTo,
   filterNavByRole,
   adminHomePath,
   hasCapability,
@@ -720,6 +725,83 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
       expect(canAccessAdminPath(role, "/admin/cotizaciones")).toBe(false);
       expect(canAccessAdminPath(role, "/admin/cotizaciones/qt_123/taller")).toBe(false);
       expect(canAccessAdminPath(role, "/admin/clientes/duplicados")).toBe(false);
+    }
+  });
+
+  it("Bloque 5 — paridad N-21 en subrutas de pedidos (/produccion y /guia), segregación por etapa y confidencialidad COP", () => {
+    // /admin/pedidos/[n]/produccion (ZIP 300 DPI): exclusivo production:download_assets
+    for (const role of ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER", "PRINT_WORKSHOP"] as const) {
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/produccion")).toBe(true);
+    }
+    for (const role of [
+      "FULFILLMENT",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/produccion")).toBe(false);
+    }
+
+    // /admin/pedidos/[n]/guia (guía física térmica): exclusivo SHIPPING_GUIDE_PRINT
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "FULFILLMENT",
+      "CUSTOMER_SUPPORT",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/guia")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/guia?print=1")).toBe(true);
+    }
+    for (const role of ["PRINT_WORKSHOP", "FINANCE_ANALYST", "CMS_EDITOR"] as const) {
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/guia")).toBe(false);
+    }
+
+    // Segregación por etapa en transiciones de Order
+    expect(canTransitionOrderTo("PRINT_WORKSHOP", "FULFILLING")).toBe(true);
+    expect(canTransitionOrderTo("PRINT_WORKSHOP", "SHIPPED")).toBe(false);
+    expect(canTransitionOrderTo("PRINT_WORKSHOP", "DELIVERED")).toBe(false);
+    expect(canTransitionOrderTo("PRINT_WORKSHOP", "CANCELLED")).toBe(false);
+
+    expect(canTransitionOrderTo("FULFILLMENT", "FULFILLING")).toBe(true);
+    expect(canTransitionOrderTo("FULFILLMENT", "SHIPPED")).toBe(true);
+    expect(canTransitionOrderTo("FULFILLMENT", "DELIVERED")).toBe(true);
+    expect(canTransitionOrderTo("FULFILLMENT", "CANCELLED")).toBe(false);
+
+    for (const role of ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"] as const) {
+      expect(canTransitionOrderTo(role, "FULFILLING")).toBe(true);
+      expect(canTransitionOrderTo(role, "SHIPPED")).toBe(true);
+      expect(canTransitionOrderTo(role, "DELIVERED")).toBe(true);
+      expect(canTransitionOrderTo(role, "CANCELLED")).toBe(true);
+    }
+    expect(canTransitionOrderTo("CUSTOMER_SUPPORT", "FULFILLING")).toBe(false);
+    expect(canTransitionOrderTo("FINANCE_ANALYST", "CANCELLED")).toBe(false);
+
+    // Reintentar guía Aveonline vs gestionar RenderJob 300 DPI
+    expect(canRetryOrderShipment("FULFILLMENT")).toBe(true);
+    expect(canRetryOrderShipment("PRINT_WORKSHOP")).toBe(false);
+    expect(canRetryOrderShipment("CUSTOMER_SUPPORT")).toBe(false);
+
+    expect(canManageOrderRenderJobs("PRINT_WORKSHOP")).toBe(true);
+    expect(canManageOrderRenderJobs("FULFILLMENT")).toBe(false);
+    expect(canManageOrderRenderJobs("CUSTOMER_SUPPORT")).toBe(false);
+
+    // Confidencialidad comercial COP
+    expect(canSeeOrderCommercialBreakdown("PRINT_WORKSHOP")).toBe(false);
+    expect(canSeeOrderCodCollectionAmount("PRINT_WORKSHOP")).toBe(false);
+
+    expect(canSeeOrderCommercialBreakdown("FULFILLMENT")).toBe(false);
+    expect(canSeeOrderCodCollectionAmount("FULFILLMENT")).toBe(true);
+
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "FINANCE_ANALYST",
+      "CUSTOMER_SUPPORT",
+    ] as const) {
+      expect(canSeeOrderCommercialBreakdown(role)).toBe(true);
+      expect(canSeeOrderCodCollectionAmount(role)).toBe(true);
     }
   });
 });

@@ -53,6 +53,13 @@ export type AdminAuditEntry = {
  * Best-effort y fail-open: un error de resolución jamás rompe ni la acción ni el audit.
  */
 const SELF_DEALING_SENSITIVE_ACTIONS = new Set([
+  "order.refund",
+  "order.reconcile",
+  "order.transition",
+  "order.mark_no_show",
+  "cod.blocklist.add_address",
+  "design.moderation.approve",
+  "design.moderation.reject",
   "retract.approve",
   "retract.reject",
   "retract.receive",
@@ -117,6 +124,21 @@ async function resolveTargetEmailsForAudit(entry: AdminAuditEntry): Promise<stri
       return [row?.primaryContact?.primaryEmail, row?.secondaryContact?.primaryEmail].filter(
         (v): v is string => Boolean(v),
       );
+    }
+    case "Design": {
+      const row = await prisma.design.findUnique({
+        where: { id: entry.entityId },
+        select: {
+          customer: { select: { email: true } },
+          orderItems: { select: { order: { select: { email: true } } } },
+          quoteItems: { select: { quote: { select: { customerEmail: true } } } },
+        },
+      });
+      return [
+        row?.customer?.email,
+        ...(row?.orderItems.map((oi) => oi.order.email) ?? []),
+        ...(row?.quoteItems.map((qi) => qi.quote.customerEmail) ?? []),
+      ].filter((v): v is string => Boolean(v));
     }
     default:
       return [];

@@ -176,6 +176,14 @@ export const ADMIN_ROLE_SETS = {
   SHIPPING_GUIDE_PRINT: ALL_ROLES_ORDER.filter(
     (r) => hasCapability(r, "orders:read_pii") || r === "FULFILLMENT",
   ),
+  /** Roles habilitados para despachar pedidos (SHIPPED/DELIVERED) y reintentar guías Aveonline (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `FULFILLMENT`). */
+  ORDERS_SHIPMENT_DISPATCH: ALL_ROLES_ORDER.filter(
+    (r) =>
+      hasCapability(r, "orders:transition") &&
+      (hasCapability(r, "orders:read_pii") || r === "FULFILLMENT"),
+  ),
+  /** Roles habilitados para reconciliar incidencias y cancelar pedidos activos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
+  ORDERS_RECONCILE: rolesWithCapability("orders:reconcile"),
   /** Roles habilitados para moderar diseños de clientes (incluye PRINT_WORKSHOP). */
   PRODUCTION_MODERATE: rolesWithCapability("production:moderate"),
   /** Roles habilitados para gestionar activos del Estudio (plantillas, prediseñados y abecedarios). */
@@ -353,7 +361,72 @@ const ROUTE_PATTERN_ROLES: ReadonlyArray<{
     pattern: /^\/admin\/cotizaciones\/[^/?]+\/taller(?:$|[/?])/,
     roles: rolesWithCapability("production:download_assets"),
   },
+  {
+    // Descarga de ZIP de producción 300 DPI del pedido (Bloque 5 — paridad N-21 con route.ts):
+    // exige production:download_assets (excluye FULFILLMENT, CUSTOMER_SUPPORT y FINANCE_ANALYST).
+    pattern: /^\/admin\/pedidos\/[^/?]+\/produccion(?:$|[/?])/,
+    roles: rolesWithCapability("production:download_assets"),
+  },
+  {
+    // Guía física imprimible de entrega / mensajero propio (Bloque 5 — paridad N-21 con guia/page.tsx):
+    // habilita SHIPPING_GUIDE_PRINT y excluye PRINT_WORKSHOP y FINANCE_ANALYST.
+    pattern: /^\/admin\/pedidos\/[^/?]+\/guia(?:$|[/?])/,
+    roles: ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT,
+  },
 ];
+
+export type OrderAdminTransitionTarget = "FULFILLING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+
+/**
+ * Segregación por etapa operativa en transiciones de `Order` (Bloque 5):
+ * - `CANCELLED`: exclusivo de gerencia operativa (`orders:reconcile`: `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`).
+ * - `FULFILLING`: cualquier rol con `orders:transition` (`PRINT_WORKSHOP` en personalizados y `FULFILLMENT` en estándar).
+ * - `SHIPPED` / `DELIVERED`: roles logísticos de despacho (`ORDERS_SHIPMENT_DISPATCH`, excluye `PRINT_WORKSHOP`).
+ */
+export function canTransitionOrderTo(
+  role: AdminRole,
+  toStatus: OrderAdminTransitionTarget,
+): boolean {
+  if (!hasCapability(role, "orders:transition")) return false;
+  if (toStatus === "CANCELLED") {
+    return hasCapability(role, "orders:reconcile");
+  }
+  if (toStatus === "FULFILLING") {
+    return true;
+  }
+  return (ADMIN_ROLE_SETS.ORDERS_SHIPMENT_DISPATCH as readonly string[]).includes(role);
+}
+
+/** ¿Puede reintentar la generación de guía en Aveonline? (Despachos y gerencia operativa; no Taller ni Soporte). */
+export function canRetryOrderShipment(role: AdminRole): boolean {
+  return (ADMIN_ROLE_SETS.ORDERS_SHIPMENT_DISPATCH as readonly string[]).includes(role);
+}
+
+/** ¿Puede reintentar `RenderJob` 300 DPI o regenerar piezas de taller? (Exclusivo `production:download_assets`). */
+export function canManageOrderRenderJobs(role: AdminRole): boolean {
+  return hasCapability(role, "production:download_assets");
+}
+
+/**
+ * ¿Puede ver el desglose comercial completo en COP (subtotal, descuentos, cupones, precios unitarios e intentos Wompi)?
+ * Habilitado para Administradora, Operaciones, Analista financiera y Soporte; oculto en Taller y Despachos.
+ */
+export function canSeeOrderCommercialBreakdown(role: AdminRole): boolean {
+  return (
+    hasCapability(role, "finance:read") ||
+    hasCapability(role, "orders:read_pii") ||
+    hasCapability(role, "catalog:write")
+  );
+}
+
+/**
+ * ¿Puede ver el monto a recaudar cuando un pedido es contraentrega (`COD`)?
+ * `FULFILLMENT` necesita verificar si debe cobrar efectivo en la entrega, sin acceder al resto del desglose comercial;
+ * `PRINT_WORKSHOP` no recibe importes COP de ningún tipo.
+ */
+export function canSeeOrderCodCollectionAmount(role: AdminRole): boolean {
+  return canSeeOrderCommercialBreakdown(role) || role === "FULFILLMENT";
+}
 
 /** ¿El rol puede acceder a esta ruta admin? */
 export function canAccessAdminPath(role: AdminRole, pathname: string): boolean {

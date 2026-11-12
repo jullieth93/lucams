@@ -9,7 +9,11 @@
  */
 
 import type { AdminRole } from "@lucams/db";
-import { hasCapability } from "@/lib/admin-rbac";
+import {
+  canSeeOrderCodCollectionAmount,
+  canSeeOrderCommercialBreakdown,
+  hasCapability,
+} from "@/lib/admin-rbac";
 
 const MASKED_ADDRESS_LINE = "Dirección protegida (ver guía oficial de despacho)";
 
@@ -169,6 +173,22 @@ export type OrderLikeWithPii = {
   recipientName?: string | null;
   recipientPhone?: string | null;
   giftMessage?: string | null;
+  paymentMethod?: string | null;
+  subtotal?: number;
+  discount?: number;
+  loyaltyDiscount?: number;
+  loyaltyPointsRedeemed?: number;
+  shipping?: number;
+  tax?: number;
+  total?: number;
+  refundAmount?: number | null;
+  couponId?: string | null;
+  coupon?: unknown;
+  codReconciliation?: unknown;
+  wompiTransactionId?: string | null;
+  wompiReference?: string | null;
+  wompiAttempts?: unknown[];
+  items?: Array<Record<string, unknown>>;
   customer?: {
     id?: string;
     email?: string;
@@ -179,13 +199,19 @@ export type OrderLikeWithPii = {
 
 /**
  * Aplica enmascaramiento server-side sobre un `Order` completo (detalle o listado)
- * cuando el actor administrativo NO posee `orders:read_pii` (ej. `PRINT_WORKSHOP`).
- * Nota operativa:
+ * cuando el actor administrativo NO posee `orders:read_pii` (ej. `PRINT_WORKSHOP`,
+ * `FULFILLMENT`, `FINANCE_ANALYST`).
+ * Nota operativa y mínimo privilegio comercial (Bloque 5):
  *   - `giftMessage` se conserva íntegro porque el taller lo imprime en la tarjeta física.
  *   - `notes` (instrucciones de portería/entrega) y `shippingAddressKey` se protegen.
  *   - `labelPath`, `labelUrl` y `trackingUrl` se anulan salvo para `FULFILLMENT`
  *     (despachos necesita pegar la etiqueta de transporte, pero `PRINT_WORKSHOP` nunca
  *     debe recibir URLs de guías que revelan dirección exacta y teléfono).
+ *   - Redacción comercial server-side: si el rol carece de `canSeeOrderCommercialBreakdown`
+ *     (`PRINT_WORKSHOP` y `FULFILLMENT`), se eliminan del payload RSC subtotal, descuentos,
+ *     cupones, precios unitarios e historial Wompi. `FULFILLMENT` conserva únicamente `total`
+ *     cuando `paymentMethod === "COD"` para verificar el recaudo contraentrega; `PRINT_WORKSHOP`
+ *     no recibe ningún importe en centavos COP.
  * Si el actor posee `orders:read_pii`, devuelve la referencia intacta.
  */
 export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: AdminRole): T {
@@ -194,6 +220,8 @@ export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: Ad
   }
 
   const stripCarrierLabelUrls = role !== "FULFILLMENT";
+  const hideCommercialBreakdown = !canSeeOrderCommercialBreakdown(role);
+  const preserveCodTotal = canSeeOrderCodCollectionAmount(role) && order.paymentMethod === "COD";
 
   return {
     ...order,
@@ -246,6 +274,43 @@ export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: Ad
                   : {}),
               }
             : null,
+        }
+      : {}),
+    ...(hideCommercialBreakdown
+      ? {
+          ...(order.subtotal !== undefined ? { subtotal: 0 } : {}),
+          ...(order.discount !== undefined ? { discount: 0 } : {}),
+          ...(order.loyaltyDiscount !== undefined ? { loyaltyDiscount: 0 } : {}),
+          ...(order.loyaltyPointsRedeemed !== undefined ? { loyaltyPointsRedeemed: 0 } : {}),
+          ...(order.shipping !== undefined ? { shipping: 0 } : {}),
+          ...(order.tax !== undefined ? { tax: 0 } : {}),
+          ...(order.total !== undefined ? { total: preserveCodTotal ? order.total : 0 } : {}),
+          ...(order.refundAmount !== undefined ? { refundAmount: null } : {}),
+          ...(order.couponId !== undefined ? { couponId: null } : {}),
+          ...(order.coupon !== undefined ? { coupon: null } : {}),
+          ...(order.codReconciliation !== undefined ? { codReconciliation: null } : {}),
+          ...(order.wompiTransactionId !== undefined ? { wompiTransactionId: null } : {}),
+          ...(order.wompiReference !== undefined ? { wompiReference: null } : {}),
+          ...(order.wompiAttempts !== undefined ? { wompiAttempts: [] } : {}),
+          ...(order.items !== undefined
+            ? {
+                items: order.items.map((item) => {
+                  const maskedItem: Record<string, unknown> =
+                    "unitPrice" in item ? { ...item, unitPrice: 0 } : { ...item };
+                  if (
+                    maskedItem.retractRequest &&
+                    typeof maskedItem.retractRequest === "object" &&
+                    "refundAmount" in maskedItem.retractRequest
+                  ) {
+                    maskedItem.retractRequest = {
+                      ...(maskedItem.retractRequest as Record<string, unknown>),
+                      refundAmount: 0,
+                    };
+                  }
+                  return maskedItem;
+                }),
+              }
+            : {}),
         }
       : {}),
   };

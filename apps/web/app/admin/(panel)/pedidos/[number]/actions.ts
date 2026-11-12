@@ -5,7 +5,11 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import {
+  ADMIN_ROLE_SETS,
+  canTransitionOrderTo,
+  type OrderAdminTransitionTarget,
+} from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { addBlockedIdentity, BlocklistError } from "@/features/anti-abuse/blocklist-service";
 import { processPaidOrder } from "@/features/orders/saga";
@@ -29,12 +33,17 @@ export async function retryShipmentAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_TRANSITION });
+  // Bloque 5: reintentar guía Aveonline es acción de despacho logístico (excluye PRINT_WORKSHOP y CUSTOMER_SUPPORT).
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_SHIPMENT_DISPATCH });
 
   const orderId = String(formData.get("orderId") ?? "");
   if (!orderId) return { error: "Falta orderId" };
 
   try {
+    const orderMeta = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { number: true },
+    });
     const result = await processPaidOrder({ orderId });
     // N-13 — resolución manual exitosa (guía generada o ya existente con tracking):
     // sella los WebhookEvent SIN procesar relacionados con esta orden (WOMPI por
@@ -63,6 +72,7 @@ export async function retryShipmentAction(
       entityType: "Order",
       entityId: orderId,
       metadata: {
+        ...(orderMeta?.number ? { orderNumber: orderMeta.number } : {}),
         sagaStatus: result.status,
         trackingNumber: result.trackingNumber ?? null,
         sealedWebhooks,
@@ -117,6 +127,27 @@ export async function transitionOrderAction(
       error: "Para reembolsar usa el botón Reembolsar (registra auditoría y avisa al cliente).",
     };
   }
+  const allowedTargets: readonly OrderAdminTransitionTarget[] = [
+    "FULFILLING",
+    "SHIPPED",
+    "DELIVERED",
+    "CANCELLED",
+  ];
+  if (!(allowedTargets as readonly string[]).includes(to)) {
+    return { error: "Estado destino inválido." };
+  }
+  // Segregación estricta por etapa (Bloque 5):
+  // - PRINT_WORKSHOP solo prepara (FULFILLING).
+  // - FULFILLMENT alista y despacha (FULFILLING, SHIPPED, DELIVERED), nunca cancela.
+  // - CANCELLED exige capacidad orders:reconcile (OPERATIONS_MANAGER / MANAGER / SUPERADMIN).
+  if (!canTransitionOrderTo(session.admin.role, to as OrderAdminTransitionTarget)) {
+    return {
+      error:
+        to === "CANCELLED"
+          ? "Solo Operaciones o Administradora pueden cancelar un pedido."
+          : "Tu rol no tiene permiso para pasar un pedido a este estado de despacho.",
+    };
+  }
   // Gate de moderación (ADR-062 P0-2): marcar SHIPPED implica que ya se imprimió y despachó.
   // Print-on-demand → no se despacha nada con diseños sin aprobar. Revisa /admin/moderacion.
   if (to === "SHIPPED" && (await orderHasUnmoderatedDesigns(orderId))) {
@@ -127,7 +158,7 @@ export async function transitionOrderAction(
   }
 
   try {
-    await transitionOrder(orderId, to, {
+    const updated = await transitionOrder(orderId, to, {
       actorAdminId: session.admin.id,
       note: reason || undefined,
     });
@@ -144,7 +175,11 @@ export async function transitionOrderAction(
       action: "order.transition",
       entityType: "Order",
       entityId: orderId,
-      metadata: reason ? { to, reason } : { to },
+      metadata: {
+        ...(updated?.number ? { orderNumber: updated.number } : {}),
+        to,
+        ...(reason ? { reason } : {}),
+      },
     });
     revalidatePath("/admin/pedidos");
     revalidatePath(`/admin/pedidos/[number]`, "page");
@@ -216,6 +251,7 @@ export async function refundOrderAction(
       entityType: "Order",
       entityId: orderId,
       metadata: {
+        ...(res.orderNumber ? { orderNumber: res.orderNumber } : {}),
         status: res.status,
         amount: res.amount,
         reason: reason || null,
@@ -235,8 +271,8 @@ export async function refundOrderAction(
       // 100% manual (Wompi/transferencia); esto solo comunica lo ya ejecutado.
       success:
         `Reembolso de ${formatCOP(res.amount)} registrado. ` +
-        `✔ Orden en REFUNDED ✔ stock repuesto ✔ cupón liberado (si aplicaba) ` +
-        `✔ email enviado al cliente. El dinero ya debió devolverse por el canal manual ` +
+        `✔ Orden marcada como reembolsada ✔ stock repuesto ✔ cupón liberado (si aplicaba) ` +
+        `✔ correo enviado al cliente. El dinero ya debió devolverse por el canal manual ` +
         `(Wompi o transferencia) — tu confirmación quedó en auditoría.`,
     };
   } catch (err) {
@@ -264,7 +300,7 @@ export async function markOrderReconciledAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_RECONCILE });
 
   const orderId = String(formData.get("orderId") ?? "");
   if (!orderId) return { error: "Falta el pedido." };
@@ -312,14 +348,14 @@ export async function markOrderNoShowAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_RECONCILE });
 
   const orderId = String(formData.get("orderId") ?? "");
   if (!orderId) return { error: "Falta el pedido." };
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { id: true, paymentMethod: true, noShowAt: true },
+    select: { id: true, number: true, paymentMethod: true, noShowAt: true },
   });
   if (!order) return { error: "Pedido no encontrado." };
   if (order.paymentMethod !== "COD") return { error: "Solo aplica a pedidos contra entrega." };
@@ -334,6 +370,7 @@ export async function markOrderNoShowAction(
     action: "order.mark_no_show",
     entityType: "Order",
     entityId: orderId,
+    metadata: { orderNumber: order.number },
   });
   logger.info({ event: "admin.order.no_show", adminId: session.admin.id, orderId });
   revalidatePath("/admin/pedidos");
@@ -344,23 +381,37 @@ export async function markOrderNoShowAction(
 }
 
 /**
- * Anti-abuso COD (ADR-065): bloquea la DIRECCIÓN de este pedido (clave normalizada) en el block-list —
- * el punto de entrada de UX para la key ADDRESS, que no se teclea. SUPERADMIN (veto de pago, como refund).
+ * Anti-abuso COD (ADR-065 + Bloque 5): bloquea la DIRECCIÓN de este pedido (clave normalizada)
+ * en el block-list sin exponer la dirección física en el cliente. Paridad N-21 con
+ * `/admin/finanzas/bloqueos` (`FINANCE_COD`: `SUPERADMIN` y `FINANCE_ANALYST`) + step-up MFA reciente (≤ 10 min).
  */
 export async function blockOrderAddressAction(
-  _prev: { error?: string; success?: string } | null,
+  _prev: { error?: string; success?: string; reauthRequired?: boolean } | null,
   formData: FormData,
-): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+): Promise<{ error?: string; success?: string; reauthRequired?: boolean }> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.FINANCE_COD });
+
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    throw err;
+  }
 
   const orderId = String(formData.get("orderId") ?? "");
   if (!orderId) return { error: "Falta el pedido." };
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { number: true, shippingAddressKey: true },
+    select: { number: true, paymentMethod: true, shippingAddressKey: true },
   });
-  if (!order?.shippingAddressKey) {
+  if (!order) {
+    return { error: "Pedido no encontrado." };
+  }
+  if (order.paymentMethod !== "COD") {
+    return { error: "Solo aplica a pedidos contra entrega." };
+  }
+  if (!order.shippingAddressKey) {
     return { error: "Este pedido no tiene una dirección normalizada para bloquear." };
   }
 
@@ -380,28 +431,23 @@ export async function blockOrderAddressAction(
     action: "cod.blocklist.add_address",
     entityType: "Order",
     entityId: orderId,
+    metadata: { orderNumber: order.number },
   });
   logger.info({ event: "admin.cod_blocklist.add_address", adminId: session.admin.id, orderId });
   revalidatePath("/admin/finanzas/bloqueos");
+  revalidatePath(`/admin/pedidos/[number]`, "page");
   return { success: "Dirección bloqueada para contra entrega." };
 }
 
 /**
  * Regenerar los archivos de impresión POR FICHA de un diseño de set de letras
- * (owner 2026-11-03, ADR-188): diseños cuya producción quedó en LÁMINA por set
- * (históricos, o porque el encolado del job de mejora falló en silencio en el
- * finalize — el catch best-effort ya reporta a ErrorLog desde hoy). Crea/resetea
- * el RenderJob con el conteo real (letras × sets) y lo patea; el worker (cron
- * cada minuto) termina de reemplazar las láminas por fichas 300 DPI.
- *
- * Guardas: solo diseños letterset/name (metadata.letters) en formato lámina
- * (productionUrls.length === sets). Si ya está en fichas, es no-op amable.
+ * (owner 2026-11-03, ADR-188): exclusivo de Taller y Gerencia (`PRODUCTION_DOWNLOAD`).
  */
 export async function regenerateLettersetProductionAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_TRANSITION });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD });
 
   const designId = String(formData.get("designId") ?? "");
   const orderNumber = String(formData.get("orderNumber") ?? "");
@@ -452,15 +498,15 @@ export async function regenerateLettersetProductionAction(
 }
 
 /**
- * Reintento manual en un clic de un `RenderJob` en estado `FAILED` (S11 · [OPS-01]).
- * Disponible para los roles operativos (`SUPERADMIN`, `MANAGER`, `FULFILLMENT`) para que
- * el taller pueda destrabar impresiones 300 DPI caídas por fallas transitorias sin tocar SQL.
+ * Reintento manual en un clic de un `RenderJob` en estado `FAILED` (S11 · [OPS-01] · Bloque 5).
+ * Disponible para los roles con `production:download_assets` (`SUPERADMIN`, `OPERATIONS_MANAGER`,
+ * `MANAGER`, `PRINT_WORKSHOP`) para destrabar impresiones 300 DPI caídas sin tocar SQL.
  */
 export async function retryRenderJobAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ORDERS_TRANSITION });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD });
 
   const designId = String(formData.get("designId") ?? "").trim();
   const orderNumber = String(formData.get("orderNumber") ?? "").trim();

@@ -66,18 +66,41 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
   const order = await getOrder(decodeURIComponent(number));
   if (!order) notFound();
 
-  if (!hasCapability(session.admin.role, "orders:read_pii")) {
-    await recordAdminAction({
-      actorId: session.admin.id,
-      action: "order.print_shipping_guide",
-      entityType: "Order",
-      entityId: order.id,
-      metadata: { orderNumber: order.number, role: session.admin.role },
-    });
-  }
-
   const ship = order.shippingAddress as ShippingAddrSnapshot;
   const isInternal = order.shippingCarrier === LUCAMS_CARRIER;
+  const isCod = order.paymentMethod === "COD";
+  const deliveryNote = order.notes?.trim() || ship.notes?.trim() || null;
+  const hasGiftCard = Boolean(order.giftMessage?.trim());
+
+  if (!isInternal) {
+    return (
+      <main className="mx-auto max-w-xl p-8 text-sm">
+        <p className="font-semibold">
+          Este pedido no es de entrega propia (transportadora: {order.shippingCarrier ?? "—"}).
+        </p>
+        <p className="mt-2">
+          <Link href={`/admin/pedidos/${encodeURIComponent(order.number)}`} className="underline">
+            ← Volver al pedido
+          </Link>
+        </p>
+      </main>
+    );
+  }
+
+  // Trazabilidad forense 100 % al abrir la guía física con dirección exacta y firma del destinatario.
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "order.print_shipping_guide",
+    entityType: "Order",
+    entityId: order.id,
+    metadata: {
+      orderNumber: order.number,
+      role: session.admin.role,
+      piiAccessViaPhysicalGuide: !hasCapability(session.admin.role, "orders:read_pii"),
+      isCod,
+      isGift: order.isGift,
+    },
+  });
 
   const [settings, siteUrl] = await Promise.all([
     getLucamsShippingSettings(),
@@ -95,21 +118,6 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
     now: order.createdAt,
   });
   const estimateText = formatLucamsDeliveryEstimate(deliveryDays);
-  const isCod = order.paymentMethod === "COD";
-  if (!isInternal) {
-    return (
-      <main className="mx-auto max-w-xl p-8 text-sm">
-        <p className="font-semibold">
-          Este pedido no es de entrega propia (carrier: {order.shippingCarrier ?? "—"}).
-        </p>
-        <p className="mt-2">
-          <Link href={`/admin/pedidos/${encodeURIComponent(order.number)}`} className="underline">
-            ← Volver al pedido
-          </Link>
-        </p>
-      </main>
-    );
-  }
 
   return (
     <main className="mx-auto max-w-[4.25in] p-4 text-black print:max-w-none print:p-0">
@@ -168,9 +176,9 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
             {ship.city}
             {ship.zip ? ` · CP ${ship.zip}` : ""}
           </p>
-          {ship.notes && (
+          {deliveryNote && (
             <p className="mt-1 border border-black px-1 py-0.5 text-[8px]">
-              <strong>Nota:</strong> {ship.notes}
+              <strong>Nota:</strong> {deliveryNote}
             </p>
           )}
         </section>
@@ -185,20 +193,30 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
               </li>
             ))}
           </ul>
+          {order.isGift && (
+            <p className="mt-1 border border-black px-1 py-0.5 text-[8px] font-bold">
+              ES REGALO — Empacar SIN factura ni precios visibles
+              {hasGiftCard ? " · Incluir tarjeta de mensaje" : ""}.
+            </p>
+          )}
         </section>
 
-        {/* Total + recaudo */}
+        {/* Total + recaudo (protección de precios en pedidos regalo pagados en línea) */}
         <section className="border-b border-black py-1">
-          <div className="flex justify-between">
-            <span>Total del pedido</span>
-            <span className="font-bold">{formatCOP(order.total)}</span>
-          </div>
+          {!order.isGift && (
+            <div className="flex justify-between">
+              <span>Total del pedido</span>
+              <span className="font-bold">{formatCOP(order.total)}</span>
+            </div>
+          )}
           {isCod ? (
             <p className="mt-1 border-2 border-black px-1 py-1 text-center text-[11px] font-bold">
               COBRAR AL ENTREGAR: {formatCOP(order.total)}
             </p>
           ) : (
-            <p className="mt-1 text-[8px]">PAGADO en línea — no cobrar al entregar.</p>
+            <p className="mt-0.5 text-[8px] font-semibold">
+              PAGADO en línea — no cobrar al entregar.
+            </p>
           )}
         </section>
 

@@ -332,29 +332,33 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
     sections: [
       {
         id: "revision",
-        title: "Revisión visual y decisión",
-        summary: "Permite inspeccionar el contenido y registrar el resultado.",
+        title: "Cola activa, métricas e historial reciente",
+        summary:
+          "Permite priorizar por antigüedad, inspeccionar piezas 300 DPI bajo demanda y auditar decisiones recientes.",
         topics: [
           {
             id: "preview",
-            label: "Vista previa",
-            description: "Representación del diseño que se revisa antes de imprimir.",
+            label: "Vista previa y piezas reales",
+            description:
+              "Muestra el mosaico en proporción natural con zoom y permite firmar las piezas 300 DPI bajo demanda.",
             interpretation:
-              "Comprueba unidades, orientación, legibilidad y contenido; no revises solo la miniatura.",
+              "Comprueba unidades, orientación, legibilidad y aviso de resolución aceptado antes de decidir.",
           },
           {
             id: "decision",
             label: "Aprobar o rechazar",
-            description: "Actualiza el estado de moderación del diseño.",
+            description:
+              "Aprobar libera taller y despacho; rechazar solicita motivo obligatorio, notifica al cliente y revoca enlaces públicos.",
             caution:
-              "Rechazar puede requerir comunicación y nueva versión; explica el motivo por el canal correspondiente.",
+              "El sistema impide rechazar diseños vinculados a pedidos ya enviados o entregados para evitar notificaciones contradictorias.",
           },
           {
-            id: "pedido",
-            label: "Pedido relacionado",
-            description: "Permite contrastar variante, cantidad y demás diseños.",
+            id: "origen-historial",
+            label: "Origen 360° e historial de solo lectura",
+            description:
+              "Enlaza al pedido o a la cotización/ficha de taller según tu rol y conserva los últimos diseños revisados para consulta.",
             interpretation:
-              "No fabriques un pedido completo si aún tiene diseños pendientes o rechazados.",
+              "No fabriques un pedido completo si aún tiene piezas pendientes o rechazadas en la cola activa.",
           },
         ],
       },
@@ -365,28 +369,34 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
         title: "Revisar un diseño",
         goal: "Autorizar únicamente contenido completo y apto para producción.",
         steps: [
-          "Abre el diseño y verifica pedido, variante y unidades asociadas.",
-          "Amplía la vista previa y revisa todas las superficies necesarias.",
-          "Contrasta contenido, orientación, recorte y legibilidad con la ficha.",
-          "Aprueba si está apto o rechaza indicando el motivo operativo.",
-          "Verifica el estado del pedido y deja seguimiento si requiere nueva versión del cliente.",
+          "Abre el diseño en la cola activa y verifica su tiempo de espera y el pedido o cotización asociada.",
+          "Amplía la vista previa y abre las piezas reales de producción cuando requieras validar detalle fino.",
+          "Contrasta contenido, orientación, recorte y si existe advertencia de resolución aceptada por el cliente.",
+          "Aprueba si está apto o rechaza redactando un motivo claro que el cliente recibirá por correo.",
+          "Verifica en el pedido o ficha de taller que no queden más diseños pendientes antes de fabricar.",
         ],
         expected:
-          "Cada diseño tiene una decisión clara y producción solo recibe material aprobado.",
+          "Cada diseño queda trazado en auditoría y producción solo recibe material aprobado.",
       },
     ],
     cautions: [
-      "La aprobación de moderación no reemplaza el control de calidad del archivo de impresión ni la validación del pago.",
+      "La aprobación de moderación no reemplaza el control físico de impresión ni la validación del pago.",
+      "Rechazar un diseño compartido por enlace público (/d/…) revoca permanentemente ese enlace.",
     ],
     faqs: [
       {
-        question: "¿Puedo enviar un pedido con un diseño pendiente?",
+        question: "¿Puedo enviar un pedido con un diseño pendiente o rechazado?",
         answer:
-          "No debes hacerlo; la moderación es una condición del flujo previo a producción y despacho.",
+          "No. El gate de despacho bloquea pasar el pedido a Enviado hasta que todos sus diseños estén aprobados.",
+      },
+      {
+        question: "¿Dónde consulto quién aprobó o rechazó un diseño ayer?",
+        answer:
+          "Cambia a la pestaña «Historial reciente (solo lectura)» o abre la Bitácora forense filtrada por entidad Design.",
       },
     ],
     related: ["pedidos", "disenos", "plantillas", "soporte"],
-    keywords: ["diseño", "foto", "aprobar", "rechazar", "imprimir", "contenido"],
-    version: 1,
+    keywords: ["diseño", "foto", "aprobar", "rechazar", "imprimir", "contenido", "SLA"],
+    version: 2,
   },
 ];

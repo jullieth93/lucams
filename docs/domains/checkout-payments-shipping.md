@@ -103,7 +103,7 @@ Definidas en `apps/web/features/checkout/destination-types.ts` y `schemas.ts` me
 - **Separación comprador vs. destinatario**:
   - `resolveShipmentRecipient` (`features/orders/shipment-recipient.ts`) emite la guía de transporte a nombre y teléfono de `recipientName` / `recipientPhone` (quien recibe al mensajero), manteniendo el correo del comprador para notificaciones.
   - `resolveOrderContactTx` protege el grafo CRM para no sobrescribir el nombre del comprador con el del homenajeado, y `/pedido/[token]` exige verificar el correo del comprador antes de abrir trámites posventa (ver [`./post-sale-and-support.md`](./post-sale-and-support.md)).
-- **Empaque y correos sin precios**: cuando `isGift === true`, el correo `order-confirmation` oculta todos los precios unitarios y la tabla de totales (conservando únicamente el aviso del monto a entregar en efectivo si el medio de pago es `COD`). En paralelo, `order-admin-notification` y `/admin/pedidos/[number]` despliegan al taller el aviso destacado: **«Es regalo: empacar SIN factura ni precios visibles»** junto al texto de la tarjeta.
+- **Empaque, guías y correos sin precios**: cuando `isGift === true`, el correo `order-confirmation` oculta todos los precios unitarios y la tabla de totales (conservando únicamente el aviso del monto a entregar en efectivo si el medio de pago es `COD`). En paralelo, `order-admin-notification`, `/admin/pedidos/[number]` y la guía física imprimible `/admin/pedidos/[number]/guia` ocultan el total del pedido y despliegan el aviso destacado: **«ES REGALO — Empacar SIN factura ni precios visibles»** junto al texto de la tarjeta.
 
 ### Cotización logística firmada con HMAC (`offersToken`)
 
@@ -120,7 +120,7 @@ Definidas en `apps/web/features/checkout/destination-types.ts` y `schemas.ts` me
   3. Verificación Cloudflare Turnstile y rate-limit dedicado `checkout_cod` (`6` intentos cada `600s` por IP en producción).
   - _Nota de reglas vigentes_: el código **no** excluye productos personalizados ni exige un monto mínimo para pagar contraentrega.
 - **Evaluación de riesgo `assessCodRisk` (`apps/web/features/checkout/cod-risk.ts`)**: cruza la identidad normalizada del pedido —teléfono expandido en variantes E.164 `+573XXXXXXXXX` (`phoneIdentityVariants`), `email` en minúsculas y clave normalizada de dirección `shippingAddressKey` (`computeShippingAddressKey`)— contra **6 reglas**:
-  1. **`blocklist`**: presencia en `BlockedIdentity` (`BlockedIdentityKind`: `PHONE | EMAIL | ADDRESS`, administrada en `/admin/finanzas/bloqueos` o desde el detalle del pedido).
+  1. **`blocklist`**: presencia en `BlockedIdentity` (`BlockedIdentityKind`: `PHONE | EMAIL | ADDRESS`, administrada en `/admin/finanzas/bloqueos` o desde el detalle del pedido vía `blockOrderAddressAction` bajo `ADMIN_ROLE_SETS.FINANCE_COD` + `requireRecentMfa()`).
   2. **`prior_noshow`**: orden previa con `noShowAt IS NOT NULL` (destinatario ausente o rechazo de entrega).
   3. **`prior_return`**: orden COD previa devuelta por transportadora (`reconciliationReason` con `"DEVUELTO"`).
   4. **`velocity`**: `>= 3` órdenes COD creadas en las últimas 24 horas (`COD_MAX_PER_IDENTITY_24H = 3`).
@@ -184,7 +184,7 @@ stateDiagram-v2
 - **Efectos de reversión y auditoría (`transitionOrder`)**:
   - Pasar desde `PAID`, `FULFILLING`, `SHIPPED` o `DELIVERED` hacia `CANCELLED` o `REFUNDED` repone atómicamente `ProductVariant.stock` (`InventoryLog` `ORDER_CANCELLED` u `ORDER_REFUNDED`), elimina `CouponUsage` decrementando `Coupon.usedCount`, devuelve los `loyaltyPointsRedeemed` (`LoyaltyTxn` `REFUND`) e invalida el caché `"catalog"`.
   - Si se cancela desde `PENDING_PAYMENT`, únicamente se restauran los Puntos Lucams reservados (el stock y el cupón aún no se habían descontado).
-  - **Compuerta de moderación**: `transitionOrderAction` en el panel admin bloquea el paso manual a `SHIPPED` si `orderHasUnmoderatedDesigns(orderId)` detecta algún diseño personalizado sin `moderationStatus = "APPROVED"`.
+  - **Segregación por etapa y compuerta de moderación**: `transitionOrderAction` restringe por rol cada transición (`canTransitionOrderTo`: `PRINT_WORKSHOP` solo `FULFILLING`; `FULFILLMENT` `FULFILLING | SHIPPED | DELIVERED`; `CANCELLED` exclusivo de `orders:reconcile`) y bloquea el paso manual a `SHIPPED` si `orderHasUnmoderatedDesigns(orderId)` detecta algún diseño personalizado sin `moderationStatus = "APPROVED"`.
   - **Novedades de transportadora**: los eventos `RETURNED` o `EXCEPTION` de Aveonline **no** auto-cancelan la orden; activan `needsReconciliation = true` y disparan alerta operativa para decisión humana.
   - **Trazabilidad (`OrderStatusEvent`)**: `createOrderFromCartTx` registra `null -> PENDING_PAYMENT` y `transitionOrder` inserta un `OrderStatusEvent` (`source: "admin" | "cron" | "system"`, `actorAdminId`, `note`) en cada transición posterior _(el paso interno `PENDING_PAYMENT -> PAID` ocurre directo en la transacción de stock de `saga.ts` e inmediatamente encadena `PAID -> FULFILLING` tras emitir o archivar la guía en `Order.labelPath`)_.
 

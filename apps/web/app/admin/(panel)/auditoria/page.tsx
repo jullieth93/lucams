@@ -204,14 +204,11 @@ function resolveAuditEntityHref(
   switch (entityType) {
     case "Order": {
       const orderNum =
-        typeof meta?.orderNumber === "string"
-          ? meta.orderNumber
-          : entityId.startsWith("LCM-")
-            ? entityId
-            : null;
-      return orderNum
-        ? `/admin/pedidos/${encodeURIComponent(orderNum)}`
-        : `/admin/pedidos?q=${encodeURIComponent(entityId)}`;
+        typeof meta?.orderNumber === "string" && meta.orderNumber.trim()
+          ? meta.orderNumber.trim()
+          : entityId;
+      // getOrder resuelve tanto Order.number ("LCM-…") como Order.id (cuid) con OR directo.
+      return `/admin/pedidos/${encodeURIComponent(orderNum)}`;
     }
     case "Product":
       return `/admin/productos/${encodeURIComponent(entityId)}`;
@@ -263,8 +260,12 @@ function resolveAuditEntityHref(
       return "/admin/retractos";
     case "Review":
       return "/admin/resenas";
-    case "Design":
-      return "/admin/moderacion";
+    case "Design": {
+      if (typeof meta?.orderNumber === "string" && meta.orderNumber.trim()) {
+        return `/admin/pedidos/${encodeURIComponent(meta.orderNumber.trim())}`;
+      }
+      return "/admin/moderacion?vista=historial";
+    }
     case "PersonalizationTemplate":
       return "/admin/plantillas";
     case "Cart":

@@ -172,4 +172,80 @@ describe("S17 — Enmascaramiento server-side determinista de PII", () => {
 
     expect(maskContactSummaryForActor(contact, "CUSTOMER_SUPPORT")).toBe(contact);
   });
+
+  it("Bloque 5 — maskOrderForActor aplica confidencialidad comercial COP diferenciada entre PRINT_WORKSHOP, FULFILLMENT y FINANCE_ANALYST", () => {
+    const baseCommercialOrder = {
+      id: "ord_com_1",
+      number: "LCM-2026-9001",
+      status: "PAID",
+      paymentMethod: "COD" as "COD" | "WOMPI",
+      email: "cliente@correo.co",
+      phone: "3001234567",
+      shippingAddress: { city: "Bogotá", department: "Bogotá D.C." },
+      subtotal: 120_000,
+      discount: 20_000,
+      loyaltyDiscount: 5_000,
+      loyaltyPointsRedeemed: 50,
+      shipping: 14_000,
+      tax: 0,
+      total: 109_000,
+      refundAmount: 109_000,
+      couponId: "cp_secret",
+      coupon: { id: "cp_secret", code: "VIP20" },
+      codReconciliation: { id: "rem_1", remittanceCode: "REM-2026-01" },
+      wompiTransactionId: "wompi_tx_99",
+      wompiReference: "wompi_ref_99",
+      wompiAttempts: [{ id: "att_1", amountInCents: 10_900_000 }],
+      items: [
+        {
+          id: "it_1",
+          unitPrice: 60_000,
+          qty: 2,
+          retractRequest: { id: "ret_1", status: "REQUESTED", refundAmount: 60_000 },
+        },
+      ],
+    };
+
+    // 1. PRINT_WORKSHOP: 0 centavos COP incluso cuando el pedido es COD
+    const workshopMasked = maskOrderForActor(baseCommercialOrder, "PRINT_WORKSHOP");
+    expect(workshopMasked.subtotal).toBe(0);
+    expect(workshopMasked.discount).toBe(0);
+    expect(workshopMasked.loyaltyDiscount).toBe(0);
+    expect(workshopMasked.shipping).toBe(0);
+    expect(workshopMasked.total).toBe(0);
+    expect(workshopMasked.refundAmount).toBeNull();
+    expect(workshopMasked.couponId).toBeNull();
+    expect(workshopMasked.coupon).toBeNull();
+    expect(workshopMasked.codReconciliation).toBeNull();
+    expect(workshopMasked.wompiTransactionId).toBeNull();
+    expect(workshopMasked.wompiAttempts).toEqual([]);
+    expect(workshopMasked.items[0]!.unitPrice).toBe(0);
+    expect(workshopMasked.items[0]!.retractRequest?.refundAmount).toBe(0);
+
+    // 2. FULFILLMENT con COD: conserva ÚNICAMENTE `total` (monto a recaudar), redacta desglose y cupones
+    const fulfillmentCod = maskOrderForActor(baseCommercialOrder, "FULFILLMENT");
+    expect(fulfillmentCod.total).toBe(109_000);
+    expect(fulfillmentCod.subtotal).toBe(0);
+    expect(fulfillmentCod.discount).toBe(0);
+    expect(fulfillmentCod.coupon).toBeNull();
+    expect(fulfillmentCod.items[0]!.unitPrice).toBe(0);
+
+    // 3. FULFILLMENT con WOMPI (pagado en línea): también redacta `total` a 0
+    const fulfillmentWompi = maskOrderForActor(
+      { ...baseCommercialOrder, paymentMethod: "WOMPI" as const },
+      "FULFILLMENT",
+    );
+    expect(fulfillmentWompi.total).toBe(0);
+    expect(fulfillmentWompi.wompiTransactionId).toBeNull();
+    expect(fulfillmentWompi.wompiAttempts).toEqual([]);
+
+    // 4. FINANCE_ANALYST: PII enmascarada pero 100 % del desglose comercial intacto
+    const financeMasked = maskOrderForActor(baseCommercialOrder, "FINANCE_ANALYST");
+    expect(financeMasked.email).not.toContain("cliente");
+    expect(financeMasked.subtotal).toBe(120_000);
+    expect(financeMasked.discount).toBe(20_000);
+    expect(financeMasked.total).toBe(109_000);
+    expect(financeMasked.coupon?.code).toBe("VIP20");
+    expect(financeMasked.items[0]!.unitPrice).toBe(60_000);
+  });
 });

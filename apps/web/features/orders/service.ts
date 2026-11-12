@@ -20,8 +20,13 @@ import "server-only";
 import crypto from "node:crypto";
 import type { AdminRole } from "@lucams/db";
 import { prisma, Prisma } from "@/lib/db";
-import { hasCapability } from "@/lib/admin-rbac";
+import {
+  canAccessAdminPath,
+  canSeeOrderCommercialBreakdown,
+  hasCapability,
+} from "@/lib/admin-rbac";
 import { maskOrderForActor } from "@/lib/pii-mask";
+import { formatDayMonthCO, formatIsoDateCO } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
 import { assertStockAvailable, revertStockForOrder, variantDisplayName } from "./stock";
@@ -1140,6 +1145,23 @@ export async function getOrder(idOrNumber: string) {
               metadata: true,
             },
           },
+          retractRequest: {
+            select: {
+              id: true,
+              status: true,
+              requestedAt: true,
+              refundAmount: true,
+            },
+          },
+          warrantyClaims: {
+            orderBy: { requestedAt: "desc" },
+            select: {
+              id: true,
+              status: true,
+              resolutionType: true,
+              requestedAt: true,
+            },
+          },
         },
       },
       wompiAttempts: {
@@ -1147,6 +1169,34 @@ export async function getOrder(idOrNumber: string) {
         include: { transactions: { orderBy: { providerCreatedAt: "asc" } } },
       },
       customer: { select: { id: true, email: true, firstName: true, lastName: true } },
+      coupon: {
+        select: {
+          id: true,
+          code: true,
+          type: true,
+          value: true,
+        },
+      },
+      codReconciliation: {
+        select: {
+          id: true,
+          status: true,
+          expectedAmount: true,
+          remittedAmount: true,
+          remittedAt: true,
+          carrierRef: true,
+          discrepancyReason: true,
+        },
+      },
+      convertedOpportunities: {
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          number: true,
+          title: true,
+          stage: true,
+        },
+      },
     },
   });
 }
@@ -1246,6 +1296,9 @@ export async function getOrderProductionBundle(idOrNumber: string) {
   return { id: order.id, number: order.number, createdAt: order.createdAt, items };
 }
 
+export type OrderListSort =
+  "recent" | "oldest" | "total-desc" | "total-asc" | "number-desc" | "number-asc";
+
 export type OrderListOpts = {
   q?: string;
   status?:
@@ -1257,14 +1310,30 @@ export type OrderListOpts = {
     | "DELIVERED"
     | "CANCELLED"
     | "REFUNDED";
+  paymentMethod?: "all" | "WOMPI" | "COD";
+  /** Fecha inicial YYYY-MM-DD en zona America/Bogota (-05:00). */
+  fromDate?: string;
+  /** Fecha final YYYY-MM-DD en zona America/Bogota (-05:00). */
+  toDate?: string;
   /** #6 — filtro especial: solo órdenes que necesitan reconciliación admin. */
   needsReconciliation?: boolean;
-  sort?: "recent" | "oldest" | "total-desc";
+  /** Bloque 5 — solo pedidos activos (PAID/FULFILLING) con piezas personalizadas para taller. */
+  workshopPending?: boolean;
+  sort?: OrderListSort;
   page?: number;
   pageSize?: number;
-  /** S17: cuando es `false`, restringe la búsqueda `q` a `number`/`trackingNumber` (anti-oráculo PII). */
+  /** S17: cuando es `false`, restringe la búsqueda `q` a `id`/`number`/`trackingNumber` (anti-oráculo PII). */
   allowPiiSearch?: boolean;
 };
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseBogotaDayBound(isoDate: string | undefined, endOfDay: boolean): Date | null {
+  if (!isoDate || !ISO_DATE_RE.test(isoDate)) return null;
+  const suffix = endOfDay ? "T23:59:59.999-05:00" : "T00:00:00.000-05:00";
+  const parsed = new Date(`${isoDate}${suffix}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 export async function listOrders(opts: OrderListOpts = {}) {
   const q = opts.q?.trim();
@@ -1278,20 +1347,46 @@ export async function listOrders(opts: OrderListOpts = {}) {
         return [{ createdAt: "asc" }];
       case "total-desc":
         return [{ total: "desc" }, { createdAt: "desc" }];
+      case "total-asc":
+        return [{ total: "asc" }, { createdAt: "desc" }];
+      case "number-desc":
+        return [{ number: "desc" }];
+      case "number-asc":
+        return [{ number: "asc" }];
       case "recent":
       default:
         return [{ createdAt: "desc" }];
     }
   })();
 
+  const fromBound = parseBogotaDayBound(opts.fromDate, false);
+  const toBound = parseBogotaDayBound(opts.toDate, true);
+
   const where: Prisma.OrderWhereInput = {
     deletedAt: null,
-    ...(opts.status && opts.status !== "all" ? { status: opts.status } : {}),
+    ...(opts.status && opts.status !== "all"
+      ? { status: opts.status }
+      : opts.workshopPending
+        ? { status: { in: ["PAID", "FULFILLING"] } }
+        : {}),
+    ...(opts.paymentMethod && opts.paymentMethod !== "all"
+      ? { paymentMethod: opts.paymentMethod }
+      : {}),
+    ...(fromBound || toBound
+      ? {
+          createdAt: {
+            ...(fromBound ? { gte: fromBound } : {}),
+            ...(toBound ? { lte: toBound } : {}),
+          },
+        }
+      : {}),
     ...(opts.needsReconciliation ? { needsReconciliation: true } : {}),
+    ...(opts.workshopPending ? { items: { some: { designId: { not: null } } } } : {}),
     ...(q
       ? {
           OR: allowPiiSearch
             ? [
+                { id: q },
                 { number: { contains: q, mode: "insensitive" } },
                 { trackingNumber: { contains: q, mode: "insensitive" } },
                 { email: { contains: q, mode: "insensitive" } },
@@ -1310,6 +1405,7 @@ export async function listOrders(opts: OrderListOpts = {}) {
                 },
               ]
             : [
+                { id: q },
                 { number: { contains: q, mode: "insensitive" } },
                 { trackingNumber: { contains: q, mode: "insensitive" } },
               ],
@@ -1325,6 +1421,19 @@ export async function listOrders(opts: OrderListOpts = {}) {
       take: pageSize,
       include: {
         customer: { select: { firstName: true, lastName: true } },
+        items: {
+          select: {
+            qty: true,
+            designId: true,
+            design: {
+              select: {
+                moderationStatus: true,
+                productionUrls: true,
+                renderJob: { select: { status: true } },
+              },
+            },
+          },
+        },
         _count: { select: { items: true } },
       },
     }),
@@ -1341,15 +1450,20 @@ export async function listOrders(opts: OrderListOpts = {}) {
 }
 
 /**
- * S17 (Fase 8) — Lista pedidos aplicando enmascaramiento server-side sobre email,
- * teléfono, documento y dirección cuando el actor carece de `orders:read_pii`, y
- * deshabilitando búsquedas por email/teléfono/nombre/dirección si no posee `orders:read_pii`
- * (anti-oráculo de enumeración PII desde taller o despachos).
+ * S17 (Fase 8) + Bloque 5 — Lista pedidos aplicando enmascaramiento server-side de PII y
+ * redacción comercial según rol, deshabilitando búsquedas por PII si carece de `orders:read_pii`
+ * y bloqueando ordenamiento por monto (`total-*`) si carece de `canSeeOrderCommercialBreakdown`
+ * (anti-oráculo de precios e identidad desde taller o despachos).
  */
 export async function listOrdersForActor(opts: OrderListOpts, role: AdminRole) {
   const canReadPii = hasCapability(role, "orders:read_pii");
-  const res = await listOrders({ ...opts, allowPiiSearch: canReadPii });
-  if (canReadPii) return res;
+  const canSeeMoney = canSeeOrderCommercialBreakdown(role);
+  const safeSort: OrderListSort | undefined =
+    !canSeeMoney && (opts.sort === "total-desc" || opts.sort === "total-asc")
+      ? "recent"
+      : opts.sort;
+  const res = await listOrders({ ...opts, sort: safeSort, allowPiiSearch: canReadPii });
+  if (canReadPii && canSeeMoney) return res;
   return {
     ...res,
     items: res.items.map((o) => maskOrderForActor(o, role)),
@@ -1364,4 +1478,217 @@ export async function countOrdersNeedingReconciliation(): Promise<number> {
   return prisma.order.count({
     where: { needsReconciliation: true, deletedAt: null },
   });
+}
+
+export type OrdersOperationalDailyPoint = {
+  key: string;
+  label: string;
+  tickLabel: string;
+  activeOrders: number;
+  dispatchedOrders: number;
+  /** Centavos COP (solo presente cuando `canSeeOrderCommercialBreakdown(role) === true`). */
+  revenueCents: number | null;
+};
+
+export type OrdersOperationalSummary = {
+  countsByStatus: Record<string, number>;
+  totalActivePipeline: number;
+  attentionReconciliation: number;
+  moderationBlocked: number;
+  renderFailedActive: number;
+  workshopCustomActive: number;
+  /** Ingresos efectivos de los últimos 14 días en centavos COP (`null` si el rol no ve finanzas). */
+  revenue14dCents: number | null;
+  orders14dActive: number;
+  dailySeries: OrdersOperationalDailyPoint[];
+};
+
+const ACTIVE_REVENUE_STATUSES = new Set(["PAID", "FULFILLING", "SHIPPED", "DELIVERED"]);
+const DISPATCHED_STATUSES = new Set(["SHIPPED", "DELIVERED"]);
+
+/**
+ * Resumen ejecutivo y serie diaria de 14 días (`America/Bogota`) para `/admin/pedidos`,
+ * respetando redacción comercial server-side (`revenueCents = null` para Taller y Despachos).
+ */
+export async function getOrdersOperationalSummaryForActor(
+  role: AdminRole,
+): Promise<OrdersOperationalSummary> {
+  const canSeeMoney = canSeeOrderCommercialBreakdown(role);
+  const todayIso = formatIsoDateCO(new Date());
+  const todayStartBogota = new Date(`${todayIso}T00:00:00.000-05:00`);
+  const windowStart = new Date(todayStartBogota.getTime() - 13 * 24 * 60 * 60 * 1000);
+
+  const [
+    statusGroups,
+    attentionReconciliation,
+    moderationBlocked,
+    renderFailedActive,
+    workshopCustomActive,
+    recentOrders,
+  ] = await Promise.all([
+    prisma.order.groupBy({
+      by: ["status"],
+      where: { deletedAt: null },
+      _count: { _all: true },
+    }),
+    prisma.order.count({
+      where: { needsReconciliation: true, deletedAt: null },
+    }),
+    prisma.order.count({
+      where: {
+        deletedAt: null,
+        status: { in: ["PAID", "FULFILLING"] },
+        items: { some: { design: { moderationStatus: { not: "APPROVED" } } } },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        deletedAt: null,
+        status: { in: ["PAID", "FULFILLING"] },
+        items: { some: { design: { renderJob: { status: "FAILED" } } } },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        deletedAt: null,
+        status: { in: ["PAID", "FULFILLING"] },
+        items: { some: { designId: { not: null } } },
+      },
+    }),
+    prisma.order.findMany({
+      where: { deletedAt: null, createdAt: { gte: windowStart } },
+      select: {
+        createdAt: true,
+        status: true,
+        ...(canSeeMoney ? { total: true } : {}),
+      },
+    }),
+  ]);
+
+  const countsByStatus: Record<string, number> = {
+    PENDING_PAYMENT: 0,
+    PAID: 0,
+    FULFILLING: 0,
+    SHIPPED: 0,
+    DELIVERED: 0,
+    CANCELLED: 0,
+    REFUNDED: 0,
+  };
+  for (const row of statusGroups) {
+    countsByStatus[row.status] = row._count._all;
+  }
+
+  const buckets = new Map<
+    string,
+    {
+      label: string;
+      tickLabel: string;
+      activeOrders: number;
+      dispatchedOrders: number;
+      revenueCents: number;
+    }
+  >();
+  for (let i = 0; i < 14; i++) {
+    const dayDate = new Date(windowStart.getTime() + i * 24 * 60 * 60 * 1000 + 12 * 60 * 60 * 1000);
+    const key = formatIsoDateCO(dayDate);
+    const shortLabel = formatDayMonthCO(dayDate);
+    buckets.set(key, {
+      label: shortLabel,
+      tickLabel: shortLabel,
+      activeOrders: 0,
+      dispatchedOrders: 0,
+      revenueCents: 0,
+    });
+  }
+
+  let revenue14dCents = 0;
+  let orders14dActive = 0;
+  for (const r of recentOrders) {
+    const key = formatIsoDateCO(r.createdAt);
+    const bucket = buckets.get(key);
+    const isEffective = ACTIVE_REVENUE_STATUSES.has(r.status);
+    const isDispatched = DISPATCHED_STATUSES.has(r.status);
+    if (isEffective) {
+      orders14dActive += 1;
+      const orderTotal = canSeeMoney && "total" in r && typeof r.total === "number" ? r.total : 0;
+      revenue14dCents += orderTotal;
+      if (bucket) {
+        bucket.activeOrders += 1;
+        bucket.revenueCents += orderTotal;
+      }
+    }
+    if (isDispatched && bucket) {
+      bucket.dispatchedOrders += 1;
+    }
+  }
+
+  const dailySeries: OrdersOperationalDailyPoint[] = Array.from(buckets.entries()).map(
+    ([key, b]) => ({
+      key,
+      label: b.label,
+      tickLabel: b.tickLabel,
+      activeOrders: b.activeOrders,
+      dispatchedOrders: b.dispatchedOrders,
+      revenueCents: canSeeMoney ? b.revenueCents : null,
+    }),
+  );
+
+  return {
+    countsByStatus,
+    totalActivePipeline:
+      (countsByStatus.PENDING_PAYMENT ?? 0) +
+      (countsByStatus.PAID ?? 0) +
+      (countsByStatus.FULFILLING ?? 0) +
+      (countsByStatus.SHIPPED ?? 0),
+    attentionReconciliation,
+    moderationBlocked,
+    renderFailedActive,
+    workshopCustomActive,
+    revenue14dCents: canSeeMoney ? revenue14dCents : null,
+    orders14dActive,
+    dailySeries,
+  };
+}
+
+/**
+ * Contexto complementario 360° para `/admin/pedidos/[number]` filtrado por las capacidades
+ * reales del rol: tickets de soporte asociados al pedido y elegibilidad de bloqueo COD
+ * (sin filtrar `shippingAddressKey` en claro a roles sin `orders:read_pii`).
+ */
+export async function getOrderComplementaryContextForActor(
+  orderId: string,
+  orderNumber: string,
+  paymentMethod: string,
+  role: AdminRole,
+) {
+  const canReadSupport = canAccessAdminPath(role, "/admin/soporte");
+  const canBlockCod = hasCapability(role, "finance:reconcile_cod") && paymentMethod === "COD";
+
+  const [supportTickets, rawCodKey] = await Promise.all([
+    canReadSupport
+      ? prisma.supportTicket.findMany({
+          where: { orderNumber },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            subject: true,
+            status: true,
+            priority: true,
+            createdAt: true,
+          },
+        })
+      : Promise.resolve([]),
+    canBlockCod
+      ? prisma.order.findUnique({
+          where: { id: orderId },
+          select: { shippingAddressKey: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  return {
+    supportTickets,
+    hasBlockableCodAddress: Boolean(rawCodKey?.shippingAddressKey),
+  };
 }

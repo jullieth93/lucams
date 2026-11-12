@@ -98,10 +98,11 @@
 ### Carrito, Checkout, Pagos y Logística ([`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md))
 
 - Carrito auto-sanado (`ADR-171`), checkout en 3 pasos (`ADR-155`), direcciones DANE + CP MinTIC
-  (171/171 ciudades) y modo regalo. Fletes HMAC por peso, ledger Wompi por intento + webhook 25 h,
-  COD con blocklist/conciliación, alertas de stock, Aveonline con PDFs + `ShipmentEvent`, Envío Lucams
-  Bogotá, costeo BOM (`/admin/costos`), escalas mayoristas anti-inversión (`/admin/mayorista`) y cupones
-  personales no transferibles (`NOT_OWNER`).
+  (171/171 ciudades) y modo regalo (guía física y correos sin precios). Fletes HMAC por peso, ledger
+  Wompi por intento + webhook 25 h, COD con blocklist (MFA en bloqueo de dirección)/conciliación, alertas
+  de stock, Aveonline con PDFs + `ShipmentEvent`, Envío Lucams Bogotá, segregación Taller/Alistamiento +
+  confidencialidad COP en `/admin/pedidos`, costeo BOM (`/admin/costos`), escalas mayoristas (`/admin/mayorista`)
+  y cupones personales no transferibles (`NOT_OWNER`).
 
 ### CRM 360°, B2B, Posventa y Operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 
@@ -116,7 +117,7 @@
   cierre anual por ritmo reciente y alerta 70 %/90 %/100 % en `/admin/hoy`, `/admin/metricas`,
   `/admin/notificaciones` y correo al owner (una vez por cruce y año).
 - Panel `/admin` (8 roles × 36 capacidades, MFA `aal2` sin desactivación permanente + step-up MFA en
-  conectores y purgas irreversibles + rotación de contraseña verificada en HIBP, buscador `⌘K`, `useAdminConfirm`), 32 plantillas React Email
+  conectores, bloqueos y purgas irreversibles + rotación de contraseña verificada en HIBP, buscador `⌘K`, `useAdminConfirm`), 32 plantillas React Email
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
     consentimiento + embudo `FunnelEventDaily`, **20 procesos programados** y **backups diarios GPG de
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.

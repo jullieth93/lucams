@@ -234,24 +234,25 @@ sequenceDiagram
 
 No existe una ruta aislada `/admin/produccion`; las herramientas de taller están integradas en el flujo operativo de pedidos y moderación para evitar cambios de contexto:
 
-- **Moderación previa al despacho (`/admin/moderacion`)**: lista diseños `PENDING` asociados a pedidos pagados, en preparación, cotizaciones activas o enlaces compartidos. Permite inspeccionar los PNG 300 DPI mediante URLs firmadas temporales (1 hora) y aprobar o rechazar con motivo auditado.
+- **Moderación previa al despacho (`/admin/moderacion`)**: combina la cola activa de diseños `PENDING` (pedidos pagados/en preparación, cotizaciones activas y enlaces compartidos `/d/<token>`, con indicadores de espera SLA y filtros de origen/aviso de calidad) y una vista de **historial reciente de solo lectura** (`APPROVED`/`REJECTED`), inspeccionando PNGs 300 DPI bajo demanda (URLs firmadas 1 h), enlazando directo a `/admin/pedidos/[number]` o `/admin/cotizaciones/[id]` (`/taller` para `PRINT_WORKSHOP`) e impidiendo rechazar diseños cuyo pedido ya fue despachado (`SHIPPED`/`DELIVERED`).
 - **Inspección agrupada y recuperación en el pedido (`/admin/pedidos/[number]`)**:
   - `ProductionPiecesGallery` (`production-pieces-gallery.tsx`) agrupa visualmente las piezas por unidad física o set (`productionPieceGroups` en `features/personalization/production-spec.ts`: letra de cada ficha, mes de cada calendario, segmento de cada tira) sobre cuadrícula de transparencia con visor ampliado y descarga individual firmada.
-  - Si un `RenderJob` cae en `FAILED`, `RetryRenderJobButton` (`retryRenderJobAction`) reinicia el trabajo con un clic y ejecuta un nuevo kick de 8 s. Para pedidos históricos de sets de letras guardados como lámina única, `RegenLettersetButton` (`regenerateLettersetProductionAction`) regenera los PNG individuales por ficha.
+  - Si un `RenderJob` cae en `FAILED`, `RetryRenderJobButton` (`retryRenderJobAction`, `ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD`) reinicia el trabajo con un clic y ejecuta un nuevo kick de 8 s. Para pedidos históricos de sets de letras guardados como lámina única, `RegenLettersetButton` (`regenerateLettersetProductionAction`, `PRODUCTION_DOWNLOAD`) regenera los PNG individuales por ficha.
 - **Descarga masiva en ZIP (`GET /admin/pedidos/[number]/produccion`)**:
-  - Route Handler con `maxDuration = 60` protegido por `ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD` y MFA `aal2`.
+  - Route Handler con `maxDuration = 60` protegido por `ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD` y MFA `aal2` (paridad `ROUTE_PATTERN_ROLES` en `lib/admin-rbac.ts`).
   - Si cualquier diseño del pedido tiene un `RenderJob` en `PENDING` o `PROCESSING`, responde **`409 Conflict`** para impedir que el taller descargue un paquete incompleto.
-  - Empaqueta con `jszip` (`STORE`, sin recomprimir PNGs) subcarpetas ordenadas por ítem y unidad, incluyendo la guía visual `armado.png` (`composeAssemblySheet`) y las instrucciones operativas `LEEME.txt` (`resolveProductionSpec`), dejando rastro en `AdminActionLog` (`order.design_zip_download`).
+  - Empaqueta con `jszip` (`STORE`, sin recomprimir PNGs) subcarpetas ordenadas por ítem y unidad, incluyendo la guía visual `armado.png` (`composeAssemblySheet`) y las instrucciones operativas `LEEME.txt` en español (`resolveProductionSpec`), dejando rastro en `AdminActionLog` (`order.design_zip_download`).
   - **Entrega por redirect (auditoría 2026-11-08):** el ZIP no viaja en el response de la función — Vercel corta cualquier response en ~4.5 MB y un pedido real lo supera siempre. La ruta lo publica en `production-assets/_bundles/<orderId>/` (migración `00000000000059`: mime `application/zip`, tope 200 MB) y responde **302** a una URL firmada de 5 min con `download` forzado; cada descarga regenera y reemplaza el ZIP previo del pedido, y la purga post-entrega (`purgeDeliveredDesignAssets`) borra el `_bundles/` de la orden junto con los renders purgados (el barrido de huérfanos lo excluye a propósito).
 - **Separación estricta `PRINT_WORKSHOP` vs `FULFILLMENT` (`apps/web/lib/admin-rbac.ts`)**:
 
-| Capacidad / Superficie                                | `PRINT_WORKSHOP` (Impresión) | `FULFILLMENT` (Empaque y despacho) | `SUPERADMIN` / `OPERATIONS_MANAGER` |
-| ----------------------------------------------------- | ---------------------------- | ---------------------------------- | ----------------------------------- |
-| Ver datos operativos del pedido y transicionar estado | Sí                           | Sí                                 | Sí                                  |
-| Descargar PNGs 300 DPI y ZIP de producción            | Sí                           | Sí                                 | Sí                                  |
-| Moderar contenido en `/admin/moderacion`              | **Sí**                       | **No**                             | Sí                                  |
-| Imprimir guía de envío / etiqueta PDF Aveonline       | **No**                       | **Sí** (auditado en cada descarga) | Sí                                  |
-| Leer PII en claro del comprador (`orders:read_pii`)   | **No** (enmascarada en SSR)  | **No** (enmascarada en SSR)        | Sí                                  |
+| Capacidad / Superficie                                        | `PRINT_WORKSHOP` (Impresión)    | `FULFILLMENT` (Empaque y despacho)       | `SUPERADMIN` / `OPERATIONS_MANAGER` |
+| ------------------------------------------------------------- | ------------------------------- | ---------------------------------------- | ----------------------------------- |
+| Etapas permitidas en `transitionOrderAction`                  | Solo `FULFILLING` (preparación) | `FULFILLING`, `SHIPPED`, `DELIVERED`     | Todas (incluido `CANCELLED`)        |
+| Descargar PNGs 300 DPI, ZIP y reintentar `RenderJob`          | **Sí**                          | **No**                                   | Sí                                  |
+| Moderar contenido en `/admin/moderacion`                      | **Sí**                          | **No**                                   | Sí                                  |
+| Reintentar guía Aveonline e imprimir `/pedidos/[n]/guia`      | **No**                          | **Sí** (auditado en cada descarga/vista) | Sí                                  |
+| Visibilidad de importes comerciales COP (`maskOrderForActor`) | **No** (`0` COP en RSC y UI)    | Solo monto a cobrar si es `COD`          | Desglose comercial completo         |
+| Leer PII en claro del comprador (`orders:read_pii`)           | **No** (enmascarada en SSR)     | **No** (enmascarada en SSR)              | Sí                                  |
 
 ---
 
