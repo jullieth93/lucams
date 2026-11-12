@@ -413,49 +413,55 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     title: "Precios al por mayor",
     area: "Catálogo y producción",
     route: "/admin/mayorista",
-    summary: "Escalas públicas de descuento por volumen para productos específicos o el catálogo.",
+    summary:
+      "Escalas automáticas de descuento por volumen con validación anti-inversión y control de margen BOM.",
     purpose:
-      "Define precios unitarios que se activan al alcanzar cantidades determinadas. Permite configurar incentivos por volumen sin crear cupones ni duplicar variantes.",
+      "Define precios unitarios escalonados desde una cantidad mínima (por producto o globales). Editable por Superadmin y Gerencia Operativa, con auditoría de solo lectura para Analista Financiero.",
     whenToUse: [
-      "Para configurar una escala de compra por cantidad.",
-      "Para revisar qué regla global o de producto aplica.",
-      "Para validar márgenes antes de publicar un descuento.",
+      "Para configurar o ajustar una escala de compra por cantidad.",
+      "Para auditar qué tramos tienen margen saludable o están bajo costo BOM.",
+      "Para verificar qué regla específica de producto hace sombra sobre la escala global.",
     ],
     concepts: [
       {
-        term: "Escala",
+        term: "Coherencia monotónica",
         definition:
-          "Relación entre una cantidad mínima y el precio unitario aplicable a partir de ella.",
+          "El servidor bloquea tramos que igualen o superen el precio público de referencia o que cobren igual/más caro a mayor cantidad.",
       },
       {
-        term: "Regla global",
+        term: "Sombra sobre escala global",
         definition:
-          "Escala aplicable de forma general, contrastada con reglas específicas de producto.",
+          "Cuando un producto tiene al menos un tramo propio activo, reemplaza por completo las escalas globales del catálogo.",
       },
     ],
     sections: [
       {
         id: "escalas",
-        title: "Configuración de escalas",
-        summary: "Define alcance, umbrales y precios unitarios.",
+        title: "Configuración y simulador de margen",
+        summary: "Define alcance, umbrales, precios unitarios y revisa el margen frente a Costos.",
         topics: [
           {
             id: "alcance",
             label: "Global o por producto",
-            description: "Determina qué ofertas puede afectar la escala.",
-            interpretation: "Revisa especificidad y posibles solapamientos antes de guardar.",
+            description: "Determina si el tramo aplica a un SKU específico o a todo el catálogo.",
+            interpretation:
+              "Los productos vendidos por curva de packs (como Polaroid o Cuadrados) gestionan su ahorro directamente en variantes.",
           },
           {
             id: "minimo",
-            label: "Cantidad mínima",
-            description: "Umbral desde el cual aplica el nivel de precio.",
-            interpretation: "Ordena niveles coherentemente y evita umbrales duplicados.",
+            label: "Cantidad mínima (2 a 100.000)",
+            description:
+              "Umbral desde el cual el carrito aplica automáticamente el precio unitario.",
+            interpretation:
+              "A mayor cantidad mínima, el precio unitario debe ser estrictamente menor.",
           },
           {
             id: "precio",
-            label: "Precio por unidad",
-            description: "Valor aplicable a cada unidad cuando se cumple la escala.",
-            caution: "Comprueba margen, impuestos y presentación en centavos antes de publicar.",
+            label: "Precio unitario y alerta BOM",
+            description:
+              "Simula en vivo el ahorro %, el total mínimo y el margen frente al costo unitario.",
+            caution:
+              "Si el precio cae por debajo del costo BOM se resalta en rojo como alerta de liquidación; eliminar un tramo exige MFA reciente (≤ 10 min).",
           },
         ],
       },
@@ -463,30 +469,37 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "crear-escala",
-        title: "Crear una escala de volumen",
-        goal: "Aplicar el descuento correcto en el carrito.",
+        title: "Crear y auditar una escala de volumen",
+        goal: "Publicar un tramo coherente sin erosionar el margen.",
         steps: [
-          "Selecciona alcance y producto cuando corresponda.",
-          "Define cantidad mínima y precio unitario.",
-          "Contrasta el precio con Costos y otras escalas existentes.",
-          "Guarda y simula cantidades por debajo y por encima del umbral.",
-          "Verifica el total y el precio unitario mostrados en tienda.",
+          "Selecciona el producto específico o el alcance global.",
+          "Ingresa cantidad mínima (≥ 2) y precio unitario inferior al precio base.",
+          "Revisa en el simulador en vivo el ahorro % y el margen bruto frente a Costos.",
+          "Verifica que no haya conflicto de escala invertida con otros tramos activos.",
+          "Guarda y comprueba la salud del tramo en el gráfico de márgenes.",
         ],
-        expected: "El carrito aplica una sola escala coherente y el negocio conserva margen.",
+        expected:
+          "El carrito recalcula automáticamente el precio unitario al alcanzar el umbral y conserva coherencia económica.",
       },
     ],
     cautions: [
-      "No asumas que una escala reemplaza cupones o promociones; valida el resultado final del carrito.",
+      "Un cupón de campaña puede combinarse en el checkout sobre el subtotal resultante; contrasta el margen combinado.",
+      "Eliminar definitivamente un tramo requiere confirmación MFA reciente (≤ 10 min); si es temporal, desactívalo.",
     ],
     faqs: [
       {
-        question: "¿La escala es solo para empresas?",
+        question: "¿Por qué el sistema bloquea guardar o reactivar un tramo?",
         answer:
-          "Las escalas públicas se aplican según cantidad; no dependen por sí solas de una oportunidad B2B.",
+          "Porque el precio unitario iguala o supera el precio público del producto, o rompe el orden decreciente frente a otro tramo activo del mismo alcance.",
+      },
+      {
+        question: "¿La escala es exclusiva para empresas?",
+        answer:
+          "No: las escalas activas aplican automáticamente en el carrito público al cumplir las unidades mínimas; para cotizaciones a medida desde 25 unidades usa Oportunidades B2B.",
       },
     ],
     related: ["productos", "costos", "cupones", "oportunidades"],
-    keywords: ["volumen", "mayorista", "descuento", "cantidad", "escala", "B2B"],
+    keywords: ["volumen", "mayorista", "descuento", "cantidad", "escala", "B2B", "margen"],
     version: 1,
   },
   {

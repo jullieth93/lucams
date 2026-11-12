@@ -15,7 +15,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ShoppingBag, Trash2, Boxes, ArrowRight, ExternalLink, Calculator } from "lucide-react";
+import {
+  ShoppingBag,
+  Trash2,
+  Boxes,
+  ArrowRight,
+  ExternalLink,
+  Calculator,
+  Building2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
@@ -55,7 +63,9 @@ export default async function ProductoDetallePage({
   searchParams: SearchParams;
 }) {
   const session = await requireCapability("catalog:write");
-  const canManageCoupons = canAccessAdminPath(session.admin.role, "/admin/cupones");
+  const canViewCoupons = canAccessAdminPath(session.admin.role, "/admin/cupones");
+  const canManageCoupons = session.admin.role === "SUPERADMIN";
+  const canViewWholesale = canAccessAdminPath(session.admin.role, "/admin/mayorista");
 
   const { id } = await params;
   const sp = await searchParams;
@@ -184,6 +194,14 @@ export default async function ProductoDetallePage({
                 Costos
               </Link>
             </Button>
+            {canViewWholesale && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/admin/mayorista?q=${encodeURIComponent(product.sku)}`}>
+                  <Building2 className="mr-1.5 h-4 w-4" />
+                  Mayorista
+                </Link>
+              </Button>
+            )}
             {!product.deletedAt && (
               <ConfirmAction
                 action={deleteProductAction}
@@ -245,6 +263,7 @@ export default async function ProductoDetallePage({
             <ProductCouponsWidget
               productSlug={product.slug}
               categorySlug={product.category?.slug ?? null}
+              canViewCoupons={canViewCoupons}
               canManageCoupons={canManageCoupons}
             />
 

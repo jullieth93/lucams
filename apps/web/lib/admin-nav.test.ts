@@ -103,14 +103,17 @@ describe("getAdminNav", () => {
     expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(true);
     // Cupones sí aplica en Etapa 1 (se crean ahora, se activan con los pagos).
     expect(promo?.items?.some((it) => it.href === "/admin/cupones")).toBe(true);
+    // Fidelización requiere pagos en línea (la página redirige en modo catálogo).
+    expect(promo?.items?.some((it) => it.href === "/admin/fidelizacion")).toBe(false);
   });
 
-  it("modo full: Precios al por mayor visible en Promociones", async () => {
+  it("modo full: Precios al por mayor y Fidelización visibles en Promociones", async () => {
     process.env[KEY] = "full";
     const mod = await loadNav();
     const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
 
     expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(true);
+    expect(promo?.items?.some((it) => it.href === "/admin/fidelizacion")).toBe(true);
   });
 
   it.each(["full", "catalog"] as const)(

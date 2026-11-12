@@ -25,6 +25,8 @@ const CATALOG_PATHS = [
   "/admin/inventario",
   "/admin/materiales",
   "/admin/costos",
+  "/admin/mayorista",
+  "/admin/cupones",
   "/admin/categorias",
   "/admin/ocasiones",
   "/admin/resenas",
@@ -43,15 +45,14 @@ const MANAGER_UP_PATHS = ["/admin/garantias", "/admin/retractos", "/admin/notifi
 const CONTENT_PATHS = ["/admin/contenido", "/admin/redirects"];
 // Autoservicio de cuenta (MFA obligatorio, B-1): los cuatro roles.
 const ACCOUNT_PATHS = ["/admin/seguridad"];
-// Rutas solo-SUPERADMIN (o finanzas/métricas fuera de alcance de MANAGER/FULFILLMENT/CMS):
+// Rutas fuera de alcance de MANAGER/FULFILLMENT/CMS_EDITOR:
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
-  "/admin/cupones",
+  "/admin/fidelizacion",
   "/admin/usuarios",
   "/admin/integraciones",
   "/admin/integraciones/aveonline",
   "/admin/auditoria",
-  "/admin/mayorista",
   "/admin/canales/mercadolibre",
   "/admin/metricas",
   "/admin/performance",
@@ -249,7 +250,9 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     ["/admin/usuarios", true, false, false, false],
     // B-1: autoservicio de cuenta (MFA obligatorio) → los cuatro roles.
     ["/admin/seguridad", true, true, true, true],
-    ["/admin/cupones", true, false, false, false],
+    ["/admin/mayorista", true, true, false, false],
+    ["/admin/cupones", true, true, false, false],
+    ["/admin/fidelizacion", true, false, false, false],
     ["/admin/auditoria", true, false, false, false],
   ];
 
@@ -643,6 +646,10 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/bloqueos")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/export")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/costos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/mayorista")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/cupones")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/cupones/cp_123")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/fidelizacion")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/metricas")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/clientes")).toBe(false);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/productos")).toBe(false);
@@ -653,6 +660,10 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/notificaciones")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/materiales")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/costos")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/mayorista")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/cupones")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/cupones/cp_123")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/fidelizacion")).toBe(false);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/plantillas")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/disenos")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/fichas")).toBe(true);

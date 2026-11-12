@@ -536,13 +536,19 @@ export function getAdminNav(): NavGroup[] {
     return withoutFuture.filter((group) => !group.items || group.items.length > 0 || group.href);
   }
   // Modo catálogo (Etapa 1): además de los futuros, se oculta lo que solo aplica
-  // con pagos/envíos online (grupo Finanzas completo, Integraciones y Envíos).
-  // Coherente con los gates de página (esas rutas redirigen a /admin/dashboard
-  // en este modo). "Precios al por mayor" YA NO se oculta (2026-10-02): el
-  // carrito aplica los niveles de volumen a todos los clientes.
+  // con pagos/envíos online (grupo Finanzas completo, Fidelización, Integraciones y Envíos).
+  // Coherente con los gates de página (esas rutas redirigen fuera en este modo).
+  // "Precios al por mayor" YA NO se oculta (2026-10-02): el carrito aplica los
+  // niveles de volumen a todos los clientes.
   return withoutFuture
     .filter((group) => group.title !== "Finanzas")
     .map((group) => {
+      if (group.title === "Promociones" && group.items) {
+        return {
+          ...group,
+          items: group.items.filter((it) => it.href !== "/admin/fidelizacion"),
+        };
+      }
       if (group.title === "Configuración" && group.items) {
         return {
           ...group,

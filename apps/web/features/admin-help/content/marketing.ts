@@ -6,56 +6,67 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
     title: "Cupones",
     area: "Marketing",
     route: "/admin/cupones",
-    summary: "Promociones con reglas de vigencia, alcance, límites y seguimiento de redenciones.",
+    summary:
+      "Campañas comerciales y cupones personales no transferibles con auditoría 360° de redenciones.",
     purpose:
-      "Configura descuentos aplicables en el checkout y permite auditar su uso. Cada cupón debe tener condiciones claras para evitar beneficios ilimitados o incompatibles con el margen.",
+      "Gobierna los códigos de descuento aplicables en el checkout. La creación, edición, pausa y archivo son exclusivos de Superadmin; Gerencia Operativa y Analista Financiero consultan campañas y redenciones en modo lectura (con PII protegida según el rol).",
     whenToUse: [
-      "Para crear o editar una promoción.",
-      "Para limitar vigencia, usos o alcance de un descuento.",
-      "Para investigar redenciones y resultados de una campaña.",
+      "Para crear, pausar o archivar una campaña promocional.",
+      "Para diferenciar campañas abiertas frente a cupones personales de referidos (REF-*).",
+      "Para auditar el historial de pedidos y clientes que redimieron cada código.",
     ],
     concepts: [
       {
-        term: "Redención",
-        definition: "Uso registrado del cupón en una compra que cumplió sus condiciones.",
+        term: "Cupón personal no transferible",
+        definition:
+          "Cupón atado a un titular (como los emitidos por Invita y gana): nunca se expone en listados públicos y el checkout rechaza su uso por terceros.",
       },
-      { term: "Tope", definition: "Límite de veces o monto que restringe el beneficio otorgado." },
+      {
+        term: "Tope global y por comprador",
+        definition:
+          "Límite total de redenciones del código y límite individual validado simultáneamente por cuenta y correo electrónico.",
+      },
     ],
     sections: [
       {
         id: "reglas",
-        title: "Reglas de la promoción",
-        summary: "Define código, beneficio, vigencia y restricciones.",
+        title: "Reglas de la promoción y trazabilidad",
+        summary: "Define código, beneficio, vigencia, restricciones e historial de uso.",
         topics: [
           {
             id: "codigo",
-            label: "Código",
-            description: "Texto que el cliente ingresa en el checkout.",
-            caution: "Evita códigos ambiguos o reutilizados con condiciones distintas.",
+            label: "Código y visibilidad",
+            description: "Texto en mayúsculas que el comprador ingresa en el checkout.",
+            caution:
+              "Activa «Cupón público» solo en campañas abiertas que quieras anunciar en vitrina; los cupones personales permanecen siempre privados.",
           },
           {
             id: "beneficio",
             label: "Tipo y valor del descuento",
-            description: "Define cómo se calcula el beneficio.",
-            interpretation: "Simula el carrito y valida el margen antes de divulgarlo.",
+            description: "Porcentaje (1–100%), monto fijo ($1 a $100.000 COP) o envío gratis.",
+            interpretation: "Contrasta siempre con Costos y escalas mayoristas antes de activar.",
           },
           {
             id: "vigencia",
-            label: "Fechas y estado",
-            description: "Determina cuándo puede aplicarse.",
-            interpretation: "Revisa zona horaria, inicio, fin y activación.",
+            label: "Fechas (hora Colombia) y estado",
+            description: "Ventana exacta de inicio y cierre en zona America/Bogota.",
+            interpretation:
+              "Usa Pausar para frenar temporalmente una campaña sin perder su historial.",
           },
           {
             id: "limites",
-            label: "Límites y alcance",
-            description: "Restringe productos, clientes, usos o monto del beneficio.",
-            caution: "Un campo sin límite puede ampliar la promoción más allá de lo previsto.",
+            label: "Límites y alcance por catálogo",
+            description:
+              "Restringe categorías, productos específicos, unidades mínimas o compra mínima.",
+            caution: "El límite por cliente nunca puede superar el límite total de usos del cupón.",
           },
           {
             id: "usos",
-            label: "Redenciones",
-            description: "Historial de aplicaciones del cupón.",
-            interpretation: "No toda visualización de un código equivale a una redención.",
+            label: "Historial de redenciones",
+            description:
+              "En el detalle de cada cupón verás los pedidos pagados, montos descontados y enlaces 360°.",
+            interpretation:
+              "Los cupones archivados conservan su ficha en solo lectura para auditoría.",
           },
         ],
       },
@@ -63,30 +74,37 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "publicar-cupon",
-        title: "Crear y validar un cupón",
-        goal: "Publicar una promoción acotada y funcional.",
+        title: "Crear y auditar un cupón comercial",
+        goal: "Publicar una promoción acotada y trazable.",
         steps: [
-          "Define código, beneficio, vigencia, alcance y topes.",
-          "Contrasta el descuento con Costos y escalas mayoristas.",
-          "Guarda y prueba un carrito elegible y uno que no cumpla condiciones.",
-          "Verifica total, mensaje de validación y registro de redención.",
-          "Comunica condiciones coherentes con las configuradas.",
+          "Define código, tipo de beneficio, vigencia y límites de uso.",
+          "Restringe categorías o productos elegibles si la campaña no aplica a todo el catálogo.",
+          "Contrasta el descuento frente a Costos y Precios al por mayor.",
+          "Guarda y monitorea el consumo de cupo y el ranking de descuentos otorgados.",
+          "Al finalizar definitivamente, pausa o archiva con confirmación MFA reciente (≤ 10 min).",
         ],
-        expected: "El checkout aplica el beneficio solo a compras elegibles y registra su uso.",
+        expected:
+          "El checkout aplica el beneficio únicamente a compras elegibles y enlaza cada uso al pedido pagado.",
       },
     ],
     cautions: [
-      "Desactiva una campaña en lugar de cambiar silenciosamente las condiciones de cupones ya redimidos.",
+      "Pausa una campaña en lugar de cambiar silenciosamente las condiciones de códigos ya divulgados.",
+      "Archivar un cupón exige verificación MFA reciente (≤ 10 min) y bloquea ediciones posteriores.",
     ],
     faqs: [
       {
-        question: "¿Por qué el cliente no puede aplicarlo?",
+        question: "¿Por qué un comprador recibe aviso de que el cupón es personal?",
         answer:
-          "Revisa vigencia, estado, alcance, mínimos, topes y productos del carrito antes de crear otro cupón.",
+          "Los cupones con titular asignado (como REF-* de Invita y gana) son intransferibles: solo puede redimirlos la cuenta titular o el mismo correo electrónico en compra como invitado.",
+      },
+      {
+        question: "¿Por qué el cliente no puede aplicar un cupón de campaña?",
+        answer:
+          "Verifica vigencia en hora Colombia, estado activo, compra mínima, unidades elegibles en el carrito y topes de uso antes de emitir otro código.",
       },
     ],
     related: ["costos", "mayorista", "fidelizacion", "pedidos"],
-    keywords: ["descuento", "promoción", "código", "vigencia", "redención", "tope"],
+    keywords: ["descuento", "promoción", "código", "vigencia", "redención", "tope", "personal"],
     version: 1,
   },
   {
@@ -94,60 +112,68 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
     title: "Fidelización",
     area: "Marketing",
     route: "/admin/fidelizacion",
-    summary: "Reglas de Puntos Lucams, referidos, acumulación, redención y ajustes auditados.",
+    summary:
+      "Gobierno económico de Puntos Lucams, pasivo contable vivo y conversión de «Invita y gana».",
     purpose:
-      "Configura incentivos posteriores a la compra y su uso como descuento. Separa parámetros del programa, cupones emitidos y ajustes manuales para conservar trazabilidad financiera.",
+      "Configura las tasas de acumulación/redención de puntos y las recompensas por referido con simulador financiero en vivo. Editable exclusivamente por Superadmin con MFA reciente; Analista Financiero audita métricas y pasivo en modo lectura con PII protegida.",
     whenToUse: [
-      "Para configurar acumulación o redención de puntos.",
-      "Para revisar reglas del programa de referidos.",
-      "Para consultar o registrar un ajuste autorizado.",
+      "Para ajustar tasas, mínimos o topes de Puntos Lucams simulando el retorno efectivo.",
+      "Para configurar el % OFF y los días de vigencia del programa «Invita y gana».",
+      "Para auditar el pasivo vigente en pesos, la curva de emisión/canje y el embudo de referidos.",
     ],
     concepts: [
       {
-        term: "Acumulación",
+        term: "Pasivo equivalente vigente",
         definition:
-          "Puntos otorgados cuando se cumple el evento elegible, no simplemente por crear una cuenta o pedido.",
+          "Valor contable en pesos colombianos del saldo total de puntos activos en circulación según la tasa actual de redención.",
       },
       {
-        term: "Redención",
-        definition: "Aplicación de puntos como beneficio en una compra elegible.",
+        term: "Tope anti-abuso (25%)",
+        definition:
+          "Candado servidor que impide guardar combinaciones de acumulación y canje cuyo retorno efectivo supere el 25% sobre la compra.",
       },
       {
-        term: "Retrocrédito",
+        term: "Prelación en checkout",
         definition:
-          "Ajuste posterior asociado a verificación o corrección de saldo según las reglas del programa.",
+          "Primero se aplica el cupón sobre los productos y luego los puntos sobre el subtotal restante; el envío nunca se paga con puntos.",
       },
     ],
     sections: [
       {
         id: "programa",
-        title: "Parámetros del programa",
-        summary: "Controla activación, tasas, mínimos y límites.",
+        title: "Parámetros, simulador y libros mayores",
+        summary: "Controla activación, tasas, topes de seguridad y actividad reciente.",
         topics: [
           {
             id: "tasas",
-            label: "Tasas de acumulación y redención",
-            description: "Determinan cuánto se otorga y qué valor tiene al redimir.",
-            caution: "Un cambio afecta operaciones futuras; simula su impacto económico.",
+            label: "Tasas y simulador económico en vivo",
+            description:
+              "Calcula en tiempo real el % de cashback, el valor de 1 punto y el umbral redimible.",
+            caution:
+              "Toda combinación por encima del 25% de retorno queda bloqueada en cliente y servidor para proteger el margen.",
           },
           {
             id: "minimos",
-            label: "Mínimos y topes",
-            description: "Restringen cuándo y cuánto puede utilizarse el beneficio.",
-            interpretation: "Verifica interacción con el total del carrito y otros descuentos.",
+            label: "Mínimos y tope por pedido",
+            description:
+              "Define cuántos puntos exige el checkout y qué porcentaje máximo del subtotal cubren.",
+            interpretation:
+              "Los cambios rigen para compras y canjes futuros sin alterar saldos ya ganados.",
           },
           {
             id: "referidos",
-            label: "Invita y gana",
-            description: "Configura beneficio y vigencia de cupones por referido.",
-            interpretation: "Los cupones ya emitidos conservan sus condiciones históricas.",
+            label: "Invita y gana (cupones personales)",
+            description: "Configura el % OFF y vigencia de los cupones de bienvenida y premio.",
+            interpretation:
+              "Los cupones ya emitidos conservan sus condiciones originales y son estrictamente no transferibles.",
           },
           {
-            id: "ajustes",
-            label: "Ajustes manuales",
-            description: "Correcciones excepcionales de saldo con auditoría.",
+            id: "trazabilidad",
+            label: "Pulso 14d y movimientos recientes",
+            description:
+              "Gráficos de emisión vs. canje, embudo de conversión y últimos registros enlazados a pedidos.",
             caution:
-              "Exige motivo y autorización; nunca uses un ajuste para beneficios personales.",
+              "Guardar cambios en cualquiera de los dos programas exige confirmación MFA reciente (≤ 10 min) y queda registrado en Auditoría.",
           },
         ],
       },
@@ -155,31 +181,37 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "validar-programa",
-        title: "Cambiar reglas de fidelización",
-        goal: "Actualizar incentivos sin romper saldos ni checkout.",
+        title: "Actualizar parámetros de fidelización con seguridad",
+        goal: "Ajustar incentivos protegiendo el margen y el pasivo contable.",
         steps: [
-          "Documenta las reglas actuales y el efecto esperado.",
-          "Modifica activación, tasas o límites necesarios.",
-          "Simula acumulación en una compra elegible y reversión cuando aplique.",
-          "Prueba redención dentro y fuera de los mínimos.",
-          "Revisa saldo, cupones y registros de auditoría.",
+          "Revisa el pasivo equivalente actual y el pulso de canjes de los últimos 14 días.",
+          "Ajusta las tasas o el porcentaje de recompensa observando el simulador económico en vivo.",
+          "Confirma que el indicador de salud permanezca dentro del margen esperado (≤ 25% en puntos).",
+          "Pulsa «Guardar configuración» y completa la verificación MFA de 6 dígitos si tu elevación superó 10 minutos.",
+          "Verifica el registro en Auditoría y la actualización inmediata en tienda.",
         ],
         expected:
-          "El programa aplica reglas nuevas a eventos futuros sin alterar indebidamente beneficios históricos.",
+          "Las nuevas reglas aplican de inmediato a futuras compras, registros y canjes sin alterar saldos ni cupones históricos.",
       },
     ],
     cautions: [
-      "Los puntos y referidos tienen impacto económico; no los pruebes con clientes reales ni con tu propia cuenta.",
+      "Los puntos y referidos equivalen a dinero real; nunca uses cuentas reales para pruebas operativas.",
+      "La expiración automática de puntos está preparada en configuración pero aún no descuenta saldos.",
     ],
     faqs: [
       {
-        question: "¿Un retracto puede afectar puntos?",
+        question: "¿Qué ocurre con los puntos si un pedido se cancela o tiene retracto?",
         answer:
-          "Sí, el flujo puede revertir incentivos asociados; verifica el caso completo antes de hacer ajustes manuales.",
+          "El sistema devuelve automáticamente los puntos reservados al cancelar/reembolsar la orden o restituye la fracción proporcional en retractos parciales.",
+      },
+      {
+        question: "¿Por qué no puedo guardar una tasa de puntos muy alta?",
+        answer:
+          "Por seguridad financiera, el servidor bloquea cualquier combinación cuyo retorno efectivo supere el 25% del valor pagado.",
       },
     ],
     related: ["cupones", "retractos", "clientes", "auditoria"],
-    keywords: ["puntos", "lealtad", "referidos", "invita", "redimir", "acumular"],
+    keywords: ["puntos", "lealtad", "referidos", "invita", "redimir", "acumular", "pasivo"],
     version: 1,
   },
   {

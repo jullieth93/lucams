@@ -266,6 +266,13 @@ function resolveAuditEntityHref(
     case "ShippingZone":
     case "CarrierConfig":
       return "/admin/envios";
+    case "WholesaleTier":
+      return "/admin/mayorista";
+    case "Setting":
+      if (entityId === "loyalty" || entityId === "referrals") {
+        return "/admin/fidelizacion";
+      }
+      return "/admin/contenido/paginas/global";
     default:
       return null;
   }

@@ -276,3 +276,55 @@ export function derivePackVolumeTiers(
   }
   return out;
 }
+
+export type WholesaleTierScaleViolation =
+  | { kind: "ABOVE_OR_EQUAL_BASE"; referencePrice: number }
+  | { kind: "INVERTED_HIGHER_QTY"; conflictMinQty: number; conflictUnitPrice: number }
+  | { kind: "INVERTED_LOWER_QTY"; conflictMinQty: number; conflictUnitPrice: number };
+
+/**
+ * Valida coherencia económica de un nivel mayorista candidato (creación, edición
+ * o reactivación):
+ *  1. Si aplica a un producto específico con `referencePrice > 0`, `unitPrice`
+ *     DEBE ser estrictamente menor que `referencePrice` (un "descuento" mayorista
+ *     nunca puede igualar ni superar el precio de venta regular).
+ *  2. Si el nivel estará activo (`willBeActive`), la escala frente a los niveles
+ *     hermanos activos del mismo alcance debe ser estrictamente decreciente:
+ *     mayor `minQty` ⇒ menor `unitPrice`. Esto evita divergencia entre la PDP
+ *     (`resolveVisibleVolumeTiers`) y el carrito (`resolveVolumeTierPrice`).
+ */
+export function validateWholesaleTierCandidate(opts: {
+  minQty: number;
+  unitPrice: number;
+  willBeActive: boolean;
+  referencePrice: number | null;
+  activeSiblings: ReadonlyArray<{ minQty: number; unitPrice: number }>;
+}): WholesaleTierScaleViolation | null {
+  const { minQty, unitPrice, willBeActive, referencePrice, activeSiblings } = opts;
+
+  if (referencePrice !== null && referencePrice > 0 && unitPrice >= referencePrice) {
+    return { kind: "ABOVE_OR_EQUAL_BASE", referencePrice };
+  }
+
+  if (!willBeActive) return null;
+
+  const sorted = [...activeSiblings].sort((a, b) => a.minQty - b.minQty);
+  for (const s of sorted) {
+    if (s.minQty < minQty && unitPrice >= s.unitPrice) {
+      return {
+        kind: "INVERTED_HIGHER_QTY",
+        conflictMinQty: s.minQty,
+        conflictUnitPrice: s.unitPrice,
+      };
+    }
+    if (s.minQty > minQty && unitPrice <= s.unitPrice) {
+      return {
+        kind: "INVERTED_LOWER_QTY",
+        conflictMinQty: s.minQty,
+        conflictUnitPrice: s.unitPrice,
+      };
+    }
+  }
+
+  return null;
+}

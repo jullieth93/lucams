@@ -1,17 +1,20 @@
 "use client";
 
 /*
- * Fila de un nivel mayorista (WholesaleTier) en /admin/mayorista, con EDICIÓN
- * inline (2026-11-11, owner — antes solo había Desactivar/Eliminar: «editar»
- * exigía borrar y recrear el nivel). El botón «Editar» cambia la fila a un
- * formulario en línea (cantidad mínima, precio en PESOS, nota) con validación
- * del server action `updateWholesaleTierAction`; el alcance (producto/global)
- * y el estado activo no se editan acá.
+ * Fila de un nivel mayorista (WholesaleTier) en /admin/mayorista.
+ * Incluye:
+ *   - Barra visual de ahorro frente al precio base (`.admin-bar-grow-x`).
+ *   - Semáforo de margen bruto contra `Product.cost` (alerta roja visual cuando
+ *     `unitPrice < cost` por D2).
+ *   - Edición inline con retroalimentación inmediata de margen.
+ *   - Eliminación protegida con Step-up MFA (`<ReauthForm>`).
+ *   - Modo lectura estricto (`!canEdit`) para `FINANCE_ANALYST`.
  */
 
 import { useActionState, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { AdminBadge, AdminTableRow } from "@/components/admin-page";
-import { ConfirmAction } from "@/components/admin/confirm-action";
+import { ReauthForm } from "@/components/admin/mfa-reauth";
 import { formatCOP } from "@/lib/format";
 import {
   deleteWholesaleTierAction,
@@ -25,29 +28,55 @@ export type TierRowData = {
   unitPrice: number;
   note: string | null;
   isActive: boolean;
-  /** Fecha ya formateada en el server (es-CO). */
   createdLabel: string;
 };
 
 const inputClass =
-  "border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none";
+  "border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-lg border bg-white px-2.5 text-sm tabular-nums focus:ring-2 focus:outline-none";
 
-export function TierRow({ tier }: { tier: TierRowData }) {
+export function TierRow({
+  tier,
+  referencePrice,
+  unitCost,
+  canEdit,
+}: {
+  tier: TierRowData;
+  referencePrice: number | null;
+  unitCost: number | null;
+  canEdit: boolean;
+}) {
   const [editing, setEditing] = useState(false);
+  const [editPricePesos, setEditPricePesos] = useState(String(Math.round(tier.unitPrice / 100)));
   const [state, formAction, pending] = useActionState(updateWholesaleTierAction, null);
 
-  if (editing) {
+  const savingsPct =
+    referencePrice !== null && referencePrice > 0 && tier.unitPrice < referencePrice
+      ? Math.max(1, Math.round(((referencePrice - tier.unitPrice) / referencePrice) * 100))
+      : null;
+
+  const hasCost = unitCost !== null && unitCost > 0;
+  const marginCents = hasCost ? tier.unitPrice - unitCost : null;
+  const marginPct =
+    marginCents !== null && tier.unitPrice > 0
+      ? Math.round((marginCents / tier.unitPrice) * 100)
+      : null;
+  const isBelowCost = marginCents !== null && marginCents < 0;
+
+  if (editing && canEdit) {
+    const draftCents = Math.round((Number(editPricePesos) || 0) * 100);
+    const draftBelowCost = hasCost && draftCents > 0 && draftCents < unitCost;
+
     return (
       <AdminTableRow>
-        <td colSpan={6} className="px-4 py-3">
-          <form action={formAction} className="space-y-2">
+        <td colSpan={7} className="bg-brand-cream/30 px-4 py-3.5">
+          <form action={formAction} className="space-y-2.5">
             <input type="hidden" name="id" value={tier.id} />
             {state?.error && (
               <p role="alert" className="text-xs font-medium text-rose-700">
                 {state.error}
               </p>
             )}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_12rem_1fr_auto] sm:items-end">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[10rem_12rem_1fr_auto] sm:items-end">
               <label className="block">
                 <span className="text-brand-purple-dark mb-0.5 block text-[11px] font-semibold">
                   Cantidad mínima
@@ -56,6 +85,7 @@ export function TierRow({ tier }: { tier: TierRowData }) {
                   type="number"
                   name="minQty"
                   min={2}
+                  max={100000}
                   required
                   defaultValue={tier.minQty}
                   className={inputClass}
@@ -66,15 +96,17 @@ export function TierRow({ tier }: { tier: TierRowData }) {
               </label>
               <label className="block">
                 <span className="text-brand-purple-dark mb-0.5 block text-[11px] font-semibold">
-                  Precio por unidad (pesos)
+                  Precio unitario (pesos)
                 </span>
                 <input
                   type="number"
                   name="unitPricePesos"
                   min={1}
+                  max={5000000}
                   step={1}
                   required
-                  defaultValue={Math.round(tier.unitPrice / 100)}
+                  value={editPricePesos}
+                  onChange={(e) => setEditPricePesos(e.target.value)}
                   className={inputClass}
                 />
                 {state?.fieldErrors?.unitPrice?.[0] && (
@@ -113,6 +145,13 @@ export function TierRow({ tier }: { tier: TierRowData }) {
                 </button>
               </div>
             </div>
+            {draftBelowCost && unitCost !== null && (
+              <p className="flex items-center gap-1.5 text-xs font-medium text-rose-700">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                Quedará {formatCOP(unitCost - draftCents)} por debajo del costo BOM (
+                {formatCOP(unitCost)}/u).
+              </p>
+            )}
           </form>
         </td>
       </AdminTableRow>
@@ -120,14 +159,72 @@ export function TierRow({ tier }: { tier: TierRowData }) {
   }
 
   return (
-    <AdminTableRow>
-      <td className="text-brand-purple-dark px-4 py-3 align-top font-semibold tabular-nums">
-        {tier.minQty.toLocaleString("es-CO")}+ unidades
+    <AdminTableRow className={isBelowCost ? "bg-rose-50/40" : undefined}>
+      <td className="px-4 py-3 align-top">
+        <span className="text-brand-purple-dark block font-semibold tabular-nums">
+          {tier.minQty.toLocaleString("es-CO")}+ unidades
+        </span>
+        <span className="text-brand-muted text-[11px] tabular-nums">
+          Mín. {formatCOP(tier.minQty * tier.unitPrice)}
+        </span>
       </td>
+
       <td className="text-brand-purple-dark px-4 py-3 text-right align-top font-semibold tabular-nums">
         {formatCOP(tier.unitPrice)}
       </td>
-      <td className="text-brand-muted px-4 py-3 align-top text-xs">{tier.note ?? "—"}</td>
+
+      <td className="px-4 py-3 align-top">
+        {savingsPct !== null && referencePrice !== null ? (
+          <div className="min-w-[8rem] space-y-1">
+            <div className="flex items-center justify-between gap-2 text-xs tabular-nums">
+              <span className="font-semibold text-emerald-700">−{savingsPct}%</span>
+              <span className="text-brand-muted text-[11px]">
+                −{formatCOP(referencePrice - tier.unitPrice)}/u
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="admin-bar-grow-x h-full rounded-full bg-emerald-500"
+                style={{ width: `${Math.min(100, Math.max(6, savingsPct * 2))}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <span className="text-brand-muted text-xs">Según producto</span>
+        )}
+      </td>
+
+      <td className="px-4 py-3 align-top">
+        {hasCost && marginCents !== null && marginPct !== null ? (
+          <div className="space-y-0.5">
+            {isBelowCost ? (
+              <AdminBadge tone="rose">
+                <AlertTriangle className="mr-1 inline h-3 w-3" />
+                Bajo costo ({marginPct}%)
+              </AdminBadge>
+            ) : marginPct < 20 ? (
+              <AdminBadge tone="amber">Ajustado ({marginPct}%)</AdminBadge>
+            ) : (
+              <AdminBadge tone="emerald">Sano ({marginPct}%)</AdminBadge>
+            )}
+            <p
+              className={`text-[11px] tabular-nums ${
+                isBelowCost ? "font-semibold text-rose-700" : "text-brand-muted"
+              }`}
+            >
+              {marginCents >= 0 ? `+${formatCOP(marginCents)}/u` : formatCOP(marginCents) + "/u"}
+            </p>
+          </div>
+        ) : (
+          <span className="text-brand-muted text-xs">Sin costo BOM</span>
+        )}
+      </td>
+
+      <td className="px-4 py-3 align-top">
+        <p className="text-brand-purple-dark/85 text-xs">{tier.note ?? "—"}</p>
+        <p className="text-brand-muted mt-0.5 text-[11px]">{tier.createdLabel}</p>
+      </td>
+
       <td className="px-4 py-3 text-center align-top">
         {tier.isActive ? (
           <AdminBadge tone="emerald">Activo</AdminBadge>
@@ -135,43 +232,48 @@ export function TierRow({ tier }: { tier: TierRowData }) {
           <AdminBadge tone="amber">Desactivado</AdminBadge>
         )}
       </td>
-      <td className="text-brand-muted px-4 py-3 align-top text-xs">{tier.createdLabel}</td>
-      <td className="px-4 py-3 align-top">
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="text-brand-purple hover:text-brand-purple-dark text-[11px] font-medium"
-          >
-            Editar
-          </button>
-          <form action={toggleWholesaleTierAction}>
-            <input type="hidden" name="id" value={tier.id} />
+
+      {canEdit && (
+        <td className="px-4 py-3 align-top">
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
             <button
-              type="submit"
-              className={
-                tier.isActive
-                  ? "text-[11px] font-medium text-amber-700 hover:text-amber-900"
-                  : "text-[11px] font-medium text-emerald-700 hover:text-emerald-900"
-              }
+              type="button"
+              onClick={() => {
+                setEditPricePesos(String(Math.round(tier.unitPrice / 100)));
+                setEditing(true);
+              }}
+              className="text-brand-purple hover:text-brand-purple-dark text-xs font-semibold"
             >
-              {tier.isActive ? "Desactivar" : "Activar"}
+              Editar
             </button>
-          </form>
-          <ConfirmAction
-            action={deleteWholesaleTierAction}
-            message="¿Eliminar este nivel de precio? Dejará de aplicar de inmediato."
-          >
-            <input type="hidden" name="id" value={tier.id} />
-            <button
-              type="submit"
-              className="text-brand-muted text-[11px] font-medium hover:text-rose-600"
+            <form action={toggleWholesaleTierAction}>
+              <input type="hidden" name="id" value={tier.id} />
+              <button
+                type="submit"
+                className={
+                  tier.isActive
+                    ? "text-xs font-semibold text-amber-700 hover:text-amber-900"
+                    : "text-xs font-semibold text-emerald-700 hover:text-emerald-900"
+                }
+              >
+                {tier.isActive ? "Desactivar" : "Activar"}
+              </button>
+            </form>
+            <ReauthForm
+              action={deleteWholesaleTierAction}
+              confirmMessage="¿Eliminar este nivel mayorista? Dejará de aplicar de inmediato en el carrito y en la ficha del producto."
             >
-              Eliminar
-            </button>
-          </ConfirmAction>
-        </div>
-      </td>
+              <input type="hidden" name="id" value={tier.id} />
+              <button
+                type="submit"
+                className="text-brand-muted text-xs font-semibold hover:text-rose-600"
+              >
+                Eliminar
+              </button>
+            </ReauthForm>
+          </div>
+        </td>
+      )}
     </AdminTableRow>
   );
 }

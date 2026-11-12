@@ -558,10 +558,31 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
         isActive: false,
       },
     });
+    // Cupón personal (customerId != null) marcado accidentalmente isPublic=true → NUNCA listarse (D3).
+    const personalOwner = await prisma.customer.create({
+      data: {
+        email: `${RUN}-owner@lucams.test`,
+        supabaseUserId: `${RUN}-supa-owner`,
+        referralCode: `${RUN}-ref`.slice(0, 24).toUpperCase(),
+      },
+      select: { id: true },
+    });
+    await prisma.coupon.create({
+      data: {
+        code: `${RUN}-PERSONAL`.toUpperCase(),
+        type: "PERCENT",
+        value: 10,
+        validFrom: yesterday,
+        validTo: tomorrow,
+        isPublic: true,
+        isActive: true,
+        customerId: personalOwner.id,
+      },
+    });
   }, T);
 
   afterAll(async () => {
-    // Orden FK: pivots → templates → variants → products → coupons → ocasiones → categorías.
+    // Orden FK: pivots → templates → variants → products → coupons → customers → ocasiones → categorías.
     // Todo scoped al RUN (categorías de la corrida + slugs prefijados).
     const catIds = [rootCatId, subA_Id, subB_Id, siblingCatId, tplCatId].filter(Boolean);
     await prisma.productOcasionTag.deleteMany({
@@ -575,6 +596,7 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
     await prisma.productVariant.deleteMany({ where: { product: { categoryId: { in: catIds } } } });
     await prisma.product.deleteMany({ where: { categoryId: { in: catIds } } });
     await prisma.coupon.deleteMany({ where: { code: { startsWith: RUN.toUpperCase() } } });
+    await prisma.customer.deleteMany({ where: { email: { startsWith: `${RUN}-` } } });
     await prisma.ocasionTag.deleteMany({ where: { slug: { startsWith: RUN } } });
     // Categorías: hijos antes que padre (parent es Restrict). Borramos todas las
     // de la corrida por slug-prefix (incluye la soft-deleted).
@@ -1238,11 +1260,12 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
       const codes = ours.map((c) => c.code);
       // Solo el PUBLIC10 cumple las 4 condiciones.
       expect(codes).toContain(`${RUN}-PUBLIC10`.toUpperCase());
-      // Excluidos: privado, expirado, futuro, inactivo.
+      // Excluidos: privado, expirado, futuro, inactivo, personal (D3).
       expect(codes).not.toContain(`${RUN}-PRIVATE`.toUpperCase());
       expect(codes).not.toContain(`${RUN}-EXPIRED`.toUpperCase());
       expect(codes).not.toContain(`${RUN}-FUTURE`.toUpperCase());
       expect(codes).not.toContain(`${RUN}-INACTIVE`.toUpperCase());
+      expect(codes).not.toContain(`${RUN}-PERSONAL`.toUpperCase());
     });
 
     it("expone los campos públicos del cupón (value, minOrder, applies, validUntil)", async () => {

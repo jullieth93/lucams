@@ -4,17 +4,17 @@ import { updateCouponAction } from "../actions";
 import { CouponForm, type EditableCoupon } from "../coupon-form";
 import type { SlugOption } from "../slug-restriction-select";
 
-/** Edición de un cupón existente — el formulario es compartido con crear (../coupon-form.tsx). */
+/** Edición o consulta de un cupón existente — comparte formulario con crear (`../coupon-form.tsx`). */
 export function EditCouponForm({
   coupon,
   categories,
   products,
+  readOnly = false,
 }: {
   coupon: EditableCoupon;
-  /** Categorías del catálogo (deletedAt null) y productos activos — alimentan
-   *  los multi-select de restricciones (mismos datos que el form de crear). */
   categories: SlugOption[];
   products: SlugOption[];
+  readOnly?: boolean;
 }) {
   return (
     <CouponForm
@@ -23,6 +23,7 @@ export function EditCouponForm({
       coupon={coupon}
       categories={categories}
       products={products}
+      readOnly={readOnly}
     />
   );
 }

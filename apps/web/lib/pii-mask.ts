@@ -45,6 +45,16 @@ export function maskEmail(raw: string | null | undefined): string {
 }
 
 /**
+ * Enmascara cualquier correo electrónico incrustado dentro de un texto libre
+ * (ej. descripciones automáticas de cupones de referidos) preservando el resto
+ * de la frase.
+ */
+export function maskEmailsInText(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, (match) => maskEmail(match));
+}
+
+/**
  * Enmascara un número telefónico dejando visibles únicamente los últimos 2 dígitos
  * (`+573001234567` -> `*** *** **67`).
  */

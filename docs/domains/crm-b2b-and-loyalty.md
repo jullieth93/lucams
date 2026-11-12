@@ -134,13 +134,14 @@ sequenceDiagram
 
 ## 4. Programa de Lealtad («Puntos Lucams») y Referidos («Invita y gana»)
 
-Ambos programas se configuran en `/admin/fidelizacion` (exclusivo `SUPERADMIN`, auditado en `AdminActionLog` e integrado con el snapshot CMS `global/comercio`).
+Ambos programas se gobiernan en `/admin/fidelizacion`: la mutación de parámetros es exclusiva de `SUPERADMIN` con **step-up MFA reciente (`requireRecentMfa()`, `≤ 10 min`)**, auditada en `AdminActionLog` e integrada con el snapshot CMS `global/comercio`; `FINANCE_ANALYST` audita el pasivo equivalente vigente, el pulso de emisión/canje de 14 días y el embudo de referidos en modo solo lectura con PII enmascarada en servidor.
 
 ### Puntos Lucams (`LoyaltyTxn`, `features/loyalty/`)
 
 - **Reglas base configurables**:
   - Acumulación por defecto: **1 punto por cada `$1.000 COP`** efectivamente cobrados (`LOYALTY_EARN_COP_PER_POINT = 1000`, calculado con `Math.floor` sobre `Order.total`).
   - Redención por defecto: **100 puntos = `$1.000 COP`** (`LOYALTY_REDEEM_POINTS_PER_1000 = 100`, equivalente a `$10 COP` por punto), desde un mínimo de `100` puntos y hasta un tope del **`50 %` del subtotal de mercancía después de cupón** (`LOYALTY_REDEEM_MAX_PERCENT = 50`).
+  - **Candado anti-abuso del `25 %` (`saveLoyaltySettingsAction`)**: el servidor rechaza cualquier combinación de tasas donde el retorno efectivo supere el `25 %` (`earnCopPerPoint * redeemPointsPer1000 < 4_000`), acompañado de un simulador económico en vivo en `/admin/fidelizacion`.
 - **Prelación estricta y ciclo transaccional**:
   1. **Cupón -> Puntos (flete excluido)**: primero se descuenta el cupón sobre la mercancía; luego se calcula la redención de puntos sobre el remanente de productos. El costo de envío nunca es pagable con puntos. Por regla `[ID-01]`, solo el titular autenticado de la sesión puede redimir su propio saldo.
   2. **Reserva atómica en `PENDING_PAYMENT`**: al crear la orden, `reserveRedeemedPoints` ejecuta un decremento condicional (`WHERE "loyaltyPoints" >= points`) evitando doble gasto concurrente y escribe `LoyaltyTxn` con `reason = "REDEEM"`.
@@ -163,6 +164,7 @@ Ambos programas se configuran en `/admin/fidelizacion` (exclusivo `SUPERADMIN`, 
   2. Unicidad por `referredEmail` (reintentos con el mismo correo no emiten múltiples cupones de bienvenida).
   3. Verificación de cliente nuevo real: si el correo referido ya tenía pedidos pagados anteriores (por ejemplo, compras previas como invitado), la referencia pasa a `EXPIRED` sin emitir premio al referente.
   4. Candado en base de datos mediante el trigger `coupon_usage_per_customer_limit` (`pg_advisory_xact_lock` sobre `CouponUsage`).
+  5. **Intransferibilidad estricta en checkout (`NOT_OWNER` en `features/coupons/redemption.ts`)**: todo cupón con `customerId != null` solo es canjeable por la sesión autenticada de su titular o en checkout invitado con el correo exacto del titular activo, y permanece bloqueado para exposición pública (`customerId: null` en `listPublicCoupons`).
 
 ---
 

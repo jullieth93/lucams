@@ -186,6 +186,20 @@ export const ADMIN_ROLE_SETS = {
   COSTOS_READ: ALL_ROLES_ORDER.filter(
     (r) => hasCapability(r, "finance:read") || hasCapability(r, "catalog:write"),
   ),
+  /** Lectura de precios al por mayor (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `FINANCE_ANALYST`). */
+  MAYORISTA_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "catalog:write") || hasCapability(r, "finance:read"),
+  ),
+  /** Edición de precios al por mayor (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
+  MAYORISTA_WRITE: rolesWithCapability("catalog:write"),
+  /** Lectura de cupones comerciales (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `FINANCE_ANALYST`); mutación exclusiva `SUPER`. */
+  CUPONES_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "catalog:write") || hasCapability(r, "finance:read"),
+  ),
+  /** Lectura de fidelización y referidos (`SUPERADMIN`, `FINANCE_ANALYST`); mutación exclusiva `SUPER`. */
+  FIDELIZACION_READ: ALL_ROLES_ORDER.filter(
+    (r) => r === "SUPERADMIN" || hasCapability(r, "finance:read"),
+  ),
   /** Atención posventa: tickets, garantías, retractos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   SUPPORT_CARE: rolesWithCapability("support:manage"),
   /** Recuperación de carritos abandonados (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
@@ -291,8 +305,25 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   },
   { prefix: "/admin/metricas", roles: rolesWithCapability("metrics:read") },
 
+  // Reglas comerciales, promociones y fidelización (Bloque 3 — N-21 estricto)
+  {
+    prefix: "/admin/mayorista",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "catalog:write") || hasCapability(r, "finance:read"),
+    ),
+  },
+  {
+    prefix: "/admin/cupones",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "catalog:write") || hasCapability(r, "finance:read"),
+    ),
+  },
+  {
+    prefix: "/admin/fidelizacion",
+    roles: ALL_ROLES_ORDER.filter((r) => r === "SUPERADMIN" || hasCapability(r, "finance:read")),
+  },
+
   // Configuración sensible y CMS v2
-  { prefix: "/admin/fidelizacion", roles: ["SUPERADMIN"] },
   { prefix: "/admin/integraciones", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido/paginas/global", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido/configuracion", roles: ["SUPERADMIN"] },

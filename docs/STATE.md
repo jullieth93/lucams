@@ -100,13 +100,14 @@
 - Carrito auto-sanado (`ADR-171`), checkout en 3 pasos (`ADR-155`), direcciones DANE + CP MinTIC
   (171/171 ciudades) y modo regalo. Fletes HMAC por peso, ledger Wompi por intento + webhook 25 h,
   COD con blocklist/conciliación, alertas de stock, Aveonline con PDFs + `ShipmentEvent`, Envío Lucams
-  Bogotá y costeo centralizado por receta BOM (`/admin/costos`, escritura operativa y solo lectura financiera).
+  Bogotá, costeo BOM (`/admin/costos`), escalas mayoristas anti-inversión (`/admin/mayorista`) y cupones
+  personales no transferibles (`NOT_OWNER`).
 
 ### CRM 360°, B2B, Posventa y Operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 
 - Grafo `Contact` 360° (`isStaff`, `selfDealing`, fusión asistida), `/admin/hoy`, RFM/LTV en
   `/admin/metricas`, embudo `/empresas-y-eventos` → `Opportunity` → `/cotizacion/[token]`, **Puntos
-  Lucams** (incentivo invitado, retrocrédito al verificar correo, reversión en retractos) y `/r/[codigo]`.
+  Lucams** (tope anti-abuso ≤25 %, pasivo vivo en `/admin/fidelizacion`, retrocrédito al verificar correo, reversión en retractos) y `/r/[codigo]`.
 - Seguimiento `/pedido/[token]` con autoservicio posventa para invitados (`GuestOrderSupportCard`,
   doble factor token + email), retractos Ley 1480, garantías selladas `OrderItem.warrantyMonths`
   (`1..120` m), soporte PQR con SLAs + copiloto IA 0-PII y reseñas exclusivas en `DELIVERED`.

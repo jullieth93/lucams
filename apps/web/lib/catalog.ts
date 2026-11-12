@@ -1057,6 +1057,9 @@ export const listPublicCoupons = unstable_cache(
         where: {
           isActive: true,
           isPublic: true,
+          // Defensa D3/PII: un cupón personal (ej. REF-* de referidos) jamás
+          // se expone en el feed público aunque isPublic fuera true.
+          customerId: null,
           deletedAt: null,
           validFrom: { lte: now },
           validTo: { gte: now },

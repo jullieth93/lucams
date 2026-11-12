@@ -3,6 +3,7 @@ import {
   maskContactSummaryForActor,
   maskDocumentNumber,
   maskEmail,
+  maskEmailsInText,
   maskOrderForActor,
   maskPersonName,
   maskPhone,
@@ -18,6 +19,18 @@ describe("S17 — Enmascaramiento server-side determinista de PII", () => {
     expect(masked).not.toContain("lopez");
     expect(maskEmail("")).toBe("—");
     expect(maskEmail(null)).toBe("—");
+  });
+
+  it("maskEmailsInText enmascara todos los correos embebidos en descripciones libres", () => {
+    const raw =
+      "Referidos: bienvenida para maria.lopez@familia-lopez.co (código de carlos.perez@empresa.com.co)";
+    const masked = maskEmailsInText(raw);
+    expect(masked).not.toContain("maria.lopez");
+    expect(masked).not.toContain("familia-lopez");
+    expect(masked).not.toContain("carlos.perez");
+    expect(masked).not.toContain("empresa");
+    expect(masked).toContain("Referidos: bienvenida para");
+    expect(maskEmailsInText(null)).toBe("");
   });
 
   it("maskPhone conserva únicamente los últimos 2 dígitos", () => {
