@@ -44,13 +44,15 @@ import {
   ShieldCheck,
   CornerDownLeft,
   ArrowUpRight,
+  Users,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { adminLogoutAction } from "@/app/auth/logout/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Hint } from "@/components/ui/tooltip";
 import { getAdminNav, type NavBadge, type NavGroup } from "@/lib/admin-nav";
-import { adminHomePath, filterNavByRole } from "@/lib/admin-rbac";
+import { adminHomePath, canAccessAdminPath, filterNavByRole } from "@/lib/admin-rbac";
 import type { AdminRole } from "@lucams/db";
 
 type AdminInfo = {
@@ -355,6 +357,15 @@ function AdminTopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSearc
  * cubre cualquier ruta admin no implementada).
  */
 function labelForPath(p: string): string {
+  if (p === "/admin/clientes/duplicados" || p.startsWith("/admin/clientes/duplicados/")) {
+    return "Ventas · Duplicados CRM";
+  }
+  if (/^\/admin\/cotizaciones\/[^/?]+\/taller(?:$|[/?])/.test(p)) {
+    return "Producción · Hoja de taller";
+  }
+  if (p === "/admin/cotizaciones" || p.startsWith("/admin/cotizaciones/")) {
+    return "Ventas · Cotizaciones";
+  }
   // Buscar match exacto primero, luego prefix (para nested como /[id])
   for (const group of NAV) {
     if (group.href && (p === group.href || p.startsWith(group.href + "/"))) {
@@ -842,6 +853,33 @@ function AdminCommandPalette({
       }
     }
 
+    if (
+      !seen.has("/admin/clientes/duplicados") &&
+      canAccessAdminPath(role, "/admin/clientes/duplicados")
+    ) {
+      seen.add("/admin/clientes/duplicados");
+      items.push({
+        key: "/admin/clientes/duplicados",
+        label: "Fusión de contactos duplicados",
+        group: "Ventas · CRM",
+        description:
+          "Cola de posibles duplicados de Contact 360 con confirmación MFA para fusionar o descartar.",
+        href: "/admin/clientes/duplicados",
+        icon: Users,
+      });
+    }
+    if (!seen.has("/admin/cotizaciones") && canAccessAdminPath(role, "/admin/cotizaciones")) {
+      seen.add("/admin/cotizaciones");
+      items.push({
+        key: "/admin/cotizaciones",
+        label: "Cotizaciones WhatsApp",
+        group: "Ventas · CRM",
+        description:
+          "Bandeja consultiva e histórico Etapa 1: seguimiento comercial y conversión a pedido u oportunidad B2B.",
+        href: "/admin/cotizaciones",
+        icon: FileText,
+      });
+    }
     if (!seen.has("/admin/ayuda")) {
       items.push({
         key: "/admin/ayuda",

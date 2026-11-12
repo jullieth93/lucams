@@ -73,11 +73,134 @@ const OPPORTUNITY_STAGE_TONE: Record<string, "purple" | "blue" | "amber" | "emer
   LOST: "slate",
 };
 
+export interface Contact360Access {
+  canViewOrders: boolean;
+  canViewQuotes: boolean;
+  canViewOpportunities: boolean;
+  canViewCarts: boolean;
+  canViewModeration: boolean;
+  canViewCoupons: boolean;
+  canViewLoyalty: boolean;
+  canViewReviews: boolean;
+  canViewSupport: boolean;
+  canViewWarranties: boolean;
+  canViewRetracts: boolean;
+  canMerge: boolean;
+}
+
+const QUOTE_STATUS_LABEL: Record<string, string> = {
+  NEW: "Nueva",
+  CONTACTED: "Contactada",
+  CLOSED_WON: "Cerrada (ganada)",
+  CLOSED_LOST: "Cerrada (perdida)",
+};
+
+const QUOTE_STATUS_TONE: Record<string, "purple" | "blue" | "emerald" | "slate"> = {
+  NEW: "purple",
+  CONTACTED: "blue",
+  CLOSED_WON: "emerald",
+  CLOSED_LOST: "slate",
+};
+
+const DESIGN_STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Borrador",
+  READY: "Listo",
+  USED_IN_ORDER: "En pedido",
+  ARCHIVED: "Archivado",
+};
+
+const DESIGN_STATUS_TONE: Record<string, "amber" | "emerald" | "blue" | "slate"> = {
+  DRAFT: "amber",
+  READY: "emerald",
+  USED_IN_ORDER: "blue",
+  ARCHIVED: "slate",
+};
+
+const MODERATION_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Moderación pendiente",
+  APPROVED: "Arte aprobado",
+  REJECTED: "Arte rechazado",
+};
+
+const MODERATION_STATUS_TONE: Record<string, "amber" | "emerald" | "rose"> = {
+  PENDING: "amber",
+  APPROVED: "emerald",
+  REJECTED: "rose",
+};
+
+const AFTERSALES_STATUS_LABEL: Record<string, string> = {
+  OPEN: "Abierto",
+  IN_PROGRESS: "En gestión",
+  RESOLVED: "Resuelto",
+  CLOSED: "Cerrado",
+  PENDING: "Pendiente",
+  IN_REVIEW: "En evaluación",
+  APPROVED: "Aprobado",
+  RECEIVED: "Recibido",
+  REFUNDED: "Reembolsado",
+  REJECTED: "Rechazado",
+};
+
+const AFTERSALES_STATUS_TONE: Record<
+  string,
+  "amber" | "blue" | "emerald" | "slate" | "purple" | "rose"
+> = {
+  OPEN: "amber",
+  IN_PROGRESS: "blue",
+  RESOLVED: "emerald",
+  CLOSED: "slate",
+  PENDING: "amber",
+  IN_REVIEW: "blue",
+  APPROVED: "blue",
+  RECEIVED: "purple",
+  REFUNDED: "emerald",
+  REJECTED: "rose",
+};
+
+const REFERRAL_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Pendiente de compra",
+  QUALIFIED: "Compra calificada",
+  REWARDED: "Recompensado",
+  EXPIRED: "Expirado",
+};
+
+const REFERRAL_STATUS_TONE: Record<string, "amber" | "blue" | "emerald" | "slate"> = {
+  PENDING: "amber",
+  QUALIFIED: "blue",
+  REWARDED: "emerald",
+  EXPIRED: "slate",
+};
+
+const IDENTITY_TYPE_LABEL: Record<string, string> = {
+  EMAIL: "Correo",
+  PHONE: "Celular",
+  WHATSAPP: "WhatsApp",
+  DOCUMENT: "Documento DIAN",
+  SUPABASE_USER: "Sesión autenticada",
+};
+
+const VERIFICATION_SOURCE_LABEL: Record<string, string> = {
+  SIGNUP_OTP: "Registro verificado",
+  AUTH_SESSION: "Sesión activa",
+  WOMPI_PAYMENT: "Pago Wompi",
+  CONTACT_MERGE: "Fusión de contactos",
+  CHECKOUT_FORM: "Checkout",
+  QUOTE_FORM: "Cotización",
+  SUPPORT_FORM: "Soporte",
+  B2B_FORM: "Formulario B2B",
+};
+
 function toDate(d: Date | string): Date {
   return d instanceof Date ? d : new Date(d);
 }
 
-export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMerge: boolean }) {
+export function Contact360Tabs({
+  data,
+  access,
+}: {
+  data: Contact360Data;
+  access: Contact360Access;
+}) {
   const [activeTab, setActiveTab] = useState<TabId>("orders");
 
   const tabs: Array<{
@@ -120,7 +243,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
       id: "identities",
       label: "Identidades",
       count: data.identities.length,
-      alert: data.pendingMergesCount > 0 && canMerge,
+      alert: data.pendingMergesCount > 0 && access.canMerge,
     },
   ];
 
@@ -186,12 +309,18 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            href={`/admin/pedidos/${encodeURIComponent(order.number)}`}
-                            className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-bold hover:underline"
-                          >
-                            {order.number}
-                          </Link>
+                          {access.canViewOrders ? (
+                            <Link
+                              href={`/admin/pedidos/${encodeURIComponent(order.number)}`}
+                              className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-bold hover:underline"
+                            >
+                              {order.number}
+                            </Link>
+                          ) : (
+                            <span className="text-brand-purple-dark font-mono text-sm font-bold">
+                              {order.number}
+                            </span>
+                          )}
                           <span className="text-brand-muted text-xs">
                             {order.paymentMethod === "COD" ? "Contra entrega" : "Wompi"}
                           </span>
@@ -234,12 +363,18 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                       className="flex flex-wrap items-center justify-between gap-3 p-4"
                     >
                       <div>
-                        <Link
-                          href={`/admin/cotizaciones/${quote.id}`}
-                          className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-bold hover:underline"
-                        >
-                          {quote.number}
-                        </Link>
+                        {access.canViewQuotes ? (
+                          <Link
+                            href={`/admin/cotizaciones/${encodeURIComponent(quote.id)}`}
+                            className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-bold hover:underline"
+                          >
+                            {quote.number}
+                          </Link>
+                        ) : (
+                          <span className="text-brand-purple-dark font-mono text-sm font-bold">
+                            {quote.number}
+                          </span>
+                        )}
                         <div className="text-brand-muted text-xs">
                           {quote.city}, {quote.department} · {formatDateCO(toDate(quote.createdAt))}
                         </div>
@@ -248,7 +383,9 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                         <div className="text-brand-purple-dark text-sm font-semibold tabular-nums">
                           {formatCOP(quote.totalCents)}
                         </div>
-                        <AdminBadge tone="blue">{quote.status}</AdminBadge>
+                        <AdminBadge tone={QUOTE_STATUS_TONE[quote.status] ?? "slate"}>
+                          {QUOTE_STATUS_LABEL[quote.status] ?? quote.status}
+                        </AdminBadge>
                       </div>
                     </li>
                   ))}
@@ -270,12 +407,18 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            href={`/admin/oportunidades/${encodeURIComponent(opp.id)}`}
-                            className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-bold hover:underline"
-                          >
-                            {opp.number}
-                          </Link>
+                          {access.canViewOpportunities ? (
+                            <Link
+                              href={`/admin/oportunidades/${encodeURIComponent(opp.id)}`}
+                              className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-bold hover:underline"
+                            >
+                              {opp.number}
+                            </Link>
+                          ) : (
+                            <span className="text-brand-purple-dark font-mono text-sm font-bold">
+                              {opp.number}
+                            </span>
+                          )}
                           <span className="text-brand-purple-dark truncate text-xs font-medium">
                             {opp.title}
                           </span>
@@ -338,16 +481,23 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                           {d.id.slice(0, 12)}… · {formatDateCO(toDate(d.updatedAt))}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <AdminBadge
-                          tone={
-                            d.status === "READY" || d.status === "USED_IN_ORDER"
-                              ? "emerald"
-                              : "amber"
-                          }
-                        >
-                          {d.status}
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        <AdminBadge tone={DESIGN_STATUS_TONE[d.status] ?? "slate"}>
+                          {DESIGN_STATUS_LABEL[d.status] ?? d.status}
                         </AdminBadge>
+                        {d.moderationStatus === "PENDING" && access.canViewModeration ? (
+                          <Link
+                            href="/admin/moderacion"
+                            className="hover:underline"
+                            title="Abrir bandeja de moderación de arte"
+                          >
+                            <AdminBadge tone="amber">Moderación pendiente →</AdminBadge>
+                          </Link>
+                        ) : (
+                          <AdminBadge tone={MODERATION_STATUS_TONE[d.moderationStatus] ?? "slate"}>
+                            {MODERATION_STATUS_LABEL[d.moderationStatus] ?? d.moderationStatus}
+                          </AdminBadge>
+                        )}
                       </div>
                     </li>
                   ))}
@@ -410,17 +560,28 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                         key={ac.id}
                         className="flex flex-wrap items-center justify-between gap-2 text-xs"
                       >
-                        <Link
-                          href={`/admin/carritos/${encodeURIComponent(ac.id)}`}
-                          className="text-brand-purple hover:text-brand-purple-dark font-semibold underline underline-offset-2"
-                        >
-                          Carrito ({ac.reminderCount} recordatorio
-                          {ac.reminderCount === 1 ? "" : "s"}
-                          {ac.subtotalCents && ac.subtotalCents > 0
-                            ? ` · ${formatCOP(ac.subtotalCents)}`
-                            : ""}
-                          ) →
-                        </Link>
+                        {access.canViewCarts ? (
+                          <Link
+                            href={`/admin/carritos/${encodeURIComponent(ac.id)}`}
+                            className="text-brand-purple hover:text-brand-purple-dark font-semibold underline underline-offset-2"
+                          >
+                            Carrito ({ac.reminderCount} recordatorio
+                            {ac.reminderCount === 1 ? "" : "s"}
+                            {ac.subtotalCents && ac.subtotalCents > 0
+                              ? ` · ${formatCOP(ac.subtotalCents)}`
+                              : ""}
+                            ) →
+                          </Link>
+                        ) : (
+                          <span className="text-brand-purple-dark font-medium">
+                            Carrito ({ac.reminderCount} recordatorio
+                            {ac.reminderCount === 1 ? "" : "s"}
+                            {ac.subtotalCents && ac.subtotalCents > 0
+                              ? ` · ${formatCOP(ac.subtotalCents)}`
+                              : ""}
+                            )
+                          </span>
+                        )}
                         <AdminBadge tone={statusTone}>{statusLabel}</AdminBadge>
                       </div>
                     );
@@ -443,39 +604,70 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
           ) : (
             <AdminCard className="overflow-hidden p-0">
               <ul className="divide-brand-purple/10 divide-y">
-                {data.aftersales.map((item) => (
-                  <li
-                    key={`${item.kind}-${item.id}`}
-                    className="hover:bg-brand-purple/[0.03] flex flex-wrap items-center justify-between gap-3 p-4 transition-colors"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <AdminBadge
-                          tone={
-                            item.kind === "RETRACT"
-                              ? "rose"
-                              : item.kind === "WARRANTY"
-                                ? "amber"
-                                : "blue"
-                          }
-                        >
-                          {AFTERSALES_KIND_LABEL[item.kind]}
-                        </AdminBadge>
-                        <Link
-                          href={item.href}
-                          className="text-brand-purple-dark hover:text-brand-purple text-sm font-semibold hover:underline"
-                        >
-                          {item.title}
-                        </Link>
+                {data.aftersales.map((item) => {
+                  const canOpenCase =
+                    item.kind === "TICKET"
+                      ? access.canViewSupport
+                      : item.kind === "WARRANTY"
+                        ? access.canViewWarranties
+                        : access.canViewRetracts;
+                  return (
+                    <li
+                      key={`${item.kind}-${item.id}`}
+                      className="hover:bg-brand-purple/[0.03] flex flex-wrap items-center justify-between gap-3 p-4 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <AdminBadge
+                            tone={
+                              item.kind === "RETRACT"
+                                ? "rose"
+                                : item.kind === "WARRANTY"
+                                  ? "amber"
+                                  : "blue"
+                            }
+                          >
+                            {AFTERSALES_KIND_LABEL[item.kind]}
+                          </AdminBadge>
+                          {canOpenCase ? (
+                            <Link
+                              href={item.href}
+                              className="text-brand-purple-dark hover:text-brand-purple text-sm font-semibold hover:underline"
+                            >
+                              {item.title}
+                            </Link>
+                          ) : (
+                            <span className="text-brand-purple-dark text-sm font-semibold">
+                              {item.title}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-brand-muted mt-1 text-xs">
+                          {item.orderNumber ? (
+                            <>
+                              Pedido{" "}
+                              {access.canViewOrders ? (
+                                <Link
+                                  href={`/admin/pedidos/${encodeURIComponent(item.orderNumber)}`}
+                                  className="text-brand-purple-dark hover:text-brand-purple font-mono font-semibold hover:underline"
+                                >
+                                  {item.orderNumber}
+                                </Link>
+                              ) : (
+                                <span className="font-mono">{item.orderNumber}</span>
+                              )}
+                              {" · "}
+                            </>
+                          ) : null}
+                          {formatDateTimeCO(toDate(item.createdAt))}
+                        </div>
                       </div>
-                      <div className="text-brand-muted mt-1 text-xs">
-                        {item.orderNumber ? `Pedido ${item.orderNumber} · ` : ""}
-                        {formatDateTimeCO(toDate(item.createdAt))}
-                      </div>
-                    </div>
-                    <AdminBadge tone="slate">{item.status}</AdminBadge>
-                  </li>
-                ))}
+                      <AdminBadge tone={AFTERSALES_STATUS_TONE[item.status] ?? "slate"}>
+                        {AFTERSALES_STATUS_LABEL[item.status] ?? item.status}
+                      </AdminBadge>
+                    </li>
+                  );
+                })}
               </ul>
             </AdminCard>
           )}
@@ -485,10 +677,20 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
       {activeTab === "loyalty" && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" role="tabpanel">
           <section className="space-y-3">
-            <h3 className="text-brand-purple-dark font-display flex items-center gap-2 text-base font-bold">
-              <Award className="h-4 w-4" />
-              Puntos Lucams, referidos y cupones
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-brand-purple-dark font-display flex items-center gap-2 text-base font-bold">
+                <Award className="h-4 w-4" />
+                Puntos Lucams, referidos y cupones
+              </h3>
+              {access.canViewLoyalty && (
+                <Link
+                  href="/admin/fidelizacion"
+                  className="text-brand-purple hover:text-brand-purple-dark text-xs font-semibold hover:underline"
+                >
+                  Reglas de fidelización →
+                </Link>
+              )}
+            </div>
             {!data.customer ? (
               <AdminCard className="p-4 text-xs text-slate-600">
                 Este contacto aún no tiene cuenta autenticada verificada. Por política de seguridad
@@ -516,14 +718,38 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                       Cupones personales ({data.personalCoupons.length})
                     </div>
                     <ul className="space-y-1.5">
-                      {data.personalCoupons.map((cp) => (
-                        <li key={cp.id} className="flex items-center justify-between text-xs">
-                          <code className="font-mono font-semibold">{cp.code}</code>
-                          <AdminBadge tone={cp.usedCount > 0 ? "slate" : "emerald"}>
-                            {cp.usedCount > 0 ? "Usado" : "Disponible"}
-                          </AdminBadge>
-                        </li>
-                      ))}
+                      {data.personalCoupons.map((cp) => {
+                        const isExpired = cp.usedCount === 0 && toDate(cp.validTo) < new Date();
+                        const badgeTone =
+                          cp.usedCount > 0
+                            ? "slate"
+                            : !cp.isActive || isExpired
+                              ? "amber"
+                              : "emerald";
+                        const badgeLabel =
+                          cp.usedCount > 0
+                            ? "Usado"
+                            : !cp.isActive
+                              ? "Pausado"
+                              : isExpired
+                                ? "Expirado"
+                                : "Disponible";
+                        return (
+                          <li key={cp.id} className="flex items-center justify-between text-xs">
+                            {access.canViewCoupons ? (
+                              <Link
+                                href={`/admin/cupones/${encodeURIComponent(cp.id)}`}
+                                className="text-brand-purple-dark hover:text-brand-purple font-mono font-semibold hover:underline"
+                              >
+                                {cp.code}
+                              </Link>
+                            ) : (
+                              <code className="font-mono font-semibold">{cp.code}</code>
+                            )}
+                            <AdminBadge tone={badgeTone}>{badgeLabel}</AdminBadge>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}
@@ -534,10 +760,13 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                     </div>
                     <ul className="space-y-1.5">
                       {data.referrals.map((ref) => (
-                        <li key={ref.id} className="flex items-center justify-between text-xs">
+                        <li
+                          key={ref.id}
+                          className="flex items-center justify-between gap-2 text-xs"
+                        >
                           <span className="truncate">{ref.referredEmail}</span>
-                          <AdminBadge tone={ref.status === "REWARDED" ? "emerald" : "amber"}>
-                            {ref.status}
+                          <AdminBadge tone={REFERRAL_STATUS_TONE[ref.status] ?? "slate"}>
+                            {REFERRAL_STATUS_LABEL[ref.status] ?? ref.status}
                           </AdminBadge>
                         </li>
                       ))}
@@ -549,10 +778,20 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-brand-purple-dark font-display flex items-center gap-2 text-base font-bold">
-              <Star className="h-4 w-4" />
-              Reseñas ({data.reviews.length})
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-brand-purple-dark font-display flex items-center gap-2 text-base font-bold">
+                <Star className="h-4 w-4" />
+                Reseñas ({data.reviews.length})
+              </h3>
+              {access.canViewReviews && data.reviews.length > 0 && (
+                <Link
+                  href="/admin/resenas"
+                  className="text-brand-purple hover:text-brand-purple-dark text-xs font-semibold hover:underline"
+                >
+                  Moderar en Reseñas →
+                </Link>
+              )}
+            </div>
             {data.reviews.length === 0 ? (
               <AdminEmpty
                 icon={<Star className="h-5 w-5" />}
@@ -630,7 +869,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
               <AdminEmpty
                 icon={<MapPin className="h-5 w-5" />}
                 title="Sin libreta de direcciones"
-                description="Las direcciones guardadas en Mi Cuenta se listan acá."
+                description="Las direcciones guardadas en Mi Cuenta se listan aquí."
               />
             ) : (
               <div className="space-y-2.5">
@@ -654,7 +893,7 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
 
       {activeTab === "identities" && (
         <div className="space-y-4" role="tabpanel">
-          {data.pendingMergesCount > 0 && canMerge && (
+          {data.pendingMergesCount > 0 && access.canMerge && (
             <AdminCard className="border-amber-300 bg-amber-50/70 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-amber-950">
@@ -691,14 +930,20 @@ export function Contact360Tabs({ data, canMerge }: { data: Contact360Data; canMe
                   >
                     <div>
                       <div className="flex items-center gap-2">
-                        <AdminBadge tone="slate">{ident.type}</AdminBadge>
+                        <AdminBadge tone="slate">
+                          {IDENTITY_TYPE_LABEL[ident.type] ?? ident.type}
+                        </AdminBadge>
                         <span className="text-brand-purple-dark font-mono font-semibold">
                           {ident.valueDisplay}
                         </span>
                       </div>
                       <div className="text-brand-muted mt-1">
-                        Fuente: {ident.verificationSource ?? "observado"} · Visto{" "}
-                        {formatDateTimeCO(toDate(ident.lastSeenAt))}
+                        Fuente:{" "}
+                        {ident.verificationSource
+                          ? (VERIFICATION_SOURCE_LABEL[ident.verificationSource] ??
+                            ident.verificationSource)
+                          : "Observada"}{" "}
+                        · Visto {formatDateTimeCO(toDate(ident.lastSeenAt))}
                       </div>
                     </div>
                     {ident.verificationStatus === "VERIFIED" ? (

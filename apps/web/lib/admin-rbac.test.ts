@@ -686,4 +686,40 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     ]);
     expect(rolesWithCapability("staff:manage")).toEqual(["SUPERADMIN"]);
   });
+
+  it("Bloque 4 — paridad N-21 en CRM 360, duplicados, oportunidades B2B, cotizaciones y hoja de taller", () => {
+    // Hoja de taller (/admin/cotizaciones/[id]/taller): exige production:download_assets
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones")).toBe(false);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123")).toBe(false);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123/taller")).toBe(true);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123/taller?print=1")).toBe(
+      true,
+    );
+    // Bordes de seguridad sobre el patrón dinámico
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123/tallerX")).toBe(false);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones//taller")).toBe(false);
+
+    // CUSTOMER_SUPPORT gestiona cotizaciones y oportunidades, pero NO descarga activos 300 DPI de taller
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/oportunidades")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/oportunidades/opp_123")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/cotizaciones")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/cotizaciones/qt_123")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/cotizaciones/qt_123/taller")).toBe(false);
+
+    // OPERATIONS_MANAGER y MANAGER acceden tanto al flujo comercial como a la hoja de taller
+    for (const role of ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"] as const) {
+      expect(canAccessAdminPath(role, "/admin/oportunidades")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/cotizaciones")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/cotizaciones/qt_123/taller")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/clientes/duplicados")).toBe(true);
+    }
+
+    // FINANCE_ANALYST, FULFILLMENT y CMS_EDITOR no acceden a embudo B2B, cotizaciones ni hoja de taller
+    for (const role of ["FINANCE_ANALYST", "FULFILLMENT", "CMS_EDITOR"] as const) {
+      expect(canAccessAdminPath(role, "/admin/oportunidades")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/cotizaciones")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/cotizaciones/qt_123/taller")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/clientes/duplicados")).toBe(false);
+    }
+  });
 });

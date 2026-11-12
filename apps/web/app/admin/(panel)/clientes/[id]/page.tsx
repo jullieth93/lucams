@@ -29,8 +29,9 @@ import {
   AdminCard,
   AdminBadge,
 } from "@/components/admin-page";
+import { CountUp } from "@/components/admin/count-up";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { hasCapability } from "@/lib/admin-rbac";
+import { canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { requireCapability } from "@/lib/admin-rbac-guard";
 import {
   getContact360ForActor,
@@ -45,7 +46,7 @@ import {
   listAssignableCrmAdmins,
   listTasksForEntity,
 } from "@/features/crm/service";
-import { Contact360Tabs } from "./contact-360-tabs";
+import { Contact360Tabs, type Contact360Access } from "./contact-360-tabs";
 import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
@@ -68,9 +69,27 @@ const DROP_OFF_BADGE: Record<
 
 export default async function ClienteDetailPage({ params }: { params: RouteParams }) {
   const session = await requireCapability("contacts:read_360");
-  const canMerge = hasCapability(session.admin.role, "contacts:merge");
-  const canManageTasks = hasCapability(session.admin.role, "crm:manage_tasks");
-  const canManageActivities = hasCapability(session.admin.role, "crm:manage_activities");
+  const role = session.admin.role;
+  const canMerge = hasCapability(role, "contacts:merge");
+  const canManageTasks = hasCapability(role, "crm:manage_tasks");
+  const canManageActivities = hasCapability(role, "crm:manage_activities");
+
+  const access: Contact360Access = {
+    canViewOrders: canAccessAdminPath(role, "/admin/pedidos"),
+    canViewQuotes: canAccessAdminPath(role, "/admin/cotizaciones"),
+    canViewOpportunities: canAccessAdminPath(role, "/admin/oportunidades"),
+    canViewCarts: canAccessAdminPath(role, "/admin/carritos"),
+    canViewModeration: canAccessAdminPath(role, "/admin/moderacion"),
+    canViewCoupons: canAccessAdminPath(role, "/admin/cupones"),
+    canViewLoyalty: canAccessAdminPath(role, "/admin/fidelizacion"),
+    canViewReviews: canAccessAdminPath(role, "/admin/resenas"),
+    canViewSupport: canAccessAdminPath(role, "/admin/soporte"),
+    canViewWarranties: canAccessAdminPath(role, "/admin/garantias"),
+    canViewRetracts: canAccessAdminPath(role, "/admin/retractos"),
+    canMerge,
+  };
+  const canViewCodBlocks = canAccessAdminPath(role, "/admin/finanzas/bloqueos");
+  const canViewNewsletter = canAccessAdminPath(role, "/admin/marketing/suscriptores");
 
   const { id } = await params;
   const resolved = await resolveContactRouteParam(id);
@@ -180,14 +199,16 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                       </div>
                       <p className="text-brand-purple-dark/80 mt-1 text-xs">{sig.detail}</p>
                     </div>
-                    {sig.actionHref && sig.actionLabel && (
-                      <Link
-                        href={sig.actionHref}
-                        className="bg-brand-purple inline-flex min-h-10 items-center rounded-lg px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
-                      >
-                        {sig.actionLabel}
-                      </Link>
-                    )}
+                    {sig.actionHref &&
+                      sig.actionLabel &&
+                      canAccessAdminPath(role, sig.actionHref) && (
+                        <Link
+                          href={sig.actionHref}
+                          className="bg-brand-purple inline-flex min-h-10 items-center rounded-lg px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
+                        >
+                          {sig.actionLabel}
+                        </Link>
+                      )}
                   </li>
                 );
               })}
@@ -209,6 +230,11 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
               {data.kpis.paidOrdersCount} compra{data.kpis.paidOrdersCount === 1 ? "" : "s"} · AOV{" "}
               {data.kpis.aovCents > 0 ? formatCOP(data.kpis.aovCents) : "—"}
             </p>
+            {data.kpis.retractRefundedCents > 0 && (
+              <p className="mt-1 text-[11px] font-medium text-rose-700 tabular-nums">
+                −{formatCOP(data.kpis.retractRefundedCents)} reembolsados por retracto
+              </p>
+            )}
           </AdminCard>
 
           <AdminCard className="p-4">
@@ -226,6 +252,14 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
               )}
             </div>
             <p className="text-brand-muted mt-1.5 text-xs">{data.kpis.codRiskReason}</p>
+            {data.kpis.codRiskLevel === "BLOCKED" && canViewCodBlocks && (
+              <Link
+                href="/admin/finanzas/bloqueos"
+                className="text-brand-purple hover:text-brand-purple-dark mt-1.5 inline-block text-xs font-semibold hover:underline"
+              >
+                Gestionar bloqueos COD →
+              </Link>
+            )}
           </AdminCard>
 
           <AdminCard className="p-4">
@@ -245,6 +279,14 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                 ? `Autorizado el ${formatDateCO(data.kpis.marketingOptInAt)}`
                 : "Solo recibe notificaciones transaccionales de sus pedidos."}
             </p>
+            {data.kpis.marketingOptIn && canViewNewsletter && (
+              <Link
+                href="/admin/marketing/suscriptores"
+                className="text-brand-purple hover:text-brand-purple-dark mt-1.5 inline-block text-xs font-semibold hover:underline"
+              >
+                Ver audiencia newsletter →
+              </Link>
+            )}
           </AdminCard>
 
           <AdminCard className="p-4">
@@ -253,7 +295,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
               Posventa activa
             </div>
             <div className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
-              {data.kpis.openCareCount}
+              <CountUp value={data.kpis.openCareCount} />
             </div>
             <p className="text-brand-muted mt-1 text-xs">
               {data.kpis.openCareCount === 0
@@ -327,13 +369,16 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
           canManageTasks={canManageTasks}
           canViewActivities={!data.piiMasked}
           canManageActivities={canManageActivities && !data.piiMasked}
+          canLinkOrder={access.canViewOrders}
+          canLinkTicket={access.canViewSupport}
+          canLinkOpportunity={access.canViewOpportunities}
           tasks={crmTasks}
           activities={data.piiMasked ? [] : crmActivities}
           assignableAdmins={assignableAdmins}
         />
 
         {/* Pestañas interactivas 360 */}
-        <Contact360Tabs data={data} canMerge={canMerge} />
+        <Contact360Tabs data={data} access={access} />
       </AdminPageBody>
     </AdminPage>
   );

@@ -20,10 +20,16 @@ describe.skipIf(!HAS_DB)(
     const createdContactIds: string[] = [];
     const createdTaskIds: string[] = [];
     const createdAdminIds: string[] = [];
+    const createdOpportunityIds: string[] = [];
 
     afterAll(async () => {
       if (createdTaskIds.length > 0) {
         await prisma.task.deleteMany({ where: { id: { in: createdTaskIds } } }).catch(() => {});
+      }
+      if (createdOpportunityIds.length > 0) {
+        await prisma.opportunity
+          .deleteMany({ where: { id: { in: createdOpportunityIds } } })
+          .catch(() => {});
       }
       if (createdContactIds.length > 0) {
         await prisma.contact
@@ -159,6 +165,56 @@ describe.skipIf(!HAS_DB)(
       });
       expect(reopened.status).toBe("OPEN");
       expect(reopened.completedAt).toBeNull();
+    });
+
+    it("persiste opportunityId en tareas y actividades para oportunidades consultivas B2B", async () => {
+      const suffix = randomUUID().slice(0, 6).toUpperCase();
+      const contact = await prisma.contact.create({
+        data: {
+          primaryEmail: `itest-crm-opp-${suffix.toLowerCase()}@lucams.test`,
+          displayName: "Empresa Eventos S.A.S.",
+        },
+      });
+      createdContactIds.push(contact.id);
+
+      const oppNumber = `OP-${suffix}`;
+      const opp = await prisma.opportunity.create({
+        data: {
+          number: oppNumber,
+          contactId: contact.id,
+          contactName: "Empresa Eventos S.A.S.",
+          title: `Regalos corporativos ${suffix}`,
+          eventType: "CORPORATE_GIFT",
+          stage: "QUALIFYING",
+          expectedUnits: 80,
+          expectedAmountCop: 4_500_000_00,
+        },
+      });
+      createdOpportunityIds.push(opp.id);
+
+      const oppTask = await createCrmTask({
+        title: `Enviar muestra física ${suffix}`,
+        priority: "HIGH",
+        contactId: contact.id,
+        opportunityId: opp.id,
+      });
+      createdTaskIds.push(oppTask.id);
+
+      await createContactActivity({
+        contactId: contact.id,
+        kind: "CALL",
+        body: "Llamada con compras: aprueban anticipo 50%.",
+        metadata: { opportunityId: opp.id, opportunityNumber: opp.number },
+      });
+
+      const oppTasks = await listTasksForEntity({ opportunityId: opp.id });
+      expect(oppTasks).toHaveLength(1);
+      expect(oppTasks[0]?.opportunityId).toBe(opp.id);
+      expect(oppTasks[0]?.opportunityNumber).toBe(oppNumber);
+
+      const contactActivities = await listActivitiesForEntity({ contactId: contact.id });
+      expect(contactActivities[0]?.opportunityId).toBe(opp.id);
+      expect(contactActivities[0]?.opportunityNumber).toBe(oppNumber);
     });
   },
 );

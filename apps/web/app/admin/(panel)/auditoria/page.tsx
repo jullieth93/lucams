@@ -73,9 +73,10 @@ const AUDIT_PRESETS: ReadonlyArray<{
     key: "pii",
     label: "Accesos y exportaciones PII",
     description:
-      "Vistas de Contacto 360, impresión de guías, descargas ZIP de taller y exportaciones CSV.",
+      "Vistas de Contacto 360, hojas de taller, impresión de guías, descargas ZIP 300 DPI y exportaciones CSV.",
     prefixes: [
       "contact.view_360",
+      "quote.production_sheet_view",
       "order.print_shipping_guide",
       "order.design_zip_download",
       "newsletter.export_csv",
@@ -98,9 +99,10 @@ const AUDIT_PRESETS: ReadonlyArray<{
   },
   {
     key: "crm",
-    label: "Fusiones CRM",
-    description: "Fusiones aprobadas o descartadas en la cola de duplicados de Contact.",
-    prefixes: ["contact.merge"],
+    label: "CRM, fusiones y B2B",
+    description:
+      "Fusiones, descartes y reaperturas de duplicados de Contact, actividades/tareas CRM, oportunidades B2B y cotizaciones.",
+    prefixes: ["contact.merge", "crm.", "opportunity.", "quote."],
   },
 ];
 
@@ -222,6 +224,31 @@ function resolveAuditEntityHref(
     case "Contact":
     case "Customer":
       return `/admin/clientes/${encodeURIComponent(entityId)}`;
+    case "IdentityMergeCandidate": {
+      if (typeof meta?.survivorContactId === "string" && meta.survivorContactId) {
+        return `/admin/clientes/${encodeURIComponent(meta.survivorContactId)}`;
+      }
+      if (meta?.reopened === true) {
+        return "/admin/clientes/duplicados?status=PENDING";
+      }
+      return "/admin/clientes/duplicados?status=ALL";
+    }
+    case "ContactActivity":
+    case "Task": {
+      if (typeof meta?.opportunityId === "string" && meta.opportunityId) {
+        return `/admin/oportunidades/${encodeURIComponent(meta.opportunityId)}`;
+      }
+      if (typeof meta?.contactId === "string" && meta.contactId) {
+        return `/admin/clientes/${encodeURIComponent(meta.contactId)}`;
+      }
+      if (typeof meta?.supportTicketId === "string" && meta.supportTicketId) {
+        return `/admin/soporte/${encodeURIComponent(meta.supportTicketId)}`;
+      }
+      if (typeof meta?.orderNumber === "string" && meta.orderNumber) {
+        return `/admin/pedidos/${encodeURIComponent(meta.orderNumber)}`;
+      }
+      return null;
+    }
     case "Opportunity":
       return `/admin/oportunidades/${encodeURIComponent(entityId)}`;
     case "Quote":

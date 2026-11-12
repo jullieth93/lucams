@@ -11,9 +11,18 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, GitMerge, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2, GitMerge, RotateCcw, ShieldCheck } from "lucide-react";
 import type { MergeCandidateStatus } from "@lucams/db";
-import { AdminEmpty, AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
+import {
+  AdminCard,
+  AdminEmpty,
+  AdminHorizontalBars,
+  AdminPage,
+  AdminPageBody,
+  AdminPageHeader,
+  AdminSegmentedBar,
+} from "@/components/admin-page";
+import { CountUp } from "@/components/admin/count-up";
 import { requireCapability } from "@/lib/admin-rbac-guard";
 import {
   isMergeCandidateStatusFilter,
@@ -60,6 +69,7 @@ export default async function AdminDuplicateContactsPage({
   const mergedOk = pickString(sp, "merged") === "1";
   const survivorId = pickString(sp, "survivor");
   const rejectedOk = pickString(sp, "rejected") === "1";
+  const reopenedOk = pickString(sp, "reopened") === "1";
   const errorMsg = pickString(sp, "error");
 
   const data = await listMergeCandidatesForActor({ status, page }, session.admin.role);
@@ -69,6 +79,8 @@ export default async function AdminDuplicateContactsPage({
     APPROVED: data.counts.approved,
     REJECTED: data.counts.rejected,
   };
+  const totalDecisionsAndPending =
+    data.counts.pending + data.counts.approved + data.counts.rejected;
 
   return (
     <AdminPage>
@@ -102,11 +114,115 @@ export default async function AdminDuplicateContactsPage({
             <p className="text-muted-foreground">
               El motor nunca fusiona en silencio por teléfono ni documento compartido, ni mezcla
               datos de destinatarios de regalo. Cada fusión exige código MFA reciente, conserva un
-              snapshot completo en auditoría y respeta los bloqueos permanentes cuando marcas dos
-              perfiles como personas distintas.
+              snapshot completo en auditoría y respeta los bloqueos cuando marcas dos perfiles como
+              personas distintas (con opción auditada de reabrir si el descarte fue accidental).
             </p>
           </div>
         </div>
+
+        {/* KPIs ejecutivos + composición de la cola */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <AdminCard className="p-4">
+            <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+              Pendientes de revisión
+            </p>
+            <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+              <CountUp value={data.counts.pending} />
+            </p>
+            <p className="text-brand-muted mt-1 text-xs">
+              Pares con ambos contactos activos esperando decisión humana
+            </p>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+              Fusiones aprobadas
+            </p>
+            <p className="font-display mt-1 text-2xl font-bold text-emerald-700 tabular-nums">
+              <CountUp value={data.counts.approved} />
+            </p>
+            <p className="text-brand-muted mt-1 text-xs">
+              Con snapshot reversible completo en auditoría
+            </p>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+              Pares descartados
+            </p>
+            <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+              <CountUp value={data.counts.rejected} />
+            </p>
+            <p className="text-brand-muted mt-1 text-xs">
+              Bloqueados para no volver a sugerirse automáticamente
+            </p>
+          </AdminCard>
+        </section>
+
+        {totalDecisionsAndPending > 0 && (
+          <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+            <AdminCard
+              className={`p-5 ${data.reasonBreakdown.length > 0 ? "lg:col-span-6" : "lg:col-span-12"}`}
+            >
+              <div className="mb-3">
+                <h2 className="text-brand-purple-dark font-display text-sm font-bold">
+                  Estado acumulado de la cola de unificación
+                </h2>
+                <p className="text-brand-muted text-xs">
+                  Distribución entre pares por revisar, fusiones completadas y descartes.
+                </p>
+              </div>
+              <AdminSegmentedBar
+                ariaLabel="Distribución de candidatos de fusión por estado"
+                items={[
+                  {
+                    key: "PENDING",
+                    label: "Pendientes",
+                    count: data.counts.pending,
+                    tone: "amber",
+                    href: "/admin/clientes/duplicados?status=PENDING",
+                  },
+                  {
+                    key: "APPROVED",
+                    label: "Fusionados",
+                    count: data.counts.approved,
+                    tone: "emerald",
+                    href: "/admin/clientes/duplicados?status=APPROVED",
+                  },
+                  {
+                    key: "REJECTED",
+                    label: "Descartados",
+                    count: data.counts.rejected,
+                    tone: "slate",
+                    href: "/admin/clientes/duplicados?status=REJECTED",
+                  },
+                ]}
+              />
+            </AdminCard>
+
+            {data.reasonBreakdown.length > 0 && (
+              <AdminCard className="p-5 lg:col-span-6">
+                <div className="mb-3">
+                  <h2 className="text-brand-purple-dark font-display text-sm font-bold">
+                    Señales detectadas en pendientes
+                  </h2>
+                  <p className="text-brand-muted text-xs">
+                    Motivos de correlación que dispararon los candidatos activos.
+                  </p>
+                </div>
+                <AdminHorizontalBars
+                  items={data.reasonBreakdown.map((r) => ({
+                    key: r.code,
+                    label: r.label,
+                    value: r.count,
+                    formattedValue: `${r.count.toLocaleString("es-CO")} ${r.count === 1 ? "par" : "pares"}`,
+                    tone: "purple",
+                  }))}
+                />
+              </AdminCard>
+            )}
+          </section>
+        )}
 
         {mergedOk && (
           <div
@@ -134,6 +250,16 @@ export default async function AdminDuplicateContactsPage({
             className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900"
           >
             Sugerencia descartada. El par quedó registrado para no volver a sugerirse.
+          </div>
+        )}
+
+        {reopenedOk && (
+          <div
+            role="status"
+            className="border-brand-purple/30 bg-brand-purple/8 text-brand-purple-dark flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium"
+          >
+            <RotateCcw className="h-4 w-4 shrink-0" />
+            Sugerencia reabierta y devuelta a la cola de pendientes para revisión humana.
           </div>
         )}
 

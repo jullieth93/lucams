@@ -15,8 +15,9 @@ import {
 } from "@/components/admin-page";
 import { CrmWorkspacePanel } from "@/components/admin/crm-workspace-panel";
 import { WhatsAppIcon } from "@/components/icons/brand";
-import { hasCapability } from "@/lib/admin-rbac";
+import { canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { requireCapability } from "@/lib/admin-rbac-guard";
+import { maskEmail, maskPersonName, maskPhone, maskTaxDocument } from "@/lib/pii-mask";
 import { customerWaLink } from "@/lib/wa";
 import { formatCOP } from "@/lib/format";
 import {
@@ -33,6 +34,7 @@ import {
 } from "@/features/opportunities/schemas";
 import {
   getOpportunityDetail,
+  getServerNowMs,
   listAssignableOpportunityAdmins,
 } from "@/features/opportunities/service";
 import { OpportunityEditForm } from "./opportunity-edit-form";
@@ -52,16 +54,21 @@ export default async function AdminOpportunityDetailPage({
 }) {
   const session = await requireCapability("opportunities:manage");
   const role = session.admin.role;
+  const canReadPii = hasCapability(role, "contacts:read_pii");
   const canManageTasks = hasCapability(role, "crm:manage_tasks");
   const canManageActivities = hasCapability(role, "crm:manage_activities");
-  const canViewActivities =
-    hasCapability(role, "contacts:read_360") && hasCapability(role, "contacts:read_pii");
+  const canViewActivities = hasCapability(role, "contacts:read_360") && canReadPii;
+  const canViewContacts = canAccessAdminPath(role, "/admin/clientes");
+  const canViewQuotes = canAccessAdminPath(role, "/admin/cotizaciones");
+  const canViewOrders = canAccessAdminPath(role, "/admin/pedidos");
+  const canViewSupport = canAccessAdminPath(role, "/admin/soporte");
 
   const { id } = await params;
-  const [opp, assignableAdmins, crmAssignableAdmins] = await Promise.all([
+  const [opp, assignableAdmins, crmAssignableAdmins, nowMs] = await Promise.all([
     getOpportunityDetail(decodeURIComponent(id)),
     listAssignableOpportunityAdmins(),
     canManageTasks ? listAssignableCrmAdmins() : Promise.resolve([]),
+    getServerNowMs(),
   ]);
   if (!opp) notFound();
 
@@ -74,32 +81,61 @@ export default async function AdminOpportunityDetailPage({
 
   const stage = isOpportunityStage(opp.stage) ? opp.stage : "NEW";
   const eventType = isOpportunityEventType(opp.eventType) ? opp.eventType : "OTHER";
-  const contactName =
+  const isOpenStage = stage === "NEW" || stage === "QUALIFYING" || stage === "PROPOSAL_SENT";
+  const eventMs = opp.eventDate ? opp.eventDate.getTime() : null;
+  const isEventOverdue = isOpenStage && eventMs !== null && eventMs < nowMs;
+  const isEventSoon =
+    isOpenStage &&
+    eventMs !== null &&
+    eventMs >= nowMs &&
+    eventMs <= nowMs + 14 * 24 * 60 * 60 * 1000;
+
+  const rawContactName =
     opp.contactName ??
     opp.contact.displayName ??
     opp.contactEmail ??
     opp.contact.primaryEmail ??
     "Contacto B2B";
-  const contactEmail = opp.contactEmail ?? opp.contact.primaryEmail;
-  const contactWhatsapp = opp.contactWhatsapp ?? opp.contact.primaryPhoneE164;
-  const waLink = contactWhatsapp
-    ? customerWaLink(
-        contactWhatsapp,
-        `Hola ${contactName}, te escribo de Lucams Shop sobre tu solicitud ${opp.number}. `,
-      )
+  const rawContactEmail = opp.contactEmail ?? opp.contact.primaryEmail;
+  const rawContactWhatsapp = opp.contactWhatsapp ?? opp.contact.primaryPhoneE164;
+
+  const contactName = canReadPii ? rawContactName : maskPersonName(rawContactName);
+  const contactEmail = rawContactEmail
+    ? canReadPii
+      ? rawContactEmail
+      : maskEmail(rawContactEmail)
     : null;
+  const contactWhatsapp = rawContactWhatsapp
+    ? canReadPii
+      ? rawContactWhatsapp
+      : maskPhone(rawContactWhatsapp)
+    : null;
+  const displayTitle = canReadPii
+    ? opp.title
+    : opp.organization
+      ? `${opp.organization.name} · ${OPPORTUNITY_EVENT_LABELS[eventType]}`
+      : opp.number;
+  const waLink =
+    canReadPii && rawContactWhatsapp
+      ? customerWaLink(
+          rawContactWhatsapp,
+          `Hola ${rawContactName}, te escribo de Lucams Shop sobre tu solicitud ${opp.number}. `,
+        )
+      : null;
 
   return (
     <AdminPage>
       <AdminPageHeader
         icon={<Building2 className="h-5 w-5" />}
-        title={`${opp.number} · ${opp.title}`}
+        title={`${opp.number} · ${displayTitle}`}
         subtitle={
           <span className="inline-flex flex-wrap items-center gap-2">
             <AdminBadge tone={OPPORTUNITY_STAGE_TONES[stage]}>
               {OPPORTUNITY_STAGE_LABELS[stage]}
             </AdminBadge>
             <AdminBadge tone="slate">{OPPORTUNITY_EVENT_LABELS[eventType]}</AdminBadge>
+            {isEventOverdue && <AdminBadge tone="rose">Evento vencido</AdminBadge>}
+            {isEventSoon && <AdminBadge tone="amber">Evento ≤ 14 días</AdminBadge>}
             <span>Creada el {formatDateCO(opp.createdAt)}</span>
           </span>
         }
@@ -153,7 +189,15 @@ export default async function AdminOpportunityDetailPage({
                   </span>
                 )}
                 {opp.eventDate && (
-                  <span className="inline-flex items-center gap-1">
+                  <span
+                    className={`inline-flex items-center gap-1 ${
+                      isEventOverdue
+                        ? "font-semibold text-rose-700"
+                        : isEventSoon
+                          ? "font-semibold text-amber-800"
+                          : ""
+                    }`}
+                  >
                     <Calendar className="h-3.5 w-3.5" />
                     Fecha ideal: {formatDateCO(opp.eventDate)}
                   </span>
@@ -176,9 +220,10 @@ export default async function AdminOpportunityDetailPage({
               initialInternalNotes={opp.internalNotes}
               initialLostReason={opp.lostReason}
               initialConvertedOrderNumber={opp.convertedOrder?.number ?? null}
-              initialContactName={contactName}
-              initialContactEmail={contactEmail}
-              initialContactWhatsapp={contactWhatsapp}
+              initialContactName={rawContactName}
+              initialContactEmail={rawContactEmail}
+              initialContactWhatsapp={rawContactWhatsapp}
+              canEditContactPii={canReadPii}
               currentAdminId={session.admin.id}
               assignableAdmins={assignableAdmins}
             />
@@ -186,10 +231,15 @@ export default async function AdminOpportunityDetailPage({
             <CrmWorkspacePanel
               title="Tareas y bitácora de esta oportunidad"
               contactId={canViewActivities ? opp.contact.id : null}
+              opportunityId={opp.id}
+              opportunityNumber={opp.number}
               currentAdminId={session.admin.id}
               canManageTasks={canManageTasks}
               canViewActivities={canViewActivities}
               canManageActivities={canManageActivities}
+              canLinkOrder={canViewOrders}
+              canLinkTicket={canViewSupport}
+              canLinkOpportunity={true}
               tasks={crmTasks}
               activities={crmActivities}
               assignableAdmins={crmAssignableAdmins}
@@ -207,12 +257,14 @@ export default async function AdminOpportunityDetailPage({
               {contactWhatsapp && (
                 <p className="text-brand-muted text-xs tabular-nums">{contactWhatsapp}</p>
               )}
-              <Link
-                href={`/admin/clientes/${encodeURIComponent(opp.contact.id)}`}
-                className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-block text-xs font-semibold underline underline-offset-2"
-              >
-                Abrir Contacto 360 →
-              </Link>
+              {canViewContacts && (
+                <Link
+                  href={`/admin/clientes/${encodeURIComponent(opp.contact.id)}`}
+                  className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-block text-xs font-semibold underline underline-offset-2"
+                >
+                  Abrir Contacto 360 →
+                </Link>
+              )}
             </AdminCard>
 
             {opp.convertedQuote && (
@@ -220,12 +272,18 @@ export default async function AdminOpportunityDetailPage({
                 <h2 className="text-brand-purple-dark flex items-center gap-1.5 text-sm font-bold">
                   <Package className="h-4 w-4" /> Cotización origen
                 </h2>
-                <Link
-                  href={`/admin/cotizaciones/${encodeURIComponent(opp.convertedQuote.id)}`}
-                  className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-block font-mono text-sm font-bold underline underline-offset-2"
-                >
-                  {opp.convertedQuote.number}
-                </Link>
+                {canViewQuotes ? (
+                  <Link
+                    href={`/admin/cotizaciones/${encodeURIComponent(opp.convertedQuote.id)}`}
+                    className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-block font-mono text-sm font-bold underline underline-offset-2"
+                  >
+                    {opp.convertedQuote.number}
+                  </Link>
+                ) : (
+                  <p className="text-brand-purple-dark mt-2 font-mono text-sm font-bold">
+                    {opp.convertedQuote.number}
+                  </p>
+                )}
                 <p className="text-brand-muted mt-0.5 text-xs">
                   Total cotizado: {formatCOP(opp.convertedQuote.total)}
                 </p>
@@ -242,7 +300,12 @@ export default async function AdminOpportunityDetailPage({
                 </p>
                 {opp.organization.taxIdNumber && (
                   <p className="text-brand-muted mt-0.5 font-mono text-xs">
-                    {opp.organization.taxIdType ?? "NIT"} {opp.organization.taxIdNumber}
+                    {canReadPii
+                      ? `${opp.organization.taxIdType ?? "NIT"} ${opp.organization.taxIdNumber}`
+                      : maskTaxDocument(
+                          opp.organization.taxIdType ?? "NIT",
+                          opp.organization.taxIdNumber,
+                        )}
                   </p>
                 )}
               </AdminCard>
@@ -253,12 +316,18 @@ export default async function AdminOpportunityDetailPage({
                 <h2 className="flex items-center gap-1.5 text-sm font-bold text-emerald-900">
                   <Package className="h-4 w-4" /> Pedido convertido
                 </h2>
-                <Link
-                  href={`/admin/pedidos/${encodeURIComponent(opp.convertedOrder.number)}`}
-                  className="mt-2 inline-block font-mono text-sm font-bold text-emerald-800 underline underline-offset-2"
-                >
-                  {opp.convertedOrder.number}
-                </Link>
+                {canViewOrders ? (
+                  <Link
+                    href={`/admin/pedidos/${encodeURIComponent(opp.convertedOrder.number)}`}
+                    className="mt-2 inline-block font-mono text-sm font-bold text-emerald-800 underline underline-offset-2"
+                  >
+                    {opp.convertedOrder.number}
+                  </Link>
+                ) : (
+                  <p className="mt-2 font-mono text-sm font-bold text-emerald-800">
+                    {opp.convertedOrder.number}
+                  </p>
+                )}
                 <p className="mt-0.5 text-xs text-emerald-800">
                   Total pedido: {formatCOP(opp.convertedOrder.total)}
                 </p>

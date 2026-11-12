@@ -50,6 +50,7 @@ function revalidateCrmSurfaces(meta: {
   contactId?: string | null;
   orderNumber?: string | null;
   supportTicketId?: string | null;
+  opportunityId?: string | null;
 }) {
   revalidatePath("/admin/hoy");
   if (meta.contactId) {
@@ -63,6 +64,10 @@ function revalidateCrmSurfaces(meta: {
     revalidatePath("/admin/soporte");
     revalidatePath(`/admin/soporte/${meta.supportTicketId}`);
   }
+  if (meta.opportunityId) {
+    revalidatePath("/admin/oportunidades");
+    revalidatePath(`/admin/oportunidades/${meta.opportunityId}`);
+  }
 }
 
 export async function createContactActivityAction(
@@ -70,11 +75,16 @@ export async function createContactActivityAction(
   formData: FormData,
 ): Promise<CrmActionState> {
   const session = await requireAdminAction({ capability: "crm:manage_activities" });
+  const canManageOpportunities = hasCapability(session.admin.role, "opportunities:manage");
 
   const contactId = String(formData.get("contactId") ?? "").trim();
   const orderId = String(formData.get("orderId") ?? "").trim() || null;
   const orderNumber = String(formData.get("orderNumber") ?? "").trim() || null;
   const supportTicketId = String(formData.get("supportTicketId") ?? "").trim() || null;
+  const rawOpportunityId = String(formData.get("opportunityId") ?? "").trim() || null;
+  const rawOpportunityNumber = String(formData.get("opportunityNumber") ?? "").trim() || null;
+  const opportunityId = canManageOpportunities ? rawOpportunityId : null;
+  const opportunityNumber = canManageOpportunities ? rawOpportunityNumber : null;
   const kindRaw = String(formData.get("kind") ?? "NOTE").trim();
   const body = String(formData.get("body") ?? "");
 
@@ -90,6 +100,10 @@ export async function createContactActivityAction(
       authorAdminId: session.admin.id,
       kind: kindRaw,
       body,
+      metadata: {
+        ...(opportunityId ? { opportunityId } : {}),
+        ...(opportunityNumber ? { opportunityNumber } : {}),
+      },
     });
 
     await recordAdminAction({
@@ -102,6 +116,7 @@ export async function createContactActivityAction(
         kind: activity.kind,
         orderId,
         supportTicketId,
+        opportunityId,
       },
     });
 
@@ -109,6 +124,7 @@ export async function createContactActivityAction(
       contactId: activity.contactId,
       orderNumber,
       supportTicketId,
+      opportunityId,
     });
 
     return { success: "Actividad registrada en la bitácora del contacto." };
@@ -132,6 +148,7 @@ export async function createCrmTaskAction(
   const session = await requireAdminAction({ capability: "crm:manage_tasks" });
   const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
   const canManageSupport = hasCapability(session.admin.role, "support:manage");
+  const canManageOpportunities = hasCapability(session.admin.role, "opportunities:manage");
 
   const title = String(formData.get("title") ?? "");
   const description = String(formData.get("description") ?? "");
@@ -144,10 +161,12 @@ export async function createCrmTaskAction(
   const orderId = String(formData.get("orderId") ?? "").trim() || null;
   const orderNumber = String(formData.get("orderNumber") ?? "").trim() || null;
   const rawSupportTicketId = String(formData.get("supportTicketId") ?? "").trim() || null;
+  const rawOpportunityId = String(formData.get("opportunityId") ?? "").trim() || null;
 
-  // Defensa horizontal: roles sin acceso 360 no pueden vincular tareas a contactos/tickets arbitrarios.
+  // Defensa horizontal: roles sin acceso 360/oportunidades no pueden vincular tareas arbitrarias.
   const contactId = canRead360 ? rawContactId : null;
   const supportTicketId = canManageSupport ? rawSupportTicketId : null;
+  const opportunityId = canManageOpportunities ? rawOpportunityId : null;
 
   const priority: CrmTaskPriority = isCrmTaskPriority(priorityRaw) ? priorityRaw : "NORMAL";
 
@@ -162,6 +181,7 @@ export async function createCrmTaskAction(
       contactId,
       orderId,
       supportTicketId,
+      opportunityId,
     });
 
     await recordAdminAction({
@@ -175,6 +195,7 @@ export async function createCrmTaskAction(
         contactId: task.contactId,
         orderId: task.orderId,
         supportTicketId: task.supportTicketId,
+        opportunityId: task.opportunityId,
       },
     });
 
@@ -182,6 +203,7 @@ export async function createCrmTaskAction(
       contactId: task.contactId,
       orderNumber,
       supportTicketId: task.supportTicketId,
+      opportunityId: task.opportunityId,
     });
 
     return { success: "Tarea creada y agregada a la Bandeja Hoy." };
@@ -220,6 +242,7 @@ export async function updateCrmTaskStatusAction(
       contactId: true,
       orderId: true,
       supportTicketId: true,
+      opportunityId: true,
     },
   });
   if (!existing) {
@@ -227,13 +250,15 @@ export async function updateCrmTaskStatusAction(
   }
 
   // Defensa horizontal: si el actor no posee `contacts:read_360` (ej. taller o logística),
-  // solo puede actualizar tareas propias o vinculadas a un pedido operativo.
+  // solo puede actualizar tareas propias, vinculadas a un pedido operativo o a una oportunidad autorizada.
   const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
+  const canManageOpportunities = hasCapability(session.admin.role, "opportunities:manage");
   if (!canRead360) {
     const isOwnTask =
       existing.ownerAdminId === session.admin.id || existing.createdByAdminId === session.admin.id;
     const isOperationalOrderTask = existing.orderId !== null;
-    if (!isOwnTask && !isOperationalOrderTask) {
+    const isAuthorizedOpportunityTask = existing.opportunityId !== null && canManageOpportunities;
+    if (!isOwnTask && !isOperationalOrderTask && !isAuthorizedOpportunityTask) {
       return { error: "No tienes permisos para modificar esta tarea." };
     }
   }
@@ -254,6 +279,7 @@ export async function updateCrmTaskStatusAction(
         contactId: updated.contactId,
         orderId: updated.orderId,
         supportTicketId: updated.supportTicketId,
+        opportunityId: updated.opportunityId,
       },
     });
 
@@ -261,6 +287,7 @@ export async function updateCrmTaskStatusAction(
       contactId: updated.contactId,
       orderNumber,
       supportTicketId: updated.supportTicketId,
+      opportunityId: updated.opportunityId,
     });
 
     return {

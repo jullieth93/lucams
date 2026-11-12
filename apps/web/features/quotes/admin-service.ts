@@ -14,10 +14,11 @@
 
 import "server-only";
 import { prisma, type Prisma } from "@/lib/db";
-import type { QuoteStatus } from "@lucams/db";
+import type { AdminRole, QuoteStatus } from "@lucams/db";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { hasCapability } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { maskPersonName, maskPhone } from "@/lib/pii-mask";
 
 export class QuoteNotFoundError extends Error {
   constructor(id: string) {
@@ -41,7 +42,7 @@ export type QuoteListOpts = {
 };
 
 export async function listQuotes(opts: QuoteListOpts = {}) {
-  const page = Math.max(1, opts.page ?? 1);
+  const requestedPage = Math.max(1, opts.page ?? 1);
   const pageSize = opts.pageSize ?? 20;
 
   const where: Prisma.QuoteWhereInput = { deletedAt: null };
@@ -53,6 +54,8 @@ export async function listQuotes(opts: QuoteListOpts = {}) {
       { number: { contains: q, mode: "insensitive" } },
       { customerName: { contains: q, mode: "insensitive" } },
       { customerWhatsapp: { contains: q, mode: "insensitive" } },
+      { customerEmail: { contains: q, mode: "insensitive" } },
+      { city: { contains: q, mode: "insensitive" } },
     ];
   }
 
@@ -62,34 +65,81 @@ export async function listQuotes(opts: QuoteListOpts = {}) {
     if (opts.to) where.createdAt.lte = opts.to;
   }
 
-  const [total, items] = await Promise.all([
+  const [total, statusGroups, convertedToOpportunityCount] = await Promise.all([
     prisma.quote.count({ where }),
-    prisma.quote.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true,
-        number: true,
-        status: true,
-        customerName: true,
-        customerWhatsapp: true,
-        city: true,
-        department: true,
-        total: true,
-        createdAt: true,
-        _count: { select: { items: true } },
-      },
+    prisma.quote.groupBy({
+      by: ["status"],
+      where: { deletedAt: null },
+      _count: { _all: true },
+      _sum: { total: true },
+    }),
+    prisma.opportunity.count({
+      where: { deletedAt: null, convertedQuoteId: { not: null } },
     }),
   ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+
+  const items = await prisma.quote.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      customerName: true,
+      customerWhatsapp: true,
+      customerEmail: true,
+      contactId: true,
+      city: true,
+      department: true,
+      total: true,
+      createdAt: true,
+      _count: { select: { items: true } },
+      convertedOpportunities: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, number: true, stage: true },
+      },
+    },
+  });
+
+  const statusCounts: Record<QuoteStatus, number> = {
+    PENDING: 0,
+    CONTACTED: 0,
+    CLOSED: 0,
+    DISCARDED: 0,
+  };
+  let pendingAmountCents = 0;
+  let closedAmountCents = 0;
+  let totalAll = 0;
+
+  for (const g of statusGroups) {
+    const cnt = g._count._all;
+    const sumTotal = g._sum.total ?? 0;
+    statusCounts[g.status] = cnt;
+    totalAll += cnt;
+    if (g.status === "PENDING") pendingAmountCents = sumTotal;
+    if (g.status === "CLOSED") closedAmountCents = sumTotal;
+  }
 
   return {
     items,
     total,
     page,
     pageSize,
-    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    totalPages,
+    kpis: {
+      totalAll,
+      statusCounts,
+      pendingAmountCents,
+      closedAmountCents,
+      convertedToOpportunityCount,
+    },
   };
 }
 
@@ -117,22 +167,14 @@ export async function getQuoteById(id: string) {
 /**
  * Todo lo que hace falta para FABRICAR lo que se cotizó (Lucy, 2026-07-25).
  *
- * Hasta hoy no existía puerta alguna: la descarga de archivos de imprenta colgaba de `Order`, y
- * mientras la tienda opera por cotización no hay pedidos. El detalle de la cotización mostraba una
- * miniatura de 56 px y nada más, así que los PNG a 300 DPI existían en Storage sin forma de llegar
- * a ellos.
- *
- * Tres diferencias deliberadas frente a `getOrderProductionBundle`:
- *   · NO se filtran las líneas sin archivos de imprenta. Los productos no personalizables también se
- *     fabrican y se empacan, y si desaparecen de la hoja se despachan incompletos.
- *   · `QuoteItem.variantId` es nullable (`onDelete: SetNull`), así que el SKU se busca en cascada
- *     variante → producto → null. Nunca se inventa.
- *   · Se traen los datos que el PNG no explica (atributos de la variante, schema y specs del
- *     producto, canvas y metadata del diseño): son los que `resolveProductionSpec` convierte en
- *     instrucciones.
+ * Aplica enmascaramiento determinista en servidor según `actorRole`:
+ *   · Si el rol carece de `orders:read_pii` y `contacts:read_pii` (`PRINT_WORKSHOP`),
+ *     enmascara `customerName` y `customerWhatsapp` y oculta `notes` de texto libre.
+ *   · Si el rol carece de `opportunities:manage` y `finance:read` (`PRINT_WORKSHOP`),
+ *     oculta precios comerciales unitarios y totales (`pricingMasked = true`).
  */
-export async function getQuoteProductionBundle(id: string) {
-  return prisma.quote.findFirst({
+export async function getQuoteProductionBundle(id: string, actorRole?: AdminRole) {
+  const raw = await prisma.quote.findFirst({
     where: { id, deletedAt: null },
     select: {
       id: true,
@@ -178,6 +220,32 @@ export async function getQuoteProductionBundle(id: string) {
       },
     },
   });
+
+  if (!raw) return null;
+
+  const canReadPii =
+    !actorRole ||
+    hasCapability(actorRole, "orders:read_pii") ||
+    hasCapability(actorRole, "contacts:read_pii");
+  const canReadPricing =
+    !actorRole ||
+    hasCapability(actorRole, "opportunities:manage") ||
+    hasCapability(actorRole, "finance:read");
+
+  return {
+    ...raw,
+    customerName: canReadPii ? raw.customerName : maskPersonName(raw.customerName),
+    customerWhatsapp: canReadPii ? raw.customerWhatsapp : maskPhone(raw.customerWhatsapp),
+    notes: canReadPii ? raw.notes : null,
+    hasHiddenCustomerNote: !canReadPii && Boolean(raw.notes?.trim()),
+    total: canReadPricing ? raw.total : null,
+    piiMasked: !canReadPii,
+    pricingMasked: !canReadPricing,
+    items: raw.items.map((item) => ({
+      ...item,
+      unitPrice: canReadPricing ? item.unitPrice : null,
+    })),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -185,7 +253,7 @@ export async function getQuoteProductionBundle(id: string) {
 // ─────────────────────────────────────────────────────────────────────
 
 export async function updateQuoteStatus(id: string, status: QuoteStatus) {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.OPPORTUNITIES });
+  const session = await requireAdminAction({ capability: "opportunities:manage" });
 
   const existing = await prisma.quote.findFirst({
     where: { id, deletedAt: null },
@@ -225,7 +293,7 @@ export async function updateQuoteStatus(id: string, status: QuoteStatus) {
  * campo guarda solo el texto acumulado.
  */
 export async function addQuoteInternalNote(id: string, note: string) {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.OPPORTUNITIES });
+  const session = await requireAdminAction({ capability: "opportunities:manage" });
 
   const trimmed = note.trim();
   if (!trimmed) {

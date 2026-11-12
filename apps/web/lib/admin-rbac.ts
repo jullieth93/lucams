@@ -338,9 +338,31 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/seguridad", roles: ALL_ROLES_ORDER },
 ];
 
+/**
+ * Reglas de ruta con segmento dinámico intermedio evaluadas ANTES del match por prefijo literal.
+ * Garantiza paridad N-21 entre `AdminPanelLayout`, helpers de enlaces (`canAccessAdminPath`)
+ * y `requireCapability` en la página/acción cuando una subruta dinámica cambia la capacidad exigida.
+ */
+const ROUTE_PATTERN_ROLES: ReadonlyArray<{
+  pattern: RegExp;
+  roles: readonly AdminRole[];
+}> = [
+  {
+    // Hoja imprimible de producción/taller para cotizaciones con activos 300 DPI:
+    // habilita PRINT_WORKSHOP y restringe CUSTOMER_SUPPORT (exige production:download_assets).
+    pattern: /^\/admin\/cotizaciones\/[^/?]+\/taller(?:$|[/?])/,
+    roles: rolesWithCapability("production:download_assets"),
+  },
+];
+
 /** ¿El rol puede acceder a esta ruta admin? */
 export function canAccessAdminPath(role: AdminRole, pathname: string): boolean {
   if (role === "SUPERADMIN") return true;
+  for (const rule of ROUTE_PATTERN_ROLES) {
+    if (rule.pattern.test(pathname)) {
+      return rule.roles.includes(role);
+    }
+  }
   let best: { prefix: string; roles: readonly AdminRole[] } | null = null;
   for (const r of ROUTE_ROLES) {
     if (

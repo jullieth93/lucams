@@ -65,16 +65,17 @@ const SELF_DEALING_SENSITIVE_ACTIONS = new Set([
   "cod.flag_discrepancy",
   "contact.merge",
   "contact.merge_reject",
+  "contact.merge_reopen",
 ]);
 
-async function resolveTargetEmailForAudit(entry: AdminAuditEntry): Promise<string | null> {
+async function resolveTargetEmailsForAudit(entry: AdminAuditEntry): Promise<string[]> {
   switch (entry.entityType) {
     case "Order": {
       const row = await prisma.order.findUnique({
         where: { id: entry.entityId },
         select: { email: true },
       });
-      return row?.email ?? null;
+      return row?.email ? [row.email] : [];
     }
     case "RetractRequest": {
       const row = await prisma.retractRequest.findUnique({
@@ -84,7 +85,8 @@ async function resolveTargetEmailForAudit(entry: AdminAuditEntry): Promise<strin
           orderItem: { select: { order: { select: { email: true } } } },
         },
       });
-      return row?.contact?.primaryEmail ?? row?.orderItem?.order?.email ?? null;
+      const email = row?.contact?.primaryEmail ?? row?.orderItem?.order?.email ?? null;
+      return email ? [email] : [];
     }
     case "WarrantyClaim": {
       const row = await prisma.warrantyClaim.findUnique({
@@ -94,24 +96,30 @@ async function resolveTargetEmailForAudit(entry: AdminAuditEntry): Promise<strin
           orderItem: { select: { order: { select: { email: true } } } },
         },
       });
-      return row?.contact?.primaryEmail ?? row?.orderItem?.order?.email ?? null;
+      const email = row?.contact?.primaryEmail ?? row?.orderItem?.order?.email ?? null;
+      return email ? [email] : [];
     }
     case "Contact": {
       const row = await prisma.contact.findUnique({
         where: { id: entry.entityId },
         select: { primaryEmail: true },
       });
-      return row?.primaryEmail ?? null;
+      return row?.primaryEmail ? [row.primaryEmail] : [];
     }
     case "IdentityMergeCandidate": {
       const row = await prisma.identityMergeCandidate.findUnique({
         where: { id: entry.entityId },
-        select: { primaryContact: { select: { primaryEmail: true } } },
+        select: {
+          primaryContact: { select: { primaryEmail: true } },
+          secondaryContact: { select: { primaryEmail: true } },
+        },
       });
-      return row?.primaryContact?.primaryEmail ?? null;
+      return [row?.primaryContact?.primaryEmail, row?.secondaryContact?.primaryEmail].filter(
+        (v): v is string => Boolean(v),
+      );
     }
     default:
-      return null;
+      return [];
   }
 }
 
@@ -126,17 +134,17 @@ export async function recordAdminAction(entry: AdminAuditEntry): Promise<void> {
     let metadata: Record<string, unknown> = entry.metadata ?? {};
     if (SELF_DEALING_SENSITIVE_ACTIONS.has(entry.action)) {
       try {
-        const [actor, targetEmail] = await Promise.all([
+        const [actor, targetEmails] = await Promise.all([
           prisma.adminUser.findUnique({
             where: { id: entry.actorId },
             select: { email: true },
           }),
-          resolveTargetEmailForAudit(entry),
+          resolveTargetEmailsForAudit(entry),
         ]);
+        const normalizedActorEmail = actor?.email?.trim().toLowerCase();
         if (
-          actor?.email &&
-          targetEmail &&
-          actor.email.trim().toLowerCase() === targetEmail.trim().toLowerCase()
+          normalizedActorEmail &&
+          targetEmails.some((e) => e.trim().toLowerCase() === normalizedActorEmail)
         ) {
           metadata = { ...metadata, selfDealing: true };
           logger.warn({

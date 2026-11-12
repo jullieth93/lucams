@@ -372,12 +372,12 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
         steps: [
           "Compara identidades, historial y relaciones de ambos contactos.",
           "Descarta el candidato si no existe evidencia suficiente de que sean la misma persona.",
-          "Si procede, selecciona el contacto principal y revisa los datos que prevalecerán.",
-          "Confirma la fusión y verifica pedidos, oportunidades, tickets y consentimientos resultantes.",
-          "Registra cualquier incidencia para revisión en lugar de repetir la fusión.",
+          "Si descartaste un par por error y ambos perfiles siguen activos, puedes reabrirlo a pendientes desde la pestaña Descartados.",
+          "Si procede la unificación, selecciona el contacto principal y confirma con tu código MFA reciente.",
+          "Verifica pedidos, oportunidades, tickets y consentimientos resultantes en Contacto 360.",
         ],
         expected:
-          "Existe una identidad canónica coherente o un descarte justificado, sin pérdida de relaciones.",
+          "Existe una identidad canónica coherente con snapshot reversible en auditoría o un descarte justificado.",
       },
     ],
     cautions: [
@@ -389,10 +389,15 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
         answer:
           "No necesariamente. Un dato compartido puede corresponder a familiares o empresas; contrasta varias señales.",
       },
+      {
+        question: "¿Qué pasa si descarté un candidato de duplicado por accidente?",
+        answer:
+          "Abre la pestaña Descartados y usa Reabrir revisión para devolverlo a Pendientes con registro en auditoría. La fusión definitiva seguirá exigiendo verificación MFA.",
+      },
     ],
     related: ["clientes", "auditoria"],
-    keywords: ["duplicado", "fusión", "identidad", "colisión", "contacto canónico"],
-    version: 1,
+    keywords: ["duplicado", "fusión", "identidad", "colisión", "contacto canónico", "reabrir"],
+    version: 2,
   },
   {
     id: "oportunidades",
@@ -549,10 +554,11 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "taller",
-            label: "Ficha de taller",
-            description: "Detalla líneas personalizadas para evaluar o preparar fabricación.",
+            label: "Hoja de taller",
+            description:
+              "Detalla líneas personalizadas y archivos de imprenta a 300 DPI únicamente para roles con permiso de producción.",
             interpretation:
-              "La ficha técnica no autoriza producción sin el flujo comercial correspondiente.",
+              "Registra acceso en auditoría, protege datos personales y precios ante el rol de taller y no autoriza imprimir diseños pendientes de moderación.",
           },
         ],
       },
@@ -565,8 +571,8 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
         steps: [
           "Verifica identidad del solicitante, fecha y estado de la cotización.",
           "Revisa productos, variantes, cantidades, personalización y condiciones.",
-          "Consulta la ficha de taller si hay requisitos técnicos.",
-          "Vincula o crea una sola oportunidad para el seguimiento cuando proceda.",
+          "Consulta la hoja de taller si tu rol tiene permiso de producción y hay requisitos técnicos.",
+          "Vincula o convierte en una sola Oportunidad B2B cuando corresponda a volumen, empresa o evento.",
           "Registra el próximo paso sin afirmar que existe una venta confirmada.",
         ],
         expected:
@@ -576,14 +582,20 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
     cautions: ["No uses cotizaciones históricas como evidencia de ingresos o pagos."],
     faqs: [
       {
-        question: "¿Por qué no aparece en el menú principal?",
+        question:
+          "¿Por qué no aparece en el menú principal cuando el checkout completo está activo?",
         answer:
-          "Es un módulo histórico del modo catálogo; las páginas siguen disponibles para consulta y continuidad comercial.",
+          "Con tienda completa activa, las ventas minoristas entran como Pedidos y las negociaciones de volumen se gestionan en Oportunidades B2B. Puedes abrir Cotizaciones desde el buscador rápido (⌘K) para continuidad comercial.",
+      },
+      {
+        question: "¿Por qué Soporte al cliente no ve el botón Hoja de taller?",
+        answer:
+          "La hoja de taller expone originales de imprenta a 300 DPI y está restringida a roles con permiso de descarga de producción.",
       },
     ],
-    related: ["oportunidades", "pedidos", "clientes"],
-    keywords: ["propuesta", "precio", "histórico", "catálogo", "taller", "B2B"],
-    version: 1,
+    related: ["oportunidades", "pedidos", "clientes", "moderacion"],
+    keywords: ["propuesta", "precio", "histórico", "catálogo", "taller", "B2B", "300 DPI"],
+    version: 2,
   },
   {
     id: "resenas",

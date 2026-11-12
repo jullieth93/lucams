@@ -22,6 +22,7 @@ import {
   GitMerge,
   Mail,
   Phone,
+  RotateCcw,
   ShieldAlert,
   ShieldCheck,
   ShoppingBag,
@@ -33,7 +34,11 @@ import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import { AdminBadge } from "@/components/admin-page";
 import { formatCOP, formatRelativeTime } from "@/lib/format";
 import type { MergeCandidateItem, MergeContactSummary } from "@/features/identity/merge-service";
-import { approveContactMergeAction, rejectContactMergeAction } from "./actions";
+import {
+  approveContactMergeAction,
+  rejectContactMergeAction,
+  reopenContactMergeAction,
+} from "./actions";
 
 const SOURCE_LABEL: Record<string, string> = {
   CUSTOMER_AUTH: "Cuenta web",
@@ -223,6 +228,8 @@ export function MergeCandidateCard({ item }: { item: MergeCandidateItem }) {
   const { confirm, confirmDialog } = useAdminConfirm();
   const rejectFormRef = useRef<HTMLFormElement>(null);
   const rejectConfirmedRef = useRef(false);
+  const reopenFormRef = useRef<HTMLFormElement>(null);
+  const reopenConfirmedRef = useRef(false);
 
   const isPending = item.status === "PENDING";
   const canApprove = isPending && !item.bothHaveActiveCustomerAccounts;
@@ -250,6 +257,26 @@ export function MergeCandidateCard({ item }: { item: MergeCandidateItem }) {
     if (ok) {
       rejectConfirmedRef.current = true;
       rejectFormRef.current?.requestSubmit();
+    }
+  }
+
+  async function handleReopenSubmit(e: FormEvent<HTMLFormElement>) {
+    if (reopenConfirmedRef.current) {
+      reopenConfirmedRef.current = false;
+      return;
+    }
+    e.preventDefault();
+    const ok = await confirm(
+      "El par volverá a la pestaña de pendientes para que un administrador revise su evidencia y decida si fusionarlo (con MFA) o mantenerlo separado.",
+      {
+        title: "¿Reabrir sugerencia descartada?",
+        confirmLabel: "Sí, devolver a pendientes",
+        cancelLabel: "Cancelar",
+      },
+    );
+    if (ok) {
+      reopenConfirmedRef.current = true;
+      reopenFormRef.current?.requestSubmit();
     }
   }
 
@@ -412,6 +439,27 @@ export function MergeCandidateCard({ item }: { item: MergeCandidateItem }) {
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
           )}
+          {item.status === "REJECTED" &&
+            (item.canReopen ? (
+              <form
+                ref={reopenFormRef}
+                action={reopenContactMergeAction}
+                onSubmit={handleReopenSubmit}
+              >
+                <input type="hidden" name="candidateId" value={item.id} />
+                <button
+                  type="submit"
+                  className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Reabrir para revisión
+                </button>
+              </form>
+            ) : (
+              <span className="text-muted-foreground text-[11px]">
+                No reabrible (uno de los contactos fue archivado o anonimizado)
+              </span>
+            ))}
         </footer>
       )}
       {confirmDialog}
