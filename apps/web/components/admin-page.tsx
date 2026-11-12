@@ -856,9 +856,8 @@ export function AdminComboBarLineChart({
                 stroke="#FFFFFF"
                 strokeWidth={1.5}
               >
-                <title>
-                  {p.d.label}: {p.d.lineFormatted ?? p.val}
-                </title>
+                {/* Un único string evita separadores <!-- --> de React 19 dentro de SVG <title> (hydration mismatch) */}
+                <title>{`${p.d.label}: ${p.d.lineFormatted ?? p.val}`}</title>
               </circle>
             ))
           : null}
@@ -931,9 +930,7 @@ export function AdminDonutChart({
                   transform="rotate(-90 70 70)"
                   className="transition-all duration-300"
                 >
-                  <title>
-                    {s.label}: {s.formattedValue ?? s.count.toLocaleString("es-CO")} ({s.pct}%)
-                  </title>
+                  <title>{`${s.label}: ${s.formattedValue ?? s.count.toLocaleString("es-CO")} (${s.pct}%)`}</title>
                 </circle>
               ))}
         </svg>
