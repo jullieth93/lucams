@@ -53,6 +53,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Hint } from "@/components/ui/tooltip";
 import { getAdminNav, type NavBadge, type NavGroup } from "@/lib/admin-nav";
 import { adminHomePath, canAccessAdminPath, filterNavByRole } from "@/lib/admin-rbac";
+import { isCatalogMode } from "@/lib/store-mode";
 import type { AdminRole } from "@lucams/db";
 
 type AdminInfo = {
@@ -868,7 +869,11 @@ function AdminCommandPalette({
         icon: Users,
       });
     }
-    if (!seen.has("/admin/cotizaciones") && canAccessAdminPath(role, "/admin/cotizaciones")) {
+    if (
+      isCatalogMode() &&
+      !seen.has("/admin/cotizaciones") &&
+      canAccessAdminPath(role, "/admin/cotizaciones")
+    ) {
       seen.add("/admin/cotizaciones");
       items.push({
         key: "/admin/cotizaciones",
