@@ -443,7 +443,7 @@ export default async function AdminPedidoDetallePage({
       key: "warranty",
       label: `Garantías (${warrantyClaims.length})`,
       detail: `Último estado: ${latestWarranty.status}`,
-      href: `/admin/garantias?status=${encodeURIComponent(latestWarranty.status)}`,
+      href: `/admin/garantias?status=all&q=${encodeURIComponent(order.number)}`,
       tone:
         latestWarranty.status === "RESOLVED"
           ? "emerald"
@@ -459,7 +459,7 @@ export default async function AdminPedidoDetallePage({
       key: "retract",
       label: `Retractos (${retractRequests.length})`,
       detail: `Estado: ${latestRetract.status}`,
-      href: `/admin/retractos?status=${encodeURIComponent(latestRetract.status)}`,
+      href: `/admin/retractos?status=all&q=${encodeURIComponent(order.number)}`,
       tone:
         latestRetract.status === "REFUNDED"
           ? "emerald"

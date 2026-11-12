@@ -42,6 +42,7 @@ import {
   bulkArchiveReviews,
   listReviewProductOptions,
   listReviewsAdmin,
+  sanitizeReviewReturnPath,
   toggleFeaturedReview,
 } from "./admin-service";
 
@@ -116,5 +117,31 @@ describe("reglas de destacar/archivar (conservadas)", () => {
         data: expect.objectContaining({ featured: false, isApproved: false }),
       }),
     );
+  });
+});
+
+describe("Bloque 6 — búsqueda por #id y sanitización anti open-redirect", () => {
+  it("listReviewsAdmin limpia '#' inicial y busca también por id de reseña", async () => {
+    await listReviewsAdmin({ status: "all", q: "#crev000000000000000000001" });
+    const where = reviewFindMany.mock.calls[0]?.[0]?.where as { OR?: unknown[] } | undefined;
+    expect(where?.OR).toEqual(
+      expect.arrayContaining([
+        { id: { contains: "crev000000000000000000001", mode: "insensitive" } },
+      ]),
+    );
+  });
+
+  it("sanitizeReviewReturnPath acepta rutas internas de reseñas y ficha producto y bloquea open-redirects", () => {
+    expect(sanitizeReviewReturnPath("/admin/resenas?status=pending&rating=1")).toBe(
+      "/admin/resenas?status=pending&rating=1",
+    );
+    expect(sanitizeReviewReturnPath("/admin/productos/cm9abc1234567890123456789")).toBe(
+      "/admin/productos/cm9abc1234567890123456789",
+    );
+    expect(sanitizeReviewReturnPath("https://evil.example/phish")).toBe("/admin/resenas");
+    expect(sanitizeReviewReturnPath("//evil.example/phish")).toBe("/admin/resenas");
+    expect(sanitizeReviewReturnPath("/admin/resenas/../../login")).toBe("/admin/resenas");
+    expect(sanitizeReviewReturnPath("javascript:alert(1)")).toBe("/admin/resenas");
+    expect(sanitizeReviewReturnPath(null)).toBe("/admin/resenas");
   });
 });

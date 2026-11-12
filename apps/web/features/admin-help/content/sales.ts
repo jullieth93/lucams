@@ -605,49 +605,62 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
     title: "Reseñas",
     area: "Ventas y CRM",
     route: "/admin/resenas",
-    summary: "Moderación, respuesta oficial y destacado de reseñas verificadas de clientes.",
+    summary:
+      "Reputación verificada, analítica de calificaciones 5★–1★, moderación de catálogo y seguimiento posventa 360°.",
     purpose:
-      "Permite revisar que las opiniones publicadas cumplan las reglas del sitio y responder de manera institucional. Las reseñas proceden de compras elegibles y no deben manipularse para ocultar críticas legítimas.",
+      "Permite supervisar la voz real de los compradores verificados, publicar reseñas legítimas en la ficha del producto (PDP), curar testimonios destacados para la portada (Home) y detectar calificaciones bajas para activar atención privada en Soporte o Contacto 360. No oculta críticas válidas por su puntaje.",
     whenToUse: [
-      "Para revisar opiniones pendientes de moderación.",
-      "Para responder una experiencia de compra públicamente.",
-      "Para seleccionar contenido destacable sin alterar la opinión del cliente.",
+      "Para revisar y aprobar reseñas pendientes antes de su publicación en la tienda.",
+      "Para seleccionar reseñas aprobadas que merezcan aparecer en el bloque de testimonios del Home.",
+      "Para detectar calificaciones críticas (1★–2★) y abrir seguimiento directo con el pedido, Contacto 360 o Soporte.",
     ],
     concepts: [
       {
-        term: "Reseña verificada",
+        term: "Publicación en dos pasos",
         definition:
-          "Opinión asociada a una compra que cumple las condiciones del flujo de reseñas.",
+          "Aprobar publica la reseña en la página del producto (PDP); marcar ★ Destacar en Home requiere que esté aprobada y la promueve a la portada.",
       },
       {
-        term: "Respuesta oficial",
-        definition: "Comentario de Lucams que complementa la opinión sin reemplazarla ni editarla.",
+        term: "Compra verificada",
+        definition:
+          "Distintivo otorgado cuando la opinión proviene de una compra real confirmada mediante cuenta de cliente o enlace único posentrega.",
+      },
+      {
+        term: "Lectura de reputación vs. moderación",
+        definition:
+          "Soporte consulta todas las calificaciones y navega a Pedido o Contacto 360 en solo lectura; Catálogo y Operaciones ejecutan la moderación editorial.",
       },
     ],
     sections: [
       {
         id: "moderacion",
-        title: "Moderación y publicación",
-        summary: "Controla visibilidad, estado, respuesta y selección editorial.",
+        title: "Analítica 5★–1★, moderación y conexión posventa",
+        summary:
+          "Integra distribución por estrellas, barra de estados, acciones por lote y enlaces 360°.",
         topics: [
           {
-            id: "estado",
-            label: "Estado de moderación",
-            description: "Indica si la reseña está pendiente, aprobada, rechazada o archivada.",
-            interpretation: "Aplica criterios consistentes y registra el motivo cuando se rechace.",
+            id: "distribucion",
+            label: "Distribución 5★–1★ y alertas críticas",
+            description:
+              "Muestra el promedio global aprobado, el peso porcentual de cada estrella y permite filtrar con un clic las reseñas de 1★ o 2★.",
+            interpretation:
+              "Si aumentan las reseñas de 1★ o 2★ en un mismo producto, inspecciona la ficha en catálogo y los reclamos de garantía asociados.",
           },
           {
-            id: "contenido",
-            label: "Texto y calificación",
-            description: "Opinión del cliente sobre su experiencia.",
+            id: "estado",
+            label: "Estados: Pendiente, Aprobada y Archivada",
+            description:
+              "Controla qué opiniones se muestran en la tienda pública y conserva archivadas las descartadas por spam, abuso o datos privados.",
             caution:
-              "No edites el sentido de la opinión ni expongas datos personales en la respuesta.",
+              "Nunca archives una reseña legítima solo por tener baja calificación; archiva únicamente cuando infrinja normas de respeto o exponga datos personales.",
           },
           {
             id: "destacada",
-            label: "Destacada",
-            description: "Controla su selección para ubicaciones editoriales.",
-            interpretation: "Destacar no equivale a aprobar ni cambia la calificación.",
+            label: "★ Destacar en Home y enlaces 360°",
+            description:
+              "Promueve reseñas aprobadas a la portada y enlaza cada fila con PDP, ficha del producto, Pedido, Contacto 360 y Soporte.",
+            interpretation:
+              "Para atender una mala experiencia no existe réplica pública en la reseña: gestiona la solución privada por Soporte o Contacto 360.",
           },
         ],
       },
@@ -655,31 +668,49 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "moderar-resena",
-        title: "Moderar y responder una reseña",
-        goal: "Publicar contenido legítimo y atender la experiencia con respeto.",
+        title: "Moderar reseñas y curar destacados de portada",
+        goal: "Publicar opiniones auténticas en PDP y mantener testimonios representativos en el Home.",
+        roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"],
         steps: [
-          "Revisa la reseña y su compra relacionada sin divulgar información privada.",
-          "Aprueba o rechaza según reglas de contenido, no según la calificación.",
-          "Redacta una respuesta oficial breve, empática y orientada a solución cuando aporte valor.",
-          "Abre un ticket si existe un problema que requiera atención privada.",
-          "Marca como destacada solo si la reseña aprobada aporta contexto útil a futuros compradores.",
+          "Filtra la vista Pendientes y verifica el texto, puntaje, producto y sello de compra verificada.",
+          "Aprueba las reseñas legítimas (individualmente o en lote) para publicarlas en la página del producto.",
+          "Si una reseña contiene insultos, spam o datos sensibles (teléfonos, direcciones), archívala para retirarla de la vista pública.",
+          "Entre las reseñas ya aprobadas con contexto útil para futuros compradores, activa ★ Destacar para mostrarlas en el Home.",
         ],
         expected:
-          "La opinión conserva su autenticidad y cualquier problema operativo tiene seguimiento por el canal adecuado.",
+          "La caché de la ficha del producto y de la portada se actualiza al instante y cada acción queda registrada en auditoría.",
+      },
+      {
+        id: "atender-resena-critica",
+        title: "Dar seguimiento posventa a una reseña de 1★ o 2★",
+        goal: "Convertir una calificación crítica en gestión proactiva de soporte o garantía.",
+        roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER", "CUSTOMER_SUPPORT"],
+        steps: [
+          "Haz clic en las barras de 1★ o 2★ o en la tarjeta de atención prioritaria para aislar las opiniones críticas.",
+          "Abre el enlace al Pedido o a Contacto 360 en la misma fila para revisar entrega, diseño y antecedentes.",
+          "Inicia o actualiza la atención privada desde Soporte o Garantías según corresponda al caso.",
+        ],
+        expected:
+          "El comprador recibe acompañamiento directo por el canal adecuado sin alterar ni censurar su calificación original.",
       },
     ],
     cautions: [
-      "No rechaces una reseña únicamente por ser negativa ni prometas soluciones que aún no están confirmadas.",
+      "No censures reseñas negativas reales: la transparencia protege la confianza de marca y cumple las normas de protección al consumidor.",
     ],
     faqs: [
       {
-        question: "¿Puedo responder con los datos del pedido?",
+        question: "¿Cómo respondo a un cliente que dejó una queja en una reseña?",
         answer:
-          "No expongas datos personales ni detalles privados; traslada la gestión sensible a Soporte.",
+          "Lucams no publica réplicas abiertas sobre la reseña para proteger la privacidad del comprador; usa los enlaces a Pedido, Contacto 360 o Soporte para atenderlo directamente.",
+      },
+      {
+        question: "¿Por qué Soporte ve las reseñas pero no los botones de aprobar o archivar?",
+        answer:
+          "Porque Soporte tiene acceso de lectura reputacional para investigar incidencias, mientras la publicación en escaparate corresponde a roles con escritura de catálogo.",
       },
     ],
-    related: ["soporte", "pedidos", "clientes"],
-    keywords: ["opinión", "calificación", "moderar", "respuesta", "destacada"],
-    version: 1,
+    related: ["soporte", "garantias", "pedidos", "clientes", "productos"],
+    keywords: ["opinión", "calificación", "estrellas", "moderar", "destacada", "reputación", "PDP"],
+    version: 2,
   },
 ];

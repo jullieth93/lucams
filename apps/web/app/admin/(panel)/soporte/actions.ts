@@ -28,7 +28,15 @@ function revalidateTicket(id: string) {
   revalidatePath("/admin/soporte");
   revalidatePath(`/admin/soporte/${id}`);
   revalidatePath("/admin/hoy");
+  revalidatePath("/admin/dashboard");
 }
+
+const SAFE_SUPPORT_ERROR_MESSAGES = new Set([
+  "Prioridad no válida.",
+  "El integrante seleccionado no está activo o no pertenece a soporte.",
+  "El mensaje está vacío",
+  "El mensaje supera el máximo (2000 caracteres)",
+]);
 
 function parseExpectedUpdatedAt(raw: FormDataEntryValue | null): Date | null {
   if (typeof raw !== "string" || !raw.trim()) return null;
@@ -111,9 +119,15 @@ export async function updateTicketGovernanceAction(_p: St, fd: FormData): Promis
     if (err instanceof SupportConcurrencyError) {
       return { error: err.message };
     }
-    return {
-      error: err instanceof Error ? err.message : "No se pudo guardar la asignación.",
-    };
+    if (err instanceof Error && SAFE_SUPPORT_ERROR_MESSAGES.has(err.message)) {
+      return { error: err.message };
+    }
+    logger.warn({
+      event: "admin.support.assign_fail",
+      id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: "No se pudo guardar la asignación." };
   }
 }
 
@@ -151,12 +165,15 @@ export async function replyTicketAction(_p: St, fd: FormData): Promise<St> {
         : "Respuesta enviada al cliente por correo y guardada en el hilo.",
     };
   } catch (err) {
+    if (err instanceof Error && SAFE_SUPPORT_ERROR_MESSAGES.has(err.message)) {
+      return { error: err.message };
+    }
     logger.warn({
       event: "admin.support.reply_fail",
       id,
       err: err instanceof Error ? err.message : String(err),
     });
-    return { error: err instanceof Error ? err.message : "No se pudo guardar el mensaje." };
+    return { error: "No se pudo guardar el mensaje." };
   }
 }
 
@@ -184,6 +201,8 @@ export async function convertTicketToCaseAction(_p: St, fd: FormData): Promise<S
       metadata: { kind, caseId, orderItemId },
     });
     revalidateTicket(id);
+    revalidatePath(kind === "warranty" ? "/admin/garantias" : "/admin/retractos");
+    revalidatePath("/admin/pedidos");
     return {
       success:
         kind === "warranty"

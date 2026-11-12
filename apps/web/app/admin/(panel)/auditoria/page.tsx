@@ -255,11 +255,13 @@ function resolveAuditEntityHref(
     case "SupportTicket":
       return `/admin/soporte/${encodeURIComponent(entityId)}`;
     case "WarrantyClaim":
-      return "/admin/garantias";
+      return `/admin/garantias?status=all&q=${encodeURIComponent(entityId)}`;
     case "RetractRequest":
-      return "/admin/retractos";
+      return `/admin/retractos?status=all&q=${encodeURIComponent(entityId)}`;
     case "Review":
-      return "/admin/resenas";
+      return entityId === "bulk" || entityId.includes(",")
+        ? "/admin/resenas?status=all"
+        : `/admin/resenas?status=all&q=${encodeURIComponent(entityId)}`;
     case "Design": {
       if (typeof meta?.orderNumber === "string" && meta.orderNumber.trim()) {
         return `/admin/pedidos/${encodeURIComponent(meta.orderNumber.trim())}`;

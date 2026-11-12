@@ -3,10 +3,15 @@ import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { evaluateSlaStatus, type SlaEvaluation } from "@/lib/colombian-sla";
+import { formatDayMonthCO, formatIsoDateCO } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { renderSupportTicketClosedEmail } from "@/features/emails/registry";
-import type { SUBJECT_LABELS } from "@/features/support/schemas";
+import {
+  SUPPORT_SUBJECTS,
+  type SUBJECT_LABELS,
+  type SupportSubject,
+} from "@/features/support/schemas";
 
 /*
  * Gestión admin de tickets de soporte (`Fase 10 · S21`).
@@ -46,6 +51,10 @@ export class SupportConcurrencyError extends Error {
 
 export function isSupportPriority(raw: string | undefined): raw is SupportTicketPriority {
   return SUPPORT_PRIORITIES.includes(raw as SupportTicketPriority);
+}
+
+export function isSupportSubject(raw: string | undefined): raw is SupportSubject {
+  return (SUPPORT_SUBJECTS as readonly string[]).includes(raw ?? "");
 }
 
 export function isSupportInboxView(raw: string | undefined): raw is SupportInboxView {
@@ -129,6 +138,7 @@ export async function listSupportTicketsPaginated(opts: {
   view?: SupportInboxView;
   q?: string;
   priority?: SupportTicketPriority;
+  subject?: SupportSubject;
   actorAdminId: string;
   page?: number;
   pageSize?: number;
@@ -162,6 +172,10 @@ export async function listSupportTicketsPaginated(opts: {
 
   if (opts.priority) {
     andClauses.push({ priority: opts.priority });
+  }
+
+  if (opts.subject) {
+    andClauses.push({ subject: opts.subject });
   }
 
   const cleanQ = opts.q?.trim() ?? "";
@@ -282,6 +296,100 @@ export async function listSupportTicketsPaginated(opts: {
 /** Nº de tickets que requieren atención (para el badge del dashboard). */
 export async function countOpenSupportTickets(): Promise<number> {
   return prisma.supportTicket.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } });
+}
+
+export interface SupportDailyPoint {
+  key: string;
+  label: string;
+  tickLabel: string;
+  incoming: number;
+  closed: number;
+}
+
+export interface SupportExecutiveAnalytics {
+  awaitingFirstReplyCount: number;
+  closedCount: number;
+  dailySeries: SupportDailyPoint[];
+  bySubject: Array<{ subject: string; count: number }>;
+}
+
+/**
+ * Analítica ejecutiva para `/admin/soporte` (serie 14d en `America/Bogota` + motivos PQR).
+ */
+export async function getSupportExecutiveAnalytics(
+  now: Date = new Date(),
+): Promise<SupportExecutiveAnalytics> {
+  const windowStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const [awaitingFirstReplyCount, closedCount, recentTickets, closedRecent, groupedSubjects] =
+    await Promise.all([
+      prisma.supportTicket.count({
+        where: {
+          status: { in: ["OPEN", "IN_PROGRESS"] },
+          firstRespondedAt: null,
+        },
+      }),
+      prisma.supportTicket.count({ where: { status: "CLOSED" } }),
+      prisma.supportTicket.findMany({
+        where: { createdAt: { gte: windowStart } },
+        select: { createdAt: true },
+      }),
+      prisma.supportTicket.findMany({
+        where: { resolvedAt: { gte: windowStart } },
+        select: { resolvedAt: true },
+      }),
+      prisma.supportTicket.groupBy({
+        by: ["subject"],
+        _count: { _all: true },
+      }),
+    ]);
+
+  const incomingByDay = new Map<string, number>();
+  const closedByDay = new Map<string, number>();
+  const dailySeries: SupportDailyPoint[] = [];
+
+  for (let offset = 13; offset >= 0; offset--) {
+    // Anclar al mediodía UTC-5 equivalente para evitar saltos de medianoche al iterar días.
+    const dayRef = new Date(now.getTime() - offset * 24 * 60 * 60 * 1000);
+    const key = formatIsoDateCO(dayRef);
+    if (!incomingByDay.has(key)) {
+      incomingByDay.set(key, 0);
+      closedByDay.set(key, 0);
+      const label = formatDayMonthCO(dayRef);
+      const parts = key.split("-");
+      const tickLabel = `${parts[2]}/${parts[1]}`;
+      dailySeries.push({ key, label, tickLabel, incoming: 0, closed: 0 });
+    }
+  }
+
+  for (const t of recentTickets) {
+    const key = formatIsoDateCO(t.createdAt);
+    if (incomingByDay.has(key)) {
+      incomingByDay.set(key, (incomingByDay.get(key) ?? 0) + 1);
+    }
+  }
+  for (const t of closedRecent) {
+    if (!t.resolvedAt) continue;
+    const key = formatIsoDateCO(t.resolvedAt);
+    if (closedByDay.has(key)) {
+      closedByDay.set(key, (closedByDay.get(key) ?? 0) + 1);
+    }
+  }
+
+  for (const point of dailySeries) {
+    point.incoming = incomingByDay.get(point.key) ?? 0;
+    point.closed = closedByDay.get(point.key) ?? 0;
+  }
+
+  const bySubject = groupedSubjects
+    .map((g) => ({ subject: g.subject, count: g._count._all }))
+    .sort((a, b) => b.count - a.count);
+
+  return {
+    awaitingFirstReplyCount,
+    closedCount,
+    dailySeries,
+    bySubject,
+  };
 }
 
 async function sendTicketClosedEmail(ticket: {

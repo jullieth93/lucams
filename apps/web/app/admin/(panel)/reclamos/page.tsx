@@ -14,16 +14,24 @@
  */
 
 import { redirect, permanentRedirect } from "next/navigation";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 
-type SearchParams = Promise<{ status?: string }>;
+type SearchParams = Promise<{ status?: string; q?: string }>;
 
 export default async function ReclamosLegacyRedirect({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
+  // B-7: paridad N-21 con ROUTE_ROLES antes de redirigir en soft-navigation.
+  await requireRole(ADMIN_ROLE_SETS.GARANTIAS_READ);
   const sp = await searchParams;
-  permanentRedirect(sp.status === "all" ? "/admin/garantias?status=all" : "/admin/garantias");
+  const params = new URLSearchParams();
+  if (sp.status === "all") params.set("status", "all");
+  if (typeof sp.q === "string" && sp.q.trim()) params.set("q", sp.q.trim().slice(0, 120));
+  const qs = params.size > 0 ? `?${params.toString()}` : "";
+  permanentRedirect(`/admin/garantias${qs}`);
   // unreachable — Next type checker quiere un return
   redirect("/admin/garantias");
 }

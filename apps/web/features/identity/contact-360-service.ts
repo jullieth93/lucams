@@ -1093,7 +1093,7 @@ export async function getContact360ForActor(
       title: t.subject,
       status: t.status,
       orderNumber: t.orderNumber,
-      href: `/admin/soporte/${t.id}`,
+      href: `/admin/soporte/${encodeURIComponent(t.id)}`,
       createdAt: t.createdAt,
     })),
     ...contact.warrantyClaims.map((w) => ({
@@ -1102,7 +1102,7 @@ export async function getContact360ForActor(
       title: w.description.slice(0, 90),
       status: w.status,
       orderNumber: w.orderItem.order.number,
-      href: `/admin/garantias?status=${w.status}`,
+      href: `/admin/garantias?status=all&q=${encodeURIComponent(w.id)}`,
       createdAt: w.requestedAt,
     })),
     ...contact.retractRequests.map((r) => ({
@@ -1111,7 +1111,7 @@ export async function getContact360ForActor(
       title: r.reason?.slice(0, 90) || "Solicitud de retracto Ley 1480",
       status: r.status,
       orderNumber: r.orderItem.order.number,
-      href: `/admin/retractos?status=${r.status}`,
+      href: `/admin/retractos?status=all&q=${encodeURIComponent(r.id)}`,
       createdAt: r.requestedAt,
     })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());

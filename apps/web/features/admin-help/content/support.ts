@@ -7,83 +7,93 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
     area: "Servicio al cliente",
     route: "/admin/soporte",
     summary:
-      "Bandeja de tickets, conversación con el cliente, responsables, estados y semáforo de SLA.",
+      "Bandeja ejecutiva de tickets PQR y Hábeas Data, analítica de 14 días, semáforo SLA, Copiloto IA sin PII y enlaces 360°.",
     purpose:
-      "Centraliza solicitudes de ayuda y conversaciones para dar respuestas trazables y oportunas. La antigua bandeja Mensajes converge aquí; cada ticket conserva su hilo, asignación y compromiso de atención.",
+      "Centraliza solicitudes de ayuda, PQR y consultas de Hábeas Data para dar respuestas trazables dentro de los plazos legales colombianos. La antigua ruta Mensajes converge aquí conservando filtros, asignación, hilo público/interno y conexión directa con Pedido, Contacto 360, Garantías y Retractos.",
     whenToUse: [
-      "Para responder contactos, incidencias o solicitudes de clientes.",
-      "Para asignar responsabilidad y controlar tiempos de atención.",
-      "Para consultar el contexto antes de escalar a otro módulo.",
+      "Para responder contactos, incidencias, solicitudes PQR o requerimientos de Hábeas Data.",
+      "Para asignar propiedad de casos, priorizar vencimientos de SLA y medir el pulso de los últimos 14 días.",
+      "Para consultar el contexto comercial y posventa antes de escalar a Garantías o Retractos.",
     ],
     concepts: [
       {
-        term: "Ticket",
+        term: "SLA legal colombiano",
         definition:
-          "Caso de atención con identificador, solicitante, estado, hilo y tiempos de seguimiento.",
+          "Plazo hábil calculado con festivos de Colombia: 15 días hábiles para PQR generales (Ley 1480) y 10 días hábiles para consultas de Hábeas Data (Ley 1581).",
       },
       {
-        term: "SLA hábil",
+        term: "Respuesta pública vs. nota interna",
         definition:
-          "Objetivo de tiempo calculado con el calendario operativo colombiano aplicable al caso.",
+          "La respuesta pública notifica al cliente por correo electrónico y marca la primera atención; la nota interna documenta hallazgos solo para el equipo.",
       },
       {
-        term: "Respuesta pública",
+        term: "Copiloto IA cero PII",
         definition:
-          "Mensaje dirigido al cliente dentro del hilo y notificado por el canal configurado.",
+          "Asistente opcional que redacta una propuesta anonimizando previamente nombres, correos, teléfonos móviles y fijos, documentos, direcciones y enlaces.",
       },
     ],
     sections: [
       {
         id: "bandeja",
-        title: "Bandeja y priorización",
-        summary: "Organiza casos por estado, asignación y tiempo restante.",
+        title: "Pulso ejecutivo, bandeja y priorización",
+        summary:
+          "Combina indicadores de carga, serie diaria de 14 días, distribución por asunto y filtros de SLA.",
         topics: [
           {
             id: "sla",
-            label: "Semáforo SLA",
-            description: "Señala si el caso está dentro del objetivo, próximo a vencer o vencido.",
+            label: "Semáforo SLA y primera respuesta",
+            description:
+              "Distingue tickets vencidos, por vencer en menos de 48 horas, en plazo y aquellos que aún esperan su primera respuesta pública.",
             interpretation:
-              "Prioriza vencidos y próximos, pero revisa también la gravedad del caso.",
+              "Atiende primero casos vencidos, solicitudes de Hábeas Data y tickets sin primera respuesta.",
           },
           {
-            id: "estado",
-            label: "Estado del ticket",
-            description: "Distingue casos nuevos, en gestión, pendientes y cerrados.",
+            id: "analitica",
+            label: "Volumen 14 días y mezcla por asunto",
+            description:
+              "Compara tickets recibidos frente a resueltos por día y muestra qué motivos concentran la demanda reciente.",
             interpretation:
-              "Usa pendiente solo cuando realmente esperas información o una dependencia.",
+              "Si los recibidos superan de forma sostenida a los cerrados o sube Garantía/Devolución, revisa causas raíz en Pedidos o Despachos.",
           },
           {
             id: "asignacion",
-            label: "Responsable",
-            description: "Persona encargada de la próxima gestión.",
+            label: "Propiedad y filtros por motivo",
+            description:
+              "Permite filtrar por vista operativa, asunto tipificado o búsqueda textual y asignar un responsable claro.",
             interpretation:
-              "Asignar no equivale a resolver; el responsable debe mantener el hilo actualizado.",
+              "Asignar un caso no detiene el reloj de SLA; usa Esperando cliente solo cuando falte información real del solicitante.",
           },
         ],
       },
       {
         id: "hilo",
-        title: "Detalle y conversación",
-        summary: "Reúne mensajes, datos relacionados y herramientas de respuesta.",
+        title: "Detalle 360° y conversación",
+        summary:
+          "Reúne el hilo cronológico, expedientes cruzados y herramientas de redacción segura.",
         topics: [
           {
             id: "publica",
             label: "Respuesta al cliente",
-            description: "Comunicación visible para el solicitante.",
-            caution: "Evita datos innecesarios, lenguaje especulativo y promesas no confirmadas.",
+            description:
+              "Envía correo transaccional al solicitante y conserva constancia fechada dentro del expediente.",
+            caution:
+              "Evita datos innecesarios, lenguaje especulativo y promesas de reembolso no ejecutadas.",
           },
           {
             id: "copiloto",
             label: "Copiloto de soporte",
-            description: "Asiste la redacción con un contexto limitado y sin datos personales.",
+            description:
+              "Sugiere un borrador con reglas de Ley 1480 y Ley 1581 sin enviar datos personales a proveedores externos.",
             interpretation:
-              "Es una propuesta: revisa hechos, tono y procedimiento antes de usarla.",
+              "Revisa siempre hechos, vigencia de garantía, estado del pedido y tono antes de enviar al cliente.",
           },
           {
             id: "relaciones",
-            label: "Pedido o contacto relacionado",
-            description: "Vincula el caso con la fuente que permite entender el problema.",
-            interpretation: "Consulta el estado vivo antes de responder.",
+            label: "Conexión 360°",
+            description:
+              "Enlaza según tus permisos con el pedido, la ficha Contacto 360 y el reclamo de garantía o retracto vinculado.",
+            interpretation:
+              "Verifica el estado vivo del pedido o del caso posventa antes de comprometer fechas.",
           },
         ],
       },
@@ -91,40 +101,40 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "resolver-ticket",
-        title: "Atender y cerrar un ticket",
-        goal: "Resolver la necesidad con respuesta clara y trazabilidad completa.",
+        title: "Atender y cerrar un ticket con trazabilidad",
+        goal: "Resolver la solicitud dentro del SLA legal con evidencia completa y comunicación clara.",
         steps: [
-          "Lee todo el hilo y revisa pedido, contacto o casos relacionados.",
-          "Asigna responsable y estado de gestión si el caso no estaba en curso.",
-          "Investiga la causa y confirma la solución en el módulo correspondiente.",
-          "Responde al cliente explicando el resultado y el siguiente paso sin exponer datos internos.",
-          "Cierra solo cuando la solicitud esté resuelta o se haya comunicado una decisión final sustentada.",
-          "Verifica que el estado y el SLA reflejen el cierre.",
+          "Abre el ticket desde la bandeja priorizada por SLA y lee el hilo completo junto con las notas internas.",
+          "Toma propiedad asignándote el caso y pasa el estado a En gestión si aún estaba Abierto.",
+          "Consulta el pedido, Contacto 360 o el expediente de Garantías/Retractos enlazado para confirmar los hechos.",
+          "Redacta la respuesta pública (apoyándote opcionalmente en el Copiloto IA) explicando la solución o el siguiente paso concreto.",
+          "Cierra como Resuelto o Cerrado únicamente cuando la gestión haya concluido o la decisión final esté sustentada y notificada.",
         ],
         expected:
-          "El cliente recibe una respuesta útil y el ticket conserva evidencia suficiente para futuras consultas.",
+          "El cliente recibe respuesta oportuna por correo, queda registrada la primera atención y el SLA se cierra con trazabilidad forense.",
         exceptions: [
-          "Si dependes de otra área, deja el caso pendiente con responsable y próximo paso; no lo cierres para mejorar el SLA.",
+          "Si dependes de evidencia del comprador o de validación de otra área, deja nota interna, asigna responsable y usa Esperando cliente sin cerrar en falso.",
         ],
       },
     ],
     cautions: [
-      "No uses el copiloto como fuente de verdad ni incluyas datos personales en instrucciones externas.",
+      "Nunca copies datos sensibles de tarjetas o contraseñas en el hilo ni prometas devoluciones de dinero sin autorización de Dirección.",
     ],
     faqs: [
       {
-        question: "¿Dónde está Mensajes?",
-        answer: "La antigua ruta redirige a Soporte; esta es la bandeja única de atención.",
+        question: "¿Dónde está la antigua bandeja Mensajes?",
+        answer:
+          "La ruta histórica /admin/mensajes redirige automáticamente a Soporte preservando tu búsqueda y vista.",
       },
       {
-        question: "¿Puedo cerrar si el cliente no responde?",
+        question: "¿Por qué algunos tickets tienen 10 días hábiles y otros 15?",
         answer:
-          "Aplica el procedimiento vigente de espera y comunica el cierre; no uses la falta de respuesta para ocultar un caso sin gestionar.",
+          "Las consultas de Privacidad / Hábeas Data se rigen por el tope de 10 días hábiles de la Ley 1581; las demás PQR aplican 15 días hábiles.",
       },
     ],
-    related: ["clientes", "pedidos", "garantias", "retractos", "hoy"],
-    keywords: ["ticket", "PQR", "SLA", "hilo", "respuesta", "mensaje", "copiloto"],
-    version: 1,
+    related: ["clientes", "pedidos", "garantias", "retractos", "resenas", "hoy"],
+    keywords: ["ticket", "PQR", "Hábeas Data", "SLA", "hilo", "respuesta", "mensaje", "copiloto"],
+    version: 2,
   },
   {
     id: "garantias",
@@ -132,57 +142,69 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
     area: "Servicio al cliente",
     route: "/admin/garantias",
     summary:
-      "Evaluación y resolución de reclamos por reparación, reposición, devolución o rechazo.",
+      "Diagnóstico técnico, semáforo SLA de 15 días hábiles, evidencia probatoria y resolución por reparación, reposición o devolución.",
     purpose:
-      "Gestiona solicitudes de garantía con evidencia, plazos, asignación y notificación al cliente. La antigua bandeja Reclamos fue absorbida por este flujo único para evitar cierres divergentes.",
+      "Gestiona reclamos de garantía legal (Ley 1480 arts. 7–15 y art. 58) controlando cobertura sellada en la compra, evidencia fotográfica sanitizada, propiedad del caso y exposición por devoluciones. La ruta histórica Reclamos redirige aquí y Analista Financiero dispone de consulta contable de solo lectura con PII enmascarado.",
     whenToUse: [
-      "Cuando un cliente reporta una falla cubierta potencialmente por garantía.",
-      "Para evaluar evidencia y registrar una solución o decisión motivada.",
-      "Para controlar plazos y seguimiento de casos abiertos.",
+      "Cuando un comprador reporta defecto de calidad, daño de transporte o falla funcional dentro o fuera del plazo.",
+      "Para diagnosticar evidencia, asignar responsable y aprobar reparación, reposición o rechazo motivado.",
+      "Para ejecutar el cierre con devolución de dinero (exclusivo Superadmin con MFA) o auditar el pasivo contable.",
     ],
     concepts: [
       {
-        term: "Garantía",
+        term: "Vigencia sellada",
         definition:
-          "Obligación aplicable según el producto y el plazo informado en la compra; no equivale a retracto.",
+          "Plazo en meses guardado en el ítem al momento de la compra contado desde la fecha de entrega; los productos personalizados sí cuentan con garantía legal.",
       },
       {
-        term: "Resolución",
+        term: "Evidencia de resolución aceptada",
         definition:
-          "Resultado de evaluar el caso: reparación, reposición, devolución u otra decisión permitida y comunicada.",
+          "Constancia fechada cuando el comprador aprobó voluntariamente imprimir una foto de baja resolución en el editor antes de pagar.",
+      },
+      {
+        term: "Segregación de reembolso",
+        definition:
+          "Operaciones y Soporte diagnostican y gestionan reparación o reposición; cerrar una garantía mediante devolución de dinero exige Superadmin con MFA reciente.",
       },
     ],
     sections: [
       {
         id: "caso",
-        title: "Evaluación del caso",
-        summary: "Reúne compra, producto, plazo, evidencia y responsable.",
+        title: "Diagnóstico legal, SLA y trazabilidad financiera",
+        summary:
+          "Combina embudo de estados, remedios de Ley 1480, stepper de 4 etapas y evidencia cruzada.",
         topics: [
           {
             id: "vigencia",
-            label: "Vigencia",
+            label: "Cobertura sellada y SLA de 15 días hábiles",
             description:
-              "Contrasta la fecha de compra y el plazo de garantía informado para el ítem.",
-            interpretation: "La vigencia es un criterio, no sustituye el análisis de la falla.",
+              "Muestra la fecha límite de garantía del ítem y el semáforo legal de 15 días hábiles desde la radicación del reclamo.",
+            interpretation:
+              "Prioriza los reclamos vencidos o en riesgo SLA y contrasta si el defecto proviene de fabricación, transporte o archivo de origen.",
           },
           {
             id: "evidencia",
-            label: "Descripción y evidencia",
-            description: "Explica la falla reportada y el material aportado.",
-            caution: "No solicites ni expongas datos que no sean necesarios para evaluar.",
+            label: "Evidencia fotográfica y sello de calidad",
+            description:
+              "Presenta las fotos aportadas bajo enlaces seguros y alerta si el diseño tenía advertencia de baja resolución aceptada por el cliente.",
+            caution:
+              "En modo contable de solo lectura (Analista Financiero), las fotos, textos libres y datos personales permanecen ocultos por privacidad.",
           },
           {
             id: "resolucion",
-            label: "Tipo de solución",
-            description: "Distingue reparación, reposición, devolución o rechazo.",
-            interpretation: "Selecciona solo lo que realmente podrás ejecutar y registrar.",
+            label: "Remedios: Reparar, Reponer o Reembolsar",
+            description:
+              "Permite elegir la vía técnica aplicable al defecto conforme al Estatuto del Consumidor.",
+            interpretation:
+              "En primera falla técnica prioriza reparación o reposición sin costo salvo imposibilidad material; documenta siempre las notas para el cliente.",
           },
           {
             id: "reembolso",
-            label: "Devolución de dinero",
-            description: "Acción financiera condicionada a una capacidad específica.",
+            label: "Ejecución de devolución de dinero (Superadmin + MFA)",
+            description:
+              "Cuando la garantía procede por reembolso, la transición final a Resuelta con desembolso está reservada a Superadmin con sesión MFA reciente.",
             caution:
-              "Registrar la decisión no prueba que el dinero ya se devolvió; verifica el comprobante del medio de pago.",
+              "Confirma primero la reversión real en Wompi o transferencia bancaria antes de marcar el cierre definitivo.",
           },
         ],
       },
@@ -190,33 +212,54 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "resolver-garantia",
-        title: "Evaluar y cerrar una garantía",
-        goal: "Adoptar una solución sustentada y comunicarla oportunamente.",
+        title: "Diagnosticar y gestionar un reclamo de garantía",
+        goal: "Adoptar una decisión técnica motivada dentro de los 15 días hábiles y coordinar su cumplimiento.",
+        roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER", "CUSTOMER_SUPPORT"],
         steps: [
-          "Verifica pedido, ítem, fecha y plazo de garantía.",
-          "Revisa la falla y la evidencia; solicita solo información adicional necesaria.",
-          "Registra la evaluación y selecciona la solución autorizada.",
-          "Coordina reparación, reposición o devolución en el módulo que corresponda.",
-          "Comunica el resultado al cliente con pasos y condiciones concretos.",
-          "Cierra el caso cuando la solución esté ejecutada o la decisión final haya sido notificada.",
+          "Asigna el reclamo con Asignarme o elige responsable y pásalo a En revisión para iniciar el diagnóstico.",
+          "Verifica pedido, ítem, vigencia sellada desde la entrega, fotos aportadas y si existe aceptación previa de baja resolución.",
+          "Si no procede legalmente, rechaza explicando con respeto y sustento técnico el motivo verificable.",
+          "Si procede por Reparación o Reposición, aprueba seleccionando el remedio e indicando al cliente los pasos logísticos.",
+          "Una vez enviado el reemplazo o completada la reparación, marca Resuelta dejando constancia de guía o referencia.",
         ],
         expected:
-          "El reclamo queda resuelto con evidencia, solución verificable y comunicación al cliente.",
+          "El expediente avanza por sus 4 etapas legales, notifica al comprador y conserva evidencia completa en bitácora forense.",
+        exceptions: [
+          "Si el único remedio viable es Devolución de dinero y no eres Superadmin, documenta el diagnóstico en notas y escala a Dirección para el cierre con MFA.",
+        ],
+      },
+      {
+        id: "auditar-garantias-finanzas",
+        title: "Consultar exposición por garantías en modo contable",
+        goal: "Verificar montos comprometidos y reembolsos ejecutados sin acceder a PII de clientes.",
+        roles: ["FINANCE_ANALYST"],
+        steps: [
+          "Revisa las tarjetas superiores de exposición aprobada por reembolso y total efectivamente desembolsado.",
+          "Filtra por remedio Devolución dinero o busca por número de pedido o código del caso.",
+          "Cruza el valor del ítem y la fecha de resolución con Finanzas o el extracto de la pasarela.",
+        ],
+        expected:
+          "Obtienes trazabilidad contable exacta sobre salidas de caja por garantía manteniendo protegidos los datos personales.",
       },
     ],
     cautions: [
-      "No confundas garantía con retracto ni registres un reembolso sin verificar su ejecución.",
+      "No confundas garantía por defecto (aplica incluso en personalizados) con derecho de retracto, ni cierres un reembolso sin soporte bancario.",
     ],
     faqs: [
       {
-        question: "¿Reclamos y Garantías son dos módulos?",
+        question: "¿Qué pasó con la ruta /admin/reclamos?",
         answer:
-          "No. Reclamos redirige a esta bandeja única para conservar un solo procedimiento de cierre y notificación.",
+          "Redirige de forma segura a Garantías preservando el identificador buscado para evitar doble bandeja.",
+      },
+      {
+        question: "¿Por qué no puedo elegir o cerrar Devolución de dinero con mi rol operativo?",
+        answer:
+          "Toda salida final de efectivo en posventa está unificada bajo Superadmin con verificación MFA reciente.",
       },
     ],
     related: ["retractos", "soporte", "pedidos", "finanzas"],
-    keywords: ["falla", "reparación", "reposición", "devolución", "reclamo", "legal"],
-    version: 1,
+    keywords: ["falla", "reparación", "reposición", "devolución", "reclamo", "Ley 1480", "SLA"],
+    version: 2,
   },
   {
     id: "retractos",
@@ -224,51 +267,60 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
     area: "Servicio al cliente",
     route: "/admin/retractos",
     summary:
-      "Gestión legal de solicitudes de retracto, devolución del producto y registro del reembolso.",
+      "Control legal de retractos (Ley 1480 art. 47 / Ley 2439), recepción física, SLA de 15 días calendario y reembolso protegido con MFA.",
     purpose:
-      "Controla las etapas y plazos del derecho de retracto aplicable en Colombia. Separa la aceptación de la solicitud, la recepción del bien y la ejecución del reembolso para no dar por completado un proceso pendiente.",
+      "Administra el ciclo de 4 etapas del derecho de retracto separando aprobación, devolución física en bodega y desembolso final del dinero. Calcula el pasivo vivo en COP, alerta vencimientos del plazo legal de 15 días calendario y ofrece vista contable enmascarada para Analista Financiero.",
     whenToUse: [
-      "Al recibir una solicitud de retracto.",
-      "Para verificar devolución del producto y documentar la decisión.",
-      "Para registrar y comunicar el reembolso cuando tu rol tenga autorización.",
+      "Al recibir una solicitud de retracto sobre productos de catálogo no personalizados dentro de los 5 días hábiles desde la entrega.",
+      "Para asignar responsable, aprobar instrucciones de retorno o confirmar la recepción física del producto.",
+      "Para registrar el reembolso efectivo con MFA (Superadmin) o conciliar pasivos por devolución (Analista Financiero).",
     ],
     concepts: [
       {
-        term: "Retracto",
+        term: "Excepción de personalizados",
         definition:
-          "Derecho legal de desistir de una compra en los casos y plazos aplicables; no es lo mismo que garantía.",
+          "Conforme al artículo 47 numeral 3 de la Ley 1480, los bienes confeccionados a la medida o claramente personalizados no admiten retracto (sí garantía por defecto).",
       },
       {
-        term: "Reembolso",
+        term: "Plazo máximo de reembolso (15 días calendario)",
         definition:
-          "Devolución efectiva del dinero por el medio correspondiente, con registro y evidencia.",
+          "Tope legal de la Ley 2439 de 2024 contado desde que el consumidor ejerce el retracto para devolver el dinero sin descuentos indebidos.",
+      },
+      {
+        term: "Cierre financiero segregado",
+        definition:
+          "Soporte y Operaciones gestionan aprobación y recepción física; el paso final a Reembolsado exige Superadmin con MFA reciente.",
       },
     ],
     sections: [
       {
         id: "etapas",
-        title: "Etapas del retracto",
-        summary: "Distingue solicitud, evaluación, devolución física y cierre financiero.",
+        title: "Stepper legal, pasivo COP y control de SLA",
+        summary: "Separa evaluación documental, retorno logístico y salida efectiva de caja.",
         topics: [
           {
             id: "solicitud",
-            label: "Solicitud y plazo",
-            description: "Contiene fecha, motivo, pedido y datos necesarios para evaluar.",
-            interpretation: "Verifica oportunidad y condiciones aplicables antes de aprobar.",
+            label: "1. Solicitud y elegibilidad",
+            description:
+              "Expone fecha de radicación, ítem, monto en COP, responsable asignado y reloj de 15 días calendario.",
+            interpretation:
+              "Comprueba que el bien no sea personalizado y que la solicitud se haya presentado dentro de los 5 días hábiles posteriores a la entrega.",
           },
           {
             id: "devolucion",
-            label: "Producto devuelto",
-            description: "Registra la recepción y el estado del bien cuando aplique.",
+            label: "2–3. Aprobación y recepción física",
+            description:
+              "Registra primero la autorización de retorno y, una vez verificado el paquete en bodega, marca Bien recibido.",
             interpretation:
-              "No marques recibido por anticipado ni únicamente por una guía anunciada.",
+              "Nunca marques recibido solo porque el cliente envió número de guía; espera confirmación física del estado del producto.",
           },
           {
             id: "reembolso",
-            label: "Registro del reembolso",
-            description: "Documenta el resultado financiero final y sus datos de referencia.",
+            label: "4. Reembolso verificado (Superadmin + MFA)",
+            description:
+              "Cierra el expediente tras ejecutar la devolución real del dinero en Wompi o medio bancario y revierte puntos de fidelización aplicables.",
             caution:
-              "La acción está restringida y requiere confirmar la devolución real en Wompi o el medio utilizado.",
+              "Analista Financiero visualiza montos, estados y pedidos con PII y motivos de texto libre enmascarados en servidor.",
           },
         ],
       },
@@ -276,33 +328,63 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "gestionar-retracto",
-        title: "Gestionar un retracto hasta su cierre",
-        goal: "Cumplir el proceso legal sin omitir la devolución física ni financiera.",
+        title: "Gestionar un retracto desde la solicitud hasta recepción en bodega",
+        goal: "Cumplir las etapas operativas a tiempo para no agotar los 15 días calendario de ley.",
+        roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER", "CUSTOMER_SUPPORT"],
         steps: [
-          "Verifica pedido, fecha de solicitud, ítems y condiciones aplicables.",
-          "Registra la decisión y comunica instrucciones claras de devolución cuando proceda.",
-          "Confirma la recepción física antes de marcar esa etapa.",
-          "La persona autorizada ejecuta el reembolso en el medio correspondiente y conserva la referencia.",
-          "Registra el reembolso realizado y notifica el cierre al cliente.",
-          "Comprueba que pedido, puntos y registros relacionados reflejen el resultado.",
+          "Toma propiedad del caso con Asignarme y revisa pedido, producto y semáforo SLA.",
+          "Aprueba la solicitud indicando las instrucciones claras de devolución o rechaza motivadamente si aplica una causal legal.",
+          "Haz seguimiento al tránsito y confirma con bodega el ingreso e integridad del artículo devuelto.",
+          "Marca Bien recibido dejando constancia en notas para habilitar el desembolso final por Dirección.",
         ],
         expected:
-          "El expediente muestra decisión, devolución y reembolso con fechas y evidencia coherentes.",
+          "El expediente queda listo para reembolso con trazabilidad de fechas, responsable y verificación física.",
+      },
+      {
+        id: "ejecutar-reembolso-retracto",
+        title: "Ejecutar y registrar el reembolso final",
+        goal: "Formalizar la devolución efectiva del dinero con verificación MFA y soporte verificable.",
+        roles: ["SUPERADMIN"],
+        steps: [
+          "Filtra la vista Bien recibido (por reembolsar) y abre el pedido vinculado para verificar el pago original.",
+          "Ejecuta la devolución en Wompi o transferencia bancaria y copia el identificador de la operación.",
+          "Con tu sesión MFA reciente activa, registra la referencia en notas y pulsa Marcar reembolsado.",
+        ],
+        expected:
+          "El cliente recibe confirmación de cierre, se ajustan puntos asociados y el caso queda sellado en auditoría forense.",
+      },
+      {
+        id: "conciliar-retractos-finanzas",
+        title: "Consultar pasivo y reembolsos por retracto",
+        goal: "Contrastar compromisos de caja abiertos y devoluciones liquidadas sin exponer PII.",
+        roles: ["FINANCE_ANALYST"],
+        steps: [
+          "Revisa los indicadores de pasivo abierto, listos por reembolsar y total reembolsado en la cabecera.",
+          "Filtra por estado o busca por número de pedido para ubicar la operación contable.",
+          "Cruza el importe en COP y las marcas de tiempo con los reportes de Finanzas.",
+        ],
+        expected:
+          "Concilias el impacto en flujo de caja respetando la reserva de identidad y motivos personales.",
       },
     ],
     cautions: [
-      "No confirmes al cliente que el dinero fue devuelto antes de verificar la operación financiera.",
+      "Nunca informes al comprador que el reembolso ya fue realizado antes de que Dirección registre el cierre efectivo.",
     ],
     faqs: [
       {
-        question: "¿Todos los roles de Soporte registran reembolsos?",
+        question: "¿Por qué Soporte u Operaciones ven un aviso de escalamiento en el paso final?",
         answer:
-          "No. La gestión del retracto y el reembolso final tienen capacidades distintas según el rol.",
+          "Porque registrar el reembolso implica salida efectiva de dinero y requiere capacidad exclusiva de Superadmin con MFA reciente.",
+      },
+      {
+        question: "¿Qué información ve Analista Financiero en Retractos?",
+        answer:
+          "Montos en COP, estados, fechas legales y vínculo al pedido, con nombres y correos enmascarados y sin motivos de texto libre.",
       },
     ],
     related: ["garantias", "pedidos", "finanzas", "soporte"],
-    keywords: ["Ley 1480", "desistir", "devolución", "reembolso", "plazo legal"],
-    version: 1,
+    keywords: ["Ley 1480", "Ley 2439", "desistir", "devolución", "reembolso", "plazo legal", "MFA"],
+    version: 2,
   },
   {
     id: "moderacion",

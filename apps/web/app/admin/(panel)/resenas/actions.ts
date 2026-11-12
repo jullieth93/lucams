@@ -3,81 +3,139 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { Prisma } from "@lucams/db";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import {
   approveReview,
   archiveReview,
   bulkApproveReviews,
   bulkArchiveReviews,
+  listProductSlugsForReviewIds,
   rejectReview,
   restoreReview,
+  sanitizeReviewReturnPath,
   toggleFeaturedReview,
 } from "@/features/reviews/admin-service";
 import { logger } from "@/lib/logger";
 
-function getId(formData: FormData): string {
+function buildReturnRedirectUrl(basePath: string, extraParams: Record<string, string>): string {
+  const qIdx = basePath.indexOf("?");
+  const pathname = qIdx === -1 ? basePath : basePath.slice(0, qIdx);
+  const existingQs = qIdx === -1 ? "" : basePath.slice(qIdx + 1);
+  const params = new URLSearchParams(existingQs);
+  for (const [k, v] of Object.entries(extraParams)) {
+    params.set(k, v);
+  }
+  const qs = params.toString();
+  return qs ? `${pathname}?${qs}` : pathname;
+}
+
+function isNextRedirectSignal(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err.message === "NEXT_REDIRECT") return true;
+  if ("digest" in err) {
+    const digest = (err as { digest?: unknown }).digest;
+    if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) return true;
+  }
+  return false;
+}
+
+function safeReviewActionError(err: unknown): string {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+    return "No encontramos la reseña solicitada (pudo eliminarse o actualizarse).";
+  }
+  if (err instanceof Error && /aprobadas/i.test(err.message)) {
+    return "Solo las reseñas aprobadas pueden marcarse como destacadas.";
+  }
+  if (err instanceof Error && err.message === "Review not found") {
+    return "No encontramos la reseña solicitada.";
+  }
+  return "No pudimos actualizar la reseña en este momento. Inténtalo de nuevo.";
+}
+
+function getId(formData: FormData, returnTo: string): string {
   const id = String(formData.get("id") ?? "").trim();
-  if (!id) throw new Error("Missing review id");
+  if (!id) {
+    redirect(buildReturnRedirectUrl(returnTo, { error: "Falta el identificador de la reseña." }));
+  }
   return id;
 }
 
 /**
- * Revalida las rutas storefront que muestran reseñas. La PDP por slug
- * + home (featured carousel). El admin lista también necesita refresh.
+ * Revalida las rutas storefront y admin que muestran reseñas (PDP, home, moderador y ficha producto).
  */
-function revalidateForReview(productSlug: string | null) {
+function revalidateForReview(productSlug: string | null, returnTo: string) {
   revalidatePath("/admin/resenas");
+  revalidatePath("/admin/dashboard");
   revalidatePath("/");
   if (productSlug) revalidatePath(`/producto/${productSlug}`);
+  if (returnTo.startsWith("/admin/productos/")) {
+    const pathname = returnTo.split("?")[0];
+    if (pathname) revalidatePath(pathname);
+  }
 }
 
 export async function approveReviewAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
-  const id = getId(formData);
+  const session = await requireAdminAction({ capability: "catalog:write" });
+  const returnTo = sanitizeReviewReturnPath(formData.get("returnTo"));
+  const id = getId(formData, returnTo);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
-  await approveReview(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "review.approve",
-    entityType: "Review",
-    entityId: id,
-  });
-  logger.info({ event: "admin.review.approved", adminId: session.admin.id, reviewId: id });
+  try {
+    await approveReview(id, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "review.approve",
+      entityType: "Review",
+      entityId: id,
+    });
+    logger.info({ event: "admin.review.approved", adminId: session.admin.id, reviewId: id });
 
-  revalidateForReview(productSlug);
-  // Aprobar NO destaca (paso manual a propósito): el id va en la URL para que la
-  // página muestre el CTA "¿Mostrarla en la página principal? [Destacar]" (2026-10-05).
-  redirect(
-    `/admin/resenas?approved=1&approvedId=${encodeURIComponent(id)}${
-      productSlug ? `&slug=${encodeURIComponent(productSlug)}` : ""
-    }`,
-  );
+    revalidateForReview(productSlug, returnTo);
+    redirect(
+      buildReturnRedirectUrl(returnTo, {
+        approved: "1",
+        approvedId: id,
+        ...(productSlug ? { slug: productSlug } : {}),
+      }),
+    );
+  } catch (err) {
+    if (isNextRedirectSignal(err)) throw err;
+    logger.warn({ event: "admin.review.approve_fail", reviewId: id, err: String(err) });
+    redirect(buildReturnRedirectUrl(returnTo, { error: safeReviewActionError(err) }));
+  }
 }
 
 export async function rejectReviewAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
-  const id = getId(formData);
+  const session = await requireAdminAction({ capability: "catalog:write" });
+  const returnTo = sanitizeReviewReturnPath(formData.get("returnTo"));
+  const id = getId(formData, returnTo);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
-  await rejectReview(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "review.reject",
-    entityType: "Review",
-    entityId: id,
-  });
-  logger.info({ event: "admin.review.rejected", adminId: session.admin.id, reviewId: id });
+  try {
+    await rejectReview(id, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "review.reject",
+      entityType: "Review",
+      entityId: id,
+    });
+    logger.info({ event: "admin.review.rejected", adminId: session.admin.id, reviewId: id });
 
-  revalidateForReview(productSlug);
-  redirect("/admin/resenas?rejected=1");
+    revalidateForReview(productSlug, returnTo);
+    redirect(buildReturnRedirectUrl(returnTo, { rejected: "1" }));
+  } catch (err) {
+    if (isNextRedirectSignal(err)) throw err;
+    logger.warn({ event: "admin.review.reject_fail", reviewId: id, err: String(err) });
+    redirect(buildReturnRedirectUrl(returnTo, { error: safeReviewActionError(err) }));
+  }
 }
 
 export async function toggleFeaturedReviewAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
-  const id = getId(formData);
+  const session = await requireAdminAction({ capability: "catalog:write" });
+  const returnTo = sanitizeReviewReturnPath(formData.get("returnTo"));
+  const id = getId(formData, returnTo);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
   try {
@@ -88,52 +146,67 @@ export async function toggleFeaturedReviewAction(formData: FormData): Promise<vo
       entityType: "Review",
       entityId: id,
     });
-    revalidateForReview(productSlug);
-    redirect(`/admin/resenas?${updated.featured ? "featured" : "unfeatured"}=1`);
+    revalidateForReview(productSlug, returnTo);
+    redirect(
+      buildReturnRedirectUrl(returnTo, updated.featured ? { featured: "1" } : { unfeatured: "1" }),
+    );
   } catch (err) {
-    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
-    const msg = err instanceof Error ? err.message : "Error al cambiar destacado.";
-    redirect(`/admin/resenas?error=${encodeURIComponent(msg)}`);
+    if (isNextRedirectSignal(err)) throw err;
+    logger.warn({ event: "admin.review.feature_fail", reviewId: id, err: String(err) });
+    redirect(buildReturnRedirectUrl(returnTo, { error: safeReviewActionError(err) }));
   }
 }
 
 export async function archiveReviewAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
-  const id = getId(formData);
+  const session = await requireAdminAction({ capability: "catalog:write" });
+  const returnTo = sanitizeReviewReturnPath(formData.get("returnTo"));
+  const id = getId(formData, returnTo);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
-  await archiveReview(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "review.archive",
-    entityType: "Review",
-    entityId: id,
-  });
-  logger.info({ event: "admin.review.archived", adminId: session.admin.id, reviewId: id });
+  try {
+    await archiveReview(id, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "review.archive",
+      entityType: "Review",
+      entityId: id,
+    });
+    logger.info({ event: "admin.review.archived", adminId: session.admin.id, reviewId: id });
 
-  revalidateForReview(productSlug);
-  redirect("/admin/resenas?archived=1");
+    revalidateForReview(productSlug, returnTo);
+    redirect(buildReturnRedirectUrl(returnTo, { archived: "1" }));
+  } catch (err) {
+    if (isNextRedirectSignal(err)) throw err;
+    logger.warn({ event: "admin.review.archive_fail", reviewId: id, err: String(err) });
+    redirect(buildReturnRedirectUrl(returnTo, { error: safeReviewActionError(err) }));
+  }
 }
 
 export async function restoreReviewAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
-  const id = getId(formData);
+  const session = await requireAdminAction({ capability: "catalog:write" });
+  const returnTo = sanitizeReviewReturnPath(formData.get("returnTo"));
+  const id = getId(formData, returnTo);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
-  await restoreReview(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "review.restore",
-    entityType: "Review",
-    entityId: id,
-  });
-  revalidateForReview(productSlug);
-  redirect("/admin/resenas?restored=1");
+  try {
+    await restoreReview(id, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "review.restore",
+      entityType: "Review",
+      entityId: id,
+    });
+    revalidateForReview(productSlug, returnTo);
+    redirect(buildReturnRedirectUrl(returnTo, { restored: "1" }));
+  } catch (err) {
+    if (isNextRedirectSignal(err)) throw err;
+    logger.warn({ event: "admin.review.restore_fail", reviewId: id, err: String(err) });
+    redirect(buildReturnRedirectUrl(returnTo, { error: safeReviewActionError(err) }));
+  }
 }
 
 /**
- * Bulk approve/archive — Lucy 2026-06-26 Opción C backlog.
- * Patrón espejo de bulk-actions.ts de productos.
+ * Bulk approve/archive — exclusivo `catalog:write` con revalidación completa de PDPs afectadas.
  */
 
 const BulkReviewIdsSchema = z
@@ -146,7 +219,7 @@ function getReviewIds(formData: FormData): string[] {
 }
 
 export async function bulkApproveReviewsAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const parsed = BulkReviewIdsSchema.safeParse(getReviewIds(formData));
   if (!parsed.success) {
@@ -156,6 +229,7 @@ export async function bulkApproveReviewsAction(formData: FormData): Promise<void
   }
 
   const ids = parsed.data;
+  const affectedSlugs = await listProductSlugsForReviewIds(ids);
   const result = await bulkApproveReviews(ids, session.admin.id);
   await recordAdminAction({
     actorId: session.admin.id,
@@ -173,15 +247,18 @@ export async function bulkApproveReviewsAction(formData: FormData): Promise<void
   revalidatePath("/admin/resenas");
   revalidatePath("/admin/dashboard");
   revalidatePath("/");
+  for (const slug of affectedSlugs) {
+    revalidatePath(`/producto/${slug}`);
+  }
   redirect(
     `/admin/resenas?bulkOk=${encodeURIComponent(
-      `${result.count} reseñas aprobadas: ya salen en sus páginas de producto. Para mostrar alguna en la página principal, usa el botón ★ Destacar de su fila (aprobar no las destaca).`,
+      `${result.count} reseñas aprobadas: ya aparecen en sus páginas de producto. Para mostrar alguna en la página principal, usa el botón ★ Destacar de su fila.`,
     )}`,
   );
 }
 
 export async function bulkArchiveReviewsAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const parsed = BulkReviewIdsSchema.safeParse(getReviewIds(formData));
   if (!parsed.success) {
@@ -191,6 +268,7 @@ export async function bulkArchiveReviewsAction(formData: FormData): Promise<void
   }
 
   const ids = parsed.data;
+  const affectedSlugs = await listProductSlugsForReviewIds(ids);
   const result = await bulkArchiveReviews(ids, session.admin.id);
   await recordAdminAction({
     actorId: session.admin.id,
@@ -208,5 +286,8 @@ export async function bulkArchiveReviewsAction(formData: FormData): Promise<void
   revalidatePath("/admin/resenas");
   revalidatePath("/admin/dashboard");
   revalidatePath("/");
+  for (const slug of affectedSlugs) {
+    revalidatePath(`/producto/${slug}`);
+  }
   redirect(`/admin/resenas?bulkOk=${encodeURIComponent(`${result.count} reseñas archivadas.`)}`);
 }

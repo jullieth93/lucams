@@ -64,10 +64,21 @@ const SELF_DEALING_SENSITIVE_ACTIONS = new Set([
   "retract.reject",
   "retract.receive",
   "retract.refund",
+  "retract.assign",
   "warranty.review",
   "warranty.approve",
   "warranty.resolve",
   "warranty.reject",
+  "warranty.assign",
+  "support.status",
+  "support.reply",
+  "support.convert_case",
+  "review.approve",
+  "review.reject",
+  "review.feature",
+  "review.unfeature",
+  "review.archive",
+  "review.restore",
   "cod.mark_remitted",
   "cod.flag_discrepancy",
   "contact.merge",
@@ -139,6 +150,38 @@ async function resolveTargetEmailsForAudit(entry: AdminAuditEntry): Promise<stri
         ...(row?.orderItems.map((oi) => oi.order.email) ?? []),
         ...(row?.quoteItems.map((qi) => qi.quote.customerEmail) ?? []),
       ].filter((v): v is string => Boolean(v));
+    }
+    case "SupportTicket": {
+      const row = await prisma.supportTicket.findUnique({
+        where: { id: entry.entityId },
+        select: {
+          email: true,
+          contact: { select: { primaryEmail: true } },
+        },
+      });
+      return [row?.email, row?.contact?.primaryEmail].filter((v): v is string => Boolean(v));
+    }
+    case "Review": {
+      const row = await prisma.review.findUnique({
+        where: { id: entry.entityId },
+        select: {
+          createdBy: true,
+          customer: { select: { email: true } },
+        },
+      });
+      const emails: string[] = [];
+      if (row?.customer?.email) emails.push(row.customer.email);
+      if (row?.createdBy?.startsWith("review-token:")) {
+        const orderNumber = row.createdBy.slice("review-token:".length).trim();
+        if (orderNumber) {
+          const order = await prisma.order.findUnique({
+            where: { number: orderNumber },
+            select: { email: true },
+          });
+          if (order?.email) emails.push(order.email);
+        }
+      }
+      return emails;
     }
     default:
       return [];

@@ -37,6 +37,23 @@ describe("sanitizeSupportTextForAi — cero PII enviada a modelos externos (S26)
     expect(scrubbed).toContain("[DIRECCION_REDACTADA]");
     expect(scrubbed).toContain("[URL_REDACTADA]");
   });
+
+  it("redacta teléfonos fijos colombianos (indicativos 601–608) y destinatarios con tildes finales", () => {
+    const raw =
+      "Llámenme al fijo de oficina 601 234 5678 o en Medellín al (604) 444-5566 o +57 602 888 9900; recibe José Andrés Gómez.";
+    const scrubbed = sanitizeSupportTextForAi(raw, {
+      knownNames: ["José Andrés Gómez"],
+    });
+
+    expect(scrubbed).not.toContain("601 234 5678");
+    expect(scrubbed).not.toContain("444-5566");
+    expect(scrubbed).not.toContain("602 888 9900");
+    expect(scrubbed).not.toContain("José");
+    expect(scrubbed).not.toContain("Andrés");
+    expect(scrubbed).not.toContain("Gómez");
+    expect(scrubbed).toContain("[TELEFONO_REDACTADO]");
+    expect(scrubbed).toContain("[CLIENTE]");
+  });
 });
 
 describe.skipIf(!HAS_DB)(

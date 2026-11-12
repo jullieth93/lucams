@@ -785,10 +785,10 @@ export function Contact360Tabs({
               </h3>
               {access.canViewReviews && data.reviews.length > 0 && (
                 <Link
-                  href="/admin/resenas"
+                  href="/admin/resenas?status=all"
                   className="text-brand-purple hover:text-brand-purple-dark text-xs font-semibold hover:underline"
                 >
-                  Moderar en Reseñas →
+                  Ver en Reseñas →
                 </Link>
               )}
             </div>
@@ -807,9 +807,19 @@ export function Contact360Tabs({
                         <span className="text-brand-purple-dark text-sm font-medium">
                           {rev.productName}
                         </span>
-                        <AdminBadge tone={rev.isApproved ? "emerald" : "amber"}>
-                          {rev.isApproved ? "Aprobada" : "Pendiente"} · {rev.rating}★
-                        </AdminBadge>
+                        <div className="flex items-center gap-2">
+                          <AdminBadge tone={rev.isApproved ? "emerald" : "amber"}>
+                            {rev.isApproved ? "Aprobada" : "Pendiente"} · {rev.rating}★
+                          </AdminBadge>
+                          {access.canViewReviews && (
+                            <Link
+                              href={`/admin/resenas?status=all&q=${encodeURIComponent(rev.id)}`}
+                              className="text-brand-purple hover:text-brand-purple-dark text-xs font-semibold hover:underline"
+                            >
+                              Abrir →
+                            </Link>
+                          )}
+                        </div>
                       </div>
                       <p className="text-brand-purple-dark/80 text-xs">{rev.comment}</p>
                     </li>

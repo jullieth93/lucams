@@ -468,7 +468,7 @@ export async function getTodayOperationalInbox(
       isOverdue: sla.state === "OVERDUE",
       dueAtIso: r.slaDueAt ? r.slaDueAt.toISOString() : null,
       createdAtIso: r.requestedAt.toISOString(),
-      actionHref: "/admin/retractos",
+      actionHref: `/admin/retractos?status=all&q=${encodeURIComponent(r.id)}`,
       actionLabel: "Gestionar retracto",
       completableTaskId: null,
     });
@@ -527,7 +527,7 @@ export async function getTodayOperationalInbox(
       isOverdue: sla.state === "OVERDUE",
       dueAtIso: w.slaDueAt ? w.slaDueAt.toISOString() : null,
       createdAtIso: w.requestedAt.toISOString(),
-      actionHref: "/admin/garantias",
+      actionHref: `/admin/garantias?status=all&q=${encodeURIComponent(w.id)}`,
       actionLabel: "Ver garantía",
       completableTaskId: null,
     });

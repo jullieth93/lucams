@@ -110,8 +110,9 @@
   `/admin/metricas`, embudo `/empresas-y-eventos` → `Opportunity` → `/cotizacion/[token]`, **Puntos
   Lucams** (tope anti-abuso ≤25 %, pasivo vivo en `/admin/fidelizacion`, retrocrédito al verificar correo, reversión en retractos) y `/r/[codigo]`.
 - Seguimiento `/pedido/[token]` con autoservicio posventa para invitados (`GuestOrderSupportCard`,
-  doble factor token + email), retractos Ley 1480, garantías selladas `OrderItem.warrantyMonths`
-  (`1..120` m), soporte PQR con SLAs + copiloto IA 0-PII y reseñas exclusivas en `DELIVERED`.
+  doble factor token + email), retractos Ley 1480 y garantías selladas `OrderItem.warrantyMonths`
+  (`1..120` m) con reembolsos finales unificados en `SUPERADMIN` + MFA y lectura contable cero-PII para
+  `FINANCE_ANALYST`, soporte PQR con SLAs + copiloto IA 0-PII y reseñas `DELIVERED` con lectura para Soporte.
 - **Vigilancia fiscal proactiva (`ADR-196`):** cron diario `fiscal-watch` que mide los umbrales DIAN
   de 3 500 UVT del año en curso (facturación electrónica e IVA por ventas con tarjeta), proyecta el
   cierre anual por ritmo reciente y alerta 70 %/90 %/100 % en `/admin/hoy`, `/admin/metricas`,

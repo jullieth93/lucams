@@ -70,7 +70,6 @@ const OPS_MANAGER_CAPS: readonly AdminCapability[] = [
   "crm:manage_tasks",
   "support:manage",
   "warranty:manage",
-  "warranty:refund",
   "retract:manage",
   "carts:recover",
   "marketing:read",
@@ -210,6 +209,18 @@ export const ADMIN_ROLE_SETS = {
   ),
   /** Atención posventa: tickets, garantías, retractos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   SUPPORT_CARE: rolesWithCapability("support:manage"),
+  /** Lectura operativa y contable de garantías (`SUPPORT_CARE` + `FINANCE_ANALYST` con PII enmascarada); mutación exclusiva `warranty:manage`. */
+  GARANTIAS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "warranty:manage") || hasCapability(r, "finance:read"),
+  ),
+  /** Lectura operativa y contable de retractos (`SUPPORT_CARE` + `FINANCE_ANALYST` con PII enmascarada); mutación exclusiva `retract:manage`. */
+  RETRACTOS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "retract:manage") || hasCapability(r, "finance:read"),
+  ),
+  /** Lectura de reseñas y reputación posventa (`catalog:write` + `CUSTOMER_SUPPORT`); moderación exclusiva `catalog:write`. */
+  RESENAS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "catalog:write") || hasCapability(r, "support:manage"),
+  ),
   /** Recuperación de carritos abandonados (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   CARTS_RECOVER: rolesWithCapability("carts:recover"),
   /** Cotizaciones y oportunidades B2B/eventos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
@@ -244,10 +255,25 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/notificaciones", roles: rolesWithCapability("notifications:manage") },
   { prefix: "/admin/pedidos", roles: rolesWithCapability("orders:read_operational") },
 
-  // Posventa y soporte al cliente (incluye CUSTOMER_SUPPORT)
-  { prefix: "/admin/garantias", roles: rolesWithCapability("warranty:manage") },
-  { prefix: "/admin/reclamos", roles: rolesWithCapability("warranty:manage") },
-  { prefix: "/admin/retractos", roles: rolesWithCapability("retract:manage") },
+  // Posventa y soporte al cliente (CUSTOMER_SUPPORT gestiona; FINANCE_ANALYST lee retractos/garantías con PII enmascarada)
+  {
+    prefix: "/admin/garantias",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "warranty:manage") || hasCapability(r, "finance:read"),
+    ),
+  },
+  {
+    prefix: "/admin/reclamos",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "warranty:manage") || hasCapability(r, "finance:read"),
+    ),
+  },
+  {
+    prefix: "/admin/retractos",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "retract:manage") || hasCapability(r, "finance:read"),
+    ),
+  },
   { prefix: "/admin/soporte", roles: rolesWithCapability("support:manage") },
   { prefix: "/admin/mensajes", roles: rolesWithCapability("support:manage") },
 
@@ -276,7 +302,12 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/materiales", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/categorias", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/ocasiones", roles: rolesWithCapability("catalog:write") },
-  { prefix: "/admin/resenas", roles: rolesWithCapability("catalog:write") },
+  {
+    prefix: "/admin/resenas",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "catalog:write") || hasCapability(r, "support:manage"),
+    ),
+  },
   { prefix: "/admin/canales/mercadolibre", roles: ["SUPERADMIN"] },
   { prefix: "/admin/canales", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/envios", roles: rolesWithCapability("shipping:configure") },

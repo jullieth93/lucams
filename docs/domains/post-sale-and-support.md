@@ -71,7 +71,9 @@ stateDiagram-v2
 - **Liquidación exacta en centavos y reversión proporcional de puntos (`[FIN-01]`)**:
   - `computeRetractRefundBreakdown` usa aritmética entera `BigInt` para prorratear los descuentos de mercancía (cupones de importe/porcentaje y `loyaltyDiscount`), garantizando que la suma de reembolsos parciales jamás supere el efectivo neto cobrado.
   - Al confirmar `RECEIVED -> REFUNDED`, `restoreRedeemedPointsForRetract` acredita al cliente la porción exacta de Puntos Lucams redimidos en esa línea (`LoyaltyTxn` con `reason = "RETRACT_REFUND:<retractId>"`).
-- **Gobierno RBAC y MFA en `/admin/retractos`**: los roles de `SUPPORT_CARE` (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`) aprueban, rechazan y marcan recepción física; la transición final a `REFUNDED` (`WOMPI_VOID` o `BANK_TRANSFER`) está restringida exclusivamente a **`SUPERADMIN` con reautenticación MFA TOTP reciente (`requireRecentMfa()`)** y control `selfDealing`.
+- **Gobierno RBAC, vista contable cero-PII y MFA en `/admin/retractos`**:
+  - Los roles operativos con `retract:manage` (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`) asignan responsable (`assignRetractRequest`), aprueban, rechazan y marcan recepción física; la transición final a `REFUNDED` (`retract:refund`: `WOMPI_VOID` o `BANK_TRANSFER`) está restringida exclusivamente a **`SUPERADMIN` con reautenticación MFA TOTP reciente (`requireRecentMfa()`)** y control `selfDealing`.
+  - **`FINANCE_ANALYST` (`RETRACTOS_READ`)** accede en modo contable de solo lectura para auditar el pasivo abierto y los reembolsos liquidados en COP: `listRetractRequestsAdmin` enmascara en servidor nombres y correos (`maskPersonName`, `maskEmail`), oculta los motivos de texto libre (`reason`) y desactiva la búsqueda sobre campos PII (anti-oráculo).
 
 ---
 
@@ -87,8 +89,11 @@ A diferencia del retracto, la garantía legal protege al comprador frente a defe
   - Estados de `WarrantyStatus`: `PENDING` -> `IN_REVIEW` -> `APPROVED` -> `RESOLVED` (o `REJECTED`). Al radicarse se calcula `slaDueAt` a **`15 días hábiles colombianos`** (`{{garantia_respuesta_dias}}`, Ley 1480 art. 58).
   - La conversión administrativa desde `/admin/soporte/[id]` (`createWarrantyClaimAsAdmin`) permite abrir casos sin el bloqueo rígido de calendario automático para atender escenarios de suspensión durante reparación o reinicio por reposición (Ley 1480 art. 9).
   - Soporta los tres remedios legales del art. 11 en `WarrantyClaim.resolutionType`: `REPAIR`, `REPLACE` y `REFUND`.
-  - **Evidencia fotográfica (`evidenceUrls`)**: el modelo `WarrantyClaim` y la vista `/admin/garantias` almacenan y enlazan hasta 5 URLs de evidencia; en el flujo público actual el formulario captura la descripción detallada del fallo (`10..2000` caracteres) y las fotografías de soporte se reciben por correo o respuesta al hilo / WhatsApp conforme a la política de garantías publicada.
-- **Doble candado financiero en `/admin/garantias`**: cuando el remedio seleccionado es `REFUND`, tanto la aprobación como el cierre exigen la capacidad `warranty:refund` (bloqueando a `CUSTOMER_SUPPORT`) **más MFA reciente (`requireRecentMfa()`)**, registrando auditoría con detección `selfDealing`.
+  - **Evidencia fotográfica sanitizada (`evidenceUrls`)**: `sanitizeWarrantyEvidenceUrls` valida tanto al persistir como al renderizar que cada URL (máximo 5, deduplicadas) utilice exclusivamente `https://` o `/api/...` sin `..`, neutralizando vectores `javascript:`/`data:`/protocol-relative.
+- **Unificación del desembolso en `SUPERADMIN` + MFA y vista contable en `/admin/garantias` (`/admin/reclamos` → `308`)**:
+  - Los roles con `warranty:manage` (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`) asignan responsable (`assignWarrantyClaim`), diagnostican con visibilidad del sello probatorio `Design.qualityAcknowledgedAt`, y gestionan `REPAIR`, `REPLACE` o `REJECTED`.
+  - Cuando el remedio es `REFUND` (salida efectiva de caja), tanto aprobar `REFUND` como resolver un reclamo `REFUND` exigen **`warranty:refund` (exclusivo `SUPERADMIN`) + `requireRecentMfa()`**, unificando toda salida de dinero posventa con `retract:refund` y registrando auditoría `selfDealing`.
+  - **`FINANCE_ANALYST` (`GARANTIAS_READ`)** consulta exposición aprobada y desembolsos por `REFUND` en modo contable de solo lectura con PII, textos libres (`description`, `resolutionNotes`) y fotografías ocultos en servidor.
 
 ---
 
@@ -113,8 +118,9 @@ A diferencia del retracto, la garantía legal protege al comprador frente a defe
   - Los formularios de cambio de estado y de gobierno/asignación en `/admin/soporte/[id]` envían `expectedUpdatedAt` y ejecutan `updateMany` condicional sobre `SupportTicket.updatedAt`; si otro agente respondió o reasignó el caso segundos antes, se lanza `SupportConcurrencyError` exigiendo recargar antes de sobrescribir. Las respuestas se agregan de forma transaccional en `SupportTicketMessage` actualizando `updatedAt` (y auto-asignando responsable solo si estaba vacante).
   - Marcar «Nota interna» (`isInternal = true`) guarda comentarios privados del equipo que nunca salen por correo, nunca se exponen en `/soporte/[token]` ni `/mi-cuenta/soporte`, y no alteran `firstRespondedAt`.
 - **Copiloto ARM humano-en-el-bucle cero-PII (`apps/web/features/ai/support-copilot.ts`)**:
-  - En `/admin/soporte/[id]`, el agente puede solicitar un borrador asistido (`25 req/h` por admin). Antes de salir hacia Google Gemini, `sanitizeSupportTextForAi` **redacta toda PII** (correos, teléfonos, direcciones físicas colombianas, URLs, documentos/guías numéricas, consecutivos de orden y nombres propios del cliente) y excluye notas internas, enviando únicamente contexto operativo anónimo y plazos legales aplicables.
+  - En `/admin/soporte/[id]`, el agente puede solicitar un borrador asistido (`25 req/h` por admin). Antes de salir hacia Google Gemini, `sanitizeSupportTextForAi` **redacta toda PII** (correos, teléfonos móviles y fijos colombianos `601–608`, direcciones físicas colombianas, URLs, documentos/guías numéricas, consecutivos de orden y nombres propios del comprador y destinatario con soporte Unicode) y excluye notas internas, enviando únicamente contexto operativo anónimo y plazos legales aplicables.
   - Al recibir la sugerencia (o la plantilla inteligente de respaldo si el proveedor externo no responde en `10 s`), el servidor reinyecta localmente el número de pedido y el saludo, precargando el borrador en el área de texto **sin enviarlo jamás de forma autónoma**. Si el humano revisa y envía la respuesta, se audita `aiAssisted: true` en `AdminActionLog` (ver [`../integrations/google-and-ai.md`](../integrations/google-and-ai.md)).
+  - La cabecera de `/admin/soporte` presenta la serie diaria de 14 días (`America/Bogota`) de tickets entrantes frente a cerrados, mezcla por asunto y enlaces 360° condicionados por `canAccessAdminPath`.
 
 ---
 
@@ -127,8 +133,9 @@ Para asegurar que las calificaciones provengan exclusivamente de entregas reales
 - **Token HMAC y uso único por `(pedido, producto)`**:
   - `review-token.ts` firma un token stateless HMAC-SHA256 con clave derivada por separación de dominio (`"review-token:" + CSRF_SECRET`) y vigencia de `30 días`, verificado con `crypto.timingSafeEqual`.
   - Al enviar en `/resena/[token]` (protegido con Turnstile y `5 envíos/h/IP`), el servidor revalida que la orden siga `DELIVERED` e impide duplicados tanto para clientes registrados (índice único parcial `Review_productId_customerId_active_unique`) como para invitados puros (marcador `createdBy = "review-token:<orderNumber>"`). _(El esquema contempla `Review.images`, aunque la captura pública actual opera solo con calificación `1..5` y comentario textual)._
-- **Moderación íntegra y agregación SEO (`/admin/resenas`)**:
-  - Toda reseña nace con `isApproved = false` y `featured = false`. Los roles `MANAGER_UP` pueden aprobarla para la PDP, destacarla para la portada (`featured = true`) o archivarla, **sin opción de editar el texto escrito por el consumidor** (transparencia Ley 1480).
+- **Moderación íntegra, lectura reputacional y agregación SEO (`/admin/resenas`)**:
+  - Toda reseña nace con `isApproved = false` y `featured = false`. Los roles con `catalog:write` (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`) aprueban para la PDP, destacan para la portada (`featured = true`, solo sobre aprobadas), archivan o restauran (individualmente o por lote, revalidando todas las fichas PDP afectadas y sanitizando `returnTo` con `sanitizeReviewReturnPath`), **sin opción de editar el texto escrito por el consumidor** (transparencia Ley 1480).
+  - **`CUSTOMER_SUPPORT` (`RESENAS_READ`)** accede a `/admin/resenas` en modo de lectura reputacional (sin controles de moderación) para monitorear la distribución 5★–1★, aislar calificaciones críticas (1★–2★) y saltar en un clic al `Pedido`, `Contacto 360` o `Soporte` vinculados.
   - `getProductRatingAggregate` calcula el promedio y conteo real sobre reseñas aprobadas y alimenta simultáneamente el bloque visual `<ProductReviews>` en la PDP y el marcado estructurado `AggregateRating` del JSON-LD (`product-jsonld.ts`), garantizando paridad exacta ante motores de búsqueda.
 
 ---

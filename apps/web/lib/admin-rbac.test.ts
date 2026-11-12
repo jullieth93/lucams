@@ -628,14 +628,17 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/clientes/ck_123")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/clientes/duplicados")).toBe(false);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/soporte")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/mensajes")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/garantias")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/reclamos")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/retractos")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/resenas")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/carritos")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/carritos/configuracion")).toBe(false);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/productos")).toBe(false);
   });
 
-  it("FINANCE_ANALYST opera finanzas, conciliación COD, costos, métricas y export contable con PII enmascarado y sin tocar catálogo ni staff", () => {
+  it("FINANCE_ANALYST opera finanzas, conciliación COD, costos, métricas, pasivos posventa y export contable con PII enmascarado y sin tocar catálogo ni staff", () => {
     expect(hasCapability("FINANCE_ANALYST", "finance:read")).toBe(true);
     expect(hasCapability("FINANCE_ANALYST", "finance:reconcile_cod")).toBe(true);
     expect(hasCapability("FINANCE_ANALYST", "finance:export_csv")).toBe(true);
@@ -645,17 +648,26 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(hasCapability("FINANCE_ANALYST", "orders:transition")).toBe(false);
     expect(hasCapability("FINANCE_ANALYST", "catalog:write")).toBe(false);
     expect(hasCapability("FINANCE_ANALYST", "staff:manage")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "warranty:manage")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "warranty:refund")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "retract:manage")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "retract:refund")).toBe(false);
 
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/conciliacion")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/bloqueos")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/export")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/costos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/retractos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/garantias")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/reclamos")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/mayorista")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/cupones")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/cupones/cp_123")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/fidelizacion")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/metricas")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/soporte")).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/resenas")).toBe(false);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/clientes")).toBe(false);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/productos")).toBe(false);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/usuarios")).toBe(false);
@@ -802,6 +814,61 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     ] as const) {
       expect(canSeeOrderCommercialBreakdown(role)).toBe(true);
       expect(canSeeOrderCodCollectionAmount(role)).toBe(true);
+    }
+  });
+
+  it("Bloque 6 — Posventa, Atención y Reputación (D1 lectura contable, D2 reembolso unificado SUPERADMIN, D3 lectura reputacional y B-7)", () => {
+    // D2: Salida efectiva de dinero en posventa unificada en SUPERADMIN
+    expect(rolesWithCapability("retract:refund")).toEqual(["SUPERADMIN"]);
+    expect(rolesWithCapability("warranty:refund")).toEqual(["SUPERADMIN"]);
+    expect(hasCapability("OPERATIONS_MANAGER", "warranty:manage")).toBe(true);
+    expect(hasCapability("OPERATIONS_MANAGER", "warranty:refund")).toBe(false);
+    expect(hasCapability("OPERATIONS_MANAGER", "retract:manage")).toBe(true);
+    expect(hasCapability("OPERATIONS_MANAGER", "retract:refund")).toBe(false);
+    expect(hasCapability("MANAGER", "warranty:refund")).toBe(false);
+    expect(hasCapability("MANAGER", "retract:refund")).toBe(false);
+
+    // D1: Garantías, Reclamos y Retractos visibles en lectura contable para FINANCE_ANALYST
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "MANAGER",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/garantias")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/reclamos")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/reclamos/clm_123")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/retractos")).toBe(true);
+    }
+    for (const role of ["FULFILLMENT", "PRINT_WORKSHOP", "CMS_EDITOR"] as const) {
+      expect(canAccessAdminPath(role, "/admin/garantias")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/reclamos")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/reclamos/clm_123")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/retractos")).toBe(false);
+    }
+
+    // D3: Reseñas en lectura para CUSTOMER_SUPPORT; moderación exclusiva catalog:write
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "CUSTOMER_SUPPORT",
+      "MANAGER",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/resenas")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/soporte")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/mensajes")).toBe(true);
+    }
+    expect(hasCapability("CUSTOMER_SUPPORT", "catalog:write")).toBe(false);
+    for (const role of [
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/resenas")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/soporte")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/mensajes")).toBe(false);
     }
   });
 });

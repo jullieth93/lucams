@@ -252,7 +252,7 @@ Leyenda: `SA` = `SUPERADMIN`, `OM` = `OPERATIONS_MANAGER` / `MANAGER`, `CS` = `C
 | 14  | `crm:manage_tasks`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
 | 15  | `support:manage`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
 | 16  | `warranty:manage`                 |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 17  | `warranty:refund`                 |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 17  | `warranty:refund`                 |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
 | 18  | `retract:manage`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
 | 19  | `retract:refund`                  |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |
 | 20  | `carts:recover`                   |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
