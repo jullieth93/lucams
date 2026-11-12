@@ -117,6 +117,8 @@ export async function createMaterialAction(
       materialId: created.id,
     });
     revalidatePath("/admin/materiales");
+    revalidatePath("/admin/costos");
+    revalidatePath("/admin/productos");
     redirect("/admin/materiales?created=1");
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
@@ -165,6 +167,8 @@ export async function updateMaterialAction(
       metadata: { name: parsed.name },
     });
     revalidatePath("/admin/materiales");
+    revalidatePath("/admin/costos");
+    revalidatePath("/admin/productos");
     redirect("/admin/materiales?updated=1");
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
@@ -197,6 +201,8 @@ export async function toggleMaterialActiveAction(formData: FormData): Promise<vo
       entityId: id,
     });
     revalidatePath("/admin/materiales");
+    revalidatePath("/admin/costos");
+    revalidatePath("/admin/productos");
     redirect(`/admin/materiales?${updated.isActive ? "activated" : "deactivated"}=1`);
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
@@ -227,6 +233,8 @@ export async function deleteMaterialAction(formData: FormData): Promise<void> {
       entityId: id,
     });
     revalidatePath("/admin/materiales");
+    revalidatePath("/admin/costos");
+    revalidatePath("/admin/productos");
     redirect("/admin/materiales?deleted=1");
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
@@ -255,6 +263,8 @@ export async function restoreMaterialAction(formData: FormData): Promise<void> {
       entityId: id,
     });
     revalidatePath("/admin/materiales");
+    revalidatePath("/admin/costos");
+    revalidatePath("/admin/productos");
     redirect("/admin/materiales?restored=1");
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;

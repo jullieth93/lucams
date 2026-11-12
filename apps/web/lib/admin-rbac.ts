@@ -178,8 +178,14 @@ export const ADMIN_ROLE_SETS = {
   ),
   /** Roles habilitados para moderar diseños de clientes (incluye PRINT_WORKSHOP). */
   PRODUCTION_MODERATE: rolesWithCapability("production:moderate"),
+  /** Roles habilitados para gestionar activos del Estudio (plantillas, prediseñados y abecedarios). */
+  PRODUCTION_ASSETS: rolesWithCapability("production:manage_AssetsCatalog"),
   /** Gerencia operativa + catálogo (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
   MANAGER_UP: rolesWithCapability("catalog:write"),
+  /** Lectura de costos y márgenes BOM (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `FINANCE_ANALYST`). */
+  COSTOS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "finance:read") || hasCapability(r, "catalog:write"),
+  ),
   /** Atención posventa: tickets, garantías, retractos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   SUPPORT_CARE: rolesWithCapability("support:manage"),
   /** Recuperación de carritos abandonados (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
@@ -271,12 +277,18 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/carritos/configuracion", roles: ["SUPERADMIN"] },
   { prefix: "/admin/carritos", roles: rolesWithCapability("carts:recover") },
 
-  // Finanzas, conciliación COD, costos y métricas (habilita FINANCE_ANALYST sin SUPERADMIN)
+  // Finanzas, conciliación COD, costos y métricas (habilita FINANCE_ANALYST sin SUPERADMIN;
+  // /admin/costos permite lectura a FINANCE_ANALYST + lectura/edición a catalog:write)
   { prefix: "/admin/finanzas/conciliacion", roles: rolesWithCapability("finance:reconcile_cod") },
   { prefix: "/admin/finanzas/bloqueos", roles: rolesWithCapability("finance:reconcile_cod") },
   { prefix: "/admin/finanzas/export", roles: rolesWithCapability("finance:export_csv") },
   { prefix: "/admin/finanzas", roles: rolesWithCapability("finance:read") },
-  { prefix: "/admin/costos", roles: rolesWithCapability("finance:read") },
+  {
+    prefix: "/admin/costos",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "finance:read") || hasCapability(r, "catalog:write"),
+    ),
+  },
   { prefix: "/admin/metricas", roles: rolesWithCapability("metrics:read") },
 
   // Configuración sensible y CMS v2

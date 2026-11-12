@@ -100,7 +100,7 @@
 - Carrito auto-sanado (`ADR-171`), checkout en 3 pasos (`ADR-155`), direcciones DANE + CP MinTIC
   (171/171 ciudades) y modo regalo. Fletes HMAC por peso, ledger Wompi por intento + webhook 25 h,
   COD con blocklist/conciliación, alertas de stock, Aveonline con PDFs + `ShipmentEvent`, Envío Lucams
-  Bogotá y costeo por receta.
+  Bogotá y costeo centralizado por receta BOM (`/admin/costos`, escritura operativa y solo lectura financiera).
 
 ### CRM 360°, B2B, Posventa y Operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 
@@ -114,8 +114,8 @@
   de 3 500 UVT del año en curso (facturación electrónica e IVA por ventas con tarjeta), proyecta el
   cierre anual por ritmo reciente y alerta 70 %/90 %/100 % en `/admin/hoy`, `/admin/metricas`,
   `/admin/notificaciones` y correo al owner (una vez por cruce y año).
-- Panel `/admin` (8 roles × 36 capacidades, MFA `aal2` sin desactivación permanente + rotación de
-  contraseña verificada en HIBP, buscador `⌘K`, `useAdminConfirm`), 32 plantillas React Email
+- Panel `/admin` (8 roles × 36 capacidades, MFA `aal2` sin desactivación permanente + step-up MFA en
+  conectores y purgas irreversibles + rotación de contraseña verificada en HIBP, buscador `⌘K`, `useAdminConfirm`), 32 plantillas React Email
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
     consentimiento + embudo `FunnelEventDaily`, **20 procesos programados** y **backups diarios GPG de
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.

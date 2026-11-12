@@ -24,6 +24,7 @@ const CATALOG_PATHS = [
   "/admin/productos",
   "/admin/inventario",
   "/admin/materiales",
+  "/admin/costos",
   "/admin/categorias",
   "/admin/ocasiones",
   "/admin/resenas",
@@ -42,9 +43,7 @@ const MANAGER_UP_PATHS = ["/admin/garantias", "/admin/retractos", "/admin/notifi
 const CONTENT_PATHS = ["/admin/contenido", "/admin/redirects"];
 // Autoservicio de cuenta (MFA obligatorio, B-1): los cuatro roles.
 const ACCOUNT_PATHS = ["/admin/seguridad"];
-// Rutas solo-SUPERADMIN: las NO listadas (deny-by-default) +
-// /admin/email-templates (Fase 4: módulo real de plantillas — preview,
-// overrides y envío de prueba; ya no es el redirect legacy al CMS).
+// Rutas solo-SUPERADMIN (o finanzas/métricas fuera de alcance de MANAGER/FULFILLMENT/CMS):
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
   "/admin/cupones",
@@ -53,7 +52,6 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/integraciones/aveonline",
   "/admin/auditoria",
   "/admin/mayorista",
-  "/admin/costos",
   "/admin/canales/mercadolibre",
   "/admin/metricas",
   "/admin/performance",
@@ -654,6 +652,10 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
   it("OPERATIONS_MANAGER equivale funcionalmente a gerencia operativa (incluye notificaciones, materiales, canales de tienda, envíos, fusión de duplicados y marketing)", () => {
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/notificaciones")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/materiales")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/costos")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/plantillas")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/disenos")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/fichas")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/canales")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/canales/tienda")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/canales/mercadolibre")).toBe(false);
@@ -665,6 +667,12 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/marketing/suscriptores")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/finanzas")).toBe(false);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/usuarios")).toBe(false);
+    expect(ADMIN_ROLE_SETS.COSTOS_READ).toEqual([
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "FINANCE_ANALYST",
+      "MANAGER",
+    ]);
     expect(rolesWithCapability("staff:manage")).toEqual(["SUPERADMIN"]);
   });
 });

@@ -12,13 +12,15 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import {
   ArrowDown,
+  ArrowRightLeft,
   ArrowUp,
   CornerDownRight,
   Edit3,
+  ExternalLink,
   Layers,
+  Package,
   RotateCcw,
   Trash2,
 } from "lucide-react";
@@ -33,15 +35,19 @@ import {
   AdminEmpty,
   AdminCard,
   AdminNotice,
+  AdminSegmentedBar,
   SortableHeader,
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
+import { CountUp } from "@/components/admin/count-up";
 import { PendingSubmitButton } from "@/components/admin/pending-submit-button";
 import { listCategories, listParentCategoryOptions } from "@/features/categories/service";
-import { getCurrentAdmin } from "@/lib/auth";
+import { canAccessAdminPath } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
+import { prisma } from "@/lib/db";
 import { resolveCategoryGradient, resolveCategoryIcon } from "@/lib/category-visuals";
 import { CategoryForm } from "./category-form";
 import {
@@ -67,8 +73,8 @@ export default async function AdminCategoriasPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireCapability("catalog:write");
+  const canViewRedirects = canAccessAdminPath(session.admin.role, "/admin/redirects");
 
   const sp = await searchParams;
   const q = pickString(sp, "q");
@@ -77,16 +83,60 @@ export default async function AdminCategoriasPage({
   // prueba/inactivas al abrir el listado. Los tests crean muchas categorías basura; el admin las
   // puede ver cambiando el filtro.
   const status: "all" | "active" | "inactive" | "archived" = (
-    ["active", "inactive", "archived"].includes(statusRaw ?? "") ? statusRaw : "active"
+    ["all", "active", "inactive", "archived"].includes(statusRaw ?? "") ? statusRaw : "active"
   ) as "all" | "active" | "inactive" | "archived";
   const sortRaw = pickString(sp, "sort");
   const sort = (["name", "recent"].includes(sortRaw ?? "") ? sortRaw : "order") as
     "order" | "name" | "recent";
 
-  const [categories, parentOptions] = await Promise.all([
+  const [categories, parentOptions, allCategories, liveProductGroups] = await Promise.all([
     listCategories({ q, status, sort }),
     listParentCategoryOptions(),
+    prisma.category.findMany({
+      select: {
+        id: true,
+        slug: true,
+        parentId: true,
+        isActive: true,
+        deletedAt: true,
+        featuredProductSlug: true,
+      },
+    }),
+    prisma.product.groupBy({
+      by: ["categoryId"],
+      where: { deletedAt: null },
+      _count: { _all: true },
+    }),
   ]);
+
+  const liveProductsByCat = new Map<string, number>(
+    liveProductGroups.map((g) => [g.categoryId, g._count._all]),
+  );
+  const liveChildrenByCat = new Map<string, number>();
+  const slugById = new Map<string, string>();
+  let globalActive = 0;
+  let globalInactive = 0;
+  let globalArchived = 0;
+  let globalRoots = 0;
+  let globalSubs = 0;
+  let globalFeatured = 0;
+
+  for (const c of allCategories) {
+    slugById.set(c.id, c.slug);
+    if (c.deletedAt) {
+      globalArchived += 1;
+      continue;
+    }
+    if (c.isActive) globalActive += 1;
+    else globalInactive += 1;
+    if (c.parentId) {
+      globalSubs += 1;
+      liveChildrenByCat.set(c.parentId, (liveChildrenByCat.get(c.parentId) ?? 0) + 1);
+    } else {
+      globalRoots += 1;
+    }
+    if (c.featuredProductSlug) globalFeatured += 1;
+  }
 
   // D2/D3: organizamos en árbol (madre → sub-categorías indentadas). Las flechas
   // ↑/↓ solo tienen sentido en "orden manual" sin búsqueda; en otros modos
@@ -139,6 +189,26 @@ export default async function AdminCategoriasPage({
           { label: "Catálogo" },
           { label: "Categorías" },
         ]}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/admin/productos"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <Package className="h-3.5 w-3.5" />
+              Productos
+            </Link>
+            {canViewRedirects && (
+              <Link
+                href="/admin/redirects"
+                className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                Redirecciones 301
+              </Link>
+            )}
+          </div>
+        }
       />
 
       <AdminPageBody>
@@ -151,6 +221,74 @@ export default async function AdminCategoriasPage({
           </AdminNotice>
         )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
+
+        {/* Resumen ejecutivo del árbol de categorías */}
+        <AdminCard className="p-5">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="border-brand-purple/10 rounded-xl border bg-slate-50/60 p-3">
+              <p className="text-brand-muted text-[11px] font-semibold tracking-wide uppercase">
+                Activas en tienda
+              </p>
+              <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+                <CountUp value={globalActive} />
+              </p>
+              <p className="text-brand-muted mt-0.5 text-[11px]">Visibles en menú y catálogo</p>
+            </div>
+            <div className="border-brand-purple/10 rounded-xl border bg-slate-50/60 p-3">
+              <p className="text-brand-muted text-[11px] font-semibold tracking-wide uppercase">
+                Categorías raíz
+              </p>
+              <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+                <CountUp value={globalRoots} />
+              </p>
+              <p className="text-brand-muted mt-0.5 text-[11px]">Primer nivel del árbol</p>
+            </div>
+            <div className="border-brand-purple/10 rounded-xl border bg-slate-50/60 p-3">
+              <p className="text-brand-muted text-[11px] font-semibold tracking-wide uppercase">
+                Subcategorías
+              </p>
+              <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+                <CountUp value={globalSubs} />
+              </p>
+              <p className="text-brand-muted mt-0.5 text-[11px]">Páginas especializadas</p>
+            </div>
+            <div className="border-brand-purple/10 rounded-xl border bg-slate-50/60 p-3">
+              <p className="text-brand-muted text-[11px] font-semibold tracking-wide uppercase">
+                Con producto estrella
+              </p>
+              <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+                <CountUp value={globalFeatured} />
+              </p>
+              <p className="text-brand-muted mt-0.5 text-[11px]">Destacado curado en vitrina</p>
+            </div>
+          </div>
+          <AdminSegmentedBar
+            ariaLabel="Distribución de estado del árbol de categorías"
+            items={[
+              {
+                key: "active",
+                label: "Activas",
+                count: globalActive,
+                tone: "emerald",
+                href: "/admin/categorias?status=active",
+              },
+              {
+                key: "inactive",
+                label: "Pausadas",
+                count: globalInactive,
+                tone: "amber",
+                href: "/admin/categorias?status=inactive",
+              },
+              {
+                key: "archived",
+                label: "Archivadas",
+                count: globalArchived,
+                tone: "slate",
+                href: "/admin/categorias?status=archived",
+              },
+            ]}
+          />
+        </AdminCard>
 
         {/* Toolbar: búsqueda + filtros + ordenamiento (form GET) */}
         <form
@@ -277,6 +415,18 @@ export default async function AdminCategoriasPage({
                 // (patrón de category-grid.tsx) por la regla static-components.
                 const VisualIcon = resolveCategoryIcon(c.icon, c.slug);
                 const visualGradient = resolveCategoryGradient(c.gradient, c.slug);
+                const liveProducts = liveProductsByCat.get(c.id) ?? 0;
+                const liveChildren = liveChildrenByCat.get(c.id) ?? 0;
+                const parentSlug = c.parentId ? slugById.get(c.parentId) : null;
+                const storefrontPath = parentSlug
+                  ? `/productos/${parentSlug}/${c.slug}`
+                  : `/productos/${c.slug}`;
+                const archiveBlockedReason =
+                  liveProducts > 0
+                    ? `Tiene ${liveProducts} ${liveProducts === 1 ? "producto activo" : "productos activos"} — muévelos primero`
+                    : liveChildren > 0
+                      ? `Tiene ${liveChildren} ${liveChildren === 1 ? "subcategoría activa" : "subcategorías activas"} — reasígnalas o archívalas primero`
+                      : null;
                 return (
                   <AdminTableRow key={c.id}>
                     <td className="px-4 py-3">
@@ -301,10 +451,15 @@ export default async function AdminCategoriasPage({
                         {depth > 0 && (
                           <CornerDownRight className="text-brand-purple-dark/35 h-3.5 w-3.5 shrink-0" />
                         )}
-                        {c.name}
-                        {c._count.children > 0 && (
+                        <Link
+                          href={`/admin/categorias/${c.id}`}
+                          className="hover:text-brand-purple hover:underline"
+                        >
+                          {c.name}
+                        </Link>
+                        {liveChildren > 0 && (
                           <span className="bg-brand-purple/10 text-brand-purple-dark/70 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
-                            {c._count.children} sub
+                            {liveChildren} sub
                           </span>
                         )}
                       </div>
@@ -320,7 +475,22 @@ export default async function AdminCategoriasPage({
                       )}
                     </td>
                     <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">
-                      /{c.slug}
+                      <div className="flex items-center gap-1.5">
+                        <span>/{c.slug}</span>
+                        {c.isActive && !c.deletedAt && (
+                          <Hint content="Ver categoría en la tienda">
+                            <Link
+                              href={storefrontPath}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`Ver ${c.name} en la tienda`}
+                              className="text-brand-muted hover:text-brand-purple inline-flex"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </Link>
+                          </Hint>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center">
@@ -341,7 +511,18 @@ export default async function AdminCategoriasPage({
                       </div>
                     </td>
                     <td className="text-brand-purple-dark/85 px-4 py-3 text-center tabular-nums">
-                      {c._count.products}
+                      {liveProducts > 0 ? (
+                        <Hint content="Ver productos de esta categoría">
+                          <Link
+                            href={`/admin/productos?categoria=${c.id}`}
+                            className="bg-brand-purple/10 text-brand-purple-dark hover:bg-brand-purple/20 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors"
+                          >
+                            {liveProducts}
+                          </Link>
+                        </Hint>
+                      ) : (
+                        <span className="text-brand-muted text-xs">0</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {/* 3 estados: archivada / inactiva / activa. Si archivada,
@@ -418,13 +599,7 @@ export default async function AdminCategoriasPage({
                               className="inline"
                             >
                               <input type="hidden" name="id" value={c.id} />
-                              <Hint
-                                content={
-                                  c._count.products > 0
-                                    ? "Tiene productos asociados — moverlos primero"
-                                    : "Archivar"
-                                }
-                              >
+                              <Hint content={archiveBlockedReason ?? "Archivar"}>
                                 <span tabIndex={0} className="inline-flex">
                                   <Button
                                     type="submit"
@@ -432,7 +607,7 @@ export default async function AdminCategoriasPage({
                                     size="sm"
                                     className="h-7 px-2 text-rose-600 hover:bg-rose-50"
                                     aria-label={`Archivar ${c.name}`}
-                                    disabled={c._count.products > 0}
+                                    disabled={archiveBlockedReason !== null}
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>

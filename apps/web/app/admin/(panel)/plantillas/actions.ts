@@ -3,21 +3,28 @@
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { recordAdminAction } from "@/lib/admin-audit";
 import {
   setTemplateApproval,
   deleteTemplateIfOrphan,
 } from "@/features/personalization/admin-templates";
 
-type St = { error?: string; success?: string } | null;
+export type TemplateActionState = {
+  error?: string;
+  success?: string;
+  reauthRequired?: boolean;
+};
+
+type St = TemplateActionState | null;
 
 /**
- * Aprobar (mostrar en el Estudio) u ocultar una plantilla. Gestión de catálogo →
- * SUPERADMIN o MANAGER. `formData.approved` = "1" para aprobar, otro para ocultar.
+ * Aprobar (mostrar en el Estudio) u ocultar una plantilla. Gestión de activos
+ * del Estudio → capability `production:manage_AssetsCatalog` (SUPERADMIN,
+ * OPERATIONS_MANAGER y legacy MANAGER). `formData.approved` = "1" para aprobar.
  */
 export async function setTemplateApprovalAction(_prev: St, formData: FormData): Promise<St> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
 
   const id = String(formData.get("id") ?? "");
   const approved = String(formData.get("approved") ?? "") === "1";
@@ -44,12 +51,21 @@ export async function setTemplateApprovalAction(_prev: St, formData: FormData): 
 }
 
 /**
- * Eliminar DEFINITIVAMENTE una plantilla demo (owner 2026-09-14). La guarda de
- * deleteTemplateIfOrphan rechaza aprobadas y las que tienen diseños — esos
- * mensajes se muestran tal cual en la card. Gestión de catálogo → MANAGER_UP.
+ * Eliminar DEFINITIVAMENTE una plantilla huérfana (owner 2026-09-14). La guarda
+ * de deleteTemplateIfOrphan rechaza aprobadas y las que tienen diseños — esos
+ * mensajes se muestran tal cual en la card. Por ser purga física irreversible,
+ * exige MFA step-up reciente (≤10 min).
  */
 export async function deleteTemplateAction(_prev: St, formData: FormData): Promise<St> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { reauthRequired: true, error: MFA_REAUTH_MESSAGE };
+    }
+    throw err;
+  }
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Falta la plantilla." };

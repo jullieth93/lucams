@@ -51,9 +51,18 @@ export const ONBOARDING_GUIDES: AdminOnboardingGuide[] = [
     id: "onboarding-operations-manager",
     role: "OPERATIONS_MANAGER",
     title: "Ruta de Jefatura de Operaciones",
-    summary: "Pedidos, catálogo, producción, clientes, posventa y coordinación diaria.",
-    version: 1,
-    moduleIds: ["hoy", "pedidos", "inventario", "moderacion", "soporte", "clientes", "envios"],
+    summary: "Pedidos, catálogo, costos BOM, producción, clientes, posventa y coordinación diaria.",
+    version: 2,
+    moduleIds: [
+      "hoy",
+      "pedidos",
+      "inventario",
+      "costos",
+      "moderacion",
+      "soporte",
+      "clientes",
+      "envios",
+    ],
     steps: [
       ...FIRST_STEPS,
       {

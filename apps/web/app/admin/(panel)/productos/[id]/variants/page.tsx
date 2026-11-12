@@ -16,6 +16,7 @@
  */
 
 import { redirect, permanentRedirect } from "next/navigation";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -27,6 +28,7 @@ export default async function VariantsLegacyRedirect({
   params: Params;
   searchParams: SearchParams;
 }) {
+  await requireCapability("catalog:write");
   const { id } = await params;
   const sp = await searchParams;
 

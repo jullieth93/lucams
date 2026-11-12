@@ -316,19 +316,20 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
          * colapsan: son OPCIONALES y no estorban. Lo que el cliente ve es la
          * "Descripción" de Lo básico; el SEO de Google ya funciona automático.
          */}
-        <CollapsibleDetails summary="📝 Textos extra (opcional — para el bot de WhatsApp, que llega más adelante)">
+        <CollapsibleDetails summary="📝 Textos enriquecidos y recomendador (opcional)">
           <p className="text-brand-muted mb-3 text-xs">
-            No hacen falta para vender. Estos textos alimentarán al bot de WhatsApp cuando exista
-            (Fase 5). Por ahora puedes dejarlos vacíos.
+            No son obligatorios para publicar. Enriquecen la ficha del producto y ayudan al
+            recomendador del catálogo (<code>/api/catalog/recommend</code>) y a las vitrinas por
+            ocasión a sugerir la opción adecuada.
           </p>
           <SectionCard
-            title="Descripción larga (opcional)"
-            description="Contexto extenso. Solo lo usará el bot; el cliente ve la Descripción de Lo básico."
+            title="Descripción extendida (opcional)"
+            description="Contexto detallado de materiales, acabados y usos recomendados."
           >
             <Field
               id="richDescription"
               label="Descripción rica (300-800 palabras)"
-              hint="Para quién, cómo se usa, qué tiene de especial. Soporta markdown."
+              hint="Para quién, cómo se usa y qué tiene de especial. Soporta formato Markdown."
             >
               <Textarea
                 id="richDescription"
@@ -336,20 +337,20 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 rows={8}
                 maxLength={5000}
                 defaultValue={initialProduct?.richDescription ?? ""}
-                placeholder="ej. Los Fotoimanes Polaroid Lucams están pensados para esos recuerdos chiquitos pero significativos…"
+                placeholder="ej. Los Fotoimanes Polaroid Lucams están pensados para esos recuerdos significativos…"
                 disabled={pending}
               />
             </Field>
           </SectionCard>
 
           <SectionCard
-            title="Para el bot de WhatsApp"
-            description="El bot usa estos textos cuando un cliente pregunta por este producto."
+            title="Argumentos y escenarios de recomendación"
+            description="Alimentan sugerencias cruzadas y filtros semánticos de la tienda."
           >
             <Field
               id="whyChooseThis"
               label="¿Por qué elegir este producto?"
-              hint="Una línea por bullet. El bot los enumera al recomendar."
+              hint="Una ventaja o diferencial por línea."
             >
               <Textarea
                 id="whyChooseThis"
@@ -367,7 +368,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             <Field
               id="idealFor"
               label="Escenarios ideales"
-              hint="Un escenario por línea. El bot matchea consultas con estos textos."
+              hint="Un escenario de regalo o celebración por línea."
             >
               <Textarea
                 id="idealFor"
@@ -1115,19 +1116,57 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
         )}
 
         <SectionCard
-          title="Costos internos"
-          description="Esta información no se muestra al cliente. Sirve para tus reportes y para el bot de cotizaciones."
+          title="Costos y rentabilidad (gobierno centralizado)"
+          description="Información interna (nunca visible al cliente). El costo unitario se gestiona en un único lugar para evitar discrepancias con la receta de materiales."
         >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <PriceField
-              id="cost"
-              label="Costo interno"
-              hint="Cuánto te cuesta producir uno."
-              defaultPesos={initialProduct?.cost ? initialProduct.cost / 100 : null}
-              error={state?.fieldErrors?.cost?.[0]}
-              pending={pending}
-            />
-          </div>
+          {isEdit && initialProduct ? (
+            <div className="border-brand-purple/15 bg-brand-purple/[0.03] flex flex-col justify-between gap-3 rounded-xl border p-4 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-brand-muted text-xs font-semibold tracking-wide uppercase">
+                  Costo unitario registrado
+                </p>
+                <p className="text-brand-purple-dark font-display mt-0.5 text-xl font-bold tabular-nums">
+                  {initialProduct.cost !== null ? (
+                    formatCOP(initialProduct.cost)
+                  ) : (
+                    <span className="text-brand-muted text-base font-medium">
+                      Sin costo asignado
+                    </span>
+                  )}
+                </p>
+                <p className="text-brand-muted mt-1 text-xs">
+                  Ajusta el costo manual o aplica el sugerido por insumos desde{" "}
+                  <strong>Costos y márgenes</strong>.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/admin/productos/${initialProduct.id}?section=materiales`}
+                  className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center rounded-md border bg-white px-3 text-xs font-semibold"
+                >
+                  Receta de materiales →
+                </Link>
+                <Link
+                  href={`/admin/costos?q=${encodeURIComponent(initialProduct.sku)}`}
+                  className="bg-gradient-brand inline-flex h-9 items-center rounded-md px-3 text-xs font-semibold text-white hover:brightness-110"
+                >
+                  Editar en Costos y márgenes →
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <p className="text-brand-muted text-sm">
+              💡 Una vez creado el producto, podrás armar su <strong>receta de materiales</strong>{" "}
+              (pestaña Materiales) y fijar su costo unitario en{" "}
+              <Link
+                href="/admin/costos"
+                className="text-brand-purple font-semibold hover:underline"
+              >
+                Costos y márgenes
+              </Link>
+              .
+            </p>
+          )}
         </SectionCard>
       </AdminTabPanel>
 

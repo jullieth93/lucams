@@ -1,6 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
+import { Loader2, Plus } from "lucide-react";
+import { AdminNotice } from "@/components/admin-page";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { slugify } from "@/lib/format";
 import { createOcasionAction, type OcasionActionState } from "./actions";
 
 export function CreateOcasionForm() {
@@ -8,90 +15,113 @@ export function CreateOcasionForm() {
     createOcasionAction,
     null,
   );
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
+
+  const onNameChange = (value: string) => {
+    setName(value);
+    if (!slugTouched) setSlug(slugify(value));
+  };
 
   return (
     <form action={formAction} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label htmlFor="name" className="mb-1 block text-sm font-medium text-slate-700">
-            Nombre <span className="text-red-600">*</span>
-          </label>
-          <input
+          <Label htmlFor="name" className="text-brand-purple-dark mb-1 block text-sm font-medium">
+            Nombre <span className="text-rose-600">*</span>
+          </Label>
+          <Input
             id="name"
             name="name"
             required
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
             placeholder="ej. Cumpleaños"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
           />
           {state?.fieldErrors?.name && (
-            <p className="mt-1 text-xs text-red-600">{state.fieldErrors.name[0]}</p>
+            <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.name[0]}</p>
           )}
         </div>
 
         <div>
-          <label htmlFor="slug" className="mb-1 block text-sm font-medium text-slate-700">
-            Slug <span className="text-red-600">*</span>{" "}
-            <span className="text-xs text-slate-500">
-              (URL: /ocasion/<em>slug</em>)
+          <Label htmlFor="slug" className="text-brand-purple-dark mb-1 block text-sm font-medium">
+            Slug <span className="text-rose-600">*</span>{" "}
+            <span className="text-brand-muted text-xs font-normal">
+              (URL: /ocasion/<em>{slug || "slug"}</em>)
             </span>
-          </label>
-          <input
+          </Label>
+          <Input
             id="slug"
             name="slug"
             required
-            pattern="[a-z0-9-]+"
+            pattern="[a-z0-9]+(-[a-z0-9]+)*"
+            value={slug}
+            onChange={(e) => {
+              setSlugTouched(true);
+              setSlug(e.target.value.toLowerCase());
+            }}
             placeholder="ej. cumpleanos"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-purple-500 focus:outline-none"
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono text-sm"
           />
           {state?.fieldErrors?.slug && (
-            <p className="mt-1 text-xs text-red-600">{state.fieldErrors.slug[0]}</p>
+            <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.slug[0]}</p>
           )}
         </div>
       </div>
 
       <div>
-        <label htmlFor="description" className="mb-1 block text-sm font-medium text-slate-700">
-          Descripción semántica <span className="text-red-600">*</span>
-        </label>
-        <p className="mb-2 text-xs text-slate-500">
-          Texto que el bot de WhatsApp futuro usará para entender qué es esta ocasión. Mínimo 20
-          caracteres. Describe contexto colombiano: cuándo se celebra, qué busca el cliente, qué
-          productos recomendarías.
+        <Label
+          htmlFor="description"
+          className="text-brand-purple-dark mb-1 block text-sm font-medium"
+        >
+          Descripción semántica y SEO <span className="text-rose-600">*</span>
+        </Label>
+        <p className="text-brand-muted mb-2 text-xs">
+          Alimenta la página pública <code>/ocasion/[slug]</code>, el filtro del catálogo y el
+          recomendador inteligente (<code>/api/catalog/recommend</code>). Mínimo 20 caracteres;
+          describe cuándo se celebra en Colombia y qué detalles personalizados buscan los clientes.
         </p>
-        <textarea
+        <Textarea
           id="description"
           name="description"
           required
-          rows={5}
+          rows={4}
           minLength={20}
           maxLength={2000}
-          placeholder="ej. Cumpleaños en Colombia es ocasión clave para regalos personalizados. Lo común es regalar imanes con foto del cumpleañero/a + nombre + edad..."
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+          placeholder="ej. Cumpleaños en Colombia es una fecha clave para regalos personalizados con fotos, nombre y edad del homenajeado..."
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 text-sm"
         />
         {state?.fieldErrors?.description && (
-          <p className="mt-1 text-xs text-red-600">{state.fieldErrors.description[0]}</p>
+          <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.description[0]}</p>
         )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <label htmlFor="monthHint" className="mb-1 block text-sm font-medium text-slate-700">
+          <Label
+            htmlFor="monthHint"
+            className="text-brand-purple-dark mb-1 block text-sm font-medium"
+          >
             Mes destacado{" "}
-            <span className="text-xs text-slate-500">(opcional — para auto-rotación menú)</span>
-          </label>
+            <span className="text-brand-muted text-xs font-normal">
+              (opcional — prioriza en vitrinas de temporada)
+            </span>
+          </Label>
           <select
             id="monthHint"
             name="monthHint"
             defaultValue=""
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+            className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:ring-2 focus:outline-none"
           >
-            <option value="">Sin mes específico</option>
+            <option value="">Todo el año (sin mes fijo)</option>
             <option value="1">Enero</option>
             <option value="2">Febrero</option>
-            <option value="3">Marzo</option>
+            <option value="3">Marzo (Día de la Mujer)</option>
             <option value="4">Abril</option>
-            <option value="5">Mayo (Día Madre)</option>
-            <option value="6">Junio (Día Padre)</option>
+            <option value="5">Mayo (Día de la Madre)</option>
+            <option value="6">Junio (Día del Padre)</option>
             <option value="7">Julio</option>
             <option value="8">Agosto</option>
             <option value="9">Septiembre (Amor y Amistad)</option>
@@ -102,65 +132,66 @@ export function CreateOcasionForm() {
         </div>
 
         <div>
-          <label htmlFor="order" className="mb-1 block text-sm font-medium text-slate-700">
+          <Label htmlFor="order" className="text-brand-purple-dark mb-1 block text-sm font-medium">
             Orden de aparición
-          </label>
-          <input
+          </Label>
+          <Input
             id="order"
             name="order"
             type="number"
             min="0"
             defaultValue="0"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
           />
         </div>
       </div>
 
-      <fieldset className="rounded-md border border-slate-200 p-3">
-        <legend className="px-2 text-sm font-semibold text-slate-700">
+      <fieldset className="border-brand-purple/15 rounded-xl border bg-slate-50/50 p-3.5">
+        <legend className="text-brand-purple-dark px-2 text-sm font-semibold">
           Cantidad sugerida (opcional)
         </legend>
-        <p className="mb-2 text-xs text-slate-500">
-          Rango típico de unidades para esta ocasión. El bot recomendará variants según.
+        <p className="text-brand-muted mb-2.5 text-xs">
+          Rango orientativo de unidades para eventos o recordatorios. Ayuda al recomendador a
+          sugerir packs acordes al tamaño de la celebración.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
-            <label htmlFor="rangeMin" className="mb-1 block text-xs text-slate-600">
+            <Label htmlFor="rangeMin" className="text-brand-purple-dark/80 mb-1 block text-xs">
               Mínimo
-            </label>
-            <input
+            </Label>
+            <Input
               id="rangeMin"
               name="rangeMin"
               type="number"
               min="1"
               placeholder="ej. 10"
-              className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+              className="border-brand-purple/20 bg-white text-sm"
             />
           </div>
           <div>
-            <label htmlFor="rangeIdeal" className="mb-1 block text-xs text-slate-600">
+            <Label htmlFor="rangeIdeal" className="text-brand-purple-dark/80 mb-1 block text-xs">
               Ideal
-            </label>
-            <input
+            </Label>
+            <Input
               id="rangeIdeal"
               name="rangeIdeal"
               type="number"
               min="1"
               placeholder="ej. 20"
-              className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+              className="border-brand-purple/20 bg-white text-sm"
             />
           </div>
           <div>
-            <label htmlFor="rangeMax" className="mb-1 block text-xs text-slate-600">
+            <Label htmlFor="rangeMax" className="text-brand-purple-dark/80 mb-1 block text-xs">
               Máximo
-            </label>
-            <input
+            </Label>
+            <Input
               id="rangeMax"
               name="rangeMax"
               type="number"
               min="1"
               placeholder="ej. 40"
-              className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+              className="border-brand-purple/20 bg-white text-sm"
             />
           </div>
         </div>
@@ -171,24 +202,32 @@ export function CreateOcasionForm() {
           type="checkbox"
           name="isActive"
           defaultChecked
-          className="h-4 w-4 rounded border-slate-300"
+          className="accent-brand-purple h-4 w-4 rounded border-slate-300"
         />
-        <span className="text-slate-700">Activa (visible al cliente)</span>
+        <span className="text-brand-purple-dark font-medium">
+          Activa (visible en tienda y filtros)
+        </span>
       </label>
 
-      {state?.error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          🔴 {state.error}
-        </div>
-      )}
+      {state?.error && <AdminNotice tone="error">{state.error}</AdminNotice>}
 
-      <button
+      <Button
         type="submit"
         disabled={isPending}
-        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+        className="bg-gradient-brand text-white hover:brightness-110"
       >
-        {isPending ? "Creando..." : "Crear ocasión"}
-      </button>
+        {isPending ? (
+          <>
+            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            Creando…
+          </>
+        ) : (
+          <>
+            <Plus className="mr-1.5 h-4 w-4" />
+            Crear ocasión
+          </>
+        )}
+      </Button>
     </form>
   );
 }

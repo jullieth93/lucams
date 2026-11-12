@@ -3,9 +3,14 @@
 import { useActionState } from "react";
 import { Check, EyeOff, Trash2 } from "lucide-react";
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { setTemplateApprovalAction, deleteTemplateAction } from "./actions";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
+import {
+  setTemplateApprovalAction,
+  deleteTemplateAction,
+  type TemplateActionState,
+} from "./actions";
 
-type St = { error?: string; success?: string } | null;
+type St = TemplateActionState | null;
 
 /** Botones Aprobar / Ocultar / Eliminar por plantilla. `status` decide qué CTA resaltar. */
 export function TemplateCardActions({
@@ -16,10 +21,8 @@ export function TemplateCardActions({
   status: "aprobada" | "oculta" | "descartada";
 }) {
   const [state, action, pending] = useActionState<St, FormData>(setTemplateApprovalAction, null);
-  const [delState, delAction, delPending] = useActionState<St, FormData>(
-    deleteTemplateAction,
-    null,
-  );
+  const [delState, delAction, delPending, reauthModal] =
+    useMfaReauthAction<TemplateActionState>(deleteTemplateAction);
   const isApproved = status === "aprobada";
 
   return (
@@ -56,9 +59,16 @@ export function TemplateCardActions({
           </form>
         )}
         {/* Eliminar (owner 2026-09-14): solo plantillas NO aprobadas; el servidor
-            además exige 0 diseños referenciantes (con diseños solo se descarta). */}
+            además exige 0 diseños referenciantes y MFA reciente (≤10 min). */}
         {!isApproved && (
-          <ConfirmAction action={delAction} message="¿Eliminar esta plantilla definitivamente?">
+          <ConfirmAction
+            action={delAction}
+            message="Esta plantilla se borrará de la base de datos para siempre (no se puede restaurar)."
+            confirmOptions={{
+              requireTyped: "ELIMINAR",
+              confirmLabel: "Eliminar definitivamente",
+            }}
+          >
             <input type="hidden" name="id" value={id} />
             <button
               type="submit"
@@ -72,8 +82,11 @@ export function TemplateCardActions({
         )}
       </div>
       {state?.error && <p className="text-[11px] text-rose-700">{state.error}</p>}
-      {delState?.error && <p className="text-[11px] text-rose-700">{delState.error}</p>}
+      {delState?.error && !delState.reauthRequired && (
+        <p className="text-[11px] text-rose-700">{delState.error}</p>
+      )}
       {delState?.success && <p className="text-[11px] text-emerald-700">{delState.success}</p>}
+      {reauthModal}
     </div>
   );
 }

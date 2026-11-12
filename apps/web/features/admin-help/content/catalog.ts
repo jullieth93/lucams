@@ -128,17 +128,18 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     cautions: [
       "No edites SKU o personalización de forma improvisada cuando existan pedidos históricos; conserva la trazabilidad.",
       "Los cambios de precio no deben presentarse como retroactivos a compras ya realizadas.",
+      "La purga definitiva desde la papelera es irreversible y exige escribir ELIMINAR más verificación MFA reciente (≤ 10 min).",
     ],
     faqs: [
       {
-        question: "¿Por qué el precio no coincide con Costos?",
+        question: "¿Dónde edito el costo unitario de fabricación del producto?",
         answer:
-          "Productos define el precio de venta; Costos calcula insumos, cargos y margen estimado con ese valor.",
+          "El costo unitario se gobierna de forma centralizada en Costos y márgenes (/admin/costos). En la pestaña Avanzado de la ficha verás el valor vigente en modo lectura con enlace directo.",
       },
       {
         question: "¿Qué hago antes de cambiar una URL?",
         answer:
-          "Guarda la URL anterior, actualiza el slug y crea una redirección permanente hacia la nueva.",
+          "Al cambiar el slug de un producto, categoría u ocasión existente se registra redirección 301 automática; aun así verifica tus enlaces en Redirecciones.",
       },
     ],
     related: ["inventario", "categorias", "mayorista", "costos", "plantillas", "redirects"],
@@ -493,48 +494,53 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     title: "Materiales e insumos",
     area: "Catálogo y producción",
     route: "/admin/materiales",
-    summary: "Catálogo de insumos, costos, unidades, mermas y alertas de disponibilidad.",
+    summary: "Catálogo de insumos de taller, costos unitarios, unidades y alertas de bajo stock.",
     purpose:
-      "Mantiene la información base para producción y costeo por receta. Cada material define cómo se mide y qué costo utiliza el simulador de margen.",
+      "Mantiene la información base de materia prima para el taller y el costeo por receta BOM. Cada material define su unidad, stock actual vs mínimo y costo unitario que alimenta el costo sugerido en Costos y márgenes.",
     whenToUse: [
-      "Para registrar o actualizar insumos de fabricación.",
-      "Para corregir costo, unidad o merma usados en recetas.",
-      "Para revisar alertas de baja disponibilidad de materiales.",
+      "Para registrar o actualizar insumos de fabricación (papel, tinta, imanes, empaques).",
+      "Para actualizar el costo por unidad usado en recetas BOM.",
+      "Para revisar alertas de baja disponibilidad de materiales en taller.",
     ],
     concepts: [
       {
         term: "Unidad de consumo",
-        definition: "Medida en la que la receta descuenta o estima el material.",
+        definition:
+          "Medida en la que se expresa el stock y cada receta BOM (unidad, pliego, metro, ml, paquete).",
       },
       {
-        term: "Merma",
-        definition: "Proporción adicional considerada para desperdicio normal de producción.",
+        term: "Stock mínimo",
+        definition:
+          "Umbral operativo por debajo del cual un insumo activo se marca con alerta de Bajo stock.",
       },
     ],
     sections: [
       {
         id: "insumo",
         title: "Datos del material",
-        summary: "Configura información que alimenta las recetas y el costo estimado.",
+        summary: "Configura información que alimenta las recetas BOM y el costo sugerido.",
         topics: [
           {
             id: "costo",
-            label: "Costo",
-            description: "Valor asociado a la unidad de medida registrada.",
-            interpretation: "Debe corresponder a la misma unidad usada en las recetas.",
+            label: "Costo por unidad",
+            description:
+              "Valor en pesos asociado a la unidad de medida registrada (guardado internamente en centavos COP).",
+            interpretation:
+              "Debe corresponder a la misma unidad usada en las recetas BOM de productos.",
           },
           {
-            id: "merma",
-            label: "Merma",
-            description: "Ajuste por desperdicio incluido en el costeo.",
-            interpretation: "No la uses para esconder errores o variaciones sin revisar.",
+            id: "recetas",
+            label: "Recetas BOM vinculadas",
+            description: "Indica cuántos productos usan el insumo en su receta de fabricación.",
+            interpretation:
+              "Actualizar su costo recalcula de inmediato el costo sugerido en Costos y márgenes.",
           },
           {
             id: "stock",
             label: "Disponibilidad y alerta",
-            description: "Información operativa de insumos y su nivel de reposición.",
+            description: "Control operativo de insumos de taller frente a su stock mínimo.",
             interpretation:
-              "Es distinta del stock de productos terminados gestionado en Inventario.",
+              "Es independiente del stock de productos terminados gestionado en Inventario.",
           },
         ],
       },
@@ -543,79 +549,89 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
       {
         id: "actualizar-material",
         title: "Actualizar un material",
-        goal: "Mantener recetas y costos con datos coherentes.",
+        goal: "Mantener recetas BOM y costos sugeridos con datos coherentes.",
         steps: [
           "Verifica material y unidad de consumo.",
-          "Actualiza costo, merma o disponibilidad con información real.",
-          "Revisa las variantes que usan el material en su receta.",
-          "Abre Costos y comprueba el efecto en el margen.",
+          "Actualiza costo unitario o existencias con información real de compra.",
+          "Revisa cuántos productos usan el insumo en su receta BOM.",
+          "Abre Costos y márgenes para revisar la diferencia frente al costo vigente.",
         ],
         expected: "Las recetas calculan con una unidad y costo actualizados sin ambigüedad.",
       },
     ],
     cautions: [
-      "Cambiar unidades sin revisar recetas puede multiplicar o dividir costos de forma incorrecta.",
+      "Cambiar unidades sin revisar las recetas de los productos puede multiplicar o dividir el costo sugerido.",
     ],
     faqs: [
       {
         question: "¿Materiales e Inventario son lo mismo?",
         answer:
-          "No. Materiales gestiona insumos de fabricación; Inventario controla existencias de variantes vendibles.",
+          "No. Materiales gestiona insumos de fabricación de taller; Inventario controla existencias de variantes vendibles.",
       },
     ],
     related: ["costos", "productos", "inventario"],
-    keywords: ["insumo", "BOM", "merma", "unidad", "costo", "materia prima"],
-    version: 1,
+    keywords: ["insumo", "BOM", "taller", "unidad", "costo", "materia prima"],
+    version: 2,
   },
   {
     id: "costos",
-    title: "Costos de fabricación",
+    title: "Costos y márgenes",
     area: "Catálogo y producción",
     route: "/admin/costos",
-    summary: "Simulador de costo unitario y margen bruto por variante.",
+    summary:
+      "Gobierno centralizado del costo unitario, costo sugerido por receta BOM y margen bruto.",
     purpose:
-      "Permite entender cómo insumos, mermas, empaque y comisiones afectan la rentabilidad estimada. Es una herramienta de análisis, no un registro contable ni una liquidación de pagos.",
+      "Centraliza el costo de fabricación por unidad de cada producto activo y calcula su margen bruto frente al precio mínimo de venta de sus variantes. Superadmin y Operaciones actualizan costos; Analista Financiero consulta y audita en modo de solo lectura.",
     whenToUse: [
-      "Antes de cambiar precios o descuentos por volumen.",
-      "Para comparar escenarios de materiales y comisiones.",
-      "Para detectar variantes con margen insuficiente.",
+      "Para registrar o actualizar el costo unitario de fabricación de un producto.",
+      "Para aplicar con un clic el costo sugerido por su receta BOM («Usar sugerido»).",
+      "Para auditar productos en pérdida o con margen ajustado (< 20%) antes de ajustar precios o escalas mayoristas.",
     ],
     concepts: [
       {
-        term: "Costo unitario",
-        definition: "Estimación de producir una unidad con la receta y parámetros seleccionados.",
+        term: "Costo unitario vigente",
+        definition:
+          "Valor en centavos COP guardado en el producto para calcular su margen bruto real.",
       },
       {
-        term: "Margen bruto",
+        term: "Sugerido por materiales (BOM)",
         definition:
-          "Diferencia entre precio y costos considerados, expresada en valor o porcentaje según la vista.",
+          "Suma informativa de cantidad × costo unitario de la receta del producto; solo actualiza el costo vigente cuando pulsas «Usar sugerido».",
+      },
+      {
+        term: "Margen bruto mínimo",
+        definition:
+          "Diferencia entre el precio activo más bajo de las variantes del producto y su costo unitario.",
       },
     ],
     sections: [
       {
         id: "simulador",
-        title: "Lectura del simulador",
-        summary: "Descompone el resultado para identificar qué lo explica.",
+        title: "Lectura de costos y rentabilidad",
+        summary: "Compara costo manual, receta BOM y precio mínimo de venta.",
         topics: [
           {
-            id: "receta",
-            label: "Materiales y empaque",
-            description: "Costos derivados de la receta y los insumos configurados.",
-            interpretation: "Revisa unidades y mermas si un valor parece atípico.",
+            id: "costo-unitario",
+            label: "Costo unitario",
+            description: "Única superficie donde se edita el costo de fabricación del producto.",
+            interpretation:
+              "Operaciones y Superadmin pueden guardarlo; Analista Financiero lo ve en modo lectura.",
           },
           {
-            id: "comision",
-            label: "Comisión de pago",
-            description: "Estimación del cargo del medio seleccionado.",
+            id: "receta",
+            label: "Sugerido por receta BOM",
+            description:
+              "Cálculo automático según los insumos asignados en la pestaña Materiales del producto.",
             interpretation:
-              "No incluye automáticamente cualquier costo contable o financiero no configurado.",
+              "Si difiere de tu costo vigente, verás una insignia ámbar con la brecha exacta.",
           },
           {
             id: "margen",
-            label: "Margen bruto",
-            description: "Resultado entre ingreso y costos simulados.",
+            label: "Margen bruto ($ y %)",
+            description:
+              "Rentabilidad calculada en el escenario conservador (variante más económica).",
             interpretation:
-              "Compara siempre usando el mismo escenario y no lo confundas con utilidad neta.",
+              "Verde ≥ 20 % (sano), ámbar 0–20 % (ajustado frente a fletes/pasarela), rosa < 0 % (en pérdida).",
           },
         ],
       },
@@ -623,29 +639,35 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "simular-margen",
-        title: "Evaluar el margen de una variante",
-        goal: "Validar un precio con supuestos explícitos.",
+        title: "Actualizar y auditar el costo de un producto",
+        goal: "Mantener márgenes saludables con trazabilidad de auditoría.",
         steps: [
-          "Selecciona variante y escenario de pago.",
-          "Verifica receta, unidades, mermas y empaque.",
-          "Revisa costo unitario y descomposición de cargos.",
-          "Compara el margen con precios normales y escalas de volumen.",
-          "Ajusta Productos o Materiales si procede y vuelve a simular.",
+          "Filtra por «Sin costo», «Difieren de BOM» o «En pérdida» para priorizar.",
+          "Verifica la receta BOM del producto si el sugerido parece atípico.",
+          "Ingresa el costo unitario en pesos o pulsa «Usar sugerido» (si tienes rol de Operaciones o Superadmin).",
+          "Comprueba que el margen resultante supere el umbral saludable antes de activar descuentos o escalas.",
         ],
-        expected:
-          "La decisión de precio se basa en un escenario reproducible y no en una estimación mental.",
+        expected: "El costo queda auditado en bitácora y sincronizado con la ficha del producto.",
       },
     ],
-    cautions: ["El margen bruto simulado no es utilidad neta ni reemplaza la contabilidad."],
+    cautions: [
+      "El margen bruto sobre costo de fabricación no incluye comisiones de pasarela ni impuestos; no lo confundas con utilidad neta.",
+    ],
     faqs: [
       {
-        question: "¿Por qué cambió el margen sin editar el producto?",
-        answer: "Puede haber cambiado un material, merma, comisión u otro parámetro de la receta.",
+        question: "¿Por qué veo la tabla en modo de solo lectura?",
+        answer:
+          "El rol Analista Financiero tiene acceso de auditoría financiera (lectura), mientras la edición de costos unitarios pertenece a Operaciones y Superadmin.",
+      },
+      {
+        question: "¿Por qué cambió el costo sugerido sin editar el producto?",
+        answer:
+          "Porque cambió el costo por unidad de algún insumo en Materiales o la cantidad en su receta BOM.",
       },
     ],
     related: ["materiales", "productos", "mayorista", "finanzas"],
-    keywords: ["margen", "rentabilidad", "simulador", "comisión", "empaque", "fabricación"],
-    version: 1,
+    keywords: ["margen", "rentabilidad", "BOM", "receta", "costo", "fabricación"],
+    version: 2,
   },
   {
     id: "plantillas",
@@ -713,7 +735,10 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
           "La plantilla funciona en el Estudio y coincide con las superficies de producción.",
       },
     ],
-    cautions: ["Ocultar una plantilla no debe usarse para alterar diseños o pedidos históricos."],
+    cautions: [
+      "Ocultar una plantilla no debe usarse para alterar diseños o pedidos históricos.",
+      "Eliminar definitivamente una plantilla huérfana no aprobada es irreversible y exige escribir ELIMINAR más código MFA reciente (≤ 10 min).",
+    ],
     faqs: [
       {
         question: "¿Aprobar una plantilla la imprime automáticamente?",
@@ -723,7 +748,7 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     ],
     related: ["productos", "disenos", "moderacion", "pedidos"],
     keywords: ["Estudio", "lienzo", "capas", "preview", "aprobar", "personalización"],
-    version: 1,
+    version: 2,
   },
   {
     id: "disenos",
@@ -806,7 +831,10 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
         expected: "Los recursos aparecen donde corresponde y funcionan dentro del editor.",
       },
     ],
-    cautions: ["No subas material con datos personales o sin derechos de uso."],
+    cautions: [
+      "No subas material con datos personales o sin derechos de uso.",
+      "Eliminar permanentemente un diseño archivado borra sus archivos del servidor y exige escribir ELIMINAR más código MFA reciente (≤ 10 min).",
+    ],
     faqs: [
       {
         question: "¿Dónde está la antigua página Fichas?",
@@ -815,6 +843,6 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     ],
     related: ["plantillas", "productos", "moderacion"],
     keywords: ["galería", "abecedario", "letras", "fichas", "imágenes", "Estudio"],
-    version: 1,
+    version: 2,
   },
 ];

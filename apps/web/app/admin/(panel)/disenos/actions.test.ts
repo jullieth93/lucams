@@ -20,38 +20,46 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockPrisma, auditSpy, mockLogger, revalidatePathSpy, mockStorage } = vi.hoisted(() => ({
-  mockPrisma: {
-    designGalleryImage: {
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      count: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      updateMany: vi.fn(),
-      delete: vi.fn(),
+const { mockPrisma, auditSpy, mockLogger, revalidatePathSpy, mockStorage, mockReauth, guardSpy } =
+  vi.hoisted(() => ({
+    mockPrisma: {
+      designGalleryImage: {
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+        count: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+        delete: vi.fn(),
+      },
+      product: {
+        findMany: vi.fn(),
+      },
+      // B-5 — reorderGalleryImage hace el swap de `order` en transacción.
+      $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
     },
-    product: {
-      findMany: vi.fn(),
+    auditSpy: { recordAdminAction: vi.fn(async () => {}) },
+    mockLogger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    revalidatePathSpy: vi.fn(),
+    mockStorage: {
+      deleteProductImage: vi.fn(async (_url: string) => {}),
+      // Master print-grade (2026-10-13): el upload de galería usa esta variante
+      // (≤4000 px q90), NO uploadProductImage de catálogo (≤2000 px q82).
+      uploadGalleryMasterImage: vi.fn(async (opts: { productId: string }) => ({
+        path: `${opts.productId}/uuid-x.webp`,
+        publicUrl: `https://ref.supabase.co/storage/v1/object/public/product-images/${opts.productId}/uuid-x.webp`,
+      })),
+      uploadGalleryThumb: vi.fn(async () => ({ path: "t", publicUrl: "https://x/t.webp" })),
+      listGalleryThumbPaths: vi.fn(async (_folder: string) => new Set<string>()),
     },
-    // B-5 — reorderGalleryImage hace el swap de `order` en transacción.
-    $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
-  },
-  auditSpy: { recordAdminAction: vi.fn(async () => {}) },
-  mockLogger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  revalidatePathSpy: vi.fn(),
-  mockStorage: {
-    deleteProductImage: vi.fn(async (_url: string) => {}),
-    // Master print-grade (2026-10-13): el upload de galería usa esta variante
-    // (≤4000 px q90), NO uploadProductImage de catálogo (≤2000 px q82).
-    uploadGalleryMasterImage: vi.fn(async (opts: { productId: string }) => ({
-      path: `${opts.productId}/uuid-x.webp`,
-      publicUrl: `https://ref.supabase.co/storage/v1/object/public/product-images/${opts.productId}/uuid-x.webp`,
+    mockReauth: {
+      requireRecentMfa: vi.fn(async () => {}),
+    },
+    guardSpy: vi.fn(async (_opts?: unknown) => ({
+      user: { id: "user1" },
+      admin: { id: "admin1", role: "SUPERADMIN" },
     })),
-    uploadGalleryThumb: vi.fn(async () => ({ path: "t", publicUrl: "https://x/t.webp" })),
-    listGalleryThumbPaths: vi.fn(async (_folder: string) => new Set<string>()),
-  },
-}));
+  }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({
@@ -60,11 +68,20 @@ vi.mock("@/lib/db", () => ({
 }));
 vi.mock("@/lib/admin-audit", () => ({ recordAdminAction: auditSpy.recordAdminAction }));
 vi.mock("@/lib/admin-rbac-guard", () => ({
-  requireAdminAction: vi.fn(async () => ({
-    user: { id: "user1" },
-    admin: { id: "admin1", role: "SUPERADMIN" },
-  })),
+  requireAdminAction: guardSpy,
 }));
+vi.mock("@/lib/admin-reauth", () => {
+  class MfaReauthRequiredError extends Error {
+    readonly code = "MFA_REAUTH_REQUIRED";
+  }
+  return {
+    MfaReauthRequiredError,
+    MFA_REAUTH_MESSAGE:
+      "Por seguridad, esta acción pide confirmar tu identidad con el código de tu app de autenticación.",
+    requireRecentMfa: mockReauth.requireRecentMfa,
+    isMfaReauthRequired: (err: unknown) => err instanceof MfaReauthRequiredError,
+  };
+});
 vi.mock("@/lib/logger", () => ({ logger: mockLogger }));
 vi.mock("next/cache", () => ({
   revalidatePath: revalidatePathSpy,
@@ -647,6 +664,21 @@ describe("purgeGalleryImageAction — eliminar permanentemente (3.6)", () => {
     const res = await purgeGalleryImageAction(fd);
     expect(res.error).toBe("Datos inválidos.");
     expect(mockPrisma.designGalleryImage.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("exige MFA step-up reciente (D2) y capability production:manage_AssetsCatalog", async () => {
+    const { MfaReauthRequiredError, MFA_REAUTH_MESSAGE } = await import("@/lib/admin-reauth");
+    mockReauth.requireRecentMfa.mockRejectedValueOnce(new MfaReauthRequiredError());
+    const fd = new FormData();
+    fd.set("id", "g9");
+
+    const res = await purgeGalleryImageAction(fd);
+
+    expect(guardSpy).toHaveBeenCalledWith({ capability: "production:manage_AssetsCatalog" });
+    expect(res).toEqual({ reauthRequired: true, error: MFA_REAUTH_MESSAGE });
+    expect(mockStorage.deleteProductImage).not.toHaveBeenCalled();
+    expect(mockPrisma.designGalleryImage.delete).not.toHaveBeenCalled();
+    expect(auditSpy.recordAdminAction).not.toHaveBeenCalled();
   });
 });
 

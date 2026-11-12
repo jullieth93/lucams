@@ -136,32 +136,41 @@ export function GalleryDetailModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 8 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="ring-brand-purple/10 fixed top-1/2 left-1/2 z-50 w-[92vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
+            className="ring-brand-purple/10 fixed top-1/2 left-1/2 z-50 flex max-h-[90dvh] w-[92vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-white shadow-2xl ring-1"
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b px-5 py-3">
-              <h2 id="gallery-detail-title" className="text-brand-purple-dark text-sm font-bold">
+            <div className="border-brand-purple/10 flex shrink-0 items-center justify-between gap-3 border-b px-5 py-3.5">
+              <h2
+                id="gallery-detail-title"
+                className="font-display text-brand-purple-dark truncate text-base font-bold"
+              >
                 {item.name}
               </h2>
               <button
                 type="button"
                 onClick={onClose}
-                className="text-brand-purple-dark/70 hover:text-brand-purple-dark focus:ring-brand-turquoise rounded-md p-1 focus:ring-2 focus:outline-none"
+                className="text-brand-purple-dark/70 hover:text-brand-purple-dark focus:ring-brand-purple/40 shrink-0 rounded-md p-1 focus:ring-2 focus:outline-none"
                 aria-label="Cerrar"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            {/* Body — caras lado a lado (markup del preview del corte de tira) */}
-            <div className="px-5 py-4">
-              <div className={item.imageUrlB ? "grid grid-cols-2 gap-3" : "grid grid-cols-1 gap-3"}>
+            {/* Body — caras lado a lado (scrollable en pantallas bajas) */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div
+                className={
+                  item.imageUrlB
+                    ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+                    : "grid grid-cols-1 gap-3"
+                }
+              >
                 <figure>
                   {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
                   <img
                     src={item.imageUrl}
                     alt={`${item.name} — cara A`}
-                    className="ring-brand-purple/10 max-h-72 w-full rounded-lg bg-white object-contain ring-1"
+                    className="border-brand-purple/10 bg-brand-cream/30 max-h-64 w-full rounded-lg border object-contain sm:max-h-72"
                   />
                   <figcaption className="text-brand-purple-dark mt-1 text-center text-xs font-semibold">
                     Cara A (frente)
@@ -173,7 +182,7 @@ export function GalleryDetailModal({
                     <img
                       src={item.imageUrlB}
                       alt={`${item.name} — cara B`}
-                      className="ring-brand-purple/10 max-h-72 w-full rounded-lg bg-white object-contain ring-1"
+                      className="border-brand-purple/10 bg-brand-cream/30 max-h-64 w-full rounded-lg border object-contain sm:max-h-72"
                     />
                     <figcaption className="text-brand-purple-dark mt-1 text-center text-xs font-semibold">
                       Cara B (respaldo)
@@ -189,7 +198,7 @@ export function GalleryDetailModal({
 
               {/* Ficha: producto, orden, estado, aplica a */}
               <dl className="mt-4 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
-                <div className="bg-brand-purple/5 rounded-lg px-2 py-1.5">
+                <div className="border-brand-purple/10 bg-brand-purple/5 rounded-lg border px-2 py-1.5">
                   <dt className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
                     Producto
                   </dt>
@@ -199,15 +208,15 @@ export function GalleryDetailModal({
                     </Hint>
                   </dd>
                 </div>
-                <div className="bg-brand-purple/5 rounded-lg px-2 py-1.5">
+                <div className="border-brand-purple/10 bg-brand-purple/5 rounded-lg border px-2 py-1.5">
                   <dt className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
                     Aplica a
                   </dt>
-                  <dd className="text-brand-purple-dark text-xs font-semibold">
+                  <dd className="text-brand-purple-dark truncate text-xs font-semibold">
                     {describeVariantFilter(item.variantFilter)}
                   </dd>
                 </div>
-                <div className="bg-brand-purple/5 rounded-lg px-2 py-1.5">
+                <div className="border-brand-purple/10 bg-brand-purple/5 rounded-lg border px-2 py-1.5">
                   <dt className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
                     Orden
                   </dt>
@@ -215,14 +224,14 @@ export function GalleryDetailModal({
                     #{item.order + 1}
                   </dd>
                 </div>
-                <div className="bg-brand-purple/5 rounded-lg px-2 py-1.5">
+                <div className="border-brand-purple/10 bg-brand-purple/5 rounded-lg border px-2 py-1.5">
                   <dt className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
                     Estado
                   </dt>
                   <dd
                     className={
                       "text-xs font-semibold " +
-                      (item.isActive ? "text-emerald-700" : "text-brand-muted")
+                      (item.isActive ? "text-emerald-700" : "text-amber-700")
                     }
                   >
                     {item.isActive ? "Visible" : "Pausada"}
@@ -232,17 +241,17 @@ export function GalleryDetailModal({
 
               {/* B-5 — pausar/reactivar SIN borrar: el diseño pausado sale del
                   Estudio pero sigue en el admin (atenuado) para reactivarlo. */}
-              <div className="mt-3">
+              <div className="mt-3.5">
                 <button
                   type="button"
                   onClick={toggleActive}
                   disabled={togglingActive || pending}
                   aria-pressed={item.isActive}
                   className={
-                    "inline-flex items-center gap-1.5 rounded-xl border-2 px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 " +
+                    "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors disabled:opacity-60 " +
                     (item.isActive
-                      ? "border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 bg-white"
-                      : "bg-brand-purple hover:bg-brand-purple-dark border-transparent text-white")
+                      ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 bg-white shadow-xs"
+                      : "bg-gradient-brand border-transparent text-white shadow-xs hover:brightness-110")
                   }
                 >
                   {togglingActive ? (
@@ -265,14 +274,14 @@ export function GalleryDetailModal({
               {/* Editor "Aplica a" — corrige el filtro de diseños existentes
                   (ej. los subidos antes del selector del upload). */}
               {variantFilterOptions.length > 0 && (
-                <div className="mt-3">
+                <div className="mt-3.5">
                   <label className="text-brand-purple-dark block text-xs font-semibold">
                     Cambiar «Aplica a»
                     <select
                       value={filterJson}
                       onChange={(e) => setFilterJson(e.target.value)}
                       disabled={savingFilter || pending}
-                      className="border-brand-purple/25 mt-1 block w-full rounded-xl border-2 px-3 py-2 text-sm outline-none disabled:opacity-60"
+                      className="border-brand-purple/15 focus-visible:border-brand-purple focus-visible:ring-brand-purple/20 mt-1 block h-9 w-full rounded-md border bg-white px-3 text-sm shadow-xs focus-visible:ring-2 focus-visible:outline-none disabled:opacity-60"
                     >
                       <option value="">Todas las variantes</option>
                       {variantFilterOptions.map((o) => (
@@ -287,7 +296,7 @@ export function GalleryDetailModal({
                       type="button"
                       onClick={saveVariantFilter}
                       disabled={savingFilter || pending}
-                      className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                      className="bg-gradient-brand mt-2 inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-white shadow-xs hover:brightness-110 disabled:opacity-60"
                     >
                       {savingFilter ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -305,7 +314,7 @@ export function GalleryDetailModal({
             {/* Footer — 3.6: "Archivar" (soft-delete restaurable; antes se
                 llamaba "Borrar" y el naming engañaba). La eliminación REAL
                 vive en la sección Archivados del manager. */}
-            <div className="flex items-center justify-between gap-2 border-t px-5 py-3">
+            <div className="border-brand-purple/10 flex shrink-0 items-center justify-between gap-2 border-t bg-slate-50/50 px-5 py-3">
               <button
                 type="button"
                 onClick={() => onDelete(item.id)}

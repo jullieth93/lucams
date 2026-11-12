@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, Plus, X } from "lucide-react";
 import { ConfirmAction } from "@/components/admin/confirm-action";
+import { Input } from "@/components/ui/input";
 import { linkProductOcasionAction, unlinkProductOcasionAction } from "../actions";
 
 type LinkedProduct = {
   productId: string;
   productSlug: string;
   productName: string;
+  isActive: boolean;
   rationale: string | null;
 };
 
@@ -38,21 +41,47 @@ export function ProductOcasionLinker({ ocasionTagId, linkedProducts, availablePr
     <div className="space-y-6">
       {/* Lista de productos ya asociados */}
       {linkedProducts.length === 0 ? (
-        <p className="rounded-md border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">
+        <p className="border-brand-purple/15 text-brand-muted rounded-xl border border-dashed px-4 py-6 text-center text-sm">
           Todavía no hay productos asociados a esta ocasión.
         </p>
       ) : (
-        <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
+        <ul className="divide-brand-purple/10 border-brand-purple/10 divide-y rounded-xl border bg-white">
           {linkedProducts.map((link) => (
-            <li key={link.productId} className="flex items-start gap-3 px-4 py-3">
-              <div className="flex-1">
-                <p className="text-sm font-medium text-slate-900">{link.productName}</p>
-                <p className="font-mono text-xs text-slate-500">{link.productSlug}</p>
+            <li
+              key={link.productId}
+              className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-slate-50/70"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href={`/admin/productos/${link.productId}`}
+                    className="text-brand-purple-dark hover:text-brand-purple text-sm font-semibold hover:underline"
+                  >
+                    {link.productName}
+                  </Link>
+                  {!link.isActive && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                      Pausado
+                    </span>
+                  )}
+                  <Link
+                    href={`/producto/${link.productSlug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Ver ficha pública del producto"
+                    className="text-brand-muted hover:text-brand-purple inline-flex items-center gap-0.5 text-[11px]"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
+                <p className="text-brand-muted font-mono text-xs">{link.productSlug}</p>
                 {link.rationale ? (
-                  <p className="mt-1 text-xs text-slate-600 italic">&quot;{link.rationale}&quot;</p>
+                  <p className="text-brand-purple-dark/80 mt-1 text-xs italic">
+                    &quot;{link.rationale}&quot;
+                  </p>
                 ) : (
-                  <p className="mt-1 text-xs text-amber-600">
-                    ⚠ Sin rationale — el bot no podrá justificar.
+                  <p className="text-brand-muted mt-1 text-xs">
+                    Sin motivo destacado (opcional para enriquecer la vitrina y el recomendador).
                   </p>
                 )}
               </div>
@@ -62,7 +91,11 @@ export function ProductOcasionLinker({ ocasionTagId, linkedProducts, availablePr
               >
                 <input type="hidden" name="productId" value={link.productId} />
                 <input type="hidden" name="ocasionTagId" value={ocasionTagId} />
-                <button type="submit" className="text-red-600 hover:text-red-900">
+                <button
+                  type="submit"
+                  aria-label={`Desasociar ${link.productName}`}
+                  className="rounded-md p-1 text-rose-600 transition-colors hover:bg-rose-50 hover:text-rose-800"
+                >
                   <X className="h-4 w-4" />
                 </button>
               </ConfirmAction>
@@ -72,51 +105,56 @@ export function ProductOcasionLinker({ ocasionTagId, linkedProducts, availablePr
       )}
 
       {/* Form para agregar producto */}
-      <div className="rounded-md border border-slate-200 p-4">
-        <h3 className="mb-3 text-sm font-bold text-slate-900">Asociar producto nuevo</h3>
-        <input
-          type="text"
-          placeholder="Buscar producto..."
+      <div className="border-brand-purple/10 rounded-xl border bg-slate-50/40 p-4">
+        <h3 className="text-brand-purple-dark mb-3 text-sm font-bold">Asociar producto</h3>
+        <Input
+          type="search"
+          placeholder="Buscar producto por nombre o slug…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="mb-3 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+          className="border-brand-purple/20 mb-3 bg-white text-sm"
         />
         {filtered.length === 0 ? (
-          <p className="text-sm text-slate-500">Sin productos disponibles.</p>
+          <p className="text-brand-muted text-sm">Sin productos disponibles para agregar.</p>
         ) : (
-          <div className="max-h-80 space-y-2 overflow-y-auto">
+          <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
             {filtered.slice(0, 20).map((p) => (
               <form
                 key={p.id}
                 action={linkProductOcasionAction}
-                className="rounded border border-slate-200 bg-slate-50 p-2"
+                className="border-brand-purple/10 rounded-lg border bg-white p-2.5 shadow-2xs"
               >
                 <input type="hidden" name="productId" value={p.id} />
                 <input type="hidden" name="ocasionTagId" value={ocasionTagId} />
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-slate-900">{p.name}</p>
-                    <p className="font-mono text-xs text-slate-500">{p.slug}</p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="min-w-0 sm:w-56">
+                    <Link
+                      href={`/admin/productos/${p.id}`}
+                      className="text-brand-purple-dark hover:text-brand-purple block truncate text-sm font-medium hover:underline"
+                    >
+                      {p.name}
+                    </Link>
+                    <p className="text-brand-muted truncate font-mono text-xs">{p.slug}</p>
                   </div>
                   <input
                     type="text"
                     name="rationale"
-                    placeholder="Rationale: ¿por qué este producto sirve para esta ocasión?"
-                    className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
+                    placeholder="Motivo sugerido (ej. Ideal como recordatorio con foto y fecha)"
+                    className="border-brand-purple/20 focus:border-brand-purple min-w-0 flex-1 rounded-md border bg-slate-50/60 px-2.5 py-1.5 text-xs focus:bg-white focus:outline-none"
                   />
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700"
+                    className="bg-gradient-brand inline-flex shrink-0 items-center justify-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
                   >
-                    <Plus className="h-3 w-3" />
+                    <Plus className="h-3.5 w-3.5" />
                     Asociar
                   </button>
                 </div>
               </form>
             ))}
             {filtered.length > 20 && (
-              <p className="text-center text-xs text-slate-500">
-                +{filtered.length - 20} más — refina la búsqueda
+              <p className="text-brand-muted pt-1 text-center text-xs">
+                +{filtered.length - 20} productos más — escribe arriba para filtrar.
               </p>
             )}
           </div>

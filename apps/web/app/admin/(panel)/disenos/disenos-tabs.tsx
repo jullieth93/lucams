@@ -7,11 +7,20 @@
  */
 
 import type { ReactNode } from "react";
+import { Images, Sparkles } from "lucide-react";
 import { AdminTabBar, AdminTabPanel, useAdminActiveTab } from "@/components/admin/admin-tabs";
 
 const TABS = [
-  { value: "productos", label: "Diseños por producto" },
-  { value: "fichas", label: "Fichas del abecedario" },
+  {
+    value: "productos",
+    label: "Diseños por producto",
+    icon: <Images className="h-4 w-4 shrink-0" aria-hidden />,
+  },
+  {
+    value: "fichas",
+    label: "Fichas del abecedario",
+    icon: <Sparkles className="h-4 w-4 shrink-0" aria-hidden />,
+  },
 ] as const;
 
 export function DisenosTabs({ productos, fichas }: { productos: ReactNode; fichas: ReactNode }) {
@@ -22,7 +31,12 @@ export function DisenosTabs({ productos, fichas }: { productos: ReactNode; ficha
   );
   return (
     <>
-      <AdminTabBar param="tab" defaultTab="productos" tabs={[...TABS]} />
+      <AdminTabBar
+        param="tab"
+        defaultTab="productos"
+        tabs={[...TABS]}
+        className="sm:rounded-xl sm:border-b sm:shadow-xs"
+      />
       <AdminTabPanel value="productos" active={active}>
         {productos}
       </AdminTabPanel>

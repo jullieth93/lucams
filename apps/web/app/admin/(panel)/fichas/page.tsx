@@ -8,8 +8,12 @@
  */
 
 import { redirect, permanentRedirect } from "next/navigation";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 
 export default async function FichasLegacyRedirect() {
+  // B-7: guard explícito antes del redirect para no filtrar rutas internas en
+  // navegaciones soft de roles sin permisos sobre activos del Estudio.
+  await requireCapability("production:manage_AssetsCatalog");
   permanentRedirect("/admin/disenos?tab=fichas");
   // unreachable — Next type checker quiere un return
   redirect("/admin/disenos?tab=fichas");

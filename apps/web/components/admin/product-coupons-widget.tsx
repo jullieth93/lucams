@@ -28,9 +28,11 @@ import { formatDayMonthCO } from "@/lib/datetime";
 export async function ProductCouponsWidget({
   productSlug,
   categorySlug,
+  canManageCoupons = false,
 }: {
   productSlug: string;
   categorySlug: string | null;
+  canManageCoupons?: boolean;
 }) {
   const now = new Date();
   const candidates = await prisma.coupon.findMany({
@@ -85,17 +87,21 @@ export async function ProductCouponsWidget({
                 Sin promociones activas para este producto
               </p>
               <p className="text-brand-muted text-xs">
-                Crea un cupón desde Promociones para ofrecer descuentos.
+                {canManageCoupons
+                  ? "Crea un cupón desde Promociones para ofrecer descuentos."
+                  : "Los cupones vigentes aplicables aparecerán aquí automáticamente."}
               </p>
             </div>
           </div>
-          <Link
-            href="/admin/cupones"
-            className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
-          >
-            <Ticket className="h-3.5 w-3.5" />
-            Crear cupón
-          </Link>
+          {canManageCoupons && (
+            <Link
+              href="/admin/cupones"
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
+            >
+              <Ticket className="h-3.5 w-3.5" />
+              Crear cupón
+            </Link>
+          )}
         </div>
       </AdminCard>
     );
@@ -111,13 +117,15 @@ export async function ProductCouponsWidget({
           {applicable.length} promoción{applicable.length === 1 ? "" : "es"} que aplica
           {applicable.length === 1 ? "" : "n"} aquí
         </h3>
-        <Link
-          href="/admin/cupones"
-          className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
-        >
-          Editar promociones
-          <ExternalLink className="h-3 w-3" />
-        </Link>
+        {canManageCoupons && (
+          <Link
+            href="/admin/cupones"
+            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
+          >
+            Editar promociones
+            <ExternalLink className="h-3 w-3" />
+          </Link>
+        )}
       </div>
 
       <ul className="space-y-2">

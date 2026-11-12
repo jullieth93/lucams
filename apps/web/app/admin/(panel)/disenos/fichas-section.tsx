@@ -10,6 +10,7 @@ import { listLetterSets, getLetterSet, ALPHABET } from "@/features/personalizati
 // Fase 3 · 3.7 (agente admin): botón "Vista previa" por set — el componente
 // vive fuera de este módulo (components/admin/letter-set-preview.tsx).
 import { LetterSetPreviewButton } from "@/components/admin/letter-set-preview";
+import { CountUp } from "@/components/admin/count-up";
 import { LetterGrid } from "./letter-grid";
 import { CreateSetForm } from "./create-set-form";
 
@@ -19,34 +20,66 @@ export async function FichasSection() {
     (s): s is NonNullable<typeof s> => Boolean(s),
   );
 
-  return (
-    <div>
-      <header className="mb-6">
-        <h2 className="text-brand-purple-dark font-display text-xl">Estilos del abecedario</h2>
-        <p className="text-brand-muted mt-1 text-sm">
-          Cada <strong>estilo</strong> es un abecedario ilustrado completo con un tema (Animales,
-          Navidad, Dinos…). El cliente elige el estilo en el Estudio y ve las fichas de ese tema.
-          Son diseños tuyos, no algo que el cliente crea. Alimentan “Nombre Personalizado”,
-          “Abecedario Completo” y “Pack Vocales”. Si falta una letra, se muestra un marcador
-          temporal. Recomendado: PNG con fondo transparente, <strong>vertical</strong> (como el imán
-          físico).
-        </p>
-      </header>
+  const summary = detailed.reduce(
+    (acc, set) => {
+      const alphabet = ALPHABET[set.language] ?? ALPHABET.en;
+      const chars = new Set(set.tiles.map((t) => t.char.toUpperCase()));
+      const done = alphabet.filter((c) => chars.has(c)).length;
+      acc.totalExpected += alphabet.length;
+      acc.totalUploaded += done;
+      if (done === alphabet.length) acc.completeSets += 1;
+      return acc;
+    },
+    { totalExpected: 0, totalUploaded: 0, completeSets: 0 },
+  );
 
-      <div className="mb-6">
+  return (
+    <div className="space-y-5">
+      <div className="border-brand-purple/10 flex flex-col gap-4 rounded-xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div>
+          <h2 className="text-brand-purple-dark font-display text-base font-semibold">
+            Estilos del abecedario
+          </h2>
+          <p className="text-brand-muted mt-1 max-w-3xl text-xs leading-relaxed sm:text-sm">
+            Cada <strong>estilo</strong> es un abecedario ilustrado completo con un tema (Animales,
+            Navidad, Dinos…). Alimentan «Nombre Personalizado», «Abecedario Completo» y «Pack
+            Vocales». Si falta una letra, se muestra un marcador temporal. Recomendado: PNG con
+            fondo transparente, <strong>vertical</strong> (como el imán físico).
+          </p>
+        </div>
+        {detailed.length > 0 && (
+          <div className="border-brand-purple/12 bg-brand-purple/[0.03] flex shrink-0 items-center gap-4 rounded-xl border px-4 py-2.5">
+            <div>
+              <p className="text-brand-muted text-[11px] font-medium">Estilos completos</p>
+              <p className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">
+                <CountUp value={summary.completeSets} />/{detailed.length}
+              </p>
+            </div>
+            <div className="bg-brand-purple/10 h-8 w-px" />
+            <div>
+              <p className="text-brand-muted text-[11px] font-medium">Fichas cargadas</p>
+              <p className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">
+                <CountUp value={summary.totalUploaded} />/{summary.totalExpected}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div>
         <CreateSetForm />
       </div>
 
       {detailed.length === 0 ? (
-        <div className="border-brand-purple/15 rounded-xl border border-dashed bg-white p-8 text-center">
-          <p className="text-brand-purple-dark font-semibold">Aún no hay sets</p>
+        <div className="border-brand-purple/10 rounded-xl border-2 border-dashed bg-white p-8 text-center">
+          <p className="text-brand-purple-dark font-display font-semibold">Aún no hay sets</p>
           <p className="text-brand-muted mt-1 text-sm">
             Corre <code className="bg-brand-cream rounded px-1">make seed-letter-sets</code> para
             crear los sets Español e Inglés.
           </p>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-5">
           {detailed.map((set) => {
             const alphabet = ALPHABET[set.language] ?? ALPHABET.en;
             const byChar: Record<string, { imageUrl: string; label: string | null }> = {};
@@ -57,26 +90,28 @@ export async function FichasSection() {
             return (
               <section
                 key={set.id}
-                className="border-brand-purple/12 rounded-2xl border bg-white p-5 shadow-sm"
+                className="border-brand-purple/10 rounded-xl border bg-white p-4 shadow-sm sm:p-5"
               >
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="border-brand-purple/10 mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3.5">
                   <div>
-                    <h3 className="text-brand-purple-dark text-lg font-semibold">{set.name}</h3>
-                    <p className="text-brand-muted text-xs">
+                    <h3 className="font-display text-brand-purple-dark text-base font-semibold">
+                      {set.name}
+                    </h3>
+                    <p className="text-brand-muted mt-0.5 text-xs">
                       {set.language === "es" ? "Español · incluye Ñ" : "Inglés"} ·{" "}
-                      {done === alphabet.length ? "🟢 completo" : "🟡 en progreso"}
+                      {done === alphabet.length ? "🟢 Completo" : "🟡 En progreso"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     {/* Fase 3 · 3.7 — preview del set compuesto (render real del Estudio). */}
                     <LetterSetPreviewButton setName={set.name} alphabet={alphabet} tiles={byChar} />
                     <div className="text-right">
-                      <div className="text-brand-purple-dark font-display text-lg font-bold">
+                      <div className="text-brand-purple-dark font-display text-base font-bold tabular-nums">
                         {done}/{alphabet.length}
                       </div>
-                      <div className="bg-brand-cream mt-1 h-1.5 w-28 overflow-hidden rounded-full">
+                      <div className="bg-brand-cream mt-1 h-1.5 w-24 overflow-hidden rounded-full sm:w-28">
                         <div
-                          className="bg-brand-turquoise h-full rounded-full"
+                          className="admin-bar-grow-x bg-brand-turquoise h-full rounded-full"
                           style={{ width: `${pct}%` }}
                         />
                       </div>

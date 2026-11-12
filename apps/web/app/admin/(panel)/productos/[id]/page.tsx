@@ -13,9 +13,9 @@
  */
 
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ShoppingBag, Trash2, Boxes, ArrowRight } from "lucide-react";
+import { ShoppingBag, Trash2, Boxes, ArrowRight, ExternalLink, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
@@ -24,7 +24,8 @@ import { ProductVariantsPanel } from "@/components/admin/product-variants-panel"
 import { ProductReviewsPanel } from "@/components/admin/product-reviews-panel";
 import { ProductMaterialsPanel } from "@/components/admin/product-materials-panel";
 import { ProductCouponsWidget } from "@/components/admin/product-coupons-widget";
-import { getCurrentAdmin } from "@/lib/auth";
+import { canAccessAdminPath } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { getProductById, listCategoriesForSelect } from "@/features/products/service";
 import { getStorefrontVisibility } from "@/features/products/storefront-visibility";
 import { StorefrontVisibilityChip } from "@/components/admin/storefront-visibility-chip";
@@ -53,8 +54,8 @@ export default async function ProductoDetallePage({
   params: Params;
   searchParams: SearchParams;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireCapability("catalog:write");
+  const canManageCoupons = canAccessAdminPath(session.admin.role, "/admin/cupones");
 
   const { id } = await params;
   const sp = await searchParams;
@@ -151,7 +152,7 @@ export default async function ProductoDetallePage({
         subtitle={
           <>
             Código: <code className="font-mono text-xs">{product.sku}</code> · URL:{" "}
-            <code className="font-mono text-xs">/productos/{product.slug}</code> ·{" "}
+            <code className="font-mono text-xs">/producto/{product.slug}</code> ·{" "}
             <span aria-hidden>{getStockEmoji(stockSummary.worstStatus)}</span>{" "}
             {stockSummary.totalUnits.toLocaleString("es-CO")} unidades
             <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -168,21 +169,39 @@ export default async function ProductoDetallePage({
           { label: product.name },
         ]}
         actions={
-          <ConfirmAction
-            action={deleteProductAction}
-            message={`¿Archivar "${product.name}"? Quedará oculto de tu tienda. Puedes restaurarlo cuando quieras desde el listado de productos (filtro «Archivados»).`}
-          >
-            <input type="hidden" name="id" value={product.id} />
-            <Button
-              type="submit"
-              variant="ghost"
-              size="sm"
-              className="text-red-700 hover:bg-red-50"
-            >
-              <Trash2 className="mr-1.5 h-4 w-4" />
-              Archivar
+          <div className="flex flex-wrap items-center gap-2">
+            {product.isActive && !product.deletedAt && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/producto/${product.slug}`} target="_blank" rel="noreferrer">
+                  <ExternalLink className="mr-1.5 h-4 w-4" />
+                  Ver en tienda
+                </Link>
+              </Button>
+            )}
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/admin/costos?q=${encodeURIComponent(product.sku)}`}>
+                <Calculator className="mr-1.5 h-4 w-4" />
+                Costos
+              </Link>
             </Button>
-          </ConfirmAction>
+            {!product.deletedAt && (
+              <ConfirmAction
+                action={deleteProductAction}
+                message={`¿Archivar "${product.name}"? Quedará oculto de tu tienda. Puedes restaurarlo cuando quieras desde el listado de productos (filtro «Archivados»).`}
+              >
+                <input type="hidden" name="id" value={product.id} />
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="mr-1.5 h-4 w-4" />
+                  Archivar
+                </Button>
+              </ConfirmAction>
+            )}
+          </div>
         }
       />
 
@@ -226,6 +245,7 @@ export default async function ProductoDetallePage({
             <ProductCouponsWidget
               productSlug={product.slug}
               categorySlug={product.category?.slug ?? null}
+              canManageCoupons={canManageCoupons}
             />
 
             <ProductForm
@@ -293,6 +313,7 @@ export default async function ProductoDetallePage({
         {section === "materiales" && (
           <ProductMaterialsPanel
             productId={product.id}
+            productSku={product.sku}
             items={recipeItems}
             availableMaterials={availableMaterials}
             searchParams={sp}

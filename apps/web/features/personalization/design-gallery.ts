@@ -139,6 +139,9 @@ export type GalleryTagOption = {
    * producto no varía por atributos filtrables → solo "Todas las variantes".
    */
   variantFilterOptions: VariantFilterOption[];
+  /** Identificadores del producto dueño para navegación 360° en el admin. */
+  productId?: string | null;
+  productSlug?: string | null;
 };
 
 /**
@@ -157,6 +160,7 @@ export async function listGalleryTagOptions(): Promise<GalleryTagOption[]> {
   const products = await prisma.product.findMany({
     where: { deletedAt: null },
     select: {
+      id: true,
       name: true,
       slug: true,
       isActive: true,
@@ -195,6 +199,8 @@ export async function listGalleryTagOptions(): Promise<GalleryTagOption[]> {
       variantFilterOptions: buildVariantFilterOptions(
         p.variants.map((v) => parseVariantAttributes(v.attributes)),
       ),
+      productId: p.id ?? null,
+      productSlug: p.slug,
     });
   }
   return options;

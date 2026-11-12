@@ -8,6 +8,7 @@
 import { useRef, useState, useTransition } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import { uploadLetterTileAction, deleteLetterTileAction } from "./fichas-actions";
 import {
   compressImageForUpload,
@@ -29,6 +30,7 @@ export function LetterGrid({
   const [pending, startTransition] = useTransition();
   const [activeChar, setActiveChar] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { confirm, confirmDialog } = useAdminConfirm();
 
   function pick(char: string) {
     setActiveChar(char);
@@ -68,7 +70,12 @@ export function LetterGrid({
     });
   }
 
-  function del(char: string) {
+  async function del(char: string) {
+    const ok = await confirm(
+      `¿Quitar la ilustración de la letra «${char}»? Mientras no subas otra, el Estudio mostrará un marcador temporal.`,
+      { confirmLabel: "Quitar ficha" },
+    );
+    if (!ok) return;
     setActiveChar(char);
     startTransition(async () => {
       const fd = new FormData();
@@ -98,10 +105,10 @@ export function LetterGrid({
                 onClick={() => pick(char)}
                 disabled={pending}
                 aria-label={tile ? `Cambiar ficha ${char}` : `Subir ficha ${char}`}
-                className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border-2 transition disabled:opacity-60 ${
+                className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border transition disabled:opacity-60 ${
                   tile
-                    ? "border-brand-turquoise/50 hover:border-brand-turquoise bg-white"
-                    : "border-brand-purple/20 bg-brand-cream/50 hover:border-brand-purple/50 border-dashed"
+                    ? "border-brand-turquoise/45 hover:border-brand-turquoise bg-white shadow-2xs"
+                    : "border-brand-purple/18 bg-brand-cream/40 hover:border-brand-purple/45 border-dashed"
                 }`}
               >
                 {tile ? (
@@ -133,7 +140,7 @@ export function LetterGrid({
                 {tile && (
                   <button
                     type="button"
-                    onClick={() => del(char)}
+                    onClick={() => void del(char)}
                     disabled={pending}
                     aria-label={`Quitar ficha ${char}`}
                     className="text-brand-muted hover:text-rose-600 disabled:opacity-50"
@@ -146,6 +153,7 @@ export function LetterGrid({
           );
         })}
       </div>
+      {confirmDialog}
     </>
   );
 }

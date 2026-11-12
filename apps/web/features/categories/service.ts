@@ -336,15 +336,26 @@ export async function moveCategory(id: string, direction: "up" | "down", actorId
 }
 
 export async function softDeleteCategory(id: string, deletedBy: string | null) {
-  // Bloquear borrado si tiene productos activos asociados — evita
-  // huérfanos en Product.categoryId.
-  const productCount = await prisma.product.count({
-    where: { categoryId: id, deletedAt: null },
-  });
+  // Bloquear borrado si tiene productos activos o subcategorías vivas asociadas —
+  // evita huérfanos en Product.categoryId y en el árbol Category.parentId.
+  const [productCount, childCount] = await Promise.all([
+    prisma.product.count({
+      where: { categoryId: id, deletedAt: null },
+    }),
+    prisma.category.count({
+      where: { parentId: id, deletedAt: null },
+    }),
+  ]);
   if (productCount > 0) {
     throw new CategoryValidationError(
       "general",
-      `No se puede archivar: tiene ${productCount} producto(s) activo(s). Movelos a otra categoría primero.`,
+      `No se puede archivar: tiene ${productCount} producto(s) activo(s). Muévelos a otra categoría primero.`,
+    );
+  }
+  if (childCount > 0) {
+    throw new CategoryValidationError(
+      "general",
+      `No se puede archivar: tiene ${childCount} subcategoría(s) activa(s). Reasígnalas o archívalas primero.`,
     );
   }
   const deleted = await prisma.category.update({

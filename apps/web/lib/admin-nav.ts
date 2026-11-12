@@ -203,16 +203,34 @@ export const ADMIN_NAV: NavGroup[] = [
     icon: Package,
     defaultOpen: true,
     items: [
-      { label: "Productos", href: "/admin/productos", icon: ShoppingBag },
+      {
+        label: "Productos",
+        href: "/admin/productos",
+        icon: ShoppingBag,
+        description:
+          "Catálogo maestro: fichas comerciales, opciones y precios, fotos por diseño, personalización del Estudio, receta de materiales y empaque de envío.",
+      },
       {
         label: "Inventario",
         href: "/admin/inventario",
         icon: Boxes,
         description:
-          "Stock de todas las versiones de un vistazo. Filtra por agotadas o stock bajo y ajusta cantidades sin entrar producto por producto.",
+          "Stock de todas las opciones de un vistazo. Filtra por agotadas o stock bajo y ajusta cantidades sin entrar producto por producto.",
       },
-      { label: "Categorías", href: "/admin/categorias", icon: Layers },
-      { label: "Ocasiones", href: "/admin/ocasiones", icon: Tag },
+      {
+        label: "Categorías",
+        href: "/admin/categorias",
+        icon: Layers,
+        description:
+          "Árbol de categorías y subcategorías de la tienda: orden, identidad visual, filtros visibles y producto estrella.",
+      },
+      {
+        label: "Ocasiones",
+        href: "/admin/ocasiones",
+        icon: Tag,
+        description:
+          "Campañas y ocasiones de regalo (Día de la Madre, Navidad, Cumpleaños) que alimentan páginas /ocasion/[slug], filtros y el recomendador.",
+      },
       {
         label: "Plantillas del Estudio",
         href: "/admin/plantillas",
@@ -314,13 +332,15 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Materiales e Insumos",
         href: "/admin/materiales",
         icon: Boxes,
-        description: "Inventario de materiales e insumos de producción con alerta de bajo stock.",
+        description:
+          "Inventario de materia prima de taller (papel, tinta, imanes, empaque) con stock mínimo, costo unitario y vínculo con recetas BOM.",
       },
       {
         label: "Costos de fabricación",
         href: "/admin/costos",
         icon: Calculator,
-        description: "Costo de fabricación por producto y margen contra el precio de venta.",
+        description:
+          "Gobierno centralizado de costo unitario, costo sugerido por receta BOM y salud de márgenes brutos contra el precio mínimo de venta.",
       },
     ],
   },
