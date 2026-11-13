@@ -118,6 +118,23 @@ export function hasServiceSecrets(): boolean {
   );
 }
 
+export function assertWompiSandboxForE2E(env: Readonly<Record<string, string | undefined>>): void {
+  if (env.WOMPI_ENV !== "sandbox") {
+    throw new Error('[e2e] Refusing Wompi payment tests: WOMPI_ENV must be exactly "sandbox".');
+  }
+  const requiredPrefixes: Record<string, string> = {
+    WOMPI_PUBLIC_KEY: "pub_test_",
+    WOMPI_PRIVATE_KEY: "prv_test_",
+    WOMPI_INTEGRITY_SECRET: "test_integrity_",
+    WOMPI_EVENTS_SECRET: "test_events_",
+  };
+  for (const [key, prefix] of Object.entries(requiredPrefixes)) {
+    if (!env[key]?.startsWith(prefix)) {
+      throw new Error(`[e2e] Refusing Wompi payment tests: ${key} must start with ${prefix}`);
+    }
+  }
+}
+
 /** Quita comillas envolventes (los .env del repo las usan en varias vars). */
 export function strip(v: string | undefined): string | undefined {
   return v?.replace(/^["']|["']$/g, "");

@@ -68,7 +68,7 @@ El módulo `apps/web/features/orders/payment-reference.ts` resuelve este problem
 ### Formato y resolución de referencias
 
 - **Intentos nuevos (`buildUniqueWompiReference`)**: generan `${order.number}-${randomUUID()}` (ej. `LCM-2026-0042-9b1deb4d-...`), garantizando unicidad global e irrepetibilidad criptográfica entre reintentos.
-- **Compatibilidad hacia atrás (`buildWompiReference` / `findOrderIdByWompiReference`)**: el buscador resuelve primero por match exacto en `WompiPaymentAttempt.reference` y, como respaldo para formatos previos (`LCM-YYYY-NNNN`, `LCM-YYYY-NNNN-2`), consulta `Order.wompiReference`, `Order.number` exacto o el prefijo base extraído por `extractOrderNumberFromWompiReference` (`/^((?:LCM)-\d{4}-\d+?)(?:-|$)/`).
+- **Compatibilidad hacia atrás (`buildWompiReference` / `findOrderIdByWompiReference`)**: el buscador resuelve primero por match exacto en `WompiPaymentAttempt.reference` o `Order.wompiReference`. El fallback al número base queda limitado a formatos legacy (`LCM-YYYY-NNNN`, `LCM-YYYY-NNNN-2`): una referencia con sufijo UUID que no exista en el ledger local se ignora en vez de asociarla a otra orden con el mismo número base, incluso si la colisión proviene de otro ambiente.
 - **Árbol de decisión de `resolveWompiPaymentReference(orderId)` antes de abrir Wompi**:
   1. Sincroniza el intento vigente llamando `listTransactionsByReference(attempt.reference)` (`GET /v1/transactions?reference=...`), persistiendo **todas** las transacciones retornadas (nunca decide solo por `data[0]`, rechaza colecciones paginadas truncadas y descarta transacciones históricas anteriores a `order.createdAt - 60 s`).
   2. **Si existe `APPROVED`**: actualiza el intento a `APPROVED`, guarda `Order.wompiTransactionId` (prendiendo `needsReconciliation` si hubiera más de una captura) y corta el flujo redirigiendo a `/checkout/gracias?id=<txId>` (`ORDER_ALREADY_PAID`).
@@ -163,7 +163,7 @@ Ruta: `apps/web/app/api/webhooks/wompi/route.ts` (`runtime = "nodejs"`, `dynamic
    - **Privacidad (`LUC-SEC-009`)**: el campo `WebhookEvent.payload` aplica una **allowlist estricta** (`event`, `timestamp`, `data.transaction.{id, status, reference, amount_in_cents, currency}` y `bodyHash` de 16 chars), asegurando **cero persistencia de PII financiera o datos del pagador** en la base de datos y backups (retención 180 días en `purge-event-logs`).
 6. **Protección contra transacciones históricas y manipulación de monto**:
    - Si `isWompiTransactionOlderThanOrder(order, transaction)` es verdadero, marca el evento procesado y lo ignora (`200`).
-   - Si `transaction.amount_in_cents !== order.total`, prende `Order.needsReconciliation = true` con el desfase exacto en pesos, sella `processedAt` y responde `200` sin despachar.
+   - La comparación `transaction.amount_in_cents !== order.total` solo aplica a `APPROVED` y `VOIDED`, estados que confirman o revierten dinero: prende `Order.needsReconciliation = true` con el desfase exacto, sella `processedAt` y responde `200` sin despachar. Un intento posterior `DECLINED` o `ERROR` por un monto distinto no altera la orden ni activa reconciliación.
 
 ### Matriz de manejo por estado de transacción en el Webhook
 

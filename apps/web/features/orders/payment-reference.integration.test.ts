@@ -248,4 +248,30 @@ describe("resolveWompiPaymentReference — ledger real", () => {
 
     await expect(findOrderIdByWompiReference(result.reference)).resolves.toBe(order.id);
   });
+
+  it("no asocia una UUID desconocida a una orden con el mismo número base", async () => {
+    const order = await makeOrder({});
+    const foreignReference = `${order.number}-550e8400-e29b-41d4-a716-446655440000`;
+
+    await expect(findOrderIdByWompiReference(foreignReference)).resolves.toBeNull();
+  });
+
+  it("conserva la compatibilidad con el sufijo legacy -2", async () => {
+    const order = await makeOrder({});
+    const legacyNumber = `LCM-2026-${Date.now()}${sequence}`;
+    await prisma.order.update({ where: { id: order.id }, data: { number: legacyNumber } });
+    try {
+      await expect(findOrderIdByWompiReference(`${legacyNumber}-2`)).resolves.toBe(order.id);
+    } finally {
+      await prisma.order.delete({ where: { id: order.id } });
+    }
+  });
+
+  it("resuelve una UUID almacenada como wompiReference aunque no exista intento en el ledger", async () => {
+    const order = await makeOrder({});
+    const reference = `${order.number}-550e8400-e29b-41d4-a716-446655440000`;
+    await prisma.order.update({ where: { id: order.id }, data: { wompiReference: reference } });
+
+    await expect(findOrderIdByWompiReference(reference)).resolves.toBe(order.id);
+  });
 });

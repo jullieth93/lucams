@@ -443,6 +443,9 @@ export async function resolveWompiPaymentReference(
   return { kind: "lookup_failed" };
 }
 
+const UUID_WOMPI_REFERENCE_RE =
+  /^LCM-\d{4}-\d+-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function findOrderIdByWompiReference(reference: string): Promise<string | null> {
   const attempt = await prisma.wompiPaymentAttempt.findUnique({
     where: { reference },
@@ -451,10 +454,15 @@ export async function findOrderIdByWompiReference(reference: string): Promise<st
   if (attempt) return attempt.orderId;
 
   const base = extractOrderNumberFromWompiReference(reference);
+  const hasUuidSuffix = UUID_WOMPI_REFERENCE_RE.test(reference);
   const order = await prisma.order.findFirst({
     where: {
       deletedAt: null,
-      OR: [{ wompiReference: reference }, { number: reference }, { number: base }],
+      OR: [
+        { wompiReference: reference },
+        { number: reference },
+        ...(!hasUuidSuffix ? [{ number: base }] : []),
+      ],
     },
     select: { id: true },
   });
