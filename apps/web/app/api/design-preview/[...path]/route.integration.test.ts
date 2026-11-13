@@ -39,7 +39,15 @@ const mock = vi.hoisted(() => {
 const authState = vi.hoisted(() => ({
   customerId: null as string | null,
   isAdmin: false,
-  adminRole: "SUPERADMIN" as "SUPERADMIN" | "MANAGER" | "FULFILLMENT" | "CMS_EDITOR",
+  adminRole: "SUPERADMIN" as
+    | "SUPERADMIN"
+    | "OPERATIONS_MANAGER"
+    | "MANAGER"
+    | "CUSTOMER_SUPPORT"
+    | "PRINT_WORKSHOP"
+    | "FINANCE_ANALYST"
+    | "FULFILLMENT"
+    | "CMS_EDITOR",
   adminAal: "aal2" as "aal1" | "aal2",
   adminTotpVerified: true,
 }));
@@ -270,7 +278,7 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
     }
   });
 
-  it("admin en aal1, sin TOTP verificado o con rol CMS_EDITOR → 404 (sin oráculo, [SEC-01])", async () => {
+  it("admin en aal1, sin TOTP o con rol CMS_EDITOR/FINANCE_ANALYST → 404; roles operativos → 200", async () => {
     authState.isAdmin = true;
     try {
       authState.adminAal = "aal1";
@@ -281,8 +289,21 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
       expect((await call(`${designId}/draft-preview.webp`)).status).toBe(404);
 
       authState.adminTotpVerified = true;
-      authState.adminRole = "CMS_EDITOR";
-      expect((await call(`${designId}/draft-preview.webp`)).status).toBe(404);
+      for (const deniedRole of ["CMS_EDITOR", "FINANCE_ANALYST"] as const) {
+        authState.adminRole = deniedRole;
+        expect((await call(`${designId}/draft-preview.webp`)).status).toBe(404);
+      }
+
+      for (const allowedRole of [
+        "OPERATIONS_MANAGER",
+        "MANAGER",
+        "CUSTOMER_SUPPORT",
+        "PRINT_WORKSHOP",
+        "FULFILLMENT",
+      ] as const) {
+        authState.adminRole = allowedRole;
+        expect((await call(`${designId}/preview.png`)).status).toBe(200);
+      }
     } finally {
       authState.isAdmin = false;
       authState.adminRole = "SUPERADMIN";

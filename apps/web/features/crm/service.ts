@@ -91,6 +91,49 @@ async function resolveActiveContactIdOrThrow(contactId: string): Promise<string>
   return resolved.contactId;
 }
 
+async function assertContactRelationCoherence(
+  contactId: string,
+  relations: {
+    orderId?: string | null;
+    supportTicketId?: string | null;
+    opportunityId?: string | null;
+  },
+) {
+  const orderId = relations.orderId?.trim() || null;
+  const supportTicketId = relations.supportTicketId?.trim() || null;
+  const opportunityId = relations.opportunityId?.trim() || null;
+  const [order, supportTicket, opportunity] = await Promise.all([
+    orderId
+      ? prisma.order.findFirst({
+          where: { id: orderId, deletedAt: null },
+          select: { contactId: true },
+        })
+      : Promise.resolve(null),
+    supportTicketId
+      ? prisma.supportTicket.findUnique({
+          where: { id: supportTicketId },
+          select: { contactId: true },
+        })
+      : Promise.resolve(null),
+    opportunityId
+      ? prisma.opportunity.findFirst({
+          where: { id: opportunityId, deletedAt: null },
+          select: { contactId: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (orderId && order?.contactId !== contactId) {
+    throw new CrmValidationError("El pedido no pertenece al contacto indicado.");
+  }
+  if (supportTicketId && supportTicket?.contactId !== contactId) {
+    throw new CrmValidationError("El ticket no pertenece al contacto indicado.");
+  }
+  if (opportunityId && opportunity?.contactId !== contactId) {
+    throw new CrmValidationError("La oportunidad no pertenece al contacto indicado.");
+  }
+}
+
 export async function createContactActivity(input: {
   contactId: string;
   orderId?: string | null;
@@ -113,6 +156,12 @@ export async function createContactActivity(input: {
   }
 
   const activeContactId = await resolveActiveContactIdOrThrow(input.contactId);
+  await assertContactRelationCoherence(activeContactId, {
+    orderId: input.orderId,
+    supportTicketId: input.supportTicketId,
+    opportunityId:
+      typeof input.metadata?.opportunityId === "string" ? input.metadata.opportunityId : null,
+  });
 
   return prisma.contactActivity.create({
     data: {
@@ -223,6 +272,13 @@ export async function createCrmTask(input: {
   const activeContactId = input.contactId?.trim()
     ? await resolveActiveContactIdOrThrow(input.contactId)
     : null;
+  if (activeContactId) {
+    await assertContactRelationCoherence(activeContactId, {
+      orderId: input.orderId,
+      supportTicketId: input.supportTicketId,
+      opportunityId: input.opportunityId,
+    });
+  }
 
   return prisma.task.create({
     data: {

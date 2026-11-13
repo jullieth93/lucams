@@ -42,6 +42,7 @@ import { Button } from "@/components/ui/button";
 import {
   ADMIN_ROLE_SETS,
   canAccessAdminPath,
+  canFilterOrdersByPaymentMethod,
   canSeeOrderCodCollectionAmount,
   canSeeOrderCommercialBreakdown,
   hasCapability,
@@ -118,6 +119,7 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
   const canReconcile = hasCapability(role, "orders:reconcile");
   const canSeeMoney = canSeeOrderCommercialBreakdown(role);
   const canSeeCodTotal = canSeeOrderCodCollectionAmount(role);
+  const canFilterPaymentMethod = canFilterOrdersByPaymentMethod(role);
   const canAccessModeration = canAccessAdminPath(role, "/admin/moderacion");
 
   const sp = await searchParams;
@@ -129,7 +131,7 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
 
   const pagoRaw = pickString(sp, "pago");
   const paymentMethod: OrderListOpts["paymentMethod"] =
-    pagoRaw === "WOMPI" || pagoRaw === "COD" ? pagoRaw : "all";
+    canFilterPaymentMethod && (pagoRaw === "WOMPI" || pagoRaw === "COD") ? pagoRaw : "all";
 
   const desdeRaw = pickString(sp, "desde");
   const fromDate = desdeRaw && ISO_DATE_RE.test(desdeRaw) ? desdeRaw : undefined;
@@ -151,6 +153,7 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
         q,
         status,
         paymentMethod,
+        allowPaymentMethodFilter: canFilterPaymentMethod,
         fromDate,
         toDate,
         sort,
@@ -541,24 +544,26 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
               <option value="REFUNDED">Reembolsado</option>
             </select>
           </div>
-          <div className="sm:col-span-2">
-            <label
-              htmlFor="f-pago"
-              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
-            >
-              Método de pago
-            </label>
-            <select
-              id="f-pago"
-              name="pago"
-              defaultValue={paymentMethod}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-xs focus:ring-2 focus:outline-none"
-            >
-              <option value="all">Todos</option>
-              <option value="WOMPI">Pago en línea (Wompi)</option>
-              <option value="COD">Contraentrega</option>
-            </select>
-          </div>
+          {canFilterPaymentMethod && (
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="f-pago"
+                className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+              >
+                Método de pago
+              </label>
+              <select
+                id="f-pago"
+                name="pago"
+                defaultValue={paymentMethod}
+                className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-xs focus:ring-2 focus:outline-none"
+              >
+                <option value="all">Todos</option>
+                <option value="WOMPI">Pago en línea (Wompi)</option>
+                <option value="COD">Contraentrega</option>
+              </select>
+            </div>
+          )}
           <div className="sm:col-span-2">
             <label
               htmlFor="f-desde"

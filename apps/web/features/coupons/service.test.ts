@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { mockPrisma, updateTagSpy } = vi.hoisted(() => ({
   mockPrisma: {
     coupon: {
+      findMany: vi.fn(),
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -32,6 +33,7 @@ import {
   archiveCoupon,
   CouponValidationError,
   createCoupon,
+  listCoupons,
   pauseCoupon,
   resumeCoupon,
   updateCoupon,
@@ -153,5 +155,29 @@ describe("coupons/service — invalidación de caché (B-7)", () => {
     await expect(archiveCoupon("c-arch", ACTOR)).rejects.toBeInstanceOf(CouponValidationError);
     expect(mockPrisma.coupon.update).not.toHaveBeenCalled();
     expect(updateTagSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("coupons/service — oráculo de búsqueda PII", () => {
+  it("allowDescriptionSearch=false limita q al código y nunca consulta description", async () => {
+    mockPrisma.coupon.findMany.mockResolvedValue([]);
+
+    await listCoupons({ q: "referido@familia.co", allowDescriptionSearch: false });
+
+    const call = mockPrisma.coupon.findMany.mock.calls[0]![0];
+    expect(call.where.OR).toEqual([
+      { code: { contains: "referido@familia.co", mode: "insensitive" } },
+    ]);
+    expect(JSON.stringify(call.where)).not.toContain("description");
+  });
+
+  it("la búsqueda autorizada conserva código y descripción", async () => {
+    mockPrisma.coupon.findMany.mockResolvedValue([]);
+
+    await listCoupons({ q: "campaña", allowDescriptionSearch: true });
+
+    const call = mockPrisma.coupon.findMany.mock.calls[0]![0];
+    expect(call.where.OR).toHaveLength(2);
+    expect(JSON.stringify(call.where.OR)).toContain("description");
   });
 });

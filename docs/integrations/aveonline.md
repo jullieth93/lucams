@@ -175,7 +175,7 @@ Las URLs externas devueltas por Aveonline (`rutasticker`, `rutaguia`, `rotulo`) 
    - **Fuente 2**: descarga HTTP (`timeoutMs: 12_000`, máx. `15 MB`) de `labelUrl` (`rutasticker` térmico 110×120 → `rutaguia` → `rotulo`).
    - **Fuente 3**: descarga HTTP de `trackingUrl` si es distinta de `labelUrl`.
 2. **Validación estricta `%PDF-` (`isPdfBuffer`)**: verifica la presencia de la firma mágica `%PDF-` dentro de los primeros `1 024 bytes` del buffer, ignorando el header `Content-Type` declarativo y rechazando cualquier HTML de error.
-3. **Almacenamiento seguro**: sube con `upsert: true` al bucket privado **`production-assets`** en `shipping-labels/<orderId>.pdf` y persiste la ruta en `Order.labelPath`. En `/admin/pedidos/[number]`, solo los roles con permiso de despacho (`FULFILLMENT`, `OPERATIONS_MANAGER`, `ADMIN`, `SUPERADMIN`) pueden abrir la etiqueta mediante signed URL efímera auditada (`order.print_shipping_guide`).
+3. **Almacenamiento seguro**: sube con `upsert: true` al bucket privado **`production-assets`** en `shipping-labels/<orderId>.pdf` y persiste la ruta en `Order.labelPath`. En `/admin/pedidos/[number]`, los roles `SHIPPING_GUIDE_PRINT` abren la etiqueta mediante una ruta autenticada que firma la copia al hacer clic y registra `order.carrier_label_download`; el respaldo externo se limita a `*.aveonline.co`. La guía física de mensajería interna `LUCAMS` es independiente de esta etiqueta y conserva su auditoría `order.print_shipping_guide`.
 
 ---
 

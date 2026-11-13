@@ -1324,6 +1324,8 @@ export type OrderListOpts = {
   pageSize?: number;
   /** S17: cuando es `false`, restringe la búsqueda `q` a `id`/`number`/`trackingNumber` (anti-oráculo PII). */
   allowPiiSearch?: boolean;
+  /** Cuando es false, ignora `paymentMethod` incluso si la query lo trae manipulado. */
+  allowPaymentMethodFilter?: boolean;
 };
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -1369,7 +1371,9 @@ export async function listOrders(opts: OrderListOpts = {}) {
       : opts.workshopPending
         ? { status: { in: ["PAID", "FULFILLING"] } }
         : {}),
-    ...(opts.paymentMethod && opts.paymentMethod !== "all"
+    ...(opts.allowPaymentMethodFilter !== false &&
+    opts.paymentMethod &&
+    opts.paymentMethod !== "all"
       ? { paymentMethod: opts.paymentMethod }
       : {}),
     ...(fromBound || toBound
@@ -1462,7 +1466,12 @@ export async function listOrdersForActor(opts: OrderListOpts, role: AdminRole) {
     !canSeeMoney && (opts.sort === "total-desc" || opts.sort === "total-asc")
       ? "recent"
       : opts.sort;
-  const res = await listOrders({ ...opts, sort: safeSort, allowPiiSearch: canReadPii });
+  const res = await listOrders({
+    ...opts,
+    sort: safeSort,
+    allowPiiSearch: canReadPii,
+    allowPaymentMethodFilter: role !== "PRINT_WORKSHOP",
+  });
   if (canReadPii && canSeeMoney) return res;
   return {
     ...res,

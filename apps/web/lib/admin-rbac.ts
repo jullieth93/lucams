@@ -411,30 +411,35 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
 const ROUTE_PATTERN_ROLES: ReadonlyArray<{
   pattern: RegExp;
   roles: readonly AdminRole[];
+  notification: { prefix: string; suffix: string };
 }> = [
   {
     // Hoja imprimible de producción/taller para cotizaciones con activos 300 DPI:
     // habilita PRINT_WORKSHOP y restringe CUSTOMER_SUPPORT (exige production:download_assets).
     pattern: /^\/admin\/cotizaciones\/[^/?]+\/taller(?:$|[/?])/,
     roles: rolesWithCapability("production:download_assets"),
+    notification: { prefix: "/admin/cotizaciones/", suffix: "/taller" },
   },
   {
     // Descarga de ZIP de producción 300 DPI del pedido (Bloque 5 — paridad N-21 con route.ts):
     // exige production:download_assets (excluye FULFILLMENT, CUSTOMER_SUPPORT y FINANCE_ANALYST).
     pattern: /^\/admin\/pedidos\/[^/?]+\/produccion(?:$|[/?])/,
     roles: rolesWithCapability("production:download_assets"),
+    notification: { prefix: "/admin/pedidos/", suffix: "/produccion" },
   },
   {
     // Guía física imprimible de entrega / mensajero propio (Bloque 5 — paridad N-21 con guia/page.tsx):
     // habilita SHIPPING_GUIDE_PRINT y excluye PRINT_WORKSHOP y FINANCE_ANALYST.
     pattern: /^\/admin\/pedidos\/[^/?]+\/guia(?:$|[/?])/,
     roles: ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT,
+    notification: { prefix: "/admin/pedidos/", suffix: "/guia" },
   },
   {
     // Vista previa HTML del correo de recuperación de carrito (Bloque 7 — paridad N-21 con preview/route.ts):
     // contiene PII real del carrito, diseños personalizados y cupón del comprador → exclusivo `carts:recover`.
     pattern: /^\/admin\/carritos\/[^/?]+\/preview(?:$|[/?])/,
     roles: rolesWithCapability("carts:recover"),
+    notification: { prefix: "/admin/carritos/", suffix: "/preview" },
   },
 ];
 
@@ -489,6 +494,14 @@ export function canSeeOrderCommercialBreakdown(role: AdminRole): boolean {
  */
 export function canSeeOrderCodCollectionAmount(role: AdminRole): boolean {
   return canSeeOrderCommercialBreakdown(role) || role === "FULFILLMENT";
+}
+
+export function canSeeOrderTotalInGuide(role: AdminRole, isGift: boolean, isCod: boolean): boolean {
+  return !isGift && (isCod || canSeeOrderCommercialBreakdown(role));
+}
+
+export function canFilterOrdersByPaymentMethod(role: AdminRole): boolean {
+  return role !== "PRINT_WORKSHOP";
 }
 
 /** ¿El rol puede acceder a esta ruta admin? */
@@ -546,16 +559,20 @@ export function filterNavByRole<T extends { items?: Array<{ href: string }>; hre
   return out;
 }
 
+export type NotificationRoutePattern = { prefix: string; suffix: string };
 export type NotificationRouteScope =
   | { unrestricted: true }
-  | { unrestricted: false; allowedPrefixes: string[]; deniedPrefixes: string[] };
+  | {
+      unrestricted: false;
+      allowedPrefixes: string[];
+      deniedPrefixes: string[];
+      allowedPatterns: NotificationRoutePattern[];
+      deniedPatterns: NotificationRoutePattern[];
+    };
 
 /**
- * Devuelve los prefijos de `ROUTE_ROLES` permitidos y denegados para un rol dado,
- * de modo que las consultas SQL de `Notification` (`listNotifications`, `getUnreadCount`,
- * `markRead`, `markAllRead`) filtren en base de datos exactamente las mismas rutas que
- * `canAccessAdminPath(role, actionUrl)` sin filtrar ingresos COP, alertas DIAN, MFA ni
- * infraestructura a roles operativos (`OPERATIONS_MANAGER`, `MANAGER`).
+ * Devuelve el alcance de prefijos y subrutas dinámicas para filtrar `Notification`
+ * con la misma precedencia de `canAccessAdminPath(role, actionUrl)`.
  */
 export function getNotificationRouteScope(role: AdminRole): NotificationRouteScope {
   if (role === "SUPERADMIN") return { unrestricted: true };
@@ -569,5 +586,15 @@ export function getNotificationRouteScope(role: AdminRole): NotificationRouteSco
           (r.prefix.startsWith(`${allowed}/`) || r.prefix.startsWith(`${allowed}?`)),
       ),
   ).map((r) => r.prefix);
-  return { unrestricted: false, allowedPrefixes, deniedPrefixes };
+  return {
+    unrestricted: false,
+    allowedPrefixes,
+    deniedPrefixes,
+    allowedPatterns: ROUTE_PATTERN_ROLES.filter((r) => r.roles.includes(role)).map(
+      (r) => r.notification,
+    ),
+    deniedPatterns: ROUTE_PATTERN_ROLES.filter((r) => !r.roles.includes(role)).map(
+      (r) => r.notification,
+    ),
+  };
 }

@@ -13,10 +13,12 @@ import {
   ADMIN_CAPABILITIES,
   ADMIN_ROLE_SETS,
   canAccessAdminPath,
+  canFilterOrdersByPaymentMethod,
   canManageOrderRenderJobs,
   canRetryOrderShipment,
   canSeeOrderCodCollectionAmount,
   canSeeOrderCommercialBreakdown,
+  canSeeOrderTotalInGuide,
   canTransitionOrderTo,
   filterNavByRole,
   getNotificationRouteScope,
@@ -991,6 +993,75 @@ describe("Bloque 8 — salud técnica, performance y alcance RBAC de notificacio
         const sqlAllows =
           scope.allowedPrefixes.some((p) => matchesPrefix(url, p)) &&
           !scope.deniedPrefixes.some((p) => matchesPrefix(url, p));
+        expect(sqlAllows).toBe(canAccessAdminPath(role, url));
+      }
+    }
+  });
+});
+
+describe("Bloque C1 — guías, filtros y alcance dinámico de notificaciones", () => {
+  it("la guía muestra el total solo si no es regalo y el rol tiene desglose o recaudo COD", () => {
+    expect(canSeeOrderTotalInGuide("FULFILLMENT", false, false)).toBe(false);
+    expect(canSeeOrderTotalInGuide("FULFILLMENT", false, true)).toBe(true);
+    expect(canSeeOrderTotalInGuide("FULFILLMENT", true, true)).toBe(false);
+    expect(canSeeOrderTotalInGuide("CUSTOMER_SUPPORT", false, false)).toBe(true);
+    expect(canSeeOrderTotalInGuide("FINANCE_ANALYST", false, false)).toBe(true);
+    expect(canSeeOrderTotalInGuide("FINANCE_ANALYST", true, true)).toBe(false);
+  });
+
+  it("solo PRINT_WORKSHOP pierde el filtro por método de pago", () => {
+    expect(canFilterOrdersByPaymentMethod("PRINT_WORKSHOP")).toBe(false);
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canFilterOrdersByPaymentMethod(role)).toBe(true);
+    }
+  });
+
+  it("ROUTE_PATTERN_ROLES permite y deniega las mismas subrutas que canAccessAdminPath", () => {
+    const urls = [
+      "/admin/cotizaciones/qt_1/taller",
+      "/admin/cotizaciones/qt_1/taller?print=1",
+      "/admin/cotizaciones/qt_1/tallerX",
+      "/admin/pedidos/LCM-2026-0001/produccion",
+      "/admin/pedidos/LCM-2026-0001/guia",
+      "/admin/pedidos/LCM-2026-0001/guia/etiqueta?fuente=externa",
+      "/admin/carritos/cart_1/preview",
+      "/admin/carritos/cart_1",
+    ];
+    const matchesPrefix = (url: string, prefix: string) =>
+      url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`);
+    const matchesPattern = (url: string, pattern: { prefix: string; suffix: string }) =>
+      url.startsWith(pattern.prefix) &&
+      (url.endsWith(pattern.suffix) ||
+        url.includes(`${pattern.suffix}?`) ||
+        url.includes(`${pattern.suffix}/`));
+
+    for (const role of [
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      const scope = getNotificationRouteScope(role);
+      expect(scope.unrestricted).toBe(false);
+      if (scope.unrestricted) throw new Error("Expected restricted scope");
+
+      for (const url of urls) {
+        const sqlAllows =
+          (scope.allowedPrefixes.some((prefix) => matchesPrefix(url, prefix)) ||
+            scope.allowedPatterns.some((pattern) => matchesPattern(url, pattern))) &&
+          !scope.deniedPrefixes.some((prefix) => matchesPrefix(url, prefix)) &&
+          !scope.deniedPatterns.some((pattern) => matchesPattern(url, pattern));
         expect(sqlAllows).toBe(canAccessAdminPath(role, url));
       }
     }

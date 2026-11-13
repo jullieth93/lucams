@@ -83,6 +83,7 @@ import {
 } from "@/features/personalization/production-spec";
 import { formatDateTimeCO } from "@/lib/datetime";
 import { listShipmentEvents } from "@/features/shipping/shipment-events";
+import { maskEmail, maskOrderOperationalTextForActor } from "@/lib/pii-mask";
 
 export const metadata: Metadata = { title: "Detalle de pedido" };
 
@@ -227,7 +228,7 @@ export default async function AdminPedidoDetallePage({
   const canViewActivities = canRead360 && canReadPii;
   const canViewCatalog = canAccessAdminPath(role, "/admin/productos");
 
-  const [crmTasks, crmActivities, assignableAdmins, statusEvents, complementary] =
+  const [rawCrmTasks, crmActivities, rawAssignableAdmins, rawStatusEvents, complementary] =
     await Promise.all([
       listTasksForEntity({ orderId: order.id }),
       canViewActivities && order.contactId
@@ -241,7 +242,36 @@ export default async function AdminPedidoDetallePage({
       getOrderComplementaryContextForActor(order.id, order.number, order.paymentMethod, role),
     ]);
 
-  const shipmentEvents = order.trackingNumber ? await listShipmentEvents(order.id) : [];
+  const canReadStaffIdentity =
+    hasCapability(role, "staff:manage") || hasCapability(role, "contacts:read_pii");
+  const crmTasks = rawCrmTasks.map((task) => ({
+    ...task,
+    title: maskOrderOperationalTextForActor(task.title, role),
+    description:
+      task.description === null ? null : maskOrderOperationalTextForActor(task.description, role),
+    ownerAdminEmail:
+      !canReadStaffIdentity && task.ownerAdminEmail
+        ? maskEmail(task.ownerAdminEmail)
+        : task.ownerAdminEmail,
+    createdByAdminEmail:
+      !canReadStaffIdentity && task.createdByAdminEmail
+        ? maskEmail(task.createdByAdminEmail)
+        : task.createdByAdminEmail,
+  }));
+  const assignableAdmins = rawAssignableAdmins.map((admin) => ({
+    ...admin,
+    email: canReadStaffIdentity ? admin.email : maskEmail(admin.email),
+  }));
+  const statusEvents = rawStatusEvents.map((event) => ({
+    ...event,
+    note: event.note === null ? null : maskOrderOperationalTextForActor(event.note, role),
+  }));
+  const rawShipmentEvents = order.trackingNumber ? await listShipmentEvents(order.id) : [];
+  const shipmentEvents = rawShipmentEvents.map((event) => ({
+    ...event,
+    description:
+      event.description === null ? null : maskOrderOperationalTextForActor(event.description, role),
+  }));
 
   const orderBuyerIsStaff = order.contactId
     ? ((
@@ -263,10 +293,9 @@ export default async function AdminPedidoDetallePage({
   const signedProduction = canDownloadProduction
     ? await getProductionAssetSignedUrls(productionPaths)
     : new Map<string, string>();
-
-  const labelSignedUrl =
-    canPrintGuide && order.labelPath
-      ? ((await getProductionAssetSignedUrls([order.labelPath], 900)).get(order.labelPath) ?? null)
+  const carrierLabelHref =
+    canPrintGuide && (order.labelPath || order.labelUrl)
+      ? `/admin/pedidos/${encodedOrderNum}/guia/etiqueta`
       : null;
 
   const hasProduction = productionPaths.length > 0;
@@ -1150,9 +1179,9 @@ export default async function AdminPedidoDetallePage({
                       ⚠️ Guía simulada (modo prueba). En producción genera guía real.
                     </p>
                   )}
-                  {labelSignedUrl && (
+                  {carrierLabelHref && (
                     <a
-                      href={labelSignedUrl}
+                      href={carrierLabelHref}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors"
@@ -1167,23 +1196,19 @@ export default async function AdminPedidoDetallePage({
                       rel="noopener noreferrer"
                       className="text-brand-purple mt-2 block text-xs underline"
                     >
-                      {labelSignedUrl
+                      {carrierLabelHref
                         ? "Ver guía en Aveonline (enlace externo, puede expirar) →"
                         : "Ver guía en Aveonline →"}
                     </a>
                   )}
-                  {order.labelUrl && (
+                  {carrierLabelHref && order.labelPath && order.labelUrl && (
                     <a
-                      href={order.labelUrl}
+                      href={`${carrierLabelHref}?fuente=externa`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`mt-1 block text-xs underline ${
-                        labelSignedUrl ? "text-brand-muted" : "text-brand-purple"
-                      }`}
+                      className="text-brand-muted mt-1 block text-xs underline"
                     >
-                      {labelSignedUrl
-                        ? "Etiqueta en Aveonline (respaldo externo) →"
-                        : "Descargar etiqueta PDF →"}
+                      Etiqueta en Aveonline (respaldo externo) →
                     </a>
                   )}
                   {shipmentEvents.length > 0 && (

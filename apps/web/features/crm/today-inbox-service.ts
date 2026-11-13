@@ -108,6 +108,7 @@ export async function getTodayOperationalInbox(
   const canReadOrderPii = hasCapability(role, "orders:read_pii");
   const canReadContactPii = hasCapability(role, "contacts:read_pii");
   const canRead360 = hasCapability(role, "contacts:read_360");
+  const canManageOpportunities = hasCapability(role, "opportunities:manage");
   const canManageTasks = hasCapability(role, "crm:manage_tasks");
   const canManageRetract = hasCapability(role, "retract:manage");
   const canManageSupport = hasCapability(role, "support:manage");
@@ -145,6 +146,7 @@ export async function getTodayOperationalInbox(
       ? prisma.task.findMany({
           where: {
             status: { in: ["OPEN", "IN_PROGRESS"] },
+            ...(canManageOpportunities ? {} : { opportunityId: null }),
             ...(canRead360
               ? {
                   OR: [

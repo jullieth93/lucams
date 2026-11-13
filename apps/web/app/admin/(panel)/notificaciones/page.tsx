@@ -46,6 +46,7 @@ import { CountUp } from "@/components/admin/count-up";
 import { markReadAction, markAllReadAction } from "./actions";
 import { formatRelativeTime } from "@/lib/format";
 import { formatDateTimeNoYearCO } from "@/lib/datetime";
+import { isSafeInternalPath } from "@/lib/safe-redirect";
 
 export const metadata: Metadata = {
   title: "Notificaciones",
@@ -434,6 +435,7 @@ export default async function AdminNotificacionesPage({
                       </p>
                       <div className="mt-2.5 flex flex-wrap items-center gap-2">
                         {n.actionUrl &&
+                          isSafeInternalPath(n.actionUrl) &&
                           (!n.actionUrl.startsWith("/admin") ||
                             canAccessAdminPath(session.admin.role, n.actionUrl)) && (
                             <Link

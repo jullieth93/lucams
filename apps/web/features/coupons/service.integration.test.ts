@@ -322,6 +322,17 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
       expect(ids).toContain(activeId);
     });
 
+    it("allowDescriptionSearch=false no encuentra un cupón por texto privado de su descripción", async () => {
+      const allowed = await listCoupons({ q: "VIGENTE BUSCABLE" });
+      expect(allowed.some((row) => row.id === activeId)).toBe(true);
+
+      const restricted = await listCoupons({
+        q: "VIGENTE BUSCABLE",
+        allowDescriptionSearch: false,
+      });
+      expect(restricted.some((row) => row.id === activeId)).toBe(false);
+    });
+
     it("incluye _count.usages en cada fila", async () => {
       const rows = await listCoupons({ q: `${RUN}-LIST-ACTIVE` });
       const row = rows.find((r) => r.id === activeId);

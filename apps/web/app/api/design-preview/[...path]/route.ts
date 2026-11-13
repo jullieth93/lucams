@@ -2,22 +2,21 @@
  * GET /api/design-preview/<designId>/<archivo> — ÚNICA puerta de lectura del
  * bucket design-previews (privado desde la migración 046, LUC-SEC-001).
  *
- * Autorización (matriz certificada en preview-access.test.ts):
- *   - admin activo o dueño (customerId autenticado / cookie cart_session que
- *     coincide con Design.sessionId) → cualquier variante.
+ * Autorización (matriz certificada en preview-access.test.ts y route.integration.test.ts):
+ *   - admin operativo activo (sin FINANCE_ANALYST ni CMS_EDITOR) o dueño
+ *     (customerId autenticado / cookie cart_session coincidente) → cualquier variante.
  *   - capacidad por token (?st= share /d/, ?qt= cotización, ?ot= pedido) →
- *     SOLO variantes watermark. El preview limpio, las páginas limpias y los
- *     borradores nunca salen por token.
+ *     variantes de exhibición; los borradores nunca salen por token.
  *   - resto → 404 (no 403: no se filtra si el diseño existe).
  *
  * La respuesta es cache PRIVADA corta (nada de CDN pública de un año para
  * contenido personal — el endpoint depende de cookies/tokens).
  */
 
+import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { supabaseService } from "@/lib/supabase/service";
 import { getCurrentCustomer } from "@/lib/auth";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
 import { hashBearerToken } from "@/lib/token-hash";
 import { CART_SESSION_COOKIE } from "@/lib/cart-session";
@@ -31,6 +30,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const BUCKET = "design-previews";
+const DESIGN_PREVIEW_ADMIN_ROLES: readonly AdminRole[] = [
+  "SUPERADMIN",
+  "OPERATIONS_MANAGER",
+  "MANAGER",
+  "CUSTOMER_SUPPORT",
+  "PRINT_WORKSHOP",
+  "FULFILLMENT",
+];
 const TOKEN_RE = /^[a-f0-9]{32}$/;
 const SESSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -104,7 +111,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
   }
 
   // Quién llama: cookie anónima + sesión autenticada (cliente y/o staff operativo con MFA aal2).
-  // CMS_EDITOR, sesiones aal1 o cuentas sin TOTP verificado NO obtienen acceso admin ([SEC-01]).
+  // CMS_EDITOR, FINANCE_ANALYST, sesiones aal1 o cuentas sin TOTP verificado NO obtienen acceso admin ([SEC-01]).
   // Idle-timeout: NO se exige checkIdle acá a propósito — la marca `admin_last_activity`
   // viaja con `path=/admin` (admin-activity.ts) y el browser jamás la envía a `/api/*`;
   // exigirla dejaría 404 a TODA vista previa admin legítima. El idle se impone en la
@@ -113,7 +120,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
   const sessionId = readCartSession(req);
   const [customer, adminAccess] = await Promise.all([
     getCurrentCustomer().catch(() => null),
-    verifyAdminRouteAccess({ roles: ADMIN_ROLE_SETS.ALL }).catch(() => ({ ok: false as const })),
+    verifyAdminRouteAccess({ roles: DESIGN_PREVIEW_ADMIN_ROLES }).catch(() => ({
+      ok: false as const,
+    })),
   ]);
 
   const allowed = canAccessDesignPreview({

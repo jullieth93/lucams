@@ -6,8 +6,7 @@
  * Patrón estándar del panel: requireAdminAction (sesión + MFA aal2 + rol) al
  * INICIO, luego la mutación, recordAdminAction (audit trail) y revalidatePath.
  * Sin updateTag: el feed se lee directo de la DB en cada render (nada cacheado).
- * SUPERADMIN únicamente (la ruta tampoco está en la matriz RBAC → deny-by-default
- * ya la limita a SUPERADMIN; esto es el mismo candado para las actions).
+ * Cada mutación pasa el rol obligatorio para limitar su alcance a las rutas accesibles.
  */
 
 import { revalidatePath } from "next/cache";

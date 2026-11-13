@@ -99,4 +99,18 @@ describe("S17 — Enmascaramiento server-side y anti-oráculo PII en getOrderFor
     const byEmailSupport = await listOrdersForActor({ q: rawEmail }, "CUSTOMER_SUPPORT");
     expect(byEmailSupport.items.find((o) => o.id === orderId)?.email).toBe(rawEmail);
   });
+
+  it("listOrdersForActor(PRINT_WORKSHOP) ignora ?pago= manipulado; otros roles sí filtran", async () => {
+    const workshop = await listOrdersForActor(
+      { q: orderNumber, paymentMethod: "COD" },
+      "PRINT_WORKSHOP",
+    );
+    expect(workshop.items.some((order) => order.id === orderId)).toBe(true);
+
+    const support = await listOrdersForActor(
+      { q: orderNumber, paymentMethod: "COD" },
+      "CUSTOMER_SUPPORT",
+    );
+    expect(support.items.some((order) => order.id === orderId)).toBe(false);
+  });
 });

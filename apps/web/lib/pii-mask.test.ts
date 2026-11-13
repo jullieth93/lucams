@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   maskContactSummaryForActor,
+  maskCopAmountsInText,
   maskDocumentNumber,
   maskEmail,
   maskEmailsInText,
   maskOrderForActor,
+  maskOrderOperationalTextForActor,
   maskPersonName,
   maskPhone,
   maskShippingAddressSnapshot,
@@ -247,5 +249,111 @@ describe("S17 — Enmascaramiento server-side determinista de PII", () => {
     expect(financeMasked.total).toBe(109_000);
     expect(financeMasked.coupon?.code).toBe("VIP20");
     expect(financeMasked.items[0]!.unitPrice).toBe(60_000);
+  });
+});
+
+describe("Bloque C1 — aislamiento estricto 0-PII y COP", () => {
+  it("maskShippingAddressSnapshot usa una proyección cerrada sin documentType, localidades ni claves desconocidas", () => {
+    const out = maskShippingAddressSnapshot({
+      fullName: "Camila Restrepo",
+      documentType: "CC",
+      documentNumber: "1032456789",
+      addressLine1: "Calle 85 # 14-32",
+      localityName: "Chapinero",
+      localityId: "LOC-SECRET",
+      internalRoutingKey: "secret",
+      city: "Bogotá",
+      department: "Bogotá D.C.",
+    });
+
+    expect(out).toEqual({
+      fullName: "Camila R.",
+      documentNumber: "******89",
+      addressLine1: "Dirección protegida (ver guía oficial de despacho)",
+      city: "Bogotá",
+      department: "Bogotá D.C.",
+    });
+    expect(JSON.stringify(out)).not.toContain("Chapinero");
+    expect(JSON.stringify(out)).not.toContain("LOC-SECRET");
+    expect(JSON.stringify(out)).not.toContain("internalRoutingKey");
+  });
+
+  it("FINANCE_ANALYST no recibe mensajes de regalo, previews ni canvas, pero conserva montos contables", () => {
+    const order = {
+      email: "comprador@familia.co",
+      phone: "3001234567",
+      shippingAddress: { city: "Bogotá", department: "Cundinamarca" },
+      giftMessage: "Feliz cumpleaños, con todo mi amor",
+      reconciliationReason: "Contactar a comprador@familia.co por un cobro de $ 120.000",
+      reconciliationNote: "Se devolvieron 120.000 COP a comprador@familia.co",
+      items: [
+        {
+          unitPrice: 120_000,
+          designAssetUrl: "/api/design-preview/design-secret/preview.png",
+          customDesign: { objects: [{ src: "customer-photo.jpg" }] },
+          design: {
+            previewUrl: "/api/design-preview/design-secret/preview.png",
+            canvasData: { objects: [{ src: "customer-photo.jpg" }] },
+          },
+          metadata: {
+            designSnapshot: { previewUrl: "/api/design-preview/design-secret/preview.png" },
+          },
+        },
+      ],
+    };
+
+    const masked = maskOrderForActor(order, "FINANCE_ANALYST");
+    const serialized = JSON.stringify(masked);
+    expect(masked.giftMessage).toBeNull();
+    expect(masked.items[0]!.unitPrice).toBe(120_000);
+    expect(masked.items[0]!.designAssetUrl).toBeNull();
+    expect(masked.items[0]!.customDesign).toBeNull();
+    expect(masked.items[0]!.design.previewUrl).toBeNull();
+    expect(masked.items[0]!.design.canvasData).toBeNull();
+    expect(masked.items[0]!.metadata.designSnapshot.previewUrl).toBeNull();
+    expect(masked.reconciliationReason).toContain("$ 120.000");
+    expect(masked.reconciliationReason).not.toContain("comprador@familia.co");
+    expect(serialized).not.toContain("design-secret");
+    expect(serialized).not.toContain("customer-photo");
+    expect(serialized).not.toContain("Feliz cumpleaños");
+  });
+
+  it("PRINT_WORKSHOP y FULFILLMENT no reciben facturación ni notas de reconciliación", () => {
+    const order = {
+      email: "cliente@correo.co",
+      phone: "3001234567",
+      shippingAddress: {},
+      billingDocumentType: "CC",
+      billingDocumentNumber: "1032456789",
+      billingName: "Camila Restrepo",
+      reconciliationReason: "Cobro duplicado por $ 90.000",
+      reconciliationNote: "Reembolso de 90.000 COP",
+    };
+
+    const workshop = maskOrderForActor(order, "PRINT_WORKSHOP");
+    expect(workshop.billingDocumentType).toBeNull();
+    expect(workshop.billingDocumentNumber).toBeNull();
+    expect(workshop.billingName).toBeNull();
+    expect(workshop.reconciliationReason).toBeNull();
+    expect(workshop.reconciliationNote).toBeNull();
+
+    const fulfillment = maskOrderForActor(order, "FULFILLMENT");
+    expect(fulfillment.reconciliationReason).toBeNull();
+    expect(fulfillment.reconciliationNote).toBeNull();
+  });
+
+  it("maskOrderOperationalTextForActor redacta correos y montos sin borrar números operativos", () => {
+    const raw = "Pedido LCM-2026-0001: cobrar $ 120.000 a cliente@correo.co; 12 unidades";
+    const workshop = maskOrderOperationalTextForActor(raw, "PRINT_WORKSHOP");
+    expect(workshop).not.toContain("120.000");
+    expect(workshop).not.toContain("cliente@correo.co");
+    expect(workshop).toContain("LCM-2026-0001");
+    expect(workshop).toContain("12 unidades");
+    expect(workshop).toContain("[monto COP protegido]");
+
+    const finance = maskOrderOperationalTextForActor(raw, "FINANCE_ANALYST");
+    expect(finance).toContain("$ 120.000");
+    expect(finance).not.toContain("cliente@correo.co");
+    expect(maskCopAmountsInText("Guía 123456789, 12 unidades")).toBe("Guía 123456789, 12 unidades");
   });
 });

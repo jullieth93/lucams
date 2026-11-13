@@ -100,13 +100,13 @@
 - Carrito auto-sanado (`ADR-171`), checkout en 3 pasos (`ADR-155`), direcciones DANE + CP MinTIC
   (171/171 ciudades) y modo regalo (guía física y correos sin precios). Fletes HMAC por peso, ledger
   Wompi por intento + webhook 25 h, COD con blocklist (MFA en alta/baja, PII enmascarada)/conciliación y CSV contable DIAN con redacción de correo para `FINANCE_ANALYST`, alertas
-  de stock, Aveonline con PDFs + `ShipmentEvent`, Envío Lucams Bogotá, segregación Taller/Alistamiento +
-  confidencialidad COP en `/admin/pedidos`, costeo BOM (`/admin/costos`), escalas mayoristas (`/admin/mayorista`)
+  de stock, Aveonline con PDFs + `ShipmentEvent` y descarga de etiquetas autenticada y auditada, Envío Lucams Bogotá, segregación Taller/Alistamiento +
+  confidencialidad COP y diseños 0-PII en `/admin/pedidos`, costeo BOM (`/admin/costos`), escalas mayoristas (`/admin/mayorista`)
   y cupones personales no transferibles (`NOT_OWNER`).
 
 ### CRM 360°, B2B, Posventa y Operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 
-- Grafo `Contact` 360° (`isStaff`, `selfDealing`, fusión asistida), `/admin/hoy`, RFM/LTV en
+- Grafo `Contact` 360° (`isStaff`, `selfDealing`, fusión asistida), `/admin/hoy`, tareas con coherencia relacional y alcance por rol/responsable, RFM/LTV en
   `/admin/metricas`, embudo `/empresas-y-eventos` → `Opportunity` → `/cotizacion/[token]`, **Puntos
   Lucams** (tope anti-abuso ≤25 %, pasivo vivo en `/admin/fidelizacion`, retrocrédito al verificar correo, reversión en retractos) y `/r/[codigo]`.
 - Seguimiento `/pedido/[token]` con autoservicio posventa para invitados (`GuestOrderSupportCard`,
@@ -118,7 +118,7 @@
   cierre anual por ritmo reciente y alerta 70 %/90 %/100 % en `/admin/hoy`, `/admin/metricas`,
   `/admin/notificaciones` y correo al owner (una vez por cruce y año).
 - Panel `/admin` (8 roles × 36 capacidades con paridad estricta N-21 y cero bypass B-7 en las 9 áreas,
-  notificaciones aisladas por rol en SQL, cuotas vivas de Storage + Postgres en `/admin/observability`,
+  notificaciones aisladas por rol en SQL (incluidas subrutas dinámicas) y enlaces internos seguros, cuotas vivas de Storage + Postgres en `/admin/observability`,
   MFA `aal2` sin desactivación permanente + step-up MFA en conectores, bloqueos y purgas irreversibles +
   rotación de contraseña verificada en HIBP, buscador `⌘K`, `useAdminConfirm`), 32 plantillas React Email
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo

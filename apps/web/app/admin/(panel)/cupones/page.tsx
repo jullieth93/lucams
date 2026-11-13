@@ -90,7 +90,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
 
   const [coupons, allActivePool, usageAggregate, topUsageGroups, categories, products] =
     await Promise.all([
-      listCoupons({ q, status, origin, sort }),
+      listCoupons({ q, status, origin, sort, allowDescriptionSearch: canReadPii }),
       prisma.coupon.findMany({
         where: { deletedAt: null },
         select: {

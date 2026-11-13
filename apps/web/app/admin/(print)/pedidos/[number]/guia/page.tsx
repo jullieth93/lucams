@@ -21,7 +21,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, canSeeOrderTotalInGuide, hasCapability } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { getOrder } from "@/features/orders/service";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
@@ -203,7 +203,7 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
 
         {/* Total + recaudo (protección de precios en pedidos regalo pagados en línea) */}
         <section className="border-b border-black py-1">
-          {!order.isGift && (
+          {canSeeOrderTotalInGuide(session.admin.role, order.isGift, isCod) && (
             <div className="flex justify-between">
               <span>Total del pedido</span>
               <span className="font-bold">{formatCOP(order.total)}</span>

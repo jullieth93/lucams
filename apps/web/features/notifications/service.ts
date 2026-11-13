@@ -41,28 +41,42 @@ function prefixActionUrlClause(prefix: string): Prisma.NotificationWhereInput {
   };
 }
 
-/**
- * Construye el filtro SQL de alcance por rol para `Notification`.
- * `SUPERADMIN` (o llamadas internas sin `role`) ve el 100 % del feed.
- * Roles operativos (`OPERATIONS_MANAGER`, `MANAGER`) solo leen y marcan avisos
- * cuyo `actionUrl` pertenece a su ámbito RBAC — protegiendo ingresos netos COP
- * (`daily_summary`), vigilancia DIAN (`fiscal-watch`), accesos MFA de emergencia
- * (`mfa-recovery-used`) y telemetría de infraestructura (`observability`), y
- * evitando que `markAllRead` silencie alertas no leídas de `SUPERADMIN`.
- */
-export function buildNotificationRoleWhere(role?: AdminRole): Prisma.NotificationWhereInput {
-  if (!role) return {};
+function patternActionUrlClause(pattern: {
+  prefix: string;
+  suffix: string;
+}): Prisma.NotificationWhereInput {
+  return {
+    AND: [
+      { actionUrl: { startsWith: pattern.prefix } },
+      {
+        OR: [
+          { actionUrl: { endsWith: pattern.suffix } },
+          { actionUrl: { contains: `${pattern.suffix}?` } },
+          { actionUrl: { contains: `${pattern.suffix}/` } },
+        ],
+      },
+    ],
+  };
+}
+
+/** Construye el filtro SQL de alcance por rol para `Notification`, fail-closed sin rol. */
+export function buildNotificationRoleWhere(role: AdminRole): Prisma.NotificationWhereInput {
+  if (!role) return { id: "__no_access__" };
   const scope = getNotificationRouteScope(role);
   if (scope.unrestricted) return {};
-  if (scope.allowedPrefixes.length === 0) {
-    return { id: "__no_access__" };
-  }
+  const allowed = [
+    ...scope.allowedPrefixes.map(prefixActionUrlClause),
+    ...scope.allowedPatterns.map(patternActionUrlClause),
+  ];
+  if (allowed.length === 0) return { id: "__no_access__" };
+  const denied = [
+    ...scope.deniedPrefixes.map(prefixActionUrlClause),
+    ...scope.deniedPatterns.map(patternActionUrlClause),
+  ];
   return {
     actionUrl: { not: null },
-    OR: scope.allowedPrefixes.map(prefixActionUrlClause),
-    ...(scope.deniedPrefixes.length > 0
-      ? { NOT: { OR: scope.deniedPrefixes.map(prefixActionUrlClause) } }
-      : {}),
+    OR: allowed,
+    ...(denied.length > 0 ? { NOT: { OR: denied } } : {}),
   };
 }
 
@@ -121,10 +135,10 @@ export async function notify(input: NotifyInput) {
 
 /** Feed del centro: más recientes primero. El índice (readAt, createdAt) cubre el filtro. */
 export async function listNotifications(opts: {
+  role: AdminRole;
   unreadOnly?: boolean;
   type?: NotificationType;
   limit?: number;
-  role?: AdminRole;
 }) {
   return prisma.notification.findMany({
     where: {
@@ -138,14 +152,14 @@ export async function listNotifications(opts: {
 }
 
 /** Conteo de no leídas — badge del sidebar. Query barata (índice readAt, createdAt). */
-export async function getUnreadCount(role?: AdminRole): Promise<number> {
+export async function getUnreadCount(role: AdminRole): Promise<number> {
   return prisma.notification.count({
     where: { readAt: null, ...buildNotificationRoleWhere(role) },
   });
 }
 
 /** Marca UNA como leída dentro del ámbito del rol. Idempotente. */
-export async function markRead(id: string, role?: AdminRole): Promise<void> {
+export async function markRead(id: string, role: AdminRole): Promise<void> {
   await prisma.notification.updateMany({
     where: { id, readAt: null, ...buildNotificationRoleWhere(role) },
     data: { readAt: new Date() },
@@ -153,15 +167,15 @@ export async function markRead(id: string, role?: AdminRole): Promise<void> {
 }
 
 /** Marca TODAS las no leídas del ámbito del rol (y tipo opcional) como leídas. */
-export async function markAllRead(opts?: {
-  role?: AdminRole;
+export async function markAllRead(opts: {
+  role: AdminRole;
   type?: NotificationType;
 }): Promise<void> {
   await prisma.notification.updateMany({
     where: {
       readAt: null,
-      ...(opts?.type ? { type: opts.type } : {}),
-      ...buildNotificationRoleWhere(opts?.role),
+      ...(opts.type ? { type: opts.type } : {}),
+      ...buildNotificationRoleWhere(opts.role),
     },
     data: { readAt: new Date() },
   });
@@ -187,14 +201,14 @@ export interface NotificationPulseSummary {
  * alcance RBAC del rol actual. Mantiene aislamiento estricto de alertas financieras,
  * fiscales y de infraestructura fuera de `SUPERADMIN`.
  */
-export async function getNotificationPulseAndSummary(opts?: {
-  role?: AdminRole;
+export async function getNotificationPulseAndSummary(opts: {
+  role: AdminRole;
   days?: number;
   now?: Date;
 }): Promise<NotificationPulseSummary> {
-  const days = Math.max(1, Math.min(30, opts?.days ?? 14));
-  const now = opts?.now ?? new Date();
-  const roleWhere = buildNotificationRoleWhere(opts?.role);
+  const days = Math.max(1, Math.min(30, opts.days ?? 14));
+  const now = opts.now ?? new Date();
+  const roleWhere = buildNotificationRoleWhere(opts.role);
 
   const todayIso = formatIsoDateCO(now);
   const noonToday = new Date(`${todayIso}T12:00:00.000-05:00`);

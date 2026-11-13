@@ -169,6 +169,14 @@ export async function createCrmTaskAction(
   const opportunityId = canManageOpportunities ? rawOpportunityId : null;
 
   const priority: CrmTaskPriority = isCrmTaskPriority(priorityRaw) ? priorityRaw : "NORMAL";
+  const effectiveOwnerAdminId = ownerAdminId ?? session.admin.id;
+  if (
+    session.admin.role === "FINANCE_ANALYST" &&
+    orderId &&
+    effectiveOwnerAdminId !== session.admin.id
+  ) {
+    return { error: "Solo puedes crear tareas de pedidos asignadas a ti." };
+  }
 
   try {
     const task = await createCrmTask({
@@ -176,7 +184,7 @@ export async function createCrmTaskAction(
       description,
       priority,
       dueAt,
-      ownerAdminId: ownerAdminId ?? session.admin.id,
+      ownerAdminId: effectiveOwnerAdminId,
       createdByAdminId: session.admin.id,
       contactId,
       orderId,
@@ -249,18 +257,33 @@ export async function updateCrmTaskStatusAction(
     return { error: "La tarea ya no existe." };
   }
 
-  // Defensa horizontal: si el actor no posee `contacts:read_360` (ej. taller o logística),
-  // solo puede actualizar tareas propias, vinculadas a un pedido operativo o a una oportunidad autorizada.
-  const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
+  const isOwnTask =
+    existing.ownerAdminId === session.admin.id || existing.createdByAdminId === session.admin.id;
   const canManageOpportunities = hasCapability(session.admin.role, "opportunities:manage");
-  if (!canRead360) {
-    const isOwnTask =
-      existing.ownerAdminId === session.admin.id || existing.createdByAdminId === session.admin.id;
-    const isOperationalOrderTask = existing.orderId !== null;
-    const isAuthorizedOpportunityTask = existing.opportunityId !== null && canManageOpportunities;
-    if (!isOwnTask && !isOperationalOrderTask && !isAuthorizedOpportunityTask) {
-      return { error: "No tienes permisos para modificar esta tarea." };
-    }
+  const canManageOrderTasks =
+    hasCapability(session.admin.role, "orders:transition") ||
+    hasCapability(session.admin.role, "support:manage");
+  const canManageSupportTasks = hasCapability(session.admin.role, "support:manage");
+  const canSupervisePrivateTasks = hasCapability(session.admin.role, "contacts:merge");
+
+  if (existing.opportunityId !== null && !canManageOpportunities) {
+    return { error: "No tienes permisos para modificar tareas de oportunidades." };
+  }
+  if (existing.orderId !== null && !isOwnTask && !canManageOrderTasks) {
+    return { error: "No tienes permisos para modificar esta tarea del pedido." };
+  }
+  if (existing.supportTicketId !== null && !isOwnTask && !canManageSupportTasks) {
+    return { error: "No tienes permisos para modificar esta tarea de soporte." };
+  }
+  const isPrivateTask =
+    existing.opportunityId === null &&
+    existing.orderId === null &&
+    existing.supportTicketId === null;
+  const canMutatePrivateTask =
+    existing.ownerAdminId === session.admin.id ||
+    (existing.ownerAdminId === null && existing.createdByAdminId === session.admin.id);
+  if (isPrivateTask && !canMutatePrivateTask && !canSupervisePrivateTasks) {
+    return { error: "No tienes permisos para modificar una tarea privada de otro responsable." };
   }
 
   try {

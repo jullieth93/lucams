@@ -36,6 +36,8 @@ export type CouponListOpts = {
   /** "campaign" = creados para tienda (customerId null); "referral" = personales (customerId != null). */
   origin?: "all" | "campaign" | "referral";
   sort?: "recent" | "expiry-asc" | "code" | "uses";
+  /** Cuando es false, `q` solo consulta el código y nunca descripciones con PII de referidos. */
+  allowDescriptionSearch?: boolean;
 };
 
 export async function listCoupons(opts: CouponListOpts = {}) {
@@ -73,7 +75,9 @@ export async function listCoupons(opts: CouponListOpts = {}) {
         ? {
             OR: [
               { code: { contains: q, mode: "insensitive" as const } },
-              { description: { contains: q, mode: "insensitive" as const } },
+              ...(opts.allowDescriptionSearch !== false
+                ? [{ description: { contains: q, mode: "insensitive" as const } }]
+                : []),
             ],
           }
         : {}),
