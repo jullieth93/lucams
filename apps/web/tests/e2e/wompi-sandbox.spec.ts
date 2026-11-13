@@ -20,6 +20,8 @@
  *
  * La tarjeta 4242 4242 4242 4242 → APPROVED en sandbox (doc oficial Wompi,
  * "Datos de prueba en Sandbox"). La guía se crea en Aveonline SANDBOX.
+ * La corrida aborta al cargar si WOMPI_ENV no es sandbox o si alguna llave no
+ * tiene prefijo sandbox, para impedir transacciones en el comercio productivo.
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -28,6 +30,7 @@ import crypto from "node:crypto";
 import { PrismaClient } from "@lucams/db";
 import { dismissCookieBanner } from "./fixtures/auth";
 import { ensurePickupSettings, type PickupSettingsHandle } from "./fixtures/pickup-settings";
+import { assertWompiSandboxForE2E } from "./_setup/env";
 
 const prisma = new PrismaClient();
 const RUN = `wompi-e2e-${Date.now()}`;
@@ -45,6 +48,8 @@ const strip = (v: string | undefined) => v?.replace(/^["']|["']$/g, "");
 const WOMPI_EVENTS_SECRET = strip(process.env.WOMPI_EVENTS_SECRET) ?? "";
 const WOMPI_PRIVATE_KEY = strip(process.env.WOMPI_PRIVATE_KEY) ?? "";
 const WOMPI_API = "https://sandbox.wompi.co/v1";
+
+assertWompiSandboxForE2E(process.env);
 
 test.setTimeout(600_000);
 

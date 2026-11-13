@@ -283,7 +283,24 @@ Para que el equipo operativo contacte en un clic al comprador desde `/admin/{ped
 
 ---
 
-## 7. Checklist paso a paso de configuración en GitHub Settings y servicios auxiliares
+## 7. Costo de minutos de CI y opciones de mitigación (pendiente de observación — owner 2026-11-11)
+
+**Estado:** `Pendiente de observación`. No se cambia nada hasta medir el consumo real del mes en **Settings → Billing → Actions minutes**. Si el consumo se acerca a la cuota gratuita, se ejecuta la opción A (y la B si no basta).
+
+**Contexto:** el repo es privado → GitHub Actions regala **2.000 min/mes** (plan Free; 3.000 en Pro). Cada PR corre 5 puertas obligatorias (~15-20 min en total tras la fijación del runner a `ubuntu-24.04` + caché de Playwright de 2026-11-11). Dependabot es gratis como servicio, pero las corridas de CI de SUS PRs sí consumen minutos.
+
+**Mitigaciones ya aplicadas:** detección de cambios `docs_only` (los PRs de documentación saltan las puertas pesadas), caché de `~/.cache/ms-playwright` por lockfile y job E2E fijado a `ubuntu-24.04` (ver § 2).
+
+**Opciones evaluadas:**
+
+- **A. Reducir minutos dentro de GH Actions (primer paso):** `concurrency` con `cancel-in-progress: true` por rama/PR (un push nuevo cancela la corrida obsoleta) y correr la puerta E2E/Lighthouse solo en PRs hacia `develop`/`production` (los PRs `feature/*` conservan las 4 puertas rápidas).
+- **B. Self-hosted runner en la VM local:** GitHub Actions soporta runners propios (`runs-on: [self-hosted, linux]`) — los minutos en máquina propia **no consumen cuota**. La VM ya corre Postgres/Supabase en Podman, así que el job E2E correría sin cambios de fondo; las puertas rápidas pueden quedarse en GH como respaldo por etiqueta. Requiere la VM encendida (una PR con la VM apagada queda en cola) y actualizar el runner periódicamente. Seguridad aceptable: repo privado con PRs propias (el riesgo clásico de self-hosted es código de terceros).
+- **C. Renovate self-hosted como alternativa a Dependabot:** corre por cron en la VM (imagen oficial) y abre PRs igual; con la opción B sus PRs tampoco consumen cuota.
+- **D. Salir de GH Actions (Forgejo/Woodpecker/Jenkins):** descartada — se pierde la integración nativa de PRs/rulesets y se suma mantenimiento sin beneficio real a esta escala.
+
+---
+
+## 8. Checklist paso a paso de configuración en GitHub Settings y servicios auxiliares
 
 ### 7.1 GitHub Repository Settings
 
@@ -302,7 +319,7 @@ Para que el equipo operativo contacte en un clic al comprador desde `/admin/{ped
 
 ---
 
-## 8. Referencias oficiales verificadas y documentos relacionados
+## 9. Referencias oficiales verificadas y documentos relacionados
 
 ### Fuentes externas oficiales
 
