@@ -297,9 +297,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, note: "historical transaction, ignored" });
   }
 
-  // 5) Validar monto (defensa anti-tampering — el integrity signature de Wompi
-  //    ya lo garantiza, pero doble-check no daña).
-  if (transaction.amount_in_cents !== order.total) {
+  // 5) Validar monto solo cuando el evento confirma o revierte un cobro.
+  //    DECLINED/ERROR no capturan dinero y no deben marcar reconciliación.
+  if (
+    (transaction.status === "APPROVED" || transaction.status === "VOIDED") &&
+    transaction.amount_in_cents !== order.total
+  ) {
     logger.error({
       event: "webhook.wompi.amount_mismatch",
       orderNumber: order.number,

@@ -655,7 +655,7 @@ El directorio `apps/web/tests/e2e/` contiene exactamente **59 archivos `.spec.ts
 - `fullmode-envio.spec.ts` — Cotización de fletes, «Envío Lucams» en Bogotá y verificación del sello HMAC de tarifas.
 - `fullmode-pasarela.spec.ts` — Retorno en `/checkout/gracias`, reconciliación de estado contra Wompi y reintentos seguros.
 - `fullmode-stock.spec.ts` — Control de topes de inventario, quiebres de stock y mensajes nombrando el producto afectado.
-- `wompi-sandbox.spec.ts` — **Journey real de dinero** (`PW_CHANNEL=chromium`): pago aprobado con tarjeta `4242` en Wompi sandbox → webhook firmado → orden `PAID` + guía en Aveonline sandbox.
+- `wompi-sandbox.spec.ts` — **Journey real de dinero** (`PW_CHANNEL=chromium`): pago aprobado con tarjeta `4242` en Wompi sandbox → webhook firmado → orden `PAID` + guía en Aveonline sandbox. Antes de abrir el checkout, `assertWompiSandboxForE2E` exige `WOMPI_ENV=sandbox` y los cuatro prefijos sandbox (`pub_test_`, `prv_test_`, `test_integrity_`, `test_events_`), abortando cualquier intento de usar el comercio productivo.
 
 #### D. Administración, MFA, CMS v2, posventa y auditorías responsive (15 specs)
 
