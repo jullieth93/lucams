@@ -317,7 +317,7 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
 
   it("monto que NO coincide con order.total → 200 sin procesar (revisión manual)", async () => {
     const ref = `${RUN}-LCM-AMT`;
-    await makeOrder(ref, 55000);
+    const orderId = await makeOrder(ref, 55000);
     const res = await POST(
       req(
         signedEvent({
@@ -330,6 +330,62 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     );
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(0); // NO se procesa un monto adulterado
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: { needsReconciliation: true },
+    });
+    expect(order.needsReconciliation).toBe(true);
+  });
+
+  it.each(["DECLINED", "ERROR"])(
+    "%s con otro monto en una orden entregada → NO activa reconciliación ni cambia su estado",
+    async (status) => {
+      const ref = `${RUN}-LCM-2026-0003-${status.toLowerCase()}`;
+      const orderId = await makeOrder(ref, 2_120_000, "DELIVERED");
+      const res = await POST(
+        req(
+          signedEvent({
+            txId: `${RUN}-tx-declined-${status.toLowerCase()}`,
+            status,
+            amountInCents: 5_900_000,
+            reference: ref,
+          }),
+        ),
+      );
+
+      expect(res.status).toBe(200);
+      expect(sagaCalls).toHaveLength(0);
+      const order = await prisma.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: { status: true, needsReconciliation: true, reconciliationReason: true },
+      });
+      expect(order.status).toBe("DELIVERED");
+      expect(order.needsReconciliation).toBe(false);
+      expect(order.reconciliationReason).toBeNull();
+    },
+  );
+
+  it("VOIDED con monto adulterado → conserva la revisión manual y no ejecuta la saga", async () => {
+    const ref = `${RUN}-LCM-VOID-MISMATCH`;
+    const orderId = await makeOrder(ref, 55000, "PAID");
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx-void-mismatch`,
+          status: "VOIDED",
+          amountInCents: 99000,
+          reference: ref,
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(sagaCalls).toHaveLength(0);
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: { needsReconciliation: true },
+    });
+    expect(order.needsReconciliation).toBe(true);
   });
 
   it("orden inexistente (reference sin match) → 200 ignorado, sin saga", async () => {
