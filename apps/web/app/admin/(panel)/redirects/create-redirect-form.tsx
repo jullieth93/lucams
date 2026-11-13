@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { createRedirectAction, type RedirectActionState } from "./actions";
 
 export function CreateRedirectForm({
@@ -8,10 +8,8 @@ export function CreateRedirectForm({
 }: {
   canUseExternalUrls?: boolean;
 }) {
-  const [state, formAction, isPending] = useActionState<RedirectActionState | null, FormData>(
-    createRedirectAction,
-    null,
-  );
+  const [state, formAction, isPending, reauthModal] =
+    useMfaReauthAction<RedirectActionState>(createRedirectAction);
 
   return (
     <form action={formAction} className="space-y-3">
@@ -110,7 +108,7 @@ export function CreateRedirectForm({
         <input type="checkbox" name="isActive" defaultChecked className="accent-brand-purple" />
         Activar inmediatamente
       </label>
-      {state?.error && (
+      {state?.error && !state.reauthRequired && (
         <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
           {state.error}
         </p>
@@ -122,6 +120,7 @@ export function CreateRedirectForm({
       >
         {isPending ? "Creando…" : "Crear redirect"}
       </button>
+      {reauthModal}
     </form>
   );
 }

@@ -3,8 +3,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { z } from "zod";
+import {
+  ADMIN_ACTIVITY_COOKIE,
+  ADMIN_IDLE_LIMIT_MS,
+  readAdminActivityMark,
+} from "@/lib/admin-activity";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
@@ -338,6 +343,12 @@ export async function verifyAdminMfaReauthAction(
   const session = await getCurrentAdmin();
   if (!session) return { error: "Tu sesión expiró. Inicia sesión de nuevo." };
 
+  const activityMark = (await cookies()).get(ADMIN_ACTIVITY_COOKIE)?.value;
+  const lastActivityAt = readAdminActivityMark(activityMark);
+  if (lastActivityAt === null || Date.now() - lastActivityAt > ADMIN_IDLE_LIMIT_MS) {
+    return { error: "Tu sesión expiró por inactividad. Inicia sesión de nuevo." };
+  }
+
   const code = String(formData.get("code") ?? "").trim();
   // El campo vacío no gasta cuota: nunca puede acertar (patrón del recovery code).
   if (!code) return { error: "Escribe el código de 6 dígitos de tu app." };
@@ -356,6 +367,17 @@ export async function verifyAdminMfaReauthAction(
       adminId: session.admin.id,
       ipCount: rlIp.count,
       adminCount: rlAdmin.count,
+    });
+    await recordSecurityEvent({
+      event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
+      outcome: "failure",
+      ip,
+      actorId: session.admin.id,
+      metadata: {
+        code: "admin_mfa_reauth_rate_limited",
+        ipCount: rlIp.count,
+        adminCount: rlAdmin.count,
+      },
     });
     return { error: "Demasiados intentos. Por favor espera unos minutos antes de reintentar." };
   }
@@ -398,12 +420,21 @@ export async function verifyAdminMfaReauthAction(
       adminId: session.admin.id,
       err: lastError,
     });
-    await recordAdminAction({
-      actorId: session.admin.id,
-      action: "mfa.reauth.failure",
-      entityType: "AdminUser",
-      entityId: session.admin.id,
-    });
+    await Promise.all([
+      recordSecurityEvent({
+        event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
+        outcome: "failure",
+        ip,
+        actorId: session.admin.id,
+        metadata: { code: "admin_mfa_reauth_failed" },
+      }),
+      recordAdminAction({
+        actorId: session.admin.id,
+        action: "mfa.reauth.failure",
+        entityType: "AdminUser",
+        entityId: session.admin.id,
+      }),
+    ]);
     return { error: "Código incorrecto o vencido. Mira el código actual e intenta de nuevo." };
   }
 

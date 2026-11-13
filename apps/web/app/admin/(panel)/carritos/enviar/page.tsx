@@ -20,7 +20,7 @@ import {
   AdminPageBody,
   AdminPageHeader,
 } from "@/components/admin-page";
-import { ConfirmAction } from "@/components/admin/confirm-action";
+import { ReauthForm } from "@/components/admin/mfa-reauth";
 import { adminHomePath } from "@/lib/admin-rbac";
 import { requireCapability } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
@@ -177,9 +177,9 @@ export default async function AdminCarritosEnviarPage({
             módulo omite los que ya recibieron un recordatorio hace menos de{" "}
             {settings.intervalHours} h.
           </p>
-          <ConfirmAction
+          <ReauthForm
             action={bulkSendRemindersAction}
-            message={`¿Enviar ${sendable.length} recordatorio${sendable.length === 1 ? "" : "s"} ahora? Los correos salen de inmediato.`}
+            confirmMessage={`¿Enviar ${sendable.length} recordatorio${sendable.length === 1 ? "" : "s"} ahora? Los correos salen de inmediato.`}
           >
             {sendable.map((d) => (
               <input key={d.id} type="hidden" name="ids" value={d.id} />
@@ -192,7 +192,7 @@ export default async function AdminCarritosEnviarPage({
               <Send className="h-4 w-4" />
               Confirmar y enviar {sendable.length}
             </button>
-          </ConfirmAction>
+          </ReauthForm>
         </section>
       </AdminPageBody>
     </AdminPage>

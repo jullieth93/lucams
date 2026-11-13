@@ -8,8 +8,8 @@
  * mismos roles que la página (SUPERADMIN/MANAGER — lib/admin-rbac CATALOG).
  *
  * El render pasa por renderCartRecoveryEmail (withOverrides) con los items
- * REALES del carrito; el recoverToken es ficticio ("preview") — el token real
- * solo se genera al enviar (F-11).
+ * REALES del carrito; el recoverToken es ficticio ("preview") y la baja apunta
+ * a una URL inerte, sin token ni correo del comprador.
  */
 
 import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
@@ -17,7 +17,6 @@ import { EMAIL_PREVIEW_SANDBOX_CSP } from "@/lib/security-headers";
 import { renderCartRecoveryEmail } from "@/features/emails/registry";
 import { getAbandonedCartDetail } from "@/features/cart/admin-service";
 import { getSiteUrl } from "@/features/emails/layout";
-import { encodeUnsubscribeParam } from "@/features/newsletter/unsubscribe";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +61,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const rendered = await renderCartRecoveryEmail({
     recoverToken: "preview",
     items: detail.items,
-    unsubscribeUrl: `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(detail.email)}`,
+    unsubscribeUrl: `${siteUrl}/unsubscribe?preview=1`,
   });
   return new Response(rendered.html, {
     headers: {

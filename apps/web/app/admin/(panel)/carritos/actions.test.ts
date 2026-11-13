@@ -30,6 +30,7 @@ const {
   redirectSpy,
   recoveryService,
   recoverySettings,
+  rateLimitSpy,
 } = vi.hoisted(() => ({
   auditSpy: { recordAdminAction: vi.fn(async () => {}) },
   requireAdminActionSpy: vi.fn(async () => ({
@@ -45,6 +46,7 @@ const {
   }),
   recoveryService: { sendReminderToCart: vi.fn() },
   recoverySettings: { saveCartRecoverySettings: vi.fn(async () => {}) },
+  rateLimitSpy: vi.fn(async () => ({ allowed: true, count: 1, resetAt: new Date() })),
 }));
 
 vi.mock("@/lib/admin-audit", () => ({ recordAdminAction: auditSpy.recordAdminAction }));
@@ -56,6 +58,7 @@ vi.mock("@/lib/admin-reauth", async (importOriginal) => {
   return { ...actual, requireRecentMfa: requireRecentMfaSpy };
 });
 vi.mock("@/lib/logger", () => ({ logger: mockLogger }));
+vi.mock("@/lib/rate-limit", () => ({ rateLimit: rateLimitSpy }));
 vi.mock("@/features/cart/recovery-service", () => recoveryService);
 vi.mock("@/features/cart/recovery-settings", () => recoverySettings);
 vi.mock("next/cache", () => ({
@@ -76,6 +79,7 @@ const ID2 = "c" + "b".repeat(24);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  rateLimitSpy.mockResolvedValue({ allowed: true, count: 1, resetAt: new Date() });
   redirectSpy.mockImplementation((url: string) => {
     throw new Error(`NEXT_REDIRECT:${url}`);
   });
@@ -189,7 +193,7 @@ describe("sendReminderAction", () => {
 });
 
 describe("bulkSendRemindersAction", () => {
-  it("envía el lote, audita el tally agregado y redirige a la bandeja", async () => {
+  it("exige MFA fresco y rate limit por admin antes de enviar, auditar y redirigir", async () => {
     recoveryService.sendReminderToCart
       .mockResolvedValueOnce({ status: "sent" })
       .mockResolvedValueOnce({ status: "skipped", reason: "too-soon", retryAt: new Date() });
@@ -198,6 +202,8 @@ describe("bulkSendRemindersAction", () => {
 
     await expect(bulkSendRemindersAction(fd)).rejects.toThrow("NEXT_REDIRECT");
 
+    expect(requireRecentMfaSpy).toHaveBeenCalledOnce();
+    expect(rateLimitSpy).toHaveBeenCalledWith("admin_cart_recovery_bulk:admin1", 12, 3600);
     expect(recoveryService.sendReminderToCart).toHaveBeenCalledTimes(2);
     expect(auditSpy.recordAdminAction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -213,6 +219,31 @@ describe("bulkSendRemindersAction", () => {
       }),
     );
     expect(redirectSpy).toHaveBeenCalledWith(expect.stringContaining("/admin/carritos?bulkOk="));
+  });
+
+  it("MFA vencido devuelve reauthRequired sin enviar, consumir rate limit ni auditar", async () => {
+    requireRecentMfaSpy.mockRejectedValueOnce(new MfaReauthRequiredError());
+    const fd = new FormData();
+    fd.set("ids", ID1);
+
+    const result = await bulkSendRemindersAction(fd);
+
+    expect(result?.reauthRequired).toBe(true);
+    expect(recoveryService.sendReminderToCart).not.toHaveBeenCalled();
+    expect(rateLimitSpy).not.toHaveBeenCalled();
+    expect(auditSpy.recordAdminAction).not.toHaveBeenCalled();
+  });
+
+  it("rate limit agotado rechaza el lote completo sin enviar ni auditar", async () => {
+    rateLimitSpy.mockResolvedValueOnce({ allowed: false, count: 12, resetAt: new Date() });
+    const fd = new FormData();
+    fd.set("ids", ID1);
+
+    await expect(bulkSendRemindersAction(fd)).rejects.toThrow("NEXT_REDIRECT");
+
+    expect(recoveryService.sendReminderToCart).not.toHaveBeenCalled();
+    expect(auditSpy.recordAdminAction).not.toHaveBeenCalled();
+    expect(redirectSpy).toHaveBeenCalledWith(expect.stringContaining("/admin/carritos?error="));
   });
 
   it("selección vacía → redirect de error sin enviar nada", async () => {

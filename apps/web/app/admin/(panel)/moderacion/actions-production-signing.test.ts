@@ -115,6 +115,13 @@ describe("getDesignProductionSignedUrlsAction (firma bajo demanda, T4)", () => {
       path: PATHS[0],
       url: expect.stringContaining(PATHS[0]!),
     });
+    expect(auditSpy).toHaveBeenCalledWith({
+      actorId: "admin1",
+      action: "design.production_assets_preview",
+      entityType: "Design",
+      entityId: "design-1",
+      metadata: { pieceCount: 3 },
+    });
   });
 
   it("omite los paths que Storage no logra firmar (no rompe el modal)", async () => {
@@ -125,12 +132,22 @@ describe("getDesignProductionSignedUrlsAction (firma bajo demanda, T4)", () => {
     expect(pieces).toEqual([{ path: PATHS[1], url: "https://sb.test/signed/slot-02.png" }]);
   });
 
-  it("designId vacío o diseño sin piezas → [] sin llamar a Storage", async () => {
+  it("designId vacío o diseño sin piezas → [] sin llamar a Storage ni auditar una lectura inexistente", async () => {
     expect(await getDesignProductionSignedUrlsAction("   ")).toEqual([]);
     expect(mockStorage.getProductionAssetSignedUrls).not.toHaveBeenCalled();
 
     mockService.getDesignProductionPaths.mockResolvedValue([]);
     expect(await getDesignProductionSignedUrlsAction("design-1")).toEqual([]);
+    expect(auditSpy).not.toHaveBeenCalled();
+  });
+
+  it("si el guard rechaza no firma ni registra una lectura de producción", async () => {
+    guardSpy.mockRejectedValueOnce(new Error("FORBIDDEN"));
+
+    await expect(getDesignProductionSignedUrlsAction("design-1")).rejects.toThrow("FORBIDDEN");
+    expect(mockService.getDesignProductionPaths).not.toHaveBeenCalled();
+    expect(mockStorage.getProductionAssetSignedUrls).not.toHaveBeenCalled();
+    expect(auditSpy).not.toHaveBeenCalled();
   });
 });
 

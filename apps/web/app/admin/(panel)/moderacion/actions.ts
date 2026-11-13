@@ -55,15 +55,25 @@ function readPreservedQueueFilters(formData: FormData) {
 export async function getDesignProductionSignedUrlsAction(
   designId: string,
 ): Promise<SignedProductionPiece[]> {
-  await requireAdminAction({ roles: ADMIN_ROLE_SETS.PRODUCTION_MODERATE });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.PRODUCTION_MODERATE });
   const id = designId.trim();
   if (!id) return [];
   const paths = await getDesignProductionPaths(id);
   const signed = await getProductionAssetSignedUrls(paths);
-  return paths.flatMap((path) => {
+  const pieces = paths.flatMap((path) => {
     const url = signed.get(path);
     return url ? [{ path, url }] : [];
   });
+  if (pieces.length > 0) {
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "design.production_assets_preview",
+      entityType: "Design",
+      entityId: id,
+      metadata: { pieceCount: pieces.length },
+    });
+  }
+  return pieces;
 }
 
 export async function approveDesignAction(formData: FormData): Promise<void> {

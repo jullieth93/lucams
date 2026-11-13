@@ -12,6 +12,7 @@ import { publishCmsFieldAction } from "@/app/admin/(panel)/contenido/actions";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { CmsListPreview } from "@/components/admin/cms-list-preview";
+import { ReauthForm } from "@/components/admin/mfa-reauth";
 import { formatDateTimeCO } from "@/lib/datetime";
 import type { CmsListSubfield } from "@/features/cms/service";
 
@@ -107,7 +108,7 @@ export function VersionHistory({
               )}
             </div>
             {!isCurrent && (
-              <form action={publishCmsFieldAction}>
+              <ReauthForm action={publishCmsFieldAction}>
                 <input type="hidden" name="fieldId" value={fieldId} />
                 <input type="hidden" name="versionId" value={v.id} />
                 <input
@@ -126,7 +127,7 @@ export function VersionHistory({
                     Volver a esta
                   </Button>
                 </Hint>
-              </form>
+              </ReauthForm>
             )}
           </li>
         );

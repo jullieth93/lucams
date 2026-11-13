@@ -23,6 +23,7 @@ import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib
 import { recordAdminAction } from "@/lib/admin-audit";
 import { formatDateTimeCO } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
+import { rateLimit } from "@/lib/rate-limit";
 import { sendReminderToCart, type ManualReminderResult } from "@/features/cart/recovery-service";
 import { saveCartRecoverySettings } from "@/features/cart/recovery-settings";
 
@@ -170,7 +171,9 @@ const BulkCartIdsSchema = z
   .max(100, "Máximo 100 carritos por lote");
 
 /** Envío masivo desde la pantalla de confirmación (preview incluido). */
-export async function bulkSendRemindersAction(formData: FormData): Promise<void> {
+export async function bulkSendRemindersAction(
+  formData: FormData,
+): Promise<CartRecoveryActionState | void> {
   const session = await requireAdminAction({ capability: "carts:recover" });
 
   const ids = formData
@@ -183,6 +186,26 @@ export async function bulkSendRemindersAction(formData: FormData): Promise<void>
   if (!parsed.success) {
     redirect(
       `/admin/carritos?error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Selección inválida")}`,
+    );
+  }
+
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    }
+    throw err;
+  }
+
+  const rl = await rateLimit(`admin_cart_recovery_bulk:${session.admin.id}`, 12, 3600);
+  if (!rl.allowed) {
+    logger.warn({
+      event: "admin.cart_recovery.reminder_bulk_rate_limited",
+      adminId: session.admin.id,
+    });
+    redirect(
+      `/admin/carritos?error=${encodeURIComponent("Alcanzaste el límite de 12 lotes por hora. Intenta más tarde.")}`,
     );
   }
 

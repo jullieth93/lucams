@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { updateRedirectAction, type RedirectActionState } from "./actions";
 
 type Props = {
@@ -19,10 +19,8 @@ type Props = {
  * cambiar el origen = archivar este y crear uno nuevo.
  */
 export function EditRedirectForm(props: Props) {
-  const [state, formAction, isPending] = useActionState<RedirectActionState | null, FormData>(
-    updateRedirectAction,
-    null,
-  );
+  const [state, formAction, isPending, reauthModal] =
+    useMfaReauthAction<RedirectActionState>(updateRedirectAction);
 
   return (
     <form
@@ -99,7 +97,7 @@ export function EditRedirectForm(props: Props) {
         />
         Activo
       </label>
-      {state?.error && (
+      {state?.error && !state.reauthRequired && (
         <p className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs text-rose-700">
           {state.error}
         </p>
@@ -111,6 +109,7 @@ export function EditRedirectForm(props: Props) {
       >
         {isPending ? "Guardando…" : "Guardar cambios"}
       </button>
+      {reauthModal}
     </form>
   );
 }

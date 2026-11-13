@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import {
   RedirectValidationError,
@@ -17,11 +18,25 @@ import { logger } from "@/lib/logger";
 export type RedirectActionState = {
   error?: string;
   fieldErrors?: Partial<Record<"fromPath" | "toPath" | "statusCode", string[]>>;
+  reauthRequired?: boolean;
 };
 
 function parseStatusCode(raw: FormDataEntryValue | null): 301 | 302 {
   const n = Number(raw);
   return n === 302 ? 302 : 301;
+}
+
+async function checkExternalRedirectMfa(toPath: string): Promise<RedirectActionState | null> {
+  if (!/^https?:\/\//i.test(toPath)) return null;
+  try {
+    await requireRecentMfa();
+    return null;
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    }
+    throw err;
+  }
 }
 
 export async function createRedirectAction(
@@ -35,6 +50,9 @@ export async function createRedirectAction(
   const statusCode = parseStatusCode(formData.get("statusCode"));
   const description = String(formData.get("description") ?? "").trim() || null;
   const isActive = formData.get("isActive") === "on";
+
+  const reauth = await checkExternalRedirectMfa(toPath);
+  if (reauth) return reauth;
 
   try {
     const created = await createRedirect(
@@ -90,6 +108,9 @@ export async function updateRedirectAction(
   const statusCode = parseStatusCode(formData.get("statusCode"));
   const description = String(formData.get("description") ?? "").trim() || null;
   const isActive = formData.get("isActive") === "on";
+
+  const reauth = await checkExternalRedirectMfa(toPath);
+  if (reauth) return reauth;
 
   try {
     const updated = await updateRedirect(

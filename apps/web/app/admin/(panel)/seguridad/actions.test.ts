@@ -13,6 +13,11 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
+import {
+  ADMIN_ACTIVITY_COOKIE,
+  ADMIN_IDLE_LIMIT_MS,
+  sealAdminActivityMark,
+} from "@/lib/admin-activity";
 
 const {
   state,
@@ -38,6 +43,7 @@ const {
       nextLevel: string | null;
       currentAuthenticationMethods: unknown;
     } | null,
+    adminActivity: null as string | null,
   },
   rateLimit: vi.fn(async (_key: string, _limit?: number, _windowSeconds?: number) => ({
     allowed: true,
@@ -75,6 +81,12 @@ vi.mock("@supabase/supabase-js", () => ({
 }));
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "x-vercel-forwarded-for": "203.0.113.7" }),
+  cookies: async () => ({
+    get: (name: string) =>
+      name === ADMIN_ACTIVITY_COOKIE && state.adminActivity
+        ? { value: state.adminActivity }
+        : undefined,
+  }),
 }));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -140,7 +152,9 @@ function aal2WithTotp(secondsAgo: number) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllEnvs();
+  vi.stubEnv("CSRF_SECRET", "test-csrf-secret-at-least-32-chars-long!!");
   state.aal = aal2WithTotp(60);
+  state.adminActivity = sealAdminActivityMark(Date.now() - 60_000);
   rateLimit.mockResolvedValue(allowed);
   listFactors.mockResolvedValue({
     data: { all: [{ id: "factor_1", factor_type: "totp", status: "verified" }] },
@@ -174,6 +188,13 @@ describe("verifyAdminMfaReauthAction — rate-limit del reto de re-auth", () => 
     expect(recordAdminAction).not.toHaveBeenCalledWith(
       expect.objectContaining({ action: "mfa.reauth.success" }),
     );
+    expect(recordSecurityEvent).toHaveBeenCalledWith({
+      event: "auth.admin_login.fail",
+      outcome: "failure",
+      ip: "203.0.113.7",
+      actorId: "adm_1",
+      metadata: { code: "admin_mfa_reauth_rate_limited", ipCount: 99, adminCount: 1 },
+    });
   });
 
   it("con el bucket del admin agotado tampoco pasa (botnet rotando IPs)", async () => {
@@ -213,6 +234,26 @@ describe("verifyAdminMfaReauthAction — rate-limit del reto de re-auth", () => 
     expect(challengeAndVerify).not.toHaveBeenCalled();
     expect(res.error).toMatch(/sesión expiró/i);
   });
+
+  it("sin marca de actividad admin rechaza el reto antes de consumir rate limit", async () => {
+    state.adminActivity = null;
+
+    const res = await verifyAdminMfaReauthAction(null, form());
+
+    expect(res.error).toMatch(/inactividad/i);
+    expect(rateLimit).not.toHaveBeenCalled();
+    expect(challengeAndVerify).not.toHaveBeenCalled();
+  });
+
+  it("con inactividad vencida no permite renovar el step-up", async () => {
+    state.adminActivity = sealAdminActivityMark(Date.now() - ADMIN_IDLE_LIMIT_MS - 1_000);
+
+    const res = await verifyAdminMfaReauthAction(null, form());
+
+    expect(res.error).toMatch(/inactividad/i);
+    expect(rateLimit).not.toHaveBeenCalled();
+    expect(challengeAndVerify).not.toHaveBeenCalled();
+  });
 });
 
 describe("verifyAdminMfaReauthAction — verificación y audit trail", () => {
@@ -229,7 +270,7 @@ describe("verifyAdminMfaReauthAction — verificación y audit trail", () => {
     });
   });
 
-  it("código incorrecto → error genérico + audit mfa.reauth.failure (sin éxito)", async () => {
+  it("código incorrecto → error genérico + SecurityEvent y audit mfa.reauth.failure (sin éxito)", async () => {
     challengeAndVerify.mockResolvedValueOnce({ error: { message: "Invalid TOTP" } } as never);
 
     const res = await verifyAdminMfaReauthAction(null, form());
@@ -241,6 +282,13 @@ describe("verifyAdminMfaReauthAction — verificación y audit trail", () => {
       action: "mfa.reauth.failure",
       entityType: "AdminUser",
       entityId: "adm_1",
+    });
+    expect(recordSecurityEvent).toHaveBeenCalledWith({
+      event: "auth.admin_login.fail",
+      outcome: "failure",
+      ip: "203.0.113.7",
+      actorId: "adm_1",
+      metadata: { code: "admin_mfa_reauth_failed" },
     });
     expect(recordAdminAction).not.toHaveBeenCalledWith(
       expect.objectContaining({ action: "mfa.reauth.success" }),

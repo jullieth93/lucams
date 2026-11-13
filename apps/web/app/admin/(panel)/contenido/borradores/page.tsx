@@ -26,7 +26,7 @@ import {
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
-import { ConfirmAction } from "@/components/admin/confirm-action";
+import { ReauthForm } from "@/components/admin/mfa-reauth";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { cmsFieldHasDraft, listCmsDraftFields } from "@/features/cms/service";
@@ -71,9 +71,9 @@ export default async function BorradoresPage({ searchParams }: { searchParams: S
               Volver
             </AdminButton>
             {drafts.length > 0 && (
-              <ConfirmAction
+              <ReauthForm
                 action={publishAllCmsDraftsAction}
-                message={`¿Publicar los ${drafts.length} cambios pendientes? Todos se verán en el sitio de inmediato.`}
+                confirmMessage={`¿Publicar los ${drafts.length} cambios pendientes? Todos se verán en el sitio de inmediato.`}
               >
                 <input type="hidden" name="redirectTo" value="/admin/contenido/borradores" />
                 <Button
@@ -84,7 +84,7 @@ export default async function BorradoresPage({ searchParams }: { searchParams: S
                   <SendHorizonal className="mr-1.5 h-3.5 w-3.5" />
                   Publicar todo ({drafts.length})
                 </Button>
-              </ConfirmAction>
+              </ReauthForm>
             )}
           </div>
         }
@@ -155,7 +155,7 @@ export default async function BorradoresPage({ searchParams }: { searchParams: S
                       <td className="px-4 py-3 text-right align-top">
                         <div className="flex items-center justify-end gap-2">
                           {latest && (
-                            <form action={publishCmsFieldAction}>
+                            <ReauthForm action={publishCmsFieldAction}>
                               <input type="hidden" name="fieldId" value={f.id} />
                               <input type="hidden" name="versionId" value={latest.id} />
                               <input
@@ -179,7 +179,7 @@ export default async function BorradoresPage({ searchParams }: { searchParams: S
                                   Publicar
                                 </Button>
                               </Hint>
-                            </form>
+                            </ReauthForm>
                           )}
                           <Link
                             href={`/admin/contenido/campos/${f.id}`}

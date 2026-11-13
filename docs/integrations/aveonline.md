@@ -316,4 +316,4 @@ Ejecuta esta verificación al configurar la cuenta comercial de Lucams o auditar
   - `AVEONLINE_USUARIO` y `AVEONLINE_CLAVE` de la cuenta real de Lucams (nunca la cuenta demo `15289`).
   - `AVEONLINE_ENV=production`
   - `AVEONLINE_GENERATE_REAL=true` (solo en Production; en Preview y local mantener `AVEONLINE_GENERATE_REAL=false` para operar con `bloquegenerarguia="1"` sin facturar).
-- [ ] Consultar `GET https://lucamsshop.com/api/health/aveonline` y confirmar `{ "status": "ok", "mode": "production", "authenticated": true, "isDemoAccount": false }`.
+- [ ] Consultar `GET https://lucamsshop.com/api/health/aveonline` y confirmar que la respuesta pública solo contiene `{ "status": "ok", "ok": true }`. Para auditar el diagnóstico completo, llamar con la cabecera `x-cron-secret` y verificar dentro de `shipping`: `{ "mode": "production", "authenticated": true, "isDemoAccount": false }`; los identificadores de cuenta y detalles internos nunca se exponen sin ese secreto.

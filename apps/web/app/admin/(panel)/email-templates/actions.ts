@@ -13,6 +13,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
@@ -26,6 +27,7 @@ export type EmailTemplateActionState = {
   error?: string;
   ok?: boolean;
   message?: string;
+  reauthRequired?: boolean;
 };
 
 const SaveOverrideSchema = z.object({
@@ -54,6 +56,15 @@ export async function saveEmailOverrideAction(
 
   const { templateId, key, value } = parsed.data;
   if (!getEmailTemplate(templateId)) return { error: "Plantilla desconocida." };
+
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    }
+    throw err;
+  }
 
   try {
     if (!value) {

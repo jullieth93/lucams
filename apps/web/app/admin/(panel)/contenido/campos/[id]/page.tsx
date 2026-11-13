@@ -42,6 +42,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
+import { ReauthForm } from "@/components/admin/mfa-reauth";
 import { ADMIN_ROLE_SETS, adminHomePath } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getCmsFieldById, getCmsFieldItems, getCmsListSchema } from "@/features/cms/service";
@@ -271,7 +272,7 @@ export default async function EditarCampoPage({
               </a>
             )}
             {canPublishLatest && (
-              <form action={publishCmsFieldAction}>
+              <ReauthForm action={publishCmsFieldAction}>
                 <input type="hidden" name="fieldId" value={field.id} />
                 <input type="hidden" name="versionId" value={latestVersion.id} />
                 <input type="hidden" name="redirectTo" value={selfHref} />
@@ -285,7 +286,7 @@ export default async function EditarCampoPage({
                     {field.isPublished ? "Publicar nueva versión" : "Publicar"}
                   </Button>
                 </Hint>
-              </form>
+              </ReauthForm>
             )}
             {/* C3 — Publicación programada: el cron publica la versión cuando
                 vence la fecha (hora de Colombia). Si ya hay programación, se
@@ -311,7 +312,7 @@ export default async function EditarCampoPage({
                   </form>
                 </span>
               ) : (
-                <form action={scheduleCmsPublishAction} className="flex items-center gap-1.5">
+                <ReauthForm action={scheduleCmsPublishAction} className="flex items-center gap-1.5">
                   <input type="hidden" name="fieldId" value={field.id} />
                   <input type="hidden" name="versionId" value={latestVersion.id} />
                   <input type="hidden" name="redirectTo" value={selfHref} />
@@ -334,7 +335,7 @@ export default async function EditarCampoPage({
                       Programar
                     </Button>
                   </Hint>
-                </form>
+                </ReauthForm>
               ))}
             {field.kind === "BLOCK" && field.isPublished && (
               <ConfirmAction
