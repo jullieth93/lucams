@@ -16,7 +16,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
@@ -42,6 +41,8 @@ import {
   Shapes,
   LayoutTemplate,
   HeartPulse,
+  Bell,
+  Gauge,
   ArrowRight,
 } from "lucide-react";
 import {
@@ -56,12 +57,12 @@ import {
   KpiCard,
   QuickLink,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
-import { canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
+import { canAccessAdminPath, canManageOrderRenderJobs, hasCapability } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
-import { getPeriodAggregates } from "@/features/finanzas/service";
+import { getPeriodAggregates, startOfMonthCO } from "@/features/finanzas/service";
 import { getInventorySummary } from "@/features/products/inventory-service";
 import { countOpenSupportTickets } from "@/features/support/admin-service";
 import { countOpenWarrantyClaims } from "@/features/warranty/service";
@@ -71,15 +72,17 @@ import { countOpenRetractRequests } from "@/features/retract/service";
 
 export const metadata: Metadata = {
   title: "Dashboard",
+  robots: { index: false, follow: false },
 };
+
+export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage({
   searchParams,
 }: {
   searchParams: Promise<{ denied?: string }>;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireCapability("dashboard:read");
   // #28 — el guard RBAC redirige aquí con ?denied=1; hasta ahora nada explicaba el porqué.
   const denied = (await searchParams).denied === "1";
 
@@ -93,14 +96,15 @@ export default async function AdminDashboardPage({
     status: "PENDING_PAYMENT" as const,
   };
 
-  // Trend real del KPI Clientes: altas del mes en curso (el resto de KPIs son
-  // conteos de catálogo — "total acumulado" es su trend honesto).
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  const now = new Date();
+  // Inicio del mes en hora oficial de Colombia (`America/Bogota`, `-05:00`),
+  // alineado con `/admin/finanzas` y `/admin/metricas`.
+  const monthStart = startOfMonthCO(now);
 
   const role = session.admin.role;
   const showCommercialPulse = !isCatalogMode() && canAccessAdminPath(role, "/admin/metricas");
+  const showBusinessKpis = role !== "FULFILLMENT" && role !== "PRINT_WORKSHOP";
+  const canRetryRenders = canManageOrderRenderJobs(role);
 
   const [
     customerCount,
@@ -121,24 +125,32 @@ export default async function AdminDashboardPage({
     failedRenderJobs,
     pulse7d,
   ] = await Promise.all([
-    prisma.customer.count({ where: { deletedAt: null } }),
-    prisma.customer.count({ where: { deletedAt: null, createdAt: { gte: monthStart } } }),
+    showBusinessKpis ? prisma.customer.count({ where: { deletedAt: null } }) : Promise.resolve(0),
+    showBusinessKpis
+      ? prisma.customer.count({ where: { deletedAt: null, createdAt: { gte: monthStart } } })
+      : Promise.resolve(0),
     prisma.order.count({
       where: { deletedAt: null, status: { in: ["PAID", "FULFILLING"] } },
     }),
     prisma.order.count({ where: pendingOrdersWhere }),
-    prisma.product.count({ where: { deletedAt: null } }),
+    showBusinessKpis ? prisma.product.count({ where: { deletedAt: null } }) : Promise.resolve(0),
     prisma.review.count({ where: { isApproved: false, deletedAt: null } }),
-    prisma.ocasionTag.count({ where: { deletedAt: null, isActive: true } }),
-    prisma.coupon.count({
-      where: {
-        deletedAt: null,
-        isActive: true,
-        validFrom: { lte: new Date() },
-        validTo: { gte: new Date() },
-      },
-    }),
-    prisma.category.count({ where: { deletedAt: null, parentId: { not: null } } }),
+    showBusinessKpis
+      ? prisma.ocasionTag.count({ where: { deletedAt: null, isActive: true } })
+      : Promise.resolve(0),
+    showBusinessKpis
+      ? prisma.coupon.count({
+          where: {
+            deletedAt: null,
+            isActive: true,
+            validFrom: { lte: now },
+            validTo: { gte: now },
+          },
+        })
+      : Promise.resolve(0),
+    showBusinessKpis
+      ? prisma.category.count({ where: { deletedAt: null, parentId: { not: null } } })
+      : Promise.resolve(0),
     // Lucy 2026-06-26 — Opción C Sprint 1: KPI real de inventario reemplaza
     // los hardcoded `0` que mentían sobre stock y reclamos.
     getInventorySummary(),
@@ -147,16 +159,18 @@ export default async function AdminDashboardPage({
     countOrdersNeedingReconciliation(),
     countPendingModeration(),
     countOpenRetractRequests(),
-    prisma.renderJob.count({
-      where: {
-        status: "FAILED",
-        design: {
-          orderItems: {
-            some: { order: { deletedAt: null, status: { in: ["PAID", "FULFILLING"] } } },
+    canRetryRenders
+      ? prisma.renderJob.count({
+          where: {
+            status: "FAILED",
+            design: {
+              orderItems: {
+                some: { order: { deletedAt: null, status: { in: ["PAID", "FULFILLING"] } } },
+              },
+            },
           },
-        },
-      },
-    }),
+        })
+      : Promise.resolve(0),
     showCommercialPulse ? getPeriodAggregates("7d") : Promise.resolve(null),
   ]);
 
@@ -228,7 +242,7 @@ export default async function AdminDashboardPage({
       tone: "coral",
       urgent: failedRenderJobs > 0,
       countInHeaderAlert: true,
-      visible: hasCapability(role, "orders:transition"),
+      visible: canRetryRenders,
     },
     {
       href: "/admin/soporte",
@@ -377,6 +391,18 @@ export default async function AdminDashboardPage({
       description: "Quién cambió qué y cuándo. Registro inmutable de acciones admin.",
     },
     {
+      href: "/admin/observability",
+      icon: HeartPulse,
+      label: "Salud técnica",
+      description: "SLOs, crons, webhooks, respaldos, cuotas de Storage/BD y errores.",
+    },
+    {
+      href: "/admin/performance",
+      icon: Gauge,
+      label: "Rendimiento técnico",
+      description: "Core Web Vitals reales (p75) y errores del servidor por ruta.",
+    },
+    {
       href: "/admin/contenido/paginas/global",
       icon: Settings,
       label: "Ajustes del sitio",
@@ -407,15 +433,28 @@ export default async function AdminDashboardPage({
           )
         }
         subtitle={
-          <>
-            Bienvenida al panel. Aquí puedes gestionar todo el negocio:{" "}
-            <strong className="text-brand-purple">{productCount}</strong> productos,{" "}
-            <strong className="text-brand-purple">{ocasionCount}</strong> ocasiones,{" "}
-            <strong className="text-brand-purple">{activeCouponCount}</strong> cupones vigentes.
-          </>
+          showBusinessKpis ? (
+            <>
+              Bienvenida al panel. Aquí puedes gestionar todo el negocio:{" "}
+              <strong className="text-brand-purple">{productCount}</strong> productos,{" "}
+              <strong className="text-brand-purple">{ocasionCount}</strong> ocasiones,{" "}
+              <strong className="text-brand-purple">{activeCouponCount}</strong> cupones vigentes.
+            </>
+          ) : (
+            <>Panorama operativo de tus colas activas de taller, preparación y despacho.</>
+          )
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {canAccessAdminPath(role, "/admin/notificaciones") && (
+              <Link
+                href="/admin/notificaciones"
+                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-10 items-center gap-1.5 rounded-full border bg-white px-3.5 py-1.5 text-sm font-semibold transition-colors"
+              >
+                <Bell className="h-4 w-4" />
+                Notificaciones
+              </Link>
+            )}
             {canAccessAdminPath(role, "/admin/hoy") && (
               <Link
                 href="/admin/hoy"
@@ -531,7 +570,7 @@ export default async function AdminDashboardPage({
         )}
 
         {/* ─────────────── Negocio (KPIs) ─────────────── */}
-        {role !== "FULFILLMENT" && (
+        {showBusinessKpis && (
           <section>
             <h2 className="text-brand-muted mb-3 text-xs font-bold tracking-widest uppercase">
               Estado del negocio

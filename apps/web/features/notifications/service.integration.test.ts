@@ -10,7 +10,14 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { notify, listNotifications, getUnreadCount, markRead, markAllRead } from "./service";
+import {
+  notify,
+  listNotifications,
+  getUnreadCount,
+  getNotificationPulseAndSummary,
+  markRead,
+  markAllRead,
+} from "./service";
 
 const hasDb = !!process.env.DATABASE_URL;
 const RUN = `ntf${Date.now()}${Math.floor(Math.random() * 1e6)}`;
@@ -167,5 +174,89 @@ describe.skipIf(!hasDb)("notifications/service — integración DB", { timeout: 
 
     const rows = await prisma.notification.findMany({ where: { id: { in: [a.id, b.id] } } });
     expect(rows.every((r) => r.readAt !== null)).toBe(true);
+  });
+
+  it("aísla por rol: OPERATIONS_MANAGER no lee ni silencia avisos de SUPERADMIN (finanzas/DIAN/seguridad/infra)", async () => {
+    const opsOrder = await notify({
+      type: "ORDER",
+      severity: "info",
+      title: `${RUN} pedido nuevo`,
+      detail: "Pedido confirmado",
+      actionUrl: "/admin/pedidos/LCM-2026-9999",
+      metadata: runMeta,
+    });
+    const opsQuote = await notify({
+      type: "QUOTE",
+      severity: "info",
+      title: `${RUN} cotización nueva`,
+      detail: "Solicitud B2B",
+      actionUrl: "/admin/cotizaciones",
+      metadata: runMeta,
+    });
+    const superDailySummary = await notify({
+      type: "SYSTEM",
+      severity: "info",
+      title: `${RUN} resumen diario $5.000.000`,
+      detail: "Ingresos netos 24h",
+      actionUrl: "/admin/metricas",
+      metadata: runMeta,
+    });
+    const superSecurity = await notify({
+      type: "ALERT",
+      severity: "critical",
+      title: `${RUN} MFA recovery usado`,
+      detail: "Acceso de emergencia",
+      actionUrl: "/admin/auditoria?vista=seguridad",
+      metadata: runMeta,
+    });
+    const superInfra = await notify({
+      type: "CRON",
+      severity: "warning",
+      title: `${RUN} cron falló`,
+      detail: "Timeout",
+      actionUrl: "/admin/observability",
+      metadata: runMeta,
+    });
+
+    const opsFeed = await listNotifications({
+      unreadOnly: true,
+      limit: 100,
+      role: "OPERATIONS_MANAGER",
+    });
+    const opsIds = new Set(opsFeed.map((n) => n.id));
+    expect(opsIds.has(opsOrder.id)).toBe(true);
+    expect(opsIds.has(opsQuote.id)).toBe(true);
+    expect(opsIds.has(superDailySummary.id)).toBe(false);
+    expect(opsIds.has(superSecurity.id)).toBe(false);
+    expect(opsIds.has(superInfra.id)).toBe(false);
+
+    // Intento directo de marcar como leída una alerta de SUPERADMIN por OPERATIONS_MANAGER → no-op
+    await markRead(superSecurity.id, "OPERATIONS_MANAGER");
+    const stillUnreadSecurity = await prisma.notification.findUnique({
+      where: { id: superSecurity.id },
+    });
+    expect(stillUnreadSecurity?.readAt).toBeNull();
+
+    // Pulso 14d por rol: 14 cubetas Bogotá y conteos aislados
+    const pulse = await getNotificationPulseAndSummary({ role: "OPERATIONS_MANAGER", days: 14 });
+    expect(pulse.buckets).toHaveLength(14);
+    expect(pulse.unreadCount).toBeGreaterThanOrEqual(2);
+
+    // markAllRead de OPERATIONS_MANAGER limpia sus avisos pero preserva intactos los de SUPERADMIN
+    await markAllRead({ role: "OPERATIONS_MANAGER" });
+
+    const afterRows = await prisma.notification.findMany({
+      where: {
+        id: {
+          in: [opsOrder.id, opsQuote.id, superDailySummary.id, superSecurity.id, superInfra.id],
+        },
+      },
+    });
+    const byId = new Map(afterRows.map((r) => [r.id, r]));
+    expect(byId.get(opsOrder.id)?.readAt).not.toBeNull();
+    expect(byId.get(opsQuote.id)?.readAt).not.toBeNull();
+    expect(byId.get(superDailySummary.id)?.readAt).toBeNull();
+    expect(byId.get(superSecurity.id)?.readAt).toBeNull();
+    expect(byId.get(superInfra.id)?.readAt).toBeNull();
   });
 });

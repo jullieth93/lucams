@@ -176,7 +176,7 @@ export function TodayInboxBoard({ items, counts }: Props) {
 }
 
 function TodayRow({ item }: { item: TodayInboxItem }) {
-  const [, submitTaskDone, isPending] = useActionState<CrmActionState, FormData>(
+  const [taskState, submitTaskDone, isPending] = useActionState<CrmActionState, FormData>(
     updateCrmTaskStatusAction,
     null,
   );
@@ -224,6 +224,11 @@ function TodayRow({ item }: { item: TodayInboxItem }) {
               {item.isOverdue
                 ? `Plazo vencido (${formatDateTimeNoYearCO(dueDate)})`
                 : `Plazo objetivo: ${formatDateTimeNoYearCO(dueDate)}`}
+            </p>
+          )}
+          {taskState?.error && (
+            <p role="alert" className="mt-1.5 text-xs font-medium text-rose-700">
+              {taskState.error}
             </p>
           )}
         </div>

@@ -19,6 +19,7 @@ import {
   canSeeOrderCommercialBreakdown,
   canTransitionOrderTo,
   filterNavByRole,
+  getNotificationRouteScope,
   adminHomePath,
   hasCapability,
   rolesWithCapability,
@@ -931,5 +932,67 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(maskBlockedIdentityValue("ADDRESS", "bogota:calle 100 15 20")).toBe(
       "bogota · [dirección protegida]",
     );
+  });
+});
+
+describe("Bloque 8 — salud técnica, performance y alcance RBAC de notificaciones", () => {
+  it("restringe /admin/observability y /admin/performance exclusivamente a SUPERADMIN", () => {
+    expect(canAccessAdminPath("SUPERADMIN", "/admin/observability")).toBe(true);
+    expect(canAccessAdminPath("SUPERADMIN", "/admin/performance")).toBe(true);
+
+    for (const role of [
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/observability")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/performance")).toBe(false);
+    }
+  });
+
+  it("getNotificationRouteScope coincide exactamente con canAccessAdminPath para actionUrl reales", () => {
+    const sampleUrls = [
+      "/admin/pedidos",
+      "/admin/pedidos?atencion=1",
+      "/admin/pedidos/LCM-2026-0001",
+      "/admin/cotizaciones",
+      "/admin/oportunidades/opp_1",
+      "/admin/inventario?stock=low",
+      "/admin/metricas",
+      "/admin/observability",
+      "/admin/auditoria?vista=seguridad",
+      "/admin/integraciones",
+      "/admin/finanzas",
+    ];
+
+    const matchesPrefix = (url: string, prefix: string) =>
+      url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`);
+
+    expect(getNotificationRouteScope("SUPERADMIN").unrestricted).toBe(true);
+
+    for (const role of [
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      const scope = getNotificationRouteScope(role);
+      expect(scope.unrestricted).toBe(false);
+      if (scope.unrestricted) throw new Error("Expected restricted scope");
+
+      for (const url of sampleUrls) {
+        const sqlAllows =
+          scope.allowedPrefixes.some((p) => matchesPrefix(url, p)) &&
+          !scope.deniedPrefixes.some((p) => matchesPrefix(url, p));
+        expect(sqlAllows).toBe(canAccessAdminPath(role, url));
+      }
+    }
   });
 });

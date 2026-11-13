@@ -22,11 +22,49 @@
  */
 
 import "server-only";
+import type { AdminRole } from "@lucams/db";
+import { getNotificationRouteScope } from "@/lib/admin-rbac";
+import { formatDayMonthCO, formatIsoDateCO } from "@/lib/datetime";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 export type NotificationType = "ALERT" | "CRON" | "QUOTE" | "SYSTEM" | "ORDER";
 export type NotificationSeverity = "info" | "warning" | "critical";
+
+function prefixActionUrlClause(prefix: string): Prisma.NotificationWhereInput {
+  return {
+    OR: [
+      { actionUrl: prefix },
+      { actionUrl: { startsWith: `${prefix}/` } },
+      { actionUrl: { startsWith: `${prefix}?` } },
+    ],
+  };
+}
+
+/**
+ * Construye el filtro SQL de alcance por rol para `Notification`.
+ * `SUPERADMIN` (o llamadas internas sin `role`) ve el 100 % del feed.
+ * Roles operativos (`OPERATIONS_MANAGER`, `MANAGER`) solo leen y marcan avisos
+ * cuyo `actionUrl` pertenece a su ámbito RBAC — protegiendo ingresos netos COP
+ * (`daily_summary`), vigilancia DIAN (`fiscal-watch`), accesos MFA de emergencia
+ * (`mfa-recovery-used`) y telemetría de infraestructura (`observability`), y
+ * evitando que `markAllRead` silencie alertas no leídas de `SUPERADMIN`.
+ */
+export function buildNotificationRoleWhere(role?: AdminRole): Prisma.NotificationWhereInput {
+  if (!role) return {};
+  const scope = getNotificationRouteScope(role);
+  if (scope.unrestricted) return {};
+  if (scope.allowedPrefixes.length === 0) {
+    return { id: "__no_access__" };
+  }
+  return {
+    actionUrl: { not: null },
+    OR: scope.allowedPrefixes.map(prefixActionUrlClause),
+    ...(scope.deniedPrefixes.length > 0
+      ? { NOT: { OR: scope.deniedPrefixes.map(prefixActionUrlClause) } }
+      : {}),
+  };
+}
 
 export type NotifyInput = {
   type: NotificationType;
@@ -86,11 +124,13 @@ export async function listNotifications(opts: {
   unreadOnly?: boolean;
   type?: NotificationType;
   limit?: number;
+  role?: AdminRole;
 }) {
   return prisma.notification.findMany({
     where: {
       ...(opts.unreadOnly ? { readAt: null } : {}),
       ...(opts.type ? { type: opts.type } : {}),
+      ...buildNotificationRoleWhere(opts.role),
     },
     orderBy: { createdAt: "desc" },
     take: opts.limit ?? 100,
@@ -98,24 +138,140 @@ export async function listNotifications(opts: {
 }
 
 /** Conteo de no leídas — badge del sidebar. Query barata (índice readAt, createdAt). */
-export async function getUnreadCount(): Promise<number> {
-  return prisma.notification.count({ where: { readAt: null } });
+export async function getUnreadCount(role?: AdminRole): Promise<number> {
+  return prisma.notification.count({
+    where: { readAt: null, ...buildNotificationRoleWhere(role) },
+  });
 }
 
-/** Marca UNA como leída. updateMany: idempotente (no explota si ya estaba leída o no existe). */
-export async function markRead(id: string): Promise<void> {
+/** Marca UNA como leída dentro del ámbito del rol. Idempotente. */
+export async function markRead(id: string, role?: AdminRole): Promise<void> {
   await prisma.notification.updateMany({
-    where: { id, readAt: null },
+    where: { id, readAt: null, ...buildNotificationRoleWhere(role) },
     data: { readAt: new Date() },
   });
 }
 
-/** Marca TODAS las no leídas como leídas (botón "Marcar todas"). */
-export async function markAllRead(): Promise<void> {
+/** Marca TODAS las no leídas del ámbito del rol (y tipo opcional) como leídas. */
+export async function markAllRead(opts?: {
+  role?: AdminRole;
+  type?: NotificationType;
+}): Promise<void> {
   await prisma.notification.updateMany({
-    where: { readAt: null },
+    where: {
+      readAt: null,
+      ...(opts?.type ? { type: opts.type } : {}),
+      ...buildNotificationRoleWhere(opts?.role),
+    },
     data: { readAt: new Date() },
   });
+}
+
+export interface NotificationPulseSummary {
+  unreadCount: number;
+  priorityUnreadCount: number;
+  windowTotal: number;
+  commercialWindowCount: number;
+  byType: Record<NotificationType, number>;
+  buckets: Array<{
+    key: string;
+    label: string;
+    tickLabel: string;
+    total: number;
+    priority: number;
+  }>;
+}
+
+/**
+ * Pulso diario (Bogotá `-05:00`) + resumen ejecutivo de notificaciones dentro del
+ * alcance RBAC del rol actual. Mantiene aislamiento estricto de alertas financieras,
+ * fiscales y de infraestructura fuera de `SUPERADMIN`.
+ */
+export async function getNotificationPulseAndSummary(opts?: {
+  role?: AdminRole;
+  days?: number;
+  now?: Date;
+}): Promise<NotificationPulseSummary> {
+  const days = Math.max(1, Math.min(30, opts?.days ?? 14));
+  const now = opts?.now ?? new Date();
+  const roleWhere = buildNotificationRoleWhere(opts?.role);
+
+  const todayIso = formatIsoDateCO(now);
+  const noonToday = new Date(`${todayIso}T12:00:00.000-05:00`);
+  const buckets: NotificationPulseSummary["buckets"] = [];
+  const bucketByKey = new Map<string, NotificationPulseSummary["buckets"][number]>();
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(noonToday.getTime() - i * 86_400_000);
+    const key = formatIsoDateCO(d);
+    const entry = {
+      key,
+      label: formatDayMonthCO(d),
+      tickLabel: `${key.slice(8)}/${key.slice(5, 7)}`,
+      total: 0,
+      priority: 0,
+    };
+    buckets.push(entry);
+    bucketByKey.set(key, entry);
+  }
+
+  const firstKey = buckets[0]?.key ?? todayIso;
+  const since = new Date(`${firstKey}T00:00:00.000-05:00`);
+
+  const [unreadCount, priorityUnreadCount, recentRows] = await Promise.all([
+    prisma.notification.count({
+      where: { readAt: null, ...roleWhere },
+    }),
+    prisma.notification.count({
+      where: {
+        readAt: null,
+        severity: { in: ["critical", "warning"] },
+        ...roleWhere,
+      },
+    }),
+    prisma.notification.findMany({
+      where: {
+        createdAt: { gte: since },
+        ...roleWhere,
+      },
+      select: {
+        createdAt: true,
+        type: true,
+        severity: true,
+      },
+    }),
+  ]);
+
+  const byType: Record<NotificationType, number> = {
+    ORDER: 0,
+    QUOTE: 0,
+    ALERT: 0,
+    CRON: 0,
+    SYSTEM: 0,
+  };
+
+  for (const row of recentRows) {
+    const key = formatIsoDateCO(row.createdAt);
+    const bucket = bucketByKey.get(key);
+    if (bucket) {
+      bucket.total += 1;
+      if (row.severity === "critical" || row.severity === "warning") {
+        bucket.priority += 1;
+      }
+    }
+    if (row.type in byType) {
+      byType[row.type as NotificationType] += 1;
+    }
+  }
+
+  return {
+    unreadCount,
+    priorityUnreadCount,
+    windowTotal: recentRows.length,
+    commercialWindowCount: byType.ORDER + byType.QUOTE,
+    byType,
+    buckets,
+  };
 }
 
 /**

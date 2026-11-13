@@ -1,18 +1,19 @@
 /*
  * Admin — Centro de notificaciones (2026-08-05).
  *
- * Feed in-app de eventos del sistema: alertas que disparan (ALERT), crons que
- * fallan (CRON), cotizaciones nuevas (QUOTE) y el resumen diario (SYSTEM).
- * Reemplaza el spam de email operativo: acá queda el registro duradero con
- * estado leída/no leída; el email solo sobrevive para alertas críticas y para
- * el aviso de cotización (canal de venta). Solo SUPERADMIN (como observability).
+ * Feed in-app de eventos del sistema aislado por alcance RBAC:
+ *   - `SUPERADMIN`: vista completa (alertas técnicas, crons, finanzas/DIAN, pedidos y cotizaciones).
+ *   - `OPERATIONS_MANAGER` / `MANAGER`: avisos operativos y comerciales dentro de sus rutas permitidas
+ *     (pedidos, inventario, cotizaciones, oportunidades), sin exponer ingresos COP, DIAN ni seguridad.
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
+  Activity,
   AlertTriangle,
   Bell,
+  CalendarCheck2,
   Check,
   CheckCheck,
   Clock,
@@ -21,11 +22,11 @@ import {
   ShoppingBag,
   type LucideIcon,
 } from "lucide-react";
-import { canAccessAdminPath } from "@/lib/admin-rbac";
+import { adminHomePath, canAccessAdminPath } from "@/lib/admin-rbac";
 import { requireCapability } from "@/lib/admin-rbac-guard";
 import {
   listNotifications,
-  getUnreadCount,
+  getNotificationPulseAndSummary,
   type NotificationType,
   type NotificationSeverity,
 } from "@/features/notifications/service";
@@ -34,13 +35,24 @@ import {
   AdminPageHeader,
   AdminPageBody,
   AdminButton,
+  AdminCard,
+  AdminComboBarLineChart,
+  AdminSegmentedBar,
   AdminEmpty,
+  type ComboChartDatum,
+  type SegmentedBarItem,
 } from "@/components/admin-page";
+import { CountUp } from "@/components/admin/count-up";
 import { markReadAction, markAllReadAction } from "./actions";
 import { formatRelativeTime } from "@/lib/format";
 import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
-export const metadata: Metadata = { title: "Notificaciones" };
+export const metadata: Metadata = {
+  title: "Notificaciones",
+  robots: { index: false, follow: false },
+};
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -77,20 +89,24 @@ const SEVERITY_META: Record<NotificationSeverity, { label: string; classes: stri
 };
 const SEVERITY_FALLBACK = SEVERITY_META.info;
 
-const TYPE_FILTERS: Array<{ key: NotificationType | null; label: string }> = [
+const ALL_TYPE_FILTERS: Array<{
+  key: NotificationType | null;
+  label: string;
+  techOnly?: boolean;
+}> = [
   { key: null, label: "Todos" },
   { key: "ORDER", label: "Pedidos" },
-  { key: "ALERT", label: "Alertas" },
-  { key: "CRON", label: "Crons" },
   { key: "QUOTE", label: "Cotizaciones" },
-  { key: "SYSTEM", label: "Sistema" },
+  { key: "ALERT", label: "Alertas" },
+  { key: "CRON", label: "Crons", techOnly: true },
+  { key: "SYSTEM", label: "Sistema", techOnly: true },
 ];
 
-/** Arma el href preservando el otro filtro (vista=no leídas es el default → sin param). */
+/** Arma el href preservando el otro filtro (view=unread es el default → sin param). */
 function filterHref(view: "unread" | "all", type: NotificationType | null): string {
   const params = new URLSearchParams();
-  if (view !== "unread") params.set("vista", view);
-  if (type) params.set("tipo", type);
+  if (view !== "unread") params.set("view", view);
+  if (type) params.set("type", type);
   const qs = params.toString();
   return qs ? `/admin/notificaciones?${qs}` : "/admin/notificaciones";
 }
@@ -101,58 +117,224 @@ export default async function AdminNotificacionesPage({
   searchParams: SearchParams;
 }) {
   const session = await requireCapability("notifications:manage");
-  const canSeeObservability = canAccessAdminPath(session.admin.role, "/admin/observability");
+  const role = session.admin.role;
+  const canSeeObservability = canAccessAdminPath(role, "/admin/observability");
+  const canSeeHoy = canAccessAdminPath(role, "/admin/hoy");
+
+  const visibleTypeFilters = ALL_TYPE_FILTERS.filter((f) => !f.techOnly || canSeeObservability);
+  const allowedTypeKeys = visibleTypeFilters
+    .map((f) => f.key)
+    .filter((k): k is NotificationType => k !== null);
 
   const sp = await searchParams;
-  const view = pickString(sp, "vista") === "all" ? "all" : "unread";
-  const typeRaw = pickString(sp, "tipo");
-  const type =
-    (["ALERT", "CRON", "QUOTE", "SYSTEM", "ORDER"] as const).find((t) => t === typeRaw) ?? null;
+  const viewParam = pickString(sp, "view") ?? pickString(sp, "vista");
+  const view = viewParam === "all" ? "all" : "unread";
+  const typeRaw = pickString(sp, "type") ?? pickString(sp, "tipo");
+  const type = allowedTypeKeys.find((t) => t === typeRaw) ?? null;
 
-  const [notifications, unreadCount] = await Promise.all([
-    listNotifications({ unreadOnly: view === "unread", type: type ?? undefined, limit: 100 }),
-    getUnreadCount(),
+  const [notifications, summary] = await Promise.all([
+    listNotifications({
+      unreadOnly: view === "unread",
+      type: type ?? undefined,
+      limit: 100,
+      role,
+    }),
+    getNotificationPulseAndSummary({ role, days: 14 }),
   ]);
+
+  const unreadCount = summary.unreadCount;
+
+  const pulseChartData: ComboChartDatum[] = summary.buckets.map((b) => ({
+    key: b.key,
+    label: b.label,
+    tickLabel: b.tickLabel,
+    barValue: b.total,
+    barFormatted: `${b.total.toLocaleString("es-CO")} ${b.total === 1 ? "aviso" : "avisos"}`,
+    lineValue: b.priority,
+    lineFormatted: `${b.priority.toLocaleString("es-CO")} prioritarios`,
+  }));
+
+  const segmentedItems: SegmentedBarItem[] = [
+    {
+      key: "ORDER",
+      label: "Pedidos",
+      count: summary.byType.ORDER,
+      tone: "emerald",
+      href: filterHref("all", "ORDER"),
+    },
+    {
+      key: "QUOTE",
+      label: "Cotizaciones",
+      count: summary.byType.QUOTE,
+      tone: "turquoise",
+      href: filterHref("all", "QUOTE"),
+    },
+    {
+      key: "ALERT",
+      label: "Alertas",
+      count: summary.byType.ALERT,
+      tone: "amber",
+      href: filterHref("all", "ALERT"),
+    },
+    ...(canSeeObservability
+      ? ([
+          {
+            key: "CRON",
+            label: "Crons",
+            count: summary.byType.CRON,
+            tone: "purple",
+            href: filterHref("all", "CRON"),
+          },
+          {
+            key: "SYSTEM",
+            label: "Sistema",
+            count: summary.byType.SYSTEM,
+            tone: "slate",
+            href: filterHref("all", "SYSTEM"),
+          },
+        ] satisfies SegmentedBarItem[])
+      : []),
+  ];
 
   return (
     <AdminPage>
       <AdminPageHeader
+        breadcrumbs={[{ label: "Inicio", href: adminHomePath(role) }, { label: "Notificaciones" }]}
         icon={<Bell className="h-5 w-5" />}
         title="Notificaciones"
         subtitle={
           <>
-            Todo lo que pasa en el sistema llega acá: alertas, crons que fallan, cotizaciones nuevas
-            y tu resumen diario — sin llenar tu correo.
-            <span className="mt-1 block text-xs text-slate-500">
-              Acá queda el historial de avisos del sistema.
-              {canSeeObservability && (
-                <>
-                  {" "}
-                  Para ver cómo está el sistema AHORA, ve a{" "}
-                  <Link
-                    href="/admin/observability"
-                    className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
-                  >
-                    Salud técnica
-                  </Link>
-                  .
-                </>
-              )}
-            </span>
+            {canSeeObservability
+              ? "Centro unificado de eventos del sistema: pedidos, cotizaciones nuevas, alertas operativas, crons y resumen diario — sin llenar tu correo."
+              : "Avisos operativos y comerciales de tu ámbito: pedidos confirmados, alertas de stock o despacho y cotizaciones nuevas — sin llenar tu correo."}
+            {canSeeObservability && (
+              <span className="mt-1 block text-xs text-slate-500">
+                Acá queda el historial de avisos. Para revisar telemetría e infraestructura en vivo,
+                ve a{" "}
+                <Link
+                  href="/admin/observability"
+                  className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
+                >
+                  Salud técnica
+                </Link>
+                .
+              </span>
+            )}
           </>
         }
         actions={
-          unreadCount > 0 ? (
-            <form action={markAllReadAction}>
-              <AdminButton type="submit" variant="secondary" size="sm" pendingLabel="Marcando…">
-                <CheckCheck className="h-3.5 w-3.5" />
-                Marcar todas como leídas ({unreadCount})
-              </AdminButton>
-            </form>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            {canSeeHoy && (
+              <Link
+                href="/admin/hoy"
+                className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+              >
+                <CalendarCheck2 className="h-3.5 w-3.5" aria-hidden />
+                Mi día
+              </Link>
+            )}
+            {canSeeObservability && (
+              <Link
+                href="/admin/observability"
+                className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+              >
+                <Activity className="h-3.5 w-3.5" aria-hidden />
+                Salud técnica
+              </Link>
+            )}
+            {unreadCount > 0 && (
+              <form action={markAllReadAction}>
+                {type && <input type="hidden" name="type" value={type} />}
+                <AdminButton type="submit" variant="secondary" size="sm" pendingLabel="Marcando…">
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  {type
+                    ? `Marcar ${TYPE_META[type].label.toLowerCase()} leídas`
+                    : `Marcar todas como leídas (${unreadCount})`}
+                </AdminButton>
+              </form>
+            )}
+          </div>
         }
       />
       <AdminPageBody>
+        {/* KPIs ejecutivos del alcance RBAC */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="border-brand-purple/10 rounded-2xl border bg-white p-4 shadow-sm">
+            <p className="text-xs font-medium text-slate-500">Pendientes de leer</p>
+            <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+              <CountUp value={summary.unreadCount} />
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">En tu bandeja activa</p>
+          </div>
+          <div
+            className={`rounded-2xl border p-4 shadow-sm ${
+              summary.priorityUnreadCount > 0
+                ? "border-brand-pink/30 bg-brand-pink/[0.04]"
+                : "border-brand-purple/10 bg-white"
+            }`}
+          >
+            <p className="text-xs font-medium text-slate-500">Prioridad alta sin leer</p>
+            <p
+              className={`font-display mt-1 text-2xl font-bold tabular-nums ${
+                summary.priorityUnreadCount > 0 ? "text-brand-pink-ink" : "text-brand-purple-dark"
+              }`}
+            >
+              <CountUp value={summary.priorityUnreadCount} />
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">Críticas o de atención inmediata</p>
+          </div>
+          <div className="border-brand-purple/10 rounded-2xl border bg-white p-4 shadow-sm">
+            <p className="text-xs font-medium text-slate-500">Volumen (14 días)</p>
+            <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+              <CountUp value={summary.windowTotal} />
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">Hora Colombia (UTC-5)</p>
+          </div>
+          <div className="border-brand-purple/10 rounded-2xl border bg-white p-4 shadow-sm">
+            <p className="text-xs font-medium text-slate-500">Pedidos y cotizaciones (14d)</p>
+            <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+              <CountUp value={summary.commercialWindowCount} />
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">Flujo comercial entrante</p>
+          </div>
+        </div>
+
+        {/* Pulso diario 14d + distribución por categoría */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <AdminCard className="p-5">
+              <div className="mb-3">
+                <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                  Pulso de avisos (últimos 14 días)
+                </h2>
+                <p className="text-brand-muted text-xs">
+                  Volumen diario en hora Colombia frente a avisos críticos o de atención
+                </p>
+              </div>
+              <AdminComboBarLineChart
+                data={pulseChartData}
+                ariaLabel="Pulso de notificaciones en los últimos 14 días"
+                barLegend="Avisos recibidos"
+                lineLegend="Críticos / atención"
+              />
+            </AdminCard>
+          </div>
+          <AdminCard className="p-5">
+            <div className="mb-3">
+              <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                Mezcla por categoría (14d)
+              </h2>
+              <p className="text-brand-muted text-xs">
+                Haz clic en una categoría para filtrar el historial completo
+              </p>
+            </div>
+            <AdminSegmentedBar
+              items={segmentedItems}
+              ariaLabel="Distribución de notificaciones por categoría en 14 días"
+            />
+          </AdminCard>
+        </div>
+
         {/* Filtros: vista (No leídas/Todas) + tipo. Links RSC (mismo patrón que SortableHeader). */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1">
@@ -178,7 +360,7 @@ export default async function AdminNotificacionesPage({
           </div>
           <span className="text-brand-purple/30">·</span>
           <div className="flex flex-wrap items-center gap-1">
-            {TYPE_FILTERS.map((t) => (
+            {visibleTypeFilters.map((t) => (
               <Link
                 key={t.label}
                 href={filterHref(view, t.key)}
@@ -201,7 +383,9 @@ export default async function AdminNotificacionesPage({
             description={
               view === "unread"
                 ? "Ya estás al día: no queda nada sin leer. Cuando algo necesite tu atención va a aparecer acá."
-                : "Cuando algo necesite tu atención (una alerta, un cron que falle, una cotización nueva o tu resumen diario), va a aparecer acá — sin llenar tu correo."
+                : canSeeObservability
+                  ? "Cuando algo necesite tu atención (una alerta, un cron que falle, una cotización nueva o tu resumen diario), va a aparecer acá — sin llenar tu correo."
+                  : "Cuando entre un pedido nuevo, una cotización o una alerta operativa de tu ámbito, va a aparecer acá — sin llenar tu correo."
             }
           />
         ) : (

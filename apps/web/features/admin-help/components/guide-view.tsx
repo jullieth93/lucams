@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import type { AdminRole } from "@lucams/db";
-import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, ExternalLink } from "lucide-react";
+import { canAccessAdminPath } from "@/lib/admin-rbac";
 import { getModuleGuideById, getProceduresForRole } from "../registry";
 import type { AdminModuleGuide } from "../types";
 import { AdminHelpFeedback } from "./help-feedback";
@@ -10,20 +11,35 @@ export function AdminGuideView({
   guide,
   role,
   interactive,
+  initialFeedback = null,
 }: {
   guide: AdminModuleGuide;
   role: AdminRole;
   interactive?: ReactNode;
+  initialFeedback?: { isHelpful: boolean; comment: string | null } | null;
 }) {
   const procedures = getProceduresForRole(guide, role);
   const related = guide.related
     .map((id) => getModuleGuideById(id, role))
     .filter((item) => item !== null);
+  const canOpenModule = guide.route !== "/admin/ayuda" && canAccessAdminPath(role, guide.route);
 
   return (
     <article className="space-y-8 text-sm leading-6 text-slate-700">
       <header className="space-y-3">
-        <p className="text-brand-purple text-xs font-bold tracking-wider uppercase">{guide.area}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-brand-purple text-xs font-bold tracking-wider uppercase">
+            {guide.area}
+          </p>
+          {canOpenModule && (
+            <Link
+              href={guide.route}
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              Ir al módulo <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+            </Link>
+          )}
+        </div>
         <div>
           <h2 className="font-display text-brand-purple-dark text-2xl font-bold">{guide.title}</h2>
           <p className="mt-2 text-base text-slate-600">{guide.summary}</p>
@@ -186,7 +202,7 @@ export function AdminGuideView({
         </nav>
       )}
 
-      <AdminHelpFeedback guideId={guide.id} />
+      <AdminHelpFeedback guideId={guide.id} initialFeedback={initialFeedback} />
     </article>
   );
 }

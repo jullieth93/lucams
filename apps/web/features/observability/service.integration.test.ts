@@ -6,7 +6,7 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { getTechHealth, setErrorReportStatus } from "./service";
+import { getDatabaseQuota, getTechHealth, setErrorReportStatus } from "./service";
 
 const hasDb = !!process.env.DATABASE_URL;
 // F-6 (auditoría 2026-08-24): los mensajes se persisten con scrubPii (ver
@@ -57,6 +57,10 @@ describe.skipIf(!hasDb)("observability/service — integración DB", { timeout: 
     expect(typeof h.vitals7d.good).toBe("number");
     expect(typeof h.clientErrors.openCount).toBe("number");
     expect(Array.isArray(h.clientErrors.top)).toBe(true);
+    expect(h.dailyPulse7d).toHaveLength(7);
+
+    const dbQuota = await getDatabaseQuota();
+    expect(dbQuota.dbBytes === null || dbQuota.dbBytes > 0).toBe(true);
   });
 
   it("setErrorReportStatus resuelve un reporte: sale de OPEN y sella resolvedBy/resolvedAt", async () => {

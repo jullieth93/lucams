@@ -329,9 +329,10 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     title: "Salud técnica y observabilidad",
     area: "Configuración y seguridad",
     route: "/admin/observability",
-    summary: "Errores, procesos programados, webhooks, integraciones, alertas y respaldos.",
+    summary:
+      "Resumen 24h, entregabilidad, cuotas de Supabase (Storage y Postgres), crons, webhooks y errores.",
     purpose:
-      "Reúne señales para saber si los procesos del sistema están funcionando y cuáles requieren intervención. Permite investigar errores y latidos de crons sin depender de un servicio externo de observabilidad.",
+      "Reúne señales operativas y de infraestructura en vivo para saber si el sistema está sano y cuáles cuotas o procesos requieren intervención, desplegando automáticamente el detalle técnico ante incidentes activos.",
     whenToUse: [
       "Ante errores repetidos o procesos sin ejecución.",
       "Para revisar webhooks, reversas de stock y pendientes técnicos.",

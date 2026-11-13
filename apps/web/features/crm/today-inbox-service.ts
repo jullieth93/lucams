@@ -18,9 +18,9 @@
 import "server-only";
 import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
-import { canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
+import { canAccessAdminPath, canManageOrderRenderJobs, hasCapability } from "@/lib/admin-rbac";
 import { evaluateSlaStatus, type SlaSemaphoreState } from "@/lib/colombian-sla";
-import { maskEmail, maskPersonName } from "@/lib/pii-mask";
+import { maskEmail, maskEmailsInText, maskPersonName } from "@/lib/pii-mask";
 import { formatCOP } from "@/lib/format";
 import { isCrmTaskPriority, type CrmTaskPriority } from "./constants";
 import { countConsentedAnnualOccasionContacts } from "./intelligence-service";
@@ -223,8 +223,8 @@ export async function getTodayOperationalInbox(
         })
       : Promise.resolve([]),
 
-    // 5. Renders 300 DPI fallidos en pedidos pagados / en preparación
-    canTransitionOrders
+    // 5. Renders 300 DPI fallidos en pedidos pagados / en preparación (exclusivo taller / gerencia)
+    canManageOrderRenderJobs(role)
       ? prisma.renderJob.findMany({
           where: {
             status: "FAILED",
@@ -427,7 +427,7 @@ export async function getTodayOperationalInbox(
       sourceId: t.id,
       category: "TASK",
       severity: taskPriorityToSeverity(priority, isOverdue),
-      title: t.title,
+      title: maskPii ? maskEmailsInText(t.title) : t.title,
       subtitle: subtitleParts.join(" · "),
       badgeLabel: isOverdue
         ? "Tarea vencida"

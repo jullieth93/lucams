@@ -311,7 +311,14 @@ function resolveAuditEntityHref(
     case "Redirect":
       return "/admin/redirects";
     case "Notification":
-      return "/admin/notificaciones";
+      return "/admin/notificaciones?vista=all";
+    case "ErrorReport":
+      return "/admin/observability";
+    case "AdminHelpFeedback":
+    case "AdminHelpProgress":
+      return entityId === "*"
+        ? "/admin/ayuda"
+        : `/admin/ayuda?guia=${encodeURIComponent(entityId)}`;
     case "CodBlocklist":
     case "BlockedIdentity":
       return "/admin/finanzas/bloqueos";

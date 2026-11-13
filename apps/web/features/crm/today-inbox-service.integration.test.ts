@@ -145,10 +145,10 @@ describe.skipIf(!HAS_DB)(
       });
       createdTaskIds.push(privateCrmTask.id);
 
-      // 4) Tarea operativa asignada a PRINT_WORKSHOP con contacto asociado (debe enmascarar apellido)
+      // 4) Tarea operativa asignada a PRINT_WORKSHOP con contacto asociado y email incrustado en título
       const workshopTask = await prisma.task.create({
         data: {
-          title: `itest revisar corte imán ${suffix}`,
+          title: `itest revisar corte imán cliente.vip@lucams.test ${suffix}`,
           status: "OPEN",
           priority: "HIGH",
           dueAt: yesterday,
@@ -192,6 +192,8 @@ describe.skipIf(!HAS_DB)(
 
       const ownTaskRow = workshopInbox.items.find((i) => i.id === `task:${workshopTask.id}`);
       expect(ownTaskRow).toBeDefined();
+      expect(ownTaskRow?.title).not.toContain("cliente.vip");
+      expect(ownTaskRow?.title).toContain("c***p@l***s.test");
       expect(ownTaskRow?.subtitle).toContain("Mariana R.");
       expect(ownTaskRow?.subtitle).not.toContain("Restrepo");
 

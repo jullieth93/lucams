@@ -386,8 +386,10 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
     roles: ALL_ROLES_ORDER.filter((r) => r === "SUPERADMIN" || hasCapability(r, "finance:read")),
   },
 
-  // Configuración sensible y CMS v2
+  // Configuración sensible, salud técnica y CMS v2
   { prefix: "/admin/integraciones", roles: ["SUPERADMIN"] },
+  { prefix: "/admin/observability", roles: ["SUPERADMIN"] },
+  { prefix: "/admin/performance", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido/paginas/global", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido/configuracion", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido", roles: rolesWithCapability("cms:write") },
@@ -542,4 +544,30 @@ export function filterNavByRole<T extends { items?: Array<{ href: string }>; hre
     }
   }
   return out;
+}
+
+export type NotificationRouteScope =
+  | { unrestricted: true }
+  | { unrestricted: false; allowedPrefixes: string[]; deniedPrefixes: string[] };
+
+/**
+ * Devuelve los prefijos de `ROUTE_ROLES` permitidos y denegados para un rol dado,
+ * de modo que las consultas SQL de `Notification` (`listNotifications`, `getUnreadCount`,
+ * `markRead`, `markAllRead`) filtren en base de datos exactamente las mismas rutas que
+ * `canAccessAdminPath(role, actionUrl)` sin filtrar ingresos COP, alertas DIAN, MFA ni
+ * infraestructura a roles operativos (`OPERATIONS_MANAGER`, `MANAGER`).
+ */
+export function getNotificationRouteScope(role: AdminRole): NotificationRouteScope {
+  if (role === "SUPERADMIN") return { unrestricted: true };
+  const allowedPrefixes = ROUTE_ROLES.filter((r) => r.roles.includes(role)).map((r) => r.prefix);
+  const deniedPrefixes = ROUTE_ROLES.filter(
+    (r) =>
+      !r.roles.includes(role) &&
+      allowedPrefixes.some(
+        (allowed) =>
+          r.prefix.length > allowed.length &&
+          (r.prefix.startsWith(`${allowed}/`) || r.prefix.startsWith(`${allowed}?`)),
+      ),
+  ).map((r) => r.prefix);
+  return { unrestricted: false, allowedPrefixes, deniedPrefixes };
 }

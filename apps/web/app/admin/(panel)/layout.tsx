@@ -71,11 +71,11 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
     redirect(`${adminHomePath(session.admin.role)}?denied=1`);
   }
 
-  // Badge del centro de notificaciones (2026-08-05): conteo de no leídas en el
-  // item del sidebar. Count con índice (readAt, createdAt) — barato por request.
-  // Solo se consulta para roles con acceso a /admin/notificaciones.
+  // Badge del centro de notificaciones (2026-08-05; Bloque 8 — acotado al rol):
+  // cuenta únicamente las no leídas cuyo destino (`actionUrl`) pertenece al ámbito
+  // RBAC del rol, evitando badges fantasma de alertas exclusivas de SUPERADMIN.
   const unreadNotifications = canAccessAdminPath(session.admin.role, "/admin/notificaciones")
-    ? await getUnreadCount()
+    ? await getUnreadCount(session.admin.role)
     : 0;
 
   // Logo administrable del shell (Fase 3 · 3.9 — setting CMS `site.logo`,

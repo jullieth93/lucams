@@ -74,7 +74,7 @@ export async function FiscalWatchPanel() {
                 aria-valuenow={barWidth}
               >
                 <div
-                  className={`h-full rounded-full ${LEVEL_BAR[ev.level]}`}
+                  className={`admin-bar-grow-x h-full rounded-full ${LEVEL_BAR[ev.level]}`}
                   style={{ width: `${Math.max(barWidth, ev.currentCop > 0 ? 1 : 0)}%` }}
                 />
               </div>

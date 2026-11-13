@@ -238,9 +238,9 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
     title: "Notificaciones",
     area: "Operación",
     route: "/admin/notificaciones",
-    summary: "Centro interno de avisos operativos, comerciales y de salud del sistema.",
+    summary: "Centro interno de avisos operativos, comerciales y de salud filtrado según tu rol.",
     purpose:
-      "Conserva avisos que requieren consulta o seguimiento y permite distinguir los pendientes de lectura. Marcar como leído organiza la bandeja, pero no resuelve el evento de origen.",
+      "Conserva avisos dentro del alcance de tus permisos (pedidos, cotizaciones, stock o salud técnica) y distingue los pendientes de lectura con pulso de 14 días. Marcar como leído organiza tu bandeja sin alterar ni silenciar alertas reservadas a otros ámbitos.",
     whenToUse: [
       "Cuando el contador del menú indica avisos sin leer.",
       "Para localizar el enlace al módulo afectado por una alerta.",
@@ -356,9 +356,11 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "modulos",
-            label: "Catálogo de módulos",
-            description: "Muestra únicamente guías disponibles para tu rol.",
-            interpretation: "Abre una tarjeta para leer la guía completa sin salir del centro.",
+            label: "Catálogo y filtro por áreas",
+            description:
+              "Muestra únicamente guías disponibles para tu rol y permite filtrarlas por área operativa.",
+            interpretation:
+              "Usa las píldoras de área o abre una tarjeta para leer la guía completa e ir directo al módulo.",
           },
           {
             id: "progreso",

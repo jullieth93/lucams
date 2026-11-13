@@ -16,11 +16,15 @@ import Link from "next/link";
 import { TrendingUp, Trophy } from "lucide-react";
 import type { OrderStatus, QuoteStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
-import { ADMIN_ROLE_SETS, canAccessAdminPath } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, adminHomePath, canAccessAdminPath } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
-import { COLLECTED_REVENUE_ORDER_WHERE, getPeriodAggregates } from "@/features/finanzas/service";
+import {
+  COLLECTED_REVENUE_ORDER_WHERE,
+  getPeriodAggregates,
+  startOfMonthCO,
+} from "@/features/finanzas/service";
 import {
   getFunnelDashboardReport,
   type FunnelReportFilters,
@@ -51,6 +55,8 @@ export const metadata: Metadata = {
   title: "Métricas de ventas",
   robots: { index: false, follow: false },
 };
+
+export const dynamic = "force-dynamic";
 
 // Estados de Order que implican dinero recibido (ver nota del header).
 const PAID_STATUSES: OrderStatus[] = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"];
@@ -127,9 +133,16 @@ export default async function AdminMetricasPage({
   const catalog = isCatalogMode();
 
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfMonth = startOfMonthCO(now);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const monthLabel = formatMonthYearCO(now);
+
+  const canSeeFinanzas = canAccessAdminPath(role, "/admin/finanzas");
+  const canSeePedidos = canAccessAdminPath(role, "/admin/pedidos");
+  const canSeeQuotes = canAccessAdminPath(role, "/admin/cotizaciones");
+  const canSeeContenido = canAccessAdminPath(role, "/admin/contenido");
+  const canSeeInventario = canAccessAdminPath(role, "/admin/inventario");
+  const canSeeProductos = canAccessAdminPath(role, "/admin/productos");
 
   // Consultas independientes → Promise.all para no serializar round-trips a DB.
   // En modo catálogo las queries de Order ni siquiera se disparan (orderData=null).
@@ -210,7 +223,12 @@ export default async function AdminMetricasPage({
   const variants = topByVariant.length
     ? await prisma.productVariant.findMany({
         where: { id: { in: topByVariant.map((t) => t.variantId) } },
-        select: { id: true, name: true, sku: true, product: { select: { name: true } } },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          product: { select: { id: true, name: true } },
+        },
       })
     : [];
   const variantById = new Map(variants.map((v) => [v.id, v]));
@@ -223,12 +241,22 @@ export default async function AdminMetricasPage({
       <AdminPageHeader
         icon={<TrendingUp className="h-5 w-5" />}
         title="Métricas de ventas"
-        subtitle="Resumen de pedidos, cotizaciones e ingresos. Se calcula en vivo sobre los datos reales."
+        subtitle="Resumen de pedidos, cotizaciones, vigilancia DIAN e inteligencia comercial en vivo."
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Inicio", href: adminHomePath(role) },
           { label: "Comercial" },
           { label: "Métricas de ventas" },
         ]}
+        actions={
+          canSeeFinanzas && !catalog ? (
+            <Link
+              href={`/admin/finanzas?periodo=${funnelFilters.days === 7 ? "7d" : "30d"}`}
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              Conciliar en Finanzas →
+            </Link>
+          ) : undefined
+        }
       />
 
       <AdminPageBody>
@@ -301,12 +329,14 @@ export default async function AdminMetricasPage({
                         deltaPct={periodTrend.netRevenueDeltaPct}
                         comparisonLabel={periodTrend.range.previousLabel}
                       />
-                      <Link
-                        href={`/admin/finanzas?periodo=${funnelFilters.days === 7 ? "7d" : "30d"}`}
-                        className="text-brand-purple text-xs font-semibold hover:underline"
-                      >
-                        Abrir Finanzas →
-                      </Link>
+                      {canSeeFinanzas && (
+                        <Link
+                          href={`/admin/finanzas?periodo=${funnelFilters.days === 7 ? "7d" : "30d"}`}
+                          className="text-brand-purple text-xs font-semibold hover:underline"
+                        >
+                          Abrir Finanzas →
+                        </Link>
+                      )}
                     </div>
                   </div>
 
@@ -342,12 +372,14 @@ export default async function AdminMetricasPage({
                 <h2 className="text-brand-purple-dark font-display text-base font-bold">
                   Pedidos por estado
                 </h2>
-                <Link
-                  href="/admin/pedidos"
-                  className="text-brand-purple text-xs font-semibold hover:underline"
-                >
-                  Ver todos →
-                </Link>
+                {canSeePedidos && (
+                  <Link
+                    href="/admin/pedidos"
+                    className="text-brand-purple text-xs font-semibold hover:underline"
+                  >
+                    Ver todos →
+                  </Link>
+                )}
               </div>
               {(() => {
                 const statusKeys = (Object.keys(ORDER_STATUS_LABEL) as OrderStatus[]).filter(
@@ -367,7 +399,8 @@ export default async function AdminMetricasPage({
                       label: ORDER_STATUS_LABEL[s],
                       count: orderCount.get(s) ?? 0,
                       tone: ORDER_STATUS_CHART_TONE[s],
-                      href: s === "DRAFT" ? undefined : `/admin/pedidos?status=${s}`,
+                      href:
+                        s === "DRAFT" || !canSeePedidos ? undefined : `/admin/pedidos?status=${s}`,
                     }))}
                   />
                 );
@@ -380,12 +413,14 @@ export default async function AdminMetricasPage({
               <h2 className="text-brand-purple-dark font-display text-base font-bold">
                 Cotizaciones por estado
               </h2>
-              <Link
-                href="/admin/cotizaciones"
-                className="text-brand-purple text-xs font-semibold hover:underline"
-              >
-                Ver todas →
-              </Link>
+              {canSeeQuotes && (
+                <Link
+                  href="/admin/cotizaciones"
+                  className="text-brand-purple text-xs font-semibold hover:underline"
+                >
+                  Ver todas →
+                </Link>
+              )}
             </div>
             <AdminDonutChart
               ariaLabel="Distribución de cotizaciones por estado"
@@ -396,7 +431,7 @@ export default async function AdminMetricasPage({
                 label: QUOTE_STATUS_LABEL[s],
                 count: quoteCount.get(s) ?? 0,
                 tone: QUOTE_STATUS_CHART_TONE[s],
-                href: `/admin/cotizaciones?status=${s}`,
+                href: canSeeQuotes ? `/admin/cotizaciones?status=${s}` : undefined,
               }))}
             />
             <p className="text-brand-muted border-brand-purple/10 mt-4 border-t pt-3 text-xs">
@@ -432,6 +467,9 @@ export default async function AdminMetricasPage({
                       value: units,
                       formattedValue: `${units.toLocaleString("es-CO")} uds.`,
                       tone: idx === 0 ? "purple" : idx < 3 ? "pink" : "turquoise",
+                      href: canSeeProductos
+                        ? `/admin/productos/${t.variant!.product.id}`
+                        : undefined,
                     };
                   })}
                 />
@@ -451,25 +489,35 @@ export default async function AdminMetricasPage({
             canAccessSegments={canAccessAdminPath(role, "/admin/marketing/segmentos")}
             canAccessCarts={canAccessAdminPath(role, "/admin/carritos")}
             canAccessOpportunities={canAccessAdminPath(role, "/admin/oportunidades")}
+            canAccessInventory={canSeeInventario}
           />
         )}
 
         {!catalog && (
           <AdminNotice tone="info">
             <strong>¿Cómo se calcula?</strong> Los ingresos netos del mes usan el mismo criterio de{" "}
-            <Link href="/admin/finanzas" className="font-semibold underline">
-              Finanzas
-            </Link>
+            {canSeeFinanzas ? (
+              <Link href="/admin/finanzas" className="font-semibold underline">
+                Finanzas
+              </Link>
+            ) : (
+              <strong>Finanzas</strong>
+            )}
             : suman pagos en línea confirmados (Wompi) y contra entrega ya entregados, y restan las
             devoluciones reembolsadas por retracto. Nunca se cuentan borradores ni pedidos
-            eliminados.{" "}
-            <span className="text-brand-purple-dark/80">
-              Para gestionar textos y borradores del sitio ir a{" "}
-              <Link href="/admin/contenido" className="font-semibold underline">
-                Páginas del sitio
-              </Link>
-              .
-            </span>
+            eliminados.
+            {canSeeContenido && (
+              <>
+                {" "}
+                <span className="text-brand-purple-dark/80">
+                  Para gestionar textos y borradores del sitio ve a{" "}
+                  <Link href="/admin/contenido" className="font-semibold underline">
+                    Páginas del sitio
+                  </Link>
+                  .
+                </span>
+              </>
+            )}
           </AdminNotice>
         )}
       </AdminPageBody>

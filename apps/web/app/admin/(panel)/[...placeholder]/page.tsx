@@ -21,8 +21,8 @@ import {
   AdminBadge,
   AdminButton,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
-import { adminHomePath, canAccessAdminPath } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, adminHomePath, canAccessAdminPath } from "@/lib/admin-rbac";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { findNavItem } from "@/lib/admin-nav";
 
 export const metadata: Metadata = {
@@ -33,8 +33,7 @@ export const metadata: Metadata = {
 type RouteParams = Promise<{ placeholder: string[] }>;
 
 export default async function PlaceholderPage({ params }: { params: RouteParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
   const homeHref = adminHomePath(session.admin.role);
   const canSeeAudit = canAccessAdminPath(session.admin.role, "/admin/auditoria");
 
@@ -44,6 +43,9 @@ export default async function PlaceholderPage({ params }: { params: RouteParams 
 
   // Si no está en el NAV → 404 real (es ruta inventada, no placeholder).
   if (!navInfo) notFound();
+  if (!canAccessAdminPath(session.admin.role, fullPath)) {
+    redirect(`${homeHref}?denied=1`);
+  }
 
   const { label, group } = navInfo;
   const description = navInfo.item?.description ?? navInfo.group_obj?.description;

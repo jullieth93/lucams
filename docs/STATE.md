@@ -117,14 +117,16 @@
   de 3 500 UVT del año en curso (facturación electrónica e IVA por ventas con tarjeta), proyecta el
   cierre anual por ritmo reciente y alerta 70 %/90 %/100 % en `/admin/hoy`, `/admin/metricas`,
   `/admin/notificaciones` y correo al owner (una vez por cruce y año).
-- Panel `/admin` (8 roles × 36 capacidades, MFA `aal2` sin desactivación permanente + step-up MFA en
-  conectores, bloqueos y purgas irreversibles + rotación de contraseña verificada en HIBP, buscador `⌘K`, `useAdminConfirm`), 32 plantillas React Email
+- Panel `/admin` (8 roles × 36 capacidades con paridad estricta N-21 y cero bypass B-7 en las 9 áreas,
+  notificaciones aisladas por rol en SQL, cuotas vivas de Storage + Postgres en `/admin/observability`,
+  MFA `aal2` sin desactivación permanente + step-up MFA en conectores, bloqueos y purgas irreversibles +
+  rotación de contraseña verificada en HIBP, buscador `⌘K`, `useAdminConfirm`), 32 plantillas React Email
   - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
     consentimiento + embudo `FunnelEventDaily`, **20 procesos programados** y **backups diarios GPG de
     DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.
 - **E2E administrativo:** `loginAdminWithTotp` espera `load` y reintenta el diligenciamiento con aserciones de valores antes del MFA, evitando la carrera de hidratación en formularios controlados.
-- **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` con **44 guías**, búsqueda
-  RBAC, 8 onboarding y recorridos opcionales; progreso/retroalimentación por usuario y cobertura Admin.
+- **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` con **44 guías**, búsqueda y
+  filtro por áreas RBAC, 8 rutas de onboarding con avance visual, progreso y valoración auditada por usuario.
 - **Lifecycle Journeys (`ADR-198`) y Marketing Ley 1581:** `/admin/lifecycle` y `/admin/carritos` con lectura
   analítica 0-PII para `FINANCE_ANALYST`, `/admin/carritos/configuracion` exclusiva `SUPERADMIN` + MFA (`carts:configure`),
   exclusión de rebotes/quejas (`EmailEvent`) y staff en audiencias comerciales, y CSV `/admin/marketing/suscriptores/export`
