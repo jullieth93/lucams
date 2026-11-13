@@ -99,10 +99,19 @@ const AUDIT_PRESETS: ReadonlyArray<{
   },
   {
     key: "crm",
-    label: "CRM, fusiones y B2B",
+    label: "CRM, marketing y B2B",
     description:
-      "Fusiones, descartes y reaperturas de duplicados de Contact, actividades/tareas CRM, oportunidades B2B y cotizaciones.",
-    prefixes: ["contact.merge", "crm.", "opportunity.", "quote."],
+      "Fusiones de Contact 360, actividades/tareas CRM, oportunidades B2B, cotizaciones, recuperación de carritos y Lifecycle Journeys.",
+    prefixes: [
+      "contact.merge",
+      "crm.",
+      "opportunity.",
+      "quote.",
+      "cart_recovery.",
+      "lifecycle.",
+      "newsletter.",
+      "marketing.",
+    ],
   },
 ];
 
@@ -203,6 +212,9 @@ function resolveAuditEntityHref(
 
   switch (entityType) {
     case "Order": {
+      if (entityId === "mes" || entityId === "7d" || entityId === "30d" || entityId === "90d") {
+        return `/admin/finanzas?periodo=${encodeURIComponent(entityId)}`;
+      }
       const orderNum =
         typeof meta?.orderNumber === "string" && meta.orderNumber.trim()
           ? meta.orderNumber.trim()
@@ -271,9 +283,18 @@ function resolveAuditEntityHref(
     case "PersonalizationTemplate":
       return "/admin/plantillas";
     case "Cart":
-      return `/admin/carritos/${encodeURIComponent(entityId)}`;
+    case "AbandonedCart":
+      return entityId.includes(",")
+        ? "/admin/carritos"
+        : `/admin/carritos/${encodeURIComponent(entityId)}`;
     case "LifecycleJourney":
       return `/admin/lifecycle/${encodeURIComponent(entityId)}`;
+    case "LifecycleEnrollment":
+    case "LifecycleMessage":
+      if (typeof meta?.journeyId === "string" && meta.journeyId.trim()) {
+        return `/admin/lifecycle/${encodeURIComponent(meta.journeyId.trim())}`;
+      }
+      return "/admin/lifecycle";
     case "EmailTemplate":
       return `/admin/email-templates/${encodeURIComponent(entityId)}`;
     case "CmsBlock":
@@ -292,15 +313,32 @@ function resolveAuditEntityHref(
     case "Notification":
       return "/admin/notificaciones";
     case "CodBlocklist":
+    case "BlockedIdentity":
       return "/admin/finanzas/bloqueos";
+    case "Consent":
+      if (entityId.startsWith("CRM_SEGMENT:")) {
+        const seg = entityId.slice("CRM_SEGMENT:".length).trim();
+        return seg
+          ? `/admin/marketing/segmentos?segment=${encodeURIComponent(seg)}`
+          : "/admin/marketing/segmentos";
+      }
+      return "/admin/marketing/suscriptores";
     case "ShippingZone":
     case "CarrierConfig":
       return "/admin/envios";
     case "WholesaleTier":
       return "/admin/mayorista";
+    case "SystemSetting":
+      if (entityId === "lifecycle") {
+        return "/admin/lifecycle";
+      }
+      return "/admin/contenido/paginas/global";
     case "Setting":
       if (entityId === "loyalty" || entityId === "referrals") {
         return "/admin/fidelizacion";
+      }
+      if (entityId === "cart-recovery") {
+        return "/admin/carritos/configuracion";
       }
       return "/admin/contenido/paginas/global";
     default:

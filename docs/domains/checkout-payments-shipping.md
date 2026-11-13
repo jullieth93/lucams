@@ -49,9 +49,9 @@ La validación y el cálculo residen en `apps/web/features/coupons/redemption.ts
   - Registros `AbandonedCart`: **90 días** desde `createdAt` (`PURGE_ABANDONED_CART_AFTER_DAYS = 90`).
 - **Captura y seguimiento (`features/cart/recovery-service.ts`)**: al guardar el correo en `/checkout/datos`, `recordAbandonedCartEmail` vincula el `Contact` CRM, congela `itemsSnapshot` y `subtotalCents`, y avanza `checkoutStep` de forma monotónica (`"DATOS" -> "ENVIO" -> "PAGO"`). El registro se cierra (`closedReason`) con `"ORDER_PAID"`, `"QUOTE_CREATED"` o `"CART_EMPTIED"`.
 - **Recordatorios y enlace mágico (`GET /api/cron/cart-recovery` y `/carrito/recuperar/[token]`)**:
-  - Gobernado por ajustes editables en `/admin/carritos/configuracion` (`CART_RECOVERY_ENABLED`, `CART_RECOVERY_MODE` `"automatic" | "manual"`, `CART_RECOVERY_IDLE_HOURS = 4`, `CART_RECOVERY_MAX_REMINDERS = 1` hasta 5, `CART_RECOVERY_INTERVAL_HOURS = 24`).
-  - Verifica no-supresión comercial (`EmailSuppression` — ver [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md)), genera un token aleatorio de 24 bytes `base64url` y persiste solo su SHA-256 en `AbandonedCart.recoverTokenHash`.
-  - `GET /carrito/recuperar/[token]` (`60 req/min/IP`) valida propiedad, fusiona cualquier ítem o diseño actual de la sesión hacia el carrito recuperado (`mergeCartsAdopt`), restaura la cookie `cart_session` y redirige a `/carrito`. La operación manual y el diagnóstico viven en `/admin/carritos`.
+  - Gobernado por ajustes editables en `/admin/carritos/configuracion` (`CART_RECOVERY_ENABLED`, `CART_RECOVERY_MODE` `"automatic" | "manual"`, `CART_RECOVERY_IDLE_HOURS = 4`, `CART_RECOVERY_MAX_REMINDERS = 1` hasta 5, `CART_RECOVERY_INTERVAL_HOURS = 24`), restringidos exclusivamente a `SUPERADMIN` mediante capacidad `carts:configure` + **step-up MFA reciente (`requireRecentMfa()`, `≤ 10 min`)**.
+  - Verifica no-supresión comercial y eventos de entregabilidad (`EmailEvent`: `email.bounced` / `email.complained` — ver [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md)), genera un token aleatorio de 24 bytes `base64url` y persiste solo su SHA-256 en `AbandonedCart.recoverTokenHash`.
+  - `GET /carrito/recuperar/[token]` (`60 req/min/IP`) valida propiedad, fusiona cualquier ítem o diseño actual de la sesión hacia el carrito recuperado (`mergeCartsAdopt`), restaura la cookie `cart_session` y redirige a `/carrito`. La operación manual y el diagnóstico viven en `/admin/carritos` (`carts:recover` para mutación, `/admin/carritos/enviar` y `/admin/carritos/[id]/preview`; lectura analítica cero-PII en `/admin/carritos` y `/admin/carritos/[id]` para `FINANCE_ANALYST` bajo `ADMIN_ROLE_SETS.CARTS_READ`).
 
 ---
 
@@ -120,7 +120,7 @@ Definidas en `apps/web/features/checkout/destination-types.ts` y `schemas.ts` me
   3. Verificación Cloudflare Turnstile y rate-limit dedicado `checkout_cod` (`6` intentos cada `600s` por IP en producción).
   - _Nota de reglas vigentes_: el código **no** excluye productos personalizados ni exige un monto mínimo para pagar contraentrega.
 - **Evaluación de riesgo `assessCodRisk` (`apps/web/features/checkout/cod-risk.ts`)**: cruza la identidad normalizada del pedido —teléfono expandido en variantes E.164 `+573XXXXXXXXX` (`phoneIdentityVariants`), `email` en minúsculas y clave normalizada de dirección `shippingAddressKey` (`computeShippingAddressKey`)— contra **6 reglas**:
-  1. **`blocklist`**: presencia en `BlockedIdentity` (`BlockedIdentityKind`: `PHONE | EMAIL | ADDRESS`, administrada en `/admin/finanzas/bloqueos` o desde el detalle del pedido vía `blockOrderAddressAction` bajo `ADMIN_ROLE_SETS.FINANCE_COD` + `requireRecentMfa()`).
+  1. **`blocklist`**: presencia en `BlockedIdentity` (`BlockedIdentityKind`: `PHONE | EMAIL | ADDRESS`, administrada en `/admin/finanzas/bloqueos` o desde el detalle del pedido vía `blockOrderAddressAction` bajo `ADMIN_ROLE_SETS.FINANCE_COD` + `requireRecentMfa()` tanto al bloquear como al levantar bloqueos, con valores enmascarados en UI para `FINANCE_ANALYST` y en `AdminActionLog.metadata` preservando detección `selfDealing`).
   2. **`prior_noshow`**: orden previa con `noShowAt IS NOT NULL` (destinatario ausente o rechazo de entrega).
   3. **`prior_return`**: orden COD previa devuelta por transportadora (`reconciliationReason` con `"DEVUELTO"`).
   4. **`velocity`**: `>= 3` órdenes COD creadas en las últimas 24 horas (`COD_MAX_PER_IDENTITY_24H = 3`).
@@ -128,8 +128,8 @@ Definidas en `apps/web/features/checkout/destination-types.ts` y `schemas.ts` me
   6. **`new_high_value`**: comprador sin ninguna orden `DELIVERED` previa (en cualquier medio de pago) cuyo total supere **300.000 COP** (`COD_NEW_CUSTOMER_MAX_COP = 30_000_000` centavos).
   - Si alguna regla dispara (`COD_NOT_ALLOWED`), la orden permanece en `PENDING_PAYMENT` y la interfaz invita con mensaje neutro a completar el pago en línea con Wompi. Ante fallos técnicos de lectura en base de datos, el motor opera _fail-open_ para no bloquear ventas legítimas.
 - **Conciliación de recaudo en `/admin/finanzas/conciliacion` (`CodReconciliation`)**:
-  - Protegida por `ADMIN_ROLE_SETS.FINANCE_COD` y MFA reciente (`requireRecentMfa()`).
-  - Audita todas las órdenes `paymentMethod = "COD"` con `deliveredAt != null` (`COD_CASH_COLLECTED`): nacen pendientes de giro (`codReconciliation == null`) y se cierran como **`REMITTED`** (`markCodRemitted`, exige `remittedAmount >= order.total`) o **`DISCREPANCY`** (`flagCodDiscrepancy`, exige motivo, registra el monto parcial recibido, marca `Order.needsReconciliation = true` y contabiliza el faltante `codShortfallCents`).
+  - Protegida por `ADMIN_ROLE_SETS.FINANCE_COD` y MFA reciente (`requireRecentMfa()`), con enmascaramiento server-side de PII (`maskOrderForActor`, búsqueda anti-oráculo por correo deshabilitada) cuando el actor carece de `orders:read_pii` (`FINANCE_ANALYST`) y pulso diario de 14 días en zona Bogotá.
+  - Audita todas las órdenes `paymentMethod = "COD"` con `deliveredAt != null` (`COD_CASH_COLLECTED`): nacen pendientes de giro (`codReconciliation == null`, destacando antigüedad `> 7 días`) y se cierran como **`REMITTED`** (`markCodRemitted`, exige `remittedAmount >= order.total`) o **`DISCREPANCY`** (`flagCodDiscrepancy`, exige motivo, registra el monto parcial recibido, marca `Order.needsReconciliation = true` y contabiliza el faltante `codShortfallCents`).
 
 ---
 
@@ -211,7 +211,7 @@ El cálculo de costos de fabricación y el reporte de ingresos cobrados están d
   - Calcula el margen en el escenario más conservador contra el **menor precio activo de las variantes del producto** (`margin = minPrice - Product.cost`, `marginPct = margin / minPrice * 100`), ordenando de menor a mayor margen con semáforo: `< 0 %` pérdida (rosa), `< 20 %` margen estrecho ante pasarela/empaque (ámbar) y `>= 20 %` saludable (esmeralda).
 - **Puente de ingreso neto cobrado (`/admin/finanzas`, `apps/web/features/finanzas/service.ts`)**:
   - No resta `Product.cost` (no es un estado contable de costo de ventas), sino que concilia la **caja real cobrada** (`computeNetCollectedRevenue`): suma órdenes Wompi en `PAID | FULFILLING | SHIPPED | DELIVERED` más órdenes COD únicamente en `DELIVERED` (mostrando aparte el COD en tránsito por cobrar), y deduce los reembolsos ejecutados por retracto (`RetractRequest.status === "REFUNDED"`) y los faltantes confirmados de contraentrega (`CodReconciliation` en `DISCREPANCY`).
-  - Incluye comparativas por período (`7d`, `30d`, `90d`, `mes`), ticket promedio (`computeAov`), mezcla Wompi vs. COD y exportación CSV contable RFC 4180 protegida contra inyección de fórmulas en `GET /admin/finanzas/export` (`finance:export_csv`).
+  - Incluye comparativas por período (`7d`, `30d`, `90d`, `mes`) ancladas estrictamente a `America/Bogota` (`-05:00`, `startOfDayCO` / `startOfMonthCO`), ticket promedio (`computeAov`), mezcla Wompi vs. COD y exportación CSV contable RFC 4180 protegida contra inyección de fórmulas en `GET /admin/finanzas/export` (`finance:export_csv` + `requireRecentMfa()`). Cuando el actor carece de `orders:read_pii` (`FINANCE_ANALYST`), `buildAccountingOrdersCsv({ redactBuyerEmail: true })` enmascara `email_comprador` y preserva íntegros los soportes tributarios DIAN (`tipo_doc_dian`, `numero_doc_dian`, `nombre_facturacion_dian`, `estado_dian`, `cufe_dian`).
 
 ---
 

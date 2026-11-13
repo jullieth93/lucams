@@ -44,7 +44,7 @@ export async function getLifecycleJourney(id: string) {
         orderBy: { createdAt: "desc" },
         take: 30,
         include: {
-          contact: { select: { primaryEmail: true, displayName: true } },
+          contact: { select: { id: true, primaryEmail: true, displayName: true } },
           currentStep: { select: { position: true, subject: true } },
         },
       },
@@ -56,7 +56,7 @@ export async function getLifecycleJourneyMessages(journeyId: string, take = 40) 
   return prisma.lifecycleMessage.findMany({
     where: { enrollment: { journeyId } },
     include: {
-      contact: { select: { primaryEmail: true, displayName: true } },
+      contact: { select: { id: true, primaryEmail: true, displayName: true } },
       enrollment: {
         select: {
           cycle: true,
@@ -65,6 +65,7 @@ export async function getLifecycleJourneyMessages(journeyId: string, take = 40) 
         },
       },
       step: { select: { position: true } },
+      convertedOrder: { select: { id: true, number: true } },
     },
     orderBy: { createdAt: "desc" },
     take,

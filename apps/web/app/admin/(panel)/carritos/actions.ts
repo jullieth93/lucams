@@ -19,13 +19,18 @@ import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { formatDateTimeCO } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import { sendReminderToCart, type ManualReminderResult } from "@/features/cart/recovery-service";
 import { saveCartRecoverySettings } from "@/features/cart/recovery-settings";
 
-export type CartRecoveryActionState = { ok?: string; error?: string };
+export type CartRecoveryActionState = {
+  ok?: string;
+  error?: string;
+  reauthRequired?: boolean;
+};
 
 function parseBoundedInt(
   formData: FormData,
@@ -38,12 +43,21 @@ function parseBoundedInt(
   return n;
 }
 
-/** Guarda la config del módulo (toggle, modo, ritmos). */
+/** Guarda la config del módulo (toggle, modo, ritmos). Exige `carts:configure` + MFA reciente (≤ 10 min). */
 export async function saveCartRecoverySettingsAction(
   _prev: CartRecoveryActionState | null,
   formData: FormData,
 ): Promise<CartRecoveryActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "carts:configure" });
+
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    }
+    throw err;
+  }
 
   const enabled = formData.get("enabled") === "1";
   const modeRaw = String(formData.get("mode") ?? "");
@@ -112,7 +126,7 @@ function manualResultRedirect(id: string, email: string, r: ManualReminderResult
       r.reason === "module-disabled"
         ? "El módulo está apagado (Configuración): no se envió nada."
         : r.reason === "too-soon"
-          ? `Ya se envió un recordatorio hace poco. Podrás reenviar desde ${r.retryAt ? r.retryAt.toLocaleString("es-CO") : "más tarde"}.`
+          ? `Ya se envió un recordatorio hace poco. Podrás reenviar desde ${r.retryAt ? formatDateTimeCO(r.retryAt) : "más tarde"}.`
           : r.reason === "empty-cart"
             ? "El carrito ya no tiene productos: no hay nada que recordar."
             : "El servicio de correo está en pausa temporal (circuit breaker): intenta de nuevo en unos segundos.";
@@ -123,7 +137,7 @@ function manualResultRedirect(id: string, email: string, r: ManualReminderResult
 
 /** Envío manual desde la pantalla de detalle (con preview). */
 export async function sendReminderAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CARTS_RECOVER });
+  const session = await requireAdminAction({ capability: "carts:recover" });
   const id = String(formData.get("id") ?? "").trim();
   if (!CUID_RE.test(id)) redirect("/admin/carritos?error=Identificador%20inv%C3%A1lido");
 
@@ -157,7 +171,7 @@ const BulkCartIdsSchema = z
 
 /** Envío masivo desde la pantalla de confirmación (preview incluido). */
 export async function bulkSendRemindersAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CARTS_RECOVER });
+  const session = await requireAdminAction({ capability: "carts:recover" });
 
   const ids = formData
     .getAll("ids")

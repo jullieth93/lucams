@@ -99,7 +99,7 @@
 
 - Carrito auto-sanado (`ADR-171`), checkout en 3 pasos (`ADR-155`), direcciones DANE + CP MinTIC
   (171/171 ciudades) y modo regalo (guía física y correos sin precios). Fletes HMAC por peso, ledger
-  Wompi por intento + webhook 25 h, COD con blocklist (MFA en bloqueo de dirección)/conciliación, alertas
+  Wompi por intento + webhook 25 h, COD con blocklist (MFA en alta/baja, PII enmascarada)/conciliación y CSV contable DIAN con redacción de correo para `FINANCE_ANALYST`, alertas
   de stock, Aveonline con PDFs + `ShipmentEvent`, Envío Lucams Bogotá, segregación Taller/Alistamiento +
   confidencialidad COP en `/admin/pedidos`, costeo BOM (`/admin/costos`), escalas mayoristas (`/admin/mayorista`)
   y cupones personales no transferibles (`NOT_OWNER`).
@@ -125,9 +125,10 @@
 - **E2E administrativo:** `loginAdminWithTotp` espera `load` y reintenta el diligenciamiento con aserciones de valores antes del MFA, evitando la carrera de hidratación en formularios controlados.
 - **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` con **44 guías**, búsqueda
   RBAC, 8 onboarding y recorridos opcionales; progreso/retroalimentación por usuario y cobertura Admin.
-- **Lifecycle Journeys (`ADR-198`):** `/admin/lifecycle` con consentimiento versionado, interruptor/límites,
-  horarios Colombia, supresión, delegación, tareas B2B y atribución a 30 días. Ventanas acotadas, CTA a
-  relacionados y reintentos inmutables. STG `DRY_RUN`; 5 rutas **en borrador** y MFA reciente.
+- **Lifecycle Journeys (`ADR-198`) y Marketing Ley 1581:** `/admin/lifecycle` y `/admin/carritos` con lectura
+  analítica 0-PII para `FINANCE_ANALYST`, `/admin/carritos/configuracion` exclusiva `SUPERADMIN` + MFA (`carts:configure`),
+  exclusión de rebotes/quejas (`EmailEvent`) y staff en audiencias comerciales, y CSV `/admin/marketing/suscriptores/export`
+  solo opt-in comercial vigente por defecto (`?scope=audit_ledger` probatorio SIC exclusivo `SUPERADMIN`). STG `DRY_RUN`; 5 rutas **en borrador** y MFA reciente.
 
 ## Pendientes abiertos reales
 

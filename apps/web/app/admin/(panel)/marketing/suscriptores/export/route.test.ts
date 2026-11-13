@@ -73,17 +73,47 @@ describe("GET /admin/marketing/suscriptores/export (S11 · [SEC-02])", () => {
     expect(recordAdminAction).not.toHaveBeenCalled();
   });
 
-  it("exporta CSV y registra newsletter.export_csv en AdminActionLog con conteo", async () => {
+  it("exporta CSV comercial Ley 1581 (active_commercial) y registra newsletter.export_csv en AdminActionLog", async () => {
     const res = await GET(new Request("http://localhost/admin/marketing/suscriptores/export"));
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/csv");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    expect(listAllNewsletterSubscribers).toHaveBeenCalledWith({ scope: "active_commercial" });
     expect(recordAdminAction).toHaveBeenCalledWith({
       actorId: "adm_mgr",
       action: "newsletter.export_csv",
       entityType: "Consent",
       entityId: "NEWSLETTER",
-      metadata: { count: 1 },
+      metadata: { count: 1, scope: "active_commercial" },
+    });
+  });
+
+  it("bloquea con 403 ?scope=audit_ledger para roles distintos de SUPERADMIN y lo habilita para SUPERADMIN", async () => {
+    const denied = await GET(
+      new Request("http://localhost/admin/marketing/suscriptores/export?scope=audit_ledger"),
+    );
+    expect(denied.status).toBe(403);
+    expect(listAllNewsletterSubscribers).not.toHaveBeenCalled();
+
+    verifyAdminRouteAccess.mockResolvedValueOnce({
+      ok: true,
+      session: { user: { id: "u_sa" }, admin: { id: "adm_sa", role: "SUPERADMIN" } },
+    });
+
+    const allowed = await GET(
+      new Request("http://localhost/admin/marketing/suscriptores/export?scope=audit_ledger"),
+    );
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get("Content-Disposition")).toContain("suscriptores-ledger-sic-");
+    expect(listAllNewsletterSubscribers).toHaveBeenCalledWith({ scope: "audit_ledger" });
+    expect(recordAdminAction).toHaveBeenCalledWith({
+      actorId: "adm_sa",
+      action: "newsletter.export_csv",
+      entityType: "Consent",
+      entityId: "NEWSLETTER",
+      metadata: { count: 1, scope: "audit_ledger" },
     });
   });
 });

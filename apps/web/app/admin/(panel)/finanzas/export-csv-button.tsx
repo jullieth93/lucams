@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { MfaReauthModal } from "@/components/admin/mfa-reauth";
+import { formatIsoDateCO } from "@/lib/datetime";
 import type { FinanzasPeriod } from "@/features/finanzas/service";
 
 function parseFilename(disposition: string | null, periodo: FinanzasPeriod): string {
-  const fallback = `finanzas-pedidos-${periodo}-${new Date().toISOString().slice(0, 10)}.csv`;
+  const fallback = `finanzas-pedidos-${periodo}-${formatIsoDateCO(new Date())}.csv`;
   if (!disposition) return fallback;
   const match = /filename="?([^";]+)"?/i.exec(disposition);
   return match?.[1] ?? fallback;

@@ -256,10 +256,11 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "export",
-            label: "Exportación CSV",
-            description: "Descarga datos para una gestión autorizada.",
+            label: "Exportación CSV Ley 1581 vs Ledger SIC",
+            description:
+              "El botón estándar descarga únicamente suscriptores activos sin rebote duro ni cuentas internas; Superadmin cuenta además con el Ledger SIC histórico completo.",
             caution:
-              "El archivo contiene datos personales: controla acceso, destino y eliminación.",
+              "Ambas exportaciones exigen verificación MFA reciente (≤ 10 min) y quedan registradas en Auditoría.",
           },
         ],
       },
@@ -267,16 +268,17 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "exportar-audiencia",
-        title: "Preparar una exportación",
-        goal: "Usar únicamente contactos con opt-in vigente.",
+        title: "Preparar una exportación de suscriptores",
+        goal: "Usar únicamente contactos con opt-in vigente y sin rebote en campañas.",
         steps: [
-          "Filtra el estado de consentimiento requerido.",
-          "Verifica finalidad, fecha y bajas.",
-          "Exporta solo si tu rol tiene capacidad y existe una necesidad real.",
+          "Revisa el pulso de 14 días de altas vs bajas y verifica el conteo de activos.",
+          "Pulsa «Exportar activos (Ley 1581)» y completa la confirmación MFA reciente (≤ 10 min).",
+          "Si requieres evidencia regulatoria completa ante la SIC, usa «Ledger SIC (histórico)» (exclusivo Superadmin).",
           "Entrega el archivo por un canal autorizado y evita copias innecesarias.",
           "Confirma que la plataforma de envío también respete bajas posteriores.",
         ],
-        expected: "La campaña utiliza una audiencia lícita y las bajas permanecen protegidas.",
+        expected:
+          "La campaña utiliza exclusivamente suscriptores con opt-in activo, sin staff ni rebotes duros.",
       },
     ],
     cautions: ["Una compra o cuenta creada no equivale por sí sola a consentimiento de marketing."],
@@ -286,10 +288,24 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
         answer:
           "Solo con una nueva autorización válida del titular; nunca por decisión unilateral del equipo.",
       },
+      {
+        question: "¿Por qué la exportación estándar tiene menos filas que el total de audiencia?",
+        answer:
+          "Por cumplimiento de la Ley 1581 y reputación de dominio, el CSV comercial excluye bajas (DE BAJA), cuentas internas del equipo y correos con rebote duro o queja en Resend.",
+      },
     ],
     related: ["segmentos", "clientes", "email-templates"],
-    keywords: ["newsletter", "opt-in", "consentimiento", "baja", "CSV", "correo"],
-    version: 1,
+    keywords: [
+      "newsletter",
+      "opt-in",
+      "consentimiento",
+      "baja",
+      "CSV",
+      "correo",
+      "SIC",
+      "Ley 1581",
+    ],
+    version: 2,
   },
   {
     id: "segmentos",
@@ -336,14 +352,16 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "optin",
-            label: "Filtro de consentimiento",
-            description: "Excluye contactos no elegibles para la finalidad comercial.",
+            label: "Filtro de consentimiento y entregabilidad",
+            description:
+              "Excluye automáticamente contactos sin opt-in vigente, cuentas internas y correos con rebote duro o queja.",
             caution: "No retires este filtro para aumentar artificialmente el alcance.",
           },
           {
             id: "export",
-            label: "Exportación",
-            description: "Genera un archivo del segmento visible.",
+            label: "Exportación con MFA reciente",
+            description:
+              "Genera el CSV del segmento activo tras validar MFA reciente (≤ 10 min) y registra el evento en Auditoría.",
             caution: "Aplica las mismas reglas de protección que cualquier dato personal.",
           },
         ],
@@ -357,8 +375,8 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
         steps: [
           "Elige el segmento según una finalidad concreta.",
           "Revisa criterios, período y tamaño de la audiencia.",
-          "Confirma opt-in vigente y exclusiones.",
-          "Exporta solo los datos necesarios y por el canal autorizado.",
+          "Confirma opt-in vigente y exclusiones por baja o rebote.",
+          "Exporta con confirmación MFA solo los datos necesarios y por el canal autorizado.",
           "Mide resultados sin cambiar retrospectivamente la definición del segmento.",
         ],
         expected: "La acción comercial llega a una audiencia explicable y autorizada.",
@@ -370,12 +388,13 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
     faqs: [
       {
         question: "¿Por qué hay menos contactos que en Clientes?",
-        answer: "El segmento aplica criterios de comportamiento y consentimiento adicionales.",
+        answer:
+          "El segmento exige criterios de comportamiento, opt-in comercial vigente, ausencia de rebotes duros y excluye cuentas del equipo.",
       },
     ],
     related: ["suscriptores", "clientes", "metricas"],
     keywords: ["audiencia", "VIP", "reactivación", "intención", "CRM", "exportar"],
-    version: 1,
+    version: 2,
   },
   {
     id: "carritos",
@@ -383,13 +402,13 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
     area: "Marketing",
     route: "/admin/carritos",
     summary:
-      "Monitoreo, previsualización y recuperación manual o automática de carritos sin compra.",
+      "Monitoreo, pulso de 14 días, previsualización y recuperación supervisada o automática de carritos.",
     purpose:
-      "Identifica carritos con datos de contacto que no terminaron en pedido y permite enviar recordatorios bajo reglas controladas. La configuración global está restringida y el detalle conserva el contenido histórico.",
+      "Identifica carritos con contacto registrado que no finalizaron pago y gestiona recordatorios respetando supresiones de Resend. Configuración exclusiva de Superadmin con MFA reciente; Analista Financiero consulta embudo y atribución en modo 0-PII.",
     whenToUse: [
-      "Para revisar carritos pendientes, recordados o recuperados.",
+      "Para revisar carritos pendientes, recordados o recuperados y su pulso de 14 días.",
       "Para previsualizar y enviar un recordatorio autorizado.",
-      "Para analizar valor, productos y resultado de recuperación.",
+      "Para analizar valor recuperado, etapa de abandono y rechazos Wompi.",
     ],
     concepts: [
       {
@@ -402,32 +421,35 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
         definition: "Carrito cuya compra posterior quedó relacionada y cerrada por el sistema.",
       },
       {
-        term: "Ventana de envío",
-        definition: "Condición temporal que controla cuándo puede enviarse un recordatorio.",
+        term: "Supresión por rebote o queja",
+        definition:
+          "Los destinatarios con rebote duro o queja en Resend se marcan y quedan excluidos de envíos comerciales.",
       },
     ],
     sections: [
       {
         id: "bandeja",
-        title: "Bandeja de recuperación",
-        summary: "Resume estado, valor, productos y recordatorios.",
+        title: "Bandeja y diagnóstico",
+        summary: "Resume estado, pulso de 14 días, productos, etapa alcanzada y recordatorios.",
         topics: [
           {
             id: "estado",
-            label: "Estado",
-            description: "Distingue pendientes, recordados, recuperados o cerrados por otra causa.",
+            label: "Estado y supresión",
+            description:
+              "Distingue pendientes, recordados, recuperados, cerrados y alertas de Rebote / Queja.",
             interpretation: "Un recordatorio enviado no equivale a recuperación.",
           },
           {
             id: "valor",
             label: "Subtotal e ítems",
-            description: "Instantánea del contenido conocido del carrito.",
+            description:
+              "Instantánea del contenido conocido del carrito; en modo 0-PII se ocultan fotos privadas del Estudio.",
             interpretation: "Los precios y disponibilidad pueden cambiar al retomar la compra.",
           },
           {
             id: "preview",
             label: "Vista previa del correo",
-            description: "Muestra el mensaje antes de un envío manual.",
+            description: "Muestra el mensaje antes de un envío manual para roles operativos.",
             caution:
               "Revisa destinatario, contenido y enlaces; el envío tiene un efecto externo real.",
           },
@@ -435,13 +457,14 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
       },
       {
         id: "configuracion",
-        title: "Configuración automática",
-        summary: "Controla interruptor general, modo y ventanas del proceso programado.",
+        title: "Configuración automática (Superadmin)",
+        summary: "Controla interruptor general, modo y ventanas con verificación MFA reciente.",
         topics: [
           {
             id: "killswitch",
             label: "Activación general",
-            description: "Habilita o detiene el proceso de recuperación.",
+            description:
+              "Habilita o detiene el proceso de recuperación con MFA reciente (≤ 10 min).",
             caution: "Cambiarlo afecta envíos futuros; verifica el modo antes de activarlo.",
           },
           {
@@ -454,7 +477,8 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
             id: "ventanas",
             label: "Ventanas y frecuencia",
             description: "Evita envíos prematuros o repetidos.",
-            interpretation: "Revisa zona horaria y último envío antes de ejecutar manualmente.",
+            interpretation:
+              "Revisa zona horaria Colombia y último envío antes de ejecutar manualmente.",
           },
         ],
       },
@@ -464,14 +488,28 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
         id: "recordar-carrito",
         title: "Enviar un recordatorio supervisado",
         goal: "Contactar solo un carrito elegible con el mensaje correcto.",
+        roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER", "CUSTOMER_SUPPORT"],
         steps: [
-          "Abre el carrito y verifica estado, destinatario, ítems y último envío.",
+          "Abre el carrito y verifica estado, ausencia de rebote/queja, ítems y último envío.",
           "Confirma que no exista pedido recuperado ni motivo de cierre.",
           "Previsualiza el correo y revisa enlaces y contenido.",
-          "Envía una sola vez y registra el resultado.",
+          "Envía una sola vez y verifica la confirmación.",
           "Comprueba que el estado del carrito refleje el recordatorio.",
         ],
         expected: "El cliente recibe un recordatorio pertinente y el historial evita duplicados.",
+      },
+      {
+        id: "auditar-recuperacion-carritos",
+        title: "Auditar recuperación y atribución en modo 0-PII",
+        goal: "Evaluar la tasa de conversión y el valor recuperado sin exponer datos personales.",
+        roles: ["FINANCE_ANALYST", "SUPERADMIN"],
+        steps: [
+          "Revisa el pulso de 14 días de carritos detectados vs recuperados pagados.",
+          "Inspecciona la composición por estado y la tasa de recuperación sobre contactados.",
+          "Abre el diagnóstico de un carrito recuperado y sigue el enlace al pedido pagado para conciliar.",
+        ],
+        expected:
+          "Obtienes trazabilidad financiera completa entre abandono y orden pagada sin PII en claro.",
       },
       {
         id: "configurar-recuperacion",
@@ -482,7 +520,7 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
           "Revisa consentimiento y reglas de elegibilidad.",
           "Define ventanas y frecuencia prudentes.",
           "Selecciona el modo y valida la vista previa.",
-          "Activa el interruptor general solo después de comprobar la configuración.",
+          "Guarda completando la verificación MFA reciente (≤ 10 min).",
           "Monitorea los primeros resultados y desactiva si detectas envíos inesperados.",
         ],
         expected: "El cron procesa únicamente carritos elegibles dentro de las ventanas definidas.",
@@ -500,6 +538,6 @@ export const MARKETING_GUIDES: AdminModuleGuide[] = [
     ],
     related: ["pedidos", "suscriptores", "cupones", "observability"],
     keywords: ["abandono", "recuperación", "recordatorio", "cron", "correo", "checkout"],
-    version: 1,
+    version: 2,
   },
 ];

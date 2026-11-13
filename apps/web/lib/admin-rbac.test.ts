@@ -23,6 +23,7 @@ import {
   hasCapability,
   rolesWithCapability,
 } from "./admin-rbac";
+import { maskBlockedIdentityValue } from "./pii-mask";
 
 // Rutas representativas por categoría (derivadas de ROUTE_ROLES en la fuente).
 const CATALOG_PATHS = [
@@ -870,5 +871,65 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
       expect(canAccessAdminPath(role, "/admin/soporte")).toBe(false);
       expect(canAccessAdminPath(role, "/admin/mensajes")).toBe(false);
     }
+  });
+
+  it("Bloque 7 — Finanzas, Riesgo COD y Automatización de Marketing (A1, A2, A3 + maskBlockedIdentityValue)", () => {
+    // A3: carts:configure exclusivo SUPERADMIN
+    expect(rolesWithCapability("carts:configure")).toEqual(["SUPERADMIN"]);
+    expect(canAccessAdminPath("SUPERADMIN", "/admin/carritos/configuracion")).toBe(true);
+    for (const role of [
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/carritos/configuracion")).toBe(false);
+    }
+
+    // A3: FINANCE_ANALYST lee en modo 0-PII Carritos y Lifecycle (incl. preview sintético),
+    // pero NO accede a rutas de mutación ni a preview con PII real de carrito
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/conciliacion")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/bloqueos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/carritos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/carritos/caaaaaaaaaaaaaaaaaaaaaaaa")).toBe(
+      true,
+    );
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/carritos/enviar")).toBe(false);
+    expect(
+      canAccessAdminPath("FINANCE_ANALYST", "/admin/carritos/caaaaaaaaaaaaaaaaaaaaaaaa/preview"),
+    ).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/lifecycle")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/lifecycle/jrn_post_compra")).toBe(true);
+    expect(
+      canAccessAdminPath("FINANCE_ANALYST", "/admin/lifecycle/jrn_post_compra/preview?stepId=s1"),
+    ).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/lifecycle/nuevo")).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/marketing/suscriptores")).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/marketing/segmentos")).toBe(false);
+
+    // Roles operativos con carts:recover sí acceden a enviar y preview de carrito
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/carritos/enviar")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/carritos/caaaaaaaaaaaaaaaaaaaaaaaa/preview")).toBe(
+        true,
+      );
+    }
+
+    // A1: Enmascaramiento server-side de identidades bloqueadas COD
+    expect(maskBlockedIdentityValue("EMAIL", "cliente@lucamsshop.com")).not.toContain("cliente");
+    expect(maskBlockedIdentityValue("PHONE", "+573001234567")).toContain("67");
+    expect(maskBlockedIdentityValue("PHONE", "+573001234567")).not.toContain("300123");
+    expect(maskBlockedIdentityValue("ADDRESS", "bogota:calle 100 15 20")).toBe(
+      "bogota · [dirección protegida]",
+    );
   });
 });

@@ -18,9 +18,12 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MfaReauthRequiredError } from "@/lib/admin-reauth";
 
 const {
   auditSpy,
+  requireAdminActionSpy,
+  requireRecentMfaSpy,
   mockLogger,
   updateTagSpy,
   revalidatePathSpy,
@@ -29,6 +32,11 @@ const {
   recoverySettings,
 } = vi.hoisted(() => ({
   auditSpy: { recordAdminAction: vi.fn(async () => {}) },
+  requireAdminActionSpy: vi.fn(async () => ({
+    user: { id: "user1" },
+    admin: { id: "admin1", role: "SUPERADMIN" },
+  })),
+  requireRecentMfaSpy: vi.fn(async () => {}),
   mockLogger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
   updateTagSpy: vi.fn(),
   revalidatePathSpy: vi.fn(),
@@ -41,11 +49,12 @@ const {
 
 vi.mock("@/lib/admin-audit", () => ({ recordAdminAction: auditSpy.recordAdminAction }));
 vi.mock("@/lib/admin-rbac-guard", () => ({
-  requireAdminAction: vi.fn(async () => ({
-    user: { id: "user1" },
-    admin: { id: "admin1", role: "SUPERADMIN" },
-  })),
+  requireAdminAction: requireAdminActionSpy,
 }));
+vi.mock("@/lib/admin-reauth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/admin-reauth")>();
+  return { ...actual, requireRecentMfa: requireRecentMfaSpy };
+});
 vi.mock("@/lib/logger", () => ({ logger: mockLogger }));
 vi.mock("@/features/cart/recovery-service", () => recoveryService);
 vi.mock("@/features/cart/recovery-settings", () => recoverySettings);
@@ -128,6 +137,18 @@ describe("saveCartRecoverySettingsAction", () => {
 
     expect(res.error).toBeTruthy();
     expect(recoverySettings.saveCartRecoverySettings).not.toHaveBeenCalled();
+  });
+
+  it("exige carts:configure y step-up MFA reciente (reauthRequired cuando expiró)", async () => {
+    requireRecentMfaSpy.mockRejectedValueOnce(new MfaReauthRequiredError());
+
+    const res = await saveCartRecoverySettingsAction(null, settingsForm());
+
+    expect(requireAdminActionSpy).toHaveBeenCalledWith({ capability: "carts:configure" });
+    expect(res.reauthRequired).toBe(true);
+    expect(res.error).toBeTruthy();
+    expect(recoverySettings.saveCartRecoverySettings).not.toHaveBeenCalled();
+    expect(auditSpy.recordAdminAction).not.toHaveBeenCalled();
   });
 });
 

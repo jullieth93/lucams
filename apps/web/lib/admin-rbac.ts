@@ -221,8 +221,20 @@ export const ADMIN_ROLE_SETS = {
   RESENAS_READ: ALL_ROLES_ORDER.filter(
     (r) => hasCapability(r, "catalog:write") || hasCapability(r, "support:manage"),
   ),
+  /** Lectura analítica 0-PII y operativa de carritos abandonados (`CARTS_RECOVER` + `FINANCE_ANALYST`); recordatorios exclusivos `carts:recover`. */
+  CARTS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "carts:recover") || hasCapability(r, "finance:read"),
+  ),
   /** Recuperación de carritos abandonados (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   CARTS_RECOVER: rolesWithCapability("carts:recover"),
+  /** Gobierno global de recuperación de carritos (`SUPERADMIN`). */
+  CARTS_CONFIGURE: rolesWithCapability("carts:configure"),
+  /** Lectura analítica 0-PII y operativa de Lifecycle Journeys (`LIFECYCLE_MANAGE` + `FINANCE_ANALYST`); mutación exclusiva `lifecycle:manage`. */
+  LIFECYCLE_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "lifecycle:manage") || hasCapability(r, "finance:read"),
+  ),
+  /** Gestión y operación de Lifecycle Journeys (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
+  LIFECYCLE_MANAGE: rolesWithCapability("lifecycle:manage"),
   /** Cotizaciones y oportunidades B2B/eventos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   OPPORTUNITIES: rolesWithCapability("opportunities:manage"),
   /** Lectura de Contacto 360 (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
@@ -316,7 +328,7 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/clientes/duplicados", roles: rolesWithCapability("contacts:merge") },
   { prefix: "/admin/clientes", roles: rolesWithCapability("contacts:read_360") },
 
-  // Marketing y carritos abandonados
+  // Marketing y carritos abandonados (FINANCE_ANALYST accede en lectura 0-PII a Lifecycle y Carritos)
   {
     prefix: "/admin/marketing/suscriptores/export",
     roles: rolesWithCapability("marketing:export_csv"),
@@ -326,9 +338,21 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
     roles: rolesWithCapability("marketing:export_csv"),
   },
   { prefix: "/admin/marketing", roles: rolesWithCapability("marketing:read") },
-  { prefix: "/admin/lifecycle", roles: rolesWithCapability("lifecycle:manage") },
-  { prefix: "/admin/carritos/configuracion", roles: ["SUPERADMIN"] },
-  { prefix: "/admin/carritos", roles: rolesWithCapability("carts:recover") },
+  { prefix: "/admin/lifecycle/nuevo", roles: rolesWithCapability("lifecycle:manage") },
+  {
+    prefix: "/admin/lifecycle",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "lifecycle:manage") || hasCapability(r, "finance:read"),
+    ),
+  },
+  { prefix: "/admin/carritos/configuracion", roles: rolesWithCapability("carts:configure") },
+  { prefix: "/admin/carritos/enviar", roles: rolesWithCapability("carts:recover") },
+  {
+    prefix: "/admin/carritos",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "carts:recover") || hasCapability(r, "finance:read"),
+    ),
+  },
 
   // Finanzas, conciliación COD, costos y métricas (habilita FINANCE_ANALYST sin SUPERADMIN;
   // /admin/costos permite lectura a FINANCE_ANALYST + lectura/edición a catalog:write)
@@ -403,6 +427,12 @@ const ROUTE_PATTERN_ROLES: ReadonlyArray<{
     // habilita SHIPPING_GUIDE_PRINT y excluye PRINT_WORKSHOP y FINANCE_ANALYST.
     pattern: /^\/admin\/pedidos\/[^/?]+\/guia(?:$|[/?])/,
     roles: ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT,
+  },
+  {
+    // Vista previa HTML del correo de recuperación de carrito (Bloque 7 — paridad N-21 con preview/route.ts):
+    // contiene PII real del carrito, diseños personalizados y cupón del comprador → exclusivo `carts:recover`.
+    pattern: /^\/admin\/carritos\/[^/?]+\/preview(?:$|[/?])/,
+    roles: rolesWithCapability("carts:recover"),
   },
 ];
 

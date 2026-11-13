@@ -86,6 +86,10 @@ export async function listBlockedIdentities(): Promise<BlockedIdentityRow[]> {
   return prisma.blockedIdentity.findMany({ orderBy: { createdAt: "desc" } });
 }
 
+export async function getBlockedIdentityById(id: string): Promise<BlockedIdentityRow | null> {
+  return prisma.blockedIdentity.findUnique({ where: { id } });
+}
+
 export async function addBlockedIdentity(input: {
   kind: BlockedIdentityKind;
   value: string;

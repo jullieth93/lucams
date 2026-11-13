@@ -14,28 +14,37 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Wallet, ArrowLeft } from "lucide-react";
+import { Wallet, ArrowLeft, ShieldBan, Search, Clock, Users } from "lucide-react";
 import {
   AdminBadge,
   AdminCard,
+  AdminComboBarLineChart,
   AdminNotice,
   AdminEmpty,
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
+  AdminSegmentedBar,
   AdminTable,
   AdminTableHead,
   AdminTableBody,
   AdminTableRow,
 } from "@/components/admin-page";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import {
+  ADMIN_ROLE_SETS,
+  adminHomePath,
+  canAccessAdminPath,
+  hasCapability,
+} from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { maskEmail, maskEmailsInText } from "@/lib/pii-mask";
 import { getSettingValue } from "@/lib/cms";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import {
   listCodReconciliation,
   getCodReconciliationTotals,
+  getCodDailyPulse,
   type CodReconFilter,
   type CodReconStatus,
 } from "@/features/orders/cod-reconciliation";
@@ -50,6 +59,8 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+const SLA_AGING_DAYS = 7;
+
 const FILTERS: { value: CodReconFilter; label: string }[] = [
   { value: "all", label: "Todas" },
   { value: "pending", label: "Por remitir" },
@@ -63,7 +74,7 @@ const STATUS_META: Record<CodReconStatus, { label: string; tone: "amber" | "emer
   DISCREPANCY: { label: "Discrepancia", tone: "rose" },
 };
 
-type SearchParams = Promise<{ filter?: string; page?: string }>;
+type SearchParams = Promise<{ filter?: string; q?: string; page?: string }>;
 
 export default async function ConciliacionCodPage({
   searchParams,
@@ -71,7 +82,12 @@ export default async function ConciliacionCodPage({
   searchParams: SearchParams;
 }) {
   const session = await requireRole(ADMIN_ROLE_SETS.FINANCE_COD);
-  const isSuperadmin = session.admin.role === "SUPERADMIN";
+  const role = session.admin.role;
+  const isSuperadmin = role === "SUPERADMIN";
+  const canReadPii = hasCapability(role, "orders:read_pii");
+  const canViewContacts = canAccessAdminPath(role, "/admin/clientes");
+  const homeHref = adminHomePath(role);
+
   // Modo catálogo (Etapa 1): no hay pedidos contra entrega (sin checkout) —
   // el nav oculta Finanzas; esto cierra el acceso por URL directa.
   if (isCatalogMode()) redirect("/admin/dashboard");
@@ -81,17 +97,29 @@ export default async function ConciliacionCodPage({
   )
     ? (sp.filter as CodReconFilter)
     : "all";
+  const qRaw = typeof sp.q === "string" ? sp.q.trim() : "";
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
 
   // Estado del setting COD_ENABLED — mismo criterio fail-closed del checkout
   // (features/checkout/service.ts): solo el valor exacto "true" la habilita.
-  const [totals, list, codEnabledRaw] = await Promise.all([
+  const [totals, list, pulse, codEnabledRaw] = await Promise.all([
     getCodReconciliationTotals(),
-    listCodReconciliation({ filter, page }),
+    listCodReconciliation({ filter, q: qRaw, allowEmailSearch: canReadPii, page }),
+    getCodDailyPulse(14),
     getSettingValue("COD_ENABLED", "false"),
   ]);
   const codEnabled = codEnabledRaw === "true";
   const { items, total, totalPages } = list;
+  const nowMs = new Date().getTime();
+  const maxPulseCop = Math.max(0, ...pulse.map((b) => Math.max(b.deliveredCop, b.remittedCop)));
+  const totalOrdersAll = totals.pendingCount + totals.remittedCount + totals.discrepancyCount;
+
+  const filterCounts: Record<CodReconFilter, number> = {
+    all: totalOrdersAll,
+    pending: totals.pendingCount,
+    remitted: totals.remittedCount,
+    discrepancy: totals.discrepancyCount,
+  };
 
   return (
     <AdminPage>
@@ -100,10 +128,19 @@ export default async function ConciliacionCodPage({
         title="Conciliación contra entrega"
         subtitle="Efectivo de los pedidos contra entrega ya entregados: qué remesó el mensajero y qué falta"
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: homeHref },
           { label: "Finanzas", href: "/admin/finanzas" },
           { label: "Conciliación" },
         ]}
+        actions={
+          <Link
+            href="/admin/finanzas/bloqueos"
+            className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+          >
+            <ShieldBan className="h-3.5 w-3.5" />
+            Bloqueos COD
+          </Link>
+        }
       />
 
       <AdminPageBody>
@@ -150,8 +187,16 @@ export default async function ConciliacionCodPage({
 
         <AdminNotice tone="info">
           El efectivo de un pedido contra entrega lo cobra el mensajero al entregar y luego lo{" "}
-          <strong>remite</strong> a tu cuenta. Aquí marcas cuándo recibiste cada remesa. Lo que
-          sigue <strong>por remitir</strong> es plata que el mensajero ya cobró y aún te debe.
+          <strong>remite</strong> a tu cuenta. Aquí marcas cuándo recibiste cada remesa (requiere
+          confirmación MFA). Lo que sigue <strong>por remitir</strong> es plata que el mensajero ya
+          cobró y aún te debe.
+          {!canReadPii && (
+            <>
+              {" "}
+              <strong>Modo analítico:</strong> los correos de compradores se muestran enmascarados
+              por mínimo privilegio.
+            </>
+          )}
         </AdminNotice>
 
         {/* KPIs */}
@@ -199,38 +244,137 @@ export default async function ConciliacionCodPage({
           </AdminCard>
         </div>
 
-        {/* Filtro */}
+        {/* Pulso 14 días + salud de cartera COD */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <AdminCard className="p-5 lg:col-span-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-brand-purple-dark font-display text-sm font-bold">
+                Pulso 14 días: entregas COD vs remesas recibidas
+              </h2>
+              <span className="text-brand-muted text-xs">Hora Colombia (COT)</span>
+            </div>
+            <AdminComboBarLineChart
+              ariaLabel="Pulso de 14 días de efectivo contra entrega entregado vs remesado"
+              barLegend="Entregado al cliente (COP)"
+              lineLegend="Remesado a caja (COP)"
+              maxAxisFormatted={maxPulseCop > 0 ? formatCOP(maxPulseCop) : "$0"}
+              midAxisFormatted={
+                maxPulseCop > 0 ? formatCOP(Math.round(maxPulseCop / 2)) : undefined
+              }
+              data={pulse.map((b) => ({
+                key: b.key,
+                label: b.label,
+                tickLabel: b.tickLabel,
+                barValue: b.deliveredCop,
+                barFormatted: `${formatCOP(b.deliveredCop)} (${b.deliveredCount} ent.)`,
+                lineValue: b.remittedCop,
+                lineFormatted: `${formatCOP(b.remittedCop)} remesados`,
+              }))}
+            />
+          </AdminCard>
+
+          <AdminCard className="flex flex-col justify-between p-5 lg:col-span-2">
+            <div>
+              <h2 className="text-brand-purple-dark font-display mb-1 text-sm font-bold">
+                Balance acumulado de recaudo COD
+              </h2>
+              <p className="text-brand-muted mb-4 text-xs">
+                Distribución en pesos entre efectivo ya depositado, pendiente en calle y faltantes.
+              </p>
+              <AdminSegmentedBar
+                ariaLabel="Distribución acumulada del recaudo contra entrega"
+                items={[
+                  {
+                    key: "received",
+                    label: "Recibido",
+                    count: Math.round(totals.receivedCop / 100),
+                    tone: "emerald",
+                    href: "/admin/finanzas/conciliacion?filter=remitted",
+                    sublabel: formatCOP(totals.receivedCop),
+                  },
+                  {
+                    key: "pending",
+                    label: "Por remitir",
+                    count: Math.round(totals.pendingCop / 100),
+                    tone: "amber",
+                    href: "/admin/finanzas/conciliacion?filter=pending",
+                    sublabel: formatCOP(totals.pendingCop),
+                  },
+                  {
+                    key: "shortfall",
+                    label: "Faltante",
+                    count: Math.round(totals.shortfallCop / 100),
+                    tone: "rose",
+                    href: "/admin/finanzas/conciliacion?filter=discrepancy",
+                    sublabel: formatCOP(totals.shortfallCop),
+                  },
+                ]}
+              />
+            </div>
+            <div className="border-brand-purple/10 mt-4 rounded-lg border bg-slate-50/70 p-3 text-xs text-slate-600">
+              <strong className="text-brand-purple-dark">Regla SLA antifraude:</strong> toda entrega
+              que supere <strong>{SLA_AGING_DAYS} días</strong> sin remesa se resalta en rojo para
+              reclamar de inmediato a la transportadora o mensajero.
+            </div>
+          </AdminCard>
+        </div>
+
+        {/* Filtros por estado + buscador */}
         <form
           method="GET"
-          className="border-brand-purple/10 flex flex-wrap items-end gap-3 rounded-xl border bg-white p-4 shadow-sm"
+          className="border-brand-purple/10 flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4 shadow-sm"
         >
-          <div>
-            <label
-              htmlFor="f-filter"
-              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
-            >
-              Ver
-            </label>
-            <select
-              id="f-filter"
-              name="filter"
-              defaultValue={filter}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
-            >
-              {FILTERS.map((f) => (
-                <option key={f.value} value={f.value}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap gap-1.5">
+            {FILTERS.map((f) => {
+              const params = new URLSearchParams();
+              if (f.value !== "all") params.set("filter", f.value);
+              if (qRaw) params.set("q", qRaw);
+              const href = params.size
+                ? `/admin/finanzas/conciliacion?${params.toString()}`
+                : "/admin/finanzas/conciliacion";
+              const active = filter === f.value;
+              return (
+                <Link
+                  key={f.value}
+                  href={href}
+                  aria-current={active ? "true" : undefined}
+                  className={
+                    active
+                      ? "bg-brand-purple inline-flex min-h-9 items-center rounded-full px-3 py-1 text-xs font-semibold text-white"
+                      : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/50 inline-flex min-h-9 items-center rounded-full border bg-white px-3 py-1 text-xs font-semibold transition-colors"
+                  }
+                >
+                  {f.label} ({filterCounts[f.value]})
+                </Link>
+              );
+            })}
           </div>
-          <button
-            type="submit"
-            className="bg-gradient-brand h-9 rounded-md px-4 text-sm font-semibold text-white hover:brightness-110"
-          >
-            Aplicar
-          </button>
-          {filter !== "all" && (
+
+          <div className="flex min-w-56 flex-1 items-center gap-2 sm:max-w-xs">
+            {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
+            <div className="relative flex-1">
+              <Search className="text-brand-muted pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+              <input
+                type="search"
+                name="q"
+                defaultValue={qRaw}
+                placeholder={
+                  canReadPii
+                    ? "Pedido, guía, transportadora o email…"
+                    : "Pedido, guía o transportadora…"
+                }
+                className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white pr-3 pl-8 text-xs focus:ring-2 focus:outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              className="bg-gradient-brand h-9 rounded-md px-3 text-xs font-semibold text-white hover:brightness-110"
+            >
+              Buscar
+            </button>
+          </div>
+
+          {(filter !== "all" || qRaw) && (
             <Link
               href="/admin/finanzas/conciliacion"
               className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
@@ -249,15 +393,17 @@ export default async function ConciliacionCodPage({
         {items.length === 0 ? (
           <AdminEmpty
             icon={<Wallet className="h-5 w-5" />}
-            title={filter === "all" ? "Sin pedidos contra entrega entregados" : "Sin resultados"}
+            title={
+              filter === "all" && !qRaw ? "Sin pedidos contra entrega entregados" : "Sin resultados"
+            }
             description={
-              filter === "all"
+              filter === "all" && !qRaw
                 ? "Cuando entregues un pedido pagado contra entrega, aparecerá aquí para conciliar el efectivo."
-                : "Prueba con otro filtro."
+                : "Prueba limpiando el filtro de estado o ajustando tu búsqueda."
             }
           />
         ) : (
-          <AdminTable>
+          <AdminTable minWidth={760}>
             <AdminTableHead>
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Pedido</th>
@@ -271,16 +417,42 @@ export default async function ConciliacionCodPage({
             <AdminTableBody>
               {items.map((r) => {
                 const meta = STATUS_META[r.status];
+                const displayEmail = canReadPii ? r.email : maskEmail(r.email);
+                const displayReason =
+                  r.discrepancyReason != null
+                    ? canReadPii
+                      ? r.discrepancyReason
+                      : maskEmailsInText(r.discrepancyReason)
+                    : null;
+                const displayNote =
+                  r.note != null ? (canReadPii ? r.note : maskEmailsInText(r.note)) : null;
+                const ageDays =
+                  r.status === "PENDING_REMIT" && r.deliveredAt
+                    ? Math.floor((nowMs - r.deliveredAt.getTime()) / 86_400_000)
+                    : 0;
+                const isOverdueRemit = r.status === "PENDING_REMIT" && ageDays >= SLA_AGING_DAYS;
+
                 return (
                   <AdminTableRow key={r.orderId}>
                     <td className="px-4 py-3 align-top">
-                      <Link
-                        href={`/admin/pedidos/${encodeURIComponent(r.number)}`}
-                        className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-semibold underline"
-                      >
-                        {r.number}
-                      </Link>
-                      <div className="text-brand-muted text-xs">{r.email}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/admin/pedidos/${encodeURIComponent(r.number)}`}
+                          className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-semibold underline"
+                        >
+                          {r.number}
+                        </Link>
+                        {canViewContacts && r.contactId && (
+                          <Link
+                            href={`/admin/clientes/${encodeURIComponent(r.contactId)}`}
+                            className="bg-brand-purple/10 text-brand-purple-dark hover:bg-brand-purple/20 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors"
+                          >
+                            <Users className="h-2.5 w-2.5" />
+                            360°
+                          </Link>
+                        )}
+                      </div>
+                      <div className="text-brand-muted text-xs">{displayEmail}</div>
                       {r.trackingNumber && (
                         <div className="text-brand-muted font-mono text-[10px]">
                           {r.shippingCarrier ?? "guía"} · {r.trackingNumber}
@@ -288,16 +460,32 @@ export default async function ConciliacionCodPage({
                       )}
                     </td>
                     <td className="text-brand-muted px-4 py-3 align-top text-xs">
-                      {r.deliveredAt ? formatDateCO(r.deliveredAt) : "—"}
+                      <div>{r.deliveredAt ? formatDateCO(r.deliveredAt) : "—"}</div>
+                      {isOverdueRemit && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                          <Clock className="h-2.5 w-2.5" />
+                          Hace {ageDays} días sin remesa
+                        </span>
+                      )}
                     </td>
                     <td className="text-brand-purple-dark px-4 py-3 text-right align-top text-sm font-semibold tabular-nums">
                       {formatCOP(r.expectedAmount)}
                     </td>
                     <td className="px-4 py-3 align-top">
                       <AdminBadge tone={meta.tone}>{meta.label}</AdminBadge>
-                      {r.status === "DISCREPANCY" && r.discrepancyReason && (
-                        <div className="mt-1 max-w-40 text-[11px] text-rose-700">
-                          {r.discrepancyReason}
+                      {r.carrierRef && (
+                        <div className="text-brand-muted mt-1 font-mono text-[10px]">
+                          Ref: {r.carrierRef}
+                        </div>
+                      )}
+                      {r.status === "DISCREPANCY" && displayReason && (
+                        <div className="mt-1 max-w-44 text-[11px] text-rose-700">
+                          {displayReason}
+                        </div>
+                      )}
+                      {displayNote && (
+                        <div className="text-brand-muted mt-0.5 max-w-44 text-[11px]">
+                          Nota: {displayNote}
                         </div>
                       )}
                     </td>
@@ -343,12 +531,12 @@ export default async function ConciliacionCodPage({
             </span>
             <div className="flex gap-1">
               {page > 1 && (
-                <PageLink filter={filter} page={Math.min(page, totalPages + 1) - 1}>
+                <PageLink filter={filter} q={qRaw} page={Math.min(page, totalPages + 1) - 1}>
                   ← Anterior
                 </PageLink>
               )}
               {page < totalPages && (
-                <PageLink filter={filter} page={page + 1}>
+                <PageLink filter={filter} q={qRaw} page={page + 1}>
                   Siguiente →
                 </PageLink>
               )}
@@ -362,16 +550,19 @@ export default async function ConciliacionCodPage({
 
 function PageLink({
   filter,
+  q,
   page,
   children,
 }: {
   filter: CodReconFilter;
+  q?: string;
   page: number;
   children: React.ReactNode;
 }) {
   const params = new URLSearchParams();
   params.set("page", String(page));
   if (filter !== "all") params.set("filter", filter);
+  if (q) params.set("q", q);
   return (
     <Link
       href={`/admin/finanzas/conciliacion?${params.toString()}`}

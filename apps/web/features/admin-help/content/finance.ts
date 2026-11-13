@@ -39,16 +39,19 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
         topics: [
           {
             id: "periodo",
-            label: "Período",
-            description: "Define qué pedidos entran en el reporte.",
-            interpretation: "Verifica fechas y zona horaria antes de comparar con contabilidad.",
+            label: "Período (hora Colombia)",
+            description:
+              "Define qué pedidos entran en el reporte usando cortes exactos en zona America/Bogota (-05:00).",
+            interpretation:
+              "Los cortes de día y mes calendario usan siempre hora Colombia para cuadrar con contabilidad local.",
           },
           {
             id: "ingresos",
-            label: "Ingresos y totales",
-            description: "Agregados financieros de los registros incluidos.",
+            label: "Ingresos y puente de caja real",
+            description:
+              "Separa ingresos pagados en línea de recaudos contraentrega remitidos, en calle o con discrepancia.",
             interpretation:
-              "Revisa estados, devoluciones y medios de pago antes de interpretarlos como caja.",
+              "Revisa estados, devoluciones y el puente de caja COD antes de interpretarlos como saldo bancario.",
           },
           {
             id: "descuentos",
@@ -58,10 +61,11 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "export",
-            label: "Exportación CSV",
-            description: "Descarga el detalle para análisis o entrega contable.",
+            label: "Exportación CSV y protección PII",
+            description:
+              "Descarga el detalle contable con verificación MFA reciente (≤ 10 min) y protección contra fórmulas.",
             caution:
-              "Protege el archivo y comprueba que el filtro exportado sea el mismo que revisaste.",
+              "Para Analista Financiero el correo del comprador sale enmascarado por mínimo privilegio, preservando íntegros los campos fiscales DIAN (tipo/número documento, razón social y CUFE).",
           },
         ],
       },
@@ -72,14 +76,14 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
         title: "Preparar un reporte contable",
         goal: "Entregar un extracto completo y reproducible.",
         steps: [
-          "Selecciona el período y revisa su zona horaria.",
-          "Contrasta totales, estados y componentes del reporte.",
-          "Verifica conciliación COD y retractos relevantes por separado.",
-          "Exporta el CSV y comprueba columnas, registros y totales.",
+          "Selecciona el período verificando el corte en hora Colombia (COT).",
+          "Contrasta totales, puente de caja real, conciliación COD y retractos del período.",
+          "Pulsa Exportar CSV y confirma tu código MFA si han pasado más de 10 minutos.",
+          "Comprueba columnas fiscales DIAN, registros y totales antes de compartir.",
           "Entrega el archivo por un canal autorizado indicando período y fecha de corte.",
         ],
         expected:
-          "Contabilidad recibe un archivo consistente con la revisión y sus criterios de corte.",
+          "Contabilidad recibe un archivo consistente con la revisión, zona horaria Colombia y mínimo privilegio.",
       },
     ],
     cautions: [
@@ -91,10 +95,15 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
         answer:
           "Compara períodos, estados y definiciones; Finanzas es la fuente especializada para el reporte financiero.",
       },
+      {
+        question: "¿Por qué veo el correo del comprador enmascarado en el CSV?",
+        answer:
+          "El rol Analista Financiero recibe los campos tributarios DIAN completos para conciliación contable, mientras el correo comercial se enmascara por protección de datos personales.",
+      },
     ],
     related: ["conciliacion", "costos", "metricas", "pedidos"],
-    keywords: ["ingresos", "CSV", "contabilidad", "descuentos", "fletes", "reporte"],
-    version: 1,
+    keywords: ["ingresos", "CSV", "contabilidad", "descuentos", "fletes", "reporte", "DIAN"],
+    version: 2,
   },
   {
     id: "conciliacion",
@@ -152,9 +161,11 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "fecha",
-            label: "Fecha de conciliación",
-            description: "Momento en que se verificó el registro.",
-            interpretation: "No la confundas con fecha de entrega ni de transferencia bancaria.",
+            label: "Antigüedad y confirmación MFA",
+            description:
+              "Destaca entregas con más de 7 días sin remesa y exige MFA reciente (≤ 10 min) al conciliar.",
+            interpretation:
+              "Prioriza las entregas envejecidas (> 7 días) antes de que cierre el ciclo de liquidación del carrier.",
           },
         ],
       },
@@ -165,15 +176,14 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
         title: "Conciliar una remesa COD",
         goal: "Cerrar valores verificados y aislar diferencias.",
         steps: [
-          "Obtén el reporte de la transportadora y selecciona los pedidos correspondientes.",
-          "Verifica que estén entregados y contrasta el valor esperado.",
-          "Registra remesa, referencia y fecha con los datos reales.",
-          "Marca conciliados únicamente los valores que coinciden o tienen soporte suficiente.",
-          "Documenta discrepancias y escala el caso conservando comprobantes.",
-          "Comprueba los pendientes restantes y el total conciliado.",
+          "Obtén el reporte de la transportadora y filtra por número de pedido o guía.",
+          "Verifica entregas pendientes, especialmente aquellas con alerta de más de 7 días sin remesa.",
+          "Registra el valor efectivamente recibido o reporta discrepancia completando la reautenticación MFA.",
+          "Documenta discrepancias con soporte verificable y escala al carrier o a Bloqueos COD si hubo abuso.",
+          "Comprueba el pulso de 14 días y el balance acumulado de recaudo.",
         ],
         expected:
-          "Cada pedido COD queda conciliado con evidencia o pendiente con una diferencia explícita.",
+          "Cada pedido COD queda conciliado con evidencia MFA o marcado con diferencia explícita en Pedidos.",
       },
     ],
     cautions: ["Entrega, recaudo por el mensajero y recepción bancaria son eventos distintos."],
@@ -185,7 +195,7 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     ],
     related: ["finanzas", "bloqueos", "pedidos", "envios"],
     keywords: ["COD", "remesa", "contraentrega", "discrepancia", "recaudo", "carrier"],
-    version: 1,
+    version: 2,
   },
   {
     id: "bloqueos",
@@ -194,11 +204,11 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     route: "/admin/finanzas/bloqueos",
     summary: "Restricciones antifraude de identidades para la modalidad de pago contraentrega.",
     purpose:
-      "Impide ofrecer COD a señales de identidad con antecedentes de abuso, sin bloquear necesariamente otros medios de pago. Los identificadores se gestionan de forma normalizada y protegida.",
+      "Impide ofrecer COD a señales de identidad con antecedentes de abuso, sin bloquear pagos anticipados en línea. Exige confirmación MFA reciente (≤ 10 min) para agregar o levantar bloqueos y enmascara PII en roles analíticos.",
     whenToUse: [
       "Al confirmar abuso reiterado o incumplimiento COD.",
       "Para revisar si una identidad está restringida.",
-      "Para levantar un bloqueo con evidencia y autorización.",
+      "Para levantar un bloqueo con evidencia y autorización MFA.",
     ],
     concepts: [
       {
@@ -215,27 +225,28 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
       {
         id: "restriccion",
         title: "Gestión de bloqueos",
-        summary: "Registra alcance, motivo y estado de la restricción.",
+        summary: "Registra alcance, motivo y estado de la restricción con MFA reciente.",
         topics: [
           {
             id: "tipo",
             label: "Tipo de identidad",
             description:
-              "Define si la regla aplica a correo, teléfono, dirección u otra señal admitida.",
+              "Define si la regla aplica a correo, teléfono o dirección con ciudad normalizada.",
             interpretation: "Selecciona la señal respaldada por la evidencia.",
           },
           {
             id: "motivo",
-            label: "Motivo",
-            description: "Explica el antecedente que justifica el bloqueo.",
+            label: "Motivo y auditoría",
+            description:
+              "Explica el antecedente que justifica el bloqueo y queda trazado en Auditoría con PII enmascarado.",
             caution: "Registra hechos verificables y evita datos o calificativos innecesarios.",
           },
           {
             id: "alcance",
             label: "Solo contraentrega",
-            description: "La restricción impide COD, no necesariamente pagos en línea.",
+            description: "La restricción impide COD, no pagos verificados en línea con Wompi.",
             interpretation:
-              "No prometas un bloqueo total de compra si el sistema solo restringe este medio.",
+              "No prometas un bloqueo total de compra: el sistema solo restringe el riesgo de recaudo en efectivo.",
           },
         ],
       },
@@ -246,13 +257,14 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
         title: "Registrar o retirar un bloqueo",
         goal: "Aplicar una medida antifraude proporcional y revisable.",
         steps: [
-          "Revisa pedidos y evidencia del incumplimiento.",
-          "Verifica que la identidad no esté ya bloqueada.",
-          "Registra tipo, valor y motivo o retira la restricción si existe una decisión sustentada.",
-          "Comprueba que el checkout oculte COD para la señal correspondiente.",
-          "Conserva la trazabilidad y escala cualquier colisión con otra persona.",
+          "Revisa pedidos y evidencia del incumplimiento en Conciliación COD o Pedidos.",
+          "Verifica que la identidad no esté ya registrada.",
+          "Ingresa tipo, valor y motivo (o pulsa Desbloquear) y confirma con MFA reciente (≤ 10 min).",
+          "Comprueba que el registro quede listado y trazado en Auditoría.",
+          "Escala cualquier homonimia o dirección compartida.",
         ],
-        expected: "La restricción se aplica solo a la identidad y modalidad previstas.",
+        expected:
+          "La restricción se aplica solo a la identidad y modalidad previstas con trazabilidad MFA.",
       },
     ],
     cautions: [
@@ -261,12 +273,13 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
     faqs: [
       {
         question: "¿La persona puede pagar en línea?",
-        answer: "El bloqueo COD no elimina por sí solo otros medios de pago disponibles.",
+        answer:
+          "Sí. El bloqueo COD oculta contraentrega pero mantiene habilitados los medios en línea.",
       },
     ],
     related: ["conciliacion", "pedidos", "finanzas"],
-    keywords: ["fraude", "COD", "bloqueo", "lista negra", "teléfono", "dirección"],
-    version: 1,
+    keywords: ["fraude", "COD", "bloqueo", "lista negra", "teléfono", "dirección", "MFA"],
+    version: 2,
   },
   {
     id: "metricas",

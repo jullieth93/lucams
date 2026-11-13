@@ -12,49 +12,50 @@ import type { RevenueRow } from "./service";
 import {
   aggregateByPaymentMethod,
   aggregateRevenueBuckets,
+  buildAccountingOrdersCsv,
   computeAov,
   computeNetCollectedRevenue,
   pctChange,
   resolvePeriodRange,
 } from "./service";
 
-const NOW = new Date(2026, 8, 18, 15, 30); // 18 sep 2026, 15:30 local
+const NOW = new Date("2026-09-18T15:30:00.000-05:00"); // 18 sep 2026, 15:30 hora Colombia (-05:00)
 
 function row(total: number, createdAt: Date, paymentMethod: "WOMPI" | "COD" = "WOMPI"): RevenueRow {
   return { total, paymentMethod, createdAt };
 }
 
 describe("resolvePeriodRange", () => {
-  it("7d arranca hace 6 días a las 00:00 (7 buckets incluyendo hoy)", () => {
+  it("7d arranca hace 6 días a las 00:00 hora Colombia (-05:00) — 7 buckets incluyendo hoy", () => {
     const range = resolvePeriodRange("7d", NOW);
-    expect(range.from).toEqual(new Date(2026, 8, 12));
+    expect(range.from).toEqual(new Date("2026-09-12T00:00:00.000-05:00"));
     expect(range.to).toBe(NOW);
     expect(range.bucket).toBe("day");
     // Ventana anterior: los 7 días previos, pegada a la actual.
     expect(range.previousTo).toEqual(range.from);
-    expect(range.previousFrom).toEqual(new Date(2026, 8, 5));
+    expect(range.previousFrom).toEqual(new Date("2026-09-05T00:00:00.000-05:00"));
   });
 
   it("90d usa buckets semanales", () => {
     expect(resolvePeriodRange("90d", NOW).bucket).toBe("week");
   });
 
-  it("mes va del 1.º a hoy y el anterior es el mes calendario completo", () => {
+  it("mes va del 1.º a las 00:00 COT a hoy y el anterior es el mes calendario completo en COT", () => {
     const range = resolvePeriodRange("mes", NOW);
-    expect(range.from).toEqual(new Date(2026, 8, 1));
-    expect(range.previousFrom).toEqual(new Date(2026, 7, 1));
-    expect(range.previousTo).toEqual(new Date(2026, 8, 1));
+    expect(range.from).toEqual(new Date("2026-09-01T00:00:00.000-05:00"));
+    expect(range.previousFrom).toEqual(new Date("2026-08-01T00:00:00.000-05:00"));
+    expect(range.previousTo).toEqual(new Date("2026-09-01T00:00:00.000-05:00"));
   });
 });
 
 describe("aggregateRevenueBuckets", () => {
-  it("suma por día y rellena con cero los días sin ventas", () => {
+  it("suma por día calendario Colombia (-05:00) y rellena con cero los días sin ventas", () => {
     const range = resolvePeriodRange("7d", NOW);
     const buckets = aggregateRevenueBuckets(
       [
-        row(100_00, new Date(2026, 8, 12, 10)),
-        row(50_00, new Date(2026, 8, 12, 20)),
-        row(200_00, new Date(2026, 8, 18, 9)),
+        row(100_00, new Date("2026-09-12T10:00:00.000-05:00")),
+        row(50_00, new Date("2026-09-12T21:30:00.000-05:00")), // 02:30Z del 13 sep → sigue siendo 12 sep en Bogotá
+        row(200_00, new Date("2026-09-18T09:00:00.000-05:00")),
       ],
       range,
     );
@@ -67,7 +68,10 @@ describe("aggregateRevenueBuckets", () => {
 
   it("ignora filas fuera de la ventana (anteriores al from)", () => {
     const range = resolvePeriodRange("7d", NOW);
-    const buckets = aggregateRevenueBuckets([row(999_00, new Date(2026, 8, 1))], range);
+    const buckets = aggregateRevenueBuckets(
+      [row(999_00, new Date("2026-09-01T10:00:00.000-05:00"))],
+      range,
+    );
     expect(buckets.reduce((acc, b) => acc + b.totalCents, 0)).toBe(0);
   });
 
@@ -138,5 +142,45 @@ describe("computeNetCollectedRevenue ([FIN-01])", () => {
       retractRefundedCents: 1_500_000,
     });
     expect(res.netCollectedCents).toBe(0);
+  });
+});
+
+describe("buildAccountingOrdersCsv — A1 redacción selectiva de PII preservando campos DIAN", () => {
+  it("enmascara email_comprador cuando redactBuyerEmail=true y conserva datos fiscales DIAN", () => {
+    const sample = [
+      {
+        number: "LCM-2026-0500",
+        createdAt: new Date("2026-09-18T14:00:00.000-05:00"),
+        status: "PAID" as const,
+        paymentMethod: "WOMPI" as const,
+        subtotalCents: 5_000_000,
+        discountCents: 0,
+        loyaltyDiscountCents: 0,
+        shippingCents: 0,
+        taxCents: 0,
+        totalCents: 5_000_000,
+        retractRefundedCents: 0,
+        wompiReference: "LCM-2026-0500",
+        wompiTransactionId: "tx_500",
+        codStatus: null,
+        codRemittedCents: null,
+        billingDocumentType: "NIT" as const,
+        billingDocumentNumber: "901234567-8",
+        billingName: "Inversiones Andinas SAS",
+        dianStatus: "ACCEPTED" as const,
+        dianCufe: "cufe_abc_123",
+        email: "comprador@empresa.co",
+      },
+    ];
+
+    const redacted = buildAccountingOrdersCsv(sample, { redactBuyerEmail: true });
+    expect(redacted).not.toContain("comprador@empresa.co");
+    expect(redacted).toContain("NIT");
+    expect(redacted).toContain("901234567-8");
+    expect(redacted).toContain("Inversiones Andinas SAS");
+    expect(redacted).toContain("cufe_abc_123");
+
+    const full = buildAccountingOrdersCsv(sample, { redactBuyerEmail: false });
+    expect(full).toContain("comprador@empresa.co");
   });
 });

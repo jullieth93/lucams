@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { MfaReauthModal } from "@/components/admin/mfa-reauth";
+import { formatIsoDateCO } from "@/lib/datetime";
 import type { CrmSegmentKey } from "@/features/crm/segments-service";
 
 function parseFilename(disposition: string | null, segment: CrmSegmentKey): string {
-  const fallback = `segmento-${segment}-${new Date().toISOString().slice(0, 10)}.csv`;
+  const fallback = `segmento-${segment}-${formatIsoDateCO(new Date())}.csv`;
   if (!disposition) return fallback;
   const match = /filename="?([^";]+)"?/i.exec(disposition);
   return match?.[1] ?? fallback;

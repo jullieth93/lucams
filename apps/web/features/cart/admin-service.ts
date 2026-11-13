@@ -13,8 +13,8 @@
  */
 
 import "server-only";
-import type { Prisma } from "@lucams/db";
-import { prisma } from "@/lib/db";
+import { prisma, Prisma } from "@/lib/db";
+import { formatDayMonthCO, formatIsoDateCO } from "@/lib/datetime";
 import { designDisplayUnits } from "@/features/personalization/design-units";
 import {
   parseAbandonedItemsSnapshot,
@@ -61,12 +61,15 @@ export type AbandonedCartListItem = {
   totalCents: number;
   /** Nombres de producto (hasta 3) para el resumen de la fila. */
   productNames: string[];
+  /** Indica si el correo registra rebote duro o queja de spam en `EmailEvent` (Resend). */
+  bouncedOrComplained: boolean;
 };
 
 const PAGE_SIZE = 25;
 
 type ListOpts = {
   q?: string;
+  allowPiiSearch?: boolean;
   status?: AbandonedCartStatus | "all";
   page?: number;
 };
@@ -103,12 +106,28 @@ const OPEN_CART_WHERE: Prisma.AbandonedCartWhereInput = {
 /** WHERE compartido entre el listado y el conteo. */
 function buildWhere(opts: ListOpts): Prisma.AbandonedCartWhereInput {
   const status = opts.status ?? "all";
-  const searchFilter: Prisma.AbandonedCartWhereInput = opts.q
+  const allowPiiSearch = opts.allowPiiSearch ?? true;
+  const trimmedQ = opts.q?.trim();
+  const searchFilter: Prisma.AbandonedCartWhereInput = trimmedQ
     ? {
-        OR: [
-          { email: { contains: opts.q, mode: "insensitive" } },
-          { contact: { displayName: { contains: opts.q, mode: "insensitive" } } },
-        ],
+        OR: allowPiiSearch
+          ? [
+              { email: { contains: trimmedQ, mode: "insensitive" } },
+              { contact: { displayName: { contains: trimmedQ, mode: "insensitive" } } },
+              { recoveredOrder: { number: { contains: trimmedQ, mode: "insensitive" } } },
+            ]
+          : [
+              { recoveredOrder: { number: { contains: trimmedQ, mode: "insensitive" } } },
+              {
+                cart: {
+                  items: {
+                    some: {
+                      variant: { product: { name: { contains: trimmedQ, mode: "insensitive" } } },
+                    },
+                  },
+                },
+              },
+            ],
       }
     : {};
 
@@ -194,7 +213,21 @@ const LIST_SELECT = {
 
 type ListRow = Prisma.AbandonedCartGetPayload<{ select: typeof LIST_SELECT }>;
 
-function toListItem(row: ListRow): AbandonedCartListItem {
+async function resolveBouncedEmails(emails: string[]): Promise<Set<string>> {
+  const normalized = [
+    ...new Set(emails.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0)),
+  ];
+  if (normalized.length === 0) return new Set();
+  const rows = await prisma.$queryRaw<Array<{ email_lower: string }>>`
+    SELECT DISTINCT LOWER("to") AS email_lower
+    FROM "EmailEvent"
+    WHERE "type" IN ('email.bounced', 'email.complained')
+      AND LOWER("to") IN (${Prisma.join(normalized)})
+  `;
+  return new Set(rows.map((r) => r.email_lower));
+}
+
+function toListItem(row: ListRow, bouncedSet: Set<string>): AbandonedCartListItem {
   const status = classifyStatus(row);
   const snap = parseAbandonedItemsSnapshot(row.itemsSnapshot);
   const hasLiveItems = row.cart.items.length > 0;
@@ -237,6 +270,7 @@ function toListItem(row: ListRow): AbandonedCartListItem {
     itemCount,
     totalCents,
     productNames,
+    bouncedOrComplained: bouncedSet.has(row.email.trim().toLowerCase()),
   };
 }
 
@@ -257,8 +291,9 @@ export async function listAbandonedCartsAdmin(opts: ListOpts): Promise<{
     }),
     prisma.abandonedCart.count({ where }),
   ]);
+  const bouncedSet = await resolveBouncedEmails(rows.map((r) => r.email));
   return {
-    items: rows.map(toListItem),
+    items: rows.map((r) => toListItem(r, bouncedSet)),
     total,
     totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
   };
@@ -311,6 +346,7 @@ export type AbandonedCartDetail = {
     displayName: string | null;
     whatsappPhone: string | null;
   } | null;
+  bouncedOrComplained: boolean;
   linkedOrders: AbandonedCartDiagnosticOrder[];
   linkedQuotes: AbandonedCartDiagnosticQuote[];
 };
@@ -542,6 +578,7 @@ export async function getAbandonedCartDetail(id: string): Promise<AbandonedCartD
 
   const effectiveStep =
     row.checkoutStep ?? (ordersRaw.length > 0 ? "PAGO" : row.email ? "DATOS" : null);
+  const bouncedSet = await resolveBouncedEmails([row.email]);
 
   return {
     id: row.id,
@@ -570,6 +607,7 @@ export async function getAbandonedCartDetail(id: string): Promise<AbandonedCartD
           whatsappPhone: waIdentity ?? null,
         }
       : null,
+    bouncedOrComplained: bouncedSet.has(row.email.trim().toLowerCase()),
     linkedOrders,
     linkedQuotes,
   };
@@ -657,4 +695,80 @@ export async function getCartRecoveryMetrics(): Promise<CartRecoveryMetrics> {
     recoveryRatePct: contacted > 0 ? Math.round((recovered / contacted) * 100) : null,
     recoveredValueCents: Number(recoveredSumRows[0]?.total ?? BigInt(0)),
   };
+}
+
+export type CartRecoveryDailyBucket = {
+  key: string;
+  label: string;
+  tickLabel: string;
+  detectedCount: number;
+  recoveredCount: number;
+  recoveredValueCents: number;
+};
+
+/**
+ * Pulso diario de 14 días (hora Colombia `-05:00`) para `/admin/carritos`:
+ * carritos abandonados detectados vs recuperados pagados por día calendario COT.
+ */
+export async function getCartRecoveryDailyPulse(days = 14): Promise<CartRecoveryDailyBucket[]> {
+  const safeDays = Math.max(1, Math.min(90, Math.floor(days)));
+  const todayIso = formatIsoDateCO(new Date());
+  const noonToday = new Date(`${todayIso}T12:00:00.000-05:00`);
+  const buckets: CartRecoveryDailyBucket[] = [];
+  const byKey = new Map<string, CartRecoveryDailyBucket>();
+
+  for (let i = safeDays - 1; i >= 0; i--) {
+    const d = new Date(noonToday.getTime() - i * 86_400_000);
+    const key = formatIsoDateCO(d);
+    const bucket: CartRecoveryDailyBucket = {
+      key,
+      label: formatDayMonthCO(d),
+      tickLabel: `${key.slice(8)}/${key.slice(5, 7)}`,
+      detectedCount: 0,
+      recoveredCount: 0,
+      recoveredValueCents: 0,
+    };
+    buckets.push(bucket);
+    byKey.set(key, bucket);
+  }
+
+  const firstKey = buckets[0]?.key ?? todayIso;
+  const since = new Date(`${firstKey}T00:00:00.000-05:00`);
+
+  const [detectedRows, recoveredRows] = await Promise.all([
+    prisma.abandonedCart.findMany({
+      where: { createdAt: { gte: since } },
+      select: { createdAt: true },
+    }),
+    prisma.abandonedCart.findMany({
+      where: {
+        OR: [
+          { recoveredAt: { gte: since } },
+          { recoveredAt: null, closedReason: "ORDER_PAID", updatedAt: { gte: since } },
+        ],
+      },
+      select: {
+        recoveredAt: true,
+        updatedAt: true,
+        subtotalCents: true,
+        recoveredOrder: { select: { total: true } },
+      },
+    }),
+  ]);
+
+  for (const row of detectedRows) {
+    const b = byKey.get(formatIsoDateCO(row.createdAt));
+    if (b) b.detectedCount += 1;
+  }
+
+  for (const row of recoveredRows) {
+    const ts = row.recoveredAt ?? row.updatedAt;
+    const b = byKey.get(formatIsoDateCO(ts));
+    if (b) {
+      b.recoveredCount += 1;
+      b.recoveredValueCents += row.recoveredOrder?.total ?? row.subtotalCents ?? 0;
+    }
+  }
+
+  return buckets;
 }

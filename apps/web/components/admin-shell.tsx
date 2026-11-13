@@ -46,6 +46,8 @@ import {
   ArrowUpRight,
   Users,
   FileText,
+  Workflow,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import { adminLogoutAction } from "@/app/auth/logout/actions";
@@ -867,6 +869,33 @@ function AdminCommandPalette({
           "Cola de posibles duplicados de Contact 360 con confirmación MFA para fusionar o descartar.",
         href: "/admin/clientes/duplicados",
         icon: Users,
+      });
+    }
+    if (
+      !seen.has("/admin/carritos/configuracion") &&
+      canAccessAdminPath(role, "/admin/carritos/configuracion")
+    ) {
+      seen.add("/admin/carritos/configuracion");
+      items.push({
+        key: "/admin/carritos/configuracion",
+        label: "Configuración de recuperación de carritos",
+        group: "Marketing",
+        description:
+          "Interruptor general, modo automático/manual y ritmos de recordatorio (exclusivo Superadmin con MFA).",
+        href: "/admin/carritos/configuracion",
+        icon: SlidersHorizontal,
+      });
+    }
+    if (!seen.has("/admin/lifecycle/nuevo") && canAccessAdminPath(role, "/admin/lifecycle/nuevo")) {
+      seen.add("/admin/lifecycle/nuevo");
+      items.push({
+        key: "/admin/lifecycle/nuevo",
+        label: "Nuevo recorrido Lifecycle",
+        group: "Marketing",
+        description:
+          "Crear un nuevo recorrido automatizado de activación, recompra, reactivación o seguimiento B2B.",
+        href: "/admin/lifecycle/nuevo",
+        icon: Workflow,
       });
     }
     if (

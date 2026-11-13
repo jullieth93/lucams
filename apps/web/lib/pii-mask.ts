@@ -111,6 +111,28 @@ export function maskPersonName(raw: string | null | undefined): string {
 }
 
 /**
+ * Enmascara una identidad de la lista de bloqueo contraentrega (`BlockedIdentity`)
+ * para perfiles analíticos sin permiso `orders:read_pii` (`FINANCE_ANALYST`).
+ */
+export function maskBlockedIdentityValue(
+  kind: "EMAIL" | "PHONE" | "ADDRESS" | string,
+  raw: string | null | undefined,
+): string {
+  const value = (raw ?? "").trim();
+  if (!value) return "—";
+  if (kind === "EMAIL") return maskEmail(value);
+  if (kind === "PHONE") return maskPhone(value);
+  // Clave normalizada de dirección (ej. "bogota:calle 123 45 67" o texto libre):
+  // preserva prefijo geográfico si viene separado por ":" o "|" y protege nomenclatura.
+  const sepIdx = value.search(/[:|]/);
+  if (sepIdx > 0 && sepIdx < 32) {
+    const cityPrefix = value.slice(0, sepIdx).trim();
+    return `${cityPrefix} · [dirección protegida]`;
+  }
+  return MASKED_ADDRESS_LINE;
+}
+
+/**
  * Enmascara un snapshot JSON de dirección de envío (`Order.shippingAddress`)
  * preservando ciudad y departamento para contexto logístico general sin exponer
  * dirección exacta, documento, email ni teléfonos.

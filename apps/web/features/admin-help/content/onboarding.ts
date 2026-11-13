@@ -191,8 +191,8 @@ export const ONBOARDING_GUIDES: AdminOnboardingGuide[] = [
     role: "FINANCE_ANALYST",
     title: "Ruta de Analista Financiero",
     summary:
-      "Finanzas, conciliación COD, bloqueos, costos, pasivos posventa, métricas y exportaciones.",
-    version: 2,
+      "Finanzas, conciliación COD, bloqueos, costos, pasivos posventa, atribución comercial 0-PII y exportaciones.",
+    version: 3,
     moduleIds: [
       "finanzas",
       "conciliacion",
@@ -200,6 +200,8 @@ export const ONBOARDING_GUIDES: AdminOnboardingGuide[] = [
       "costos",
       "retractos",
       "garantias",
+      "carritos",
+      "lifecycle",
       "metricas",
       "pedidos",
       "hoy",
