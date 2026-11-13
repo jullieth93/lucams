@@ -18,6 +18,7 @@ import type { Page } from "@playwright/test";
 import { dismissCookieBanner, E2E_ENV, expect, test } from "./fixtures/auth";
 import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
+import { PRICE_RANGES } from "@/lib/recomendador-options";
 
 const EVIDENCE_DIR = resolve(__dirname, "../../tmp/e2e-homologacion");
 
@@ -62,6 +63,23 @@ test("recomendador: 4 pasos con foco → resultados reales → vacío con salida
     orderBy: { products: { _count: "desc" } },
   });
   expect(ocasion, "ocasión real con productos").not.toBeNull();
+  const prices = await db().productVariant.findMany({
+    where: {
+      deletedAt: null,
+      isActive: true,
+      price: { not: null },
+      product: {
+        deletedAt: null,
+        isActive: true,
+        ocasionTags: { some: { ocasionTag: { slug: ocasion!.slug } } },
+      },
+    },
+    select: { price: true },
+  });
+  const budgetIndex = PRICE_RANGES.findIndex((range) =>
+    prices.some((variant) => variant.price! >= range.min && variant.price! <= range.max),
+  );
+  expect(budgetIndex, "rango de precio con match real para la ocasión").toBeGreaterThanOrEqual(0);
 
   const h2 = (text: RegExp) => anonPage.getByRole("heading", { name: text, level: 2 });
   const expectStepFocus = async (text: RegExp) => {
@@ -87,10 +105,8 @@ test("recomendador: 4 pasos con foco → resultados reales → vacío con salida
 
     await expectStepFocus(/cuánto quieres gastar/i);
     await expect(anonPage).toHaveURL(/paso=3/);
-    // "Menos de $30k" (primera opción): el catálogo concentra sus productos
-    // activos bajo $30k — garantiza match real con la ocasión elegida (verificado
-    // contra la DB: ≥5 productos de Cumpleaños solapan el rango).
-    await anonPage.locator("div.grid button[aria-pressed]").first().click();
+    // Presupuesto derivado de variantes reales de la ocasión elegida.
+    await anonPage.locator("div.grid button[aria-pressed]").nth(budgetIndex).click();
     await anonPage.getByRole("button", { name: /siguiente/i }).click();
 
     await expectStepFocus(/personalizable o listo/i);

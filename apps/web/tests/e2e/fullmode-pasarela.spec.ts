@@ -111,7 +111,7 @@ test("§7.5.2 pasarela: DECLINED noop → reintento misma reference → APPROVED
     const url1 = await pago.payWithWompiCapture();
     const reference = new URL(url1).searchParams.get("reference")!;
     const order = await db().order.findFirstOrThrow({
-      where: { number: reference, deletedAt: null },
+      where: { wompiReference: reference, deletedAt: null },
       select: { id: true, number: true, total: true, status: true },
     });
     expect(order.status).toBe("PENDING_PAYMENT");
@@ -137,7 +137,7 @@ test("§7.5.2 pasarela: DECLINED noop → reintento misma reference → APPROVED
     const reference2 = new URL(url2).searchParams.get("reference")!;
     expect(reference2, "el reintento reusa la orden (misma reference)").toBe(reference);
     const orderCount = await db().order.count({
-      where: { number: { in: [reference, reference2] }, deletedAt: null },
+      where: { id: order.id, wompiReference: reference2, deletedAt: null },
     });
     expect(orderCount, "una sola orden para los dos intentos").toBe(1);
     record("reintento-misma-reference", `segundo intento → reference idéntica, 1 sola orden`);

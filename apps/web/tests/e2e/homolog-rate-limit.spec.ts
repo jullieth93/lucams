@@ -310,12 +310,15 @@ test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4
         await form
           .locator("#contact-message")
           .fill(`Mensaje ${i}/4 de homologación rate-limit ${run}.`);
+        await form.locator('input[name="dataConsent"]').check();
         await expect(form.locator("#contact-message")).not.toHaveValue("", { timeout: 1_500 });
+        await expect(form.locator('input[name="dataConsent"]')).toBeChecked({ timeout: 1_500 });
       }).toPass({ timeout: 20_000 });
       await expect(async () => {
         const token = await form.locator('input[name="cf-turnstile-response"]').inputValue();
         expect(token.length).toBeGreaterThan(0);
       }).toPass({ timeout: 20_000 });
+      await anonPage.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
       await form.getByRole("button", { name: /enviar/i }).click();
       if (i <= 3) {
         await expect(anonPage.locator("body")).toContainText(/recibimos tu mensaje/i, {
@@ -468,9 +471,8 @@ test("csrf §6.21: server action con origen adulterado rechazada + CORS estricto
     // Este test solo usa `request` (sin páginas) → limpiar lo vuelve determinista.
     await cleanBuckets("vitals");
     // Action id sintético (40 hex, formato real). Con origen adulterado el
-    // request muere ANTES del dispatcher; con origen correcto llega y el
-    // dispatcher responde 404 (action inexistente) — el contraste prueba que
-    // el chequeo de origen corre primero.
+    // request muere ANTES del dispatcher; con origen correcto Next 16 valida
+    // el ID inexistente y responde 400 — el contraste prueba que el origen corre primero.
     const fakeActionId = `7f${"0".repeat(38)}`;
     const evil = await request.post("/login", {
       headers: {
@@ -499,7 +501,10 @@ test("csrf §6.21: server action con origen adulterado rechazada + CORS estricto
       },
       data: "[]",
     });
-    expect(good.status(), "mismo request con buen origen → llega al dispatcher (404)").toBe(404);
+    expect(good.status(), "mismo request con buen origen → Next valida el ID inexistente").toBe(
+      400,
+    );
+    expect(await good.text()).toContain("Invalid Server Action request");
     const bucketsAfter = await bucketCounts("login");
     expect(
       bucketsAfter.length,

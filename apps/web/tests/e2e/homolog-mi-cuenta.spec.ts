@@ -100,7 +100,7 @@ test("mi-cuenta · perfil: editar nombre/teléfono → persistido en DB", async 
   resultsPath = resolve(EVIDENCE_DIR, `results-${E2E_ENV}-${projectName}-${run}.json`);
   try {
     const customer = await ephemeralCustomer();
-    const newFirst = `Prueba${run.slice(-4)}`;
+    const newFirst = "Prueba";
     const newPhone = `300${run.replace(/\D/g, "").slice(-7)}`;
 
     await clientPage.goto("/mi-cuenta/perfil", { waitUntil: "domcontentloaded" });
@@ -111,7 +111,9 @@ test("mi-cuenta · perfil: editar nombre/teléfono → persistido en DB", async 
       await firstName.fill(newFirst);
       await phone.fill(newPhone);
       await expect(firstName).toHaveValue(newFirst, { timeout: 1_500 });
-      await expect(phone).toHaveValue(newPhone, { timeout: 1_500 });
+      await expect(phone).toHaveValue(newPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1 $2 $3"), {
+        timeout: 1_500,
+      });
     }).toPass({ timeout: 20_000 });
     await clientPage.getByRole("button", { name: /guardar/i }).click();
     await expect(clientPage.locator("body")).toContainText(/perfil quedó actualizado/i, {
