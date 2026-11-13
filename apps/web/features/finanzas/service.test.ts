@@ -36,6 +36,12 @@ describe("resolvePeriodRange", () => {
     expect(range.previousFrom).toEqual(new Date("2026-09-05T00:00:00.000-05:00"));
   });
 
+  it("30d arranca hace 29 días a las 00:00 COT, incluido el cambio de año Bogotá", () => {
+    const range = resolvePeriodRange("30d", new Date("2027-01-01T02:00:00.000Z"));
+    expect(range.from).toEqual(new Date("2026-12-02T05:00:00.000Z"));
+    expect(range.to).toEqual(new Date("2027-01-01T02:00:00.000Z"));
+  });
+
   it("90d usa buckets semanales", () => {
     expect(resolvePeriodRange("90d", NOW).bucket).toBe("week");
   });

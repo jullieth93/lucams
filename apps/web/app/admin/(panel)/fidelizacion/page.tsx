@@ -310,7 +310,7 @@ export default async function FidelizacionAdminPage() {
             )}
             {canViewAudit && (
               <Button asChild variant="outline" size="sm">
-                <Link href="/admin/auditoria?q=loyalty">
+                <Link href="/admin/auditoria?action=loyalty.">
                   <ShieldCheck className="mr-1.5 h-4 w-4" />
                   Auditoría
                 </Link>

@@ -15,6 +15,7 @@ import {
   verifyEmailMatchesTimingSafe,
   verifyTokenHashTimingSafe,
 } from "@/lib/token-hash";
+import { addMonthsClampedIsoCO } from "@/lib/datetime";
 
 /*
  * Garantía legal (Ley 1480 art. 7-15). Un cliente reporta un defecto de un producto comprado;
@@ -37,9 +38,7 @@ const ACTIVE_STATUSES: WarrantyStatus[] = ["PENDING", "IN_REVIEW", "APPROVED"];
 
 // ── Ventana de garantía ──
 export function warrantyWindowEnd(deliveredAt: Date, warrantyMonths: number): Date {
-  const end = new Date(deliveredAt);
-  end.setMonth(end.getMonth() + warrantyMonths);
-  return end;
+  return new Date(`${addMonthsClampedIsoCO(deliveredAt, warrantyMonths)}T23:59:59.999-05:00`);
 }
 export function isWithinWarranty(deliveredAt: Date, warrantyMonths: number, now: Date): boolean {
   return now.getTime() <= warrantyWindowEnd(deliveredAt, warrantyMonths).getTime();

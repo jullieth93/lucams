@@ -43,6 +43,7 @@ import {
   type ComboChartDatum,
 } from "@/components/admin-page";
 import { CountUp } from "@/components/admin/count-up";
+import { resolveAuditEntityHref } from "./audit-links";
 
 export const metadata: Metadata = {
   title: "Auditoría y seguridad",
@@ -193,164 +194,6 @@ function buildLastDaysWindow(days: number): {
     since: new Date(`${firstKey}T00:00:00.000-05:00`),
     buckets,
   };
-}
-
-/**
- * Conecta cada fila del `AdminActionLog` con la vista viva de la entidad en el panel.
- * Usa únicamente rutas verificadas en `app/admin/(panel)`.
- */
-function resolveAuditEntityHref(
-  entityType: string,
-  entityId: string,
-  metadata: unknown,
-): string | null {
-  if (!entityId) return null;
-  const meta =
-    metadata && typeof metadata === "object" && !Array.isArray(metadata)
-      ? (metadata as Record<string, unknown>)
-      : null;
-
-  switch (entityType) {
-    case "Order": {
-      if (entityId === "mes" || entityId === "7d" || entityId === "30d" || entityId === "90d") {
-        return `/admin/finanzas?periodo=${encodeURIComponent(entityId)}`;
-      }
-      const orderNum =
-        typeof meta?.orderNumber === "string" && meta.orderNumber.trim()
-          ? meta.orderNumber.trim()
-          : entityId;
-      // getOrder resuelve tanto Order.number ("LCM-…") como Order.id (cuid) con OR directo.
-      return `/admin/pedidos/${encodeURIComponent(orderNum)}`;
-    }
-    case "Product":
-      return `/admin/productos/${encodeURIComponent(entityId)}`;
-    case "ProductVariant":
-      return "/admin/inventario";
-    case "Category":
-      return `/admin/categorias/${encodeURIComponent(entityId)}`;
-    case "Occasion":
-      return `/admin/ocasiones/${encodeURIComponent(entityId)}`;
-    case "Contact":
-    case "Customer":
-      return `/admin/clientes/${encodeURIComponent(entityId)}`;
-    case "IdentityMergeCandidate": {
-      if (typeof meta?.survivorContactId === "string" && meta.survivorContactId) {
-        return `/admin/clientes/${encodeURIComponent(meta.survivorContactId)}`;
-      }
-      if (meta?.reopened === true) {
-        return "/admin/clientes/duplicados?status=PENDING";
-      }
-      return "/admin/clientes/duplicados?status=ALL";
-    }
-    case "ContactActivity":
-    case "Task": {
-      if (typeof meta?.opportunityId === "string" && meta.opportunityId) {
-        return `/admin/oportunidades/${encodeURIComponent(meta.opportunityId)}`;
-      }
-      if (typeof meta?.contactId === "string" && meta.contactId) {
-        return `/admin/clientes/${encodeURIComponent(meta.contactId)}`;
-      }
-      if (typeof meta?.supportTicketId === "string" && meta.supportTicketId) {
-        return `/admin/soporte/${encodeURIComponent(meta.supportTicketId)}`;
-      }
-      if (typeof meta?.orderNumber === "string" && meta.orderNumber) {
-        return `/admin/pedidos/${encodeURIComponent(meta.orderNumber)}`;
-      }
-      return null;
-    }
-    case "Opportunity":
-      return `/admin/oportunidades/${encodeURIComponent(entityId)}`;
-    case "Quote":
-      return `/admin/cotizaciones/${encodeURIComponent(entityId)}`;
-    case "Coupon":
-      return `/admin/cupones/${encodeURIComponent(entityId)}`;
-    case "SupportTicket":
-      return `/admin/soporte/${encodeURIComponent(entityId)}`;
-    case "WarrantyClaim":
-      return `/admin/garantias?status=all&q=${encodeURIComponent(entityId)}`;
-    case "RetractRequest":
-      return `/admin/retractos?status=all&q=${encodeURIComponent(entityId)}`;
-    case "Review":
-      return entityId === "bulk" || entityId.includes(",")
-        ? "/admin/resenas?status=all"
-        : `/admin/resenas?status=all&q=${encodeURIComponent(entityId)}`;
-    case "Design": {
-      if (typeof meta?.orderNumber === "string" && meta.orderNumber.trim()) {
-        return `/admin/pedidos/${encodeURIComponent(meta.orderNumber.trim())}`;
-      }
-      return "/admin/moderacion?vista=historial";
-    }
-    case "PersonalizationTemplate":
-      return "/admin/plantillas";
-    case "Cart":
-    case "AbandonedCart":
-      return entityId.includes(",")
-        ? "/admin/carritos"
-        : `/admin/carritos/${encodeURIComponent(entityId)}`;
-    case "LifecycleJourney":
-      return `/admin/lifecycle/${encodeURIComponent(entityId)}`;
-    case "LifecycleEnrollment":
-    case "LifecycleMessage":
-      if (typeof meta?.journeyId === "string" && meta.journeyId.trim()) {
-        return `/admin/lifecycle/${encodeURIComponent(meta.journeyId.trim())}`;
-      }
-      return "/admin/lifecycle";
-    case "EmailTemplate":
-      return `/admin/email-templates/${encodeURIComponent(entityId)}`;
-    case "CmsBlock":
-      return `/admin/contenido/bloques/${encodeURIComponent(entityId)}`;
-    case "CmsField":
-      return `/admin/contenido/campos/${encodeURIComponent(entityId)}`;
-    case "CmsPage":
-      return "/admin/contenido";
-    case "AdminUser":
-      return "/admin/usuarios";
-    case "Material":
-      return "/admin/materiales";
-    case "UrlRedirect":
-    case "Redirect":
-      return "/admin/redirects";
-    case "Notification":
-      return "/admin/notificaciones?vista=all";
-    case "ErrorReport":
-      return "/admin/observability";
-    case "AdminHelpFeedback":
-    case "AdminHelpProgress":
-      return entityId === "*"
-        ? "/admin/ayuda"
-        : `/admin/ayuda?guia=${encodeURIComponent(entityId)}`;
-    case "CodBlocklist":
-    case "BlockedIdentity":
-      return "/admin/finanzas/bloqueos";
-    case "Consent":
-      if (entityId.startsWith("CRM_SEGMENT:")) {
-        const seg = entityId.slice("CRM_SEGMENT:".length).trim();
-        return seg
-          ? `/admin/marketing/segmentos?segment=${encodeURIComponent(seg)}`
-          : "/admin/marketing/segmentos";
-      }
-      return "/admin/marketing/suscriptores";
-    case "ShippingZone":
-    case "CarrierConfig":
-      return "/admin/envios";
-    case "WholesaleTier":
-      return "/admin/mayorista";
-    case "SystemSetting":
-      if (entityId === "lifecycle") {
-        return "/admin/lifecycle";
-      }
-      return "/admin/contenido/paginas/global";
-    case "Setting":
-      if (entityId === "loyalty" || entityId === "referrals") {
-        return "/admin/fidelizacion";
-      }
-      if (entityId === "cart-recovery") {
-        return "/admin/carritos/configuracion";
-      }
-      return "/admin/contenido/paginas/global";
-    default:
-      return null;
-  }
 }
 
 export default async function AuditoriaPage({ searchParams }: { searchParams: SearchParams }) {
@@ -1214,6 +1057,7 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
                     row.entityType,
                     row.entityId,
                     row.metadata,
+                    row.action,
                   );
                   const metaKeysCount = Object.keys(
                     (row.metadata as Record<string, unknown>) ?? {},

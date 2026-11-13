@@ -43,7 +43,7 @@ import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { ReauthForm } from "@/components/admin/mfa-reauth";
-import { ADMIN_ROLE_SETS, adminHomePath } from "@/lib/admin-rbac";
+import { ADMIN_ROLE_SETS, adminHomePath, canAccessAdminPath } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getCmsFieldById, getCmsFieldItems, getCmsListSchema } from "@/features/cms/service";
 import { cmsMediaPublicUrl, listCmsMedia } from "@/lib/cms-media";
@@ -106,7 +106,12 @@ export default async function EditarCampoPage({
     redirect(`${adminHomePath(session.admin.role)}?denied=1`);
   }
   if (MODULE_MANAGED_SETTING_KEYS.has(field.key)) {
-    redirect(ownerModuleHrefForSettingKey(field.key) ?? "/admin/contenido/paginas/global");
+    const targetHref = ownerModuleHrefForSettingKey(field.key) ?? "/admin/contenido/paginas/global";
+    redirect(
+      canAccessAdminPath(session.admin.role, targetHref)
+        ? targetHref
+        : adminHomePath(session.admin.role),
+    );
   }
 
   const pageHref = `/admin/contenido/paginas/${page.slug}`;

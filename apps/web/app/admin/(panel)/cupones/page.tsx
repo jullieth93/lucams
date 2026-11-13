@@ -53,7 +53,7 @@ import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { CreateCouponForm } from "./create-coupon-form";
 import { archiveCouponAction, pauseCouponAction, resumeCouponAction } from "./actions";
-import { formatDateCO } from "@/lib/datetime";
+import { addMonthsClampedIsoCO, formatDateCO, formatIsoDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Cupones",
@@ -141,6 +141,8 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
   const topMetaById = new Map(topCouponMeta.map((c) => [c.id, c]));
 
   const now = new Date();
+  const defaultValidFrom = formatIsoDateCO(now);
+  const defaultValidTo = addMonthsClampedIsoCO(now, 1);
   const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
 
   let activeValidCount = 0;
@@ -738,7 +740,12 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
               <ChevronRight className="text-brand-muted h-4 w-4 transition-transform group-open:rotate-90" />
             </summary>
             <div className="border-brand-purple/10 border-t px-5 pt-4 pb-5">
-              <CreateCouponForm categories={categories} products={products} />
+              <CreateCouponForm
+                categories={categories}
+                products={products}
+                defaultValidFrom={defaultValidFrom}
+                defaultValidTo={defaultValidTo}
+              />
             </div>
           </details>
         )}

@@ -52,6 +52,7 @@ import { inventoryUnitsForOrderItem } from "@/features/personalization/design-un
 import { hashBearerToken } from "@/lib/token-hash";
 import { resolveOrderContactTx } from "@/features/identity/resolution-service";
 import { resolveOrderCustomerId } from "./order-customer";
+import { generateOrderNumber } from "./order-number";
 import { sendOrderRefunded } from "./emails";
 import { assertTransactionalAllowed } from "@/lib/stage-guard";
 
@@ -70,45 +71,6 @@ export class OrderNotFoundError extends Error {
   constructor(idOrNumber: string) {
     super(`Order no encontrada: ${idOrNumber}`);
   }
-}
-
-/**
- * Genera Order.number único, formato "LCM-YYYY-NNNN".
- *
- * Usa un counter por año: para el primer order de 2026 → "LCM-2026-0001".
- * Tomamos count de orders existentes del año + 1. Con índice unique en
- * Order.number, en caso de race condition Prisma devuelve P2002 y el
- * caller debe reintentar (raro: las orders en checkout no son concurrentes).
- */
-async function generateOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
-  // Serializa la numeración concurrente con un advisory lock TRANSACCIONAL (ADR-062):
-  // count()+1 no es concurrency-safe — dos transacciones simultáneas ven el mismo count (la
-  // orden de la otra aún no commiteó) y generan el MISMO Order.number → P2002. El lock
-  // (scope de transacción → se libera solo al commit/rollback) hace que las creaciones de orden
-  // concurrentes tomen turnos: la siguiente ya ve la orden ganadora y avanza el número. Elimina
-  // el race de raíz; el retry de createOrderFromCart queda como backstop. La creación de orden
-  // es de baja frecuencia (nunca en el hot path de render) → serializarla es inocuo.
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(918273)`;
-  const year = new Date().getFullYear();
-  // max(number)+1, NO count()+1 (certificación 2026-07-29, 2ª pasada): count() se
-  // descuadra del último número cuando hay HARD deletes (teardowns de tests,
-  // purgas operativas) — count+1 aterriza sobre un número ya ocupado por una
-  // orden soft-deleted y colisiona en TODOS los reintentos (tormenta de P2002
-  // detectada en la suite: 356 reintentos en un solo archivo). El máximo real
-  // es inmune a huecos y a borrados. Los números de seed de tests que no
-  // siguen el formato (LCM-SAGA-…) no calzan el startsWith y no cuentan.
-  const prefix = `LCM-${year}-`;
-  const lastRows = await tx.$queryRaw<{ number: string }[]>`
-    SELECT "number"
-    FROM "Order"
-    WHERE "number" LIKE ${`${prefix}%`}
-    ORDER BY length("number") DESC, "number" DESC
-    LIMIT 1
-  `;
-  const last = lastRows[0] ?? null;
-  const lastSeq = last ? Number.parseInt(last.number.slice(prefix.length), 10) : 0;
-  const nextSeq = (Number.isNaN(lastSeq) ? 0 : lastSeq) + 1;
-  return `${prefix}${String(nextSeq).padStart(4, "0")}`;
 }
 
 export type CreateOrderFromCartInput = {

@@ -40,6 +40,8 @@ export function CouponForm({
   coupon,
   categories,
   products,
+  defaultValidFrom,
+  defaultValidTo,
   readOnly = false,
 }: {
   mode: "create" | "edit";
@@ -47,6 +49,8 @@ export function CouponForm({
   coupon?: EditableCoupon;
   categories: SlugOption[];
   products: SlugOption[];
+  defaultValidFrom: string;
+  defaultValidTo: string;
   readOnly?: boolean;
 }) {
   const [state, formAction, isPending] = useActionState<CouponActionState | null, FormData>(
@@ -65,10 +69,6 @@ export function CouponForm({
 
   const isPersonal = Boolean(coupon?.isPersonal);
   const toDateInput = (d: Date) => formatIsoDateCO(d);
-  const today = toDateInput(new Date());
-  const nextMonth = new Date();
-  nextMonth.setMonth(nextMonth.getMonth() + 1);
-  const nextMonthStr = toDateInput(nextMonth);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -170,14 +170,18 @@ export function CouponForm({
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="text-brand-purple-dark mb-1 block text-xs font-semibold">
+            <label
+              htmlFor="coupon-valid-from"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
               Válido desde (hora Colombia) <span className="text-rose-600">*</span>
             </label>
             <input
+              id="coupon-valid-from"
               name="validFrom"
               type="date"
               required
-              defaultValue={coupon ? toDateInput(coupon.validFrom) : today}
+              defaultValue={coupon ? toDateInput(coupon.validFrom) : defaultValidFrom}
               className={inputCls}
             />
             {state?.fieldErrors?.validFrom && (
@@ -185,14 +189,18 @@ export function CouponForm({
             )}
           </div>
           <div>
-            <label className="text-brand-purple-dark mb-1 block text-xs font-semibold">
+            <label
+              htmlFor="coupon-valid-to"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
               Válido hasta (23:59 COT) <span className="text-rose-600">*</span>
             </label>
             <input
+              id="coupon-valid-to"
               name="validTo"
               type="date"
               required
-              defaultValue={coupon ? toDateInput(coupon.validTo) : nextMonthStr}
+              defaultValue={coupon ? toDateInput(coupon.validTo) : defaultValidTo}
               className={inputCls}
             />
             {state?.fieldErrors?.validTo && (

@@ -134,3 +134,17 @@ export function formatTimeCO(d: DateInput): string {
 export function formatIsoDateCO(d: DateInput): string {
   return ISO_DATE.format(toDate(d));
 }
+
+export function addMonthsClampedIsoCO(d: DateInput, months: number): string {
+  if (!Number.isInteger(months)) throw new RangeError("months must be an integer");
+  const iso = formatIsoDateCO(d);
+  const year = Number(iso.slice(0, 4));
+  const month = Number(iso.slice(5, 7));
+  const day = Number(iso.slice(8, 10));
+  const targetMonthStart = new Date(Date.UTC(year, month - 1 + months, 1));
+  const targetYear = targetMonthStart.getUTCFullYear();
+  const targetMonth = targetMonthStart.getUTCMonth();
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const targetDay = Math.min(day, lastDay);
+  return `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
+}

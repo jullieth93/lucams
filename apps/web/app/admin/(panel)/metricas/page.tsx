@@ -23,6 +23,7 @@ import { isCatalogMode } from "@/lib/store-mode";
 import {
   COLLECTED_REVENUE_ORDER_WHERE,
   getPeriodAggregates,
+  resolvePeriodRange,
   startOfMonthCO,
 } from "@/features/finanzas/service";
 import {
@@ -134,7 +135,7 @@ export default async function AdminMetricasPage({
 
   const now = new Date();
   const startOfMonth = startOfMonthCO(now);
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = resolvePeriodRange("30d", now).from;
   const monthLabel = formatMonthYearCO(now);
 
   const canSeeFinanzas = canAccessAdminPath(role, "/admin/finanzas");

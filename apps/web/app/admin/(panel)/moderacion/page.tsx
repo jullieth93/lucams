@@ -431,7 +431,7 @@ export default async function AdminModeracionPage({
             )}
             {canSeeAudit && (
               <Link
-                href="/admin/auditoria?entityType=Design"
+                href="/admin/auditoria?entity=Design"
                 className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex h-9 items-center gap-1.5 rounded-lg border bg-white px-3 text-xs font-semibold transition-colors"
               >
                 <History className="h-3.5 w-3.5" aria-hidden />

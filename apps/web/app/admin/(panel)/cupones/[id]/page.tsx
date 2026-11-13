@@ -35,7 +35,12 @@ import { Button } from "@/components/ui/button";
 import { getCoupon } from "@/features/coupons/service";
 import { ADMIN_ROLE_SETS, canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
-import { formatDateCO, formatDateTimeCO } from "@/lib/datetime";
+import {
+  addMonthsClampedIsoCO,
+  formatDateCO,
+  formatDateTimeCO,
+  formatIsoDateCO,
+} from "@/lib/datetime";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { maskEmail, maskEmailsInText, maskPersonName } from "@/lib/pii-mask";
@@ -99,6 +104,8 @@ export default async function AdminCuponEditPage({ params }: { params: Promise<{
     : null;
 
   const now = new Date();
+  const defaultValidFrom = formatIsoDateCO(now);
+  const defaultValidTo = addMonthsClampedIsoCO(now, 1);
   const statusBadge = (() => {
     if (coupon.deletedAt) return { label: "Archivado", tone: "slate" as const };
     if (!coupon.isActive) return { label: "Pausado", tone: "amber" as const };
@@ -315,6 +322,8 @@ export default async function AdminCuponEditPage({ params }: { params: Promise<{
             }}
             categories={categories}
             products={products}
+            defaultValidFrom={defaultValidFrom}
+            defaultValidTo={defaultValidTo}
             readOnly={isReadOnly}
           />
         </AdminCard>

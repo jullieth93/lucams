@@ -41,6 +41,7 @@ import { listOcasionTags } from "@/features/ocasiones/service";
 import { canAccessAdminPath } from "@/lib/admin-rbac";
 import { requireCapability } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
+import { formatIsoDateCO } from "@/lib/datetime";
 import { CreateOcasionForm } from "./create-ocasion-form";
 import { restoreOcasionAction, toggleOcasionActiveAction } from "./actions";
 
@@ -150,7 +151,7 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
   const restored = sp.restored === "1";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
   const hasActiveFilters = !!q || status !== "all" || sort !== "order";
-  const currentMonth = new Date().getMonth() + 1;
+  const currentMonth = Number(formatIsoDateCO(new Date()).slice(5, 7));
 
   return (
     <AdminPage>

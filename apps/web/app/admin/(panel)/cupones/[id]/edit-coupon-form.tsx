@@ -9,11 +9,15 @@ export function EditCouponForm({
   coupon,
   categories,
   products,
+  defaultValidFrom,
+  defaultValidTo,
   readOnly = false,
 }: {
   coupon: EditableCoupon;
   categories: SlugOption[];
   products: SlugOption[];
+  defaultValidFrom: string;
+  defaultValidTo: string;
   readOnly?: boolean;
 }) {
   return (
@@ -23,6 +27,8 @@ export function EditCouponForm({
       coupon={coupon}
       categories={categories}
       products={products}
+      defaultValidFrom={defaultValidFrom}
+      defaultValidTo={defaultValidTo}
       readOnly={readOnly}
     />
   );

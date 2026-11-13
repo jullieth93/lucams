@@ -10,9 +10,9 @@ import { createClient } from "@supabase/supabase-js";
  * única entrada es el drawer hamburguesa (ShopMegaMenu). Este spec crea un
  * admin efímero (SUPERADMIN, patrón mobile-admin-audit.spec.ts), entra por la
  * UI de /login (JIT-provisioning de Customer, actions.ts) y verifica:
- *   1. Desktop: el chip existe con href /admin/dashboard.
+ *   1. Desktop: el chip existe con href /admin.
  *   2. Móvil (390×844): el chip ya no existe y el drawer muestra el link
- *      "Panel admin" como entrada a /admin/dashboard.
+ *      "Panel admin" como entrada a /admin.
  *
  * Local: corre contra el dev server (:4000) con el stack Supabase local.
  */
@@ -70,7 +70,7 @@ test("regresión — admin ve 'Panel admin' en desktop y en el drawer móvil", a
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const chip = page.getByRole("link", { name: "Panel admin" }).first();
   await expect(chip).toBeVisible();
-  await expect(chip).toHaveAttribute("href", "/admin/dashboard");
+  await expect(chip).toHaveAttribute("href", "/admin");
 
   // Móvil: viewport <sm → el chip desaparece y la entrada es el drawer.
   await page.setViewportSize({ width: 390, height: 844 });
@@ -79,5 +79,5 @@ test("regresión — admin ve 'Panel admin' en desktop y en el drawer móvil", a
   await page.getByRole("button", { name: "Abrir menú" }).click();
   const drawerLink = page.getByRole("link", { name: "Panel admin" });
   await expect(drawerLink).toBeVisible();
-  await expect(drawerLink).toHaveAttribute("href", "/admin/dashboard");
+  await expect(drawerLink).toHaveAttribute("href", "/admin");
 });
