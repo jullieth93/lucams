@@ -121,15 +121,14 @@ test.describe("PDP — Unidades o Packs según la familia del producto", () => {
     await expect(page.getByRole("group", { name: "Cantidad" })).toHaveCount(0);
     await expect(page.getByText(/27 en Español · 26 en Inglés/)).toBeVisible();
 
-    // El stepper "Unidades" de copias vive en el buy-box de compra directa —
-    // en LOCAL el abecedario está sin stock (buy-box → "Producto agotado"),
-    // así que acá se verifica solo si el producto tiene stock en el ambiente.
+    // El abecedario se vende por packs: cada pack contiene el set completo.
+    // El stepper usa esa misma etiqueta en su nombre accesible y en sus botones.
     const agotado = await page.getByText(/Producto agotado/).count();
     if (agotado === 0) {
-      const unidades = page.getByRole("group", { name: "Unidades" });
-      await expect(unidades).toBeVisible();
-      await unidades.getByLabel("Aumentar unidades").click();
-      await expect(unidades.getByText("2", { exact: true })).toBeVisible();
+      const packs = page.getByRole("group", { name: "Packs" });
+      await expect(packs).toBeVisible();
+      await packs.getByLabel("Aumentar packs").click();
+      await expect(packs.locator('span[aria-live="polite"]')).toHaveText("2 packs");
     }
   });
 
