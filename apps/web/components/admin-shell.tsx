@@ -615,7 +615,7 @@ function UnreadNotificationsPill({ count }: { count: number }) {
   return (
     <Hint content={`${count} sin leer`}>
       <span
-        className="bg-brand-pink min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] leading-none font-bold text-white"
+        className="bg-brand-pink-ink min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] leading-none font-bold text-white"
         aria-label={`${count} notificaciones sin leer`}
       >
         {count > 99 ? "99+" : count}
