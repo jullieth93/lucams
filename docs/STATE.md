@@ -62,7 +62,6 @@
 
 1. **Facturación electrónica DIAN:** faltan NIT/RUT de facturador, acompañamiento contador/abogado y proveedor tecnológico; `BILLING_DOCUMENT_ENABLED = false`. La vigilancia de umbrales ya opera.
 2. **SEO post-indexación:** revisar Search Console y confirmar aprobación del feed en Merchant Center.
-3. **Avisos de reposición:** la homologación E2E permanece impedida por **Resend 403** del remitente de pruebas; la suscripción conserva correctamente `notifiedAt=null`. No se declara exitosa ni se altera configuración para ocultarlo.
 
 ### Higiene técnica diferida (no bloqueante)
 
