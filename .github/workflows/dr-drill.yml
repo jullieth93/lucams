@@ -122,6 +122,7 @@ jobs:
 
       - name: Verificar RLS, grants e integridad CMS restaurados
         run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/00000000000060_harden_rls_event_trigger_ident_and_search_path.sql
           node packages/db/scripts/verify-security-posture.mjs
           node packages/db/scripts/verify-cms-v2-integrity.mjs
         env:
