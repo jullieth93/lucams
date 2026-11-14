@@ -90,12 +90,11 @@ overrides:
   # computeExecutablePath/computeSystemExecutablePath/createProfile/CDP_WEBSOCKET_ENDPOINT_REGEX/
   # WEBDRIVER_BIDI_WEBSOCKET_ENDPOINT_REGEX todos presentes en v3 (exports estables).
   "@puppeteer/browsers": 3.2.3
-  # basic-ftp 5.3.1→^6.2.1 (2026-10-03, Dependabot #20, high): DoS de tiempo
-  # cuadrático en el parser de `Client.list()` (RE_LINE backtracking, ≤6.2.0).
+  # basic-ftp ≥6.2.6 (Dependabot #20/#43/#44): parser MLSD y entradas CR/LF.
   # Cadena get-uri@6 → pac-proxy-agent → proxy-agent → @lhci/cli / puppeteer-core
   # (Lighthouse CI local) — DEV-ONLY, jamás se despliega. get-uri@6.0.5 declara la
   # línea 5.x, pero solo usa Client.connect/list/download (API estable en 6.x).
-  "basic-ftp": ^6.2.1
+  "basic-ftp": ^6.2.6
   # proxy-addr 2.0.7→2.0.8 (2026-10-23, Dependabot #25, CRITICAL):
   # GHSA-jqcg-44mw-7w3h — IP spoofing vía subred de confianza IPv4-mapped IPv6.
   # Cadena @lhci/cli→express — DEV-ONLY (Lighthouse CI local/CI), nada se despliega.
