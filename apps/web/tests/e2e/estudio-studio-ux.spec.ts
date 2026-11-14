@@ -485,20 +485,27 @@ test.describe("estudio Ola 22 — fuente del calendario en Ajustar Foto", () => 
     await dismissOverlays(page);
 
     const panel = await resolvePanel(page);
+    const template = panel
+      .getByRole("radiogroup", { name: /selecciona plantilla/i })
+      .getByRole("radio")
+      .first();
+    await expect(template).toBeVisible({ timeout: 30_000 });
+    await template.click();
+    await expect(template).toHaveAttribute("aria-checked", "true");
     await uploadAndFillSlot1(page, panel, ctx.calProductId);
     await dismissOverlays(page);
 
     // El identificador del mes también vive en la barra de acciones (chip "Enero"
     // si el schema trae monthLabels; si no, el identificador genérico #1).
-    const slotRoot = page.getByRole("button", { name: /con foto cargada/i }).first();
     const chip = ctx.calChipAria
       ? page.locator(`span[aria-label="${ctx.calChipAria}"]`)
       : page.locator('span[aria-label$="#1"]');
     await expect(chip).toBeVisible({ timeout: 15_000 });
 
     // Abrir "Ajustar Foto" (control lápiz de la action bar del slot lleno).
-    await slotRoot.hover();
-    await page.locator('[aria-label^="Editar "]').first().click();
+    const editSlot = page.locator('#studio-unit-0-grid [aria-label^="Editar "]').first();
+    await expect(editSlot).toBeVisible({ timeout: 15_000 });
+    await editSlot.click();
     const dialog = page.locator('[role="dialog"]').last();
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     const fotoTab = dialog.getByRole("tab", { name: /^Foto$/i }).first();

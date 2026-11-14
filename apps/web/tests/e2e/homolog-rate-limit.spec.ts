@@ -24,7 +24,9 @@
  *     mensaje visible y CERO usuario creado en DB.
  *   - contacto: 4 envíos REALES por UI con el mismo email (contact:email es
  *     3/día) → 3 tickets OPEN + 4º con el mensaje; bucket en 4.
- *   - cotización: (a) doble submit — click + requestSubmit() concurrente →
+ *
+ * Test 2 (rate-limit de cotización, solo en modo catálogo):
+ *   - (a) doble submit — click + requestSubmit() concurrente →
  *     UNA sola Quote en DB (idempotencia: botón disabled en pending + claim
  *     atómico del carrito server-side; el desenlace visible puede ser el
  *     redirect, "ya recibimos esta cotización" o "carrito está vacío" según
@@ -32,10 +34,10 @@
  *     (b) 4 envíos reales con el mismo WhatsApp (quote:phone es 3/día) →
  *     3 Quotes + 4º con el mensaje; buckets phone=4, ip=4.
  *
- * Test 2 (CSRF):
+ * Test 3 (CSRF):
  *   - POST de server action con Origin adulterado → 500 "Invalid Server
  *     Actions request" (rechazo PRE-dispatch de Next 16: el MISMO request con
- *     Origin correcto llega al dispatcher y devuelve 404 action-not-found).
+ *     Origin correcto llega al dispatcher y devuelve 400 action-not-found).
  *     Prueba de que no se ejecutó nada: bucket login:% sigue en 0.
  *   - POST /api/vitals con Origin adulterado → 403 "Forbidden" (proxy CORS,
  *     proxy.ts); con Origin correcto llega al handler → 400 (zod).
@@ -63,6 +65,7 @@ import {
   type EphemeralProduct,
 } from "./fixtures/data-factory";
 import { hashEmail } from "../../lib/rate-limit-keys";
+import { capitalizeName } from "../../lib/colombia-validators";
 import { PdpPage } from "./pages/pdp";
 import { CarritoPage } from "./pages/carrito";
 import { CotizacionPage } from "./pages/cotizacion";
@@ -160,12 +163,13 @@ test.afterAll(async () => {
   await disconnectDb();
 });
 
-test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4 · cotización×4 + doble submit", async ({
+test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4", async ({
   anonPage,
 }, testInfo) => {
-  test.setTimeout(480_000);
+  test.setTimeout(300_000);
   const { record, shot, write } = evidenceWriter("ratelimit", testInfo.project.name);
   const customer = fakeCustomer(run);
+  const contactName = capitalizeName(customer.name);
 
   try {
     // ═══ 1. LOGIN — loop real por UI hasta el bloqueo (sin Turnstile en login).
@@ -304,13 +308,20 @@ test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4
       await anonPage.goto("/contacto", { waitUntil: "domcontentloaded" });
       const form = anonPage.locator("form", { has: anonPage.locator("#contact-email") });
       await expect(async () => {
-        await form.locator('input[name="name"]').fill(customer.name);
+        await form.locator('input[name="name"]').fill(contactName);
         await form.locator('input[name="email"]').fill(EMAIL);
         await form.locator("#contact-subject").selectOption({ index: 1 });
         await form
           .locator("#contact-message")
           .fill(`Mensaje ${i}/4 de homologación rate-limit ${run}.`);
         await form.locator('input[name="dataConsent"]').check();
+        await expect(form.locator('input[name="name"]')).toHaveValue(contactName, {
+          timeout: 1_500,
+        });
+        await expect(form.locator('input[name="email"]')).toHaveValue(EMAIL, { timeout: 1_500 });
+        await expect(form.locator("#contact-subject")).toHaveValue("PERSONALIZACION", {
+          timeout: 1_500,
+        });
         await expect(form.locator("#contact-message")).not.toHaveValue("", { timeout: 1_500 });
         await expect(form.locator('input[name="dataConsent"]')).toBeChecked({ timeout: 1_500 });
       }).toPass({ timeout: 20_000 });
@@ -319,7 +330,16 @@ test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4
         expect(token.length).toBeGreaterThan(0);
       }).toPass({ timeout: 20_000 });
       await anonPage.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
-      await form.getByRole("button", { name: /enviar/i }).click();
+      await Promise.all([
+        anonPage.waitForResponse(
+          (r) =>
+            r.request().method() === "POST" &&
+            new URL(r.url()).pathname === "/contacto" &&
+            Boolean(r.request().headers()["next-action"]),
+          { timeout: 20_000 },
+        ),
+        form.getByRole("button", { name: /enviar/i }).click(),
+      ]);
       if (i <= 3) {
         await expect(anonPage.locator("body")).toContainText(/recibimos tu mensaje/i, {
           timeout: 20_000,
@@ -342,6 +362,25 @@ test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4
     );
     await cleanBuckets("contact");
 
+    write("pass");
+  } catch (err) {
+    write("fail", err);
+    throw err;
+  }
+});
+
+test("rate-limit §6.21: cotización×4 + doble submit (solo modo catálogo)", async ({
+  anonPage,
+}, testInfo) => {
+  test.skip(
+    process.env.NEXT_PUBLIC_STORE_MODE !== "catalog",
+    "La cotización desde el carrito solo existe en modo catálogo; en modo tienda se usa el checkout.",
+  );
+  test.setTimeout(300_000);
+  const { record, shot, write } = evidenceWriter("quote-ratelimit", testInfo.project.name);
+  const customer = fakeCustomer(run);
+
+  try {
     // ═══ 4. COTIZACIÓN — (a) doble submit → 1 Quote; (b) 4 envíos → 3 + bloqueo.
     product = await createEphemeralProduct(run);
     await cleanBuckets("quote");

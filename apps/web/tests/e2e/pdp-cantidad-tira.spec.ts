@@ -340,8 +340,10 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     // Unidades: stepper "Unidades" hasta 2 → DOS tiras A DISEÑAR (multi-unidad
     // 2026-09-09: ya no son "copias idénticas").
     const unidades = page.getByRole("group", { name: "Unidades" });
-    await unidades.getByLabel("Aumentar unidades").click();
-    await expect(unidades.getByText("2", { exact: true })).toBeVisible();
+    await expect(async () => {
+      await unidades.getByLabel("Aumentar unidades").click();
+      await expect(unidades.getByText("2", { exact: true })).toBeVisible({ timeout: 1_500 });
+    }).toPass({ timeout: 20_000 });
 
     // El CTA lleva AMBOS: ?variant= (composición) y ?copies=2 (unidades a diseñar).
     const cta = page.getByRole("link", { name: /Personalizar producto/i });
@@ -360,9 +362,17 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
     await page.waitForTimeout(2_500); // el onboarding monta tarde (race histórica)
     await dismissOverlays(page);
+    const panel = await resolvePanel(page);
+    const template = panel
+      .getByRole("radiogroup", { name: /selecciona plantilla/i })
+      .getByRole("radio")
+      .first();
+    await expect(template).toBeVisible({ timeout: 30_000 });
+    await template.click();
+    await expect(template).toHaveAttribute("aria-checked", "true");
     const unidadesStudio = page.getByRole("group", { name: "Unidades a diseñar" });
     await expect(unidadesStudio).toBeVisible({ timeout: 20_000 });
-    await expect(unidadesStudio.getByText("2 unidades")).toBeVisible();
+    await expect(unidadesStudio.getByText("2 tiras", { exact: true })).toBeVisible();
     await expect(page.getByRole("group", { name: "Cantidad de fotos por imán" })).toHaveCount(0);
     // El pager de unidades (pill "Tira 1 de 2") y el header de sección
     // (h2) llevan el MISMO texto → el assert se acota al heading (strict mode).
@@ -478,6 +488,13 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     await dismissOverlays(page);
 
     const panel = await resolvePanel(page);
+    const template = panel
+      .getByRole("radiogroup", { name: /selecciona plantilla/i })
+      .getByRole("radio")
+      .first();
+    await expect(template).toBeVisible({ timeout: 30_000 });
+    await template.click();
+    await expect(template).toHaveAttribute("aria-checked", "true");
     const consent = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
     if (await consent.count()) await consent.first().check();
     // Multi-unidad (2026-09-09): el Estudio abrió con 2 TIRAS de 3 fotos (2 × 3 =

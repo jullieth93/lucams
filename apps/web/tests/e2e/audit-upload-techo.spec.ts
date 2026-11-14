@@ -292,6 +292,9 @@ test.afterAll(async () => {
     }
     await safe(db().letterTile.deleteMany({ where: { setId: t.setId, char: t.char } }));
   }
+  for (const [variantId, stock] of originalStockByVariant) {
+    await db().productVariant.update({ where: { id: variantId }, data: { stock } });
+  }
   if (adminId) await safe(db().adminUser.deleteMany({ where: { id: adminId } }));
   if (adminAuthUserId) await safe(supabase.auth.admin.deleteUser(adminAuthUserId));
   if (adminCtx) await adminCtx.close();
@@ -323,6 +326,24 @@ async function collectStudioDesigns(): Promise<void> {
   }
 }
 
+const originalStockByVariant = new Map<string, number>();
+async function ensureTemporaryStock(productId: string): Promise<void> {
+  const variants = await db().productVariant.findMany({
+    where: { productId, deletedAt: null },
+    select: { id: true, stock: true },
+  });
+  if (variants.length === 0) throw new Error(`Producto sin variantes: ${productId}`);
+  for (const variant of variants) {
+    if (!originalStockByVariant.has(variant.id)) {
+      originalStockByVariant.set(variant.id, variant.stock);
+    }
+  }
+  await db().productVariant.updateMany({
+    where: { id: { in: variants.map((variant) => variant.id) } },
+    data: { stock: 100_000 },
+  });
+}
+
 // ──────────── 1. Finalize letter-set ×10 sets (láminas 300 DPI por tickets) ────────────
 
 test("finalize letter-set ×10: las láminas van por Storage y NINGÚN request a la app supera 4.5 MB", async ({
@@ -330,6 +351,7 @@ test("finalize letter-set ×10: las láminas van por Storage y NINGÚN request a
 }) => {
   test.skip(!letterset, "no hay producto con superficie letterset activo en el ambiente");
   studioProductIds.add(letterset!.id);
+  await ensureTemporaryStock(letterset!.id);
   const tracked = await trackRequests(page);
 
   await page.goto(`/estudio/${letterset!.slug}?copies=10`, { waitUntil: "domcontentloaded" });
@@ -417,7 +439,9 @@ test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al ca
   // 1. Restaurar (si está archivado) + activar (si está pausado) por la UI
   //    admin — NUNCA directo en DB: las acciones invalidan el tag "catalog".
   if (originallyArchived) {
-    await page.goto("/admin/productos?status=archived", { waitUntil: "domcontentloaded" });
+    await page.goto(`/admin/productos?status=archived&q=${encodeURIComponent(initial!.name)}`, {
+      waitUntil: "domcontentloaded",
+    });
     const archivedRow = page.locator("tr", { hasText: initial!.name });
     await expect(archivedRow).toBeVisible({ timeout: 30_000 });
     await archivedRow.getByRole("button", { name: "Restaurar" }).click();
@@ -426,7 +450,9 @@ test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al ca
       .toBe(true);
   }
   if (originallyInactive || originallyArchived) {
-    await page.goto("/admin/productos?status=inactive", { waitUntil: "domcontentloaded" });
+    await page.goto(`/admin/productos?status=inactive&q=${encodeURIComponent(initial!.name)}`, {
+      waitUntil: "domcontentloaded",
+    });
     const inactiveRow = page.locator("tr", { hasText: initial!.name });
     await expect(inactiveRow).toBeVisible({ timeout: 30_000 });
     await inactiveRow.getByRole("button", { name: "Activar" }).click();
@@ -435,6 +461,7 @@ test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al ca
 
   try {
     // 2. Flujo del Estudio: nombre → Vista previa → confirmar → carrito.
+    await ensureTemporaryStock(initial!.id);
     await page.goto(`/estudio/${NAME_PRODUCT_SLUG}`, { waitUntil: "domcontentloaded" });
     await dismissCookies(page);
     const input = page.locator("input.uppercase").first();
@@ -461,7 +488,7 @@ test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al ca
     //    El archivado lo deja además inactivo.
     await page.goto(`/admin/productos/${initial!.id}`, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: /Archivar/ }).click();
-    await page.getByRole("button", { name: "Confirmar" }).click();
+    await page.getByRole("button", { name: "Confirmar" }).click({ noWaitAfter: true });
     await expect
       .poll(async () => (await pollProduct())!.deletedAt !== null, { timeout: 30_000 })
       .toBe(true);
@@ -549,7 +576,9 @@ test("mediateca: un archivo >4.5 MB sube comprimido en el navegador sin tocar el
   await page.getByPlaceholder(/Banner del Día de la Madre/i).fill(`Banner audit ${run}`);
   await page.getByRole("button", { name: /Subir/ }).first().click();
 
-  await expect(page.getByText("Imagen subida a la mediateca.")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText("Imagen subida a la mediateca.").first()).toBeVisible({
+    timeout: 120_000,
+  });
   assertNoOversizedAppRequest(tracked, baseHost);
 
   const row = await db().cmsMedia.findFirst({

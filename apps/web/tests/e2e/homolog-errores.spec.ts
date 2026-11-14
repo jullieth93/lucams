@@ -44,9 +44,33 @@ test.afterAll(async () => {
   await disconnectDb();
 });
 
-test("errores: 404 de marca + noindex + fallo de cotización con mensaje visible (route.fulfill)", async ({
+test("errores: 404 de marca + noindex en rutas de un solo uso", async ({ anonPage }) => {
+  const notFound = await anonPage.goto("/esto-no-existe-jamas", {
+    waitUntil: "domcontentloaded",
+  });
+  expect(notFound).not.toBeNull();
+  await expect(anonPage.locator("body")).toContainText(/esta página se nos perdió/i, {
+    timeout: 15_000,
+  });
+
+  const checkoutRes = await anonPage.goto("/carrito", { waitUntil: "domcontentloaded" });
+  expect(checkoutRes!.status()).toBe(200);
+  const product = await getActiveProduct();
+  await anonPage.goto(`/estudio/${product!.slug}`, { waitUntil: "domcontentloaded" });
+  const robotsMeta = await anonPage
+    .locator('meta[name="robots"]')
+    .getAttribute("content")
+    .catch(() => null);
+  expect(robotsMeta, "el estudio debe ser noindex").toContain("noindex");
+});
+
+test("errores: fallo de cotización con mensaje visible (route.fulfill, solo modo catálogo)", async ({
   anonPage,
 }, testInfo) => {
+  test.skip(
+    process.env.NEXT_PUBLIC_STORE_MODE !== "catalog",
+    "La cotización desde el carrito solo está disponible en modo catálogo.",
+  );
   mkdirSync(EVIDENCE_DIR, { recursive: true });
   const shotsDir = resolve(EVIDENCE_DIR, "shots");
   mkdirSync(shotsDir, { recursive: true });
@@ -64,30 +88,7 @@ test("errores: 404 de marca + noindex + fallo de cotización con mensaje visible
   };
 
   try {
-    // 1. 404 personalizado: la página de marca se muestra (soft 404 en Next 16).
-    const notFound = await anonPage.goto("/esto-no-existe-jamas", {
-      waitUntil: "domcontentloaded",
-    });
-    expect(notFound).not.toBeNull();
-    await expect(anonPage.locator("body")).toContainText(/esta página se nos perdió/i, {
-      timeout: 15_000,
-    });
-    record("custom-404", true, undefined, await shot(anonPage, "1-404"));
-
-    // 2. noindex en rutas de un solo uso: checkout (quote form), cotización por
-    // token (con una quote real efímera) y estudio.
     product = await createEphemeralProduct(run);
-    const checkoutRes = await anonPage.goto("/carrito", { waitUntil: "domcontentloaded" });
-    expect(checkoutRes!.status()).toBe(200);
-    const product2 = await getActiveProduct();
-    await anonPage.goto(`/estudio/${product2!.slug}`, { waitUntil: "domcontentloaded" });
-    const robotsMeta = await anonPage
-      .locator('meta[name="robots"]')
-      .getAttribute("content")
-      .catch(() => null);
-    expect(robotsMeta, "el estudio debe ser noindex").toContain("noindex");
-    record("noindex-estudio", true, robotsMeta ?? undefined);
-
     // 3. Fallo de red en la cotización (route.fulfill 500 en la server action):
     // la UI muestra el mensaje de error, NUNCA pantalla en blanco.
     const pdp = new PdpPage(anonPage, product.slug);
