@@ -75,15 +75,21 @@ export async function completeMfaChallengeIfNeeded(
 }
 
 /**
- * Login admin por UI COMPLETO: credenciales → reto TOTP → dashboard.
+ * Login admin por UI COMPLETO: credenciales → reto TOTP → home del rol.
  * Exige que el admin tenga TOTP enrolado (ver enrollTotpFactor) — con MFA
  * obligatorio, sin factor el login termina en /admin/seguridad?enroll=required.
  */
 export async function loginAdminWithTotp(
   page: Page,
-  opts: { email: string; password: string; totpSecret: string; dismissOnboarding?: boolean },
+  opts: {
+    email: string;
+    password: string;
+    totpSecret: string;
+    dismissOnboarding?: boolean;
+    homePath?: string;
+  },
 ): Promise<void> {
-  const { dismissOnboarding = true } = opts;
+  const { dismissOnboarding = true, homePath = "/admin/dashboard" } = opts;
   await page.goto("/admin/login", { waitUntil: "load" });
   const email = page.locator('input[name="email"]');
   const password = page.locator('input[name="password"]');
@@ -97,6 +103,6 @@ export async function loginAdminWithTotp(
   await page.waitForURL(/\/admin\/login\/mfa/, { timeout: 20_000 });
   await page.getByPlaceholder("123456").fill(totp(opts.totpSecret, Date.now()));
   await page.getByRole("button", { name: /verificar y entrar/i }).click();
-  await page.waitForURL(/\/admin\/dashboard/, { timeout: 20_000 });
+  await page.waitForURL((url) => url.pathname === homePath, { timeout: 20_000 });
   if (dismissOnboarding) await dismissAdminHelpOnboarding(page);
 }
