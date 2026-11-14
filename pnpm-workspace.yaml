@@ -79,17 +79,6 @@ overrides:
   # API usada (tmpNameSync/fileSync) es idéntica en 0.2.x y tmp 0.2.0 elimina su dep rimraf
   # (que arrastraba otra cadena a brace-expansion). Verificado con probe de API 2026-08-29.
   tmp: 0.2.7
-  # uuid 8.3.2→11.1.1: GHSA-w5hq-g745-h8pq. Fuera del rango de @lhci/cli (^8.3.1) pero
-  # uuid@11 mantiene build CJS dual y el named export v4 que usa lhci (node-runner.js).
-  uuid: 11.1.1
-  # extract-zip (GHSA-jmr9-qjv8-65gv + GHSA symlink traversal, ambas high): sin patch
-  # publicado (latest 2.0.1, paquete abandonado 2020). La cadena es
-  # @lhci/cli→lighthouse→puppeteer-core@24→@puppeteer/browsers@2. Resuelto 2026-09-25
-  # forzando @puppeteer/browsers@3.2.3 (reemplazó extract-zip por modern-tar). Fuera del
-  # rango de puppeteer-core@24 (^2.x) — probe de API: Browser/launch/TimeoutError/
-  # computeExecutablePath/computeSystemExecutablePath/createProfile/CDP_WEBSOCKET_ENDPOINT_REGEX/
-  # WEBDRIVER_BIDI_WEBSOCKET_ENDPOINT_REGEX todos presentes en v3 (exports estables).
-  "@puppeteer/browsers": 3.2.3
   # basic-ftp ≥6.2.6 (Dependabot #20/#43/#44): parser MLSD y entradas CR/LF.
   # Cadena get-uri@6 → pac-proxy-agent → proxy-agent → @lhci/cli / puppeteer-core
   # (Lighthouse CI local) — DEV-ONLY, jamás se despliega. get-uri@6.0.5 declara la
@@ -122,11 +111,3 @@ auditConfig:
     # (fast-glob vía eslint-config-next): nada se despliega y
     # los consumidores no procesan globs de usuario. Revisar cuando exista 3.0.4.
     - GHSA-vfj7-8cjw-p6xm
-    # GHSA-mrhx-c7xc-m3w5 (zod <4.6.6, high, 2026-11-02): la app ya va en zod
-    # ^4.6.7 (parcheado); el hallazgo es SOLO la copia anidada zod@3.25.76 de
-    # chromium-bidi@14 (declara ^3.24.1, sin patch en la línea 3.x) vía
-    # @lhci/cli→lighthouse→puppeteer-core — DEV-ONLY. El exploit exige validar
-    # colecciones gigantes de un atacante; aquí zod valida mensajes CDP del
-    # Chrome local que la propia corrida de Lighthouse controla. Override a zod 4
-    # descartado: salto de major con breaking changes en tooling ajeno.
-    - GHSA-mrhx-c7xc-m3w5

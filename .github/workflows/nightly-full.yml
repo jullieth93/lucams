@@ -200,7 +200,7 @@ jobs:
         # ~4.5 MB por request midiendo el body REAL por CDP (content-length), no
         # postDataBuffer. E2E_UTILS_TOKEN vive en el env del job (CI local) — la
         # ruta test-utils responde 404 en producción aunque haya token.
-        run: pnpm --filter web exec playwright test admin-login.spec admin-mfa.spec admin-help.spec admin-lifecycle.spec cms-editing-flow.spec responsive-admin-audit.spec audit-cliente.spec homolog-auth.spec retracto-garantia-cliente.spec audit-upload-techo.spec --project=desktop-chrome
+        run: pnpm --filter web exec playwright test admin-login.spec admin-mfa.spec admin-help.spec admin-lifecycle.spec cms-editing-flow.spec responsive-admin-audit.spec audit-cliente.spec homolog-auth.spec homolog-admin-rbac.spec retracto-garantia-cliente.spec audit-upload-techo.spec --project=desktop-chrome
       - name: Cross-browser smoke (Firefox + WebKit, read-only)
         run: pnpm --filter web exec playwright test --project=desktop-firefox --project=desktop-webkit
       - name: Subir reporte Playwright (si falla)
