@@ -6,7 +6,7 @@
  *   del admin (/admin/inventario, editor inline) → cron /api/cron/back-in-stock
  *   (x-cron-secret, como pg_cron en producción) → la suscripción queda
  *   notifiedAt (el aviso salió; el email va por Resend — 1 por corrida,
- *   dominio de prueba .test, documentado en la matriz).
+ *   destinatario oficial delivered+<run>@resend.dev, sin rebotes ficticios).
  *
  * Corre en LOCAL y STG × desktop/mobile. En PRD PROHIBIDO (crea suscripción/
  * stock/email). Limpieza: suscripción y producto efímero borrados; el Consent
@@ -25,6 +25,7 @@ import {
   type EphemeralProduct,
 } from "./fixtures/data-factory";
 import { newRunId } from "./fixtures/run";
+import { revalidateNewProductsThroughAdmin } from "./fixtures/product-state";
 
 const EVIDENCE_DIR = resolve(__dirname, "../../tmp/e2e-homologacion");
 
@@ -32,7 +33,7 @@ test.skip(E2E_ENV === "prd", "El flujo back-in-stock crea datos: prohibido en PR
 test.setTimeout(240_000);
 
 const run = newRunId("bis");
-const EMAIL = `${run}@e2e.test`;
+const EMAIL = `delivered+${run}@resend.dev`;
 
 type Step = { step: string; ok: boolean; detail?: string; screenshot?: string; at: string };
 
@@ -54,6 +55,7 @@ test.afterAll(async () => {
 test("back-in-stock: suscribir en PDP agotado → re-stock admin → cron → notifiedAt", async ({
   adminPage,
   anonPage,
+  browser,
 }, testInfo) => {
   mkdirSync(EVIDENCE_DIR, { recursive: true });
   const shotsDir = resolve(EVIDENCE_DIR, "shots");
@@ -73,11 +75,8 @@ test("back-in-stock: suscribir en PDP agotado → re-stock admin → cron → no
 
   try {
     // 0. Producto efímero AGOTADO (stock 0 en todas sus variantes).
-    product = await createEphemeralProduct(run);
-    await db().productVariant.updateMany({
-      where: { productId: product.productId },
-      data: { stock: 0 },
-    });
+    product = await createEphemeralProduct(run, { withShippingDims: true, stock: 0 });
+    await revalidateNewProductsThroughAdmin(browser, [product.productId]);
     record("product-out-of-stock", true, `${product.slug} con stock 0`);
 
     // 1. PDP → el botón "Avísame" está y suscribe con el email de la corrida.
