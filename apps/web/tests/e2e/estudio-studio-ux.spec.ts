@@ -349,6 +349,18 @@ test.describe("estudio Ola 22 — identificador fuera del template + avatar tapp
   }) => {
     test.skip(!ctx.igSlug, "no hay producto con plantilla photo-pack-polaroid-instagram en la DB");
     test.slow(); // cold-compile de la ruta Konva en `next dev`
+    await page.addInitScript(() => {
+      for (const surface of [
+        "default",
+        "cards",
+        "bookmarks",
+        "strips",
+        "calendar",
+        "polaroid-ig",
+      ]) {
+        window.localStorage.setItem(`lucams_studio_onboarded_${surface}`, "v1");
+      }
+    });
 
     await page.goto(
       `/estudio/${ctx.igSlug}${ctx.igVariantId ? `?variant=${ctx.igVariantId}` : ""}`,
@@ -371,6 +383,11 @@ test.describe("estudio Ola 22 — identificador fuera del template + avatar tapp
     await dismissLateSurfaceTour(page);
 
     await uploadAndFillSlot1(page, panel, ctx.igProductId);
+    const closeTools = panel.getByRole("button", { name: "Listo", exact: true });
+    if (await closeTools.isVisible().catch(() => false)) {
+      await closeTools.click();
+      await expect(panel).not.toBeVisible();
+    }
     await dismissOverlays(page);
 
     // ── 1. El identificador del slot 1 vive FUERA del template ──

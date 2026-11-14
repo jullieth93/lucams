@@ -104,6 +104,7 @@ test("mi-cuenta · perfil: editar nombre/teléfono → persistido en DB", async 
     const newPhone = `300${run.replace(/\D/g, "").slice(-7)}`;
 
     await clientPage.goto("/mi-cuenta/perfil", { waitUntil: "domcontentloaded" });
+    await dismissCookieBanner(clientPage);
     const firstName = clientPage.locator("#firstName");
     const phone = clientPage.locator("#phone");
     await expect(firstName).toBeVisible({ timeout: 20_000 });
@@ -294,6 +295,7 @@ test("mi-cuenta · seguridad: cambiar contraseña → re-login con la nueva func
     });
     const page = await ctx.newPage();
     await page.goto("/login", { waitUntil: "domcontentloaded" });
+    await dismissCookieBanner(page);
     await page.locator('input[name="email"]').fill(email);
     await page.locator('input[name="password"]').fill(E2E_SETUP_CLIENT_PASSWORD);
     await page.getByRole("button", { name: /iniciar sesión|entrar|ingresar/i }).click();

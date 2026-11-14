@@ -444,10 +444,14 @@ test("finalize nombre: restaurar/activar por admin UI, lámina por Storage al ca
     });
     const archivedRow = page.locator("tr", { hasText: initial!.name });
     await expect(archivedRow).toBeVisible({ timeout: 30_000 });
-    await archivedRow.getByRole("button", { name: "Restaurar" }).click();
-    await expect
-      .poll(async () => (await pollProduct())!.deletedAt === null, { timeout: 30_000 })
-      .toBe(true);
+    await expect(async () => {
+      if ((await pollProduct())!.deletedAt !== null) {
+        await archivedRow.getByRole("button", { name: "Restaurar" }).click();
+      }
+      await expect
+        .poll(async () => (await pollProduct())!.deletedAt === null, { timeout: 5_000 })
+        .toBe(true);
+    }).toPass({ timeout: 30_000 });
   }
   if (originallyInactive || originallyArchived) {
     await page.goto(`/admin/productos?status=inactive&q=${encodeURIComponent(initial!.name)}`, {

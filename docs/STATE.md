@@ -1,157 +1,73 @@
 # Estado Actual del Proyecto — Lucams Shop
 
-> **Documento vivo de Nivel 0 (≤ 10 KB).** Resume qué opera hoy, la homologación entre ambientes y
-> los pendientes abiertos vigentes, sin bitácoras fechadas. Mapa completo en [`docs/README.md`](README.md).
+> **Documento vivo de Nivel 0 (≤ 10 KB).** Resume operación, homologación y pendientes vigentes. Mapa completo en [`docs/README.md`](README.md).
 
 ## Fotografía ejecutiva
 
-- **Tienda activa (`ADR-077`):** `lucamsshop.com` vende en producción en modo **`full`**
-  (`NEXT_PUBLIC_STORE_MODE=full`) con pagos Wompi, contraentrega y envíos Aveonline + Envío Lucams Bogotá.
-- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y
-  `packages/db` (**77 modelos Prisma**, **33 enums**, **97 migraciones Prisma** + **60 SQL Supabase**
-  con RLS y event trigger `enforce_rls_on_new_table` endurecido en `060` con `search_path` vacío y `%I.%I`).
-- **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) bajo el ruleset
-  `protect-ramas-criticas` con PR obligatorio y **5 checks requeridos** (`Typecheck + Lint + Build`,
-  `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`).
-- **Paquete legal vigente:** **Versión 3 (`2026-11-05`)** sincronizada en `packages/db/legal-content`,
-  `FALLBACK`, `cms-site-map.mjs` y el CMS de STG/PRD (9 campos `legal.*`, historial intacto).
+- **Tienda:** `lucamsshop.com` opera en modo **`full`** (`ADR-077`) con Wompi, contraentrega, Aveonline y Envío Lucams Bogotá.
+- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**77 modelos Prisma**, **33 enums**, **97 migraciones Prisma** + **60 SQL Supabase**). RLS cubre el dominio y `enforce_rls_on_new_table` fija `search_path` vacío e identificadores `%I.%I`.
+- **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) exigen PR y cinco checks: `Typecheck + Lint + Build`, `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`.
+- **Legal:** paquete **Versión 3** sincronizado en `packages/db/legal-content`, fallbacks, mapa y CMS de STG/PRD; historial intacto.
 
-## Topología de ambientes y homologación STG ↔ PRD
+## Ambientes y homologación STG ↔ PRD
 
-| Ambiente  | Infraestructura                                                                                | Estado operativo actual                                                                                                                         |
-| --------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **LOCAL** | Supabase en Podman (`:54321`/`:54322`/`:54324`) + Next dev (`:4000` vía `make local-up`)       | Operativo en modo **`full`** homologado (`ADR-203`); `make db-local-seed` 100 % idempotente; 3 crons SQL activos                                |
-| **STG**   | `develop` → Vercel Preview (`VERCEL_BYPASS_TOKEN`) + Supabase STG (`mjbdiqdkykhsixvqlrrp`)     | Operativo; aloja `uptime-monitor-prd` (12 jobs `pg_cron`, incluido `lucams-fiscal-watch` de la mig `055`); reset limpio vía `make stg-reset`    |
-| **PRD**   | `production` → `lucamsshop.com` en Vercel Pro (`iad1`) + Supabase PRD (`zxkucphbsfygakgxcnik`) | **En producción (`full`)**; 17 jobs `pg_cron` (incluidos `lucams-fiscal-watch` y `lucams-lifecycle`) + backups diarios GPG (DB + Storage) en R2 |
+| Ambiente  | Infraestructura                                                      | Estado                                                                      |
+| --------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **LOCAL** | Supabase en Podman (`:54321`/`:54322`/`:54324`) + Next dev (`:4000`) | `full` homologado (`ADR-203`); seed local idempotente; 3 crons SQL          |
+| **STG**   | `develop` → Vercel Preview + Supabase STG                            | Operativo; aloja `uptime-monitor-prd` (12 jobs); reset con `make stg-reset` |
+| **PRD**   | `production` → Vercel Pro (`iad1`) + Supabase PRD                    | `full`; 17 jobs `pg_cron`; backups diarios GPG de DB + Storage en R2        |
 
-### Excepciones deliberadas de homologación (`ADR-099`, `ADR-121`, `ADR-126`)
+### Excepciones deliberadas (`ADR-099`, `ADR-121`, `ADR-126`, `ADR-203`)
 
-- **Catálogo y esquema (`scripts/diag-stg/homologacion.sh`):** migraciones, categorías (84=84,
-  jerarquía aplanada espejo de PRD), ocasiones, redirects, `169/169` campos CMS y variantes `-NOMAG`
-  homologados. **Catálogo ACTIVO de referencia (`ADR-203`, owner 2026-11-11): los 8 activos de PRD +
-  `bola-navidena-personalizada` (9 activos) en los 3 ambientes**; el resto queda pausado en STG/DEV.
-  Cuadrados tiene sus 12 gemelas `-NOMAG` sembradas **inactivas** (listas para toggle admin).
-  `nombre-personalizado` está archivado en PRD; `set-fotoimanes-circulares` y `set-fotoimanes-corazon`,
-  en los 3 ambientes. El stock real no se sincroniza.
-- **Topología deliberada de catálogo pausado:** PRD conserva solo el catálogo vigente y sus
-  históricos archivados (13 productos); STG y LOCAL conservan además el catálogo completo pausado
-  (54 productos, listos para reactivar). Por eso las plantillas y tramos mayoristas de
-  `mini-libros-magneticos` (inactivo) viven solo en STG/LOCAL, y PRD guarda 9 filas archivadas
-  históricas de galería `separadores-alargados` (S10–S18) como auditoría — contenido vivo idéntico.
-- **Crons y secretos:** `uptime-monitor-prd` solo en STG (con sus tablas `uptime_monitor_*`); los 5
-  crons de correo existen solo en PRD y STG además tiene `CRON_JOBS_DISABLED` y
-  `CART_RECOVERY_MODE=manual` (automatización de correo inerte en STG); `lucams-lifecycle` y Resend
-  en ambos, con `DRY_RUN` en STG. `AVEONLINE_WEBHOOK_SECRET` solo en PRD; `CRON_JOBS_DISABLED` y
-  `VERCEL_BYPASS_TOKEN` solo en STG. `pg_net` 0.20.4 (STG) vs 0.20.0 (PRD): deriva de plataforma
-  gestionada por Supabase, sin impacto funcional.
-- **Datos de prueba:** el cupón `LOCURA` vive solo en STG y nunca pasa a PRD.
+- Migraciones, categorías (84 por ambiente), ocasiones, redirects y **169/169 campos CMS** están homologados. El catálogo activo de referencia contiene los 8 productos originales de PRD + `bola-navidena-personalizada` (9); el resto permanece pausado fuera de PRD.
+- PRD conserva el catálogo vigente e históricos archivados (13 productos); STG/LOCAL conservan además el catálogo pausado (54). Plantillas y tramos de `mini-libros-magneticos` existen solo en STG/LOCAL; PRD mantiene nueve galerías archivadas de separadores como auditoría.
+- `nombre-personalizado` está archivado en PRD; `set-fotoimanes-circulares` y `set-fotoimanes-corazon`, en los tres ambientes. Cuadrados tiene 12 variantes `-NOMAG` inactivas. El stock real nunca se sincroniza.
+- `uptime-monitor-prd` y sus tablas viven solo en STG. Los cinco crons de correo existen en STG/PRD; STG fuerza `CRON_JOBS_DISABLED`, recuperación manual y Lifecycle `DRY_RUN`. `AVEONLINE_WEBHOOK_SECRET` solo está en PRD; `VERCEL_BYPASS_TOKEN`, solo en STG.
+- `pg_net` difiere por versión gestionada de Supabase sin impacto funcional. El cupón de prueba `LOCURA` existe solo en STG.
 
-## Capacidades operativas por dominio
+## Capacidades operativas
 
 ### Catálogo, SEO y CMS v2 ([`domains/catalog-and-cms.md`](domains/catalog-and-cms.md))
 
-- Categorías padre/hijas con intro colapsable (`CategoryIntro`), facetas configurables por categoría
-  (`Category.visibleFilters` en `lib/visible-filters.ts`) y fijado de producto insignia
-  (`Category.featuredProductSlug` con badge «Destacado»).
-- 16 ocasiones dinámicas, `GlobalSearch` difuso (`shouldFilter={false}`), PDP con escalas mayoristas
-  (`WholesaleTier`) y lightbox con zoom compartido (`components/preview-zoom.ts`), 404 HTTP real
-  sobre slugs cacheados, feed `GET /feeds/google-merchant.xml` y APIs `/api/catalog|cms`.
-- **CMS v2 de 3 capas (`ADR-187`):** `9` contenedores, `30` secciones y `169` campos
-  (`105 BLOCK + 64 SETTING`) con paridad AST `169/169` en CI y tokens legales `{{*}}`
-  (`lib/consumer-law.ts`).
+- Categorías padre/hija, facetas configurables, producto insignia, 16 ocasiones, búsqueda difusa, PDP con escalas mayoristas y zoom, 404 real sobre slugs cacheados, feed Google Merchant y APIs `/api/catalog|cms`.
+- **CMS v2 (`ADR-187`):** 9 contenedores, 30 secciones y 169 campos (105 `BLOCK` + 64 `SETTING`), paridad AST en CI, versionado append-only, publicación programada y tokens legales dinámicos.
+- `/admin/mayorista`: lectura para `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER` y `FINANCE_ANALYST`; escritura para los tres primeros. El bloque «Ahorra llevando más» usa solo ahorro real por volumen.
 
-### Estudio 2D/3D y Producción 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md))
+### Estudio 2D/3D y producción 300 DPI ([`domains/studio-and-production.md`](domains/studio-and-production.md))
 
-- Konva multi-unidad (`ADR-167`/`173`), derivados WebP ≤800 px, `HTMLImageElement` por slot, lazy-mount
-  `> 6` slots, `StudioStoreContext` y motor Canvas2D (`renderSlotToDataUrl2D` en `<canvas>` compartido +
-  refresco de firmas y activos propios al editar desde `/carrito`), «Mis fotos», auto-fill y letras + IA.
-  **10 escenas 3D** + `CalendarCardFocus`, filtrado `-NOMAG` y reverso «Lucams» (`ADR-190`). Bola A/B
-  en UNA esfera, argolla transparente, moño exterior y 480 partículas; dos caras por capacidad (`ADR-201`).
-  Mini libros con carátula extendida.
-- **Madurez de ciclo completo (`ADR-202`, owner 2026-11-10):** tiras photobooth compuestas como tira
-  completa para imprenta (`composePhotoStrips` + `metadata.photoStrips`), previews de packs en grilla
-  balanceada 3×2 (`packGrid` + partición por pack), «Mis fotos»/auto-fill sin prediseñados
-  (`fromGallery`), colapso de secciones por unidad unificado, escena 3D Polaroid con conteo de packs,
-  bloque «Ahorra llevando más» unificado en toda la PDP (`VolumeTiersNote` + escala derivada de
-  presentaciones; **solo ahorro por volumen real** — la promo va como tachado por presentación) con
-  **curva de volumen real en packs Polaroid/Cuadrados** (2 packs −6 %, 3 −11 %, 4 −15 %; one-shot
-  `packs-volume-pricing-20261111.mjs`), `magnet: true` explícito en Polaroid/Cuadrados, calendario
-  renombrado «Calendario Set 12 Tarjetas», **banners de la portada como ventana emergente** (una vez
-  por sesión y DESPUÉS del consentimiento de cookies — `components/home/promo-popup.tsx`), códigos de
-  respaldo MFA que ya no desaparecen en el enrolamiento inicial (sin `revalidatePath` a mitad del
-  flujo), edición inline en `/admin/mayorista`, **logo grande de la portada administrable** vía CMS
-  `site.logo` (estacional) y **caída de nieve a pantalla completa** activable en
-  `/admin/contenido/paginas/inicio` → «Efectos de temporada» (`home.seasonal.snowfall`),
-  CTA final de portada hacia `/empresas-y-eventos` (`home.cta.b2b-label`) y embudo B2B desde 25 unidades.
-- **Bola Navideña y Mini Libros (`ADR-199`/`200`/`201` + `ADR-203`):** Bola Navideña (inserto dúplex
-  plano de 8 cm) **activa en los 3 ambientes** con 2 variantes — Sin imán **$10.000** y Con imán
-  **$11.000** (+$1.000; los 2 diseños van imantados cada uno) — y Mini Libros (carátulas 7,1 × 5 y
-  5 × 2,5 cm, lomo 0,5 cm, con/sin imán) **inactivos** fuera del catálogo de referencia. La bola usa
-  previews A/B sin doblez ni taxonomía de separadores en todo el ciclo (máx. 25) y ofrece solo la
-  plantilla «Foto circular» (nieve/luces/reno archivadas). Promos a nivel producto: **3 × $27.000**,
-  **5 × $40.000** (aplican a ambas variantes); paquete **8 × 8 × 8 cm / 200 g**.
-- Auto-save serial con `clientRev` (`STALE_REVISION`), retomador `[STU-02]` para clientes e
-  invitados, previews limpios (`ADR-191`) en bucket privado `design-previews` vía
-  `/api/design-preview/*` (`LUC-SEC-001`) con `DesignPreviewDialog` paginado (`PagedPreviewThumb`,
-  `pageLabels`, zoom `preview-zoom.ts`), y cola `RenderJob` 300 DPI a sangre + ZIP de taller.
+- Konva multi-unidad (`ADR-167`/`173`), derivados WebP, lazy-mount, auto-fill, galería, letras e IA. Diez escenas 3D, filtrado `-NOMAG` y reverso de marca (`ADR-190`).
+- Tiras photobooth compuestas para imprenta, previews de packs en grilla, réplica entre unidades y curva de volumen en packs. Portada admite popup tras consentimiento, logo estacional, nieve con movimiento reducido y CTA B2B.
+- **Bola Navideña (`ADR-199`/`201`):** activa en los tres ambientes; inserto plano dúplex de 8 cm en una esfera, cara B obligatoria, máximo 25 unidades. Variantes sin/con imán a $10.000/$11.000 COP; promociones 3 × $27.000 y 5 × $40.000.
+- **Mini Libros (`ADR-200`):** carátulas 7,1 × 5 y 5 × 2,5 cm, lomo 0,5 cm, con/sin imán; inactivos fuera del catálogo de referencia.
+- Auto-save serial con `clientRev` y `STALE_REVISION`; recuperación de borradores; previews privados por `/api/design-preview/*`; `RenderJob` 300 DPI a sangre y ZIP de taller.
 
-### Carrito, Checkout, Pagos y Logística ([`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md))
+### Carrito, checkout, pagos y logística ([`domains/checkout-payments-shipping.md`](domains/checkout-payments-shipping.md))
 
-- Carrito auto-sanado (`ADR-171`), checkout en 3 pasos (`ADR-155`), direcciones DANE + CP MinTIC
-  (171/171 ciudades) y modo regalo (guía física y correos sin precios). Fletes HMAC por peso, ledger
-  Wompi por intento + webhook 25 h, COD con blocklist (MFA en alta/baja, PII enmascarada)/conciliación y CSV contable DIAN con redacción de correo para `FINANCE_ANALYST`, alertas
-  de stock, Aveonline con PDFs + `ShipmentEvent` y descarga de etiquetas autenticada y auditada, Envío Lucams Bogotá, segregación Taller/Alistamiento +
-  confidencialidad COP y diseños 0-PII en `/admin/pedidos`, costeo BOM (`/admin/costos`), escalas mayoristas (`/admin/mayorista`)
-  y cupones personales no transferibles (`NOT_OWNER`).
+- Carrito auto-sanado (`ADR-171`), checkout de tres pasos (`ADR-155`), direcciones DANE + CP MinTIC (171 ciudades) y modo regalo sin precios en guía/correos.
+- Fletes HMAC por peso, ledger Wompi por intento, webhook con ventana de 25 h, COD con blocklist y conciliación, CSV contable DIAN con PII redactada y decremento atómico de stock post-pago.
+- Aveonline con PDF y `ShipmentEvent`; etiquetas autenticadas/auditadas; segregación Taller/Alistamiento, confidencialidad COP, costeo BOM y cupones personales no transferibles.
 
-### CRM 360°, B2B, Posventa y Operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
+### CRM 360, B2B, posventa y operación ([`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md), [`domains/post-sale-and-support.md`](domains/post-sale-and-support.md))
 
-- Grafo `Contact` 360° (`isStaff`, `selfDealing`, fusión asistida), `/admin/hoy`, tareas con coherencia relacional y alcance por rol/responsable, RFM/LTV en
-  `/admin/metricas`, embudo `/empresas-y-eventos` → `Opportunity` → `/cotizacion/[token]`, **Puntos
-  Lucams** (tope anti-abuso ≤25 %, pasivo vivo en `/admin/fidelizacion`, retrocrédito al verificar correo, reversión en retractos) y `/r/[codigo]`.
-- Seguimiento `/pedido/[token]` con autoservicio posventa para invitados (`GuestOrderSupportCard`,
-  doble factor token + email), retractos Ley 1480 y garantías selladas `OrderItem.warrantyMonths`
-  (`1..120` m) con reembolsos finales unificados en `SUPERADMIN` + MFA y lectura contable cero-PII para
-  `FINANCE_ANALYST`, soporte PQR con SLAs + copiloto IA 0-PII y reseñas `DELIVERED` con lectura para Soporte.
-- **Vigilancia fiscal proactiva (`ADR-196`):** cron diario `fiscal-watch` que mide los umbrales DIAN
-  de 3 500 UVT del año en curso (facturación electrónica e IVA por ventas con tarjeta), proyecta el
-  cierre anual por ritmo reciente y alerta 70 %/90 %/100 % en `/admin/hoy`, `/admin/metricas`,
-  `/admin/notificaciones` y correo al owner (una vez por cruce y año).
-- Panel `/admin` (8 roles × 36 capacidades con paridad estricta N-21 y cero bypass B-7 en las 9 áreas,
-  notificaciones aisladas por rol en SQL (incluidas subrutas dinámicas) y enlaces internos seguros, cuotas vivas de Storage + Postgres en `/admin/observability`,
-  MFA `aal2` sin desactivación permanente + step-up MFA en conectores, bloqueos y purgas irreversibles +
-  rotación de contraseña verificada en HIBP, buscador `⌘K`, `useAdminConfirm`), 32 plantillas React Email
-  - 2 Auth OTP, fechas en `America/Bogota` (`lib/datetime.ts`), GA4 + `lucams_utm` bajo
-    consentimiento + embudo `FunnelEventDaily`, **20 procesos programados** y **backups diarios GPG de
-    DB + Storage (`HAS_STORAGE=true`) en Cloudflare R2** con DR drill mensual.
-- **E2E administrativo:** `loginAdminWithTotp` espera `load` y reintenta el diligenciamiento con aserciones de valores antes del MFA, evitando la carrera de hidratación en formularios controlados.
-- **Centro de Aprendizaje y Ayuda Operativa (`ADR-197`):** `/admin/ayuda` con **44 guías**, búsqueda y
-  filtro por áreas RBAC, 8 rutas de onboarding con avance visual, progreso y valoración auditada por usuario.
-- **Lifecycle Journeys (`ADR-198`) y Marketing Ley 1581:** `/admin/lifecycle` y `/admin/carritos` con lectura
-  analítica 0-PII para `FINANCE_ANALYST`, `/admin/carritos/configuracion` exclusiva `SUPERADMIN` + MFA (`carts:configure`),
-  exclusión de rebotes/quejas (`EmailEvent`) y staff en audiencias comerciales, y CSV `/admin/marketing/suscriptores/export`
-  solo opt-in comercial vigente por defecto (`?scope=audit_ledger` probatorio SIC exclusivo `SUPERADMIN`). STG `DRY_RUN`; 5 rutas **en borrador** y MFA reciente.
+- Grafo `Contact` con aislamiento de staff, detección `selfDealing` y fusión humana asistida; `/admin/hoy`, tareas, RFM/LTV y embudo B2B `Opportunity` → cotización.
+- Puntos Lucams con tope ≤25 %, retrocrédito y reversión; referidos por `/r/[codigo]`. Posventa invitado con token + correo, retractos y garantías con reembolso final `SUPERADMIN` + MFA; soporte PQR con SLA e IA 0-PII.
+- Vigilancia fiscal diaria (`ADR-196`) sobre umbrales DIAN de 3.500 UVT, proyección anual y alertas 70/90/100 %.
+- Panel con 8 roles × 36 capacidades, deny-by-default, MFA `aal2`, step-up en acciones sensibles, inactividad de 30 min, PII redactada en servidor, auditoría y confirmaciones destructivas.
+- Centro de ayuda con 44 guías y ocho recorridos (`ADR-197`); Lifecycle y Marketing respetan Ley 1581, supresión por rebote/queja y `DRY_RUN` en STG (`ADR-198`).
+- 32 plantillas React Email + 2 Auth OTP; fechas `America/Bogota`; GA4 y UTM bajo consentimiento; backups diarios y DR mensual.
 
 ## Pendientes abiertos reales
 
 ### Negocio y operación externa
 
-1. **Facturación electrónica DIAN (no técnico):** NIT/RUT de facturador, contador/abogado y
-   proveedor tecnológico (`BILLING_DOCUMENT_ENABLED = false` en `features/checkout/billing-document.ts`).
-   La **vigilancia automática** de los topes de 3 500 UVT ya opera en los 3 ambientes (`ADR-196`).
-2. **SEO post-indexación:** revisar consultas e indexación reales en Google Search Console para
-   eventuales redirecciones 301 adicionales y confirmar aprobación del feed en Merchant Center.
+1. **Facturación electrónica DIAN:** faltan NIT/RUT de facturador, acompañamiento contador/abogado y proveedor tecnológico; `BILLING_DOCUMENT_ENABLED = false`. La vigilancia de umbrales ya opera.
+2. **SEO post-indexación:** revisar Search Console y confirmar aprobación del feed en Merchant Center.
+3. **Avisos de reposición:** la homologación E2E permanece impedida por **Resend 403** del remitente de pruebas; la suscripción conserva correctamente `notifiedAt=null`. No se declara exitosa ni se altera configuración para ocultarlo.
 
 ### Higiene técnica diferida (no bloqueante)
 
-1. **Costo de minutos de CI (GitHub Actions):** observar el consumo real del mes en Settings → Billing → Actions minutes antes de actuar; las opciones evaluadas (concurrency con cancelación, E2E solo en ramas protegidas, runner self-hosted en la VM, Renovate) están documentadas en [`integrations/github-and-ops.md`](integrations/github-and-ops.md) § 7 (owner 2026-11-11).
-2. **Recovery codes MFA admin:** regenerar códigos de cuentas antiguas para retirar el fallback
-   legacy SHA-256 en `apps/web/features/admin-mfa/recovery-codes.ts`.
-3. **Leaked Password Protection nativo:** ACTIVO en `lucams-prod` desde la auditoría 2026-11-08
-   (`password_hibp_enabled: true` vía Management API — el proyecto ya está en plan Pro). El fallback
-   `apps/web/lib/pwned-passwords.ts` (HIBP k-anonymity) queda como segunda capa.
-4. **Mejoras opcionales:** evaluar `ADR-118` (unificar preview cliente con renderer servidor),
-   conectar `lib/texture-resolution.ts` en `buildMagnetTextures`, aplicar `Category.visibleFilters`
-   en `GET /api/catalog/filters` y sumar vectores `.svg` en `apps/web/public/brand/`.
-5. **DR drill extendido:** documentar/validar restauración de `auth.users` y ajustes de proyecto
-   Supabase junto al simulacro mensual de DB + Storage desde R2.
+1. Observar consumo mensual de GitHub Actions antes de cambiar CI; alternativas en [`integrations/github-and-ops.md`](integrations/github-and-ops.md) § 7.
+2. Regenerar códigos MFA antiguos para retirar el fallback legacy SHA-256.
+3. Leaked Password Protection nativo está activo en PRD; HIBP k-anonymity permanece como segunda capa.
+4. Evaluar unificación de previews (`ADR-118`), conexión de `texture-resolution.ts`, filtros de categoría en `/api/catalog/filters` y vectores SVG de marca.
+5. Extender el DR drill a `auth.users` y ajustes del proyecto Supabase, además de DB + Storage.

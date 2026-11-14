@@ -91,7 +91,9 @@ export class AdminContenidoPage {
     });
     const publishButton = row.getByRole("button", { name: /Publicar/i });
     await expect(publishButton).toBeVisible({ timeout: 10_000 });
-    await publishButton.click();
-    await this.page.waitForURL(/published=1/, { timeout: 30_000 });
+    await expect(async () => {
+      await publishButton.click();
+      await this.page.waitForURL(/published=1/, { timeout: 5_000 });
+    }).toPass({ timeout: 30_000 });
   }
 }

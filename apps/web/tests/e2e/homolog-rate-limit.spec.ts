@@ -304,6 +304,7 @@ test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4
 
     // ═══ 3. CONTACTO — 4 envíos reales mismo email (límite 3/día por email).
     await cleanBuckets("contact");
+    let turnstileRecoveries = 0;
     for (let i = 1; i <= 4; i++) {
       await anonPage.goto("/contacto", { waitUntil: "domcontentloaded" });
       const form = anonPage.locator("form", { has: anonPage.locator("#contact-email") });
@@ -340,15 +341,25 @@ test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4
         ),
         form.getByRole("button", { name: /enviar/i }).click(),
       ]);
-      if (i <= 3) {
-        await expect(anonPage.locator("body")).toContainText(/recibimos tu mensaje/i, {
-          timeout: 20_000,
-        });
-      } else {
-        await expect(anonPage.locator("body")).toContainText(
-          /recibimos varios mensajes desde tu cuenta hoy/i,
-          { timeout: 20_000 },
-        );
+      const outcome = await Promise.race([
+        anonPage
+          .locator("#contenido")
+          .getByText(
+            i <= 3 ? /recibimos tu mensaje/i : /recibimos varios mensajes desde tu cuenta hoy/i,
+          )
+          .waitFor({ state: "visible", timeout: 20_000 })
+          .then(() => "accepted" as const),
+        anonPage
+          .getByText(/Validación anti-bot falló/i)
+          .waitFor({ state: "visible", timeout: 20_000 })
+          .then(() => "turnstile-rejected" as const),
+      ]);
+      if (outcome === "turnstile-rejected") {
+        if (turnstileRecoveries >= 1) {
+          throw new Error("Turnstile rechazó el token 2 veces en contacto: fallo real.");
+        }
+        turnstileRecoveries += 1;
+        i -= 1;
       }
     }
     const tickets = await db().supportTicket.count({ where: { email: EMAIL } });

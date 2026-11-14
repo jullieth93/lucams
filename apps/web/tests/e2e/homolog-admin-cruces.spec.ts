@@ -245,15 +245,26 @@ test("cruz 3: admin aprueba reseña pendiente → la PDP la muestra", async ({
     await adminPage.goto("/admin/resenas?status=pending", { waitUntil: "domcontentloaded" });
     const row = adminPage.locator("tr", { hasText: run }).first();
     await expect(row).toBeVisible({ timeout: 20_000 });
-    await row.getByRole("button", { name: /aprobar/i }).click();
     // La señal de éxito es la DB (en mobile el redirect ?approved=1 puede
     // perderse tras la re-render de las tarjetas).
     await expect(async () => {
-      const r = await db().review.findUnique({
+      const current = await db().review.findUnique({
         where: { id: review.id },
         select: { isApproved: true },
       });
-      expect(r!.isApproved, "isApproved persistido").toBe(true);
+      if (!current?.isApproved) await row.getByRole("button", { name: /aprobar/i }).click();
+      await expect
+        .poll(
+          async () =>
+            (
+              await db().review.findUnique({
+                where: { id: review.id },
+                select: { isApproved: true },
+              })
+            )?.isApproved,
+          { timeout: 5_000 },
+        )
+        .toBe(true);
     }).toPass({ timeout: 30_000 });
     record("c3-admin-approved", true, "aprobada desde /admin/resenas (isApproved en DB)");
 

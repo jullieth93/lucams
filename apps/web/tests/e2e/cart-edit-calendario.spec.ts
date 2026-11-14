@@ -39,18 +39,14 @@ async function dismissOverlays(page: Page) {
 }
 
 async function fillEmptySlotsWithUploads(page: Page, count: number) {
-  // Abrir el panel de fotos en mobile si hace falta (bottom sheet tras FAB «Editar»).
-  const editarFab = page.getByRole("button", { name: /^Editar/i }).first();
-  if (
-    (await editarFab.count()) &&
-    !(await page
-      .getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i })
-      .isVisible()
-      .catch(() => false))
-  ) {
-    await editarFab.click();
-  }
   const consent = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
+  if (!(await consent.isVisible().catch(() => false))) {
+    await page.keyboard.press("Escape");
+    await page
+      .getByRole("button", { name: /abre las herramientas de plantillas y fotos/i })
+      .click();
+    await consent.waitFor({ state: "visible", timeout: 30_000 });
+  }
   if (await consent.isVisible().catch(() => false)) {
     if (!(await consent.isChecked())) await consent.check();
   }
@@ -112,6 +108,12 @@ test("repro STG — editar set de calendario desde el carrito y agregar sets", a
     .catch(() => {});
   await dismissOverlays(page);
   const consent0 = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
+  if (!(await consent0.isVisible().catch(() => false))) {
+    await page
+      .getByRole("button", { name: /^Editar/i })
+      .first()
+      .click();
+  }
   await consent0.waitFor({ state: "visible", timeout: 30_000 });
   await page.waitForTimeout(1_500);
   await fillEmptySlotsWithUploads(page, 12);

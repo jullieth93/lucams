@@ -46,7 +46,7 @@
 import { useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
-import { Frame, Image as ImageIcon, Check, ChevronUp } from "lucide-react";
+import { Frame, Image as ImageIcon, Ban, Check, ChevronUp } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { CustomColorPicker } from "@/components/color-picker";
 import {
@@ -309,9 +309,7 @@ export function StudioStyleToolbar({
               className="ring-brand-purple/20 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-1"
               style={borderColor ? { backgroundColor: borderColor } : { background: "white" }}
             >
-              {borderColor === null && (
-                <span className="text-brand-muted text-sm leading-none">∅</span>
-              )}
+              {borderColor === null && <Ban className="text-brand-muted h-4 w-4" aria-hidden />}
             </span>
           )}
           <span className="min-w-0 flex-1">
@@ -319,7 +317,7 @@ export function StudioStyleToolbar({
               <span className="text-brand-purple-dark block truncate text-sm font-semibold">
                 {selectedColorLabel}
               </span>
-            )}
+            )}{" "}
             {showBorderSection && (
               <span className="text-brand-muted block text-xs">{borderStateLabel}</span>
             )}

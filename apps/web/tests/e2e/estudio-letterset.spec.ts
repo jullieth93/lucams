@@ -198,10 +198,23 @@ test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 
       }
     };
     const previewDialog = page.getByRole("dialog", { name: /Así se verá/i });
+    const selectTemplate = async () => {
+      const toolsToggle = page.getByRole("button", {
+        name: /abre las herramientas de plantillas y fotos/i,
+      });
+      if (await toolsToggle.isVisible().catch(() => false)) await toolsToggle.click();
+      const template = page.getByRole("radio").filter({ visible: true }).first();
+      if (await template.count()) {
+        if ((await template.getAttribute("aria-checked")) !== "true") await template.click();
+        await expect(template).toHaveAttribute("aria-checked", "true");
+      }
+      await page.keyboard.press("Escape");
+    };
 
     // Sin ?copies= → 1 copia (default): modal sin desglose de copias.
     await page.goto(`/estudio/${product.slug}`, { waitUntil: "domcontentloaded" });
     await dismissCookies();
+    await selectTemplate();
     const listo = page
       .getByRole("button", { name: /Ver diseño/ })
       // QA ronda 2 (owner 2026-10-07) — TODOS los CTAs de finalizar dicen «Ver
@@ -227,6 +240,7 @@ test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 
     // idénticas" desapareció de las superficies personalizables).
     await page.goto(`/estudio/${product.slug}?copies=3`, { waitUntil: "domcontentloaded" });
     await dismissCookies();
+    await selectTemplate();
     await expect(listo).toBeVisible({ timeout: 30_000 });
     await listo.click();
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });
