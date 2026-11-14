@@ -252,7 +252,16 @@ async function main() {
   //    de dumps vacíos/devastados (el catálogo real son 11 productos desde la
   //    depuración pre-producción del 2026-08-10 — ver cabecera).
   const dumpRows = dumpCopyRowCounts(sql.toString("utf8"));
-  const tables = ["Product", "Category", "OcasionTag", "CmsField", "Order", "Customer"];
+  const tables = [
+    "Product",
+    "ProductVariant",
+    "Category",
+    "OcasionTag",
+    "CmsField",
+    "Order",
+    "Customer",
+    "AdminUser",
+  ];
   const counts = {};
   for (const t of tables) {
     const expectedRows = dumpRows.get(t);

@@ -120,6 +120,14 @@ jobs:
           BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
           DRILL_DATABASE_URL: postgresql://supabase_admin:postgres@localhost:5432/postgres
 
+      - name: Verificar RLS, grants e integridad CMS restaurados
+        run: |
+          node packages/db/scripts/verify-security-posture.mjs
+          node packages/db/scripts/verify-cms-v2-integrity.mjs
+        env:
+          DATABASE_URL: postgresql://supabase_admin:postgres@localhost:5432/postgres
+          DIRECT_URL: postgresql://supabase_admin:postgres@localhost:5432/postgres
+
   # F-16 (auditoría 2026-09-04): verificación mínima del mirror de Supabase Storage.
   # NO restaura nada — prueba de LEGIBILIDAD: baja el manifiesto más nuevo, elige un
   # bucket con N>0 objetos, descarga su archivo .tar.gz.gpg, lo descifra (misma
