@@ -27,6 +27,7 @@ const { cmsMediaMocks, cmsServiceMocks, auditSpy, mockLogger, updateTagSpy, reva
       createCmsField: vi.fn(),
       duplicateCmsField: vi.fn(),
       getCmsFieldById: vi.fn(),
+      getCmsSectionPageSlug: vi.fn(),
       listCmsDraftFields: vi.fn(),
       moveCmsFieldToSection: vi.fn(),
       publishCmsFieldVersion: vi.fn(),

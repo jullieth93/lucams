@@ -1,13 +1,16 @@
 "use client";
 
 /*
- * P2 backoffice — acciones por reclamo de garantía (admin). Flujo Ley 1480:
- * PENDING → IN_REVIEW → APPROVED (elige remedio) → RESOLVED · o REJECTED (motivo).
+ * P2 backoffice / Bloque 6 — acciones por reclamo de garantía (admin). Flujo Ley 1480:
+ * PENDING → IN_REVIEW → APPROVED (elige remedio) → RESOLVED · o REJECTED (motivo),
+ * más asignación de responsable (`assignedToAdminId`).
+ * Las devoluciones de dinero (`REFUND`) exigen `warranty:refund` (`SUPERADMIN`) + MFA reciente.
  */
 
 import { useActionState } from "react";
 import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import {
+  assignWarrantyAction,
   reviewWarrantyAction,
   approveWarrantyAction,
   resolveWarrantyAction,
@@ -16,7 +19,27 @@ import {
 
 type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
-export function WarrantyActions({ id, status }: { id: string; status: string }) {
+export function WarrantyActions({
+  id,
+  status,
+  resolutionType = null,
+  canRefund = false,
+  assignedToAdminId = null,
+  currentAdminId,
+  assignableAdmins = [],
+}: {
+  id: string;
+  status: string;
+  resolutionType?: string | null;
+  canRefund?: boolean;
+  assignedToAdminId?: string | null;
+  currentAdminId?: string;
+  assignableAdmins?: Array<{ id: string; email: string }>;
+}) {
+  const [assignSt, assign, assignPending] = useActionState<St, FormData>(
+    assignWarrantyAction,
+    null,
+  );
   const [reviewSt, review, reviewPending] = useActionState<St, FormData>(
     reviewWarrantyAction,
     null,
@@ -29,16 +52,66 @@ export function WarrantyActions({ id, status }: { id: string; status: string }) 
     rejectWarrantyAction,
     null,
   );
-  const msg = reviewSt ?? approveSt ?? resolveSt ?? rejectSt;
+  const msg = assignSt ?? reviewSt ?? approveSt ?? resolveSt ?? rejectSt;
+  const isActive = status === "PENDING" || status === "IN_REVIEW" || status === "APPROVED";
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {approveReauthModal}
       {resolveReauthModal}
       {msg && (msg.success || msg.error) && (
-        <p className={`text-xs ${msg.success ? "text-emerald-700" : "text-rose-700"}`}>
+        <p
+          role="status"
+          className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${
+            msg.success
+              ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border border-rose-200 bg-rose-50 text-rose-800"
+          }`}
+        >
           {msg.success ?? msg.error}
         </p>
+      )}
+
+      {isActive && assignableAdmins.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <form action={assign} className="flex min-w-0 flex-1 items-center gap-1.5">
+            <input type="hidden" name="id" value={id} />
+            <select
+              key={assignedToAdminId ?? "unassigned"}
+              name="assignedToAdminId"
+              defaultValue={assignedToAdminId ?? ""}
+              aria-label="Responsable del reclamo"
+              className="border-brand-purple/20 text-brand-purple-dark focus:ring-brand-purple/30 min-w-0 flex-1 truncate rounded-md border bg-white px-2 py-1 text-xs focus:ring-2 focus:outline-none"
+            >
+              <option value="">Sin asignar</option>
+              {assignableAdmins.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.email}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={assignPending}
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 rounded-md border bg-white px-2 py-1 text-xs font-medium disabled:opacity-60"
+            >
+              {assignPending ? "…" : "Guardar"}
+            </button>
+          </form>
+          {currentAdminId && assignedToAdminId !== currentAdminId && (
+            <form action={assign}>
+              <input type="hidden" name="id" value={id} />
+              <input type="hidden" name="assignedToAdminId" value={currentAdminId} />
+              <button
+                type="submit"
+                disabled={assignPending}
+                className="text-brand-purple hover:text-brand-purple-dark text-[11px] font-semibold underline disabled:opacity-60"
+              >
+                Asignarme
+              </button>
+            </form>
+          )}
+        </div>
       )}
 
       {status === "PENDING" && (
@@ -62,11 +135,13 @@ export function WarrantyActions({ id, status }: { id: string; status: string }) 
               name="resolution"
               aria-label="Remedio de garantía"
               defaultValue="REPAIR"
-              className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+              className="border-brand-purple/20 text-brand-purple-dark focus:ring-brand-purple/30 min-w-0 flex-1 rounded-md border bg-white px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
             >
               <option value="REPAIR">Reparar</option>
-              <option value="REPLACE">Cambiar</option>
-              <option value="REFUND">Devolver dinero</option>
+              <option value="REPLACE">Cambiar unidad</option>
+              <option value="REFUND" disabled={!canRefund}>
+                {canRefund ? "Devolver dinero (MFA)" : "Devolver dinero (solo Superadmin)"}
+              </option>
             </select>
             <button
               type="submit"
@@ -80,28 +155,39 @@ export function WarrantyActions({ id, status }: { id: string; status: string }) 
         </>
       )}
 
-      {status === "APPROVED" && (
-        <details>
-          <summary className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 cursor-pointer list-none rounded-md border px-3 py-1.5 text-xs font-semibold">
-            Marcar resuelto…
-          </summary>
-          <form action={resolve} className="mt-2 flex flex-col gap-2">
-            <input type="hidden" name="id" value={id} />
-            <input
-              name="note"
-              maxLength={500}
-              placeholder="Nota (opcional): cómo se resolvió"
-              className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={resolvePending}
-              className="self-start rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-            >
-              {resolvePending ? "…" : "Confirmar resolución"}
-            </button>
-          </form>
-        </details>
+      {status === "APPROVED" &&
+        (resolutionType === "REFUND" && !canRefund ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800">
+            Devolución aprobada — pendiente de cierre y reembolso por Superadmin (requiere MFA).
+          </p>
+        ) : (
+          <details>
+            <summary className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 cursor-pointer list-none rounded-md border bg-white px-3 py-1.5 text-xs font-semibold">
+              Marcar resuelto…
+            </summary>
+            <form action={resolve} className="mt-2 flex flex-col gap-2">
+              <input type="hidden" name="id" value={id} />
+              <input
+                name="note"
+                maxLength={500}
+                placeholder="Nota (opcional): cómo se ejecutó el remedio"
+                className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border bg-white px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={resolvePending}
+                className="self-start rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {resolvePending ? "…" : "Confirmar resolución"}
+              </button>
+            </form>
+          </details>
+        ))}
+
+      {status === "RESOLVED" && (
+        <p className="text-[11px] font-medium text-emerald-800">
+          Garantía cerrada y notificada al cliente.
+        </p>
       )}
     </div>
   );
@@ -127,8 +213,8 @@ function RejectForm({
           name="note"
           required
           maxLength={500}
-          placeholder="Motivo (ej. mal uso, fuera de garantía)"
-          className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+          placeholder="Motivo del rechazo (ej. daño por uso, fuera de cobertura)"
+          className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border bg-white px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
         />
         <button
           type="submit"

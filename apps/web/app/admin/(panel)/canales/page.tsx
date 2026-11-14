@@ -5,7 +5,9 @@
  */
 
 import { redirect } from "next/navigation";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 
-export default function CanalesPage() {
+export default async function CanalesPage() {
+  await requireCapability("catalog:write");
   redirect("/admin/canales/tienda");
 }

@@ -9,6 +9,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
+import { adminHomePath } from "@/lib/admin-rbac";
+import { getCurrentAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AuthScene } from "@/components/auth/auth-scene";
 import { MfaChallenge } from "./mfa-challenge";
@@ -16,15 +18,16 @@ import { MfaChallenge } from "./mfa-challenge";
 export const metadata: Metadata = { title: "Verificación en 2 pasos" };
 
 export default async function AdminMfaPage() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/admin/login");
+  // Exigir identidad AdminUser activa antes de redirigir a /admin/seguridad:
+  // si un cliente normal entra a /admin/login/mfa, mandarlo a /admin/seguridad
+  // sin marca admin_last_activity dispararía el signOut global del proxy.
+  const session = await getCurrentAdmin();
+  if (!session) redirect("/admin/login");
 
+  const supabase = await createSupabaseServerClient();
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  // Ya verificado (aal2) → al panel. No hay reto pendiente.
-  if (aal?.currentLevel === "aal2") redirect("/admin/dashboard");
+  // Ya verificado (aal2) → al home de su rol. No hay reto pendiente.
+  if (aal?.currentLevel === "aal2") redirect(adminHomePath(session.admin.role));
 
   const { data: factorsData } = await supabase.auth.mfa.listFactors();
   const totp = (factorsData?.totp ?? []).find((f) => f.status === "verified");

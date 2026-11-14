@@ -24,17 +24,25 @@ import {
   PackageX,
   ShoppingCart,
   Mail,
+  Database,
   DatabaseBackup,
   Radar,
   HardDrive,
   ChevronDown,
+  Bell,
+  ShieldCheck,
+  PlugZap,
 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import {
+  getDatabaseQuota,
   getStorageQuota,
   getTechHealth,
+  SUPABASE_DB_PLAN_BYTES,
+  SUPABASE_DB_WARN_BYTES,
+  SUPABASE_STORAGE_PLAN_BYTES,
   SUPABASE_STORAGE_WARN_BYTES,
 } from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
@@ -50,11 +58,24 @@ import {
   EMAIL_BOUNCE_MIN_EVENTS,
   EMAIL_STATS_WINDOW_DAYS,
 } from "@/features/observability/email-deliverability";
-import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminComboBarLineChart,
+  AdminSegmentedBar,
+  type ComboChartDatum,
+} from "@/components/admin-page";
+import { CountUp } from "@/components/admin/count-up";
 import { ClientErrorActions } from "./client-error-actions";
 import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
-export const metadata: Metadata = { title: "Salud técnica" };
+export const metadata: Metadata = {
+  title: "Salud técnica",
+  robots: { index: false, follow: false },
+};
+
+export const dynamic = "force-dynamic";
 
 /** Bytes → texto corto para el tile de Storage (KB/MB/GB con 1 decimal). */
 function formatBytes(bytes: number): string {
@@ -81,43 +102,107 @@ function countSentEmails(windowDays: number): Promise<number> {
   });
 }
 
-export default async function AdminObservabilityPage() {
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
+export default async function AdminObservabilityPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   await requireRole(["SUPERADMIN"]);
-  const [h, ops, slos, crons, email, backup, monitor, storage, emailsSent] = await Promise.all([
-    getTechHealth(),
-    getDailySummary(),
-    getSloStatus(),
-    getCronHealth(),
-    getEmailDeliverabilityStats(),
-    getBackupHealth(),
-    getMonitorHealth(),
-    getStorageQuota(),
-    countSentEmails(EMAIL_STATS_WINDOW_DAYS),
-  ]);
+  const sp = searchParams ? await searchParams : {};
+  const detalleParam = Array.isArray(sp.detalle) ? sp.detalle[0] : sp.detalle;
+  const detalleOpen = detalleParam === "1";
+  const [h, ops, slos, crons, email, backup, monitor, storage, dbQuota, emailsSent] =
+    await Promise.all([
+      getTechHealth(),
+      getDailySummary(),
+      getSloStatus(),
+      getCronHealth(),
+      getEmailDeliverabilityStats(),
+      getBackupHealth(),
+      getMonitorHealth(),
+      getStorageQuota(),
+      getDatabaseQuota(),
+      countSentEmails(EMAIL_STATS_WINDOW_DAYS),
+    ]);
   const revenue = formatCOP(ops.revenueLast24hCop);
   const recoveryPct =
     ops.abandonedCarts24h > 0
       ? Math.round((ops.recoveredCarts24h / ops.abandonedCarts24h) * 100)
       : 0;
 
+  const hasTechIncident =
+    h.errors.last24h > 0 ||
+    h.clientErrors.openCount > 0 ||
+    h.webhooks.pending > 5 ||
+    slos.some((s) => s.status === "breached" || s.status === "at_risk") ||
+    crons.some((c) => c.overdue) ||
+    backup.stale ||
+    monitor.stale ||
+    monitor.failing;
+
+  const storagePct = Math.min(
+    100,
+    Math.round((storage.measuredBytes / SUPABASE_STORAGE_PLAN_BYTES) * 100),
+  );
+  const dbPct =
+    dbQuota.dbBytes !== null
+      ? Math.min(100, Math.round((dbQuota.dbBytes / SUPABASE_DB_PLAN_BYTES) * 100))
+      : null;
+
+  const techPulseChartData: ComboChartDatum[] = h.dailyPulse7d.map((d) => ({
+    key: d.key,
+    label: d.label,
+    tickLabel: d.tickLabel,
+    barValue: d.webhooksProcessed,
+    barFormatted: `${d.webhooksProcessed.toLocaleString("es-CO")} webhooks procesados`,
+    lineValue: d.errors,
+    lineFormatted: `${d.errors.toLocaleString("es-CO")} ${d.errors === 1 ? "error" : "errores"}`,
+  }));
+
   return (
     <AdminPage>
       <AdminPageHeader
+        breadcrumbs={[
+          { label: "Inicio", href: "/admin/dashboard" },
+          { label: "Sistema" },
+          { label: "Salud técnica" },
+        ]}
         icon={<HeartPulse className="h-5 w-5" />}
         title="Salud técnica"
-        subtitle={
-          <>
-            Tu resumen de las últimas 24h (el mismo del correo diario) + la salud técnica. Se
-            refresca al cargar.
-            <span className="mt-1 block text-xs text-slate-500">
-              <Link
-                href="/admin/notificaciones"
-                className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
-              >
-                Ver historial de avisos → /admin/notificaciones
-              </Link>
-            </span>
-          </>
+        subtitle="Resumen operativo de las últimas 24h, cuotas de capacidad de Supabase y telemetría de infraestructura en vivo."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/admin/notificaciones"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <Bell className="h-3.5 w-3.5" aria-hidden />
+              Avisos
+            </Link>
+            <Link
+              href="/admin/performance"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <Gauge className="h-3.5 w-3.5" aria-hidden />
+              Performance
+            </Link>
+            <Link
+              href="/admin/integraciones"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <PlugZap className="h-3.5 w-3.5" aria-hidden />
+              Integraciones
+            </Link>
+            <Link
+              href="/admin/auditoria?vista=seguridad"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+              Seguridad
+            </Link>
+          </div>
         }
       />
       <AdminPageBody>
@@ -197,6 +282,16 @@ export default async function AdminObservabilityPage() {
           title={`Entregabilidad de email (${email.windowDays} días)`}
           icon={<Mail className="h-4 w-4" />}
         >
+          <div className="mb-3">
+            <AdminSegmentedBar
+              ariaLabel="Proporción de correos entregados, diferidos y rebotados"
+              items={[
+                { key: "delivered", label: "Entregados", count: email.delivered, tone: "emerald" },
+                { key: "delayed", label: "Diferidos", count: email.delayed, tone: "amber" },
+                { key: "bounced", label: "Rebotados", count: email.bounced, tone: "rose" },
+              ]}
+            />
+          </div>
           <div className="flex flex-wrap gap-3 text-sm">
             <VitalPill label="Enviados" value={emailsSent} tone="slate" />
             <VitalPill label="Entregados" value={email.delivered} tone="emerald" />
@@ -243,15 +338,83 @@ export default async function AdminObservabilityPage() {
         </Section>
 
         {/*
-         * Fase 3D — cuota de Supabase Storage por bucket. Va FUERA del
-         * <details> técnico a propósito (mismo criterio que entregabilidad):
-         * llenar la cuota del plan tumba las subidas de fotos de clientas —
-         * es negocio, no solo técnica. Los bytes salen de la tabla
-         * storage.objects del propio Supabase (tamaño real de cada objeto,
-         * incluidos huérfanos aún no barridos); si esa consulta falla se
-         * degrada a las columnas de la app y se avisa en la nota.
+         * Fase 3D + Bloque 8 — cuotas reales de Supabase Pro (Storage 100 GB +
+         * Base de datos Postgres 8 GB). Ambas barras van FUERA del <details>
+         * técnico: llenar cualquiera de las dos cuotas detiene ventas o subidas
+         * de fotos de clientes.
          */}
-        <Section title="Almacenamiento (Supabase Storage)" icon={<HardDrive className="h-4 w-4" />}>
+        <Section
+          title="Capacidad de infraestructura (Supabase Pro)"
+          icon={<HardDrive className="h-4 w-4" />}
+        >
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="border-brand-purple/10 rounded-xl border bg-slate-50/60 p-3.5">
+              <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
+                <span className="text-brand-purple-dark flex items-center gap-1.5 font-semibold">
+                  <HardDrive className="h-3.5 w-3.5 text-slate-500" aria-hidden />
+                  Storage de objetos (plan 100 GB)
+                </span>
+                <span className="text-brand-purple-dark font-bold tabular-nums">
+                  {formatBytes(storage.measuredBytes)} ({storagePct}%)
+                </span>
+              </div>
+              <div
+                className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200/70"
+                role="progressbar"
+                aria-label={`Cuota de Supabase Storage: ${storagePct}%`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={storagePct}
+              >
+                <div
+                  className={`admin-bar-grow-x h-full rounded-full ${
+                    storage.measuredBytes > SUPABASE_STORAGE_WARN_BYTES
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                  }`}
+                  style={{
+                    width: `${Math.max(storagePct, storage.measuredBytes > 0 ? 2 : 0)}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="border-brand-purple/10 rounded-xl border bg-slate-50/60 p-3.5">
+              <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
+                <span className="text-brand-purple-dark flex items-center gap-1.5 font-semibold">
+                  <Database className="h-3.5 w-3.5 text-slate-500" aria-hidden />
+                  Base de datos Postgres (plan 8 GB)
+                </span>
+                <span className="text-brand-purple-dark font-bold tabular-nums">
+                  {dbQuota.dbBytes !== null && dbPct !== null
+                    ? `${formatBytes(dbQuota.dbBytes)} (${dbPct}%)`
+                    : "No disponible"}
+                </span>
+              </div>
+              <div
+                className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200/70"
+                role="progressbar"
+                aria-label={`Cuota de base de datos Postgres: ${dbPct ?? 0}%`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={dbPct ?? 0}
+              >
+                <div
+                  className={`admin-bar-grow-x h-full rounded-full ${
+                    (dbQuota.dbBytes ?? 0) > SUPABASE_DB_WARN_BYTES
+                      ? "bg-amber-500"
+                      : "bg-brand-purple"
+                  }`}
+                  style={{
+                    width: `${
+                      dbPct !== null ? Math.max(dbPct, (dbQuota.dbBytes ?? 0) > 0 ? 2 : 0) : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-3 text-sm">
             {storage.buckets.map((b) => (
               <VitalPill
@@ -266,7 +429,7 @@ export default async function AdminObservabilityPage() {
               />
             ))}
             <VitalPill
-              label={storage.degraded ? "Total medido (piso)" : "Total real"}
+              label={storage.degraded ? "Total Storage (piso)" : "Total Storage real"}
               value={formatBytes(storage.measuredBytes)}
               tone={storage.measuredBytes > SUPABASE_STORAGE_WARN_BYTES ? "amber" : "emerald"}
             />
@@ -283,7 +446,7 @@ export default async function AdminObservabilityPage() {
             ) : (
               <>
                 Bytes y archivos medidos directamente sobre Storage (tamaño real de cada objeto, los
-                5 buckets) — el total es el consumo real, no un piso.{" "}
+                5 buckets) y <code>pg_database_size</code> sobre Postgres.{" "}
               </>
             )}
             Plan actual de Supabase en producción: <strong>Pro</strong> (100 GB de Storage · 8 GB de
@@ -300,15 +463,33 @@ export default async function AdminObservabilityPage() {
         </Section>
 
         {/*
-         * H4 — todo lo puramente técnico (SLOs, webhooks, crons, errores,
-         * Web Vitals) queda colapsado: Lucy ve los tiles operativos de arriba
-         * y soporte abre esto cuando lo necesita. <details> nativo, sin JS.
+         * H4 + Bloque 8 — todo lo puramente técnico (SLOs, webhooks, crons, errores,
+         * Web Vitals) queda colapsado por defecto (`open={detalleOpen}` con `?detalle=1`),
+         * mostrando en el encabezado un indicador reactivo (`group-open:`) de incidente activo.
          */}
-        <details className="group mt-6">
+        <details className="group mt-6" open={detalleOpen}>
           <summary className="border-brand-purple/15 text-brand-purple-dark hover:border-brand-purple/35 mb-2 flex cursor-pointer items-center gap-2 rounded-lg border bg-white/70 px-4 py-3 text-sm font-bold shadow-sm transition-colors [&::-webkit-details-marker]:hidden">
             <Activity className="h-4 w-4" />
-            <span className="flex-1">Detalle técnico (para soporte)</span>
-            <span className="text-brand-muted text-xs font-normal">Clic para desplegar</span>
+            <span className="flex-1">Detalle técnico (SLOs, crons, webhooks y errores)</span>
+            {hasTechIncident ? (
+              <>
+                <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700 group-open:hidden">
+                  Incidente activo · clic para desplegar
+                </span>
+                <span className="hidden rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700 group-open:inline-flex">
+                  Incidente activo · desplegado
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 group-open:hidden">
+                  Todo en orden · clic para desplegar
+                </span>
+                <span className="hidden rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 group-open:inline-flex">
+                  Todo en orden · desplegado
+                </span>
+              </>
+            )}
             <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
           </summary>
 
@@ -361,7 +542,19 @@ export default async function AdminObservabilityPage() {
             />
           </div>
 
-          {/* ─── Crons (dead-man switch, #15; estado `pending` de F-04) ─── */}
+          <Section
+            title="Pulso técnico diario (7 días, hora Colombia)"
+            icon={<Activity className="h-4 w-4" />}
+          >
+            <AdminComboBarLineChart
+              data={techPulseChartData}
+              ariaLabel="Webhooks procesados frente a errores del servidor en los últimos 7 días"
+              barLegend="Webhooks procesados"
+              lineLegend="Errores 500 servidor"
+            />
+          </Section>
+
+          {/* ─── Crons (dead-man switch, #15; estado `pending` de F-04 y `disabled` en STG) ─── */}
           <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
             <Clock className="h-4 w-4" /> Trabajos automáticos (crons)
           </h2>
@@ -371,14 +564,24 @@ export default async function AdminObservabilityPage() {
                 key={c.job}
                 icon={<Clock className="h-4 w-4" />}
                 label={c.label}
-                value={c.overdue ? "Sin correr" : c.pending ? "Pendiente" : "Al día"}
+                value={
+                  c.disabled
+                    ? "Pausado"
+                    : c.overdue
+                      ? "Sin correr"
+                      : c.pending
+                        ? "Pendiente"
+                        : "Al día"
+                }
                 danger={c.overdue}
                 hint={
-                  c.lastRunAt
-                    ? `últ. ${formatDateTimeNoYearCO(c.lastRunAt)}`
-                    : c.pending
-                      ? "agendado — aún sin primera ejecución"
-                      : "sin registro de ejecución"
+                  c.disabled
+                    ? "desactivado en este entorno"
+                    : c.lastRunAt
+                      ? `últ. ${formatDateTimeNoYearCO(c.lastRunAt)}`
+                      : c.pending
+                        ? "agendado — aún sin primera ejecución"
+                        : "sin registro de ejecución"
                 }
               />
             ))}
@@ -633,7 +836,9 @@ function Tile({
         {icon}
         {label}
       </div>
-      <div className={`mt-1 text-2xl font-bold ${valueColor}`}>{value}</div>
+      <div className={`mt-1 text-2xl font-bold tabular-nums ${valueColor}`}>
+        {typeof value === "number" ? <CountUp value={value} /> : value}
+      </div>
       {hint && <div className="text-brand-muted mt-0.5 text-[11px]">{hint}</div>}
     </div>
   );

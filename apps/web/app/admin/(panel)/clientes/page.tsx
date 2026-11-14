@@ -9,18 +9,24 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight, GitMerge, ShieldCheck, Users } from "lucide-react";
+import { ChevronRight, Crown, GitMerge, ShieldCheck, TrendingUp, Users } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
   AdminPageBody,
+  AdminCard,
+  AdminDonutChart,
+  AdminSegmentedBar,
   AdminTable,
   AdminTableHead,
   AdminTableBody,
   AdminTableRow,
   AdminEmpty,
   AdminBadge,
+  SortableHeader,
+  type ChartTone,
 } from "@/components/admin-page";
+import { CountUp } from "@/components/admin/count-up";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { hasCapability } from "@/lib/admin-rbac";
@@ -69,6 +75,17 @@ const SOURCE_LABEL: Record<string, string> = {
   MANUAL: "Manual",
 };
 
+const SOURCE_TONE: Record<string, ChartTone> = {
+  CUSTOMER_AUTH: "purple",
+  GUEST_ORDER: "turquoise",
+  B2B_INQUIRY: "pink",
+  QUOTE: "coral",
+  NEWSLETTER: "emerald",
+  ABANDONED_CART: "amber",
+  SUPPORT_TICKET: "blue",
+  MANUAL: "slate",
+};
+
 export default async function AdminClientesPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await requireCapability("contacts:read_360");
   const canMerge = hasCapability(session.admin.role, "contacts:merge");
@@ -87,13 +104,36 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
     ? legacyMappedSort
     : "recent";
   const includeStaff = pickString(sp, "staff") === "1";
-  const page = Math.max(1, Number(sp.page) || 1);
+  const requestedPage = Math.max(1, Number(sp.page) || 1);
 
-  const { items, total, totalPages, pendingMergesCount, piiMasked } = await listContactsForActor(
-    { q, segment, sort, page, includeStaff },
+  const {
+    items,
+    total,
+    page,
+    totalPages,
+    pendingMergesCount,
+    piiMasked,
+    summary,
+    sourceBreakdown,
+  } = await listContactsForActor(
+    { q, segment, sort, page: requestedPage, includeStaff },
     session.admin.role,
   );
   const hasActiveFilters = Boolean(q) || segment !== "all" || sort !== "recent" || includeStaff;
+  const sortPreserve = {
+    q,
+    segment: segment !== "all" ? segment : undefined,
+    staff: includeStaff ? "1" : undefined,
+  };
+
+  function buildSegmentHref(seg: ContactSegmentFilter): string {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (seg !== "all") params.set("segment", seg);
+    if (sort !== "recent") params.set("sort", sort);
+    if (includeStaff) params.set("staff", "1");
+    return params.toString() ? `/admin/clientes?${params.toString()}` : "/admin/clientes";
+  }
 
   const staffToggleParams = new URLSearchParams();
   if (q) staffToggleParams.set("q", q);
@@ -151,18 +191,183 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
       />
 
       <AdminPageBody>
+        {/* KPIs ejecutivos del directorio Contact 360 */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <AdminCard className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+                  Directorio activo
+                </p>
+                <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+                  <CountUp value={summary.totalContacts} />
+                </p>
+                <p className="text-brand-muted mt-1 text-xs">
+                  {summary.registeredCount.toLocaleString("es-CO")} con cuenta ·{" "}
+                  {summary.guestCount.toLocaleString("es-CO")} invitados
+                </p>
+              </div>
+              <span className="bg-brand-purple/10 text-brand-purple rounded-lg p-2">
+                <Users className="h-4 w-4" />
+              </span>
+            </div>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+                  Compradores pagados
+                </p>
+                <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+                  <CountUp value={summary.buyersCount} />
+                </p>
+                <p className="text-brand-muted mt-1 text-xs">
+                  {summary.vipCount.toLocaleString("es-CO")} clientes VIP (≥ 3 compras)
+                </p>
+              </div>
+              <span className="bg-brand-pink/12 text-brand-pink-ink rounded-lg p-2">
+                <Crown className="h-4 w-4" />
+              </span>
+            </div>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+                  LTV neto cobrado
+                </p>
+                <p className="text-brand-purple font-display mt-1 text-2xl font-bold tabular-nums">
+                  {formatCOP(summary.totalNetLtvCents)}
+                </p>
+                <p className="text-brand-muted mt-1 text-xs">
+                  Órdenes pagadas netas de retractos reembolsados
+                </p>
+              </div>
+              <span className="rounded-lg bg-emerald-50 p-2 text-emerald-700">
+                <TrendingUp className="h-4 w-4" />
+              </span>
+            </div>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+                  Opt-in Ley 1581 vigente
+                </p>
+                <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+                  <CountUp value={summary.marketingOptInCount} />
+                </p>
+                <p className="text-brand-muted mt-1 text-xs">
+                  {summary.openCareContactsCount > 0
+                    ? `${summary.openCareContactsCount.toLocaleString("es-CO")} con posventa abierta`
+                    : "0 con posventa abierta"}
+                </p>
+              </div>
+              <span className="bg-brand-turquoise/15 rounded-lg p-2 text-cyan-700">
+                <ShieldCheck className="h-4 w-4" />
+              </span>
+            </div>
+          </AdminCard>
+        </section>
+
+        {/* Analítica visual: composición de cuentas y canales de captación */}
+        {summary.totalContacts > 0 && (
+          <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+            <AdminCard className="flex flex-col justify-between p-5 lg:col-span-7">
+              <div className="space-y-3">
+                <div>
+                  <h2 className="text-brand-purple-dark font-display text-sm font-bold">
+                    Composición de identidad comercial
+                  </h2>
+                  <p className="text-brand-muted text-xs">
+                    Proporción entre cuentas verificadas y contactos invitados o consultivos (haz
+                    clic para filtrar).
+                  </p>
+                </div>
+                <AdminSegmentedBar
+                  ariaLabel="Composición del directorio entre cuentas registradas e invitados"
+                  items={[
+                    {
+                      key: "registered",
+                      label: "Con cuenta web",
+                      count: summary.registeredCount,
+                      tone: "purple",
+                      href: buildSegmentHref("registered"),
+                    },
+                    {
+                      key: "guest",
+                      label: "Invitados sin cuenta",
+                      count: summary.guestCount,
+                      tone: "turquoise",
+                      href: buildSegmentHref("guest"),
+                    },
+                  ]}
+                />
+              </div>
+
+              <div className="border-brand-purple/10 mt-4 grid grid-cols-3 gap-2 border-t pt-3 text-xs">
+                <Link
+                  href={buildSegmentHref("paid")}
+                  className="hover:bg-brand-purple/5 rounded-lg p-2 transition-colors"
+                >
+                  <p className="text-brand-muted text-[11px]">Con compras</p>
+                  <p className="text-brand-purple-dark font-bold tabular-nums">
+                    {summary.buyersCount.toLocaleString("es-CO")}
+                  </p>
+                </Link>
+                <Link
+                  href={buildSegmentHref("vip")}
+                  className="hover:bg-brand-purple/5 rounded-lg p-2 transition-colors"
+                >
+                  <p className="text-brand-muted text-[11px]">VIP (≥ 3)</p>
+                  <p className="text-brand-purple-dark font-bold tabular-nums">
+                    {summary.vipCount.toLocaleString("es-CO")}
+                  </p>
+                </Link>
+                <Link
+                  href={buildSegmentHref("open-care")}
+                  className="hover:bg-brand-purple/5 rounded-lg p-2 transition-colors"
+                >
+                  <p className="text-brand-muted text-[11px]">Posventa activa</p>
+                  <p className="text-brand-purple-dark font-bold tabular-nums">
+                    {summary.openCareContactsCount.toLocaleString("es-CO")}
+                  </p>
+                </Link>
+              </div>
+            </AdminCard>
+
+            <AdminCard className="p-5 lg:col-span-5">
+              <div className="mb-3">
+                <h2 className="text-brand-purple-dark font-display text-sm font-bold">
+                  Origen de primer contacto
+                </h2>
+                <p className="text-brand-muted text-xs">
+                  Canal por el que ingresó cada identidad al grafo CRM.
+                </p>
+              </div>
+              <AdminDonutChart
+                ariaLabel="Distribución de contactos por canal de origen"
+                centerValue={summary.totalContacts.toLocaleString("es-CO")}
+                centerLabel="Contactos"
+                slices={sourceBreakdown.slice(0, 6).map((row) => ({
+                  key: row.source,
+                  label: SOURCE_LABEL[row.source] ?? row.source,
+                  count: row.count,
+                  tone: SOURCE_TONE[row.source] ?? "slate",
+                }))}
+              />
+            </AdminCard>
+          </section>
+        )}
+
         {/* Píldoras interactivas de segmento */}
         <div className="flex flex-wrap gap-2" role="navigation" aria-label="Segmentos de contactos">
           {SEGMENT_PILLS.map((pill) => {
             const active = pill.key === segment;
-            const params = new URLSearchParams();
-            if (q) params.set("q", q);
-            if (pill.key !== "all") params.set("segment", pill.key);
-            if (sort !== "recent") params.set("sort", sort);
-            if (includeStaff) params.set("staff", "1");
-            const href = params.toString()
-              ? `/admin/clientes?${params.toString()}`
-              : "/admin/clientes";
+            const href = buildSegmentHref(pill.key);
             return (
               <Link
                 key={pill.key}
@@ -221,9 +426,13 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
               <option value="recent">Actividad más reciente</option>
+              <option value="recent-asc">Actividad más antigua</option>
               <option value="ltv">Mayor LTV neto ($)</option>
+              <option value="ltv-asc">Menor LTV neto ($)</option>
               <option value="orders">Más pedidos pagados</option>
+              <option value="orders-asc">Menos pedidos pagados</option>
               <option value="name">Nombre A–Z</option>
+              <option value="name-desc">Nombre Z–A</option>
             </select>
           </div>
           <div className="flex items-end gap-2 sm:col-span-1">
@@ -254,21 +463,51 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
             description={
               hasActiveFilters
                 ? "Prueba quitar algún filtro o cambiar el texto de búsqueda."
-                : "Cuando ingrese el primer pedido, cotización o registro, aparecerá acá."
+                : "Cuando ingrese el primer pedido, cotización o registro, aparecerá aquí."
             }
           />
         ) : (
-          <AdminTable>
+          <AdminTable minWidth={880}>
             <AdminTableHead>
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Contacto</th>
+                <SortableHeader
+                  label="Contacto"
+                  ascValue="name"
+                  descValue="name-desc"
+                  currentSort={sort}
+                  basePath="/admin/clientes"
+                  preserve={sortPreserve}
+                />
                 <th className="px-4 py-3 text-left font-semibold">Tipo / Origen</th>
                 <th className="px-4 py-3 text-left font-semibold">Email y teléfono</th>
-                <th className="px-4 py-3 text-center font-semibold">Pedidos pagados</th>
-                <th className="px-4 py-3 text-right font-semibold">LTV neto</th>
+                <SortableHeader
+                  label="Pedidos pagados"
+                  ascValue="orders"
+                  descValue="orders-asc"
+                  currentSort={sort}
+                  basePath="/admin/clientes"
+                  preserve={sortPreserve}
+                  align="center"
+                />
+                <SortableHeader
+                  label="LTV neto"
+                  ascValue="ltv"
+                  descValue="ltv-asc"
+                  currentSort={sort}
+                  basePath="/admin/clientes"
+                  preserve={sortPreserve}
+                  align="right"
+                />
                 <th className="px-4 py-3 text-center font-semibold">Posventa</th>
                 <th className="px-4 py-3 text-center font-semibold">Marketing</th>
-                <th className="px-4 py-3 text-left font-semibold">Última actividad</th>
+                <SortableHeader
+                  label="Última actividad"
+                  ascValue="recent-asc"
+                  descValue="recent"
+                  currentSort={sort}
+                  basePath="/admin/clientes"
+                  preserve={sortPreserve}
+                />
                 <th className="px-4 py-3" />
               </tr>
             </AdminTableHead>

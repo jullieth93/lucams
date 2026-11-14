@@ -21,7 +21,8 @@ import {
   AdminBadge,
   AdminButton,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS, adminHomePath, canAccessAdminPath } from "@/lib/admin-rbac";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { findNavItem } from "@/lib/admin-nav";
 
 export const metadata: Metadata = {
@@ -32,8 +33,9 @@ export const metadata: Metadata = {
 type RouteParams = Promise<{ placeholder: string[] }>;
 
 export default async function PlaceholderPage({ params }: { params: RouteParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
+  const homeHref = adminHomePath(session.admin.role);
+  const canSeeAudit = canAccessAdminPath(session.admin.role, "/admin/auditoria");
 
   const { placeholder } = await params;
   const fullPath = `/admin/${placeholder.join("/")}`;
@@ -41,23 +43,16 @@ export default async function PlaceholderPage({ params }: { params: RouteParams 
 
   // Si no está en el NAV → 404 real (es ruta inventada, no placeholder).
   if (!navInfo) notFound();
+  if (!canAccessAdminPath(session.admin.role, fullPath)) {
+    redirect(`${homeHref}?denied=1`);
+  }
 
   const { label, group } = navInfo;
   const description = navInfo.item?.description ?? navInfo.group_obj?.description;
   const badge = navInfo.item?.badge ?? navInfo.group_obj?.badge;
 
-  // Roadmap textual según tono del badge.
-  const roadmapText = (() => {
-    switch (badge?.tone) {
-      case "phase4":
-        return "Llega en Fase 4 (post-checkout). Después de habilitar pagos reales con Wompi, esta sección tendrá datos para mostrar.";
-      case "phase5":
-        return "Llega en Fase 5 (gestión interna). Después de tener operación de pedidos estabilizada.";
-      case "soon":
-      default:
-        return "Está en próxima sub-fase del aterrizaje admin. Si lo necesitas urgente, avísame y se prioriza.";
-    }
-  })();
+  const roadmapText =
+    "Este conector o módulo está planificado para una próxima iteración del panel administrativo y aún no se encuentra activo.";
 
   return (
     <AdminPage>
@@ -79,12 +74,12 @@ export default async function PlaceholderPage({ params }: { params: RouteParams 
             )}
           </>
         }
-        subtitle="Módulo en desarrollo — aún no disponible"
-        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: group }, { label }]}
+        subtitle="Módulo planificado — aún no habilitado"
+        breadcrumbs={[{ label: "Admin", href: homeHref }, { label: group }, { label }]}
         actions={
-          <AdminButton href="/admin/dashboard" variant="secondary">
+          <AdminButton href={homeHref} variant="secondary">
             <ArrowLeft className="h-4 w-4" />
-            Volver al dashboard
+            Volver al inicio
           </AdminButton>
         }
       />
@@ -98,7 +93,7 @@ export default async function PlaceholderPage({ params }: { params: RouteParams 
 
             <div className="flex-1">
               <h2 className="font-display text-brand-purple-dark text-xl font-bold">
-                Estamos construyendo {label.toLowerCase()}
+                {label} estará disponible próximamente
               </h2>
 
               {description && (
@@ -109,21 +104,23 @@ export default async function PlaceholderPage({ params }: { params: RouteParams 
 
               <div className="border-brand-purple/10 bg-brand-purple/5 mt-5 rounded-lg border p-3">
                 <p className="text-brand-purple-dark/70 text-xs font-semibold tracking-wider uppercase">
-                  Cuándo estará disponible
+                  Estado del módulo
                 </p>
                 <p className="text-brand-purple-dark/85 mt-1 text-sm">{roadmapText}</p>
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                <AdminButton href="/admin/dashboard" variant="secondary" size="sm">
-                  Ir al dashboard
+                <AdminButton href={homeHref} variant="secondary" size="sm">
+                  Ir a mi inicio
                 </AdminButton>
-                <Link
-                  href="/admin/auditoria"
-                  className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
-                >
-                  Ver auditoría
-                </Link>
+                {canSeeAudit && (
+                  <Link
+                    href="/admin/auditoria"
+                    className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
+                  >
+                    Ver auditoría
+                  </Link>
+                )}
               </div>
             </div>
           </div>

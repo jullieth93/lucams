@@ -69,7 +69,12 @@ describe("S17 — Enmascaramiento server-side y anti-oráculo PII en getOrderFor
     // El mensaje impreso de regalo sí llega al taller:
     expect(json).toContain("Para que recuerdes este viaje siempre");
 
-    // Mientras que CUSTOMER_SUPPORT y FINANCE_ANALYST reciben los datos completos:
+    // FINANCE_ANALYST también recibe PII enmascarado (principio de mínimo privilegio):
+    const financeView = await getOrderForActor(orderNumber, "FINANCE_ANALYST");
+    expect(JSON.stringify(financeView)).not.toContain(rawEmail);
+    expect(JSON.stringify(financeView)).not.toContain("1098765432");
+
+    // Mientras que CUSTOMER_SUPPORT recibe los datos completos para atender al cliente:
     const supportView = await getOrderForActor(orderNumber, "CUSTOMER_SUPPORT");
     expect(supportView?.email).toBe(rawEmail);
     expect(supportView?.billingDocumentNumber).toBe("1098765432");
@@ -93,5 +98,19 @@ describe("S17 — Enmascaramiento server-side y anti-oráculo PII en getOrderFor
     // En cambio CUSTOMER_SUPPORT sí puede buscar al cliente por su email:
     const byEmailSupport = await listOrdersForActor({ q: rawEmail }, "CUSTOMER_SUPPORT");
     expect(byEmailSupport.items.find((o) => o.id === orderId)?.email).toBe(rawEmail);
+  });
+
+  it("listOrdersForActor(PRINT_WORKSHOP) ignora ?pago= manipulado; otros roles sí filtran", async () => {
+    const workshop = await listOrdersForActor(
+      { q: orderNumber, paymentMethod: "COD" },
+      "PRINT_WORKSHOP",
+    );
+    expect(workshop.items.some((order) => order.id === orderId)).toBe(true);
+
+    const support = await listOrdersForActor(
+      { q: orderNumber, paymentMethod: "COD" },
+      "CUSTOMER_SUPPORT",
+    );
+    expect(support.items.some((order) => order.id === orderId)).toBe(false);
   });
 });

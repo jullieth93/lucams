@@ -13,8 +13,9 @@
  * "se aplica al guardar") y category va oculta (la hereda de la sección).
  */
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, Loader2, Plus } from "lucide-react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,10 +47,8 @@ export function CreateFieldForm({
   /** Categoría legacy heredada de los demás campos de la sección (oculta). */
   defaultCategory: string;
 }) {
-  const [state, formAction, pending] = useActionState<CmsActionState | null, FormData>(
-    createCmsFieldAction,
-    null,
-  );
+  const [state, formAction, pending, reauthModal] =
+    useMfaReauthAction<CmsActionState>(createCmsFieldAction);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<string>("TEXT");
 
@@ -178,7 +177,7 @@ export function CreateFieldForm({
           </div>
         )}
 
-        {state?.error && !state.fieldErrors && (
+        {state?.error && !state.fieldErrors && !state.reauthRequired && (
           <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
             {state.error}
           </div>
@@ -202,6 +201,7 @@ export function CreateFieldForm({
           </Button>
         </div>
       </form>
+      {reauthModal}
     </details>
   );
 }

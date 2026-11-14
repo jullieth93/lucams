@@ -203,7 +203,15 @@ const SEGMENT_BASE_CTE = Prisma.sql`
           OR LOWER(bis."email") = LOWER(c."primaryEmail")
         )
       ) AS has_back_in_stock,
-      COALESCE(ln."accepted", false) AS newsletter_opted_in,
+      (
+        COALESCE(ln."accepted", false)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "EmailEvent" ev
+          WHERE LOWER(ev."to") = LOWER(c."primaryEmail")
+            AND ev."type" IN ('email.bounced', 'email.complained')
+        )
+      ) AS newsletter_opted_in,
       ln."acceptedAt" AS consent_accepted_at,
       ln."version" AS consent_version
     FROM "Contact" c

@@ -12,10 +12,11 @@
 
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { Prisma } from "@lucams/db";
+import { Prisma, type AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
-import { rolesWithCapability } from "@/lib/admin-rbac";
+import { hasCapability, rolesWithCapability } from "@/lib/admin-rbac";
 import { capitalizeName } from "@/lib/colombia-validators";
+import { maskEmail, maskPersonName, maskPhone } from "@/lib/pii-mask";
 import {
   normalizeEmailIdentity,
   normalizePhoneIdentityE164,
@@ -26,6 +27,7 @@ import {
   isOpportunityEventType,
   isOpportunityStage,
   OPPORTUNITY_EVENT_LABELS,
+  OPPORTUNITY_EVENT_TYPES,
   type B2bInquiryInput,
   type OpportunityEventType,
   type OpportunityStage,
@@ -273,61 +275,94 @@ export type OpportunityListItem = {
   updatedAt: Date;
 };
 
-export async function listOpportunitiesForAdmin(opts: { stage?: string; q?: string }) {
+export async function listOpportunitiesForAdmin(
+  opts: {
+    stage?: string;
+    eventType?: string;
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  },
+  actorRole?: AdminRole,
+) {
+  const canReadPii = !actorRole || hasCapability(actorRole, "contacts:read_pii");
   const cleanQ = opts.q?.trim() || "";
   const stageFilter = opts.stage && isOpportunityStage(opts.stage) ? opts.stage : undefined;
+  const eventTypeFilter =
+    opts.eventType && isOpportunityEventType(opts.eventType) ? opts.eventType : undefined;
+  const pageSize = Math.min(Math.max(opts.pageSize ?? 25, 1), 100);
+
+  const searchOr: Prisma.OpportunityWhereInput[] = cleanQ
+    ? canReadPii
+      ? [
+          { number: { contains: cleanQ, mode: "insensitive" } },
+          { title: { contains: cleanQ, mode: "insensitive" } },
+          { city: { contains: cleanQ, mode: "insensitive" } },
+          { contactName: { contains: cleanQ, mode: "insensitive" } },
+          { contactEmail: { contains: cleanQ, mode: "insensitive" } },
+          { contactWhatsapp: { contains: cleanQ } },
+          { contact: { displayName: { contains: cleanQ, mode: "insensitive" } } },
+          { contact: { primaryEmail: { contains: cleanQ, mode: "insensitive" } } },
+          { organization: { name: { contains: cleanQ, mode: "insensitive" } } },
+        ]
+      : [
+          { number: { contains: cleanQ, mode: "insensitive" } },
+          { title: { contains: cleanQ, mode: "insensitive" } },
+          { city: { contains: cleanQ, mode: "insensitive" } },
+          { organization: { name: { contains: cleanQ, mode: "insensitive" } } },
+        ]
+    : [];
 
   const where: Prisma.OpportunityWhereInput = {
     deletedAt: null,
     ...(stageFilter ? { stage: stageFilter } : {}),
-    ...(cleanQ
-      ? {
-          OR: [
-            { number: { contains: cleanQ, mode: "insensitive" } },
-            { title: { contains: cleanQ, mode: "insensitive" } },
-            { contactName: { contains: cleanQ, mode: "insensitive" } },
-            { contactEmail: { contains: cleanQ, mode: "insensitive" } },
-            { contactWhatsapp: { contains: cleanQ } },
-            { contact: { displayName: { contains: cleanQ, mode: "insensitive" } } },
-            { contact: { primaryEmail: { contains: cleanQ, mode: "insensitive" } } },
-            { organization: { name: { contains: cleanQ, mode: "insensitive" } } },
-          ],
-        }
-      : {}),
+    ...(eventTypeFilter ? { eventType: eventTypeFilter } : {}),
+    ...(searchOr.length > 0 ? { OR: searchOr } : {}),
   };
 
-  const [rows, allActiveForKpi] = await Promise.all([
-    prisma.opportunity.findMany({
-      where,
-      orderBy: [{ createdAt: "desc" }],
-      take: 80,
-      include: {
-        contact: {
-          select: {
-            id: true,
-            displayName: true,
-            primaryEmail: true,
-            primaryPhoneE164: true,
-            identities: {
-              where: {
-                type: { in: ["WHATSAPP", "PHONE"] },
-                verificationStatus: { not: "REVOKED" },
-              },
-              orderBy: { createdAt: "desc" },
-              take: 2,
-              select: { type: true, normalizedValue: true },
-            },
-          },
-        },
-        organization: { select: { name: true } },
-        ownerAdmin: { select: { email: true } },
-      },
-    }),
+  const [totalFiltered, allActiveForKpi] = await Promise.all([
+    prisma.opportunity.count({ where }),
     prisma.opportunity.findMany({
       where: { deletedAt: null },
-      select: { stage: true, expectedAmountCop: true },
+      select: {
+        stage: true,
+        eventType: true,
+        expectedAmountCop: true,
+        eventDate: true,
+      },
     }),
   ]);
+
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const clampedPage = Math.min(Math.max(opts.page ?? 1, 1), totalPages);
+
+  const rows = await prisma.opportunity.findMany({
+    where,
+    orderBy: [{ createdAt: "desc" }],
+    skip: (clampedPage - 1) * pageSize,
+    take: pageSize,
+    include: {
+      contact: {
+        select: {
+          id: true,
+          displayName: true,
+          primaryEmail: true,
+          primaryPhoneE164: true,
+          identities: {
+            where: {
+              type: { in: ["WHATSAPP", "PHONE"] },
+              verificationStatus: { not: "REVOKED" },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 2,
+            select: { type: true, normalizedValue: true },
+          },
+        },
+      },
+      organization: { select: { name: true } },
+      ownerAdmin: { select: { email: true } },
+    },
+  });
 
   const stageCounts: Record<OpportunityStage, number> = {
     NEW: 0,
@@ -336,58 +371,108 @@ export async function listOpportunitiesForAdmin(opts: { stage?: string; q?: stri
     WON: 0,
     LOST: 0,
   };
+  const byEventType: Record<OpportunityEventType, { count: number; amountCents: number }> = {
+    CORPORATE_GIFT: { count: 0, amountCents: 0 },
+    WEDDING_SOCIAL: { count: 0, amountCents: 0 },
+    SCHOOL_GRADUATION: { count: 0, amountCents: 0 },
+    BRAND_MERCH: { count: 0, amountCents: 0 },
+    OTHER: { count: 0, amountCents: 0 },
+  };
   let openPipelineCents = 0;
   let wonRevenueCents = 0;
+  let upcomingEvents14dCount = 0;
+  const serverNowMs = Date.now();
+  const horizon14dMs = serverNowMs + 14 * 24 * 60 * 60 * 1000;
 
   for (const r of allActiveForKpi) {
     const st: OpportunityStage = isOpportunityStage(r.stage) ? r.stage : "NEW";
+    const ev: OpportunityEventType = isOpportunityEventType(r.eventType) ? r.eventType : "OTHER";
     stageCounts[st] += 1;
+    byEventType[ev].count += 1;
+    byEventType[ev].amountCents += r.expectedAmountCop;
+
     if (st === "NEW" || st === "QUALIFYING" || st === "PROPOSAL_SENT") {
       openPipelineCents += r.expectedAmountCop;
+      if (r.eventDate && r.eventDate.getTime() <= horizon14dMs) {
+        upcomingEvents14dCount += 1;
+      }
     } else if (st === "WON") {
       wonRevenueCents += r.expectedAmountCop;
     }
   }
 
-  const items: OpportunityListItem[] = rows.map((r) => ({
-    id: r.id,
-    number: r.number,
-    title: r.title,
-    stage: isOpportunityStage(r.stage) ? r.stage : "NEW",
-    eventType: isOpportunityEventType(r.eventType) ? r.eventType : "OTHER",
-    expectedUnits: r.expectedUnits,
-    expectedAmountCop: r.expectedAmountCop,
-    eventDate: r.eventDate,
-    city: r.city,
-    contactId: r.contact.id,
-    contactName:
+  const closedCount = stageCounts.WON + stageCounts.LOST;
+  const winRatePct = closedCount > 0 ? Math.round((stageCounts.WON / closedCount) * 100) : null;
+
+  const items: OpportunityListItem[] = rows.map((r) => {
+    const rawName =
       r.contactName ??
       r.contact.displayName ??
       r.contactEmail ??
       r.contact.primaryEmail ??
-      "Contacto B2B",
-    contactEmail: r.contactEmail ?? r.contact.primaryEmail,
-    contactPhone:
+      "Contacto B2B";
+    const rawEmail = r.contactEmail ?? r.contact.primaryEmail;
+    const rawPhone =
       r.contactWhatsapp ??
       r.contact.primaryPhoneE164 ??
       r.contact.identities.find((i) => i.type === "WHATSAPP")?.normalizedValue ??
       r.contact.identities.find((i) => i.type === "PHONE")?.normalizedValue ??
-      null,
-    organizationName: r.organization?.name ?? null,
-    ownerAdminEmail: r.ownerAdmin?.email ?? null,
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
-  }));
+      null;
+
+    return {
+      id: r.id,
+      number: r.number,
+      title: canReadPii
+        ? r.title
+        : r.organization?.name
+          ? `${r.organization.name} · ${OPPORTUNITY_EVENT_LABELS[isOpportunityEventType(r.eventType) ? r.eventType : "OTHER"]}`
+          : r.number,
+      stage: isOpportunityStage(r.stage) ? r.stage : "NEW",
+      eventType: isOpportunityEventType(r.eventType) ? r.eventType : "OTHER",
+      expectedUnits: r.expectedUnits,
+      expectedAmountCop: r.expectedAmountCop,
+      eventDate: r.eventDate,
+      city: r.city,
+      contactId: r.contact.id,
+      contactName: canReadPii ? rawName : maskPersonName(rawName),
+      contactEmail: rawEmail ? (canReadPii ? rawEmail : maskEmail(rawEmail)) : null,
+      contactPhone: rawPhone ? (canReadPii ? rawPhone : maskPhone(rawPhone)) : null,
+      organizationName: r.organization?.name ?? null,
+      ownerAdminEmail: r.ownerAdmin?.email ?? null,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    };
+  });
+
+  const orderedEventBreakdown = OPPORTUNITY_EVENT_TYPES.map((ev) => ({
+    eventType: ev,
+    label: OPPORTUNITY_EVENT_LABELS[ev],
+    count: byEventType[ev].count,
+    amountCents: byEventType[ev].amountCents,
+  })).sort((a, b) => b.count - a.count || b.amountCents - a.amountCents);
 
   return {
     items,
+    page: clampedPage,
+    pageSize,
+    totalFiltered,
+    totalPages,
+    piiMasked: !canReadPii,
+    serverNowMs,
     kpis: {
       total: allActiveForKpi.length,
       stageCounts,
+      byEventType: orderedEventBreakdown,
       openPipelineCents,
       wonRevenueCents,
+      winRatePct,
+      upcomingEvents14dCount,
     },
   };
+}
+
+export async function getServerNowMs(): Promise<number> {
+  return Date.now();
 }
 
 export async function getOpportunityDetail(idOrNumber: string) {

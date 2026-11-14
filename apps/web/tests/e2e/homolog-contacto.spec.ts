@@ -74,7 +74,7 @@ test("contacto: form → ticket OPEN en DB + 8 legales 200 + /ayuda FAQ", async 
       has: anonPage.locator("#contact-email"),
     });
     await expect(async () => {
-      await form.locator('input[name="name"]').fill(`Cliente Prueba ${run.slice(-4)}`);
+      await form.locator('input[name="name"]').fill("Cliente Prueba");
       await form.locator('input[name="email"]').fill(EMAIL);
       // Asunto de pedido → aparece el campo "Número de pedido" (opcional).
       await form.locator("#contact-subject").selectOption("MI_PEDIDO");
@@ -83,13 +83,16 @@ test("contacto: form → ticket OPEN en DB + 8 legales 200 + /ayuda FAQ", async 
       await form
         .locator("#contact-message")
         .fill(`Mensaje de homologación ${run}: el form de contacto funciona end to end.`);
+      await form.locator('input[name="dataConsent"]').check();
       await expect(form.locator('input[name="name"]')).not.toHaveValue("", { timeout: 1_500 });
       await expect(form.locator("#contact-message")).not.toHaveValue("", { timeout: 1_500 });
+      await expect(form.locator('input[name="dataConsent"]')).toBeChecked({ timeout: 1_500 });
     }).toPass({ timeout: 20_000 });
     await expect(async () => {
       const token = await form.locator('input[name="cf-turnstile-response"]').inputValue();
       expect(token.length).toBeGreaterThan(0);
     }).toPass({ timeout: 20_000 });
+    await anonPage.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
     await form.getByRole("button", { name: /enviar/i }).click();
     await expect(anonPage.locator("body")).toContainText(/recibimos tu mensaje|te escribimos/i, {
       timeout: 20_000,

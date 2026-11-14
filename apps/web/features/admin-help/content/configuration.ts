@@ -7,68 +7,76 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     area: "Configuración y seguridad",
     route: "/admin/envios",
     summary:
-      "Transportadoras, tarifas de respaldo, envío gratis, zonas locales y preferencias de despacho.",
+      "Transportadoras de Aveonline, límites de peso, Envío Lucams por localidades, hora límite y origen.",
     purpose:
-      "Configura qué opciones logísticas se ofrecen y bajo qué condiciones. Reúne reglas de negocio para Aveonline y Envío Lucams, incluidos parámetros que afectan el checkout y la estimación de entrega.",
+      "Configura qué opciones logísticas se ofrecen en el checkout y bajo qué reglas operativas: transportadoras nacionales vía Aveonline con límites de peso mínimo y máximo, mensajería propia Envío Lucams por localidades y verificación del punto de origen de despacho.",
     whenToUse: [
-      "Para activar o ajustar una opción de envío.",
-      "Para configurar tarifas, tope de envío gratis o zonas locales.",
-      "Para revisar preferencias que afectan cotización y despacho.",
+      "Para activar o desactivar una transportadora nacional o definir sus rangos de peso en kg.",
+      "Para ajustar tarifa, hora límite de despacho o localidades cubiertas de Envío Lucams.",
+      "Para verificar que el punto de origen de recogida (PICKUP_*) esté completo antes de cotizar.",
     ],
     concepts: [
       {
-        term: "Tarifa de respaldo",
+        term: "Rango de peso por transportadora",
         definition:
-          "Valor utilizado cuando la cotización externa no está disponible y las reglas permiten ofrecer una alternativa.",
+          "Límites opcionales de peso mínimo y máximo en kilogramos dentro de los cuales esa transportadora puede cotizarse.",
       },
       {
         term: "Envío Lucams",
         definition:
-          "Modalidad de mensajería interna para zonas habilitadas, distinta de Aveonline.",
+          "Modalidad de mensajería propia con tarifa fija para localidades habilitadas de Bogotá y Soacha.",
       },
       {
-        term: "Hora límite",
-        definition: "Corte que influye en la estimación y compromiso de entrega local.",
+        term: "Punto de origen (PICKUP_*)",
+        definition:
+          "Ciudad, departamento, dirección, teléfono y contacto en Ajustes del sitio desde donde Aveonline cotiza y recoge.",
       },
     ],
     sections: [
       {
         id: "reglas",
         title: "Reglas de cotización y cobertura",
-        summary: "Determina disponibilidad, precio y compromiso mostrado al cliente.",
+        summary: "Determina disponibilidad por peso, cobertura local, tarifa y corte horario.",
         topics: [
           {
             id: "activa",
             label: "Transportadora activa",
-            description: "Controla si la modalidad puede ofrecerse.",
+            description:
+              "Controla si el operador nacional puede aparecer entre las opciones cotizadas en el checkout.",
             caution:
-              "Desactivarla afecta checkouts futuros; no cambia guías ni pedidos existentes.",
+              "Si desactivas todas las transportadoras y también Envío Lucams, ningún cliente podrá finalizar envíos a domicilio.",
           },
           {
-            id: "gratis",
-            label: "Tope de envío gratis",
-            description: "Umbral comercial a partir del cual puede aplicarse el beneficio.",
-            interpretation: "Simula carritos cerca del umbral y revisa interacción con descuentos.",
-          },
-          {
-            id: "respaldo",
-            label: "Tarifa de respaldo",
-            description: "Precio alternativo bajo las condiciones configuradas.",
+            id: "pesos",
+            label: "Peso mínimo y máximo (kg)",
+            description:
+              "Filtra la transportadora según el peso total del carrito antes de ofrecerla al comprador.",
             interpretation:
-              "Debe cubrir costo y ser coherente con la cobertura; no es la tarifa viva del carrier.",
+              "Deja vacío cuando no aplique restricción; si defines ambos, el máximo debe ser mayor o igual al mínimo.",
           },
           {
             id: "zonas",
-            label: "Zonas locales",
-            description: "Ciudades o sectores donde Envío Lucams está habilitado.",
-            interpretation: "La dirección del cliente debe coincidir con una zona operativa real.",
+            label: "Localidades de Envío Lucams",
+            description:
+              "Sectores específicos de Bogotá y Soacha donde opera la entrega local directa.",
+            interpretation:
+              "Activa únicamente localidades con capacidad real de ruta; usa los selectores rápidos por ciudad.",
           },
           {
             id: "corte",
-            label: "Hora límite y preferencias",
-            description: "Parámetros para calcular y organizar despachos.",
+            label: "Tarifa local y hora límite",
+            description:
+              "Precio fijo en pesos colombianos y hora de corte en zona horaria de Bogotá para promesa del día.",
             interpretation:
-              "Usa la zona horaria de Colombia y valida el mensaje de entrega resultante.",
+              "Los pedidos pagados después de la hora límite pasan automáticamente al siguiente día hábil.",
+          },
+          {
+            id: "origen",
+            label: "Punto de origen de despacho",
+            description:
+              "Resumen del remitente logístico configurado en Ajustes del sitio para cotización y recogida.",
+            interpretation:
+              "Si falta ciudad, dirección o teléfono de recogida, el panel muestra alerta preventiva.",
           },
         ],
       },
@@ -77,28 +85,40 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
       {
         id: "configurar-envio",
         title: "Actualizar reglas de envío",
-        goal: "Ofrecer tarifas y compromisos que operación puede cumplir.",
+        goal: "Ofrecer modalidades, pesos y coberturas que operación puede cumplir.",
         steps: [
-          "Revisa cobertura y capacidad logística antes de cambiar parámetros.",
-          "Actualiza transportadora, tarifas, umbral, zonas u hora límite.",
-          "Guarda y prueba un checkout para una dirección cubierta y otra no cubierta.",
-          "Compara valores por debajo y por encima del envío gratis.",
-          "Verifica pedido resultante, tarifa y preferencias de despacho.",
+          "Comprueba en el bloque superior que el punto de origen de despacho esté completo y quede al menos un método activo.",
+          "Activa o desactiva cada transportadora nacional y ajusta sus rangos de peso mínimo o máximo si aplica.",
+          "En Envío Lucams revisa tarifa en COP, hora límite en formato 24h y localidades seleccionadas.",
+          "Guarda los cambios de la sección modificada y confirma el aviso de éxito.",
+          "Simula un checkout hacia una localidad cubierta y hacia otra ciudad nacional para validar la cotización.",
         ],
         expected:
-          "El checkout solo ofrece modalidades operables con precio y estimación correctos.",
+          "El checkout ofrece únicamente las modalidades habilitadas con tarifas, pesos y tiempos coherentes.",
       },
     ],
-    cautions: ["No actives una zona o tarifa sin confirmar capacidad real de entrega."],
+    cautions: [
+      "No desactives simultáneamente todas las transportadoras de Aveonline y Envío Lucams en una tienda activa.",
+    ],
     faqs: [
       {
-        question: "¿Cambiar una tarifa modifica pedidos anteriores?",
+        question: "¿Cambiar una tarifa o transportadora modifica pedidos anteriores?",
         answer:
-          "No debe alterar condiciones ya selladas de un pedido; aplica a cotizaciones futuras.",
+          "No altera pedidos ni guías ya emitidas; aplica únicamente a cotizaciones nuevas en el checkout.",
       },
     ],
     related: ["integraciones", "pedidos", "conciliacion", "canales"],
-    keywords: ["Aveonline", "Envío Lucams", "flete", "tarifa", "gratis", "zona", "cobertura"],
+    keywords: [
+      "Aveonline",
+      "Envío Lucams",
+      "flete",
+      "tarifa",
+      "peso",
+      "localidad",
+      "zona",
+      "cobertura",
+      "origen",
+    ],
     version: 1,
   },
   {
@@ -255,22 +275,24 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
       },
       {
         id: "aveonline",
-        title: "Diagnóstico Aveonline",
-        summary: "Prueba conectividad y cobertura con datos controlados.",
+        title: "Diagnóstico y webhook de Aveonline",
+        summary: "Verifica autenticación en vivo y administra el webhook de eventos de guía.",
         topics: [
           {
-            id: "cobertura",
-            label: "Prueba de cobertura",
-            description: "Consulta si el carrier ofrece servicio para el escenario indicado.",
-            interpretation:
-              "Una cobertura positiva no crea guía ni garantiza disponibilidad futura.",
+            id: "webhook",
+            label: "Registro y retiro de webhook",
+            description:
+              "Suscribe la URL oficial del sitio para recibir novedades automáticas de estados de envío.",
+            caution:
+              "Exige re-autenticación TOTP reciente y en ambientes desplegados bloquea dominios distintos al oficial.",
           },
           {
             id: "error",
-            label: "Respuesta del proveedor",
-            description: "Detalle sanitizado del fallo o validación.",
+            label: "Sonda de autenticación y latencia",
+            description:
+              "Mide conectividad real y tiempo de respuesta contra Aveonline sin emitir guías comerciales.",
             interpretation:
-              "Contrasta dirección, peso, dimensiones y credenciales antes de reintentar.",
+              "Contrasta credenciales, secreto compartido del webhook y dirección de recogida antes de reintentar.",
           },
         ],
       },
@@ -307,9 +329,10 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     title: "Salud técnica y observabilidad",
     area: "Configuración y seguridad",
     route: "/admin/observability",
-    summary: "Errores, procesos programados, webhooks, integraciones, alertas y respaldos.",
+    summary:
+      "Resumen 24h, entregabilidad, cuotas de Supabase (Storage y Postgres), crons, webhooks y errores.",
     purpose:
-      "Reúne señales para saber si los procesos del sistema están funcionando y cuáles requieren intervención. Permite investigar errores y latidos de crons sin depender de un servicio externo de observabilidad.",
+      "Reúne señales operativas y de infraestructura en vivo para saber si el sistema está sano y cuáles cuotas o procesos requieren intervención, desplegando automáticamente el detalle técnico ante incidentes activos.",
     whenToUse: [
       "Ante errores repetidos o procesos sin ejecución.",
       "Para revisar webhooks, reversas de stock y pendientes técnicos.",
@@ -419,17 +442,17 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
   },
   {
     id: "seguridad",
-    title: "Seguridad de la cuenta",
+    title: "Seguridad y clave",
     area: "Configuración y seguridad",
     route: "/admin/seguridad",
     summary:
-      "Verificación en dos pasos, códigos de recuperación y eventos de seguridad autorizados.",
+      "Segundo factor obligatorio (TOTP), códigos de respaldo, cambio de dispositivo y rotación de contraseña.",
     purpose:
-      "Permite proteger tu cuenta administrativa con TOTP y recuperar acceso de forma controlada. Todos los roles necesitan MFA; el historial global adicional está restringido.",
+      "Protege tu identidad administrativa con verificación en dos pasos obligatoria (AAL2), rotación de contraseña verificada contra filtraciones públicas y códigos de respaldo de un solo uso.",
     whenToUse: [
-      "Al activar o renovar la verificación en dos pasos.",
-      "Para generar y custodiar nuevos códigos de recuperación.",
-      "Para revisar eventos de seguridad cuando tu rol lo permita.",
+      "Al enrolar o migrar a un nuevo teléfono la verificación en dos pasos.",
+      "Para generar y custodiar nuevos códigos de respaldo.",
+      "Para rotar tu contraseña administrativa y cerrar sesiones en otros dispositivos.",
     ],
     concepts: [
       {
@@ -439,44 +462,49 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
       },
       {
         term: "AAL2",
-        definition: "Sesión que ya verificó el segundo factor requerido para el Admin.",
+        definition:
+          "Sesión que ya verificó el segundo factor obligatorio para operar el panel administrativo.",
       },
       {
         term: "Código de recuperación",
         definition:
-          "Respaldo de un solo uso para recuperar acceso; debe almacenarse fuera del navegador compartido.",
+          "Respaldo de un solo uso para emergencias cuando pierdes tu dispositivo; al usarlo reinicia el factor para enrolar uno nuevo.",
       },
     ],
     sections: [
       {
         id: "mfa",
-        title: "Verificación en dos pasos",
-        summary: "Controla enrolamiento, validación y recuperación de la cuenta.",
+        title: "Segundo factor y contraseña",
+        summary: "Controla enrolamiento TOTP, respaldos, cambio de teléfono y rotación de clave.",
         topics: [
           {
             id: "qr",
-            label: "Código QR y secreto",
-            description: "Vincula la aplicación de autenticación con tu cuenta.",
+            label: "Código QR y cambio de dispositivo",
+            description:
+              "Vincula tu autenticador o reemplaza el teléfono actual sin dejar la cuenta sin MFA permanente.",
             caution: "No compartas el QR, el secreto ni capturas del enrolamiento.",
           },
           {
             id: "verificacion",
-            label: "Código temporal",
-            description: "Confirma que el generador funciona y eleva la seguridad de la sesión.",
+            label: "Código temporal y re-autenticación",
+            description:
+              "Confirma que el generador funciona y autoriza operaciones sensibles cuando la sesión lleva más de 10 minutos.",
             interpretation:
-              "Si falla, revisa hora del dispositivo y código vigente sin reutilizar uno anterior.",
+              "Si falla, revisa la hora automática del teléfono y usa el código vigente.",
           },
           {
             id: "recovery",
-            label: "Códigos de recuperación",
-            description: "Respaldo de un solo uso que se muestra de forma controlada.",
+            label: "Códigos de respaldo (10 usos únicos)",
+            description: "Respaldo de emergencia que se muestra una sola vez al generarse.",
             caution: "Guárdalos en un gestor seguro; regenerarlos invalida el conjunto anterior.",
           },
           {
-            id: "eventos",
-            label: "Eventos de seguridad",
-            description: "Señales de acceso y rechazos disponibles según permisos.",
-            interpretation: "No contienen secretos; investiga patrones antes de cambiar acceso.",
+            id: "password",
+            label: "Cambio de contraseña",
+            description:
+              "Actualiza tu clave (mínimo 10 caracteres, verificada contra brechas públicas HIBP) y revoca otras sesiones abiertas.",
+            interpretation:
+              "Exige tu contraseña actual y código TOTP reciente sin cerrar tu sesión activa.",
           },
         ],
       },
@@ -484,81 +512,101 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "activar-mfa",
-        title: "Activar la verificación en dos pasos",
-        goal: "Proteger la cuenta y conservar una recuperación segura.",
+        title: "Configurar MFA y proteger tu cuenta",
+        goal: "Asegurar tu sesión con segundo factor obligatorio y respaldos custodiados.",
         steps: [
-          "Abre Seguridad desde tu propia sesión.",
-          "Escanea el QR con una aplicación de autenticación confiable.",
-          "Ingresa el código temporal para confirmar el vínculo.",
-          "Genera códigos de recuperación y guárdalos en un lugar seguro.",
-          "Cierra y vuelve a iniciar sesión para comprobar el segundo factor.",
-          "Retira el QR o secreto de cualquier superficie temporal.",
+          "Abre Seguridad y clave desde tu propia sesión.",
+          "Escanea el QR con una aplicación autenticadora confiable.",
+          "Ingresa el código de 6 dígitos para confirmar el vínculo.",
+          "Guarda los 10 códigos de respaldo en tu gestor de contraseñas.",
+          "Si necesitas rotar tu clave, usa el formulario lateral con una contraseña única de al menos 10 caracteres.",
+          "Retira cualquier captura o copia temporal del QR o de los códigos.",
         ],
-        expected: "La cuenta exige MFA y dispone de códigos de recuperación custodiados.",
+        expected:
+          "La cuenta opera en AAL2 obligatorio, con respaldos vigentes y contraseña no filtrada.",
       },
     ],
-    cautions: ["Nunca envíes códigos TOTP o de recuperación por correo, WhatsApp o tickets."],
+    cautions: ["Nunca envíes códigos TOTP o de respaldo por correo, WhatsApp o tickets."],
     faqs: [
+      {
+        question: "¿Puedo desactivar la verificación en dos pasos?",
+        answer:
+          "No. El segundo factor es obligatorio para todos los roles administrativos; solo puedes cambiar de dispositivo autenticador o usar un código de respaldo en caso de pérdida.",
+      },
       {
         question: "¿Qué hago si perdí mi teléfono?",
         answer:
-          "Usa un código de recuperación válido o contacta a dirección para el procedimiento de recuperación y renovación del factor.",
+          "En el reto MFA ingresa uno de tus códigos de respaldo vigentes para reiniciar el factor y enrolar tu nuevo dispositivo de inmediato.",
       },
     ],
     related: ["usuarios", "auditoria", "ayuda"],
-    keywords: ["MFA", "TOTP", "AAL2", "dos pasos", "QR", "recuperación", "seguridad"],
+    keywords: [
+      "MFA",
+      "TOTP",
+      "AAL2",
+      "dos pasos",
+      "contraseña",
+      "clave",
+      "QR",
+      "recuperación",
+      "seguridad",
+    ],
     version: 1,
   },
   {
     id: "auditoria",
-    title: "Auditoría",
+    title: "Auditoría y seguridad",
     area: "Configuración y seguridad",
     route: "/admin/auditoria",
     summary:
-      "Bitácora de acciones administrativas, actores, entidades y alertas de autonegociación.",
+      "Bitácora inmutable del equipo, pulso de 14 días y eventos de seguridad bloqueados (hora Colombia).",
     purpose:
-      "Permite reconstruir acciones sensibles con fecha, responsable y contexto. Es una vista de investigación y control; no una bandeja para editar el historial.",
+      "Permite reconstruir mutaciones administrativas con enlaces directos a cada entidad e investigar intentos rechazados de login o firmas inválidas de webhooks.",
     whenToUse: [
-      "Para investigar quién ejecutó un cambio.",
-      "Para revisar acciones sobre una entidad o durante un incidente.",
-      "Para analizar señales de autonegociación.",
+      "Para investigar quién ejecutó un cambio y saltar directo al registro afectado.",
+      "Para auditar accesos a PII, reembolsos, cambios de rol o alertas de auto-gestión.",
+      "Para revisar campañas de login fallido o webhooks rechazados en la pestaña de seguridad.",
     ],
     concepts: [
       { term: "Actor", definition: "Usuario administrativo que ejecutó la acción registrada." },
       {
         term: "Entidad",
-        definition: "Objeto de negocio afectado, identificado por tipo e identificador.",
+        definition:
+          "Objeto de negocio afectado con enlace directo a su módulo operativo en el panel.",
       },
       {
-        term: "Autonegociación",
-        definition: "Acción de una persona sobre registros propios que requiere control adicional.",
+        term: "Evento de seguridad",
+        definition:
+          "Intento fallido de autenticación o firma inválida de webhook agregado por ventana y correlacionado por hash de IP.",
       },
     ],
     sections: [
       {
         id: "eventos",
-        title: "Consulta de eventos",
-        summary: "Filtra y analiza la bitácora inmutable.",
+        title: "Acciones del equipo y seguridad bloqueada",
+        summary: "Alterna entre la bitácora operativa y el registro forense de rechazos.",
         topics: [
           {
             id: "accion",
-            label: "Acción",
-            description: "Nombre del evento administrativo ejecutado.",
+            label: "Acción y entidad enlazada",
+            description:
+              "Evento administrativo ejecutado en hora de Colombia con acceso directo al registro.",
             interpretation:
-              "Úsalo junto con entidad y fecha; una acción puede tener varios pasos relacionados.",
+              "Combina vistas rápidas (PII, finanzas, usuarios/MFA, CRM) con rango de fechas en hora Bogotá.",
           },
           {
-            id: "metadata",
-            label: "Contexto",
-            description: "Datos adicionales registrados para entender el evento.",
+            id: "seguridad",
+            label: "Eventos de seguridad bloqueados",
+            description:
+              "Muestra fallos de login admin/tienda y firmas de webhook rechazadas agrupados con contador.",
             interpretation:
-              "No todos los campos de la entidad se copian; abre el registro vivo para su estado actual.",
+              "Haz clic en un hash de IP para correlacionar todos los intentos del mismo origen sin exponer IPs personales.",
           },
           {
             id: "self",
-            label: "Alerta de autonegociación",
-            description: "Señala una posible acción del personal sobre sí mismo.",
-            caution: "No es prueba automática de fraude, pero exige revisión y evidencia.",
+            label: "Alerta de auto-gestión staff",
+            description: "Señala cuando un integrante opera sobre un pedido asociado a su correo.",
+            caution: "No es prueba automática de irregularidad, pero exige verificación.",
           },
         ],
       },
@@ -566,17 +614,17 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "investigar-accion",
-        title: "Investigar un cambio administrativo",
-        goal: "Reconstruir responsable, momento y alcance sin alterar evidencia.",
+        title: "Investigar un cambio o incidente",
+        goal: "Reconstruir responsable, momento y origen sin alterar evidencia.",
         steps: [
-          "Delimita entidad, acción y período.",
-          "Identifica actor y eventos inmediatamente anteriores y posteriores.",
-          "Abre el registro de negocio y compara su estado actual.",
-          "Revisa alertas de autonegociación o eventos de seguridad relacionados.",
-          "Documenta hallazgos y escala sin editar ni eliminar registros de auditoría.",
+          "Elige la pestaña Acciones del equipo o Eventos de seguridad bloqueados.",
+          "Delimita el rango de fechas (hora Colombia) y aplica el filtro rápido correspondiente.",
+          "Identifica actor u origen hash IP y revisa el pulso de los últimos 14 días.",
+          "Abre la entidad enlazada para contrastar su estado vivo actual.",
+          "Documenta hallazgos sin modificar registros históricos.",
         ],
         expected:
-          "La investigación conserva una cronología verificable y conclusiones diferenciadas de hipótesis.",
+          "La investigación conserva una cronología verificable en hora local y trazabilidad completa.",
       },
     ],
     cautions: [
@@ -590,7 +638,16 @@ export const CONFIGURATION_GUIDES: AdminModuleGuide[] = [
       },
     ],
     related: ["usuarios", "seguridad", "clientes", "fidelizacion"],
-    keywords: ["bitácora", "actor", "acción", "self dealing", "autonegociación", "historial"],
+    keywords: [
+      "bitácora",
+      "actor",
+      "acción",
+      "self dealing",
+      "seguridad",
+      "webhook",
+      "ipHash",
+      "historial",
+    ],
     version: 1,
   },
   {

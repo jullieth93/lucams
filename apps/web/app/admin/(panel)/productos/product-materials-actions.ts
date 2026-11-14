@@ -18,7 +18,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
@@ -44,7 +43,7 @@ const QUANTITY_ERROR =
   "La cantidad debe ser un número mayor que 0 (puedes usar decimales, ej. 0,75).";
 
 export async function addProductMaterialAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const productId = String(formData.get("productId") ?? "");
   const materialId = String(formData.get("materialId") ?? "");
@@ -107,7 +106,7 @@ export async function addProductMaterialAction(formData: FormData): Promise<void
 }
 
 export async function updateProductMaterialAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   const productId = String(formData.get("productId") ?? "");
@@ -151,7 +150,7 @@ export async function updateProductMaterialAction(formData: FormData): Promise<v
 // receta no necesita papelera — se re-agrega en 2 clics y no hay historial que
 // preservar (el audit trail de recordAdminAction ya guarda el evento).
 export async function removeProductMaterialAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   const productId = String(formData.get("productId") ?? "");

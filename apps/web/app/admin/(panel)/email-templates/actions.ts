@@ -13,10 +13,12 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { rateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/resend";
 import { EMAIL_OVERRIDE_KEYS } from "@/features/emails/overrides";
 import { getEmailTemplate } from "@/features/emails/registry";
@@ -25,6 +27,7 @@ export type EmailTemplateActionState = {
   error?: string;
   ok?: boolean;
   message?: string;
+  reauthRequired?: boolean;
 };
 
 const SaveOverrideSchema = z.object({
@@ -53,6 +56,15 @@ export async function saveEmailOverrideAction(
 
   const { templateId, key, value } = parsed.data;
   if (!getEmailTemplate(templateId)) return { error: "Plantilla desconocida." };
+
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    }
+    throw err;
+  }
 
   try {
     if (!value) {
@@ -106,6 +118,14 @@ export async function sendTestEmailAction(
 
   const to = session.user.email;
   if (!to) return { error: "Tu usuario no tiene email asociado." };
+
+  const rl = await rateLimit(`admin_email_test:${session.admin.id}`, 12, 3600);
+  if (!rl.allowed) {
+    return {
+      error:
+        "Alcanzaste el límite de 12 correos de prueba por hora para proteger la cuota de envío. Espera unos minutos e intenta de nuevo.",
+    };
+  }
 
   const rendered = await tpl.renderSample();
   const result = await sendEmail({

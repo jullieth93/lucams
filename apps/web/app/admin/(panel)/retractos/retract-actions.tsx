@@ -1,15 +1,16 @@
 "use client";
 
 /*
- * F3 — botones de gestión por solicitud de retracto (admin). Muestra las acciones
- * legales según el estado. El dinero se emite manualmente; "Reembolsar" solo lo
- * registra + avisa al cliente.
+ * F3 / Bloque 6 — gestión operativa por solicitud de retracto (admin).
+ * Muestra las acciones legales según el estado + asignación de responsable (`assignedToAdminId`).
+ * El reembolso final (`REFUNDED`) es exclusivo de `SUPERADMIN` + verificación MFA reciente.
  */
 
 import { useActionState } from "react";
 import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import {
   approveRetractAction,
+  assignRetractAction,
   rejectRetractAction,
   receiveRetractAction,
   refundRetractAction,
@@ -20,12 +21,19 @@ type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 export function RetractActions({
   id,
   status,
-  canRefund = true,
+  canRefund = false,
+  assignedToAdminId = null,
+  currentAdminId,
+  assignableAdmins = [],
 }: {
   id: string;
   status: string;
   canRefund?: boolean;
+  assignedToAdminId?: string | null;
+  currentAdminId?: string;
+  assignableAdmins?: Array<{ id: string; email: string }>;
 }) {
+  const [assignSt, assign, assignPending] = useActionState<St, FormData>(assignRetractAction, null);
   const [approveSt, approve, approvePending] = useActionState<St, FormData>(
     approveRetractAction,
     null,
@@ -39,15 +47,65 @@ export function RetractActions({
   // el modal TOTP y reintenta esta acción tras verificar.
   const [refundSt, refund, refundPending, reauthModal] = useMfaReauthAction(refundRetractAction);
 
-  const msg = approveSt ?? rejectSt ?? receiveSt ?? refundSt;
+  const msg = assignSt ?? approveSt ?? rejectSt ?? receiveSt ?? refundSt;
+  const isOpen = status === "PENDING" || status === "APPROVED" || status === "RECEIVED";
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {reauthModal}
       {msg && (msg.success || msg.error) && (
-        <p className={`text-xs ${msg.success ? "text-emerald-700" : "text-rose-700"}`}>
+        <p
+          role="status"
+          className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${
+            msg.success
+              ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border border-rose-200 bg-rose-50 text-rose-800"
+          }`}
+        >
           {msg.success ?? msg.error}
         </p>
+      )}
+
+      {isOpen && assignableAdmins.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <form action={assign} className="flex min-w-0 flex-1 items-center gap-1.5">
+            <input type="hidden" name="id" value={id} />
+            <select
+              key={assignedToAdminId ?? "unassigned"}
+              name="assignedToAdminId"
+              defaultValue={assignedToAdminId ?? ""}
+              aria-label="Responsable del caso"
+              className="border-brand-purple/20 text-brand-purple-dark focus:ring-brand-purple/30 min-w-0 flex-1 truncate rounded-md border bg-white px-2 py-1 text-xs focus:ring-2 focus:outline-none"
+            >
+              <option value="">Sin asignar</option>
+              {assignableAdmins.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.email}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={assignPending}
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 rounded-md border bg-white px-2 py-1 text-xs font-medium disabled:opacity-60"
+            >
+              {assignPending ? "…" : "Guardar"}
+            </button>
+          </form>
+          {currentAdminId && assignedToAdminId !== currentAdminId && (
+            <form action={assign}>
+              <input type="hidden" name="id" value={id} />
+              <input type="hidden" name="assignedToAdminId" value={currentAdminId} />
+              <button
+                type="submit"
+                disabled={assignPending}
+                className="text-brand-purple hover:text-brand-purple-dark text-[11px] font-semibold underline disabled:opacity-60"
+              >
+                Asignarme
+              </button>
+            </form>
+          )}
+        </div>
       )}
 
       {status === "PENDING" && (
@@ -59,7 +117,7 @@ export function RetractActions({
               disabled={approvePending}
               className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
             >
-              {approvePending ? "…" : "Aprobar"}
+              {approvePending ? "…" : "Aprobar devolución"}
             </button>
           </form>
           <RejectForm id={id} action={reject} pending={rejectPending} />
@@ -89,10 +147,10 @@ export function RetractActions({
             <select
               name="method"
               aria-label="Método de reembolso"
-              className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+              className="border-brand-purple/20 text-brand-purple-dark focus:ring-brand-purple/30 rounded-md border bg-white px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
             >
               <option value="WOMPI_VOID">Reversa Wompi</option>
-              <option value="BANK_TRANSFER">Transferencia</option>
+              <option value="BANK_TRANSFER">Transferencia bancaria</option>
             </select>
             <button
               type="submit"
@@ -103,13 +161,15 @@ export function RetractActions({
             </button>
           </form>
         ) : (
-          <p className="text-[11px] font-medium text-amber-800">
-            Producto recibido — pendiente de reembolso por Superadmin.
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800">
+            Producto recibido — pendiente de reembolso por Superadmin (requiere MFA).
           </p>
         ))}
 
       {status === "REFUNDED" && (
-        <p className="text-[11px] text-amber-700">💡 Emite el dinero en Wompi/transferencia.</p>
+        <p className="text-[11px] font-medium text-emerald-800">
+          Reembolso cerrado. Verifica el comprobante de reversa o transferencia.
+        </p>
       )}
     </div>
   );
@@ -134,9 +194,9 @@ function RejectForm({
         <input
           name="note"
           required
-          maxLength={200}
-          placeholder="Motivo del rechazo"
-          className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+          maxLength={300}
+          placeholder="Motivo del rechazo (se envía al cliente)"
+          className="border-brand-purple/20 focus:ring-brand-purple/30 rounded-md border bg-white px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
         />
         <button
           type="submit"

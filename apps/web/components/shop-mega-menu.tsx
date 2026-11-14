@@ -273,7 +273,7 @@ export function ShopMegaMenu({
                     header.menu.admin). Solo admins. */}
                 {isAdmin && (
                   <Link
-                    href="/admin/dashboard"
+                    href="/admin"
                     // prefetch={false}: misma razón que el chip del header
                     // (ADR-162 — un prefetch a /admin/* puede disparar el
                     // idle-timeout del panel y revocar la sesión entera).

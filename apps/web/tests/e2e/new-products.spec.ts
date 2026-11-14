@@ -3,7 +3,12 @@ import sharp from "sharp";
 import type { Locator, Page } from "@playwright/test";
 import { db, disconnectDb } from "./fixtures/db";
 import { dismissCookieBanner, E2E_ENV, expect, test } from "./fixtures/auth";
-import { captureNewProductState, restoreNewProductState } from "./fixtures/product-state";
+import {
+  captureNewProductState,
+  expectNewProductStateRestored,
+  restoreNewProductState,
+  revalidateNewProductsThroughAdmin,
+} from "./fixtures/product-state";
 
 const ORNAMENT_SLUG = "bola-navidena-personalizada";
 const MINI_BOOK_SLUG = "mini-libros-magneticos";
@@ -24,6 +29,32 @@ async function resolvePanel(page: Page): Promise<Locator> {
     await expect(panel).toBeVisible({ timeout: 10_000 });
   }
   return panel;
+}
+
+async function largestVisibleCanvas(scope: Locator): Promise<Locator> {
+  const canvases = scope.locator("canvas");
+  let largestIndex = -1;
+  await expect
+    .poll(
+      async () => {
+        let largestArea = 0;
+        largestIndex = -1;
+        for (let index = 0; index < (await canvases.count()); index += 1) {
+          const candidate = canvases.nth(index);
+          if (!(await candidate.isVisible().catch(() => false))) continue;
+          const box = await candidate.boundingBox();
+          const area = box ? box.width * box.height : 0;
+          if (area > largestArea) {
+            largestArea = area;
+            largestIndex = index;
+          }
+        }
+        return largestArea;
+      },
+      { timeout: 60_000 },
+    )
+    .toBeGreaterThan(300 * 150);
+  return canvases.nth(largestIndex);
 }
 
 async function prepareOrnamentStudio(page: Page) {
@@ -125,7 +156,7 @@ test.skip(
 );
 test.setTimeout(240_000);
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ browser }) => {
   const products = await db().product.findMany({
     where: { slug: { in: [ORNAMENT_SLUG, MINI_BOOK_SLUG] }, deletedAt: null },
     select: { id: true, slug: true },
@@ -149,6 +180,10 @@ test.beforeAll(async () => {
         countryOfOrigin: "CO",
       },
     },
+  });
+  await db().category.updateMany({
+    where: { id: { in: originalProductState.map((product) => product.category.id) } },
+    data: { isActive: true, deletedAt: null },
   });
   const miniVariant = await db().productVariant.findFirstOrThrow({
     where: {
@@ -187,9 +222,13 @@ test.beforeAll(async () => {
       },
     });
   }
+  await revalidateNewProductsThroughAdmin(
+    browser,
+    products.map((product) => product.id),
+  );
 });
 
-test.afterAll(async () => {
+test.afterAll(async ({ browser }) => {
   try {
     const designs = await db().design.findMany({
       where: {
@@ -225,6 +264,12 @@ test.afterAll(async () => {
       where: { productId: miniBookId, createdBy: TEST_NOTE },
     });
     await restoreNewProductState(originalProductState);
+    await expectNewProductStateRestored(originalProductState);
+    await revalidateNewProductsThroughAdmin(
+      browser,
+      originalProductState.map((product) => product.id),
+    );
+    await expectNewProductStateRestored(originalProductState);
   } finally {
     await disconnectDb();
   }
@@ -249,7 +294,7 @@ test("bola navideña: la escena 3D permite frente, canto, reverso y giro complet
 
   const dialog = anonPage.locator('[role="dialog"][aria-modal="true"]');
   await expect(dialog).toBeVisible({ timeout: 60_000 });
-  const sceneCanvas = dialog.locator("canvas").first();
+  const sceneCanvas = await largestVisibleCanvas(dialog);
   await expect(sceneCanvas).toBeVisible({ timeout: 30_000 });
   await anonPage.waitForTimeout(3000);
   const frontCapture = testInfo.outputPath("bola-navidena-frente.png");
@@ -336,7 +381,7 @@ test("bola dúplex: A/B en una esfera, cara B obligatoria y arrastre táctil o m
   await expect(dialog.getByText("1 / 1", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Cara B pendiente")).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "De perfil" })).toBeVisible();
-  const sceneCanvas = dialog.locator("canvas").first();
+  const sceneCanvas = await largestVisibleCanvas(dialog);
   await expect(sceneCanvas).toBeVisible({ timeout: 30_000 });
   const canvasBox = await sceneCanvas.boundingBox();
   if (!canvasBox) throw new Error("El lienzo dúplex no tiene dimensiones.");
@@ -358,15 +403,19 @@ test("bola dúplex: A/B en una esfera, cara B obligatoria y arrastre táctil o m
     )
     .toBe(true);
   await dialog.getByRole("button", { name: "Reverso" }).click();
+  await expect(dialog.getByRole("button", { name: "Reverso" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect
     .poll(
       async () => {
         const [r, , b] = await centerColor(await captureModel());
-        return b > r;
+        return b - r;
       },
       { timeout: 30_000 },
     )
-    .toBe(true);
+    .toBeGreaterThan(0);
   await dialog.getByRole("button", { name: "Frente" }).click();
   await expect
     .poll(
@@ -614,7 +663,7 @@ test("bola navideña (5 bolas): editar desde /carrito conserva las fotos reales 
   });
   await expect(sceneDialog.getByText("1 / 5", { exact: true })).toBeVisible();
 
-  const sceneCanvas = sceneDialog.locator("canvas").first();
+  const sceneCanvas = await largestVisibleCanvas(sceneDialog);
   await expect(sceneCanvas).toBeVisible({ timeout: 30_000 });
   const captureModel = async () => {
     const box = await sceneCanvas.boundingBox();

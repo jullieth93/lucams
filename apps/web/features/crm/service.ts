@@ -40,6 +40,8 @@ export type CrmActivityView = {
   authorEmail: string | null;
   orderNumber: string | null;
   supportTicketId: string | null;
+  opportunityId: string | null;
+  opportunityNumber: string | null;
 };
 
 export type CrmTaskView = {
@@ -61,6 +63,8 @@ export type CrmTaskView = {
   supportTicketId: string | null;
   warrantyClaimId: string | null;
   retractRequestId: string | null;
+  opportunityId: string | null;
+  opportunityNumber: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -87,6 +91,49 @@ async function resolveActiveContactIdOrThrow(contactId: string): Promise<string>
   return resolved.contactId;
 }
 
+async function assertContactRelationCoherence(
+  contactId: string,
+  relations: {
+    orderId?: string | null;
+    supportTicketId?: string | null;
+    opportunityId?: string | null;
+  },
+) {
+  const orderId = relations.orderId?.trim() || null;
+  const supportTicketId = relations.supportTicketId?.trim() || null;
+  const opportunityId = relations.opportunityId?.trim() || null;
+  const [order, supportTicket, opportunity] = await Promise.all([
+    orderId
+      ? prisma.order.findFirst({
+          where: { id: orderId, deletedAt: null },
+          select: { contactId: true },
+        })
+      : Promise.resolve(null),
+    supportTicketId
+      ? prisma.supportTicket.findUnique({
+          where: { id: supportTicketId },
+          select: { contactId: true },
+        })
+      : Promise.resolve(null),
+    opportunityId
+      ? prisma.opportunity.findFirst({
+          where: { id: opportunityId, deletedAt: null },
+          select: { contactId: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (orderId && order?.contactId !== contactId) {
+    throw new CrmValidationError("El pedido no pertenece al contacto indicado.");
+  }
+  if (supportTicketId && supportTicket?.contactId !== contactId) {
+    throw new CrmValidationError("El ticket no pertenece al contacto indicado.");
+  }
+  if (opportunityId && opportunity?.contactId !== contactId) {
+    throw new CrmValidationError("La oportunidad no pertenece al contacto indicado.");
+  }
+}
+
 export async function createContactActivity(input: {
   contactId: string;
   orderId?: string | null;
@@ -109,6 +156,12 @@ export async function createContactActivity(input: {
   }
 
   const activeContactId = await resolveActiveContactIdOrThrow(input.contactId);
+  await assertContactRelationCoherence(activeContactId, {
+    orderId: input.orderId,
+    supportTicketId: input.supportTicketId,
+    opportunityId:
+      typeof input.metadata?.opportunityId === "string" ? input.metadata.opportunityId : null,
+  });
 
   return prisma.contactActivity.create({
     data: {
@@ -157,16 +210,33 @@ export async function listActivitiesForEntity(filter: {
     },
   });
 
-  return rows.map((row) => ({
-    id: row.id,
-    contactId: row.contactId,
-    kind: isContactActivityKind(row.kind) ? row.kind : "NOTE",
-    body: row.body,
-    createdAt: row.createdAt,
-    authorEmail: row.authorAdmin?.email ?? null,
-    orderNumber: row.order?.number ?? null,
-    supportTicketId: row.supportTicketId,
-  }));
+  return rows.map((row) => {
+    const meta =
+      typeof row.metadata === "object" && row.metadata !== null && !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : null;
+    const opportunityId =
+      typeof meta?.opportunityId === "string" && meta.opportunityId.trim()
+        ? meta.opportunityId.trim()
+        : null;
+    const opportunityNumber =
+      typeof meta?.opportunityNumber === "string" && meta.opportunityNumber.trim()
+        ? meta.opportunityNumber.trim()
+        : null;
+
+    return {
+      id: row.id,
+      contactId: row.contactId,
+      kind: isContactActivityKind(row.kind) ? row.kind : "NOTE",
+      body: row.body,
+      createdAt: row.createdAt,
+      authorEmail: row.authorAdmin?.email ?? null,
+      orderNumber: row.order?.number ?? null,
+      supportTicketId: row.supportTicketId,
+      opportunityId,
+      opportunityNumber,
+    };
+  });
 }
 
 export async function createCrmTask(input: {
@@ -181,6 +251,7 @@ export async function createCrmTask(input: {
   supportTicketId?: string | null;
   warrantyClaimId?: string | null;
   retractRequestId?: string | null;
+  opportunityId?: string | null;
 }) {
   const cleanTitle = input.title.trim();
   if (cleanTitle.length < 3) {
@@ -201,6 +272,13 @@ export async function createCrmTask(input: {
   const activeContactId = input.contactId?.trim()
     ? await resolveActiveContactIdOrThrow(input.contactId)
     : null;
+  if (activeContactId) {
+    await assertContactRelationCoherence(activeContactId, {
+      orderId: input.orderId,
+      supportTicketId: input.supportTicketId,
+      opportunityId: input.opportunityId,
+    });
+  }
 
   return prisma.task.create({
     data: {
@@ -216,6 +294,7 @@ export async function createCrmTask(input: {
       supportTicketId: input.supportTicketId?.trim() || null,
       warrantyClaimId: input.warrantyClaimId?.trim() || null,
       retractRequestId: input.retractRequestId?.trim() || null,
+      opportunityId: input.opportunityId?.trim() || null,
     },
   });
 }
@@ -294,6 +373,7 @@ export async function listTasksForEntity(filter: {
       ownerAdmin: { select: { email: true } },
       createdByAdmin: { select: { email: true } },
       order: { select: { number: true } },
+      opportunity: { select: { number: true } },
     },
   });
 
@@ -320,6 +400,8 @@ export async function listTasksForEntity(filter: {
       supportTicketId: row.supportTicketId,
       warrantyClaimId: row.warrantyClaimId,
       retractRequestId: row.retractRequestId,
+      opportunityId: row.opportunityId,
+      opportunityNumber: row.opportunity?.number ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

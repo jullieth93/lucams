@@ -57,7 +57,7 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-import { toggleOcasionActiveAction } from "./actions";
+import { restoreOcasionAction, toggleOcasionActiveAction, updateOcasionAction } from "./actions";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -134,5 +134,47 @@ describe("toggleOcasionActiveAction — invalidación storefront (M-1)", () => {
 
     expect(redirectMocks.createSlugRenameRedirect).not.toHaveBeenCalled();
     expect(redirectMocks.archiveRedirectOccupyingPath).not.toHaveBeenCalled();
+  });
+
+  it("updateOcasionAction devuelve fieldErrors cuando el slug ya pertenece a otra ocasión", async () => {
+    mockPrisma.ocasionTag.findUnique.mockResolvedValueOnce({ id: "cm00000000000000000000099" });
+    const fd = new FormData();
+    fd.set("id", "cm00000000000000000000001");
+    fd.set("name", "Día de la Madre");
+    fd.set("slug", "cumpleanos");
+    fd.set(
+      "description",
+      "Celebración especial en Colombia con detalles personalizados y fotos familiares.",
+    );
+    fd.set("order", "1");
+
+    const res = await updateOcasionAction(null, fd);
+
+    expect(res).toEqual({
+      error: "Ya existe una ocasión con ese slug.",
+      fieldErrors: { slug: ["Ya existe una ocasión con ese slug."] },
+    });
+    expect(mockPrisma.ocasionTag.update).not.toHaveBeenCalled();
+  });
+
+  it("restoreOcasionAction restaura como inactiva, invalida catálogo y registra auditoría", async () => {
+    const fd = new FormData();
+    fd.set("id", "oc1");
+
+    await expect(restoreOcasionAction(fd)).rejects.toThrow("NEXT_REDIRECT");
+
+    expect(mockPrisma.ocasionTag.update).toHaveBeenCalledWith({
+      where: { id: "oc1" },
+      data: { deletedAt: null, deletedBy: null, isActive: false, updatedBy: "admin1" },
+    });
+    expect(updateTagSpy).toHaveBeenCalledWith("catalog");
+    expect(auditSpy.recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "admin1",
+        action: "ocasion.restore",
+        entityType: "OcasionTag",
+        entityId: "oc1",
+      }),
+    );
   });
 });

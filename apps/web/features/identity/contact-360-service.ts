@@ -34,7 +34,8 @@ export const PAID_ORDER_STATUSES = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"
 export type ContactSegmentFilter =
   "all" | "registered" | "guest" | "paid" | "vip" | "open-care" | "marketing-optin";
 
-export type ContactSortOption = "recent" | "ltv" | "orders" | "name";
+export type ContactSortOption =
+  "recent" | "recent-asc" | "ltv" | "ltv-asc" | "orders" | "orders-asc" | "name" | "name-desc";
 
 export interface ContactListOpts {
   q?: string;
@@ -65,6 +66,17 @@ export interface ContactDirectoryItem {
   createdAt: Date;
 }
 
+export interface ContactDirectorySummary {
+  totalContacts: number;
+  registeredCount: number;
+  guestCount: number;
+  buyersCount: number;
+  vipCount: number;
+  totalNetLtvCents: number;
+  marketingOptInCount: number;
+  openCareContactsCount: number;
+}
+
 export interface ContactDirectoryResult {
   items: ContactDirectoryItem[];
   total: number;
@@ -73,6 +85,8 @@ export interface ContactDirectoryResult {
   totalPages: number;
   pendingMergesCount: number;
   piiMasked: boolean;
+  summary: ContactDirectorySummary;
+  sourceBreakdown: Array<{ source: string; count: number }>;
 }
 
 function escapeLikePattern(raw: string): string {
@@ -92,7 +106,16 @@ export function isContactSegmentFilter(val: string | undefined): val is ContactS
 }
 
 export function isContactSortOption(val: string | undefined): val is ContactSortOption {
-  return val === "recent" || val === "ltv" || val === "orders" || val === "name";
+  return (
+    val === "recent" ||
+    val === "recent-asc" ||
+    val === "ltv" ||
+    val === "ltv-asc" ||
+    val === "orders" ||
+    val === "orders-asc" ||
+    val === "name" ||
+    val === "name-desc"
+  );
 }
 
 /**
@@ -230,8 +253,6 @@ export async function listContactsForActor(
   const q = opts.q?.trim();
   const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
 
-  const sqlConditions: Prisma.Sql[] = [Prisma.sql`ct."deletedAt" IS NULL`];
-
   const isStaffExpr = Prisma.sql`EXISTS (
     SELECT 1
     FROM "AdminUser" au
@@ -243,9 +264,12 @@ export async function listContactsForActor(
       )
   )`;
 
+  const staffConditions: Prisma.Sql[] = [Prisma.sql`ct."deletedAt" IS NULL`];
   if (!opts.includeStaff) {
-    sqlConditions.push(Prisma.sql`NOT (${isStaffExpr})`);
+    staffConditions.push(Prisma.sql`NOT (${isStaffExpr})`);
   }
+
+  const sqlConditions: Prisma.Sql[] = [...staffConditions];
 
   for (const token of tokens) {
     const pattern = `%${escapeLikePattern(token)}%`;
@@ -301,10 +325,18 @@ export async function listContactsForActor(
     switch (sort) {
       case "ltv":
         return Prisma.sql`COALESCE(ord.net_ltv_cents, 0) DESC, ct."updatedAt" DESC, ct."id" ASC`;
+      case "ltv-asc":
+        return Prisma.sql`COALESCE(ord.net_ltv_cents, 0) ASC, ct."updatedAt" DESC, ct."id" ASC`;
       case "orders":
         return Prisma.sql`COALESCE(ord.paid_orders, 0) DESC, COALESCE(ord.net_ltv_cents, 0) DESC, ct."id" ASC`;
+      case "orders-asc":
+        return Prisma.sql`COALESCE(ord.paid_orders, 0) ASC, COALESCE(ord.net_ltv_cents, 0) ASC, ct."id" ASC`;
       case "name":
         return Prisma.sql`LOWER(COALESCE(NULLIF(ct."displayName", ''), cu."firstName", ct."primaryEmail", ct."id")) ASC, ct."id" ASC`;
+      case "name-desc":
+        return Prisma.sql`LOWER(COALESCE(NULLIF(ct."displayName", ''), cu."firstName", ct."primaryEmail", ct."id")) DESC, ct."id" ASC`;
+      case "recent-asc":
+        return Prisma.sql`GREATEST(ct."updatedAt", COALESCE(ord.last_order_at, ct."createdAt")) ASC, ct."id" ASC`;
       case "recent":
       default:
         return Prisma.sql`GREATEST(ct."updatedAt", COALESCE(ord.last_order_at, ct."createdAt")) DESC, ct."id" ASC`;
@@ -394,7 +426,18 @@ export async function listContactsForActor(
     marketingOptIn: boolean;
   };
 
-  const [rows, countRows, pendingMergesCount] = await Promise.all([
+  type SummaryRowShape = {
+    totalContacts: number;
+    registeredCount: number;
+    guestCount: number;
+    buyersCount: number;
+    vipCount: number;
+    totalNetLtvCents: bigint;
+    marketingOptInCount: number;
+    openCareContactsCount: number;
+  };
+
+  const fetchRowsForPage = (targetPage: number) =>
     prisma.$queryRaw<RowShape[]>`
       ${baseCte}
       SELECT
@@ -427,8 +470,11 @@ export async function listContactsForActor(
       WHERE ${Prisma.join(sqlConditions, " AND ")}
       ORDER BY ${orderClause}
       LIMIT ${pageSize}
-      OFFSET ${(page - 1) * pageSize}
-    `,
+      OFFSET ${(targetPage - 1) * pageSize}
+    `;
+
+  const [initialRows, countRows, summaryRows, sourceRows, pendingMergesCount] = await Promise.all([
+    fetchRowsForPage(page),
     prisma.$queryRaw<Array<{ total: number }>>`
       ${baseCte}
       SELECT COUNT(*)::int AS total
@@ -440,12 +486,50 @@ export async function listContactsForActor(
       LEFT JOIN mkt ON mkt."contactId" = ct."id"
       WHERE ${Prisma.join(sqlConditions, " AND ")}
     `,
+    prisma.$queryRaw<SummaryRowShape[]>`
+      ${baseCte}
+      SELECT
+        COUNT(*)::int AS "totalContacts",
+        COUNT(*) FILTER (WHERE cu."id" IS NOT NULL)::int AS "registeredCount",
+        COUNT(*) FILTER (WHERE cu."id" IS NULL)::int AS "guestCount",
+        COUNT(*) FILTER (WHERE COALESCE(ord.paid_orders, 0) >= 1)::int AS "buyersCount",
+        COUNT(*) FILTER (WHERE COALESCE(ord.paid_orders, 0) >= 3)::int AS "vipCount",
+        COALESCE(SUM(COALESCE(ord.net_ltv_cents, 0)), 0)::bigint AS "totalNetLtvCents",
+        COUNT(*) FILTER (WHERE COALESCE(mkt.active_optin, FALSE) = TRUE)::int AS "marketingOptInCount",
+        COUNT(*) FILTER (WHERE COALESCE(care.open_count, 0) > 0)::int AS "openCareContactsCount"
+      FROM "Contact" ct
+      LEFT JOIN "Customer" cu ON cu."contactId" = ct."id" AND cu."deletedAt" IS NULL
+      LEFT JOIN ord ON ord."contactId" = ct."id"
+      LEFT JOIN care ON care."contactId" = ct."id"
+      LEFT JOIN mkt ON mkt."contactId" = ct."id"
+      WHERE ${Prisma.join(staffConditions, " AND ")}
+    `,
+    prisma.$queryRaw<Array<{ source: string; count: number }>>`
+      SELECT
+        ct."source" AS "source",
+        COUNT(*)::int AS "count"
+      FROM "Contact" ct
+      LEFT JOIN "Customer" cu ON cu."contactId" = ct."id" AND cu."deletedAt" IS NULL
+      WHERE ${Prisma.join(staffConditions, " AND ")}
+      GROUP BY ct."source"
+      ORDER BY COUNT(*) DESC, ct."source" ASC
+    `,
     canSeeMerges
-      ? prisma.identityMergeCandidate.count({ where: { status: "PENDING" } })
+      ? prisma.identityMergeCandidate.count({
+          where: {
+            status: "PENDING",
+            primaryContact: { deletedAt: null, anonymizedAt: null },
+            secondaryContact: { deletedAt: null, anonymizedAt: null },
+          },
+        })
       : Promise.resolve(0),
   ]);
 
   const total = Number(countRows[0]?.total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const rows = safePage !== page ? await fetchRowsForPage(safePage) : initialRows;
+  const summaryRow = summaryRows[0];
 
   const items: ContactDirectoryItem[] = rows.map((r) => {
     const rawName =
@@ -488,11 +572,25 @@ export async function listContactsForActor(
   return {
     items,
     total,
-    page,
+    page: safePage,
     pageSize,
-    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    totalPages,
     pendingMergesCount,
     piiMasked: !canReadPii,
+    summary: {
+      totalContacts: Number(summaryRow?.totalContacts ?? 0),
+      registeredCount: Number(summaryRow?.registeredCount ?? 0),
+      guestCount: Number(summaryRow?.guestCount ?? 0),
+      buyersCount: Number(summaryRow?.buyersCount ?? 0),
+      vipCount: Number(summaryRow?.vipCount ?? 0),
+      totalNetLtvCents: Number(summaryRow?.totalNetLtvCents ?? 0),
+      marketingOptInCount: Number(summaryRow?.marketingOptInCount ?? 0),
+      openCareContactsCount: Number(summaryRow?.openCareContactsCount ?? 0),
+    },
+    sourceBreakdown: sourceRows.map((s) => ({
+      source: s.source,
+      count: Number(s.count),
+    })),
   };
 }
 
@@ -995,7 +1093,7 @@ export async function getContact360ForActor(
       title: t.subject,
       status: t.status,
       orderNumber: t.orderNumber,
-      href: `/admin/soporte/${t.id}`,
+      href: `/admin/soporte/${encodeURIComponent(t.id)}`,
       createdAt: t.createdAt,
     })),
     ...contact.warrantyClaims.map((w) => ({
@@ -1004,7 +1102,7 @@ export async function getContact360ForActor(
       title: w.description.slice(0, 90),
       status: w.status,
       orderNumber: w.orderItem.order.number,
-      href: `/admin/garantias?status=${w.status}`,
+      href: `/admin/garantias?status=all&q=${encodeURIComponent(w.id)}`,
       createdAt: w.requestedAt,
     })),
     ...contact.retractRequests.map((r) => ({
@@ -1013,7 +1111,7 @@ export async function getContact360ForActor(
       title: r.reason?.slice(0, 90) || "Solicitud de retracto Ley 1480",
       status: r.status,
       orderNumber: r.orderItem.order.number,
-      href: `/admin/retractos?status=${r.status}`,
+      href: `/admin/retractos?status=all&q=${encodeURIComponent(r.id)}`,
       createdAt: r.requestedAt,
     })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());

@@ -9,11 +9,23 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { logger } from "@/lib/logger";
 import { saveLoyaltySettings, saveReferralSettings } from "@/features/loyalty/settings";
 
-export type LoyaltyActionState = { ok?: string; error?: string };
+export type LoyaltyActionState = {
+  ok?: string;
+  error?: string;
+  reauthRequired?: boolean;
+};
+
+/**
+ * Tope duro anti-abuso (Bloque 3 · D2):
+ * Retorno efectivo en puntos = `100_000 / (earnCopPerPoint * redeemPointsPer1000)` %.
+ * Prohibido superar 25% (`earnCopPerPoint * redeemPointsPer1000 < 4_000`).
+ */
+const MIN_EARN_TIMES_REDEEM_PRODUCT = 4_000;
 
 function parseBoundedInt(
   formData: FormData,
@@ -32,6 +44,14 @@ export async function saveLoyaltySettingsAction(
   formData: FormData,
 ): Promise<LoyaltyActionState> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { reauthRequired: true, error: MFA_REAUTH_MESSAGE };
+    }
+    throw err;
+  }
 
   const enabled = formData.get("enabled") === "1";
   const earnCopPerPoint = parseBoundedInt(formData, "earnCopPerPoint", 100, 1_000_000);
@@ -55,6 +75,15 @@ export async function saveLoyaltySettingsAction(
   }
   if (expirationDays === null) {
     return { error: "Los días de vigencia deben ser un número entre 1 y 3650." };
+  }
+
+  if (earnCopPerPoint * redeemPointsPer1000 < MIN_EARN_TIMES_REDEEM_PRODUCT) {
+    const effectivePct = (100_000 / (earnCopPerPoint * redeemPointsPer1000))
+      .toFixed(1)
+      .replace(".", ",");
+    return {
+      error: `Esa combinación equivale a un retorno del ${effectivePct}% en puntos (máximo permitido: 25% para proteger el margen). Sube los pesos por punto o los puntos por $1.000.`,
+    };
   }
 
   try {
@@ -90,10 +119,12 @@ export async function saveLoyaltySettingsAction(
     // vea el cambio al instante.
     updateTag("cms");
     revalidatePath("/admin/fidelizacion");
+    revalidatePath("/checkout/pago");
+    revalidatePath("/mi-cuenta");
     return {
       ok: enabled
-        ? "Puntos Lucams ACTIVO: los clientes ya acumulan y pueden redimir puntos."
-        : "Configuración guardada. El programa sigue APAGADO (no se acumula ni se redime).",
+        ? "Puntos Lucams activo: los clientes ya acumulan y pueden redimir puntos con las nuevas tasas."
+        : "Configuración guardada. El programa sigue apagado (no se acumula ni se redime).",
     };
   } catch (err) {
     logger.warn({
@@ -111,6 +142,14 @@ export async function saveReferralSettingsAction(
   formData: FormData,
 ): Promise<LoyaltyActionState> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { reauthRequired: true, error: MFA_REAUTH_MESSAGE };
+    }
+    throw err;
+  }
 
   const enabled = formData.get("enabled") === "1";
   const rewardPercent = parseBoundedInt(formData, "rewardPercent", 1, 100);
@@ -134,6 +173,7 @@ export async function saveReferralSettingsAction(
     });
     updateTag("cms");
     revalidatePath("/admin/fidelizacion");
+    revalidatePath("/mi-cuenta");
     return {
       ok: `Invita y gana guardado (${rewardPercent}% OFF · ${rewardDays} días). Los cupones ya emitidos conservan sus condiciones; el cambio aplica a las próximas emisiones.`,
     };

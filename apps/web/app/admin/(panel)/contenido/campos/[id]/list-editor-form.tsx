@@ -19,8 +19,9 @@
  * Sí/No ("true"/"false"; default "true" en filas nuevas).
  */
 
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, ChevronDown, Loader2, Plus, Save, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -115,16 +116,14 @@ export function ListEditorForm({
   const [original, setOriginal] = useState<Row[]>(() => toRows(field.items));
   const [rows, setRows] = useState<Row[]>(() => toRows(field.items));
 
-  const [state, formAction, pending] = useActionState<CmsActionState | null, FormData>(
-    saveCmsFieldItemsAction,
-    null,
-  );
+  const [state, formAction, pending, reauthModal] =
+    useMfaReauthAction<CmsActionState>(saveCmsFieldItemsAction);
 
   const serialize = (list: Row[]) => JSON.stringify(list.map((r) => r.values));
   const isDirty = serialize(rows) !== serialize(original);
 
   useEffect(() => {
-    if (state?.error) toast.error(state.error);
+    if (state?.error && !state.reauthRequired) toast.error(state.error);
     else if (state?.ok) {
       toast.success(
         isSetting
@@ -366,7 +365,7 @@ export function ListEditorForm({
       </details>
 
       {/* Errores */}
-      {state?.error && (
+      {state?.error && !state.reauthRequired && (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {state.error}
         </div>
@@ -449,6 +448,7 @@ export function ListEditorForm({
         </div>
       </div>
       {confirmDialog}
+      {reauthModal}
     </form>
   );
 }

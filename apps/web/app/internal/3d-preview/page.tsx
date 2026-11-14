@@ -12,7 +12,12 @@ export const metadata: Metadata = { robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
 export default function Preview3DPage() {
-  if (process.env.VERCEL_ENV) notFound();
+  if (
+    process.env.VERCEL_ENV ||
+    (process.env.NODE_ENV === "production" && process.env.ALLOW_INTERNAL_PREVIEW !== "1")
+  ) {
+    notFound();
+  }
   return (
     <main
       style={{

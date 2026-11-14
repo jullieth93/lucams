@@ -11,15 +11,17 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { Settings, ShoppingCart, Users } from "lucide-react";
+import { Filter, MailCheck, Repeat, Settings, ShoppingCart, Users } from "lucide-react";
 import {
   AdminBadge,
+  AdminCard,
+  AdminComboBarLineChart,
   AdminEmpty,
   AdminNotice,
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
+  AdminSegmentedBar,
   AdminTable,
   AdminTableBody,
   AdminTableHead,
@@ -28,13 +30,20 @@ import {
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getCurrentAdmin } from "@/lib/auth";
-import { hasCapability } from "@/lib/admin-rbac";
+import {
+  ADMIN_ROLE_SETS,
+  adminHomePath,
+  canAccessAdminPath,
+  hasCapability,
+} from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
+import { maskEmail, maskPersonName } from "@/lib/pii-mask";
 import { formatCOP, formatRelativeTime } from "@/lib/format";
 import {
   ABANDONED_STATUS_LABEL,
   CHECKOUT_STEP_LABEL,
   CLOSED_REASON_LABEL,
+  getCartRecoveryDailyPulse,
   getCartRecoveryMetrics,
   listAbandonedCartsAdmin,
   type AbandonedCartStatus,
@@ -43,7 +52,10 @@ import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
 import { BulkCartBar, BulkSelectAllCartsCheckbox } from "./bulk-cart-bar";
 import { formatDateTimeNoYearCO } from "@/lib/datetime";
 
-export const metadata: Metadata = { title: "Carritos abandonados" };
+export const metadata: Metadata = {
+  title: "Carritos abandonados",
+  robots: { index: false, follow: false },
+};
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -64,18 +76,25 @@ const STATUS_FILTER_LABEL: Record<StatusOption, string> = {
 };
 
 export default async function AdminCarritosPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
+  const session = await requireRole(ADMIN_ROLE_SETS.CARTS_READ);
+  const role = session.admin.role;
+  const homeHref = adminHomePath(role);
+  const canRecover = hasCapability(role, "carts:recover");
+  const canConfigure = hasCapability(role, "carts:configure");
+  const canReadPii =
+    hasCapability(role, "orders:read_pii") || hasCapability(role, "contacts:read_pii");
+  const canRead360 =
+    hasCapability(role, "contacts:read_360") && canAccessAdminPath(role, "/admin/clientes");
 
   const sp = await searchParams;
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
   const page = Number(sp.page) || 1;
 
-  const [metrics, settings] = await Promise.all([
+  const [metrics, settings, pulse] = await Promise.all([
     getCartRecoveryMetrics(),
     getCartRecoverySettings(),
+    getCartRecoveryDailyPulse(14),
   ]);
 
   const hasExplicitStatus = (STATUS_OPTIONS as readonly string[]).includes(statusRaw ?? "");
@@ -91,6 +110,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
     q,
     status: status as AbandonedCartStatus | "all",
     page,
+    allowPiiSearch: canReadPii,
   });
 
   const hasActiveFilters = !!q || (hasExplicitStatus && status !== "pending");
@@ -102,6 +122,9 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
     closed: metrics.closedCount,
     all: metrics.totalCount,
   };
+
+  const sentDisplay =
+    typeof sp.sent === "string" ? (canReadPii ? sp.sent : maskEmail(sp.sent)) : null;
 
   return (
     <AdminPage>
@@ -124,12 +147,12 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
           </>
         }
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: homeHref },
           { label: "Marketing" },
           { label: "Carritos abandonados" },
         ]}
         actions={
-          session.admin.role === "SUPERADMIN" ? (
+          canConfigure ? (
             <Link
               href="/admin/carritos/configuracion"
               className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-10 items-center gap-1.5 rounded-md border bg-white px-3.5 py-2 text-sm font-semibold"
@@ -142,23 +165,64 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
       />
 
       <AdminPageBody>
+        {/* Tira de navegación del ecosistema Marketing */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="border-brand-purple bg-brand-purple/10 text-brand-purple-dark inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold">
+            <ShoppingCart className="h-3.5 w-3.5" />
+            Carritos abandonados
+          </span>
+          {canAccessAdminPath(role, "/admin/lifecycle") && (
+            <Link
+              href="/admin/lifecycle"
+              className="border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <Repeat className="h-3.5 w-3.5" />
+              Lifecycle Journeys
+            </Link>
+          )}
+          {canAccessAdminPath(role, "/admin/marketing/suscriptores") && (
+            <Link
+              href="/admin/marketing/suscriptores"
+              className="border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <MailCheck className="h-3.5 w-3.5" />
+              Suscriptores
+            </Link>
+          )}
+          {canAccessAdminPath(role, "/admin/marketing/segmentos") && (
+            <Link
+              href="/admin/marketing/segmentos"
+              className="border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <Filter className="h-3.5 w-3.5" />
+              Segmentos RFM
+            </Link>
+          )}
+        </div>
+
+        {!canRecover && (
+          <AdminNotice tone="info">
+            <strong>Modo analítico 0-PII:</strong> visualizas el embudo, atribución de ingresos y
+            diagnóstico de carritos sin datos personales en claro ni controles de envío comercial.
+          </AdminNotice>
+        )}
+
         {!settings.enabled ? (
           <AdminNotice tone="warning">
             <strong>Módulo apagado:</strong> no se envía ningún recordatorio (ni automático ni
-            manual). Se reactiva desde Configuración.
+            manual).{canConfigure ? " Se reactiva desde Configuración." : ""}
           </AdminNotice>
         ) : settings.mode === "manual" ? (
           <AdminNotice tone="info">
             <strong>Modo manual:</strong> el cron no envía nada — los recordatorios salen solo
-            cuando los envías desde acá (botón «Recordar» de cada fila o la selección múltiple).
+            cuando se envían manualmente desde el panel.
           </AdminNotice>
         ) : (
           <AdminNotice tone="info">
             <strong>Modo automático:</strong> el cron envía hasta {settings.maxReminders}{" "}
             recordatorio{settings.maxReminders === 1 ? "" : "s"} a cada carrito con más de{" "}
             {settings.idleHours} h de inactividad
-            {settings.maxReminders > 1 && `, con ${settings.intervalHours} h entre envíos`}. También
-            puedes inspeccionar qué sucedió o enviar a voluntad desde cada fila.
+            {settings.maxReminders > 1 && `, con ${settings.intervalHours} h entre envíos`}.
           </AdminNotice>
         )}
 
@@ -170,8 +234,8 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
           </AdminNotice>
         )}
 
-        {typeof sp.sent === "string" && (
-          <AdminNotice tone="success">Recordatorio enviado a {sp.sent}.</AdminNotice>
+        {sentDisplay && (
+          <AdminNotice tone="success">Recordatorio enviado a {sentDisplay}.</AdminNotice>
         )}
         {typeof sp.bulkOk === "string" && <AdminNotice tone="success">{sp.bulkOk}</AdminNotice>}
         {typeof sp.error === "string" && <AdminNotice tone="error">{sp.error}</AdminNotice>}
@@ -202,6 +266,79 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
             value={formatCOP(metrics.recoveredValueCents)}
             trendLabel="Pedidos pagados tras abandono"
           />
+        </div>
+
+        {/* Pulso 14 días + mezcla de estados */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <AdminCard className="p-5 lg:col-span-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-brand-purple-dark font-display text-sm font-bold">
+                Pulso 14 días: abandonos detectados vs recuperados
+              </h2>
+              <span className="text-brand-muted text-xs">Hora Colombia (COT)</span>
+            </div>
+            <AdminComboBarLineChart
+              ariaLabel="Pulso de 14 días de carritos abandonados detectados vs recuperados pagados"
+              barLegend="Detectados (carritos)"
+              lineLegend="Recuperados pagados"
+              data={pulse.map((b) => ({
+                key: b.key,
+                label: b.label,
+                tickLabel: b.tickLabel,
+                barValue: b.detectedCount,
+                barFormatted: `${b.detectedCount} detectado${b.detectedCount === 1 ? "" : "s"}`,
+                lineValue: b.recoveredCount,
+                lineFormatted: `${b.recoveredCount} recuperado${b.recoveredCount === 1 ? "" : "s"} (${formatCOP(b.recoveredValueCents)})`,
+              }))}
+            />
+          </AdminCard>
+
+          <AdminCard className="flex flex-col justify-between p-5 lg:col-span-2">
+            <div>
+              <h2 className="text-brand-purple-dark font-display mb-1 text-sm font-bold">
+                Composición del embudo de carritos
+              </h2>
+              <p className="text-brand-muted mb-4 text-xs">
+                Distribución histórica entre cola activa, seguimientos en curso, cierres pagados y
+                cotizaciones/vaciados.
+              </p>
+              <AdminSegmentedBar
+                ariaLabel="Composición histórica de carritos abandonados por estado"
+                items={[
+                  {
+                    key: "pending",
+                    label: "Pendientes",
+                    count: metrics.pendingCount,
+                    tone: "amber",
+                    href: "/admin/carritos?status=pending",
+                    sublabel: formatCOP(metrics.pendingValueCents),
+                  },
+                  {
+                    key: "reminded",
+                    label: "Recordados",
+                    count: metrics.remindedCount,
+                    tone: "blue",
+                    href: "/admin/carritos?status=reminded",
+                  },
+                  {
+                    key: "recovered",
+                    label: "Recuperados",
+                    count: metrics.recoveredCount,
+                    tone: "emerald",
+                    href: "/admin/carritos?status=recovered",
+                    sublabel: formatCOP(metrics.recoveredValueCents),
+                  },
+                  {
+                    key: "closed",
+                    label: "Cotizados / Vaciados",
+                    count: metrics.closedCount,
+                    tone: "slate",
+                    href: "/admin/carritos?status=closed",
+                  },
+                ]}
+              />
+            </div>
+          </AdminCard>
         </div>
 
         {/* Pestañas rápidas por estado con conteos reales */}
@@ -245,14 +382,18 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
               htmlFor="f-q"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
             >
-              Buscar por correo o nombre del cliente
+              {canReadPii
+                ? "Buscar por correo, nombre del cliente o pedido recuperado"
+                : "Buscar por número de pedido recuperado"}
             </label>
             <Input
               id="f-q"
               name="q"
               type="search"
               defaultValue={q ?? ""}
-              placeholder="cliente@correo.com o nombre..."
+              placeholder={
+                canReadPii ? "cliente@correo.com, nombre o LCM-2026-..." : "LCM-2026-..."
+              }
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>
@@ -299,9 +440,11 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
           <AdminTable minWidth={860}>
             <AdminTableHead>
               <tr>
-                <th className="w-10 px-3 py-3 text-left">
-                  <BulkSelectAllCartsCheckbox />
-                </th>
+                {canRecover && (
+                  <th className="w-10 px-3 py-3 text-left">
+                    <BulkSelectAllCartsCheckbox />
+                  </th>
+                )}
                 <th className="px-4 py-3 text-left font-semibold">Cliente</th>
                 <th className="px-4 py-3 text-left font-semibold">Productos y etapa</th>
                 <th className="px-4 py-3 text-right font-semibold">Valor</th>
@@ -312,25 +455,38 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
             </AdminTableHead>
             <AdminTableBody>
               {items.map((c) => {
-                const canRemindRow = c.status === "pending" || c.status === "reminded";
+                const canRemindRow =
+                  canRecover &&
+                  !c.bouncedOrComplained &&
+                  (c.status === "pending" || c.status === "reminded");
+                const displayEmail = canReadPii ? c.email : maskEmail(c.email);
+                const displayName = c.contactName
+                  ? canReadPii
+                    ? c.contactName
+                    : maskPersonName(c.contactName)
+                  : null;
                 return (
                   <AdminTableRow key={c.id}>
-                    <td className="w-10 px-3 py-3 align-middle">
-                      {canRemindRow && (
-                        <input
-                          type="checkbox"
-                          name="cartIds"
-                          value={c.id}
-                          aria-label={`Seleccionar carrito de ${c.email}`}
-                          className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
-                        />
-                      )}
-                    </td>
+                    {canRecover && (
+                      <td className="w-10 px-3 py-3 align-middle">
+                        {canRemindRow && (
+                          <input
+                            type="checkbox"
+                            name="cartIds"
+                            value={c.id}
+                            aria-label={`Seleccionar carrito de ${displayEmail}`}
+                            className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
+                          />
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3">
-                      {c.contactName && (
-                        <p className="text-brand-purple-dark text-xs font-bold">{c.contactName}</p>
+                      {displayName && (
+                        <p className="text-brand-purple-dark text-xs font-bold">{displayName}</p>
                       )}
-                      <p className="text-brand-purple-dark/85 text-xs font-medium">{c.email}</p>
+                      <p className="text-brand-purple-dark/85 text-xs font-medium">
+                        {displayEmail}
+                      </p>
                       {canRead360 && c.contactId && (
                         <Link
                           href={`/admin/clientes/${encodeURIComponent(c.contactId)}`}
@@ -367,18 +523,25 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col items-start gap-1">
-                        {c.status === "recovered" ? (
-                          <AdminBadge tone="emerald">{ABANDONED_STATUS_LABEL.recovered}</AdminBadge>
-                        ) : c.status === "closed" ? (
-                          <AdminBadge tone="slate">{ABANDONED_STATUS_LABEL.closed}</AdminBadge>
-                        ) : c.status === "reminded" ? (
-                          <AdminBadge tone="blue">
-                            {ABANDONED_STATUS_LABEL.reminded}
-                            {c.reminderCount > 1 ? ` ×${c.reminderCount}` : ""}
-                          </AdminBadge>
-                        ) : (
-                          <AdminBadge tone="amber">{ABANDONED_STATUS_LABEL.pending}</AdminBadge>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1">
+                          {c.status === "recovered" ? (
+                            <AdminBadge tone="emerald">
+                              {ABANDONED_STATUS_LABEL.recovered}
+                            </AdminBadge>
+                          ) : c.status === "closed" ? (
+                            <AdminBadge tone="slate">{ABANDONED_STATUS_LABEL.closed}</AdminBadge>
+                          ) : c.status === "reminded" ? (
+                            <AdminBadge tone="blue">
+                              {ABANDONED_STATUS_LABEL.reminded}
+                              {c.reminderCount > 1 ? ` ×${c.reminderCount}` : ""}
+                            </AdminBadge>
+                          ) : (
+                            <AdminBadge tone="amber">{ABANDONED_STATUS_LABEL.pending}</AdminBadge>
+                          )}
+                          {c.bouncedOrComplained && (
+                            <AdminBadge tone="rose">Rebote / Queja</AdminBadge>
+                          )}
+                        </div>
                         {c.recoveredOrderNumber && (
                           <Link
                             href={`/admin/pedidos/${encodeURIComponent(c.recoveredOrderNumber)}`}
@@ -445,7 +608,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
         )}
       </AdminPageBody>
 
-      <BulkCartBar />
+      {canRecover && <BulkCartBar />}
     </AdminPage>
   );
 }

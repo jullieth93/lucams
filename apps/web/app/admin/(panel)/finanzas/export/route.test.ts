@@ -127,7 +127,7 @@ describe("GET /admin/finanzas/export — RBAC, step-up MFA y sanitización CSV",
     expect(recordAdminAction).not.toHaveBeenCalled();
   });
 
-  it("autoriza a FINANCE_ANALYST con MFA fresco, neutraliza inyección de fórmulas y audita la descarga", async () => {
+  it("autoriza a FINANCE_ANALYST con MFA fresco, enmascara email_comprador, preserva DIAN y audita piiRedacted=true", async () => {
     const res = await GET(new Request("http://localhost:4000/admin/finanzas/export?periodo=mes"));
     const rawBytes = new Uint8Array(await res.clone().arrayBuffer());
     const csv = await res.text();
@@ -135,6 +135,8 @@ describe("GET /admin/finanzas/export — RBAC, step-up MFA y sanitización CSV",
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
     expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
     expect(res.headers.get("Content-Disposition")).toContain("finanzas-pedidos-mes-2026-11-04.csv");
     expect(verifyAdminRouteAccess).toHaveBeenCalledWith(
       expect.objectContaining({ capability: "finance:export_csv", checkIdle: true }),
@@ -145,16 +147,51 @@ describe("GET /admin/finanzas/export — RBAC, step-up MFA y sanitización CSV",
       action: "finance.export_orders_csv",
       entityType: "Order",
       entityId: "mes",
-      metadata: { count: 1, periodo: "mes" },
+      metadata: { count: 1, periodo: "mes", piiRedacted: true },
     });
 
-    // BOM UTF-8 en wire bytes (EF BB BF) + montos COP exactos + fórmula neutralizada
+    // BOM UTF-8 en wire bytes (EF BB BF) + montos COP exactos + fórmula DIAN neutralizada + PII enmascarada
     expect(Array.from(rawBytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
     expect(csv.startsWith("numero_pedido,")).toBe(true);
     expect(csv).toContain("LCM-2026-0101");
     expect(csv).toContain(",65000,5000,0,12000,0,72000,10000,62000,");
+    expect(csv).toContain("1020304050");
     expect(csv).toContain("'=CMD|' /C calc'!A0");
     expect(csv).not.toContain(",=CMD|");
+    expect(csv).not.toContain("cliente@lucamsshop.com");
+  });
+
+  it("entrega email_comprador íntegro a SUPERADMIN (piiRedacted=false) y estampa fecha en hora Colombia (-05:00)", async () => {
+    // 2026-11-05T02:00:00Z = 2026-11-04T21:00:00-05:00 (sigue siendo 04-nov en Colombia)
+    const lateBogota = new Date("2026-11-05T02:00:00Z");
+    const lateSec = Math.floor(lateBogota.getTime() / 1000);
+    vi.setSystemTime(lateBogota);
+    state.aal = {
+      currentLevel: "aal2",
+      nextLevel: "aal2",
+      currentAuthenticationMethods: [{ method: "totp", timestamp: lateSec - 30 }],
+    };
+    verifyAdminRouteAccess.mockResolvedValueOnce({
+      ok: true,
+      session: {
+        user: { id: "sb_sup_1" },
+        admin: { id: "adm_sup_1", role: "SUPERADMIN" },
+      },
+    });
+
+    const res = await GET(new Request("http://localhost:4000/admin/finanzas/export?periodo=30d"));
+    const csv = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Disposition")).toContain("finanzas-pedidos-30d-2026-11-04.csv");
+    expect(csv).toContain("cliente@lucamsshop.com");
+    expect(recordAdminAction).toHaveBeenCalledWith({
+      actorId: "adm_sup_1",
+      action: "finance.export_orders_csv",
+      entityType: "Order",
+      entityId: "30d",
+      metadata: { count: 1, periodo: "30d", piiRedacted: false },
+    });
   });
 
   it("buildAccountingOrdersCsv neutraliza =, +, -, @ y escapa comillas dobles RFC 4180", () => {

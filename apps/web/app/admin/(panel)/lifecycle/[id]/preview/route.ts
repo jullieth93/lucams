@@ -1,3 +1,4 @@
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
 import { EMAIL_PREVIEW_SANDBOX_CSP } from "@/lib/security-headers";
 import { getLifecycleJourney } from "@/features/lifecycle/admin-service";
@@ -7,6 +8,8 @@ import { encodeUnsubscribeParam } from "@/features/newsletter/unsubscribe";
 
 export const dynamic = "force-dynamic";
 
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]{6,64}$/;
+
 function textResponse(body: string, status: number): Response {
   return new Response(body, {
     status,
@@ -14,24 +17,26 @@ function textResponse(body: string, status: number): Response {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
+      "X-Robots-Tag": "noindex, nofollow",
     },
   });
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await verifyAdminRouteAccess({
-    capability: "lifecycle:manage",
+    roles: ADMIN_ROLE_SETS.LIFECYCLE_READ,
     req,
     checkIdle: true,
   });
   if (!access.ok) {
     return textResponse(
-      "Necesitas permiso Lifecycle y MFA verificado para previsualizar.",
+      "Necesitas acceso autorizado y MFA verificado para previsualizar el recorrido.",
       access.status,
     );
   }
 
   const { id } = await params;
+  if (!SAFE_ID_RE.test(id)) return textResponse("Recorrido no encontrado.", 404);
   const journey = await getLifecycleJourney(id);
   if (!journey) return textResponse("Recorrido no encontrado.", 404);
   const stepId = new URL(req.url).searchParams.get("stepId");

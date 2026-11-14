@@ -3,10 +3,14 @@ import Link from "next/link";
 import {
   CalendarHeart,
   Crown,
+  Filter,
   Gift,
+  MailCheck,
+  Repeat,
   RotateCcw,
   Search,
   ShieldCheck,
+  ShoppingCart,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -25,7 +29,7 @@ import {
   type ChartTone,
 } from "@/components/admin-page";
 import { requireCapability } from "@/lib/admin-rbac-guard";
-import { hasCapability } from "@/lib/admin-rbac";
+import { adminHomePath, canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { formatCOP } from "@/lib/format";
 import {
   CRM_SEGMENT_DEFINITIONS,
@@ -39,6 +43,7 @@ import { formatDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Segmentos CRM · Admin",
+  robots: { index: false, follow: false },
 };
 
 export const dynamic = "force-dynamic";
@@ -71,8 +76,11 @@ export default async function AdminCrmSegmentsPage({
   searchParams: SearchParams;
 }) {
   const session = await requireCapability("marketing:read");
-  const canExport = hasCapability(session.admin.role, "marketing:export_csv");
-  const canOpenContact360 = hasCapability(session.admin.role, "contacts:read_360");
+  const role = session.admin.role;
+  const homeHref = adminHomePath(role);
+  const canExport = hasCapability(role, "marketing:export_csv");
+  const canOpenContact360 =
+    hasCapability(role, "contacts:read_360") && canAccessAdminPath(role, "/admin/clientes");
 
   const sp = await searchParams;
   const activeSegment: CrmSegmentKey = isCrmSegmentKey(sp.segment) ? sp.segment : "vip";
@@ -103,8 +111,8 @@ export default async function AdminCrmSegmentsPage({
         title="Segmentos comerciales CRM"
         subtitle="Audiencias accionables construidas sobre compras reales e intención de clientes (excluye cuentas internas), listas para exportar con cumplimiento estricto de Ley 1581."
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
-          { label: "Comercial" },
+          { label: "Admin", href: homeHref },
+          { label: "Marketing" },
           { label: "Segmentos CRM" },
         ]}
         actions={
@@ -115,6 +123,40 @@ export default async function AdminCrmSegmentsPage({
       />
 
       <AdminPageBody>
+        {/* Tira de navegación del ecosistema Marketing */}
+        <div className="flex flex-wrap items-center gap-2">
+          {canAccessAdminPath(role, "/admin/carritos") && (
+            <Link
+              href="/admin/carritos"
+              className="border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <ShoppingCart className="h-3.5 w-3.5" />
+              Carritos abandonados
+            </Link>
+          )}
+          {canAccessAdminPath(role, "/admin/lifecycle") && (
+            <Link
+              href="/admin/lifecycle"
+              className="border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <Repeat className="h-3.5 w-3.5" />
+              Lifecycle Journeys
+            </Link>
+          )}
+          {canAccessAdminPath(role, "/admin/marketing/suscriptores") && (
+            <Link
+              href="/admin/marketing/suscriptores"
+              className="border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <MailCheck className="h-3.5 w-3.5" />
+              Suscriptores
+            </Link>
+          )}
+          <span className="border-brand-purple bg-brand-purple/10 text-brand-purple-dark inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold">
+            <Filter className="h-3.5 w-3.5" />
+            Segmentos RFM
+          </span>
+        </div>
         {/* Garantía Ley 1581 */}
         <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />

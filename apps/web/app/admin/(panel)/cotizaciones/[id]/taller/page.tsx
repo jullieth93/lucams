@@ -19,33 +19,66 @@
  * cliente, si la variante lleva imán y por dónde se corta.
  */
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Hammer } from "lucide-react";
-import { AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
-import { requireRole } from "@/lib/admin-rbac-guard";
+import { AlertTriangle, ArrowLeft, Hammer, ShieldAlert } from "lucide-react";
+import { AdminBadge, AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
+import { canAccessAdminPath } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
+import { recordAdminAction } from "@/lib/admin-audit";
 import { getQuoteProductionBundle } from "@/features/quotes/admin-service";
 import { resolveProductionSpec } from "@/features/personalization/production-spec";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
 import { formatCOP } from "@/lib/format";
 import { formatDateTimeLongCO } from "@/lib/datetime";
 
+export const metadata: Metadata = {
+  title: "Hoja de taller · Cotización",
+  robots: { index: false, follow: false },
+};
+
+export const dynamic = "force-dynamic";
+
 type Params = Promise<{ id: string }>;
+
+const MODERATION_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Pendiente de revisión",
+  APPROVED: "Aprobado",
+  REJECTED: "Rechazado",
+  FLAGGED: "Marcado para revisión",
+};
 
 const asRecord = (v: unknown): Record<string, unknown> | null =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 
 export default async function HojaDeTallerPage({ params }: { params: Params }) {
-  await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
+  const session = await requireCapability("production:download_assets");
+  const role = session.admin.role;
+  const canViewQuotes = canAccessAdminPath(role, "/admin/cotizaciones");
+  const canViewModeration = canAccessAdminPath(role, "/admin/moderacion");
+  const canViewOrders = canAccessAdminPath(role, "/admin/pedidos");
 
   const { id } = await params;
-  const quote = await getQuoteProductionBundle(id);
+  const quote = await getQuoteProductionBundle(id, role);
   if (!quote) notFound();
 
   // Una sola llamada firmada para TODOS los archivos de la cotización (TTL 1 h).
   const todasLasRutas = quote.items.flatMap((i) => i.design?.productionUrls ?? []);
   const firmadas = await getProductionAssetSignedUrls(todasLasRutas, 3600);
+
+  // Trazabilidad forense de acceso a originales de imprenta (300 DPI).
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "quote.production_sheet_view",
+    entityType: "Quote",
+    entityId: quote.id,
+    metadata: {
+      number: quote.number,
+      assetsCount: todasLasRutas.length,
+      piiMasked: quote.piiMasked,
+    },
+  });
 
   const lineas = quote.items.map((item) => {
     const spec = resolveProductionSpec({
@@ -70,43 +103,65 @@ export default async function HojaDeTallerPage({ params }: { params: Params }) {
       <AdminPageHeader
         icon={<Hammer className="h-5 w-5" />}
         title={
-          <span className="flex items-center gap-3">
+          <span className="flex flex-wrap items-center gap-3">
             <span>Hoja de taller</span>
             <span className="font-mono text-base">{quote.number}</span>
+            {quote.piiMasked && <AdminBadge tone="slate">PII protegida</AdminBadge>}
           </span>
         }
         subtitle={`${quote.customerName} · ${quote.city}, ${quote.department} · ${formatDateTimeLongCO(quote.createdAt)}`}
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
-          { label: "Ventas" },
-          { label: "Cotizaciones", href: "/admin/cotizaciones" },
-          { label: quote.number, href: `/admin/cotizaciones/${quote.id}` },
+          { label: "Producción" },
+          canViewQuotes
+            ? { label: "Cotizaciones", href: "/admin/cotizaciones" }
+            : { label: "Cotizaciones" },
+          canViewQuotes
+            ? { label: quote.number, href: `/admin/cotizaciones/${quote.id}` }
+            : { label: quote.number },
           { label: "Taller" },
         ]}
         actions={
-          <Link
-            href={`/admin/cotizaciones/${quote.id}`}
-            className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-sm font-semibold transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver a la cotización
-          </Link>
+          canViewQuotes ? (
+            <Link
+              href={`/admin/cotizaciones/${quote.id}`}
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-sm font-semibold transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver a la cotización
+            </Link>
+          ) : canViewOrders ? (
+            <Link
+              href="/admin/pedidos"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-sm font-semibold transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Ir a pedidos operativos
+            </Link>
+          ) : undefined
         }
       />
 
       <AdminPageBody className="print:p-0">
         {sinAprobar > 0 && (
           <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4">
-            <p className="text-sm font-semibold text-amber-900">
-              ⚠️ {sinAprobar} diseño{sinAprobar > 1 ? "s" : ""} sin aprobar — no imprimas todavía
+            <p className="inline-flex items-center gap-2 text-sm font-semibold text-amber-900">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" />
+              {sinAprobar} diseño{sinAprobar > 1 ? "s" : ""} sin aprobar — no imprimas todavía
             </p>
             <p className="mt-1 text-xs text-amber-800">
-              Apruébalo en{" "}
-              <Link href="/admin/moderacion" className="font-semibold underline">
-                Moderación
-              </Link>{" "}
-              antes de producir. Es el paso que confirma que el contenido que subió el cliente se
-              puede imprimir.
+              {canViewModeration ? (
+                <>
+                  Apruébalo en{" "}
+                  <Link href="/admin/moderacion" className="font-semibold underline">
+                    Moderación
+                  </Link>{" "}
+                  antes de producir. Es el paso que confirma que el contenido que subió el cliente
+                  se puede imprimir.
+                </>
+              ) : (
+                "Solicita su aprobación al equipo de Moderación antes de iniciar la impresión."
+              )}
             </p>
           </div>
         )}
@@ -117,6 +172,17 @@ export default async function HojaDeTallerPage({ params }: { params: Params }) {
               Nota que escribió el cliente
             </p>
             <p className="text-brand-purple-dark mt-1 text-sm">{quote.notes}</p>
+          </div>
+        )}
+
+        {quote.hasHiddenCustomerNote && (
+          <div className="border-brand-purple/15 bg-brand-cream/40 mb-5 flex items-start gap-2.5 rounded-xl border p-4 text-xs">
+            <ShieldAlert className="text-brand-purple mt-0.5 h-4 w-4 shrink-0" />
+            <p className="text-brand-purple-dark">
+              El cliente dejó una nota adicional en la cotización (oculta para tu rol por protección
+              de datos personales). Si necesitas confirmar instrucciones especiales antes de
+              fabricar, consúltalo con Operaciones.
+            </p>
           </div>
         )}
 
@@ -156,7 +222,9 @@ export default async function HojaDeTallerPage({ params }: { params: Params }) {
 
                 {item.design && item.design.moderationStatus !== "APPROVED" && (
                   <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
-                    Moderación: {item.design.moderationStatus}
+                    Moderación:{" "}
+                    {MODERATION_STATUS_LABEL[item.design.moderationStatus] ??
+                      item.design.moderationStatus}
                     {item.design.moderationReason ? ` — ${item.design.moderationReason}` : ""}
                   </p>
                 )}
@@ -257,21 +325,25 @@ export default async function HojaDeTallerPage({ params }: { params: Params }) {
                   )}
                 </div>
 
-                <p className="text-brand-muted mt-4 text-xs">
-                  {item.quantity} × {formatCOP(item.unitPrice)} ={" "}
-                  <span className="text-brand-purple-dark font-semibold">
-                    {formatCOP(item.quantity * item.unitPrice)}
-                  </span>
-                </p>
+                {item.unitPrice !== null && (
+                  <p className="text-brand-muted mt-4 text-xs">
+                    {item.quantity} × {formatCOP(item.unitPrice)} ={" "}
+                    <span className="text-brand-purple-dark font-semibold">
+                      {formatCOP(item.quantity * item.unitPrice)}
+                    </span>
+                  </p>
+                )}
               </section>
             );
           })}
         </div>
 
-        <p className="text-brand-muted mt-6 text-center text-sm">
-          Total de la cotización:{" "}
-          <span className="text-brand-purple-dark font-semibold">{formatCOP(quote.total)}</span>
-        </p>
+        {quote.total !== null && (
+          <p className="text-brand-muted mt-6 text-center text-sm">
+            Total de la cotización:{" "}
+            <span className="text-brand-purple-dark font-semibold">{formatCOP(quote.total)}</span>
+          </p>
+        )}
       </AdminPageBody>
     </AdminPage>
   );

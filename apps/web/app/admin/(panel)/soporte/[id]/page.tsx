@@ -8,7 +8,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, Clock, LifeBuoy, Package, Scale, User, UserCheck } from "lucide-react";
 import { requireCapability } from "@/lib/admin-rbac-guard";
-import { hasCapability } from "@/lib/admin-rbac";
+import { adminHomePath, canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { evaluateSlaStatus } from "@/lib/colombian-sla";
 import { CrmWorkspacePanel } from "@/components/admin/crm-workspace-panel";
 import {
@@ -63,11 +63,15 @@ export default async function AdminSoporteTicketPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await requireCapability("support:manage");
-  const canManageTasks = hasCapability(session.admin.role, "crm:manage_tasks");
-  const canManageActivities = hasCapability(session.admin.role, "crm:manage_activities");
+  const role = session.admin.role;
+  const canManageTasks = hasCapability(role, "crm:manage_tasks");
+  const canManageActivities = hasCapability(role, "crm:manage_activities");
   const canViewActivities =
-    hasCapability(session.admin.role, "contacts:read_360") &&
-    hasCapability(session.admin.role, "contacts:read_pii");
+    hasCapability(role, "contacts:read_360") && hasCapability(role, "contacts:read_pii");
+  const canViewContacts = canAccessAdminPath(role, "/admin/clientes");
+  const canViewOrders = canAccessAdminPath(role, "/admin/pedidos");
+  const canViewWarranties = canAccessAdminPath(role, "/admin/garantias");
+  const canViewRetracts = canAccessAdminPath(role, "/admin/retractos");
   const { id } = await params;
 
   const [ticket, assignableAdmins, crmAssignableAdmins] = await Promise.all([
@@ -105,7 +109,7 @@ export default async function AdminSoporteTicketPage({
         title={`Ticket #${ticket.id.slice(0, 8).toUpperCase()} — ${subjectLabel(ticket.subject)}`}
         subtitle={`${ticket.name} · ${ticket.email} · abierto ${formatDateTimeCO(ticket.createdAt)}`}
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: adminHomePath(role) },
           { label: "Soporte", href: "/admin/soporte" },
           { label: `#${ticket.id.slice(0, 8).toUpperCase()}` },
         ]}
@@ -218,7 +222,7 @@ export default async function AdminSoporteTicketPage({
               </h2>
               <p className="text-brand-purple-dark mt-2 text-sm font-semibold">{ticket.name}</p>
               <p className="text-brand-muted text-xs">{ticket.email}</p>
-              {ticket.contactId && (
+              {ticket.contactId && canViewContacts && (
                 <Link
                   href={`/admin/clientes/${ticket.contactId}`}
                   className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-block text-xs font-semibold underline underline-offset-2"
@@ -259,12 +263,16 @@ export default async function AdminSoporteTicketPage({
               {ticket.orderNumber ? (
                 ticket.resolvedOrderNumber ? (
                   <p className="mt-2 text-sm">
-                    <Link
-                      href={`/admin/pedidos/${ticket.resolvedOrderNumber}`}
-                      className="text-brand-purple font-mono font-semibold underline underline-offset-2"
-                    >
-                      {ticket.resolvedOrderNumber}
-                    </Link>
+                    {canViewOrders ? (
+                      <Link
+                        href={`/admin/pedidos/${encodeURIComponent(ticket.resolvedOrderNumber)}`}
+                        className="text-brand-purple font-mono font-semibold underline underline-offset-2"
+                      >
+                        {ticket.resolvedOrderNumber}
+                      </Link>
+                    ) : (
+                      <span className="font-mono font-semibold">{ticket.resolvedOrderNumber}</span>
+                    )}
                   </p>
                 ) : (
                   <p className="text-brand-muted mt-2 text-sm">
@@ -283,18 +291,29 @@ export default async function AdminSoporteTicketPage({
               </h2>
               {ticket.linkedCaseId ? (
                 <p className="mt-2 text-sm">
-                  <Link
-                    href={
-                      ticket.linkedCaseType === "retract" ? "/admin/retractos" : "/admin/garantias"
-                    }
-                    className="text-brand-purple font-semibold underline underline-offset-2"
-                  >
-                    {ticket.linkedCaseType === "retract"
-                      ? "Solicitud de retracto enlazada"
-                      : "Reclamo de garantía enlazado"}
-                  </Link>
+                  {(ticket.linkedCaseType === "retract" && canViewRetracts) ||
+                  (ticket.linkedCaseType !== "retract" && canViewWarranties) ? (
+                    <Link
+                      href={
+                        ticket.linkedCaseType === "retract"
+                          ? `/admin/retractos?status=all&q=${encodeURIComponent(ticket.linkedCaseId)}`
+                          : `/admin/garantias?status=all&q=${encodeURIComponent(ticket.linkedCaseId)}`
+                      }
+                      className="text-brand-purple font-semibold underline underline-offset-2"
+                    >
+                      {ticket.linkedCaseType === "retract"
+                        ? "Solicitud de retracto enlazada →"
+                        : "Reclamo de garantía enlazado →"}
+                    </Link>
+                  ) : (
+                    <span className="text-brand-purple-dark font-semibold">
+                      {ticket.linkedCaseType === "retract"
+                        ? "Solicitud de retracto enlazada"
+                        : "Reclamo de garantía enlazado"}
+                    </span>
+                  )}
                   <span className="text-brand-muted mt-1 block font-mono text-xs">
-                    {ticket.linkedCaseId}
+                    #{ticket.linkedCaseId.slice(0, 8).toUpperCase()} · {ticket.linkedCaseId}
                   </span>
                 </p>
               ) : ticket.subject === "GARANTIA_DEVOLUCION" ? (

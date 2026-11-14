@@ -1,23 +1,32 @@
 "use server";
 
 /*
- * Server actions del módulo Mayorista B2B.
+ * Server actions del módulo Mayorista B2B (/admin/mayorista).
  *
- * Dinero: la admin digita PESOS (como piensa cualquier colombiana) y acá
- * convertimos a CENTAVOS antes de persistir (mandato CLAUDE.md: DB siempre
- * en centavos COP). Math.round evita floats tipo 0.1*100.
+ * Dinero: en el formulario se digita en PESOS y acá convertimos a CENTAVOS
+ * enteros antes de persistir (mandato CLAUDE.md: DB siempre en centavos COP).
+ * Math.round evita errores de punto flotante.
  *
- * El borrado es SOFT (deletedAt/deletedBy) siguiendo el patrón del resto del
- * schema: preserva auditoría y permite rastrear quién quitó un nivel.
+ * Gobierno y seguridad (Bloque 3 — Auditoría 360°):
+ *   - Mutaciones restringidas a `ADMIN_ROLE_SETS.MAYORISTA_WRITE`
+ *     (`SUPERADMIN`, `OPERATIONS_MANAGER` y alias `MANAGER`).
+ *   - `deleteWholesaleTierAction` exige Step-up MFA reciente (`requireRecentMfa`,
+ *     ≤ 10 min) y realiza borrado lógico (`deletedAt`/`deletedBy`).
+ *   - Se bloquean escalas invertidas (mayor cantidad con igual o mayor precio) y
+ *     precios iguales o superiores al precio base de referencia del producto.
+ *   - Toda mutación invalida `catalog`, `/admin/mayorista`, `/carrito` y `/checkout/pago`.
  */
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { validateWholesaleTierCandidate } from "@/features/cart/volume-pricing";
 import { prisma } from "@/lib/db";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { isMfaReauthRequired, requireRecentMfa } from "@/lib/admin-reauth";
+import { formatCOP } from "@/lib/format";
 import { logger } from "@/lib/logger";
 
 export type TierActionState = {
@@ -30,14 +39,17 @@ const TierCreateSchema = z.object({
   minQty: z
     .number()
     .int("La cantidad mínima debe ser un número entero.")
-    .min(2, "La cantidad mínima debe ser al menos 2 unidades."),
-  unitPrice: z.number().positive("El precio por unidad debe ser mayor a $0."),
+    .min(2, "La cantidad mínima debe ser al menos 2 unidades.")
+    .max(100_000, "La cantidad mínima no puede superar 100.000 unidades."),
+  unitPrice: z
+    .number()
+    .int("El precio por unidad debe ser un valor entero.")
+    .min(100, "El precio por unidad debe ser al menos $1 COP.")
+    .max(500_000_000, "El precio por unidad no puede superar $5.000.000 COP."),
   note: z.string().max(200, "La nota no puede superar 200 caracteres.").nullable(),
   isActive: z.boolean(),
 });
 
-// 2026-11-11 (owner) — edición de niveles existentes: mismo contrato que la
-// creación salvo el alcance (productId) y el estado, que no se editan acá.
 const TierUpdateSchema = TierCreateSchema.omit({ productId: true, isActive: true });
 
 function parsePayload(formData: FormData) {
@@ -46,8 +58,6 @@ function parsePayload(formData: FormData) {
   return {
     productId: productIdRaw === "" ? null : productIdRaw,
     minQty: Number(formData.get("minQty") ?? 0),
-    // Pesos → centavos. El formulario expone el campo como unitPricePesos
-    // para que nadie lo confunda con el valor persistido.
     unitPrice: Math.round(unitPricePesos * 100),
     note: String(formData.get("note") ?? "").trim() || null,
     isActive: formData.get("isActive") === "on",
@@ -58,12 +68,86 @@ function isNextRedirect(err: unknown): boolean {
   return err instanceof Error && err.message === "NEXT_REDIRECT";
 }
 
+function revalidateWholesaleCaches() {
+  updateTag("catalog");
+  revalidatePath("/admin/mayorista");
+  revalidatePath("/carrito");
+  revalidatePath("/checkout/pago");
+}
+
+async function checkTierScaleCoherence(opts: {
+  productId: string | null;
+  minQty: number;
+  unitPrice: number;
+  willBeActive: boolean;
+  excludeId?: string;
+}): Promise<TierActionState | null> {
+  const { productId, minQty, unitPrice, willBeActive, excludeId } = opts;
+
+  let referencePrice: number | null = null;
+  if (productId) {
+    const product = await prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      select: {
+        id: true,
+        basePrice: true,
+        variants: {
+          where: { deletedAt: null, isActive: true },
+          select: { price: true },
+        },
+      },
+    });
+    if (!product) {
+      return {
+        error: "El producto seleccionado ya no existe.",
+        fieldErrors: { productId: ["El producto seleccionado ya no existe."] },
+      };
+    }
+    referencePrice =
+      product.variants.length > 0
+        ? Math.min(...product.variants.map((v) => v.price ?? product.basePrice))
+        : product.basePrice;
+  }
+
+  const activeSiblings = await prisma.wholesaleTier.findMany({
+    where: {
+      productId,
+      deletedAt: null,
+      isActive: true,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { minQty: true, unitPrice: true },
+  });
+
+  const violation = validateWholesaleTierCandidate({
+    minQty,
+    unitPrice,
+    willBeActive,
+    referencePrice,
+    activeSiblings,
+  });
+
+  if (!violation) return null;
+
+  if (violation.kind === "ABOVE_OR_EQUAL_BASE") {
+    const msg = `El precio mayorista (${formatCOP(unitPrice)}) debe ser menor al precio base de venta del producto (${formatCOP(violation.referencePrice)}).`;
+    return { error: msg, fieldErrors: { unitPrice: [msg] } };
+  }
+
+  if (violation.kind === "INVERTED_HIGHER_QTY") {
+    const msg = `Escala invertida: para ${minQty}+ unidades el precio (${formatCOP(unitPrice)}) debe ser menor que el nivel activo de ${violation.conflictMinQty}+ unidades (${formatCOP(violation.conflictUnitPrice)}).`;
+    return { error: msg, fieldErrors: { unitPrice: [msg] } };
+  }
+
+  const msg = `Escala invertida: para ${minQty}+ unidades el precio (${formatCOP(unitPrice)}) debe ser mayor que el nivel activo de ${violation.conflictMinQty}+ unidades (${formatCOP(violation.conflictUnitPrice)}).`;
+  return { error: msg, fieldErrors: { unitPrice: [msg] } };
+}
+
 export async function createWholesaleTierAction(
   _prev: TierActionState | null,
   formData: FormData,
 ): Promise<TierActionState> {
-  // Precios = operación sensible: mismo rol que cupones (solo SUPERADMIN).
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MAYORISTA_WRITE });
 
   const parsed = TierCreateSchema.safeParse(parsePayload(formData));
   if (!parsed.success) {
@@ -76,18 +160,6 @@ export async function createWholesaleTierAction(
   const data = parsed.data;
 
   try {
-    if (data.productId) {
-      const product = await prisma.product.findFirst({
-        where: { id: data.productId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!product) {
-        return { fieldErrors: { productId: ["El producto seleccionado ya no existe."] } };
-      }
-    }
-
-    // Un nivel duplicado (mismo producto + misma cantidad) haría ambiguo qué
-    // precio aplicar en el checkout; lo bloqueamos con mensaje claro.
     const duplicate = await prisma.wholesaleTier.findFirst({
       where: { productId: data.productId, minQty: data.minQty, deletedAt: null },
       select: { id: true },
@@ -99,6 +171,14 @@ export async function createWholesaleTierAction(
       };
     }
 
+    const coherenceError = await checkTierScaleCoherence({
+      productId: data.productId,
+      minQty: data.minQty,
+      unitPrice: data.unitPrice,
+      willBeActive: data.isActive,
+    });
+    if (coherenceError) return coherenceError;
+
     const tier = await prisma.wholesaleTier.create({
       data: { ...data, createdBy: session.admin.id },
     });
@@ -107,14 +187,19 @@ export async function createWholesaleTierAction(
       action: "wholesale_tier.create",
       entityType: "WholesaleTier",
       entityId: tier.id,
-      metadata: { productId: tier.productId, minQty: tier.minQty, unitPrice: tier.unitPrice },
+      metadata: {
+        productId: tier.productId,
+        minQty: tier.minQty,
+        unitPrice: tier.unitPrice,
+        isActive: tier.isActive,
+      },
     });
     logger.info({
       event: "admin.wholesale_tier.created",
       adminId: session.admin.id,
       tierId: tier.id,
     });
-    revalidatePath("/admin/mayorista");
+    revalidateWholesaleCaches();
     redirect("/admin/mayorista?created=1");
   } catch (err) {
     if (isNextRedirect(err)) throw err;
@@ -127,17 +212,11 @@ export async function createWholesaleTierAction(
   }
 }
 
-/**
- * 2026-11-11 (owner) — EDITAR un nivel existente (antes solo se podía
- * desactivar/eliminar y recrear). Edita cantidad mínima, precio y nota; el
- * alcance (producto/global) y el estado activo no cambian acá. Misma defensa
- * anti-duplicados de la creación, excluyendo el propio nivel.
- */
 export async function updateWholesaleTierAction(
   _prev: TierActionState | null,
   formData: FormData,
 ): Promise<TierActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MAYORISTA_WRITE });
   const id = String(formData.get("id") ?? "");
 
   const parsed = TierUpdateSchema.safeParse(parsePayload(formData));
@@ -153,7 +232,7 @@ export async function updateWholesaleTierAction(
   try {
     const tier = await prisma.wholesaleTier.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, productId: true },
+      select: { id: true, productId: true, minQty: true, unitPrice: true, isActive: true },
     });
     if (!tier) return { error: "El nivel ya no existe." };
 
@@ -173,6 +252,15 @@ export async function updateWholesaleTierAction(
       };
     }
 
+    const coherenceError = await checkTierScaleCoherence({
+      productId: tier.productId,
+      minQty: data.minQty,
+      unitPrice: data.unitPrice,
+      willBeActive: tier.isActive,
+      excludeId: tier.id,
+    });
+    if (coherenceError) return coherenceError;
+
     await prisma.wholesaleTier.update({
       where: { id: tier.id },
       data: {
@@ -187,9 +275,15 @@ export async function updateWholesaleTierAction(
       action: "wholesale_tier.update",
       entityType: "WholesaleTier",
       entityId: tier.id,
-      metadata: { minQty: data.minQty, unitPrice: data.unitPrice },
+      metadata: {
+        productId: tier.productId,
+        previousMinQty: tier.minQty,
+        previousUnitPrice: tier.unitPrice,
+        minQty: data.minQty,
+        unitPrice: data.unitPrice,
+      },
     });
-    revalidatePath("/admin/mayorista");
+    revalidateWholesaleCaches();
     redirect("/admin/mayorista?updated=1");
   } catch (err) {
     if (isNextRedirect(err)) throw err;
@@ -203,27 +297,46 @@ export async function updateWholesaleTierAction(
 }
 
 export async function toggleWholesaleTierAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MAYORISTA_WRITE });
   const id = String(formData.get("id") ?? "");
 
   try {
     const tier = await prisma.wholesaleTier.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, isActive: true },
+      select: { id: true, productId: true, minQty: true, unitPrice: true, isActive: true },
     });
     if (!tier) redirect(`/admin/mayorista?error=${encodeURIComponent("Nivel no encontrado.")}`);
 
+    const nextActive = !tier.isActive;
+    if (nextActive) {
+      const coherenceError = await checkTierScaleCoherence({
+        productId: tier.productId,
+        minQty: tier.minQty,
+        unitPrice: tier.unitPrice,
+        willBeActive: true,
+        excludeId: tier.id,
+      });
+      if (coherenceError?.error) {
+        redirect(`/admin/mayorista?error=${encodeURIComponent(coherenceError.error)}`);
+      }
+    }
+
     const updated = await prisma.wholesaleTier.update({
       where: { id },
-      data: { isActive: !tier.isActive, updatedBy: session.admin.id },
+      data: { isActive: nextActive, updatedBy: session.admin.id },
     });
     await recordAdminAction({
       actorId: session.admin.id,
       action: updated.isActive ? "wholesale_tier.activate" : "wholesale_tier.deactivate",
       entityType: "WholesaleTier",
       entityId: id,
+      metadata: {
+        productId: tier.productId,
+        minQty: tier.minQty,
+        unitPrice: tier.unitPrice,
+      },
     });
-    revalidatePath("/admin/mayorista");
+    revalidateWholesaleCaches();
     redirect(`/admin/mayorista?${updated.isActive ? "activated" : "deactivated"}=1`);
   } catch (err) {
     if (isNextRedirect(err)) throw err;
@@ -236,14 +349,25 @@ export async function toggleWholesaleTierAction(formData: FormData): Promise<voi
   }
 }
 
-export async function deleteWholesaleTierAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+export async function deleteWholesaleTierAction(
+  formData: FormData,
+): Promise<{ reauthRequired?: boolean } | void> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MAYORISTA_WRITE });
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { reauthRequired: true };
+    }
+    throw err;
+  }
+
   const id = String(formData.get("id") ?? "");
 
   try {
     const tier = await prisma.wholesaleTier.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true },
+      select: { id: true, productId: true, minQty: true, unitPrice: true },
     });
     if (!tier) redirect(`/admin/mayorista?error=${encodeURIComponent("Nivel no encontrado.")}`);
 
@@ -256,8 +380,13 @@ export async function deleteWholesaleTierAction(formData: FormData): Promise<voi
       action: "wholesale_tier.delete",
       entityType: "WholesaleTier",
       entityId: id,
+      metadata: {
+        productId: tier.productId,
+        minQty: tier.minQty,
+        unitPrice: tier.unitPrice,
+      },
     });
-    revalidatePath("/admin/mayorista");
+    revalidateWholesaleCaches();
     redirect("/admin/mayorista?deleted=1");
   } catch (err) {
     if (isNextRedirect(err)) throw err;

@@ -8,58 +8,60 @@
  * mismos roles que la página (SUPERADMIN/MANAGER — lib/admin-rbac CATALOG).
  *
  * El render pasa por renderCartRecoveryEmail (withOverrides) con los items
- * REALES del carrito; el recoverToken es ficticio ("preview") — el token real
- * solo se genera al enviar (F-11).
+ * REALES del carrito; el recoverToken es ficticio ("preview") y la baja apunta
+ * a una URL inerte, sin token ni correo del comprador.
  */
 
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
 import { EMAIL_PREVIEW_SANDBOX_CSP } from "@/lib/security-headers";
 import { renderCartRecoveryEmail } from "@/features/emails/registry";
 import { getAbandonedCartDetail } from "@/features/cart/admin-service";
 import { getSiteUrl } from "@/features/emails/layout";
-import { encodeUnsubscribeParam } from "@/features/newsletter/unsubscribe";
 
 export const dynamic = "force-dynamic";
 
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]{3,64}$/;
+
+function textResponse(body: string, status: number): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
+  });
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await verifyAdminRouteAccess({
-    roles: ADMIN_ROLE_SETS.CARTS_RECOVER,
+    capability: "carts:recover",
     req,
     checkIdle: true,
   });
   if (!access.ok) {
-    return new Response(
-      "Solo SUPERADMIN o MANAGER con MFA verificado pueden previsualizar este correo.",
-      {
-        status: access.status,
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-store",
-          "X-Content-Type-Options": "nosniff",
-        },
-      },
+    return textResponse(
+      "Necesitas permiso de recuperación de carritos y MFA verificado para previsualizar este correo.",
+      access.status,
     );
   }
 
   const { id } = await params;
+  if (!SAFE_ID_RE.test(id)) {
+    return textResponse("Identificador de carrito inválido.", 400);
+  }
+
   const detail = await getAbandonedCartDetail(id);
   if (!detail) {
-    return new Response("Carrito abandonado no encontrado.", {
-      status: 404,
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    return textResponse("Carrito abandonado no encontrado.", 404);
   }
 
   const siteUrl = await getSiteUrl();
   const rendered = await renderCartRecoveryEmail({
     recoverToken: "preview",
     items: detail.items,
-    unsubscribeUrl: `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(detail.email)}`,
+    unsubscribeUrl: `${siteUrl}/unsubscribe?preview=1`,
   });
   return new Response(rendered.html, {
     headers: {
@@ -67,6 +69,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       "Cache-Control": "private, no-store",
       "Content-Security-Policy": EMAIL_PREVIEW_SANDBOX_CSP,
       "X-Content-Type-Options": "nosniff",
+      "X-Robots-Tag": "noindex, nofollow",
     },
   });
 }

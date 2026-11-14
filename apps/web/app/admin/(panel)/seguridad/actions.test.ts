@@ -13,17 +13,27 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
+import {
+  ADMIN_ACTIVITY_COOKIE,
+  ADMIN_IDLE_LIMIT_MS,
+  sealAdminActivityMark,
+} from "@/lib/admin-activity";
 
 const {
   state,
   rateLimit,
   getCurrentAdmin,
   recordAdminAction,
+  recordSecurityEvent,
   listFactors,
   unenroll,
   challengeAndVerify,
   getAuthenticatorAssuranceLevel,
-  deleteRecoveryCodes,
+  updateUser,
+  signOutServer,
+  verifierSignInWithPassword,
+  verifierSignOut,
+  checkPwnedPassword,
   generateRecoveryCodes,
   redirect,
 } = vi.hoisted(() => ({
@@ -33,6 +43,7 @@ const {
       nextLevel: string | null;
       currentAuthenticationMethods: unknown;
     } | null,
+    adminActivity: null as string | null,
   },
   rateLimit: vi.fn(async (_key: string, _limit?: number, _windowSeconds?: number) => ({
     allowed: true,
@@ -40,23 +51,42 @@ const {
     resetAt: new Date(),
   })),
   getCurrentAdmin: vi.fn(async () => ({
-    user: { id: "sb_user_1" },
+    user: { id: "sb_user_1", email: "lucy@lucamsshop.com" },
     admin: { id: "adm_1", email: "lucy@lucamsshop.com" },
   })),
   recordAdminAction: vi.fn(async () => {}),
+  recordSecurityEvent: vi.fn(async () => {}),
   listFactors: vi.fn(async () => ({
     data: { all: [{ id: "factor_1", factor_type: "totp", status: "verified" }] },
   })),
   unenroll: vi.fn(async () => ({})),
   challengeAndVerify: vi.fn(async () => ({ error: null })),
   getAuthenticatorAssuranceLevel: vi.fn(async () => ({ data: state.aal })),
-  deleteRecoveryCodes: vi.fn(async () => ({})),
+  updateUser: vi.fn(async () => ({ error: null })),
+  signOutServer: vi.fn(async () => ({ error: null })),
+  verifierSignInWithPassword: vi.fn(async () => ({ error: null })),
+  verifierSignOut: vi.fn(async () => ({ error: null })),
+  checkPwnedPassword: vi.fn(async () => ({ pwned: false as const })),
   generateRecoveryCodes: vi.fn(async () => ["CODE-00-AAAA-BBBB"]),
   redirect: vi.fn(),
 }));
 
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: vi.fn(() => ({
+    auth: {
+      signInWithPassword: verifierSignInWithPassword,
+      signOut: verifierSignOut,
+    },
+  })),
+}));
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "x-vercel-forwarded-for": "203.0.113.7" }),
+  cookies: async () => ({
+    get: (name: string) =>
+      name === ADMIN_ACTIVITY_COOKIE && state.adminActivity
+        ? { value: state.adminActivity }
+        : undefined,
+  }),
 }));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -66,18 +96,24 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@/lib/rate-limit", () => ({ rateLimit }));
 vi.mock("@/lib/admin-audit", () => ({ recordAdminAction }));
+vi.mock("@/lib/security-events", () => ({
+  recordSecurityEvent,
+  SECURITY_EVENT: { ADMIN_LOGIN_FAIL: "auth.admin_login.fail" },
+}));
+vi.mock("@/lib/pwned-passwords", () => ({ checkPwnedPassword }));
 vi.mock("@/lib/admin-rbac-guard", () => ({
   requireAdminAction: vi.fn(async () => ({
-    user: { id: "sb_user_1" },
+    user: { id: "sb_user_1", email: "lucy@lucamsshop.com" },
     admin: { id: "adm_1", email: "lucy@lucamsshop.com", role: "SUPERADMIN" },
   })),
 }));
-vi.mock("@/lib/db", () => ({
-  prisma: { adminRecoveryCode: { deleteMany: deleteRecoveryCodes } },
-}));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
-    auth: { mfa: { listFactors, unenroll, challengeAndVerify, getAuthenticatorAssuranceLevel } },
+    auth: {
+      updateUser,
+      signOut: signOutServer,
+      mfa: { listFactors, unenroll, challengeAndVerify, getAuthenticatorAssuranceLevel },
+    },
   }),
 }));
 vi.mock("@/features/admin-mfa/recovery-codes", () => ({
@@ -85,8 +121,8 @@ vi.mock("@/features/admin-mfa/recovery-codes", () => ({
 }));
 
 import {
+  changeAdminPasswordAction,
   changeMfaDeviceAction,
-  disableMfaAction,
   generateRecoveryCodesAction,
   verifyAdminMfaReauthAction,
 } from "./actions";
@@ -116,7 +152,9 @@ function aal2WithTotp(secondsAgo: number) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllEnvs();
+  vi.stubEnv("CSRF_SECRET", "test-csrf-secret-at-least-32-chars-long!!");
   state.aal = aal2WithTotp(60);
+  state.adminActivity = sealAdminActivityMark(Date.now() - 60_000);
   rateLimit.mockResolvedValue(allowed);
   listFactors.mockResolvedValue({
     data: { all: [{ id: "factor_1", factor_type: "totp", status: "verified" }] },
@@ -150,6 +188,13 @@ describe("verifyAdminMfaReauthAction — rate-limit del reto de re-auth", () => 
     expect(recordAdminAction).not.toHaveBeenCalledWith(
       expect.objectContaining({ action: "mfa.reauth.success" }),
     );
+    expect(recordSecurityEvent).toHaveBeenCalledWith({
+      event: "auth.admin_login.fail",
+      outcome: "failure",
+      ip: "203.0.113.7",
+      actorId: "adm_1",
+      metadata: { code: "admin_mfa_reauth_rate_limited", ipCount: 99, adminCount: 1 },
+    });
   });
 
   it("con el bucket del admin agotado tampoco pasa (botnet rotando IPs)", async () => {
@@ -189,6 +234,26 @@ describe("verifyAdminMfaReauthAction — rate-limit del reto de re-auth", () => 
     expect(challengeAndVerify).not.toHaveBeenCalled();
     expect(res.error).toMatch(/sesión expiró/i);
   });
+
+  it("sin marca de actividad admin rechaza el reto antes de consumir rate limit", async () => {
+    state.adminActivity = null;
+
+    const res = await verifyAdminMfaReauthAction(null, form());
+
+    expect(res.error).toMatch(/inactividad/i);
+    expect(rateLimit).not.toHaveBeenCalled();
+    expect(challengeAndVerify).not.toHaveBeenCalled();
+  });
+
+  it("con inactividad vencida no permite renovar el step-up", async () => {
+    state.adminActivity = sealAdminActivityMark(Date.now() - ADMIN_IDLE_LIMIT_MS - 1_000);
+
+    const res = await verifyAdminMfaReauthAction(null, form());
+
+    expect(res.error).toMatch(/inactividad/i);
+    expect(rateLimit).not.toHaveBeenCalled();
+    expect(challengeAndVerify).not.toHaveBeenCalled();
+  });
 });
 
 describe("verifyAdminMfaReauthAction — verificación y audit trail", () => {
@@ -205,7 +270,7 @@ describe("verifyAdminMfaReauthAction — verificación y audit trail", () => {
     });
   });
 
-  it("código incorrecto → error genérico + audit mfa.reauth.failure (sin éxito)", async () => {
+  it("código incorrecto → error genérico + SecurityEvent y audit mfa.reauth.failure (sin éxito)", async () => {
     challengeAndVerify.mockResolvedValueOnce({ error: { message: "Invalid TOTP" } } as never);
 
     const res = await verifyAdminMfaReauthAction(null, form());
@@ -217,6 +282,13 @@ describe("verifyAdminMfaReauthAction — verificación y audit trail", () => {
       action: "mfa.reauth.failure",
       entityType: "AdminUser",
       entityId: "adm_1",
+    });
+    expect(recordSecurityEvent).toHaveBeenCalledWith({
+      event: "auth.admin_login.fail",
+      outcome: "failure",
+      ip: "203.0.113.7",
+      actorId: "adm_1",
+      metadata: { code: "admin_mfa_reauth_failed" },
     });
     expect(recordAdminAction).not.toHaveBeenCalledWith(
       expect.objectContaining({ action: "mfa.reauth.success" }),
@@ -272,31 +344,7 @@ describe("verifyAdminMfaReauthAction — verificación y audit trail", () => {
  * marcador `reauthRequired` SIN tocar factores ni códigos, y la UI abre el
  * modal TOTP (verifyAdminMfaReauthAction) y reintenta.
  */
-describe("autogestión MFA — step-up (F-06)", () => {
-  it("disableMfaAction con aal2 viejo (15 min) → reauthRequired, sin unenroll ni borrado de códigos", async () => {
-    state.aal = aal2WithTotp(15 * 60);
-
-    const res = await disableMfaAction();
-
-    expect(res).toEqual({ reauthRequired: true });
-    expect(unenroll).not.toHaveBeenCalled();
-    expect(deleteRecoveryCodes).not.toHaveBeenCalled();
-    expect(recordAdminAction).not.toHaveBeenCalledWith(
-      expect.objectContaining({ action: "admin.mfa.disable" }),
-    );
-  });
-
-  it("disableMfaAction con aal2 fresco → desactiva y borra códigos como antes", async () => {
-    const res = await disableMfaAction();
-
-    expect(res).toBeUndefined();
-    expect(unenroll).toHaveBeenCalledWith({ factorId: "factor_1" });
-    expect(deleteRecoveryCodes).toHaveBeenCalled();
-    expect(recordAdminAction).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "admin.mfa.disable" }),
-    );
-  });
-
+describe("autogestión MFA y contraseña — step-up (F-06)", () => {
   it("changeMfaDeviceAction con aal2 viejo → reauthRequired, sin unenroll ni redirect", async () => {
     state.aal = aal2WithTotp(15 * 60);
 
@@ -349,9 +397,83 @@ describe("autogestión MFA — step-up (F-06)", () => {
     expect(recordAdminAction).toHaveBeenCalledWith(
       expect.objectContaining({ action: "admin.mfa.recovery_codes.generate" }),
     );
-    // Bug owner 2026-11-11: la acción NO debe revalidar /admin/seguridad — en el
-    // enrolamiento inicial la revalidación cambiaba la rama server (MFA ya
-    // activo) y desmontaba <MfaEnroll> con los códigos recién mostrados.
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("changeAdminPasswordAction con aal2 viejo → reauthRequired, sin verificar ni mutar contraseña", async () => {
+    state.aal = aal2WithTotp(15 * 60);
+    const fd = new FormData();
+    fd.set("currentPassword", "ActualSegura#2026");
+    fd.set("newPassword", "NuevaClaveRobusta!987");
+    fd.set("confirmPassword", "NuevaClaveRobusta!987");
+
+    const res = await changeAdminPasswordAction(null, fd);
+
+    expect(res.reauthRequired).toBe(true);
+    expect(verifierSignInWithPassword).not.toHaveBeenCalled();
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it("changeAdminPasswordAction rechaza contraseña actual incorrecta y registra rastro forense", async () => {
+    verifierSignInWithPassword.mockResolvedValueOnce({
+      error: { message: "Invalid login credentials" },
+    } as never);
+    const fd = new FormData();
+    fd.set("currentPassword", "ClaveIncorrecta1");
+    fd.set("newPassword", "NuevaClaveRobusta!987");
+    fd.set("confirmPassword", "NuevaClaveRobusta!987");
+
+    const res = await changeAdminPasswordAction(null, fd);
+
+    expect(res.fieldErrors?.currentPassword?.[0]).toMatch(/no es correcta/);
+    expect(updateUser).not.toHaveBeenCalled();
+    expect(recordSecurityEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "auth.admin_login.fail",
+        actorId: "adm_1",
+        metadata: { code: "password_change_wrong_current" },
+      }),
+    );
+    expect(recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "admin.password.change_failure" }),
+    );
+  });
+
+  it("changeAdminPasswordAction rechaza contraseña filtrada en HIBP", async () => {
+    checkPwnedPassword.mockResolvedValueOnce({ pwned: true, count: 420 } as never);
+    const fd = new FormData();
+    fd.set("currentPassword", "ActualSegura#2026");
+    fd.set("newPassword", "FiltradaEnBrecha!987");
+    fd.set("confirmPassword", "FiltradaEnBrecha!987");
+
+    const res = await changeAdminPasswordAction(null, fd);
+
+    expect(res.fieldErrors?.newPassword?.[0]).toMatch(/filtraciones/);
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it("changeAdminPasswordAction con aal2 fresco actualiza contraseña, cierra otras sesiones y audita", async () => {
+    const fd = new FormData();
+    fd.set("currentPassword", "ActualSegura#2026");
+    fd.set("newPassword", "NuevaClaveRobusta!987");
+    fd.set("confirmPassword", "NuevaClaveRobusta!987");
+
+    const res = await changeAdminPasswordAction(null, fd);
+
+    expect(verifierSignInWithPassword).toHaveBeenCalledWith({
+      email: "lucy@lucamsshop.com",
+      password: "ActualSegura#2026",
+    });
+    expect(verifierSignOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(updateUser).toHaveBeenCalledWith({ password: "NuevaClaveRobusta!987" });
+    expect(signOutServer).toHaveBeenCalledWith({ scope: "others" });
+    expect(recordAdminAction).toHaveBeenCalledWith({
+      actorId: "adm_1",
+      action: "admin.password.change",
+      entityType: "AdminUser",
+      entityId: "adm_1",
+      metadata: { othersClosed: true },
+    });
+    expect(res.success).toMatch(/actualizada/);
   });
 });

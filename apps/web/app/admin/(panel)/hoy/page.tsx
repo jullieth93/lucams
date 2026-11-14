@@ -11,6 +11,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   AlertTriangle,
+  Bell,
   ClipboardCheck,
   HeartPulse,
   LayoutDashboard,
@@ -25,8 +26,9 @@ import {
   AdminPageHeader,
   AdminSegmentedBar,
 } from "@/components/admin-page";
+import { CountUp } from "@/components/admin/count-up";
 import { requireCapability } from "@/lib/admin-rbac-guard";
-import { canAccessAdminPath } from "@/lib/admin-rbac";
+import { adminHomePath, canAccessAdminPath } from "@/lib/admin-rbac";
 import { getTodayOperationalInbox } from "@/features/crm/today-inbox-service";
 import { TodayInboxBoard } from "./today-inbox-board";
 import { FiscalWatchCard } from "./fiscal-watch-card";
@@ -40,9 +42,12 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminHoyPage() {
   const session = await requireCapability("dashboard:read");
+  const role = session.admin.role;
+  const homeHref = adminHomePath(role);
+  const canSeeNotifications = canAccessAdminPath(role, "/admin/notificaciones");
   const inbox = await getTodayOperationalInbox({
     id: session.admin.id,
-    role: session.admin.role,
+    role,
   });
 
   return (
@@ -58,15 +63,26 @@ export default async function AdminHoyPage() {
             )}
           </span>
         }
-        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Bandeja Hoy" }]}
+        breadcrumbs={[{ label: "Admin", href: homeHref }, { label: "Bandeja Hoy" }]}
         actions={
-          <Link
-            href="/admin/dashboard"
-            className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-11 items-center gap-1.5 rounded-xl border bg-white px-3.5 py-2 text-sm font-semibold transition-colors"
-          >
-            <LayoutDashboard className="h-4 w-4" />
-            Panorama general
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {canSeeNotifications && (
+              <Link
+                href="/admin/notificaciones"
+                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-11 items-center gap-1.5 rounded-xl border bg-white px-3.5 py-2 text-sm font-semibold transition-colors"
+              >
+                <Bell className="h-4 w-4" />
+                Notificaciones
+              </Link>
+            )}
+            <Link
+              href={homeHref}
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-11 items-center gap-1.5 rounded-xl border bg-white px-3.5 py-2 text-sm font-semibold transition-colors"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Panorama general
+            </Link>
+          </div>
         }
       />
 
@@ -79,7 +95,7 @@ export default async function AdminHoyPage() {
               Pendientes activos
             </div>
             <div className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
-              {inbox.counts.total}
+              <CountUp value={inbox.counts.total} />
             </div>
             <p className="text-brand-muted mt-1 text-xs">
               Acciones operativas abiertas para tu perfil
@@ -96,7 +112,7 @@ export default async function AdminHoyPage() {
                 inbox.counts.overdueOrCritical > 0 ? "text-rose-700" : "text-emerald-700"
               }`}
             >
-              {inbox.counts.overdueOrCritical}
+              <CountUp value={inbox.counts.overdueOrCritical} />
             </div>
             <p className="text-brand-muted mt-1 text-xs">
               {inbox.counts.overdueOrCritical > 0
@@ -111,7 +127,7 @@ export default async function AdminHoyPage() {
               Asignados a ti
             </div>
             <div className="text-brand-purple font-display mt-1 text-2xl font-bold tabular-nums">
-              {inbox.counts.assignedToMe}
+              <CountUp value={inbox.counts.assignedToMe} />
             </div>
             <p className="text-brand-muted mt-1 text-xs">
               Tareas y casos bajo tu responsabilidad directa
@@ -124,7 +140,7 @@ export default async function AdminHoyPage() {
               Posventa con SLA legal
             </div>
             <div className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
-              {inbox.counts.byCategory.CARE_SLA}
+              <CountUp value={inbox.counts.byCategory.CARE_SLA} />
             </div>
             <p className="text-brand-muted mt-1 text-xs">
               Retractos (15d cal.), garantías (15d háb.) y soporte

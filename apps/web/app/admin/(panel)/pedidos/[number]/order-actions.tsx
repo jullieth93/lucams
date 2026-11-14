@@ -1,7 +1,16 @@
 "use client";
 
 import { useActionState } from "react";
-import { RefreshCw, ArrowRight, X, Undo2, Ban, PackageX, ClipboardCheck } from "lucide-react";
+import {
+  RefreshCw,
+  ArrowRight,
+  X,
+  Undo2,
+  Ban,
+  PackageX,
+  ClipboardCheck,
+  Hammer,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
@@ -15,8 +24,8 @@ import {
 } from "./actions";
 
 /**
- * Panel de acciones admin sobre una Order. Visibilidad de botones depende
- * del estado actual + presencia de tracking.
+ * Panel de acciones admin sobre una Order. Visibilidad de botones segregada por
+ * etapa operativa del rol + estado actual del pedido (Bloque 5).
  */
 export function OrderActions({
   orderId,
@@ -27,9 +36,12 @@ export function OrderActions({
   hasAddressKey = false,
   isInternalDelivery = false,
   needsReconciliation = false,
-  canTransition = true,
-  canReconcile = true,
-  canRefund: canRefundRole = true,
+  canPrepare = false,
+  canDispatch = false,
+  canCancelRole = false,
+  canReconcile = false,
+  canBlockAddress = false,
+  canRefund: canRefundRole = false,
 }: {
   orderId: string;
   orderStatus: string;
@@ -43,51 +55,62 @@ export function OrderActions({
   isInternalDelivery?: boolean;
   /** Reconciliación pendiente: habilita "Marcar como gestionado" (2026-10-05). */
   needsReconciliation?: boolean;
-  /** S17: capacidad `orders:transition` (transiciones logísticas y guía). */
-  canTransition?: boolean;
+  /** Bloque 5: Taller y Despachos (`PAID → FULFILLING`). */
+  canPrepare?: boolean;
+  /** Bloque 5: Despachos y Gerencia (`SHIPPED`, `DELIVERED` y reintento de guía Aveonline). */
+  canDispatch?: boolean;
+  /** Bloque 5: Cancelar pedido (`CANCELLED` — exclusivo Operaciones / Administradora). */
+  canCancelRole?: boolean;
   /** S17: capacidad `orders:reconcile` (reconciliación manual y no-show). */
   canReconcile?: boolean;
-  /** S17: rol `SUPERADMIN` (reembolso final y bloqueo de dirección COD). */
+  /** Bloque 5: capacidad `finance:reconcile_cod` + MFA reciente (vetar dirección contraentrega). */
+  canBlockAddress?: boolean;
+  /** S17: rol `SUPERADMIN` (reembolso final). */
   canRefund?: boolean;
 }) {
   const [retryState, retryAction, retryPending] = useActionState(retryShipmentAction, null);
   const [transState, transAction, transPending] = useActionState(transitionOrderAction, null);
-  // F-10: el reembolso exige aal2 RECIENTE; si el server pide re-auth, el hook
-  // abre el modal TOTP y reintenta esta misma acción tras verificar.
+  // F-10 + Bloque 5: reembolso y bloqueo de dirección COD exigen aal2 RECIENTE (≤ 10 min);
+  // si el servidor pide re-auth, el hook abre el modal TOTP y reintenta tras verificar.
   const [refundState, refundAction, refundPending, reauthModal] =
     useMfaReauthAction(refundOrderAction);
   const [noShowState, noShowAction, noShowPending] = useActionState(markOrderNoShowAction, null);
-  const [blockState, blockAction, blockPending] = useActionState(blockOrderAddressAction, null);
+  const [blockState, blockAction, blockPending, blockReauthModal] =
+    useMfaReauthAction(blockOrderAddressAction);
   const [reconState, reconAction, reconPending] = useActionState(markOrderReconciledAction, null);
   const isCod = paymentMethod === "COD";
   // Anti-abuso COD: no-show para pedidos COD no entregados; bloquear dirección si hay clave.
   const showNoShow = canReconcile && isCod && !isNoShow && orderStatus !== "DELIVERED";
-  const showBlockAddr = canRefundRole && isCod && hasAddressKey;
+  const showBlockAddr = canBlockAddress && isCod && hasAddressKey;
   const showAntiAbuse = isCod && (showNoShow || showBlockAddr || (canReconcile && isNoShow));
 
   const showRetry =
-    canTransition &&
+    canDispatch &&
     !isInternalDelivery &&
     (orderStatus === "PAID" || (orderStatus === "FULFILLING" && !hasTracking));
-  const showMarkShipped = canTransition && orderStatus === "FULFILLING";
-  const showMarkDelivered = canTransition && orderStatus === "SHIPPED";
+  const showMarkFulfilling = canPrepare && orderStatus === "PAID";
+  const showMarkShipped = canDispatch && orderStatus === "FULFILLING";
+  const showMarkDelivered = canDispatch && orderStatus === "SHIPPED";
   // Cancelar (revierte stock, SIN reembolso). Para Wompi excluimos PAID: ahí el dinero
   // SÍ se capturó, así que la vía correcta es "Reembolsar" (REFUNDED). Para COD, PAID es
-  // cancelable (efectivo nunca cobrado). (revisión adversarial COD)
+  // cancelable (efectivo nunca cobrado). Exclusivo de Gerencia/Administradora (Bloque 5).
   const cancelStates = isCod
     ? ["PENDING_PAYMENT", "PAID", "FULFILLING", "SHIPPED"]
     : ["PENDING_PAYMENT", "FULFILLING", "SHIPPED"];
-  const canCancel = canTransition && cancelStates.includes(orderStatus);
+  const canCancel = canCancelRole && cancelStates.includes(orderStatus);
   // Reembolso = devolver dinero. Solo tiene sentido con dinero capturado: Wompi PAID/
-  // DELIVERED, o COD DELIVERED (efectivo ya cobrado al entregar). COD no-entregado NO
-  // se "reembolsa" (nunca se cobró) → se cancela.
+  // DELIVERED, o COD DELIVERED (efectivo ya cobrado al entregar).
   const canRefund =
     canRefundRole &&
     (isCod ? orderStatus === "DELIVERED" : ["PAID", "DELIVERED"].includes(orderStatus));
   const showReconAction = canReconcile && needsReconciliation;
 
+  const hasAnyRoleCapability =
+    canPrepare || canDispatch || canCancelRole || canReconcile || canBlockAddress || canRefundRole;
+
   if (
     !showRetry &&
+    !showMarkFulfilling &&
     !showMarkShipped &&
     !showMarkDelivered &&
     !canCancel &&
@@ -97,11 +120,11 @@ export function OrderActions({
   ) {
     return (
       <section className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
-        <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones</h2>
+        <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones operativas</h2>
         <p className="text-brand-muted text-xs">
-          {!canTransition && !canReconcile && !canRefundRole
-            ? "Vista de consulta (tu rol no ejecuta cambios de estado sobre pedidos)."
-            : "Sin acciones disponibles para este estado."}
+          {!hasAnyRoleCapability
+            ? "Vista de consulta para tu rol (sin acciones de transición sobre pedidos)."
+            : "No hay acciones disponibles para tu rol en el estado actual del pedido."}
         </p>
       </section>
     );
@@ -109,8 +132,9 @@ export function OrderActions({
 
   return (
     <section className="border-brand-purple/10 space-y-2 rounded-xl border bg-white p-5 shadow-sm">
-      <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones</h2>
+      <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones operativas</h2>
       {reauthModal}
+      {blockReauthModal}
 
       {(retryState?.success || retryState?.error) && (
         <div
@@ -174,7 +198,7 @@ export function OrderActions({
                 required
                 minLength={5}
                 maxLength={500}
-                placeholder="Ej. refund emitido en Wompi el 05/10, cliente confirmó por WhatsApp…"
+                placeholder="Ej. reembolso emitido en Wompi el 05/10, cliente confirmó por WhatsApp…"
                 className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
               />
               <p className="text-[11px] text-red-800">
@@ -207,6 +231,32 @@ export function OrderActions({
             {hasTracking ? "Regenerar guía" : "Generar guía Aveonline"}
           </Button>
         </form>
+      )}
+
+      {showMarkFulfilling && (
+        <details className="border-brand-purple/20 rounded-md border">
+          <summary className="text-brand-purple-dark hover:bg-brand-purple/5 cursor-pointer list-none rounded-md px-3 py-2 text-xs font-semibold">
+            <Hammer className="mr-1.5 inline h-3.5 w-3.5" />
+            Pasar a EN PREPARACIÓN…
+          </summary>
+          <form action={transAction} className="border-brand-purple/10 space-y-2 border-t p-3">
+            <input type="hidden" name="orderId" value={orderId} />
+            <input type="hidden" name="to" value="FULFILLING" />
+            <p className="text-brand-muted text-[11px]">
+              Indica que el pedido ya entró a producción en taller o alistamiento en bodega. Queda
+              registrado en el historial del pedido.
+            </p>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={transPending}
+              variant="outline"
+              className="w-full"
+            >
+              {transPending ? "Actualizando…" : "Confirmar inicio de preparación"}
+            </Button>
+          </form>
+        </details>
       )}
 
       {/* #25 — ENVIADO/ENTREGADO avisan al cliente por correo y no se deshacen: se piden con
@@ -325,7 +375,7 @@ export function OrderActions({
               className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
             />
             <p className="text-[11px] text-rose-800">
-              ⚠️ Marca la orden como <strong>REFUNDED</strong> y revierte el stock.{" "}
+              ⚠️ Marca la orden como <strong>Reembolsada</strong> y revierte el stock.{" "}
               {/* #24 — en contraentrega no hay transacción Wompi; el reembolso es por transferencia. */}
               {isCod ? (
                 <strong>

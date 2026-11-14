@@ -39,7 +39,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { logger } from "@/lib/logger";
 import {
   GALLERY_MASTER_MAX_BYTES,
@@ -72,7 +72,7 @@ import {
   splitGalleryStripImage,
 } from "@/features/personalization/gallery-strip";
 
-type ActionResult = { error?: string };
+export type ActionResult = { error?: string; reauthRequired?: boolean };
 
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 // Tope de ENTRADA del upload de galería: alineado con el master print-grade
@@ -124,7 +124,7 @@ async function parseVariantFilterInput(
 }
 
 export async function uploadGalleryImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
 
   const tag = String(formData.get("tag") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -291,7 +291,7 @@ async function uploadStripMode(input: {
  * purga de archivos, es purgeGalleryImageAction (solo desde Archivados).
  */
 export async function archiveGalleryImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Datos inválidos." };
@@ -316,7 +316,15 @@ export async function archiveGalleryImageAction(formData: FormData): Promise<Act
  * sin referencia — ver purgeGalleryImage).
  */
 export async function purgeGalleryImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { reauthRequired: true, error: MFA_REAUTH_MESSAGE };
+    }
+    throw err;
+  }
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Datos inválidos." };
@@ -356,7 +364,7 @@ export async function purgeGalleryImageAction(formData: FormData): Promise<Actio
  * (no confiamos en el tag del cliente: se lee de DB). "" = todas las variantes.
  */
 export async function updateGalleryVariantFilterAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Datos inválidos." };
@@ -391,7 +399,7 @@ export async function updateGalleryVariantFilterAction(formData: FormData): Prom
 export async function bulkAssignVariantFilterAction(
   formData: FormData,
 ): Promise<ActionResult & { count?: number }> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
 
   const tag = String(formData.get("tag") ?? "");
   // Misma fuente de verdad que el upload: el tag es válido solo si un producto
@@ -428,7 +436,7 @@ export async function bulkAssignVariantFilterAction(
  * explícito del cliente ("1"/"0") para que toggles concurrentes no se pisen.
  */
 export async function toggleGalleryImageActiveAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
 
   const id = String(formData.get("id") ?? "");
   const activeRaw = formData.get("active");
@@ -452,7 +460,7 @@ export async function toggleGalleryImageActiveAction(formData: FormData): Promis
  * revisión, al final del orden de su tag. Mismo guard/audit que el resto.
  */
 export async function restoreGalleryImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Datos inválidos." };
@@ -476,7 +484,7 @@ export async function restoreGalleryImageAction(formData: FormData): Promise<Act
  * render y el click no hay nada que corregir.
  */
 export async function reorderGalleryImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "production:manage_AssetsCatalog" });
 
   const id = String(formData.get("id") ?? "");
   const dir = formData.get("direction");

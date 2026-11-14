@@ -148,12 +148,12 @@ export default async function EditarPaginaCmsPage({
         breadcrumbs={
           isGlobalSettings
             ? [
-                { label: "Admin", href: "/admin/dashboard" },
+                { label: "Admin", href: "/admin" },
                 { label: "Configuración" },
                 { label: page.title },
               ]
             : [
-                { label: "Admin", href: "/admin/dashboard" },
+                { label: "Admin", href: "/admin" },
                 { label: "Contenido", href: "/admin/contenido" },
                 { label: page.title },
               ]
@@ -203,6 +203,49 @@ export default async function EditarPaginaCmsPage({
           </AdminNotice>
         )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
+
+        {(() => {
+          const allPageFields = page.sections.flatMap((s) =>
+            isGlobalSettings
+              ? s.fields.filter((f) => !MODULE_MANAGED_SETTING_KEYS.has(f.key))
+              : s.fields,
+          );
+          const totalPageFields = allPageFields.length;
+          const pendingPageFields = allPageFields.filter(
+            (f) => !f.isPublished || cmsFieldHasDraft(f),
+          ).length;
+          const cleanPageFields = totalPageFields - pendingPageFields;
+          const cleanPct =
+            totalPageFields > 0 ? Math.round((cleanPageFields / totalPageFields) * 100) : 100;
+
+          if (totalPageFields === 0) return null;
+          return (
+            <AdminCard className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="text-brand-purple-dark font-semibold">
+                  Estado editorial: {cleanPageFields} de {totalPageFields} campo
+                  {totalPageFields === 1 ? "" : "s"} al día en el sitio ({cleanPct}%)
+                </span>
+                {pendingPageFields > 0 ? (
+                  <AdminBadge tone="amber">
+                    {pendingPageFields} cambio{pendingPageFields === 1 ? "" : "s"} pendiente
+                    {pendingPageFields === 1 ? "" : "s"} por publicar
+                  </AdminBadge>
+                ) : (
+                  <AdminBadge tone="emerald">Todo publicado</AdminBadge>
+                )}
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`admin-bar-grow-x h-full rounded-full ${
+                    pendingPageFields === 0 ? "bg-emerald-500" : "bg-brand-purple"
+                  }`}
+                  style={{ width: `${cleanPct}%` }}
+                />
+              </div>
+            </AdminCard>
+          );
+        })()}
 
         {/* C1: solo las páginas con URL pública 1:1 abren la vista previa en vivo. */}
         <div

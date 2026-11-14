@@ -1,13 +1,15 @@
 "use client";
 
-import { useActionState } from "react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { createRedirectAction, type RedirectActionState } from "./actions";
 
-export function CreateRedirectForm() {
-  const [state, formAction, isPending] = useActionState<RedirectActionState | null, FormData>(
-    createRedirectAction,
-    null,
-  );
+export function CreateRedirectForm({
+  canUseExternalUrls = false,
+}: {
+  canUseExternalUrls?: boolean;
+}) {
+  const [state, formAction, isPending, reauthModal] =
+    useMfaReauthAction<RedirectActionState>(createRedirectAction);
 
   return (
     <form action={formAction} className="space-y-3">
@@ -52,8 +54,17 @@ export function CreateRedirectForm() {
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.toPath[0]}</p>
           )}
           <p className="text-brand-muted mt-1 text-xs">
-            Adónde mandar al visitante. Ruta interna (<code>/legal/garantias</code>) o URL externa
-            completa.
+            {canUseExternalUrls ? (
+              <>
+                Adónde enviar al visitante. Ruta interna (<code>/legal/garantias</code>) o URL
+                externa completa (<code>https://...</code>).
+              </>
+            ) : (
+              <>
+                Ruta interna del sitio (ej. <code>/legal/garantias</code>). Los destinos hacia
+                dominios externos están reservados a Superadmin.
+              </>
+            )}
           </p>
         </div>
       </div>
@@ -97,7 +108,7 @@ export function CreateRedirectForm() {
         <input type="checkbox" name="isActive" defaultChecked className="accent-brand-purple" />
         Activar inmediatamente
       </label>
-      {state?.error && (
+      {state?.error && !state.reauthRequired && (
         <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
           {state.error}
         </p>
@@ -109,6 +120,7 @@ export function CreateRedirectForm() {
       >
         {isPending ? "Creando…" : "Crear redirect"}
       </button>
+      {reauthModal}
     </form>
   );
 }

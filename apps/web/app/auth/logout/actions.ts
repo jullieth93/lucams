@@ -12,11 +12,30 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { ADMIN_ACTIVITY_COOKIE } from "@/lib/admin-activity";
 import { clearCartSession } from "@/lib/cart-session";
 import { clearCheckoutState } from "@/lib/checkout-session";
+import { CMS_EDIT_COOKIE } from "@/lib/cms-edit-mode";
 import { CUSTOMER_ACTIVITY_COOKIE } from "@/lib/customer-activity";
 import { logger } from "@/lib/logger";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+/**
+ * Limpia todas las cookies auxiliares de sesión (actividad admin, actividad cliente,
+ * modo edición CMS in-place, carrito y estado de checkout) para que en equipos
+ * compartidos no queden rastros de la cuenta saliente ni marcas HMAC colgadas.
+ */
+async function clearSessionSidecarCookies(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.delete({ name: ADMIN_ACTIVITY_COOKIE, path: "/admin" });
+  cookieStore.delete({ name: CUSTOMER_ACTIVITY_COOKIE, path: "/" });
+  cookieStore.delete({ name: CMS_EDIT_COOKIE, path: "/" });
+  // Clearing the cart cookie on logout stays: on shared devices the next person
+  // must not see the previous account's cart. The next login recovers the
+  // customer's live cart (recoverCustomerCartSessionId in mergeCartSafely), so
+  // nothing is actually lost.
+  await Promise.all([clearCartSession(), clearCheckoutState()]);
+}
 
 export async function logoutAction(): Promise<void> {
   const supabase = await createSupabaseServerClient();
@@ -24,17 +43,11 @@ export async function logoutAction(): Promise<void> {
     data: { user },
   } = await supabase.auth.getUser();
 
-  await supabase.auth.signOut();
-
-  (await cookies()).delete(CUSTOMER_ACTIVITY_COOKIE);
-  // Clearing the cart cookie on logout stays: on shared devices the next person
-  // must not see the previous account's cart. The next login recovers the
-  // customer's live cart (recoverCustomerCartSessionId in mergeCartSafely), so
-  // nothing is actually lost.
-  await Promise.all([clearCartSession(), clearCheckoutState()]);
+  await supabase.auth.signOut({ scope: "global" });
+  await clearSessionSidecarCookies();
 
   if (user) {
-    logger.info({ event: "auth.logout.success", userId: user.id });
+    logger.info({ event: "auth.logout.success", userId: user.id, scope: "global" });
   }
 
   redirect("/");
@@ -44,7 +57,8 @@ export async function logoutAction(): Promise<void> {
  * Logout del admin (Lucy 2026-06-27, Bloque C / A8). Usa scope "global" para
  * invalidar TODAS las sesiones/dispositivos del usuario (no solo la actual) — el
  * panel ve finanzas y datos de clientes, así que un "cerrar sesión" debe cerrar
- * en todos lados. Redirige a /admin/login.
+ * en todos lados. También purga cookies auxiliares (marca idle, edición CMS y carrito).
+ * Redirige a /admin/login.
  */
 export async function adminLogoutAction(): Promise<void> {
   const supabase = await createSupabaseServerClient();
@@ -53,6 +67,7 @@ export async function adminLogoutAction(): Promise<void> {
   } = await supabase.auth.getUser();
 
   await supabase.auth.signOut({ scope: "global" });
+  await clearSessionSidecarCookies();
 
   if (user) {
     logger.info({ event: "auth.admin_logout.success", userId: user.id, scope: "global" });

@@ -35,6 +35,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("next/cache", () => ({
   revalidatePath: () => {},
+  updateTag: () => {},
   // unstable_cache passthrough: las acciones importan (transitivo, vía
   // products/service → features/redirects/service) lib/catalog, que lo invoca
   // a nivel de módulo (mismo patrón que los integration tests de catálogo).

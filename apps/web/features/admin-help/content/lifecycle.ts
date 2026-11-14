@@ -199,14 +199,15 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
       id: "crear-activar",
       title: "Crear y activar un recorrido",
       goal: "Configurar una automatización revisada antes de permitir mensajes reales.",
+      roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"],
       steps: [
         "Abre Lifecycle Journeys y revisa el interruptor y el límite global del motor.",
         "Selecciona Nuevo recorrido y define clave, nombre, propósito y disparador.",
         "Configura consentimiento, ventanas, límite diario y horario de silencio.",
         "Agrega los pasos con espera, condición, asunto, preheader, titular, contenido y botón.",
         "Guarda como borrador y revisa la audiencia elegible y la vista previa de cada paso.",
-        "Prueba el paso elegido con MFA; en STG el resultado siempre es DRY_RUN y no sale correo.",
-        "Activa el recorrido y verifica las primeras inscripciones, entregas y ejecuciones en el cron.",
+        "Prueba el paso elegido con MFA (límite de 12 pruebas por hora); en STG el resultado siempre es DRY_RUN y no sale correo.",
+        "Activa el recorrido con confirmación MFA y verifica las primeras inscripciones, entregas y ejecuciones en el cron.",
       ],
       expected:
         "El recorrido queda activo con inscripciones elegibles, sin activarse por accidente ni sobrescribir otras automatizaciones.",
@@ -218,6 +219,7 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
       id: "editar",
       title: "Editar pasos sin perder historial",
       goal: "Cambiar configuración preservando inscripciones y mensajes anteriores.",
+      roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"],
       steps: [
         "Abre el recorrido y modifica configuración o pasos existentes.",
         "Al reordenar, añadir o retirar pasos, revisa que ningún paso actual quede inválido.",
@@ -233,6 +235,7 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
       id: "reintentar",
       title: "Reintentar un mensaje fallido",
       goal: "Recuperar un envío sin generar duplicados.",
+      roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"],
       steps: [
         "Abre Mensajes y localiza el registro fallido.",
         "Revisa el motivo del fallo y la salud de Resend.",
@@ -244,6 +247,19 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
       exceptions: [
         "Si el circuito de Resend está abierto, espera el cierre antes de reintentar; no generes una tormenta de llamadas.",
       ],
+    },
+    {
+      id: "auditar-lifecycle-finanzas",
+      title: "Auditar ingresos atribuidos y conversión en modo 0-PII",
+      goal: "Verificar el retorno comercial de los recorridos sin exponer datos personales.",
+      roles: ["FINANCE_ANALYST", "SUPERADMIN"],
+      steps: [
+        "Revisa el embudo global (enviados, entregados, clics, convertidos) y la dona de inscripciones.",
+        "Abre el recorrido deseado para inspeccionar su atribución e ingresos en pesos.",
+        "Haz clic en el enlace del pedido convertido para contrastar el cobro real en Pedidos o Finanzas.",
+      ],
+      expected:
+        "Cada ingreso atribuido en Lifecycle se concilia contra una orden pagada verificable con identidad protegida.",
     },
   ],
   cautions: [
@@ -298,5 +314,5 @@ export const LIFECYCLE_GUIDE: AdminModuleGuide = {
     "conversión",
     "atribución",
   ],
-  version: 4,
+  version: 5,
 };

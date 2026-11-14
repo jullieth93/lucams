@@ -17,7 +17,15 @@
 
 import type { Metadata } from "next";
 import { ArrowLeft, Image as ImageIcon } from "lucide-react";
-import { AdminButton, AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
+import {
+  AdminButton,
+  AdminCard,
+  AdminPage,
+  AdminPageBody,
+  AdminPageHeader,
+  AdminSegmentedBar,
+  KpiCard,
+} from "@/components/admin-page";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getCmsMediaUsageDetail, listCmsMedia } from "@/lib/cms-media";
@@ -27,11 +35,33 @@ export const metadata: Metadata = {
   title: "Mediateca",
 };
 
+function formatMegabytes(bytes: number): string {
+  if (bytes <= 0) return "0 MB";
+  const mb = bytes / (1024 * 1024);
+  return mb < 0.1 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${mb.toFixed(1)} MB`;
+}
+
 export default async function MediatecaPage() {
   await requireRole(ADMIN_ROLE_SETS.CONTENT);
 
   const media = await listCmsMedia(120);
   const usage = await getCmsMediaUsageDetail(media.map((m) => m.id));
+
+  const enriched = media.map((m) => ({
+    id: m.id,
+    url: m.url,
+    alt: m.alt,
+    width: m.width,
+    height: m.height,
+    bytes: m.bytes,
+    usedBy: usage.get(m.id) ?? [],
+  }));
+
+  const totalAssets = enriched.length;
+  const inUseCount = enriched.filter((m) => m.usedBy.length > 0).length;
+  const orphanCount = totalAssets - inUseCount;
+  const missingAltCount = enriched.filter((m) => !m.alt || !m.alt.trim()).length;
+  const totalBytes = enriched.reduce((acc, m) => acc + (m.bytes ?? 0), 0);
 
   return (
     <AdminPage>
@@ -40,7 +70,7 @@ export default async function MediatecaPage() {
         title="Mediateca"
         subtitle="Imágenes del sitio listas para usar en campos de imagen (banners, hero, logos). Sube una vez y reutiliza."
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: "/admin" },
           { label: "Contenido", href: "/admin/contenido" },
           { label: "Mediateca" },
         ]}
@@ -53,17 +83,63 @@ export default async function MediatecaPage() {
       />
 
       <AdminPageBody>
-        <MediaLibraryClient
-          media={media.map((m) => ({
-            id: m.id,
-            url: m.url,
-            alt: m.alt,
-            width: m.width,
-            height: m.height,
-            bytes: m.bytes,
-            usedBy: usage.get(m.id) ?? [],
-          }))}
-        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            label="Imágenes cargadas"
+            value={totalAssets}
+            trend="neutral"
+            trendLabel={`Peso acumulado: ${formatMegabytes(totalBytes)}`}
+          />
+          <KpiCard
+            label="En uso en el sitio"
+            value={inUseCount}
+            trend={inUseCount > 0 ? "up" : "neutral"}
+            trendLabel="Protegidas contra borrado accidental"
+          />
+          <KpiCard
+            label="Sin uso (huérfanas)"
+            value={orphanCount}
+            trend="neutral"
+            trendLabel="Disponibles o candidatas a limpieza"
+          />
+          <KpiCard
+            label="Sin texto alternativo"
+            value={missingAltCount}
+            trend={missingAltCount > 0 ? "down" : "up"}
+            trendLabel={
+              missingAltCount > 0
+                ? "Completa el alt para SEO y accesibilidad"
+                : "100% con descripción accesible"
+            }
+          />
+        </div>
+
+        {totalAssets > 0 && (
+          <AdminCard className="p-5">
+            <h2 className="font-display text-brand-purple-dark mb-2 text-base font-bold">
+              Ocupación editorial de imágenes
+            </h2>
+            <AdminSegmentedBar
+              ariaLabel="Proporción de imágenes en uso frente a imágenes sin uso en la mediateca"
+              items={[
+                {
+                  key: "used",
+                  label: "En uso activo",
+                  count: inUseCount,
+                  tone: "emerald",
+                },
+                {
+                  key: "orphan",
+                  label: "Sin asignar",
+                  count: orphanCount,
+                  tone: "amber",
+                },
+              ]}
+            />
+          </AdminCard>
+        )}
+
+        <MediaLibraryClient media={enriched} />
       </AdminPageBody>
     </AdminPage>
   );

@@ -102,6 +102,7 @@ export interface MergeCandidateItem {
   bothHaveActiveCustomerAccounts: boolean;
   forcedSurvivorContactId: string | null;
   recommendedSurvivorContactId: string;
+  canReopen: boolean;
   reviewedByLabel: string | null;
   reviewedAt: Date | null;
   reviewNote: string | null;
@@ -120,6 +121,7 @@ export interface MergeCandidateListResult {
     approved: number;
     rejected: number;
   };
+  reasonBreakdown: Array<{ code: string; label: string; count: number }>;
   piiMasked: boolean;
 }
 
@@ -245,9 +247,14 @@ async function computeContactMetricsMap(contactIds: string[]): Promise<
       select: {
         contactId: true,
         status: true,
-        subtotal: true,
-        discount: true,
-        loyaltyDiscount: true,
+        total: true,
+        items: {
+          select: {
+            retractRequest: {
+              select: { status: true, refundAmount: true },
+            },
+          },
+        },
       },
     }),
     prisma.supportTicket.groupBy({
@@ -285,7 +292,13 @@ async function computeContactMetricsMap(contactIds: string[]): Promise<
     entry.totalOrdersCount += 1;
     if (paidStatuses.has(order.status)) {
       entry.paidOrdersCount += 1;
-      entry.netLtvCents += Math.max(0, order.subtotal - order.discount - order.loyaltyDiscount);
+      const refundedRetractCents = order.items.reduce((sum, it) => {
+        if (it.retractRequest?.status === "REFUNDED") {
+          return sum + (it.retractRequest.refundAmount ?? 0);
+        }
+        return sum;
+      }, 0);
+      entry.netLtvCents += Math.max(0, order.total - refundedRetractCents);
     }
   }
 
@@ -317,6 +330,7 @@ const CONTACT_SUMMARY_SELECT = {
   documentNumber: true,
   source: true,
   deletedAt: true,
+  anonymizedAt: true,
   createdAt: true,
   organization: {
     select: { name: true },
@@ -437,50 +451,78 @@ export async function listMergeCandidatesForActor(
   const pageSize = Math.min(50, Math.max(1, opts.pageSize ?? PAGE_SIZE));
   const maskPii = !hasCapability(actorRole, "contacts:read_pii");
 
+  const pendingActiveWhere: Prisma.IdentityMergeCandidateWhereInput = {
+    status: "PENDING",
+    primaryContact: { deletedAt: null, anonymizedAt: null },
+    secondaryContact: { deletedAt: null, anonymizedAt: null },
+  };
+
   // Para candidatos PENDING solo mostramos pares donde ambos contactos sigan activos.
   const where: Prisma.IdentityMergeCandidateWhereInput =
-    status === "PENDING"
-      ? {
-          status: "PENDING",
-          primaryContact: { deletedAt: null, anonymizedAt: null },
-          secondaryContact: { deletedAt: null, anonymizedAt: null },
-        }
-      : { status };
+    status === "PENDING" ? pendingActiveWhere : { status };
 
-  const [rows, total, pendingCount, approvedCount, rejectedCount] = await Promise.all([
+  const candidateSelect = {
+    id: true,
+    status: true,
+    reasonCode: true,
+    reasonCodes: true,
+    evidenceJson: true,
+    reviewedAt: true,
+    reviewNote: true,
+    mergeSnapshotJson: true,
+    createdAt: true,
+    reviewedByAdmin: {
+      select: { email: true },
+    },
+    primaryContact: { select: CONTACT_SUMMARY_SELECT },
+    secondaryContact: { select: CONTACT_SUMMARY_SELECT },
+  } satisfies Prisma.IdentityMergeCandidateSelect;
+
+  const [initialRows, total, pendingReasonRows, approvedCount, rejectedCount] = await Promise.all([
     prisma.identityMergeCandidate.findMany({
       where,
       orderBy: status === "PENDING" ? { createdAt: "desc" } : { reviewedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      select: {
-        id: true,
-        status: true,
-        reasonCode: true,
-        reasonCodes: true,
-        evidenceJson: true,
-        reviewedAt: true,
-        reviewNote: true,
-        mergeSnapshotJson: true,
-        createdAt: true,
-        reviewedByAdmin: {
-          select: { email: true },
-        },
-        primaryContact: { select: CONTACT_SUMMARY_SELECT },
-        secondaryContact: { select: CONTACT_SUMMARY_SELECT },
-      },
+      select: candidateSelect,
     }),
     prisma.identityMergeCandidate.count({ where }),
-    prisma.identityMergeCandidate.count({
-      where: {
-        status: "PENDING",
-        primaryContact: { deletedAt: null, anonymizedAt: null },
-        secondaryContact: { deletedAt: null, anonymizedAt: null },
-      },
+    prisma.identityMergeCandidate.findMany({
+      where: pendingActiveWhere,
+      select: { reasonCode: true, reasonCodes: true },
     }),
     prisma.identityMergeCandidate.count({ where: { status: "APPROVED" } }),
     prisma.identityMergeCandidate.count({ where: { status: "REJECTED" } }),
   ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const rows =
+    safePage !== page
+      ? await prisma.identityMergeCandidate.findMany({
+          where,
+          orderBy: status === "PENDING" ? { createdAt: "desc" } : { reviewedAt: "desc" },
+          skip: (safePage - 1) * pageSize,
+          take: pageSize,
+          select: candidateSelect,
+        })
+      : initialRows;
+
+  const pendingCount = pendingReasonRows.length;
+  const reasonCountMap = new Map<string, number>();
+  for (const r of pendingReasonRows) {
+    const codes = r.reasonCodes.length > 0 ? r.reasonCodes : [r.reasonCode].filter(Boolean);
+    for (const code of new Set(codes)) {
+      reasonCountMap.set(code, (reasonCountMap.get(code) ?? 0) + 1);
+    }
+  }
+  const reasonBreakdown = [...reasonCountMap.entries()]
+    .map(([code, count]) => ({
+      code,
+      label: formatMergeReasonLabel(code),
+      count,
+    }))
+    .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
 
   const allContactIds = rows.flatMap((r) => [r.primaryContact.id, r.secondaryContact.id]);
   const metricsMap = await computeContactMetricsMap(allContactIds);
@@ -538,6 +580,13 @@ export async function listMergeCandidatesForActor(
     const mergedSurvivorContactId =
       typeof snapshotObj?.survivorContactId === "string" ? snapshotObj.survivorContactId : null;
 
+    const canReopen =
+      row.status === "REJECTED" &&
+      row.primaryContact.deletedAt === null &&
+      row.primaryContact.anonymizedAt === null &&
+      row.secondaryContact.deletedAt === null &&
+      row.secondaryContact.anonymizedAt === null;
+
     return {
       id: row.id,
       status: row.status,
@@ -551,6 +600,7 @@ export async function listMergeCandidatesForActor(
       bothHaveActiveCustomerAccounts,
       forcedSurvivorContactId,
       recommendedSurvivorContactId,
+      canReopen,
       reviewedByLabel: row.reviewedByAdmin ? row.reviewedByAdmin.email : null,
       reviewedAt: row.reviewedAt,
       reviewNote: row.reviewNote,
@@ -562,14 +612,15 @@ export async function listMergeCandidatesForActor(
   return {
     items,
     total,
-    page,
+    page: safePage,
     pageSize,
-    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    totalPages,
     counts: {
       pending: pendingCount,
       approved: approvedCount,
       rejected: rejectedCount,
     },
+    reasonBreakdown,
     piiMasked: maskPii,
   };
 }
@@ -1073,6 +1124,83 @@ export async function rejectMergeCandidate(input: {
       reviewedByAdminId: input.actorAdminId,
       reviewedAt: new Date(),
       reviewNote: cleanNote,
+    },
+  });
+
+  return {
+    candidateId: existing.id,
+    primaryContactId: existing.primaryContactId,
+    secondaryContactId: existing.secondaryContactId,
+  };
+}
+
+/**
+ * Reabre un candidato descartado (`REJECTED` → `PENDING`) para una nueva revisión humana
+ * cuando el descarte fue accidental o surgió nueva evidencia comercial.
+ * Las fusiones aprobadas (`APPROVED`) jamás se reabren por esta vía; exigen que ambos
+ * contactos continúen activos y sin anonimizar.
+ */
+export async function reopenMergeCandidate(input: {
+  candidateId: string;
+  actorAdminId: string;
+  note?: string | null;
+}): Promise<{
+  candidateId: string;
+  primaryContactId: string;
+  secondaryContactId: string;
+}> {
+  const candidateId = input.candidateId.trim();
+  const cleanNote = input.note?.trim().slice(0, 500) || null;
+
+  if (!candidateId) {
+    throw new MergeValidationError("NOT_FOUND", "Candidato inválido.");
+  }
+
+  const existing = await prisma.identityMergeCandidate.findUnique({
+    where: { id: candidateId },
+    select: {
+      id: true,
+      primaryContactId: true,
+      secondaryContactId: true,
+      status: true,
+      primaryContact: { select: { deletedAt: true, anonymizedAt: true } },
+      secondaryContact: { select: { deletedAt: true, anonymizedAt: true } },
+    },
+  });
+
+  if (!existing) {
+    throw new MergeValidationError(
+      "NOT_FOUND",
+      "El candidato de fusión no existe o ya fue retirado.",
+    );
+  }
+
+  if (existing.status !== "REJECTED") {
+    throw new MergeValidationError(
+      "ALREADY_REVIEWED",
+      "Solo es posible reabrir sugerencias que se encuentren descartadas.",
+    );
+  }
+
+  if (
+    existing.primaryContact.deletedAt !== null ||
+    existing.primaryContact.anonymizedAt !== null ||
+    existing.secondaryContact.deletedAt !== null ||
+    existing.secondaryContact.anonymizedAt !== null
+  ) {
+    throw new MergeValidationError(
+      "CONTACT_INACTIVE",
+      "Uno de los contactos ya fue archivado o anonimizado; no es posible reabrir este par.",
+    );
+  }
+
+  await prisma.identityMergeCandidate.update({
+    where: { id: existing.id },
+    data: {
+      status: "PENDING",
+      reviewedByAdminId: input.actorAdminId,
+      reviewedAt: new Date(),
+      reviewNote: cleanNote ?? "Reabierto para revisión humana",
     },
   });
 

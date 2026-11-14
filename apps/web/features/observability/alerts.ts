@@ -68,7 +68,11 @@ const SEVERITY_TO_NOTIFICATION: Record<FiringAlert["severity"], NotificationSeve
 
 /** Módulo del admin donde se atiende cada alerta (deep link desde el centro). */
 function actionUrlFor(key: string): string {
-  if (key === "reconciliation") return "/admin/pedidos";
+  if (key === "reconciliation") return "/admin/pedidos?atencion=1";
+  if (key === "security_admin_login_fails" || key === "security_webhook_invalid") {
+    return "/admin/auditoria?vista=seguridad";
+  }
+  if (key === "uptime_monitor_failing") return "/admin/integraciones";
   // pending_payment_wompi_stale (N-12b): lo roto es la auto-cancelación (un cron),
   // no la orden — el panel de crons es donde se diagnostica primero.
   return "/admin/observability";

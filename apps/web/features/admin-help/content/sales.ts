@@ -53,54 +53,57 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
               "Contrasta el estado con pago, producción y envío en el detalle antes de decidir.",
           },
           {
-            id: "lote",
-            label: "Acciones por lote",
+            id: "pulso-etapas",
+            label: "Pulso de 14 días y barra de etapas",
             description:
-              "Aplican una misma transición a varios pedidos seleccionados cuando las reglas lo permiten.",
-            caution:
-              "Revisa cada selección: una acción masiva puede afectar varios clientes y no sustituye la validación individual.",
+              "Muestra la evolución diaria de órdenes y la distribución interactiva por estado del pipeline.",
+            interpretation:
+              "Haz clic en un segmento de etapa o filtro rápido (Pendientes de taller, COD sin conciliar) para enfocar la cola.",
           },
         ],
       },
       {
         id: "detalle",
         title: "Detalle del pedido",
-        summary: "Reúne los datos y procesos que explican la situación real de la orden.",
+        summary: "Reúne los datos, el stepper de ciclo de vida y los vínculos 360° de la orden.",
         topics: [
           {
             id: "pago",
-            label: "Pago y conciliación",
-            description: "Muestra la información disponible del medio y resultado del recaudo.",
+            label: "Pago y confidencialidad comercial",
+            description:
+              "Muestra medio de pago, intentos Wompi o monto COD a recaudar según los permisos de tu rol.",
             interpretation:
-              "Un pedido creado no prueba un pago aprobado; verifica el resultado registrado por el proveedor o la conciliación COD.",
+              "Taller opera sin importes comerciales; Alistamiento solo visualiza el valor a cobrar cuando el pedido es contraentrega.",
           },
           {
             id: "disenos",
-            label: "Diseños y producción",
+            label: "Diseños, moderación y renders 300 DPI",
             description:
-              "Relaciona los ítems personalizados con sus diseños, moderación y paquete de taller.",
+              "Relaciona los ítems personalizados con su estado de moderación, progreso de RenderJob y paquete ZIP de taller.",
             interpretation:
-              "Descarga el paquete únicamente cuando el pedido esté listo según el flujo operativo.",
+              "Descarga el ZIP de taller únicamente cuando los diseños estén aprobados y los renders hayan completado.",
           },
           {
             id: "envio",
-            label: "Envío y guía",
+            label: "Envío y guía térmica",
             description:
-              "Presenta transportadora, dirección, guía, eventos y novedades logísticas.",
+              "Presenta transportadora, dirección, guía Aveonline, eventos y etiqueta imprimible (sin precios cuando es regalo).",
             interpretation:
-              "El último evento del carrier y el estado interno deben interpretarse juntos.",
+              "El último evento del carrier y el estado interno deben interpretarse juntos antes de reintentar una guía.",
           },
           {
-            id: "timeline",
-            label: "Historial",
-            description: "Conserva eventos y cambios para reconstruir qué ocurrió y cuándo.",
-            interpretation: "Úsalo antes de repetir una acción o atribuir una incidencia.",
+            id: "ecosistema",
+            label: "Ecosistema 360° vinculado",
+            description:
+              "Conecta con Contacto 360, cotización origen, retractos, garantías, tickets de soporte, cupón y remesa COD.",
+            interpretation:
+              "Solo aparecen enlaces hacia submódulos habilitados para tu rol actual.",
           },
           {
             id: "pii",
             label: "Datos del cliente",
             description:
-              "La visibilidad de identidad y contacto depende de capacidades específicas.",
+              "La visibilidad de identidad y dirección depende de capacidades específicas de lectura de PII.",
             caution:
               "No copies ni compartas datos personales fuera del canal autorizado, incluso si puedes verlos.",
           },
@@ -162,9 +165,9 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
       },
     ],
     cautions: [
-      "No anticipes estados: producción, despacho y entrega deben registrar hechos que ya ocurrieron.",
-      "Una cancelación, reembolso o modificación de pago puede exigir otro procedimiento y permisos adicionales.",
-      "Las acciones por lote exigen la misma validación que una acción individual.",
+      "No anticipes estados: producción, despacho y entrega deben registrar hechos físicos que ya ocurrieron.",
+      "Cada rol opera su tramo: Taller prepara e imprime 300 DPI; Alistamiento despacha y gestiona guías; Dirección/Operaciones concilia y cancela.",
+      "Bloquear una dirección por no-show COD exige confirmación reciente con segundo factor (MFA).",
     ],
     faqs: [
       {
@@ -173,19 +176,19 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
           "No. Todavía deben cumplirse personalización, moderación, producción, alistamiento y generación de guía.",
       },
       {
-        question: "¿Por qué no veo los datos de contacto?",
+        question: "¿Por qué no veo los datos de contacto o el desglose comercial?",
         answer:
-          "Tu rol puede tener acceso operativo sin permiso para datos personales. Trabaja con el número de pedido y escala si necesitas validación adicional.",
+          "Tu rol recibe únicamente la información necesaria para su etapa (privacidad de PII y confidencialidad comercial). Trabaja con el número de pedido y escala si necesitas validación adicional.",
       },
       {
         question: "¿Dónde corrijo una guía fallida?",
         answer:
-          "Abre el detalle, revisa el error y sigue el diagnóstico de Integraciones o Envíos según la causa antes de reintentar.",
+          "Abre el detalle del pedido con un rol de Alistamiento u Operaciones, revisa el error reportado y reintenta la guía tras corregir la causa.",
       },
     ],
     related: ["moderacion", "envios", "soporte", "finanzas", "conciliacion"],
     keywords: ["orden", "LCM", "pago", "taller", "ZIP", "guía", "despacho", "entrega", "estado"],
-    version: 1,
+    version: 2,
   },
   {
     id: "clientes",
@@ -372,12 +375,12 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
         steps: [
           "Compara identidades, historial y relaciones de ambos contactos.",
           "Descarta el candidato si no existe evidencia suficiente de que sean la misma persona.",
-          "Si procede, selecciona el contacto principal y revisa los datos que prevalecerán.",
-          "Confirma la fusión y verifica pedidos, oportunidades, tickets y consentimientos resultantes.",
-          "Registra cualquier incidencia para revisión en lugar de repetir la fusión.",
+          "Si descartaste un par por error y ambos perfiles siguen activos, puedes reabrirlo a pendientes desde la pestaña Descartados.",
+          "Si procede la unificación, selecciona el contacto principal y confirma con tu código MFA reciente.",
+          "Verifica pedidos, oportunidades, tickets y consentimientos resultantes en Contacto 360.",
         ],
         expected:
-          "Existe una identidad canónica coherente o un descarte justificado, sin pérdida de relaciones.",
+          "Existe una identidad canónica coherente con snapshot reversible en auditoría o un descarte justificado.",
       },
     ],
     cautions: [
@@ -389,10 +392,15 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
         answer:
           "No necesariamente. Un dato compartido puede corresponder a familiares o empresas; contrasta varias señales.",
       },
+      {
+        question: "¿Qué pasa si descarté un candidato de duplicado por accidente?",
+        answer:
+          "Abre la pestaña Descartados y usa Reabrir revisión para devolverlo a Pendientes con registro en auditoría. La fusión definitiva seguirá exigiendo verificación MFA.",
+      },
     ],
     related: ["clientes", "auditoria"],
-    keywords: ["duplicado", "fusión", "identidad", "colisión", "contacto canónico"],
-    version: 1,
+    keywords: ["duplicado", "fusión", "identidad", "colisión", "contacto canónico", "reabrir"],
+    version: 2,
   },
   {
     id: "oportunidades",
@@ -549,10 +557,11 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "taller",
-            label: "Ficha de taller",
-            description: "Detalla líneas personalizadas para evaluar o preparar fabricación.",
+            label: "Hoja de taller",
+            description:
+              "Detalla líneas personalizadas y archivos de imprenta a 300 DPI únicamente para roles con permiso de producción.",
             interpretation:
-              "La ficha técnica no autoriza producción sin el flujo comercial correspondiente.",
+              "Registra acceso en auditoría, protege datos personales y precios ante el rol de taller y no autoriza imprimir diseños pendientes de moderación.",
           },
         ],
       },
@@ -565,8 +574,8 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
         steps: [
           "Verifica identidad del solicitante, fecha y estado de la cotización.",
           "Revisa productos, variantes, cantidades, personalización y condiciones.",
-          "Consulta la ficha de taller si hay requisitos técnicos.",
-          "Vincula o crea una sola oportunidad para el seguimiento cuando proceda.",
+          "Consulta la hoja de taller si tu rol tiene permiso de producción y hay requisitos técnicos.",
+          "Vincula o convierte en una sola Oportunidad B2B cuando corresponda a volumen, empresa o evento.",
           "Registra el próximo paso sin afirmar que existe una venta confirmada.",
         ],
         expected:
@@ -576,63 +585,82 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
     cautions: ["No uses cotizaciones históricas como evidencia de ingresos o pagos."],
     faqs: [
       {
-        question: "¿Por qué no aparece en el menú principal?",
+        question:
+          "¿Por qué no aparece en el menú principal cuando el checkout completo está activo?",
         answer:
-          "Es un módulo histórico del modo catálogo; las páginas siguen disponibles para consulta y continuidad comercial.",
+          "Con tienda completa activa, las ventas minoristas entran como Pedidos y las negociaciones de volumen se gestionan en Oportunidades B2B. Puedes abrir Cotizaciones desde el buscador rápido (⌘K) para continuidad comercial.",
+      },
+      {
+        question: "¿Por qué Soporte al cliente no ve el botón Hoja de taller?",
+        answer:
+          "La hoja de taller expone originales de imprenta a 300 DPI y está restringida a roles con permiso de descarga de producción.",
       },
     ],
-    related: ["oportunidades", "pedidos", "clientes"],
-    keywords: ["propuesta", "precio", "histórico", "catálogo", "taller", "B2B"],
-    version: 1,
+    related: ["oportunidades", "pedidos", "clientes", "moderacion"],
+    keywords: ["propuesta", "precio", "histórico", "catálogo", "taller", "B2B", "300 DPI"],
+    version: 2,
   },
   {
     id: "resenas",
     title: "Reseñas",
     area: "Ventas y CRM",
     route: "/admin/resenas",
-    summary: "Moderación, respuesta oficial y destacado de reseñas verificadas de clientes.",
+    summary:
+      "Reputación verificada, analítica de calificaciones 5★–1★, moderación de catálogo y seguimiento posventa 360°.",
     purpose:
-      "Permite revisar que las opiniones publicadas cumplan las reglas del sitio y responder de manera institucional. Las reseñas proceden de compras elegibles y no deben manipularse para ocultar críticas legítimas.",
+      "Permite supervisar la voz real de los compradores verificados, publicar reseñas legítimas en la ficha del producto (PDP), curar testimonios destacados para la portada (Home) y detectar calificaciones bajas para activar atención privada en Soporte o Contacto 360. No oculta críticas válidas por su puntaje.",
     whenToUse: [
-      "Para revisar opiniones pendientes de moderación.",
-      "Para responder una experiencia de compra públicamente.",
-      "Para seleccionar contenido destacable sin alterar la opinión del cliente.",
+      "Para revisar y aprobar reseñas pendientes antes de su publicación en la tienda.",
+      "Para seleccionar reseñas aprobadas que merezcan aparecer en el bloque de testimonios del Home.",
+      "Para detectar calificaciones críticas (1★–2★) y abrir seguimiento directo con el pedido, Contacto 360 o Soporte.",
     ],
     concepts: [
       {
-        term: "Reseña verificada",
+        term: "Publicación en dos pasos",
         definition:
-          "Opinión asociada a una compra que cumple las condiciones del flujo de reseñas.",
+          "Aprobar publica la reseña en la página del producto (PDP); marcar ★ Destacar en Home requiere que esté aprobada y la promueve a la portada.",
       },
       {
-        term: "Respuesta oficial",
-        definition: "Comentario de Lucams que complementa la opinión sin reemplazarla ni editarla.",
+        term: "Compra verificada",
+        definition:
+          "Distintivo otorgado cuando la opinión proviene de una compra real confirmada mediante cuenta de cliente o enlace único posentrega.",
+      },
+      {
+        term: "Lectura de reputación vs. moderación",
+        definition:
+          "Soporte consulta todas las calificaciones y navega a Pedido o Contacto 360 en solo lectura; Catálogo y Operaciones ejecutan la moderación editorial.",
       },
     ],
     sections: [
       {
         id: "moderacion",
-        title: "Moderación y publicación",
-        summary: "Controla visibilidad, estado, respuesta y selección editorial.",
+        title: "Analítica 5★–1★, moderación y conexión posventa",
+        summary:
+          "Integra distribución por estrellas, barra de estados, acciones por lote y enlaces 360°.",
         topics: [
           {
-            id: "estado",
-            label: "Estado de moderación",
-            description: "Indica si la reseña está pendiente, aprobada, rechazada o archivada.",
-            interpretation: "Aplica criterios consistentes y registra el motivo cuando se rechace.",
+            id: "distribucion",
+            label: "Distribución 5★–1★ y alertas críticas",
+            description:
+              "Muestra el promedio global aprobado, el peso porcentual de cada estrella y permite filtrar con un clic las reseñas de 1★ o 2★.",
+            interpretation:
+              "Si aumentan las reseñas de 1★ o 2★ en un mismo producto, inspecciona la ficha en catálogo y los reclamos de garantía asociados.",
           },
           {
-            id: "contenido",
-            label: "Texto y calificación",
-            description: "Opinión del cliente sobre su experiencia.",
+            id: "estado",
+            label: "Estados: Pendiente, Aprobada y Archivada",
+            description:
+              "Controla qué opiniones se muestran en la tienda pública y conserva archivadas las descartadas por spam, abuso o datos privados.",
             caution:
-              "No edites el sentido de la opinión ni expongas datos personales en la respuesta.",
+              "Nunca archives una reseña legítima solo por tener baja calificación; archiva únicamente cuando infrinja normas de respeto o exponga datos personales.",
           },
           {
             id: "destacada",
-            label: "Destacada",
-            description: "Controla su selección para ubicaciones editoriales.",
-            interpretation: "Destacar no equivale a aprobar ni cambia la calificación.",
+            label: "★ Destacar en Home y enlaces 360°",
+            description:
+              "Promueve reseñas aprobadas a la portada y enlaza cada fila con PDP, ficha del producto, Pedido, Contacto 360 y Soporte.",
+            interpretation:
+              "Para atender una mala experiencia no existe réplica pública en la reseña: gestiona la solución privada por Soporte o Contacto 360.",
           },
         ],
       },
@@ -640,31 +668,49 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
     procedures: [
       {
         id: "moderar-resena",
-        title: "Moderar y responder una reseña",
-        goal: "Publicar contenido legítimo y atender la experiencia con respeto.",
+        title: "Moderar reseñas y curar destacados de portada",
+        goal: "Publicar opiniones auténticas en PDP y mantener testimonios representativos en el Home.",
+        roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"],
         steps: [
-          "Revisa la reseña y su compra relacionada sin divulgar información privada.",
-          "Aprueba o rechaza según reglas de contenido, no según la calificación.",
-          "Redacta una respuesta oficial breve, empática y orientada a solución cuando aporte valor.",
-          "Abre un ticket si existe un problema que requiera atención privada.",
-          "Marca como destacada solo si la reseña aprobada aporta contexto útil a futuros compradores.",
+          "Filtra la vista Pendientes y verifica el texto, puntaje, producto y sello de compra verificada.",
+          "Aprueba las reseñas legítimas (individualmente o en lote) para publicarlas en la página del producto.",
+          "Si una reseña contiene insultos, spam o datos sensibles (teléfonos, direcciones), archívala para retirarla de la vista pública.",
+          "Entre las reseñas ya aprobadas con contexto útil para futuros compradores, activa ★ Destacar para mostrarlas en el Home.",
         ],
         expected:
-          "La opinión conserva su autenticidad y cualquier problema operativo tiene seguimiento por el canal adecuado.",
+          "La caché de la ficha del producto y de la portada se actualiza al instante y cada acción queda registrada en auditoría.",
+      },
+      {
+        id: "atender-resena-critica",
+        title: "Dar seguimiento posventa a una reseña de 1★ o 2★",
+        goal: "Convertir una calificación crítica en gestión proactiva de soporte o garantía.",
+        roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER", "CUSTOMER_SUPPORT"],
+        steps: [
+          "Haz clic en las barras de 1★ o 2★ o en la tarjeta de atención prioritaria para aislar las opiniones críticas.",
+          "Abre el enlace al Pedido o a Contacto 360 en la misma fila para revisar entrega, diseño y antecedentes.",
+          "Inicia o actualiza la atención privada desde Soporte o Garantías según corresponda al caso.",
+        ],
+        expected:
+          "El comprador recibe acompañamiento directo por el canal adecuado sin alterar ni censurar su calificación original.",
       },
     ],
     cautions: [
-      "No rechaces una reseña únicamente por ser negativa ni prometas soluciones que aún no están confirmadas.",
+      "No censures reseñas negativas reales: la transparencia protege la confianza de marca y cumple las normas de protección al consumidor.",
     ],
     faqs: [
       {
-        question: "¿Puedo responder con los datos del pedido?",
+        question: "¿Cómo respondo a un cliente que dejó una queja en una reseña?",
         answer:
-          "No expongas datos personales ni detalles privados; traslada la gestión sensible a Soporte.",
+          "Lucams no publica réplicas abiertas sobre la reseña para proteger la privacidad del comprador; usa los enlaces a Pedido, Contacto 360 o Soporte para atenderlo directamente.",
+      },
+      {
+        question: "¿Por qué Soporte ve las reseñas pero no los botones de aprobar o archivar?",
+        answer:
+          "Porque Soporte tiene acceso de lectura reputacional para investigar incidencias, mientras la publicación en escaparate corresponde a roles con escritura de catálogo.",
       },
     ],
-    related: ["soporte", "pedidos", "clientes"],
-    keywords: ["opinión", "calificación", "moderar", "respuesta", "destacada"],
-    version: 1,
+    related: ["soporte", "garantias", "pedidos", "clientes", "productos"],
+    keywords: ["opinión", "calificación", "estrellas", "moderar", "destacada", "reputación", "PDP"],
+    version: 2,
   },
 ];

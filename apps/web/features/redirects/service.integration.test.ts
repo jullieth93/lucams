@@ -1108,6 +1108,16 @@ describe.skipIf(!hasDb)(
         expect((await prisma.urlRedirect.findUnique({ where: { fromPath: a } }))!.toPath).toBe(c);
         expect((await prisma.urlRedirect.findUnique({ where: { fromPath: b } }))!.toPath).toBe(c);
       });
+
+      it("rechaza cadena entrante manual (X→A activo impide crear A→B manualmente)", async () => {
+        const x = nextPath("-inx");
+        const a = nextPath("-ina");
+        const b = nextPath("-inb");
+        await createRedirect({ fromPath: x, toPath: a, statusCode: 301 }, ACTOR);
+        await expect(
+          createRedirect({ fromPath: a, toPath: b, statusCode: 301 }, ACTOR),
+        ).rejects.toMatchObject({ field: "fromPath" });
+      });
     });
   },
 );

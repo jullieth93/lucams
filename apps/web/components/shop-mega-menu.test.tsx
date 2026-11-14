@@ -90,14 +90,14 @@ async function openDrawer(): Promise<void> {
 }
 
 describe("ShopMegaMenu — acceso admin en el drawer móvil (2026-09-07)", () => {
-  it("con isAdmin=true el drawer muestra el link 'Panel admin' a /admin/dashboard", async () => {
+  it("con isAdmin=true el drawer muestra el link 'Panel admin' a /admin", async () => {
     render(
       <ShopMegaMenu tree={[makeCategory()]} ocasiones={[]} isLoggedIn isAdmin texts={TEXTS} />,
     );
     await openDrawer();
 
     const link = screen.getByRole("link", { name: "Panel admin" });
-    expect(link).toHaveAttribute("href", "/admin/dashboard");
+    expect(link).toHaveAttribute("href", "/admin");
     // Primer ítem de la sección "Tu cuenta" (el <p> es hijo directo del
     // contenedor de la sección; dentro de él, el primer link del bloque).
     const section = screen.getByText("Tu cuenta").parentElement!;
@@ -117,7 +117,7 @@ describe("ShopMegaMenu — acceso admin en el drawer móvil (2026-09-07)", () =>
     await openDrawer();
 
     const link = screen.getByRole("link", { name: "Panel de administración" });
-    expect(link).toHaveAttribute("href", "/admin/dashboard");
+    expect(link).toHaveAttribute("href", "/admin");
     expect(screen.queryByRole("link", { name: "Panel admin" })).not.toBeInTheDocument();
   });
 

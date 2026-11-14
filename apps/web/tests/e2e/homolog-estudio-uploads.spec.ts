@@ -173,7 +173,16 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
     // 0. Estudio carga (Konva monta canvas) con el onboarding ya resuelto.
     await anonPage.addInitScript(() => {
       try {
-        window.localStorage.setItem("lucams_studio_onboarded", "v1");
+        for (const surface of [
+          "default",
+          "cards",
+          "bookmarks",
+          "strips",
+          "calendar",
+          "polaroid-ig",
+        ]) {
+          window.localStorage.setItem(`lucams_studio_onboarded_${surface}`, "v1");
+        }
       } catch {
         /* noop */
       }

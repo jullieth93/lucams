@@ -18,18 +18,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, Settings } from "lucide-react";
 import { AdminNotice, AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
-import { requireRole } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
+import { adminHomePath } from "@/lib/admin-rbac";
 import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
 import { ConfigSection } from "./config-section";
 
-export const metadata: Metadata = { title: "Configuración · Carritos abandonados" };
+export const metadata: Metadata = {
+  title: "Configuración · Carritos abandonados",
+  robots: { index: false, follow: false },
+};
 export const dynamic = "force-dynamic";
 
 export default async function CarritosConfiguracionPage() {
-  // SUPERADMIN, alineado con la action de la página y con la ruta en
-  // lib/admin-rbac.ts (subprefix /admin/carritos/configuracion).
-  await requireRole(ADMIN_ROLE_SETS.SUPER);
+  // Exclusivo `carts:configure` (SUPERADMIN), alineado con la action y con lib/admin-rbac.ts.
+  const session = await requireCapability("carts:configure");
+  const homeHref = adminHomePath(session.admin.role);
 
   const settings = await getCartRecoverySettings();
 
@@ -40,7 +43,7 @@ export default async function CarritosConfiguracionPage() {
         title="Configuración · Carritos abandonados"
         subtitle="Habilita el módulo y decide si los recordatorios salen solos (automático) o solo a voluntad (manual)."
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: homeHref },
           { label: "Marketing" },
           { label: "Carritos abandonados", href: "/admin/carritos" },
           { label: "Configuración" },

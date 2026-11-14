@@ -19,6 +19,7 @@ import {
   mergeContactsByHumanApproval,
   MergeValidationError,
   rejectMergeCandidate,
+  reopenMergeCandidate,
 } from "@/features/identity/merge-service";
 import { logger } from "@/lib/logger";
 
@@ -129,5 +130,51 @@ export async function rejectContactMergeAction(formData: FormData): Promise<void
     const msg =
       err instanceof MergeValidationError ? err.message : "No fue posible descartar la sugerencia.";
     redirect(`/admin/clientes/duplicados?error=${encodeURIComponent(msg)}`);
+  }
+}
+
+export async function reopenContactMergeAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ capability: "contacts:merge" });
+
+  const candidateId = String(formData.get("candidateId") ?? "").trim();
+  const note =
+    String(formData.get("note") ?? "")
+      .trim()
+      .slice(0, 500) || null;
+
+  try {
+    const result = await reopenMergeCandidate({
+      candidateId,
+      actorAdminId: session.admin.id,
+      note,
+    });
+
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "contact.merge_reopen",
+      entityType: "IdentityMergeCandidate",
+      entityId: result.candidateId,
+      metadata: {
+        primaryContactId: result.primaryContactId,
+        secondaryContactId: result.secondaryContactId,
+        reopened: true,
+        note,
+      },
+    });
+
+    logger.info({
+      event: "admin.contact.merge_reopened",
+      adminId: session.admin.id,
+      candidateId: result.candidateId,
+    });
+
+    revalidatePath("/admin/clientes");
+    revalidatePath("/admin/clientes/duplicados");
+    redirect("/admin/clientes/duplicados?status=PENDING&reopened=1");
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const msg =
+      err instanceof MergeValidationError ? err.message : "No fue posible reabrir la sugerencia.";
+    redirect(`/admin/clientes/duplicados?status=REJECTED&error=${encodeURIComponent(msg)}`);
   }
 }

@@ -22,7 +22,6 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { deleteProductImage, StorageError, uploadProductImage } from "@/lib/storage";
@@ -32,7 +31,7 @@ const MAX_IMAGES_PER_PRODUCT = 10;
 type ActionResult = { error?: string };
 
 export async function uploadProductImagesAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const productId = String(formData.get("productId") ?? "");
   if (!productId) return { error: "Producto inválido." };
@@ -114,7 +113,7 @@ export async function uploadProductImagesAction(formData: FormData): Promise<Act
 }
 
 export async function reorderProductImagesAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const productId = String(formData.get("productId") ?? "");
   const orderStr = String(formData.get("order") ?? "[]");
@@ -164,7 +163,7 @@ export async function reorderProductImagesAction(formData: FormData): Promise<Ac
 }
 
 export async function deleteProductImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const productId = String(formData.get("productId") ?? "");
   const url = String(formData.get("url") ?? "");

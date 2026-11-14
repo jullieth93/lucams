@@ -76,6 +76,22 @@ export async function saveAdminHelpProgress(input: {
   };
 }
 
+export async function getAdminHelpFeedbackForGuide(
+  adminUserId: string,
+  guideId: string,
+): Promise<{ isHelpful: boolean; comment: string | null } | null> {
+  const row = await prisma.adminHelpFeedback.findUnique({
+    where: {
+      adminUserId_guideId: { adminUserId, guideId },
+    },
+    select: {
+      isHelpful: true,
+      comment: true,
+    },
+  });
+  return row ?? null;
+}
+
 export async function submitAdminHelpFeedback(input: {
   adminUserId: string;
   role: AdminRole;

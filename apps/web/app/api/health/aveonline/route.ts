@@ -1,11 +1,9 @@
 /*
  * GET /api/health/aveonline — chequea la integración de envíos SIN generar guías.
  *
- * Las credenciales viven cifradas en Vercel y no se pueden auditar leyéndolas. Este endpoint
- * autentica contra Aveonline y reporta qué cuenta responde, para poder distinguir desde fuera:
- *   - modo `test`     → cuenta demo pública, no genera guías reales (correcto en dev/preview);
- *   - modo `production` con cuenta real → listo para despachar;
- *   - modo `production` con cuenta DEMO → la tienda cree que despacha y NO lo hace (status "warn").
+ * Autentica contra Aveonline sin generar guías. La respuesta pública se limita a
+ * `{ status, ok }`; el modo, la cuenta y los detalles de error solo se devuelven
+ * con `x-cron-secret` válido. En producción, una cuenta DEMO produce `status: "warn"`.
  *
  * Se agrega a /api/health/all como check NO bloqueante (2026-08-05): cada llamada gasta una
  * autenticación contra un tercero, amortizada por el rate-limit compartido (30/min por IP).
@@ -17,6 +15,7 @@ import { probeAveonlineHealth } from "@/features/shipping/aveonline";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
+import { cronSecretOk } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,16 +25,18 @@ export async function GET(req: Request): Promise<Response> {
   // un tercero o la DB por hit → sin límite era amplificable. 30/min por IP.
   const { allowed } = await rateLimit(ipKey("health_aveonline", getClientIp(req.headers)), 30, 60);
   if (!allowed) {
-    return new Response(JSON.stringify({ status: "rate_limited" }), {
+    return new Response(JSON.stringify({ status: "rate_limited", ok: false }), {
       status: 429,
       headers: { "content-type": "application/json", "Retry-After": "60" },
     });
   }
 
+  const includeInternalDetails = cronSecretOk(req.headers.get("x-cron-secret"));
   const start = Date.now();
   try {
     const shipping = await probeAveonlineHealth();
     const latencyMs = Date.now() - start;
+    const status = shipping.ok ? "ok" : "warn";
     if (!shipping.ok) {
       logger.warn({
         event: "health.aveonline.not_ready",
@@ -43,8 +44,12 @@ export async function GET(req: Request): Promise<Response> {
         detail: shipping.detail,
       });
     }
+    if (!includeInternalDetails) {
+      return Response.json({ status, ok: shipping.ok });
+    }
     return Response.json({
-      status: shipping.ok ? "ok" : "warn",
+      status,
+      ok: shipping.ok,
       service: "aveonline",
       check: "auth",
       shipping,
@@ -58,6 +63,9 @@ export async function GET(req: Request): Promise<Response> {
       latencyMs,
       err: err instanceof Error ? err.message : String(err),
     });
+    if (!includeInternalDetails) {
+      return Response.json({ status: "fail", ok: false }, { status: 500 });
+    }
     return problemResponse(new InternalError("Aveonline healthcheck falló."));
   }
 }

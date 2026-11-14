@@ -18,9 +18,9 @@
 import "server-only";
 import type { AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
-import { canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
+import { canAccessAdminPath, canManageOrderRenderJobs, hasCapability } from "@/lib/admin-rbac";
 import { evaluateSlaStatus, type SlaSemaphoreState } from "@/lib/colombian-sla";
-import { maskEmail, maskPersonName } from "@/lib/pii-mask";
+import { maskEmail, maskEmailsInText, maskPersonName } from "@/lib/pii-mask";
 import { formatCOP } from "@/lib/format";
 import { isCrmTaskPriority, type CrmTaskPriority } from "./constants";
 import { countConsentedAnnualOccasionContacts } from "./intelligence-service";
@@ -108,6 +108,7 @@ export async function getTodayOperationalInbox(
   const canReadOrderPii = hasCapability(role, "orders:read_pii");
   const canReadContactPii = hasCapability(role, "contacts:read_pii");
   const canRead360 = hasCapability(role, "contacts:read_360");
+  const canManageOpportunities = hasCapability(role, "opportunities:manage");
   const canManageTasks = hasCapability(role, "crm:manage_tasks");
   const canManageRetract = hasCapability(role, "retract:manage");
   const canManageSupport = hasCapability(role, "support:manage");
@@ -145,6 +146,7 @@ export async function getTodayOperationalInbox(
       ? prisma.task.findMany({
           where: {
             status: { in: ["OPEN", "IN_PROGRESS"] },
+            ...(canManageOpportunities ? {} : { opportunityId: null }),
             ...(canRead360
               ? {
                   OR: [
@@ -223,8 +225,8 @@ export async function getTodayOperationalInbox(
         })
       : Promise.resolve([]),
 
-    // 5. Renders 300 DPI fallidos en pedidos pagados / en preparación
-    canTransitionOrders
+    // 5. Renders 300 DPI fallidos en pedidos pagados / en preparación (exclusivo taller / gerencia)
+    canManageOrderRenderJobs(role)
       ? prisma.renderJob.findMany({
           where: {
             status: "FAILED",
@@ -427,7 +429,7 @@ export async function getTodayOperationalInbox(
       sourceId: t.id,
       category: "TASK",
       severity: taskPriorityToSeverity(priority, isOverdue),
-      title: t.title,
+      title: maskPii ? maskEmailsInText(t.title) : t.title,
       subtitle: subtitleParts.join(" · "),
       badgeLabel: isOverdue
         ? "Tarea vencida"
@@ -468,7 +470,7 @@ export async function getTodayOperationalInbox(
       isOverdue: sla.state === "OVERDUE",
       dueAtIso: r.slaDueAt ? r.slaDueAt.toISOString() : null,
       createdAtIso: r.requestedAt.toISOString(),
-      actionHref: "/admin/retractos",
+      actionHref: `/admin/retractos?status=all&q=${encodeURIComponent(r.id)}`,
       actionLabel: "Gestionar retracto",
       completableTaskId: null,
     });
@@ -527,7 +529,7 @@ export async function getTodayOperationalInbox(
       isOverdue: sla.state === "OVERDUE",
       dueAtIso: w.slaDueAt ? w.slaDueAt.toISOString() : null,
       createdAtIso: w.requestedAt.toISOString(),
-      actionHref: "/admin/garantias",
+      actionHref: `/admin/garantias?status=all&q=${encodeURIComponent(w.id)}`,
       actionLabel: "Ver garantía",
       completableTaskId: null,
     });

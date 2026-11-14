@@ -6,6 +6,7 @@ import {
   mergeContactsByHumanApproval,
   MergeValidationError,
   rejectMergeCandidate,
+  reopenMergeCandidate,
 } from "./merge-service";
 import { resolveContactRouteParam } from "./contact-360-service";
 import { enqueueMergeCandidateTx } from "./resolution-service";
@@ -197,6 +198,12 @@ describe.skipIf(!HAS_DB)(
       expect(candidate).toBeDefined();
       expect(candidate!.bothHaveActiveCustomerAccounts).toBe(false);
       expect(candidate!.forcedSurvivorContactId).toBe(authContact.id);
+      const guestSummaryInCard =
+        candidate!.primaryContact.id === guestContact.id
+          ? candidate!.primaryContact
+          : candidate!.secondaryContact;
+      // LTV neto debe coincidir exactamente con Contact 360 (order.total cobrado = 10_100_000).
+      expect(guestSummaryInCard.netLtvCents).toBe(10_100_000);
 
       // Si se intenta elegir al invitado como sobreviviente habiendo cuenta activa, debe rechazar.
       await expect(
@@ -358,6 +365,19 @@ describe.skipIf(!HAS_DB)(
         where: { id: candidate.id },
       });
       expect(afterResuggest.status).toBe("REJECTED");
+
+      // Reapertura gobernada desde «Descartados» devuelve el par a PENDING cuando ambos siguen activos.
+      const reopened = await reopenMergeCandidate({
+        candidateId: candidate.id,
+        actorAdminId: admin.id,
+        note: "Revisión solicitada por gerencia",
+      });
+      expect(reopened.candidateId).toBe(candidate.id);
+      const afterReopen = await prisma.identityMergeCandidate.findUniqueOrThrow({
+        where: { id: candidate.id },
+      });
+      expect(afterReopen.status).toBe("PENDING");
+      expect(afterReopen.reviewNote).toBe("Revisión solicitada por gerencia");
     });
   },
 );

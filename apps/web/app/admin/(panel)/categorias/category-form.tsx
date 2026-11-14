@@ -82,6 +82,13 @@ export function CategoryForm({
       {isEdit && <input type="hidden" name="id" value={initialCategory!.id} />}
 
       {state?.error && !state.fieldErrors && <AdminNotice tone="error">{state.error}</AdminNotice>}
+      {state?.success && !state.error && (
+        <div role="status">
+          <AdminNotice tone="success">
+            Cambios guardados. El catálogo y el menú de tu tienda ya reflejan la actualización.
+          </AdminNotice>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
@@ -126,7 +133,9 @@ export function CategoryForm({
           )}
           {isEdit && (
             <p className="text-brand-muted text-[11px]">
-              Cambiar el slug rompe URLs públicas. Solo cambialo si vas a generar redirect 301.
+              Si cambias el slug, Lucams crea automáticamente una redirección 301 desde la URL
+              anterior para no romper enlaces existentes; cámbialo solo cuando realmente lo
+              necesites.
             </p>
           )}
         </div>

@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import {
   CategoryValidationError,
   createCategory,
@@ -19,6 +18,7 @@ import { toCanonicalVisibleFilters } from "@/lib/visible-filters";
 import { logger } from "@/lib/logger";
 
 export type CategoryActionState = {
+  success?: boolean;
   error?: string;
   fieldErrors?: Partial<
     Record<
@@ -82,7 +82,7 @@ export async function createCategoryAction(
   _prev: CategoryActionState | null,
   formData: FormData,
 ): Promise<CategoryActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const parsed = CategoryCreateSchema.safeParse(parsePayload(formData));
   if (!parsed.success) {
@@ -108,6 +108,8 @@ export async function createCategoryAction(
       metadata: { slug: category.slug, name: category.name },
     });
     revalidatePath("/admin/categorias");
+    revalidatePath("/productos");
+    revalidatePath("/", "layout");
     redirect("/admin/categorias?created=1");
   } catch (err) {
     if (err instanceof CategoryValidationError) {
@@ -133,7 +135,7 @@ export async function updateCategoryAction(
   _prev: CategoryActionState | null,
   formData: FormData,
 ): Promise<CategoryActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "ID inválido." };
@@ -157,7 +159,10 @@ export async function updateCategoryAction(
       metadata: { fields: Object.keys(parsed.data) },
     });
     revalidatePath("/admin/categorias");
-    return {};
+    revalidatePath(`/admin/categorias/${id}`);
+    revalidatePath("/productos");
+    revalidatePath("/", "layout");
+    return { success: true };
   } catch (err) {
     if (err instanceof CategoryValidationError) {
       return {
@@ -183,7 +188,7 @@ export async function updateCategoryAction(
  * si está inactiva, vuelve a activa.
  */
 export async function toggleCategoryActiveAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   const next = formData.get("next") === "true"; // estado deseado
@@ -217,7 +222,7 @@ export async function toggleCategoryActiveAction(formData: FormData): Promise<vo
  * D3 (Lucy 2026-06-27): reemplaza el campo manual "número de orden".
  */
 export async function moveCategoryAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   const direction = formData.get("direction") === "up" ? "up" : "down";
@@ -250,7 +255,7 @@ export async function moveCategoryAction(formData: FormData): Promise<void> {
 /** Restaura una categoría archivada (deletedAt → null). Queda inactiva
  * por seguridad — admin la activa después si quiere mostrarla. */
 export async function restoreCategoryAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await restoreCategory(id, session.admin.id);
@@ -272,7 +277,7 @@ export async function restoreCategoryAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteCategoryAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return;
@@ -291,6 +296,8 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
       entityId: id,
     });
     revalidatePath("/admin/categorias");
+    revalidatePath("/productos");
+    revalidatePath("/", "layout");
     redirect("/admin/categorias?deleted=1");
   } catch (err) {
     if (err instanceof CategoryValidationError) {

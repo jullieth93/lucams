@@ -56,7 +56,7 @@ let variantId = "";
 let runStartedAt = new Date();
 
 test.setTimeout(300_000);
-test.use({ hasTouch: true });
+test.use({ hasTouch: true, actionTimeout: 30_000 });
 
 type Transform = { offsetX?: number; offsetY?: number; scale?: number } | null;
 
@@ -212,6 +212,9 @@ test("gestos del canvas: drag = pan, pinch = zoom, doble tap = reset (persistido
     panel = page.locator('[role="dialog"]').first();
     await expect(panel).toBeVisible({ timeout: 10_000 });
   }
+  const template = panel.getByRole("radio").filter({ visible: true }).first();
+  await template.click();
+  await expect(template).toHaveAttribute("aria-checked", "true");
   const consent = panel.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
   if (await consent.count()) await consent.check();
   await panel.locator('input[type="file"]').first().setInputFiles([PHOTO_PATH]);

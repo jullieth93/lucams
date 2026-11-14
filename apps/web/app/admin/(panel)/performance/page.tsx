@@ -22,34 +22,38 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { Gauge } from "lucide-react";
+import { Gauge, HeartPulse, PlugZap } from "lucide-react";
 import {
   AdminBadge,
   AdminCard,
+  AdminComboBarLineChart,
   AdminEmpty,
   AdminNotice,
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
+  AdminSegmentedBar,
   AdminTable,
   AdminTableBody,
   AdminTableHead,
   AdminTableRow,
   KpiCard,
+  type ComboChartDatum,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { computePercentiles, type VitalPercentiles } from "@/features/observability/percentiles";
 import { buildTargetTable, type InpTargetRow } from "@/features/observability/inp-targets";
 import { buildRouteMetricTable } from "@/features/observability/route-metrics";
 import { classifyDevice, type DeviceClass } from "@/features/observability/device";
-import { formatDateTimeNoYearCO } from "@/lib/datetime";
+import { formatDateTimeNoYearCO, formatDayMonthCO, formatIsoDateCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
   title: "Rendimiento técnico",
   robots: { index: false, follow: false },
 };
+
+export const dynamic = "force-dynamic";
 
 const WINDOW_DAYS = 7;
 const MAX_ERRORS = 20;
@@ -121,8 +125,30 @@ function formatMetric(name: string, value: number): string {
 // Helper (no-componente) para el inicio de la ventana — el react-hooks/purity no
 // permite Date.now() directo en el cuerpo del componente RSC (mismo patrón que
 // probeHealth en /admin/integraciones).
-function windowStart(days: number): Date {
-  return new Date(Date.now() - days * 24 * 3600 * 1000);
+function windowStart(days: number): {
+  since: Date;
+  bogotaSince: Date;
+  buckets: Array<{ key: string; label: string; tickLabel: string }>;
+} {
+  const now = new Date();
+  const todayIso = formatIsoDateCO(now);
+  const noonToday = new Date(`${todayIso}T12:00:00.000-05:00`);
+  const buckets: Array<{ key: string; label: string; tickLabel: string }> = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(noonToday.getTime() - i * 86_400_000);
+    const key = formatIsoDateCO(d);
+    buckets.push({
+      key,
+      label: formatDayMonthCO(d),
+      tickLabel: `${key.slice(8)}/${key.slice(5, 7)}`,
+    });
+  }
+  const firstKey = buckets[0]?.key ?? todayIso;
+  return {
+    since: new Date(now.getTime() - days * 24 * 3600 * 1000),
+    bogotaSince: new Date(`${firstKey}T00:00:00.000-05:00`),
+    buckets,
+  };
 }
 
 /* Tabla por ruta: las 4 métricas que responden "¿qué página duele y por qué?"
@@ -358,8 +384,7 @@ export default async function AdminPerformancePage({
 }: {
   searchParams: SearchParams;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireRole(["SUPERADMIN"]);
 
   const sp = await searchParams;
   const deviceParam = pickString(sp, "device");
@@ -367,48 +392,95 @@ export default async function AdminPerformancePage({
   const device: DeviceFilter = isDeviceFilter(deviceParam) ? deviceParam : "all";
   const nav: NavFilter = isNavFilter(navParam) ? navParam : "all";
 
-  const since = windowStart(WINDOW_DAYS);
+  const { since, bogotaSince, buckets } = windowStart(WINDOW_DAYS);
 
-  const [errorCount7d, recentErrors, vitalsSampleCount, vitalRows] = await Promise.all([
-    prisma.errorLog.count({ where: { createdAt: { gte: since } } }),
-    prisma.errorLog.findMany({
-      orderBy: { createdAt: "desc" },
-      take: MAX_ERRORS,
-      select: {
-        id: true,
-        message: true,
-        digest: true,
-        stack: true,
-        routePath: true,
-        requestPath: true,
-        method: true,
-        routeType: true,
-        createdAt: true,
-      },
-    }),
-    prisma.webVital.count({ where: { createdAt: { gte: since } } }),
-    // Valores crudos de la ventana: alimentan cards (p75), tabla por ruta,
-    // tablas por elemento y las secciones LONGTASK/PAGEWEIGHT. Usa el índice
-    // (name, route, createdAt); tope documentado arriba. `delta` lleva la
-    // cantidad de long tasks / recursos en las métricas por pageview.
-    prisma.webVital.findMany({
-      where: { createdAt: { gte: since } },
-      select: {
-        route: true,
-        name: true,
-        value: true,
-        delta: true,
-        target: true,
-        navType: true,
-        userAgent: true,
-      },
-      take: MAX_VITAL_ROWS,
-    }),
-  ]);
+  const [errorCount7d, recentErrors, errorDates7d, vitalsSampleCount, vitalRows] =
+    await Promise.all([
+      prisma.errorLog.count({ where: { createdAt: { gte: since } } }),
+      prisma.errorLog.findMany({
+        orderBy: { createdAt: "desc" },
+        take: MAX_ERRORS,
+        select: {
+          id: true,
+          message: true,
+          digest: true,
+          stack: true,
+          routePath: true,
+          requestPath: true,
+          method: true,
+          routeType: true,
+          createdAt: true,
+        },
+      }),
+      prisma.errorLog.findMany({
+        where: { createdAt: { gte: bogotaSince } },
+        select: { createdAt: true },
+        take: 5000,
+      }),
+      prisma.webVital.count({ where: { createdAt: { gte: since } } }),
+      // Valores crudos de la ventana: alimentan cards (p75), tabla por ruta,
+      // tablas por elemento y las secciones LONGTASK/PAGEWEIGHT. Usa el índice
+      // (name, route, createdAt); tope documentado arriba. `delta` lleva la
+      // cantidad de long tasks / recursos en las métricas por pageview.
+      prisma.webVital.findMany({
+        where: { createdAt: { gte: since } },
+        select: {
+          route: true,
+          name: true,
+          value: true,
+          rating: true,
+          delta: true,
+          target: true,
+          navType: true,
+          userAgent: true,
+          createdAt: true,
+        },
+        take: MAX_VITAL_ROWS,
+      }),
+    ]);
 
   // Filtros por dispositivo / tipo de navegación (Paquete C) sobre las filas
   // crudas — todas las secciones de Web Vitals ven el mismo subconjunto.
   const filteredRows = vitalRows.filter((r) => matchesVitalFilters(r, device, nav));
+
+  // Pulso diario en hora Colombia (7 días): muestras RUM filtradas vs errores 500.
+  const dailyRumByKey = new Map<string, number>();
+  const dailyErrByKey = new Map<string, number>();
+  for (const r of filteredRows) {
+    const k = formatIsoDateCO(r.createdAt);
+    dailyRumByKey.set(k, (dailyRumByKey.get(k) ?? 0) + 1);
+  }
+  for (const e of errorDates7d) {
+    const k = formatIsoDateCO(e.createdAt);
+    dailyErrByKey.set(k, (dailyErrByKey.get(k) ?? 0) + 1);
+  }
+  const dailyChartData: ComboChartDatum[] = buckets.map((b) => {
+    const rum = dailyRumByKey.get(b.key) ?? 0;
+    const err = dailyErrByKey.get(b.key) ?? 0;
+    return {
+      key: b.key,
+      label: b.label,
+      tickLabel: b.tickLabel,
+      barValue: rum,
+      barFormatted: `${rum.toLocaleString("es-CO")} muestras RUM`,
+      lineValue: err,
+      lineFormatted: `${err.toLocaleString("es-CO")} ${err === 1 ? "error" : "errores"}`,
+    };
+  });
+
+  // Mezcla de calificaciones RUM sobre el subconjunto filtrado.
+  let ratingGood = 0;
+  let ratingNeedsImprovement = 0;
+  let ratingPoor = 0;
+  for (const r of filteredRows) {
+    const computed =
+      r.rating === "good" || r.rating === "needs-improvement" || r.rating === "poor"
+        ? r.rating
+        : ratingFor(r.name, r.value);
+    if (computed === "good") ratingGood += 1;
+    else if (computed === "needs-improvement") ratingNeedsImprovement += 1;
+    else ratingPoor += 1;
+  }
 
   // Cards: p75 por métrica (el estándar de web.dev — antes AVG, corregido en
   // Paquete C). En orden fijo de importancia percibida; luego cualquier otra.
@@ -428,6 +500,8 @@ export default async function AdminPerformancePage({
       return (ia === -1 ? ORDER.length : ia) - (ib === -1 ? ORDER.length : ib);
     });
 
+  const healthyMetricsCount = vitals.filter((v) => ratingFor(v.name, v.p75) === "good").length;
+
   // Percentiles por ruta: la tabla de diagnóstico.
   const routeTable = buildRouteVitalTable(filteredRows);
   // Por ELEMENTO (target): qué botón/input/canvas duele dentro de cada página.
@@ -444,31 +518,120 @@ export default async function AdminPerformancePage({
       <AdminPageHeader
         icon={<Gauge className="h-5 w-5" />}
         title="Rendimiento técnico"
-        subtitle={`Errores del servidor y Web Vitals reales de los visitantes, últimos ${WINDOW_DAYS} días.`}
+        subtitle={`Errores del servidor y Core Web Vitals reales de los visitantes, últimos ${WINDOW_DAYS} días.`}
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
-          { label: "Analítica" },
+          { label: "Inicio", href: "/admin/dashboard" },
+          { label: "Sistema" },
           { label: "Rendimiento técnico" },
         ]}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/admin/observability"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <HeartPulse className="h-3.5 w-3.5" aria-hidden />
+              Salud técnica
+            </Link>
+            <Link
+              href="/admin/integraciones"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <PlugZap className="h-3.5 w-3.5" aria-hidden />
+              Integraciones
+            </Link>
+          </div>
+        }
       />
 
       <AdminPageBody>
         <AdminNotice tone="info">
           <strong>¿Para qué sirve?</strong> Acá ves si la tienda está rápida y sin fallas, con datos
-          reales de los visitantes. Si una métrica sale en amarillo o rojo, o suben los errores,
-          avísanos para revisarlo.
+          reales de los visitantes (RUM). Si una métrica p75 sale en amarillo o rojo, o suben los
+          errores, identifica la página y el elemento exacto en las tablas inferiores.
         </AdminNotice>
 
-        {/* ── Errores del servidor ── */}
+        {/* ── KPIs ejecutivos de rendimiento ── */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <KpiCard
             label={`Errores del servidor · ${WINDOW_DAYS} días`}
-            value={errorCount7d.toLocaleString("es-CO")}
+            value={errorCount7d}
             trend={errorCount7d === 0 ? "up" : "down"}
             trendLabel={
-              errorCount7d === 0 ? "Sin errores registrados" : "Revisar la tabla de abajo"
+              errorCount7d === 0 ? "Sin errores registrados" : "Revisa el detalle en la tabla"
             }
           />
+          <KpiCard
+            label={`Muestras RUM · ${WINDOW_DAYS} días`}
+            value={filteredRows.length}
+            trend={filteredRows.length > 0 ? "up" : "neutral"}
+            trendLabel={
+              device !== "all" || nav !== "all"
+                ? `Filtradas sobre ${vitalsSampleCount.toLocaleString("es-CO")} totales`
+                : "Telemetría real de navegadores"
+            }
+          />
+          <KpiCard
+            label="Rutas con telemetría"
+            value={routeTable.length}
+            trend={
+              vitals.length === 0
+                ? "neutral"
+                : healthyMetricsCount === vitals.length
+                  ? "up"
+                  : "down"
+            }
+            trendLabel={
+              vitals.length === 0
+                ? "Esperando primeras visitas"
+                : `${healthyMetricsCount} de ${vitals.length} métricas en p75 bueno`
+            }
+          />
+        </div>
+
+        {/* ── Pulso diario RUM vs errores + distribución de calificaciones ── */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <AdminCard className="p-5">
+              <div className="mb-3">
+                <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                  Pulso de tráfico RUM y errores ({WINDOW_DAYS} días)
+                </h2>
+                <p className="text-brand-muted text-xs">
+                  Muestras reales recibidas frente a errores no manejados en hora Colombia
+                </p>
+              </div>
+              <AdminComboBarLineChart
+                data={dailyChartData}
+                ariaLabel="Muestras RUM recibidas frente a errores del servidor en los últimos 7 días"
+                barLegend="Muestras RUM"
+                lineLegend="Errores 500 servidor"
+              />
+            </AdminCard>
+          </div>
+          <AdminCard className="p-5">
+            <div className="mb-3">
+              <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                Calidad de experiencia (RUM)
+              </h2>
+              <p className="text-brand-muted text-xs">
+                Proporción de mediciones según umbrales de web.dev
+              </p>
+            </div>
+            <AdminSegmentedBar
+              ariaLabel="Proporción de muestras Web Vitals buenas, mejorables y lentas"
+              items={[
+                { key: "good", label: "Bueno", count: ratingGood, tone: "emerald" },
+                {
+                  key: "needs-improvement",
+                  label: "Mejorable",
+                  count: ratingNeedsImprovement,
+                  tone: "amber",
+                },
+                { key: "poor", label: "Lento", count: ratingPoor, tone: "rose" },
+              ]}
+            />
+          </AdminCard>
         </div>
 
         <section aria-labelledby="errors-heading">

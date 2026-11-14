@@ -29,6 +29,7 @@ type Props = {
   initialContactName: string | null;
   initialContactEmail: string | null;
   initialContactWhatsapp: string | null;
+  canEditContactPii?: boolean;
   currentAdminId: string;
   assignableAdmins: Array<{ id: string; email: string }>;
 };
@@ -45,6 +46,7 @@ export function OpportunityEditForm({
   initialContactName,
   initialContactEmail,
   initialContactWhatsapp,
+  canEditContactPii = true,
   currentAdminId,
   assignableAdmins,
 }: Props) {
@@ -197,59 +199,61 @@ export function OpportunityEditForm({
           />
         </div>
 
-        <details className="border-brand-purple/15 rounded-lg border bg-[#FFF8F0]/40 p-3">
-          <summary className="text-brand-purple-dark cursor-pointer text-xs font-semibold">
-            Actualizar datos de contacto del solicitante (nombre, correo o WhatsApp)
-          </summary>
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label
-                htmlFor="opp-contact-name"
-                className="text-brand-muted block text-[11px] font-semibold uppercase"
-              >
-                Nombre del contacto
-              </label>
-              <input
-                id="opp-contact-name"
-                name="contactName"
-                type="text"
-                defaultValue={initialContactName ?? ""}
-                className="border-brand-purple/20 text-brand-purple-dark mt-1 min-h-10 w-full rounded-lg border bg-white px-2.5 py-1.5 text-xs"
-              />
+        {canEditContactPii && (
+          <details className="border-brand-purple/15 rounded-lg border bg-[#FFF8F0]/40 p-3">
+            <summary className="text-brand-purple-dark cursor-pointer text-xs font-semibold">
+              Actualizar datos de contacto del solicitante (nombre, correo o WhatsApp)
+            </summary>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label
+                  htmlFor="opp-contact-name"
+                  className="text-brand-muted block text-[11px] font-semibold uppercase"
+                >
+                  Nombre del contacto
+                </label>
+                <input
+                  id="opp-contact-name"
+                  name="contactName"
+                  type="text"
+                  defaultValue={initialContactName ?? ""}
+                  className="border-brand-purple/20 text-brand-purple-dark mt-1 min-h-10 w-full rounded-lg border bg-white px-2.5 py-1.5 text-xs"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="opp-contact-email"
+                  className="text-brand-muted block text-[11px] font-semibold uppercase"
+                >
+                  Correo electrónico
+                </label>
+                <input
+                  id="opp-contact-email"
+                  name="contactEmail"
+                  type="email"
+                  defaultValue={initialContactEmail ?? ""}
+                  className="border-brand-purple/20 text-brand-purple-dark mt-1 min-h-10 w-full rounded-lg border bg-white px-2.5 py-1.5 text-xs"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="opp-contact-wa"
+                  className="text-brand-muted block text-[11px] font-semibold uppercase"
+                >
+                  WhatsApp cliente
+                </label>
+                <input
+                  id="opp-contact-wa"
+                  name="contactWhatsapp"
+                  type="tel"
+                  defaultValue={initialContactWhatsapp ?? ""}
+                  placeholder="+573001234567"
+                  className="border-brand-purple/20 text-brand-purple-dark mt-1 min-h-10 w-full rounded-lg border bg-white px-2.5 py-1.5 font-mono text-xs"
+                />
+              </div>
             </div>
-            <div>
-              <label
-                htmlFor="opp-contact-email"
-                className="text-brand-muted block text-[11px] font-semibold uppercase"
-              >
-                Correo electrónico
-              </label>
-              <input
-                id="opp-contact-email"
-                name="contactEmail"
-                type="email"
-                defaultValue={initialContactEmail ?? ""}
-                className="border-brand-purple/20 text-brand-purple-dark mt-1 min-h-10 w-full rounded-lg border bg-white px-2.5 py-1.5 text-xs"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="opp-contact-wa"
-                className="text-brand-muted block text-[11px] font-semibold uppercase"
-              >
-                WhatsApp cliente
-              </label>
-              <input
-                id="opp-contact-wa"
-                name="contactWhatsapp"
-                type="tel"
-                defaultValue={initialContactWhatsapp ?? ""}
-                placeholder="+573001234567"
-                className="border-brand-purple/20 text-brand-purple-dark mt-1 min-h-10 w-full rounded-lg border bg-white px-2.5 py-1.5 font-mono text-xs"
-              />
-            </div>
-          </div>
-        </details>
+          </details>
+        )}
 
         <div>
           <label

@@ -103,14 +103,17 @@ describe("getAdminNav", () => {
     expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(true);
     // Cupones sí aplica en Etapa 1 (se crean ahora, se activan con los pagos).
     expect(promo?.items?.some((it) => it.href === "/admin/cupones")).toBe(true);
+    // Fidelización requiere pagos en línea (la página redirige en modo catálogo).
+    expect(promo?.items?.some((it) => it.href === "/admin/fidelizacion")).toBe(false);
   });
 
-  it("modo full: Precios al por mayor visible en Promociones", async () => {
+  it("modo full: Precios al por mayor y Fidelización visibles en Promociones", async () => {
     process.env[KEY] = "full";
     const mod = await loadNav();
     const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
 
     expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(true);
+    expect(promo?.items?.some((it) => it.href === "/admin/fidelizacion")).toBe(true);
   });
 
   it.each(["full", "catalog"] as const)(
@@ -196,6 +199,22 @@ describe("getAdminNav", () => {
       }
     },
   );
+
+  it("filterNavByRole: MANAGER y OPERATIONS_MANAGER ven Canales > Tienda Lucams y Envíos, pero NO Integraciones", async () => {
+    const { nav } = await getNavForMode("full");
+
+    for (const role of ["MANAGER", "OPERATIONS_MANAGER"] as const) {
+      const visible = filterNavByRole(nav, role);
+      const canales = visible.find((g) => g.title === "Canales");
+      expect(canales?.items?.map((it) => it.href)).toEqual(["/admin/canales/tienda"]);
+
+      const config = visible.find((g) => g.title === "Configuración");
+      const configHrefs = config?.items?.map((it) => it.href) ?? [];
+      expect(configHrefs).toContain("/admin/envios");
+      expect(configHrefs).not.toContain("/admin/integraciones");
+      expect(configHrefs).not.toContain("/admin/email-templates");
+    }
+  });
 
   it("filterNavByRole: MANAGER ve diseños (con tab fichas; permiso CATALOG); FULFILLMENT no", async () => {
     const { nav } = await getNavForMode("catalog");
@@ -291,7 +310,7 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
   );
 
   it.each(["full", "catalog"] as const)(
-    "modo %s: ve exactamente Páginas del sitio, Mediateca y Seguridad (Ajustes del sitio y Plantillas de correo son SUPERADMIN)",
+    "modo %s: ve exactamente Páginas del sitio, Mediateca, Redirects y Seguridad (Ajustes del sitio y Plantillas de correo son SUPERADMIN)",
     async (mode) => {
       const { nav } = await getNavForMode(mode);
       const visible = filterNavByRole(nav, "CMS_EDITOR");
@@ -303,10 +322,10 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
       ]);
 
       const config = visible.find((g) => g.title === "Configuración");
-      // Seguridad (autoservicio MFA) quedó abierta a todos los roles en B-1.
+      // Seguridad (autoservicio MFA + contraseña) + Redirects (cms:write) están habilitados para CMS_EDITOR.
       // Ajustes del sitio (/admin/contenido/paginas/global) y /admin/email-templates
       // son solo-SUPERADMIN.
-      expect(config?.items?.map((it) => it.href)).toEqual(["/admin/seguridad"]);
+      expect(config?.items?.map((it) => it.href)).toEqual(["/admin/seguridad", "/admin/redirects"]);
     },
   );
 
@@ -324,11 +343,13 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
       expect(allHrefs).not.toContain("/admin/usuarios");
       expect(allHrefs).not.toContain("/admin/finanzas");
       expect(allHrefs).not.toContain("/admin/cupones");
-      // Y todo lo visible es contenido o autoservicio de cuenta (coherente con la matriz;
-      // /admin/email-templates ya no entra acá — Fase 4 lo subió a solo-SUPERADMIN).
       expect(allHrefs).not.toContain("/admin/email-templates");
       for (const href of allHrefs) {
-        expect(href.startsWith("/admin/contenido") || href === "/admin/seguridad").toBe(true);
+        expect(
+          href.startsWith("/admin/contenido") ||
+            href === "/admin/redirects" ||
+            href === "/admin/seguridad",
+        ).toBe(true);
       }
     },
   );

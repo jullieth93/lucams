@@ -39,11 +39,11 @@ flowchart TD
    - El alta de personal en `/admin/usuarios` mediante `provisionStaffAdmin` (`features/admin-users/service.ts`) crea `auth.users` + `AdminUser` sin registrar un falso `Customer`, y marca `Contact.isStaff = true`. Además, `markStaffContactIfAdminTx` mantiene esa marca sincronizada de forma monotónica si el correo coincide con cualquier `AdminUser`.
    - Los contactos con `isStaff = true` quedan excluidos por defecto de `/admin/clientes` (con opción de visualización explícita e insignia «Equipo interno») y **excluidos por compuerta SQL dura** de las cohortes RFM/LTV en `/admin/metricas` y de los segmentos comerciales en `/admin/marketing/segmentos`.
 2. **Detección forense de auto-gestión (`selfDealing`)**:
-   - Cuando un administrador ejecuta acciones sensibles (`retract.*`, `warranty.*`, `cod.*`, `contact.merge*`), `recordAdminAction` (`apps/web/lib/admin-audit.ts`) cruza el correo del `AdminUser` actor contra el correo del contacto o pedido objetivo. Si coinciden, estampa `metadata.selfDealing = true` en `AdminActionLog` (filtrable en `/admin/auditoria`) y emite alerta estructurada en logs.
+   - Cuando un administrador ejecuta acciones sensibles (`order.*`, `retract.*`, `warranty.*`, `support.*`, `review.*`, `cod.*`, `cart_recovery.*`, `lifecycle.*`, `contact.merge*`), `recordAdminAction` (`apps/web/lib/admin-audit.ts`) cruza el correo del `AdminUser` actor contra el correo del contacto, pedido o identidad objetivo (incluyendo `targetEmails` resueltos antes de borrar `BlockedIdentity` y ambos extremos `primaryContact` y `secondaryContact` en `IdentityMergeCandidate`). Si coinciden, estampa `metadata.selfDealing = true` en `AdminActionLog` (filtrable en `/admin/auditoria`) y emite alerta estructurada en logs.
 3. **Fusión asistida de duplicados con cero auto-merge (`/admin/clientes/duplicados`)**:
    - Señales probables como compartir teléfono de comprador (`SAME_BUYER_PHONE_E164`), repetir documento tributario (`SAME_BILLING_DOCUMENT`) o usar correo alterno (`AUTH_BUYER_ALT_ORDER_EMAIL`) nunca fusionan contactos en silencio: crean un `IdentityMergeCandidate` en estado `PENDING`.
    - Aprobar una fusión en `/admin/clientes/duplicados` (`features/identity/merge-service.ts`) exige capacidad `contacts:merge` (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`) y **reautenticación MFA reciente (`requireRecentMfa()`, <= 10 min)**.
-   - Si ambos contactos poseen cuentas `Customer` activas, la fusión se bloquea (`BOTH_HAVE_CUSTOMER_ACCOUNTS`). Al aprobar un par válido bajo lock transaccional, se transfieren las 10 relaciones operativas al contacto sobreviviente, se revocan las identidades absorbidas, se guarda un **snapshot completo reversible** en `mergeSnapshotJson` y se registra `contact.merge` en `AdminActionLog`. Descartar un par lo marca `REJECTED` para no volver a sugerirlo.
+   - Si ambos contactos poseen cuentas `Customer` activas, la fusión se bloquea (`BOTH_HAVE_CUSTOMER_ACCOUNTS`). Al aprobar un par válido bajo lock transaccional, se transfieren las 10 relaciones operativas al contacto sobreviviente, se revocan las identidades absorbidas, se guarda un **snapshot completo reversible** en `mergeSnapshotJson` y se registra `contact.merge` en `AdminActionLog`. Descartar un par lo marca `REJECTED` para no volver a sugerirlo automáticamente; si el descarte fue accidental y ambos contactos siguen activos y sin anonimizar, un rol con `contacts:merge` puede devolverlo a `PENDING` mediante `reopenMergeCandidate` (auditado como `contact.merge_reopen`, manteniendo el requisito de step-up MFA al ejecutar la fusión).
 
 ---
 
@@ -84,10 +84,11 @@ El panel `/admin/metricas` (`SUPERADMIN` y `FINANCE_ANALYST`, `features/crm/inte
 - **LTV de Margen Neto**: deduce flete, descuentos de cupón/puntos y costo unitario de catálogo (`margin_cents = Order.total - Order.shipping - SUM(OrderItem.qty * COALESCE(Product.cost, 0))`), reportando además el porcentaje de catálogo con costo configurado y la rentabilidad por canal UTM (`lucams_utm`, persistida únicamente bajo consentimiento `COOKIES_ANALYTICS`).
 - **Embudo anónimo propio (`FunnelEventDaily`)**: visualiza la conversión a través de las 11 etapas de compra y personalización sin depender de cookies ni terceros (retención de 365 días).
 
-### Segmentación comercial y exportación CSV segura (`/admin/marketing/*`)
+### Segmentación comercial, boletín Ley 1581 y exportación CSV segura (`/admin/marketing/*`)
 
-- **`/admin/marketing/segmentos` (`features/crm/segments-service.ts`)**: ofrece 5 audiencias accionables (`vip`, `gift_buyers`, `winback_90d`, `annual_occasion`, `high_intent_no_order`). Un CTE SQL verifica el último registro de `Consent` con `scope = 'NEWSLETTER'` por correo e impone **`WHERE newsletter_opted_in = true AND "isStaff" = false`**: los contactos sin consentimiento comercial jamás exponen PII y solo se contabilizan como total agregado excluido.
-- **Exportación CSV blindada (`GET /admin/marketing/segmentos/export` y `GET /admin/marketing/suscriptores/export`)**: exige capacidad `marketing:export_csv`, **MFA reciente (`requireRecentMfa()`)**, neutraliza inyección de fórmulas en hojas de cálculo anteponiendo `'` a celdas que inicien con `=`, `+`, `-`, `@`, `\t` o `\r`, y deja rastro en `AdminActionLog` (`marketing.export_segment_csv`, `newsletter.export_csv`).
+- **`/admin/marketing/segmentos` (`features/crm/segments-service.ts`)**: ofrece 5 audiencias accionables (`vip`, `gift_buyers`, `winback_90d`, `annual_occasion`, `high_intent_no_order`). Un CTE SQL verifica el último registro de `Consent` con `scope = 'NEWSLETTER'` por correo, excluye direcciones con rebote o queja en `EmailEvent` (`email.bounced`, `email.complained`) e impone **`WHERE newsletter_opted_in = true AND "isStaff" = false`**: los contactos sin consentimiento comercial vigente o suprimidos jamás exponen PII y solo se contabilizan como total agregado excluido.
+- **`/admin/marketing/suscriptores` (`features/newsletter/admin-service.ts`)**: cruza la bitácora append-only `Consent` (`NEWSLETTER`) con `Contact`, `AdminUser` y `EmailEvent` para separar la **audiencia comercial activa** (opt-in vigente, no staff, sin rebotes ni quejas) de las bajas revocadas (`DE BAJA`), rebotes/quejas y cuentas internas.
+- **Exportación CSV blindada (`GET /admin/marketing/segmentos/export` y `GET /admin/marketing/suscriptores/export`)**: exige capacidad `marketing:export_csv`, **MFA reciente (`requireRecentMfa()`)**, neutraliza inyección de fórmulas en hojas de cálculo anteponiendo `'` a celdas que inicien con `=`, `+`, `-`, `@`, `\t` o `\r`, y deja rastro en `AdminActionLog` (`marketing.export_segment_csv`, `newsletter.export_csv`). Por mandato Ley 1581 / Habeas Data, `GET /admin/marketing/suscriptores/export` exporta **por defecto únicamente suscriptores comerciales activos** (excluyendo `DE BAJA`, rebotes/quejas y staff); el libro probatorio completo (`?scope=audit_ledger`, con estado de autorización, rebotes y marca `es_staff` para requerimientos SIC) está restringido exclusivamente a `SUPERADMIN` (`403` para cualquier otro rol).
 
 ---
 
@@ -118,29 +119,30 @@ sequenceDiagram
 
 ### Pipeline en `/admin/oportunidades`
 
-- Gestiona las etapas `NEW` («Nueva»), `QUALIFYING` («En calificación»), `PROPOSAL_SENT` («Propuesta enviada»), `WON` («Ganada») y `LOST` («Perdida», con motivo obligatorio `lostReason`), clasificadas por tipo de evento (`CORPORATE_GIFT`, `WEDDING_SOCIAL`, `SCHOOL_GRADUATION`, `BRAND_MERCH`, `OTHER`).
-- Permite convertir cualquier cotización en oportunidad B2B con un clic desde `/admin/cotizaciones/[id]` (`convertQuoteToOpportunityAction`, enlazando `convertedQuoteId`) y asociar el pedido cerrado por su consecutivo `LCM-YYYY-NNNN` en `convertedOrderId`.
+- Gestiona de forma paginada las etapas `NEW` («Nueva solicitud»), `QUALIFYING` («En calificación»), `PROPOSAL_SENT` («Propuesta enviada»), `WON` («Ganada») y `LOST` («Perdida», con motivo obligatorio `lostReason`), clasificadas por tipo de evento (`CORPORATE_GIFT`, `WEDDING_SOCIAL`, `SCHOOL_GRADUATION`, `BRAND_MERCH`, `OTHER`), con alertas de urgencia cuando `eventDate` está vencida o dentro de los próximos 14 días, tasa de cierre sobre negocios cerrados y desglose de demanda por vertical.
+- Integra `<CrmWorkspacePanel>` vinculando `Task.opportunityId` y metadatos en `ContactActivity`, y permite convertir cualquier cotización en oportunidad B2B con un clic desde `/admin/cotizaciones/[id]` (`convertQuoteToOpportunityAction`, enlazando `convertedQuoteId`) y asociar el pedido cerrado por su consecutivo `LCM-YYYY-NNNN` en `convertedOrderId`.
 
 ### Cotizador (`Quote` `COT-XXXXXX`), portal `/cotizacion/[token]` y Hoja de taller
 
 - **Generación (`features/quotes/`)**: activo cuando la tienda opera en modo catálogo (`NEXT_PUBLIC_STORE_MODE=catalog`). Reclama atómicamente el carrito, cierra `AbandonedCart` (`QUOTE_CREATED`), sella snapshots en `QuoteItem` y genera `Quote` (`COT-XXXXXX`; estados `PENDING`, `CONTACTED`, `CLOSED`, `DISCARDED`) con token público de 128 bits almacenado solo como hash SHA-256 (`publicAccessTokenHash`).
 - **Portal público `/cotizacion/[token]`**: vista de confirmación de **solo lectura** (`noindex`) sin exponer notas internas ni teléfonos/correos en claro. El cliente revisa sus ítems y vistas previas personalizadas (autorizadas con `?qt=<token>`), copia el enlace o inicia conversación en WhatsApp con mensaje pre-armado.
 - **Gestión y Taller en `/admin/cotizaciones`**:
-  - `/admin/cotizaciones` y `/admin/cotizaciones/[id]`: bandeja filtrable, contacto directo por WhatsApp, notas internas acumulativas, cambio de estado y promoción a `Opportunity`.
-  - **`/admin/cotizaciones/[id]/taller` (Hoja de taller)**: vista operativa de fabricación que calcula unidades físicas reales, pasos de armado, estado de moderación de cada diseño y enlaces firmados de descarga de los PNG 300 DPI en `production-assets`.
+  - `/admin/cotizaciones` y `/admin/cotizaciones/[id]` (`opportunities:manage`; fechas filtradas en `America/Bogota` `-05:00`): bandeja histórica y operativa con KPIs ejecutivos, banner contextual de continuidad con `/admin/oportunidades` cuando la tienda opera en modo `full`, contacto directo por WhatsApp, notas internas acumulativas, cambio de estado y promoción en 1 clic a `Opportunity`.
+  - **`/admin/cotizaciones/[id]/taller` (Hoja de taller)**: restringida estrictamente a `production:download_assets` (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `PRINT_WORKSHOP`; oculta para `CUSTOMER_SUPPORT` y `FINANCE_ANALYST`). Calcula unidades físicas reales, pasos de armado, estado de moderación de cada diseño y enlaces firmados de descarga de los PNG 300 DPI en `production-assets`, registrando `quote.production_sheet_view` en `AdminActionLog` y enmascarando en servidor `customerName`, `customerWhatsapp`, `notes` y precios comerciales cuando el actor es `PRINT_WORKSHOP`.
 - **Retención automática de archivos de cotización (`retention-service.ts`)**: las filas comerciales `Quote` se conservan (salvo anonimización por Habeas Data), pero los diseños y fotografías en Storage asociados a `QuoteItem` se purgan automáticamente a los **`90 días`** tras pasar a `CLOSED` o `DISCARDED` (`PURGE_AFTER_QUOTE_CLOSED_DAYS`), y a los **`365 días`** si una cotización permanece abierta sin actividad (`PURGE_STALE_QUOTE_AFTER_DAYS`).
 
 ---
 
 ## 4. Programa de Lealtad («Puntos Lucams») y Referidos («Invita y gana»)
 
-Ambos programas se configuran en `/admin/fidelizacion` (exclusivo `SUPERADMIN`, auditado en `AdminActionLog` e integrado con el snapshot CMS `global/comercio`).
+Ambos programas se gobiernan en `/admin/fidelizacion`: la mutación de parámetros es exclusiva de `SUPERADMIN` con **step-up MFA reciente (`requireRecentMfa()`, `≤ 10 min`)**, auditada en `AdminActionLog` e integrada con el snapshot CMS `global/comercio`; `FINANCE_ANALYST` audita el pasivo equivalente vigente, el pulso de emisión/canje de 14 días y el embudo de referidos en modo solo lectura con PII enmascarada en servidor.
 
 ### Puntos Lucams (`LoyaltyTxn`, `features/loyalty/`)
 
 - **Reglas base configurables**:
   - Acumulación por defecto: **1 punto por cada `$1.000 COP`** efectivamente cobrados (`LOYALTY_EARN_COP_PER_POINT = 1000`, calculado con `Math.floor` sobre `Order.total`).
   - Redención por defecto: **100 puntos = `$1.000 COP`** (`LOYALTY_REDEEM_POINTS_PER_1000 = 100`, equivalente a `$10 COP` por punto), desde un mínimo de `100` puntos y hasta un tope del **`50 %` del subtotal de mercancía después de cupón** (`LOYALTY_REDEEM_MAX_PERCENT = 50`).
+  - **Candado anti-abuso del `25 %` (`saveLoyaltySettingsAction`)**: el servidor rechaza cualquier combinación de tasas donde el retorno efectivo supere el `25 %` (`earnCopPerPoint * redeemPointsPer1000 < 4_000`), acompañado de un simulador económico en vivo en `/admin/fidelizacion`.
 - **Prelación estricta y ciclo transaccional**:
   1. **Cupón -> Puntos (flete excluido)**: primero se descuenta el cupón sobre la mercancía; luego se calcula la redención de puntos sobre el remanente de productos. El costo de envío nunca es pagable con puntos. Por regla `[ID-01]`, solo el titular autenticado de la sesión puede redimir su propio saldo.
   2. **Reserva atómica en `PENDING_PAYMENT`**: al crear la orden, `reserveRedeemedPoints` ejecuta un decremento condicional (`WHERE "loyaltyPoints" >= points`) evitando doble gasto concurrente y escribe `LoyaltyTxn` con `reason = "REDEEM"`.
@@ -163,12 +165,13 @@ Ambos programas se configuran en `/admin/fidelizacion` (exclusivo `SUPERADMIN`, 
   2. Unicidad por `referredEmail` (reintentos con el mismo correo no emiten múltiples cupones de bienvenida).
   3. Verificación de cliente nuevo real: si el correo referido ya tenía pedidos pagados anteriores (por ejemplo, compras previas como invitado), la referencia pasa a `EXPIRED` sin emitir premio al referente.
   4. Candado en base de datos mediante el trigger `coupon_usage_per_customer_limit` (`pg_advisory_xact_lock` sobre `CouponUsage`).
+  5. **Intransferibilidad estricta en checkout (`NOT_OWNER` en `features/coupons/redemption.ts`)**: todo cupón con `customerId != null` solo es canjeable por la sesión autenticada de su titular o en checkout invitado con el correo exacto del titular activo, y permanece bloqueado para exposición pública (`customerId: null` en `listPublicCoupons`).
 
 ---
 
 ## 5. Lifecycle Journeys (`ADR-198`)
 
-`/admin/lifecycle` automatiza el acompañamiento por comportamiento sobre el grafo `Contact`; no es una secuencia fija de correos ni sustituye la recuperación de carritos, las reseñas o la mensajería transaccional de pedidos. Disponible para `SUPERADMIN`, `OPERATIONS_MANAGER` y `MANAGER` mediante `lifecycle:manage` y MFA `aal2`; activar, probar y reintentar exige una verificación TOTP reciente y deja `AdminActionLog`.
+`/admin/lifecycle` automatiza el acompañamiento por comportamiento sobre el grafo `Contact`; no es una secuencia fija de correos ni sustituye la recuperación de carritos, las reseñas o la mensajería transaccional de pedidos. La creación (`/admin/lifecycle/nuevo`) y toda mutación son exclusivas de `lifecycle:manage` (`SUPERADMIN`, `OPERATIONS_MANAGER` y `MANAGER`) con MFA `aal2` —activar, probar (`sendLifecycleTestAction`, limitada a `12/hora` por actor) y reintentar exige verificación TOTP reciente y deja `AdminActionLog`—; `FINANCE_ANALYST` accede en **modo analítico de solo lectura cero-PII** (`ADMIN_ROLE_SETS.LIFECYCLE_READ` en `/admin/lifecycle`, `/admin/lifecycle/[id]` y el preview sintético `/admin/lifecycle/[id]/preview`) con correos y nombres enmascarados en servidor.
 
 ### Modelo, disparadores y reglas
 

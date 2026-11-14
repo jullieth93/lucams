@@ -5,10 +5,48 @@
  */
 
 import "server-only";
+import { formatDayMonthCO, formatIsoDateCO } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 const since = (hours: number) => new Date(Date.now() - hours * 3600 * 1000);
+
+function buildBogota7dBuckets(now: Date = new Date()): {
+  windowSince: Date;
+  buckets: Array<{
+    key: string;
+    label: string;
+    tickLabel: string;
+    errors: number;
+    webhooksProcessed: number;
+  }>;
+} {
+  const todayIso = formatIsoDateCO(now);
+  const noonToday = new Date(`${todayIso}T12:00:00.000-05:00`);
+  const buckets: Array<{
+    key: string;
+    label: string;
+    tickLabel: string;
+    errors: number;
+    webhooksProcessed: number;
+  }> = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(noonToday.getTime() - i * 86_400_000);
+    const key = formatIsoDateCO(d);
+    buckets.push({
+      key,
+      label: formatDayMonthCO(d),
+      tickLabel: `${key.slice(8)}/${key.slice(5, 7)}`,
+      errors: 0,
+      webhooksProcessed: 0,
+    });
+  }
+  const firstKey = buckets[0]?.key ?? todayIso;
+  return {
+    windowSince: new Date(`${firstKey}T00:00:00.000-05:00`),
+    buckets,
+  };
+}
 
 export type TechHealth = {
   errors: {
@@ -45,9 +83,20 @@ export type TechHealth = {
    *  pero mezclar LCP (ms) con CLS (score) en un solo saco escondía el diagnóstico
    *  (2026-10-01: 500 "pobres" podían ser TODOS de una sola métrica mala). */
   vitalsByMetric7d: Array<{ name: string; good: number; needsImprovement: number; poor: number }>;
+  /** Serie diaria de 7 días (hora Colombia `-05:00`) de webhooks procesados vs errores 500. */
+  dailyPulse7d: Array<{
+    key: string;
+    label: string;
+    tickLabel: string;
+    errors: number;
+    webhooksProcessed: number;
+  }>;
 };
 
 export async function getTechHealth(): Promise<TechHealth> {
+  const { windowSince, buckets: dailyPulse7d } = buildBogota7dBuckets();
+  const bucketByKey = new Map(dailyPulse7d.map((b) => [b.key, b]));
+
   const [
     errors24h,
     errors7d,
@@ -62,6 +111,8 @@ export async function getTechHealth(): Promise<TechHealth> {
     clientErrorsOpen,
     clientErrorsTop,
     recentWebhooks,
+    errorDates7d,
+    processedWebhookDates7d,
   ] = await Promise.all([
     prisma.errorLog.count({ where: { createdAt: { gte: since(24) } } }),
     prisma.errorLog.count({ where: { createdAt: { gte: since(24 * 7) } } }),
@@ -108,7 +159,26 @@ export async function getTechHealth(): Promise<TechHealth> {
       take: 12,
       select: { id: true, source: true, externalId: true, processedAt: true, createdAt: true },
     }),
+    prisma.errorLog.findMany({
+      where: { createdAt: { gte: windowSince } },
+      select: { createdAt: true },
+      take: 5000,
+    }),
+    prisma.webhookEvent.findMany({
+      where: { createdAt: { gte: windowSince }, processedAt: { not: null } },
+      select: { createdAt: true },
+      take: 5000,
+    }),
   ]);
+
+  for (const row of errorDates7d) {
+    const b = bucketByKey.get(formatIsoDateCO(row.createdAt));
+    if (b) b.errors += 1;
+  }
+  for (const row of processedWebhookDates7d) {
+    const b = bucketByKey.get(formatIsoDateCO(row.createdAt));
+    if (b) b.webhooksProcessed += 1;
+  }
 
   const ratingCount = (r: string) =>
     vitalsRaw.filter((v) => v.rating === r).reduce((acc, v) => acc + v._count._all, 0);
@@ -161,6 +231,7 @@ export async function getTechHealth(): Promise<TechHealth> {
       poor: ratingCount("poor"),
     },
     vitalsByMetric7d,
+    dailyPulse7d,
   };
 }
 
@@ -342,4 +413,24 @@ export async function getStorageQuota(): Promise<StorageQuota> {
     measuredBytes: buckets.reduce((acc, b) => acc + (b.bytes ?? 0), 0),
     degraded: measured === null,
   };
+}
+
+/**
+ * Tamaño físico real de la base de datos Postgres (`pg_database_size`).
+ * Best-effort: nunca tumba `/admin/observability` si el rol o pooler restringe la función.
+ */
+export async function getDatabaseQuota(): Promise<{ dbBytes: number | null }> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{ dbBytes: bigint }>>`
+      SELECT pg_database_size(current_database()) AS "dbBytes"
+    `;
+    const raw = rows[0]?.dbBytes;
+    return { dbBytes: raw !== undefined ? Number(raw) : null };
+  } catch (err) {
+    logger.error({
+      event: "observability.db_quota_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { dbBytes: null };
+  }
 }

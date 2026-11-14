@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ADMIN_ACTIVITY_COOKIE, sealAdminActivityMark } from "@/lib/admin-activity";
 
-const { state } = vi.hoisted(() => ({
+const { state, renderCartRecoveryEmail, encodeUnsubscribeParam } = vi.hoisted(() => ({
   state: {
     session: null as { admin: { id: string; role: string } } | null,
     aal: { currentLevel: "aal2", nextLevel: "aal2" } as {
@@ -12,6 +12,10 @@ const { state } = vi.hoisted(() => ({
       all: Array<{ factor_type: string; status: string }>;
     } | null,
   },
+  renderCartRecoveryEmail: vi.fn(async ({ unsubscribeUrl }: { unsubscribeUrl: string }) => ({
+    html: `<html><body><a href="${unsubscribeUrl}">Baja de prueba</a></body></html>`,
+  })),
+  encodeUnsubscribeParam: vi.fn((email: string) => Buffer.from(email).toString("base64url")),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -33,9 +37,7 @@ vi.mock("@/features/emails/registry", () => ({
     id === "order-confirmation"
       ? { renderSample: async () => ({ html: "<html><body>Pedido ejemplo</body></html>" }) }
       : null,
-  renderCartRecoveryEmail: async () => ({
-    html: "<html><body>Carrito abandonado ejemplo</body></html>",
-  }),
+  renderCartRecoveryEmail,
 }));
 vi.mock("@/features/cart/admin-service", () => ({
   getAbandonedCartDetail: async (id: string) =>
@@ -46,9 +48,7 @@ vi.mock("@/features/cart/admin-service", () => ({
 vi.mock("@/features/emails/layout", () => ({
   getSiteUrl: async () => "https://lucamsshop.com",
 }));
-vi.mock("@/features/newsletter/unsubscribe", () => ({
-  encodeUnsubscribeParam: (email: string) => Buffer.from(email).toString("base64url"),
-}));
+vi.mock("@/features/newsletter/unsubscribe", () => ({ encodeUnsubscribeParam }));
 
 import { GET as getTemplatePreview } from "./route";
 import { GET as getCartPreview } from "@/app/admin/(panel)/carritos/[id]/preview/route";
@@ -64,6 +64,7 @@ function makeAdminReq(url: string, opts: { freshCookie?: boolean } = {}) {
 
 describe("Route Handlers de preview HTML admin ([SEC-01])", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     process.env.CSRF_SECRET =
       process.env.CSRF_SECRET || "test-csrf-secret-at-least-32-chars-long!!";
     state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
@@ -126,5 +127,13 @@ describe("Route Handlers de preview HTML admin ([SEC-01])", () => {
     );
     expect(ok.status).toBe(200);
     expect(ok.headers.get("Content-Security-Policy") ?? "").toContain("sandbox");
+    expect(renderCartRecoveryEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recoverToken: "preview",
+        unsubscribeUrl: "https://lucamsshop.com/unsubscribe?preview=1",
+      }),
+    );
+    expect(encodeUnsubscribeParam).not.toHaveBeenCalled();
+    expect(await ok.text()).not.toContain("cliente@test.co");
   });
 });

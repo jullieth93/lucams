@@ -50,8 +50,8 @@ export default function AdminError({
           Intentar de nuevo
         </button>
         <Link
-          href="/admin/dashboard"
-          className="border-brand-purple/30 text-brand-purple-dark rounded-lg border px-4 py-2 text-sm font-semibold"
+          href="/admin"
+          className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 rounded-lg border px-4 py-2 text-sm font-semibold transition-colors"
         >
           Volver al panel
         </Link>

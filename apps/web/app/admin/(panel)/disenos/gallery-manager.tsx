@@ -37,6 +37,8 @@
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
+import { MfaReauthModal } from "@/components/admin/mfa-reauth";
 import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import {
   Upload,
@@ -51,6 +53,8 @@ import {
   ChevronDown,
   Archive,
   ArchiveRestore,
+  ExternalLink,
+  Package,
 } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import {
@@ -100,6 +104,8 @@ type TagOption = {
   isActive: boolean;
   needsFaceB: boolean;
   variantFilterOptions: VariantFilterOption[];
+  productId?: string | null;
+  productSlug?: string | null;
 };
 
 function formatPreview(src: string | null | undefined) {
@@ -181,7 +187,15 @@ function chipCounts(items: Item[], options: VariantFilterOption[]): ChipCounts {
   return { all: items.length, unassigned, byOption };
 }
 
-export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOptions: TagOption[] }) {
+export function GalleryManager({
+  items,
+  tagOptions,
+  canAccessCatalog = false,
+}: {
+  items: Item[];
+  tagOptions: TagOption[];
+  canAccessCatalog?: boolean;
+}) {
   const [tag, setTag] = useState(tagOptions[0]?.tag ?? "");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +222,9 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
   const [chipByTag, setChipByTag] = useState<Record<string, string>>({});
   const [bulkChoiceByTag, setBulkChoiceByTag] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [reauthPurgeTarget, setReauthPurgeTarget] = useState<{ id: string; name: string } | null>(
+    null,
+  );
   const { confirm, confirmDialog } = useAdminConfirm();
   // Colapsable por producto (2026-10-05): override explícito por tag; sin
   // override, abierto solo el primer producto. Con búsqueda, todo abierto.
@@ -351,27 +368,37 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
     });
   }
 
-  /**
-   * 3.6 — ELIMINAR PERMANENTEMENTE (solo desde Archivados): purga la fila y los
-   * archivos del servidor. IRREVERSIBLE → confirmación FUERTE: escribir la
-   * palabra ELIMINAR (mismo patrón destructivo de mi-cuenta/eliminar; diálogo
-   * de marca con requireTyped desde ADR-192 — antes window.prompt nativo).
-   */
-  async function onPurge(id: string, name: string) {
+  function executePurge(id: string, targetName: string) {
     setError(null);
     setNotice(null);
-    const ok = await confirm(
-      `«${name}» y sus archivos se borrarán del servidor para siempre (no se puede restaurar).`,
-      { requireTyped: "ELIMINAR", confirmLabel: "Eliminar definitivamente" },
-    );
-    if (!ok) return;
     const fd = new FormData();
     fd.set("id", id);
     startTransition(async () => {
       const res = await purgeGalleryImageAction(fd);
-      if (res.error) setError(res.error);
-      else setNotice(`«${name}» se eliminó permanentemente.`);
+      if (res.reauthRequired) {
+        setReauthPurgeTarget({ id, name: targetName });
+      } else if (res.error) {
+        setError(res.error);
+      } else {
+        setNotice(`«${targetName}» se eliminó permanentemente.`);
+      }
     });
+  }
+
+  /**
+   * 3.6 — ELIMINAR PERMANENTEMENTE (solo desde Archivados): purga la fila y los
+   * archivos del servidor. IRREVERSIBLE → confirmación FUERTE (escribir
+   * ELIMINAR) + MFA step-up reciente (D2).
+   */
+  async function onPurge(id: string, targetName: string) {
+    setError(null);
+    setNotice(null);
+    const ok = await confirm(
+      `«${targetName}» y sus archivos se borrarán del servidor para siempre (no se puede restaurar).`,
+      { requireTyped: "ELIMINAR", confirmLabel: "Eliminar definitivamente" },
+    );
+    if (!ok) return;
+    executePurge(id, targetName);
   }
 
   /** B-5 — pausar/reactivar sin borrar. `active` explícito: toggles
@@ -488,20 +515,39 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
   // el upload fallaría siempre, así que mejor explicarlo que mostrar un form roto.
   if (tagOptions.length === 0) {
     return (
-      <p className="text-brand-muted text-sm italic">
-        Ningún producto activo declara <code>galleryTag</code> en su schema de personalización
-        todavía. Decláralo en el producto (ej. separadores) para habilitar la subida de diseños.
-      </p>
+      <div className="border-brand-purple/10 rounded-xl border-2 border-dashed bg-white px-6 py-10 text-center">
+        <p className="text-brand-purple-dark font-display text-base font-semibold">
+          Sin productos con galería prediseñada activa
+        </p>
+        <p className="text-brand-muted mx-auto mt-1 max-w-md text-sm">
+          Ningún producto declara <code>galleryTag</code> en su configuración de personalización
+          todavía. Decláralo en la ficha del producto para habilitar la carga de diseños.
+        </p>
+      </div>
     );
   }
 
+  const fieldCls =
+    "border-brand-purple/15 focus-visible:border-brand-purple focus-visible:ring-brand-purple/20 mt-1 block h-9 w-full min-w-0 rounded-md border bg-white px-3 text-sm shadow-xs transition-colors focus-visible:ring-2 focus-visible:outline-none";
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       {/* Subir */}
-      <div className="border-brand-purple/20 space-y-4 rounded-2xl border bg-white p-5 shadow-sm">
-        <h2 className="text-brand-purple-dark font-semibold">Subir un diseño prediseñado</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-brand-purple-dark text-sm font-semibold">
+      <div className="border-brand-purple/10 space-y-4 rounded-xl border bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-brand-purple-dark font-display text-base font-semibold">
+              Subir diseño prediseñado
+            </h2>
+            <p className="text-brand-muted mt-0.5 text-xs">
+              Se optimiza automáticamente como master de imprenta y miniatura con marca de agua para
+              el Estudio.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="text-brand-purple-dark min-w-0 text-xs font-semibold">
             Producto
             <select
               value={tag}
@@ -513,7 +559,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                 setVariantFilterJson("");
                 if (fileBRef.current) fileBRef.current.value = "";
               }}
-              className="border-brand-purple/25 mt-1 block w-full rounded-xl border-2 px-3 py-2 text-sm outline-none"
+              className={fieldCls}
             >
               {tagOptions.map((t) => (
                 <option key={t.tag} value={t.tag}>
@@ -522,26 +568,26 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
               ))}
             </select>
           </label>
-          <label className="text-brand-purple-dark text-sm font-semibold">
+          <label className="text-brand-purple-dark min-w-0 text-xs font-semibold">
             Nombre del diseño
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={60}
               placeholder="Ej: Flores acuarela"
-              className="border-brand-purple/25 mt-1 block w-full rounded-xl border-2 px-3 py-2 text-sm outline-none"
+              className={fieldCls}
             />
           </label>
           {/* Fase 5 — "Aplica a": limita el diseño a un atributo de variante
               (ej. tamaño 2×6). Solo si el producto varía por algún atributo
               filtrable; si no, todo diseño aplica a todas las variantes. */}
           {variantFilterOptions.length > 0 && (
-            <label className="text-brand-purple-dark text-sm font-semibold">
+            <label className="text-brand-purple-dark min-w-0 text-xs font-semibold sm:col-span-2 lg:col-span-1">
               Aplica a
               <select
                 value={variantFilterJson}
                 onChange={(e) => setVariantFilterJson(e.target.value)}
-                className="border-brand-purple/25 mt-1 block w-full rounded-xl border-2 px-3 py-2 text-sm outline-none"
+                className={fieldCls}
               >
                 <option value="">Todas las variantes</option>
                 {variantFilterOptions.map((o) => (
@@ -556,11 +602,11 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
 
         {needsFaceB && (
           <div>
-            <p className="text-brand-purple-dark mb-2 text-sm font-semibold">¿Cómo lo subes?</p>
+            <p className="text-brand-purple-dark mb-1.5 text-xs font-semibold">¿Cómo lo subes?</p>
             <div
               role="radiogroup"
               aria-label="Modo de subida"
-              className="grid gap-2 sm:grid-cols-2"
+              className="grid gap-2.5 sm:grid-cols-2"
             >
               <button
                 type="button"
@@ -568,14 +614,14 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                 aria-checked={uploadMode === "faces"}
                 onClick={() => setUploadMode("faces")}
                 className={
-                  "rounded-xl border-2 p-3 text-left transition-all " +
+                  "rounded-lg border p-3 text-left transition-all " +
                   (uploadMode === "faces"
-                    ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/20 ring-2"
-                    : "border-brand-purple/15 hover:border-brand-purple/30")
+                    ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/20 ring-1"
+                    : "border-brand-purple/15 hover:bg-brand-purple/[0.02] bg-white")
                 }
               >
-                <div className="text-brand-purple-dark text-sm font-semibold">Por caras</div>
-                <div className="text-brand-muted text-xs">
+                <div className="text-brand-purple-dark text-xs font-semibold">Por caras</div>
+                <div className="text-brand-muted mt-0.5 text-xs">
                   Una imagen para la cara A y otra para la cara B (opcional).
                 </div>
               </button>
@@ -585,16 +631,16 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                 aria-checked={uploadMode === "strip"}
                 onClick={() => setUploadMode("strip")}
                 className={
-                  "rounded-xl border-2 p-3 text-left transition-all " +
+                  "rounded-lg border p-3 text-left transition-all " +
                   (uploadMode === "strip"
-                    ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/20 ring-2"
-                    : "border-brand-purple/15 hover:border-brand-purple/30")
+                    ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/20 ring-1"
+                    : "border-brand-purple/15 hover:bg-brand-purple/[0.02] bg-white")
                 }
               >
-                <div className="text-brand-purple-dark text-sm font-semibold">
+                <div className="text-brand-purple-dark text-xs font-semibold">
                   Una sola imagen (ambas caras)
                 </div>
-                <div className="text-brand-muted text-xs">
+                <div className="text-brand-muted mt-0.5 text-xs">
                   Tira vertical de imprenta: cara A abajo (derecha) y cara B arriba (cabeza abajo).
                 </div>
               </button>
@@ -603,22 +649,24 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
         )}
 
         {effectiveMode === "strip" ? (
-          <div className="bg-brand-purple/5 rounded-xl p-3">
-            <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+          <div className="border-brand-purple/15 bg-brand-cream/35 rounded-xl border border-dashed p-3.5">
+            <p className="text-brand-purple-dark mb-2 text-xs font-semibold">
               Tira con las dos caras
             </p>
             <button
               type="button"
               onClick={() => stripRef.current?.click()}
               disabled={pending}
-              className="bg-brand-purple hover:bg-brand-purple-dark inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex h-9 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md border bg-white px-3.5 text-xs font-semibold shadow-xs transition-colors disabled:opacity-60 sm:w-auto"
             >
               {pending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
               ) : (
-                <Upload className="h-4 w-4" />
+                <Upload className="text-brand-purple h-4 w-4 shrink-0" />
               )}
-              {stripFile ? `Cambiar: ${stripFile.name}` : "Seleccionar tira"}
+              <span className="truncate">
+                {stripFile ? `Cambiar: ${stripFile.name}` : "Seleccionar tira"}
+              </span>
             </button>
             <input
               ref={stripRef}
@@ -648,7 +696,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                     <img
                       src={stripPreview.faceA}
                       alt="Cara A resultante"
-                      className="max-h-56 w-full rounded-lg bg-white object-contain"
+                      className="border-brand-purple/10 max-h-56 w-full rounded-lg border bg-white object-contain"
                     />
                     <figcaption className="text-brand-purple-dark mt-1 text-center text-xs font-semibold">
                       Cara A (frente)
@@ -659,7 +707,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                     <img
                       src={stripPreview.faceB}
                       alt="Cara B resultante"
-                      className="max-h-56 w-full rounded-lg bg-white object-contain"
+                      className="border-brand-purple/10 max-h-56 w-full rounded-lg border bg-white object-contain"
                     />
                     <figcaption className="text-brand-purple-dark mt-1 text-center text-xs font-semibold">
                       Cara B (respaldo)
@@ -670,7 +718,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                   type="button"
                   onClick={() => setSwapFaces((s) => !s)}
                   disabled={pending}
-                  className="border-brand-purple text-brand-purple hover:bg-brand-purple/10 mt-3 inline-flex items-center gap-2 rounded-xl border-2 bg-white px-3 py-1.5 text-xs font-semibold disabled:opacity-60"
+                  className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 mt-3 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors disabled:opacity-60"
                 >
                   <ArrowUpDown className="h-3.5 w-3.5" />
                   Intercambiar caras{swapFaces ? " (intercambiadas)" : ""}
@@ -679,22 +727,24 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
             )}
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={`grid gap-3 ${needsFaceB ? "sm:grid-cols-2" : "sm:grid-cols-1"}`}>
             {/* Cara A */}
-            <div className="bg-brand-purple/5 rounded-xl p-3">
-              <p className="text-brand-purple-dark mb-2 text-sm font-semibold">Cara A (frente)</p>
+            <div className="border-brand-purple/15 bg-brand-cream/35 min-w-0 rounded-xl border border-dashed p-3.5">
+              <p className="text-brand-purple-dark mb-2 text-xs font-semibold">Cara A (frente)</p>
               <button
                 type="button"
                 onClick={() => fileARef.current?.click()}
                 disabled={pending}
-                className="bg-brand-purple hover:bg-brand-purple-dark inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex h-9 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md border bg-white px-3.5 text-xs font-semibold shadow-xs transition-colors disabled:opacity-60 sm:w-auto"
               >
                 {pending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                 ) : (
-                  <Upload className="h-4 w-4" />
+                  <Upload className="text-brand-purple h-4 w-4 shrink-0" />
                 )}
-                {fileA ? `Cambiar: ${fileA.name}` : "Seleccionar imagen A"}
+                <span className="truncate">
+                  {fileA ? `Cambiar: ${fileA.name}` : "Seleccionar imagen A"}
+                </span>
               </button>
               <input
                 ref={fileARef}
@@ -708,29 +758,31 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                 <img
                   src={URL.createObjectURL(fileA)}
                   alt="Preview A"
-                  className="mt-3 aspect-video w-full rounded-lg object-contain"
+                  className="border-brand-purple/10 mt-3 aspect-video max-h-48 w-full rounded-lg border bg-white object-contain"
                 />
               )}
             </div>
 
             {/* Cara B */}
             {needsFaceB && (
-              <div className="bg-brand-purple/5 rounded-xl p-3">
-                <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+              <div className="border-brand-purple/15 bg-brand-cream/35 min-w-0 rounded-xl border border-dashed p-3.5">
+                <p className="text-brand-purple-dark mb-2 text-xs font-semibold">
                   Cara B (respaldo)
                 </p>
                 <button
                   type="button"
                   onClick={() => fileBRef.current?.click()}
                   disabled={pending}
-                  className="border-brand-purple text-brand-purple hover:bg-brand-purple/10 inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex h-9 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md border bg-white px-3.5 text-xs font-semibold shadow-xs transition-colors disabled:opacity-60 sm:w-auto"
                 >
                   {pending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                   ) : (
-                    <Upload className="h-4 w-4" />
+                    <Upload className="text-brand-purple h-4 w-4 shrink-0" />
                   )}
-                  {fileB ? `Cambiar: ${fileB.name}` : "Seleccionar imagen B (opcional)"}
+                  <span className="truncate">
+                    {fileB ? `Cambiar: ${fileB.name}` : "Seleccionar imagen B (opcional)"}
+                  </span>
                 </button>
                 <input
                   ref={fileBRef}
@@ -744,7 +796,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                   <img
                     src={URL.createObjectURL(fileB)}
                     alt="Preview B"
-                    className="mt-3 aspect-video w-full rounded-lg object-contain"
+                    className="border-brand-purple/10 mt-3 aspect-video max-h-48 w-full rounded-lg border bg-white object-contain"
                   />
                 )}
               </div>
@@ -752,42 +804,66 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={onUpload}
-          disabled={pending || (effectiveMode === "strip" ? !stripFile : !fileA)}
-          className="bg-brand-purple-dark hover:bg-brand-purple inline-flex w-full items-center justify-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
-        >
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-          Guardar diseño
-        </button>
+        <div className="border-brand-purple/10 flex flex-col gap-3 border-t pt-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-brand-muted max-w-2xl text-xs">
+            Recomendado: imagen en la proporción del producto. En productos dúplex sin cara B, el
+            respaldo se imprime con la marca de agua de Lucams. Con «Una sola imagen» la tira debe
+            ser vertical (cara A abajo y cara B arriba cabeza abajo).
+          </p>
+          <button
+            type="button"
+            onClick={onUpload}
+            disabled={pending || (effectiveMode === "strip" ? !stripFile : !fileA)}
+            className="bg-gradient-brand inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-110 disabled:opacity-60 sm:w-auto"
+          >
+            {pending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+            Guardar diseño
+          </button>
+        </div>
 
-        <p className="text-brand-muted text-xs">
-          Recomendado: imagen en la proporción del producto. Para separadores puedes subir también
-          la cara B; si no, el respaldo se imprime con la marca de agua de Lucams. Con «Una sola
-          imagen» la tira debe ser vertical: cara A abajo y cara B arriba cabeza abajo (formato
-          doblez de imprenta).
-        </p>
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </div>
 
-      {/* Listado por producto */}
-      <div className="space-y-2">
-        <label className="text-brand-purple-dark block text-sm font-semibold">
-          Buscar diseño
-          <span className="relative mt-1 block sm:max-w-xs">
-            <Search className="text-brand-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Nombre del diseño…"
-              className="border-brand-purple/25 block w-full rounded-xl border-2 py-2 pr-3 pl-9 text-sm outline-none"
-            />
-          </span>
+      {/* Barra de búsqueda y avisos */}
+      <div className="border-brand-purple/10 flex flex-col gap-2.5 rounded-xl border bg-white p-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <label className="relative block w-full sm:max-w-sm" aria-label="Buscar diseño">
+          <Search className="text-brand-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar diseño por nombre…"
+            className="border-brand-purple/15 focus-visible:border-brand-purple focus-visible:ring-brand-purple/20 block h-9 w-full rounded-md border bg-white py-1.5 pr-3 pl-9 text-sm shadow-xs transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          />
         </label>
-        {notice && <p className="text-sm font-semibold text-emerald-700">{notice}</p>}
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {query.trim() !== "" && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="text-brand-purple hover:text-brand-purple-dark font-semibold hover:underline"
+            >
+              Limpiar búsqueda
+            </button>
+          )}
+          <span className="text-brand-muted">
+            {byTag.length} {byTag.length === 1 ? "producto" : "productos"} con galería
+          </span>
+        </div>
       </div>
+
+      {notice && (
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm font-medium text-emerald-800"
+        >
+          🟢 {notice}
+        </div>
+      )}
+
       {byTag.map((group, groupIndex) => {
         const chip = chipByTag[group.tag] ?? "all";
         const showChips = group.variantFilterOptions.length > 0;
@@ -800,7 +876,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
           <section key={group.tag}>
             <details
               open={isOpen}
-              className="border-brand-purple/10 rounded-2xl border bg-white/40 px-4 py-3"
+              className="border-brand-purple/10 overflow-hidden rounded-xl border bg-white shadow-sm"
             >
               {/* preventDefault + estado controlado: el toggle nativo del
                   summary desincronizaría openByTag. */}
@@ -809,288 +885,333 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                   e.preventDefault();
                   toggleOpen();
                 }}
-                className="text-brand-purple-dark mb-3 flex cursor-pointer items-center gap-2 text-lg font-semibold select-none"
+                className="hover:bg-brand-purple/[0.02] flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3.5 transition-colors select-none sm:px-5 [&::-webkit-details-marker]:hidden"
               >
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform ${isOpen ? "" : "-rotate-90"}`}
-                />
-                <span>{group.label}</span>
-                <span className="text-brand-muted text-xs font-semibold">
-                  · {group.counts.all} {group.counts.all === 1 ? "diseño" : "diseños"}
-                  {group.archived.length > 0 &&
-                    ` · ${group.archived.length} archivado${group.archived.length === 1 ? "" : "s"}`}
+                <span className="flex min-w-0 flex-wrap items-center gap-2">
+                  <ChevronDown
+                    className={`text-brand-purple h-4 w-4 shrink-0 transition-transform ${isOpen ? "" : "-rotate-90"}`}
+                  />
+                  <span className="font-display text-brand-purple-dark text-base font-semibold">
+                    {group.label}
+                  </span>
+                  <span className="bg-brand-purple/10 text-brand-purple-dark rounded-md px-2 py-0.5 text-xs font-medium tabular-nums">
+                    {group.counts.all} {group.counts.all === 1 ? "diseño" : "diseños"}
+                  </span>
+                  {group.archived.length > 0 && (
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 tabular-nums">
+                      {group.archived.length} archivado{group.archived.length === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </span>
+                <span
+                  className="flex flex-wrap items-center gap-3 text-xs font-medium"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {canAccessCatalog && group.productId && (
+                    <Link
+                      href={`/admin/productos/${group.productId}`}
+                      className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 font-semibold hover:underline"
+                    >
+                      <Package className="h-3.5 w-3.5" />
+                      Producto
+                    </Link>
+                  )}
+                  {group.isActive && group.productSlug && (
+                    <Link
+                      href={`/estudio/${group.productSlug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-brand-muted hover:text-brand-purple-dark inline-flex items-center gap-1 hover:underline"
+                    >
+                      Estudio
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
                 </span>
               </summary>
 
-              {/* Fase 5b — chips por variante con contador. Solo si el producto
-                varía por un atributo filtrable (si no, todo diseño es "Todas"). */}
-              {showChips && (
-                <div
-                  className="mb-3 flex flex-wrap gap-1.5"
-                  role="group"
-                  aria-label="Filtrar por variante"
-                >
-                  {[
-                    { key: "all", label: "Todas", count: group.counts.all },
-                    ...group.variantFilterOptions.map((o) => ({
-                      key: JSON.stringify(o.filter),
-                      label: o.label,
-                      count: group.counts.byOption.get(JSON.stringify(o.filter)) ?? 0,
-                    })),
-                    { key: "unassigned", label: "Sin asignar", count: group.counts.unassigned },
-                  ].map((c) => (
-                    <button
-                      key={c.key}
-                      type="button"
-                      onClick={() => setChipByTag((m) => ({ ...m, [group.tag]: c.key }))}
-                      aria-pressed={chip === c.key}
-                      className={
-                        "inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-1 text-xs font-semibold transition-colors " +
-                        (chip === c.key
-                          ? "border-brand-purple bg-brand-purple text-white"
-                          : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/40 bg-white")
-                      }
-                    >
-                      {c.label}
-                      <span
+              <div className="border-brand-purple/10 space-y-4 border-t px-4 py-4 sm:px-5">
+                {/* Fase 5b — chips por variante con contador. Solo si el producto
+                  varía por un atributo filtrable (si no, todo diseño es "Todas"). */}
+                {showChips && (
+                  <div
+                    className="flex flex-wrap gap-1.5"
+                    role="group"
+                    aria-label="Filtrar por variante"
+                  >
+                    {[
+                      { key: "all", label: "Todas", count: group.counts.all },
+                      ...group.variantFilterOptions.map((o) => ({
+                        key: JSON.stringify(o.filter),
+                        label: o.label,
+                        count: group.counts.byOption.get(JSON.stringify(o.filter)) ?? 0,
+                      })),
+                      { key: "unassigned", label: "Sin asignar", count: group.counts.unassigned },
+                    ].map((c) => (
+                      <button
+                        key={c.key}
+                        type="button"
+                        onClick={() => setChipByTag((m) => ({ ...m, [group.tag]: c.key }))}
+                        aria-pressed={chip === c.key}
                         className={
-                          "rounded-full px-1.5 text-[10px] tabular-nums " +
-                          (chip === c.key ? "bg-white/25" : "bg-brand-purple/10")
+                          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors " +
+                          (chip === c.key
+                            ? "border-brand-purple bg-brand-purple text-white shadow-xs"
+                            : "border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 bg-white")
                         }
                       >
-                        {c.count}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Fase 5b — asignación masiva: solo si hay diseños sin asignar y
-                el producto tiene opciones de filtro. */}
-              {showChips && group.counts.unassigned > 0 && (
-                <div className="border-brand-turquoise/40 bg-brand-turquoise/10 mb-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2">
-                  <Layers className="text-brand-purple-dark h-4 w-4 shrink-0" />
-                  <span className="text-brand-purple-dark text-xs font-semibold">
-                    {group.counts.unassigned} sin asignar:
-                  </span>
-                  <select
-                    value={bulkChoice}
-                    onChange={(e) =>
-                      setBulkChoiceByTag((m) => ({ ...m, [group.tag]: e.target.value }))
-                    }
-                    aria-label={`Variante a asignar en ${group.label}`}
-                    className="border-brand-purple/25 rounded-lg border-2 bg-white px-2 py-1 text-xs outline-none"
-                  >
-                    <option value="">Elegir variante…</option>
-                    {group.variantFilterOptions.map((o) => (
-                      <option key={JSON.stringify(o.filter)} value={JSON.stringify(o.filter)}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => onBulkAssign(group, group.counts.unassigned)}
-                    disabled={pending || !bulkChoice}
-                    className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
-                  >
-                    {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                    Asignar a todos los sin asignar
-                  </button>
-                </div>
-              )}
-
-              {group.items.length === 0 ? (
-                <p className="text-brand-muted text-sm italic">
-                  {group.counts.all === 0
-                    ? normalizedQuery
-                      ? "Ningún diseño coincide con la búsqueda."
-                      : "Aún no hay diseños. Sube el primero arriba."
-                    : "No hay diseños con este filtro."}
-                </p>
-              ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
-                  {group.items.map((it, idx) => {
-                    const previewB = formatPreview(it.imageUrlB);
-                    // B-5 — las flechas reordenan dentro del grupo del chip activo
-                    // (mismo variantFilter). Con chip "Todas" en productos con
-                    // variantes el grupo visible mezcla filtros → se deshabilitan;
-                    // con búsqueda activa la lista no refleja la adyacencia real.
-                    const reorderable =
-                      (group.variantFilterOptions.length === 0 || chip !== "all") &&
-                      !normalizedQuery;
-                    return (
-                      <div
-                        key={it.id}
-                        className="border-brand-purple/12 group hover:shadow-brand-purple/10 relative rounded-xl border bg-white p-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
-                      >
-                        {/* Paquete A — click en la tarjeta abre el detalle (caras
-                        A/B lado a lado + ficha). El archivar sigue aparte. */}
-                        <button
-                          type="button"
-                          onClick={() => setDetail(it)}
-                          aria-label={`Ver detalle de ${it.name}`}
-                          aria-haspopup="dialog"
-                          className="focus:ring-brand-turquoise block w-full overflow-hidden rounded-lg focus:ring-2 focus:outline-none"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
-                          <img
-                            src={it.imageUrl}
-                            alt={it.name}
-                            className={
-                              "aspect-square w-full rounded-lg object-cover transition-transform duration-300 group-hover:scale-[1.05] " +
-                              (it.isActive ? "" : "opacity-50 grayscale")
-                            }
-                          />
-                        </button>
-                        {previewB && (
-                          <span className="text-brand-purple-dark absolute top-2 left-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold shadow">
-                            A/B
-                          </span>
-                        )}
-                        {/* B-5 — pausados: atenuados + badge; NO aparecen en el Estudio. */}
-                        {!it.isActive && (
-                          <span className="absolute top-2 right-9 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-amber-700 shadow">
-                            Pausada
-                          </span>
-                        )}
-                        <Hint content={it.name}>
-                          <p className="text-brand-purple-dark mt-1 truncate text-xs font-semibold">
-                            {it.name}
-                          </p>
-                        </Hint>
-                        {/* Fase 5 — badge del filtro por variante ("2×6") o "Todas". */}
+                        <span>{c.label}</span>
                         <span
                           className={
-                            "mt-0.5 inline-block rounded-full px-1.5 py-px text-[10px] font-semibold " +
-                            (it.variantFilter
-                              ? "bg-brand-turquoise/15 text-brand-purple-dark"
-                              : "bg-brand-purple/5 text-brand-muted")
+                            "rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums " +
+                            (chip === c.key
+                              ? "bg-white/20 text-white"
+                              : "bg-brand-purple/10 text-brand-purple-dark")
                           }
                         >
-                          {describeVariantFilter(it.variantFilter)}
+                          {c.count}
                         </span>
-                        {/* B-5 — acciones de la tarjeta: visibilidad + reorden. */}
-                        <div className="mt-1 flex items-center justify-between gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              startTransition(async () => {
-                                const err = await onToggleActive(it.id, !it.isActive);
-                                if (err) setError(err);
-                              })
-                            }
-                            disabled={pending}
-                            aria-label={
-                              it.isActive
-                                ? `Pausar ${it.name} en el Estudio`
-                                : `Reactivar ${it.name} en el Estudio`
-                            }
-                            aria-pressed={it.isActive}
-                            title={it.isActive ? "Visible en el Estudio" : "Pausada"}
-                            className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-50"
-                          >
-                            {it.isActive ? (
-                              <Eye className="h-3.5 w-3.5" />
-                            ) : (
-                              <EyeOff className="h-3.5 w-3.5 text-amber-700" />
-                            )}
-                          </button>
-                          {reorderable && (
-                            <span className="inline-flex items-center gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => onMove(it.id, "up")}
-                                disabled={pending || idx === 0}
-                                aria-label={`Subir ${it.name}`}
-                                className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-30"
-                              >
-                                <ChevronUp className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onMove(it.id, "down")}
-                                disabled={pending || idx === group.items.length - 1}
-                                aria-label={`Bajar ${it.name}`}
-                                className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-30"
-                              >
-                                <ChevronDown className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
-                          )}
-                        </div>
-                        {/* 3.6 — ARCHIVAR (antes "Borrar"): soft-delete, va a
-                            la sección Archivados de abajo (restaurable). */}
-                        <button
-                          type="button"
-                          onClick={() => onArchive(it.id, it.name)}
-                          disabled={pending}
-                          aria-label={`Archivar ${it.name}`}
-                          title="Archivar (sale del Estudio, restaurable)"
-                          className="absolute top-1 right-1 rounded-full bg-white/90 p-1.5 text-rose-600 shadow hover:bg-rose-50 disabled:opacity-50"
-                        >
-                          <Archive className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* B-5 — archivados (soft-deleted) del producto: sección colapsable
-                con Restaurar (vuelven pausados, al final del orden). */}
-              {group.archived.length > 0 && (
-                <details className="border-brand-purple/15 mt-3 rounded-xl border bg-white/60 px-3 py-2">
-                  <summary className="text-brand-purple-dark cursor-pointer text-xs font-semibold">
-                    Archivados ({group.archived.length})
-                  </summary>
-                  <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6 md:grid-cols-8">
-                    {group.archived.map((it) => (
-                      <div
-                        key={it.id}
-                        className="border-brand-purple/12 relative rounded-lg border bg-white p-1.5 opacity-75"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
-                        <img
-                          src={it.imageUrl}
-                          alt={it.name}
-                          className="aspect-square w-full rounded-md object-cover grayscale"
-                        />
-                        <Hint content={it.name}>
-                          <p className="text-brand-purple-dark mt-1 truncate text-[10px] font-semibold">
-                            {it.name}
-                          </p>
-                        </Hint>
-                        <div className="mt-0.5 flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => onRestore(it.id)}
-                            disabled={pending}
-                            aria-label={`Restaurar ${it.name}`}
-                            className="text-brand-purple hover:bg-brand-purple/10 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-semibold disabled:opacity-50"
-                          >
-                            <ArchiveRestore className="h-3 w-3" />
-                            Restaurar
-                          </button>
-                          {/* 3.6 — eliminación PERMANENTE (fila + archivos);
-                              confirmación fuerte: escribir ELIMINAR. */}
-                          <button
-                            type="button"
-                            onClick={() => onPurge(it.id, it.name)}
-                            disabled={pending}
-                            aria-label={`Eliminar permanentemente ${it.name}`}
-                            title="Eliminar permanentemente (irreversible)"
-                            className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            Eliminar
-                          </button>
-                        </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
-                </details>
-              )}
+                )}
+
+                {/* Fase 5b — asignación masiva: solo si hay diseños sin asignar y
+                  el producto tiene opciones de filtro. */}
+                {showChips && group.counts.unassigned > 0 && (
+                  <div className="border-brand-turquoise/35 bg-brand-turquoise/10 flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:flex-wrap sm:items-center">
+                    <span className="text-brand-purple-dark inline-flex items-center gap-1.5 text-xs font-semibold">
+                      <Layers className="h-4 w-4 shrink-0" />
+                      {group.counts.unassigned} sin asignar:
+                    </span>
+                    <select
+                      value={bulkChoice}
+                      onChange={(e) =>
+                        setBulkChoiceByTag((m) => ({ ...m, [group.tag]: e.target.value }))
+                      }
+                      aria-label={`Variante a asignar en ${group.label}`}
+                      className="border-brand-purple/20 h-8 w-full min-w-0 rounded-md border bg-white px-2.5 text-xs shadow-xs outline-none sm:w-auto sm:max-w-xs"
+                    >
+                      <option value="">Elegir variante…</option>
+                      {group.variantFilterOptions.map((o) => (
+                        <option key={JSON.stringify(o.filter)} value={JSON.stringify(o.filter)}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => onBulkAssign(group, group.counts.unassigned)}
+                      disabled={pending || !bulkChoice}
+                      className="bg-brand-purple hover:bg-brand-purple-dark inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold text-white transition-colors disabled:opacity-60 sm:w-auto"
+                    >
+                      {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      Asignar a todos los sin asignar
+                    </button>
+                  </div>
+                )}
+
+                {group.items.length === 0 ? (
+                  <p className="text-brand-muted py-2 text-sm italic">
+                    {group.counts.all === 0
+                      ? normalizedQuery
+                        ? "Ningún diseño coincide con la búsqueda."
+                        : "Aún no hay diseños. Sube el primero arriba."
+                      : "No hay diseños con este filtro."}
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                    {group.items.map((it, idx) => {
+                      const previewB = formatPreview(it.imageUrlB);
+                      // B-5 — las flechas reordenan dentro del grupo del chip activo
+                      // (mismo variantFilter). Con chip "Todas" en productos con
+                      // variantes el grupo visible mezcla filtros → se deshabilitan;
+                      // con búsqueda activa la lista no refleja la adyacencia real.
+                      const reorderable =
+                        (group.variantFilterOptions.length === 0 || chip !== "all") &&
+                        !normalizedQuery;
+                      return (
+                        <div
+                          key={it.id}
+                          className="border-brand-purple/10 group hover:shadow-brand-purple/10 flex min-w-0 flex-col overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                        >
+                          {/* Paquete A — click en la imagen abre el detalle (caras
+                          A/B lado a lado + ficha). */}
+                          <button
+                            type="button"
+                            onClick={() => setDetail(it)}
+                            aria-label={`Ver detalle de ${it.name}`}
+                            aria-haspopup="dialog"
+                            className="bg-brand-cream/40 focus-visible:ring-brand-purple/40 relative block aspect-square w-full overflow-hidden focus-visible:ring-2 focus-visible:outline-none"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
+                            <img
+                              src={it.imageUrl}
+                              alt={it.name}
+                              className={
+                                "h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04] " +
+                                (it.isActive ? "" : "opacity-55 grayscale")
+                              }
+                            />
+                            {previewB && (
+                              <span className="text-brand-purple-dark absolute top-2 left-2 rounded-md bg-white/92 px-1.5 py-0.5 text-[10px] font-semibold shadow-xs">
+                                A/B
+                              </span>
+                            )}
+                            {!it.isActive && (
+                              <span className="absolute top-2 right-2 rounded-md bg-amber-50/95 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 shadow-xs ring-1 ring-amber-200/80">
+                                Pausada
+                              </span>
+                            )}
+                          </button>
+
+                          <div className="flex flex-1 flex-col justify-between p-2.5">
+                            <div className="min-w-0">
+                              <Hint content={it.name}>
+                                <p className="text-brand-purple-dark truncate text-xs font-semibold">
+                                  {it.name}
+                                </p>
+                              </Hint>
+                              <span
+                                className={
+                                  "mt-1 inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-medium " +
+                                  (it.variantFilter
+                                    ? "bg-brand-turquoise/15 text-cyan-800"
+                                    : "bg-brand-purple/6 text-brand-muted")
+                                }
+                              >
+                                {describeVariantFilter(it.variantFilter)}
+                              </span>
+                            </div>
+
+                            {/* Acciones limpias en pie de tarjeta (visibilidad + reorden + archivar) */}
+                            <div className="border-brand-purple/10 mt-2 flex items-center justify-between gap-1 border-t pt-1.5">
+                              <div className="inline-flex items-center gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    startTransition(async () => {
+                                      const err = await onToggleActive(it.id, !it.isActive);
+                                      if (err) setError(err);
+                                    })
+                                  }
+                                  disabled={pending}
+                                  aria-label={
+                                    it.isActive
+                                      ? `Pausar ${it.name} en el Estudio`
+                                      : `Reactivar ${it.name} en el Estudio`
+                                  }
+                                  aria-pressed={it.isActive}
+                                  title={it.isActive ? "Visible en el Estudio" : "Pausada"}
+                                  className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1.5 transition-colors disabled:opacity-50"
+                                >
+                                  {it.isActive ? (
+                                    <Eye className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <EyeOff className="h-3.5 w-3.5 text-amber-700" />
+                                  )}
+                                </button>
+                                {reorderable && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => onMove(it.id, "up")}
+                                      disabled={pending || idx === 0}
+                                      aria-label={`Subir ${it.name}`}
+                                      className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 transition-colors disabled:opacity-30"
+                                    >
+                                      <ChevronUp className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => onMove(it.id, "down")}
+                                      disabled={pending || idx === group.items.length - 1}
+                                      aria-label={`Bajar ${it.name}`}
+                                      className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 transition-colors disabled:opacity-30"
+                                    >
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => onArchive(it.id, it.name)}
+                                disabled={pending}
+                                aria-label={`Archivar ${it.name}`}
+                                title="Archivar (sale del Estudio, restaurable)"
+                                className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                              >
+                                <Archive className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* B-5 — archivados (soft-deleted) del producto: sección colapsable
+                  con Restaurar y Eliminar permanente (sin overflow en móvil). */}
+                {group.archived.length > 0 && (
+                  <details className="border-brand-purple/12 rounded-xl border bg-slate-50/70 p-3">
+                    <summary className="text-brand-purple-dark flex cursor-pointer items-center justify-between gap-2 text-xs font-semibold select-none">
+                      <span>Archivados ({group.archived.length})</span>
+                      <span className="text-brand-muted text-[11px] font-normal">
+                        Restaurables o purgables con MFA
+                      </span>
+                    </summary>
+                    <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                      {group.archived.map((it) => (
+                        <div
+                          key={it.id}
+                          className="border-brand-purple/10 flex min-w-0 flex-col overflow-hidden rounded-xl border bg-white shadow-xs"
+                        >
+                          <div className="aspect-square w-full overflow-hidden bg-slate-100">
+                            {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
+                            <img
+                              src={it.imageUrl}
+                              alt={it.name}
+                              className="h-full w-full object-cover opacity-80 grayscale"
+                            />
+                          </div>
+                          <div className="px-2.5 pt-2">
+                            <Hint content={it.name}>
+                              <p className="text-brand-purple-dark truncate text-xs font-semibold">
+                                {it.name}
+                              </p>
+                            </Hint>
+                          </div>
+                          <div className="border-brand-purple/10 mt-2 grid grid-cols-1 gap-1 border-t p-2 sm:grid-cols-2">
+                            <button
+                              type="button"
+                              onClick={() => onRestore(it.id)}
+                              disabled={pending}
+                              aria-label={`Restaurar ${it.name}`}
+                              className="border-brand-purple/15 text-brand-purple hover:bg-brand-purple/8 inline-flex w-full min-w-0 items-center justify-center gap-1 rounded-md border bg-white px-2 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                            >
+                              <ArchiveRestore className="h-3 w-3 shrink-0" />
+                              <span className="truncate">Restaurar</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onPurge(it.id, it.name)}
+                              disabled={pending}
+                              aria-label={`Eliminar permanentemente ${it.name}`}
+                              title="Eliminar permanentemente (irreversible)"
+                              className="inline-flex w-full min-w-0 items-center justify-center gap-1 rounded-md border border-rose-200/80 bg-rose-50/50 px-2 py-1.5 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-100/70 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3 w-3 shrink-0" />
+                              <span className="truncate">Eliminar</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
             </details>
           </section>
         );
@@ -1117,6 +1238,16 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
         onToggleActive={onToggleActive}
       />
       {confirmDialog}
+      {reauthPurgeTarget && (
+        <MfaReauthModal
+          onVerified={() => {
+            const target = reauthPurgeTarget;
+            setReauthPurgeTarget(null);
+            executePurge(target.id, target.name);
+          }}
+          onCancel={() => setReauthPurgeTarget(null)}
+        />
+      )}
     </div>
   );
 }

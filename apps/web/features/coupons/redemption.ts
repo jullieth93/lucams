@@ -24,6 +24,7 @@ export type CouponRejectReason =
   | "MIN_ORDER_NOT_MET"
   | "MIN_QUANTITY_NOT_MET"
   | "PER_CUSTOMER_LIMIT"
+  | "NOT_OWNER"
   | "NOT_APPLICABLE"
   | "ZERO_DISCOUNT";
 
@@ -37,6 +38,8 @@ const REJECT_MESSAGES: Record<CouponRejectReason, string> = {
   MIN_ORDER_NOT_MET: "Tu compra no alcanza el mínimo para este cupón.",
   MIN_QUANTITY_NOT_MET: "Necesitas más unidades para usar este cupón.",
   PER_CUSTOMER_LIMIT: "Ya usaste este cupón el máximo de veces permitido.",
+  NOT_OWNER:
+    "Este cupón es personal e intransferible (inicia sesión o usa el correo de tu cuenta).",
   NOT_APPLICABLE: "Este cupón no aplica a los productos de tu carrito.",
   ZERO_DISCOUNT: "Este cupón no genera descuento en tu compra.",
 };
@@ -64,6 +67,10 @@ export type CouponRow = {
   appliesToProductSlugs: string[];
   maxUsesPerCustomer: number | null;
   requiresMinQuantity: number | null;
+  /** Si no es null, el cupón pertenece exclusivamente a este cliente (D3). */
+  customerId?: string | null;
+  /** Correo activo del dueño para permitir su propio checkout como invitado. */
+  ownerEmail?: string | null;
 };
 
 export type PriceCouponResult =
@@ -134,11 +141,30 @@ export function priceCouponPure(
     shippingCost: number;
     now: Date;
     perCustomerUses: number;
+    customerId?: string | null;
+    email?: string | null;
   },
 ): PriceCouponResult {
   if (!coupon.isActive) return reject("INACTIVE");
   if (ctx.now < coupon.validFrom) return reject("NOT_STARTED");
   if (ctx.now > coupon.validTo) return reject("EXPIRED");
+
+  // D3 (Auditoría 360°): los cupones personales (`customerId != null`, ej. «Invita y gana»)
+  // son estrictamente intransferibles. Solo puede redimirlos su titular autenticado o, en
+  // checkout invitado (`ctx.customerId == null`), quien ingrese el correo exacto del titular
+  // activo. Un cliente distinto autenticado jamás puede suplantar el correo del titular.
+  if (coupon.customerId != null) {
+    if (ctx.customerId != null) {
+      if (ctx.customerId !== coupon.customerId) return reject("NOT_OWNER");
+    } else {
+      const guestEmail = ctx.email?.trim().toLowerCase() ?? "";
+      const ownerEmail = coupon.ownerEmail?.trim().toLowerCase() ?? "";
+      if (!guestEmail || !ownerEmail || guestEmail !== ownerEmail) {
+        return reject("NOT_OWNER");
+      }
+    }
+  }
+
   if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses)
     return reject("MAX_USES_REACHED");
   if (coupon.maxUsesPerCustomer != null && ctx.perCustomerUses >= coupon.maxUsesPerCustomer) {
@@ -221,6 +247,8 @@ export async function priceCouponForCart(
       appliesToProductSlugs: true,
       maxUsesPerCustomer: true,
       requiresMinQuantity: true,
+      customerId: true,
+      customer: { select: { email: true, deletedAt: true } },
     },
   });
   if (!coupon) return reject("NOT_FOUND");
@@ -264,13 +292,21 @@ export async function priceCouponForCart(
     }
   }
 
-  return priceCouponPure(coupon, {
-    items,
-    subtotal,
-    shippingCost: input.shippingCost,
-    now: input.now ?? new Date(),
-    perCustomerUses,
-  });
+  return priceCouponPure(
+    {
+      ...coupon,
+      ownerEmail: coupon.customer && !coupon.customer.deletedAt ? coupon.customer.email : null,
+    },
+    {
+      items,
+      subtotal,
+      shippingCost: input.shippingCost,
+      now: input.now ?? new Date(),
+      perCustomerUses,
+      customerId: input.customerId,
+      email: input.email ?? null,
+    },
+  );
 }
 
 export { REJECT_MESSAGES };

@@ -193,8 +193,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
       ...spec.pasosArmado.map((step, index) => `    ${index + 1}. ${step}`),
     );
     if (item.moderationStatus !== "APPROVED") {
+      const estadoLabel =
+        item.moderationStatus === "REJECTED" ? "Rechazado" : "Pendiente de moderación";
       summary.push(
-        `  ⚠️ Estado de moderación: ${item.moderationStatus} — no imprimir hasta aprobar en /admin/moderacion.`,
+        `  ⚠️ Estado de moderación: ${estadoLabel} — no imprimir hasta aprobar en /admin/moderacion.`,
       );
     }
 

@@ -13,7 +13,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { logger } from "@/lib/logger";
 import {
   createProduct,
@@ -34,6 +34,8 @@ export type ProductActionState = {
   /** true cuando el guardado aplicó — el form de edición muestra el aviso de
    * éxito (antes retornaba {} y "aparentemente no hacía nada", owner 2026-09-18). */
   success?: boolean;
+  /** Step-up MFA requerido para purga física irreversible (D2). */
+  reauthRequired?: boolean;
   /** Claves = campos del schema Zod (cualquiera, no solo los del form). El form
    * las traduce a etiquetas humanas en el alert global. */
   fieldErrors?: Partial<Record<string, string[]>>;
@@ -84,7 +86,7 @@ function parsePayload(formData: FormData) {
     // edición el hidden siempre trae valor → número.
     basePrice: getOptNum("basePrice"),
     compareAtPrice: getOptNum("compareAtPrice"),
-    cost: getOptNum("cost"),
+    ...(formData.has("cost") ? { cost: getOptNum("cost") } : {}),
     sku: String(get("sku") ?? "")
       .trim()
       .toUpperCase(),
@@ -157,7 +159,7 @@ export async function createProductAction(
   _prev: ProductActionState | null,
   formData: FormData,
 ): Promise<ProductActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const parsed = ProductCreateSchema.safeParse(parsePayload(formData));
   if (!parsed.success) {
@@ -186,6 +188,8 @@ export async function createProductAction(
     // Revalidar admin + storefront para que el cliente vea el cambio
     // inmediatamente sin esperar al revalidate por TTL.
     revalidatePath("/admin/productos");
+    revalidatePath("/admin/inventario");
+    revalidatePath("/admin/costos");
     revalidatePath("/productos");
     revalidatePath("/", "layout"); // home featured + categorías
     redirect(`/admin/productos/${product.id}?created=1`);
@@ -214,7 +218,7 @@ export async function updateProductAction(
   _prev: ProductActionState | null,
   formData: FormData,
 ): Promise<ProductActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   const payload = { id, ...parsePayload(formData) };
@@ -243,6 +247,8 @@ export async function updateProductAction(
     });
     revalidatePath("/admin/productos");
     revalidatePath(`/admin/productos/${product.id}`);
+    revalidatePath("/admin/inventario");
+    revalidatePath("/admin/costos");
     // Revalidar todas las URLs storefront que muestran este producto.
     revalidatePath("/productos");
     revalidatePath(`/producto/${product.slug}`);
@@ -268,7 +274,7 @@ export async function updateProductAction(
 }
 
 export async function deleteProductAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return;
@@ -286,6 +292,8 @@ export async function deleteProductAction(formData: FormData): Promise<void> {
     entityId: id,
   });
   revalidatePath("/admin/productos");
+  revalidatePath("/admin/inventario");
+  revalidatePath("/admin/costos");
   revalidatePath("/productos");
   revalidatePath("/", "layout");
   redirect("/admin/productos?deleted=1");
@@ -294,7 +302,7 @@ export async function deleteProductAction(formData: FormData): Promise<void> {
 /** Restaura un producto archivado (deletedAt → null). Queda isActive=false
  * por seguridad — admin lo activa explícito desde la fila después. */
 export async function restoreProductAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await restoreProduct(id, session.admin.id);
@@ -306,6 +314,8 @@ export async function restoreProductAction(formData: FormData): Promise<void> {
     entityId: id,
   });
   revalidatePath("/admin/productos");
+  revalidatePath("/admin/inventario");
+  revalidatePath("/admin/costos");
   revalidatePath("/productos");
   revalidatePath("/", "layout");
   redirect("/admin/productos?restored=1");
@@ -315,13 +325,23 @@ export async function restoreProductAction(formData: FormData): Promise<void> {
  * ELIMINAR PERMANENTEMENTE un producto archivado (2026-10-09, a pedido del
  * owner — espejo de purgeGalleryImageAction de prediseñados). Purga las
  * imágenes del bucket (product.images + variant.images) y borra la fila con
- * sus cascadas seguras. Irreversible — la UI pide escribir ELIMINAR.
+ * sus cascadas seguras. Irreversible — la UI pide escribir ELIMINAR y exige
+ * step-up MFA reciente (≤ 10 min, D2).
  * Bloquea con mensaje claro si hay diseños, pedidos, carritos o reseñas
  * referenciando el producto. Si la purga de storage falla se ABORTA y la fila
  * se conserva (reintentable; nunca quedan bytes sin fila).
  */
 export async function purgeProductAction(formData: FormData): Promise<ProductActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
+
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { reauthRequired: true, error: MFA_REAUTH_MESSAGE };
+    }
+    throw err;
+  }
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Datos inválidos." };
@@ -374,6 +394,8 @@ export async function purgeProductAction(formData: FormData): Promise<ProductAct
     entityId: id,
   });
   revalidatePath("/admin/productos");
+  revalidatePath("/admin/inventario");
+  revalidatePath("/admin/costos");
   revalidatePath("/productos");
   revalidatePath("/", "layout");
   return { success: true };
@@ -381,7 +403,7 @@ export async function purgeProductAction(formData: FormData): Promise<ProductAct
 
 /** Toggle isActive (activa o desactiva sin archivar). Reflejo inmediato en storefront. */
 export async function toggleProductActiveAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
   const id = String(formData.get("id") ?? "");
   const isActive = formData.get("isActive") === "true";
   if (!id) return;
@@ -408,6 +430,7 @@ export async function toggleProductActiveAction(formData: FormData): Promise<voi
     entityId: id,
   });
   revalidatePath("/admin/productos");
+  revalidatePath("/admin/inventario");
   revalidatePath("/productos");
   revalidatePath("/", "layout");
 }

@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { ShoppingBag } from "lucide-react";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { listCategoriesForSelect } from "@/features/products/service";
 import { ProductForm } from "../product-form";
 import { createProductAction } from "../actions";
@@ -12,8 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default async function NuevoProductoPage() {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireCapability("catalog:write");
 
   const categories = await listCategoriesForSelect();
 

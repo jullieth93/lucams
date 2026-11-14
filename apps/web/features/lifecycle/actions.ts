@@ -5,6 +5,7 @@ import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { captureServerError } from "@/lib/error-capture";
+import { rateLimit } from "@/lib/rate-limit";
 import {
   createLifecycleJourney,
   retryLifecycleMessage,
@@ -138,6 +139,13 @@ export async function sendLifecycleTestAction(input: unknown): Promise<Lifecycle
   if (!parsed.success) return { ok: false, message: "El paso seleccionado no es válido." };
   try {
     await requireRecentMfa();
+    const rl = await rateLimit(`admin_lifecycle_test:${session.admin.id}`, 12, 3600);
+    if (!rl.allowed) {
+      return {
+        ok: false,
+        message: "Has alcanzado el límite de correos de prueba por hora. Intenta más tarde.",
+      };
+    }
     const resendId = await sendLifecycleTest(parsed.data.journeyId, parsed.data.stepId, {
       email: session.admin.email,
       fullName: null,
@@ -173,7 +181,7 @@ export async function setEnrollmentStatusAction(input: unknown): Promise<Lifecyc
       action: `lifecycle.enrollment_${parsed.data.action}`,
       entityType: "LifecycleEnrollment",
       entityId: enrollment.id,
-      metadata: { status: enrollment.status },
+      metadata: { status: enrollment.status, journeyId: enrollment.journeyId },
     });
     revalidatePath(`/admin/lifecycle/${enrollment.journeyId}`);
     return { ok: true, message: "Inscripción actualizada." };
@@ -194,7 +202,7 @@ export async function retryLifecycleMessageAction(input: unknown): Promise<Lifec
       action: "lifecycle.message_retry",
       entityType: "LifecycleMessage",
       entityId: message.id,
-      metadata: { status: message.status },
+      metadata: { status: message.status, journeyId: message.enrollment.journeyId },
     });
     revalidatePath(`/admin/lifecycle/${message.enrollment.journeyId}`);
     return { ok: true, message: "El mensaje quedó listo para un nuevo intento." };

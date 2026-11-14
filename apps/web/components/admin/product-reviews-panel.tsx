@@ -20,13 +20,14 @@
 
 import Link from "next/link";
 import { Star, CheckCircle2, Archive, StarOff, RotateCcw, MessageSquare } from "lucide-react";
-import { AdminCard, AdminEmpty, AdminBadge } from "@/components/admin-page";
+import { AdminCard, AdminEmpty, AdminBadge, AdminNotice } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
 import { listReviewsAdmin } from "@/features/reviews/admin-service";
 import {
   approveReviewAction,
   toggleFeaturedReviewAction,
   archiveReviewAction,
+  restoreReviewAction,
 } from "@/app/admin/(panel)/resenas/actions";
 import { formatDateLongCO } from "@/lib/datetime";
 
@@ -57,9 +58,31 @@ export async function ProductReviewsPanel({
   ]);
 
   const totalAllStatuses = pendingTotal + approvedTotal + archivedTotal;
+  const returnTo = `/admin/productos/${productId}?section=resenas&estado=${subTab}`;
 
   return (
     <section className="space-y-5">
+      {searchParams.approved === "1" && (
+        <AdminNotice tone="success">
+          Reseña aprobada y publicada en la ficha pública del producto.
+        </AdminNotice>
+      )}
+      {searchParams.featured === "1" && (
+        <AdminNotice tone="success">
+          Reseña destacada en el carrusel de la página principal.
+        </AdminNotice>
+      )}
+      {searchParams.unfeatured === "1" && (
+        <AdminNotice tone="warning">Reseña retirada del carrusel de portada.</AdminNotice>
+      )}
+      {searchParams.archived === "1" && <AdminNotice tone="warning">Reseña archivada.</AdminNotice>}
+      {searchParams.restored === "1" && (
+        <AdminNotice tone="success">Reseña restaurada a pendientes.</AdminNotice>
+      )}
+      {typeof searchParams.error === "string" && searchParams.error && (
+        <AdminNotice tone="error">{searchParams.error}</AdminNotice>
+      )}
+
       {/* Resumen rápido */}
       <AdminCard className="p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -135,13 +158,10 @@ export async function ProductReviewsPanel({
             <ReviewCard
               key={r.id}
               review={r}
-              productId={productId}
               productSlug={productSlug}
+              returnTo={returnTo}
               showApproveActions={subTab === "pending"}
               showFeatureToggle={subTab === "approved"}
-              // Hotfix P0-5: Archivar disponible TAMBIÉN en Pendientes
-              // (caso real: spam o reseña inapropiada que no merece moderación
-              // formal — Lucy quiere mandarla al archivo directo).
               showArchiveAction={subTab === "pending" || subTab === "approved"}
               showRestoreAction={subTab === "archived"}
             />
@@ -202,8 +222,8 @@ function SubTab({
 
 function ReviewCard({
   review,
-  productId,
   productSlug,
+  returnTo,
   showApproveActions,
   showFeatureToggle,
   showArchiveAction,
@@ -219,8 +239,8 @@ function ReviewCard({
     imagesCount: number;
     createdAt: Date;
   };
-  productId: string;
   productSlug: string;
+  returnTo: string;
   showApproveActions: boolean;
   showFeatureToggle: boolean;
   showArchiveAction: boolean;
@@ -233,11 +253,6 @@ function ReviewCard({
     <AdminCard className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          {/*
-           * Hotfix P0-13: flex-wrap + truncate en nombre del autor —
-           * antes con nombres largos toda la fila desbordaba a la derecha.
-           * Hotfix P1-12: metadata estandarizada a text-xs purple-dark/60.
-           */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Stars rating={review.rating} />
             <span className="text-brand-purple-dark min-w-0 truncate text-sm font-semibold">
@@ -263,31 +278,27 @@ function ReviewCard({
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {showApproveActions && (
-            <>
-              <form action={approveReviewAction}>
-                <input type="hidden" name="id" value={review.id} />
-                <input type="hidden" name="productSlug" value={productSlug} />
-                <Hint content="Aprobar y publicar">
-                  <button
-                    type="submit"
-                    className="inline-flex h-9 items-center gap-1 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Aprobar
-                  </button>
-                </Hint>
-              </form>
-              {/* #14 — se retira "Rechazar": sobre una reseña pendiente era un no-op (isApproved
-                y featured ya son false). La salida reversible correcta para spam/ofensivo es
-                "Archivar" (se renderiza abajo en el tab Pendientes), coherente con /admin/resenas
-                que nunca ofrece "Rechazar" sobre una reseña no aprobada. */}
-            </>
+            <form action={approveReviewAction}>
+              <input type="hidden" name="id" value={review.id} />
+              <input type="hidden" name="productSlug" value={productSlug} />
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <Hint content="Aprobar y publicar en la ficha del producto">
+                <button
+                  type="submit"
+                  className="inline-flex h-9 items-center gap-1 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Aprobar
+                </button>
+              </Hint>
+            </form>
           )}
           {showFeatureToggle && (
             <form action={toggleFeaturedReviewAction}>
               <input type="hidden" name="id" value={review.id} />
               <input type="hidden" name="productSlug" value={productSlug} />
-              <Hint content={review.featured ? "Quitar destacado" : "Destacar en home"}>
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <Hint content={review.featured ? "Quitar destacado" : "Destacar en portada"}>
                 <button
                   type="submit"
                   className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
@@ -311,6 +322,7 @@ function ReviewCard({
             <form action={archiveReviewAction}>
               <input type="hidden" name="id" value={review.id} />
               <input type="hidden" name="productSlug" value={productSlug} />
+              <input type="hidden" name="returnTo" value={returnTo} />
               <Hint content="Archivar (no aparece en la tienda)">
                 <button
                   type="submit"
@@ -323,20 +335,20 @@ function ReviewCard({
             </form>
           )}
           {showRestoreAction && (
-            // Hotfix P0-6: el href ANTES era ?productId=${review.id} (id de
-            // la reseña — bug que llevaba a un filtro vacío). Ahora usa el
-            // productId real del producto + status=archived (#13), abriendo el
-            // moderador global directamente en el tab donde la reseña archivada
-            // es visible y restaurable.
-            <Hint content="Ir al moderador global para restaurar">
-              <Link
-                href={`/admin/resenas?productId=${productId}&status=archived`}
-                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Restaurar
-              </Link>
-            </Hint>
+            <form action={restoreReviewAction}>
+              <input type="hidden" name="id" value={review.id} />
+              <input type="hidden" name="productSlug" value={productSlug} />
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <Hint content="Restaurar reseña a pendientes">
+                <button
+                  type="submit"
+                  className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Restaurar
+                </button>
+              </Hint>
+            </form>
           )}
         </div>
       </div>
@@ -350,7 +362,7 @@ function Stars({ rating }: { rating: number }) {
       {[1, 2, 3, 4, 5].map((n) => (
         <Star
           key={n}
-          className={`h-3.5 w-3.5 ${n <= rating ? "fill-amber-400 text-amber-400" : "text-brand-purple-dark/25"}`}
+          className={`h-3.5 w-3.5 ${n <= rating ? "fill-amber-400 text-amber-500" : "text-brand-purple-dark/25"}`}
         />
       ))}
     </span>

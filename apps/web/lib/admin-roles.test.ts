@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ADMIN_ASSIGNABLE_ROLES,
   ADMIN_ROLES_ALL,
   ADMIN_ROLE_DESCRIPTION,
   ADMIN_ROLE_LABEL,
@@ -61,6 +62,14 @@ describe("ADMIN_ROLE_LABEL (diccionario)", () => {
     }
     // Cada rol debe ser distinguible en la UI: labels únicos.
     expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("ADMIN_ASSIGNABLE_ROLES expone los 7 roles activos y oculta el alias heredado MANAGER", () => {
+    expect(ADMIN_ASSIGNABLE_ROLES).toHaveLength(7);
+    expect(ADMIN_ASSIGNABLE_ROLES).not.toContain("MANAGER");
+    for (const role of ADMIN_ASSIGNABLE_ROLES) {
+      expect(ADMIN_ROLES_ALL).toContain(role);
+    }
   });
 });
 

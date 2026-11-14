@@ -9,25 +9,46 @@
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { maskBlockedIdentityValue } from "@/lib/pii-mask";
 import {
   addBlockedIdentity,
+  getBlockedIdentityById,
   removeBlockedIdentity,
   BlocklistError,
 } from "@/features/anti-abuse/blocklist-service";
 
-type ActionResult = { error?: string; success?: string };
+export type BlocklistActionResult = {
+  error?: string;
+  success?: string;
+  reauthRequired?: boolean;
+};
+
+async function requireRecentMfaOrMarker(): Promise<{ reauthRequired: true } | null> {
+  try {
+    await requireRecentMfa();
+    return null;
+  } catch (err) {
+    if (isMfaReauthRequired(err)) return { reauthRequired: true };
+    throw err;
+  }
+}
 
 function revalidateBloqueos() {
   revalidatePath("/admin/finanzas/bloqueos");
+  revalidatePath("/admin/finanzas");
 }
 
 export async function addBlockedIdentityAction(
-  _prev: ActionResult | null,
+  _prev: BlocklistActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<BlocklistActionResult> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.FINANCE_COD });
+
+  const reauth = await requireRecentMfaOrMarker();
+  if (reauth) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
 
   const kind = String(formData.get("kind") ?? "");
   const value = String(formData.get("value") ?? "");
@@ -45,7 +66,10 @@ export async function addBlockedIdentityAction(
       action: "cod.blocklist.add",
       entityType: "BlockedIdentity",
       entityId: row.id,
-      metadata: { kind: row.kind, value: row.value },
+      metadata: {
+        kind: row.kind,
+        valueMasked: maskBlockedIdentityValue(row.kind, row.value),
+      },
     });
     logger.info({ event: "admin.cod_blocklist.add", adminId: session.admin.id, kind: row.kind });
     revalidateBloqueos();
@@ -57,20 +81,31 @@ export async function addBlockedIdentityAction(
 }
 
 export async function removeBlockedIdentityAction(
-  _prev: ActionResult | null,
+  _prev: BlocklistActionResult | null,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<BlocklistActionResult> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.FINANCE_COD });
 
-  const id = String(formData.get("id") ?? "");
+  const reauth = await requireRecentMfaOrMarker();
+  if (reauth) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+
+  const id = String(formData.get("id") ?? "").trim();
   if (!id) return { error: "Falta el bloqueo a retirar." };
 
+  const existing = await getBlockedIdentityById(id);
   await removeBlockedIdentity(id);
   await recordAdminAction({
     actorId: session.admin.id,
     action: "cod.blocklist.remove",
     entityType: "BlockedIdentity",
     entityId: id,
+    targetEmails: existing?.kind === "EMAIL" ? [existing.value] : [],
+    metadata: existing
+      ? {
+          kind: existing.kind,
+          valueMasked: maskBlockedIdentityValue(existing.kind, existing.value),
+        }
+      : undefined,
   });
   logger.info({ event: "admin.cod_blocklist.remove", adminId: session.admin.id, id });
   revalidateBloqueos();

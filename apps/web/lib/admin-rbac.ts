@@ -14,6 +14,7 @@ import type { AdminRole } from "@lucams/db";
  */
 export const ADMIN_CAPABILITIES = [
   "dashboard:read",
+  "notifications:manage",
   "orders:read_operational",
   "orders:read_pii",
   "orders:transition",
@@ -54,6 +55,7 @@ export type AdminCapability = (typeof ADMIN_CAPABILITIES)[number];
 
 const OPS_MANAGER_CAPS: readonly AdminCapability[] = [
   "dashboard:read",
+  "notifications:manage",
   "orders:read_operational",
   "orders:read_pii",
   "orders:transition",
@@ -68,7 +70,6 @@ const OPS_MANAGER_CAPS: readonly AdminCapability[] = [
   "crm:manage_tasks",
   "support:manage",
   "warranty:manage",
-  "warranty:refund",
   "retract:manage",
   "carts:recover",
   "marketing:read",
@@ -116,14 +117,12 @@ export const ROLE_CAPABILITY_MATRIX: Record<AdminRole, ReadonlySet<AdminCapabili
     "dashboard:read",
     "orders:read_operational",
     "orders:transition",
-    "production:download_assets",
     "crm:manage_tasks",
     "account:self_security",
   ]),
   FINANCE_ANALYST: new Set<AdminCapability>([
     "dashboard:read",
     "orders:read_operational",
-    "orders:read_pii",
     "finance:read",
     "finance:reconcile_cod",
     "finance:export_csv",
@@ -176,14 +175,66 @@ export const ADMIN_ROLE_SETS = {
   SHIPPING_GUIDE_PRINT: ALL_ROLES_ORDER.filter(
     (r) => hasCapability(r, "orders:read_pii") || r === "FULFILLMENT",
   ),
+  /** Roles habilitados para despachar pedidos (SHIPPED/DELIVERED) y reintentar guías Aveonline (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `FULFILLMENT`). */
+  ORDERS_SHIPMENT_DISPATCH: ALL_ROLES_ORDER.filter(
+    (r) =>
+      hasCapability(r, "orders:transition") &&
+      (hasCapability(r, "orders:read_pii") || r === "FULFILLMENT"),
+  ),
+  /** Roles habilitados para reconciliar incidencias y cancelar pedidos activos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
+  ORDERS_RECONCILE: rolesWithCapability("orders:reconcile"),
   /** Roles habilitados para moderar diseños de clientes (incluye PRINT_WORKSHOP). */
   PRODUCTION_MODERATE: rolesWithCapability("production:moderate"),
+  /** Roles habilitados para gestionar activos del Estudio (plantillas, prediseñados y abecedarios). */
+  PRODUCTION_ASSETS: rolesWithCapability("production:manage_AssetsCatalog"),
   /** Gerencia operativa + catálogo (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
   MANAGER_UP: rolesWithCapability("catalog:write"),
+  /** Lectura de costos y márgenes BOM (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `FINANCE_ANALYST`). */
+  COSTOS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "finance:read") || hasCapability(r, "catalog:write"),
+  ),
+  /** Lectura de precios al por mayor (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `FINANCE_ANALYST`). */
+  MAYORISTA_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "catalog:write") || hasCapability(r, "finance:read"),
+  ),
+  /** Edición de precios al por mayor (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
+  MAYORISTA_WRITE: rolesWithCapability("catalog:write"),
+  /** Lectura de cupones comerciales (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `FINANCE_ANALYST`); mutación exclusiva `SUPER`. */
+  CUPONES_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "catalog:write") || hasCapability(r, "finance:read"),
+  ),
+  /** Lectura de fidelización y referidos (`SUPERADMIN`, `FINANCE_ANALYST`); mutación exclusiva `SUPER`. */
+  FIDELIZACION_READ: ALL_ROLES_ORDER.filter(
+    (r) => r === "SUPERADMIN" || hasCapability(r, "finance:read"),
+  ),
   /** Atención posventa: tickets, garantías, retractos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   SUPPORT_CARE: rolesWithCapability("support:manage"),
+  /** Lectura operativa y contable de garantías (`SUPPORT_CARE` + `FINANCE_ANALYST` con PII enmascarada); mutación exclusiva `warranty:manage`. */
+  GARANTIAS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "warranty:manage") || hasCapability(r, "finance:read"),
+  ),
+  /** Lectura operativa y contable de retractos (`SUPPORT_CARE` + `FINANCE_ANALYST` con PII enmascarada); mutación exclusiva `retract:manage`. */
+  RETRACTOS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "retract:manage") || hasCapability(r, "finance:read"),
+  ),
+  /** Lectura de reseñas y reputación posventa (`catalog:write` + `CUSTOMER_SUPPORT`); moderación exclusiva `catalog:write`. */
+  RESENAS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "catalog:write") || hasCapability(r, "support:manage"),
+  ),
+  /** Lectura analítica 0-PII y operativa de carritos abandonados (`CARTS_RECOVER` + `FINANCE_ANALYST`); recordatorios exclusivos `carts:recover`. */
+  CARTS_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "carts:recover") || hasCapability(r, "finance:read"),
+  ),
   /** Recuperación de carritos abandonados (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   CARTS_RECOVER: rolesWithCapability("carts:recover"),
+  /** Gobierno global de recuperación de carritos (`SUPERADMIN`). */
+  CARTS_CONFIGURE: rolesWithCapability("carts:configure"),
+  /** Lectura analítica 0-PII y operativa de Lifecycle Journeys (`LIFECYCLE_MANAGE` + `FINANCE_ANALYST`); mutación exclusiva `lifecycle:manage`. */
+  LIFECYCLE_READ: ALL_ROLES_ORDER.filter(
+    (r) => hasCapability(r, "lifecycle:manage") || hasCapability(r, "finance:read"),
+  ),
+  /** Gestión y operación de Lifecycle Journeys (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
+  LIFECYCLE_MANAGE: rolesWithCapability("lifecycle:manage"),
   /** Cotizaciones y oportunidades B2B/eventos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   OPPORTUNITIES: rolesWithCapability("opportunities:manage"),
   /** Lectura de Contacto 360 (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
@@ -202,6 +253,8 @@ export const ADMIN_ROLE_SETS = {
   METRICS: rolesWithCapability("metrics:read"),
   /** Contenido editorial CMS v2 (`SUPERADMIN`, `CMS_EDITOR`). */
   CONTENT: rolesWithCapability("cms:write"),
+  /** Centro de notificaciones operativas (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
+  NOTIFICATIONS: rolesWithCapability("notifications:manage"),
   /** Exclusivo `SUPERADMIN` (usuarios, auditoría, reembolsos finales, config global). */
   SUPER: ["SUPERADMIN"] as const,
   /** Autoservicio de seguridad de cuenta (MFA obligatorio para el 100 % de roles). */
@@ -211,12 +264,28 @@ export const ADMIN_ROLE_SETS = {
 const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/dashboard", roles: rolesWithCapability("dashboard:read") },
   { prefix: "/admin/hoy", roles: rolesWithCapability("dashboard:read") },
+  { prefix: "/admin/notificaciones", roles: rolesWithCapability("notifications:manage") },
   { prefix: "/admin/pedidos", roles: rolesWithCapability("orders:read_operational") },
 
-  // Posventa y soporte al cliente (incluye CUSTOMER_SUPPORT)
-  { prefix: "/admin/garantias", roles: rolesWithCapability("warranty:manage") },
-  { prefix: "/admin/reclamos", roles: rolesWithCapability("warranty:manage") },
-  { prefix: "/admin/retractos", roles: rolesWithCapability("retract:manage") },
+  // Posventa y soporte al cliente (CUSTOMER_SUPPORT gestiona; FINANCE_ANALYST lee retractos/garantías con PII enmascarada)
+  {
+    prefix: "/admin/garantias",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "warranty:manage") || hasCapability(r, "finance:read"),
+    ),
+  },
+  {
+    prefix: "/admin/reclamos",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "warranty:manage") || hasCapability(r, "finance:read"),
+    ),
+  },
+  {
+    prefix: "/admin/retractos",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "retract:manage") || hasCapability(r, "finance:read"),
+    ),
+  },
   { prefix: "/admin/soporte", roles: rolesWithCapability("support:manage") },
   { prefix: "/admin/mensajes", roles: rolesWithCapability("support:manage") },
 
@@ -239,19 +308,27 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
     roles: rolesWithCapability("production:manage_AssetsCatalog"),
   },
 
-  // Catálogo y transporte
+  // Catálogo, canales de venta, insumos y transporte
   { prefix: "/admin/productos", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/inventario", roles: rolesWithCapability("catalog:write") },
+  { prefix: "/admin/materiales", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/categorias", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/ocasiones", roles: rolesWithCapability("catalog:write") },
-  { prefix: "/admin/resenas", roles: rolesWithCapability("catalog:write") },
+  {
+    prefix: "/admin/resenas",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "catalog:write") || hasCapability(r, "support:manage"),
+    ),
+  },
+  { prefix: "/admin/canales/mercadolibre", roles: ["SUPERADMIN"] },
+  { prefix: "/admin/canales", roles: rolesWithCapability("catalog:write") },
   { prefix: "/admin/envios", roles: rolesWithCapability("shipping:configure") },
 
   // Contactos 360 vs Bandeja de fusión de duplicados (longest-prefix match protege /duplicados)
   { prefix: "/admin/clientes/duplicados", roles: rolesWithCapability("contacts:merge") },
   { prefix: "/admin/clientes", roles: rolesWithCapability("contacts:read_360") },
 
-  // Marketing y carritos abandonados
+  // Marketing y carritos abandonados (FINANCE_ANALYST accede en lectura 0-PII a Lifecycle y Carritos)
   {
     prefix: "/admin/marketing/suscriptores/export",
     roles: rolesWithCapability("marketing:export_csv"),
@@ -261,23 +338,62 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
     roles: rolesWithCapability("marketing:export_csv"),
   },
   { prefix: "/admin/marketing", roles: rolesWithCapability("marketing:read") },
-  { prefix: "/admin/lifecycle", roles: rolesWithCapability("lifecycle:manage") },
-  { prefix: "/admin/carritos/configuracion", roles: ["SUPERADMIN"] },
-  { prefix: "/admin/carritos", roles: rolesWithCapability("carts:recover") },
+  { prefix: "/admin/lifecycle/nuevo", roles: rolesWithCapability("lifecycle:manage") },
+  {
+    prefix: "/admin/lifecycle",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "lifecycle:manage") || hasCapability(r, "finance:read"),
+    ),
+  },
+  { prefix: "/admin/carritos/configuracion", roles: rolesWithCapability("carts:configure") },
+  { prefix: "/admin/carritos/enviar", roles: rolesWithCapability("carts:recover") },
+  {
+    prefix: "/admin/carritos",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "carts:recover") || hasCapability(r, "finance:read"),
+    ),
+  },
 
-  // Finanzas, conciliación COD, costos y métricas (habilita FINANCE_ANALYST sin SUPERADMIN)
+  // Finanzas, conciliación COD, costos y métricas (habilita FINANCE_ANALYST sin SUPERADMIN;
+  // /admin/costos permite lectura a FINANCE_ANALYST + lectura/edición a catalog:write)
   { prefix: "/admin/finanzas/conciliacion", roles: rolesWithCapability("finance:reconcile_cod") },
   { prefix: "/admin/finanzas/bloqueos", roles: rolesWithCapability("finance:reconcile_cod") },
   { prefix: "/admin/finanzas/export", roles: rolesWithCapability("finance:export_csv") },
   { prefix: "/admin/finanzas", roles: rolesWithCapability("finance:read") },
-  { prefix: "/admin/costos", roles: rolesWithCapability("finance:read") },
+  {
+    prefix: "/admin/costos",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "finance:read") || hasCapability(r, "catalog:write"),
+    ),
+  },
   { prefix: "/admin/metricas", roles: rolesWithCapability("metrics:read") },
 
-  // Configuración sensible y CMS v2
-  { prefix: "/admin/fidelizacion", roles: ["SUPERADMIN"] },
+  // Reglas comerciales, promociones y fidelización (Bloque 3 — N-21 estricto)
+  {
+    prefix: "/admin/mayorista",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "catalog:write") || hasCapability(r, "finance:read"),
+    ),
+  },
+  {
+    prefix: "/admin/cupones",
+    roles: ALL_ROLES_ORDER.filter(
+      (r) => hasCapability(r, "catalog:write") || hasCapability(r, "finance:read"),
+    ),
+  },
+  {
+    prefix: "/admin/fidelizacion",
+    roles: ALL_ROLES_ORDER.filter((r) => r === "SUPERADMIN" || hasCapability(r, "finance:read")),
+  },
+
+  // Configuración sensible, salud técnica y CMS v2
+  { prefix: "/admin/integraciones", roles: ["SUPERADMIN"] },
+  { prefix: "/admin/observability", roles: ["SUPERADMIN"] },
+  { prefix: "/admin/performance", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido/paginas/global", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido/configuracion", roles: ["SUPERADMIN"] },
   { prefix: "/admin/contenido", roles: rolesWithCapability("cms:write") },
+  { prefix: "/admin/redirects", roles: rolesWithCapability("cms:write") },
   { prefix: "/admin/email-templates", roles: ["SUPERADMIN"] },
   { prefix: "/admin/auditoria", roles: rolesWithCapability("audit:read") },
   { prefix: "/admin/usuarios", roles: rolesWithCapability("staff:manage") },
@@ -287,9 +403,115 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/seguridad", roles: ALL_ROLES_ORDER },
 ];
 
+/**
+ * Reglas de ruta con segmento dinámico intermedio evaluadas ANTES del match por prefijo literal.
+ * Garantiza paridad N-21 entre `AdminPanelLayout`, helpers de enlaces (`canAccessAdminPath`)
+ * y `requireCapability` en la página/acción cuando una subruta dinámica cambia la capacidad exigida.
+ */
+const ROUTE_PATTERN_ROLES: ReadonlyArray<{
+  pattern: RegExp;
+  roles: readonly AdminRole[];
+  notification: { prefix: string; suffix: string };
+}> = [
+  {
+    // Hoja imprimible de producción/taller para cotizaciones con activos 300 DPI:
+    // habilita PRINT_WORKSHOP y restringe CUSTOMER_SUPPORT (exige production:download_assets).
+    pattern: /^\/admin\/cotizaciones\/[^/?]+\/taller(?:$|[/?])/,
+    roles: rolesWithCapability("production:download_assets"),
+    notification: { prefix: "/admin/cotizaciones/", suffix: "/taller" },
+  },
+  {
+    // Descarga de ZIP de producción 300 DPI del pedido (Bloque 5 — paridad N-21 con route.ts):
+    // exige production:download_assets (excluye FULFILLMENT, CUSTOMER_SUPPORT y FINANCE_ANALYST).
+    pattern: /^\/admin\/pedidos\/[^/?]+\/produccion(?:$|[/?])/,
+    roles: rolesWithCapability("production:download_assets"),
+    notification: { prefix: "/admin/pedidos/", suffix: "/produccion" },
+  },
+  {
+    // Guía física imprimible de entrega / mensajero propio (Bloque 5 — paridad N-21 con guia/page.tsx):
+    // habilita SHIPPING_GUIDE_PRINT y excluye PRINT_WORKSHOP y FINANCE_ANALYST.
+    pattern: /^\/admin\/pedidos\/[^/?]+\/guia(?:$|[/?])/,
+    roles: ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT,
+    notification: { prefix: "/admin/pedidos/", suffix: "/guia" },
+  },
+  {
+    // Vista previa HTML del correo de recuperación de carrito (Bloque 7 — paridad N-21 con preview/route.ts):
+    // contiene PII real del carrito, diseños personalizados y cupón del comprador → exclusivo `carts:recover`.
+    pattern: /^\/admin\/carritos\/[^/?]+\/preview(?:$|[/?])/,
+    roles: rolesWithCapability("carts:recover"),
+    notification: { prefix: "/admin/carritos/", suffix: "/preview" },
+  },
+];
+
+export type OrderAdminTransitionTarget = "FULFILLING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+
+/**
+ * Segregación por etapa operativa en transiciones de `Order` (Bloque 5):
+ * - `CANCELLED`: exclusivo de gerencia operativa (`orders:reconcile`: `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`).
+ * - `FULFILLING`: cualquier rol con `orders:transition` (`PRINT_WORKSHOP` en personalizados y `FULFILLMENT` en estándar).
+ * - `SHIPPED` / `DELIVERED`: roles logísticos de despacho (`ORDERS_SHIPMENT_DISPATCH`, excluye `PRINT_WORKSHOP`).
+ */
+export function canTransitionOrderTo(
+  role: AdminRole,
+  toStatus: OrderAdminTransitionTarget,
+): boolean {
+  if (!hasCapability(role, "orders:transition")) return false;
+  if (toStatus === "CANCELLED") {
+    return hasCapability(role, "orders:reconcile");
+  }
+  if (toStatus === "FULFILLING") {
+    return true;
+  }
+  return (ADMIN_ROLE_SETS.ORDERS_SHIPMENT_DISPATCH as readonly string[]).includes(role);
+}
+
+/** ¿Puede reintentar la generación de guía en Aveonline? (Despachos y gerencia operativa; no Taller ni Soporte). */
+export function canRetryOrderShipment(role: AdminRole): boolean {
+  return (ADMIN_ROLE_SETS.ORDERS_SHIPMENT_DISPATCH as readonly string[]).includes(role);
+}
+
+/** ¿Puede reintentar `RenderJob` 300 DPI o regenerar piezas de taller? (Exclusivo `production:download_assets`). */
+export function canManageOrderRenderJobs(role: AdminRole): boolean {
+  return hasCapability(role, "production:download_assets");
+}
+
+/**
+ * ¿Puede ver el desglose comercial completo en COP (subtotal, descuentos, cupones, precios unitarios e intentos Wompi)?
+ * Habilitado para Administradora, Operaciones, Analista financiera y Soporte; oculto en Taller y Despachos.
+ */
+export function canSeeOrderCommercialBreakdown(role: AdminRole): boolean {
+  return (
+    hasCapability(role, "finance:read") ||
+    hasCapability(role, "orders:read_pii") ||
+    hasCapability(role, "catalog:write")
+  );
+}
+
+/**
+ * ¿Puede ver el monto a recaudar cuando un pedido es contraentrega (`COD`)?
+ * `FULFILLMENT` necesita verificar si debe cobrar efectivo en la entrega, sin acceder al resto del desglose comercial;
+ * `PRINT_WORKSHOP` no recibe importes COP de ningún tipo.
+ */
+export function canSeeOrderCodCollectionAmount(role: AdminRole): boolean {
+  return canSeeOrderCommercialBreakdown(role) || role === "FULFILLMENT";
+}
+
+export function canSeeOrderTotalInGuide(role: AdminRole, isGift: boolean, isCod: boolean): boolean {
+  return !isGift && (isCod || canSeeOrderCommercialBreakdown(role));
+}
+
+export function canFilterOrdersByPaymentMethod(role: AdminRole): boolean {
+  return role !== "PRINT_WORKSHOP";
+}
+
 /** ¿El rol puede acceder a esta ruta admin? */
 export function canAccessAdminPath(role: AdminRole, pathname: string): boolean {
   if (role === "SUPERADMIN") return true;
+  for (const rule of ROUTE_PATTERN_ROLES) {
+    if (rule.pattern.test(pathname)) {
+      return rule.roles.includes(role);
+    }
+  }
   let best: { prefix: string; roles: readonly AdminRole[] } | null = null;
   for (const r of ROUTE_ROLES) {
     if (
@@ -335,4 +557,44 @@ export function filterNavByRole<T extends { items?: Array<{ href: string }>; hre
     }
   }
   return out;
+}
+
+export type NotificationRoutePattern = { prefix: string; suffix: string };
+export type NotificationRouteScope =
+  | { unrestricted: true }
+  | {
+      unrestricted: false;
+      allowedPrefixes: string[];
+      deniedPrefixes: string[];
+      allowedPatterns: NotificationRoutePattern[];
+      deniedPatterns: NotificationRoutePattern[];
+    };
+
+/**
+ * Devuelve el alcance de prefijos y subrutas dinámicas para filtrar `Notification`
+ * con la misma precedencia de `canAccessAdminPath(role, actionUrl)`.
+ */
+export function getNotificationRouteScope(role: AdminRole): NotificationRouteScope {
+  if (role === "SUPERADMIN") return { unrestricted: true };
+  const allowedPrefixes = ROUTE_ROLES.filter((r) => r.roles.includes(role)).map((r) => r.prefix);
+  const deniedPrefixes = ROUTE_ROLES.filter(
+    (r) =>
+      !r.roles.includes(role) &&
+      allowedPrefixes.some(
+        (allowed) =>
+          r.prefix.length > allowed.length &&
+          (r.prefix.startsWith(`${allowed}/`) || r.prefix.startsWith(`${allowed}?`)),
+      ),
+  ).map((r) => r.prefix);
+  return {
+    unrestricted: false,
+    allowedPrefixes,
+    deniedPrefixes,
+    allowedPatterns: ROUTE_PATTERN_ROLES.filter((r) => r.roles.includes(role)).map(
+      (r) => r.notification,
+    ),
+    deniedPatterns: ROUTE_PATTERN_ROLES.filter((r) => !r.roles.includes(role)).map(
+      (r) => r.notification,
+    ),
+  };
 }

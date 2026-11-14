@@ -3,24 +3,24 @@
  *
  * Filtros (query params, GET):
  *   - q: búsqueda en name/sku/slug
- *   - status: all | active | inactive | featured
- *   - sort: recent | name | price-asc | price-desc
+ *   - categoria: id de categoría (cross-link desde /admin/categorias)
+ *   - status: all | active | inactive | archived | featured
+ *   - sort: recent | name | price-asc | price-desc | sku-asc | sku-desc | category-asc | category-desc
  *   - page: paginación
  */
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Plus, Edit3, ShoppingBag } from "lucide-react";
+import { Boxes, Calculator, Edit3, ExternalLink, Layers, Plus, ShoppingBag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
-// Note: las acciones de eliminar/archivar de productos están en el page
-// de edición /admin/productos/[id], no en este listado. Aquí solo edit.
 import {
   AdminPage,
   AdminPageHeader,
   AdminPageBody,
+  AdminCard,
   AdminTable,
   AdminTableHead,
   AdminTableBody,
@@ -29,11 +29,14 @@ import {
   AdminEmpty,
   AdminButton,
   AdminNotice,
+  AdminSegmentedBar,
   SortableHeader,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { CountUp } from "@/components/admin/count-up";
+import { requireCapability } from "@/lib/admin-rbac-guard";
+import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
-import { listProducts } from "@/features/products/service";
+import { listCategoriesForSelect, listProducts } from "@/features/products/service";
 import { getStorefrontVisibility } from "@/features/products/storefront-visibility";
 import { StorefrontVisibilityChip } from "@/components/admin/storefront-visibility-chip";
 import { ProductQuickActions } from "./quick-actions";
@@ -51,12 +54,12 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
 }
 
 export default async function AdminProductosPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireCapability("catalog:write");
 
   const sp = await searchParams;
-  const page = Number(sp.page) || 1;
+  const page = Math.max(1, Number(sp.page) || 1);
   const q = pickString(sp, "q");
+  const categoryId = pickString(sp, "categoria") || undefined;
   const statusRaw = pickString(sp, "status");
   const status = (
     ["active", "inactive", "archived", "featured"].includes(statusRaw ?? "") ? statusRaw : "all"
@@ -87,14 +90,39 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
   const justCreated = sp.created === "1";
   const justDeleted = sp.deleted === "1";
 
-  const { items, total, pageSize } = await listProducts({
-    page,
-    search: q,
-    status,
-    sort,
-  });
+  const [{ items, total, pageSize }, categories, allStatuses] = await Promise.all([
+    listProducts({
+      page,
+      search: q,
+      categoryId,
+      status,
+      sort,
+    }),
+    listCategoriesForSelect(),
+    prisma.product.findMany({
+      select: { isActive: true, isFeatured: true, deletedAt: true },
+    }),
+  ]);
+
+  let activeRegularCount = 0;
+  let featuredCount = 0;
+  let inactiveCount = 0;
+  let archivedCount = 0;
+  for (const row of allStatuses) {
+    if (row.deletedAt) {
+      archivedCount += 1;
+    } else if (!row.isActive) {
+      inactiveCount += 1;
+    } else if (row.isFeatured) {
+      featuredCount += 1;
+    } else {
+      activeRegularCount += 1;
+    }
+  }
+  const activeTotalCount = activeRegularCount + featuredCount;
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const hasActiveFilters = !!q || status !== "all" || sort !== "recent";
+  const hasActiveFilters = !!q || !!categoryId || status !== "all" || sort !== "recent";
 
   // Clamp: si piden una página fuera de rango (URL manipulada o salto inválido),
   // redirigir a la última válida preservando filtros — evita el empty-state engañoso.
@@ -102,10 +130,17 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
     const params = new URLSearchParams();
     params.set("page", String(totalPages));
     if (q) params.set("q", q);
+    if (categoryId) params.set("categoria", categoryId);
     if (status !== "all") params.set("status", status);
     if (sort !== "recent") params.set("sort", sort);
     redirect(`/admin/productos?${params.toString()}`);
   }
+
+  const preserveParams = {
+    q,
+    categoria: categoryId,
+    status: status !== "all" ? status : undefined,
+  };
 
   // Hotfix P1-15: si el filtro es "archivados", los checkboxes de bulk no
   // tienen sentido (no puedes bulk-modificar archivados). Ocultamos la columna
@@ -119,7 +154,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
         title="Productos"
         subtitle={
           <>
-            {total} {total === 1 ? "producto" : "productos"} en el catálogo
+            {total} {total === 1 ? "producto" : "productos"} en esta vista
             {hasActiveFilters && " · con filtros aplicados"}
           </>
         }
@@ -129,16 +164,119 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
           { label: "Productos" },
         ]}
         actions={
-          <AdminButton href="/admin/productos/nuevo" variant="primary">
-            <Plus className="h-4 w-4" />
-            Nuevo producto
-          </AdminButton>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/inventario">
+                <Boxes className="mr-1.5 h-4 w-4" />
+                Inventario
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/categorias">
+                <Layers className="mr-1.5 h-4 w-4" />
+                Categorías
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/costos">
+                <Calculator className="mr-1.5 h-4 w-4" />
+                Costos
+              </Link>
+            </Button>
+            <AdminButton href="/admin/productos/nuevo" variant="primary">
+              <Plus className="h-4 w-4" />
+              Nuevo producto
+            </AdminButton>
+          </div>
         }
       />
 
       <AdminPageBody>
+        {/* Resumen ejecutivo del catálogo */}
+        <AdminCard className="p-5">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Link
+              href="/admin/productos?status=active"
+              className="rounded-xl bg-emerald-50/70 p-3 ring-1 ring-emerald-200/70 transition-all hover:bg-emerald-50"
+            >
+              <p className="text-[11px] font-semibold tracking-wide text-emerald-800 uppercase">
+                Activos en tienda
+              </p>
+              <p className="font-display mt-0.5 text-2xl font-bold text-emerald-900 tabular-nums">
+                <CountUp value={activeTotalCount} />
+              </p>
+            </Link>
+            <Link
+              href="/admin/productos?status=featured"
+              className="rounded-xl bg-amber-50/70 p-3 ring-1 ring-amber-200/70 transition-all hover:bg-amber-50"
+            >
+              <p className="text-[11px] font-semibold tracking-wide text-amber-800 uppercase">
+                Destacados Home
+              </p>
+              <p className="font-display mt-0.5 text-2xl font-bold text-amber-900 tabular-nums">
+                <CountUp value={featuredCount} />
+              </p>
+            </Link>
+            <Link
+              href="/admin/productos?status=inactive"
+              className="bg-brand-purple/5 ring-brand-purple/15 hover:bg-brand-purple/10 rounded-xl p-3 ring-1 transition-all"
+            >
+              <p className="text-brand-purple-dark/80 text-[11px] font-semibold tracking-wide uppercase">
+                Pausados
+              </p>
+              <p className="text-brand-purple-dark font-display mt-0.5 text-2xl font-bold tabular-nums">
+                <CountUp value={inactiveCount} />
+              </p>
+            </Link>
+            <Link
+              href="/admin/productos?status=archived"
+              className="rounded-xl bg-slate-100/80 p-3 ring-1 ring-slate-200/80 transition-all hover:bg-slate-200/70"
+            >
+              <p className="text-[11px] font-semibold tracking-wide text-slate-600 uppercase">
+                En papelera
+              </p>
+              <p className="font-display mt-0.5 text-2xl font-bold text-slate-800 tabular-nums">
+                <CountUp value={archivedCount} />
+              </p>
+            </Link>
+          </div>
+
+          <AdminSegmentedBar
+            ariaLabel="Distribución global del catálogo de productos"
+            items={[
+              {
+                key: "active",
+                label: "Activos estándar",
+                count: activeRegularCount,
+                tone: "emerald",
+                href: "/admin/productos?status=active",
+              },
+              {
+                key: "featured",
+                label: "Destacados",
+                count: featuredCount,
+                tone: "amber",
+                href: "/admin/productos?status=featured",
+              },
+              {
+                key: "inactive",
+                label: "Pausados",
+                count: inactiveCount,
+                tone: "purple",
+                href: "/admin/productos?status=inactive",
+              },
+              {
+                key: "archived",
+                label: "Archivados",
+                count: archivedCount,
+                tone: "slate",
+                href: "/admin/productos?status=archived",
+              },
+            ]}
+          />
+        </AdminCard>
+
         {justCreated && <AdminNotice tone="success">Producto creado correctamente.</AdminNotice>}
-        {/* Hotfix P1-16: archivar es acción reversible deliberada — success, no warning. */}
         {justDeleted && (
           <AdminNotice tone="success">
             Producto archivado. Puedes restaurarlo cuando quieras desde el filtro
@@ -154,12 +292,12 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
           </AdminNotice>
         )}
 
-        {/* Toolbar: búsqueda + filtros + ordenamiento (form GET) */}
+        {/* Toolbar: búsqueda + categoría + estado + ordenamiento (form GET) */}
         <form
           method="GET"
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
         >
-          <div className="sm:col-span-5">
+          <div className="sm:col-span-4">
             <label
               htmlFor="f-q"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -175,6 +313,27 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>
+          <div className="sm:col-span-4">
+            <label
+              htmlFor="f-categoria"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Categoría
+            </label>
+            <select
+              id="f-categoria"
+              name="categoria"
+              defaultValue={categoryId ?? ""}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2.5 py-1.5 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="">Todas las categorías</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.isSub ? `↳ ${c.name}` : c.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="sm:col-span-3">
             <label
               htmlFor="f-status"
@@ -186,18 +345,15 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               id="f-status"
               name="status"
               defaultValue={status}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2.5 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
-              <option value="all">Todos los vivos (activos + inactivos)</option>
+              <option value="all">Todos los vivos (activos + pausados)</option>
               <option value="active">Solo activos (visibles en tienda)</option>
-              <option value="inactive">Solo inactivos (ocultos pero recuperables)</option>
-              <option value="archived">Solo archivados (papelera)</option>
+              <option value="inactive">Solo pausados (ocultos)</option>
               <option value="featured">Solo destacados</option>
+              <option value="archived">Solo archivados (papelera)</option>
             </select>
           </div>
-          {/* En desktop se ordena con clic en los encabezados de la tabla
-              (SortableHeader). El dropdown queda solo para mobile, donde los
-              headers son difíciles de tocar. Lucy 2026-06-27 #1. */}
           <div className="sm:hidden">
             <label
               htmlFor="f-sort"
@@ -274,7 +430,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                   ascValue="name"
                   currentSort={sort}
                   basePath="/admin/productos"
-                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                  preserve={preserveParams}
                 />
                 <SortableHeader
                   label="Código"
@@ -282,7 +438,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                   descValue="sku-desc"
                   currentSort={sort}
                   basePath="/admin/productos"
-                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                  preserve={preserveParams}
                 />
                 <SortableHeader
                   label="Categoría"
@@ -290,7 +446,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                   descValue="category-desc"
                   currentSort={sort}
                   basePath="/admin/productos"
-                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                  preserve={preserveParams}
                 />
                 <SortableHeader
                   label="Precio"
@@ -298,7 +454,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                   descValue="price-desc"
                   currentSort={sort}
                   basePath="/admin/productos"
-                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                  preserve={preserveParams}
                   align="right"
                 />
                 <th className="px-4 py-3 text-center font-semibold">Estado</th>
@@ -307,10 +463,6 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
             </AdminTableHead>
             <AdminTableBody>
               {items.map((p) => {
-                // Chip "¿se ve en la tienda?" — el badge de Estado solo refleja
-                // isActive; este resume el gate real del storefront (categoría,
-                // opciones activas, stock). Razón visible solo en filas con
-                // problema; el resto la tiene como tooltip.
                 const visibility = getStorefrontVisibility({
                   productIsActive: p.isActive,
                   productDeletedAt: p.deletedAt,
@@ -335,15 +487,40 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                       </td>
                     )}
                     <td className="px-4 py-3">
-                      <div className="text-brand-purple-dark font-medium">{p.name}</div>
-                      <div className="text-brand-muted text-xs">/{p.slug}</div>
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          href={`/admin/productos/${p.id}`}
+                          className="text-brand-purple-dark hover:text-brand-purple font-medium hover:underline"
+                        >
+                          {p.name}
+                        </Link>
+                        {visibility.status !== "no-visible" && (
+                          <Hint content={`Ver /producto/${p.slug} en tienda`}>
+                            <Link
+                              href={`/producto/${p.slug}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-brand-muted hover:text-brand-purple inline-flex"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </Link>
+                          </Hint>
+                        )}
+                      </div>
+                      <div className="text-brand-muted text-xs">/producto/{p.slug}</div>
                     </td>
                     <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">
                       {p.sku}
                     </td>
-                    <td className="text-brand-purple-dark/85 px-4 py-3">{p.category.name}</td>
+                    <td className="text-brand-purple-dark/85 px-4 py-3">
+                      <Link
+                        href={`/admin/productos?categoria=${p.category.id}`}
+                        className="hover:text-brand-purple hover:underline"
+                      >
+                        {p.category.name}
+                      </Link>
+                    </td>
                     <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
-                      {/* "desde $X" cuando hay varias opciones con precios distintos */}
                       {p.variantsCount > 1 && (
                         <span className="text-brand-muted mr-1 text-[10px] font-normal">desde</span>
                       )}
@@ -363,12 +540,6 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {/*
-                       * Hotfix P0-10: ambas acciones ahora con mismo tratamiento
-                       * (borde + h-9 + font-semibold + text-xs) — antes "Editar"
-                       * era link plano sin chrome al lado del button QuickActions
-                       * con borde, inconsistencia visual.
-                       */}
                       <div className="flex items-center justify-end gap-2">
                         <ProductQuickActions
                           productId={p.id}
@@ -404,6 +575,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               <PaginationLink
                 page={1}
                 q={q}
+                categoryId={categoryId}
                 status={status}
                 sort={sort}
                 disabled={page === 1}
@@ -414,6 +586,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               <PaginationLink
                 page={page - 1}
                 q={q}
+                categoryId={categoryId}
                 status={status}
                 sort={sort}
                 disabled={page === 1}
@@ -421,9 +594,9 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                 ← Anterior
               </PaginationLink>
 
-              {/* Ir directo a una página (form GET; re-emite los filtros como hidden). */}
               <form method="GET" action="/admin/productos" className="flex items-center gap-1">
                 {q && <input type="hidden" name="q" value={q} />}
+                {categoryId && <input type="hidden" name="categoria" value={categoryId} />}
                 {status !== "all" && <input type="hidden" name="status" value={status} />}
                 {sort !== "recent" && <input type="hidden" name="sort" value={sort} />}
                 <label htmlFor="goto-page" className="text-xs">
@@ -450,6 +623,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               <PaginationLink
                 page={page + 1}
                 q={q}
+                categoryId={categoryId}
                 status={status}
                 sort={sort}
                 disabled={page === totalPages}
@@ -459,6 +633,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               <PaginationLink
                 page={totalPages}
                 q={q}
+                categoryId={categoryId}
                 status={status}
                 sort={sort}
                 disabled={page === totalPages}
@@ -471,11 +646,6 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
         )}
       </AdminPageBody>
 
-      {/*
-       * Sprint 3 — Bulk action bar (client component, sticky bottom).
-       * Por default oculta. Aparece cuando hay al menos 1 producto checked.
-       * Lee los checkboxes con name="productIds" del documento.
-       */}
       <BulkActionBar />
     </AdminPage>
   );
@@ -484,6 +654,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
 function PaginationLink({
   page,
   q,
+  categoryId,
   status,
   sort,
   disabled,
@@ -492,13 +663,13 @@ function PaginationLink({
 }: {
   page: number;
   q?: string;
+  categoryId?: string;
   status?: string;
   sort?: string;
   disabled?: boolean;
   title?: string;
   children: React.ReactNode;
 }) {
-  // Deshabilitado (borde de rango): span gris no-clickeable en vez de link muerto.
   if (disabled) {
     return (
       <span
@@ -512,6 +683,7 @@ function PaginationLink({
   const params = new URLSearchParams();
   params.set("page", String(page));
   if (q) params.set("q", q);
+  if (categoryId) params.set("categoria", categoryId);
   if (status && status !== "all") params.set("status", status);
   if (sort && sort !== "recent") params.set("sort", sort);
   return (
@@ -535,11 +707,6 @@ function ProductStatus({
   isFeatured: boolean;
   isArchived: boolean;
 }) {
-  // 3 estados visuales claros para no confundir admin Lucy:
-  //   Archivado (deletedAt!=null) = papelera, requiere restaurar primero
-  //   Inactivo (isActive=false, no archivado) = oculto del storefront, recuperable
-  //   Activo (isActive=true) = visible en storefront
-  //   Destacado = activo + featured (aparece en home)
   if (isArchived) return <AdminBadge tone="rose">Archivado</AdminBadge>;
   if (!isActive) return <AdminBadge tone="slate">Inactivo</AdminBadge>;
   if (isFeatured) return <AdminBadge tone="amber">Destacado</AdminBadge>;

@@ -129,6 +129,10 @@ test("§7.2 cotizaciones: cotización real aparece en admin · detalle con wa.me
   anonPage,
   adminPage,
 }, testInfo) => {
+  test.skip(
+    process.env.NEXT_PUBLIC_STORE_MODE !== "catalog",
+    "La creación de cotizaciones desde el carrito solo está disponible en modo catálogo.",
+  );
   test.setTimeout(300_000);
   projectName = testInfo.project.name;
   resultsPath = resolve(EVIDENCE_DIR, `results-${E2E_ENV}-${projectName}-${run}-cotizaciones.json`);

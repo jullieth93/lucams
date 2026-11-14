@@ -349,6 +349,18 @@ test.describe("estudio Ola 22 — identificador fuera del template + avatar tapp
   }) => {
     test.skip(!ctx.igSlug, "no hay producto con plantilla photo-pack-polaroid-instagram en la DB");
     test.slow(); // cold-compile de la ruta Konva en `next dev`
+    await page.addInitScript(() => {
+      for (const surface of [
+        "default",
+        "cards",
+        "bookmarks",
+        "strips",
+        "calendar",
+        "polaroid-ig",
+      ]) {
+        window.localStorage.setItem(`lucams_studio_onboarded_${surface}`, "v1");
+      }
+    });
 
     await page.goto(
       `/estudio/${ctx.igSlug}${ctx.igVariantId ? `?variant=${ctx.igVariantId}` : ""}`,
@@ -371,6 +383,11 @@ test.describe("estudio Ola 22 — identificador fuera del template + avatar tapp
     await dismissLateSurfaceTour(page);
 
     await uploadAndFillSlot1(page, panel, ctx.igProductId);
+    const closeTools = panel.getByRole("button", { name: "Listo", exact: true });
+    if (await closeTools.isVisible().catch(() => false)) {
+      await closeTools.click();
+      await expect(panel).not.toBeVisible();
+    }
     await dismissOverlays(page);
 
     // ── 1. El identificador del slot 1 vive FUERA del template ──
@@ -485,20 +502,27 @@ test.describe("estudio Ola 22 — fuente del calendario en Ajustar Foto", () => 
     await dismissOverlays(page);
 
     const panel = await resolvePanel(page);
+    const template = panel
+      .getByRole("radiogroup", { name: /selecciona plantilla/i })
+      .getByRole("radio")
+      .first();
+    await expect(template).toBeVisible({ timeout: 30_000 });
+    await template.click();
+    await expect(template).toHaveAttribute("aria-checked", "true");
     await uploadAndFillSlot1(page, panel, ctx.calProductId);
     await dismissOverlays(page);
 
     // El identificador del mes también vive en la barra de acciones (chip "Enero"
     // si el schema trae monthLabels; si no, el identificador genérico #1).
-    const slotRoot = page.getByRole("button", { name: /con foto cargada/i }).first();
     const chip = ctx.calChipAria
       ? page.locator(`span[aria-label="${ctx.calChipAria}"]`)
       : page.locator('span[aria-label$="#1"]');
     await expect(chip).toBeVisible({ timeout: 15_000 });
 
     // Abrir "Ajustar Foto" (control lápiz de la action bar del slot lleno).
-    await slotRoot.hover();
-    await page.locator('[aria-label^="Editar "]').first().click();
+    const editSlot = page.locator('#studio-unit-0-grid [aria-label^="Editar "]').first();
+    await expect(editSlot).toBeVisible({ timeout: 15_000 });
+    await editSlot.click();
     const dialog = page.locator('[role="dialog"]').last();
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     const fotoTab = dialog.getByRole("tab", { name: /^Foto$/i }).first();

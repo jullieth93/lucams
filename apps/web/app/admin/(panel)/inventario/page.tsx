@@ -23,11 +23,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Boxes, ExternalLink } from "lucide-react";
+import { Boxes, ExternalLink, Layers, ShoppingBag } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
   AdminPageBody,
+  AdminCard,
+  AdminSegmentedBar,
   AdminTable,
   AdminTableHead,
   AdminTableBody,
@@ -35,7 +37,9 @@ import {
   AdminEmpty,
   SortableHeader,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { CountUp } from "@/components/admin/count-up";
+import { Button } from "@/components/ui/button";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import {
   listVariantsAcrossProducts,
   listCategoriesForInventoryFilter,
@@ -61,8 +65,7 @@ const VALID_STATUS: InventoryStatusFilter[] = ["all", "out", "low", "ok"];
 const VALID_SORT: InventorySortKey[] = ["stock-asc", "stock-desc", "product-asc", "recent"];
 
 export default async function InventarioPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireCapability("catalog:write");
 
   const sp = await searchParams;
   const statusRaw = typeof sp.estado === "string" ? sp.estado : "all";
@@ -84,6 +87,16 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
     listVariantsAcrossProducts({ status, categoryId, q, sort, page }),
     listCategoriesForInventoryFilter(),
   ]);
+
+  if (page > data.totalPages && data.total > 0) {
+    const params = new URLSearchParams();
+    if (status !== "all") params.set("estado", status);
+    if (categoryId) params.set("categoria", categoryId);
+    if (q) params.set("q", q);
+    if (sort !== "product-asc") params.set("orden", sort);
+    params.set("page", String(data.totalPages));
+    redirect(`/admin/inventario?${params.toString()}`);
+  }
 
   // Metadata de agrupación visual por producto: cada fila sabe si es la PRIMERA
   // de su producto (muestra nombre+categoría) o una continuación (opción del
@@ -108,13 +121,29 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
         subtitle={`${data.summary.totalVariants.toLocaleString("es-CO")} opciones activas · ${data.summary.totalUnits.toLocaleString("es-CO")} unidades en total`}
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
-          { label: "Catálogo" },
+          { label: "Catálogo", href: "/admin/productos" },
           { label: "Inventario" },
         ]}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/productos">
+                <ShoppingBag className="mr-1.5 h-4 w-4" />
+                Productos
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/materiales">
+                <Layers className="mr-1.5 h-4 w-4" />
+                Materiales e insumos
+              </Link>
+            </Button>
+          </div>
+        }
       />
 
       <AdminPageBody>
-        {/* KPI strip — semáforo del catálogo de un golpe */}
+        {/* KPI strip + barra de salud de stock */}
         <KpiStrip
           out={data.summary.outCount}
           low={data.summary.lowCount}
@@ -287,32 +316,60 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
 
 function KpiStrip({ out, low, ok }: { out: number; low: number; ok: number }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <KpiTile
-        emoji="🔴"
-        label="Agotadas"
-        value={out}
-        tone={out > 0 ? "danger" : "muted"}
-        href={out > 0 ? "/admin/inventario?estado=out" : undefined}
-        hint="Opciones con 0 unidades — no se pueden vender"
+    <AdminCard className="space-y-4 p-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <KpiTile
+          emoji="🔴"
+          label="Agotadas"
+          value={out}
+          tone={out > 0 ? "danger" : "muted"}
+          href={out > 0 ? "/admin/inventario?estado=out" : undefined}
+          hint="Opciones con 0 unidades — no se pueden vender"
+        />
+        <KpiTile
+          emoji="🟡"
+          label="Stock bajo"
+          value={low}
+          tone={low > 0 ? "warning" : "muted"}
+          href={low > 0 ? "/admin/inventario?estado=low" : undefined}
+          hint="5 unidades o menos — planea reponer"
+        />
+        <KpiTile
+          emoji="🟢"
+          label="Con stock OK"
+          value={ok}
+          tone="ok"
+          href="/admin/inventario?estado=ok"
+          hint="Más de 5 unidades — todo en orden"
+        />
+      </div>
+      <AdminSegmentedBar
+        ariaLabel="Distribución de salud del inventario de opciones"
+        items={[
+          {
+            key: "ok",
+            label: "Con stock OK",
+            count: ok,
+            tone: "emerald",
+            href: "/admin/inventario?estado=ok",
+          },
+          {
+            key: "low",
+            label: "Stock bajo (≤5)",
+            count: low,
+            tone: "amber",
+            href: "/admin/inventario?estado=low",
+          },
+          {
+            key: "out",
+            label: "Agotadas (0)",
+            count: out,
+            tone: "rose",
+            href: "/admin/inventario?estado=out",
+          },
+        ]}
       />
-      <KpiTile
-        emoji="🟡"
-        label="Stock bajo"
-        value={low}
-        tone={low > 0 ? "warning" : "muted"}
-        href={low > 0 ? "/admin/inventario?estado=low" : undefined}
-        hint="5 unidades o menos — planea reponer"
-      />
-      <KpiTile
-        emoji="🟢"
-        label="Con stock OK"
-        value={ok}
-        tone="ok"
-        href="/admin/inventario?estado=ok"
-        hint="Más de 5 unidades — todo en orden"
-      />
-    </div>
+    </AdminCard>
   );
 }
 
@@ -342,7 +399,7 @@ function KpiTile({
 
   const content = (
     <div
-      className={`rounded-xl border p-5 transition-colors ${toneClass} ${href ? "hover:brightness-95" : ""}`}
+      className={`rounded-xl border p-4 transition-colors ${toneClass} ${href ? "hover:brightness-95" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -355,7 +412,7 @@ function KpiTile({
           <p className="text-brand-muted mt-1 text-[11px] leading-snug">{hint}</p>
         </div>
         <span className="text-brand-purple-dark shrink-0 text-3xl leading-none font-bold tabular-nums">
-          {value.toLocaleString("es-CO")}
+          <CountUp value={value} />
         </span>
       </div>
     </div>

@@ -19,7 +19,7 @@
  *      needsReconciliation=true con motivo, stock sigue en 0 (nunca −1),
  *      sin guía.
  *   4. Prevención UI: B recarga /checkout/pago → redirect a /carrito con
- *      "ya no está disponible" (assertCheckoutAvailability).
+ *      "se agotó o ya no está disponible" (assertCheckoutAvailability).
  *
  * SOLO LOCAL + server full (scripts/e2e-fullmode.sh). Limpieza completa.
  */
@@ -111,8 +111,8 @@ test("§7.5.5 oversold: 2 clientes por la última unidad — el segundo pago no 
 
   const orderOf = async (reference: string) => {
     const o = await db().order.findFirstOrThrow({
-      where: { number: reference, deletedAt: null },
-      select: { id: true, number: true, total: true, status: true },
+      where: { wompiReference: reference, deletedAt: null },
+      select: { id: true, number: true, total: true, status: true, wompiReference: true },
     });
     orderIds.push(o.id);
     return o;
@@ -145,13 +145,17 @@ test("§7.5.5 oversold: 2 clientes por la última unidad — el segundo pago no 
     );
 
     // ── 2. A paga → PAID + stock 1→0.
-    const fire = (txId: string, status: string, order: { number: string; total: number }) =>
+    const fire = (
+      txId: string,
+      status: string,
+      order: { number: string; total: number; wompiReference: string | null },
+    ) =>
       postWompiEvent(request, {
         secret: WOMPI_SECRET!,
         txId,
         status,
         amount: order.total,
-        reference: order.number,
+        reference: order.wompiReference ?? order.number,
         timestamp: Math.floor(Date.now() / 1000),
       });
     expect((await fire(`e2e-${run}-a`, "APPROVED", orderA)).status).toBe(200);
@@ -191,10 +195,10 @@ test("§7.5.5 oversold: 2 clientes por la última unidad — el segundo pago no 
     // ── 4. Prevención UI: B ya no puede volver a intentar el pago.
     await pageB.goto("/checkout/pago", { waitUntil: "domcontentloaded" });
     await expect(pageB).toHaveURL(/\/carrito\?.*error=/, { timeout: 30_000 });
-    await expect(pageB.locator("body")).toContainText(/ya no está disponible/i);
+    await expect(pageB.locator("body")).toContainText(/se agotó|ya no está disponible/i);
     record(
       "b-ui-bloqueada",
-      "B al recargar /checkout/pago → /carrito?error=…ya no está disponible",
+      "B al recargar /checkout/pago → /carrito?error=…se agotó o ya no está disponible",
     );
 
     writeFileSync(

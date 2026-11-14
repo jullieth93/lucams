@@ -22,8 +22,8 @@ import {
   User,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
-import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
-import { requireRole } from "@/lib/admin-rbac-guard";
+import { canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { formatCOP, formatCityDept } from "@/lib/format";
 import { customerWaLink } from "@/lib/wa";
 import { getQuoteById } from "@/features/quotes/admin-service";
@@ -40,7 +40,12 @@ import { QuoteActions } from "../quote-actions";
 import { previewRefToAuthorizedUrl } from "@/features/personalization/preview-artifacts";
 import { formatDateTimeCO } from "@/lib/datetime";
 
-export const metadata: Metadata = { title: "Detalle cotización" };
+export const metadata: Metadata = {
+  title: "Detalle cotización",
+  robots: { index: false, follow: false },
+};
+
+export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 
@@ -59,19 +64,22 @@ const STATUS_TONE: Record<QuoteStatus, "amber" | "blue" | "emerald" | "slate"> =
 };
 
 export default async function AdminCotizacionDetallePage({ params }: { params: Params }) {
-  const session = await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
-  const canManageOpportunities = hasCapability(session.admin.role, "opportunities:manage");
-  const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
+  const session = await requireCapability("opportunities:manage");
+  const role = session.admin.role;
+  const canManageOpportunities = hasCapability(role, "opportunities:manage");
+  const canViewContacts = canAccessAdminPath(role, "/admin/clientes");
+  const canViewOpportunities = canAccessAdminPath(role, "/admin/oportunidades");
 
   const { id } = await params;
   const quote = await getQuoteById(id);
   if (!quote) notFound();
+  const canViewWorkshopSheet = canAccessAdminPath(role, `/admin/cotizaciones/${quote.id}/taller`);
   const linkedOpportunity = quote.convertedOpportunities[0] ?? null;
 
-  // WhatsApp al CLIENTE (vista admin — el número sí está disponible acá).
+  // WhatsApp al CLIENTE (vista admin protegida por RBAC).
   // El número se persiste normalizado a 10 dígitos CO; el indicativo 57 que
   // exige wa.me lo pone el helper (lib/wa). null = no parseable → sin botón.
-  const waMessage = `Hola ${quote.customerName.split(" ")[0]} 👋 Te escribo de Lucams por tu cotización ${quote.number}. ¿La revisamos juntos para concretar tu pedido? ✨`;
+  const waMessage = `Hola ${quote.customerName.split(" ")[0]}, te escribo de Lucams por tu cotización ${quote.number}. ¿La revisamos juntos para concretar tu pedido?`;
   const waUrl = customerWaLink(quote.customerWhatsapp, waMessage);
 
   return (
@@ -93,15 +101,15 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
         ]}
         actions={
           <>
-            {/* La hoja de taller es lo que Lucy mira mientras fabrica: qué es cada archivo, cuántas
-                piezas son de verdad, con qué color y por dónde se corta. */}
-            <Link
-              href={`/admin/cotizaciones/${quote.id}/taller`}
-              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-sm font-semibold transition-colors"
-            >
-              <Hammer className="h-4 w-4" />
-              Hoja de taller
-            </Link>
+            {canViewWorkshopSheet && (
+              <Link
+                href={`/admin/cotizaciones/${quote.id}/taller`}
+                className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-sm font-semibold transition-colors"
+              >
+                <Hammer className="h-4 w-4" />
+                Hoja de taller
+              </Link>
+            )}
             {waUrl && (
               <a
                 href={waUrl}
@@ -265,7 +273,7 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
                   </dd>
                 </div>
               </dl>
-              {canRead360 && quote.contactId && (
+              {canViewContacts && quote.contactId && (
                 <div className="mt-3">
                   <Link
                     href={`/admin/clientes/${encodeURIComponent(quote.contactId)}`}
@@ -298,12 +306,18 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
                     <p className="text-brand-muted">
                       Esta cotización ya está vinculada a una oportunidad comercial activa:
                     </p>
-                    <Link
-                      href={`/admin/oportunidades/${encodeURIComponent(linkedOpportunity.id)}`}
-                      className="bg-brand-purple inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold text-white hover:brightness-110"
-                    >
-                      Abrir oportunidad {linkedOpportunity.number} →
-                    </Link>
+                    {canViewOpportunities ? (
+                      <Link
+                        href={`/admin/oportunidades/${encodeURIComponent(linkedOpportunity.id)}`}
+                        className="bg-brand-purple inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold text-white hover:brightness-110"
+                      >
+                        Abrir oportunidad {linkedOpportunity.number} →
+                      </Link>
+                    ) : (
+                      <p className="text-brand-purple-dark font-mono font-semibold">
+                        {linkedOpportunity.number}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <form action={convertQuoteToOpportunityAction} className="space-y-2.5">

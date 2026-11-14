@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminLoginForm } from "./login-form";
+import { adminHomePath } from "@/lib/admin-rbac";
 import { getCurrentAdmin } from "@/lib/auth";
 import { AuthScene } from "@/components/auth/auth-scene";
 import { BrandMark } from "@/components/brand-mark";
@@ -15,9 +16,9 @@ export default async function AdminLoginPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  // Si ya estás autenticado COMO ADMIN, te llevamos al dashboard.
+  // Si ya estás autenticado COMO ADMIN, te llevamos al home de tu rol.
   const session = await getCurrentAdmin();
-  if (session) redirect("/admin/dashboard");
+  if (session) redirect(adminHomePath(session.admin.role));
 
   const { expired } = await searchParams;
 

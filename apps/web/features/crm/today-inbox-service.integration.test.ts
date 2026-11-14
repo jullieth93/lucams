@@ -15,6 +15,7 @@ describe.skipIf(!HAS_DB)(
     const createdOrderIds: string[] = [];
     const createdContactIds: string[] = [];
     const createdAdminIds: string[] = [];
+    const createdOpportunityIds: string[] = [];
 
     afterAll(async () => {
       if (createdTaskIds.length > 0) {
@@ -27,6 +28,11 @@ describe.skipIf(!HAS_DB)(
       }
       if (createdOrderIds.length > 0) {
         await prisma.order.deleteMany({ where: { id: { in: createdOrderIds } } }).catch(() => {});
+      }
+      if (createdOpportunityIds.length > 0) {
+        await prisma.opportunity
+          .deleteMany({ where: { id: { in: createdOpportunityIds } } })
+          .catch(() => {});
       }
       if (createdContactIds.length > 0) {
         await prisma.contact
@@ -145,10 +151,10 @@ describe.skipIf(!HAS_DB)(
       });
       createdTaskIds.push(privateCrmTask.id);
 
-      // 4) Tarea operativa asignada a PRINT_WORKSHOP con contacto asociado (debe enmascarar apellido)
+      // 4) Tarea operativa asignada a PRINT_WORKSHOP con contacto asociado y email incrustado en título
       const workshopTask = await prisma.task.create({
         data: {
-          title: `itest revisar corte imán ${suffix}`,
+          title: `itest revisar corte imán cliente.vip@lucams.test ${suffix}`,
           status: "OPEN",
           priority: "HIGH",
           dueAt: yesterday,
@@ -158,6 +164,27 @@ describe.skipIf(!HAS_DB)(
         },
       });
       createdTaskIds.push(workshopTask.id);
+
+      const opportunity = await prisma.opportunity.create({
+        data: {
+          number: `OP-HOY-${suffix}`,
+          contactId: contact.id,
+          title: "Oportunidad restringida por rol",
+        },
+      });
+      createdOpportunityIds.push(opportunity.id);
+      const financeOpportunityTask = await prisma.task.create({
+        data: {
+          title: `itest tarea B2B de finanzas ${suffix}`,
+          status: "OPEN",
+          priority: "URGENT",
+          dueAt: yesterday,
+          ownerAdminId: financeAdmin.id,
+          contactId: contact.id,
+          opportunityId: opportunity.id,
+        },
+      });
+      createdTaskIds.push(financeOpportunityTask.id);
 
       // A) CUSTOMER_SUPPORT: ve su ticket y tareas CRM, NO ve finanzas COD
       const sacInbox = await getTodayOperationalInbox(
@@ -179,6 +206,7 @@ describe.skipIf(!HAS_DB)(
       expect(finInbox.items.some((i) => i.id === `cod:${codOrder.id}`)).toBe(true);
       expect(finInbox.items.some((i) => i.id === `ticket:${ticket.id}`)).toBe(false);
       expect(finInbox.items.some((i) => i.id === `task:${privateCrmTask.id}`)).toBe(false);
+      expect(finInbox.items.some((i) => i.id === `task:${financeOpportunityTask.id}`)).toBe(false);
 
       // C) PRINT_WORKSHOP: ve su tarea de taller con PII enmascarada, NO ve ticket ni tarea privada CRM ni COD
       const workshopInbox = await getTodayOperationalInbox(
@@ -192,6 +220,8 @@ describe.skipIf(!HAS_DB)(
 
       const ownTaskRow = workshopInbox.items.find((i) => i.id === `task:${workshopTask.id}`);
       expect(ownTaskRow).toBeDefined();
+      expect(ownTaskRow?.title).not.toContain("cliente.vip");
+      expect(ownTaskRow?.title).toContain("c***p@l***s.test");
       expect(ownTaskRow?.subtitle).toContain("Mariana R.");
       expect(ownTaskRow?.subtitle).not.toContain("Restrepo");
 

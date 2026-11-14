@@ -19,7 +19,7 @@ import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { strip } from "./_setup/env";
-import { E2E_ENV, expect, test } from "./fixtures/auth";
+import { dismissCookieBanner, E2E_ENV, expect, test } from "./fixtures/auth";
 import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
 
@@ -122,10 +122,24 @@ test("auth: registro+OTP+sesión+logout+login+recuperar+restablecer (LOCAL full 
 
   const login = async (email: string, password: string) => {
     await anonPage.goto("/login", { waitUntil: "domcontentloaded" });
-    await anonPage.locator('input[name="email"]').fill(email);
-    await anonPage.locator('input[name="password"]').fill(password);
-    await anonPage.getByRole("button", { name: /iniciar sesión|entrar|ingresar/i }).click();
-    await anonPage.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 });
+    await dismissCookieBanner(anonPage);
+    const emailInput = anonPage.locator('input[name="email"]');
+    const passwordInput = anonPage.locator('input[name="password"]');
+    await expect(async () => {
+      await emailInput.fill(email);
+      await passwordInput.fill(password);
+      await expect(emailInput).toHaveValue(email, { timeout: 1_500 });
+      await expect(passwordInput).toHaveValue(password, { timeout: 1_500 });
+    }).toPass({ timeout: 20_000 });
+    await expect(async () => {
+      const navigated = Promise.all([
+        anonPage
+          .waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 10_000 })
+          .then(() => true),
+        anonPage.getByRole("button", { name: /iniciar sesión|entrar|ingresar/i }).click(),
+      ]);
+      expect((await navigated)[0]).toBe(true);
+    }).toPass({ timeout: 30_000 });
   };
 
   const isLoggedIn = async () => {
@@ -145,6 +159,7 @@ test("auth: registro+OTP+sesión+logout+login+recuperar+restablecer (LOCAL full 
       // NO autoconfirma; el código llega a Mailpit y se tipea en la app). ───
       // 1. Registro por UI (nombre + email + contraseña + consent Ley 1581).
       await anonPage.goto("/registro", { waitUntil: "domcontentloaded" });
+      await dismissCookieBanner(anonPage);
       await expect(async () => {
         await anonPage.locator('input[name="firstName"]').fill("Prueba");
         // 2026-10-31 (nightly): el sufijo eran DÍGITOS del timestamp y el servidor

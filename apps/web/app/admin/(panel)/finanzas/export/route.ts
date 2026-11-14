@@ -11,8 +11,10 @@
  */
 
 import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
+import { hasCapability } from "@/lib/admin-rbac";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { formatIsoDateCO } from "@/lib/datetime";
 import {
   buildAccountingOrdersCsv,
   DEFAULT_PERIOD,
@@ -51,23 +53,27 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const periodoRaw = url.searchParams.get("periodo") ?? undefined;
   const periodo = isFinanzasPeriod(periodoRaw) ? periodoRaw : DEFAULT_PERIOD;
+  // Segregación contable vs PII (Bloque 7 · A1): FINANCE_ANALYST recibe datos fiscales DIAN
+  // íntegros (NIT/CC, razón social, CUFE), pero el correo comercial del comprador sale enmascarado.
+  const redactBuyerEmail = !hasCapability(auth.session.admin.role, "orders:read_pii");
 
   const rows = await listCollectedOrdersForExport(periodo);
-  const csv = buildAccountingOrdersCsv(rows);
-  const stamp = new Date().toISOString().slice(0, 10);
+  const csv = buildAccountingOrdersCsv(rows, { redactBuyerEmail });
+  const stamp = formatIsoDateCO(new Date());
 
   await recordAdminAction({
     actorId: auth.session.admin.id,
     action: "finance.export_orders_csv",
     entityType: "Order",
     entityId: periodo,
-    metadata: { count: rows.length, periodo },
+    metadata: { count: rows.length, periodo, piiRedacted: redactBuyerEmail },
   });
   logger.info({
     event: "finance.orders.export_csv",
     adminId: auth.session.admin.id,
     periodo,
     total: rows.length,
+    piiRedacted: redactBuyerEmail,
   });
 
   return new Response(csv, {
@@ -75,6 +81,8 @@ export async function GET(req: Request) {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="finanzas-pedidos-${periodo}-${stamp}.csv"`,
       "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "X-Robots-Tag": "noindex, nofollow",
     },
   });
 }

@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
@@ -13,10 +12,11 @@ function backToCostos(params: string): never {
 }
 
 export async function updateProductCostAction(formData: FormData): Promise<void> {
-  // Costos = dato financiero sensible: solo SUPERADMIN. N-21 (2026-09-11): la action
-  // era MANAGER_UP pero la ruta /admin/costos es solo-SUPER — las actions nunca más
-  // permisivas que su pantalla (la ruta manda).
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.FINANCE });
+  // D1 (Auditoría 360° Bloque 2): edición de costos centralizada en /admin/costos
+  // para roles con `catalog:write` (SUPERADMIN, OPERATIONS_MANAGER y legacy MANAGER).
+  // FINANCE_ANALYST tiene acceso de SOLO LECTURA (`finance:read`) a la ruta, pero
+  // cualquier intento de mutar Product.cost queda bloqueado acá server-side.
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const productId = String(formData.get("productId") ?? "");
   if (!productId) backToCostos(`error=${encodeURIComponent("Falta el producto.")}`);
@@ -35,9 +35,22 @@ export async function updateProductCostAction(formData: FormData): Promise<void>
     cost = Math.round(pesos * 100);
   }
 
+  let previousCost: number | null = null;
+  let sku: string | null = null;
   try {
-    await prisma.product.update({ where: { id: productId }, data: { cost } });
+    const existing = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { cost: true, sku: true },
+    });
+    if (!existing) backToCostos(`error=${encodeURIComponent("El producto ya no existe.")}`);
+    previousCost = existing.cost;
+    sku = existing.sku;
+    await prisma.product.update({
+      where: { id: productId },
+      data: { cost, updatedBy: session.admin.id },
+    });
   } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
     logger.warn({
       event: "admin.costos.update_fail",
       adminId: session.admin.id,
@@ -52,8 +65,9 @@ export async function updateProductCostAction(formData: FormData): Promise<void>
     action: "product.cost.update",
     entityType: "Product",
     entityId: productId,
-    metadata: { costCentavos: cost },
+    metadata: { sku, previousCostCentavos: previousCost, costCentavos: cost },
   });
   revalidatePath("/admin/costos");
+  revalidatePath(`/admin/productos/${productId}`);
   backToCostos("updated=1");
 }

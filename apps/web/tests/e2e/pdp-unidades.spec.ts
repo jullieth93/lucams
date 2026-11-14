@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import "../setup-env";
 import { PrismaClient } from "@lucams/db";
+import { PHOTO_PACK_UNITS_PER_PACK } from "@/features/products/variant-schemas";
 
 /*
  * E2E — Regla 2026-09-08b (Lucy, unificación "Unidades" + "¿Con imán?" en TODOS
@@ -19,21 +20,15 @@ import { PrismaClient } from "@lucams/db";
  *      (packages/db/scripts/seed-magnet-variants.mjs) → "¿Con imán?" con
  *      CON IMÁN PRESELECCIONADO (default) y el CTA habilitado sin clicks;
  *      el stepper "Unidades" suma ?copies=N al link.
- *   4. Tamaño VARIABLE — polaroid y cuadrados: "Unidades" = pack size como
- *      stepper −/+ (2026-09-09, owner — UNIVERSAL en las familias de tamaño
- *      variable; NUNCA chips de elección única como el "1 fotos o 10 fotos"
- *      que se veía cuando el catálogo solo tenía esas 2 variantes). El rango
- *      es min..max de las variantes REALES y el ± salta entre los tamaños que
- *      existen con stock (local 1..10 → 2; STG {1,10} → 10 — el test lee los
- *      tamaños de la DB del ambiente, nada hardcodeado). Polaroid arranca
- *      preseleccionado en N=1 (única elección real) con precio EXACTO (sin
- *      "Desde") y CTA con ?variant= de la variante N elegida; NUNCA ?copies=
- *      (los packs no eligen copias en la PDP — se ajustan en el carrito).
- *   5. "¿Con imán?" en los PACKS DE FOTO (2026-09-08, pares sembrados por
- *      seed-magnet-variants.mjs): el grupo aparece también en polaroid, tiras
- *      y separadores (Con imán primero); en polaroid queda preseleccionado
- *      (la variante default N=1 es la Con imán) y elegir Sin imán cambia la
- *      variante del CTA — la elección viaja ?variant= → Estudio → canvasData.
+ *   4. Tamaño VARIABLE — polaroid y cuadrados: "Packs" como stepper −/+.
+ *      Los valores se derivan de las variantes reales y, cuando todas son
+ *      múltiplos de seis, se convierten a packs igual que VariantSelector.
+ *      Polaroid arranca en 1 pack con precio EXACTO y CTA ?variant=; NUNCA
+ *      ?copies= en los packs de tamaño variable.
+ *   5. "¿Con imán?" en los PACKS DE FOTO: el grupo aparece también en
+ *      polaroid, tiras y separadores (Con imán primero). Si Polaroid tiene
+ *      una variante Sin imán activa, elegirla cambia la variante del CTA;
+ *      si el ambiente solo ofrece Con imán, ese caso se omite explícitamente.
  *   6. HÍBRIDO tiras (2026-09-09, owner): DOS selectores — "Fotos por tira"
  *      (composición 3/4, photoSlots relabelado, CHIPS — excepción al stepper
  *      universal vía PDP_QUANTITY_CHIP_DIMS) + "Unidades" (stepper de copias
@@ -53,12 +48,9 @@ const SLUGS = [
 ] as const;
 
 const active = new Map<string, boolean>();
-/** Tamaños de pack EXISTENTES con stock (photoSlots distintos, ordenados) por
- *  slug — el stepper salta entre ellos (2026-09-09: no exige continuidad). */
 const packSteps = new Map<string, number[]>();
-/** Distintos photoSlots SIN filtrar stock: si la dimensión tiene rango (>1
- *  tamaño) aunque haya quiebres de stock, el pack size es stepper. */
 const packRangeAll = new Map<string, number[]>();
+const hasSinIman = new Map<string, boolean>();
 
 test.beforeAll(async () => {
   const products = await prisma.product.findMany({
@@ -73,21 +65,25 @@ test.beforeAll(async () => {
       where: { product: { slug }, isActive: true, deletedAt: null },
       select: { attributes: true, stock: true },
     });
-    const slotsOf = (vs: typeof variants) => [
-      ...new Set(
-        vs
-          .map((v) => (v.attributes as { photoSlots?: number } | null)?.photoSlots)
-          .filter((n): n is number => typeof n === "number"),
-      ),
-    ];
-    packRangeAll.set(
+    hasSinIman.set(
       slug,
-      slotsOf(variants).sort((a, b) => a - b),
+      variants.some((v) => (v.attributes as { magnet?: boolean } | null)?.magnet === false),
     );
-    packSteps.set(
-      slug,
-      slotsOf(variants.filter((v) => v.stock > 0)).sort((a, b) => a - b),
-    );
+    const visibleSteps = (vs: typeof variants) => {
+      const slots = [
+        ...new Set(
+          vs
+            .map((v) => (v.attributes as { photoSlots?: number } | null)?.photoSlots)
+            .filter((n): n is number => typeof n === "number"),
+        ),
+      ];
+      const usePacks = slots.length > 0 && slots.every((n) => n % PHOTO_PACK_UNITS_PER_PACK === 0);
+      return (usePacks ? slots.map((n) => n / PHOTO_PACK_UNITS_PER_PACK) : slots).sort(
+        (a, b) => a - b,
+      );
+    };
+    packRangeAll.set(slug, visibleSteps(variants));
+    packSteps.set(slug, visibleSteps(variants.filter((v) => v.stock > 0)));
   }
 });
 
@@ -108,7 +104,7 @@ async function dismissCookies(page: import("@playwright/test").Page) {
   }
 }
 
-test.describe("regla 2026-09-08b — 'Unidades' en TODA PDP (un concepto, un label)", () => {
+test.describe("PDP — Unidades o Packs según la familia del producto", () => {
   test("abecedario (compra directa): ¿Con imán? (Con imán primero) y la cantidad de fichas NO es selector", async ({
     page,
   }) => {
@@ -192,51 +188,40 @@ test.describe("regla 2026-09-08b — 'Unidades' en TODA PDP (un concepto, un lab
     await expect(cta).toHaveAttribute("href", /copies=2/);
   });
 
-  test("polaroid: Unidades = pack size (stepper min..max del catálogo, N=1 preseleccionado), precio exacto, sin ?copies=", async ({
+  test("polaroid: Packs = tamaño del pack (stepper del catálogo), precio exacto, sin ?copies=", async ({
     page,
   }) => {
     test.skip(!active.get("set-fotoimanes-polaroid"), "polaroid no activa en la DB");
     await page.goto("/producto/set-fotoimanes-polaroid", { waitUntil: "domcontentloaded" });
     await dismissCookies(page);
 
-    const unidades = page.getByRole("group", { name: "Unidades" });
-    await expect(unidades).toBeVisible({ timeout: 15_000 });
-    // Stepper −/+ (NUNCA chips de elección única — reporte del owner: con el
-    // catálogo {1,10} la PDP mostraba chips "1 fotos o 10 fotos"). El grupo
-    // solo tiene los 2 botones del stepper.
-    await expect(unidades.getByLabel("Aumentar unidades")).toBeVisible();
-    await expect(unidades.getByLabel("Disminuir unidades")).toBeVisible();
-    await expect(unidades.getByRole("button")).toHaveCount(2);
-    // N=1 preseleccionado (única elección real del producto de 1 tamaño).
-    await expect(unidades.getByText("1 foto")).toBeVisible();
-    await expect(unidades.getByLabel("Disminuir unidades")).toBeDisabled();
+    const packs = page.getByRole("group", { name: "Packs" });
+    await expect(packs).toBeVisible({ timeout: 15_000 });
+    await expect(packs.getByLabel("Aumentar packs")).toBeVisible();
+    await expect(packs.getByLabel("Disminuir packs")).toBeVisible();
+    await expect(packs.getByRole("button")).toHaveCount(2);
+    await expect(packs.getByText("1 pack", { exact: true })).toBeVisible();
+    await expect(packs.getByLabel("Disminuir packs")).toBeDisabled();
 
-    // Precio EXACTO desde el primer paint (la variante N=1 está elegida) — sin "Desde".
     await expect(page.getByText("Desde", { exact: true })).toHaveCount(0);
 
     const cta = page.getByRole("link", { name: /Personalizar producto/i });
     await expect(cta).toBeVisible();
     const href1 = (await cta.getAttribute("href")) ?? "";
     expect(href1).toContain("/estudio/set-fotoimanes-polaroid?variant=");
-    // Los packs NO eligen copias en la PDP (se ajustan en el carrito).
     expect(href1).not.toContain("copies=");
 
-    // "+" salta al siguiente tamaño que EXISTE con stock en el catálogo del
-    // ambiente (local 1..10 → 2; STG {1,10} → 10) y el deep-link cambia a la
-    // variante de ese N.
     const next = (packSteps.get("set-fotoimanes-polaroid") ?? []).find((n) => n > 1);
     test.skip(next === undefined, "el catálogo del ambiente tiene un solo tamaño de pack");
-    await unidades.getByLabel("Aumentar unidades").click();
-    await expect(unidades.getByText(`${next} fotos`)).toBeVisible();
+    await packs.getByLabel("Aumentar packs").click();
+    await expect(packs.getByText(`${next} packs`, { exact: true })).toBeVisible();
     const href2 = (await cta.getAttribute("href")) ?? "";
     expect(href2).toContain("/estudio/set-fotoimanes-polaroid?variant=");
     expect(href2).not.toBe(href1);
     expect(href2).not.toContain("copies=");
   });
 
-  test("cuadrados: Unidades = pack size con stepper −/+ (2026-09-09 — universal en familias variables)", async ({
-    page,
-  }) => {
+  test("cuadrados: Packs = tamaño del pack con stepper −/+", async ({ page }) => {
     test.skip(!active.get("set-fotoimanes-cuadrados"), "cuadrados no activo en la DB");
     test.skip(
       (packRangeAll.get("set-fotoimanes-cuadrados") ?? []).length < 2,
@@ -245,17 +230,13 @@ test.describe("regla 2026-09-08b — 'Unidades' en TODA PDP (un concepto, un lab
     await page.goto("/producto/set-fotoimanes-cuadrados", { waitUntil: "domcontentloaded" });
     await dismissCookies(page);
 
-    // El pack size es stepper −/+ (no chips "1 fotos / 2 fotos / …"): el grupo
-    // "Unidades" solo tiene los 2 botones del stepper. NUNCA los labels viejos
-    // "Fotos" (exacto: "Fotos por tira" lo contiene como subcadena)/"Cantidad".
-    const unidades = page.getByRole("group", { name: "Unidades" });
-    await expect(unidades).toBeVisible({ timeout: 15_000 });
-    await expect(unidades.getByLabel("Aumentar unidades")).toBeVisible();
-    await expect(unidades.getByLabel("Disminuir unidades")).toBeVisible();
-    await expect(unidades.getByRole("button")).toHaveCount(2);
+    const packs = page.getByRole("group", { name: "Packs" });
+    await expect(packs).toBeVisible({ timeout: 15_000 });
+    await expect(packs.getByLabel("Aumentar packs")).toBeVisible();
+    await expect(packs.getByLabel("Disminuir packs")).toBeVisible();
+    await expect(packs.getByRole("button")).toHaveCount(2);
     await expect(page.getByRole("group", { name: "Fotos", exact: true })).toHaveCount(0);
     await expect(page.getByRole("group", { name: "Cantidad" })).toHaveCount(0);
-    // La dimensión de tamaño sigue en chips (no es de cantidad).
     await expect(page.getByRole("group", { name: "Tamaño" })).toBeVisible();
   });
 
@@ -263,15 +244,15 @@ test.describe("regla 2026-09-08b — 'Unidades' en TODA PDP (un concepto, un lab
     page,
   }) => {
     test.skip(!active.get("set-fotoimanes-polaroid"), "polaroid no activa en la DB");
+    test.skip(
+      !hasSinIman.get("set-fotoimanes-polaroid"),
+      "El ambiente no tiene una variante Polaroid Sin imán activa y seleccionable.",
+    );
     await page.goto("/producto/set-fotoimanes-polaroid", { waitUntil: "domcontentloaded" });
     await dismissCookies(page);
 
-    // El par Con/Sin imán (seed 2026-09-08) suma la dimensión al selector de la PDP.
     const iman = page.getByRole("group", { name: "¿Con imán?" });
     await expect(iman).toBeVisible({ timeout: 15_000 });
-    // Con imán listado primero y PRESELECCIONADO: la variante default del pack
-    // (N=1, la única elección real de tamaño) es la Con imán (createdAt anterior
-    // a la gemela — ver page.tsx: preselección de N mínimo).
     const conIman = iman.getByRole("button", { name: /Con imán/ });
     const sinIman = iman.getByRole("button", { name: /Sin imán/ });
     await expect(iman.getByRole("button").first()).toHaveText(/Con imán/);

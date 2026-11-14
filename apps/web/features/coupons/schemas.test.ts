@@ -37,13 +37,27 @@ describe("CouponCreateSchema — tope PERCENT (A5-04)", () => {
     expect(CouponCreateSchema.safeParse({ ...BASE, value: 100 }).success).toBe(true);
   });
 
-  it("FIXED conserva el tope global (centavos COP)", () => {
+  it("FIXED conserva el tope global (centavos COP) y exige mínimo $1 COP (100 centavos)", () => {
+    expect(CouponCreateSchema.safeParse({ ...BASE, type: "FIXED", value: 99 }).success).toBe(false);
+    expect(CouponCreateSchema.safeParse({ ...BASE, type: "FIXED", value: 100 }).success).toBe(true);
     expect(CouponCreateSchema.safeParse({ ...BASE, type: "FIXED", value: 5_000_000 }).success).toBe(
       true,
     );
     expect(
       CouponCreateSchema.safeParse({ ...BASE, type: "FIXED", value: 10_000_001 }).success,
     ).toBe(false);
+  });
+
+  it("rechaza maxUsesPerCustomer mayor que maxUses", () => {
+    const r = CouponCreateSchema.safeParse({
+      ...BASE,
+      maxUses: 5,
+      maxUsesPerCustomer: 10,
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues.some((i) => i.path.includes("maxUsesPerCustomer"))).toBe(true);
+    }
   });
 });
 

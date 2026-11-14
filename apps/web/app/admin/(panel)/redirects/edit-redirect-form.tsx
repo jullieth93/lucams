@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { updateRedirectAction, type RedirectActionState } from "./actions";
 
 type Props = {
@@ -9,6 +9,7 @@ type Props = {
   statusCode: number;
   description: string | null;
   isActive: boolean;
+  canUseExternalUrls?: boolean;
 };
 
 /*
@@ -18,10 +19,8 @@ type Props = {
  * cambiar el origen = archivar este y crear uno nuevo.
  */
 export function EditRedirectForm(props: Props) {
-  const [state, formAction, isPending] = useActionState<RedirectActionState | null, FormData>(
-    updateRedirectAction,
-    null,
-  );
+  const [state, formAction, isPending, reauthModal] =
+    useMfaReauthAction<RedirectActionState>(updateRedirectAction);
 
   return (
     <form
@@ -42,8 +41,14 @@ export function EditRedirectForm(props: Props) {
             name="toPath"
             required
             defaultValue={props.toPath}
+            placeholder={props.canUseExternalUrls ? "/ruta o https://..." : "/ruta-interna"}
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 font-mono text-xs focus:ring-2 focus:outline-none"
           />
+          {!props.canUseExternalUrls && (
+            <p className="text-brand-muted mt-1 text-[10px]">
+              Solo rutas internas con <code>/</code> (destinos externos reservados a Superadmin).
+            </p>
+          )}
           {state?.fieldErrors?.toPath && (
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.toPath[0]}</p>
           )}
@@ -92,7 +97,7 @@ export function EditRedirectForm(props: Props) {
         />
         Activo
       </label>
-      {state?.error && (
+      {state?.error && !state.reauthRequired && (
         <p className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs text-rose-700">
           {state.error}
         </p>
@@ -104,6 +109,7 @@ export function EditRedirectForm(props: Props) {
       >
         {isPending ? "Guardando…" : "Guardar cambios"}
       </button>
+      {reauthModal}
     </form>
   );
 }

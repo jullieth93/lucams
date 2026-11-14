@@ -18,14 +18,16 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { MailCheck } from "lucide-react";
+import { Filter, MailCheck, Repeat, ShieldCheck, ShoppingCart } from "lucide-react";
 import {
   AdminBadge,
+  AdminCard,
+  AdminComboBarLineChart,
   AdminEmpty,
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
+  AdminSegmentedBar,
   AdminTable,
   AdminTableBody,
   AdminTableHead,
@@ -34,8 +36,12 @@ import {
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getCurrentAdmin } from "@/lib/auth";
-import { listNewsletterSubscribers } from "@/features/newsletter/admin-service";
+import { adminHomePath, canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
+import {
+  getNewsletterDailyPulse,
+  listNewsletterSubscribers,
+} from "@/features/newsletter/admin-service";
 import { ExportSubscribersCsvButton } from "./export-csv-button";
 import { formatDateCO } from "@/lib/datetime";
 
@@ -52,29 +58,50 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
 }
 
 const STATUS_OPTIONS = ["all", "active", "unsubscribed"] as const;
+type StatusOption = (typeof STATUS_OPTIONS)[number];
+
+const STATUS_LABEL: Record<StatusOption, string> = {
+  all: "Todos",
+  active: "Activos",
+  unsubscribed: "De baja",
+};
 
 export default async function AdminSuscriptoresPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireCapability("marketing:read");
+  const role = session.admin.role;
+  const homeHref = adminHomePath(role);
+  const canExport = hasCapability(role, "marketing:export_csv");
+  const isSuperadmin = role === "SUPERADMIN";
+  const canRead360 =
+    hasCapability(role, "contacts:read_360") && canAccessAdminPath(role, "/admin/clientes");
 
   const sp = await searchParams;
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
-  const status = (STATUS_OPTIONS as readonly string[]).includes(statusRaw ?? "")
-    ? (statusRaw as (typeof STATUS_OPTIONS)[number])
+  const status: StatusOption = (STATUS_OPTIONS as readonly string[]).includes(statusRaw ?? "")
+    ? (statusRaw as StatusOption)
     : "all";
   const page = Number(sp.page) || 1;
 
-  const { items, counters, total, totalPages } = await listNewsletterSubscribers({
-    q,
-    status,
-    page,
-  });
+  const [{ items, counters, total, totalPages }, pulse] = await Promise.all([
+    listNewsletterSubscribers({
+      q,
+      status,
+      page,
+    }),
+    getNewsletterDailyPulse(14),
+  ]);
   const hasActiveFilters = !!q || status !== "all";
+
+  const pillCounts: Record<StatusOption, number> = {
+    all: counters.total,
+    active: counters.active,
+    unsubscribed: counters.unsubscribed,
+  };
 
   return (
     <AdminPage>
@@ -88,15 +115,70 @@ export default async function AdminSuscriptoresPage({
           </>
         }
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: homeHref },
           { label: "Marketing" },
           { label: "Suscriptores" },
         ]}
-        actions={<ExportSubscribersCsvButton />}
+        actions={
+          canExport ? <ExportSubscribersCsvButton canExportAuditLedger={isSuperadmin} /> : undefined
+        }
       />
 
       <AdminPageBody>
-        {/* Contadores del universo completo (no del filtro aplicado) */}
+        {/* Tira de navegación del ecosistema Marketing */}
+        <div className="flex flex-wrap items-center gap-2">
+          {canAccessAdminPath(role, "/admin/carritos") && (
+            <Link
+              href="/admin/carritos"
+              className="border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <ShoppingCart className="h-3.5 w-3.5" />
+              Carritos abandonados
+            </Link>
+          )}
+          {canAccessAdminPath(role, "/admin/lifecycle") && (
+            <Link
+              href="/admin/lifecycle"
+              className="border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <Repeat className="h-3.5 w-3.5" />
+              Lifecycle Journeys
+            </Link>
+          )}
+          <span className="border-brand-purple bg-brand-purple/10 text-brand-purple-dark inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold">
+            <MailCheck className="h-3.5 w-3.5" />
+            Suscriptores
+          </span>
+          {canAccessAdminPath(role, "/admin/marketing/segmentos") && (
+            <Link
+              href="/admin/marketing/segmentos"
+              className="border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
+            >
+              <Filter className="h-3.5 w-3.5" />
+              Segmentos RFM
+            </Link>
+          )}
+        </div>
+
+        {/* Garantía Ley 1581 */}
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+          <div className="space-y-1">
+            <p className="font-semibold">
+              Protección de Habeas Data (Ley 1581 de 2012) en campañas y exportaciones
+            </p>
+            <p className="text-xs leading-relaxed text-emerald-900/90">
+              Las cuentas internas del equipo están excluidas de este conteo comercial. La descarga
+              CSV estándar exporta <strong>únicamente suscriptores activos</strong> sin rebote duro
+              ni queja registrada en Resend; la revocación la inicia siempre el titular mediante su
+              enlace firmado.
+              {isSuperadmin &&
+                " Como SUPERADMIN dispones además del botón «Ledger SIC» para evidencia regulatoria completa."}
+            </p>
+          </div>
+        </div>
+
+        {/* Contadores del universo comercial completo */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <KpiCard label="Activos" value={counters.active} trendLabel="Reciben las campañas" />
           <KpiCard
@@ -104,7 +186,98 @@ export default async function AdminSuscriptoresPage({
             value={counters.unsubscribed}
             trendLabel="Revocaron el consentimiento"
           />
-          <KpiCard label="Total histórico" value={counters.total} trendLabel="Altas + bajas" />
+          <KpiCard
+            label="Total audiencia"
+            value={counters.total}
+            trendLabel="Altas + bajas (sin staff)"
+          />
+        </div>
+
+        {/* Pulso 14 días + salud de la audiencia */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <AdminCard className="p-5 lg:col-span-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-brand-purple-dark font-display text-sm font-bold">
+                Pulso 14 días: altas opt-in vs bajas revocadas
+              </h2>
+              <span className="text-brand-muted text-xs">Hora Colombia (COT)</span>
+            </div>
+            <AdminComboBarLineChart
+              ariaLabel="Pulso de 14 días de suscripciones opt-in vs bajas de newsletter"
+              barLegend="Altas opt-in"
+              lineLegend="Bajas (opt-out)"
+              data={pulse.map((b) => ({
+                key: b.key,
+                label: b.label,
+                tickLabel: b.tickLabel,
+                barValue: b.optInCount,
+                barFormatted: `${b.optInCount} alta${b.optInCount === 1 ? "" : "s"}`,
+                lineValue: b.optOutCount,
+                lineFormatted: `${b.optOutCount} baja${b.optOutCount === 1 ? "" : "s"}`,
+              }))}
+            />
+          </AdminCard>
+
+          <AdminCard className="flex flex-col justify-between p-5 lg:col-span-2">
+            <div>
+              <h2 className="text-brand-purple-dark font-display mb-1 text-sm font-bold">
+                Balance de consentimientos
+              </h2>
+              <p className="text-brand-muted mb-4 text-xs">
+                Proporción actual entre titulares habilitados y revocaciones registradas.
+              </p>
+              <AdminSegmentedBar
+                ariaLabel="Proporción entre suscriptores activos y dados de baja"
+                items={[
+                  {
+                    key: "active",
+                    label: "Activos (opt-in)",
+                    count: counters.active,
+                    tone: "emerald",
+                    href: "/admin/marketing/suscriptores?status=active",
+                  },
+                  {
+                    key: "unsubscribed",
+                    label: "De baja",
+                    count: counters.unsubscribed,
+                    tone: "slate",
+                    href: "/admin/marketing/suscriptores?status=unsubscribed",
+                  },
+                ]}
+              />
+            </div>
+          </AdminCard>
+        </div>
+
+        {/* Pestañas rápidas por estado */}
+        <div className="flex flex-wrap items-center gap-2">
+          {STATUS_OPTIONS.map((st) => {
+            const active = status === st;
+            const params = new URLSearchParams();
+            if (st !== "all") params.set("status", st);
+            if (q) params.set("q", q);
+            const qs = params.toString();
+            return (
+              <Link
+                key={st}
+                href={qs ? `/admin/marketing/suscriptores?${qs}` : "/admin/marketing/suscriptores"}
+                className={`inline-flex min-h-10 items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  active
+                    ? "border-brand-purple bg-brand-purple text-white"
+                    : "border-brand-purple/15 text-brand-purple-dark hover:bg-brand-purple/10 bg-white"
+                }`}
+              >
+                <span>{STATUS_LABEL[st]}</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${
+                    active ? "bg-white/20 text-white" : "bg-brand-purple/10 text-brand-purple-dark"
+                  }`}
+                >
+                  {pillCounts[st]}
+                </span>
+              </Link>
+            );
+          })}
         </div>
 
         {/* Toolbar */}
@@ -112,47 +285,30 @@ export default async function AdminSuscriptoresPage({
           method="GET"
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
         >
-          <div className="sm:col-span-6">
+          {status !== "all" && <input type="hidden" name="status" value={status} />}
+          <div className="sm:col-span-9">
             <label
               htmlFor="f-q"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
             >
-              Buscar
+              Buscar por correo o nombre del contacto
             </label>
             <Input
               id="f-q"
               name="q"
               type="search"
               defaultValue={q ?? ""}
-              placeholder="Email del suscriptor…"
+              placeholder="cliente@correo.com o nombre…"
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>
-          <div className="sm:col-span-4">
-            <label
-              htmlFor="f-status"
-              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
-            >
-              Estado
-            </label>
-            <select
-              id="f-status"
-              name="status"
-              defaultValue={status}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
-            >
-              <option value="all">Todos</option>
-              <option value="active">Activos</option>
-              <option value="unsubscribed">De baja</option>
-            </select>
-          </div>
-          <div className="flex items-end gap-2 sm:col-span-2">
+          <div className="flex items-end gap-2 sm:col-span-3">
             <Button
               type="submit"
               size="sm"
               className="bg-gradient-brand h-9 w-full text-white hover:brightness-110"
             >
-              Aplicar
+              Buscar
             </Button>
           </div>
           {hasActiveFilters && (
@@ -181,7 +337,7 @@ export default async function AdminSuscriptoresPage({
           <AdminTable>
             <AdminTableHead>
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Email</th>
+                <th className="px-4 py-3 text-left font-semibold">Suscriptor</th>
                 <th className="px-4 py-3 text-left font-semibold">Estado</th>
                 <th className="px-4 py-3 text-left font-semibold">Suscripción</th>
                 <th className="px-4 py-3 text-left font-semibold">Baja</th>
@@ -191,13 +347,29 @@ export default async function AdminSuscriptoresPage({
             <AdminTableBody>
               {items.map((s) => (
                 <AdminTableRow key={s.email}>
-                  <td className="text-brand-purple-dark px-4 py-3 font-medium">{s.email}</td>
                   <td className="px-4 py-3">
-                    {s.status === "active" ? (
-                      <AdminBadge tone="emerald">Activo</AdminBadge>
-                    ) : (
-                      <AdminBadge tone="slate">De baja</AdminBadge>
+                    {s.displayName && (
+                      <p className="text-brand-purple-dark text-xs font-bold">{s.displayName}</p>
                     )}
+                    <p className="text-brand-purple-dark font-medium">{s.email}</p>
+                    {canRead360 && s.contactId && (
+                      <Link
+                        href={`/admin/clientes/${encodeURIComponent(s.contactId)}`}
+                        className="text-brand-purple text-[11px] font-semibold hover:underline"
+                      >
+                        Ver Contacto 360 →
+                      </Link>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {s.status === "active" ? (
+                        <AdminBadge tone="emerald">Activo</AdminBadge>
+                      ) : (
+                        <AdminBadge tone="slate">De baja</AdminBadge>
+                      )}
+                      {s.bouncedOrComplained && <AdminBadge tone="rose">Rebote / Queja</AdminBadge>}
+                    </div>
                   </td>
                   <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">
                     {s.subscribedAt ? formatDateCO(s.subscribedAt) : "—"}

@@ -198,6 +198,7 @@ export async function proxy(request: NextRequest) {
   if (
     !isApi &&
     !path.startsWith("/_next/") &&
+    path !== "/admin" &&
     !path.startsWith("/admin/") &&
     request.method === "GET"
   ) {

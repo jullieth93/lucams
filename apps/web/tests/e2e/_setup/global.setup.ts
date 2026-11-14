@@ -20,14 +20,13 @@
  *      borra aunque los specs mueran a mitad.
  */
 
-import { chromium, type Page } from "@playwright/test";
+import { chromium, expect, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
 // Guarda de ambiente compartida con los scripts destructivos del repo.
 import { checkDestructiveAllowed } from "../../../../../packages/db/scripts/lib/env-guard.mjs";
-import { dismissAdminHelpOnboarding, enrollTotpFactor } from "../_helpers/mfa";
-import { totp } from "../_helpers/totp";
+import { enrollTotpFactor, loginAdminWithTotp } from "../_helpers/mfa";
 import {
   authManifestPath,
   authStatePath,
@@ -53,21 +52,30 @@ import {
  * perdido) y 30 s de ventana por intento (la acción de login con bcrypt +
  * cold-compile de Turbopack tardaba ~10 s en dev > los 8 s anteriores).
  */
-async function clickAndWaitForURL(
+export async function clickAndWaitForURL(
   page: Page,
   buttonName: RegExp,
   url: RegExp | ((u: URL) => boolean),
 ): Promise<void> {
   await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
   for (let attempt = 1; attempt <= 4; attempt++) {
-    await page.getByRole("button", { name: buttonName }).click();
-    const navigated = await page
-      .waitForURL(url, { timeout: 30_000 })
-      .then(() => true)
-      .catch(() => false);
+    const navigated = await Promise.all([
+      page
+        .waitForURL(url, { timeout: 30_000 })
+        .then(() => true)
+        .catch(() => false),
+      page.getByRole("button", { name: buttonName }).click(),
+    ]).then(([didNavigate]) => didNavigate);
     if (navigated) return;
   }
-  throw new Error(`[e2e setup] el click en ${buttonName} nunca navegó tras 4 intentos`);
+  const body = await page
+    .locator("body")
+    .innerText()
+    .catch(() => "");
+  throw new Error(
+    `[e2e setup] el click en ${buttonName} nunca navegó tras 4 intentos; ` +
+      `URL actual: ${page.url()} :: ${body.slice(0, 800)}`,
+  );
 }
 
 export default async function globalSetup() {
@@ -175,19 +183,23 @@ export default async function globalSetup() {
     const page = await context.newPage();
 
     // Admin (MFA obligatorio desde B-1: login → reto TOTP → dashboard).
-    await page.goto("/admin/login", { waitUntil: "domcontentloaded" });
-    await page.locator('input[name="email"]').fill(adminEmail);
-    await page.locator('input[name="password"]').fill(ADMIN_PASSWORD);
-    await clickAndWaitForURL(page, /iniciar sesión/i, /\/admin\/login\/mfa/);
-    await page.getByPlaceholder("123456").fill(totp(adminTotpSecret, Date.now()));
-    await clickAndWaitForURL(page, /verificar y entrar/i, /\/admin\/dashboard/);
-    await dismissAdminHelpOnboarding(page);
+    await loginAdminWithTotp(page, {
+      email: adminEmail,
+      password: ADMIN_PASSWORD,
+      totpSecret: adminTotpSecret,
+    });
     await context.storageState({ path: authStatePath(env, "admin") });
 
     // Cliente (login de storefront → redirect a "/" en éxito).
     await page.goto("/login", { waitUntil: "domcontentloaded" });
-    await page.locator('input[name="email"]').fill(clientEmail);
-    await page.locator('input[name="password"]').fill(CLIENT_PASSWORD);
+    const clientEmailInput = page.locator('input[name="email"]');
+    const clientPasswordInput = page.locator('input[name="password"]');
+    await expect(async () => {
+      await clientEmailInput.fill(clientEmail);
+      await clientPasswordInput.fill(CLIENT_PASSWORD);
+      await expect(clientEmailInput).toHaveValue(clientEmail, { timeout: 1_500 });
+      await expect(clientPasswordInput).toHaveValue(CLIENT_PASSWORD, { timeout: 1_500 });
+    }).toPass({ timeout: 20_000 });
     await clickAndWaitForURL(
       page,
       /iniciar sesión|entrar|ingresar/i,

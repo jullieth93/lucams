@@ -2,13 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, Plus } from "lucide-react";
 import { AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
-import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { adminHomePath } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { LifecycleJourneyForm } from "../journey-form";
 
-export const metadata: Metadata = { title: "Nuevo recorrido · Lifecycle" };
+export const metadata: Metadata = {
+  title: "Nuevo recorrido · Lifecycle",
+  robots: { index: false, follow: false },
+};
 
 export default async function NewLifecycleJourneyPage() {
-  await requireAdminAction({ capability: "lifecycle:manage" });
+  const session = await requireCapability("lifecycle:manage");
+  const homeHref = adminHomePath(session.admin.role);
   return (
     <AdminPage>
       <AdminPageHeader
@@ -16,7 +21,7 @@ export default async function NewLifecycleJourneyPage() {
         title="Nuevo recorrido"
         subtitle="Configura el disparador, las reglas de inscripción y cada mensaje antes de activarlo."
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: homeHref },
           { label: "Marketing" },
           { label: "Lifecycle", href: "/admin/lifecycle" },
           { label: "Nuevo" },

@@ -18,15 +18,23 @@ const WIDTHS = {
 
 type WidthKey = keyof typeof WIDTHS;
 
-export function PreviewPanel({ src, title }: { src: string; title: string }) {
+export function PreviewPanel({
+  src,
+  title,
+  versionKey = "v0",
+}: {
+  src: string;
+  title: string;
+  /** Cambia automáticamente cuando los overrides en servidor cambian, remontando el iframe al guardar/restaurar. */
+  versionKey?: string;
+}) {
   const [width, setWidth] = useState<WidthKey>("desktop");
-  // Al guardar un override el iframe NO se recarga solo (su src no cambia);
-  // este contador lo remonta bajo demanda.
+  // Contador adicional por si la operadora quiere forzar una recarga manual.
   const [reloads, setReloads] = useState(0);
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         {(Object.keys(WIDTHS) as WidthKey[]).map((key) => {
           const { label, icon: Icon } = WIDTHS[key];
           const active = width === key;
@@ -58,16 +66,17 @@ export function PreviewPanel({ src, title }: { src: string; title: string }) {
       </div>
       <div className="border-brand-purple/15 overflow-x-auto rounded-xl border bg-[#FFF8F0] p-4">
         <iframe
-          key={reloads}
+          key={`${versionKey}-${reloads}`}
           title={title}
           src={src}
           sandbox=""
           style={{ width: WIDTHS[width].px, maxWidth: "100%", height: 640 }}
-          className="mx-auto block rounded-lg bg-white shadow-sm"
+          className="mx-auto block rounded-lg bg-white shadow-sm transition-all duration-200"
         />
       </div>
       <p className="text-brand-muted mt-2 text-xs">
-        Renderizado con datos de ejemplo. Si acabas de guardar un texto, toca «Recargar preview».
+        Renderizado con datos de ejemplo en marco aislado. Al guardar o restaurar un texto, la vista
+        previa se actualiza sola.
       </p>
     </div>
   );
