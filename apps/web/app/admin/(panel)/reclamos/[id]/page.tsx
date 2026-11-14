@@ -9,9 +9,22 @@
  */
 
 import { redirect, permanentRedirect } from "next/navigation";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 
-export default async function ReclamoDetalleLegacyRedirect() {
-  permanentRedirect("/admin/garantias");
+export default async function ReclamoDetalleLegacyRedirect({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  // B-7: paridad N-21 con ROUTE_ROLES y preservación del id vía búsqueda server-side (?q=).
+  await requireRole(ADMIN_ROLE_SETS.GARANTIAS_READ);
+  const { id } = await params;
+  const cleanId = id.trim().slice(0, 80);
+  const target = cleanId
+    ? `/admin/garantias?status=all&q=${encodeURIComponent(cleanId)}`
+    : "/admin/garantias";
+  permanentRedirect(target);
   // unreachable — Next type checker quiere un return
-  redirect("/admin/garantias");
+  redirect(target);
 }

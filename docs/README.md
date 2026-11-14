@@ -33,7 +33,7 @@
 
 | Documento                                  | Qué documenta                                                                                                                                         |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)       | Estructura del monorepo, los **77 modelos y 33 enums** de Prisma, rutas App Router, RBAC (8 roles × 35 capacidades), RLS y caché                      |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)       | Estructura del monorepo, los **77 modelos y 33 enums** de Prisma, rutas App Router, RBAC (8 roles × 36 capacidades), RLS y caché                      |
 | [`OPERATIONS.md`](OPERATIONS.md)           | **Matriz maestra de variables de entorno**, ciclo `feature/* → develop → production`, homologación STG↔PRD, backups/DR y runbooks                     |
 | [`SECURITY.md`](SECURITY.md)               | Sesiones Auth/admin, MFA `aal2`, CSP con nonce, CORS, rate limiting en Postgres, clasificación PII, guardarraíles anti-IDOR e IRP                     |
 | [`COMPLIANCE.md`](COMPLIANCE.md)           | Estatuto del Consumidor (Ley 1480 y Ley 2439), Ley 1581 (Hábeas Data), paquete legal **Versión 3** (8 documentos + `{{tokens}}`) y régimen tributario |

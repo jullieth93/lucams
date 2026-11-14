@@ -62,11 +62,13 @@ export function CrmIntelligencePanel({
   canAccessSegments,
   canAccessCarts,
   canAccessOpportunities,
+  canAccessInventory = false,
 }: {
   report: CrmBehavioralIntelligenceReport;
   canAccessSegments: boolean;
   canAccessCarts: boolean;
   canAccessOpportunities: boolean;
+  canAccessInventory?: boolean;
 }) {
   const { dropOffs, intentSignals, rfm, channelAttribution, assistedRecovery } = report;
   const costPct = Math.round(rfm.productsWithCostConfiguredRatio * 100);
@@ -327,8 +329,8 @@ export function CrmIntelligencePanel({
               Intención comercial latente vs. inventario vivo
             </h3>
             <p className="text-xs text-slate-500">
-              Cruza favoritos guardados (`WishlistItem`) y alertas «Avísame cuando vuelva»
-              pendientes contra el stock activo real.
+              Cruza favoritos guardados por clientes y alertas «Avísame cuando vuelva» pendientes
+              contra el stock activo real.
             </p>
           </div>
           <ShoppingCart className="h-4 w-4 text-slate-400" />
@@ -353,7 +355,16 @@ export function CrmIntelligencePanel({
               {intentSignals.map((sig) => (
                 <AdminTableRow key={sig.productId}>
                   <td className="px-3 py-2.5 text-xs font-semibold text-slate-900">
-                    {sig.productName}
+                    {canAccessInventory ? (
+                      <Link
+                        href={`/admin/inventario?q=${encodeURIComponent(sig.productName)}`}
+                        className="text-brand-purple-dark hover:text-brand-purple hover:underline"
+                      >
+                        {sig.productName}
+                      </Link>
+                    ) : (
+                      sig.productName
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-right text-xs text-slate-700 tabular-nums">
                     {sig.wishlistCount}

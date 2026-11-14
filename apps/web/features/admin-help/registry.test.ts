@@ -89,7 +89,7 @@ describe("admin help registry", () => {
       getAvailableModuleGuides("CMS_EDITOR")
         .map((guide) => guide.id)
         .sort(),
-    ).toEqual(["ayuda", "contenido", "seguridad"]);
+    ).toEqual(["ayuda", "contenido", "redirects", "seguridad"]);
     expect(getModuleGuideById("finanzas", "CMS_EDITOR")).toBeNull();
   });
 
@@ -125,6 +125,6 @@ describe("admin help registry", () => {
   });
 
   it("mantiene el catálogo RBAC alineado con las capacidades usadas por las guías", () => {
-    expect(ADMIN_CAPABILITIES).toHaveLength(35);
+    expect(ADMIN_CAPABILITIES).toHaveLength(36);
   });
 });

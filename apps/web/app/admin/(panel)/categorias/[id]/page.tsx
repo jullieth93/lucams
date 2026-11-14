@@ -8,8 +8,8 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { Layers, Trash2, ArrowLeft } from "lucide-react";
+import { notFound } from "next/navigation";
+import { Layers, Trash2, ArrowLeft, ExternalLink, Package } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -20,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { listParentCategoryOptions } from "@/features/categories/service";
 import { CategoryForm } from "../category-form";
@@ -40,8 +40,7 @@ export default async function EditCategoryPage({
   params: RouteParams;
   searchParams: SearchParams;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireCapability("catalog:write");
 
   const { id } = await params;
   const sp = await searchParams;
@@ -50,15 +49,27 @@ export default async function EditCategoryPage({
     where: { id, deletedAt: null },
     include: {
       parent: { select: { id: true, name: true, slug: true } },
-      _count: { select: { products: true, children: true } },
     },
   });
   if (!category) notFound();
 
+  const [liveProducts, liveChildren] = await Promise.all([
+    prisma.product.count({ where: { categoryId: category.id, deletedAt: null } }),
+    prisma.category.count({ where: { parentId: category.id, deletedAt: null } }),
+  ]);
+
   // Opciones de madre: top-level menos la propia. Si esta categoría ya tiene
-  // sub-categorías, no puede volverse hija (depth máx 1) → no ofrecemos madres.
-  const parentOptions =
-    category._count.children > 0 ? [] : await listParentCategoryOptions(category.id);
+  // sub-categorías vivas, no puede volverse hija (depth máx 1) → no ofrecemos madres.
+  const parentOptions = liveChildren > 0 ? [] : await listParentCategoryOptions(category.id);
+  const storefrontPath = category.parent
+    ? `/productos/${category.parent.slug}/${category.slug}`
+    : `/productos/${category.slug}`;
+  const archiveBlockedReason =
+    liveProducts > 0
+      ? `Tiene ${liveProducts} ${liveProducts === 1 ? "producto activo" : "productos activos"} — muévelos primero`
+      : liveChildren > 0
+        ? `Tiene ${liveChildren} ${liveChildren === 1 ? "subcategoría activa" : "subcategorías activas"} — reasígnalas o archívalas primero`
+        : null;
 
   // Opciones para el destacado: productos de la categoría y de sus hijas (el
   // storefront acepta ambos, ver getCategoryFeaturedProductCard). Incluye
@@ -97,7 +108,13 @@ export default async function EditCategoryPage({
                 </Link>
               </>
             )}{" "}
-            · {category._count.products} {category._count.products === 1 ? "producto" : "productos"}
+            ·{" "}
+            <Link
+              href={`/admin/productos?categoria=${category.id}`}
+              className="text-brand-purple hover:underline"
+            >
+              {liveProducts} {liveProducts === 1 ? "producto" : "productos"}
+            </Link>
           </>
         }
         breadcrumbs={[
@@ -107,13 +124,33 @@ export default async function EditCategoryPage({
           { label: category.name },
         ]}
         actions={
-          <Link
-            href="/admin/categorias"
-            className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {category.isActive && (
+              <Link
+                href={storefrontPath}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Ver en tienda
+              </Link>
+            )}
+            <Link
+              href={`/admin/productos?categoria=${category.id}`}
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
+            >
+              <Package className="h-4 w-4" />
+              Productos ({liveProducts})
+            </Link>
+            <Link
+              href="/admin/categorias"
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </Link>
+          </div>
         }
       />
 
@@ -141,43 +178,38 @@ export default async function EditCategoryPage({
               featuredProductSlug: category.featuredProductSlug,
             }}
           />
-          {category._count.children > 0 && (
+          {liveChildren > 0 && (
             <p className="text-brand-muted mt-3 text-xs">
-              Esta categoría tiene {category._count.children} sub-categoría
-              {category._count.children === 1 ? "" : "s"}, por eso no puede convertirse en
-              sub-categoría de otra.
+              Esta categoría tiene {liveChildren} subcategoría
+              {liveChildren === 1 ? "" : "s"} activa{liveChildren === 1 ? "" : "s"}, por eso no
+              puede convertirse en subcategoría de otra.
             </p>
           )}
         </AdminCard>
 
-        {/* Archivar (peligro). Bloqueado si tiene productos. */}
+        {/* Archivar (peligro). Bloqueado si tiene productos o subcategorías vivas. */}
         <AdminCard className="border-rose-200/40 p-5">
           <h3 className="text-brand-purple-dark font-display mb-2 text-sm font-bold">
             Zona de peligro
           </h3>
           <p className="text-brand-muted mb-3 text-xs">
-            Archivar oculta la categoría de tu tienda y del menú. Las categorías con productos
-            asociados no pueden archivarse — primero hay que mover esos productos a otra categoría.
+            Archivar oculta la categoría de tu tienda y del menú. Las categorías con productos o
+            subcategorías activas asociadas no pueden archivarse — primero mueve esos productos o
+            subcategorías a otra categoría.
           </p>
           <ConfirmAction
             action={deleteCategoryAction}
             message={`¿Archivar la categoría "${category.name}"? Quedará oculta de tu tienda. Esta acción es reversible (puedes traerla de vuelta después).`}
           >
             <input type="hidden" name="id" value={category.id} />
-            <Hint
-              content={
-                category._count.products > 0
-                  ? "Tiene productos asociados — moverlos primero"
-                  : "Archivar categoría"
-              }
-            >
+            <Hint content={archiveBlockedReason ?? "Archivar categoría"}>
               <span tabIndex={0} className="inline-flex">
                 <Button
                   type="submit"
                   variant="ghost"
                   size="sm"
                   className="border border-rose-200 text-rose-600 hover:bg-rose-50"
-                  disabled={category._count.products > 0}
+                  disabled={archiveBlockedReason !== null}
                 >
                   <Trash2 className="mr-1.5 h-4 w-4" />
                   Archivar categoría

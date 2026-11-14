@@ -12,7 +12,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { DollarSign, TrendingUp, Receipt, CreditCard, FileText, ArrowRight } from "lucide-react";
+import {
+  DollarSign,
+  TrendingUp,
+  Receipt,
+  CreditCard,
+  FileText,
+  ArrowRight,
+  Wallet,
+  ShieldBan,
+  Calculator,
+  BarChart2,
+  Undo2,
+  BadgeCheck,
+  Award,
+} from "lucide-react";
 import type { PaymentMethod } from "@lucams/db";
 import {
   AdminBadge,
@@ -24,8 +38,16 @@ import {
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
+  AdminSegmentedBar,
+  QuickLink,
 } from "@/components/admin-page";
-import { ADMIN_ROLE_SETS, hasCapability } from "@/lib/admin-rbac";
+import { CountUp } from "@/components/admin/count-up";
+import {
+  ADMIN_ROLE_SETS,
+  adminHomePath,
+  canAccessAdminPath,
+  hasCapability,
+} from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
@@ -38,6 +60,7 @@ import {
   FINANZAS_PERIODS,
   getPeriodAggregates,
   isFinanzasPeriod,
+  startOfMonthCO,
 } from "@/features/finanzas/service";
 import { ExportFinanzasCsvButton } from "./export-csv-button";
 
@@ -143,7 +166,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
       where: {
         deletedAt: null,
         status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] },
-        createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
+        createdAt: { gte: startOfMonthCO(new Date()) },
       },
     }),
     prisma.order.count({
@@ -167,6 +190,8 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
   });
   const totalRevenue = netBreakdown.netCollectedCents;
   const hasRealData = totalPaidOrders > 0;
+  const role = session.admin.role;
+  const homeHref = adminHomePath(role);
 
   return (
     <AdminPage>
@@ -178,7 +203,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
             ? `${totalPaidOrders} pedido${totalPaidOrders === 1 ? "" : "s"} confirmado${totalPaidOrders === 1 ? "" : "s"}`
             : "Aún sin ventas registradas"
         }
-        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Finanzas" }]}
+        breadcrumbs={[{ label: "Admin", href: homeHref }, { label: "Finanzas" }]}
         actions={canExportCsv ? <ExportFinanzasCsvButton periodo={periodo} /> : undefined}
       />
 
@@ -207,7 +232,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
           <Kpi
             icon={<Receipt className="h-5 w-5" />}
             label="Pedidos confirmados"
-            value={hasRealData ? totalPaidOrders.toLocaleString("es-CO") : "0"}
+            value={hasRealData ? totalPaidOrders : 0}
             hint={
               hasRealData ? "Pagados + en producción + enviados + entregados" : "Pendiente checkout"
             }
@@ -215,17 +240,17 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
           <Kpi
             icon={<CreditCard className="h-5 w-5" />}
             label="Este mes"
-            value={hasRealData ? ordersThisMonth.toLocaleString("es-CO") : "0"}
+            value={hasRealData ? ordersThisMonth : 0}
             hint={
               hasRealData
-                ? "Pedidos confirmados del mes corriente"
+                ? "Pedidos confirmados del mes corriente (hora Colombia)"
                 : "Disponible cuando haya ventas"
             }
           />
           <Kpi
             icon={<FileText className="h-5 w-5" />}
             label="DIAN pendientes"
-            value={dianPending.toLocaleString("es-CO")}
+            value={dianPending}
             hint="Facturas electrónicas por emitir"
           />
         </div>
@@ -321,6 +346,36 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                   {formatCOP(netBreakdown.netCollectedCents)}
                 </span>
               </div>
+            </div>
+            <div className="mt-3 pt-1">
+              <AdminSegmentedBar
+                ariaLabel="Composición del cobro bruto entre caja neta, retractos y faltante contra entrega"
+                items={[
+                  {
+                    key: "net",
+                    label: "Caja neta",
+                    count: Math.round(netBreakdown.netCollectedCents / 100),
+                    tone: "emerald",
+                    sublabel: formatCOP(netBreakdown.netCollectedCents),
+                  },
+                  {
+                    key: "retracts",
+                    label: "Retractos reembolsados",
+                    count: Math.round(retractRefundSummary.totalCents / 100),
+                    tone: "amber",
+                    href: "/admin/retractos?status=REFUNDED",
+                    sublabel: formatCOP(retractRefundSummary.totalCents),
+                  },
+                  {
+                    key: "cod_shortfall",
+                    label: "Faltante COD",
+                    count: Math.round(codRecon.shortfallCop / 100),
+                    tone: "rose",
+                    href: "/admin/finanzas/conciliacion?filter=discrepancy",
+                    sublabel: formatCOP(codRecon.shortfallCop),
+                  },
+                ]}
+              />
             </div>
           </AdminCard>
         )}
@@ -512,6 +567,81 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
           </AdminCard>
         </div>
 
+        {/* Ecosistema financiero 360° — accesos cruzados según permisos del rol */}
+        <section>
+          <h2 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
+            Ecosistema financiero y control de riesgo
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {canAccessAdminPath(role, "/admin/finanzas/conciliacion") && (
+              <QuickLink
+                href="/admin/finanzas/conciliacion"
+                label="Conciliación contra entrega"
+                description="Remesas de mensajería, efectivo pendiente en calle y discrepancias."
+                icon={Wallet}
+                badge={
+                  codRecon.discrepancyCount > 0
+                    ? {
+                        text: `${codRecon.discrepancyCount} discrepancia${codRecon.discrepancyCount === 1 ? "" : "s"}`,
+                        tone: "rose",
+                      }
+                    : codRecon.pendingCount > 0
+                      ? { text: `${codRecon.pendingCount} por remitir`, tone: "amber" }
+                      : undefined
+                }
+              />
+            )}
+            {canAccessAdminPath(role, "/admin/finanzas/bloqueos") && (
+              <QuickLink
+                href="/admin/finanzas/bloqueos"
+                label="Bloqueos contra entrega"
+                description="Lista de identidades vetadas para pago COD (pueden pagar en línea)."
+                icon={ShieldBan}
+              />
+            )}
+            {canAccessAdminPath(role, "/admin/costos") && (
+              <QuickLink
+                href="/admin/costos"
+                label="Costos y márgenes BOM"
+                description="Costo unitario de fabricación, recetas de materiales y margen bruto."
+                icon={Calculator}
+              />
+            )}
+            {canAccessAdminPath(role, "/admin/metricas") && (
+              <QuickLink
+                href="/admin/metricas"
+                label="Métricas comerciales"
+                description="Embudo comercial, top productos, canales y cohortes de recompra."
+                icon={BarChart2}
+              />
+            )}
+            {canAccessAdminPath(role, "/admin/retractos") && (
+              <QuickLink
+                href="/admin/retractos"
+                label="Retractos Ley 1480"
+                description="Devoluciones legales y reembolsos que impactan el puente de caja."
+                icon={Undo2}
+              />
+            )}
+            {canAccessAdminPath(role, "/admin/garantias") && (
+              <QuickLink
+                href="/admin/garantias"
+                label="Garantías posventa"
+                description="Reclamos de calidad, reposiciones y devoluciones de dinero."
+                icon={BadgeCheck}
+              />
+            )}
+            {canAccessAdminPath(role, "/admin/fidelizacion") && (
+              <QuickLink
+                href="/admin/fidelizacion"
+                label="Fidelización y referidos"
+                description="Pasivo de Puntos Lucams y descuentos de «Invita y gana»."
+                icon={Award}
+              />
+            )}
+          </div>
+        </section>
+
         {/* Lo que falta depende de integraciones externas — copy honesto, sin promesas */}
         <section>
           <h2 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
@@ -548,23 +678,27 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
               Mientras tanto, puedes ir dejando todo listo:
             </p>
             <ul className="text-brand-purple-dark/75 list-inside list-disc space-y-1.5 text-sm">
-              <li>
-                Crear cupones promocionales en{" "}
-                <Link href="/admin/cupones" className="text-brand-purple underline">
-                  /admin/cupones
-                </Link>
-                .
-              </li>
+              {canAccessAdminPath(role, "/admin/cupones") && (
+                <li>
+                  Revisar cupones promocionales en{" "}
+                  <Link href="/admin/cupones" className="text-brand-purple underline">
+                    /admin/cupones
+                  </Link>
+                  .
+                </li>
+              )}
               <li>
                 Revisar pedidos por WhatsApp manual (los clientes pueden hacer wa.me directos hoy).
               </li>
-              <li>
-                Tener listo el catálogo en{" "}
-                <Link href="/admin/productos" className="text-brand-purple underline">
-                  /admin/productos
-                </Link>{" "}
-                con fotos reales y precios definitivos.
-              </li>
+              {canAccessAdminPath(role, "/admin/productos") && (
+                <li>
+                  Tener listo el catálogo en{" "}
+                  <Link href="/admin/productos" className="text-brand-purple underline">
+                    /admin/productos
+                  </Link>{" "}
+                  con fotos reales y precios definitivos.
+                </li>
+              )}
             </ul>
           </AdminCard>
         )}
@@ -582,7 +716,7 @@ function Kpi({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
+  value: number | string;
   hint: string;
   highlight?: boolean;
 }) {
@@ -599,7 +733,7 @@ function Kpi({
             : "text-brand-purple-dark/85 font-display text-2xl font-bold tabular-nums"
         }
       >
-        {value}
+        {typeof value === "number" ? <CountUp value={value} /> : value}
       </div>
       <p className="text-brand-muted mt-1 text-xs">{hint}</p>
     </AdminCard>

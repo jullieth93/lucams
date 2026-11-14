@@ -12,7 +12,7 @@
 5. [Arquitectura de Identidad Canónica (`Contact`), CRM Operacional Nativo y Frontera SSoT (`ADR-193`)](#5-arquitectura-de-identidad-canónica-contact-crm-operacional-nativo-y-frontera-ssot-adr-193)
 6. [Arquitectura CMS v2 de 3 capas (`ADR-082` / `ADR-187`)](#6-arquitectura-cms-v2-de-3-capas-adr-082--adr-187)
 7. [Gate de visibilidad del storefront y redirecciones dinámicas (`UrlRedirect`)](#7-gate-de-visibilidad-del-storefront-y-redirecciones-dinámicas-urlredirect)
-8. [Autorización del Backoffice (`/admin`): RBAC 8 roles × 35 capacidades, MFA `aal2` y máscara PII](#8-autorización-del-backoffice-admin-rbac-8-roles--34-capacidades-mfa-aal2-y-máscara-pii)
+8. [Autorización del Backoffice (`/admin`): RBAC 8 roles × 36 capacidades, MFA `aal2` y máscara PII](#8-autorización-del-backoffice-admin-rbac-8-roles--36-capacidades-mfa-aal2-y-máscara-pii)
 9. [Extensiones PostgreSQL, postura RLS/grants y procesos programados](#9-extensiones-postgresql-postura-rlsgrants-y-procesos-programados)
 10. [Abstracciones de proveedores y arquitectura de Storage (5 buckets)](#10-abstracciones-de-proveedores-y-arquitectura-de-storage-5-buckets)
 11. [Estrategia de caché, revalidación, pipeline de `proxy.ts` y `maxDuration`](#11-estrategia-de-caché-revalidación-pipeline-de-proxyts-y-maxduration)
@@ -664,131 +664,148 @@ CmsPage (9) ──► CmsSection (30) ──► CmsField (169: 105 BLOCK + 64 SE
 
 ---
 
-## 8. Autorización del Backoffice (`/admin`): RBAC 8 roles × 35 capacidades, MFA `aal2` y máscara PII
+## 8. Autorización del Backoffice (`/admin`): RBAC 8 roles × 36 capacidades, MFA `aal2` y máscara PII
 
 La autorización administrativa reside en `apps/web/lib/admin-rbac.ts` (lógica pura isomórfica), `apps/web/lib/admin-rbac-guard.ts` (guardas server-side) y `apps/web/lib/pii-mask.ts` (protección determinista de datos personales). Todo acceso a `/admin` (salvo `/admin/login*`) exige **autenticación GoTrue + fila `AdminUser` activa (`isActive = true`, `deletedAt = null`) + segundo factor TOTP verificado en sesión (`aal2`)**.
 
 ### 8.1 Descripción de los 8 roles administrativos (`AdminRole`)
 
-| Rol (`AdminRole`)    | Propósito operativo                                                                                                                                   | Capacidades | Vista inicial (`adminHomePath`) |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------- |
-| `SUPERADMIN`         | Dirección total del negocio, usuarios admin, configuración global, auditoría, finanzas y reembolsos finales de retracto.                              | **35 / 35** | `/admin/dashboard`              |
-| `OPERATIONS_MANAGER` | Jefatura de operaciones: pedidos, catálogo, inventario, envíos, taller, posventa, reembolsos de garantía, CRM 360, fusión de contactos y marketing.   | **25 / 35** | `/admin/dashboard`              |
-| `MANAGER`            | Rol gerencial equivalente en matriz de capacidades a `OPERATIONS_MANAGER` (preservado por compatibilidad operativa).                                  | **25 / 35** | `/admin/dashboard`              |
-| `CUSTOMER_SUPPORT`   | Atención al cliente y ventas consultivas: tickets, garantías, retractos (sin ejecutar reembolso), Contacto 360 con PII, carritos y oportunidades B2B. | **13 / 35** | `/admin/dashboard`              |
-| `FINANCE_ANALYST`    | Contabilidad, conciliación de recaudos COD, bloqueos COD, costos, métricas, exportación financiera CSV y lectura de pedidos con PII fiscal.           | **9 / 35**  | `/admin/dashboard`              |
-| `PRINT_WORKSHOP`     | Taller de imprenta: consulta operativa de pedidos **sin PII**, cambio de estados de fabricación, descarga de ZIP 300 DPI y moderación de diseños.     | **7 / 35**  | `/admin/dashboard`              |
-| `FULFILLMENT`        | Alistamiento y despacho logístico: consulta operativa **sin PII**, cambio de estados, descarga de activos e impresión de rótulo/guía transportadora.  | **6 / 35**  | `/admin/dashboard`              |
-| `CMS_EDITOR`         | Edición exclusiva de páginas, bloques, listas y mediateca editorial en `/admin/contenido` (sin acceso a `global` ni a pedidos/clientes).              | **2 / 35**  | `/admin/contenido`              |
+| Rol (`AdminRole`)    | Propósito operativo                                                                                                                                         | Capacidades | Vista inicial (`adminHomePath`) |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------- |
+| `SUPERADMIN`         | Dirección total del negocio, usuarios admin, configuración global, auditoría, finanzas y reembolsos finales de retracto.                                    | **36 / 36** | `/admin/dashboard`              |
+| `OPERATIONS_MANAGER` | Jefatura de operaciones: pedidos, notificaciones, catálogo + materiales, inventario, envíos, taller, posventa, CRM 360, fusión de contactos y marketing.    | **26 / 36** | `/admin/dashboard`              |
+| `MANAGER`            | Alias legado en Prisma equivalente en matriz de capacidades a `OPERATIONS_MANAGER` (oculto en nuevas asignaciones `ADMIN_ASSIGNABLE_ROLES`).                | **26 / 36** | `/admin/dashboard`              |
+| `CUSTOMER_SUPPORT`   | Atención al cliente y ventas consultivas: tickets, garantías, retractos (sin ejecutar reembolso), Contacto 360 con PII, carritos y oportunidades B2B.       | **13 / 36** | `/admin/dashboard`              |
+| `FINANCE_ANALYST`    | Contabilidad, conciliación de recaudos COD, bloqueos COD, costos, métricas, exportación financiera CSV y lectura operativa de pedidos sin PII en claro.     | **8 / 36**  | `/admin/dashboard`              |
+| `PRINT_WORKSHOP`     | Taller de imprenta: consulta operativa de pedidos **sin PII**, cambio de estados de fabricación, descarga de ZIP 300 DPI y moderación de diseños.           | **7 / 36**  | `/admin/dashboard`              |
+| `FULFILLMENT`        | Alistamiento y despacho logístico: consulta operativa **sin PII**, cambio de estados e impresión de rótulo/guía transportadora (sin artes 300 DPI).         | **5 / 36**  | `/admin/dashboard`              |
+| `CMS_EDITOR`         | Edición exclusiva de páginas, bloques, listas, mediateca editorial en `/admin/contenido` y redirecciones SEO en `/admin/redirects` (sin acceso a `global`). | **2 / 36**  | `/admin/contenido`              |
 
 ### 8.2 Conjuntos nombrados `ADMIN_ROLE_SETS`
 
 Definidos en `apps/web/lib/admin-rbac.ts` para reutilización consistente en páginas, Server Actions y Route Handlers:
 
-| Set (`ADMIN_ROLE_SETS.*`)                                | Regla de derivación                   | Roles incluidos                                                                                                                                                |
-| -------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ALL`                                                    | `orders:read_operational`             | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `PRINT_WORKSHOP`, `FINANCE_ANALYST`, `MANAGER`, `FULFILLMENT`                                          |
-| `ORDERS_TRANSITION`                                      | `orders:transition`                   | `SUPERADMIN`, `OPERATIONS_MANAGER`, `PRINT_WORKSHOP`, `MANAGER`, `FULFILLMENT`                                                                                 |
-| `PRODUCTION_DOWNLOAD`                                    | `production:download_assets`          | `SUPERADMIN`, `OPERATIONS_MANAGER`, `PRINT_WORKSHOP`, `MANAGER`, `FULFILLMENT`                                                                                 |
-| `SHIPPING_GUIDE_PRINT`                                   | `orders:read_pii` **o** `FULFILLMENT` | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `FINANCE_ANALYST`, `MANAGER`, `FULFILLMENT` _(excluye explícitamente `PRINT_WORKSHOP` y `CMS_EDITOR`)_ |
-| `PRODUCTION_MODERATE`                                    | `production:moderate`                 | `SUPERADMIN`, `OPERATIONS_MANAGER`, `PRINT_WORKSHOP`, `MANAGER`                                                                                                |
-| `MANAGER_UP`                                             | `catalog:write`                       | `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`                                                                                                                  |
-| `SUPPORT_CARE`                                           | `support:manage`                      | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                                              |
-| `CARTS_RECOVER`                                          | `carts:recover`                       | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                                              |
-| `OPPORTUNITIES`                                          | `opportunities:manage`                | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                                              |
-| `CONTACTS_360`                                           | `contacts:read_360`                   | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                                              |
-| `CONTACTS_MERGE`                                         | `contacts:merge`                      | `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`                                                                                                                  |
-| `FINANCE` / `FINANCE_COD` / `FINANCE_EXPORT` / `METRICS` | `finance:*` / `metrics:read`          | `SUPERADMIN`, `FINANCE_ANALYST`                                                                                                                                |
-| `MARKETING_EXPORT`                                       | `marketing:export_csv`                | `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`                                                                                                                  |
-| `CONTENT`                                                | `cms:write`                           | `SUPERADMIN`, `CMS_EDITOR`                                                                                                                                     |
-| `SUPER`                                                  | Exclusivo dirección                   | `SUPERADMIN`                                                                                                                                                   |
-| `ALL_PLUS_CMS`                                           | Todos los roles del enum              | Los 8 roles (`SUPERADMIN` .. `CMS_EDITOR`)                                                                                                                     |
+| Set (`ADMIN_ROLE_SETS.*`)                                | Regla de derivación                   | Roles incluidos                                                                                                                                |
+| -------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALL`                                                    | `orders:read_operational`             | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `PRINT_WORKSHOP`, `FINANCE_ANALYST`, `MANAGER`, `FULFILLMENT`                          |
+| `ORDERS_TRANSITION`                                      | `orders:transition`                   | `SUPERADMIN`, `OPERATIONS_MANAGER`, `PRINT_WORKSHOP`, `MANAGER`, `FULFILLMENT`                                                                 |
+| `PRODUCTION_DOWNLOAD`                                    | `production:download_assets`          | `SUPERADMIN`, `OPERATIONS_MANAGER`, `PRINT_WORKSHOP`, `MANAGER`                                                                                |
+| `SHIPPING_GUIDE_PRINT`                                   | `orders:read_pii` **o** `FULFILLMENT` | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`, `FULFILLMENT` _(excluye `FINANCE_ANALYST`, `PRINT_WORKSHOP`, `CMS_EDITOR`)_ |
+| `PRODUCTION_MODERATE`                                    | `production:moderate`                 | `SUPERADMIN`, `OPERATIONS_MANAGER`, `PRINT_WORKSHOP`, `MANAGER`                                                                                |
+| `MANAGER_UP`                                             | `catalog:write`                       | `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`                                                                                                  |
+| `SUPPORT_CARE`                                           | `support:manage`                      | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                              |
+| `CARTS_RECOVER`                                          | `carts:recover`                       | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                              |
+| `OPPORTUNITIES`                                          | `opportunities:manage`                | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                              |
+| `CONTACTS_360`                                           | `contacts:read_360`                   | `SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `MANAGER`                                                                              |
+| `CONTACTS_MERGE`                                         | `contacts:merge`                      | `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`                                                                                                  |
+| `FINANCE` / `FINANCE_COD` / `FINANCE_EXPORT` / `METRICS` | `finance:*` / `metrics:read`          | `SUPERADMIN`, `FINANCE_ANALYST`                                                                                                                |
+| `MARKETING_EXPORT`                                       | `marketing:export_csv`                | `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`                                                                                                  |
+| `CONTENT`                                                | `cms:write`                           | `SUPERADMIN`, `CMS_EDITOR`                                                                                                                     |
+| `SUPER`                                                  | Exclusivo dirección                   | `SUPERADMIN`                                                                                                                                   |
+| `ALL_PLUS_CMS`                                           | Todos los roles del enum              | Los 8 roles (`SUPERADMIN` .. `CMS_EDITOR`)                                                                                                     |
 
-### 8.3 Matriz completa de las 35 capacidades (`ADMIN_CAPABILITIES`) × 8 roles
+### 8.3 Matriz completa de las 36 capacidades (`ADMIN_CAPABILITIES`) × 8 roles
 
 Abreviaturas de columnas: **SA** = `SUPERADMIN`, **OM** = `OPERATIONS_MANAGER`, **MG** = `MANAGER`, **CS** = `CUSTOMER_SUPPORT`, **FA** = `FINANCE_ANALYST`, **PW** = `PRINT_WORKSHOP`, **FL** = `FULFILLMENT`, **CE** = `CMS_EDITOR`.
 
 | #   | Capacidad (`AdminCapability`)     | SA  | OM  | MG  | CS  | FA  | PW  | FL  | CE  |
 | --- | --------------------------------- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| 3   | `dashboard:read`                  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
-| 4   | `orders:read_operational`         |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
-| 5   | `orders:read_pii`                 |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |
-| 6   | `orders:transition`               |  ✓  |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
-| 7   | `orders:reconcile`                |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 8   | `production:download_assets`      |  ✓  |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
-| 9   | `production:moderate`             |  ✓  |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
-| 10  | `production:manage_AssetsCatalog` |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 11  | `contacts:read_360`               |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 12  | `contacts:read_pii`               |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 13  | `contacts:merge`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 14  | `crm:manage_activities`           |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 15  | `crm:manage_tasks`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
-| 16  | `support:manage`                  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 17  | `warranty:manage`                 |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 18  | `warranty:refund`                 |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 19  | `retract:manage`                  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 20  | `retract:refund`                  |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 21  | `carts:recover`                   |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 22  | `carts:configure`                 |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 23  | `marketing:read`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 24  | `marketing:export_csv`            |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 25  | `opportunities:manage`            |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
-| 26  | `finance:read`                    |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
-| 27  | `finance:reconcile_cod`           |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
-| 28  | `finance:export_csv`              |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
-| 29  | `metrics:read`                    |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
-| 30  | `catalog:write`                   |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 31  | `shipping:configure`              |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
-| 32  | `cms:write`                       |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  ✓  |
-| 33  | `cms:manage_global`               |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 34  | `audit:read`                      |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
-| 35  | `staff:manage`                    |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 1   | `dashboard:read`                  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 2   | `notifications:manage`            |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 3   | `orders:read_operational`         |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 4   | `orders:read_pii`                 |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 5   | `orders:transition`               |  ✓  |  ✓  |  ✓  |  —  |  —  |  ✓  |  ✓  |  —  |
+| 6   | `orders:reconcile`                |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 7   | `production:download_assets`      |  ✓  |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
+| 8   | `production:moderate`             |  ✓  |  ✓  |  ✓  |  —  |  —  |  ✓  |  —  |  —  |
+| 9   | `production:manage_AssetsCatalog` |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 10  | `contacts:read_360`               |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 11  | `contacts:read_pii`               |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 12  | `contacts:merge`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 13  | `crm:manage_activities`           |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 14  | `crm:manage_tasks`                |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |
+| 15  | `support:manage`                  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 16  | `warranty:manage`                 |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 17  | `warranty:refund`                 |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 18  | `retract:manage`                  |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 19  | `retract:refund`                  |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 20  | `carts:recover`                   |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 21  | `carts:configure`                 |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 22  | `marketing:read`                  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 23  | `marketing:export_csv`            |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 24  | `opportunities:manage`            |  ✓  |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |
+| 25  | `finance:read`                    |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 26  | `finance:reconcile_cod`           |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 27  | `finance:export_csv`              |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 28  | `metrics:read`                    |  ✓  |  —  |  —  |  —  |  ✓  |  —  |  —  |  —  |
+| 29  | `catalog:write`                   |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 30  | `shipping:configure`              |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
+| 31  | `cms:write`                       |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  ✓  |
+| 32  | `cms:manage_global`               |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 33  | `audit:read`                      |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 34  | `staff:manage`                    |  ✓  |  —  |  —  |  —  |  —  |  —  |  —  |  —  |
+| 35  | `lifecycle:manage`                |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
 | 36  | `account:self_security`           |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
-| 37  | `lifecycle:manage`                |  ✓  |  ✓  |  ✓  |  —  |  —  |  —  |  —  |  —  |
 
-### 8.4 Mapa de prefijos `ROUTE_ROLES` (`canAccessAdminPath`) y deny-by-default
+### 8.4 Patrones dinámicos y prefijos de `canAccessAdminPath`
 
-`canAccessAdminPath(role, pathname)` evalúa **longest-prefix match** sobre los 43 prefijos declarados en `ROUTE_ROLES`. Si una ruta de `/admin` no coincide con ningún prefijo declarado, la función devuelve `false` para cualquier rol distinto de `SUPERADMIN` (**deny-by-default**):
+La guarda evalúa primero los cuatro patrones de `ROUTE_PATTERN_ROLES` y después aplica **longest-prefix match** sobre `ROUTE_ROLES`. Si ninguna regla coincide, solo `SUPERADMIN` conserva acceso (**deny-by-default**).
 
-| Prefijo(s) de ruta                                                                                                                                                                                                 | Regla / Capacidad exigida         | Roles con acceso                         |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- | ---------------------------------------- |
-| `/admin/dashboard`, `/admin/hoy`                                                                                                                                                                                   | `dashboard:read`                  | `SA`, `OM`, `MG`, `CS`, `FA`, `PW`, `FL` |
-| `/admin/pedidos` _(excepto sub-rutas con guarda propia como `/guia`)_                                                                                                                                              | `orders:read_operational`         | `SA`, `OM`, `MG`, `CS`, `FA`, `PW`, `FL` |
-| `/admin/garantias`, `/admin/reclamos`                                                                                                                                                                              | `warranty:manage`                 | `SA`, `OM`, `MG`, `CS`                   |
-| `/admin/retractos`                                                                                                                                                                                                 | `retract:manage`                  | `SA`, `OM`, `MG`, `CS`                   |
-| `/admin/soporte`, `/admin/mensajes`                                                                                                                                                                                | `support:manage`                  | `SA`, `OM`, `MG`, `CS`                   |
-| `/admin/cotizaciones`, `/admin/oportunidades`                                                                                                                                                                      | `opportunities:manage`            | `SA`, `OM`, `MG`, `CS`                   |
-| `/admin/moderacion`                                                                                                                                                                                                | `production:moderate`             | `SA`, `OM`, `MG`, `PW`                   |
-| `/admin/disenos`, `/admin/fichas`, `/admin/plantillas`                                                                                                                                                             | `production:manage_AssetsCatalog` | `SA`, `OM`, `MG`                         |
-| `/admin/productos`, `/admin/inventario`, `/admin/categorias`, `/admin/ocasiones`, `/admin/resenas`                                                                                                                 | `catalog:write`                   | `SA`, `OM`, `MG`                         |
-| `/admin/envios`                                                                                                                                                                                                    | `shipping:configure`              | `SA`, `OM`, `MG`                         |
-| `/admin/clientes/duplicados` _(gana por prefijo más largo sobre `/admin/clientes`)_                                                                                                                                | `contacts:merge`                  | `SA`, `OM`, `MG`                         |
-| `/admin/clientes`                                                                                                                                                                                                  | `contacts:read_360`               | `SA`, `OM`, `MG`, `CS`                   |
-| `/admin/marketing/suscriptores/export`, `/admin/marketing/segmentos/export`                                                                                                                                        | `marketing:export_csv`            | `SA`, `OM`, `MG`                         |
-| `/admin/marketing`                                                                                                                                                                                                 | `marketing:read`                  | `SA`, `OM`, `MG`                         |
-| `/admin/lifecycle`                                                                                                                                                                                                 | `lifecycle:manage`                | `SA`, `OM`, `MG`                         |
-| `/admin/carritos/configuracion` _(gana sobre `/admin/carritos`)_                                                                                                                                                   | Exclusivo `SUPERADMIN`            | `SA`                                     |
-| `/admin/carritos`                                                                                                                                                                                                  | `carts:recover`                   | `SA`, `OM`, `MG`, `CS`                   |
-| `/admin/finanzas/conciliacion`, `/admin/finanzas/bloqueos`                                                                                                                                                         | `finance:reconcile_cod`           | `SA`, `FA`                               |
-| `/admin/finanzas/export`                                                                                                                                                                                           | `finance:export_csv`              | `SA`, `FA`                               |
-| `/admin/finanzas`, `/admin/costos`                                                                                                                                                                                 | `finance:read`                    | `SA`, `FA`                               |
-| `/admin/metricas`                                                                                                                                                                                                  | `metrics:read`                    | `SA`, `FA`                               |
-| `/admin/contenido/paginas/global`, `/admin/contenido/configuracion` _(ganan sobre `/admin/contenido`)_                                                                                                             | Exclusivo `SUPERADMIN`            | `SA`                                     |
-| `/admin/contenido`                                                                                                                                                                                                 | `cms:write`                       | `SA`, `CE`                               |
-| `/admin/fidelizacion`, `/admin/email-templates`                                                                                                                                                                    | Exclusivo `SUPERADMIN`            | `SA`                                     |
-| `/admin/auditoria`                                                                                                                                                                                                 | `audit:read`                      | `SA`                                     |
-| `/admin/usuarios`                                                                                                                                                                                                  | `staff:manage`                    | `SA`                                     |
-| `/admin/ayuda`                                                                                                                                                                                                     | `ALL_ROLES_ORDER`                 | Todos los 8 roles                        |
-| `/admin/seguridad` _(gestión propia de MFA; feed `SecurityEvent` interno solo `SA`)_                                                                                                                               | `ALL_ROLES_ORDER`                 | Todos los 8 roles                        |
-| Rutas no listadas (`/admin/cupones`, `/admin/mayorista`, `/admin/materiales`, `/admin/canales`, `/admin/redirects`, `/admin/notificaciones`, `/admin/performance`, `/admin/observability`, `/admin/integraciones`) | Deny-by-default (`!best`)         | Exclusivo `SA`                           |
+| Patrón dinámico (`ROUTE_PATTERN_ROLES`) | Regla / capacidad            | Roles                        |
+| --------------------------------------- | ---------------------------- | ---------------------------- |
+| `/admin/cotizaciones/[id]/taller`       | `production:download_assets` | `SA`, `OM`, `MG`, `PW`       |
+| `/admin/pedidos/[number]/produccion`    | `production:download_assets` | `SA`, `OM`, `MG`, `PW`       |
+| `/admin/pedidos/[number]/guia`          | `SHIPPING_GUIDE_PRINT`       | `SA`, `OM`, `MG`, `CS`, `FL` |
+| `/admin/carritos/[id]/preview`          | `carts:recover`              | `SA`, `OM`, `MG`, `CS`       |
+
+| Prefijo(s) de `ROUTE_ROLES`                                                                           | Regla / capacidad                                       | Roles con acceso                                           |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------- |
+| `/admin/dashboard`, `/admin/hoy`                                                                      | `dashboard:read`                                        | `SA`, `OM`, `MG`, `CS`, `FA`, `PW`, `FL`                   |
+| `/admin/notificaciones`                                                                               | `notifications:manage`                                  | `SA`, `OM`, `MG`                                           |
+| `/admin/pedidos`                                                                                      | `orders:read_operational`                               | `SA`, `OM`, `MG`, `CS`, `FA`, `PW`, `FL`                   |
+| `/admin/garantias`, `/admin/reclamos`                                                                 | `GARANTIAS_READ` (`FA` solo lectura)                    | `SA`, `OM`, `MG`, `CS`, `FA`                               |
+| `/admin/retractos`                                                                                    | `RETRACTOS_READ` (`FA` solo lectura)                    | `SA`, `OM`, `MG`, `CS`, `FA`                               |
+| `/admin/soporte`, `/admin/mensajes`                                                                   | `support:manage`                                        | `SA`, `OM`, `MG`, `CS`                                     |
+| `/admin/cotizaciones`, `/admin/oportunidades`                                                         | `opportunities:manage`                                  | `SA`, `OM`, `MG`, `CS`                                     |
+| `/admin/moderacion`                                                                                   | `production:moderate`                                   | `SA`, `OM`, `MG`, `PW`                                     |
+| `/admin/disenos`, `/admin/fichas`, `/admin/plantillas`                                                | `production:manage_AssetsCatalog`                       | `SA`, `OM`, `MG`                                           |
+| `/admin/resenas`                                                                                      | `RESENAS_READ` (`CS` solo lectura)                      | `SA`, `OM`, `MG`, `CS`                                     |
+| `/admin/productos`, `/admin/inventario`, `/admin/categorias`, `/admin/ocasiones`, `/admin/materiales` | `catalog:write`                                         | `SA`, `OM`, `MG`                                           |
+| `/admin/envios`                                                                                       | `shipping:configure`                                    | `SA`, `OM`, `MG`                                           |
+| `/admin/clientes/duplicados`                                                                          | `contacts:merge`                                        | `SA`, `OM`, `MG`                                           |
+| `/admin/clientes`                                                                                     | `contacts:read_360`                                     | `SA`, `OM`, `MG`, `CS`                                     |
+| `/admin/marketing/suscriptores/export`, `/admin/marketing/segmentos/export`                           | `marketing:export_csv`                                  | `SA`, `OM`, `MG`                                           |
+| `/admin/marketing`                                                                                    | `marketing:read`                                        | `SA`, `OM`, `MG`                                           |
+| `/admin/lifecycle/nuevo`                                                                              | `lifecycle:manage`                                      | `SA`, `OM`, `MG`                                           |
+| `/admin/lifecycle`                                                                                    | `LIFECYCLE_READ` (`FA` solo lectura 0-PII)              | `SA`, `OM`, `MG`, `FA`                                     |
+| `/admin/carritos/configuracion`                                                                       | `carts:configure`                                       | `SA`                                                       |
+| `/admin/carritos/enviar`                                                                              | `carts:recover`                                         | `SA`, `OM`, `MG`, `CS`                                     |
+| `/admin/carritos`                                                                                     | `CARTS_READ` (`FA` solo lectura 0-PII)                  | `SA`, `OM`, `MG`, `CS`, `FA`                               |
+| `/admin/finanzas/conciliacion`, `/admin/finanzas/bloqueos`                                            | `finance:reconcile_cod`                                 | `SA`, `FA`                                                 |
+| `/admin/finanzas/export`                                                                              | `finance:export_csv`                                    | `SA`, `FA`                                                 |
+| `/admin/finanzas`                                                                                     | `finance:read`                                          | `SA`, `FA`                                                 |
+| `/admin/costos`                                                                                       | `COSTOS_READ`                                           | `SA`, `OM`, `MG`, `FA`                                     |
+| `/admin/metricas`                                                                                     | `metrics:read`                                          | `SA`, `FA`                                                 |
+| `/admin/mayorista`                                                                                    | `MAYORISTA_READ`; escritura `MAYORISTA_WRITE`           | Lectura `SA`, `OM`, `MG`, `FA`; escritura `SA`, `OM`, `MG` |
+| `/admin/cupones`                                                                                      | `CUPONES_READ`; mutaciones exclusivas `SUPERADMIN`      | Lectura `SA`, `OM`, `MG`, `FA`; escritura `SA`             |
+| `/admin/fidelizacion`                                                                                 | `FIDELIZACION_READ`; mutaciones exclusivas `SUPERADMIN` | Lectura `SA`, `FA`; escritura `SA`                         |
+| `/admin/canales/mercadolibre`                                                                         | Exclusivo `SUPERADMIN`                                  | `SA`                                                       |
+| `/admin/canales`                                                                                      | `catalog:write`                                         | `SA`, `OM`, `MG`                                           |
+| `/admin/integraciones`, `/admin/observability`, `/admin/performance`                                  | Exclusivo `SUPERADMIN`                                  | `SA`                                                       |
+| `/admin/contenido/paginas/global`, `/admin/contenido/configuracion`                                   | Exclusivo `SUPERADMIN`                                  | `SA`                                                       |
+| `/admin/contenido`, `/admin/redirects`                                                                | `cms:write`                                             | `SA`, `CE`                                                 |
+| `/admin/email-templates`                                                                              | Exclusivo `SUPERADMIN`                                  | `SA`                                                       |
+| `/admin/auditoria`                                                                                    | `audit:read`                                            | `SA`                                                       |
+| `/admin/usuarios`                                                                                     | `staff:manage`                                          | `SA`                                                       |
+| `/admin/ayuda`, `/admin/seguridad`                                                                    | `ALL_ROLES_ORDER`                                       | Todos los 8 roles                                          |
 
 ### 8.5 Enmascaramiento server-side de PII (`apps/web/lib/pii-mask.ts`)
 
 Para cumplir el principio de minimización de datos (Ley 1581 de 2012), los datos personales **nunca se filtran en el navegador con CSS ni ocultamiento condicional en componentes cliente**: se redactan en el servidor **antes** de serializar el árbol RSC:
 
-- `maskOrderForActor(order, role)`: cuando el actor carece de `orders:read_pii` (`PRINT_WORKSHOP` y `FULFILLMENT`), ofusca `customerName` (iniciales), `customerEmail` (`l***@d***.com`), `customerPhone` (`******89`), `documentNumber`, `billingDocument*` y el detalle exacto de calle/apartamento en `shippingAddress` (dejando únicamente ciudad y departamento).
+- `maskOrderForActor(order, role)`: cuando el actor carece de `orders:read_pii` (`FINANCE_ANALYST`, `PRINT_WORKSHOP` y `FULFILLMENT`), ofusca `customerName` (iniciales), `customerEmail` (`l***@d***.com`), `customerPhone` (`******89`), `documentNumber`, `billingDocument*` y el detalle exacto de calle/apartamento en `shippingAddress` (dejando únicamente ciudad y departamento).
   - **Excepción deliberada de taller:** conserva íntegro `giftMessage` porque se imprime físicamente dentro del pedido.
-  - **Diferenciación logística (`PRINT_WORKSHOP` vs `FULFILLMENT`):** para `PRINT_WORKSHOP` limpia también `labelUrl`, `labelStoragePath` y `trackingUrl` (el rótulo PDF contiene dirección y teléfono en claro); para `FULFILLMENT` los conserva para poder adherir la guía física al paquete e imprimir `/admin/pedidos/[number]/guia`.
+  - **Diferenciación logística (`FINANCE_ANALYST` / `PRINT_WORKSHOP` vs `FULFILLMENT`):** para `FINANCE_ANALYST` y `PRINT_WORKSHOP` limpia también `labelUrl`, `labelStoragePath` y `trackingUrl` (el rótulo PDF contiene dirección y teléfono en claro); para `FULFILLMENT` los conserva para poder adherir la guía física al paquete e imprimir `/admin/pedidos/[number]/guia`.
 - `maskContactSummaryForActor(contact, role)`: aplica la misma redacción determinista cuando un actor carece de `contacts:read_pii`.
 
 ### 8.6 Centro de Aprendizaje y Ayuda Operativa (`ADR-197`)

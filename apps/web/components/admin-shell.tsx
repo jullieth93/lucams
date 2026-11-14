@@ -26,10 +26,10 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { adminRoleLabel } from "@/lib/admin-roles";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LogOut,
   ExternalLink,
@@ -40,11 +40,22 @@ import {
   Crown,
   Sparkles,
   CircleHelp,
+  Search,
+  ShieldCheck,
+  CornerDownLeft,
+  ArrowUpRight,
+  Users,
+  FileText,
+  Workflow,
+  SlidersHorizontal,
+  type LucideIcon,
 } from "lucide-react";
 import { adminLogoutAction } from "@/app/auth/logout/actions";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Hint } from "@/components/ui/tooltip";
 import { getAdminNav, type NavBadge, type NavGroup } from "@/lib/admin-nav";
-import { filterNavByRole } from "@/lib/admin-rbac";
+import { adminHomePath, canAccessAdminPath, filterNavByRole } from "@/lib/admin-rbac";
+import { isCatalogMode } from "@/lib/store-mode";
 import type { AdminRole } from "@lucams/db";
 
 type AdminInfo = {
@@ -90,8 +101,35 @@ function activeNavHref(pathname: string): string | null {
 }
 
 // ─────────────────── Role badges (sidebar footer) ───────────────────
-// Diccionario único compartido (lib/admin-roles) — antes el sidebar usaba
-// valores de enum inexistentes y no coincidía con /admin/usuarios.
+
+const FOOTER_ROLE_PILL: Record<string, string> = {
+  SUPERADMIN: "bg-amber-400/25 text-amber-100 ring-1 ring-amber-300/30",
+  OPERATIONS_MANAGER: "bg-sky-400/25 text-sky-100 ring-1 ring-sky-300/30",
+  MANAGER: "bg-sky-400/25 text-sky-100 ring-1 ring-sky-300/30",
+  CUSTOMER_SUPPORT: "bg-brand-turquoise/25 text-teal-100 ring-1 ring-brand-turquoise/35",
+  PRINT_WORKSHOP: "bg-orange-400/25 text-orange-100 ring-1 ring-orange-300/30",
+  FULFILLMENT: "bg-orange-400/25 text-orange-100 ring-1 ring-orange-300/30",
+  FINANCE_ANALYST: "bg-emerald-400/25 text-emerald-100 ring-1 ring-emerald-300/30",
+  CMS_EDITOR: "bg-brand-pink/30 text-pink-100 ring-1 ring-brand-pink/40",
+};
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+type CommandEntry = {
+  key: string;
+  label: string;
+  group: string;
+  description?: string;
+  href: string;
+  icon: LucideIcon;
+  external?: boolean;
+};
 
 // ─────────────────── Shell ───────────────────
 
@@ -110,46 +148,66 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [paletteIndex, setPaletteIndex] = useState(0);
+
+  const homeHref = adminHomePath(admin.role as AdminRole);
+
+  const openCommandPalette = () => {
+    setPaletteQuery("");
+    setPaletteIndex(0);
+    setPaletteOpen(true);
+  };
 
   // Cerrar drawer mobile al navegar (defer via microtask para satisfacer
   // react-hooks/set-state-in-effect — el lint rule prefiere setState
   // fuera del cuerpo síncrono del effect).
   useEffect(() => {
-    queueMicrotask(() => setMobileOpen(false));
+    queueMicrotask(() => {
+      setMobileOpen(false);
+      setPaletteOpen(false);
+    });
   }, [pathname]);
 
+  // Atajo global ⌘K / Ctrl+K para saltar a cualquier módulo autorizado.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteQuery("");
+        setPaletteIndex(0);
+        setPaletteOpen((prev) => !prev);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
-    // Layout: COLUMNA en móvil (topbar arriba, contenido abajo), FILA en lg
-    // (sidebar + contenido). Antes era fila siempre y la topbar móvil quedaba
-    // como columna vertical comiéndose ~60% del ancho (auditoría E1 P0,
-    // 2026-07-31 — auditorías históricas consolidadas fuera del repo, git history).
     <div className="bg-brand-cream/40 flex min-h-screen flex-col lg:flex-row">
-      {/* Sidebar desktop — gradient morado oscuro premium.
-          Lucy 2026-06-27: sticky + h-screen para que NO se escape al hacer scroll.
-          SidebarContent ya tiene h-full + overflow-y-auto, así que el menú scrollea
-          adentro si es más alto que la pantalla. */}
+      {/* Sidebar desktop */}
       <aside className="from-brand-purple-dark via-brand-purple-dark to-brand-purple relative hidden overflow-hidden bg-gradient-to-b text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:flex-shrink-0 lg:flex-col">
         <SidebarDecorations />
         <SidebarContent
           admin={admin}
+          homeHref={homeHref}
           pathname={pathname}
           unreadNotifications={unreadNotifications}
           logo={logo}
           onNavigate={() => {}}
+          onOpenSearch={openCommandPalette}
         />
       </aside>
 
-      {/* Topbar mobile — barra superior fija con logo, sección actual (E1 P2:
-          antes no había contexto en móvil) y botón hamburguesa. */}
-      <div className="from-brand-purple-dark to-brand-purple sticky top-0 z-30 flex items-center justify-between gap-3 bg-gradient-to-r px-4 py-2 text-white shadow-md sm:py-2.5 lg:hidden">
-        <Link href="/admin/dashboard" className="flex min-h-11 min-w-0 items-center gap-2.5">
+      {/* Topbar mobile */}
+      <div className="from-brand-purple-dark to-brand-purple sticky top-0 z-30 flex items-center justify-between gap-2 bg-gradient-to-r px-4 py-2 text-white shadow-md sm:py-2.5 lg:hidden">
+        <Link href={homeHref} className="flex min-h-11 min-w-0 items-center gap-2.5">
           <BrandIcon logo={logo} />
           <div className="min-w-0">
             <p className="text-[10px] font-semibold tracking-wider text-white/60 uppercase">
               Panel admin
             </p>
-            {/* Fase 3 · 3.9 — wordmark unificado a "LUCAMS" (decisión owner: así
-                va en los envíos; antes "Lucams Shop" hardcodeado). */}
             <p className="font-display truncate text-base leading-tight font-bold text-white">
               LUCAMS
             </p>
@@ -158,6 +216,14 @@ export function AdminShell({
         <p className="min-w-0 flex-1 truncate text-right text-xs font-medium text-white/75">
           {labelForPath(pathname)}
         </p>
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          className="flex min-h-11 min-w-11 flex-shrink-0 items-center justify-center rounded-md p-2 text-white transition-colors hover:bg-white/10"
+          aria-label="Buscar módulo"
+        >
+          <Search className="h-4 w-4" />
+        </button>
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
@@ -190,27 +256,41 @@ export function AdminShell({
             </div>
             <SidebarContent
               admin={admin}
+              homeHref={homeHref}
               pathname={pathname}
               unreadNotifications={unreadNotifications}
               logo={logo}
               onNavigate={() => setMobileOpen(false)}
+              onOpenSearch={() => {
+                setMobileOpen(false);
+                openCommandPalette();
+              }}
             />
           </aside>
         </div>
       )}
 
-      {/* Contenido principal.
-          overflow-x-clip (no -hidden) en <lg: clip recorta igual el overflow
-          horizontal PERO no crea scroll container, así que el sticky del
-          AdminTabBar sí funciona bajo la topbar móvil (con -hidden quedaba
-          roto: la tabbar scrolleaba con la página o quedaba tras la topbar).
-          En ≥lg se conserva -hidden = comportamiento exacto de hoy. */}
+      {/* Contenido principal */}
       <div className="flex flex-1 flex-col overflow-x-clip lg:overflow-x-hidden">
-        <AdminTopBar pathname={pathname} />
+        <AdminTopBar pathname={pathname} onOpenSearch={openCommandPalette} />
         <main id="contenido" data-admin-help="module" tabIndex={-1} className="flex-1">
           {children}
         </main>
       </div>
+
+      <AdminCommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        query={paletteQuery}
+        onQueryChange={(q) => {
+          setPaletteQuery(q);
+          setPaletteIndex(0);
+        }}
+        activeIndex={paletteIndex}
+        onActiveIndexChange={setPaletteIndex}
+        role={admin.role as AdminRole}
+        pathname={pathname}
+      />
     </div>
   );
 }
@@ -228,7 +308,7 @@ function SidebarDecorations() {
 
 // ─────────────────── TopBar premium ───────────────────
 
-function AdminTopBar({ pathname }: { pathname: string }) {
+function AdminTopBar({ pathname, onOpenSearch }: { pathname: string; onOpenSearch: () => void }) {
   const crumb = labelForPath(pathname);
   return (
     <div className="border-brand-purple/10 sticky top-0 z-20 hidden h-14 items-center justify-between border-b bg-white/85 px-6 backdrop-blur-md lg:flex">
@@ -239,7 +319,18 @@ function AdminTopBar({ pathname }: { pathname: string }) {
         <span className="text-brand-purple/30">·</span>
         <span className="text-brand-purple-dark text-sm font-semibold">{crumb}</span>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onOpenSearch}
+          className="border-brand-purple/15 text-brand-purple-dark/75 hover:border-brand-purple/35 hover:bg-brand-purple/5 hover:text-brand-purple-dark inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5 text-xs font-medium shadow-2xs transition-all"
+        >
+          <Search className="h-3.5 w-3.5 opacity-70" />
+          <span>Ir a módulo…</span>
+          <kbd className="bg-brand-purple/8 text-brand-purple-dark/70 ml-2 rounded px-1.5 py-0.5 font-sans text-[10px] font-semibold">
+            ⌘K
+          </kbd>
+        </button>
         <Link
           href="/admin/ayuda"
           className="text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
@@ -269,6 +360,15 @@ function AdminTopBar({ pathname }: { pathname: string }) {
  * cubre cualquier ruta admin no implementada).
  */
 function labelForPath(p: string): string {
+  if (p === "/admin/clientes/duplicados" || p.startsWith("/admin/clientes/duplicados/")) {
+    return "Ventas · Duplicados CRM";
+  }
+  if (/^\/admin\/cotizaciones\/[^/?]+\/taller(?:$|[/?])/.test(p)) {
+    return "Producción · Hoja de taller";
+  }
+  if (p === "/admin/cotizaciones" || p.startsWith("/admin/cotizaciones/")) {
+    return "Ventas · Cotizaciones";
+  }
   // Buscar match exacto primero, luego prefix (para nested como /[id])
   for (const group of NAV) {
     if (group.href && (p === group.href || p.startsWith(group.href + "/"))) {
@@ -310,16 +410,20 @@ function BrandIcon({ logo = null }: { logo?: AdminShellLogo | null }) {
 
 function SidebarContent({
   admin,
+  homeHref,
   pathname,
   unreadNotifications,
   logo = null,
   onNavigate,
+  onOpenSearch,
 }: {
   admin: AdminInfo;
+  homeHref: string;
   pathname: string;
   unreadNotifications: number;
   logo?: AdminShellLogo | null;
   onNavigate: () => void;
+  onOpenSearch: () => void;
 }) {
   const activeHref = activeNavHref(pathname);
   const groups = filterNavByRole(NAV, admin.role as AdminRole);
@@ -351,7 +455,7 @@ function SidebarContent({
     <div className="relative z-10 flex h-full flex-col overflow-y-auto">
       {/* Header brand */}
       <Link
-        href="/admin/dashboard"
+        href={homeHref}
         onClick={onNavigate}
         className="block border-b border-white/10 px-5 py-4 transition-colors hover:bg-white/5"
       >
@@ -366,9 +470,23 @@ function SidebarContent({
         </div>
       </Link>
 
-      {/* Nav — filtrado por rol (RBAC). SUPERADMIN ve todo; MANAGER/FULFILLMENT
-          solo lo que les corresponde (lib/admin-rbac). */}
-      <nav data-admin-help="navigation" className="flex-1 px-3 py-4">
+      {/* Buscador rápido de módulos (⌘K / Ctrl+K) */}
+      <div className="px-3 pt-3">
+        <button
+          type="button"
+          onClick={onOpenSearch}
+          className="flex w-full items-center gap-2 rounded-lg border border-white/12 bg-white/8 px-3 py-2 text-left text-xs text-white/75 transition-all hover:border-white/25 hover:bg-white/14 hover:text-white"
+        >
+          <Search className="h-3.5 w-3.5 flex-shrink-0 opacity-80" />
+          <span className="flex-1 truncate">Buscar módulo…</span>
+          <kbd className="rounded bg-white/15 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-white/85">
+            ⌘K
+          </kbd>
+        </button>
+      </div>
+
+      {/* Nav — filtrado por rol (RBAC). */}
+      <nav data-admin-help="navigation" className="flex-1 px-3 py-3">
         <ul className="flex flex-col gap-0.5">
           {groups.map((group) => (
             <NavGroupItem
@@ -397,7 +515,10 @@ function SidebarContent({
 function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () => void }) {
   const [open, setOpen] = useState(false);
   const roleLabel = adminRoleLabel(admin.role);
-  const initial = admin.email[0].toUpperCase();
+  const initial = (admin.email[0] ?? "A").toUpperCase();
+  const isSuperadmin = admin.role === "SUPERADMIN";
+  const pillClass =
+    FOOTER_ROLE_PILL[admin.role] ?? "bg-white/15 text-white/90 ring-1 ring-white/20";
 
   return (
     <div className="border-t border-white/10 p-3">
@@ -418,9 +539,15 @@ function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () =>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] text-white/85">{admin.email}</p>
             <div className="mt-0.5 flex items-center gap-1">
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/25 px-1.5 text-[10px] font-medium text-amber-100">
-                <Crown className="h-2.5 w-2.5" />
-                {roleLabel}
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${pillClass}`}
+              >
+                {isSuperadmin ? (
+                  <Crown className="h-2.5 w-2.5 flex-shrink-0" />
+                ) : (
+                  <ShieldCheck className="h-2.5 w-2.5 flex-shrink-0" />
+                )}
+                <span className="truncate">{roleLabel}</span>
               </span>
             </div>
           </div>
@@ -436,25 +563,32 @@ function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () =>
             <div className="from-brand-purple-dark to-brand-purple absolute right-0 bottom-full left-0 z-50 mb-2 overflow-hidden rounded-xl bg-gradient-to-br shadow-2xl ring-1 ring-white/15">
               <div className="p-1">
                 <Link
-                  // /admin/password NUNCA existió (caía en el catch-all → 404). No hay
-                  // página admin de cambio de contraseña (esa vive en /mi-cuenta/seguridad
-                  // para clientes); lo que sí cubre la seguridad de la cuenta admin es
-                  // /admin/seguridad (MFA + códigos de respaldo) → el item apunta ahí.
                   href="/admin/seguridad"
                   onClick={() => {
                     setOpen(false);
                     onNavigate();
                   }}
-                  className="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+                  className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-white/85 transition-colors hover:bg-white/10 hover:text-white"
                 >
-                  <KeyRound className="h-3.5 w-3.5 flex-shrink-0 opacity-70" />
-                  Seguridad
+                  <KeyRound className="h-3.5 w-3.5 flex-shrink-0 opacity-75" />
+                  Seguridad y clave
+                </Link>
+                <Link
+                  href="/admin/ayuda"
+                  onClick={() => {
+                    setOpen(false);
+                    onNavigate();
+                  }}
+                  className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <CircleHelp className="h-3.5 w-3.5 flex-shrink-0 opacity-75" />
+                  Centro de ayuda
                 </Link>
                 <div className="mx-2 my-1 border-t border-white/10" />
                 <form action={adminLogoutAction}>
                   <button
                     type="submit"
-                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-rose-200 transition-colors hover:bg-rose-500/20 hover:text-white"
+                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-rose-200 transition-colors hover:bg-rose-500/20 hover:text-white"
                   >
                     <LogOut className="h-3.5 w-3.5 flex-shrink-0 opacity-80" />
                     Cerrar sesión
@@ -659,5 +793,313 @@ function BadgePill({ badge }: { badge: Badge }) {
     >
       {badge.text}
     </span>
+  );
+}
+
+// ─────────────────── Command Palette (⌘K / Ctrl+K) ───────────────────
+
+function AdminCommandPalette({
+  open,
+  onOpenChange,
+  query,
+  onQueryChange,
+  activeIndex,
+  onActiveIndexChange,
+  role,
+  pathname,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  query: string;
+  onQueryChange: (q: string) => void;
+  activeIndex: number;
+  onActiveIndexChange: (idx: number) => void;
+  role: AdminRole;
+  pathname: string;
+}) {
+  const router = useRouter();
+
+  const allEntries = useMemo<CommandEntry[]>(() => {
+    const visibleGroups = filterNavByRole(NAV, role);
+    const items: CommandEntry[] = [];
+    const seen = new Set<string>();
+
+    for (const g of visibleGroups) {
+      const isGroupSoon =
+        g.badge?.tone === "soon" || g.badge?.tone === "phase4" || g.badge?.tone === "phase5";
+      if (!g.items && g.href && !isGroupSoon) {
+        seen.add(g.href);
+        items.push({
+          key: g.href,
+          label: g.title,
+          group: "Acceso directo",
+          description: g.description,
+          href: g.href,
+          icon: g.icon,
+        });
+      }
+      if (g.items) {
+        for (const it of g.items) {
+          const isSoon =
+            it.badge?.tone === "soon" || it.badge?.tone === "phase4" || it.badge?.tone === "phase5";
+          if (isSoon || seen.has(it.href)) continue;
+          seen.add(it.href);
+          items.push({
+            key: it.href,
+            label: it.label,
+            group: g.title,
+            description: it.description,
+            href: it.href,
+            icon: it.icon,
+          });
+        }
+      }
+    }
+
+    if (
+      !seen.has("/admin/clientes/duplicados") &&
+      canAccessAdminPath(role, "/admin/clientes/duplicados")
+    ) {
+      seen.add("/admin/clientes/duplicados");
+      items.push({
+        key: "/admin/clientes/duplicados",
+        label: "Fusión de contactos duplicados",
+        group: "Ventas · CRM",
+        description:
+          "Cola de posibles duplicados de Contact 360 con confirmación MFA para fusionar o descartar.",
+        href: "/admin/clientes/duplicados",
+        icon: Users,
+      });
+    }
+    if (
+      !seen.has("/admin/carritos/configuracion") &&
+      canAccessAdminPath(role, "/admin/carritos/configuracion")
+    ) {
+      seen.add("/admin/carritos/configuracion");
+      items.push({
+        key: "/admin/carritos/configuracion",
+        label: "Configuración de recuperación de carritos",
+        group: "Marketing",
+        description:
+          "Interruptor general, modo automático/manual y ritmos de recordatorio (exclusivo Superadmin con MFA).",
+        href: "/admin/carritos/configuracion",
+        icon: SlidersHorizontal,
+      });
+    }
+    if (!seen.has("/admin/lifecycle/nuevo") && canAccessAdminPath(role, "/admin/lifecycle/nuevo")) {
+      seen.add("/admin/lifecycle/nuevo");
+      items.push({
+        key: "/admin/lifecycle/nuevo",
+        label: "Nuevo recorrido Lifecycle",
+        group: "Marketing",
+        description:
+          "Crear un nuevo recorrido automatizado de activación, recompra, reactivación o seguimiento B2B.",
+        href: "/admin/lifecycle/nuevo",
+        icon: Workflow,
+      });
+    }
+    if (
+      isCatalogMode() &&
+      !seen.has("/admin/cotizaciones") &&
+      canAccessAdminPath(role, "/admin/cotizaciones")
+    ) {
+      seen.add("/admin/cotizaciones");
+      items.push({
+        key: "/admin/cotizaciones",
+        label: "Cotizaciones WhatsApp",
+        group: "Ventas · CRM",
+        description:
+          "Bandeja consultiva e histórico Etapa 1: seguimiento comercial y conversión a pedido u oportunidad B2B.",
+        href: "/admin/cotizaciones",
+        icon: FileText,
+      });
+    }
+    if (!seen.has("/admin/ayuda")) {
+      items.push({
+        key: "/admin/ayuda",
+        label: "Centro de ayuda",
+        group: "Soporte interno",
+        description: "Guías operativas y flujos paso a paso para tu rol.",
+        href: "/admin/ayuda",
+        icon: CircleHelp,
+      });
+    }
+    items.push({
+      key: "ext-storefront",
+      label: "Ver tienda pública",
+      group: "Tienda",
+      description: "Abre el escaparate público de Lucams Shop en una nueva pestaña.",
+      href: "/",
+      icon: ExternalLink,
+      external: true,
+    });
+
+    return items;
+  }, [role]);
+
+  const filtered = useMemo(() => {
+    const q = normalizeSearchText(query);
+    if (!q) return allEntries;
+    const tokens = q.split(/\s+/).filter(Boolean);
+    return allEntries.filter((entry) => {
+      const haystack = normalizeSearchText(
+        `${entry.label} ${entry.group} ${entry.description ?? ""} ${entry.href}`,
+      );
+      return tokens.every((t) => haystack.includes(t));
+    });
+  }, [allEntries, query]);
+
+  const safeIndex = Math.min(activeIndex, Math.max(0, filtered.length - 1));
+
+  function executeEntry(entry: CommandEntry | undefined) {
+    if (!entry) return;
+    onOpenChange(false);
+    if (entry.external) {
+      window.open(entry.href, "_blank", "noopener,noreferrer");
+      return;
+    }
+    router.push(entry.href);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="border-brand-purple/20 max-w-xl gap-0 overflow-hidden rounded-2xl border bg-white p-0 shadow-2xl sm:max-w-xl"
+      >
+        <DialogTitle className="sr-only">Buscador rápido del panel admin</DialogTitle>
+        <DialogDescription className="sr-only">
+          Busca y salta a cualquier módulo autorizado de tu rol usando el teclado.
+        </DialogDescription>
+
+        {/* Barra de entrada */}
+        <div className="border-brand-purple/10 flex items-center gap-3 border-b px-4 py-3">
+          <Search className="text-brand-purple h-4 w-4 flex-shrink-0" />
+          <input
+            type="search"
+            autoFocus
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                if (filtered.length > 0) {
+                  onActiveIndexChange((safeIndex + 1) % filtered.length);
+                }
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                if (filtered.length > 0) {
+                  onActiveIndexChange((safeIndex - 1 + filtered.length) % filtered.length);
+                }
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                executeEntry(filtered[safeIndex]);
+              }
+            }}
+            placeholder="Ir a pedidos, seguridad, inventario, auditoría…"
+            className="text-brand-purple-dark h-7 w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
+          />
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-100"
+          >
+            ESC
+          </button>
+        </div>
+
+        {/* Lista de resultados */}
+        <div className="max-h-80 overflow-y-auto p-2" role="listbox" aria-label="Módulos">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-8 text-center text-xs text-slate-500">
+              No hay módulos autorizados que coincidan con{" "}
+              <strong className="text-brand-purple-dark">«{query}»</strong>.
+            </div>
+          ) : (
+            <ul className="space-y-0.5">
+              {filtered.map((entry, idx) => {
+                const Icon = entry.icon;
+                const isSelected = idx === safeIndex;
+                const isCurrent = !entry.external && pathname === entry.href;
+                return (
+                  <li key={entry.key}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onMouseEnter={() => onActiveIndexChange(idx)}
+                      onClick={() => executeEntry(entry)}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                        isSelected
+                          ? "bg-brand-purple/10 text-brand-purple-dark"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div
+                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
+                          isSelected
+                            ? "bg-brand-purple text-white shadow-xs"
+                            : "bg-brand-purple/8 text-brand-purple"
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-xs font-semibold">{entry.label}</span>
+                          <span className="text-brand-muted truncate text-[10px] font-medium">
+                            · {entry.group}
+                          </span>
+                          {isCurrent && (
+                            <span className="bg-brand-purple/15 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold">
+                              Actual
+                            </span>
+                          )}
+                        </div>
+                        {entry.description && (
+                          <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">
+                            {entry.description}
+                          </p>
+                        )}
+                      </div>
+                      {entry.external ? (
+                        <ArrowUpRight className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                      ) : (
+                        <CornerDownLeft
+                          className={`h-3.5 w-3.5 flex-shrink-0 transition-opacity ${
+                            isSelected ? "text-brand-purple opacity-100" : "opacity-0"
+                          }`}
+                        />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Leyenda inferior */}
+        <div className="border-brand-purple/10 flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50/70 px-4 py-2 text-[11px] text-slate-500">
+          <div className="flex items-center gap-3">
+            <span>
+              <kbd className="rounded border border-slate-200 bg-white px-1 py-0.5 font-sans text-[10px] font-semibold">
+                ↑↓
+              </kbd>{" "}
+              navegar
+            </span>
+            <span>
+              <kbd className="rounded border border-slate-200 bg-white px-1 py-0.5 font-sans text-[10px] font-semibold">
+                ↵
+              </kbd>{" "}
+              abrir
+            </span>
+          </div>
+          <span className="text-brand-purple-dark/70 font-medium">
+            Vista filtrada para {adminRoleLabel(role)}
+          </span>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

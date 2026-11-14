@@ -4,28 +4,53 @@ import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import {
   approveRetract,
+  assignRetractRequest,
   rejectRetract,
   markRetractReceived,
   refundRetract,
+  RetractError,
+  RetractTransitionError,
 } from "@/features/retract/service";
 
 type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
-async function guardOps(): Promise<{ adminId: string } | { error: string }> {
-  // Ciclo operativo de retractos (aprobar devolución, rechazar con nota, marcar
-  // producto recibido) disponible para SUPERADMIN + MANAGER (S11).
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPPORT_CARE });
+async function guardOps(): Promise<{ adminId: string }> {
+  const s = await requireAdminAction({ capability: "retract:manage" });
   return { adminId: s.admin.id };
 }
 
-async function guardSuper(): Promise<{ adminId: string } | { error: string }> {
-  // Registrar reembolso es operación financiera → exclusivamente SUPERADMIN.
-  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+async function guardSuper(): Promise<{ adminId: string }> {
+  // Registrar reembolso es salida final de dinero → exclusivamente `retract:refund` (SUPERADMIN).
+  const s = await requireAdminAction({ capability: "retract:refund" });
   return { adminId: s.admin.id };
+}
+
+function safeRetractErrorMessage(err: unknown): string {
+  if (err instanceof RetractTransitionError) {
+    return "Esta solicitud cambió de estado recientemente. Recarga la página para ver el estado actual.";
+  }
+  if (err instanceof RetractError) {
+    switch (err.reason) {
+      case "NOT_FOUND":
+        return "No encontramos la solicitud de retracto.";
+      case "FORBIDDEN":
+        return "No tienes permisos para gestionar esta solicitud.";
+      case "INVALID_ASSIGNEE":
+        return "Selecciona un integrante activo del equipo de atención.";
+      case "ALREADY_REQUESTED":
+        return "Ya existe una solicitud de retracto para este producto.";
+      case "NOT_DELIVERED":
+        return "El pedido aún no figura como entregado.";
+      case "OUT_OF_WINDOW":
+        return "La solicitud supera la ventana legal de retracto.";
+      case "PERSONALIZED":
+        return "Los productos personalizados están exceptuados del retracto (Ley 1480 art. 47).";
+    }
+  }
+  return "No pudimos procesar la solicitud en este momento. Inténtalo de nuevo.";
 }
 
 function fail(action: string, id: string, err: unknown): St {
@@ -34,7 +59,7 @@ function fail(action: string, id: string, err: unknown): St {
     id,
     err: err instanceof Error ? err.message : String(err),
   });
-  return { error: err instanceof Error ? err.message : "Error inesperado" };
+  return { error: safeRetractErrorMessage(err) };
 }
 
 async function audit(
@@ -51,17 +76,37 @@ async function audit(
     metadata,
   });
   revalidatePath("/admin/retractos");
+  revalidatePath("/admin/hoy");
+  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/finanzas");
+  revalidatePath("/admin/pedidos");
+}
+
+export async function assignRetractAction(_p: St, fd: FormData): Promise<St> {
+  const g = await guardOps();
+  const id = String(fd.get("id") ?? "").trim();
+  const rawAssignee = String(fd.get("assignedToAdminId") ?? "").trim();
+  if (!id) return { error: "Falta el identificador de la solicitud." };
+  const assignedToAdminId = rawAssignee.length > 0 ? rawAssignee : null;
+  try {
+    await assignRetractRequest(id, assignedToAdminId);
+    await audit(g.adminId, "retract.assign", id, { assignedToAdminId });
+    return {
+      success: assignedToAdminId ? "Responsable actualizado." : "Solicitud liberada sin asignar.",
+    };
+  } catch (err) {
+    return fail("assign", id, err);
+  }
 }
 
 export async function approveRetractAction(_p: St, fd: FormData): Promise<St> {
   const g = await guardOps();
-  if ("error" in g) return g;
-  const id = String(fd.get("id") ?? "");
-  if (!id) return { error: "Falta id" };
+  const id = String(fd.get("id") ?? "").trim();
+  if (!id) return { error: "Falta el identificador de la solicitud." };
   try {
     await approveRetract(id, g.adminId);
     await audit(g.adminId, "retract.approve", id);
-    return { success: "Aprobado — instrucciones enviadas al cliente." };
+    return { success: "Aprobado — enviamos las instrucciones de devolución al cliente." };
   } catch (err) {
     return fail("approve", id, err);
   }
@@ -69,15 +114,16 @@ export async function approveRetractAction(_p: St, fd: FormData): Promise<St> {
 
 export async function rejectRetractAction(_p: St, fd: FormData): Promise<St> {
   const g = await guardOps();
-  if ("error" in g) return g;
-  const id = String(fd.get("id") ?? "");
-  const note = String(fd.get("note") ?? "").trim();
-  if (!id) return { error: "Falta id" };
-  if (!note) return { error: "Escribe el motivo del rechazo." };
+  const id = String(fd.get("id") ?? "").trim();
+  const note = String(fd.get("note") ?? "")
+    .trim()
+    .slice(0, 300);
+  if (!id) return { error: "Falta el identificador de la solicitud." };
+  if (!note) return { error: "Escribe el motivo del rechazo para informar al cliente." };
   try {
     await rejectRetract(id, g.adminId, note);
     await audit(g.adminId, "retract.reject", id, { note });
-    return { success: "Solicitud rechazada." };
+    return { success: "Solicitud rechazada — notificamos el motivo por correo." };
   } catch (err) {
     return fail("reject", id, err);
   }
@@ -85,13 +131,12 @@ export async function rejectRetractAction(_p: St, fd: FormData): Promise<St> {
 
 export async function receiveRetractAction(_p: St, fd: FormData): Promise<St> {
   const g = await guardOps();
-  if ("error" in g) return g;
-  const id = String(fd.get("id") ?? "");
-  if (!id) return { error: "Falta id" };
+  const id = String(fd.get("id") ?? "").trim();
+  if (!id) return { error: "Falta el identificador de la solicitud." };
   try {
     await markRetractReceived(id, g.adminId);
     await audit(g.adminId, "retract.receive", id);
-    return { success: "Marcado como recibido." };
+    return { success: "Producto recibido — listo para reembolso final." };
   } catch (err) {
     return fail("receive", id, err);
   }
@@ -99,24 +144,21 @@ export async function receiveRetractAction(_p: St, fd: FormData): Promise<St> {
 
 export async function refundRetractAction(_p: St, fd: FormData): Promise<St> {
   const g = await guardSuper();
-  if ("error" in g) return g;
-  // F-10 (auditoría 2026-09-04): registrar un reembolso es operación de dinero →
-  // aal2 RECIENTE (mismo estándar que refundOrderAction). La UI abre el modal
-  // TOTP ante `reauthRequired` y reintenta.
+  // F-10: registrar un reembolso es salida final de dinero → aal2 RECIENTE + SUPERADMIN.
   try {
     await requireRecentMfa();
   } catch (err) {
     if (isMfaReauthRequired(err)) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
     throw err;
   }
-  const id = String(fd.get("id") ?? "");
+  const id = String(fd.get("id") ?? "").trim();
   const method = String(fd.get("method") ?? "WOMPI_VOID");
-  if (!id) return { error: "Falta id" };
+  if (!id) return { error: "Falta el identificador de la solicitud." };
   const m = method === "BANK_TRANSFER" ? "BANK_TRANSFER" : "WOMPI_VOID";
   try {
     await refundRetract(id, g.adminId, m);
     await audit(g.adminId, "retract.refund", id, { method: m });
-    return { success: "Reembolso registrado. Recuerda emitir el dinero manualmente." };
+    return { success: "Reembolso registrado. Recuerda emitir el dinero en Wompi o banco." };
   } catch (err) {
     return fail("refund", id, err);
   }

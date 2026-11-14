@@ -169,7 +169,7 @@ test.describe("estudio — sets de letras: selector «Con borde / Sin borde»", 
  * (stepper "Unidades" de los productos de composición fija) y llegan como
  * ?copies=N. Multi-unidad (2026-09-09): en los sets de letras ese N son N
  * SETS diseñables por separado (pager "Set 1 de N" + "Aplicar este diseño a
- * todas"); la modal los describe como dato ("N unidades — cada una con su
+ * todas"); la modal los describe como dato ("N sets — cada uno con su
  * propio diseño"). El estudio de letter-set llega a la
  * modal sin uploads (el preview se dibuja client-side), así que es la vía
  * barata de blindarlo end-to-end. Sin mutación: se cierra con "Volver a
@@ -198,10 +198,23 @@ test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 
       }
     };
     const previewDialog = page.getByRole("dialog", { name: /Así se verá/i });
+    const selectTemplate = async () => {
+      const toolsToggle = page.getByRole("button", {
+        name: /abre las herramientas de plantillas y fotos/i,
+      });
+      if (await toolsToggle.isVisible().catch(() => false)) await toolsToggle.click();
+      const template = page.getByRole("radio").filter({ visible: true }).first();
+      if (await template.count()) {
+        if ((await template.getAttribute("aria-checked")) !== "true") await template.click();
+        await expect(template).toHaveAttribute("aria-checked", "true");
+      }
+      await page.keyboard.press("Escape");
+    };
 
     // Sin ?copies= → 1 copia (default): modal sin desglose de copias.
     await page.goto(`/estudio/${product.slug}`, { waitUntil: "domcontentloaded" });
     await dismissCookies();
+    await selectTemplate();
     const listo = page
       .getByRole("button", { name: /Ver diseño/ })
       // QA ronda 2 (owner 2026-10-07) — TODOS los CTAs de finalizar dicen «Ver
@@ -223,16 +236,15 @@ test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 
     // muestra como DATO (no editable) y el total lo refleja. Multi-unidad
     // (2026-09-09): en los sets de letras el N son 3 SETS diseñables (cada uno
     // con sus propios colores de ficha) — la modal los describe con la línea
-    // "N unidades — cada una con su propio diseño" (el concepto "copias
+    // "N sets — cada uno con su propio diseño" (el concepto "copias
     // idénticas" desapareció de las superficies personalizables).
     await page.goto(`/estudio/${product.slug}?copies=3`, { waitUntil: "domcontentloaded" });
     await dismissCookies();
+    await selectTemplate();
     await expect(listo).toBeVisible({ timeout: 30_000 });
     await listo.click();
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });
-    await expect(
-      previewDialog.getByText("3 unidades — cada una con su propio diseño"),
-    ).toBeVisible();
+    await expect(previewDialog.getByText("3 sets — cada uno con su propio diseño")).toBeVisible();
     await expect(previewDialog.getByText(/copias idénticas/)).toHaveCount(0);
     await expect(previewDialog.getByRole("group", { name: "Copias" })).toHaveCount(0);
     await previewDialog.getByRole("button", { name: /Volver a editar/i }).click();

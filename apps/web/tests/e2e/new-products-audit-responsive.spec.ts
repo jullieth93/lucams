@@ -1,7 +1,12 @@
 import type { Locator, Page } from "@playwright/test";
 import { db, disconnectDb } from "./fixtures/db";
 import { dismissCookieBanner, E2E_ENV, expect, test } from "./fixtures/auth";
-import { captureNewProductState, restoreNewProductState } from "./fixtures/product-state";
+import {
+  captureNewProductState,
+  expectNewProductStateRestored,
+  restoreNewProductState,
+  revalidateNewProductsThroughAdmin,
+} from "./fixtures/product-state";
 
 const ORNAMENT_SLUG = "bola-navidena-personalizada";
 const MINI_BOOK_SLUG = "mini-libros-magneticos";
@@ -52,7 +57,7 @@ async function captureModelCenter(page: Page, dialog: Locator) {
   });
 }
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ browser }) => {
   originalProductState = await captureNewProductState();
   expect(originalProductState).toHaveLength(2);
   await db().product.updateMany({
@@ -71,13 +76,21 @@ test.beforeAll(async () => {
       },
     },
   });
+  await db().category.updateMany({
+    where: { id: { in: originalProductState.map((product) => product.category.id) } },
+    data: { isActive: true, deletedAt: null },
+  });
   await db().productVariant.updateMany({
     where: { product: { slug: { in: [ORNAMENT_SLUG, MINI_BOOK_SLUG] } } },
     data: { price: 1_500_000, stock: 100 },
   });
+  await revalidateNewProductsThroughAdmin(
+    browser,
+    originalProductState.map((product) => product.id),
+  );
 });
 
-test.afterAll(async () => {
+test.afterAll(async ({ browser }) => {
   try {
     await db().design.deleteMany({
       where: {
@@ -86,6 +99,12 @@ test.afterAll(async () => {
       },
     });
     await restoreNewProductState(originalProductState);
+    await expectNewProductStateRestored(originalProductState);
+    await revalidateNewProductsThroughAdmin(
+      browser,
+      originalProductState.map((product) => product.id),
+    );
+    await expectNewProductStateRestored(originalProductState);
   } finally {
     await disconnectDb();
   }

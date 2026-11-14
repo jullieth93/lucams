@@ -61,6 +61,8 @@ export type CrmActivityItemProps = {
   authorEmail: string | null;
   orderNumber: string | null;
   supportTicketId: string | null;
+  opportunityId?: string | null;
+  opportunityNumber?: string | null;
 };
 
 export type CrmTaskItemProps = {
@@ -76,6 +78,8 @@ export type CrmTaskItemProps = {
   ownerAdminEmail: string | null;
   orderNumber: string | null;
   supportTicketId: string | null;
+  opportunityId?: string | null;
+  opportunityNumber?: string | null;
 };
 
 export type CrmAssignableAdminOption = {
@@ -91,10 +95,15 @@ type Props = {
   orderId?: string | null;
   orderNumber?: string | null;
   supportTicketId?: string | null;
+  opportunityId?: string | null;
+  opportunityNumber?: string | null;
   currentAdminId: string;
   canManageTasks: boolean;
   canViewActivities: boolean;
   canManageActivities: boolean;
+  canLinkOrder?: boolean;
+  canLinkTicket?: boolean;
+  canLinkOpportunity?: boolean;
   tasks: CrmTaskItemProps[];
   activities: CrmActivityItemProps[];
   assignableAdmins: CrmAssignableAdminOption[];
@@ -127,10 +136,15 @@ export function CrmWorkspacePanel({
   orderId = null,
   orderNumber = null,
   supportTicketId = null,
+  opportunityId = null,
+  opportunityNumber = null,
   currentAdminId,
   canManageTasks,
   canViewActivities,
   canManageActivities,
+  canLinkOrder = true,
+  canLinkTicket = false,
+  canLinkOpportunity = false,
   tasks,
   activities,
   assignableAdmins,
@@ -261,16 +275,19 @@ export function CrmWorkspacePanel({
                   {supportTicketId && (
                     <input type="hidden" name="supportTicketId" value={supportTicketId} />
                   )}
+                  {opportunityId && (
+                    <input type="hidden" name="opportunityId" value={opportunityId} />
+                  )}
 
                   <div>
                     <label
-                      htmlFor={`crm-task-title-${orderId ?? supportTicketId ?? contactId ?? "main"}`}
+                      htmlFor={`crm-task-title-${orderId ?? supportTicketId ?? opportunityId ?? contactId ?? "main"}`}
                       className="text-brand-purple-dark block text-xs font-semibold"
                     >
                       ¿Qué hay que hacer?
                     </label>
                     <input
-                      id={`crm-task-title-${orderId ?? supportTicketId ?? contactId ?? "main"}`}
+                      id={`crm-task-title-${orderId ?? supportTicketId ?? opportunityId ?? contactId ?? "main"}`}
                       name="title"
                       type="text"
                       required
@@ -389,6 +406,9 @@ export function CrmWorkspacePanel({
                   task={task}
                   orderNumber={orderNumber}
                   canManageTasks={canManageTasks}
+                  canLinkOrder={canLinkOrder}
+                  canLinkTicket={canLinkTicket}
+                  canLinkOpportunity={canLinkOpportunity}
                 />
               ))}
             </ul>
@@ -410,6 +430,10 @@ export function CrmWorkspacePanel({
               {orderNumber && <input type="hidden" name="orderNumber" value={orderNumber} />}
               {supportTicketId && (
                 <input type="hidden" name="supportTicketId" value={supportTicketId} />
+              )}
+              {opportunityId && <input type="hidden" name="opportunityId" value={opportunityId} />}
+              {opportunityNumber && (
+                <input type="hidden" name="opportunityNumber" value={opportunityNumber} />
               )}
               <input type="hidden" name="kind" value={selectedKind} />
 
@@ -501,14 +525,40 @@ export function CrmWorkspacePanel({
                             {act.authorEmail}
                           </span>
                         )}
-                        {act.orderNumber && (
+                        {act.orderNumber &&
+                          (canLinkOrder ? (
+                            <Link
+                              href={`/admin/pedidos/${encodeURIComponent(act.orderNumber)}`}
+                              className="text-brand-purple font-mono underline underline-offset-2"
+                            >
+                              {act.orderNumber}
+                            </Link>
+                          ) : (
+                            <span className="text-brand-purple-dark font-mono">
+                              {act.orderNumber}
+                            </span>
+                          ))}
+                        {act.supportTicketId && canLinkTicket && (
                           <Link
-                            href={`/admin/pedidos/${encodeURIComponent(act.orderNumber)}`}
+                            href={`/admin/soporte/${encodeURIComponent(act.supportTicketId)}`}
                             className="text-brand-purple font-mono underline underline-offset-2"
                           >
-                            {act.orderNumber}
+                            Ticket soporte
                           </Link>
                         )}
+                        {act.opportunityId &&
+                          (canLinkOpportunity ? (
+                            <Link
+                              href={`/admin/oportunidades/${encodeURIComponent(act.opportunityId)}`}
+                              className="text-brand-purple font-mono underline underline-offset-2"
+                            >
+                              {act.opportunityNumber ?? "Oportunidad B2B"}
+                            </Link>
+                          ) : (
+                            <span className="text-brand-purple-dark font-mono">
+                              {act.opportunityNumber ?? "Oportunidad B2B"}
+                            </span>
+                          ))}
                       </div>
                       {createdAt && (
                         <span className="text-brand-muted text-[11px]">
@@ -534,10 +584,16 @@ function TaskRow({
   task,
   orderNumber,
   canManageTasks,
+  canLinkOrder,
+  canLinkTicket,
+  canLinkOpportunity,
 }: {
   task: CrmTaskItemProps;
   orderNumber: string | null;
   canManageTasks: boolean;
+  canLinkOrder: boolean;
+  canLinkTicket: boolean;
+  canLinkOpportunity: boolean;
 }) {
   const [, submitStatus, isPending] = useActionState<CrmActionState, FormData>(
     updateCrmTaskStatusAction,
@@ -614,14 +670,38 @@ function TaskRow({
                 {task.ownerAdminEmail ?? "Sin asignar"}
               </strong>
             </span>
-            {task.orderNumber && (
+            {task.orderNumber &&
+              (canLinkOrder ? (
+                <Link
+                  href={`/admin/pedidos/${encodeURIComponent(task.orderNumber)}`}
+                  className="text-brand-purple font-mono underline underline-offset-2"
+                >
+                  {task.orderNumber}
+                </Link>
+              ) : (
+                <span className="text-brand-purple-dark font-mono">{task.orderNumber}</span>
+              ))}
+            {task.supportTicketId && canLinkTicket && (
               <Link
-                href={`/admin/pedidos/${encodeURIComponent(task.orderNumber)}`}
+                href={`/admin/soporte/${encodeURIComponent(task.supportTicketId)}`}
                 className="text-brand-purple font-mono underline underline-offset-2"
               >
-                {task.orderNumber}
+                Ticket soporte
               </Link>
             )}
+            {task.opportunityId &&
+              (canLinkOpportunity ? (
+                <Link
+                  href={`/admin/oportunidades/${encodeURIComponent(task.opportunityId)}`}
+                  className="text-brand-purple font-mono underline underline-offset-2"
+                >
+                  {task.opportunityNumber ?? "Oportunidad B2B"}
+                </Link>
+              ) : (
+                <span className="text-brand-purple-dark font-mono">
+                  {task.opportunityNumber ?? "Oportunidad B2B"}
+                </span>
+              ))}
           </div>
         </div>
 

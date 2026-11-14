@@ -242,6 +242,42 @@ describe("priceCouponPure — borde de vigencia en hora Colombia (COT, #1)", () 
   });
 });
 
+describe("priceCouponPure — titularidad de cupones personales (Bloque 3 · D3)", () => {
+  const personal = coupon({
+    code: "REF-ANA-1234",
+    customerId: "cust_ana",
+    ownerEmail: "ana@lucams.co",
+  });
+
+  it("permite al titular autenticado redimir su propio cupón", () => {
+    const r = priceCouponPure(personal, ctx({ customerId: "cust_ana" }));
+    expect(r.ok).toBe(true);
+  });
+
+  it("permite en checkout invitado cuando el email coincide (case-insensitive + trim)", () => {
+    const r = priceCouponPure(personal, ctx({ customerId: null, email: "  ANA@Lucams.co  " }));
+    expect(r.ok).toBe(true);
+  });
+
+  it("rechaza con NOT_OWNER si otro cliente autenticado intenta usarlo (aunque ponga el email de Ana)", () => {
+    const r = priceCouponPure(personal, ctx({ customerId: "cust_otro", email: "ana@lucams.co" }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("NOT_OWNER");
+  });
+
+  it("rechaza con NOT_OWNER en checkout invitado sin email o con otro email", () => {
+    const missing = priceCouponPure(personal, ctx({ customerId: null, email: null }));
+    expect(!missing.ok && missing.reason).toBe("NOT_OWNER");
+
+    const other = priceCouponPure(personal, ctx({ customerId: null, email: "otro@lucams.co" }));
+    expect(!other.ok && other.reason).toBe("NOT_OWNER");
+  });
+
+  it("expone mensaje es-CO claro en REJECT_MESSAGES.NOT_OWNER", () => {
+    expect(REJECT_MESSAGES.NOT_OWNER).toContain("cupón es personal");
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // G-5 (auditoría seguridad 2026-08-24) — mapeo del 23505 del trigger
 // `coupon_usage_per_customer_limit` (migración 20260829150300) al rechazo

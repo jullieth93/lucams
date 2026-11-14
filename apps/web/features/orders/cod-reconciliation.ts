@@ -18,6 +18,7 @@
 import "server-only";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { formatDayMonthCO, formatIsoDateCO } from "@/lib/datetime";
 
 export class CodReconciliationError extends Error {
   constructor(
@@ -46,8 +47,25 @@ const COD_CASH_COLLECTED: Prisma.OrderWhereInput = {
   deliveredAt: { not: null },
 };
 
-function reconWhereForFilter(filter: CodReconFilter): Prisma.OrderWhereInput {
+function reconWhereForFilter(
+  filter: CodReconFilter,
+  q?: string,
+  allowEmailSearch = true,
+): Prisma.OrderWhereInput {
   const base: Prisma.OrderWhereInput = { ...COD_CASH_COLLECTED };
+  const trimmedQ = (q ?? "").trim();
+  if (trimmedQ) {
+    const searchClauses: Prisma.OrderWhereInput[] = [
+      { number: { contains: trimmedQ, mode: "insensitive" } },
+      { shippingCarrier: { contains: trimmedQ, mode: "insensitive" } },
+      { trackingNumber: { contains: trimmedQ, mode: "insensitive" } },
+      { codReconciliation: { is: { carrierRef: { contains: trimmedQ, mode: "insensitive" } } } },
+    ];
+    if (allowEmailSearch) {
+      searchClauses.push({ email: { contains: trimmedQ, mode: "insensitive" } });
+    }
+    base.AND = [{ OR: searchClauses }];
+  }
   switch (filter) {
     case "pending":
       return { ...base, codReconciliation: { is: null } };
@@ -62,6 +80,7 @@ function reconWhereForFilter(filter: CodReconFilter): Prisma.OrderWhereInput {
 
 export type CodReconRow = {
   orderId: string;
+  contactId: string | null;
   number: string;
   email: string;
   deliveredAt: Date | null;
@@ -80,13 +99,15 @@ export type CodReconRow = {
 /** Lista paginada de órdenes COD entregadas + su estado de conciliación (derivado o resuelto). */
 export async function listCodReconciliation(opts: {
   filter?: CodReconFilter;
+  q?: string;
+  allowEmailSearch?: boolean;
   page?: number;
   pageSize?: number;
 }): Promise<{ items: CodReconRow[]; total: number; page: number; totalPages: number }> {
   const filter = opts.filter ?? "all";
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = opts.pageSize ?? COD_RECON_PAGE_SIZE;
-  const where = reconWhereForFilter(filter);
+  const where = reconWhereForFilter(filter, opts.q, opts.allowEmailSearch ?? true);
 
   const [rows, total] = await Promise.all([
     prisma.order.findMany({
@@ -96,6 +117,7 @@ export async function listCodReconciliation(opts: {
       take: pageSize,
       select: {
         id: true,
+        contactId: true,
         number: true,
         email: true,
         total: true,
@@ -124,6 +146,7 @@ export async function listCodReconciliation(opts: {
     const status: CodReconStatus = r?.status ?? "PENDING_REMIT";
     return {
       orderId: o.id,
+      contactId: o.contactId,
       number: o.number,
       email: o.email,
       deliveredAt: o.deliveredAt,
@@ -142,6 +165,88 @@ export async function listCodReconciliation(opts: {
   });
 
   return { items, total, page, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+export type CodDailyPulseBucket = {
+  key: string;
+  label: string;
+  tickLabel: string;
+  deliveredCop: number;
+  remittedCop: number;
+  deliveredCount: number;
+};
+
+/**
+ * Pulso diario en hora oficial de Colombia (`America/Bogota`, `-05:00`) de los últimos `days` días:
+ * efectivo COD cobrado en entregas vs efectivo remesado a la tienda.
+ */
+export async function getCodDailyPulse(days = 14): Promise<CodDailyPulseBucket[]> {
+  const todayIso = formatIsoDateCO(new Date());
+  const noonToday = new Date(`${todayIso}T12:00:00.000-05:00`);
+  const buckets: CodDailyPulseBucket[] = [];
+  const byKey = new Map<string, CodDailyPulseBucket>();
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(noonToday.getTime() - i * 86_400_000);
+    const key = formatIsoDateCO(d);
+    const bucket: CodDailyPulseBucket = {
+      key,
+      label: formatDayMonthCO(d),
+      tickLabel: `${key.slice(8)}/${key.slice(5, 7)}`,
+      deliveredCop: 0,
+      remittedCop: 0,
+      deliveredCount: 0,
+    };
+    buckets.push(bucket);
+    byKey.set(key, bucket);
+  }
+
+  const firstKey = buckets[0]?.key ?? todayIso;
+  const since = new Date(`${firstKey}T00:00:00.000-05:00`);
+
+  const [deliveredOrders, remits] = await Promise.all([
+    prisma.order.findMany({
+      where: {
+        deletedAt: null,
+        paymentMethod: "COD",
+        deliveredAt: { gte: since },
+      },
+      select: {
+        total: true,
+        deliveredAt: true,
+        codReconciliation: { select: { expectedAmount: true } },
+      },
+    }),
+    prisma.codReconciliation.findMany({
+      where: {
+        remittedAt: { gte: since },
+        order: COD_CASH_COLLECTED,
+      },
+      select: {
+        remittedAmount: true,
+        remittedAt: true,
+      },
+    }),
+  ]);
+
+  for (const ord of deliveredOrders) {
+    if (!ord.deliveredAt) continue;
+    const bucket = byKey.get(formatIsoDateCO(ord.deliveredAt));
+    if (bucket) {
+      bucket.deliveredCop += ord.codReconciliation?.expectedAmount ?? ord.total;
+      bucket.deliveredCount += 1;
+    }
+  }
+
+  for (const rem of remits) {
+    if (!rem.remittedAt || rem.remittedAmount == null) continue;
+    const bucket = byKey.get(formatIsoDateCO(rem.remittedAt));
+    if (bucket) {
+      bucket.remittedCop += rem.remittedAmount;
+    }
+  }
+
+  return buckets;
 }
 
 export type CodReconciliationTotals = {

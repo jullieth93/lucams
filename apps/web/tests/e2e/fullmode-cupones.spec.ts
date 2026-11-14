@@ -199,7 +199,7 @@ test("§7.5.4 cupones: inválido/pausado/vencido/agotado con mensaje + válido d
     const checkoutUrl = await pago.payWithWompiCapture();
     const reference = new URL(checkoutUrl).searchParams.get("reference")!;
     const order = await db().order.findFirstOrThrow({
-      where: { number: reference, deletedAt: null },
+      where: { wompiReference: reference, deletedAt: null },
       select: {
         id: true,
         number: true,
@@ -233,7 +233,7 @@ test("§7.5.4 cupones: inválido/pausado/vencido/agotado con mensaje + válido d
       txId,
       status: "APPROVED",
       amount: order.total,
-      reference: order.number,
+      reference,
       timestamp: Math.floor(Date.now() / 1000),
     });
     expect(res.status).toBe(200);

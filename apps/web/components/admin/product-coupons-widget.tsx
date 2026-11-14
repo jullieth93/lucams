@@ -18,7 +18,7 @@
  */
 
 import Link from "next/link";
-import { Ticket, ExternalLink } from "lucide-react";
+import { Ticket, ExternalLink, Store } from "lucide-react";
 import { AdminCard } from "@/components/admin-page";
 import { Hint } from "@/components/ui/tooltip";
 import { prisma } from "@/lib/db";
@@ -28,15 +28,22 @@ import { formatDayMonthCO } from "@/lib/datetime";
 export async function ProductCouponsWidget({
   productSlug,
   categorySlug,
+  canViewCoupons = false,
+  canManageCoupons = false,
 }: {
   productSlug: string;
   categorySlug: string | null;
+  canViewCoupons?: boolean;
+  canManageCoupons?: boolean;
 }) {
   const now = new Date();
   const candidates = await prisma.coupon.findMany({
     where: {
       isActive: true,
       deletedAt: null,
+      // Excluir cupones personales («Invita y gana»): son intransferibles por
+      // cliente y contienen PII en la descripción automática.
+      customerId: null,
       validFrom: { lte: now },
       validTo: { gte: now },
     },
@@ -85,17 +92,29 @@ export async function ProductCouponsWidget({
                 Sin promociones activas para este producto
               </p>
               <p className="text-brand-muted text-xs">
-                Crea un cupón desde Promociones para ofrecer descuentos.
+                {canManageCoupons
+                  ? "Crea un cupón desde Promociones para ofrecer descuentos."
+                  : "Los cupones de campaña vigentes aplicables aparecerán aquí automáticamente."}
               </p>
             </div>
           </div>
-          <Link
-            href="/admin/cupones"
-            className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
-          >
-            <Ticket className="h-3.5 w-3.5" />
-            Crear cupón
-          </Link>
+          {canManageCoupons ? (
+            <Link
+              href="/admin/cupones"
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
+            >
+              <Ticket className="h-3.5 w-3.5" />
+              Crear cupón
+            </Link>
+          ) : canViewCoupons ? (
+            <Link
+              href="/admin/cupones"
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
+            >
+              Ver cupones
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          ) : null}
         </div>
       </AdminCard>
     );
@@ -111,18 +130,20 @@ export async function ProductCouponsWidget({
           {applicable.length} promoción{applicable.length === 1 ? "" : "es"} que aplica
           {applicable.length === 1 ? "" : "n"} aquí
         </h3>
-        <Link
-          href="/admin/cupones"
-          className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
-        >
-          Editar promociones
-          <ExternalLink className="h-3 w-3" />
-        </Link>
+        {(canManageCoupons || canViewCoupons) && (
+          <Link
+            href="/admin/cupones"
+            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
+          >
+            {canManageCoupons ? "Editar promociones" : "Ver en Cupones"}
+            <ExternalLink className="h-3 w-3" />
+          </Link>
+        )}
       </div>
 
       <ul className="space-y-2">
         {applicable.map((c) => (
-          <CouponRow key={c.id} coupon={c} />
+          <CouponRow key={c.id} coupon={c} canViewCoupons={canViewCoupons || canManageCoupons} />
         ))}
       </ul>
     </AdminCard>
@@ -131,6 +152,7 @@ export async function ProductCouponsWidget({
 
 function CouponRow({
   coupon,
+  canViewCoupons,
 }: {
   coupon: {
     id: string;
@@ -144,6 +166,7 @@ function CouponRow({
     appliesToCategories: string[];
     description: string | null;
   };
+  canViewCoupons: boolean;
 }) {
   const isStoreWide =
     coupon.appliesToProductSlugs.length === 0 && coupon.appliesToCategories.length === 0;
@@ -167,16 +190,26 @@ function CouponRow({
     <li className="border-brand-purple/10 bg-brand-cream/30 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <code className="text-brand-purple-dark rounded bg-white px-2 py-0.5 font-mono text-xs font-bold">
-            {coupon.code}
-          </code>
+          {canViewCoupons ? (
+            <Link
+              href={`/admin/cupones/${coupon.id}`}
+              className="text-brand-purple-dark hover:border-brand-purple/30 rounded border border-transparent bg-white px-2 py-0.5 font-mono text-xs font-bold transition-colors"
+            >
+              {coupon.code}
+            </Link>
+          ) : (
+            <code className="text-brand-purple-dark rounded bg-white px-2 py-0.5 font-mono text-xs font-bold">
+              {coupon.code}
+            </code>
+          )}
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
             {value}
           </span>
           {isStoreWide && (
             <Hint content="Este cupón aplica a toda la tienda, no solo a este producto">
-              <span className="bg-brand-purple/10 text-brand-purple-dark rounded-full px-2 py-0.5 text-[10px] font-semibold">
-                🏪 General
+              <span className="bg-brand-purple/10 text-brand-purple-dark inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                <Store className="h-3 w-3" />
+                General
               </span>
             </Hint>
           )}

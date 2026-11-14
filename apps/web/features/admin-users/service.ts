@@ -15,7 +15,7 @@
  */
 
 import "server-only";
-import type { AdminRole } from "@lucams/db";
+import { Prisma, type AdminRole } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { supabaseService } from "@/lib/supabase/service";
@@ -40,6 +40,10 @@ export type AdminUserListItem = {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  hasVerifiedMfa: boolean | null;
+  unusedRecoveryCodesCount: number;
+  lastAuditAt: Date | null;
+  totalActions: number;
 };
 
 export type AdminUserListResult = {
@@ -49,6 +53,10 @@ export type AdminUserListResult = {
   pageSize: number;
   totalPages: number;
   superadminCount: number;
+  activeCount: number;
+  inactiveCount: number;
+  mfaVerifiedActiveCount: number;
+  roleCounts: Partial<Record<AdminRole, number>>;
 };
 
 export async function listAdminUsers(opts: AdminUserListOpts = {}): Promise<AdminUserListResult> {
@@ -79,7 +87,7 @@ export async function listAdminUsers(opts: AdminUserListOpts = {}): Promise<Admi
     ...(q ? { email: { contains: q, mode: "insensitive" as const } } : {}),
   };
 
-  const [rawItems, total, superadminCount] = await Promise.all([
+  const [rawItems, total, allActiveStaff, inactiveCount] = await Promise.all([
     prisma.adminUser.findMany({
       where,
       orderBy,
@@ -87,26 +95,108 @@ export async function listAdminUsers(opts: AdminUserListOpts = {}): Promise<Admi
       take: pageSize,
       select: {
         id: true,
+        supabaseUserId: true,
         email: true,
         role: true,
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        _count: {
+          select: {
+            recoveryCodes: { where: { usedAt: null } },
+          },
+        },
       },
     }),
     prisma.adminUser.count({ where }),
+    prisma.adminUser.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { id: true, supabaseUserId: true, role: true },
+    }),
     prisma.adminUser.count({
-      where: { role: "SUPERADMIN", isActive: true, deletedAt: null },
+      where: { isActive: false, deletedAt: null },
     }),
   ]);
 
+  const activeCount = allActiveStaff.length;
+  const superadminCount = allActiveStaff.filter((a) => a.role === "SUPERADMIN").length;
+  const roleCounts: Partial<Record<AdminRole, number>> = {};
+  for (const a of allActiveStaff) {
+    roleCounts[a.role] = (roleCounts[a.role] ?? 0) + 1;
+  }
+
+  // Consultar factores TOTP verificados en auth.mfa_factors (batch para filas visibles + activos).
+  const supabaseIds = Array.from(
+    new Set([
+      ...rawItems.map((i) => i.supabaseUserId),
+      ...allActiveStaff.map((i) => i.supabaseUserId),
+    ]),
+  );
+  let verifiedSupabaseIds: Set<string> | null = null;
+  if (supabaseIds.length > 0) {
+    try {
+      const rows = await prisma.$queryRaw<Array<{ userId: string }>>`
+        SELECT DISTINCT user_id::text AS "userId"
+        FROM auth.mfa_factors
+        WHERE user_id::text IN (${Prisma.join(supabaseIds)})
+          AND factor_type = 'totp'
+          AND status = 'verified'
+      `;
+      verifiedSupabaseIds = new Set(rows.map((r) => r.userId));
+    } catch {
+      verifiedSupabaseIds = null;
+    }
+  }
+
+  const mfaVerifiedActiveCount = verifiedSupabaseIds
+    ? allActiveStaff.filter((a) => verifiedSupabaseIds.has(a.supabaseUserId)).length
+    : 0;
+
+  // Última actividad registrada en AdminActionLog por miembro listado.
+  const pageAdminIds = rawItems.map((i) => i.id);
+  const auditByActor = new Map<string, { lastAuditAt: Date | null; totalActions: number }>();
+  if (pageAdminIds.length > 0) {
+    const grouped = await prisma.adminActionLog.groupBy({
+      by: ["actorId"],
+      where: { actorId: { in: pageAdminIds } },
+      _max: { createdAt: true },
+      _count: { _all: true },
+    });
+    for (const g of grouped) {
+      auditByActor.set(g.actorId, {
+        lastAuditAt: g._max.createdAt ?? null,
+        totalActions: g._count._all,
+      });
+    }
+  }
+
+  const items: AdminUserListItem[] = rawItems.map((item) => {
+    const audit = auditByActor.get(item.id);
+    return {
+      id: item.id,
+      email: item.email,
+      role: item.role,
+      isActive: item.isActive,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      hasVerifiedMfa: verifiedSupabaseIds ? verifiedSupabaseIds.has(item.supabaseUserId) : null,
+      unusedRecoveryCodesCount: item._count.recoveryCodes,
+      lastAuditAt: audit?.lastAuditAt ?? null,
+      totalActions: audit?.totalActions ?? 0,
+    };
+  });
+
   return {
-    items: rawItems,
+    items,
     total,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
     superadminCount,
+    activeCount,
+    inactiveCount,
+    mfaVerifiedActiveCount,
+    roleCounts,
   };
 }
 
@@ -120,76 +210,116 @@ export class AdminUserValidationError extends Error {
 }
 
 /**
- * Cambia el rol de un admin. Anti-lockout: si el target es el último
- * SUPERADMIN activo y se quiere degradar a MANAGER/FULFILLMENT,
- * rechaza con error claro.
+ * Cambia el rol de un admin dentro de una transacción atómica:
+ *   - Anti-self-role-change: un admin no puede degradar o cambiar su propio rol.
+ *   - Anti-lockout: si el target es el último SUPERADMIN activo y se quiere degradar,
+ *     rechaza sin mutar.
  */
 export async function changeAdminRole(id: string, newRole: AdminRole, actorAdminId: string) {
-  const target = await prisma.adminUser.findFirst({
-    where: { id, deletedAt: null },
-    select: { id: true, role: true, isActive: true, email: true },
-  });
-  if (!target) throw new AdminUserValidationError("id", "Admin no encontrado.");
-
-  // Anti-lockout: si target es SUPERADMIN activo y se va a degradar,
-  // verificar que haya al menos otro SUPERADMIN activo.
-  if (target.role === "SUPERADMIN" && target.isActive && newRole !== "SUPERADMIN") {
-    const otherSupers = await prisma.adminUser.count({
-      where: {
-        role: "SUPERADMIN",
-        isActive: true,
-        deletedAt: null,
-        id: { not: id },
-      },
-    });
-    if (otherSupers === 0) {
-      throw new AdminUserValidationError(
-        "role",
-        "No puedes degradar al último SUPERADMIN activo. Promueve otro primero.",
-      );
-    }
+  if (id === actorAdminId) {
+    throw new AdminUserValidationError("id", "No puedes cambiar tu propio rol.");
   }
 
-  return prisma.adminUser.update({
-    where: { id },
-    data: { role: newRole, updatedBy: actorAdminId },
+  return prisma.$transaction(async (tx) => {
+    const target = await tx.adminUser.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, role: true, isActive: true, email: true },
+    });
+    if (!target) throw new AdminUserValidationError("id", "Admin no encontrado.");
+
+    if (target.role === "SUPERADMIN" && target.isActive && newRole !== "SUPERADMIN") {
+      const otherSupers = await tx.adminUser.count({
+        where: {
+          role: "SUPERADMIN",
+          isActive: true,
+          deletedAt: null,
+          id: { not: id },
+        },
+      });
+      if (otherSupers === 0) {
+        throw new AdminUserValidationError(
+          "role",
+          "No puedes degradar al último SUPERADMIN activo. Promueve otro primero.",
+        );
+      }
+    }
+
+    const updated = await tx.adminUser.update({
+      where: { id },
+      data: { role: newRole, updatedBy: actorAdminId },
+    });
+    return { ...updated, previousRole: target.role };
   });
 }
 
 /**
- * Activa/desactiva un admin. Anti-lockout: igual que changeAdminRole.
- * Anti-self-deactivate: un admin no puede desactivarse a sí mismo.
+ * Activa/desactiva un admin dentro de una transacción atómica:
+ *   - Anti-self-deactivate: un admin no puede desactivarse a sí mismo.
+ *   - Anti-lockout: no se puede desactivar al último SUPERADMIN activo.
+ *   - Revocación inmediata: al desactivar (`isActive -> false`), revoca todas las
+ *     sesiones activas en Supabase Auth (`scope: "global"`).
  */
 export async function toggleAdminActive(id: string, actorAdminId: string) {
   if (id === actorAdminId) {
     throw new AdminUserValidationError("id", "No puedes desactivar tu propia cuenta.");
   }
 
-  const target = await prisma.adminUser.findFirst({
-    where: { id, deletedAt: null },
-    select: { id: true, role: true, isActive: true, email: true },
-  });
-  if (!target) throw new AdminUserValidationError("id", "Admin no encontrado.");
-
-  // Si vamos a desactivar un SUPERADMIN activo, verificar anti-lockout.
-  if (target.isActive && target.role === "SUPERADMIN") {
-    const otherSupers = await prisma.adminUser.count({
-      where: {
-        role: "SUPERADMIN",
-        isActive: true,
-        deletedAt: null,
-        id: { not: id },
-      },
+  const { updated, supabaseUserId } = await prisma.$transaction(async (tx) => {
+    const target = await tx.adminUser.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, supabaseUserId: true, role: true, isActive: true, email: true },
     });
-    if (otherSupers === 0) {
-      throw new AdminUserValidationError("id", "No puedes desactivar al último SUPERADMIN activo.");
+    if (!target) throw new AdminUserValidationError("id", "Admin no encontrado.");
+
+    if (target.isActive && target.role === "SUPERADMIN") {
+      const otherSupers = await tx.adminUser.count({
+        where: {
+          role: "SUPERADMIN",
+          isActive: true,
+          deletedAt: null,
+          id: { not: id },
+        },
+      });
+      if (otherSupers === 0) {
+        throw new AdminUserValidationError(
+          "id",
+          "No puedes desactivar al último SUPERADMIN activo.",
+        );
+      }
+    }
+
+    const nextActive = !target.isActive;
+    const row = await tx.adminUser.update({
+      where: { id },
+      data: { isActive: nextActive, updatedBy: actorAdminId },
+    });
+    return {
+      updated: { ...row, isActive: row.isActive ?? nextActive },
+      supabaseUserId: target.supabaseUserId,
+    };
+  });
+
+  if (!updated.isActive && supabaseUserId) {
+    try {
+      await supabaseService.auth.admin.signOut(supabaseUserId, "global");
+      logger.info({
+        event: "service-role-write",
+        operation: "admin.revoke_deactivated_sessions",
+        actorAdminId,
+        targetAdminId: id,
+        authUserId: supabaseUserId,
+      });
+    } catch (err) {
+      logger.warn({
+        event: "admin.revoke_deactivated_sessions_fail",
+        actorAdminId,
+        targetAdminId: id,
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
-  return prisma.adminUser.update({
-    where: { id },
-    data: { isActive: !target.isActive, updatedBy: actorAdminId },
-  });
+  return updated;
 }
 
 /**

@@ -18,6 +18,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS, adminHomePath } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
@@ -34,6 +35,7 @@ import {
   createCmsField,
   duplicateCmsField,
   getCmsFieldById,
+  getCmsSectionPageSlug,
   listCmsDraftFields,
   moveCmsFieldToSection,
   publishCmsFieldVersion,
@@ -52,6 +54,7 @@ import { deleteCmsMedia, updateCmsMediaAlt, uploadCmsMedia } from "@/lib/cms-med
 export type CmsActionState = {
   error?: string;
   ok?: boolean;
+  reauthRequired?: boolean;
   fieldErrors?: Partial<
     Record<
       "sectionId" | "key" | "kind" | "label" | "helpText" | "type" | "category" | "body",
@@ -105,6 +108,19 @@ async function checkFieldMutationAccess(
   return { allowed: true, pageSlug: target.section.page.slug };
 }
 
+async function checkGlobalCmsMfa(pageSlug: string): Promise<CmsActionState | null> {
+  if (pageSlug !== "global") return null;
+  try {
+    await requireRecentMfa();
+    return null;
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    }
+    throw err;
+  }
+}
+
 // ─────────────────── Guardar (borrador BLOCK / save+publish SETTING) ───────────────────
 
 /**
@@ -140,6 +156,8 @@ export async function saveCmsFieldAction(
   try {
     const access = await checkFieldMutationAccess(parsed.data.id, session.admin.role);
     if (!access.allowed) return { error: access.error };
+    const reauth = await checkGlobalCmsMfa(access.pageSlug);
+    if (reauth) return reauth;
 
     await saveCmsFieldDraft(parsed.data, session.admin.id);
     await recordAdminAction({
@@ -197,6 +215,8 @@ export async function saveCmsFieldItemsAction(
   try {
     const access = await checkFieldMutationAccess(parsed.data.id, session.admin.role);
     if (!access.allowed) return { error: access.error };
+    const reauth = await checkGlobalCmsMfa(access.pageSlug);
+    if (reauth) return reauth;
 
     await saveCmsFieldItems(parsed.data.id, parsed.data.items, session.admin.id);
     await recordAdminAction({
@@ -251,6 +271,11 @@ export async function createCmsFieldAction(
   }
 
   try {
+    const pageSlug = await getCmsSectionPageSlug(parsed.data.sectionId);
+    if (!pageSlug) return { error: "Sección no encontrada." };
+    const reauth = await checkGlobalCmsMfa(pageSlug);
+    if (reauth) return reauth;
+
     const field = await createCmsField(parsed.data, session.admin.id);
     await recordAdminAction({
       actorId: session.admin.id,
@@ -282,7 +307,7 @@ export async function createCmsFieldAction(
 
 // ─────────────────── Publicar / Despublicar / Archivar ───────────────────
 
-export async function publishCmsFieldAction(formData: FormData): Promise<void> {
+export async function publishCmsFieldAction(formData: FormData): Promise<CmsActionState | void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
 
   const fieldId = String(formData.get("fieldId") ?? "");
@@ -294,6 +319,8 @@ export async function publishCmsFieldAction(formData: FormData): Promise<void> {
     if (access.denied) redirect(`${adminHomePath(session.admin.role)}?denied=1`);
     redirect(`${back}?error=${encodeURIComponent(access.error)}`);
   }
+  const reauth = await checkGlobalCmsMfa(access.pageSlug);
+  if (reauth) return reauth;
 
   try {
     await publishCmsFieldVersion(fieldId, versionId, session.admin.id);
@@ -363,7 +390,7 @@ export async function unpublishCmsFieldAction(formData: FormData): Promise<void>
   }
 }
 
-export async function deleteCmsFieldAction(formData: FormData): Promise<void> {
+export async function deleteCmsFieldAction(formData: FormData): Promise<CmsActionState | void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const fieldId = String(formData.get("fieldId") ?? "");
@@ -372,6 +399,8 @@ export async function deleteCmsFieldAction(formData: FormData): Promise<void> {
   // Buscamos la página ANTES de archivar para saber a dónde volver.
   const field = await getCmsFieldById(fieldId);
   const back = field ? `/admin/contenido/paginas/${field.section.page.slug}` : "/admin/contenido";
+  const reauth = field ? await checkGlobalCmsMfa(field.section.page.slug) : null;
+  if (reauth) return reauth;
 
   await softDeleteCmsField(fieldId, session.admin.id);
   await recordAdminAction({
@@ -399,7 +428,7 @@ function parseBogotaDateTimeLocal(value: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export async function scheduleCmsPublishAction(formData: FormData): Promise<void> {
+export async function scheduleCmsPublishAction(formData: FormData): Promise<CmsActionState | void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
 
   const fieldId = String(formData.get("fieldId") ?? "");
@@ -416,6 +445,8 @@ export async function scheduleCmsPublishAction(formData: FormData): Promise<void
   if (!publishAt) {
     redirect(`${back}?error=${encodeURIComponent("Elige una fecha y hora válidas.")}`);
   }
+  const reauth = await checkGlobalCmsMfa(access.pageSlug);
+  if (reauth) return reauth;
 
   try {
     await scheduleCmsFieldPublish(fieldId, versionId, publishAt, session.admin.id);
@@ -636,13 +667,26 @@ export async function duplicateCmsFieldAction(formData: FormData): Promise<void>
 }
 
 /** Publica en lote TODOS los borradores del sitio (vista «Solo borradores»). */
-export async function publishAllCmsDraftsAction(formData: FormData): Promise<void> {
+export async function publishAllCmsDraftsAction(
+  formData: FormData,
+): Promise<CmsActionState | void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
   const isSuperadmin = session.admin.role === "SUPERADMIN";
   const back = safeBackPath(formData.get("redirectTo"), "/admin/contenido/borradores");
 
   try {
     const drafts = await listCmsDraftFields();
+    const includesGlobal =
+      isSuperadmin &&
+      drafts.some(
+        (field) =>
+          field.section.page.slug === "global" &&
+          !MODULE_MANAGED_SETTING_KEYS.has(field.key) &&
+          field.versions.length > 0,
+      );
+    const reauth = includesGlobal ? await checkGlobalCmsMfa("global") : null;
+    if (reauth) return reauth;
+
     let published = 0;
     for (const field of drafts) {
       if (MODULE_MANAGED_SETTING_KEYS.has(field.key)) continue;

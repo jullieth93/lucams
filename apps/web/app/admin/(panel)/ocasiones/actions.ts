@@ -5,11 +5,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import {
   OcasionValidationError,
   createOcasionTag,
   linkProductToOcasion,
+  restoreOcasionTag,
   softDeleteOcasionTag,
   unlinkProductFromOcasion,
   updateOcasionTag,
@@ -55,7 +55,7 @@ export async function createOcasionAction(
   _prev: OcasionActionState | null,
   formData: FormData,
 ): Promise<OcasionActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const parsed = OcasionCreateSchema.safeParse(parsePayload(formData));
   if (!parsed.success) {
@@ -81,6 +81,8 @@ export async function createOcasionAction(
       metadata: { slug: ocasion.slug, name: ocasion.name },
     });
     revalidatePath("/admin/ocasiones");
+    revalidatePath("/productos");
+    revalidatePath("/", "layout");
     redirect("/admin/ocasiones?created=1");
   } catch (err) {
     if (err instanceof OcasionValidationError) {
@@ -106,7 +108,7 @@ export async function updateOcasionAction(
   _prev: OcasionActionState | null,
   formData: FormData,
 ): Promise<OcasionActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
   const payload = parsePayload(formData);
@@ -129,9 +131,27 @@ export async function updateOcasionAction(
       metadata: { slug: parsed.data.slug },
     });
     revalidatePath("/admin/ocasiones");
+    revalidatePath(`/admin/ocasiones/${id}`);
+    revalidatePath("/productos");
+    revalidatePath("/", "layout");
     redirect("/admin/ocasiones?updated=1");
   } catch (err) {
+    if (err instanceof OcasionValidationError) {
+      return {
+        error: err.message,
+        fieldErrors: { [err.field]: [err.message] } as OcasionActionState["fieldErrors"],
+      };
+    }
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    logger.error(
+      {
+        event: "admin.ocasion.update_fail",
+        adminId: session.admin.id,
+        entityId: id,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Failed to update ocasion",
+    );
     return { error: "Error al actualizar ocasión." };
   }
 }
@@ -145,7 +165,7 @@ export async function updateOcasionAction(
  * (hallazgo M-1, auditoría cableado 2026-10-02).
  */
 export async function toggleOcasionActiveAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
   const id = String(formData.get("id") ?? "");
   const next = formData.get("next") === "true";
   if (!id) return;
@@ -162,9 +182,10 @@ export async function toggleOcasionActiveAction(formData: FormData): Promise<voi
 }
 
 export async function deleteOcasionAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const id = String(formData.get("id") ?? "");
+  if (!id) return;
   await softDeleteOcasionTag(id, session.admin.id);
   await recordAdminAction({
     actorId: session.admin.id,
@@ -173,11 +194,32 @@ export async function deleteOcasionAction(formData: FormData): Promise<void> {
     entityId: id,
   });
   revalidatePath("/admin/ocasiones");
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
   redirect("/admin/ocasiones?deleted=1");
 }
 
+export async function restoreOcasionAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ capability: "catalog:write" });
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await restoreOcasionTag(id, session.admin.id);
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "ocasion.restore",
+    entityType: "OcasionTag",
+    entityId: id,
+  });
+  revalidatePath("/admin/ocasiones");
+  revalidatePath(`/admin/ocasiones/${id}`);
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
+  redirect("/admin/ocasiones?status=inactive&restored=1");
+}
+
 export async function linkProductOcasionAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const productId = String(formData.get("productId") ?? "");
   const ocasionTagId = String(formData.get("ocasionTagId") ?? "");
@@ -192,10 +234,13 @@ export async function linkProductOcasionAction(formData: FormData): Promise<void
     metadata: { rationale: rationale ?? "(sin rationale)" },
   });
   revalidatePath(`/admin/ocasiones/${ocasionTagId}`);
+  revalidatePath("/admin/ocasiones");
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
 }
 
 export async function unlinkProductOcasionAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const productId = String(formData.get("productId") ?? "");
   const ocasionTagId = String(formData.get("ocasionTagId") ?? "");
@@ -208,4 +253,7 @@ export async function unlinkProductOcasionAction(formData: FormData): Promise<vo
     entityId: `${productId}:${ocasionTagId}`,
   });
   revalidatePath(`/admin/ocasiones/${ocasionTagId}`);
+  revalidatePath("/admin/ocasiones");
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
 }

@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import {
   RedirectValidationError,
   archiveRedirect,
@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger";
 export type RedirectActionState = {
   error?: string;
   fieldErrors?: Partial<Record<"fromPath" | "toPath" | "statusCode", string[]>>;
+  reauthRequired?: boolean;
 };
 
 function parseStatusCode(raw: FormDataEntryValue | null): 301 | 302 {
@@ -25,11 +26,24 @@ function parseStatusCode(raw: FormDataEntryValue | null): 301 | 302 {
   return n === 302 ? 302 : 301;
 }
 
+async function checkExternalRedirectMfa(toPath: string): Promise<RedirectActionState | null> {
+  if (!/^https?:\/\//i.test(toPath)) return null;
+  try {
+    await requireRecentMfa();
+    return null;
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    }
+    throw err;
+  }
+}
+
 export async function createRedirectAction(
   _prev: RedirectActionState | null,
   formData: FormData,
 ): Promise<RedirectActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
 
   const fromPath = String(formData.get("fromPath") ?? "").trim();
   const toPath = String(formData.get("toPath") ?? "").trim();
@@ -37,9 +51,19 @@ export async function createRedirectAction(
   const description = String(formData.get("description") ?? "").trim() || null;
   const isActive = formData.get("isActive") === "on";
 
+  const reauth = await checkExternalRedirectMfa(toPath);
+  if (reauth) return reauth;
+
   try {
     const created = await createRedirect(
-      { fromPath, toPath, statusCode, description, isActive },
+      {
+        fromPath,
+        toPath,
+        statusCode,
+        description,
+        isActive,
+        actorRole: session.admin.role,
+      },
       session.admin.id,
     );
     await recordAdminAction({
@@ -77,7 +101,7 @@ export async function updateRedirectAction(
   _prev: RedirectActionState | null,
   formData: FormData,
 ): Promise<RedirectActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
 
   const id = String(formData.get("id") ?? "");
   const toPath = String(formData.get("toPath") ?? "").trim();
@@ -85,9 +109,19 @@ export async function updateRedirectAction(
   const description = String(formData.get("description") ?? "").trim() || null;
   const isActive = formData.get("isActive") === "on";
 
+  const reauth = await checkExternalRedirectMfa(toPath);
+  if (reauth) return reauth;
+
   try {
     const updated = await updateRedirect(
-      { id, toPath, statusCode, description, isActive },
+      {
+        id,
+        toPath,
+        statusCode,
+        description,
+        isActive,
+        actorRole: session.admin.role,
+      },
       session.admin.id,
     );
     await recordAdminAction({
@@ -112,10 +146,12 @@ export async function updateRedirectAction(
 }
 
 export async function toggleRedirectActiveAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
   const id = String(formData.get("id") ?? "");
   try {
-    const updated = await toggleRedirectActive(id, session.admin.id);
+    const updated = await toggleRedirectActive(id, session.admin.id, {
+      actorRole: session.admin.role,
+    });
     await recordAdminAction({
       actorId: session.admin.id,
       action: updated.isActive ? "redirect.activate" : "redirect.deactivate",
@@ -132,29 +168,43 @@ export async function toggleRedirectActiveAction(formData: FormData): Promise<vo
 }
 
 export async function archiveRedirectAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
   const id = String(formData.get("id") ?? "");
-  await archiveRedirect(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "redirect.archive",
-    entityType: "UrlRedirect",
-    entityId: id,
-  });
-  revalidatePath("/admin/redirects");
-  redirect("/admin/redirects?archived=1");
+  try {
+    await archiveRedirect(id, session.admin.id, { actorRole: session.admin.role });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "redirect.archive",
+      entityType: "UrlRedirect",
+      entityId: id,
+    });
+    revalidatePath("/admin/redirects");
+    redirect("/admin/redirects?archived=1");
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const msg =
+      err instanceof RedirectValidationError ? err.message : "Error al archivar redirect.";
+    redirect(`/admin/redirects?error=${encodeURIComponent(msg)}`);
+  }
 }
 
 export async function restoreRedirectAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ capability: "cms:write" });
   const id = String(formData.get("id") ?? "");
-  await restoreRedirect(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "redirect.restore",
-    entityType: "UrlRedirect",
-    entityId: id,
-  });
-  revalidatePath("/admin/redirects");
-  redirect("/admin/redirects?restored=1");
+  try {
+    await restoreRedirect(id, session.admin.id, { actorRole: session.admin.role });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "redirect.restore",
+      entityType: "UrlRedirect",
+      entityId: id,
+    });
+    revalidatePath("/admin/redirects");
+    redirect("/admin/redirects?restored=1");
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const msg =
+      err instanceof RedirectValidationError ? err.message : "Error al restaurar redirect.";
+    redirect(`/admin/redirects?error=${encodeURIComponent(msg)}`);
+  }
 }

@@ -23,6 +23,7 @@ vi.mock("@/lib/db", () => ({ prisma: { $queryRaw: queryRaw } }));
 import {
   buildNewsletterCsv,
   groupNewsletterConsents,
+  listAllNewsletterSubscribers,
   listNewsletterSubscribers,
   type NewsletterConsentRow,
 } from "./admin-service";
@@ -268,5 +269,39 @@ describe("buildNewsletterCsv", () => {
     expect(lines[2]).toContain("'@cmd");
     // Los valores normales quedan intactos.
     expect(lines[2]).toContain("normal@example.com");
+  });
+
+  it("A2: listAllNewsletterSubscribers filtra activos sin rebote ni staff por defecto, y expone histórico completo en audit_ledger", async () => {
+    await listAllNewsletterSubscribers();
+    const commercialSql = JSON.stringify(queryRaw.mock.calls[0] ?? []);
+    expect(commercialSql).toContain("status = 'active'");
+    expect(commercialSql).toContain('\\"isStaff\\" = false');
+    expect(commercialSql).toContain('\\"bouncedOrComplained\\" = false');
+
+    queryRaw.mockClear();
+    await listAllNewsletterSubscribers({ scope: "audit_ledger" });
+    const ledgerSql = JSON.stringify(queryRaw.mock.calls[0] ?? []);
+    expect(ledgerSql).not.toContain("WHERE status = 'active'");
+
+    const ledgerCsv = buildNewsletterCsv(
+      [
+        {
+          email: "bounced@example.com",
+          status: "unsubscribed",
+          subscribedAt: T("2026-09-01T10:00:00Z"),
+          unsubscribedAt: T("2026-09-02T10:00:00Z"),
+          version: "v1.0",
+          bouncedOrComplained: true,
+          isStaff: false,
+        },
+      ],
+      { auditLedger: true },
+    );
+    const ledgerLines = ledgerCsv.slice(1).split("\r\n");
+    expect(ledgerLines[0]).toBe(
+      "email,estado,fecha_suscripcion,fecha_baja,version_aviso,rebote_o_queja,es_staff",
+    );
+    expect(ledgerLines[1]).toContain(",DE BAJA,");
+    expect(ledgerLines[1]?.endsWith(",SI,NO")).toBe(true);
   });
 });

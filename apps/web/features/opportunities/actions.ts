@@ -296,6 +296,7 @@ export async function convertQuoteToOpportunityAction(formData: FormData): Promi
     });
   }
 
+  revalidatePath("/admin/cotizaciones");
   revalidatePath(`/admin/cotizaciones/${quoteId}`);
   revalidatePath("/admin/oportunidades");
   revalidatePath(`/admin/clientes/${result.contactId}`);

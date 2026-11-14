@@ -12,28 +12,45 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rateLimit, consumeRecoveryCode, getCurrentAdmin, redirect, listFactors, deleteFactor } =
-  vi.hoisted(() => ({
-    rateLimit: vi.fn(async (_key: string, _limit?: number, _windowSeconds?: number) => ({
-      allowed: true,
-      count: 1,
-      resetAt: new Date(),
-    })),
-    consumeRecoveryCode: vi.fn(async () => true),
-    getCurrentAdmin: vi.fn(async () => ({
-      user: { id: "sb_user_1" },
-      admin: { id: "adm_1", email: "lucy@lucamsshop.com" },
-    })),
-    redirect: vi.fn(),
-    listFactors: vi.fn(async () => ({ data: { factors: [{ id: "f1", factor_type: "totp" }] } })),
-    deleteFactor: vi.fn(async () => ({})),
-  }));
+const {
+  rateLimit,
+  consumeRecoveryCode,
+  getCurrentAdmin,
+  redirect,
+  listFactors,
+  deleteFactor,
+  recordAdminAction,
+  recordSecurityEvent,
+  notify,
+} = vi.hoisted(() => ({
+  rateLimit: vi.fn(async (_key: string, _limit?: number, _windowSeconds?: number) => ({
+    allowed: true,
+    count: 1,
+    resetAt: new Date(),
+  })),
+  consumeRecoveryCode: vi.fn(async () => true),
+  getCurrentAdmin: vi.fn(async () => ({
+    user: { id: "sb_user_1" },
+    admin: { id: "adm_1", email: "lucy@lucamsshop.com" },
+  })),
+  redirect: vi.fn(),
+  listFactors: vi.fn(async () => ({ data: { factors: [{ id: "f1", factor_type: "totp" }] } })),
+  deleteFactor: vi.fn(async () => ({})),
+  recordAdminAction: vi.fn(async () => {}),
+  recordSecurityEvent: vi.fn(async () => {}),
+  notify: vi.fn(async () => ({})),
+}));
 
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "x-vercel-forwarded-for": "203.0.113.7" }),
 }));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@/lib/auth", () => ({ getCurrentAdmin }));
+vi.mock("@/lib/admin-audit", () => ({ recordAdminAction }));
+vi.mock("@/lib/security-events", () => ({
+  recordSecurityEvent,
+  SECURITY_EVENT: { ADMIN_LOGIN_FAIL: "auth.admin_login.fail" },
+}));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -42,6 +59,7 @@ vi.mock("@/lib/supabase/service", () => ({
   supabaseService: { auth: { admin: { mfa: { listFactors, deleteFactor } } } },
 }));
 vi.mock("@/features/admin-mfa/recovery-codes", () => ({ consumeRecoveryCode }));
+vi.mock("@/features/notifications/service", () => ({ notify }));
 
 import { useRecoveryCodeAction } from "./actions";
 
@@ -140,20 +158,48 @@ describe("useRecoveryCodeAction — rate-limit del acceso de emergencia", () => 
     expect(res?.error).toMatch(/Sesión expirada/);
   });
 
-  it("dentro del límite sigue el camino feliz: consume el código, apaga el TOTP y redirige", async () => {
+  it("dentro del límite sigue el camino feliz: consume el código, apaga el TOTP, audita, notifica y redirige", async () => {
     await useRecoveryCodeAction(null, form());
 
     expect(consumeRecoveryCode).toHaveBeenCalledWith("adm_1", "ABCDE-FGHJK");
     expect(deleteFactor).toHaveBeenCalledWith({ id: "f1", userId: "sb_user_1" });
+    expect(recordAdminAction).toHaveBeenCalledWith({
+      actorId: "adm_1",
+      action: "admin.mfa.recovery_code_used",
+      entityType: "AdminUser",
+      entityId: "adm_1",
+      metadata: { unenrolledCount: 1 },
+    });
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "ALERT",
+        severity: "warning",
+        dedupKey: "mfa-recovery-used:adm_1",
+      }),
+    );
     expect(redirect).toHaveBeenCalledWith("/admin/seguridad?reconfig=1");
   });
 
-  it("un código inválido consume cuota igual (si no, el freno sería inútil)", async () => {
+  it("un código inválido consume cuota igual y persiste rastro forense en SecurityEvent + AdminActionLog", async () => {
     consumeRecoveryCode.mockResolvedValueOnce(false);
 
     const res = await useRecoveryCodeAction(null, form());
 
     expect(rateLimit).toHaveBeenCalledTimes(2);
     expect(res?.error).toMatch(/inválido o ya usado/);
+    expect(recordSecurityEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "auth.admin_login.fail",
+        outcome: "failure",
+        actorId: "adm_1",
+        metadata: { code: "invalid_recovery_code" },
+      }),
+    );
+    expect(recordAdminAction).toHaveBeenCalledWith({
+      actorId: "adm_1",
+      action: "admin.mfa.recovery_code_failure",
+      entityType: "AdminUser",
+      entityId: "adm_1",
+    });
   });
 });

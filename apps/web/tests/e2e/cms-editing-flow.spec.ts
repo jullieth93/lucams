@@ -3,6 +3,7 @@ import "../setup-env";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
 import { enrollTotpFactor, loginAdminWithTotp } from "./_helpers/mfa";
+import { AdminContenidoPage } from "./pages/admin-contenido";
 
 /*
  * D4 — E2E del flujo de edición del CMS (roadmap D4): login admin → editar un
@@ -70,16 +71,8 @@ test("D4 — flujo de edición CMS: editar → publicar → ver en / → reverti
 }) => {
   await adminLogin(page);
 
-  // Editar inline el campo en el editor de página y publicar el borrador.
-  await page.goto("/admin/contenido/paginas/inicio", { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2000);
-  const row = page.locator("li", { hasText: FIELD_KEY }).first();
-  await expect(row).toBeVisible({ timeout: 20_000 });
-  await row.locator('input[name="body"]').fill(VARIANT);
-  await row.getByRole("button", { name: /Guardar/i }).click();
-  await expect(row.getByText(/Borrador guardado/i)).toBeVisible({ timeout: 30_000 });
-  await row.getByRole("button", { name: /Publicar/i }).click();
-  await page.waitForURL(/published=1/, { timeout: 30_000 });
+  const contenido = new AdminContenidoPage(page);
+  await contenido.editFieldAndPublish("inicio", FIELD_KEY, VARIANT);
 
   // El cambio se ve en la home pública.
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -96,8 +89,10 @@ test("D4 — flujo de edición CMS: editar → publicar → ver en / → reverti
   // "Volver a esta" en la versión anterior (la que tiene el texto original).
   const originalRow = page.locator("li", { hasText: ORIGINAL }).first();
   await expect(originalRow).toBeVisible({ timeout: 20_000 });
-  await originalRow.getByRole("button", { name: /Volver a esta/i }).click();
-  await page.waitForURL(/published=1/, { timeout: 30_000 });
+  await expect(async () => {
+    await originalRow.getByRole("button", { name: /Volver a esta/i }).click();
+    await page.waitForURL(/published=1/, { timeout: 5_000 });
+  }).toPass({ timeout: 30_000 });
 
   // La home vuelve al texto original.
   await page.goto("/", { waitUntil: "domcontentloaded" });

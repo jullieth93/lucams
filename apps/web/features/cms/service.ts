@@ -112,6 +112,14 @@ export async function getCmsFieldById(id: string) {
   });
 }
 
+export async function getCmsSectionPageSlug(sectionId: string): Promise<string | null> {
+  const section = await prisma.cmsSection.findUnique({
+    where: { id: sectionId },
+    select: { page: { select: { slug: true } } },
+  });
+  return section?.page.slug ?? null;
+}
+
 /** Buscador global del admin: por key, etiqueta, ayuda o contenido. */
 export async function searchCmsFields(query: string) {
   if (!query.trim()) return [];

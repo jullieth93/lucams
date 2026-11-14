@@ -1,12 +1,21 @@
 import "server-only";
+import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { maskEmail, maskPersonName } from "@/lib/pii-mask";
+import { logger } from "@/lib/logger";
 import { resolvePostSaleContact } from "@/features/identity/resolution-service";
-import { computeWarrantySlaDueAt } from "@/lib/colombian-sla";
+import {
+  computeWarrantySlaDueAt,
+  evaluateSlaStatus,
+  type SlaEvaluation,
+} from "@/lib/colombian-sla";
 import {
   hashBearerToken,
   verifyEmailMatchesTimingSafe,
   verifyTokenHashTimingSafe,
 } from "@/lib/token-hash";
+import { addMonthsClampedIsoCO } from "@/lib/datetime";
 
 /*
  * Garantía legal (Ley 1480 art. 7-15). Un cliente reporta un defecto de un producto comprado;
@@ -29,12 +38,52 @@ const ACTIVE_STATUSES: WarrantyStatus[] = ["PENDING", "IN_REVIEW", "APPROVED"];
 
 // ── Ventana de garantía ──
 export function warrantyWindowEnd(deliveredAt: Date, warrantyMonths: number): Date {
-  const end = new Date(deliveredAt);
-  end.setMonth(end.getMonth() + warrantyMonths);
-  return end;
+  return new Date(`${addMonthsClampedIsoCO(deliveredAt, warrantyMonths)}T23:59:59.999-05:00`);
 }
 export function isWithinWarranty(deliveredAt: Date, warrantyMonths: number, now: Date): boolean {
   return now.getTime() <= warrantyWindowEnd(deliveredAt, warrantyMonths).getTime();
+}
+
+/**
+ * Sanitiza URLs de evidencia fotográfica (anti-XSS `javascript:`/`data:` y anti-open-redirect).
+ * Permite únicamente:
+ *  1. Rutas internas seguras `/api/...` (sin `//`, `..` ni barras invertidas).
+ *  2. URLs absolutas `https://` válidas.
+ * Deduplica y acota a máximo 5 evidencias por reclamo.
+ */
+export function sanitizeWarrantyEvidenceUrls(urls: unknown): string[] {
+  if (!Array.isArray(urls) || urls.length === 0) return [];
+  const safe: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.length > 2048) continue;
+    if (/[\u0000-\u001F\u007F]/.test(trimmed)) continue;
+
+    let accepted: string | null = null;
+    if (trimmed.startsWith("/api/") && !trimmed.startsWith("//")) {
+      if (!trimmed.includes("..") && !trimmed.includes("\\")) {
+        accepted = trimmed;
+      }
+    } else {
+      try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol === "https:" && parsed.hostname.length > 0) {
+          accepted = parsed.toString();
+        }
+      } catch {
+        accepted = null;
+      }
+    }
+
+    if (accepted && !seen.has(accepted)) {
+      seen.add(accepted);
+      safe.push(accepted);
+      if (safe.length >= 5) break;
+    }
+  }
+  return safe;
 }
 
 // ── Elegibilidad por item (flujo cliente) ──
@@ -154,7 +203,13 @@ function mapOrderToWarrantyItems(
 export class WarrantyError extends Error {
   constructor(
     public readonly reason:
-      "NOT_FOUND" | "FORBIDDEN" | "NOT_DELIVERED" | "OUT_OF_WARRANTY" | "ACTIVE_CLAIM" | "INVALID",
+      | "NOT_FOUND"
+      | "FORBIDDEN"
+      | "NOT_DELIVERED"
+      | "OUT_OF_WARRANTY"
+      | "ACTIVE_CLAIM"
+      | "INVALID"
+      | "INVALID_ASSIGNEE",
   ) {
     super(reason);
     this.name = "WarrantyError";
@@ -208,7 +263,7 @@ export async function createWarrantyClaim(input: {
       customerId: input.customerId,
       ...(contactId ? { contactId } : {}),
       description: description.slice(0, 2000),
-      evidenceUrls: (input.evidenceUrls ?? []).slice(0, 5),
+      evidenceUrls: sanitizeWarrantyEvidenceUrls(input.evidenceUrls),
       status: "PENDING",
       slaDueAt: computeWarrantySlaDueAt(new Date()),
     },
@@ -283,7 +338,7 @@ export async function createGuestWarrantyClaim(input: {
       customerId: item.order.customerId,
       ...(contactId ? { contactId } : {}),
       description: description.slice(0, 2000),
-      evidenceUrls: (input.evidenceUrls ?? []).slice(0, 5),
+      evidenceUrls: sanitizeWarrantyEvidenceUrls(input.evidenceUrls),
       status: "PENDING",
       slaDueAt: computeWarrantySlaDueAt(now),
     },
@@ -395,7 +450,7 @@ export async function listWarrantyClaims(filter?: {
       id: r.id,
       status: r.status as WarrantyStatus,
       description: r.description,
-      evidenceUrls: r.evidenceUrls,
+      evidenceUrls: sanitizeWarrantyEvidenceUrls(r.evidenceUrls),
       resolutionType: (r.resolutionType as WarrantyResolution | null) ?? null,
       resolutionNote: r.resolutionNote,
       requestedAt: r.requestedAt,
@@ -493,4 +548,398 @@ export async function rejectWarrantyClaim(
       resolutionNote: reason.slice(0, 500),
     },
   });
+}
+
+export type WarrantyInboxView = WarrantyStatus | "sla-risk" | "mine" | "all";
+
+export function isWarrantyInboxView(raw: string | undefined): raw is WarrantyInboxView {
+  return (
+    raw === "PENDING" ||
+    raw === "IN_REVIEW" ||
+    raw === "APPROVED" ||
+    raw === "RESOLVED" ||
+    raw === "REJECTED" ||
+    raw === "sla-risk" ||
+    raw === "mine" ||
+    raw === "all"
+  );
+}
+
+export function isWarrantyResolution(raw: string | undefined): raw is WarrantyResolution {
+  return WARRANTY_RESOLUTIONS.includes(raw as WarrantyResolution);
+}
+
+export async function assignWarrantyClaim(
+  id: string,
+  assignedToAdminId: string | null,
+): Promise<void> {
+  await loadClaim(id);
+  if (assignedToAdminId) {
+    const validAssignee = await prisma.adminUser.findFirst({
+      where: {
+        id: assignedToAdminId,
+        isActive: true,
+        deletedAt: null,
+        role: { in: [...ADMIN_ROLE_SETS.SUPPORT_CARE] },
+      },
+      select: { id: true },
+    });
+    if (!validAssignee) {
+      throw new WarrantyError("INVALID_ASSIGNEE");
+    }
+  }
+  await prisma.warrantyClaim.update({
+    where: { id },
+    data: { assignedToAdminId },
+  });
+  logger.info({ event: "warranty.assigned", id, assignedToAdminId });
+}
+
+export interface AdminWarrantyCaseRow {
+  id: string;
+  status: WarrantyStatus;
+  description: string | null;
+  evidenceUrls: string[];
+  resolutionType: WarrantyResolution | null;
+  resolutionNote: string | null;
+  requestedAt: Date;
+  resolvedAt: Date | null;
+  slaDueAt: Date | null;
+  sla: SlaEvaluation;
+  customerEmail: string;
+  customerName: string;
+  contactId: string | null;
+  sourceTicketId: string | null;
+  assignedToAdmin: { id: string; email: string } | null;
+  orderNumber: string;
+  orderPaymentMethod: string | null;
+  productName: string;
+  productSlug: string;
+  qty: number;
+  lineTotal: number;
+  warrantyMonths: number;
+  warrantyEndsAt: Date | null;
+  isPersonalized: boolean;
+  qualityAcknowledgedAt: Date | null;
+}
+
+export interface WarrantyAdminListResult {
+  items: AdminWarrantyCaseRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  counts: {
+    pending: number;
+    inReview: number;
+    approved: number;
+    resolved: number;
+    rejected: number;
+    activeTotal: number;
+    slaRisk: number;
+    mine: number;
+    all: number;
+  };
+  byResolution: Record<WarrantyResolution, number>;
+  refundExposure: {
+    approvedRefundCount: number;
+    approvedRefundCents: number;
+    resolvedRefundCount: number;
+    resolvedRefundCents: number;
+  };
+}
+
+/**
+ * Bandeja ejecutiva de garantías (`Bloque 6` · Ley 1480 art. 7-15 y art. 58):
+ *  - Soporta vistas operativas (`PENDING`, `IN_REVIEW`, `APPROVED`, `RESOLVED`, `REJECTED`, `sla-risk`, `mine`, `all`),
+ *    filtro por remedio (`REPAIR`, `REPLACE`, `REFUND`), búsqueda server-side anti-oráculo y paginación.
+ *  - Aplica enmascaramiento server-side estricto de PII, textos libres y evidencias fotográficas cuando
+ *    el actor consulta en modo contable de solo lectura (`FINANCE_ANALYST`: `!canManage || !canReadPii`).
+ */
+export async function listWarrantyClaimsAdmin(opts: {
+  view?: WarrantyInboxView;
+  resolution?: WarrantyResolution;
+  q?: string;
+  actorAdminId: string;
+  canManage: boolean;
+  canReadPii: boolean;
+  page?: number;
+  pageSize?: number;
+}): Promise<WarrantyAdminListResult> {
+  const effectiveView: WarrantyInboxView =
+    !opts.canManage && opts.view === "mine" ? "all" : (opts.view ?? "PENDING");
+  const page = Math.max(1, opts.page ?? 1);
+  const pageSize = Math.min(50, Math.max(1, opts.pageSize ?? 20));
+  const now = new Date();
+  const dueSoonCutoff = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+  const andClauses: Prisma.WarrantyClaimWhereInput[] = [];
+
+  if (
+    effectiveView === "PENDING" ||
+    effectiveView === "IN_REVIEW" ||
+    effectiveView === "APPROVED" ||
+    effectiveView === "RESOLVED" ||
+    effectiveView === "REJECTED"
+  ) {
+    andClauses.push({ status: effectiveView });
+  } else if (effectiveView === "mine") {
+    andClauses.push({
+      assignedToAdminId: opts.actorAdminId,
+      status: { in: ACTIVE_STATUSES },
+    });
+  } else if (effectiveView === "sla-risk") {
+    andClauses.push({
+      status: { in: ACTIVE_STATUSES },
+      slaDueAt: { lte: dueSoonCutoff },
+    });
+  }
+
+  if (opts.resolution) {
+    andClauses.push({ resolutionType: opts.resolution });
+  }
+
+  const qClean = (opts.q ?? "").trim().replace(/^#/, "");
+  if (qClean.length > 0) {
+    const orClauses: Prisma.WarrantyClaimWhereInput[] = [
+      { id: { contains: qClean, mode: "insensitive" } },
+      { orderItem: { order: { number: { contains: qClean, mode: "insensitive" } } } },
+      {
+        orderItem: {
+          variant: { product: { name: { contains: qClean, mode: "insensitive" } } },
+        },
+      },
+    ];
+    // Anti-oráculo PII: solo roles con `canReadPii` y `canManage` buscan por correo o descripción libre.
+    if (opts.canReadPii && opts.canManage) {
+      orClauses.push(
+        { orderItem: { order: { email: { contains: qClean, mode: "insensitive" } } } },
+        { customer: { email: { contains: qClean, mode: "insensitive" } } },
+        { description: { contains: qClean, mode: "insensitive" } },
+      );
+    }
+    andClauses.push({ OR: orClauses });
+  }
+
+  const where: Prisma.WarrantyClaimWhereInput = andClauses.length > 0 ? { AND: andClauses } : {};
+
+  const [
+    rows,
+    total,
+    groupedByStatus,
+    groupedByResolution,
+    slaRiskCount,
+    mineCount,
+    refundClaimItems,
+  ] = await Promise.all([
+    prisma.warrantyClaim.findMany({
+      where,
+      orderBy: [{ requestedAt: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        contactId: true,
+        status: true,
+        description: true,
+        evidenceUrls: true,
+        resolutionType: true,
+        resolutionNote: true,
+        requestedAt: true,
+        resolvedAt: true,
+        slaDueAt: true,
+        assignedToAdmin: { select: { id: true, email: true } },
+        customer: { select: { email: true, firstName: true, lastName: true } },
+        orderItem: {
+          select: {
+            qty: true,
+            unitPrice: true,
+            warrantyMonths: true,
+            customDesign: true,
+            designId: true,
+            design: { select: { qualityAcknowledgedAt: true } },
+            order: {
+              select: {
+                number: true,
+                email: true,
+                contactId: true,
+                paymentMethod: true,
+                deliveredAt: true,
+                shippingAddress: true,
+              },
+            },
+            variant: {
+              select: { product: { select: { name: true, slug: true } } },
+            },
+          },
+        },
+      },
+    }),
+    prisma.warrantyClaim.count({ where }),
+    prisma.warrantyClaim.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+    }),
+    prisma.warrantyClaim.groupBy({
+      by: ["resolutionType"],
+      where: { resolutionType: { not: null } },
+      _count: { _all: true },
+    }),
+    prisma.warrantyClaim.count({
+      where: {
+        status: { in: ACTIVE_STATUSES },
+        slaDueAt: { lte: dueSoonCutoff },
+      },
+    }),
+    opts.canManage
+      ? prisma.warrantyClaim.count({
+          where: {
+            assignedToAdminId: opts.actorAdminId,
+            status: { in: ACTIVE_STATUSES },
+          },
+        })
+      : Promise.resolve(0),
+    prisma.warrantyClaim.findMany({
+      where: {
+        resolutionType: "REFUND",
+        status: { in: ["APPROVED", "RESOLVED"] },
+      },
+      take: 500,
+      select: {
+        status: true,
+        orderItem: { select: { qty: true, unitPrice: true } },
+      },
+    }),
+  ]);
+
+  const linkedTickets =
+    opts.canManage && rows.length > 0
+      ? await prisma.supportTicket.findMany({
+          where: {
+            linkedCaseType: "warranty",
+            linkedCaseId: { in: rows.map((r) => r.id) },
+          },
+          select: { id: true, linkedCaseId: true },
+        })
+      : [];
+  const ticketByCaseId = new Map<string, string>();
+  for (const t of linkedTickets) {
+    if (t.linkedCaseId && !ticketByCaseId.has(t.linkedCaseId)) {
+      ticketByCaseId.set(t.linkedCaseId, t.id);
+    }
+  }
+
+  const countMap: Record<WarrantyStatus, number> = {
+    PENDING: 0,
+    IN_REVIEW: 0,
+    APPROVED: 0,
+    RESOLVED: 0,
+    REJECTED: 0,
+  };
+  for (const g of groupedByStatus) {
+    countMap[g.status as WarrantyStatus] = g._count._all;
+  }
+
+  const byResolution: Record<WarrantyResolution, number> = {
+    REPAIR: 0,
+    REPLACE: 0,
+    REFUND: 0,
+  };
+  for (const g of groupedByResolution) {
+    if (g.resolutionType && isWarrantyResolution(g.resolutionType)) {
+      byResolution[g.resolutionType] = g._count._all;
+    }
+  }
+
+  let approvedRefundCount = 0;
+  let approvedRefundCents = 0;
+  let resolvedRefundCount = 0;
+  let resolvedRefundCents = 0;
+  for (const rc of refundClaimItems) {
+    const lineCents = rc.orderItem.unitPrice * rc.orderItem.qty;
+    if (rc.status === "APPROVED") {
+      approvedRefundCount += 1;
+      approvedRefundCents += lineCents;
+    } else if (rc.status === "RESOLVED") {
+      resolvedRefundCount += 1;
+      resolvedRefundCents += lineCents;
+    }
+  }
+
+  const showFullCustomerData = opts.canManage && opts.canReadPii;
+  const items: AdminWarrantyCaseRow[] = rows.map((r) => {
+    const ord = r.orderItem.order;
+    const ship = ord.shippingAddress as { fullName?: string } | null;
+    const customerFullName = [r.customer?.firstName, r.customer?.lastName]
+      .filter(Boolean)
+      .join(" ");
+    const rawName = customerFullName || ship?.fullName?.trim() || "Cliente";
+    const rawEmail = r.customer?.email ?? ord.email ?? "—";
+    const isClosed = r.status === "RESOLVED" || r.status === "REJECTED";
+    const resolvedContactId = r.contactId ?? ord.contactId ?? null;
+
+    return {
+      id: r.id,
+      status: r.status as WarrantyStatus,
+      description: showFullCustomerData ? r.description : null,
+      evidenceUrls: showFullCustomerData ? sanitizeWarrantyEvidenceUrls(r.evidenceUrls) : [],
+      resolutionType: (r.resolutionType as WarrantyResolution | null) ?? null,
+      resolutionNote: showFullCustomerData ? r.resolutionNote : null,
+      requestedAt: r.requestedAt,
+      resolvedAt: r.resolvedAt,
+      slaDueAt: r.slaDueAt,
+      sla: evaluateSlaStatus(r.slaDueAt, { now, isClosed }),
+      customerEmail: showFullCustomerData ? rawEmail : maskEmail(rawEmail),
+      customerName: showFullCustomerData ? rawName : maskPersonName(rawName),
+      contactId: showFullCustomerData ? resolvedContactId : null,
+      sourceTicketId: opts.canManage ? (ticketByCaseId.get(r.id) ?? null) : null,
+      assignedToAdmin: r.assignedToAdmin
+        ? {
+            id: r.assignedToAdmin.id,
+            email: opts.canManage ? r.assignedToAdmin.email : maskEmail(r.assignedToAdmin.email),
+          }
+        : null,
+      orderNumber: ord.number,
+      orderPaymentMethod: ord.paymentMethod,
+      productName: r.orderItem.variant.product.name,
+      productSlug: r.orderItem.variant.product.slug,
+      qty: r.orderItem.qty,
+      lineTotal: r.orderItem.unitPrice * r.orderItem.qty,
+      warrantyMonths: r.orderItem.warrantyMonths,
+      warrantyEndsAt: ord.deliveredAt
+        ? warrantyWindowEnd(ord.deliveredAt, r.orderItem.warrantyMonths)
+        : null,
+      isPersonalized: r.orderItem.designId != null || r.orderItem.customDesign != null,
+      qualityAcknowledgedAt: r.orderItem.design?.qualityAcknowledgedAt ?? null,
+    };
+  });
+
+  const activeTotal = countMap.PENDING + countMap.IN_REVIEW + countMap.APPROVED;
+  const allCount = activeTotal + countMap.RESOLVED + countMap.REJECTED;
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    counts: {
+      pending: countMap.PENDING,
+      inReview: countMap.IN_REVIEW,
+      approved: countMap.APPROVED,
+      resolved: countMap.RESOLVED,
+      rejected: countMap.REJECTED,
+      activeTotal,
+      slaRisk: slaRiskCount,
+      mine: mineCount,
+      all: allCount,
+    },
+    byResolution,
+    refundExposure: {
+      approvedRefundCount,
+      approvedRefundCents,
+      resolvedRefundCount,
+      resolvedRefundCents,
+    },
+  };
 }

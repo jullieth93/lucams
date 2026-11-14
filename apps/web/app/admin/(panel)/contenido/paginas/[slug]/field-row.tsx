@@ -14,10 +14,11 @@
  *              re-renderiza la fila con hasDraft=true tras el revalidatePath).
  */
 
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, ExternalLink, History, Loader2, Save, Send } from "lucide-react";
 import { AdminBadge } from "@/components/admin-page";
+import { ReauthForm, useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,10 +74,8 @@ export function FieldRow({
   const [savedValue, setSavedValue] = useState(field.value);
   const [labelValue, setLabelValue] = useState(field.label);
   const [savedLabelValue, setSavedLabelValue] = useState(field.label);
-  const [state, formAction, pending] = useActionState<CmsActionState | null, FormData>(
-    saveCmsFieldAction,
-    null,
-  );
+  const [state, formAction, pending, reauthModal] =
+    useMfaReauthAction<CmsActionState>(saveCmsFieldAction);
 
   const isDirty = value !== savedValue || (isSeo && labelValue !== savedLabelValue);
 
@@ -311,7 +310,9 @@ export function FieldRow({
           )}
         </form>
 
-        {state?.error && <p className="text-xs text-rose-600">{state.error}</p>}
+        {state?.error && !state.reauthRequired && (
+          <p className="text-xs text-rose-600">{state.error}</p>
+        )}
         {state?.ok && !state.error && (
           <p className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
             <Check className="h-3.5 w-3.5" />
@@ -327,7 +328,7 @@ export function FieldRow({
         )}
 
         {canPublish && (
-          <form action={publishCmsFieldAction}>
+          <ReauthForm action={publishCmsFieldAction}>
             <input type="hidden" name="fieldId" value={field.id} />
             <input type="hidden" name="versionId" value={latestVersionId} />
             <input type="hidden" name="redirectTo" value={`/admin/contenido/paginas/${pageSlug}`} />
@@ -341,8 +342,9 @@ export function FieldRow({
                 Publicar
               </Button>
             </Hint>
-          </form>
+          </ReauthForm>
         )}
+        {reauthModal}
       </div>
     </li>
   );

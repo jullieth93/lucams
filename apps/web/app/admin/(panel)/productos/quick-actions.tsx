@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Power, RotateCcw, Trash2, Loader2 } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
+import { MfaReauthModal } from "@/components/admin/mfa-reauth";
 import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
 import { purgeProductAction, restoreProductAction, toggleProductActiveAction } from "./actions";
 
@@ -48,21 +49,19 @@ function PurgeProductButton({
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showReauth, setShowReauth] = useState(false);
   const { confirm, confirmDialog } = useAdminConfirm();
 
-  const onPurge = async () => {
-    const ok = await confirm(
-      `«${productName}» y sus imágenes se borrarán para siempre (no se puede restaurar).`,
-      { requireTyped: "ELIMINAR", confirmLabel: "Eliminar definitivamente" },
-    );
-    if (!ok) return;
+  const executePurge = async () => {
     setPending(true);
     setError(null);
     try {
       const fd = new FormData();
       fd.set("id", productId);
       const res = await purgeProductAction(fd);
-      if (res?.error) {
+      if (res?.reauthRequired) {
+        setShowReauth(true);
+      } else if (res?.error) {
         setError(res.error);
       } else {
         router.refresh();
@@ -70,6 +69,15 @@ function PurgeProductButton({
     } finally {
       setPending(false);
     }
+  };
+
+  const onPurge = async () => {
+    const ok = await confirm(
+      `«${productName}» y sus imágenes se borrarán para siempre (no se puede restaurar).`,
+      { requireTyped: "ELIMINAR", confirmLabel: "Eliminar definitivamente" },
+    );
+    if (!ok) return;
+    await executePurge();
   };
 
   return (
@@ -93,6 +101,15 @@ function PurgeProductButton({
       </Hint>
       {error && <span className="max-w-56 text-xs text-red-600">{error}</span>}
       {confirmDialog}
+      {showReauth && (
+        <MfaReauthModal
+          onVerified={() => {
+            setShowReauth(false);
+            void executePurge();
+          }}
+          onCancel={() => setShowReauth(false)}
+        />
+      )}
     </span>
   );
 }

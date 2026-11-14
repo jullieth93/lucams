@@ -50,7 +50,7 @@ vi.mock("@/lib/admin-rbac-guard", () => ({
   })),
 }));
 vi.mock("@/lib/logger", () => ({ logger: mockLogger }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), updateTag: vi.fn() }));
 
 import {
   deleteVariantImageAction,

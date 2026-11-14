@@ -124,6 +124,7 @@ describe.skipIf(!hasDb)("coupons/redemption — integración DB", { timeout: 30_
     await safe(() =>
       prisma.coupon.deleteMany({ where: { code: { startsWith: RUN.toUpperCase() } } }),
     );
+    await safe(() => prisma.customer.deleteMany({ where: { email: { startsWith: `${RUN}-` } } }));
     await safe(() => prisma.productVariant.deleteMany({ where: { productId } }));
     await safe(() => prisma.product.deleteMany({ where: { id: productId } }));
     await safe(() => prisma.category.deleteMany({ where: { id: categoryId } }));
@@ -217,5 +218,77 @@ describe.skipIf(!hasDb)("coupons/redemption — integración DB", { timeout: 30_
     );
     // La tx abortó → no quedó ninguna orden para ese cart.
     expect(await prisma.order.count({ where: { cartId } })).toBe(0);
+  });
+
+  it("priceCouponForCart: cupón personal (customerId != null) exige titularidad estricta (D3)", async () => {
+    const cartId = await makeCart([{ variantId, qty: 1, unitPrice: variantPrice }]); // 20.000
+    const owner = await prisma.customer.create({
+      data: {
+        email: `${RUN}-owner@lucams.test`,
+        supabaseUserId: `${RUN}-supa-owner`,
+        referralCode: `${RUN}-own`.slice(0, 24).toUpperCase(),
+      },
+      select: { id: true, email: true },
+    });
+    const intruder = await prisma.customer.create({
+      data: {
+        email: `${RUN}-intruder@lucams.test`,
+        supabaseUserId: `${RUN}-supa-intruder`,
+        referralCode: `${RUN}-int`.slice(0, 24).toUpperCase(),
+      },
+      select: { id: true },
+    });
+
+    const code = `${RUN}-PERS`.toUpperCase();
+    await mkCoupon({
+      code,
+      type: "PERCENT",
+      value: 15,
+      customerId: owner.id,
+      isPublic: false,
+      ...VALID,
+    });
+
+    // 1. Titular autenticado → OK
+    const okOwner = await priceCouponForCart({
+      code,
+      cartId,
+      shippingCost: 0,
+      customerId: owner.id,
+    });
+    expect(okOwner.ok).toBe(true);
+    if (okOwner.ok) expect(okOwner.discount).toBe(3_000);
+
+    // 2. Invitado con email del titular (mayúsculas) → OK
+    const okGuest = await priceCouponForCart({
+      code,
+      cartId,
+      shippingCost: 0,
+      customerId: null,
+      email: owner.email.toUpperCase(),
+    });
+    expect(okGuest.ok).toBe(true);
+
+    // 3. Otro cliente autenticado intentando suplantar el email del titular → NOT_OWNER
+    const blockedIntruder = await priceCouponForCart({
+      code,
+      cartId,
+      shippingCost: 0,
+      customerId: intruder.id,
+      email: owner.email,
+    });
+    expect(blockedIntruder.ok).toBe(false);
+    if (!blockedIntruder.ok) expect(blockedIntruder.reason).toBe("NOT_OWNER");
+
+    // 4. Invitado con otro email → NOT_OWNER
+    const blockedGuest = await priceCouponForCart({
+      code,
+      cartId,
+      shippingCost: 0,
+      customerId: null,
+      email: `${RUN}-stranger@lucams.test`,
+    });
+    expect(blockedGuest.ok).toBe(false);
+    if (!blockedGuest.ok) expect(blockedGuest.reason).toBe("NOT_OWNER");
   });
 });

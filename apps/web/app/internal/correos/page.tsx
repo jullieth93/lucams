@@ -435,8 +435,13 @@ async function buildGroups(): Promise<Group[]> {
 }
 
 export default async function CorreosPreviewPage() {
-  // Tooling interno: jamás en un deploy Vercel (ver cabecera). Falla cerrado.
-  if (process.env.VERCEL_ENV) notFound();
+  // Tooling interno: jamás en un deploy Vercel ni en servidor productivo (ver cabecera). Falla cerrado.
+  if (
+    process.env.VERCEL_ENV ||
+    (process.env.NODE_ENV === "production" && process.env.ALLOW_INTERNAL_PREVIEW !== "1")
+  ) {
+    notFound();
+  }
 
   const groups = await buildGroups();
   const total = groups.reduce((n, g) => n + g.cards.reduce((m, c) => m + c.variants.length, 0), 0);

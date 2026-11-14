@@ -341,7 +341,7 @@ describe("StudioStyleToolbar — «Personalizado»: picker propio con paridad de
  * con within(dialog); Radix además aria-oculta el resto mientras está abierto.
  */
 describe("StudioStyleToolbar — bottom-sheet de estilo en móvil (2026-10-13)", () => {
-  const RESUMEN_NAME = "Estilo actual: Con borde, color Rosa. Toca para cambiarlo.";
+  const RESUMEN_NAME = "Estilo actual: Rosa Con borde. Toca para cambiarlo.";
 
   it("el botón resumen muestra el estado actual y abre el sheet con las dos secciones", async () => {
     setup({
@@ -389,7 +389,7 @@ describe("StudioStyleToolbar — bottom-sheet de estilo en móvil (2026-10-13)",
     // El resumen refleja el nuevo estado elegido.
     expect(
       screen.getByRole("button", {
-        name: "Estilo actual: Con borde, color Blanco. Toca para cambiarlo.",
+        name: "Estilo actual: Blanco Con borde. Toca para cambiarlo.",
       }),
     ).toBeInTheDocument();
   });
@@ -419,7 +419,7 @@ describe("StudioStyleToolbar — bottom-sheet de estilo en móvil (2026-10-13)",
     });
     expect(
       screen.getByRole("button", {
-        name: "Estilo actual: Sin borde, color Sin color. Toca para cambiarlo.",
+        name: "Estilo actual: Sin color Sin borde. Toca para cambiarlo.",
       }),
     ).toBeInTheDocument();
   });

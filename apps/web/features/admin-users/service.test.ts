@@ -10,29 +10,51 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// vi.hoisted: el factory de vi.mock se eleva sobre los imports, así que mockPrisma debe existir
-// antes (si se declarara como const normal daría TDZ al correr el factory hoisted).
-const { mockPrisma } = vi.hoisted(() => ({
-  mockPrisma: {
+const { mockPrisma, adminSignOut } = vi.hoisted(() => {
+  const prismaObj = {
     adminUser: {
       findFirst: vi.fn(),
       count: vi.fn(),
       update: vi.fn(),
     },
-  },
-}));
+    $transaction: vi.fn(),
+  };
+  prismaObj.$transaction.mockImplementation(
+    async (cb: (tx: typeof prismaObj) => Promise<unknown>) => cb(prismaObj),
+  );
+  return {
+    mockPrisma: prismaObj,
+    adminSignOut: vi.fn(async () => ({ error: null })),
+  };
+});
 vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
+vi.mock("@/lib/logger", () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock("@/lib/supabase/service", () => ({
+  supabaseService: { auth: { admin: { signOut: adminSignOut } } },
+}));
 vi.mock("server-only", () => ({}));
 
 import { AdminUserValidationError, changeAdminRole, toggleAdminActive } from "./service";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockPrisma.$transaction.mockImplementation(
+    async (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
+  );
   mockPrisma.adminUser.update.mockResolvedValue({});
 });
 
-describe("admin-users — anti-lockout (#13)", () => {
+describe("admin-users — anti-lockout y blindaje de sesiones (#13)", () => {
   describe("changeAdminRole", () => {
+    it("rechaza cambiar tu propio rol (sin consultar la DB)", async () => {
+      await expect(changeAdminRole("me", "MANAGER", "me")).rejects.toBeInstanceOf(
+        AdminUserValidationError,
+      );
+      expect(mockPrisma.adminUser.findFirst).not.toHaveBeenCalled();
+    });
+
     it("rechaza degradar al ÚLTIMO SUPERADMIN activo (sin backup) y NO actualiza", async () => {
       mockPrisma.adminUser.findFirst.mockResolvedValue({
         id: "a1",
@@ -101,16 +123,23 @@ describe("admin-users — anti-lockout (#13)", () => {
       expect(mockPrisma.adminUser.update).not.toHaveBeenCalled();
     });
 
-    it("permite desactivar un SUPERADMIN si hay otro activo (backup)", async () => {
+    it("permite desactivar un SUPERADMIN si hay otro activo y revoca sus sesiones Supabase", async () => {
       mockPrisma.adminUser.findFirst.mockResolvedValue({
         id: "a1",
+        supabaseUserId: "sb_target_1",
         role: "SUPERADMIN",
         isActive: true,
         email: "x@y.z",
       });
       mockPrisma.adminUser.count.mockResolvedValue(1);
+      mockPrisma.adminUser.update.mockResolvedValueOnce({
+        id: "a1",
+        isActive: false,
+        email: "x@y.z",
+      });
       await toggleAdminActive("a1", "actor");
       expect(mockPrisma.adminUser.update).toHaveBeenCalled();
+      expect(adminSignOut).toHaveBeenCalledWith("sb_target_1", "global");
     });
   });
 });

@@ -19,16 +19,19 @@
  */
 
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
-import { Mail } from "lucide-react";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Mail } from "lucide-react";
 import {
+  AdminBadge,
+  AdminButton,
   AdminCard,
   AdminNotice,
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import {
   EMAIL_OVERRIDE_KEY_LABEL,
   extractHeading,
@@ -51,8 +54,7 @@ export const dynamic = "force-dynamic";
 type Params = Promise<{ id: string }>;
 
 export default async function EmailTemplateDetailPage({ params }: { params: Params }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireRole(ADMIN_ROLE_SETS.SUPER);
 
   const { id } = await params;
   const tpl = getEmailTemplate(id);
@@ -72,6 +74,8 @@ export default async function EmailTemplateDetailPage({ params }: { params: Para
     PREHEADER: extractPreheader(base.html) ?? undefined,
     HEADING: extractHeading(base.html) ?? undefined,
   };
+  const activeOverrideCount = tpl.editableKeys.filter((k) => Boolean(overrides[k])).length;
+  const versionKey = JSON.stringify(overrides);
 
   return (
     <AdminPage>
@@ -80,15 +84,29 @@ export default async function EmailTemplateDetailPage({ params }: { params: Para
         title={tpl.name}
         subtitle={tpl.description}
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: "/admin" },
           { label: "Configuración" },
           { label: "Plantillas de correo", href: "/admin/email-templates" },
           { label: tpl.name },
         ]}
-        actions={<SendTestButton templateId={tpl.id} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminButton href="/admin/email-templates" variant="secondary" size="sm">
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Catálogo
+            </AdminButton>
+            <SendTestButton templateId={tpl.id} />
+          </div>
+        }
       />
       <AdminPageBody>
         <AdminCard className="p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <AdminBadge tone="purple">{tpl.group}</AdminBadge>
+            <AdminBadge tone={activeOverrideCount > 0 ? "pink" : "slate"}>
+              {activeOverrideCount} de {tpl.editableKeys.length} textos personalizados
+            </AdminBadge>
+          </div>
           <dl className="space-y-2 text-sm">
             <div>
               <dt className="text-brand-purple-dark/60 text-xs font-semibold tracking-wide uppercase">
@@ -121,7 +139,11 @@ export default async function EmailTemplateDetailPage({ params }: { params: Para
           <h2 className="font-display text-brand-purple-dark mb-3 text-lg font-bold">
             Vista previa
           </h2>
-          <PreviewPanel src={`/admin/email-templates/${tpl.id}/preview`} title={tpl.name} />
+          <PreviewPanel
+            src={`/admin/email-templates/${tpl.id}/preview`}
+            title={tpl.name}
+            versionKey={versionKey}
+          />
         </section>
 
         <section>

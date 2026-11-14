@@ -16,7 +16,7 @@
  * después); en SETTING publica de inmediato.
  */
 
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Hint } from "@/components/ui/tooltip";
 import { MarkdownEditor } from "@/components/admin/markdown-editor";
 import { useAdminConfirm } from "@/components/admin/use-admin-confirm";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { saveCmsFieldAction, type CmsActionState } from "@/app/admin/(panel)/contenido/actions";
 import { CmsImageControl, type CmsMediaLite } from "./cms-image-control";
 
@@ -93,16 +94,14 @@ export function FieldEditorForm({
   // Validación JSON suave: avisa pero NO bloquea el guardado.
   const [jsonWarning, setJsonWarning] = useState<string | null>(null);
 
-  const [state, formAction, pending] = useActionState<CmsActionState | null, FormData>(
-    saveCmsFieldAction,
-    null,
-  );
+  const [state, formAction, pending, reauthModal] =
+    useMfaReauthAction<CmsActionState>(saveCmsFieldAction);
 
   const isDirty =
     body !== original.body || label !== original.label || helpText !== original.helpText;
 
   useEffect(() => {
-    if (state?.error) toast.error(state.error);
+    if (state?.error && !state.reauthRequired) toast.error(state.error);
     else if (state?.ok) {
       toast.success(
         isSetting
@@ -472,6 +471,7 @@ export function FieldEditorForm({
         </div>
       </div>
       {confirmDialog}
+      {reauthModal}
     </form>
   );
 }

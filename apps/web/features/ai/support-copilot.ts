@@ -11,6 +11,7 @@ import {
   WARRANTY_CLAIM_RESPONSE_BUSINESS_DAYS,
 } from "@/lib/consumer-law";
 import { SUBJECT_LABELS, type SupportSubject } from "@/features/support/schemas";
+import { isItemPersonalized } from "@/features/retract/service";
 import { getSupportTicketDetail } from "@/features/support/thread-service";
 
 /*
@@ -86,9 +87,9 @@ export function sanitizeSupportTextForAi(
     "[REFERENCIA_PEDIDO]",
   );
 
-  // 4. Teléfonos móviles y fijos colombianos (+57 3XX XXX XXXX, 3XXXXXXXXX)
+  // 4. Teléfonos móviles y fijos colombianos (+57 3XX XXX XXXX, 3XXXXXXXXX, 601 XXX XXXX, (604) 444-5566)
   scrubbed = scrubbed.replace(
-    /(?:\+?57[\s.-]?)?\b3\d{2}[\s.-]?\d{3}[\s.-]?\d{4}\b/g,
+    /(?:\+?57[\s.-]?)?(?:\(\s*(?:3\d{2}|60[1-8])\s*\)|\b(?:3\d{2}|60[1-8]))[\s.-]?\d{3}[\s.-]?\d{4}\b/g,
     "[TELEFONO_REDACTADO]",
   );
 
@@ -117,7 +118,7 @@ export function sanitizeSupportTextForAi(
   }
   const sortedNames = [...nameTokens].sort((a, b) => b.length - a.length);
   for (const token of sortedNames) {
-    const re = new RegExp(`\\b${escapeRegExp(token)}\\b`, "gi");
+    const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(token)}(?![\\p{L}\\p{N}])`, "giu");
     scrubbed = scrubbed.replace(re, "[CLIENTE]");
   }
 
@@ -253,6 +254,7 @@ export async function generateSupportReplySuggestion(
   if (!ticket) return null;
 
   let orderSnapshot: OrderSafeSnapshot | null = null;
+  const extraKnownNames: Array<string | null | undefined> = [];
   if (ticket.resolvedOrderNumber) {
     const order = await prisma.order.findUnique({
       where: { number: ticket.resolvedOrderNumber },
@@ -263,11 +265,14 @@ export async function generateSupportReplySuggestion(
         shippingCarrier: true,
         trackingNumber: true,
         deliveredAt: true,
+        recipientName: true,
+        shippingAddress: true,
         items: {
           select: {
             qty: true,
             warrantyMonths: true,
             designId: true,
+            customDesign: true,
             variant: {
               select: {
                 name: true,
@@ -280,6 +285,15 @@ export async function generateSupportReplySuggestion(
     });
 
     if (order) {
+      const ship =
+        order.shippingAddress &&
+        typeof order.shippingAddress === "object" &&
+        !Array.isArray(order.shippingAddress)
+          ? (order.shippingAddress as { fullName?: unknown })
+          : null;
+      if (typeof ship?.fullName === "string") extraKnownNames.push(ship.fullName);
+      if (order.recipientName) extraKnownNames.push(order.recipientName);
+
       orderSnapshot = {
         number: order.number,
         status: order.status,
@@ -287,10 +301,10 @@ export async function generateSupportReplySuggestion(
         shippingCarrier: order.shippingCarrier,
         hasTrackingNumber: Boolean(order.trackingNumber),
         deliveredAt: order.deliveredAt,
-        hasCustomDesignItem: order.items.some((it) => Boolean(it.designId)),
+        hasCustomDesignItem: order.items.some((it) => isItemPersonalized(it)),
         itemSummaries: order.items.map(
           (it) =>
-            `${it.qty}x ${it.variant.product.name} (${it.variant.name})${it.designId ? " [personalizado]" : " [estándar]"}`,
+            `${it.qty}x ${it.variant.product.name} (${it.variant.name})${isItemPersonalized(it) ? " [personalizado]" : " [estándar]"}`,
         ),
         minWarrantyMonths:
           order.items.length > 0 ? Math.min(...order.items.map((it) => it.warrantyMonths)) : 1,
@@ -315,14 +329,15 @@ export async function generateSupportReplySuggestion(
   }
 
   // Construir contexto 100 % libre de PII para Gemini
+  const knownNames = [ticket.name, ...extraKnownNames];
   const publicMessages = ticket.messages.filter((m) => !m.isInternal).slice(-5);
   const scrubbedInitial = sanitizeSupportTextForAi(ticket.message, {
-    knownNames: [ticket.name],
+    knownNames,
   });
   const scrubbedThread = publicMessages.map(
     (m) =>
       `${m.authorKind === "ADMIN" ? "Agente" : "Cliente"}: ${sanitizeSupportTextForAi(m.body, {
-        knownNames: [ticket.name],
+        knownNames,
       })}`,
   );
 

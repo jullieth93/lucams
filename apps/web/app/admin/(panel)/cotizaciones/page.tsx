@@ -12,28 +12,46 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight, FileText } from "lucide-react";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
-import { requireRole } from "@/lib/admin-rbac-guard";
+import {
+  Building2,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  FileText,
+  Info,
+  MessageCircle,
+} from "lucide-react";
+import { canAccessAdminPath } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
 import { listQuotes } from "@/features/quotes/admin-service";
 import type { QuoteStatus } from "@lucams/db";
 import {
   AdminPage,
   AdminPageHeader,
   AdminPageBody,
+  AdminCard,
+  AdminSegmentedBar,
   AdminTable,
   AdminTableHead,
   AdminTableBody,
   AdminTableRow,
   AdminEmpty,
   AdminBadge,
+  type ChartTone,
 } from "@/components/admin-page";
+import { CountUp } from "@/components/admin/count-up";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatDateTimeCO } from "@/lib/datetime";
 
-export const metadata: Metadata = { title: "Cotizaciones" };
+export const metadata: Metadata = {
+  title: "Cotizaciones",
+  robots: { index: false, follow: false },
+};
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -58,10 +76,10 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
   return typeof v === "string" ? v : undefined;
 }
 
-/** Parsea "YYYY-MM-DD" del input date; `endOfDay` incluye todo el día final. */
+/** Parsea "YYYY-MM-DD" del input date en hora oficial de Colombia (`America/Bogota`, `-05:00`). */
 function parseDateParam(raw: string | undefined, endOfDay = false): Date | undefined {
   if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
-  const d = new Date(`${raw}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}`);
+  const d = new Date(`${raw}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}-05:00`);
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
@@ -70,7 +88,10 @@ export default async function AdminCotizacionesPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireRole(ADMIN_ROLE_SETS.OPPORTUNITIES);
+  const session = await requireCapability("opportunities:manage");
+  const canViewContacts = canAccessAdminPath(session.admin.role, "/admin/clientes");
+  const canViewOpportunities = canAccessAdminPath(session.admin.role, "/admin/oportunidades");
+  const catalogMode = isCatalogMode();
 
   const sp = await searchParams;
   const q = pickString(sp, "q");
@@ -80,14 +101,14 @@ export default async function AdminCotizacionesPage({
   const status = statusRaw === "all" ? "all" : (validStatus ?? "PENDING");
   const from = pickString(sp, "from");
   const to = pickString(sp, "to");
-  const page = Number(sp.page) || 1;
+  const requestedPage = Number(sp.page) || 1;
 
-  const { items, total, totalPages } = await listQuotes({
+  const { items, total, page, totalPages, kpis } = await listQuotes({
     status,
     q,
     from: parseDateParam(from),
     to: parseDateParam(to, true),
-    page,
+    page: requestedPage,
   });
   const hasActiveFilters = !!q || status !== "PENDING" || !!from || !!to;
 
@@ -98,7 +119,7 @@ export default async function AdminCotizacionesPage({
         title="Cotizaciones"
         subtitle={
           <>
-            {total} {total === 1 ? "cotización" : "cotizaciones"}
+            {total.toLocaleString("es-CO")} {total === 1 ? "cotización" : "cotizaciones"}
             {hasActiveFilters && " · con filtros aplicados"}
           </>
         }
@@ -107,9 +128,133 @@ export default async function AdminCotizacionesPage({
           { label: "Ventas" },
           { label: "Cotizaciones" },
         ]}
+        actions={
+          canViewOpportunities ? (
+            <Link
+              href="/admin/oportunidades"
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex min-h-11 items-center gap-1.5 rounded-xl border bg-white px-3.5 py-2 text-xs font-semibold transition-colors"
+            >
+              <Building2 className="h-4 w-4" />
+              Ir a Oportunidades B2B
+            </Link>
+          ) : undefined
+        }
       />
 
       <AdminPageBody>
+        {!catalogMode && (
+          <div className="border-brand-purple/20 bg-brand-cream/60 flex items-start gap-3 rounded-xl border p-4 text-xs">
+            <Info className="text-brand-purple mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-1">
+              <p className="text-brand-purple-dark font-semibold">
+                Continuidad comercial entre Cotizaciones y Oportunidades B2B
+              </p>
+              <p className="text-brand-muted">
+                Con el checkout completo activo en Lucams Shop, las compras minoristas entran como{" "}
+                <strong className="text-brand-purple-dark">Pedidos</strong> y las negociaciones de
+                volumen entran en{" "}
+                {canViewOpportunities ? (
+                  <Link
+                    href="/admin/oportunidades"
+                    className="text-brand-purple font-semibold underline underline-offset-2"
+                  >
+                    Oportunidades B2B
+                  </Link>
+                ) : (
+                  <strong className="text-brand-purple-dark">Oportunidades B2B</strong>
+                )}
+                . Este módulo conserva el historial de cotizaciones y permite escalar cualquier
+                solicitud consultiva al pipeline B2B en 1 clic desde su detalle.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* KPIs ejecutivos */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <AdminCard className="p-4">
+            <div className="text-brand-muted flex items-center gap-1.5 text-xs font-semibold uppercase">
+              <Clock className="h-4 w-4 text-amber-600" />
+              Pendientes de respuesta
+            </div>
+            <div className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+              <CountUp value={kpis.statusCounts.PENDING} />
+            </div>
+            <p className="text-brand-muted mt-1 text-xs">
+              Valor estimado: {formatCOP(kpis.pendingAmountCents)}
+            </p>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <div className="text-brand-muted flex items-center gap-1.5 text-xs font-semibold uppercase">
+              <MessageCircle className="text-brand-purple h-4 w-4" />
+              En conversación
+            </div>
+            <div className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+              <CountUp value={kpis.statusCounts.CONTACTED} />
+            </div>
+            <p className="text-brand-muted mt-1 text-xs">Contactadas por WhatsApp en seguimiento</p>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <div className="text-brand-muted flex items-center gap-1.5 text-xs font-semibold uppercase">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              Cerradas (vendidas)
+            </div>
+            <div className="font-display mt-1 text-2xl font-bold text-emerald-700 tabular-nums">
+              <CountUp value={kpis.statusCounts.CLOSED} />
+            </div>
+            <p className="text-brand-muted mt-1 text-xs">
+              Acumulado cerrado: {formatCOP(kpis.closedAmountCents)}
+            </p>
+          </AdminCard>
+
+          <AdminCard className="p-4">
+            <div className="text-brand-muted flex items-center gap-1.5 text-xs font-semibold uppercase">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              Escaladas a B2B
+            </div>
+            <div className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
+              <CountUp value={kpis.convertedToOpportunityCount} />
+            </div>
+            <p className="text-brand-muted mt-1 text-xs">
+              De {kpis.totalAll.toLocaleString("es-CO")} cotizaciones históricas totales
+            </p>
+          </AdminCard>
+        </section>
+
+        {kpis.totalAll > 0 && (
+          <AdminCard className="p-4">
+            <p className="text-brand-purple-dark mb-2 text-xs font-bold tracking-wide uppercase">
+              Distribución acumulada de cotizaciones por estado
+            </p>
+            <AdminSegmentedBar
+              ariaLabel="Distribución de cotizaciones por estado"
+              items={QUOTE_STATUSES.map((st) => {
+                const chartTone: Record<QuoteStatus, ChartTone> = {
+                  PENDING: "amber",
+                  CONTACTED: "purple",
+                  CLOSED: "emerald",
+                  DISCARDED: "slate",
+                };
+                const params = new URLSearchParams();
+                if (st !== "PENDING") params.set("status", st);
+                if (q) params.set("q", q);
+                if (from) params.set("from", from);
+                if (to) params.set("to", to);
+                const qs = params.toString();
+                return {
+                  key: st,
+                  label: STATUS_LABEL[st],
+                  count: kpis.statusCounts[st],
+                  tone: chartTone[st],
+                  href: qs ? `/admin/cotizaciones?${qs}` : "/admin/cotizaciones",
+                };
+              })}
+            />
+          </AdminCard>
+        )}
+
         <form
           method="GET"
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
@@ -126,7 +271,7 @@ export default async function AdminCotizacionesPage({
               name="q"
               type="search"
               defaultValue={q ?? ""}
-              placeholder="Número (COT-XXXXXX), nombre o WhatsApp…"
+              placeholder="COT-XXXXXX, nombre, correo, WhatsApp o ciudad…"
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>
@@ -208,7 +353,7 @@ export default async function AdminCotizacionesPage({
             description={
               hasActiveFilters
                 ? "Prueba quitar algún filtro o cambiar el texto de búsqueda."
-                : "Cuando un cliente pida su cotización desde el catálogo, aparecerá acá. 🦝"
+                : "Cuando un cliente solicite su cotización desde el catálogo, aparecerá aquí."
             }
           />
         ) : (
@@ -218,7 +363,7 @@ export default async function AdminCotizacionesPage({
                 <th className="px-4 py-3 text-left font-semibold">Número</th>
                 <th className="px-4 py-3 text-left font-semibold">Cliente</th>
                 <th className="px-4 py-3 text-left font-semibold">Ciudad</th>
-                <th className="px-4 py-3 text-center font-semibold">Items</th>
+                <th className="px-4 py-3 text-center font-semibold">Ítems</th>
                 <th className="px-4 py-3 text-right font-semibold">Total</th>
                 <th className="px-4 py-3 text-left font-semibold">Estado</th>
                 <th className="px-4 py-3 text-left font-semibold">Creada</th>
@@ -226,52 +371,78 @@ export default async function AdminCotizacionesPage({
               </tr>
             </AdminTableHead>
             <AdminTableBody>
-              {items.map((quote) => (
-                <AdminTableRow key={quote.id}>
-                  <td className="px-4 py-3">
-                    <span className="text-brand-purple-dark font-mono text-sm font-semibold">
-                      {quote.number}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-brand-purple-dark text-sm font-medium">
-                      {quote.customerName}
-                    </div>
-                    <div className="text-brand-muted text-xs tabular-nums">
-                      {quote.customerWhatsapp}
-                    </div>
-                  </td>
-                  <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">
-                    {quote.city}
-                    <span className="text-brand-muted block text-[10px]">{quote.department}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="text-brand-purple-dark/85 text-xs tabular-nums">
-                      {quote._count.items}
-                    </span>
-                  </td>
-                  <td className="text-brand-purple-dark px-4 py-3 text-right text-sm font-semibold tabular-nums">
-                    {formatCOP(quote.total)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <AdminBadge tone={STATUS_TONE[quote.status]}>
-                      {STATUS_LABEL[quote.status]}
-                    </AdminBadge>
-                  </td>
-                  <td className="text-brand-muted px-4 py-3 text-xs">
-                    {formatDateTimeCO(quote.createdAt)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/cotizaciones/${quote.id}`}
-                      className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-medium"
-                    >
-                      Ver detalle
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </td>
-                </AdminTableRow>
-              ))}
+              {items.map((quote) => {
+                const linkedOpp = quote.convertedOpportunities[0] ?? null;
+                return (
+                  <AdminTableRow key={quote.id}>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-brand-purple-dark font-mono text-sm font-semibold">
+                          {quote.number}
+                        </span>
+                        {linkedOpp &&
+                          (canViewOpportunities ? (
+                            <Link
+                              href={`/admin/oportunidades/${encodeURIComponent(linkedOpp.id)}`}
+                              className="hover:opacity-85"
+                              title={`Vinculada a oportunidad ${linkedOpp.number}`}
+                            >
+                              <AdminBadge tone="purple">{linkedOpp.number}</AdminBadge>
+                            </Link>
+                          ) : (
+                            <AdminBadge tone="purple">{linkedOpp.number}</AdminBadge>
+                          ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-brand-purple-dark text-sm font-medium">
+                        {canViewContacts && quote.contactId ? (
+                          <Link
+                            href={`/admin/clientes/${encodeURIComponent(quote.contactId)}`}
+                            className="hover:text-brand-purple underline underline-offset-2"
+                          >
+                            {quote.customerName}
+                          </Link>
+                        ) : (
+                          quote.customerName
+                        )}
+                      </div>
+                      <div className="text-brand-muted text-xs tabular-nums">
+                        {quote.customerWhatsapp}
+                      </div>
+                    </td>
+                    <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">
+                      {quote.city}
+                      <span className="text-brand-muted block text-[10px]">{quote.department}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-brand-purple-dark/85 text-xs tabular-nums">
+                        {quote._count.items}
+                      </span>
+                    </td>
+                    <td className="text-brand-purple-dark px-4 py-3 text-right text-sm font-semibold tabular-nums">
+                      {formatCOP(quote.total)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <AdminBadge tone={STATUS_TONE[quote.status]}>
+                        {STATUS_LABEL[quote.status]}
+                      </AdminBadge>
+                    </td>
+                    <td className="text-brand-muted px-4 py-3 text-xs">
+                      {formatDateTimeCO(quote.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Link
+                        href={`/admin/cotizaciones/${quote.id}`}
+                        className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-medium"
+                      >
+                        Ver detalle
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </td>
+                  </AdminTableRow>
+                );
+              })}
             </AdminTableBody>
           </AdminTable>
         )}

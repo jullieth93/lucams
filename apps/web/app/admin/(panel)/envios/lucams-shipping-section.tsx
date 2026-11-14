@@ -81,6 +81,18 @@ export function LucamsShippingSection({ initial }: { initial: LucamsShippingInit
     });
   }
 
+  function setCityZones(cityCode: string, zoneIds: string[], checkAll: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of zoneIds) {
+        const key = `${cityCode}:${id}`;
+        if (checkAll) next.add(key);
+        else next.delete(key);
+      }
+      return next;
+    });
+  }
+
   return (
     <form action={formAction} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -128,41 +140,90 @@ export function LucamsShippingSection({ initial }: { initial: LucamsShippingInit
         <legend className="text-brand-purple-dark text-sm font-semibold">
           Zonas de entrega habilitadas
         </legend>
-        <p className="text-brand-muted mb-2 text-xs">
-          Estas zonas solo controlan si la oferta «Envío Lucam&rsquo;s» aparece en el paso de envío
-          del checkout. La localidad se pide siempre como dato de dirección en el paso de datos,
-          haya o no zonas habilitadas. El on/off del servicio se maneja en la lista de
+        <p className="text-brand-muted mb-3 text-xs">
+          Estas zonas solo controlan si la oferta «Envío Lucams» aparece en el paso de envío del
+          checkout. La localidad se pide siempre como dato de dirección en el paso de datos, haya o
+          no zonas habilitadas. El encendido general del servicio se maneja en la lista de
           transportadoras de arriba.
         </p>
-        <div className="space-y-3">
-          {LUCAMS_ZONE_CITIES.map((city) => (
-            <div key={city.cityCode}>
-              <p className="text-brand-purple-dark text-xs font-bold">
-                {city.cityName} · {city.zoneLabel}s
-              </p>
-              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
-                {city.zones.map((z) => {
-                  const key = `${city.cityCode}:${z.id}`;
-                  return (
-                    <label
-                      key={z.id}
-                      className="text-brand-purple-dark flex cursor-pointer items-center gap-2 text-sm"
+        <div className="space-y-4">
+          {LUCAMS_ZONE_CITIES.map((city) => {
+            const totalCityZones = city.zones.length;
+            const enabledCityZones = city.zones.filter((z) =>
+              selected.has(`${city.cityCode}:${z.id}`),
+            ).length;
+            const pct =
+              totalCityZones > 0 ? Math.round((enabledCityZones / totalCityZones) * 100) : 0;
+
+            return (
+              <div
+                key={city.cityCode}
+                className="border-brand-purple/10 rounded-xl border bg-slate-50/60 p-3.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-brand-purple-dark text-xs font-bold">
+                    {city.cityName} · {city.zoneLabel}s ({enabledCityZones}/{totalCityZones})
+                  </p>
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCityZones(
+                          city.cityCode,
+                          city.zones.map((z) => z.id),
+                          true,
+                        )
+                      }
+                      className="text-brand-purple hover:text-brand-purple-dark font-semibold underline"
                     >
-                      <input
-                        type="checkbox"
-                        name="zone"
-                        value={key}
-                        checked={selected.has(key)}
-                        onChange={() => toggleZone(key)}
-                        className="accent-brand-purple h-3.5 w-3.5"
-                      />
-                      {z.name}
-                    </label>
-                  );
-                })}
+                      Seleccionar todas
+                    </button>
+                    <span className="text-slate-300">·</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCityZones(
+                          city.cityCode,
+                          city.zones.map((z) => z.id),
+                          false,
+                        )
+                      }
+                      className="text-brand-muted font-semibold underline hover:text-rose-600"
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 mb-3 h-1.5 overflow-hidden rounded-full bg-slate-200/80">
+                  <div
+                    className="admin-bar-grow-x bg-brand-purple h-full rounded-full transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+                  {city.zones.map((z) => {
+                    const key = `${city.cityCode}:${z.id}`;
+                    return (
+                      <label
+                        key={z.id}
+                        className="text-brand-purple-dark flex cursor-pointer items-center gap-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          name="zone"
+                          value={key}
+                          checked={selected.has(key)}
+                          onChange={() => toggleZone(key)}
+                          className="accent-brand-purple h-3.5 w-3.5"
+                        />
+                        {z.name}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </fieldset>
 

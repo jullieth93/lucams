@@ -12,6 +12,7 @@ import { verifyAdminRouteAccess } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { formatIsoDateCO } from "@/lib/datetime";
 import { logger } from "@/lib/logger";
 import {
   buildCrmSegmentCsv,
@@ -59,7 +60,7 @@ export async function GET(req: Request) {
 
   const items = await listAllConsentedSegmentMembersForExport(segmentKey);
   const csv = buildCrmSegmentCsv(items, segmentKey);
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = formatIsoDateCO(new Date());
 
   await recordAdminAction({
     actorId: auth.session.admin.id,
@@ -84,6 +85,8 @@ export async function GET(req: Request) {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="segmento-${segmentKey}-${stamp}.csv"`,
       "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "X-Robots-Tag": "noindex, nofollow",
     },
   });
 }

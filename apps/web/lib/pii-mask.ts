@@ -9,7 +9,11 @@
  */
 
 import type { AdminRole } from "@lucams/db";
-import { hasCapability } from "@/lib/admin-rbac";
+import {
+  canSeeOrderCodCollectionAmount,
+  canSeeOrderCommercialBreakdown,
+  hasCapability,
+} from "@/lib/admin-rbac";
 
 const MASKED_ADDRESS_LINE = "Dirección protegida (ver guía oficial de despacho)";
 
@@ -42,6 +46,16 @@ export function maskEmail(raw: string | null | undefined): string {
   const domainName = domainFull.slice(0, dotIdx);
   const tld = domainFull.slice(dotIdx + 1);
   return `${maskSegment(local)}@${maskSegment(domainName)}.${tld}`;
+}
+
+/**
+ * Enmascara cualquier correo electrónico incrustado dentro de un texto libre
+ * (ej. descripciones automáticas de cupones de referidos) preservando el resto
+ * de la frase.
+ */
+export function maskEmailsInText(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, (match) => maskEmail(match));
 }
 
 /**
@@ -97,6 +111,28 @@ export function maskPersonName(raw: string | null | undefined): string {
 }
 
 /**
+ * Enmascara una identidad de la lista de bloqueo contraentrega (`BlockedIdentity`)
+ * para perfiles analíticos sin permiso `orders:read_pii` (`FINANCE_ANALYST`).
+ */
+export function maskBlockedIdentityValue(
+  kind: "EMAIL" | "PHONE" | "ADDRESS" | string,
+  raw: string | null | undefined,
+): string {
+  const value = (raw ?? "").trim();
+  if (!value) return "—";
+  if (kind === "EMAIL") return maskEmail(value);
+  if (kind === "PHONE") return maskPhone(value);
+  // Clave normalizada de dirección (ej. "bogota:calle 123 45 67" o texto libre):
+  // preserva prefijo geográfico si viene separado por ":" o "|" y protege nomenclatura.
+  const sepIdx = value.search(/[:|]/);
+  if (sepIdx > 0 && sepIdx < 32) {
+    const cityPrefix = value.slice(0, sepIdx).trim();
+    return `${cityPrefix} · [dirección protegida]`;
+  }
+  return MASKED_ADDRESS_LINE;
+}
+
+/**
  * Enmascara un snapshot JSON de dirección de envío (`Order.shippingAddress`)
  * preservando ciudad y departamento para contexto logístico general sin exponer
  * dirección exacta, documento, email ni teléfonos.
@@ -106,8 +142,10 @@ export function maskShippingAddressSnapshot(snapshot: unknown): Record<string, u
     return {};
   }
   const src = snapshot as Record<string, unknown>;
-  const out: Record<string, unknown> = { ...src };
+  const out: Record<string, unknown> = {};
 
+  if ("city" in src) out.city = src.city;
+  if ("department" in src) out.department = src.department;
   if (typeof src.fullName === "string" && src.fullName.trim()) {
     out.fullName = maskPersonName(src.fullName);
   }
@@ -129,19 +167,34 @@ export function maskShippingAddressSnapshot(snapshot: unknown): Record<string, u
   if (typeof src.line1 === "string" && src.line1.trim()) {
     out.line1 = MASKED_ADDRESS_LINE;
   }
-  if ("addressLine2" in out) {
-    out.addressLine2 = undefined;
-  }
-  if ("neighborhood" in out) {
-    out.neighborhood = undefined;
-  }
-  if ("zip" in out) {
-    out.zip = undefined;
-  }
-  if ("notes" in out && typeof src.notes === "string" && src.notes.trim()) {
+  if ("addressLine2" in src) out.addressLine2 = undefined;
+  if ("neighborhood" in src) out.neighborhood = undefined;
+  if ("zip" in src) out.zip = undefined;
+  if ("notes" in src && typeof src.notes === "string" && src.notes.trim()) {
     out.notes = "[nota protegida]";
   }
   return out;
+}
+
+export function maskCopAmountsInText(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw
+    .replace(
+      /(?:\$\s*|\bCOP\s*\$?\s*)(?:\d{1,3}(?:[.\s]\d{3})+|\d+)(?:,\d{1,2})?/gi,
+      "[monto COP protegido]",
+    )
+    .replace(
+      /\b(?:\d{1,3}(?:[.\s]\d{3})+|\d+)(?:,\d{1,2})?\s*(?:COP|pesos(?:\s+colombianos)?)\b/gi,
+      "[monto COP protegido]",
+    );
+}
+
+export function maskOrderOperationalTextForActor(
+  raw: string | null | undefined,
+  role: AdminRole,
+): string {
+  const withoutPii = hasCapability(role, "orders:read_pii") ? (raw ?? "") : maskEmailsInText(raw);
+  return canSeeOrderCommercialBreakdown(role) ? withoutPii : maskCopAmountsInText(withoutPii);
 }
 
 export type OrderLikeWithPii = {
@@ -159,6 +212,24 @@ export type OrderLikeWithPii = {
   recipientName?: string | null;
   recipientPhone?: string | null;
   giftMessage?: string | null;
+  paymentMethod?: string | null;
+  subtotal?: number;
+  discount?: number;
+  loyaltyDiscount?: number;
+  loyaltyPointsRedeemed?: number;
+  shipping?: number;
+  tax?: number;
+  total?: number;
+  refundAmount?: number | null;
+  reconciliationReason?: string | null;
+  reconciliationNote?: string | null;
+  couponId?: string | null;
+  coupon?: unknown;
+  codReconciliation?: unknown;
+  wompiTransactionId?: string | null;
+  wompiReference?: string | null;
+  wompiAttempts?: unknown[];
+  items?: Array<Record<string, unknown>>;
   customer?: {
     id?: string;
     email?: string;
@@ -169,13 +240,14 @@ export type OrderLikeWithPii = {
 
 /**
  * Aplica enmascaramiento server-side sobre un `Order` completo (detalle o listado)
- * cuando el actor administrativo NO posee `orders:read_pii` (ej. `PRINT_WORKSHOP`).
- * Nota operativa:
- *   - `giftMessage` se conserva íntegro porque el taller lo imprime en la tarjeta física.
- *   - `notes` (instrucciones de portería/entrega) y `shippingAddressKey` se protegen.
- *   - `labelPath`, `labelUrl` y `trackingUrl` se anulan salvo para `FULFILLMENT`
- *     (despachos necesita pegar la etiqueta de transporte, pero `PRINT_WORKSHOP` nunca
- *     debe recibir URLs de guías que revelan dirección exacta y teléfono).
+ * cuando el actor administrativo NO posee `orders:read_pii` (ej. `PRINT_WORKSHOP`,
+ * `FULFILLMENT`, `FINANCE_ANALYST`).
+ *   - El taller conserva `giftMessage` para imprimir la tarjeta; finanzas no lo recibe.
+ *   - `notes`, `shippingAddressKey`, facturación y datos de reconciliación se proyectan por rol.
+ *   - `labelPath`, `labelUrl` y `trackingUrl` se anulan salvo para `FULFILLMENT`.
+ *   - Si el rol carece de `canSeeOrderCommercialBreakdown`, se eliminan importes, cupones,
+ *     precios unitarios e historial Wompi. `FULFILLMENT` solo conserva el recaudo COD.
+ *   - Finanzas no recibe previews ni contenido editable de diseños personalizados.
  * Si el actor posee `orders:read_pii`, devuelve la referencia intacta.
  */
 export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: AdminRole): T {
@@ -184,6 +256,9 @@ export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: Ad
   }
 
   const stripCarrierLabelUrls = role !== "FULFILLMENT";
+  const hideCommercialBreakdown = !canSeeOrderCommercialBreakdown(role);
+  const preserveCodTotal = canSeeOrderCodCollectionAmount(role) && order.paymentMethod === "COD";
+  const hideDesignContent = role === "FINANCE_ANALYST";
 
   return {
     ...order,
@@ -197,18 +272,25 @@ export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: Ad
     ...(stripCarrierLabelUrls && order.labelPath !== undefined ? { labelPath: null } : {}),
     ...(stripCarrierLabelUrls && order.labelUrl !== undefined ? { labelUrl: null } : {}),
     ...(stripCarrierLabelUrls && order.trackingUrl !== undefined ? { trackingUrl: null } : {}),
-    ...(order.billingDocumentNumber !== undefined
+    ...(role === "FINANCE_ANALYST" && order.giftMessage !== undefined ? { giftMessage: null } : {}),
+    ...(role === "PRINT_WORKSHOP"
       ? {
-          billingDocumentNumber: order.billingDocumentNumber
-            ? maskDocumentNumber(order.billingDocumentNumber)
-            : null,
+          ...(order.billingDocumentType !== undefined ? { billingDocumentType: null } : {}),
+          ...(order.billingDocumentNumber !== undefined ? { billingDocumentNumber: null } : {}),
+          ...(order.billingName !== undefined ? { billingName: null } : {}),
         }
-      : {}),
-    ...(order.billingName !== undefined
-      ? {
-          billingName: order.billingName ? maskPersonName(order.billingName) : null,
-        }
-      : {}),
+      : {
+          ...(order.billingDocumentNumber !== undefined
+            ? {
+                billingDocumentNumber: order.billingDocumentNumber
+                  ? maskDocumentNumber(order.billingDocumentNumber)
+                  : null,
+              }
+            : {}),
+          ...(order.billingName !== undefined
+            ? { billingName: order.billingName ? maskPersonName(order.billingName) : null }
+            : {}),
+        }),
     ...(order.recipientName !== undefined
       ? {
           recipientName: order.recipientName ? maskPersonName(order.recipientName) : null,
@@ -217,6 +299,20 @@ export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: Ad
     ...(order.recipientPhone !== undefined
       ? {
           recipientPhone: order.recipientPhone ? maskPhone(order.recipientPhone) : null,
+        }
+      : {}),
+    ...(order.reconciliationReason !== undefined
+      ? {
+          reconciliationReason: hideCommercialBreakdown
+            ? null
+            : maskOrderOperationalTextForActor(order.reconciliationReason, role),
+        }
+      : {}),
+    ...(order.reconciliationNote !== undefined
+      ? {
+          reconciliationNote: hideCommercialBreakdown
+            ? null
+            : maskOrderOperationalTextForActor(order.reconciliationNote, role),
         }
       : {}),
     ...(order.customer !== undefined
@@ -236,6 +332,78 @@ export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: Ad
                   : {}),
               }
             : null,
+        }
+      : {}),
+    ...(hideCommercialBreakdown
+      ? {
+          ...(order.subtotal !== undefined ? { subtotal: 0 } : {}),
+          ...(order.discount !== undefined ? { discount: 0 } : {}),
+          ...(order.loyaltyDiscount !== undefined ? { loyaltyDiscount: 0 } : {}),
+          ...(order.loyaltyPointsRedeemed !== undefined ? { loyaltyPointsRedeemed: 0 } : {}),
+          ...(order.shipping !== undefined ? { shipping: 0 } : {}),
+          ...(order.tax !== undefined ? { tax: 0 } : {}),
+          ...(order.total !== undefined ? { total: preserveCodTotal ? order.total : 0 } : {}),
+          ...(order.refundAmount !== undefined ? { refundAmount: null } : {}),
+          ...(order.couponId !== undefined ? { couponId: null } : {}),
+          ...(order.coupon !== undefined ? { coupon: null } : {}),
+          ...(order.codReconciliation !== undefined ? { codReconciliation: null } : {}),
+          ...(order.wompiTransactionId !== undefined ? { wompiTransactionId: null } : {}),
+          ...(order.wompiReference !== undefined ? { wompiReference: null } : {}),
+          ...(order.wompiAttempts !== undefined ? { wompiAttempts: [] } : {}),
+        }
+      : {}),
+    ...(order.items !== undefined && (hideCommercialBreakdown || hideDesignContent)
+      ? {
+          items: order.items.map((item) => {
+            const maskedItem: Record<string, unknown> = { ...item };
+            if (hideCommercialBreakdown && "unitPrice" in maskedItem) maskedItem.unitPrice = 0;
+            if (
+              hideCommercialBreakdown &&
+              maskedItem.retractRequest &&
+              typeof maskedItem.retractRequest === "object" &&
+              "refundAmount" in maskedItem.retractRequest
+            ) {
+              maskedItem.retractRequest = {
+                ...(maskedItem.retractRequest as Record<string, unknown>),
+                refundAmount: 0,
+              };
+            }
+            if (hideDesignContent) {
+              if ("designAssetUrl" in maskedItem) maskedItem.designAssetUrl = null;
+              if ("customDesign" in maskedItem) maskedItem.customDesign = null;
+              if (
+                maskedItem.design &&
+                typeof maskedItem.design === "object" &&
+                !Array.isArray(maskedItem.design)
+              ) {
+                const design = maskedItem.design as Record<string, unknown>;
+                maskedItem.design = {
+                  ...design,
+                  ...("previewUrl" in design ? { previewUrl: null } : {}),
+                  ...("canvasData" in design ? { canvasData: null } : {}),
+                };
+              }
+              if (
+                maskedItem.metadata &&
+                typeof maskedItem.metadata === "object" &&
+                !Array.isArray(maskedItem.metadata)
+              ) {
+                const metadata = maskedItem.metadata as Record<string, unknown>;
+                const snapshot = metadata.designSnapshot;
+                if (snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)) {
+                  const designSnapshot = snapshot as Record<string, unknown>;
+                  maskedItem.metadata = {
+                    ...metadata,
+                    designSnapshot: {
+                      ...designSnapshot,
+                      ...("previewUrl" in designSnapshot ? { previewUrl: null } : {}),
+                    },
+                  };
+                }
+              }
+            }
+            return maskedItem;
+          }),
         }
       : {}),
   };

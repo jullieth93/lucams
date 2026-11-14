@@ -1,7 +1,10 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { recordAdminAction } from "@/lib/admin-audit";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { logger } from "@/lib/logger";
 import { SaveHelpProgressSchema, SubmitHelpFeedbackSchema } from "./schemas";
 import { saveAdminHelpProgress, submitAdminHelpFeedback } from "./service";
 import type { AdminHelpProgress } from "./types";
@@ -20,6 +23,7 @@ export async function saveHelpProgressAction(input: unknown): Promise<AdminHelpA
     ...parsed.data,
   });
   if (!progress) return { ok: false, message: "La guía no está disponible para tu rol." };
+  revalidatePath("/admin/ayuda");
   return { ok: true, progress, message: "Avance guardado." };
 }
 
@@ -36,5 +40,24 @@ export async function submitHelpFeedbackAction(input: unknown): Promise<AdminHel
     ...parsed.data,
   });
   if (!saved) return { ok: false, message: "La guía no está disponible para tu rol." };
+
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "help.feedback_submit",
+    entityType: "AdminHelpFeedback",
+    entityId: parsed.data.guideId,
+    metadata: {
+      isHelpful: parsed.data.isHelpful,
+      hasComment: Boolean(parsed.data.comment),
+    },
+  });
+  logger.info({
+    event: "admin_help.feedback_submitted",
+    actorId: session.admin.id,
+    guideId: parsed.data.guideId,
+    isHelpful: parsed.data.isHelpful,
+  });
+  revalidatePath("/admin/ayuda");
+
   return { ok: true, message: "Gracias por ayudarnos a mejorar esta guía." };
 }

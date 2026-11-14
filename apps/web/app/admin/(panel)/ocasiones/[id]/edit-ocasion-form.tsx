@@ -1,8 +1,34 @@
 "use client";
 
 import { useActionState } from "react";
+import { Loader2, RotateCcw, Save, Trash2 } from "lucide-react";
+import { AdminNotice } from "@/components/admin-page";
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { deleteOcasionAction, updateOcasionAction, type OcasionActionState } from "../actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  deleteOcasionAction,
+  restoreOcasionAction,
+  updateOcasionAction,
+  type OcasionActionState,
+} from "../actions";
+
+const MONTH_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 1, label: "Enero" },
+  { value: 2, label: "Febrero" },
+  { value: 3, label: "Marzo (Día de la Mujer)" },
+  { value: 4, label: "Abril" },
+  { value: 5, label: "Mayo (Día de la Madre)" },
+  { value: 6, label: "Junio (Día del Padre)" },
+  { value: 7, label: "Julio" },
+  { value: 8, label: "Agosto" },
+  { value: 9, label: "Septiembre (Amor y Amistad)" },
+  { value: 10, label: "Octubre (Halloween)" },
+  { value: 11, label: "Noviembre (Grados)" },
+  { value: 12, label: "Diciembre (Navidad)" },
+];
 
 type Props = {
   ocasion: {
@@ -14,6 +40,7 @@ type Props = {
     suggestedQuantityRange: { min: number; ideal: number; max: number } | null;
     order: number;
     isActive: boolean;
+    deletedAt: string | null;
   };
 };
 
@@ -22,148 +49,253 @@ export function EditOcasionForm({ ocasion }: Props) {
     updateOcasionAction,
     null,
   );
+  const isArchived = Boolean(ocasion.deletedAt);
 
   return (
     <>
+      {isArchived && (
+        <div className="mb-4">
+          <AdminNotice tone="warning">
+            Esta ocasión está <strong>archivada</strong> y no aparece en la tienda ni en filtros.
+            Puedes restaurarla abajo cuando quieras volver a usarla.
+          </AdminNotice>
+        </div>
+      )}
+
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="id" value={ocasion.id} />
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Nombre</label>
-            <input
+            <Label
+              htmlFor="edit-name"
+              className="text-brand-purple-dark mb-1 block text-sm font-medium"
+            >
+              Nombre <span className="text-rose-600">*</span>
+            </Label>
+            <Input
+              id="edit-name"
               name="name"
               defaultValue={ocasion.name}
               required
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
+            {state?.fieldErrors?.name && (
+              <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.name[0]}</p>
+            )}
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Slug</label>
-            <input
+            <Label
+              htmlFor="edit-slug"
+              className="text-brand-purple-dark mb-1 block text-sm font-medium"
+            >
+              Slug <span className="text-rose-600">*</span>
+            </Label>
+            <Input
+              id="edit-slug"
               name="slug"
               defaultValue={ocasion.slug}
               required
-              pattern="[a-z0-9-]+"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+              pattern="[a-z0-9]+(-[a-z0-9]+)*"
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono text-sm"
             />
+            <p className="text-brand-muted mt-1 text-[11px]">
+              Si cambias el slug, creamos automáticamente un redirect 301 desde{" "}
+              <code>/ocasion/{ocasion.slug}</code> para no romper enlaces existentes.
+            </p>
+            {state?.fieldErrors?.slug && (
+              <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.slug[0]}</p>
+            )}
           </div>
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            Descripción semántica (bot AI)
-          </label>
-          <textarea
+          <Label
+            htmlFor="edit-description"
+            className="text-brand-purple-dark mb-1 block text-sm font-medium"
+          >
+            Descripción semántica y SEO <span className="text-rose-600">*</span>
+          </Label>
+          <p className="text-brand-muted mb-2 text-xs">
+            Se muestra y utiliza en <code>/ocasion/{ocasion.slug}</code>, en filtros de catálogo y
+            en el motor de recomendación (<code>/api/catalog/recommend</code>).
+          </p>
+          <Textarea
+            id="edit-description"
             name="description"
             defaultValue={ocasion.description}
             required
-            rows={6}
+            rows={5}
             minLength={20}
             maxLength={2000}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 text-sm"
           />
+          {state?.fieldErrors?.description && (
+            <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.description[0]}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Mes destacado</label>
+            <Label
+              htmlFor="edit-monthHint"
+              className="text-brand-purple-dark mb-1 block text-sm font-medium"
+            >
+              Mes destacado
+            </Label>
             <select
+              id="edit-monthHint"
               name="monthHint"
               defaultValue={ocasion.monthHint ?? ""}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
-              <option value="">Sin mes específico</option>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m}>
-                  Mes {m}
+              <option value="">Todo el año (sin mes fijo)</option>
+              {MONTH_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
                 </option>
               ))}
             </select>
+            {state?.fieldErrors?.monthHint && (
+              <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.monthHint[0]}</p>
+            )}
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Orden</label>
-            <input
+            <Label
+              htmlFor="edit-order"
+              className="text-brand-purple-dark mb-1 block text-sm font-medium"
+            >
+              Orden de aparición
+            </Label>
+            <Input
+              id="edit-order"
               name="order"
               type="number"
               min="0"
               defaultValue={ocasion.order}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
+            {state?.fieldErrors?.order && (
+              <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.order[0]}</p>
+            )}
           </div>
         </div>
 
-        <fieldset className="rounded-md border border-slate-200 p-3">
-          <legend className="px-2 text-sm font-semibold text-slate-700">Cantidad sugerida</legend>
+        <fieldset className="border-brand-purple/15 rounded-xl border bg-slate-50/50 p-3.5">
+          <legend className="text-brand-purple-dark px-2 text-sm font-semibold">
+            Cantidad sugerida (opcional)
+          </legend>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Mínimo</label>
-              <input
+              <Label
+                htmlFor="edit-rangeMin"
+                className="text-brand-purple-dark/80 mb-1 block text-xs"
+              >
+                Mínimo
+              </Label>
+              <Input
+                id="edit-rangeMin"
                 name="rangeMin"
                 type="number"
                 min="1"
                 defaultValue={ocasion.suggestedQuantityRange?.min ?? ""}
-                className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                className="border-brand-purple/20 bg-white text-sm"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Ideal</label>
-              <input
+              <Label
+                htmlFor="edit-rangeIdeal"
+                className="text-brand-purple-dark/80 mb-1 block text-xs"
+              >
+                Ideal
+              </Label>
+              <Input
+                id="edit-rangeIdeal"
                 name="rangeIdeal"
                 type="number"
                 min="1"
                 defaultValue={ocasion.suggestedQuantityRange?.ideal ?? ""}
-                className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                className="border-brand-purple/20 bg-white text-sm"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Máximo</label>
-              <input
+              <Label
+                htmlFor="edit-rangeMax"
+                className="text-brand-purple-dark/80 mb-1 block text-xs"
+              >
+                Máximo
+              </Label>
+              <Input
+                id="edit-rangeMax"
                 name="rangeMax"
                 type="number"
                 min="1"
                 defaultValue={ocasion.suggestedQuantityRange?.max ?? ""}
-                className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                className="border-brand-purple/20 bg-white text-sm"
               />
             </div>
           </div>
         </fieldset>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            name="isActive"
-            defaultChecked={ocasion.isActive}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          <span className="text-slate-700">Activa (visible al cliente)</span>
-        </label>
-
-        {state?.error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            🔴 {state.error}
-          </div>
+        {!isArchived && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="isActive"
+              defaultChecked={ocasion.isActive}
+              className="accent-brand-purple h-4 w-4 rounded border-slate-300"
+            />
+            <span className="text-brand-purple-dark font-medium">
+              Activa (visible en tienda y filtros)
+            </span>
+          </label>
         )}
 
-        <button
+        {state?.error && <AdminNotice tone="error">{state.error}</AdminNotice>}
+
+        <Button
           type="submit"
           disabled={isPending}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+          className="bg-gradient-brand text-white hover:brightness-110"
         >
-          {isPending ? "Guardando..." : "Guardar cambios"}
-        </button>
+          {isPending ? (
+            <>
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              Guardando…
+            </>
+          ) : (
+            <>
+              <Save className="mr-1.5 h-4 w-4" />
+              Guardar cambios
+            </>
+          )}
+        </Button>
       </form>
 
-      <ConfirmAction
-        action={deleteOcasionAction}
-        message="¿Archivar esta ocasión? Los productos asociados pierden el tag."
-        className="mt-6 border-t border-slate-200 pt-6"
-      >
-        <input type="hidden" name="id" value={ocasion.id} />
-        <button type="submit" className="text-sm font-medium text-red-700 hover:text-red-900">
-          🗑 Archivar ocasión
-        </button>
-      </ConfirmAction>
+      {isArchived ? (
+        <form action={restoreOcasionAction} className="border-brand-purple/10 mt-6 border-t pt-5">
+          <input type="hidden" name="id" value={ocasion.id} />
+          <Button type="submit" variant="outline" size="sm" className="text-brand-purple-dark">
+            <RotateCcw className="mr-1.5 h-4 w-4" />
+            Restaurar ocasión (como inactiva)
+          </Button>
+        </form>
+      ) : (
+        <ConfirmAction
+          action={deleteOcasionAction}
+          message="¿Archivar esta ocasión? Dejará de mostrarse en la tienda y filtros hasta que la restaures."
+          className="border-brand-purple/10 mt-6 border-t pt-5"
+        >
+          <input type="hidden" name="id" value={ocasion.id} />
+          <button
+            type="submit"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-rose-700 hover:text-rose-900"
+          >
+            <Trash2 className="h-4 w-4" />
+            Archivar ocasión
+          </button>
+        </ConfirmAction>
+      )}
     </>
   );
 }

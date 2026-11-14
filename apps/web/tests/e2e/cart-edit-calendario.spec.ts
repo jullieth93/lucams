@@ -1,5 +1,6 @@
 import path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
+import { dismissCookieBanner } from "./fixtures/auth";
 
 /*
  * REGRESIÓN (F1.1, plan maduración 2026-10) — editar un diseño desde el carrito y agregar
@@ -38,18 +39,14 @@ async function dismissOverlays(page: Page) {
 }
 
 async function fillEmptySlotsWithUploads(page: Page, count: number) {
-  // Abrir el panel de fotos en mobile si hace falta (bottom sheet tras FAB «Editar»).
-  const editarFab = page.getByRole("button", { name: /^Editar/i }).first();
-  if (
-    (await editarFab.count()) &&
-    !(await page
-      .getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i })
-      .isVisible()
-      .catch(() => false))
-  ) {
-    await editarFab.click();
-  }
   const consent = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
+  if (!(await consent.isVisible().catch(() => false))) {
+    await page.keyboard.press("Escape");
+    await page
+      .getByRole("button", { name: /abre las herramientas de plantillas y fotos/i })
+      .click();
+    await consent.waitFor({ state: "visible", timeout: 30_000 });
+  }
   if (await consent.isVisible().catch(() => false)) {
     if (!(await consent.isChecked())) await consent.check();
   }
@@ -90,19 +87,46 @@ test("repro STG — editar set de calendario desde el carrito y agregar sets", a
   });
 
   // ── Paso 1: diseñar 1 set de calendario (12 fotos) y agregarlo al carrito ──
-  await page.goto("/estudio/calendario-mes-a-mes-fotos", { waitUntil: "domcontentloaded" });
+  await page.goto("/producto/calendario-mes-a-mes-fotos", { waitUntil: "domcontentloaded" });
+  await dismissCookieBanner(page);
+  const conIman = page
+    .getByRole("group", { name: "¿Con imán?" })
+    .getByRole("button", { name: /Con imán/i });
+  await expect(conIman).toBeEnabled({ timeout: 15_000 });
+  await conIman.click();
+  await expect(conIman).toHaveAttribute("aria-pressed", "true");
+  const studioCta = page.getByRole("link", { name: /Personalizar producto/i });
+  await expect(studioCta).toHaveAttribute(
+    "href",
+    /\/estudio\/calendario-mes-a-mes-fotos\?variant=/,
+  );
+  await studioCta.click();
+  await page.waitForURL(/\/estudio\/calendario-mes-a-mes-fotos\?variant=/, { timeout: 30_000 });
   await page
     .locator('div[role="dialog"][aria-labelledby="onboarding-title"]')
     .waitFor({ state: "attached", timeout: 8_000 })
     .catch(() => {});
   await dismissOverlays(page);
   const consent0 = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
+  if (!(await consent0.isVisible().catch(() => false))) {
+    await page
+      .getByRole("button", { name: /^Editar/i })
+      .first()
+      .click();
+  }
   await consent0.waitFor({ state: "visible", timeout: 30_000 });
   await page.waitForTimeout(1_500);
   await fillEmptySlotsWithUploads(page, 12);
   await expect(page.getByText("12/12 fotos").filter({ visible: true }).first()).toBeVisible({
     timeout: 60_000,
   });
+  const template = page
+    .getByRole("radiogroup", { name: /selecciona plantilla/i })
+    .getByRole("radio")
+    .first();
+  await expect(template).toBeVisible({ timeout: 30_000 });
+  await template.click();
+  await expect(template).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Escape");
 
   const listo = page

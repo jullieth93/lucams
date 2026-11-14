@@ -14,6 +14,7 @@ import {
   derivePackVolumeTiers,
   resolveVisibleVolumeTiers,
   resolveVolumeTierPrice,
+  validateWholesaleTierCandidate,
   type VolumeTierInput,
 } from "./volume-pricing";
 
@@ -275,5 +276,87 @@ describe("derivePackVolumeTiers (escala derivada de variantes — SOLO ahorro po
       2_250_000,
     );
     expect(groups).toEqual([]);
+  });
+});
+
+describe("validateWholesaleTierCandidate", () => {
+  it("rechaza precio igual o mayor al precio base de referencia del producto", () => {
+    expect(
+      validateWholesaleTierCandidate({
+        minQty: 5,
+        unitPrice: 1_000_000,
+        willBeActive: true,
+        referencePrice: 1_000_000,
+        activeSiblings: [],
+      }),
+    ).toEqual({ kind: "ABOVE_OR_EQUAL_BASE", referencePrice: 1_000_000 });
+
+    expect(
+      validateWholesaleTierCandidate({
+        minQty: 5,
+        unitPrice: 1_200_000,
+        willBeActive: false,
+        referencePrice: 1_000_000,
+        activeSiblings: [],
+      }),
+    ).toEqual({ kind: "ABOVE_OR_EQUAL_BASE", referencePrice: 1_000_000 });
+  });
+
+  it("rechaza escalas invertidas hacia arriba o hacia abajo cuando el nivel estará activo", () => {
+    // Ya existe 3+ -> $9.000; intentar crear 5+ -> $9.000 o $9.500 es inversión
+    expect(
+      validateWholesaleTierCandidate({
+        minQty: 5,
+        unitPrice: 900_000,
+        willBeActive: true,
+        referencePrice: 1_000_000,
+        activeSiblings: [{ minQty: 3, unitPrice: 900_000 }],
+      }),
+    ).toEqual({
+      kind: "INVERTED_HIGHER_QTY",
+      conflictMinQty: 3,
+      conflictUnitPrice: 900_000,
+    });
+
+    // Ya existe 10+ -> $8.000; intentar crear 4+ -> $7.500 es inversión hacia abajo
+    expect(
+      validateWholesaleTierCandidate({
+        minQty: 4,
+        unitPrice: 750_000,
+        willBeActive: true,
+        referencePrice: 1_000_000,
+        activeSiblings: [{ minQty: 10, unitPrice: 800_000 }],
+      }),
+    ).toEqual({
+      kind: "INVERTED_LOWER_QTY",
+      conflictMinQty: 10,
+      conflictUnitPrice: 800_000,
+    });
+  });
+
+  it("permite escalas estrictamente decrecientes y borradores desactivados menores al base", () => {
+    expect(
+      validateWholesaleTierCandidate({
+        minQty: 5,
+        unitPrice: 800_000,
+        willBeActive: true,
+        referencePrice: 1_000_000,
+        activeSiblings: [
+          { minQty: 3, unitPrice: 900_000 },
+          { minQty: 10, unitPrice: 700_000 },
+        ],
+      }),
+    ).toBeNull();
+
+    // Si está desactivado, permite guardar temporalmente sin chocar con otros niveles activos
+    expect(
+      validateWholesaleTierCandidate({
+        minQty: 5,
+        unitPrice: 920_000,
+        willBeActive: false,
+        referencePrice: 1_000_000,
+        activeSiblings: [{ minQty: 3, unitPrice: 900_000 }],
+      }),
+    ).toBeNull();
   });
 });

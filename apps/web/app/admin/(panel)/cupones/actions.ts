@@ -6,6 +6,7 @@ import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { isMfaReauthRequired, requireRecentMfa } from "@/lib/admin-reauth";
 import {
   CouponValidationError,
   archiveCoupon,
@@ -22,17 +23,25 @@ import { logger } from "@/lib/logger";
 export type CouponActionState = {
   error?: string;
   fieldErrors?: Partial<
-    Record<"code" | "type" | "value" | "validFrom" | "validTo" | "minOrder", string[]>
+    Record<
+      | "code"
+      | "type"
+      | "value"
+      | "validFrom"
+      | "validTo"
+      | "minOrder"
+      | "maxUses"
+      | "maxUsesPerCustomer"
+      | "requiresMinQuantity",
+      string[]
+    >
   >;
 };
 
-/*
- * Defensa en capas sobre el multi-select del form: un slug de categoría o
- * producto que NO existe en el catálogo haría que el cupón nunca aplicara
- * (redemption.ts hace match exacto por slug) y antes fallaba en silencio.
- * Devuelve el mensaje de error listo para mostrar, o null si todo existe.
- * "Existe" = no soft-deleted (un producto pausado sigue siendo referenciable).
- */
+function isNextRedirect(err: unknown): boolean {
+  return err instanceof Error && err.message === "NEXT_REDIRECT";
+}
+
 async function restrictionSlugsError(payload: {
   appliesToCategories: string[];
   appliesToProductSlugs: string[];
@@ -73,15 +82,11 @@ async function restrictionSlugsError(payload: {
 }
 
 function parsePayload(formData: FormData) {
-  const minOrderRaw = formData.get("minOrder");
-  const maxUsesRaw = formData.get("maxUses");
-  const maxUsesPerCustomerRaw = formData.get("maxUsesPerCustomer");
-  const requiresMinQuantityRaw = formData.get("requiresMinQuantity");
+  const minOrderRaw = String(formData.get("minOrder") ?? "").trim();
+  const maxUsesRaw = String(formData.get("maxUses") ?? "").trim();
+  const maxUsesPerCustomerRaw = String(formData.get("maxUsesPerCustomer") ?? "").trim();
+  const requiresMinQuantityRaw = String(formData.get("requiresMinQuantity") ?? "").trim();
 
-  // #3 — el admin digita PESOS (como piensa cualquier colombiana); el sistema guarda CENTAVOS. Para
-  // FIXED convertimos ×100; para PERCENT el valor es un porcentaje (NO se multiplica); FREE_SHIPPING
-  // ignora el valor. minOrder también es dinero → ×100. Math.round evita floats (0.1*100). maxUses y
-  // cantidades NO son dinero → sin conversión. Aplica a create y update (parsePayload es compartido).
   const type = String(formData.get("type") ?? "PERCENT") as "PERCENT" | "FIXED" | "FREE_SHIPPING";
   const rawValue = Number(formData.get("value") ?? 0);
 
@@ -90,8 +95,8 @@ function parsePayload(formData: FormData) {
       .trim()
       .toUpperCase(),
     type,
-    value: type === "FIXED" ? Math.round(rawValue * 100) : rawValue,
-    description: (formData.get("description") as string | null) || null,
+    value: type === "FREE_SHIPPING" ? 0 : type === "FIXED" ? Math.round(rawValue * 100) : rawValue,
+    description: String(formData.get("description") ?? "").trim() || null,
     isPublic: formData.get("isPublic") === "on",
     isActive: formData.get("isActive") === "on",
     validFrom: cotStartOfDay(String(formData.get("validFrom") ?? "")),
@@ -121,7 +126,7 @@ export async function createCouponAction(
   if (!parsed.success) {
     const flat = z.flattenError(parsed.error);
     return {
-      error: "Datos inválidos.",
+      error: "Revisa los campos marcados en el formulario.",
       fieldErrors: flat.fieldErrors as CouponActionState["fieldErrors"],
     };
   }
@@ -141,11 +146,14 @@ export async function createCouponAction(
       action: "coupon.create",
       entityType: "Coupon",
       entityId: coupon.id,
-      metadata: { code: coupon.code, type: coupon.type, value: coupon.value },
+      metadata: {
+        code: coupon.code,
+        type: coupon.type,
+        value: coupon.value,
+        isPublic: coupon.isPublic,
+      },
     });
     revalidatePath("/admin/cupones");
-    // Los cupones se aplican y afectan el total en el paso de pago (NO en /carrito,
-    // que no tiene campo de cupón) — CF-06.
     revalidatePath("/checkout/pago");
     redirect("/admin/cupones?created=1");
   } catch (err) {
@@ -155,7 +163,7 @@ export async function createCouponAction(
         fieldErrors: { [err.field]: [err.message] } as CouponActionState["fieldErrors"],
       };
     }
-    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    if (isNextRedirect(err)) throw err;
     logger.error(
       {
         event: "admin.coupon.create_fail",
@@ -180,7 +188,7 @@ export async function updateCouponAction(
   if (!parsed.success) {
     const flat = z.flattenError(parsed.error);
     return {
-      error: "Datos inválidos.",
+      error: "Revisa los campos marcados en el formulario.",
       fieldErrors: flat.fieldErrors as CouponActionState["fieldErrors"],
     };
   }
@@ -192,14 +200,22 @@ export async function updateCouponAction(
   if (slugsError) return { error: slugsError };
 
   try {
-    await updateCoupon(parsed.data, session.admin.id);
+    const updated = await updateCoupon(parsed.data, session.admin.id);
     await recordAdminAction({
       actorId: session.admin.id,
       action: "coupon.update",
       entityType: "Coupon",
       entityId: id,
+      metadata: {
+        code: updated.code,
+        type: updated.type,
+        value: updated.value,
+        isActive: updated.isActive,
+        isPublic: updated.isPublic,
+      },
     });
     revalidatePath("/admin/cupones");
+    revalidatePath(`/admin/cupones/${id}`);
     revalidatePath("/checkout/pago");
     redirect("/admin/cupones?updated=1");
   } catch (err) {
@@ -209,7 +225,7 @@ export async function updateCouponAction(
         fieldErrors: { [err.field]: [err.message] } as CouponActionState["fieldErrors"],
       };
     }
-    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    if (isNextRedirect(err)) throw err;
     logger.error(
       {
         event: "admin.coupon.update_fail",
@@ -225,44 +241,94 @@ export async function updateCouponAction(
 export async function pauseCouponAction(formData: FormData): Promise<void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
   const id = String(formData.get("id") ?? "");
-  await pauseCoupon(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "coupon.pause",
-    entityType: "Coupon",
-    entityId: id,
-  });
-  revalidatePath("/admin/cupones");
-  revalidatePath("/checkout/pago");
-  redirect("/admin/cupones?paused=1");
+  try {
+    await pauseCoupon(id, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "coupon.pause",
+      entityType: "Coupon",
+      entityId: id,
+    });
+    revalidatePath("/admin/cupones");
+    revalidatePath(`/admin/cupones/${id}`);
+    revalidatePath("/checkout/pago");
+    redirect("/admin/cupones?paused=1");
+  } catch (err) {
+    if (isNextRedirect(err)) throw err;
+    const msg = err instanceof CouponValidationError ? err.message : "Error al pausar el cupón.";
+    logger.error({
+      event: "admin.coupon.pause_fail",
+      adminId: session.admin.id,
+      couponId: id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    redirect(`/admin/cupones?error=${encodeURIComponent(msg)}`);
+  }
 }
 
 export async function resumeCouponAction(formData: FormData): Promise<void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
   const id = String(formData.get("id") ?? "");
-  await resumeCoupon(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "coupon.resume",
-    entityType: "Coupon",
-    entityId: id,
-  });
-  revalidatePath("/admin/cupones");
-  revalidatePath("/checkout/pago");
-  redirect("/admin/cupones?resumed=1");
+  try {
+    await resumeCoupon(id, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "coupon.resume",
+      entityType: "Coupon",
+      entityId: id,
+    });
+    revalidatePath("/admin/cupones");
+    revalidatePath(`/admin/cupones/${id}`);
+    revalidatePath("/checkout/pago");
+    redirect("/admin/cupones?resumed=1");
+  } catch (err) {
+    if (isNextRedirect(err)) throw err;
+    const msg = err instanceof CouponValidationError ? err.message : "Error al reactivar el cupón.";
+    logger.error({
+      event: "admin.coupon.resume_fail",
+      adminId: session.admin.id,
+      couponId: id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    redirect(`/admin/cupones?error=${encodeURIComponent(msg)}`);
+  }
 }
 
-export async function archiveCouponAction(formData: FormData): Promise<void> {
+export async function archiveCouponAction(
+  formData: FormData,
+): Promise<{ reauthRequired?: boolean } | void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { reauthRequired: true };
+    }
+    throw err;
+  }
+
   const id = String(formData.get("id") ?? "");
-  await archiveCoupon(id, session.admin.id);
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "coupon.archive",
-    entityType: "Coupon",
-    entityId: id,
-  });
-  revalidatePath("/admin/cupones");
-  revalidatePath("/checkout/pago");
-  redirect("/admin/cupones?archived=1");
+  try {
+    await archiveCoupon(id, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "coupon.archive",
+      entityType: "Coupon",
+      entityId: id,
+    });
+    revalidatePath("/admin/cupones");
+    revalidatePath(`/admin/cupones/${id}`);
+    revalidatePath("/checkout/pago");
+    redirect("/admin/cupones?archived=1");
+  } catch (err) {
+    if (isNextRedirect(err)) throw err;
+    const msg = err instanceof CouponValidationError ? err.message : "Error al archivar el cupón.";
+    logger.error({
+      event: "admin.coupon.archive_fail",
+      adminId: session.admin.id,
+      couponId: id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    redirect(`/admin/cupones?error=${encodeURIComponent(msg)}`);
+  }
 }

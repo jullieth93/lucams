@@ -111,7 +111,11 @@ export async function changeAdminRoleAction(
       action: "admin.role_change",
       entityType: "AdminUser",
       entityId: id,
-      metadata: { newRole: updated.role, email: updated.email },
+      metadata: {
+        previousRole: updated.previousRole ?? null,
+        newRole: updated.role,
+        email: updated.email,
+      },
     });
     revalidatePath("/admin/usuarios");
     redirect("/admin/usuarios?role_changed=1");

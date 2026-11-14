@@ -20,10 +20,26 @@ describe.skipIf(!HAS_DB)(
     const createdContactIds: string[] = [];
     const createdTaskIds: string[] = [];
     const createdAdminIds: string[] = [];
+    const createdOpportunityIds: string[] = [];
+    const createdOrderIds: string[] = [];
+    const createdTicketIds: string[] = [];
 
     afterAll(async () => {
       if (createdTaskIds.length > 0) {
         await prisma.task.deleteMany({ where: { id: { in: createdTaskIds } } }).catch(() => {});
+      }
+      if (createdTicketIds.length > 0) {
+        await prisma.supportTicket
+          .deleteMany({ where: { id: { in: createdTicketIds } } })
+          .catch(() => {});
+      }
+      if (createdOrderIds.length > 0) {
+        await prisma.order.deleteMany({ where: { id: { in: createdOrderIds } } }).catch(() => {});
+      }
+      if (createdOpportunityIds.length > 0) {
+        await prisma.opportunity
+          .deleteMany({ where: { id: { in: createdOpportunityIds } } })
+          .catch(() => {});
       }
       if (createdContactIds.length > 0) {
         await prisma.contact
@@ -159,6 +175,173 @@ describe.skipIf(!HAS_DB)(
       });
       expect(reopened.status).toBe("OPEN");
       expect(reopened.completedAt).toBeNull();
+    });
+
+    it("persiste opportunityId en tareas y actividades para oportunidades consultivas B2B", async () => {
+      const suffix = randomUUID().slice(0, 6).toUpperCase();
+      const contact = await prisma.contact.create({
+        data: {
+          primaryEmail: `itest-crm-opp-${suffix.toLowerCase()}@lucams.test`,
+          displayName: "Empresa Eventos S.A.S.",
+        },
+      });
+      createdContactIds.push(contact.id);
+
+      const oppNumber = `OP-${suffix}`;
+      const opp = await prisma.opportunity.create({
+        data: {
+          number: oppNumber,
+          contactId: contact.id,
+          contactName: "Empresa Eventos S.A.S.",
+          title: `Regalos corporativos ${suffix}`,
+          eventType: "CORPORATE_GIFT",
+          stage: "QUALIFYING",
+          expectedUnits: 80,
+          expectedAmountCop: 4_500_000_00,
+        },
+      });
+      createdOpportunityIds.push(opp.id);
+
+      const oppTask = await createCrmTask({
+        title: `Enviar muestra física ${suffix}`,
+        priority: "HIGH",
+        contactId: contact.id,
+        opportunityId: opp.id,
+      });
+      createdTaskIds.push(oppTask.id);
+
+      await createContactActivity({
+        contactId: contact.id,
+        kind: "CALL",
+        body: "Llamada con compras: aprueban anticipo 50%.",
+        metadata: { opportunityId: opp.id, opportunityNumber: opp.number },
+      });
+
+      const oppTasks = await listTasksForEntity({ opportunityId: opp.id });
+      expect(oppTasks).toHaveLength(1);
+      expect(oppTasks[0]?.opportunityId).toBe(opp.id);
+      expect(oppTasks[0]?.opportunityNumber).toBe(oppNumber);
+
+      const contactActivities = await listActivitiesForEntity({ contactId: contact.id });
+      expect(contactActivities[0]?.opportunityId).toBe(opp.id);
+      expect(contactActivities[0]?.opportunityNumber).toBe(oppNumber);
+    });
+
+    it("rechaza relaciones cruzadas entre contacto, pedido, ticket y oportunidad", async () => {
+      const suffix = randomUUID().slice(0, 8);
+      const [contact, otherContact] = await Promise.all([
+        prisma.contact.create({
+          data: {
+            primaryEmail: `itest-crm-rel-a-${suffix}@lucams.test`,
+            displayName: "Contacto Relación A",
+          },
+        }),
+        prisma.contact.create({
+          data: {
+            primaryEmail: `itest-crm-rel-b-${suffix}@lucams.test`,
+            displayName: "Contacto Relación B",
+          },
+        }),
+      ]);
+      createdContactIds.push(contact.id, otherContact.id);
+
+      const order = await prisma.order.create({
+        data: {
+          number: `TEST-CRM-${suffix}`,
+          email: `itest-crm-rel-a-${suffix}@lucams.test`,
+          phone: "+573001112233",
+          contactId: contact.id,
+          paymentMethod: "WOMPI",
+          subtotal: 100_000,
+          shipping: 0,
+          total: 100_000,
+          shippingAddress: { city: "Bogotá", department: "Bogotá D.C." },
+        },
+      });
+      createdOrderIds.push(order.id);
+      const ticket = await prisma.supportTicket.create({
+        data: {
+          contactId: contact.id,
+          name: "Contacto Relación A",
+          email: `itest-crm-rel-a-${suffix}@lucams.test`,
+          subject: "ESTADO_PEDIDO",
+          message: "Fixture de coherencia relacional",
+        },
+      });
+      createdTicketIds.push(ticket.id);
+      const opportunity = await prisma.opportunity.create({
+        data: {
+          number: `OP-REL-${suffix.toUpperCase()}`,
+          contactId: contact.id,
+          title: "Fixture de coherencia B2B",
+        },
+      });
+      createdOpportunityIds.push(opportunity.id);
+
+      await expect(
+        createCrmTask({
+          title: "Tarea con pedido cruzado",
+          contactId: otherContact.id,
+          orderId: order.id,
+        }),
+      ).rejects.toThrow("El pedido no pertenece al contacto indicado.");
+      await expect(
+        createCrmTask({
+          title: "Tarea con ticket cruzado",
+          contactId: otherContact.id,
+          supportTicketId: ticket.id,
+        }),
+      ).rejects.toThrow("El ticket no pertenece al contacto indicado.");
+      await expect(
+        createCrmTask({
+          title: "Tarea con oportunidad cruzada",
+          contactId: otherContact.id,
+          opportunityId: opportunity.id,
+        }),
+      ).rejects.toThrow("La oportunidad no pertenece al contacto indicado.");
+      await expect(
+        createContactActivity({
+          contactId: otherContact.id,
+          orderId: order.id,
+          kind: "NOTE",
+          body: "Actividad con pedido de otro contacto",
+        }),
+      ).rejects.toThrow("El pedido no pertenece al contacto indicado.");
+      await expect(
+        createContactActivity({
+          contactId: otherContact.id,
+          supportTicketId: ticket.id,
+          kind: "NOTE",
+          body: "Actividad con ticket de otro contacto",
+        }),
+      ).rejects.toThrow("El ticket no pertenece al contacto indicado.");
+      await expect(
+        createContactActivity({
+          contactId: otherContact.id,
+          kind: "NOTE",
+          body: "Actividad con oportunidad de otro contacto",
+          metadata: { opportunityId: opportunity.id },
+        }),
+      ).rejects.toThrow("La oportunidad no pertenece al contacto indicado.");
+
+      const coherentTask = await createCrmTask({
+        title: "Tarea con relaciones coherentes",
+        contactId: contact.id,
+        orderId: order.id,
+        supportTicketId: ticket.id,
+        opportunityId: opportunity.id,
+      });
+      createdTaskIds.push(coherentTask.id);
+      const coherentActivity = await createContactActivity({
+        contactId: contact.id,
+        orderId: order.id,
+        supportTicketId: ticket.id,
+        kind: "NOTE",
+        body: "Todas las entidades pertenecen al mismo contacto",
+        metadata: { opportunityId: opportunity.id },
+      });
+      expect(coherentTask.contactId).toBe(contact.id);
+      expect(coherentActivity.contactId).toBe(contact.id);
     });
   },
 );

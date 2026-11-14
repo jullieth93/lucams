@@ -15,7 +15,8 @@
  * audit trail) con redirect de vuelta a ?section=materiales.
  */
 
-import { Boxes, Plus, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Boxes, Calculator, Plus, TriangleAlert } from "lucide-react";
 import {
   AdminBadge,
   AdminButton,
@@ -57,11 +58,13 @@ const qtyFmt = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 3 });
 
 export function ProductMaterialsPanel({
   productId,
+  productSku,
   items,
   availableMaterials,
   searchParams: sp,
 }: {
   productId: string;
+  productSku?: string;
   items: RecipeItemView[];
   availableMaterials: MaterialOption[];
   searchParams: SearchParams;
@@ -89,10 +92,33 @@ export function ProductMaterialsPanel({
       {typeof sp.error === "string" && <AdminNotice tone="error">{sp.error}</AdminNotice>}
 
       <AdminNotice tone="info">
-        <strong>¿Para qué sirve la receta?</strong> Define qué materiales lleva fabricar{" "}
-        <strong>una unidad</strong> de este producto. Con eso, la pantalla{" "}
-        <strong>Costos y márgenes</strong> te muestra un “costo sugerido por materiales” junto al
-        costo que cargaste a mano — el sugerido nunca pisa tu costo hasta que decidas usarlo.
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <strong>¿Para qué sirve la receta?</strong> Define qué materiales lleva fabricar{" "}
+            <strong>una unidad</strong> de este producto. Con eso,{" "}
+            <strong>Costos y márgenes</strong> te muestra el costo sugerido por materiales junto al
+            costo vigente — el sugerido nunca pisa tu costo hasta que decidas aplicarlo.
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Link
+              href="/admin/materiales"
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-8 items-center gap-1 rounded-md border bg-white px-2.5 text-xs font-semibold"
+            >
+              <Boxes className="h-3.5 w-3.5" />
+              Insumos
+            </Link>
+            <Link
+              href={
+                productSku ? `/admin/costos?q=${encodeURIComponent(productSku)}` : "/admin/costos"
+              }
+              className="bg-brand-purple inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-xs font-semibold text-white hover:brightness-110"
+            >
+              <Calculator className="h-3.5 w-3.5" />
+              Costos y márgenes
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+        </div>
       </AdminNotice>
 
       {missingCosts && (
@@ -100,7 +126,10 @@ export function ProductMaterialsPanel({
           <TriangleAlert className="mr-1 inline h-4 w-4 align-text-bottom" aria-hidden="true" />
           Algún insumo de la receta no tiene <strong>costo por unidad</strong> cargado, así que el
           costo sugerido no se puede calcular. Complétalo en{" "}
-          <strong>Producción → Materiales e insumos</strong>.
+          <Link href="/admin/materiales" className="font-semibold underline">
+            Materiales e insumos
+          </Link>
+          .
         </AdminNotice>
       )}
 

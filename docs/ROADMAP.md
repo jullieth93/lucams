@@ -65,6 +65,7 @@ Hitos de upgrade: `lucams-prod` ya opera en **Supabase Pro** (auditoría 2026-11
 
 ### Producto
 
+- **Generador de propuestas formales B2B desde Admin (evolución de `Quote`):** reutilizar la infraestructura heredada de Etapa 1 (`Quote`, `QuoteItem`, hoja de taller `/admin/cotizaciones/[id]/taller` y vista pública compartible `/cotizacion/[token]`) para emitir propuestas comerciales formales directamente desde `/admin/oportunidades/[id]` (`1 Opportunity → N Quotes`, renglones con escalas mayoristas o condiciones corporativas, vigencia configurable, enlace/PDF para áreas de compras y conversión directa a pedido aprobado). Mientras tanto, en modo `full`, `/admin/cotizaciones` permanece como archivo histórico silencioso fuera del menú y del buscador `⌘K`.
 - Portal mayorista `/mayorista` autenticado para cuentas corporativas recurrentes (`isWholesale` con listas de precios dedicadas), complementando las escalas públicas de `WholesaleTier` y el canal consultivo actual de `/empresas-y-eventos` + `/cotizacion/[token]`.
 - Bundle Creator interactivo (armador visual de cajas regalo con descuento progresivo).
 - Blog editorial con MDX (`/blog`, modelo `BlogPost` reservado en Prisma como `FUTURO_APROBADO`) orientado a guías de regalo y SEO orgánico en Colombia.

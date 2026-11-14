@@ -11,7 +11,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -33,8 +33,14 @@ import {
   AdminPageHeader,
 } from "@/components/admin-page";
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { getCurrentAdmin } from "@/lib/auth";
-import { hasCapability } from "@/lib/admin-rbac";
+import {
+  ADMIN_ROLE_SETS,
+  adminHomePath,
+  canAccessAdminPath,
+  hasCapability,
+} from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
+import { maskEmail, maskPersonName } from "@/lib/pii-mask";
 import { formatCOP } from "@/lib/format";
 import { customerWaLink } from "@/lib/wa";
 import {
@@ -47,7 +53,10 @@ import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
 import { sendReminderAction } from "../actions";
 import { formatDateTimeCO } from "@/lib/datetime";
 
-export const metadata: Metadata = { title: "Diagnóstico de carrito abandonado" };
+export const metadata: Metadata = {
+  title: "Diagnóstico de carrito abandonado",
+  robots: { index: false, follow: false },
+};
 
 const CUID_RE = /^c[a-z0-9]{24}$/;
 
@@ -60,9 +69,15 @@ export default async function AdminCarritoDetallePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
+  const session = await requireRole(ADMIN_ROLE_SETS.CARTS_READ);
+  const role = session.admin.role;
+  const homeHref = adminHomePath(role);
+  const canRecover = hasCapability(role, "carts:recover");
+  const canReadPii =
+    hasCapability(role, "orders:read_pii") || hasCapability(role, "contacts:read_pii");
+  const canRead360 =
+    hasCapability(role, "contacts:read_360") && canAccessAdminPath(role, "/admin/clientes");
+  const canReadQuotes = canAccessAdminPath(role, "/admin/cotizaciones");
 
   const { id } = await params;
   const sp = await searchParams;
@@ -74,7 +89,18 @@ export default async function AdminCarritoDetallePage({
   ]);
   if (!detail) notFound();
 
+  const displayEmail = canReadPii ? detail.email : maskEmail(detail.email);
+  const displayName = detail.contact?.displayName
+    ? canReadPii
+      ? detail.contact.displayName
+      : maskPersonName(detail.contact.displayName)
+    : null;
+  const sentDisplay =
+    typeof sp.sent === "string" ? (canReadPii ? sp.sent : maskEmail(sp.sent)) : null;
+
   const canSend =
+    canRecover &&
+    !detail.bouncedOrComplained &&
     settings.enabled &&
     detail.status !== "recovered" &&
     detail.status !== "closed" &&
@@ -91,12 +117,13 @@ export default async function AdminCarritoDetallePage({
     ? STEP_ORDER.indexOf(detail.checkoutStep as (typeof STEP_ORDER)[number])
     : 0;
 
-  const waUrl = detail.contact?.whatsappPhone
-    ? customerWaLink(
-        detail.contact.whatsappPhone,
-        `Hola${detail.contact.displayName ? ` ${detail.contact.displayName}` : ""}, te escribimos de Lucams Shop para ayudarte a completar tu pedido pendiente. `,
-      )
-    : null;
+  const waUrl =
+    canRecover && canReadPii && detail.contact?.whatsappPhone
+      ? customerWaLink(
+          detail.contact.whatsappPhone,
+          `Hola${detail.contact.displayName ? ` ${detail.contact.displayName}` : ""}, te escribimos de Lucams Shop para ayudarte a completar tu pedido pendiente. `,
+        )
+      : null;
 
   const allWompiDeclines = detail.linkedOrders.flatMap((o) =>
     o.wompiDeclines.map((d) => ({ ...d, orderNumber: o.number })),
@@ -106,20 +133,16 @@ export default async function AdminCarritoDetallePage({
     <AdminPage>
       <AdminPageHeader
         icon={<ShoppingCart className="h-5 w-5" />}
-        title={
-          detail.contact?.displayName
-            ? `Carrito de ${detail.contact.displayName}`
-            : `Carrito de ${detail.email}`
-        }
+        title={displayName ? `Carrito de ${displayName}` : `Carrito de ${displayEmail}`}
         subtitle={
           <>
-            Registrado el {formatDateTimeCO(detail.createdAt)} · {detail.email} ·{" "}
+            Registrado el {formatDateTimeCO(detail.createdAt)} · {displayEmail} ·{" "}
             {detail.lineItems.length} {detail.lineItems.length === 1 ? "línea" : "líneas"} ·{" "}
             <strong className="text-brand-purple-dark">{formatCOP(detail.totalCents)}</strong>
           </>
         }
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: homeHref },
           { label: "Marketing" },
           { label: "Carritos abandonados", href: "/admin/carritos" },
           { label: "Diagnóstico" },
@@ -158,10 +181,25 @@ export default async function AdminCarritoDetallePage({
           <ArrowLeft className="h-3.5 w-3.5" /> Volver a la bandeja de carritos
         </Link>
 
-        {typeof sp.sent === "string" && (
+        {!canRecover && (
+          <AdminNotice tone="info">
+            <strong>Modo analítico 0-PII:</strong> datos personales, previsualizaciones del Estudio
+            y envíos comerciales están protegidos para tu rol.
+          </AdminNotice>
+        )}
+
+        {detail.bouncedOrComplained && (
+          <AdminNotice tone="warning">
+            <strong>Rebote duro o queja registrada en Resend:</strong> este destinatario tiene
+            supresión activa para correos comerciales a fin de proteger la entregabilidad del
+            dominio.
+          </AdminNotice>
+        )}
+
+        {sentDisplay && (
           <AdminNotice tone="success">
-            Recordatorio enviado a {sp.sent}. El cliente recibe el correo con el link para retomar
-            su compra.
+            Recordatorio enviado a {sentDisplay}. El cliente recibe el correo con el link para
+            retomar su compra.
           </AdminNotice>
         )}
         {typeof sp.notice === "string" && <AdminNotice tone="info">{sp.notice}</AdminNotice>}
@@ -347,12 +385,18 @@ export default async function AdminCarritoDetallePage({
                         key={qt.id}
                         className="border-brand-purple/10 flex items-center justify-between rounded-lg border bg-white px-2.5 py-1.5 text-xs"
                       >
-                        <Link
-                          href={`/admin/cotizaciones/${encodeURIComponent(qt.id)}`}
-                          className="text-brand-purple font-mono font-bold hover:underline"
-                        >
-                          {qt.number}
-                        </Link>
+                        {canReadQuotes ? (
+                          <Link
+                            href={`/admin/cotizaciones/${encodeURIComponent(qt.id)}`}
+                            className="text-brand-purple font-mono font-bold hover:underline"
+                          >
+                            {qt.number}
+                          </Link>
+                        ) : (
+                          <span className="text-brand-purple-dark font-mono font-bold">
+                            {qt.number}
+                          </span>
+                        )}
                         <span className="text-brand-muted text-[11px]">
                           {formatCOP(qt.total)} · {qt.status}
                         </span>
@@ -394,7 +438,8 @@ export default async function AdminCarritoDetallePage({
           ) : (
             <ul className="divide-brand-purple/10 mt-3 divide-y">
               {detail.lineItems.map((li, idx) => {
-                const thumb = li.designPreviewUrl ?? li.imageUrl;
+                // En modo 0-PII evitamos exponer fotos personales subidas al Estudio por el comprador.
+                const thumb = canReadPii ? (li.designPreviewUrl ?? li.imageUrl) : li.imageUrl;
                 return (
                   <li
                     key={`${li.productName}-${idx}`}
@@ -450,63 +495,68 @@ export default async function AdminCarritoDetallePage({
         </AdminCard>
 
         {/* 3. Acción de envío manual de correo */}
-        <AdminCard className="p-5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1 text-sm">
-              <h2 className="text-brand-purple-dark text-sm font-bold">
-                Envío de correo de recuperación
-              </h2>
-              <p className="text-brand-muted text-xs">
-                Envía un link único (hash SHA-256) para que el cliente retome su carrito en un clic.
-              </p>
-            </div>
-
-            {canSend ? (
-              <div className="flex flex-col items-end gap-1">
-                <ConfirmAction
-                  action={sendReminderAction}
-                  message={`¿Enviar el recordatorio a ${detail.email}? El correo sale ahora con el link para retomar la compra.`}
-                >
-                  <input type="hidden" name="id" value={detail.id} />
-                  <input type="hidden" name="email" value={detail.email} />
-                  <button
-                    type="submit"
-                    disabled={blockedByInterval}
-                    className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Enviar recordatorio ahora
-                  </button>
-                </ConfirmAction>
-                {blockedByInterval && tooSoonUntil && (
-                  <p className="text-brand-muted max-w-xs text-right text-[11px]">
-                    Anti-duplicación: ya se envió uno hace poco — podrás reenviar desde{" "}
-                    {tooSoonUntil.toLocaleString("es-CO")}.
-                  </p>
-                )}
-                {!blockedByInterval && detail.lastReminderSentAt && (
-                  <p className="text-brand-muted max-w-xs text-right text-[11px]">
-                    Ya recibió {detail.reminderCount} recordatorio
-                    {detail.reminderCount === 1 ? "" : "s"} — revisa el preview antes de reenviar.
-                  </p>
-                )}
+        {canRecover && (
+          <AdminCard className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1 text-sm">
+                <h2 className="text-brand-purple-dark text-sm font-bold">
+                  Envío de correo de recuperación
+                </h2>
+                <p className="text-brand-muted text-xs">
+                  Envía un link único (hash SHA-256) para que el cliente retome su carrito en un
+                  clic.
+                </p>
               </div>
-            ) : (
-              <p className="text-brand-muted inline-flex max-w-md items-start gap-1.5 text-xs">
-                <MailWarning className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                {!settings.enabled
-                  ? "El módulo está apagado (Configuración): no se pueden enviar recordatorios."
-                  : detail.status === "recovered"
-                    ? "Este carrito ya se convirtió en pedido pagado: no requiere recordatorio."
-                    : detail.status === "closed"
-                      ? `Este carrito ya se cerró (${CLOSED_REASON_LABEL[detail.closedReason ?? ""] ?? "cotizado o vaciado"}): no requiere correo de carrito.`
-                      : "El carrito vivo ya no tiene productos activos para restaurar por link."}
-              </p>
-            )}
-          </div>
-        </AdminCard>
+
+              {canSend ? (
+                <div className="flex flex-col items-end gap-1">
+                  <ConfirmAction
+                    action={sendReminderAction}
+                    message={`¿Enviar el recordatorio a ${detail.email}? El correo sale ahora con el link para retomar la compra.`}
+                  >
+                    <input type="hidden" name="id" value={detail.id} />
+                    <input type="hidden" name="email" value={detail.email} />
+                    <button
+                      type="submit"
+                      disabled={blockedByInterval}
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Enviar recordatorio ahora
+                    </button>
+                  </ConfirmAction>
+                  {blockedByInterval && tooSoonUntil && (
+                    <p className="text-brand-muted max-w-xs text-right text-[11px]">
+                      Anti-duplicación: ya se envió uno hace poco — podrás reenviar desde{" "}
+                      {formatDateTimeCO(tooSoonUntil)}.
+                    </p>
+                  )}
+                  {!blockedByInterval && detail.lastReminderSentAt && (
+                    <p className="text-brand-muted max-w-xs text-right text-[11px]">
+                      Ya recibió {detail.reminderCount} recordatorio
+                      {detail.reminderCount === 1 ? "" : "s"} — revisa el preview antes de reenviar.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-brand-muted inline-flex max-w-md items-start gap-1.5 text-xs">
+                  <MailWarning className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  {detail.bouncedOrComplained
+                    ? "Este destinatario registra rebote duro o queja en Resend: el envío comercial está suprimido."
+                    : !settings.enabled
+                      ? "El módulo está apagado (Configuración): no se pueden enviar recordatorios."
+                      : detail.status === "recovered"
+                        ? "Este carrito ya se convirtió en pedido pagado: no requiere recordatorio."
+                        : detail.status === "closed"
+                          ? `Este carrito ya se cerró (${CLOSED_REASON_LABEL[detail.closedReason ?? ""] ?? "cotizado o vaciado"}): no requiere correo de carrito.`
+                          : "El carrito vivo ya no tiene productos activos para restaurar por link."}
+                </p>
+              )}
+            </div>
+          </AdminCard>
+        )}
 
         {/* 4. Preview REAL del correo */}
-        {detail.items.length > 0 && (
+        {canRecover && canReadPii && detail.items.length > 0 && (
           <AdminCard className="p-5">
             <h2 className="text-brand-purple-dark mb-1 text-sm font-bold">
               Así se visualiza el correo de recuperación
@@ -518,7 +568,7 @@ export default async function AdminCarritoDetallePage({
             <iframe
               src={`/admin/carritos/${detail.id}/preview`}
               sandbox=""
-              title={`Preview del correo de recuperación para ${detail.email}`}
+              title={`Preview del correo de recuperación para ${displayEmail}`}
               className="border-brand-purple/10 h-[500px] w-full rounded-lg border bg-white"
             />
           </AdminCard>

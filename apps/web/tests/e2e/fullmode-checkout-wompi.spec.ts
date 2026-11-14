@@ -119,7 +119,7 @@ test("§7.5 checkout Wompi registrado: firma de integridad real + webhook APPROV
 
     // ── 2. La orden existe y la URL la representa fielmente.
     const order = await db().order.findFirstOrThrow({
-      where: { number: reference!, deletedAt: null },
+      where: { wompiReference: reference!, deletedAt: null },
       select: {
         id: true,
         number: true,
@@ -157,7 +157,7 @@ test("§7.5 checkout Wompi registrado: firma de integridad real + webhook APPROV
       txId,
       status: "APPROVED",
       amount: order.total,
-      reference: order.number,
+      reference: reference!,
       timestamp: Math.floor(Date.now() / 1000),
     });
     expect(res.status, "webhook APPROVED aceptado").toBe(200);

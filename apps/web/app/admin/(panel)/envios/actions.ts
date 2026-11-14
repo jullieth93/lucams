@@ -9,7 +9,6 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { logger } from "@/lib/logger";
 import {
@@ -32,7 +31,7 @@ import { getZone } from "@/lib/lucams-zones";
  * HMAC — el cambio aplica a la próxima cotización.
  */
 export async function setCarrierDisabledAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "shipping:configure" });
 
   const carrierName = String(formData.get("carrierName") ?? "").trim();
   const disable = formData.get("disable") === "1";
@@ -69,7 +68,7 @@ export async function saveCarrierRuleAction(
   _prev: CarrierRuleActionState | null,
   formData: FormData,
 ): Promise<CarrierRuleActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "shipping:configure" });
 
   const carrierName = String(formData.get("carrierName") ?? "").trim();
   if (!carrierName) return { error: "Falta el nombre de la transportadora." };
@@ -141,7 +140,7 @@ export async function setLucamsShippingEnabledAction(
   _prev: LucamsShippingActionState | null,
   formData: FormData,
 ): Promise<LucamsShippingActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "shipping:configure" });
   const enable = formData.get("enable") === "1";
   try {
     await setLucamsShippingEnabled(enable, session.admin.id);
@@ -173,7 +172,7 @@ export async function saveLucamsShippingAction(
   _prev: LucamsShippingActionState | null,
   formData: FormData,
 ): Promise<LucamsShippingActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "shipping:configure" });
 
   const pricePesos = Number.parseInt(String(formData.get("pricePesos") ?? ""), 10);
   const cutoffHour = Number.parseInt(String(formData.get("cutoffHour") ?? ""), 10);

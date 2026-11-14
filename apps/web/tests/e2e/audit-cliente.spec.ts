@@ -434,15 +434,6 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       .waitFor({ state: "attached", timeout: 8_000 })
       .catch(() => {});
     await dismissOverlays(page);
-    // ADR-167 (2026-10-22): con >1 plantilla activa y sin default, «Vista
-    // previa» NO procede hasta elegir una explícitamente (bloqueo guiado) —
-    // el nocturno quedaba esperando la modal para siempre (falla desde la
-    // semana del 2026-10-22, no por un bug del producto). Seleccionar la
-    // primera como haría un cliente real.
-    const tplRadio = page.getByRole("radio").first();
-    if (await tplRadio.isVisible().catch(() => false)) {
-      if ((await tplRadio.getAttribute("aria-checked")) !== "true") await tplRadio.click();
-    }
     // En mobile (390px) el panel "Mis fotos" no está en pantalla: vive tras el
     // FAB «Editar» (bottom sheet). En desktop el panel lateral ya es visible.
     const editarFab = page.getByRole("button", { name: /^Editar/i }).first();
@@ -463,6 +454,11 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     await page.waitForTimeout(1_500);
     await consent.check();
     await expect(consent).toBeChecked();
+    const tplRadio = page.getByRole("radio").filter({ visible: true }).first();
+    if ((await tplRadio.getAttribute("aria-checked")) !== "true") {
+      await tplRadio.click();
+      await expect(tplRadio).toHaveAttribute("aria-checked", "true");
+    }
     // El producto exige el pack COMPLETO (N fotos) para habilitar «Vista previa».
     // En mobile hay DOS inputs file ocultos (panel desktop + bottom sheet):
     // hay que usar el del sheet/diálogo abierto — el del panel no procesa.
@@ -486,6 +482,15 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       page.getByText(`${slots}/${slots} fotos`).filter({ visible: true }).first(),
     ).toBeVisible({ timeout: 30_000 });
     await page.keyboard.press("Escape"); // cierra el tip "Cómo editar tu foto"
+    const closeTools = page
+      .getByRole("button", { name: "Listo", exact: true })
+      .filter({ visible: true });
+    if (await closeTools.count()) {
+      await expect(async () => {
+        await closeTools.click();
+        await expect(closeTools).not.toBeVisible({ timeout: 5_000 });
+      }).toPass({ timeout: 30_000 });
+    }
     await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-cotizacion-estudio.png" });
 
     // Finalizar diseño: «Vista previa» abre el modal "Así se verá tu pedido" y

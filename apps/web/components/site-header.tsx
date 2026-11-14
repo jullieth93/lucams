@@ -26,6 +26,7 @@ import { getCurrentAdmin, getCurrentCustomer, getCurrentUser } from "@/lib/auth"
 import { peekCartSession } from "@/lib/cart-session";
 import { getCmsBlock, getCmsImage } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
+import { formatIsoDateCO } from "@/lib/datetime";
 
 // Resuelve un bloque CMS a string plano: mismo patrón que <CmsText>, pero
 // para textos que bajan por props a un client component.
@@ -73,7 +74,7 @@ export async function SiteHeader() {
   // (se editan en /admin/ocasiones). La del mes en curso (monthHint) va primera;
   // el sort es estable → el resto conserva el order del admin. El menú muestra
   // hasta 6; el resto queda en el índice /ocasion.
-  const currentMonth = new Date().getMonth() + 1;
+  const currentMonth = Number(formatIsoDateCO(new Date()).slice(5, 7));
   const menuOcasiones = [...ocasiones]
     .sort((a, b) => Number(b.monthHint === currentMonth) - Number(a.monthHint === currentMonth))
     .map((o) => ({ slug: o.slug, name: o.name }));
@@ -167,7 +168,7 @@ export async function SiteHeader() {
 
           {admin && (
             <Link
-              href="/admin/dashboard"
+              href="/admin"
               // prefetch={false} (2026-10-22, ADR-162): un prefetch a /admin/*
               // dispara el idle-timeout del panel en el proxy y su revocación
               // mata la sesión ENTERA (tienda incluida). En Next 16 el proxy no

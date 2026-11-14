@@ -135,10 +135,9 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
     await page.goto("/admin/productos", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3000);
     await page.screenshot({ path: "/tmp/audit-admin-productos.png" });
-    // El catálogo tiene 432+ productos paginados; buscamos "Alargados" para abrirlo.
-    // El input de búsqueda es un <input type="search"> con label "Buscar"; usamos
-    // getByLabel para no depender del role implícito que varía entre navegadores.
-    const search = page.getByLabel(/Buscar/i);
+    // El input de búsqueda es un <input type="search"> con label "Buscar";
+    // el role searchbox evita colisionar con el botón "Buscar módulo" de la paleta admin.
+    const search = page.getByRole("searchbox", { name: "Buscar", exact: true });
     await expect(search).toBeVisible({ timeout: 15_000 });
     await search.fill("Alargados");
     // Aplicar filtro: submit del formulario de búsqueda o click en "Aplicar".

@@ -20,8 +20,9 @@ import {
   AdminPageBody,
   AdminPageHeader,
 } from "@/components/admin-page";
-import { ConfirmAction } from "@/components/admin/confirm-action";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ReauthForm } from "@/components/admin/mfa-reauth";
+import { adminHomePath } from "@/lib/admin-rbac";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import {
   ABANDONED_STATUS_LABEL,
@@ -31,7 +32,11 @@ import {
 import { getCartRecoverySettings } from "@/features/cart/recovery-settings";
 import { bulkSendRemindersAction } from "../actions";
 
-export const metadata: Metadata = { title: "Enviar recordatorios" };
+export const metadata: Metadata = {
+  title: "Enviar recordatorios",
+  robots: { index: false, follow: false },
+};
+export const dynamic = "force-dynamic";
 
 const CUID_RE = /^c[a-z0-9]{24}$/;
 
@@ -40,8 +45,8 @@ export default async function AdminCarritosEnviarPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireCapability("carts:recover");
+  const homeHref = adminHomePath(session.admin.role);
 
   const sp = await searchParams;
   const idsRaw = typeof sp.ids === "string" ? sp.ids : "";
@@ -79,7 +84,7 @@ export default async function AdminCarritosEnviarPage({
         title={`Enviar ${sendable.length} recordatorio${sendable.length === 1 ? "" : "s"}`}
         subtitle="Revisa la selección y el correo antes de confirmar — el envío es inmediato."
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: homeHref },
           { label: "Marketing" },
           { label: "Carritos abandonados", href: "/admin/carritos" },
           { label: "Envío masivo" },
@@ -172,9 +177,9 @@ export default async function AdminCarritosEnviarPage({
             módulo omite los que ya recibieron un recordatorio hace menos de{" "}
             {settings.intervalHours} h.
           </p>
-          <ConfirmAction
+          <ReauthForm
             action={bulkSendRemindersAction}
-            message={`¿Enviar ${sendable.length} recordatorio${sendable.length === 1 ? "" : "s"} ahora? Los correos salen de inmediato.`}
+            confirmMessage={`¿Enviar ${sendable.length} recordatorio${sendable.length === 1 ? "" : "s"} ahora? Los correos salen de inmediato.`}
           >
             {sendable.map((d) => (
               <input key={d.id} type="hidden" name="ids" value={d.id} />
@@ -187,7 +192,7 @@ export default async function AdminCarritosEnviarPage({
               <Send className="h-4 w-4" />
               Confirmar y enviar {sendable.length}
             </button>
-          </ConfirmAction>
+          </ReauthForm>
         </section>
       </AdminPageBody>
     </AdminPage>

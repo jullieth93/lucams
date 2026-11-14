@@ -4,9 +4,15 @@ import { useState } from "react";
 import { ThumbsDown, ThumbsUp } from "lucide-react";
 import { submitHelpFeedbackAction } from "../actions";
 
-export function AdminHelpFeedback({ guideId }: { guideId: string }) {
-  const [helpful, setHelpful] = useState<boolean | null>(null);
-  const [comment, setComment] = useState("");
+export function AdminHelpFeedback({
+  guideId,
+  initialFeedback = null,
+}: {
+  guideId: string;
+  initialFeedback?: { isHelpful: boolean; comment: string | null } | null;
+}) {
+  const [helpful, setHelpful] = useState<boolean | null>(initialFeedback?.isHelpful ?? null);
+  const [comment, setComment] = useState(initialFeedback?.comment ?? "");
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 

@@ -33,6 +33,7 @@ import {
   QuoteNotFoundError,
   addQuoteInternalNote,
   getQuoteById,
+  getQuoteProductionBundle,
   listQuotes,
   updateQuoteStatus,
 } from "./admin-service";
@@ -414,6 +415,40 @@ describe.skipIf(!hasDb)(
         expect(full).not.toBeNull();
         expect(full!.items).toHaveLength(1);
         expect(full!.customerWhatsapp).toBe(RUN_PHONE); // admin SÍ ve el contacto
+      });
+
+      it("getQuoteProductionBundle enmascara PII y precios para PRINT_WORKSHOP pero los expone a MANAGER", async () => {
+        const cart = await makeCartWithItems([
+          { variantId: defaultVariantId, qty: 2, unitPrice: DEFAULT_PRICE },
+        ]);
+        const { token } = await createQuoteFromCart(
+          quoteInput({ notes: "Llamarme al 3109998877 antes de empacar" }),
+          cart.sessionId,
+          TEST_CONSENT,
+        );
+        const quote = (await prisma.quote.findUnique({
+          where: { publicAccessTokenHash: hashBearerToken(token) },
+        }))!;
+
+        const workshopView = await getQuoteProductionBundle(quote.id, "PRINT_WORKSHOP");
+        expect(workshopView).not.toBeNull();
+        expect(workshopView!.piiMasked).toBe(true);
+        expect(workshopView!.pricingMasked).toBe(true);
+        expect(workshopView!.customerName).not.toContain("Prueba");
+        expect(workshopView!.customerWhatsapp).not.toBe(RUN_PHONE);
+        expect(workshopView!.notes).toBeNull();
+        expect(workshopView!.hasHiddenCustomerNote).toBe(true);
+        expect(workshopView!.total).toBeNull();
+        expect(workshopView!.items[0]?.unitPrice).toBeNull();
+
+        const managerView = await getQuoteProductionBundle(quote.id, "MANAGER");
+        expect(managerView).not.toBeNull();
+        expect(managerView!.piiMasked).toBe(false);
+        expect(managerView!.pricingMasked).toBe(false);
+        expect(managerView!.customerWhatsapp).toBe(RUN_PHONE);
+        expect(managerView!.notes).toContain("3109998877");
+        expect(managerView!.total).toBe(2 * DEFAULT_PRICE);
+        expect(managerView!.items[0]?.unitPrice).toBe(DEFAULT_PRICE);
       });
     });
 

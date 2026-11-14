@@ -90,7 +90,7 @@ export async function setVariantStockAdmin(input: {
     if (current.deletedAt) {
       throw new VariantStockError(
         "deleted",
-        "Esta variante está archivada — restaurala antes de ajustar el stock",
+        "Esta variante está archivada — restáurala antes de ajustar el stock",
       );
     }
 

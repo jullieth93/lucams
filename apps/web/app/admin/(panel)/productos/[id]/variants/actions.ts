@@ -11,7 +11,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
-import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import {
   createVariant,
@@ -50,7 +49,7 @@ export async function createVariantAction(
   _prev: VariantActionState | null,
   formData: FormData,
 ): Promise<VariantActionState | null> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const productId = String(formData.get("productId") ?? "");
   const priceStr = String(formData.get("price") ?? "").trim();
@@ -85,6 +84,8 @@ export async function createVariantAction(
     logger.info({ event: "admin.variant.create.success", id: v.id, sku: v.sku });
     revalidatePath(`/admin/productos/${productId}/variants`);
     revalidatePath(`/admin/productos/${productId}`);
+    revalidatePath("/admin/inventario");
+    revalidatePath("/admin/costos");
     // Invalidar TODOS los PDPs y listado público — variants afectan
     // precio "desde X", chip "X opciones", y selector del PDP.
     revalidatePath("/producto/[slug]", "page");
@@ -108,7 +109,7 @@ export async function updateVariantAction(
   _prev: VariantActionState | null,
   formData: FormData,
 ): Promise<VariantActionState | null> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
 
   const productId = String(formData.get("productId") ?? "");
   const priceStr = String(formData.get("price") ?? "").trim();
@@ -161,6 +162,8 @@ export async function updateVariantAction(
     logger.info({ event: "admin.variant.update.success", id: v.id });
     revalidatePath(`/admin/productos/${productId}/variants`);
     revalidatePath(`/admin/productos/${productId}`);
+    revalidatePath("/admin/inventario");
+    revalidatePath("/admin/costos");
     // Invalidar TODOS los PDPs y listado público — variants afectan
     // precio "desde X", chip "X opciones", y selector del PDP.
     revalidatePath("/producto/[slug]", "page");
@@ -181,7 +184,7 @@ export async function updateVariantAction(
 // ─────────────────── ARCHIVE ───────────────────
 
 export async function archiveVariantAction(formData: FormData) {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const session = await requireAdminAction({ capability: "catalog:write" });
   const id = String(formData.get("id") ?? "");
   const productId = String(formData.get("productId") ?? "");
   try {
@@ -195,6 +198,8 @@ export async function archiveVariantAction(formData: FormData) {
     });
     revalidatePath(`/admin/productos/${productId}/variants`);
     revalidatePath(`/admin/productos/${productId}`);
+    revalidatePath("/admin/inventario");
+    revalidatePath("/admin/costos");
     // Invalidar TODOS los PDPs y listado público — variants afectan
     // precio "desde X", chip "X opciones", y selector del PDP.
     revalidatePath("/producto/[slug]", "page");

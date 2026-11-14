@@ -17,6 +17,7 @@ import "../setup-env";
 // PrismaClient vía @lucams/db (re-exporta @prisma/client) — resoluble por tsc
 // desde apps/web y sin el import `server-only` de @/lib/db (rompería en Node).
 import { PrismaClient } from "@lucams/db";
+import { dismissCookieBanner } from "./fixtures/auth";
 
 const prisma = new PrismaClient();
 const RUN = `e2e-${Date.now()}`;
@@ -73,6 +74,7 @@ test.afterAll(async () => {
 
 async function addToCart(page: Page) {
   await page.goto(`/producto/${slug}`, { waitUntil: "domcontentloaded" });
+  await dismissCookieBanner(page);
   const addBtn = page.getByRole("button", { name: /añadir al carrito/i });
   await expect(addBtn).toBeVisible({ timeout: 15_000 });
   // Next.js dev puede hidratar tarde el botón; aseguramos que esté habilitado

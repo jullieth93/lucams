@@ -12,20 +12,51 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockService, mockStorage, guardSpy } = vi.hoisted(() => ({
-  mockService: {
-    getDesignProductionPaths: vi.fn(),
-    approveDesign: vi.fn(),
-    rejectDesign: vi.fn(),
-  },
-  mockStorage: { getProductionAssetSignedUrls: vi.fn() },
-  guardSpy: vi.fn(async (_opts: { roles: readonly string[] }) => ({
-    user: { id: "user1" },
-    admin: { id: "admin1", role: "MANAGER" },
-  })),
-}));
+const {
+  mockService,
+  mockStorage,
+  guardSpy,
+  auditSpy,
+  revalidateSpy,
+  redirectSpy,
+  MockModerationGuardError,
+} = vi.hoisted(() => {
+  class GuardErr extends Error {
+    readonly code: "NOT_FOUND" | "ORDER_ALREADY_SHIPPED";
+    readonly orderNumber?: string;
+    constructor(
+      code: "NOT_FOUND" | "ORDER_ALREADY_SHIPPED",
+      message: string,
+      orderNumber?: string,
+    ) {
+      super(message);
+      this.name = "ModerationGuardError";
+      this.code = code;
+      this.orderNumber = orderNumber;
+    }
+  }
+  return {
+    mockService: {
+      getDesignProductionPaths: vi.fn(),
+      approveDesign: vi.fn(),
+      rejectDesign: vi.fn(),
+    },
+    mockStorage: { getProductionAssetSignedUrls: vi.fn() },
+    guardSpy: vi.fn(async (_opts: { roles: readonly string[] }) => ({
+      user: { id: "user1" },
+      admin: { id: "admin1", role: "MANAGER" },
+    })),
+    auditSpy: vi.fn(async () => {}),
+    revalidateSpy: vi.fn(),
+    redirectSpy: vi.fn((url: string) => {
+      throw new Error(`REDIRECT:${url}`);
+    }),
+    MockModerationGuardError: GuardErr,
+  };
+});
 
 vi.mock("@/features/moderation/service", () => ({
+  ModerationGuardError: MockModerationGuardError,
   getDesignProductionPaths: mockService.getDesignProductionPaths,
   approveDesign: mockService.approveDesign,
   rejectDesign: mockService.rejectDesign,
@@ -35,11 +66,15 @@ vi.mock("@/lib/storage", () => ({
   getProductionAssetSignedUrls: mockStorage.getProductionAssetSignedUrls,
 }));
 vi.mock("@/lib/admin-rbac-guard", () => ({ requireAdminAction: guardSpy }));
-vi.mock("@/lib/admin-audit", () => ({ recordAdminAction: vi.fn(async () => {}) }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
+vi.mock("@/lib/admin-audit", () => ({ recordAdminAction: auditSpy }));
+vi.mock("next/cache", () => ({ revalidatePath: revalidateSpy }));
+vi.mock("next/navigation", () => ({ redirect: redirectSpy }));
 
-import { getDesignProductionSignedUrlsAction } from "./actions";
+import {
+  approveDesignAction,
+  getDesignProductionSignedUrlsAction,
+  rejectDesignAction,
+} from "./actions";
 
 const PATHS = ["design-1/slot-01.png", "design-1/slot-02.png", "design-1/slot-03.png"];
 
@@ -80,6 +115,13 @@ describe("getDesignProductionSignedUrlsAction (firma bajo demanda, T4)", () => {
       path: PATHS[0],
       url: expect.stringContaining(PATHS[0]!),
     });
+    expect(auditSpy).toHaveBeenCalledWith({
+      actorId: "admin1",
+      action: "design.production_assets_preview",
+      entityType: "Design",
+      entityId: "design-1",
+      metadata: { pieceCount: 3 },
+    });
   });
 
   it("omite los paths que Storage no logra firmar (no rompe el modal)", async () => {
@@ -90,11 +132,74 @@ describe("getDesignProductionSignedUrlsAction (firma bajo demanda, T4)", () => {
     expect(pieces).toEqual([{ path: PATHS[1], url: "https://sb.test/signed/slot-02.png" }]);
   });
 
-  it("designId vacío o diseño sin piezas → [] sin llamar a Storage", async () => {
+  it("designId vacío o diseño sin piezas → [] sin llamar a Storage ni auditar una lectura inexistente", async () => {
     expect(await getDesignProductionSignedUrlsAction("   ")).toEqual([]);
     expect(mockStorage.getProductionAssetSignedUrls).not.toHaveBeenCalled();
 
     mockService.getDesignProductionPaths.mockResolvedValue([]);
     expect(await getDesignProductionSignedUrlsAction("design-1")).toEqual([]);
+    expect(auditSpy).not.toHaveBeenCalled();
+  });
+
+  it("si el guard rechaza no firma ni registra una lectura de producción", async () => {
+    guardSpy.mockRejectedValueOnce(new Error("FORBIDDEN"));
+
+    await expect(getDesignProductionSignedUrlsAction("design-1")).rejects.toThrow("FORBIDDEN");
+    expect(mockService.getDesignProductionPaths).not.toHaveBeenCalled();
+    expect(mockStorage.getProductionAssetSignedUrls).not.toHaveBeenCalled();
+    expect(auditSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("Bloque 5 — approveDesignAction y rejectDesignAction (guardia de pedido enviado y auditoría 360°)", () => {
+  it("approveDesignAction registra orderNumber en AdminActionLog, revalida el pedido y conserva filtros activos", async () => {
+    mockService.approveDesign.mockResolvedValueOnce({
+      productName: "Pack 9 Imanes",
+      sources: [{ tipo: "pedido", numero: "LCM-2026-0042", contacto: "c@test.co" }],
+      orderNumbers: ["LCM-2026-0042"],
+    });
+
+    const fd = new FormData();
+    fd.set("designId", "design-42");
+    fd.set("q", "LCM-2026");
+    fd.set("origen", "pedido");
+
+    await expect(approveDesignAction(fd)).rejects.toThrow(
+      "REDIRECT:/admin/moderacion?approved=1&q=LCM-2026&origen=pedido",
+    );
+
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "design.moderation.approve",
+        entityType: "Design",
+        entityId: "design-42",
+        metadata: expect.objectContaining({
+          productName: "Pack 9 Imanes",
+          orderNumber: "LCM-2026-0042",
+          afectados: ["pedido LCM-2026-0042"],
+        }),
+      }),
+    );
+    expect(revalidateSpy).toHaveBeenCalledWith("/admin/pedidos/LCM-2026-0042");
+  });
+
+  it("rejectDesignAction redirige con error limpio cuando el pedido asociado ya fue despachado (ORDER_ALREADY_SHIPPED)", async () => {
+    mockService.rejectDesign.mockRejectedValueOnce(
+      new MockModerationGuardError(
+        "ORDER_ALREADY_SHIPPED",
+        "No puedes rechazar este diseño porque el pedido LCM-2026-0099 ya fue despachado.",
+        "LCM-2026-0099",
+      ),
+    );
+
+    const fd = new FormData();
+    fd.set("designId", "design-99");
+    fd.set("reason", "Imagen borrosa");
+    fd.set("q", "0099");
+
+    await expect(rejectDesignAction(fd)).rejects.toThrow(
+      /REDIRECT:\/admin\/moderacion\?q=0099&error=/,
+    );
+    expect(auditSpy).not.toHaveBeenCalled();
   });
 });

@@ -175,7 +175,7 @@ Las URLs externas devueltas por Aveonline (`rutasticker`, `rutaguia`, `rotulo`) 
    - **Fuente 2**: descarga HTTP (`timeoutMs: 12_000`, máx. `15 MB`) de `labelUrl` (`rutasticker` térmico 110×120 → `rutaguia` → `rotulo`).
    - **Fuente 3**: descarga HTTP de `trackingUrl` si es distinta de `labelUrl`.
 2. **Validación estricta `%PDF-` (`isPdfBuffer`)**: verifica la presencia de la firma mágica `%PDF-` dentro de los primeros `1 024 bytes` del buffer, ignorando el header `Content-Type` declarativo y rechazando cualquier HTML de error.
-3. **Almacenamiento seguro**: sube con `upsert: true` al bucket privado **`production-assets`** en `shipping-labels/<orderId>.pdf` y persiste la ruta en `Order.labelPath`. En `/admin/pedidos/[number]`, solo los roles con permiso de despacho (`FULFILLMENT`, `OPERATIONS_MANAGER`, `ADMIN`, `SUPERADMIN`) pueden abrir la etiqueta mediante signed URL efímera auditada (`order.print_shipping_guide`).
+3. **Almacenamiento seguro**: sube con `upsert: true` al bucket privado **`production-assets`** en `shipping-labels/<orderId>.pdf` y persiste la ruta en `Order.labelPath`. En `/admin/pedidos/[number]`, los roles `SHIPPING_GUIDE_PRINT` abren la etiqueta mediante una ruta autenticada que firma la copia al hacer clic y registra `order.carrier_label_download`; el respaldo externo se limita a `*.aveonline.co`. La guía física de mensajería interna `LUCAMS` es independiente de esta etiqueta y conserva su auditoría `order.print_shipping_guide`.
 
 ---
 
@@ -306,9 +306,9 @@ Ejecuta esta verificación al configurar la cuenta comercial de Lucams o auditar
 ### Paso 3 — Registro del Webhook de Estados
 
 - [ ] Generar un secreto aleatorio criptográfico (`≥ 32` caracteres) y guardarlo en Vercel como `AVEONLINE_WEBHOOK_SECRET`.
-- [ ] En el panel de Aveonline (**Mis integraciones → Webhooks de estados de guías** — o mediante la herramienta administrativa que invoca `createAveonlineWebhook`), registrar:
+- [ ] En el panel de Aveonline (**Mis integraciones → Webhooks de estados de guías**) o desde `/admin/integraciones/aveonline` (`registerAveonlineWebhookAction` / `deleteAveonlineWebhookAction`, protegidas con step-up MFA `requireRecentMfa` y candado de origen al dominio oficial en entornos desplegados para impedir exfiltrar el secreto), registrar:
   - **URL**: `https://lucamsshop.com/api/webhooks/aveonline`
-  - **Token**: pegar exactamente el valor de `AVEONLINE_WEBHOOK_SECRET` (Aveonline lo reenviará en `payload.token` en cada notificación).
+  - **Token**: `AVEONLINE_WEBHOOK_SECRET` (Aveonline lo reenviará en `payload.token` en cada notificación).
 
 ### Paso 4 — Variables de Producción y Doble Compuerta
 
@@ -316,4 +316,4 @@ Ejecuta esta verificación al configurar la cuenta comercial de Lucams o auditar
   - `AVEONLINE_USUARIO` y `AVEONLINE_CLAVE` de la cuenta real de Lucams (nunca la cuenta demo `15289`).
   - `AVEONLINE_ENV=production`
   - `AVEONLINE_GENERATE_REAL=true` (solo en Production; en Preview y local mantener `AVEONLINE_GENERATE_REAL=false` para operar con `bloquegenerarguia="1"` sin facturar).
-- [ ] Consultar `GET https://lucamsshop.com/api/health/aveonline` y confirmar `{ "status": "ok", "mode": "production", "authenticated": true, "isDemoAccount": false }`.
+- [ ] Consultar `GET https://lucamsshop.com/api/health/aveonline` y confirmar que la respuesta pública solo contiene `{ "status": "ok", "ok": true }`. Para auditar el diagnóstico completo, llamar con la cabecera `x-cron-secret` y verificar dentro de `shipping`: `{ "mode": "production", "authenticated": true, "isDemoAccount": false }`; los identificadores de cuenta y detalles internos nunca se exponen sin ese secreto.

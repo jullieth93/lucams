@@ -100,10 +100,11 @@ test("mi-cuenta · perfil: editar nombre/teléfono → persistido en DB", async 
   resultsPath = resolve(EVIDENCE_DIR, `results-${E2E_ENV}-${projectName}-${run}.json`);
   try {
     const customer = await ephemeralCustomer();
-    const newFirst = `Prueba${run.slice(-4)}`;
+    const newFirst = "Prueba";
     const newPhone = `300${run.replace(/\D/g, "").slice(-7)}`;
 
     await clientPage.goto("/mi-cuenta/perfil", { waitUntil: "domcontentloaded" });
+    await dismissCookieBanner(clientPage);
     const firstName = clientPage.locator("#firstName");
     const phone = clientPage.locator("#phone");
     await expect(firstName).toBeVisible({ timeout: 20_000 });
@@ -111,7 +112,9 @@ test("mi-cuenta · perfil: editar nombre/teléfono → persistido en DB", async 
       await firstName.fill(newFirst);
       await phone.fill(newPhone);
       await expect(firstName).toHaveValue(newFirst, { timeout: 1_500 });
-      await expect(phone).toHaveValue(newPhone, { timeout: 1_500 });
+      await expect(phone).toHaveValue(newPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1 $2 $3"), {
+        timeout: 1_500,
+      });
     }).toPass({ timeout: 20_000 });
     await clientPage.getByRole("button", { name: /guardar/i }).click();
     await expect(clientPage.locator("body")).toContainText(/perfil quedó actualizado/i, {
@@ -292,6 +295,7 @@ test("mi-cuenta · seguridad: cambiar contraseña → re-login con la nueva func
     });
     const page = await ctx.newPage();
     await page.goto("/login", { waitUntil: "domcontentloaded" });
+    await dismissCookieBanner(page);
     await page.locator('input[name="email"]').fill(email);
     await page.locator('input[name="password"]').fill(E2E_SETUP_CLIENT_PASSWORD);
     await page.getByRole("button", { name: /iniciar sesión|entrar|ingresar/i }).click();

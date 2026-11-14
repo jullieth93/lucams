@@ -13,6 +13,7 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
 import type { QuoteStatus } from "@lucams/db";
 import { logger } from "@/lib/logger";
 import {
@@ -35,14 +36,12 @@ const STATUS_SUCCESS_LABEL: Record<QuoteStatus, string> = {
 export async function setQuoteStatusAction(_p: St, fd: FormData): Promise<St> {
   const id = String(fd.get("id") ?? "");
   const status = String(fd.get("status") ?? "") as QuoteStatus;
-  if (!id) return { error: "Falta id" };
-  if (!QUOTE_STATUSES.includes(status)) return { error: "Estado inválido" };
+  if (!id) return { error: "Falta el identificador de la cotización." };
+  if (!QUOTE_STATUSES.includes(status)) return { error: "Estado inválido." };
   try {
     await updateQuoteStatus(id, status);
   } catch (err) {
-    // requireAdminAction (dentro del service) lanza NEXT_REDIRECT ante sesión
-    // inválida — no convertirla en mensaje de error.
-    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    unstable_rethrow(err);
     if (err instanceof QuoteNotFoundError) return { error: "La cotización no existe." };
     logger.warn({
       event: "admin.quote.status_fail",
@@ -59,11 +58,11 @@ export async function setQuoteStatusAction(_p: St, fd: FormData): Promise<St> {
 export async function addQuoteNoteAction(_p: St, fd: FormData): Promise<St> {
   const id = String(fd.get("id") ?? "");
   const note = String(fd.get("note") ?? "");
-  if (!id) return { error: "Falta id" };
+  if (!id) return { error: "Falta el identificador de la cotización." };
   try {
     await addQuoteInternalNote(id, note);
   } catch (err) {
-    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    unstable_rethrow(err);
     if (err instanceof QuoteNotFoundError) return { error: "La cotización no existe." };
     // Errores de VALIDACIÓN del service (nota vacía / >2000 chars): el mensaje
     // es seguro y útil para el admin — se muestra tal cual.

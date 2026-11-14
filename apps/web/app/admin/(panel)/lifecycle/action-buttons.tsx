@@ -29,6 +29,7 @@ export function LifecycleEngineControls({
   const [dailyLimit, setDailyLimit] = useState(maxMessagesPerDay);
   const [message, setMessage] = useState<string | null>(null);
   const { pending, execute, reauthModal } = useLifecycleSensitiveAction();
+  const isDirty = engineEnabled !== enabled || dailyLimit !== maxMessagesPerDay;
 
   return (
     <form
@@ -91,6 +92,11 @@ export function LifecycleEngineControls({
           {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Guardar control general
         </Button>
+        {isDirty && !pending && (
+          <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+            Cambios sin guardar
+          </span>
+        )}
         {message && (
           <p className="text-sm text-slate-700" role="status">
             {message}

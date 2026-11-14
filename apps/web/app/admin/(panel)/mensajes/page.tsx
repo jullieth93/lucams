@@ -10,8 +10,9 @@
  */
 
 import { redirect, permanentRedirect } from "next/navigation";
+import { requireCapability } from "@/lib/admin-rbac-guard";
 
-type SearchParams = Promise<{ status?: string }>;
+type SearchParams = Promise<{ status?: string; q?: string }>;
 
 const VALID_STATUS = new Set(["OPEN", "IN_PROGRESS", "CLOSED", "all"]);
 
@@ -20,8 +21,13 @@ export default async function MensajesLegacyRedirect({
 }: {
   searchParams: SearchParams;
 }) {
+  // B-7: paridad N-21 antes del redirect para no exponer rutas internas en soft-navigation.
+  await requireCapability("support:manage");
   const sp = await searchParams;
-  const qs = sp.status && VALID_STATUS.has(sp.status) ? `?status=${sp.status}` : "";
+  const params = new URLSearchParams();
+  if (sp.status && VALID_STATUS.has(sp.status)) params.set("view", sp.status);
+  if (typeof sp.q === "string" && sp.q.trim()) params.set("q", sp.q.trim().slice(0, 120));
+  const qs = params.size > 0 ? `?${params.toString()}` : "";
   permanentRedirect(`/admin/soporte${qs}`);
   // unreachable — Next type checker quiere un return
   redirect("/admin/soporte");

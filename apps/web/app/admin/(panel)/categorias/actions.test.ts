@@ -117,7 +117,7 @@ describe("updateCategoryAction — visibleFilters / featuredProductSlug", () => 
 
     const result = await updateCategoryAction(null, fd);
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ success: true });
     expect(mockPrisma.category.update).toHaveBeenCalledWith({
       where: { id: "c1" },
       data: expect.objectContaining({
@@ -134,7 +134,7 @@ describe("updateCategoryAction — visibleFilters / featuredProductSlug", () => 
 
     const result = await updateCategoryAction(null, fd);
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ success: true });
     expect(mockPrisma.category.update).toHaveBeenCalledWith({
       where: { id: "c1" },
       data: expect.objectContaining({ visibleFilters: [], featuredProductSlug: null }),
@@ -159,7 +159,7 @@ describe("updateCategoryAction — visibleFilters / featuredProductSlug", () => 
 
     const result = await updateCategoryAction(null, fd);
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ success: true });
     expect(mockPrisma.category.update).toHaveBeenCalledWith({
       where: { id: "c1" },
       data: expect.objectContaining({ featuredProductSlug: "prod-estrella" }),

@@ -18,9 +18,11 @@ import "server-only";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { RetractStatus } from "@lucams/db";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { maskEmail, maskPersonName } from "@/lib/pii-mask";
 import { sendRetractApproved, sendRetractRejected, sendRetractRefunded } from "./emails";
 import { RETRACT_WINDOW_BUSINESS_DAYS } from "@/lib/consumer-law";
-import { computeRetractSlaDueAt } from "@/lib/colombian-sla";
+import { computeRetractSlaDueAt, evaluateSlaStatus, type SlaEvaluation } from "@/lib/colombian-sla";
 import { restoreRedeemedPointsForRetract } from "@/features/loyalty/service";
 import { resolvePostSaleContact } from "@/features/identity/resolution-service";
 import {
@@ -299,7 +301,10 @@ function mapOrderToRetractableItems(
 }
 
 export class RetractError extends Error {
-  constructor(public readonly reason: RetractIneligibleReason | "NOT_FOUND" | "FORBIDDEN") {
+  constructor(
+    public readonly reason:
+      RetractIneligibleReason | "NOT_FOUND" | "FORBIDDEN" | "INVALID_ASSIGNEE",
+  ) {
     super(reason);
     this.name = "RetractError";
   }
@@ -870,4 +875,371 @@ export async function countOpenRetractRequests(): Promise<number> {
   return prisma.retractRequest.count({
     where: { status: { in: ["PENDING", "APPROVED", "RECEIVED"] } },
   });
+}
+
+export type RetractInboxView = RetractStatus | "sla-risk" | "mine" | "all";
+
+export function isRetractInboxView(raw: string | undefined): raw is RetractInboxView {
+  return (
+    raw === "PENDING" ||
+    raw === "APPROVED" ||
+    raw === "RECEIVED" ||
+    raw === "REFUNDED" ||
+    raw === "REJECTED" ||
+    raw === "sla-risk" ||
+    raw === "mine" ||
+    raw === "all"
+  );
+}
+
+export async function assignRetractRequest(
+  id: string,
+  assignedToAdminId: string | null,
+): Promise<void> {
+  await assertRetract(id);
+  if (assignedToAdminId) {
+    const validAssignee = await prisma.adminUser.findFirst({
+      where: {
+        id: assignedToAdminId,
+        isActive: true,
+        deletedAt: null,
+        role: { in: [...ADMIN_ROLE_SETS.SUPPORT_CARE] },
+      },
+      select: { id: true },
+    });
+    if (!validAssignee) {
+      throw new RetractError("INVALID_ASSIGNEE");
+    }
+  }
+  await prisma.retractRequest.update({
+    where: { id },
+    data: { assignedToAdminId },
+  });
+  logger.info({ event: "retract.assigned", id, assignedToAdminId });
+}
+
+function extractRetractCustomerName(order: {
+  customer: { firstName: string | null; lastName: string | null } | null;
+  shippingAddress: unknown;
+}): string | null {
+  if (order.customer) {
+    const joined = [order.customer.firstName, order.customer.lastName]
+      .map((s) => (s ?? "").trim())
+      .filter(Boolean)
+      .join(" ");
+    if (joined) return joined;
+  }
+  if (order.shippingAddress && typeof order.shippingAddress === "object") {
+    const full = (order.shippingAddress as Record<string, unknown>).fullName;
+    if (typeof full === "string" && full.trim()) return full.trim();
+  }
+  return null;
+}
+
+export interface AdminRetractCaseRow {
+  id: string;
+  status: RetractStatus;
+  reason: string | null;
+  rejectionNote: string | null;
+  refundAmount: number;
+  lineTotal: number;
+  discountShareCents: number;
+  pointsToRestore: number;
+  refundMethod: string | null;
+  requestedAt: Date;
+  approvedAt: Date | null;
+  receivedAt: Date | null;
+  refundedAt: Date | null;
+  slaDueAt: Date | null;
+  sla: SlaEvaluation;
+  orderNumber: string;
+  orderPaymentMethod: string | null;
+  productName: string;
+  productSlug: string;
+  qty: number;
+  customerEmail: string;
+  customerName: string | null;
+  contactId: string | null;
+  sourceTicketId: string | null;
+  assignedToAdmin: { id: string; email: string } | null;
+}
+
+export interface RetractAdminListResult {
+  items: AdminRetractCaseRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  counts: {
+    pending: number;
+    approved: number;
+    received: number;
+    refunded: number;
+    rejected: number;
+    openTotal: number;
+    slaRisk: number;
+    mine: number;
+    all: number;
+  };
+  financials: {
+    pendingReviewCashCents: number;
+    approvedTransitCashCents: number;
+    readyToRefundCashCents: number;
+    openLiabilityCashCents: number;
+    refundedCashCents: number;
+  };
+}
+
+/**
+ * Bandeja ejecutiva de retractos (`Bloque 6` · Ley 1480 art. 47 / Ley 2439):
+ *  - Soporta vistas operativas (`PENDING`, `APPROVED`, `RECEIVED`, `REFUNDED`, `REJECTED`, `sla-risk`, `mine`, `all`),
+ *    búsqueda server-side anti-oráculo y paginación.
+ *  - Aplica enmascaramiento server-side estricto de PII y oculta motivos de texto libre cuando
+ *    el actor entra en modo contable de solo lectura (`FINANCE_ANALYST`: `!canManage || !canReadPii`).
+ */
+export async function listRetractRequestsAdmin(opts: {
+  view?: RetractInboxView;
+  q?: string;
+  actorAdminId: string;
+  canManage: boolean;
+  canReadPii: boolean;
+  page?: number;
+  pageSize?: number;
+}): Promise<RetractAdminListResult> {
+  const effectiveView: RetractInboxView =
+    !opts.canManage && opts.view === "mine" ? "all" : (opts.view ?? "PENDING");
+  const page = Math.max(1, opts.page ?? 1);
+  const pageSize = Math.min(50, Math.max(1, opts.pageSize ?? 20));
+  const now = new Date();
+  const dueSoonCutoff = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+  const andClauses: Prisma.RetractRequestWhereInput[] = [];
+
+  if (
+    effectiveView === "PENDING" ||
+    effectiveView === "APPROVED" ||
+    effectiveView === "RECEIVED" ||
+    effectiveView === "REFUNDED" ||
+    effectiveView === "REJECTED"
+  ) {
+    andClauses.push({ status: effectiveView });
+  } else if (effectiveView === "mine") {
+    andClauses.push({
+      assignedToAdminId: opts.actorAdminId,
+      status: { in: ["PENDING", "APPROVED", "RECEIVED"] },
+    });
+  } else if (effectiveView === "sla-risk") {
+    andClauses.push({
+      status: { in: ["PENDING", "APPROVED", "RECEIVED"] },
+      slaDueAt: { lte: dueSoonCutoff },
+    });
+  }
+
+  const qClean = (opts.q ?? "").trim().replace(/^#/, "");
+  if (qClean.length > 0) {
+    const orClauses: Prisma.RetractRequestWhereInput[] = [
+      { id: { contains: qClean, mode: "insensitive" } },
+      { orderItem: { order: { number: { contains: qClean, mode: "insensitive" } } } },
+      {
+        orderItem: {
+          variant: { product: { name: { contains: qClean, mode: "insensitive" } } },
+        },
+      },
+    ];
+    // Anti-oráculo PII: solo roles con `canReadPii` y `canManage` buscan por email o texto libre.
+    if (opts.canReadPii && opts.canManage) {
+      orClauses.push(
+        { orderItem: { order: { email: { contains: qClean, mode: "insensitive" } } } },
+        { reason: { contains: qClean, mode: "insensitive" } },
+      );
+    }
+    andClauses.push({ OR: orClauses });
+  }
+
+  const where: Prisma.RetractRequestWhereInput = andClauses.length > 0 ? { AND: andClauses } : {};
+
+  const [rows, total, groupedByStatus, slaRiskCount, mineCount] = await Promise.all([
+    prisma.retractRequest.findMany({
+      where,
+      orderBy: [{ requestedAt: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        contactId: true,
+        status: true,
+        reason: true,
+        rejectionNote: true,
+        refundAmount: true,
+        refundMethod: true,
+        requestedAt: true,
+        approvedAt: true,
+        receivedAt: true,
+        refundedAt: true,
+        slaDueAt: true,
+        assignedToAdmin: { select: { id: true, email: true } },
+        orderItem: {
+          select: {
+            qty: true,
+            unitPrice: true,
+            variant: {
+              select: { product: { select: { name: true, slug: true } } },
+            },
+            order: {
+              select: {
+                number: true,
+                email: true,
+                contactId: true,
+                customerId: true,
+                paymentMethod: true,
+                shippingAddress: true,
+                subtotal: true,
+                discount: true,
+                loyaltyDiscount: true,
+                loyaltyPointsRedeemed: true,
+                coupon: { select: { type: true } },
+                customer: { select: { firstName: true, lastName: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.retractRequest.count({ where }),
+    prisma.retractRequest.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+      _sum: { refundAmount: true },
+    }),
+    prisma.retractRequest.count({
+      where: {
+        status: { in: ["PENDING", "APPROVED", "RECEIVED"] },
+        slaDueAt: { lte: dueSoonCutoff },
+      },
+    }),
+    opts.canManage
+      ? prisma.retractRequest.count({
+          where: {
+            assignedToAdminId: opts.actorAdminId,
+            status: { in: ["PENDING", "APPROVED", "RECEIVED"] },
+          },
+        })
+      : Promise.resolve(0),
+  ]);
+
+  const linkedTickets =
+    opts.canManage && rows.length > 0
+      ? await prisma.supportTicket.findMany({
+          where: {
+            linkedCaseType: "retract",
+            linkedCaseId: { in: rows.map((r) => r.id) },
+          },
+          select: { id: true, linkedCaseId: true },
+        })
+      : [];
+  const ticketByCaseId = new Map<string, string>();
+  for (const t of linkedTickets) {
+    if (t.linkedCaseId && !ticketByCaseId.has(t.linkedCaseId)) {
+      ticketByCaseId.set(t.linkedCaseId, t.id);
+    }
+  }
+
+  const countMap: Record<RetractStatus, number> = {
+    PENDING: 0,
+    APPROVED: 0,
+    RECEIVED: 0,
+    REFUNDED: 0,
+    REJECTED: 0,
+  };
+  const sumMap: Record<RetractStatus, number> = {
+    PENDING: 0,
+    APPROVED: 0,
+    RECEIVED: 0,
+    REFUNDED: 0,
+    REJECTED: 0,
+  };
+  for (const g of groupedByStatus) {
+    countMap[g.status] = g._count._all;
+    sumMap[g.status] = g._sum.refundAmount ?? 0;
+  }
+
+  const showFullCustomerData = opts.canManage && opts.canReadPii;
+  const items: AdminRetractCaseRow[] = rows.map((r) => {
+    const ord = r.orderItem.order;
+    const lineTotal = r.orderItem.unitPrice * r.orderItem.qty;
+    const breakdown = computeRetractRefundBreakdown({
+      lineTotal,
+      orderSubtotal: ord.subtotal,
+      couponDiscount: ord.discount,
+      couponType: ord.coupon?.type ?? null,
+      loyaltyDiscount: ord.loyaltyDiscount,
+      loyaltyPointsRedeemed: ord.customerId ? ord.loyaltyPointsRedeemed : 0,
+    });
+    const rawName = extractRetractCustomerName(ord);
+    const isClosed = r.status === "REFUNDED" || r.status === "REJECTED";
+    const resolvedContactId = r.contactId ?? ord.contactId ?? null;
+
+    return {
+      id: r.id,
+      status: r.status,
+      reason: showFullCustomerData ? r.reason : null,
+      rejectionNote: showFullCustomerData ? r.rejectionNote : null,
+      refundAmount: r.refundAmount,
+      lineTotal,
+      discountShareCents: breakdown.discountShareCents,
+      pointsToRestore: breakdown.pointsToRestore,
+      refundMethod: r.refundMethod,
+      requestedAt: r.requestedAt,
+      approvedAt: r.approvedAt,
+      receivedAt: r.receivedAt,
+      refundedAt: r.refundedAt,
+      slaDueAt: r.slaDueAt,
+      sla: evaluateSlaStatus(r.slaDueAt, { now, isClosed }),
+      orderNumber: ord.number,
+      orderPaymentMethod: ord.paymentMethod,
+      productName: r.orderItem.variant.product.name,
+      productSlug: r.orderItem.variant.product.slug,
+      qty: r.orderItem.qty,
+      customerEmail: showFullCustomerData ? ord.email : maskEmail(ord.email),
+      customerName: showFullCustomerData ? rawName : rawName ? maskPersonName(rawName) : null,
+      contactId: showFullCustomerData ? resolvedContactId : null,
+      sourceTicketId: opts.canManage ? (ticketByCaseId.get(r.id) ?? null) : null,
+      assignedToAdmin: r.assignedToAdmin
+        ? {
+            id: r.assignedToAdmin.id,
+            email: opts.canManage ? r.assignedToAdmin.email : maskEmail(r.assignedToAdmin.email),
+          }
+        : null,
+    };
+  });
+
+  const openTotal = countMap.PENDING + countMap.APPROVED + countMap.RECEIVED;
+  const allCount = openTotal + countMap.REFUNDED + countMap.REJECTED;
+  const openLiabilityCashCents = sumMap.PENDING + sumMap.APPROVED + sumMap.RECEIVED;
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    counts: {
+      pending: countMap.PENDING,
+      approved: countMap.APPROVED,
+      received: countMap.RECEIVED,
+      refunded: countMap.REFUNDED,
+      rejected: countMap.REJECTED,
+      openTotal,
+      slaRisk: slaRiskCount,
+      mine: mineCount,
+      all: allCount,
+    },
+    financials: {
+      pendingReviewCashCents: sumMap.PENDING,
+      approvedTransitCashCents: sumMap.APPROVED,
+      readyToRefundCashCents: sumMap.RECEIVED,
+      openLiabilityCashCents,
+      refundedCashCents: sumMap.REFUNDED,
+    },
+  };
 }

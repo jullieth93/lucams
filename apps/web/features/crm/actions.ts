@@ -50,6 +50,7 @@ function revalidateCrmSurfaces(meta: {
   contactId?: string | null;
   orderNumber?: string | null;
   supportTicketId?: string | null;
+  opportunityId?: string | null;
 }) {
   revalidatePath("/admin/hoy");
   if (meta.contactId) {
@@ -63,6 +64,10 @@ function revalidateCrmSurfaces(meta: {
     revalidatePath("/admin/soporte");
     revalidatePath(`/admin/soporte/${meta.supportTicketId}`);
   }
+  if (meta.opportunityId) {
+    revalidatePath("/admin/oportunidades");
+    revalidatePath(`/admin/oportunidades/${meta.opportunityId}`);
+  }
 }
 
 export async function createContactActivityAction(
@@ -70,11 +75,16 @@ export async function createContactActivityAction(
   formData: FormData,
 ): Promise<CrmActionState> {
   const session = await requireAdminAction({ capability: "crm:manage_activities" });
+  const canManageOpportunities = hasCapability(session.admin.role, "opportunities:manage");
 
   const contactId = String(formData.get("contactId") ?? "").trim();
   const orderId = String(formData.get("orderId") ?? "").trim() || null;
   const orderNumber = String(formData.get("orderNumber") ?? "").trim() || null;
   const supportTicketId = String(formData.get("supportTicketId") ?? "").trim() || null;
+  const rawOpportunityId = String(formData.get("opportunityId") ?? "").trim() || null;
+  const rawOpportunityNumber = String(formData.get("opportunityNumber") ?? "").trim() || null;
+  const opportunityId = canManageOpportunities ? rawOpportunityId : null;
+  const opportunityNumber = canManageOpportunities ? rawOpportunityNumber : null;
   const kindRaw = String(formData.get("kind") ?? "NOTE").trim();
   const body = String(formData.get("body") ?? "");
 
@@ -90,6 +100,10 @@ export async function createContactActivityAction(
       authorAdminId: session.admin.id,
       kind: kindRaw,
       body,
+      metadata: {
+        ...(opportunityId ? { opportunityId } : {}),
+        ...(opportunityNumber ? { opportunityNumber } : {}),
+      },
     });
 
     await recordAdminAction({
@@ -102,6 +116,7 @@ export async function createContactActivityAction(
         kind: activity.kind,
         orderId,
         supportTicketId,
+        opportunityId,
       },
     });
 
@@ -109,6 +124,7 @@ export async function createContactActivityAction(
       contactId: activity.contactId,
       orderNumber,
       supportTicketId,
+      opportunityId,
     });
 
     return { success: "Actividad registrada en la bitácora del contacto." };
@@ -132,6 +148,7 @@ export async function createCrmTaskAction(
   const session = await requireAdminAction({ capability: "crm:manage_tasks" });
   const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
   const canManageSupport = hasCapability(session.admin.role, "support:manage");
+  const canManageOpportunities = hasCapability(session.admin.role, "opportunities:manage");
 
   const title = String(formData.get("title") ?? "");
   const description = String(formData.get("description") ?? "");
@@ -144,12 +161,22 @@ export async function createCrmTaskAction(
   const orderId = String(formData.get("orderId") ?? "").trim() || null;
   const orderNumber = String(formData.get("orderNumber") ?? "").trim() || null;
   const rawSupportTicketId = String(formData.get("supportTicketId") ?? "").trim() || null;
+  const rawOpportunityId = String(formData.get("opportunityId") ?? "").trim() || null;
 
-  // Defensa horizontal: roles sin acceso 360 no pueden vincular tareas a contactos/tickets arbitrarios.
+  // Defensa horizontal: roles sin acceso 360/oportunidades no pueden vincular tareas arbitrarias.
   const contactId = canRead360 ? rawContactId : null;
   const supportTicketId = canManageSupport ? rawSupportTicketId : null;
+  const opportunityId = canManageOpportunities ? rawOpportunityId : null;
 
   const priority: CrmTaskPriority = isCrmTaskPriority(priorityRaw) ? priorityRaw : "NORMAL";
+  const effectiveOwnerAdminId = ownerAdminId ?? session.admin.id;
+  if (
+    session.admin.role === "FINANCE_ANALYST" &&
+    orderId &&
+    effectiveOwnerAdminId !== session.admin.id
+  ) {
+    return { error: "Solo puedes crear tareas de pedidos asignadas a ti." };
+  }
 
   try {
     const task = await createCrmTask({
@@ -157,11 +184,12 @@ export async function createCrmTaskAction(
       description,
       priority,
       dueAt,
-      ownerAdminId: ownerAdminId ?? session.admin.id,
+      ownerAdminId: effectiveOwnerAdminId,
       createdByAdminId: session.admin.id,
       contactId,
       orderId,
       supportTicketId,
+      opportunityId,
     });
 
     await recordAdminAction({
@@ -175,6 +203,7 @@ export async function createCrmTaskAction(
         contactId: task.contactId,
         orderId: task.orderId,
         supportTicketId: task.supportTicketId,
+        opportunityId: task.opportunityId,
       },
     });
 
@@ -182,6 +211,7 @@ export async function createCrmTaskAction(
       contactId: task.contactId,
       orderNumber,
       supportTicketId: task.supportTicketId,
+      opportunityId: task.opportunityId,
     });
 
     return { success: "Tarea creada y agregada a la Bandeja Hoy." };
@@ -220,22 +250,40 @@ export async function updateCrmTaskStatusAction(
       contactId: true,
       orderId: true,
       supportTicketId: true,
+      opportunityId: true,
     },
   });
   if (!existing) {
     return { error: "La tarea ya no existe." };
   }
 
-  // Defensa horizontal: si el actor no posee `contacts:read_360` (ej. taller o logística),
-  // solo puede actualizar tareas propias o vinculadas a un pedido operativo.
-  const canRead360 = hasCapability(session.admin.role, "contacts:read_360");
-  if (!canRead360) {
-    const isOwnTask =
-      existing.ownerAdminId === session.admin.id || existing.createdByAdminId === session.admin.id;
-    const isOperationalOrderTask = existing.orderId !== null;
-    if (!isOwnTask && !isOperationalOrderTask) {
-      return { error: "No tienes permisos para modificar esta tarea." };
-    }
+  const isOwnTask =
+    existing.ownerAdminId === session.admin.id || existing.createdByAdminId === session.admin.id;
+  const canManageOpportunities = hasCapability(session.admin.role, "opportunities:manage");
+  const canManageOrderTasks =
+    hasCapability(session.admin.role, "orders:transition") ||
+    hasCapability(session.admin.role, "support:manage");
+  const canManageSupportTasks = hasCapability(session.admin.role, "support:manage");
+  const canSupervisePrivateTasks = hasCapability(session.admin.role, "contacts:merge");
+
+  if (existing.opportunityId !== null && !canManageOpportunities) {
+    return { error: "No tienes permisos para modificar tareas de oportunidades." };
+  }
+  if (existing.orderId !== null && !isOwnTask && !canManageOrderTasks) {
+    return { error: "No tienes permisos para modificar esta tarea del pedido." };
+  }
+  if (existing.supportTicketId !== null && !isOwnTask && !canManageSupportTasks) {
+    return { error: "No tienes permisos para modificar esta tarea de soporte." };
+  }
+  const isPrivateTask =
+    existing.opportunityId === null &&
+    existing.orderId === null &&
+    existing.supportTicketId === null;
+  const canMutatePrivateTask =
+    existing.ownerAdminId === session.admin.id ||
+    (existing.ownerAdminId === null && existing.createdByAdminId === session.admin.id);
+  if (isPrivateTask && !canMutatePrivateTask && !canSupervisePrivateTasks) {
+    return { error: "No tienes permisos para modificar una tarea privada de otro responsable." };
   }
 
   try {
@@ -254,6 +302,7 @@ export async function updateCrmTaskStatusAction(
         contactId: updated.contactId,
         orderId: updated.orderId,
         supportTicketId: updated.supportTicketId,
+        opportunityId: updated.opportunityId,
       },
     });
 
@@ -261,6 +310,7 @@ export async function updateCrmTaskStatusAction(
       contactId: updated.contactId,
       orderNumber,
       supportTicketId: updated.supportTicketId,
+      opportunityId: updated.opportunityId,
     });
 
     return {

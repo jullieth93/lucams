@@ -27,7 +27,7 @@ export class OcasionValidationError extends Error {
 
 export type OcasionListOpts = {
   q?: string;
-  status?: "all" | "active" | "inactive";
+  status?: "all" | "active" | "inactive" | "archived";
   sort?: "order" | "name" | "recent";
 };
 
@@ -44,11 +44,17 @@ export async function listOcasionTags(opts: OcasionListOpts = {}) {
         return [{ order: "asc" as const }];
     }
   })();
+  const statusWhere =
+    opts.status === "archived"
+      ? { deletedAt: { not: null } }
+      : {
+          deletedAt: null,
+          ...(opts.status === "active" ? { isActive: true } : {}),
+          ...(opts.status === "inactive" ? { isActive: false } : {}),
+        };
   return prisma.ocasionTag.findMany({
     where: {
-      deletedAt: null,
-      ...(opts.status === "active" ? { isActive: true } : {}),
-      ...(opts.status === "inactive" ? { isActive: false } : {}),
+      ...statusWhere,
       ...(q
         ? {
             OR: [
@@ -116,6 +122,15 @@ export async function createOcasionTag(input: OcasionCreateInput, actorId: strin
 
 export async function updateOcasionTag(input: OcasionUpdateInput, actorId: string) {
   const { id, suggestedQuantityRange, ...data } = input;
+  if (data.slug) {
+    const existing = await prisma.ocasionTag.findUnique({
+      where: { slug: data.slug },
+      select: { id: true },
+    });
+    if (existing && existing.id !== id) {
+      throw new OcasionValidationError("slug", "Ya existe una ocasión con ese slug.");
+    }
+  }
   // A11-02 — slug público actual (para el redirect automático si cambia).
   const prevSlug = data.slug
     ? (await prisma.ocasionTag.findUnique({ where: { id }, select: { slug: true } }))?.slug
@@ -159,6 +174,14 @@ export async function softDeleteOcasionTag(id: string, actorId: string) {
   await prisma.ocasionTag.update({
     where: { id },
     data: { deletedAt: new Date(), deletedBy: actorId, isActive: false },
+  });
+  updateTag("catalog");
+}
+
+export async function restoreOcasionTag(id: string, actorId: string) {
+  await prisma.ocasionTag.update({
+    where: { id },
+    data: { deletedAt: null, deletedBy: null, isActive: false, updatedBy: actorId },
   });
   updateTag("catalog");
 }

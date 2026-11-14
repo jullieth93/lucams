@@ -31,16 +31,23 @@ import {
   MinusCircle,
   HelpCircle,
   ExternalLink,
+  HeartPulse,
+  Gauge,
+  ArrowRight,
 } from "lucide-react";
 import {
   AdminBadge,
+  AdminButton,
   AdminCard,
   AdminNotice,
   AdminPage,
   AdminPageBody,
   AdminPageHeader,
+  AdminSegmentedBar,
+  KpiCard,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import {
   mapAveonlineHealth,
   mapGeminiHealth,
@@ -62,9 +69,16 @@ export const dynamic = "force-dynamic";
 
 type IntegrationStatus = PanelStatus;
 
+type IntegrationLink = {
+  label: string;
+  href: string;
+};
+
 type Integration = {
   name: string;
+  shortName: string;
   group: "infra" | "pago" | "envio" | "comunicacion" | "seguridad" | "ia";
+  probeKind: "Sonda interna" | "API directa" | "Por solicitud / Estática";
   description: string;
   envVarsRequired: string[];
   isConfigured: boolean;
@@ -73,7 +87,7 @@ type Integration = {
   /** Ambiente declarado por la integración (sandbox/production/test), si aplica. */
   envLabel?: string;
   latencyMs?: number;
-  docs?: string;
+  internalLinks?: IntegrationLink[];
   dashboardUrl?: string;
   acciones?: string;
 };
@@ -175,9 +189,14 @@ async function probeHealth(
   }
 }
 
+async function probeAveonlineTimed() {
+  const start = Date.now();
+  const probe = await probeAveonlineSafely();
+  return { probe, latencyMs: Date.now() - start };
+}
+
 export default async function AdminIntegracionesPage() {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  await requireRole(ADMIN_ROLE_SETS.SUPER);
   // Modo catálogo (Etapa 1): Wompi/Aveonline/Gemini están apagadas — el nav ya
   // oculta esta página; esto cierra también el acceso por URL directa.
   if (isCatalogMode()) redirect("/admin/dashboard");
@@ -210,23 +229,27 @@ export default async function AdminIntegracionesPage() {
   // Wompi/Aveonline/Gemini: solo se sondea lo configurado — sin credenciales la
   // integración está NOT_CONFIGURED (no caída) y la sonda sería ruido.
   const productionDeployment = process.env.VERCEL_ENV === "production";
-  const [dbHealth, storageHealth, resendHealth, wompiProbe, aveonlineProbe, geminiProbe] =
+  const [dbHealth, storageHealth, resendHealth, wompiProbe, aveonlineTimed, geminiProbe] =
     await Promise.all([
       probeHealth(baseUrl, "/api/health/db"),
       probeHealth(baseUrl, "/api/health/storage"),
       probeHealth(baseUrl, "/api/health/resend"),
       wompiConfigured ? probeWompiSafely() : Promise.resolve(null),
-      aveonlineConfigured ? probeAveonlineSafely() : Promise.resolve(null),
+      aveonlineConfigured ? probeAveonlineTimed() : Promise.resolve(null),
       geminiConfigured ? probeGeminiSafely() : Promise.resolve(null),
     ]);
   const wompiHealth = mapWompiHealth(wompiProbe, { productionDeployment });
-  const aveonlineHealth = mapAveonlineHealth(aveonlineProbe, { productionDeployment });
+  const aveonlineHealth = mapAveonlineHealth(aveonlineTimed?.probe ?? null, {
+    productionDeployment,
+  });
   const geminiHealth = mapGeminiHealth(geminiProbe);
 
   const integrations: Integration[] = [
     {
       name: "Supabase — Base de datos + Auth + Storage",
+      shortName: "Supabase (DB + Storage)",
       group: "infra",
+      probeKind: "Sonda interna",
       description:
         "Postgres + autenticación + almacenamiento de imágenes. Núcleo del sistema. Sin Supabase nada funciona.",
       envVarsRequired: [
@@ -245,12 +268,18 @@ export default async function AdminIntegracionesPage() {
             ? `Storage: ${storageHealth.detail ?? "fail"}`
             : `DB ${dbHealth.latencyMs}ms · Storage ${storageHealth.latencyMs}ms`,
       latencyMs: dbHealth.latencyMs,
+      internalLinks: [
+        { label: "Salud técnica y SLOs", href: "/admin/observability" },
+        { label: "Mediateca Storage", href: "/admin/contenido/mediateca" },
+      ],
       dashboardUrl: "https://supabase.com/dashboard",
-      acciones: "Si falla: revisar quota Free + status.supabase.com",
+      acciones: "Si falla: revisar quota y estado en status.supabase.com",
     },
     {
       name: "Wompi — Pasarela de pago",
+      shortName: "Wompi API",
       group: "pago",
+      probeKind: "API directa",
       description: "Procesa pagos con tarjeta crédito/débito + PSE + Nequi + Bancolombia transfer.",
       envVarsRequired: [
         "WOMPI_PUBLIC_KEY",
@@ -266,15 +295,20 @@ export default async function AdminIntegracionesPage() {
         : "Pendiente: completar KYC en comercios.wompi.co y cargar las 4 llaves.",
       envLabel: wompiHealth.envLabel,
       latencyMs: wompiHealth.latencyMs,
-      docs: "/admin/auditoria",
+      internalLinks: [
+        { label: "Resumen financiero y pagos", href: "/admin/finanzas" },
+        { label: "Pedidos y cobros", href: "/admin/pedidos" },
+      ],
       dashboardUrl: "https://comercios.wompi.co",
       acciones: wompiConfigured
         ? "Si falla: revisar el dashboard de Wompi y que las 4 llaves correspondan al ambiente declarado en WOMPI_ENV (test ↔ sandbox, prod ↔ production)."
-        : "ACCIÓN HUMANA: completar KYC + cargar las 4 llaves (pública, privada, events, integrity) + setear WOMPI_ENV=production",
+        : "ACCIÓN HUMANA: completar KYC + cargar las 4 llaves (pública, privada, events, integrity) + definir WOMPI_ENV=production",
     },
     {
       name: "Aveonline — Envíos Colombia",
+      shortName: "Aveonline Auth",
       group: "envio",
+      probeKind: "API directa",
       description:
         "Cotiza y gestiona envíos con transportadoras aliadas (Servientrega, Coordinadora, TCC, Interrapidísimo, Envía y otras) + impresión de etiquetas + tracking.",
       // Credenciales por env; la dirección de ORIGEN (recogida) vive en SiteSettings
@@ -291,14 +325,21 @@ export default async function AdminIntegracionesPage() {
         ? aveonlineHealth.detail
         : "Pendiente: activar cuenta comercial + cargar usuario/clave.",
       envLabel: aveonlineHealth.envLabel,
-      docs: "/admin/integraciones/aveonline",
+      latencyMs: aveonlineTimed?.latencyMs,
+      internalLinks: [
+        { label: "Webhooks de tracking", href: "/admin/integraciones/aveonline" },
+        { label: "Transportadoras y tarifas", href: "/admin/envios" },
+        { label: "Origen de despacho (PICKUP)", href: "/admin/contenido/paginas/global" },
+      ],
       dashboardUrl: "https://app.aveonline.co",
       acciones:
         "ACCIÓN HUMANA: cuenta comercial + AVEONLINE_USUARIO/CLAVE + AVEONLINE_ENV=production + AVEONLINE_GENERATE_REAL=true + SiteSettings de origen (PICKUP_* + BUSINESS_NIT)",
     },
     {
       name: "Resend — Email transaccional",
+      shortName: "Resend API",
       group: "comunicacion",
+      probeKind: "Sonda interna",
       description: "Envío de emails (signup, recuperación, confirmación pedido, newsletter).",
       envVarsRequired: ["RESEND_API_KEY", "EMAIL_FROM"],
       isConfigured: resendConfigured,
@@ -307,12 +348,18 @@ export default async function AdminIntegracionesPage() {
         ? (resendHealth.detail ?? `${resendHealth.latencyMs}ms`)
         : "Pendiente: crear cuenta Resend + cargar API key.",
       latencyMs: resendHealth.latencyMs,
+      internalLinks: [
+        { label: "32 plantillas y correo de prueba", href: "/admin/email-templates" },
+        { label: "Salud de colas y rebotes", href: "/admin/observability" },
+      ],
       dashboardUrl: "https://resend.com/dashboard",
       acciones: "Si emails no llegan: revisar DKIM/SPF/DMARC del dominio + bounces dashboard",
     },
     {
       name: "WhatsApp — wa.me deeplinks",
+      shortName: "WhatsApp (wa.me)",
       group: "comunicacion",
+      probeKind: "Por solicitud / Estática",
       description:
         "Botones 'Hablar por WhatsApp' en PDP, soporte, post-pedido (sin API, solo links).",
       envVarsRequired: ["NEXT_PUBLIC_WA_NUMBER"],
@@ -325,13 +372,18 @@ export default async function AdminIntegracionesPage() {
       healthDetail: waConfigured
         ? `Sin verificación remota (wa.me no ofrece sonda sin iniciar un chat). Número activo: setting WA_NUMBER (Contenido → Ajustes del sitio → WhatsApp). Fallback env: ${process.env.NEXT_PUBLIC_WA_NUMBER}.`
         : "El número activo se edita en Contenido → Ajustes del sitio → WhatsApp. NEXT_PUBLIC_WA_NUMBER queda como fallback (formato wa.me).",
+      internalLinks: [
+        { label: "Editar número y mensajes WA", href: "/admin/contenido/paginas/global" },
+      ],
       acciones: waConfigured
         ? undefined
         : "ACCIÓN HUMANA: revisar el número en Contenido → Ajustes del sitio → WhatsApp",
     },
     {
       name: "Cloudflare Turnstile — anti-bot",
+      shortName: "Turnstile",
       group: "seguridad",
+      probeKind: "Por solicitud / Estática",
       description: "CAPTCHA invisible en formularios públicos (signup, newsletter, contacto).",
       envVarsRequired: ["NEXT_PUBLIC_TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"],
       isConfigured: turnstileConfigured,
@@ -349,7 +401,9 @@ export default async function AdminIntegracionesPage() {
     },
     {
       name: "Gemini — IA del Estudio",
+      shortName: "Google Gemini",
       group: "ia",
+      probeKind: "API directa",
       description:
         "Sugerencias de diseño con IA en el Estudio (frase, color, composición según la ocasión). Si cae, el Estudio sigue funcionando pero el botón de ideas responde 'sin ideas' — en silencio.",
       envVarsRequired: ["GEMINI_API_KEY", "GEMINI_MODEL_PRIMARY", "GEMINI_MODEL_FALLBACK"],
@@ -361,6 +415,7 @@ export default async function AdminIntegracionesPage() {
         ? geminiHealth.detail
         : "Pendiente: crear API key en Google AI Studio y cargar GEMINI_API_KEY.",
       latencyMs: geminiHealth.latencyMs,
+      internalLinks: [{ label: "Plantillas del Estudio", href: "/admin/plantillas" }],
       dashboardUrl: "https://aistudio.google.com/apikey",
       acciones: geminiConfigured
         ? "Si falla: revisar la key en Google AI Studio (¿revocada o sin cuota?) — el provider reintenta con el modelo de respaldo (features/ai/gemini-provider.ts) antes de rendirse."
@@ -377,9 +432,68 @@ export default async function AdminIntegracionesPage() {
   );
 
   const okCount = integrations.filter((i) => i.healthStatus === "ok").length;
+  const warnCount = integrations.filter((i) => i.healthStatus === "warn").length;
   const failCount = integrations.filter((i) => i.healthStatus === "fail").length;
   const notConfigured = integrations.filter((i) => i.healthStatus === "not-configured").length;
   const unverified = integrations.filter((i) => i.healthStatus === "unverified").length;
+
+  const latencyRows = [
+    { key: "db", label: "Supabase Postgres", ms: dbHealth.latencyMs, status: dbHealth.status },
+    {
+      key: "storage",
+      label: "Supabase Storage",
+      ms: storageHealth.latencyMs,
+      status: storageHealth.status,
+    },
+    ...(wompiConfigured
+      ? [
+          {
+            key: "wompi",
+            label: "Wompi API",
+            ms: wompiHealth.latencyMs,
+            status: wompiHealth.status,
+          },
+        ]
+      : []),
+    ...(aveonlineConfigured
+      ? [
+          {
+            key: "aveonline",
+            label: "Aveonline Auth",
+            ms: aveonlineTimed?.latencyMs,
+            status: aveonlineHealth.status,
+          },
+        ]
+      : []),
+    ...(resendConfigured
+      ? [
+          {
+            key: "resend",
+            label: "Resend API",
+            ms: resendHealth.latencyMs,
+            status: resendHealth.status,
+          },
+        ]
+      : []),
+    ...(geminiConfigured
+      ? [
+          {
+            key: "gemini",
+            label: "Google Gemini",
+            ms: geminiHealth.latencyMs,
+            status: geminiHealth.status,
+          },
+        ]
+      : []),
+  ].filter(
+    (row): row is { key: string; label: string; ms: number; status: IntegrationStatus } =>
+      typeof row.ms === "number" && Number.isFinite(row.ms),
+  );
+  const maxLatencyMs = Math.max(500, ...latencyRows.map((r) => r.ms));
+  const avgLatencyMs =
+    latencyRows.length > 0
+      ? Math.round(latencyRows.reduce((acc, r) => acc + r.ms, 0) / latencyRows.length)
+      : null;
 
   return (
     <AdminPage>
@@ -388,7 +502,10 @@ export default async function AdminIntegracionesPage() {
         title="Integraciones"
         subtitle={
           <>
-            {okCount} operativas · {notConfigured} sin configurar
+            {okCount} operativas
+            {warnCount > 0 && <> · {warnCount} por revisar</>}
+            {" · "}
+            {notConfigured} sin configurar
             {unverified > 0 && <> · {unverified} sin verificación remota</>}
             {failCount > 0 && (
               <>
@@ -399,26 +516,190 @@ export default async function AdminIntegracionesPage() {
           </>
         }
         breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Admin", href: "/admin" },
           { label: "Configuración" },
           { label: "Integraciones" },
         ]}
+        actions={
+          <AdminButton href="/admin/observability" variant="secondary" size="sm">
+            <HeartPulse className="h-3.5 w-3.5" />
+            Salud técnica y SLOs
+          </AdminButton>
+        }
       />
 
       <AdminPageBody>
         <AdminNotice tone="info">
-          <strong>¿Qué ves acá?</strong> Estado real de los servicios externos que usa el sitio. Las
-          acciones marcadas como <strong>ACCIÓN HUMANA</strong> son tareas que tú (o un superadmin)
-          tienes que hacer en el dashboard del proveedor (no se hacen desde este panel). Refresca la
-          página para volver a probar.
+          <strong>¿Qué ves acá?</strong> Estado en vivo de los servicios externos que usa la tienda.
+          Las tareas marcadas como <strong>ACCIÓN HUMANA</strong> se ejecutan en el panel de cada
+          proveedor. Recarga la página para correr nuevamente las sondas en tiempo real.
         </AdminNotice>
 
         {failCount > 0 && (
           <AdminNotice tone="error">
             <strong>Atención:</strong> hay {failCount} integración{failCount === 1 ? "" : "es"} con
-            falla. Revisa el detalle abajo y consulta el dashboard correspondiente.
+            falla activa. Revisa el detalle abajo y consulta el panel del proveedor correspondiente.
           </AdminNotice>
         )}
+
+        {/* Resumen ejecutivo + termómetro de latencia */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            label="Conectores operativos"
+            value={okCount}
+            trend={failCount === 0 ? "up" : "down"}
+            trendLabel={`De ${integrations.length} integraciones monitoreadas`}
+          />
+          <KpiCard
+            label="Alertas o caídas"
+            value={failCount + warnCount}
+            trend={failCount + warnCount === 0 ? "up" : "down"}
+            trendLabel={
+              failCount > 0
+                ? `${failCount} caída${failCount === 1 ? "" : "s"} · ${warnCount} por revisar`
+                : warnCount > 0
+                  ? `${warnCount} con advertencia de ambiente`
+                  : "Cero incidentes detectados"
+            }
+          />
+          <KpiCard
+            label="Variables configuradas"
+            value={`${integrations.filter((i) => i.isConfigured).length}/${integrations.length}`}
+            trend="neutral"
+            trendLabel={
+              notConfigured === 0
+                ? "100 % de conectores con credenciales"
+                : `${notConfigured} pendiente${notConfigured === 1 ? "" : "s"} de credenciales`
+            }
+          />
+          <KpiCard
+            label="Latencia media en vivo"
+            value={avgLatencyMs !== null ? `${avgLatencyMs} ms` : "—"}
+            trend={
+              avgLatencyMs === null
+                ? "neutral"
+                : avgLatencyMs <= 450
+                  ? "up"
+                  : avgLatencyMs > 1200
+                    ? "down"
+                    : "neutral"
+            }
+            trendLabel={`${latencyRows.length} sondas remotas medidas ahora`}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <AdminCard className="p-5 lg:col-span-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                  Postura global de conectores
+                </h2>
+                <p className="text-brand-muted text-xs">
+                  Distribución actual de las {integrations.length} integraciones del ecosistema.
+                </p>
+              </div>
+              <AdminBadge tone={productionDeployment ? "emerald" : "blue"}>
+                {productionDeployment ? "Entorno PRD" : "Entorno STG / Dev"}
+              </AdminBadge>
+            </div>
+            <AdminSegmentedBar
+              ariaLabel="Distribución de salud de las integraciones"
+              items={[
+                { key: "ok", label: "Operativas", count: okCount, tone: "emerald" },
+                { key: "warn", label: "Por revisar", count: warnCount, tone: "amber" },
+                {
+                  key: "unverified",
+                  label: "Estáticas / Por req.",
+                  count: unverified,
+                  tone: "blue",
+                },
+                { key: "not-cfg", label: "Sin configurar", count: notConfigured, tone: "slate" },
+                { key: "fail", label: "Con falla", count: failCount, tone: "rose" },
+              ]}
+            />
+            <div className="border-brand-purple/10 mt-4 rounded-lg border bg-slate-50/70 p-3 text-xs text-slate-600">
+              <p className="text-brand-purple-dark font-semibold">Arquitectura de sondas</p>
+              <p className="mt-0.5 leading-relaxed">
+                <strong>Sonda interna</strong> consulta <code>/api/health/*</code> con bypass de
+                Deployment Protection; <strong>API directa</strong> autentica contra el proveedor
+                sin gastar saldo ni cuota; <strong>Por solicitud</strong> valida cada formulario en
+                tiempo real.
+              </p>
+            </div>
+          </AdminCard>
+
+          <AdminCard className="p-5 lg:col-span-7">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Gauge className="text-brand-purple h-4 w-4" />
+                <div>
+                  <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                    Termómetro de latencia en vivo
+                  </h2>
+                  <p className="text-brand-muted text-xs">
+                    Tiempo de respuesta medido en esta carga (&lt; 400 ms óptima · 400–1200 ms
+                    moderada · &gt; 1200 ms alta).
+                  </p>
+                </div>
+              </div>
+            </div>
+            {latencyRows.length === 0 ? (
+              <p className="text-brand-muted text-xs">
+                No hay sondas con medición de latencia disponibles en este momento.
+              </p>
+            ) : (
+              <ul className="space-y-2.5">
+                {latencyRows.map((row) => {
+                  const pct = Math.max(4, Math.min(100, Math.round((row.ms / maxLatencyMs) * 100)));
+                  const barColor =
+                    row.status === "fail"
+                      ? "#F43F5E"
+                      : row.ms <= 400
+                        ? "#10B981"
+                        : row.ms <= 1200
+                          ? "#F59E0B"
+                          : "#F43F5E";
+                  const badgeTone =
+                    row.status === "fail"
+                      ? "rose"
+                      : row.ms <= 400
+                        ? "emerald"
+                        : row.ms <= 1200
+                          ? "amber"
+                          : "rose";
+                  const speedLabel =
+                    row.status === "fail"
+                      ? "Falla"
+                      : row.ms <= 400
+                        ? "Óptima"
+                        : row.ms <= 1200
+                          ? "Moderada"
+                          : "Alta";
+                  return (
+                    <li key={row.key} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-brand-purple-dark font-medium">{row.label}</span>
+                        <span className="inline-flex items-center gap-2 tabular-nums">
+                          <AdminBadge tone={badgeTone}>{speedLabel}</AdminBadge>
+                          <strong className="text-brand-purple-dark w-16 text-right">
+                            {row.ms.toLocaleString("es-CO")} ms
+                          </strong>
+                        </span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="admin-bar-grow-x h-full rounded-full"
+                          style={{ width: `${pct}%`, backgroundColor: barColor }}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </AdminCard>
+        </div>
 
         {(["infra", "pago", "envio", "comunicacion", "seguridad", "ia"] as const).map((group) => {
           const items = grouped[group];
@@ -430,7 +711,7 @@ export default async function AdminIntegracionesPage() {
               </h2>
               <div className="space-y-3">
                 {items.map((i) => (
-                  <AdminCard key={i.name} className="p-5">
+                  <AdminCard key={i.name} className="p-5" hover>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -439,6 +720,20 @@ export default async function AdminIntegracionesPage() {
                           </h3>
                           {statusBadge(i.healthStatus)}
                           {i.envLabel && <AdminBadge tone="blue">{i.envLabel}</AdminBadge>}
+                          <AdminBadge tone="purple">{i.probeKind}</AdminBadge>
+                          {typeof i.latencyMs === "number" && (
+                            <AdminBadge
+                              tone={
+                                i.latencyMs <= 400
+                                  ? "emerald"
+                                  : i.latencyMs <= 1200
+                                    ? "amber"
+                                    : "rose"
+                              }
+                            >
+                              {i.latencyMs} ms
+                            </AdminBadge>
+                          )}
                           {!i.isConfigured && (
                             <AdminBadge tone="slate">env vars faltantes</AdminBadge>
                           )}
@@ -455,14 +750,19 @@ export default async function AdminIntegracionesPage() {
                             {i.acciones}
                           </p>
                         )}
-                        {i.docs && (
-                          <Link
-                            href={i.docs}
-                            className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-flex items-center gap-1 text-xs font-semibold"
-                          >
-                            Ver detalle
-                            <ExternalLink className="h-3 w-3" />
-                          </Link>
+                        {i.internalLinks && i.internalLinks.length > 0 && (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {i.internalLinks.map((lnk) => (
+                              <Link
+                                key={lnk.href}
+                                href={lnk.href}
+                                className="border-brand-purple/15 bg-brand-purple/5 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors"
+                              >
+                                {lnk.label}
+                                <ArrowRight className="h-3 w-3" />
+                              </Link>
+                            ))}
+                          </div>
                         )}
                         <details className="mt-3">
                           <summary className="text-brand-muted hover:text-brand-purple-dark cursor-pointer text-xs">
@@ -505,17 +805,26 @@ export default async function AdminIntegracionesPage() {
         })}
 
         <AdminCard className="p-5">
-          <h3 className="text-brand-purple-dark font-display mb-2 text-base font-bold">
-            Healthcheck unificado
-          </h3>
-          <p className="text-brand-purple-dark/75 text-sm">
-            Para monitores externos (UptimeRobot, BetterStack), apuntá a{" "}
-            <code className="bg-brand-purple/10 rounded px-1.5 py-0.5 font-mono text-xs">
-              /api/health/all
-            </code>{" "}
-            — devuelve <code>200 OK</code> si todo lo crítico (DB + Storage) está sano, o{" "}
-            <code>503</code> si algo crítico falla.
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-brand-purple-dark font-display mb-1 text-base font-bold">
+                Healthcheck unificado y observabilidad continua
+              </h3>
+              <p className="text-brand-purple-dark/75 text-sm">
+                Para monitores externos (UptimeRobot, BetterStack), apunta a{" "}
+                <code className="bg-brand-purple/10 rounded px-1.5 py-0.5 font-mono text-xs">
+                  /api/health/all
+                </code>{" "}
+                — devuelve <code>200 OK</code> si todo lo crítico (DB + Storage) está sano, o{" "}
+                <code>503</code> si algo crítico falla. Para revisar colas de webhooks, crons y
+                errores recientes, entra a Salud técnica.
+              </p>
+            </div>
+            <AdminButton href="/admin/observability" variant="secondary" size="sm">
+              Ir a Salud técnica
+              <ArrowRight className="h-3.5 w-3.5" />
+            </AdminButton>
+          </div>
         </AdminCard>
       </AdminPageBody>
     </AdminPage>

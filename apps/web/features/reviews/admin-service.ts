@@ -50,6 +50,8 @@ export type ReviewListItem = {
   customerId: string | null;
   customerEmail: string | null;
   customerFullName: string | null;
+  contactId: string | null;
+  orderNumber: string | null;
   createdAt: Date;
 };
 
@@ -62,8 +64,15 @@ export type ReviewListResult = {
   pendingCount: number;
 };
 
+function parseReviewTokenOrderNumber(createdBy: string | null | undefined): string | null {
+  if (!createdBy || !createdBy.startsWith("review-token:")) return null;
+  const raw = createdBy.slice("review-token:".length).trim();
+  return raw.length > 0 ? raw : null;
+}
+
 export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<ReviewListResult> {
   const q = opts.q?.trim();
+  const qId = q?.replace(/^#/, "");
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = opts.pageSize ?? PAGE_SIZE;
 
@@ -106,6 +115,7 @@ export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<Revie
     ...(q
       ? {
           OR: [
+            ...(qId ? [{ id: { contains: qId, mode: "insensitive" as const } }] : []),
             { comment: { contains: q, mode: "insensitive" as const } },
             { authorName: { contains: q, mode: "insensitive" as const } },
             { authorCity: { contains: q, mode: "insensitive" as const } },
@@ -137,38 +147,69 @@ export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<Revie
         isApproved: true,
         featured: true,
         deletedAt: true,
+        createdBy: true,
         images: true,
         createdAt: true,
         productId: true,
         product: { select: { name: true, slug: true } },
         customerId: true,
-        customer: { select: { email: true, firstName: true, lastName: true } },
+        customer: {
+          select: { email: true, firstName: true, lastName: true, contactId: true },
+        },
       },
     }),
     prisma.review.count({ where }),
     prisma.review.count({ where: pendingWhere }),
   ]);
 
-  const items: ReviewListItem[] = rawItems.map((r) => ({
-    id: r.id,
-    rating: r.rating,
-    comment: r.comment,
-    authorName: r.authorName,
-    authorCity: r.authorCity,
-    isApproved: r.isApproved,
-    featured: r.featured,
-    isArchived: !!r.deletedAt,
-    imagesCount: r.images.length,
-    productId: r.productId,
-    productName: r.product.name,
-    productSlug: r.product.slug,
-    customerId: r.customerId,
-    customerEmail: r.customer?.email ?? null,
-    customerFullName: r.customer
-      ? [r.customer.firstName, r.customer.lastName].filter(Boolean).join(" ") || null
-      : null,
-    createdAt: r.createdAt,
-  }));
+  const guestOrderNumbers =
+    rawItems.length > 0
+      ? Array.from(
+          new Set(
+            rawItems
+              .map((r) => parseReviewTokenOrderNumber(r.createdBy))
+              .filter((n): n is string => Boolean(n)),
+          ),
+        )
+      : [];
+
+  const orderByNumber = new Map<string, { contactId: string | null; email: string }>();
+  if (guestOrderNumbers.length > 0 && "order" in prisma && prisma.order) {
+    const guestOrders = await prisma.order.findMany({
+      where: { number: { in: guestOrderNumbers }, deletedAt: null },
+      select: { number: true, contactId: true, email: true },
+    });
+    for (const o of guestOrders) {
+      orderByNumber.set(o.number, { contactId: o.contactId, email: o.email });
+    }
+  }
+
+  const items: ReviewListItem[] = rawItems.map((r) => {
+    const orderNumber = parseReviewTokenOrderNumber(r.createdBy);
+    const guestOrd = orderNumber ? orderByNumber.get(orderNumber) : undefined;
+    return {
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      authorName: r.authorName,
+      authorCity: r.authorCity,
+      isApproved: r.isApproved,
+      featured: r.featured,
+      isArchived: !!r.deletedAt,
+      imagesCount: r.images.length,
+      productId: r.productId,
+      productName: r.product.name,
+      productSlug: r.product.slug,
+      customerId: r.customerId,
+      customerEmail: r.customer?.email ?? guestOrd?.email ?? null,
+      customerFullName: r.customer
+        ? [r.customer.firstName, r.customer.lastName].filter(Boolean).join(" ") || null
+        : null,
+      contactId: r.customer?.contactId ?? guestOrd?.contactId ?? null,
+      orderNumber,
+      createdAt: r.createdAt,
+    };
+  });
 
   return {
     items,
@@ -295,4 +336,115 @@ export async function bulkArchiveReviews(
     },
   });
   return { count: result.count };
+}
+
+/**
+ * Devuelve los `slug` únicos de producto afectados por un lote de reseñas para revalidar sus PDPs.
+ */
+export async function listProductSlugsForReviewIds(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await prisma.review.findMany({
+    where: { id: { in: ids } },
+    select: { product: { select: { slug: true } } },
+  });
+  return Array.from(new Set(rows.map((r) => r.product.slug).filter(Boolean)));
+}
+
+export interface ReviewsExecutiveAnalytics {
+  pendingCount: number;
+  approvedCount: number;
+  featuredCount: number;
+  archivedCount: number;
+  lowRatingActiveCount: number;
+  allCount: number;
+  approvedAverageRating: number | null;
+  ratingDistribution: Array<{ rating: 5 | 4 | 3 | 2 | 1; count: number }>;
+}
+
+/**
+ * Analítica ejecutiva de reputación (`Bloque 6` · `/admin/resenas`), opcionalmente acotada por `productId`.
+ */
+export async function getReviewsExecutiveAnalytics(
+  productId?: string,
+): Promise<ReviewsExecutiveAnalytics> {
+  const prodFilter = productId ? { productId } : {};
+
+  const [
+    pendingCount,
+    approvedCount,
+    featuredCount,
+    archivedCount,
+    lowRatingActiveCount,
+    byRating,
+    approvedAgg,
+  ] = await Promise.all([
+    prisma.review.count({ where: { ...prodFilter, isApproved: false, deletedAt: null } }),
+    prisma.review.count({ where: { ...prodFilter, isApproved: true, deletedAt: null } }),
+    prisma.review.count({
+      where: { ...prodFilter, featured: true, isApproved: true, deletedAt: null },
+    }),
+    prisma.review.count({ where: { ...prodFilter, deletedAt: { not: null } } }),
+    prisma.review.count({
+      where: { ...prodFilter, rating: { lte: 2 }, deletedAt: null },
+    }),
+    prisma.review.groupBy({
+      by: ["rating"],
+      where: { ...prodFilter, deletedAt: null },
+      _count: { _all: true },
+    }),
+    prisma.review.aggregate({
+      where: { ...prodFilter, isApproved: true, deletedAt: null },
+      _avg: { rating: true },
+    }),
+  ]);
+
+  const map = new Map<number, number>();
+  for (const r of byRating) {
+    map.set(r.rating, r._count._all);
+  }
+
+  const ratingDistribution: Array<{ rating: 5 | 4 | 3 | 2 | 1; count: number }> = [
+    { rating: 5, count: map.get(5) ?? 0 },
+    { rating: 4, count: map.get(4) ?? 0 },
+    { rating: 3, count: map.get(3) ?? 0 },
+    { rating: 2, count: map.get(2) ?? 0 },
+    { rating: 1, count: map.get(1) ?? 0 },
+  ];
+
+  const avgRaw = approvedAgg._avg.rating;
+  const approvedAverageRating =
+    typeof avgRaw === "number" && Number.isFinite(avgRaw) ? Math.round(avgRaw * 10) / 10 : null;
+
+  return {
+    pendingCount,
+    approvedCount,
+    featuredCount,
+    archivedCount,
+    lowRatingActiveCount,
+    allCount: pendingCount + approvedCount + archivedCount,
+    approvedAverageRating,
+    ratingDistribution,
+  };
+}
+
+const SAFE_REVIEW_RETURN_TO_RE =
+  /^\/admin\/(?:resenas|productos\/c[a-z0-9]{24})(?:\?[a-z0-9_=&%-]*)?$/i;
+
+/**
+ * Sanitiza `returnTo` contra open-redirect y traversal antes de redirigir tras
+ * moderar una reseña desde `/admin/resenas` o `/admin/productos/[id]`.
+ */
+export function sanitizeReviewReturnPath(raw: unknown): string {
+  if (typeof raw !== "string") return "/admin/resenas";
+  const trimmed = raw.trim();
+  if (
+    !trimmed ||
+    trimmed.startsWith("//") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("..") ||
+    /[\u0000-\u001F\u007F]/.test(trimmed)
+  ) {
+    return "/admin/resenas";
+  }
+  return SAFE_REVIEW_RETURN_TO_RE.test(trimmed) ? trimmed : "/admin/resenas";
 }

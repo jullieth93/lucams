@@ -22,6 +22,8 @@ import type {
   PaymentMethod,
 } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { formatDayMonthCO, formatIsoDateCO } from "@/lib/datetime";
+import { maskEmail } from "@/lib/pii-mask";
 
 export const REVENUE_STATUSES: OrderStatus[] = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"];
 
@@ -116,19 +118,34 @@ export interface PeriodRange {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function startOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/** Inicio del día calendario en `America/Bogota` (`00:00:00.000-05:00`, sin horario de verano). */
+export function startOfDayCO(d: Date): Date {
+  const iso = formatIsoDateCO(d);
+  return new Date(`${iso}T00:00:00.000-05:00`);
+}
+
+/** Inicio del mes calendario en `America/Bogota` (`YYYY-MM-01T00:00:00.000-05:00`). */
+export function startOfMonthCO(d: Date): Date {
+  const iso = formatIsoDateCO(d);
+  return new Date(`${iso.slice(0, 7)}-01T00:00:00.000-05:00`);
 }
 
 /**
- * Ventana del período + ventana anterior comparable.
+ * Ventana del período + ventana anterior comparable en hora oficial de Colombia (`-05:00`).
  * - Nd   → últimos N días (hoy incluido); anterior = los N días previos.
  * - mes  → del 1.º del mes a hoy; anterior = el mes calendario completo previo.
  */
 export function resolvePeriodRange(key: FinanzasPeriod, now: Date): PeriodRange {
   if (key === "mes") {
-    const from = new Date(now.getFullYear(), now.getMonth(), 1);
-    const previousFrom = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const iso = formatIsoDateCO(now);
+    const year = Number(iso.slice(0, 4));
+    const month = Number(iso.slice(5, 7));
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const from = new Date(`${iso.slice(0, 7)}-01T00:00:00.000-05:00`);
+    const previousFrom = new Date(
+      `${prevYear}-${String(prevMonth).padStart(2, "0")}-01T00:00:00.000-05:00`,
+    );
     return {
       from,
       to: now,
@@ -139,7 +156,7 @@ export function resolvePeriodRange(key: FinanzasPeriod, now: Date): PeriodRange 
     };
   }
   const days = key === "7d" ? 7 : key === "30d" ? 30 : 90;
-  const from = new Date(startOfDay(now).getTime() - (days - 1) * DAY_MS);
+  const from = new Date(startOfDayCO(now).getTime() - (days - 1) * DAY_MS);
   return {
     from,
     to: now,
@@ -161,25 +178,23 @@ export interface RevenueBucket {
   count: number;
 }
 
-const fullLabelFmt = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short" });
-
 /**
- * Reparte filas en buckets contiguos día/semana cubriendo [range.from, range.to],
+ * Reparte filas en buckets contiguos día/semana cubriendo [range.from, range.to] en `America/Bogota`,
  * con buckets vacíos en cero (los huecos importan: muestran días sin ventas).
  */
 export function aggregateRevenueBuckets(rows: RevenueRow[], range: PeriodRange): RevenueBucket[] {
   const stepMs = range.bucket === "day" ? DAY_MS : 7 * DAY_MS;
-  const first = startOfDay(range.from);
+  const first = startOfDayCO(range.from);
   const buckets: RevenueBucket[] = [];
   for (let t = first.getTime(); t <= range.to.getTime(); t += stepMs) {
     const start = new Date(t);
+    const iso = formatIsoDateCO(start);
+    const dayNum = Number(iso.slice(8, 10));
+    const monthNum = Number(iso.slice(5, 7));
     buckets.push({
       start,
-      label: fullLabelFmt.format(start),
-      tickLabel:
-        range.bucket === "day"
-          ? String(start.getDate())
-          : `${start.getDate()}/${start.getMonth() + 1}`,
+      label: formatDayMonthCO(start),
+      tickLabel: range.bucket === "day" ? String(dayNum) : `${dayNum}/${monthNum}`,
       totalCents: 0,
       count: 0,
     });
@@ -368,8 +383,15 @@ const ACCOUNTING_CSV_DATE = new Intl.DateTimeFormat("sv-SE", {
 /**
  * Construye CSV contable (con UTF-8 BOM para Excel y saltos CRLF RFC 4180).
  * Pura: sin acceso a DB para testear invariantes de dinero y sanitización.
+ * Cuando `opts.redactBuyerEmail` es `true` (`FINANCE_ANALYST`), enmascara `email_comprador`
+ * preservando intactos los campos fiscales DIAN (`tipo_doc_dian`, `numero_doc_dian`,
+ * `nombre_facturacion_dian`, `estado_dian`, `cufe_dian`).
  */
-export function buildAccountingOrdersCsv(rows: AccountingOrderExportRow[]): string {
+export function buildAccountingOrdersCsv(
+  rows: AccountingOrderExportRow[],
+  opts?: { redactBuyerEmail?: boolean },
+): string {
+  const redactBuyerEmail = Boolean(opts?.redactBuyerEmail);
   const header = [
     "numero_pedido",
     "fecha_bogota",
@@ -397,6 +419,7 @@ export function buildAccountingOrdersCsv(rows: AccountingOrderExportRow[]): stri
 
   const lines = rows.map((row) => {
     const netCents = Math.max(0, row.totalCents - row.retractRefundedCents);
+    const buyerEmail = redactBuyerEmail ? maskEmail(row.email) : row.email;
     return [
       escapeAccountingCsvCell(row.number),
       escapeAccountingCsvCell(ACCOUNTING_CSV_DATE.format(row.createdAt)),
@@ -419,7 +442,7 @@ export function buildAccountingOrdersCsv(rows: AccountingOrderExportRow[]): stri
       escapeAccountingCsvCell(row.billingName ?? ""),
       escapeAccountingCsvCell(row.dianStatus),
       escapeAccountingCsvCell(row.dianCufe ?? ""),
-      escapeAccountingCsvCell(row.email),
+      escapeAccountingCsvCell(buyerEmail),
     ].join(",");
   });
 

@@ -13,49 +13,58 @@ import {
   ADMIN_CAPABILITIES,
   ADMIN_ROLE_SETS,
   canAccessAdminPath,
+  canFilterOrdersByPaymentMethod,
+  canManageOrderRenderJobs,
+  canRetryOrderShipment,
+  canSeeOrderCodCollectionAmount,
+  canSeeOrderCommercialBreakdown,
+  canSeeOrderTotalInGuide,
+  canTransitionOrderTo,
   filterNavByRole,
+  getNotificationRouteScope,
   adminHomePath,
   hasCapability,
   rolesWithCapability,
 } from "./admin-rbac";
+import { maskBlockedIdentityValue } from "./pii-mask";
 
 // Rutas representativas por categoría (derivadas de ROUTE_ROLES en la fuente).
 const CATALOG_PATHS = [
   "/admin/productos",
   "/admin/inventario",
+  "/admin/materiales",
+  "/admin/costos",
+  "/admin/mayorista",
+  "/admin/cupones",
   "/admin/categorias",
   "/admin/ocasiones",
   "/admin/resenas",
   "/admin/clientes",
+  "/admin/canales",
+  "/admin/canales/tienda",
+  "/admin/envios",
 ];
 // Compartidas por los tres roles operativos (N-21, 2026-09-11: garantías y
 // retractos ya NO están acá — la ruta replica lo que su página exige).
 const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos"];
-// Garantías y Retractos: SUPER+MANAGER — la página y las acciones operativas piden
-// MANAGER_UP (refundRetractAction exige SUPERADMIN + requireRecentMfa).
-const MANAGER_UP_PATHS = ["/admin/garantias", "/admin/retractos"];
-// Contenido del sitio: SUPERADMIN + CMS_EDITOR (set CONTENT). La página
-// "emails" del CMS (newsletter welcome, Ruta A) sigue acá; el módulo NUEVO
-// /admin/email-templates (Fase 4, 2026-09-18) subió a solo-SUPERADMIN.
-const CONTENT_PATHS = ["/admin/contenido"];
+// Garantías, Retractos y Notificaciones: SUPER+MANAGER/OPERATIONS_MANAGER.
+const MANAGER_UP_PATHS = ["/admin/garantias", "/admin/retractos", "/admin/notificaciones"];
+// Contenido del sitio y redirecciones SEO: SUPERADMIN + CMS_EDITOR (set CONTENT).
+// El módulo /admin/email-templates sigue en solo-SUPERADMIN.
+const CONTENT_PATHS = ["/admin/contenido", "/admin/redirects"];
 // Autoservicio de cuenta (MFA obligatorio, B-1): los cuatro roles.
 const ACCOUNT_PATHS = ["/admin/seguridad"];
-// Rutas solo-SUPERADMIN: las NO listadas (deny-by-default) +
-// /admin/email-templates (Fase 4: módulo real de plantillas — preview,
-// overrides y envío de prueba; ya no es el redirect legacy al CMS).
+// Rutas fuera de alcance de MANAGER/FULFILLMENT/CMS_EDITOR:
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
-  "/admin/cupones",
+  "/admin/fidelizacion",
   "/admin/usuarios",
   "/admin/integraciones",
+  "/admin/integraciones/aveonline",
   "/admin/auditoria",
-  "/admin/mayorista",
-  "/admin/materiales",
-  "/admin/costos",
-  "/admin/canales",
+  "/admin/canales/mercadolibre",
   "/admin/metricas",
   "/admin/performance",
-  "/admin/redirects",
   "/admin/email-templates",
   "/admin/contenido/paginas/global",
 ];
@@ -239,7 +248,10 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     ["/admin/ocasiones", true, true, false, false],
     ["/admin/resenas", true, true, false, false],
     ["/admin/clientes", true, true, false, false],
+    ["/admin/notificaciones", true, true, false, false],
+    ["/admin/materiales", true, true, false, false],
     ["/admin/contenido", true, false, false, true],
+    ["/admin/redirects", true, false, false, true],
     ["/admin/contenido/paginas/global", true, false, false, false],
     // Fase 4 (2026-09-18): el módulo de plantillas es config sensible → SUPER.
     ["/admin/email-templates", true, false, false, false],
@@ -247,7 +259,9 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     ["/admin/usuarios", true, false, false, false],
     // B-1: autoservicio de cuenta (MFA obligatorio) → los cuatro roles.
     ["/admin/seguridad", true, true, true, true],
-    ["/admin/cupones", true, false, false, false],
+    ["/admin/mayorista", true, true, false, false],
+    ["/admin/cupones", true, true, false, false],
+    ["/admin/fidelizacion", true, false, false, false],
     ["/admin/auditoria", true, false, false, false],
   ];
 
@@ -456,10 +470,10 @@ describe("filterNavByRole — CMS_EDITOR", () => {
     expect(out.map((g) => g.label)).toEqual(["Contenido", "Configuración"]);
   });
 
-  it("Contenido queda solo con 'Páginas del sitio' (Redirecciones URL es solo-SUPERADMIN)", () => {
+  it("Contenido incluye 'Páginas del sitio' y 'Redirecciones URL' (cms:write)", () => {
     const out = filterNavByRole(buildNavConContenido(), "CMS_EDITOR");
     const contenido = out.find((g) => g.label === "Contenido");
-    expect(contenido?.items?.map((i) => i.href)).toEqual(["/admin/contenido"]);
+    expect(contenido?.items?.map((i) => i.href)).toEqual(["/admin/contenido", "/admin/redirects"]);
   });
 
   it("Configuración queda solo con 'Seguridad' (B-1); 'Ajustes del sitio' y 'Plantillas de correo' son solo SUPERADMIN", () => {
@@ -596,6 +610,8 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/clientes")).toBe(false);
     expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/finanzas")).toBe(false);
     expect(ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT).not.toContain("PRINT_WORKSHOP");
+    expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).not.toContain("FULFILLMENT");
+    expect(ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT).toContain("FULFILLMENT");
   });
 
   it("CUSTOMER_SUPPORT atiende tickets, garantías, retractos y Contacto 360, pero NO fusiona duplicados, NO reembolsa ni exporta CSV", () => {
@@ -616,40 +632,438 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/clientes/ck_123")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/clientes/duplicados")).toBe(false);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/soporte")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/mensajes")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/garantias")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/reclamos")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/retractos")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/resenas")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/carritos")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/carritos/configuracion")).toBe(false);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/productos")).toBe(false);
   });
 
-  it("FINANCE_ANALYST opera finanzas, conciliación COD, costos, métricas y export contable sin poder tocar catálogo ni staff", () => {
+  it("FINANCE_ANALYST opera finanzas, conciliación COD, costos, métricas, pasivos posventa y export contable con PII enmascarado y sin tocar catálogo ni staff", () => {
     expect(hasCapability("FINANCE_ANALYST", "finance:read")).toBe(true);
     expect(hasCapability("FINANCE_ANALYST", "finance:reconcile_cod")).toBe(true);
     expect(hasCapability("FINANCE_ANALYST", "finance:export_csv")).toBe(true);
     expect(hasCapability("FINANCE_ANALYST", "metrics:read")).toBe(true);
-    expect(hasCapability("FINANCE_ANALYST", "orders:read_pii")).toBe(true);
+    expect(hasCapability("FINANCE_ANALYST", "orders:read_pii")).toBe(false);
+    expect(ADMIN_ROLE_SETS.SHIPPING_GUIDE_PRINT).not.toContain("FINANCE_ANALYST");
     expect(hasCapability("FINANCE_ANALYST", "orders:transition")).toBe(false);
     expect(hasCapability("FINANCE_ANALYST", "catalog:write")).toBe(false);
     expect(hasCapability("FINANCE_ANALYST", "staff:manage")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "warranty:manage")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "warranty:refund")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "retract:manage")).toBe(false);
+    expect(hasCapability("FINANCE_ANALYST", "retract:refund")).toBe(false);
 
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/conciliacion")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/bloqueos")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/export")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/costos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/retractos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/garantias")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/reclamos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/mayorista")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/cupones")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/cupones/cp_123")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/fidelizacion")).toBe(true);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/metricas")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/soporte")).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/resenas")).toBe(false);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/clientes")).toBe(false);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/productos")).toBe(false);
     expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/usuarios")).toBe(false);
   });
 
-  it("OPERATIONS_MANAGER equivale funcionalmente a gerencia operativa (incluye fusión de duplicados y marketing)", () => {
+  it("OPERATIONS_MANAGER equivale funcionalmente a gerencia operativa (incluye notificaciones, materiales, canales de tienda, envíos, fusión de duplicados y marketing)", () => {
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/notificaciones")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/materiales")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/costos")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/mayorista")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/cupones")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/cupones/cp_123")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/fidelizacion")).toBe(false);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/plantillas")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/disenos")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/fichas")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/canales")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/canales/tienda")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/canales/mercadolibre")).toBe(false);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/envios")).toBe(true);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/integraciones")).toBe(false);
+    expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/integraciones/aveonline")).toBe(false);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/clientes")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/clientes/duplicados")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/marketing/suscriptores")).toBe(true);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/finanzas")).toBe(false);
     expect(canAccessAdminPath("OPERATIONS_MANAGER", "/admin/usuarios")).toBe(false);
+    expect(ADMIN_ROLE_SETS.COSTOS_READ).toEqual([
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "FINANCE_ANALYST",
+      "MANAGER",
+    ]);
     expect(rolesWithCapability("staff:manage")).toEqual(["SUPERADMIN"]);
+  });
+
+  it("Bloque 4 — paridad N-21 en CRM 360, duplicados, oportunidades B2B, cotizaciones y hoja de taller", () => {
+    // Hoja de taller (/admin/cotizaciones/[id]/taller): exige production:download_assets
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones")).toBe(false);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123")).toBe(false);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123/taller")).toBe(true);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123/taller?print=1")).toBe(
+      true,
+    );
+    // Bordes de seguridad sobre el patrón dinámico
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123/tallerX")).toBe(false);
+    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones//taller")).toBe(false);
+
+    // CUSTOMER_SUPPORT gestiona cotizaciones y oportunidades, pero NO descarga activos 300 DPI de taller
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/oportunidades")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/oportunidades/opp_123")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/cotizaciones")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/cotizaciones/qt_123")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/cotizaciones/qt_123/taller")).toBe(false);
+
+    // OPERATIONS_MANAGER y MANAGER acceden tanto al flujo comercial como a la hoja de taller
+    for (const role of ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"] as const) {
+      expect(canAccessAdminPath(role, "/admin/oportunidades")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/cotizaciones")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/cotizaciones/qt_123/taller")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/clientes/duplicados")).toBe(true);
+    }
+
+    // FINANCE_ANALYST, FULFILLMENT y CMS_EDITOR no acceden a embudo B2B, cotizaciones ni hoja de taller
+    for (const role of ["FINANCE_ANALYST", "FULFILLMENT", "CMS_EDITOR"] as const) {
+      expect(canAccessAdminPath(role, "/admin/oportunidades")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/cotizaciones")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/cotizaciones/qt_123/taller")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/clientes/duplicados")).toBe(false);
+    }
+  });
+
+  it("Bloque 5 — paridad N-21 en subrutas de pedidos (/produccion y /guia), segregación por etapa y confidencialidad COP", () => {
+    // /admin/pedidos/[n]/produccion (ZIP 300 DPI): exclusivo production:download_assets
+    for (const role of ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER", "PRINT_WORKSHOP"] as const) {
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/produccion")).toBe(true);
+    }
+    for (const role of [
+      "FULFILLMENT",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/produccion")).toBe(false);
+    }
+
+    // /admin/pedidos/[n]/guia (guía física térmica): exclusivo SHIPPING_GUIDE_PRINT
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "FULFILLMENT",
+      "CUSTOMER_SUPPORT",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/guia")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/guia?print=1")).toBe(true);
+    }
+    for (const role of ["PRINT_WORKSHOP", "FINANCE_ANALYST", "CMS_EDITOR"] as const) {
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/guia")).toBe(false);
+    }
+
+    // Segregación por etapa en transiciones de Order
+    expect(canTransitionOrderTo("PRINT_WORKSHOP", "FULFILLING")).toBe(true);
+    expect(canTransitionOrderTo("PRINT_WORKSHOP", "SHIPPED")).toBe(false);
+    expect(canTransitionOrderTo("PRINT_WORKSHOP", "DELIVERED")).toBe(false);
+    expect(canTransitionOrderTo("PRINT_WORKSHOP", "CANCELLED")).toBe(false);
+
+    expect(canTransitionOrderTo("FULFILLMENT", "FULFILLING")).toBe(true);
+    expect(canTransitionOrderTo("FULFILLMENT", "SHIPPED")).toBe(true);
+    expect(canTransitionOrderTo("FULFILLMENT", "DELIVERED")).toBe(true);
+    expect(canTransitionOrderTo("FULFILLMENT", "CANCELLED")).toBe(false);
+
+    for (const role of ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"] as const) {
+      expect(canTransitionOrderTo(role, "FULFILLING")).toBe(true);
+      expect(canTransitionOrderTo(role, "SHIPPED")).toBe(true);
+      expect(canTransitionOrderTo(role, "DELIVERED")).toBe(true);
+      expect(canTransitionOrderTo(role, "CANCELLED")).toBe(true);
+    }
+    expect(canTransitionOrderTo("CUSTOMER_SUPPORT", "FULFILLING")).toBe(false);
+    expect(canTransitionOrderTo("FINANCE_ANALYST", "CANCELLED")).toBe(false);
+
+    // Reintentar guía Aveonline vs gestionar RenderJob 300 DPI
+    expect(canRetryOrderShipment("FULFILLMENT")).toBe(true);
+    expect(canRetryOrderShipment("PRINT_WORKSHOP")).toBe(false);
+    expect(canRetryOrderShipment("CUSTOMER_SUPPORT")).toBe(false);
+
+    expect(canManageOrderRenderJobs("PRINT_WORKSHOP")).toBe(true);
+    expect(canManageOrderRenderJobs("FULFILLMENT")).toBe(false);
+    expect(canManageOrderRenderJobs("CUSTOMER_SUPPORT")).toBe(false);
+
+    // Confidencialidad comercial COP
+    expect(canSeeOrderCommercialBreakdown("PRINT_WORKSHOP")).toBe(false);
+    expect(canSeeOrderCodCollectionAmount("PRINT_WORKSHOP")).toBe(false);
+
+    expect(canSeeOrderCommercialBreakdown("FULFILLMENT")).toBe(false);
+    expect(canSeeOrderCodCollectionAmount("FULFILLMENT")).toBe(true);
+
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "FINANCE_ANALYST",
+      "CUSTOMER_SUPPORT",
+    ] as const) {
+      expect(canSeeOrderCommercialBreakdown(role)).toBe(true);
+      expect(canSeeOrderCodCollectionAmount(role)).toBe(true);
+    }
+  });
+
+  it("Bloque 6 — Posventa, Atención y Reputación (D1 lectura contable, D2 reembolso unificado SUPERADMIN, D3 lectura reputacional y B-7)", () => {
+    // D2: Salida efectiva de dinero en posventa unificada en SUPERADMIN
+    expect(rolesWithCapability("retract:refund")).toEqual(["SUPERADMIN"]);
+    expect(rolesWithCapability("warranty:refund")).toEqual(["SUPERADMIN"]);
+    expect(hasCapability("OPERATIONS_MANAGER", "warranty:manage")).toBe(true);
+    expect(hasCapability("OPERATIONS_MANAGER", "warranty:refund")).toBe(false);
+    expect(hasCapability("OPERATIONS_MANAGER", "retract:manage")).toBe(true);
+    expect(hasCapability("OPERATIONS_MANAGER", "retract:refund")).toBe(false);
+    expect(hasCapability("MANAGER", "warranty:refund")).toBe(false);
+    expect(hasCapability("MANAGER", "retract:refund")).toBe(false);
+
+    // D1: Garantías, Reclamos y Retractos visibles en lectura contable para FINANCE_ANALYST
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "MANAGER",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/garantias")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/reclamos")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/reclamos/clm_123")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/retractos")).toBe(true);
+    }
+    for (const role of ["FULFILLMENT", "PRINT_WORKSHOP", "CMS_EDITOR"] as const) {
+      expect(canAccessAdminPath(role, "/admin/garantias")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/reclamos")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/reclamos/clm_123")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/retractos")).toBe(false);
+    }
+
+    // D3: Reseñas en lectura para CUSTOMER_SUPPORT; moderación exclusiva catalog:write
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "CUSTOMER_SUPPORT",
+      "MANAGER",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/resenas")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/soporte")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/mensajes")).toBe(true);
+    }
+    expect(hasCapability("CUSTOMER_SUPPORT", "catalog:write")).toBe(false);
+    for (const role of [
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/resenas")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/soporte")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/mensajes")).toBe(false);
+    }
+  });
+
+  it("Bloque 7 — Finanzas, Riesgo COD y Automatización de Marketing (A1, A2, A3 + maskBlockedIdentityValue)", () => {
+    // A3: carts:configure exclusivo SUPERADMIN
+    expect(rolesWithCapability("carts:configure")).toEqual(["SUPERADMIN"]);
+    expect(canAccessAdminPath("SUPERADMIN", "/admin/carritos/configuracion")).toBe(true);
+    for (const role of [
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/carritos/configuracion")).toBe(false);
+    }
+
+    // A3: FINANCE_ANALYST lee en modo 0-PII Carritos y Lifecycle (incl. preview sintético),
+    // pero NO accede a rutas de mutación ni a preview con PII real de carrito
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/conciliacion")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/finanzas/bloqueos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/carritos")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/carritos/caaaaaaaaaaaaaaaaaaaaaaaa")).toBe(
+      true,
+    );
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/carritos/enviar")).toBe(false);
+    expect(
+      canAccessAdminPath("FINANCE_ANALYST", "/admin/carritos/caaaaaaaaaaaaaaaaaaaaaaaa/preview"),
+    ).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/lifecycle")).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/lifecycle/jrn_post_compra")).toBe(true);
+    expect(
+      canAccessAdminPath("FINANCE_ANALYST", "/admin/lifecycle/jrn_post_compra/preview?stepId=s1"),
+    ).toBe(true);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/lifecycle/nuevo")).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/marketing/suscriptores")).toBe(false);
+    expect(canAccessAdminPath("FINANCE_ANALYST", "/admin/marketing/segmentos")).toBe(false);
+
+    // Roles operativos con carts:recover sí acceden a enviar y preview de carrito
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/carritos/enviar")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/carritos/caaaaaaaaaaaaaaaaaaaaaaaa/preview")).toBe(
+        true,
+      );
+    }
+
+    // A1: Enmascaramiento server-side de identidades bloqueadas COD
+    expect(maskBlockedIdentityValue("EMAIL", "cliente@lucamsshop.com")).not.toContain("cliente");
+    expect(maskBlockedIdentityValue("PHONE", "+573001234567")).toContain("67");
+    expect(maskBlockedIdentityValue("PHONE", "+573001234567")).not.toContain("300123");
+    expect(maskBlockedIdentityValue("ADDRESS", "bogota:calle 100 15 20")).toBe(
+      "bogota · [dirección protegida]",
+    );
+  });
+});
+
+describe("Bloque 8 — salud técnica, performance y alcance RBAC de notificaciones", () => {
+  it("restringe /admin/observability y /admin/performance exclusivamente a SUPERADMIN", () => {
+    expect(canAccessAdminPath("SUPERADMIN", "/admin/observability")).toBe(true);
+    expect(canAccessAdminPath("SUPERADMIN", "/admin/performance")).toBe(true);
+
+    for (const role of [
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canAccessAdminPath(role, "/admin/observability")).toBe(false);
+      expect(canAccessAdminPath(role, "/admin/performance")).toBe(false);
+    }
+  });
+
+  it("getNotificationRouteScope coincide exactamente con canAccessAdminPath para actionUrl reales", () => {
+    const sampleUrls = [
+      "/admin/pedidos",
+      "/admin/pedidos?atencion=1",
+      "/admin/pedidos/LCM-2026-0001",
+      "/admin/cotizaciones",
+      "/admin/oportunidades/opp_1",
+      "/admin/inventario?stock=low",
+      "/admin/metricas",
+      "/admin/observability",
+      "/admin/auditoria?vista=seguridad",
+      "/admin/integraciones",
+      "/admin/finanzas",
+    ];
+
+    const matchesPrefix = (url: string, prefix: string) =>
+      url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`);
+
+    expect(getNotificationRouteScope("SUPERADMIN").unrestricted).toBe(true);
+
+    for (const role of [
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      const scope = getNotificationRouteScope(role);
+      expect(scope.unrestricted).toBe(false);
+      if (scope.unrestricted) throw new Error("Expected restricted scope");
+
+      for (const url of sampleUrls) {
+        const sqlAllows =
+          scope.allowedPrefixes.some((p) => matchesPrefix(url, p)) &&
+          !scope.deniedPrefixes.some((p) => matchesPrefix(url, p));
+        expect(sqlAllows).toBe(canAccessAdminPath(role, url));
+      }
+    }
+  });
+});
+
+describe("Bloque C1 — guías, filtros y alcance dinámico de notificaciones", () => {
+  it("la guía muestra el total solo si no es regalo y el rol tiene desglose o recaudo COD", () => {
+    expect(canSeeOrderTotalInGuide("FULFILLMENT", false, false)).toBe(false);
+    expect(canSeeOrderTotalInGuide("FULFILLMENT", false, true)).toBe(true);
+    expect(canSeeOrderTotalInGuide("FULFILLMENT", true, true)).toBe(false);
+    expect(canSeeOrderTotalInGuide("CUSTOMER_SUPPORT", false, false)).toBe(true);
+    expect(canSeeOrderTotalInGuide("FINANCE_ANALYST", false, false)).toBe(true);
+    expect(canSeeOrderTotalInGuide("FINANCE_ANALYST", true, true)).toBe(false);
+  });
+
+  it("solo PRINT_WORKSHOP pierde el filtro por método de pago", () => {
+    expect(canFilterOrdersByPaymentMethod("PRINT_WORKSHOP")).toBe(false);
+    for (const role of [
+      "SUPERADMIN",
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(canFilterOrdersByPaymentMethod(role)).toBe(true);
+    }
+  });
+
+  it("ROUTE_PATTERN_ROLES permite y deniega las mismas subrutas que canAccessAdminPath", () => {
+    const urls = [
+      "/admin/cotizaciones/qt_1/taller",
+      "/admin/cotizaciones/qt_1/taller?print=1",
+      "/admin/cotizaciones/qt_1/tallerX",
+      "/admin/pedidos/LCM-2026-0001/produccion",
+      "/admin/pedidos/LCM-2026-0001/guia",
+      "/admin/pedidos/LCM-2026-0001/guia/etiqueta?fuente=externa",
+      "/admin/carritos/cart_1/preview",
+      "/admin/carritos/cart_1",
+    ];
+    const matchesPrefix = (url: string, prefix: string) =>
+      url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`);
+    const matchesPattern = (url: string, pattern: { prefix: string; suffix: string }) =>
+      url.startsWith(pattern.prefix) &&
+      (url.endsWith(pattern.suffix) ||
+        url.includes(`${pattern.suffix}?`) ||
+        url.includes(`${pattern.suffix}/`));
+
+    for (const role of [
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      const scope = getNotificationRouteScope(role);
+      expect(scope.unrestricted).toBe(false);
+      if (scope.unrestricted) throw new Error("Expected restricted scope");
+
+      for (const url of urls) {
+        const sqlAllows =
+          (scope.allowedPrefixes.some((prefix) => matchesPrefix(url, prefix)) ||
+            scope.allowedPatterns.some((pattern) => matchesPattern(url, pattern))) &&
+          !scope.deniedPrefixes.some((prefix) => matchesPrefix(url, prefix)) &&
+          !scope.deniedPatterns.some((pattern) => matchesPattern(url, pattern));
+        expect(sqlAllows).toBe(canAccessAdminPath(role, url));
+      }
+    }
   });
 });

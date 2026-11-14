@@ -47,7 +47,7 @@ describe("GET /admin/pedidos/[number]/produccion (S11 · [OPS-01] / [SEC-02])", 
     vi.clearAllMocks();
     verifyAdminRouteAccess.mockResolvedValue({
       ok: true,
-      session: { user: { id: "u_ful" }, admin: { id: "adm_ful", role: "FULFILLMENT" } },
+      session: { user: { id: "u_pw" }, admin: { id: "adm_pw", role: "PRINT_WORKSHOP" } },
     });
     getOrderProductionBundle.mockResolvedValue({
       id: "ord_123",
@@ -81,7 +81,8 @@ describe("GET /admin/pedidos/[number]/produccion (S11 · [OPS-01] / [SEC-02])", 
     const res = await GET(req, { params: Promise.resolve({ number: "LCM-2026-0099" }) });
 
     expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).toContain("PRINT_WORKSHOP");
-    expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).toContain("FULFILLMENT");
+    expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).toContain("OPERATIONS_MANAGER");
+    expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).not.toContain("FULFILLMENT");
     expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).not.toContain("CUSTOMER_SUPPORT");
     expect(ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD).not.toContain("FINANCE_ANALYST");
     expect(verifyAdminRouteAccess).toHaveBeenCalledWith({
@@ -106,7 +107,7 @@ describe("GET /admin/pedidos/[number]/produccion (S11 · [OPS-01] / [SEC-02])", 
       "https://mock.supabase/storage/v1/object/sign/production-assets/_bundles/ord_123/pedido-lcm-2026-0099-produccion.zip?token=abc",
     );
     expect(recordAdminAction).toHaveBeenCalledWith({
-      actorId: "adm_ful",
+      actorId: "adm_pw",
       action: "order.design_zip_download",
       entityType: "Order",
       entityId: "ord_123",

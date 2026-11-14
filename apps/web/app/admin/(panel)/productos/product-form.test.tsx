@@ -48,8 +48,8 @@ const INITIAL_PRODUCT = {
   slug: "iman-de-foto",
   description: "Imán personalizado con tu foto favorita.",
   basePrice: 1500000,
-  compareAtPrice: null,
-  cost: null,
+  compareAtPrice: null as number | null,
+  cost: null as number | null,
   sku: "IMAN-FOTO",
   categoryId: "clucat0000000000000000001",
   isPersonalizable: true,
@@ -321,5 +321,16 @@ describe("ProductForm — tab Personalización (2026-10-02)", () => {
     expect(alert).toHaveTextContent("Columnas de la grilla");
     expect(alert).toHaveTextContent("Máximo 6 columnas");
     expect(alert).toHaveTextContent("Tamaño base del lienzo");
+  });
+
+  it("centraliza la edición de costo en /admin/costos (solo lectura en Avanzado, D1)", () => {
+    renderStudioForm({ ...STUDIO_PRODUCT, cost: 450000 });
+    expect(document.querySelector('input[name="cost"]')).toBeNull();
+    const costLink = screen.getByRole("link", {
+      name: /editar en costos y márgenes/i,
+      hidden: true,
+    });
+    expect(costLink).toHaveAttribute("href", "/admin/costos?q=IMAN-FOTO");
+    expect(screen.getByText(/\$\s*4\.500/)).toBeInTheDocument();
   });
 });

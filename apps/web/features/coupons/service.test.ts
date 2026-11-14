@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { mockPrisma, updateTagSpy } = vi.hoisted(() => ({
   mockPrisma: {
     coupon: {
+      findMany: vi.fn(),
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -28,7 +29,15 @@ const { mockPrisma, updateTagSpy } = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
 vi.mock("next/cache", () => ({ updateTag: updateTagSpy }));
 
-import { archiveCoupon, createCoupon, pauseCoupon, resumeCoupon, updateCoupon } from "./service";
+import {
+  archiveCoupon,
+  CouponValidationError,
+  createCoupon,
+  listCoupons,
+  pauseCoupon,
+  resumeCoupon,
+  updateCoupon,
+} from "./service";
 import type { CouponCreateInput } from "./schemas";
 
 const ACTOR = "admin-1";
@@ -113,5 +122,62 @@ describe("coupons/service — invalidación de caché (B-7)", () => {
     mockPrisma.coupon.update.mockRejectedValue(new Error("db down"));
     await expect(pauseCoupon("c1", ACTOR)).rejects.toThrow("db down");
     expect(updateTagSpy).not.toHaveBeenCalled();
+  });
+
+  it("fuerza isPublic=false al actualizar un cupón personal (D3)", async () => {
+    mockPrisma.coupon.findUnique.mockResolvedValue({
+      id: "c-ref",
+      type: "PERCENT",
+      value: 10,
+      customerId: "cust-123",
+      deletedAt: null,
+      validFrom: new Date(Date.now() - 86_400_000),
+      validTo: new Date(Date.now() + 86_400_000),
+    });
+
+    await updateCoupon({ id: "c-ref", isPublic: true, value: 15 }, ACTOR);
+    expect(mockPrisma.coupon.update).toHaveBeenCalledWith({
+      where: { id: "c-ref" },
+      data: { isPublic: false, value: 15, updatedBy: ACTOR },
+    });
+  });
+
+  it("bloquea mutaciones sobre un cupón archivado (deletedAt != null)", async () => {
+    mockPrisma.coupon.findUnique.mockResolvedValue({
+      id: "c-arch",
+      deletedAt: new Date("2026-10-01T00:00:00Z"),
+    });
+
+    await expect(updateCoupon({ id: "c-arch", value: 10 }, ACTOR)).rejects.toBeInstanceOf(
+      CouponValidationError,
+    );
+    await expect(pauseCoupon("c-arch", ACTOR)).rejects.toBeInstanceOf(CouponValidationError);
+    await expect(archiveCoupon("c-arch", ACTOR)).rejects.toBeInstanceOf(CouponValidationError);
+    expect(mockPrisma.coupon.update).not.toHaveBeenCalled();
+    expect(updateTagSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("coupons/service — oráculo de búsqueda PII", () => {
+  it("allowDescriptionSearch=false limita q al código y nunca consulta description", async () => {
+    mockPrisma.coupon.findMany.mockResolvedValue([]);
+
+    await listCoupons({ q: "referido@familia.co", allowDescriptionSearch: false });
+
+    const call = mockPrisma.coupon.findMany.mock.calls[0]![0];
+    expect(call.where.OR).toEqual([
+      { code: { contains: "referido@familia.co", mode: "insensitive" } },
+    ]);
+    expect(JSON.stringify(call.where)).not.toContain("description");
+  });
+
+  it("la búsqueda autorizada conserva código y descripción", async () => {
+    mockPrisma.coupon.findMany.mockResolvedValue([]);
+
+    await listCoupons({ q: "campaña", allowDescriptionSearch: true });
+
+    const call = mockPrisma.coupon.findMany.mock.calls[0]![0];
+    expect(call.where.OR).toHaveLength(2);
+    expect(JSON.stringify(call.where.OR)).toContain("description");
   });
 });

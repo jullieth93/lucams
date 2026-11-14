@@ -1,7 +1,7 @@
 /*
  * HOMOLOGACIÓN E2E — reseñas del cliente (docs/TESTING.md):
  *
- *   compra verificada (orden PAID sembrada para el cliente efímero) → form en
+ *   compra verificada (orden DELIVERED sembrada para el cliente efímero) → form en
  *   la PDP (estrellas + comentario + Turnstile) → submit → "gracias, la
  *   revisamos" → Review isApproved=false en DB (PENDING, invisible en la PDP)
  *   → validación (comentario <10 rechazado) → duplicado → "ya dejaste una
@@ -99,7 +99,7 @@ test("reseñas: submit con compra verificada → PENDING invisible → validaci�
   // de sembrar — el gate de la PDP esconde el form si ya hay reseña.
   await cleanReviewData();
 
-  // Compra verificada: orden PAID del cliente efímero con esa variante.
+  // Compra verificada: orden DELIVERED del cliente efímero con esa variante.
   const order = await db().order.create({
     data: {
       number: `TEST${runDigits}`,
@@ -110,7 +110,7 @@ test("reseñas: submit con compra verificada → PENDING invisible → validaci�
       subtotal: unitPrice,
       shipping: 0,
       total: unitPrice,
-      status: "PAID",
+      status: "DELIVERED",
       paymentMethod: "COD",
       items: { create: [{ variantId: variant.id, qty: 1, unitPrice }] },
     },
@@ -124,7 +124,11 @@ test("reseñas: submit con compra verificada → PENDING invisible → validaci�
     await clientPage.goto(`/producto/${product!.slug}`, { waitUntil: "domcontentloaded" });
     const stars = clientPage.getByRole("radio", { name: "5 estrellas" });
     await expect(stars).toBeVisible({ timeout: 20_000 });
-    record("review-form-available", true, `form visible para ${product!.slug} con compra PAID`);
+    record(
+      "review-form-available",
+      true,
+      `form visible para ${product!.slug} con compra DELIVERED`,
+    );
 
     // 2. Llenar: 5 estrellas + comentario (controlado — toPass con valor) + Turnstile
     // (el token se lee DENTRO del form de reseña: la PDP tiene 2 widgets).

@@ -4,10 +4,10 @@
  * label + estado de cada link para mostrar info contextual cuando el
  * cliente clickea un módulo "Próximo").
  *
- * Si agregás una página admin nueva:
+ * Si agregas una página admin nueva:
  *   1. Crea apps/web/app/admin/(panel)/<ruta>/page.tsx
- *   2. Si no estaba en el NAV (link nuevo), agregalo acá
- *   3. Si SÍ estaba con badge "Próximo", quitá el badge y opcionalmente
+ *   2. Si no estaba en el NAV (link nuevo), agrégalo acá
+ *   3. Si SÍ estaba con badge "Próximo", quita el badge y opcionalmente
  *      el campo `phase` (para que ya no caiga al catch-all como "en desarrollo")
  */
 
@@ -203,16 +203,34 @@ export const ADMIN_NAV: NavGroup[] = [
     icon: Package,
     defaultOpen: true,
     items: [
-      { label: "Productos", href: "/admin/productos", icon: ShoppingBag },
+      {
+        label: "Productos",
+        href: "/admin/productos",
+        icon: ShoppingBag,
+        description:
+          "Catálogo maestro: fichas comerciales, opciones y precios, fotos por diseño, personalización del Estudio, receta de materiales y empaque de envío.",
+      },
       {
         label: "Inventario",
         href: "/admin/inventario",
         icon: Boxes,
         description:
-          "Stock de todas las versiones de un vistazo. Filtra por agotadas o stock bajo y ajusta cantidades sin entrar producto por producto.",
+          "Stock de todas las opciones de un vistazo. Filtra por agotadas o stock bajo y ajusta cantidades sin entrar producto por producto.",
       },
-      { label: "Categorías", href: "/admin/categorias", icon: Layers },
-      { label: "Ocasiones", href: "/admin/ocasiones", icon: Tag },
+      {
+        label: "Categorías",
+        href: "/admin/categorias",
+        icon: Layers,
+        description:
+          "Árbol de categorías y subcategorías de la tienda: orden, identidad visual, filtros visibles y producto estrella.",
+      },
+      {
+        label: "Ocasiones",
+        href: "/admin/ocasiones",
+        icon: Tag,
+        description:
+          "Campañas y ocasiones de regalo (Día de la Madre, Navidad, Cumpleaños) que alimentan páginas /ocasion/[slug], filtros y el recomendador.",
+      },
       {
         label: "Plantillas del Estudio",
         href: "/admin/plantillas",
@@ -314,13 +332,15 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Materiales e Insumos",
         href: "/admin/materiales",
         icon: Boxes,
-        description: "Inventario de materiales e insumos de producción con alerta de bajo stock.",
+        description:
+          "Inventario de materia prima de taller (papel, tinta, imanes, empaque) con stock mínimo, costo unitario y vínculo con recetas BOM.",
       },
       {
         label: "Costos de fabricación",
         href: "/admin/costos",
         icon: Calculator,
-        description: "Costo de fabricación por producto y margen contra el precio de venta.",
+        description:
+          "Gobierno centralizado de costo unitario, costo sugerido por receta BOM y salud de márgenes brutos contra el precio mínimo de venta.",
       },
     ],
   },
@@ -333,7 +353,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/canales/tienda",
         icon: Store,
         description:
-          "Estado del canal Tienda online: URL, modo de tienda y salud de integraciones.",
+          "Estado del canal Tienda online: dominio, modo de tienda, feeds públicos y cobertura de catálogo.",
       },
       {
         label: "Mercado Libre",
@@ -416,17 +436,18 @@ export const ADMIN_NAV: NavGroup[] = [
     items: [
       { label: "Ajustes del sitio", href: "/admin/contenido/paginas/global", icon: Cog },
       {
-        label: "Seguridad (2 pasos)",
+        label: "Seguridad y clave",
         href: "/admin/seguridad",
         icon: ShieldCheck,
-        description: "Verificación en 2 pasos (MFA/TOTP) de tu cuenta admin: activar, desactivar.",
+        description:
+          "Protección de tu cuenta admin: segundo factor obligatorio (TOTP), códigos de respaldo, cambio de dispositivo y rotación de contraseña.",
       },
       {
         label: "Usuarios y acceso",
         href: "/admin/usuarios",
         icon: UserPlus,
         description:
-          "Gestión de admins: listar, promover clientes existentes, cambiar rol (Superadmin/Manager/Fulfillment), activar/desactivar. Solo Superadmin.",
+          "Gestión del equipo administrativo: altas, postura 2FA, asignación de los 7 roles operativos y activación/revocación de acceso. Solo Superadmin.",
       },
       {
         // Casa de la configuración de transporte del checkout (owner 2026-09-29):
@@ -450,7 +471,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/email-templates",
         icon: Mail,
         description:
-          "Las 27 plantillas transaccionales (pedidos, retracto, soporte, garantías, marketing): preview renderizado, edición de asunto/preheader/titular y envío de prueba. Solo Superadmin.",
+          "Las 32 plantillas transaccionales y de ciclo de vida (pedidos, retracto, soporte, garantías, marketing): preview renderizado, edición de asunto/preheader/titular y envío de prueba. Solo Superadmin.",
       },
       // P1-17: movido desde "Promociones" — es plumbing SEO, no oferta comercial.
       {
@@ -515,13 +536,19 @@ export function getAdminNav(): NavGroup[] {
     return withoutFuture.filter((group) => !group.items || group.items.length > 0 || group.href);
   }
   // Modo catálogo (Etapa 1): además de los futuros, se oculta lo que solo aplica
-  // con pagos/envíos online (grupo Finanzas completo, Integraciones y Envíos).
-  // Coherente con los gates de página (esas rutas redirigen a /admin/dashboard
-  // en este modo). "Precios al por mayor" YA NO se oculta (2026-10-02): el
-  // carrito aplica los niveles de volumen a todos los clientes.
+  // con pagos/envíos online (grupo Finanzas completo, Fidelización, Integraciones y Envíos).
+  // Coherente con los gates de página (esas rutas redirigen fuera en este modo).
+  // "Precios al por mayor" YA NO se oculta (2026-10-02): el carrito aplica los
+  // niveles de volumen a todos los clientes.
   return withoutFuture
     .filter((group) => group.title !== "Finanzas")
     .map((group) => {
+      if (group.title === "Promociones" && group.items) {
+        return {
+          ...group,
+          items: group.items.filter((it) => it.href !== "/admin/fidelizacion"),
+        };
+      }
       if (group.title === "Configuración" && group.items) {
         return {
           ...group,

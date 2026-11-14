@@ -18,16 +18,18 @@
  */
 
 import { useRef, type FormEvent, type ReactNode } from "react";
-import { useAdminConfirm } from "./use-admin-confirm";
+import { useAdminConfirm, type AdminConfirmOptions } from "./use-admin-confirm";
 
 export function ConfirmAction({
   action,
   message,
+  confirmOptions,
   children,
   className,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   message: string;
+  confirmOptions?: AdminConfirmOptions;
   children: ReactNode;
   className?: string;
 }) {
@@ -43,7 +45,7 @@ export function ConfirmAction({
       return;
     }
     e.preventDefault();
-    if (await confirm(message)) {
+    if (await confirm(message, confirmOptions)) {
       confirmedRef.current = true;
       formRef.current?.requestSubmit();
     }

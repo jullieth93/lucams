@@ -28,7 +28,16 @@ test.afterAll(async () => {
 async function openStudio(page: Page, slug: string) {
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("lucams_studio_onboarded", "v1");
+      for (const surface of [
+        "default",
+        "cards",
+        "bookmarks",
+        "strips",
+        "calendar",
+        "polaroid-ig",
+      ]) {
+        window.localStorage.setItem(`lucams_studio_onboarded_${surface}`, "v1");
+      }
     } catch {
       /* noop */
     }

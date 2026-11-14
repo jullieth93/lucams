@@ -8,7 +8,7 @@
  * disponibles según el data de la plantilla (ej. {orderNumber}).
  */
 
-import { useActionState } from "react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { saveEmailOverrideAction, type EmailTemplateActionState } from "../actions";
 
 export function OverrideFieldForm({
@@ -26,10 +26,8 @@ export function OverrideFieldForm({
   /** Override guardado en DB, o null si el campo usa el texto base. */
   overrideValue: string | null;
 }) {
-  const [state, formAction, isPending] = useActionState<EmailTemplateActionState | null, FormData>(
-    saveEmailOverrideAction,
-    null,
-  );
+  const [state, formAction, isPending, reauthModal] =
+    useMfaReauthAction<EmailTemplateActionState>(saveEmailOverrideAction);
 
   return (
     <div className="border-brand-purple/10 rounded-xl border bg-white p-4">
@@ -55,6 +53,7 @@ export function OverrideFieldForm({
         <input type="hidden" name="templateId" value={templateId} />
         <input type="hidden" name="key" value={fieldKey} />
         <input
+          key={overrideValue ?? "__base__"}
           id={`ov-${fieldKey}`}
           name="value"
           type="text"
@@ -75,7 +74,9 @@ export function OverrideFieldForm({
             {isPending ? "Guardando…" : "Guardar"}
           </button>
         </div>
-        {state?.error && <p className="text-xs text-rose-600">{state.error}</p>}
+        {state?.error && !state.reauthRequired && (
+          <p className="text-xs text-rose-600">{state.error}</p>
+        )}
         {state?.ok && <p className="text-xs text-emerald-700">{state.message}</p>}
       </form>
 
@@ -96,6 +97,7 @@ export function OverrideFieldForm({
           </button>
         </form>
       )}
+      {reauthModal}
     </div>
   );
 }

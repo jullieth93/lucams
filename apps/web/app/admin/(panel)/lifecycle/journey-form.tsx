@@ -121,8 +121,11 @@ export function LifecycleJourneyForm({
       (result) => {
         setMessage(result.message);
         if (result.ok) {
-          if (!journeyId && result.id) router.push(`/admin/lifecycle/${result.id}`);
-          router.refresh();
+          if (!journeyId && result.id) {
+            router.push(`/admin/lifecycle/${result.id}`);
+          } else {
+            router.refresh();
+          }
         }
       },
     );

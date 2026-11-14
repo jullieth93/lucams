@@ -1,9 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, BookOpen, GraduationCap, Search } from "lucide-react";
+import { ArrowLeft, BookOpen, CheckCircle2, GraduationCap, Search } from "lucide-react";
 import { z } from "zod";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { adminRoleLabel } from "@/lib/admin-roles";
+import { CountUp } from "@/components/admin/count-up";
 import { AdminGuideView } from "@/features/admin-help/components/guide-view";
 import { AdminInteractiveGuide } from "@/features/admin-help/components/interactive-guide";
 import {
@@ -12,10 +14,18 @@ import {
   getOnboardingForRole,
   searchModuleGuides,
 } from "@/features/admin-help/registry";
-import { getAdminHelpProgress } from "@/features/admin-help/service";
+import { getAdminHelpFeedbackForGuide, getAdminHelpProgress } from "@/features/admin-help/service";
+
+export const metadata: Metadata = {
+  title: "Centro de ayuda",
+  robots: { index: false, follow: false },
+};
+
+export const dynamic = "force-dynamic";
 
 const HelpCenterSearchSchema = z.object({
   q: z.string().trim().max(200).optional().default(""),
+  area: z.string().trim().max(80).optional(),
   guia: z
     .string()
     .trim()
@@ -25,6 +35,14 @@ const HelpCenterSearchSchema = z.object({
   aprender: z.string().optional(),
 });
 
+function buildHelpFilterHref(q: string, area?: string): string {
+  const sp = new URLSearchParams();
+  if (q) sp.set("q", q);
+  if (area) sp.set("area", area);
+  const qs = sp.toString();
+  return qs ? `/admin/ayuda?${qs}` : "/admin/ayuda";
+}
+
 export default async function AdminHelpCenterPage({
   searchParams,
 }: {
@@ -33,20 +51,41 @@ export default async function AdminHelpCenterPage({
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
   const role = session.admin.role;
   const parsed = HelpCenterSearchSchema.safeParse(await searchParams);
-  const params = parsed.success ? parsed.data : { q: "", guia: undefined, aprender: undefined };
+  const params = parsed.success
+    ? parsed.data
+    : { q: "", area: undefined, guia: undefined, aprender: undefined };
   const availableGuides = getAvailableModuleGuides(role);
+  const areas = [...new Set(availableGuides.map((g) => g.area))];
+  const activeArea = params.area ? areas.find((a) => a === params.area) : undefined;
+
   const selectedGuide = params.guia ? getModuleGuideById(params.guia, role) : null;
-  const results = searchModuleGuides(role, params.q, availableGuides);
+  const searchFiltered = searchModuleGuides(role, params.q, availableGuides);
+  const results = activeArea ? searchFiltered.filter((g) => g.area === activeArea) : searchFiltered;
+
   const onboarding = getOnboardingForRole(role);
-  const progress = await getAdminHelpProgress(session.admin.id);
+  const [progress, selectedFeedback] = await Promise.all([
+    getAdminHelpProgress(session.admin.id),
+    selectedGuide
+      ? getAdminHelpFeedbackForGuide(session.admin.id, selectedGuide.id)
+      : Promise.resolve(null),
+  ]);
   const onboardingProgress = progress.find((item) => item.guideId === onboarding.id) ?? null;
+
+  const completedGuideIds = new Set(
+    progress.filter((item) => item.completedAt !== null).map((item) => item.guideId),
+  );
+  const completedModuleCount = availableGuides.filter((g) => completedGuideIds.has(g.id)).length;
+  const completionPct =
+    availableGuides.length > 0
+      ? Math.round((completedModuleCount / availableGuides.length) * 100)
+      : 0;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
       {selectedGuide ? (
         <div>
           <Link
-            href={`/admin/ayuda${params.q ? `?q=${encodeURIComponent(params.q)}` : ""}`}
+            href={buildHelpFilterHref(params.q, activeArea)}
             className="text-brand-purple inline-flex min-h-11 items-center gap-2 font-semibold hover:underline"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden /> Volver al Centro de ayuda
@@ -55,6 +94,7 @@ export default async function AdminHelpCenterPage({
             <AdminGuideView
               guide={selectedGuide}
               role={role}
+              initialFeedback={selectedFeedback}
               interactive={
                 <AdminInteractiveGuide
                   guide={selectedGuide}
@@ -68,9 +108,14 @@ export default async function AdminHelpCenterPage({
       ) : (
         <div className="space-y-8">
           <header className="from-brand-purple-dark to-brand-purple overflow-hidden rounded-2xl bg-gradient-to-br p-6 text-white sm:p-8">
-            <p className="text-sm font-medium text-white/70">
-              Aprendizaje para {adminRoleLabel(role)}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-medium text-white/75">
+                Aprendizaje para {adminRoleLabel(role)}
+              </p>
+              <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white">
+                <CountUp value={availableGuides.length} /> guías adaptadas a tu rol
+              </span>
+            </div>
             <h1 className="font-display mt-2 text-3xl font-bold">Centro de ayuda</h1>
             <p className="mt-3 max-w-3xl text-white/85">
               Encuentra para qué sirve cada módulo, cómo interpretar sus datos y cómo completar tus
@@ -81,6 +126,7 @@ export default async function AdminHelpCenterPage({
               className="mt-6 flex max-w-2xl flex-col gap-2 sm:flex-row"
               role="search"
             >
+              {activeArea && <input type="hidden" name="area" value={activeArea} />}
               <label htmlFor="help-search" className="sr-only">
                 Buscar en las guías
               </label>
@@ -107,15 +153,48 @@ export default async function AdminHelpCenterPage({
             </form>
           </header>
 
-          <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:grid-cols-[1fr_auto] sm:items-center">
+          <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-[1fr_auto] sm:items-center">
             <div>
-              <p className="text-brand-purple flex items-center gap-2 text-xs font-bold tracking-wider uppercase">
-                <GraduationCap className="h-5 w-5" aria-hidden /> Tu ruta de aprendizaje
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-brand-purple flex items-center gap-2 text-xs font-bold tracking-wider uppercase">
+                  <GraduationCap className="h-5 w-5" aria-hidden /> Tu ruta de aprendizaje
+                </p>
+                {onboardingProgress?.completedAt && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Bienvenida completada
+                  </span>
+                )}
+              </div>
               <h2 className="font-display text-brand-purple-dark mt-2 text-2xl font-bold">
                 {onboarding.title}
               </h2>
               <p className="mt-1 text-slate-600">{onboarding.summary}</p>
+              <div className="mt-3 max-w-md">
+                <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
+                  <span>
+                    Recorridos de módulos completados:{" "}
+                    <strong className="text-brand-purple-dark tabular-nums">
+                      <CountUp value={completedModuleCount} /> / {availableGuides.length}
+                    </strong>
+                  </span>
+                  <span className="font-semibold tabular-nums">{completionPct}%</span>
+                </div>
+                <div
+                  className="h-2 w-full overflow-hidden rounded-full bg-slate-100"
+                  role="progressbar"
+                  aria-label={`Progreso en guías de módulos: ${completionPct}%`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={completionPct}
+                >
+                  <div
+                    className="admin-bar-grow-x bg-brand-purple h-full rounded-full"
+                    style={{
+                      width: `${Math.max(completionPct, completedModuleCount > 0 ? 3 : 0)}%`,
+                    }}
+                  />
+                </div>
+              </div>
               <p className="mt-2 text-xs text-slate-500">
                 Opcional · {onboarding.steps.length} pasos · Puedes retomarla o repetirla cuando
                 quieras.
@@ -126,6 +205,7 @@ export default async function AdminHelpCenterPage({
                 guide={onboarding}
                 role={role}
                 initialProgress={onboardingProgress}
+                autoStart={params.aprender === "1"}
               />
             </div>
           </section>
@@ -141,17 +221,52 @@ export default async function AdminHelpCenterPage({
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
                   {results.length} {results.length === 1 ? "guía disponible" : "guías disponibles"}
+                  {activeArea ? ` en ${activeArea}` : ""}
                 </p>
               </div>
-              {params.q && (
+              {(params.q || activeArea) && (
                 <Link
                   href="/admin/ayuda"
                   className="text-brand-purple-dark font-semibold hover:underline"
                 >
-                  Limpiar búsqueda
+                  Limpiar filtros
                 </Link>
               )}
             </div>
+
+            {areas.length > 1 && (
+              <div
+                className="mt-4 flex flex-wrap items-center gap-1.5"
+                aria-label="Filtrar por área"
+              >
+                <Link
+                  href={buildHelpFilterHref(params.q, undefined)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    !activeArea
+                      ? "bg-brand-purple text-white shadow-sm"
+                      : "text-brand-purple-dark hover:bg-brand-purple/10 border border-slate-200 bg-white"
+                  }`}
+                >
+                  Todas ({searchFiltered.length})
+                </Link>
+                {areas.map((area) => {
+                  const count = searchFiltered.filter((g) => g.area === area).length;
+                  return (
+                    <Link
+                      key={area}
+                      href={buildHelpFilterHref(params.q, area)}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        activeArea === area
+                          ? "bg-brand-purple text-white shadow-sm"
+                          : "text-brand-purple-dark hover:bg-brand-purple/10 border border-slate-200 bg-white"
+                      }`}
+                    >
+                      {area} ({count})
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
 
             {results.length > 0 ? (
               <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">

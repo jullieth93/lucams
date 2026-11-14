@@ -1395,7 +1395,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Con «Sin borde» las fotos cubren toda la tira — el color no aplica.",
     // Fase 2 UX (2026-10-13) — bottom-sheet de estilo en móvil + nombre del
     // color elegido siempre visible (refuerzo del indicador de selección).
-    estiloResumenAria: "Estilo actual: {borde}, color {color}. Toca para cambiarlo.",
+    estiloResumenAria: "Estilo actual: {color} {borde}. Toca para cambiarlo.",
     estiloSheetTitulo: "Estilo de tu tarjeta",
     estiloSheetListo: "Listo",
     estiloColorElegido: "Elegido: {color}",
