@@ -42,7 +42,6 @@ import {
 } from "@/components/admin-page";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
-import { isCatalogMode } from "@/lib/store-mode";
 import { cmsFieldHasDraft, getCmsListSchema, getCmsPageBySlug } from "@/features/cms/service";
 import { CmsListPreview } from "@/components/admin/cms-list-preview";
 import { cmsMediaPublicUrl } from "@/lib/cms-media";
@@ -94,8 +93,6 @@ export default async function EditarPaginaCmsPage({
 
   const page = await getCmsPageBySlug(slug);
   if (!page) notFound();
-
-  const catalogMode = isCatalogMode();
 
   // Señal de recarga de la vista previa (C1): cualquier guardar/publicar
   // actualiza el updatedAt de un campo → el servidor re-renderiza con una
@@ -396,62 +393,37 @@ export default async function EditarPaginaCmsPage({
                           con validaciones de negocio:
                         </p>
                         <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                          {catalogMode ? (
-                            <div className="border-brand-purple/15 rounded-lg border bg-white/70 p-3 opacity-75">
-                              <div className="text-brand-purple-dark flex items-center gap-1.5 text-xs font-semibold">
+                          <Link
+                            href="/admin/envios"
+                            className="border-brand-purple/15 hover:border-brand-purple/40 group rounded-lg border bg-white p-3 transition-colors"
+                          >
+                            <div className="text-brand-purple-dark group-hover:text-brand-purple flex items-center justify-between text-xs font-semibold">
+                              <span className="inline-flex items-center gap-1.5">
                                 <Truck className="text-brand-purple h-4 w-4" />
-                                Envíos y transportadoras
-                              </div>
-                              <p className="text-brand-muted mt-1 text-[11px]">
-                                Envío propio Lucams, corte horario, zonas y transportadoras (activo
-                                en modo tienda completa).
-                              </p>
+                                Envíos
+                              </span>
+                              <ArrowRight className="h-3.5 w-3.5" />
                             </div>
-                          ) : (
-                            <Link
-                              href="/admin/envios"
-                              className="border-brand-purple/15 hover:border-brand-purple/40 group rounded-lg border bg-white p-3 transition-colors"
-                            >
-                              <div className="text-brand-purple-dark group-hover:text-brand-purple flex items-center justify-between text-xs font-semibold">
-                                <span className="inline-flex items-center gap-1.5">
-                                  <Truck className="text-brand-purple h-4 w-4" />
-                                  Envíos
-                                </span>
-                                <ArrowRight className="h-3.5 w-3.5" />
-                              </div>
-                              <p className="text-brand-muted mt-1 text-[11px]">
-                                Envío propio Lucams, precio, hora límite, zonas y transportadoras.
-                              </p>
-                            </Link>
-                          )}
+                            <p className="text-brand-muted mt-1 text-[11px]">
+                              Envío propio Lucams, precio, hora límite, zonas y transportadoras.
+                            </p>
+                          </Link>
 
-                          {catalogMode ? (
-                            <div className="border-brand-purple/15 rounded-lg border bg-white/70 p-3 opacity-75">
-                              <div className="text-brand-purple-dark flex items-center gap-1.5 text-xs font-semibold">
+                          <Link
+                            href="/admin/fidelizacion"
+                            className="border-brand-purple/15 hover:border-brand-purple/40 group rounded-lg border bg-white p-3 transition-colors"
+                          >
+                            <div className="text-brand-purple-dark group-hover:text-brand-purple flex items-center justify-between text-xs font-semibold">
+                              <span className="inline-flex items-center gap-1.5">
                                 <Award className="text-brand-purple h-4 w-4" />
-                                Fidelización y referidos
-                              </div>
-                              <p className="text-brand-muted mt-1 text-[11px]">
-                                Puntos Lucams e «Invita y gana» (activo en modo tienda completa).
-                              </p>
+                                Fidelización
+                              </span>
+                              <ArrowRight className="h-3.5 w-3.5" />
                             </div>
-                          ) : (
-                            <Link
-                              href="/admin/fidelizacion"
-                              className="border-brand-purple/15 hover:border-brand-purple/40 group rounded-lg border bg-white p-3 transition-colors"
-                            >
-                              <div className="text-brand-purple-dark group-hover:text-brand-purple flex items-center justify-between text-xs font-semibold">
-                                <span className="inline-flex items-center gap-1.5">
-                                  <Award className="text-brand-purple h-4 w-4" />
-                                  Fidelización
-                                </span>
-                                <ArrowRight className="h-3.5 w-3.5" />
-                              </div>
-                              <p className="text-brand-muted mt-1 text-[11px]">
-                                Tasas de Puntos Lucams y cupones de «Invita y gana».
-                              </p>
-                            </Link>
-                          )}
+                            <p className="text-brand-muted mt-1 text-[11px]">
+                              Tasas de Puntos Lucams y cupones de «Invita y gana».
+                            </p>
+                          </Link>
 
                           <Link
                             href="/admin/carritos/configuracion"

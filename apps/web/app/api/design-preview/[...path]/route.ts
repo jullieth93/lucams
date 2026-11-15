@@ -5,7 +5,7 @@
  * Autorización (matriz certificada en preview-access.test.ts y route.integration.test.ts):
  *   - admin operativo activo (sin FINANCE_ANALYST ni CMS_EDITOR) o dueño
  *     (customerId autenticado / cookie cart_session coincidente) → cualquier variante.
- *   - capacidad por token (?st= share /d/, ?qt= cotización, ?ot= pedido) →
+ *   - capacidad por token (?st= share /d/ y ?ot= pedido) →
  *     variantes de exhibición; los borradores nunca salen por token.
  *   - resto → 404 (no 403: no se filtra si el diseño existe).
  *
@@ -79,24 +79,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
   if (!design) return notFound();
 
   // Capacidades por token (solo se consultan con forma válida; el join exige
-  // que la orden/cotización realmente contenga ESTE diseño).
+  // que la orden realmente contenga ESTE diseño).
   const url = new URL(req.url);
-  const qt = url.searchParams.get("qt");
   const ot = url.searchParams.get("ot");
-  let quoteTokenOk = false;
   let orderTokenOk = false;
-  if (qt && TOKEN_RE.test(qt)) {
-    quoteTokenOk = Boolean(
-      await prisma.quote.findFirst({
-        where: {
-          publicAccessTokenHash: hashBearerToken(qt),
-          deletedAt: null,
-          items: { some: { designId: parsed.designId } },
-        },
-        select: { id: true },
-      }),
-    );
-  }
   if (ot && TOKEN_RE.test(ot)) {
     orderTokenOk = Boolean(
       await prisma.order.findFirst({
@@ -134,7 +120,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ path?: string[]
       isAdmin: adminAccess.ok,
     },
     shareToken: url.searchParams.get("st"),
-    quoteTokenOk,
     orderTokenOk,
   });
   if (!allowed) return notFound();

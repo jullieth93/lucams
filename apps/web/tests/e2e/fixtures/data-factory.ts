@@ -50,7 +50,7 @@ export type EphemeralProduct = {
 /**
  * Categoría + producto NO personalizable efímeros (la PDP muestra "Añadir al
  * carrito"; el catálogo real es 100% personalizable y va al Estudio).
- * Mismo patrón que compra.spec.ts / catalog-mode.spec.ts.
+ * Mismo patrón que compra.spec.ts.
  *
  * `opts.withShippingDims` (suite full-mode §7.5): agrega `physicalSpecs`
  * (100 g, 10×2×10 cm) — sin dims la cotización Aveonline falla por diseño
@@ -178,10 +178,10 @@ export async function deleteEphemeralProductsByTag(tag: string): Promise<void> {
   await invalidateCatalogCache();
 }
 
-/** Datos de cliente/cotización de prueba. Email en .test → red de limpieza. */
+/** Datos de cliente de prueba. Email en .test → red de limpieza. */
 export function fakeCustomer(run: string) {
-  // El nombre NO admite dígitos (QuoteFormSchema: "El nombre solo puede tener
-  // letras") → el timestamp del run se codifica en letras (0→a … 9→j) y el
+  // El nombre NO admite dígitos (el formulario de contacto solo permite
+  // letras) → el timestamp del run se codifica en letras (0→a … 9→j) y el
   // marcador es "Prueba" (sin dígitos): único, trazable y válido.
   const runLetters = run.replace(/\D/g, "").replace(/\d/g, (d) => "abcdefghij"[Number(d)]!);
   return {

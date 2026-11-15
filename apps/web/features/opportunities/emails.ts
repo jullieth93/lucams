@@ -143,7 +143,7 @@ export async function sendB2bInquiryEmails(opportunityId: string): Promise<void>
 
     const whoLabel = opp.organization?.name || contactName;
     await notify({
-      type: "QUOTE",
+      type: "ORDER",
       severity: expectedUnits >= 100 ? "warning" : "info",
       title: `Nueva oportunidad ${opp.number} — ${whoLabel} (${expectedUnits} uds.)`,
       detail: `${eventLabel} · ${city}${contactWhatsapp ? ` · WhatsApp: ${contactWhatsapp}` : ""}`,

@@ -1,5 +1,5 @@
 /*
- * Admin > Métricas de ventas — dashboard de solo lectura sobre Order/Quote.
+ * Admin > Métricas de ventas — dashboard de solo lectura sobre Order y Opportunity.
  *
  * No hay modelo nuevo: todo se agrega en vuelo con groupBy/count/aggregate
  * (volumen bajo de pedidos, no justifica tabla de analytics ni cron de
@@ -14,12 +14,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { TrendingUp, Trophy } from "lucide-react";
-import type { OrderStatus, QuoteStatus } from "@lucams/db";
+import type { OrderStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { ADMIN_ROLE_SETS, adminHomePath, canAccessAdminPath } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
-import { isCatalogMode } from "@/lib/store-mode";
 import {
   COLLECTED_REVENUE_ORDER_WHERE,
   getPeriodAggregates,
@@ -73,20 +72,6 @@ const ORDER_STATUS_CHART_TONE: Record<OrderStatus, ChartTone> = {
   REFUNDED: "coral",
 };
 
-const QUOTE_STATUS_LABEL: Record<QuoteStatus, string> = {
-  PENDING: "Pendiente",
-  CONTACTED: "Contactada",
-  CLOSED: "Cerrada (vendida)",
-  DISCARDED: "Descartada",
-};
-const QUOTE_STATUS_CHART_TONE: Record<QuoteStatus, ChartTone> = {
-  PENDING: "amber",
-  CONTACTED: "purple",
-  CLOSED: "emerald",
-  DISCARDED: "slate",
-};
-const QUOTE_STATUSES: QuoteStatus[] = ["PENDING", "CONTACTED", "CLOSED", "DISCARDED"];
-
 type RawSearchParams = Record<string, string | string[] | undefined>;
 
 function firstParam(raw: RawSearchParams, key: string): string | undefined {
@@ -127,12 +112,6 @@ export default async function AdminMetricasPage({
         : "all",
   };
 
-  // Modo catálogo (Etapa 1): sin pagos en línea NO se generan Orders — los KPIs
-  // basados en Order (pedidos pagados, ingresos, top productos) serían ceros
-  // permanentes y puro ruido. Solo se consulta/muestra lo de cotizaciones (el
-  // canal real de venta en Etapa 1); las métricas de Order vuelven en Etapa 2.
-  const catalog = isCatalogMode();
-
   const now = new Date();
   const startOfMonth = startOfMonthCO(now);
   const thirtyDaysAgo = resolvePeriodRange("30d", now).from;
@@ -140,87 +119,69 @@ export default async function AdminMetricasPage({
 
   const canSeeFinanzas = canAccessAdminPath(role, "/admin/finanzas");
   const canSeePedidos = canAccessAdminPath(role, "/admin/pedidos");
-  const canSeeQuotes = canAccessAdminPath(role, "/admin/cotizaciones");
   const canSeeContenido = canAccessAdminPath(role, "/admin/contenido");
   const canSeeInventario = canAccessAdminPath(role, "/admin/inventario");
   const canSeeProductos = canAccessAdminPath(role, "/admin/productos");
 
-  // Consultas independientes → Promise.all para no serializar round-trips a DB.
-  // En modo catálogo las queries de Order ni siquiera se disparan (orderData=null).
   // [FIN-01] — todas las consultas de Order/OrderItem filtran `deletedAt: null` y los
-  // ingresos del mes usan el mismo criterio de caja real que `/admin/finanzas`
-  // (Wompi confirmado + COD entregado − retractos reembolsados en el mes).
-  const [quotesByStatus, orderData, funnelReport, crmReport, periodTrend] = await Promise.all([
-    prisma.quote.groupBy({
-      by: ["status"],
-      where: { deletedAt: null },
-      _count: { _all: true },
-    }),
-    catalog
-      ? Promise.resolve(null)
-      : Promise.all([
-          prisma.order.groupBy({
-            by: ["status"],
-            where: { deletedAt: null },
-            _count: { _all: true },
-          }),
-          // Se excluyen los DRAFT: son carritos abandonados, no pedidos reales, e
-          // inflarían el conteo que Lucy usa como pulso del negocio.
-          prisma.order.count({
-            where: {
-              deletedAt: null,
-              createdAt: { gte: thirtyDaysAgo },
-              status: { not: "DRAFT" },
-            },
-          }),
-          prisma.order.aggregate({
-            where: {
-              ...COLLECTED_REVENUE_ORDER_WHERE,
-              createdAt: { gte: startOfMonth },
-            },
-            _sum: { total: true },
-          }),
-          prisma.retractRequest.aggregate({
-            where: {
-              status: "REFUNDED",
-              refundedAt: { gte: startOfMonth },
-              orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
-            },
-            _sum: { refundAmount: true },
-          }),
-          // Top 10 variantes por unidades vendidas en pedidos confirmados activos.
-          prisma.orderItem.groupBy({
-            by: ["variantId"],
-            where: { order: { deletedAt: null, status: { in: PAID_STATUSES } } },
-            _sum: { qty: true },
-            orderBy: { _sum: { qty: "desc" } },
-            take: 10,
-          }),
-        ]),
+  // ingresos del mes usan el mismo criterio de caja real que `/admin/finanzas`.
+  const [orderData, funnelReport, crmReport, periodTrend] = await Promise.all([
+    Promise.all([
+      prisma.order.groupBy({
+        by: ["status"],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+      prisma.order.count({
+        where: {
+          deletedAt: null,
+          createdAt: { gte: thirtyDaysAgo },
+          status: { not: "DRAFT" },
+        },
+      }),
+      prisma.order.aggregate({
+        where: {
+          ...COLLECTED_REVENUE_ORDER_WHERE,
+          createdAt: { gte: startOfMonth },
+        },
+        _sum: { total: true },
+      }),
+      prisma.retractRequest.aggregate({
+        where: {
+          status: "REFUNDED",
+          refundedAt: { gte: startOfMonth },
+          orderItem: { order: COLLECTED_REVENUE_ORDER_WHERE },
+        },
+        _sum: { refundAmount: true },
+      }),
+      prisma.orderItem.groupBy({
+        by: ["variantId"],
+        where: { order: { deletedAt: null, status: { in: PAID_STATUSES } } },
+        _sum: { qty: true },
+        orderBy: { _sum: { qty: "desc" } },
+        take: 10,
+      }),
+    ]),
     getFunnelDashboardReport(funnelFilters, now),
-    catalog ? Promise.resolve(null) : getCrmBehavioralIntelligence(funnelFilters.days),
-    catalog ? Promise.resolve(null) : getPeriodAggregates(funnelFilters.days === 7 ? "7d" : "30d"),
+    getCrmBehavioralIntelligence(funnelFilters.days),
+    getPeriodAggregates(funnelFilters.days === 7 ? "7d" : "30d"),
   ]);
-  const ordersByStatus = orderData?.[0] ?? [];
-  const ordersLast30 = orderData?.[1] ?? 0;
-  const grossMonthRevenueCents = orderData?.[2]._sum.total ?? 0;
-  const monthRetractRefundCents = orderData?.[3]._sum.refundAmount ?? 0;
+  const ordersByStatus = orderData[0];
+  const ordersLast30 = orderData[1];
+  const grossMonthRevenueCents = orderData[2]._sum.total ?? 0;
+  const monthRetractRefundCents = orderData[3]._sum.refundAmount ?? 0;
   const revenueCents = Math.max(0, grossMonthRevenueCents - monthRetractRefundCents);
-  const topByVariant = orderData?.[4] ?? [];
+  const topByVariant = orderData[4];
 
   const orderCount = new Map<OrderStatus, number>(
     ordersByStatus.map((g) => [g.status, g._count._all]),
   );
-  const quoteCount = new Map<QuoteStatus, number>(
-    quotesByStatus.map((g) => [g.status, g._count._all]),
-  );
 
   const paidCount = PAID_STATUSES.reduce((acc, s) => acc + (orderCount.get(s) ?? 0), 0);
   const pendingCount = orderCount.get("PENDING_PAYMENT") ?? 0;
-  const totalQuotes = QUOTE_STATUSES.reduce((acc, s) => acc + (quoteCount.get(s) ?? 0), 0);
 
   // Segundo round-trip chico: nombres de las variantes del top (el groupBy no
-  // puede traer relaciones). Son máximo 10 ids. En modo catálogo no hay top.
+  // puede traer relaciones). Son máximo 10 ids.
   const variants = topByVariant.length
     ? await prisma.productVariant.findMany({
         where: { id: { in: topByVariant.map((t) => t.variantId) } },
@@ -242,14 +203,14 @@ export default async function AdminMetricasPage({
       <AdminPageHeader
         icon={<TrendingUp className="h-5 w-5" />}
         title="Métricas de ventas"
-        subtitle="Resumen de pedidos, cotizaciones, vigilancia DIAN e inteligencia comercial en vivo."
+        subtitle="Resumen de pedidos, vigilancia DIAN e inteligencia comercial en vivo."
         breadcrumbs={[
           { label: "Inicio", href: adminHomePath(role) },
           { label: "Comercial" },
           { label: "Métricas de ventas" },
         ]}
         actions={
-          canSeeFinanzas && !catalog ? (
+          canSeeFinanzas ? (
             <Link
               href={`/admin/finanzas?periodo=${funnelFilters.days === 7 ? "7d" : "30d"}`}
               className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-xl border bg-white px-3 py-1.5 text-xs font-semibold transition-colors"
@@ -261,16 +222,8 @@ export default async function AdminMetricasPage({
       />
 
       <AdminPageBody>
-        {catalog && (
-          <AdminNotice tone="info">
-            <strong>Modo catálogo (Etapa 1):</strong> aún no hay pagos en línea, así que las
-            métricas de pedidos e ingresos no aplican — llegan con la Etapa 2. Mientras tanto, el
-            pulso del negocio son las cotizaciones.
-          </AdminNotice>
-        )}
-
-        {/* KPIs principales (basados en Order — ocultos en modo catálogo) */}
-        {!catalog && (
+        {/* KPIs principales */}
+        {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard
               label="Pedidos pagados"
@@ -295,13 +248,13 @@ export default async function AdminMetricasPage({
               trendLabel={`Caja cobrada en ${monthLabel} (Wompi + COD entregado − retractos)`}
             />
           </div>
-        )}
+        }
 
         {/* Vigilancia fiscal (ADR-196): umbrales DIAN del año en vivo */}
-        {!catalog && <FiscalWatchPanel />}
+        {<FiscalWatchPanel />}
 
         {/* Evolución diaria de ingresos y pedidos (7d / 30d) */}
-        {!catalog && periodTrend && (
+        {periodTrend && (
           <AdminCard className="p-5">
             {(() => {
               const maxTrendCents = Math.max(0, ...periodTrend.buckets.map((b) => b.totalCents));
@@ -367,7 +320,7 @@ export default async function AdminMetricasPage({
 
         {/* Detalle visual por estado (Donut + Leyenda interactiva) */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {!catalog && (
+          {
             <AdminCard className="p-5">
               <div className="mb-4 flex items-center justify-between gap-2">
                 <h2 className="text-brand-purple-dark font-display text-base font-bold">
@@ -407,43 +360,11 @@ export default async function AdminMetricasPage({
                 );
               })()}
             </AdminCard>
-          )}
-
-          <AdminCard className="p-5">
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <h2 className="text-brand-purple-dark font-display text-base font-bold">
-                Cotizaciones por estado
-              </h2>
-              {canSeeQuotes && (
-                <Link
-                  href="/admin/cotizaciones"
-                  className="text-brand-purple text-xs font-semibold hover:underline"
-                >
-                  Ver todas →
-                </Link>
-              )}
-            </div>
-            <AdminDonutChart
-              ariaLabel="Distribución de cotizaciones por estado"
-              centerValue={totalQuotes.toLocaleString("es-CO")}
-              centerLabel="Cotizaciones"
-              slices={QUOTE_STATUSES.map((s) => ({
-                key: s,
-                label: QUOTE_STATUS_LABEL[s],
-                count: quoteCount.get(s) ?? 0,
-                tone: QUOTE_STATUS_CHART_TONE[s],
-                href: canSeeQuotes ? `/admin/cotizaciones?status=${s}` : undefined,
-              }))}
-            />
-            <p className="text-brand-muted border-brand-purple/10 mt-4 border-t pt-3 text-xs">
-              Total: <strong>{totalQuotes.toLocaleString("es-CO")}</strong> cotizaciones activas (no
-              incluye eliminadas).
-            </p>
-          </AdminCard>
+          }
         </div>
 
-        {/* Top productos (basado en Order — oculto en modo catálogo) */}
-        {!catalog && (
+        {/* Top productos basado en Order */}
+        {
           <section>
             <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-base font-bold">
               <Trophy className="h-5 w-5" />
@@ -477,14 +398,14 @@ export default async function AdminMetricasPage({
               </AdminCard>
             )}
           </section>
-        )}
+        }
 
         {/* Embudo vivo tienda + Estudio ([ANA-01], Fase 2): interactivo por ventana,
             dispositivo, superficie y producto. Sin PII ni cookies. */}
         <FunnelPanel report={funnelReport} filters={funnelFilters} />
 
         {/* Inteligencia conductual CRM, RFM, margen neto y atribución (Fase 12 · S27) */}
-        {!catalog && crmReport && (
+        {crmReport && (
           <CrmIntelligencePanel
             report={crmReport}
             canAccessSegments={canAccessAdminPath(role, "/admin/marketing/segmentos")}
@@ -494,7 +415,7 @@ export default async function AdminMetricasPage({
           />
         )}
 
-        {!catalog && (
+        {
           <AdminNotice tone="info">
             <strong>¿Cómo se calcula?</strong> Los ingresos netos del mes usan el mismo criterio de{" "}
             {canSeeFinanzas ? (
@@ -520,7 +441,7 @@ export default async function AdminMetricasPage({
               </>
             )}
           </AdminNotice>
-        )}
+        }
       </AdminPageBody>
     </AdminPage>
   );

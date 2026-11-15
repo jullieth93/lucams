@@ -59,7 +59,6 @@ export default async function AdminOpportunityDetailPage({
   const canManageActivities = hasCapability(role, "crm:manage_activities");
   const canViewActivities = hasCapability(role, "contacts:read_360") && canReadPii;
   const canViewContacts = canAccessAdminPath(role, "/admin/clientes");
-  const canViewQuotes = canAccessAdminPath(role, "/admin/cotizaciones");
   const canViewOrders = canAccessAdminPath(role, "/admin/pedidos");
   const canViewSupport = canAccessAdminPath(role, "/admin/soporte");
 
@@ -266,29 +265,6 @@ export default async function AdminOpportunityDetailPage({
                 </Link>
               )}
             </AdminCard>
-
-            {opp.convertedQuote && (
-              <AdminCard className="border-brand-purple/25 bg-[#FFF8F0]/60 p-4">
-                <h2 className="text-brand-purple-dark flex items-center gap-1.5 text-sm font-bold">
-                  <Package className="h-4 w-4" /> Cotización origen
-                </h2>
-                {canViewQuotes ? (
-                  <Link
-                    href={`/admin/cotizaciones/${encodeURIComponent(opp.convertedQuote.id)}`}
-                    className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-block font-mono text-sm font-bold underline underline-offset-2"
-                  >
-                    {opp.convertedQuote.number}
-                  </Link>
-                ) : (
-                  <p className="text-brand-purple-dark mt-2 font-mono text-sm font-bold">
-                    {opp.convertedQuote.number}
-                  </p>
-                )}
-                <p className="text-brand-muted mt-0.5 text-xs">
-                  Total cotizado: {formatCOP(opp.convertedQuote.total)}
-                </p>
-              </AdminCard>
-            )}
 
             {opp.organization && (
               <AdminCard className="p-4">

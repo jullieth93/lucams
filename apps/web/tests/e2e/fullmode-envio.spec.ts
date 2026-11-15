@@ -19,14 +19,13 @@
  * desde el browser — la evidencia de modo es /api/health/aveonline (demo/test)
  * y la guía test creada en fullmode-cod.spec.ts (cuenta demo, sin costo).
  *
- * SOLO LOCAL: STG/PRD corren en modo catálogo por diseño. El server debe correr
- * en modo full (scripts/e2e-fullmode.sh lo gestiona). Limpieza: producto
+ * SOLO LOCAL: el script scripts/e2e-fullmode.sh gestiona el server dedicado.
+ * Limpieza: producto
  * efímero borrado (hijas→madres) en afterAll; la fila Consent del checkout
  * queda (ledger legal append-only, marcada con el email del RUN).
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { strip } from "./_setup/env";
 import { E2E_ENV, dismissCookieBanner, expect, test } from "./fixtures/auth";
 import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
@@ -43,14 +42,7 @@ import { CheckoutEnvioPage } from "./pages/checkout-envio";
 
 const EVIDENCE_DIR = resolve(__dirname, "../../tmp/e2e-homologacion");
 
-test.skip(
-  E2E_ENV !== "local",
-  "La suite full-mode (Etapa 2) solo corre en LOCAL: STG/PRD están en modo catálogo por diseño.",
-);
-test.skip(
-  strip(process.env.NEXT_PUBLIC_STORE_MODE) !== "full",
-  "Requiere el server en modo full: scripts/e2e-fullmode.sh (o NEXT_PUBLIC_STORE_MODE=full + PLAYWRIGHT_BASE_URL).",
-);
+test.skip(E2E_ENV !== "local", "La suite transaccional solo corre en LOCAL.");
 
 const run = newRunId("fm-envio");
 const RUN_STARTED = new Date();

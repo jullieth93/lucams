@@ -491,8 +491,8 @@ export default async function EstudioPage({
   }
 
   // D1 (ADR-063) — superficies declaradas en surface.ts pero SIN editor propio (phrase/event/logo).
-  // Ningún producto activo las usa hoy; si se activa una, gateamos con un aviso claro + cotización
-  // por WhatsApp en vez de cargar silenciosamente el editor de FOTO (producto equivocado, landmine).
+  // Ningún producto activo las usa hoy; si se activa una, gateamos con un aviso claro + contacto
+  // comercial por WhatsApp en vez de cargar el editor de FOTO (producto equivocado, landmine).
   if (surface.surface === "phrase" || surface.surface === "event" || surface.surface === "logo") {
     const waUrl = await buildWhatsAppUrl({
       kind: "product",

@@ -2,7 +2,7 @@
  * Admin — Cola e historial ejecutivo de moderación de contenido (ADR-062 P0-2, Bloque 5).
  * Print-on-demand: el equipo revisa el contenido de cada diseño personalizado ANTES de imprimirlo.
  * Aprobar → habilita producción/envío. Rechazar → avisa al cliente con el motivo y bloquea el
- * envío del pedido. Diseños de pedidos activos (PAID/FULFILLING), cotizaciones activas y
+ * envío del pedido. Incluye diseños de pedidos activos (PAID/FULFILLING) y
  * diseños compartidos por link público (/d/<token>) pendientes de revisar (A4-01).
  */
 
@@ -54,7 +54,7 @@ import { formatDateCO, formatDateTimeCO } from "@/lib/datetime";
 export const metadata: Metadata = { title: "Moderación" };
 
 type VistaMode = "cola" | "historial";
-type OrigenFilter = "todos" | "pedido" | "cotizacion" | "compartido";
+type OrigenFilter = "todos" | "pedido" | "compartido";
 type CalidadFilter = "todos" | "con_aviso";
 
 type SearchParams = Promise<{
@@ -73,33 +73,10 @@ function resolveSourceLink(
   s: ModerationSource,
   role: AdminRole,
 ): { href: string | null; label: string; suffix?: string } {
-  if (s.tipo === "pedido") {
-    const href = `/admin/pedidos/${encodeURIComponent(s.numero)}`;
-    return {
-      href: canAccessAdminPath(role, href) ? href : null,
-      label: `Pedido ${s.numero}`,
-    };
-  }
-
-  if (s.quoteId) {
-    const detailHref = `/admin/cotizaciones/${encodeURIComponent(s.quoteId)}`;
-    if (canAccessAdminPath(role, detailHref)) {
-      return { href: detailHref, label: `Cotización ${s.numero}` };
-    }
-    const workshopHref = `/admin/cotizaciones/${encodeURIComponent(s.quoteId)}/taller`;
-    if (canAccessAdminPath(role, workshopHref)) {
-      return {
-        href: workshopHref,
-        label: `Cotización ${s.numero}`,
-        suffix: "Ficha taller",
-      };
-    }
-  }
-
-  const fallbackList = `/admin/cotizaciones?q=${encodeURIComponent(s.numero)}`;
+  const href = `/admin/pedidos/${encodeURIComponent(s.numero)}`;
   return {
-    href: canAccessAdminPath(role, "/admin/cotizaciones") ? fallbackList : null,
-    label: `Cotización ${s.numero}`,
+    href: canAccessAdminPath(role, href) ? href : null,
+    label: `Pedido ${s.numero}`,
   };
 }
 
@@ -344,9 +321,7 @@ export default async function AdminModeracionPage({
 
   const vista: VistaMode = sp.vista === "historial" ? "historial" : "cola";
   const origenFilter: OrigenFilter =
-    sp.origen === "pedido" || sp.origen === "cotizacion" || sp.origen === "compartido"
-      ? sp.origen
-      : "todos";
+    sp.origen === "pedido" || sp.origen === "compartido" ? sp.origen : "todos";
   const calidadFilter: CalidadFilter = sp.calidad === "con_aviso" ? "con_aviso" : "todos";
   const qRaw = (sp.q ?? sp.pedido ?? "").trim();
   const qLower = qRaw.toLowerCase();
@@ -367,9 +342,6 @@ export default async function AdminModeracionPage({
   // Filtrado combinable en memoria sobre la cola activa (ordenada createdAt asc).
   const filteredQueue = pendingRows.filter((d) => {
     if (origenFilter === "pedido" && !d.sources.some((s) => s.tipo === "pedido")) return false;
-    if (origenFilter === "cotizacion" && !d.sources.some((s) => s.tipo === "cotizacion")) {
-      return false;
-    }
     if (origenFilter === "compartido" && (d.sources.length > 0 || !d.shared)) return false;
     if (calidadFilter === "con_aviso" && d.qualityAcknowledgedAt === null) return false;
     if (qLower) {
@@ -381,7 +353,7 @@ export default async function AdminModeracionPage({
     return true;
   });
 
-  // Agrupación visual por primera fuente (pedido/cotización) y diseños solo-compartidos al final.
+  // Agrupación visual por pedido y diseños solo-compartidos al final.
   const withSource = filteredQueue.filter((d) => d.sources.length > 0);
   const withoutSource = filteredQueue.filter((d) => d.sources.length === 0);
   const groups: { source: ModerationSource | null; items: PendingModerationDesign[] }[] = [];
@@ -532,13 +504,6 @@ export default async function AdminModeracionPage({
                     href: buildModerationHref({ vista: "cola", origen: "pedido" }),
                   },
                   {
-                    key: "cotizacion",
-                    label: "Cotizaciones",
-                    count: summary.fromQuotesDesignsCount,
-                    tone: "turquoise",
-                    href: buildModerationHref({ vista: "cola", origen: "cotizacion" }),
-                  },
-                  {
                     key: "compartido",
                     label: "Solo link público (/d/…)",
                     count: summary.sharedOnlyDesignsCount,
@@ -630,7 +595,6 @@ export default async function AdminModeracionPage({
                   [
                     { key: "todos", label: "Todos" },
                     { key: "pedido", label: "Pedidos" },
-                    { key: "cotizacion", label: "Cotizaciones" },
                     { key: "compartido", label: "Links públicos" },
                   ] as const
                 ).map((pill) => (
@@ -683,7 +647,7 @@ export default async function AdminModeracionPage({
                 htmlFor="f-moderacion-q"
                 className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
               >
-                Buscar por pedido, cotización, producto o ID de diseño
+                Buscar por pedido, producto o ID de diseño
               </label>
               <div className="relative">
                 <Search className="text-brand-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
@@ -692,7 +656,7 @@ export default async function AdminModeracionPage({
                   name="q"
                   type="search"
                   defaultValue={qRaw}
-                  placeholder="Ej. LCM-2026-0010, COT-2026-…, Imán o ID de diseño"
+                  placeholder="Ej. LCM-2026-0010, Imán o ID de diseño"
                   className="border-brand-purple/20 focus-visible:ring-brand-purple/30 pl-9"
                 />
               </div>
@@ -728,7 +692,7 @@ export default async function AdminModeracionPage({
               }
               description={
                 qRaw
-                  ? "Prueba buscando con otro número de pedido, cotización o nombre de producto."
+                  ? "Prueba buscando con otro número de pedido o nombre de producto."
                   : "Cuando apruebes o rechaces diseños desde la cola activa, aparecerán aquí como referencia de solo lectura."
               }
             />
@@ -754,7 +718,7 @@ export default async function AdminModeracionPage({
           <AdminEmpty
             icon={<ShieldAlert className="h-5 w-5" />}
             title="No hay diseños pendientes de revisar"
-            description="¡Todo al día! Cuando ingrese un pedido pago, una cotización o un enlace público con diseño personalizado, aparecerá aquí para tu aprobación."
+            description="¡Todo al día! Cuando ingrese un pedido pago o un enlace público con diseño personalizado, aparecerá aquí para tu aprobación."
           />
         ) : filteredQueue.length === 0 ? (
           <AdminEmpty
@@ -794,7 +758,7 @@ export default async function AdminModeracionPage({
                         <span>{headerLink.label}</span>
                       )
                     ) : (
-                      <span>Sin pedido ni cotización — solo enlace público (/d/…)</span>
+                      <span>Sin pedido — solo enlace público (/d/…)</span>
                     )}
                     <span className="text-brand-muted text-xs font-semibold">
                       · {g.items.length} {g.items.length === 1 ? "diseño" : "diseños"}

@@ -210,7 +210,7 @@ model Organization {
 }
 
 /// Persona comercial / posventa canónica (ADR-193): desacopla la relación humana
-/// (invitados, cotizaciones, tickets, carritos, suscriptores y clientes con cuenta)
+/// (invitados, oportunidades B2B, tickets, carritos, suscriptores y clientes con cuenta)
 /// de la credencial autenticada `Customer`.
 model Contact {
   id               String        @id @default(cuid())
@@ -224,7 +224,7 @@ model Contact {
   organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   ownerAdminId     String?
   ownerAdmin       AdminUser?    @relation("ContactOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
-  // "CUSTOMER_AUTH" | "GUEST_ORDER" | "SUPPORT_TICKET" | "QUOTE" | "ABANDONED_CART" | "NEWSLETTER" | "B2B_INQUIRY" | "MANUAL"
+  // "CUSTOMER_AUTH" | "GUEST_ORDER" | "SUPPORT_TICKET" | "ABANDONED_CART" | "NEWSLETTER" | "B2B_INQUIRY" | "MANUAL"
   source           String        @default("GUEST_ORDER")
   // true si la persona es miembro activo del equipo (su email coincide con un AdminUser).
   // La marca la mantienen provisionStaffAdmin y el resolution-service (2026-11-04):
@@ -236,7 +236,6 @@ model Contact {
   identities                 ContactIdentity[]
   orders                     Order[]
   supportTickets             SupportTicket[]
-  quotes                     Quote[]
   abandonedCarts             AbandonedCart[]
   consents                   Consent[]
   warrantyClaims             WarrantyClaim[]
@@ -594,7 +593,6 @@ model Product {
   backInStockSubs       BackInStockSubscription[]
   designs               Design[]
   templates             PersonalizationTemplate[]
-  quoteItems            QuoteItem[]
   // Ola Admin 100% — niveles de precio mayorista B2B por producto (/admin/mayorista).
   wholesaleTiers        WholesaleTier[]
   // Fase 7b — receta de materiales/insumos por unidad (costeo por materiales).
@@ -656,7 +654,6 @@ model ProductVariant {
   inventoryLogs  InventoryLog[]
   cartItems      CartItem[]
   orderItems     OrderItem[]
-  quoteItems     QuoteItem[]
   isActive       Boolean        @default(true)
 
   createdAt DateTime  @default(now())
@@ -940,8 +937,8 @@ model Order {
   contactActivities       ContactActivity[]
   tasks                   Task[]
   lifecycleConversions    LifecycleMessage[]
-  convertedOpportunities  Opportunity[]     @relation("OpportunityConvertedOrder")
-  recoveredAbandonedCarts AbandonedCart[]   @relation("AbandonedCartRecoveredOrder")
+  convertedOpportunities  Opportunity[]      @relation("OpportunityConvertedOrder")
+  recoveredAbandonedCarts AbandonedCart[]    @relation("AbandonedCartRecoveredOrder")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1424,12 +1421,12 @@ model AbandonedCart {
   // El CHECK >= 0 vive en la migración (convención F-24, SQL-only).
   reminderCount      Int       @default(0)
   // Snapshot inmutable de líneas y etapa de checkout para diagnóstico administrativo
-  // aunque el Cart vivo se reutilice, vacíe o cierre por orden/cotización.
+  // aunque el Cart vivo se reutilice, vacíe o cierre por orden.
   itemsSnapshot      Json?
   subtotalCents      Int?
   // "DATOS" | "ENVIO" | "PAGO" (CHECK SQL en 20261105010000)
   checkoutStep       String?
-  // "ORDER_PAID" | "QUOTE_CREATED" | "CART_EMPTIED" (CHECK SQL en 20261105010000)
+  // "ORDER_PAID" | "CART_EMPTIED"
   closedReason       String?
 
   createdAt DateTime @default(now())
@@ -1574,10 +1571,7 @@ model Consent {
   contact    Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
   // Para guests/newsletter sin cuenta: identificamos por email.
   email      String?
-  // Anclaje alterno para titulares SIN email: la cotización por WhatsApp (Etapa 1) pide el móvil
-  // y deja el email opcional, así que sin esto una autorización de un invitado quedaría huérfana
-  // (imposible de encontrar ante una solicitud de habeas data por WhatsApp). Móvil normalizado
-  // a 10 dígitos, igual que Quote.customerWhatsapp.
+  // Anclaje alterno para localizar autorizaciones de titulares sin correo mediante su móvil.
   phone      String?
   scope      ConsentScope
   accepted   Boolean
@@ -1675,30 +1669,30 @@ model LifecycleEnrollment {
 }
 
 model LifecycleMessage {
-  id              String                 @id @default(cuid())
-  enrollmentId    String
-  enrollment      LifecycleEnrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  stepId          String
-  step            LifecycleJourneyStep   @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  contactId       String
-  contact         Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  dedupKey        String                 @unique
-  publicTokenHash String?                @unique
-  resendId        String?
-  status          LifecycleMessageStatus @default(PENDING)
-  subject         String
-  ctaUrl          String
-  error           String?
-  scheduledFor    DateTime
-  sentAt          DateTime?
-  clickedAt       DateTime?
-  convertedAt     DateTime?
-  convertedOrderId String?               @unique
-  convertedOrder   Order?                @relation(fields: [convertedOrderId], references: [id], onDelete: SetNull)
-  revenueCents    Int                    @default(0)
-  metadata        Json                   @default("{}")
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  id               String                 @id @default(cuid())
+  enrollmentId     String
+  enrollment       LifecycleEnrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  stepId           String
+  step             LifecycleJourneyStep   @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  contactId        String
+  contact          Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  dedupKey         String                 @unique
+  publicTokenHash  String?                @unique
+  resendId         String?
+  status           LifecycleMessageStatus @default(PENDING)
+  subject          String
+  ctaUrl           String
+  error            String?
+  scheduledFor     DateTime
+  sentAt           DateTime?
+  clickedAt        DateTime?
+  convertedAt      DateTime?
+  convertedOrderId String?                @unique
+  convertedOrder   Order?                 @relation(fields: [convertedOrderId], references: [id], onDelete: SetNull)
+  revenueCents     Int                    @default(0)
+  metadata         Json                   @default("{}")
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
   @@index([contactId, status])
   @@index([status, scheduledFor])
@@ -1764,10 +1758,10 @@ model AlertState {
 
 // Centro de notificaciones del admin (2026-08-05 — ver
 // docs/PLAN_CENTRO_NOTIFICACIONES.md): los eventos del sistema (alertas que
-// disparan, crons que fallan, cotizaciones nuevas, resumen diario) dejan un
-// registro DURADERO acá en vez de llenar el correo de la dueña. El email queda
-// solo para alertas críticas y para el aviso de cotización nueva (canal de
-// venta). Política anti-ruido: los éxitos NO se registran y `dedupKey` agrupa
+// disparan, crons que fallan, pedidos nuevos, resumen diario) dejan un registro
+// DURADERO acá en vez de llenar el correo de la dueña. El email queda para
+// alertas críticas y avisos comerciales puntuales. Política anti-ruido: los
+// éxitos NO se registran y `dedupKey` agrupa
 // repeticiones de la misma alerta (se actualiza la fila no leída en vez de
 // duplicarla). Append-only salvo `readAt` (única mutación: marcar leída) —
 // no es entidad de negocio: sin audit fields ni soft delete, mismo criterio
@@ -1775,7 +1769,7 @@ model AlertState {
 // tipos sin migración. Ver features/notifications/service.ts.
 model Notification {
   id          String    @id @default(cuid())
-  type        String // "ALERT" | "CRON" | "QUOTE" | "SYSTEM"
+  type        String // "ALERT" | "CRON" | "ORDER" | "SYSTEM"
   severity    String // "info" | "warning" | "critical"
   title       String
   detail      String
@@ -2182,7 +2176,7 @@ model Design {
   qualityAcknowledgedAt DateTime?
   // Artefactos WATERMARK del preview (2026-10-13, migración
   // 20261013130000_design_preview_watermark): las superficies de exhibición
-  // (carrito, "Ver diseño", Mis diseños, /d/<token> + OG, cotización, gracias,
+  // (carrito, "Ver diseño", Mis diseños, /d/<token> + OG, gracias,
   // pedidos) sirven la versión con marca de agua "LUCAMS"; producción y admin
   // quedan limpios. Los bytes viven por convención de paths en design-previews
   // (ver features/personalization/preview-artifacts.ts); estas columnas sellan
@@ -2202,7 +2196,6 @@ model Design {
   assets                DesignAsset[]
   cartItems             CartItem[]
   orderItems            OrderItem[]
-  quoteItems            QuoteItem[]
   // Render 300 DPI asíncrono (ADR-131): a lo sumo UN job por diseño; se
   // resetea si el diseño se re-finaliza. Cascade: purgar el diseño mata el job.
   renderJob             RenderJob?
@@ -2542,107 +2535,6 @@ model BackInStockSubscription {
   @@index([productId, notifiedAt])
 }
 
-// ──────────────────────── COTIZACIONES (Etapa 1 — catálogo + WhatsApp) ────────────────────────
-// Modo catálogo (NEXT_PUBLIC_STORE_MODE=catalog, docs/PLAN_SALIDA_PRODUCCION.md):
-// el checkout se convierte en "cotización de 1 paso" — el cliente arma el carrito,
-// deja sus datos y cierra por WhatsApp. SIN pagos en línea ni envíos integrados.
-// Feature: apps/web/features/quotes.
-
-// Ciclo de vida de la cotización (valores en inglés, convención del repo).
-enum QuoteStatus {
-  PENDING // recién creada desde el storefront, Lucy aún no contacta
-  CONTACTED // Lucy ya habló con el cliente por WhatsApp
-  CLOSED // venta concretada (cerrada por fuera de la tienda)
-  DISCARDED // no prosperó (spam, sin respuesta, el cliente desistió)
-}
-
-model Quote {
-  id                     String        @id @default(cuid())
-  // Número humano "COT-XXXXXX" (6 chars alfanuméricos sin ambiguos, generado en
-  // app — ver features/quotes/service.ts). Único; el create reintenta ante P2002.
-  number                 String        @unique
-  contactId              String?
-  contact                Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  status                 QuoteStatus   @default(PENDING)
-  customerName           String
-  // Móvil colombiano normalizado a 10 dígitos (sin +57 ni espacios).
-  customerWhatsapp       String
-  customerEmail          String?
-  city                   String
-  department             String
-  notes                  String? // notas DEL CLIENTE (formulario público)
-  // Notas internas del admin — NUNCA exponer en la vista pública por token
-  // (getQuoteByToken las excluye con select explícito).
-  internalNotes          String?
-  // Centavos COP (mandato CLAUDE.md — nunca float). En Etapa 1 total == subtotal:
-  // no hay envío calculado, cupones ni impuestos en la cotización.
-  subtotal               Int
-  total                  Int
-  // Token para vista pública /cotizacion/[token] (guest sin login, mismo patrón
-  // que Order): 32 chars hex = crypto.randomBytes(16).
-  // F-11 (security audit 2026-08-24): at rest only the SHA-256 hex digest of
-  // the token (lookups hash the presented token).
-  publicAccessTokenHash  String        @unique
-  // Prueba de la autorización de tratamiento (Ley 1581 art. 9) SOBRE el registro que contiene la
-  // PII: quién autorizó, cuándo y qué versión del aviso vio. Se guarda aquí además de en Consent
-  // porque es la cotización la que materializa el dato personal; el ledger central puede depurarse
-  // y el vínculo con la PII no debe perderse. Nullable: las cotizaciones anteriores a la casilla
-  // (2026-07-21) no la tienen.
-  dataConsentAt          DateTime?
-  dataConsentVersion     String?
-  items                  QuoteItem[]
-  convertedOpportunities Opportunity[] @relation("OpportunityConvertedQuote")
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  createdBy String?
-  updatedBy String?
-  deletedAt DateTime?
-  deletedBy String?
-
-  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
-  // de dinero/stock de este modelo viven en la migración Prisma
-  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
-  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
-  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
-
-  @@index([status, createdAt])
-  @@index([contactId, deletedAt])
-  @@index([deletedAt])
-}
-
-// Snapshot de cada línea del carrito al cotizar. Los FKs son SetNull para que
-// archivar/borrar un producto, variante o diseño NO rompa el histórico de la
-// cotización (los nombres/precios quedan snapshoteados como texto, igual que
-// OrderItem preserva customDesign tras borrar el Design).
-model QuoteItem {
-  id          String          @id @default(cuid())
-  quoteId     String
-  quote       Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  productId   String?
-  product     Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
-  variantId   String?
-  variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  designId    String?
-  design      Design?         @relation(fields: [designId], references: [id], onDelete: SetNull)
-  productName String // snapshot — sobrevive aunque el producto se archive
-  variantName String?
-  unitPrice   Int // centavos COP, snapshot del cart al cotizar
-  quantity    Int
-  // Preview del Design personalizado (PNG público) si la línea es personalizada.
-  previewUrl  String?
-
-  createdAt DateTime @default(now())
-
-  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
-  // de dinero/stock de este modelo viven en la migración Prisma
-  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
-  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
-  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
-
-  @@index([quoteId])
-}
-
 // Ola Admin 100% (Lucy 2026-07-26) — módulos Mayorista B2B y Materiales.
 
 /// Nivel de precio mayorista B2B: a partir de `minQty` unidades, el precio por
@@ -2861,7 +2753,7 @@ model Opportunity {
   organization       Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   ownerAdminId       String?
   ownerAdmin         AdminUser?    @relation("OpportunityOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
-  // Snapshot directo de los datos ingresados por el solicitante en /empresas-y-eventos o cotización
+  // Snapshot directo de los datos ingresados por el solicitante en /empresas-y-eventos
   // para preservar el contacto comercial exacto de la oportunidad (nombre, email y WhatsApp E.164).
   contactName        String?
   contactEmail       String?
@@ -2880,8 +2772,6 @@ model Opportunity {
   notes              String?
   internalNotes      String?
   lostReason         String?
-  convertedQuoteId   String?
-  convertedQuote     Quote?        @relation("OpportunityConvertedQuote", fields: [convertedQuoteId], references: [id], onDelete: SetNull)
   convertedOrderId   String?
   convertedOrder     Order?        @relation("OpportunityConvertedOrder", fields: [convertedOrderId], references: [id], onDelete: SetNull)
   dataConsentAt      DateTime?

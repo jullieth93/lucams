@@ -171,8 +171,8 @@ describe("moderation service", () => {
 });
 
 // A4-01 (cert 2026-09-26): un diseño COMPARTIDO por link público (/d/<token>) es
-// contenido público y debe pasar por moderación aunque no tenga pedido ni
-// cotización; rechazarlo revoca el link.
+// contenido público y debe pasar por moderación aunque no tenga pedido;
+// rechazarlo revoca el link.
 describe("diseños compartidos por link público (A4-01)", () => {
   async function makeSharedDesign(): Promise<{ id: string; token: string }> {
     const id = (
@@ -191,7 +191,7 @@ describe("diseños compartidos por link público (A4-01)", () => {
     return { id, token };
   }
 
-  it("un diseño SOLO-compartido (sin pedido/cotización) aparece en la cola, shared=true y sin sources", async () => {
+  it("un diseño SOLO-compartido (sin pedido) aparece en la cola, shared=true y sin sources", async () => {
     const { id } = await makeSharedDesign();
     const rows = await listPendingModeration();
     const mine = rows.find((r) => r.designId === id);

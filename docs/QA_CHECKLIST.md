@@ -105,7 +105,7 @@
 - [ ] Botones `+/-` actualizan cantidad respetando `minimumQuantity` y `maximumQuantity`
 - [ ] Eliminar ítem → la fila desaparece y el subtotal se recalcula
 - [ ] Precios y subtotal formateados exactamente en COP (sin decimales flotantes)
-- [ ] Botón «Ir a pagar» navega a `/checkout/datos` en modo `full` (en modo `catalog` el CTA es cotización por WhatsApp)
+- [ ] Botón «Ir a pagar» navega a `/checkout/datos`
 - [ ] Estado vacío con mascota Lucams cuando el carrito no tiene ítems
 - [ ] Fusión carrito anónimo → carrito de cliente al iniciar sesión (suma cantidades por `variantId` y conserva diseños)
 - [ ] Toast «Agregado al carrito ✨» con acción «Ver carrito»
@@ -205,10 +205,10 @@
 
 ---
 
-## G2. CRM 360°, B2B / Eventos, Cotizaciones y Fidelización (`ADR-193`)
+## G2. CRM 360°, B2B / Eventos y Fidelización (`ADR-193`)
 
 - [ ] `/empresas-y-eventos` (protegido con Turnstile y rate limit) registra o vincula el `Contact`, abre la `Opportunity` en `/admin/oportunidades` y genera alerta en `/admin/hoy`
-- [ ] Cotización creada desde `/admin/cotizaciones` se abre públicamente en `/cotizacion/[token]`, soporta especificaciones/hoja de taller y permite aceptación/conversión a pedido `LCM-YYYY-NNNN` sin pérdida de precisión en centavos COP
+- [ ] La oportunidad B2B permite calificar etapas, registrar seguimiento y vincular el pedido final `LCM-YYYY-NNNN` sin confundir presupuesto estimado con venta cobrada
 - [ ] `/admin/clientes` presenta la vista **`Contacto 360°`** unificando compras como invitado y con cuenta, tickets, oportunidades, consentimientos Ley 1581, notas y banderas `isStaff` / auditoría `selfDealing`
 - [ ] `/admin/clientes/duplicados` lista posibles contactos duplicados para **fusión asistida manual** con registro de auditoría (cero auto-merge silencioso)
 - [ ] `/admin/marketing/segmentos` y exportaciones de marketing filtran de forma estricta únicamente contactos con consentimiento `MARKETING` vigente (Ley 1581)

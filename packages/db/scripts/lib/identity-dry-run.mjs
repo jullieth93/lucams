@@ -94,7 +94,6 @@ export function simulateIdentityResolution(dataset) {
   const customers = dataset.customers ?? [];
   const orders = dataset.orders ?? [];
   const supportTickets = dataset.supportTickets ?? [];
-  const quotes = dataset.quotes ?? [];
   const abandonedCarts = dataset.abandonedCarts ?? [];
   const consents = dataset.consents ?? [];
   const warrantyClaims = dataset.warrantyClaims ?? [];
@@ -106,7 +105,7 @@ export function simulateIdentityResolution(dataset) {
    *   key: string,
    *   hasActiveCustomer: boolean,
    *   customerId: string | null,
-   *   source: "CUSTOMER_AUTH" | "GUEST_ORDER" | "SUPPORT_TICKET" | "QUOTE" | "ABANDONED_CART" | "NEWSLETTER",
+   *   source: "CUSTOMER_AUTH" | "GUEST_ORDER" | "SUPPORT_TICKET" | "ABANDONED_CART" | "NEWSLETTER",
    *   primaryEmail: string | null,
    *   identities: Map<string, { type: "SUPABASE_USER" | "EMAIL" | "PHONE" | "WHATSAPP", status: "VERIFIED" | "UNVERIFIED_OBSERVED" }>,
    *   buyerPhones: Set<string>,
@@ -121,7 +120,7 @@ export function simulateIdentityResolution(dataset) {
   /** @type {Map<string, SimContact>} */
   const contactByEmail = new Map();
   /** @type {Map<string, SimContact>} */
-  const phoneOnlyQuoteContactByE164 = new Map();
+  const phoneOnlyContactByE164 = new Map();
 
   let seq = 0;
   function createSimContact({ hasActiveCustomer, customerId, source, primaryEmail }) {
@@ -373,58 +372,6 @@ export function simulateIdentityResolution(dataset) {
     supportTicketsLinked += 1;
   }
 
-  // ── Paso 4: Quote (con email opcional y WhatsApp obligatorio) ──
-  let activeQuotes = 0;
-  let softDeletedQuotes = 0;
-  let quotesWithEmail = 0;
-  let quotesPhoneOnly = 0;
-  let quotesLinked = 0;
-
-  for (const q of quotes) {
-    if (q.deletedAt !== null && q.deletedAt !== undefined) {
-      softDeletedQuotes += 1;
-      continue;
-    }
-    activeQuotes += 1;
-    const quoteEmail = normalizeEmailIdentity(q.customerEmail);
-    const whatsappE164 = normalizePhoneE164(q.customerWhatsapp);
-
-    if (quoteEmail) {
-      quotesWithEmail += 1;
-      let contact = contactByEmail.get(quoteEmail);
-      if (!contact) {
-        contact = createSimContact({
-          hasActiveCustomer: false,
-          customerId: null,
-          source: "QUOTE",
-          primaryEmail: quoteEmail,
-        });
-        addIdentity(contact, "EMAIL", quoteEmail, "UNVERIFIED_OBSERVED");
-      }
-      if (whatsappE164) {
-        addIdentity(contact, "WHATSAPP", whatsappE164, "UNVERIFIED_OBSERVED");
-      }
-      quotesLinked += 1;
-      continue;
-    }
-
-    quotesPhoneOnly += 1;
-    if (!whatsappE164) continue;
-
-    let phoneOnlyContact = phoneOnlyQuoteContactByE164.get(whatsappE164);
-    if (!phoneOnlyContact) {
-      phoneOnlyContact = createSimContact({
-        hasActiveCustomer: false,
-        customerId: null,
-        source: "QUOTE",
-        primaryEmail: null,
-      });
-      addIdentity(phoneOnlyContact, "WHATSAPP", whatsappE164, "UNVERIFIED_OBSERVED");
-      phoneOnlyQuoteContactByE164.set(whatsappE164, phoneOnlyContact);
-    }
-    quotesLinked += 1;
-  }
-
   // ── Paso 5: AbandonedCart ──
   let abandonedCartsTotal = 0;
   let abandonedCartsLinked = 0;
@@ -496,19 +443,19 @@ export function simulateIdentityResolution(dataset) {
     }
     const cPhone = normalizePhoneE164(c.phone);
     if (cPhone) {
-      const quotePhoneContact = phoneOnlyQuoteContactByE164.get(cPhone);
-      if (quotePhoneContact) {
+      const existingPhoneContact = phoneOnlyContactByE164.get(cPhone);
+      if (existingPhoneContact) {
         consentsLinked += 1;
         continue;
       }
       const phoneOnlyConsentContact = createSimContact({
         hasActiveCustomer: false,
         customerId: null,
-        source: "QUOTE",
+        source: "NEWSLETTER",
         primaryEmail: null,
       });
       addIdentity(phoneOnlyConsentContact, "WHATSAPP", cPhone, "UNVERIFIED_OBSERVED");
-      phoneOnlyQuoteContactByE164.set(cPhone, phoneOnlyConsentContact);
+      phoneOnlyContactByE164.set(cPhone, phoneOnlyConsentContact);
       consentsLinked += 1;
       continue;
     }
@@ -636,7 +583,6 @@ export function simulateIdentityResolution(dataset) {
     CUSTOMER_AUTH: 0,
     GUEST_ORDER: 0,
     SUPPORT_TICKET: 0,
-    QUOTE: 0,
     ABANDONED_CART: 0,
     NEWSLETTER: 0,
   };
@@ -685,10 +631,6 @@ export function simulateIdentityResolution(dataset) {
       supportTicketsTotal: supportTickets.length,
       registeredSupportTickets,
       guestSupportTickets,
-      activeQuotes,
-      softDeletedQuotes,
-      quotesWithEmail,
-      quotesPhoneOnly,
       abandonedCartsTotal,
       consentsTotal,
       activeNewsletterUniqueEmails,
@@ -724,7 +666,6 @@ export function simulateIdentityResolution(dataset) {
         ordersLinkedContextuallyToExistingContact,
         ordersLinkedToNewGuestContact,
         supportTicketsLinked,
-        quotesLinked,
         abandonedCartsLinked,
         consentsLinked,
         warrantyClaimsLinked,
@@ -795,16 +736,6 @@ export async function runIdentityDryRun(prisma, options = {}) {
           }
         : undefined;
 
-      const quoteWhere = scopePrefix
-        ? {
-            OR: [
-              { number: { startsWith: scopePrefix, mode: "insensitive" } },
-              { customerName: { startsWith: scopePrefix } },
-              { customerEmail: { startsWith: scopePrefix, mode: "insensitive" } },
-            ],
-          }
-        : undefined;
-
       const abandonedCartWhere = scopePrefix
         ? {
             OR: [
@@ -843,7 +774,6 @@ export async function runIdentityDryRun(prisma, options = {}) {
         customers,
         orders,
         supportTickets,
-        quotes,
         abandonedCartRows,
         consents,
         warrantyRows,
@@ -883,16 +813,6 @@ export async function runIdentityDryRun(prisma, options = {}) {
             id: true,
             customerId: true,
             email: true,
-          },
-          orderBy: { createdAt: "asc" },
-        }),
-        tx.quote.findMany({
-          ...(quoteWhere ? { where: quoteWhere } : {}),
-          select: {
-            id: true,
-            customerEmail: true,
-            customerWhatsapp: true,
-            deletedAt: true,
           },
           orderBy: { createdAt: "asc" },
         }),
@@ -945,7 +865,6 @@ export async function runIdentityDryRun(prisma, options = {}) {
         customers,
         orders,
         supportTickets,
-        quotes,
         abandonedCarts: abandonedCartRows.map((row) => ({
           id: row.id,
           email: row.email,
@@ -995,7 +914,6 @@ export function formatIdentityDryRunReport(report) {
     `     - Customer activas / suprimidas         : ${s.activeCustomers} / ${s.softDeletedCustomers}`,
     `     - Order activas (registradas / guest)   : ${s.activeOrders} (${s.registeredOrders} / ${s.guestOrders}) · regalos=${s.giftOrdersTotal}`,
     `     - SupportTicket (registrados / guest)   : ${s.supportTicketsTotal} (${s.registeredSupportTickets} / ${s.guestSupportTickets})`,
-    `     - Quote activas (con email / solo móvil): ${s.activeQuotes} (${s.quotesWithEmail} / ${s.quotesPhoneOnly})`,
     `     - AbandonedCart / Newsletter activo     : ${s.abandonedCartsTotal} / ${s.activeNewsletterUniqueEmails}`,
     `     - WarrantyClaim / RetractRequest        : ${s.warrantyClaimsTotal} / ${s.retractRequestsTotal}`,
     "",
@@ -1009,7 +927,7 @@ export function formatIdentityDryRunReport(report) {
     "",
     "  3. Proyección simulada bajo ADR-193 (sin escrituras)",
     `     - Contact netos a crear                 : ${p.totalContacts} (con cuenta=${p.contactsWithCustomerAccount}, invitados/leads=${p.contactsGuestOrLeadOnly})`,
-    `       · por origen: auth=${p.contactsBySource.CUSTOMER_AUTH}, guest_order=${p.contactsBySource.GUEST_ORDER}, ticket=${p.contactsBySource.SUPPORT_TICKET}, quote=${p.contactsBySource.QUOTE}, cart=${p.contactsBySource.ABANDONED_CART}, newsletter=${p.contactsBySource.NEWSLETTER}`,
+    `       · por origen: auth=${p.contactsBySource.CUSTOMER_AUTH}, guest_order=${p.contactsBySource.GUEST_ORDER}, ticket=${p.contactsBySource.SUPPORT_TICKET}, cart=${p.contactsBySource.ABANDONED_CART}, newsletter=${p.contactsBySource.NEWSLETTER}`,
     `     - ContactIdentity totales               : ${p.totalIdentities} (auth=${p.identitiesByType.SUPABASE_USER_VERIFIED}, email_verif=${p.identitiesByType.EMAIL_VERIFIED}, email_obs=${p.identitiesByType.EMAIL_UNVERIFIED_OBSERVED}, phone_obs=${p.identitiesByType.PHONE_UNVERIFIED_OBSERVED}, wa_obs=${p.identitiesByType.WHATSAPP_UNVERIFIED_OBSERVED})`,
     `     - IdentityMergeCandidate (revisión MFA) : ${p.mergeCandidatesTotalPairs} pares (phone=${p.mergeCandidatesByReason.SAME_BUYER_PHONE_E164}, doc=${p.mergeCandidatesByReason.SAME_BILLING_DOCUMENT}, id01=${p.mergeCandidatesByReason.HISTORICAL_ID01_EMAIL_MISMATCH})`,
     "══════════════════════════════════════════════════════════════════════",

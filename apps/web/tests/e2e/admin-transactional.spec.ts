@@ -1,8 +1,7 @@
 /*
  * E2E — admin transaccional (develop): finanzas + pedidos con una orden PAID real.
  *
- * A diferencia de Fase A (modo catálogo), develop corre en modo FULL: el admin
- * debe mostrar finanzas/pedidos operativos. Se restaura (deletedAt=null) la
+ * El admin debe mostrar finanzas/pedidos operativos. Se restaura (deletedAt=null) la
  * última orden REAL pagada por el e2e Wompi sandbox (FULFILLING, con guía
  * Aveonline) y se verifica que:
  *   1. /admin/pedidos la lista con su número.

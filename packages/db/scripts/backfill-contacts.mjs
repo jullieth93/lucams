@@ -6,7 +6,7 @@
  *   1. Sin `--apply` ejecuta en modo `--dry-run` dentro de una transacción PostgreSQL
  *      con `transaction_read_only = on` verificado en runtime (cero escrituras).
  *   2. Con `--apply` exige `assertDestructiveAllowed` (`env-guard.mjs`) y procesa
- *      las 8 entidades por cursor (`id > cursor`, `batchSize = 200` por defecto),
+ *      las 7 entidades por cursor (`id > cursor`, `batchSize = 200` por defecto),
  *      evitando locks largos sobre checkout en vivo.
  *   3. Cero PII en stdout / JSON: solo emite conteos agregados y reconciliación final.
  *

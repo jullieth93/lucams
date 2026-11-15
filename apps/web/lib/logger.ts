@@ -67,7 +67,7 @@ const REDACT_KEYS = new Set([
   // claro en los logs de Vercel (Ley 1581). Tradeoff: un 'to' que fuera una URL también se enmascara.
   "to",
   // Auditoría experto 2026-07-26 (P1-PII): la IP y el WhatsApp (teléfono) SON datos personales
-  // (Ley 1581/GDPR) y quedaban en claro (ej. features/quotes/actions logueaba {ip}). Hasheados
+  // (Ley 1581/GDPR) y quedaban en claro en logs de acciones públicas. Hasheados
   // en rate-limit-keys; acá se enmascaran. NO se redactan 'address' ni 'name' sueltos: son
   // claves demasiado comunes (nombres de producto/categoría) y ocultarlas rompería la
   // observabilidad; la PII embebida en strings se cubre con la redacción de Error.message.

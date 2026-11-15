@@ -26,7 +26,7 @@ Puedes contactarnos por:
 
 ## Con qué finalidad los usamos
 
-- Atender tu **cotización** o **solicitud de evento/empresa** y acompañarte por correo o WhatsApp.
+- Atender tu **solicitud de evento/empresa** y acompañarte por correo o WhatsApp.
 - Procesar tu pedido, cobrarlo y enviártelo.
 - Enviarte comunicaciones sobre tu compra, soporte o garantías (confirmación, despacho, entrega y seguimiento).
 - Producir tu diseño personalizado y sugerirte **ideas de diseño** con el asistente de IA del Estudio.
@@ -76,7 +76,7 @@ Puedes ver la lista actualizada de terceros y los países donde operan en **[Sub
 Al entregarnos tus datos y aceptar este aviso, **autorizas** su tratamiento para las finalidades descritas. Te pedimos esa autorización de forma expresa —con una casilla que tú marcas— cuando:
 
 - **creas tu cuenta**,
-- **pides tu cotización por WhatsApp** o **solicitas una propuesta en Empresas y Eventos**,
+- **solicitas una propuesta en Empresas y Eventos**,
 - **completas tus datos de compra** en el sitio, y
 - **eliges tus cookies** en el banner.
 

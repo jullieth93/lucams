@@ -8,7 +8,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { ShieldBan, Wallet, ArrowLeft, Search } from "lucide-react";
 import {
   AdminBadge,
@@ -28,7 +27,6 @@ import {
 import { ADMIN_ROLE_SETS, adminHomePath, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { maskBlockedIdentityValue, maskEmailsInText } from "@/lib/pii-mask";
-import { isCatalogMode } from "@/lib/store-mode";
 import { listBlockedIdentities } from "@/features/anti-abuse/blocklist-service";
 import { AddBlockForm, RemoveBlockButton } from "./bloqueos-form";
 import { formatDateCO } from "@/lib/datetime";
@@ -51,9 +49,6 @@ type SearchParams = Promise<{ kind?: string; q?: string }>;
 
 export default async function BloqueosCodPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await requireRole(ADMIN_ROLE_SETS.FINANCE_COD);
-  // Modo catálogo (Etapa 1): no hay pago contra entrega (sin checkout) —
-  // el nav oculta Finanzas; esto cierra el acceso por URL directa.
-  if (isCatalogMode()) redirect("/admin/dashboard");
 
   const canReadPii = hasCapability(session.admin.role, "orders:read_pii");
   const homeHref = adminHomePath(session.admin.role);

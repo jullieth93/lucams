@@ -1,6 +1,6 @@
 /*
  * POM — Login admin (/admin/login).
- * Selectores verificados en admin-mfa.spec.ts y catalog-mode.spec.ts.
+ * Selectores verificados en admin-mfa.spec.ts.
  */
 import { type Page } from "@playwright/test";
 

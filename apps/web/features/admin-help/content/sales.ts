@@ -95,7 +95,7 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
             id: "ecosistema",
             label: "Ecosistema 360° vinculado",
             description:
-              "Conecta con Contacto 360, cotización origen, retractos, garantías, tickets de soporte, cupón y remesa COD.",
+              "Conecta con Contacto 360, oportunidad comercial de origen, retractos, garantías, tickets de soporte, cupón y remesa COD.",
             interpretation:
               "Solo aparecen enlaces hacia submódulos habilitados para tu rol actual.",
           },
@@ -409,7 +409,7 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
     route: "/admin/oportunidades",
     summary: "Pipeline consultivo para empresas, eventos y pedidos de volumen.",
     purpose:
-      "Organiza oportunidades desde el contacto inicial hasta el cierre, con responsable, tareas, cotizaciones y relación con pedidos. Permite distinguir interés comercial de una venta confirmada.",
+      "Organiza oportunidades desde el contacto inicial hasta el cierre, con responsable, tareas, propuestas comerciales y relación con pedidos. Permite distinguir interés comercial de una venta confirmada.",
     whenToUse: [
       "Para gestionar solicitudes de empresas y eventos.",
       "Cuando una venta requiera seguimiento, propuesta o varias interacciones.",
@@ -472,9 +472,10 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "vinculos",
-            label: "Cotización u orden vinculada",
-            description: "Relaciona la gestión consultiva con documentos comerciales concretos.",
-            interpretation: "Usa el vínculo para evitar duplicar propuestas o pedidos.",
+            label: "Pedido vinculado",
+            description: "Relaciona la gestión consultiva con la venta confirmada.",
+            interpretation:
+              "Usa el vínculo para evitar duplicar pedidos y conservar la trazabilidad comercial.",
           },
         ],
       },
@@ -488,7 +489,7 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
           "Revisa necesidades, historial, responsable y tareas abiertas.",
           "Registra la interacción y actualiza requisitos o condiciones confirmadas.",
           "Cambia la etapa únicamente si se cumplió su criterio comercial.",
-          "Vincula la cotización u orden existente cuando corresponda.",
+          "Vincula el pedido existente cuando la oportunidad se concrete en una venta.",
           "Crea el siguiente compromiso con fecha o cierra indicando el resultado y motivo.",
         ],
         expected:
@@ -505,100 +506,9 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
           "Debes verificar el vínculo comercial correspondiente; la etapa por sí sola no prueba que exista una orden pagada.",
       },
     ],
-    related: ["cotizaciones", "clientes", "pedidos", "hoy"],
+    related: ["clientes", "pedidos", "hoy"],
     keywords: ["B2B", "empresa", "evento", "pipeline", "etapa", "venta consultiva"],
     version: 1,
-  },
-  {
-    id: "cotizaciones",
-    title: "Cotizaciones",
-    area: "Ventas y CRM",
-    route: "/admin/cotizaciones",
-    summary:
-      "Consulta histórica y operativa de cotizaciones, conversiones comerciales y fichas de taller.",
-    purpose:
-      "Conserva las solicitudes y propuestas del flujo de cotización, incluidos datos históricos del modo catálogo. Permite revisar condiciones y vincular oportunidades sin confundir una cotización con una venta.",
-    whenToUse: [
-      "Para consultar una cotización recibida o emitida.",
-      "Para revisar líneas personalizadas y su ficha técnica.",
-      "Cuando una propuesta requiera seguimiento como oportunidad B2B.",
-    ],
-    concepts: [
-      {
-        term: "Cotización",
-        definition:
-          "Propuesta o solicitud con condiciones estimadas; no representa por sí misma un pago ni una orden.",
-      },
-      {
-        term: "Modo catálogo",
-        definition:
-          "Etapa operativa en la que la captación comercial se realizaba sin el checkout completo actual.",
-      },
-    ],
-    sections: [
-      {
-        id: "detalle",
-        title: "Detalle comercial y técnico",
-        summary: "Muestra solicitante, líneas, condiciones y archivos necesarios para evaluar.",
-        topics: [
-          {
-            id: "vigencia",
-            label: "Condiciones y vigencia",
-            description:
-              "Precios, cantidades y tiempos deben leerse según la fecha y alcance de la propuesta.",
-            caution:
-              "No reutilices condiciones históricas sin validar disponibilidad y costos actuales.",
-          },
-          {
-            id: "conversion",
-            label: "Conversión a oportunidad",
-            description: "Vincula la solicitud con el pipeline consultivo.",
-            interpretation: "Evita crear otra oportunidad si ya existe una relacionada.",
-          },
-          {
-            id: "taller",
-            label: "Hoja de taller",
-            description:
-              "Detalla líneas personalizadas y archivos de imprenta a 300 DPI únicamente para roles con permiso de producción.",
-            interpretation:
-              "Registra acceso en auditoría, protege datos personales y precios ante el rol de taller y no autoriza imprimir diseños pendientes de moderación.",
-          },
-        ],
-      },
-    ],
-    procedures: [
-      {
-        id: "revisar-cotizacion",
-        title: "Revisar y dar seguimiento a una cotización",
-        goal: "Confirmar alcance y mantener la relación comercial correcta.",
-        steps: [
-          "Verifica identidad del solicitante, fecha y estado de la cotización.",
-          "Revisa productos, variantes, cantidades, personalización y condiciones.",
-          "Consulta la hoja de taller si tu rol tiene permiso de producción y hay requisitos técnicos.",
-          "Vincula o convierte en una sola Oportunidad B2B cuando corresponda a volumen, empresa o evento.",
-          "Registra el próximo paso sin afirmar que existe una venta confirmada.",
-        ],
-        expected:
-          "La cotización conserva seguimiento comercial y técnico sin duplicar oportunidades ni órdenes.",
-      },
-    ],
-    cautions: ["No uses cotizaciones históricas como evidencia de ingresos o pagos."],
-    faqs: [
-      {
-        question:
-          "¿Por qué no aparece en el menú principal cuando el checkout completo está activo?",
-        answer:
-          "Con tienda completa activa, las ventas minoristas entran como Pedidos y las negociaciones de volumen se gestionan en Oportunidades B2B. Puedes abrir Cotizaciones desde el buscador rápido (⌘K) para continuidad comercial.",
-      },
-      {
-        question: "¿Por qué Soporte al cliente no ve el botón Hoja de taller?",
-        answer:
-          "La hoja de taller expone originales de imprenta a 300 DPI y está restringida a roles con permiso de descarga de producción.",
-      },
-    ],
-    related: ["oportunidades", "pedidos", "clientes", "moderacion"],
-    keywords: ["propuesta", "precio", "histórico", "catálogo", "taller", "B2B", "300 DPI"],
-    version: 2,
   },
   {
     id: "resenas",

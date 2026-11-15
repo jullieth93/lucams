@@ -20,9 +20,6 @@
  *     origen y deja que el CDN de Vercel retenga la respuesta 1h (staleness aceptable
  *     para un feed que Google refetchea en su propio schedule). Los errores salen con
  *     `no-store` para que el CDN no retenga un 503.
- *   - En modo catálogo (isCatalogMode) el feed NO EXISTE → 404: sin checkout no hay nada
- *     comprable que anunciar en Shopping (misma lógica que el JSON-LD del PDP, que en
- *     ese modo omite `offers`).
  *   - El query espeja el gate del sitemap/storefront (STOREFRONT_PRODUCT_WHERE, F-04):
  *     producto activo, no archivado, con categoría activa; variantes activas y no
  *     archivadas.
@@ -35,18 +32,12 @@
 
 import { prisma } from "@/lib/db";
 import { getCanonicalSiteUrl } from "@/lib/public-url";
-import { isCatalogMode } from "@/lib/store-mode";
 import { STOREFRONT_PRODUCT_WHERE } from "@/features/products/storefront-visibility";
 import { buildGoogleMerchantFeed } from "@/lib/feeds/google-merchant";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
-  // Modo catálogo: sin venta en línea el feed no debe existir (ver header).
-  if (isCatalogMode()) {
-    return new Response("Not found", { status: 404 });
-  }
-
   let xml: string;
   try {
     const products = await prisma.product.findMany({

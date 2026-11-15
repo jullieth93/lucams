@@ -1170,19 +1170,18 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
   // ════════════════════════════════════════════════════════════════════════
 
   // ════════════════════════════════════════════════════════════════════════
-  // Reutilizar la sesión después de cotizar / pagar
+  // Reutilizar la sesión después de cerrar / pagar
   // ════════════════════════════════════════════════════════════════════════
 
   describe("sesión reutilizada tras vaciar el carrito", () => {
     /*
-     * Regresión (Lucy, 2026-07-25): tras pedir una cotización, agregar cualquier cosa al carrito
+     * Regresión (Lucy, 2026-07-25): tras cerrar un carrito, agregar cualquier cosa al carrito
      * fallaba con un "Algo salió mal" genérico y ya no se recuperaba en esa sesión.
      *
-     * Causa: `Cart.sessionId` es @unique GLOBAL, no parcial. `clearCartAfterPaid` SOFT-borra el
-     * carrito al cotizar, así que el sessionId queda ocupado por una fila con deletedAt. La
-     * siguiente llamada no encuentra carrito ACTIVO y creaba uno nuevo con el mismo sessionId →
-     * violación de la restricción. En modo catálogo cotizar ES el flujo principal, o sea que el
-     * embudo se rompía desde la primera conversión.
+     * Causa: `Cart.sessionId` es @unique GLOBAL, no parcial. Al cerrar el carrito
+     * el sessionId queda ocupado por una fila con deletedAt. La siguiente llamada
+     * no encuentra carrito ACTIVO y creaba uno nuevo con el mismo sessionId →
+     * violación de la restricción.
      */
     it("permite volver a agregar al carrito con la MISMA sesión tras soft-borrarlo", async () => {
       const sessionId = sid("revive");
@@ -1194,7 +1193,7 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       });
       expect(first.items).toHaveLength(1);
 
-      // Lo que hace crear una cotización (o pagar): soft-delete del carrito.
+      // Al confirmar un pedido se hace soft-delete del carrito.
       await prisma.cart.update({
         where: { id: first.cartId },
         data: { deletedAt: new Date() },

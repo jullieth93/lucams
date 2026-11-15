@@ -162,7 +162,6 @@ export interface MergeSnapshotPayload {
   movedEntityIds: {
     orders: string[];
     supportTickets: string[];
-    quotes: string[];
     abandonedCarts: string[];
     consents: string[];
     warrantyClaims: string[];
@@ -811,7 +810,6 @@ export async function mergeContactsByHumanApproval(input: {
       const [
         ordersToMove,
         ticketsToMove,
-        quotesToMove,
         cartsToMove,
         consentsToMove,
         warrantiesToMove,
@@ -819,7 +817,6 @@ export async function mergeContactsByHumanApproval(input: {
       ] = await Promise.all([
         tx.order.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
         tx.supportTicket.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
-        tx.quote.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
         tx.abandonedCart.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
         tx.consent.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
         tx.warrantyClaim.findMany({ where: { contactId: absorbed.id }, select: { id: true } }),
@@ -832,10 +829,6 @@ export async function mergeContactsByHumanApproval(input: {
           data: { contactId: survivor.id },
         }),
         tx.supportTicket.updateMany({
-          where: { contactId: absorbed.id },
-          data: { contactId: survivor.id },
-        }),
-        tx.quote.updateMany({
           where: { contactId: absorbed.id },
           data: { contactId: survivor.id },
         }),
@@ -985,7 +978,6 @@ export async function mergeContactsByHumanApproval(input: {
         movedEntityIds: {
           orders: ordersToMove.map((r) => r.id),
           supportTickets: ticketsToMove.map((r) => r.id),
-          quotes: quotesToMove.map((r) => r.id),
           abandonedCarts: cartsToMove.map((r) => r.id),
           consents: consentsToMove.map((r) => r.id),
           warrantyClaims: warrantiesToMove.map((r) => r.id),
@@ -1058,7 +1050,6 @@ export async function mergeContactsByHumanApproval(input: {
         movedCounts: {
           orders: ordersToMove.length,
           supportTickets: ticketsToMove.length,
-          quotes: quotesToMove.length,
           abandonedCarts: cartsToMove.length,
           consents: consentsToMove.length,
           warrantyClaims: warrantiesToMove.length,

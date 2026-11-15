@@ -20,7 +20,6 @@ import { AnalyticsGa4 } from "@/components/analytics-ga4";
 import { UtmTracker } from "@/components/utm-tracker";
 import { getCanonicalSiteUrl } from "@/lib/origin";
 import { SITE_NAME, SITE_TITLE } from "@/lib/site";
-import { isCatalogMode } from "@/lib/store-mode";
 import { isCmsEditMode } from "@/lib/cms-edit-mode";
 import { getSettingValue, getSiteSetting } from "@/lib/cms";
 import { CmsEditOverlay } from "@/components/cms/cms-edit-overlay";
@@ -55,13 +54,8 @@ const inter = localFont({
   display: "swap",
 });
 
-/* Meta description del sitio. En modo catálogo (Etapa 1) NO hay checkout de pago ni envío
-   calculado: prometer "pago en línea seguro y envío a 1.100+ destinos" en el snippet de Google
-   sería información engañosa (Ley 1480, art. 23). Se deriva del flag para que el texto
-   transaccional vuelva solo cuando se active el modo full. */
-const SITE_DESCRIPTION = isCatalogMode()
-  ? "E-commerce colombiano de imanes magnéticos personalizados. Diseñas el tuyo en el Estudio de personalización y pides tu cotización por WhatsApp: ahí acordamos pago y envío contigo."
-  : "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización en vivo, pago en línea seguro y envío a 1.100+ destinos.";
+const SITE_DESCRIPTION =
+  "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización en vivo, pago en línea seguro y envío a 1.100+ destinos.";
 
 export const metadata: Metadata = {
   // #28 — misma fuente que sitemap/robots/canonicals (getCanonicalSiteUrl); consolida la URL base.

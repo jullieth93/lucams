@@ -69,7 +69,6 @@ describe("isPublicSettingKey (allowlist)", () => {
       "WA_MSG_SUPPORT",
       "WA_MSG_SUPPORT_SUBJECT",
       "WA_MSG_ORDER",
-      "WA_MSG_QUOTE",
       "WA_MSG_WHOLESALE",
       "COD_ENABLED",
       "PRODUCTION_DAYS_DEFAULT",

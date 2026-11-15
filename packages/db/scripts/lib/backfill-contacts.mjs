@@ -469,7 +469,7 @@ async function resolveOrCreateWhatsappOnlyBackfillTx(tx, params) {
       primaryEmail: null,
       primaryPhoneE164: params.whatsappE164,
       displayName: params.displayName ?? null,
-      source: "QUOTE",
+      source: "MANUAL",
     },
     select: { id: true },
   });
@@ -480,7 +480,7 @@ async function resolveOrCreateWhatsappOnlyBackfillTx(tx, params) {
     type: "WHATSAPP",
     normalizedValue: params.whatsappE164,
     verificationStatus: "UNVERIFIED_OBSERVED",
-    verificationSource: "BACKFILL_QUOTE",
+    verificationSource: "BACKFILL_MANUAL",
     counters: params.counters,
   });
 
@@ -499,7 +499,6 @@ function buildScopeFilters(scopePrefix) {
       customer: {},
       order: {},
       supportTicket: {},
-      quote: {},
       abandonedCart: {},
       consent: {},
       warrantyClaim: {},
@@ -510,12 +509,6 @@ function buildScopeFilters(scopePrefix) {
     customer: { email: { startsWith: p, mode: "insensitive" } },
     order: { number: { contains: p, mode: "insensitive" } },
     supportTicket: { email: { startsWith: p, mode: "insensitive" } },
-    quote: {
-      OR: [
-        { customerEmail: { startsWith: p, mode: "insensitive" } },
-        { customerName: { startsWith: p, mode: "insensitive" } },
-      ],
-    },
     abandonedCart: { email: { startsWith: p, mode: "insensitive" } },
     consent: {
       OR: [
@@ -533,7 +526,7 @@ function buildScopeFilters(scopePrefix) {
 }
 
 /**
- * Cuenta cuántas filas ELEGIBLES permanecen con `contactId IS NULL` en las 8 entidades.
+ * Cuenta cuántas filas ELEGIBLES permanecen con `contactId IS NULL` en las 7 entidades.
  * Excluye filas soft-deleted, placeholders Ley 1581 (`@deleted.lucamsshop.com`) y
  * consentimientos de banner de cookies puramente anónimos.
  *
@@ -548,7 +541,6 @@ export async function countUnlinkedEligibleEntities(db, scopePrefix) {
     customers,
     orders,
     supportTickets,
-    quotes,
     abandonedCarts,
     consents,
     warrantyClaims,
@@ -590,33 +582,6 @@ export async function countUnlinkedEligibleEntities(db, scopePrefix) {
             NOT: [
               { email: { endsWith: ANON_SUFFIX, mode: "insensitive" } },
               { name: "Cliente eliminado" },
-            ],
-          },
-        ],
-      },
-    }),
-    db.quote.count({
-      where: {
-        AND: [
-          scope.quote,
-          {
-            contactId: null,
-            deletedAt: null,
-            NOT: { customerName: "Cliente eliminado" },
-            OR: [
-              {
-                AND: [
-                  { customerEmail: { not: null } },
-                  { NOT: { customerEmail: "" } },
-                  { NOT: { customerEmail: { endsWith: ANON_SUFFIX, mode: "insensitive" } } },
-                ],
-              },
-              {
-                AND: [
-                  { OR: [{ customerEmail: null }, { customerEmail: "" }] },
-                  { NOT: { customerWhatsapp: "" } },
-                ],
-              },
             ],
           },
         ],
@@ -706,7 +671,6 @@ export async function countUnlinkedEligibleEntities(db, scopePrefix) {
     customers +
     orders +
     supportTickets +
-    quotes +
     abandonedCarts +
     consents +
     warrantyClaims +
@@ -716,7 +680,6 @@ export async function countUnlinkedEligibleEntities(db, scopePrefix) {
     customers,
     orders,
     supportTickets,
-    quotes,
     abandonedCarts,
     consents,
     warrantyClaims,
@@ -729,7 +692,7 @@ export async function countUnlinkedEligibleEntities(db, scopePrefix) {
  * Ejecuta el backfill progresivo por lotes (`batchSize = 200` por defecto) hacia `Contact`.
  *  - `apply = false` (default): abre transacción `READ ONLY` verificada en PostgreSQL y calcula
  *    las filas elegibles pendientes sin escribir una sola tupla.
- *  - `apply = true`: procesa las 8 entidades en orden topológico mediante cursores `id > cursor`,
+ *  - `apply = true`: procesa las 7 entidades en orden topológico mediante cursores `id > cursor`,
  *    encolando señales probables en `IdentityMergeCandidate` y verificando reconciliación final.
  *
  * @param {any} prisma
@@ -752,7 +715,6 @@ export async function runContactsBackfill(prisma, options = {}) {
       customers: 0,
       orders: 0,
       supportTickets: 0,
-      quotes: 0,
       abandonedCarts: 0,
       consents: 0,
       warrantyClaims: 0,
@@ -1141,81 +1103,6 @@ export async function runContactsBackfill(prisma, options = {}) {
     }
   }
 
-  // ── Fase 4: Quote activas sin contactId ──
-  {
-    let cursor = undefined;
-    while (true) {
-      const batch = await prisma.quote.findMany({
-        where: {
-          ...scope.quote,
-          contactId: null,
-          deletedAt: null,
-          ...(cursor ? { id: { gt: cursor } } : {}),
-        },
-        orderBy: { id: "asc" },
-        take: batchSize,
-        select: {
-          id: true,
-          customerName: true,
-          customerEmail: true,
-          customerWhatsapp: true,
-        },
-      });
-      if (batch.length === 0) break;
-      counters.batchesProcessed += 1;
-      cursor = batch[batch.length - 1].id;
-
-      for (const q of batch) {
-        if (
-          q.customerName === "Cliente eliminado" ||
-          isAnonymizedPlaceholderEmail(q.customerEmail)
-        ) {
-          counters.skipped.anonymizedOrDeleted += 1;
-          continue;
-        }
-
-        const email = normalizeEmailIdentity(q.customerEmail);
-        const whatsappE164 = normalizePhoneE164(q.customerWhatsapp) || null;
-        if (!email && !whatsappE164) {
-          counters.skipped.anonymizedOrDeleted += 1;
-          continue;
-        }
-
-        const displayName = buildDisplayName(null, null, q.customerName);
-
-        await prisma.$transaction(async (tx) => {
-          const fresh = await tx.quote.findUnique({
-            where: { id: q.id },
-            select: { contactId: true, deletedAt: true },
-          });
-          if (!fresh || fresh.deletedAt || fresh.contactId) return;
-
-          const contactId = email
-            ? await resolveOrCreateEmailBackfillTx(tx, {
-                email,
-                source: "QUOTE",
-                displayName,
-                whatsappE164,
-                counters,
-              })
-            : await resolveOrCreateWhatsappOnlyBackfillTx(tx, {
-                whatsappE164: whatsappE164 ?? "",
-                displayName,
-                counters,
-              });
-
-          if (contactId) {
-            await tx.quote.update({
-              where: { id: q.id },
-              data: { contactId },
-            });
-            counters.entitiesLinked.quotes += 1;
-          }
-        }, BACKFILL_TX_OPTS);
-      }
-    }
-  }
-
   // ── Fase 5: AbandonedCart sin contactId ──
   {
     let cursor = undefined;
@@ -1560,7 +1447,6 @@ export function formatContactsBackfillReport(report) {
     `   - Customer                   : ${report.pendingBefore.customers}`,
     `   - Order                      : ${report.pendingBefore.orders}`,
     `   - SupportTicket              : ${report.pendingBefore.supportTickets}`,
-    `   - Quote                      : ${report.pendingBefore.quotes}`,
     `   - AbandonedCart              : ${report.pendingBefore.abandonedCarts}`,
     `   - Consent (con identidad)    : ${report.pendingBefore.consents}`,
     `   - WarrantyClaim              : ${report.pendingBefore.warrantyClaims}`,
@@ -1571,7 +1457,7 @@ export function formatContactsBackfillReport(report) {
     `   - Contact creados / actualiz.: ${report.contactsCreated} / ${report.contactsUpdated}`,
     `   - ContactIdentity creadas/act: ${report.identitiesCreated} / ${report.identitiesUpdated}`,
     `   - MergeCandidate creados/act : ${report.mergeCandidatesCreated} / ${report.mergeCandidatesUpdated}`,
-    `   - Filas enlazadas (8 tablas) : C=${report.entitiesLinked.customers}, O=${report.entitiesLinked.orders}, ST=${report.entitiesLinked.supportTickets}, Q=${report.entitiesLinked.quotes}, AC=${report.entitiesLinked.abandonedCarts}, CN=${report.entitiesLinked.consents}, WC=${report.entitiesLinked.warrantyClaims}, RR=${report.entitiesLinked.retractRequests}`,
+    `   - Filas enlazadas (7 tablas) : C=${report.entitiesLinked.customers}, O=${report.entitiesLinked.orders}, ST=${report.entitiesLinked.supportTickets}, AC=${report.entitiesLinked.abandonedCarts}, CN=${report.entitiesLinked.consents}, WC=${report.entitiesLinked.warrantyClaims}, RR=${report.entitiesLinked.retractRequests}`,
     `   - Regalos aislados / [ID-01] : ${report.skipped.giftOrdersIsolated} / ${report.skipped.historicalId01MismatchesQueued}`,
     "",
     "3. RECONCILIACIÓN FINAL (META: unlinkedEligibleTotal = 0)",

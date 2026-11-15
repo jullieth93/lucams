@@ -52,7 +52,6 @@ import { computePackedPackage } from "@/features/shipping/aveonline";
 import { buildLucamsOffer, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { declaredValueCopPerInventoryUnit } from "@/features/personalization/design-units";
 import { maxProductionDaysOf } from "@/lib/delivery-estimate";
-import { isCatalogMode } from "@/lib/store-mode";
 import { getZone } from "@/lib/lucams-zones";
 import {
   getEffectiveShippingDims,
@@ -69,7 +68,6 @@ import {
 } from "@/lib/checkout-session";
 import { composeAddressLine, AddressSchema, type ShippingSelectionInput } from "./schemas";
 import { assessCodRisk } from "./cod-risk";
-import { assertTransactionalAllowed } from "@/lib/stage-guard";
 
 export class CheckoutError extends Error {
   constructor(
@@ -535,10 +533,6 @@ export async function quoteShipping(input: {
 export async function finalizeCheckout(input: {
   redirectUrl: string;
 }): Promise<{ orderId: string; orderNumber: string; checkoutUrl: string }> {
-  // Backstop de etapa: aunque una Server Action nueva olvide su guard, aquí no se crea una
-  // orden real mientras la tienda esté en modo catálogo (auditoría 2026-07-21, hallazgo A3).
-  assertTransactionalAllowed("finalizeCheckout");
-
   const ctx = await loadCheckoutContext();
   const { state } = ctx;
 
@@ -1248,16 +1242,13 @@ export type GuestLoyaltyIncentive = {
 /**
  * Incentivo "crea tu cuenta y gana puntos" para INVITADOS (2026-10-26,
  * decisión owner). Lo muestran /checkout/datos y el resumen del paso de pago.
- * null si: la tienda está en modo catálogo (no hay compra en línea), el
- * programa de puntos está apagado, el cliente tiene sesión (él ya ve el
- * earnPreview de getCheckoutLoyalty), o la compra no alcanza ni 1 punto.
- * Mismo estimado que earnPreviewPoints: productos tras cupón + envío ya
- * seleccionado (en /checkout/datos aún no hay envío → solo productos).
+ * null si el programa está apagado, el cliente tiene sesión o la compra no
+ * alcanza ni 1 punto. Mismo estimado que earnPreviewPoints: productos tras
+ * cupón + envío ya seleccionado (en /checkout/datos aún no hay envío).
  */
 export async function getGuestLoyaltyIncentive(
   ctx?: CheckoutContext,
 ): Promise<GuestLoyaltyIncentive | null> {
-  if (isCatalogMode()) return null;
   const settings = await getLoyaltySettings();
   if (!settings.enabled) return null;
   const context = ctx ?? (await loadCheckoutContext());

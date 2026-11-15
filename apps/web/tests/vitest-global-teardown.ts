@@ -105,7 +105,7 @@ export async function teardown() {
     // ─────────────────────────────────────────────────────────────────────
     // Fase 2 de la red (2026-07-28) — basura TRANSACCIONAL de tests. La red
     // original solo cubría catálogo; los tests de orders/checkout/coupons/
-    // customers/reviews/quotes/retracts dejaban residuos que el admin mostraba
+    // customers/reviews/retracts dejaban residuos que el admin mostraba
     // como pedidos/clientes/cupones fantasmas (caso real: "20 pedidos
     // pendientes" en el dashboard, todos de corridas de integración).
     //
@@ -121,7 +121,6 @@ export async function teardown() {
       customersTest,
       couponsTest,
       reviewsTest,
-      quotesTest,
       designsTest,
       tilesTest,
       setsTest,
@@ -141,10 +140,6 @@ export async function teardown() {
         WHERE "isActive" = true AND code ~ ${RUN_ID}`,
       prisma.$executeRaw`UPDATE "Review" SET "deletedAt" = NOW(), "updatedAt" = NOW()
         WHERE "deletedAt" IS NULL AND comment ~ ${RUN_ID}`,
-      prisma.$executeRaw`UPDATE "Quote" SET "deletedAt" = NOW(), "updatedAt" = NOW()
-        WHERE "deletedAt" IS NULL AND (
-          "customerName" ILIKE 'itest%' OR "customerEmail" ILIKE '%.test'
-          OR "customerEmail" ILIKE 'itest%')`,
       prisma.$executeRaw`DELETE FROM "Design" WHERE "sessionId" ILIKE 'test-%'`,
       prisma.$executeRaw`DELETE FROM "LetterTile" WHERE "setId" IN
         (SELECT id FROM "LetterTileSet" WHERE name LIKE 'TEST %')`,
@@ -168,7 +163,7 @@ export async function teardown() {
     console.log(
       `[vitest teardown] Limpieza (solo patrones de test): ${products} productos, ${categories} categorías, ${ocasiones} ocasiones, ${variants} variantes, ${templates} plantillas. ` +
         `Transaccional: ${ordersTest} pedidos, ${customersTest} clientes, ${contactsTest} contactos, ${couponsTest} cupones, ` +
-        `${reviewsTest} reseñas, ${quotesTest} cotizaciones, ${designsTest} diseños, ` +
+        `${reviewsTest} reseñas, ${designsTest} diseños, ` +
         `${setsTest} sets fichas (+${tilesTest} fichas), ${codTest} ledger COD, ${retractsTest} retractos.`,
     );
   } catch (err) {

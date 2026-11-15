@@ -77,7 +77,6 @@ import { Sparkles, Box, X, CalendarDays, Loader2, Trash2 } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
-import { isCatalogMode } from "@/lib/store-mode";
 import {
   composeCalendarPages,
   buildCalendarPageInputs,
@@ -646,9 +645,6 @@ export function StudioEditor({
   useDialogA11y(book3DRef, { onClose: closeBook3D, active: book3D !== null });
   // P1.5 — Asistente IA de ideas (ADR-058).
   const [aiOpen, setAiOpen] = useState(false);
-  // Etapa 1 (modo catálogo): el asistente IA queda APAGADO — ni el botón
-  // "Ideas" ni el panel se renderizan; el resto del Estudio sigue intacto.
-  const aiEnabled = !isCatalogMode();
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
   // Producto config viene como JSON unknown, parsePhotoProductConfig hace
@@ -2974,7 +2970,7 @@ export function StudioEditor({
               Ola 2 (2026-10-26) — mínimo vertical en <sm: gaps y margen inferior
               aún más finos (los targets táctiles de 44px se conservan). */}
             <div className="mt-1 mb-2 flex flex-wrap items-center justify-center gap-1 px-2 sm:mt-2 sm:mb-6 sm:gap-2 sm:px-4 lg:mb-8">
-              {aiEnabled && (
+              {
                 // 2026-10-29 (owner) — «Ideas» pasa a pill SECUNDARIO discreto:
                 // el primario visual es «Ver en tu espacio»/3D; el asistente IA
                 // queda disponible pero sin competir (outline, sin sombra XL).
@@ -2989,7 +2985,7 @@ export function StudioEditor({
                   <span>{texts.lienzo.btnIdeas}</span>
                   <span className="sr-only">&nbsp;{texts.lienzo.ideasSr}</span>
                 </button>
-              )}
+              }
               {isCalendarMonth ? (
                 <button
                   type="button"
@@ -3210,8 +3206,8 @@ export function StudioEditor({
           </section>
         </div>
 
-        {/* P1.5 — Panel del asistente IA de ideas (apagado en modo catálogo) */}
-        {aiEnabled && (
+        {/* P1.5 — Panel del asistente IA de ideas */}
+        {
           <StudioAiPanel
             open={aiOpen}
             onClose={() => setAiOpen(false)}
@@ -3219,7 +3215,7 @@ export function StudioEditor({
             slotCount={liveSlotCount}
             allowText={allowText}
           />
-        )}
+        }
 
         {/* FOTO4/CAL4 — Galería de escenas "en tu espacio" en un solo modal (kind decide las escenas:
           fotoimanes → nevera/polaroid/mural/repisa/regalo · calendario → abre en el DETALLE

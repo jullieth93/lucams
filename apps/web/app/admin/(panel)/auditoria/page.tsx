@@ -102,7 +102,7 @@ const AUDIT_PRESETS: ReadonlyArray<{
     key: "crm",
     label: "CRM, marketing y B2B",
     description:
-      "Fusiones de Contact 360, actividades/tareas CRM, oportunidades B2B, cotizaciones, recuperación de carritos y Lifecycle Journeys.",
+      "Fusiones de Contact 360, actividades/tareas CRM, oportunidades B2B, recuperación de carritos y Lifecycle Journeys.",
     prefixes: [
       "contact.merge",
       "crm.",

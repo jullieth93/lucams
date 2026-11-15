@@ -10,7 +10,6 @@
 
 import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
@@ -36,7 +35,6 @@ import {
   type OpportunityStage,
 } from "./schemas";
 import {
-  convertQuoteToOpportunityByAdmin,
   createPublicB2bOpportunity,
   OpportunityValidationError,
   updateOpportunityByAdmin,
@@ -272,35 +270,4 @@ export async function updateOpportunityAction(
     });
     return { error: "No se pudo guardar la oportunidad." };
   }
-}
-
-export async function convertQuoteToOpportunityAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ capability: "opportunities:manage" });
-  const quoteId = String(formData.get("quoteId") ?? "").trim();
-  if (!quoteId) {
-    redirect("/admin/cotizaciones");
-  }
-
-  const result = await convertQuoteToOpportunityByAdmin(quoteId, session.admin.id);
-
-  if (!result.alreadyExisted) {
-    await recordAdminAction({
-      actorId: session.admin.id,
-      action: "opportunity.convert_from_quote",
-      entityType: "Opportunity",
-      entityId: result.id,
-      metadata: {
-        quoteId,
-        opportunityNumber: result.number,
-      },
-    });
-  }
-
-  revalidatePath("/admin/cotizaciones");
-  revalidatePath(`/admin/cotizaciones/${quoteId}`);
-  revalidatePath("/admin/oportunidades");
-  revalidatePath(`/admin/clientes/${result.contactId}`);
-  revalidatePath("/admin/hoy");
-
-  redirect(`/admin/oportunidades/${result.id}`);
 }

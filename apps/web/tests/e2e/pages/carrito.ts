@@ -1,6 +1,6 @@
 /*
  * POM — Carrito (/carrito).
- * Selectores verificados en catalog-mode.spec.ts.
+ * Selectores del flujo transaccional.
  */
 import { expect, type Page } from "@playwright/test";
 
@@ -12,16 +12,11 @@ export class CarritoPage {
   }
 
   async expectItem(name: string) {
-    // toPass: tolera el read-after-write del pooler (patrón compra/catalog-mode).
+    // toPass: tolera el read-after-write del pooler.
     await expect(async () => {
       await this.page.goto("/carrito");
       await expect(this.page.getByText(name).first()).toBeVisible();
     }).toPass({ timeout: 30_000 });
-  }
-
-  /** En modo catálogo el CTA es cotizar por WhatsApp (NO "Ir a pagar"). */
-  quoteCta() {
-    return this.page.getByRole("link", { name: /cotizar por whatsapp/i });
   }
 
   checkoutCta() {

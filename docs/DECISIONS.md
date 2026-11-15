@@ -695,13 +695,13 @@
 
 ### ADR-077 — Modo de tienda gobernado por `NEXT_PUBLIC_STORE_MODE`
 
-- **Estado:** `Vigente`
+- **Estado:** `SUPERSEDED` por `ADR-204`
 - **Decisión:** Soportar modos `catalog` y `full` en el mismo código (`lib/store-mode.ts`); STG y PRD operan en `full`.
 - **Motivo:** Conmutación limpia por variable de entorno ([`STATE.md`](STATE.md)).
 
 ### ADR-078 — Imposición server-side del modo de tienda (`stage-guard.ts`)
 
-- **Estado:** `Vigente`
+- **Estado:** `SUPERSEDED` por `ADR-204`
 - **Decisión:** Ejecutar `guardTransactionalAction()` / `assertTransactionalAllowed()` en servidor cuando el modo es `catalog`.
 - **Motivo:** Frontera de autorización real en backend, no solo visual.
 
@@ -798,7 +798,7 @@
 ### ADR-197 — Ayuda operativa integral y versionada con el Admin
 
 - **Estado:** `Vigente`
-- **Decisión:** Mantener junto al código un registro tipado de **44 guías** y **8 rutas de onboarding**, filtrado por RBAC y resuelto por la ruta actual. Integrar `/admin/ayuda`, ayuda contextual en el shell y recorridos interactivos opcionales, accesibles, reanudables y no destructivos, con onboarding lateral que recuerda el cierre por sesión y aislamiento explícito en helpers E2E. Persistir avance y retroalimentación por `AdminUser` en `AdminHelpProgress`/`AdminHelpFeedback` con RLS y validación server-side. Toda página administrativa debe tener guía: `registry.test.ts` recorre las rutas reales y rompe CI ante cobertura faltante; todo cambio de campos, estados, permisos o procedimientos debe actualizar su contenido y versión en la misma entrega.
+- **Decisión:** Mantener junto al código un registro tipado de **43 guías** y **8 rutas de onboarding**, filtrado por RBAC y resuelto por la ruta actual. Integrar `/admin/ayuda`, ayuda contextual en el shell y recorridos interactivos opcionales, accesibles, reanudables y no destructivos, con onboarding lateral que recuerda el cierre por sesión y aislamiento explícito en helpers E2E. Persistir avance y retroalimentación por `AdminUser` en `AdminHelpProgress`/`AdminHelpFeedback` con RLS y validación server-side. Toda página administrativa debe tener guía: `registry.test.ts` recorre las rutas reales y rompe CI ante cobertura faltante; todo cambio de campos, estados, permisos o procedimientos debe actualizar su contenido y versión en la misma entrega.
 - **Motivo:** Capacitar por rol y reducir errores sin depender de manuales externos ni tours bloqueantes. El contenido operativo vive con la interfaz que describe y la guarda automática impide que nuevos módulos queden sin aprendizaje ([`ARCHITECTURE.md`](ARCHITECTURE.md) § 8.6).
 
 ---
@@ -936,7 +936,7 @@
 ### ADR-026 — Banderas de funcionalidad en código/entorno sin tabla `FeatureFlag`
 
 - **Estado:** `Vigente`
-- **Decisión:** Controlar banderas estructurales por variables de entorno y constantes en código (`NEXT_PUBLIC_STORE_MODE`, `BILLING_DOCUMENT_ENABLED`), sin tabla `FeatureFlag`, usando `CmsField` `SETTING` para ajustes operativos en caliente.
+- **Decisión:** Controlar banderas estructurales por variables de entorno y constantes en código (`BILLING_DOCUMENT_ENABLED`), sin tabla `FeatureFlag`, usando `CmsField` `SETTING` para ajustes operativos en caliente.
 - **Motivo:** Cero consultas extra por request y validación estática ([`CONVENTIONS.md`](CONVENTIONS.md)).
 
 ### ADR-027 — Proyecto Supabase dedicado para Staging (`lucams-stg`)
@@ -1188,5 +1188,11 @@
 ### ADR-203 — Catálogo activo de referencia homologado (9 productos) y bola con imán
 
 - **Estado:** `Vigente`
-- **Decisión:** (owner 2026-11-11) (1) El catálogo **activo** de referencia en los 3 ambientes son los 8 productos activos de PRD (`abecedario-completo`, `calendario-mes-a-mes-fotos`, `pack-vocales`, `separadores-alargados`, `separadores-magneticos`, `set-fotoimanes-cuadrados`, `set-fotoimanes-polaroid`, `tiras-magneticas-fotos`) **más `bola-navidena-personalizada`**, que se promueve a PRD (9 activos en LOCAL/STG/PRD); todo lo demás queda pausado en STG/DEV y las categorías fuera de las 5 raíces de referencia (`foto-imanes`, `calendarios`, `separadores`, `juegos-aprendizaje`, `de-temporada`) quedan archivadas, espejo de PRD. El seed canónico siembra como inactivos los productos y categorías fuera de la referencia (`REFERENCE_ACTIVE_PRODUCT_SLUGS`) sin tocar jamás el `isActive` vivo. (2) La bola se vende **Sin imán ($10.000)** y **Con imán ($11.000, +$1.000)**: con imán, los 2 diseños (frente y reverso) van imantados cada uno; las promociones 3 × $27.000 y 5 × $40.000 son a nivel producto y aplican igual a ambas variantes. (3) Fotoimanes Cuadrados recibe sus 12 gemelas `-NOMAG` sembradas **inactivas** al mismo precio que sus pares imantados (patrón histórico del catálogo), listas para activarse con un toggle en `/admin/productos` cuando el negocio lo decida; el seed respeta `isActive` al crear variantes. (4) `sync-catalog-stg-to-prd.mjs` gana `--only=<slug>` para la promoción quirúrgica de un producto (cadena de categorías + producto + variantes + plantillas; CMS intacto) — con ella la bola llegó a PRD sin arrastrar el catálogo extendido de STG. (5) LOCAL corre homologado en modo `full` (`NEXT_PUBLIC_STORE_MODE=full` en `.env.local`) con catálogo e imágenes sincronizados desde STG/PRD.
+- **Decisión:** (owner 2026-11-11) (1) El catálogo **activo** de referencia en los 3 ambientes son los 8 productos activos de PRD (`abecedario-completo`, `calendario-mes-a-mes-fotos`, `pack-vocales`, `separadores-alargados`, `separadores-magneticos`, `set-fotoimanes-cuadrados`, `set-fotoimanes-polaroid`, `tiras-magneticas-fotos`) **más `bola-navidena-personalizada`**, que se promueve a PRD (9 activos en LOCAL/STG/PRD); todo lo demás queda pausado en STG/DEV y las categorías fuera de las 5 raíces de referencia (`foto-imanes`, `calendarios`, `separadores`, `juegos-aprendizaje`, `de-temporada`) quedan archivadas, espejo de PRD. El seed canónico siembra como inactivos los productos y categorías fuera de la referencia (`REFERENCE_ACTIVE_PRODUCT_SLUGS`) sin tocar jamás el `isActive` vivo. (2) La bola se vende **Sin imán ($10.000)** y **Con imán ($11.000, +$1.000)**: con imán, los 2 diseños (frente y reverso) van imantados cada uno; las promociones 3 × $27.000 y 5 × $40.000 son a nivel producto y aplican igual a ambas variantes. (3) Fotoimanes Cuadrados recibe sus 12 gemelas `-NOMAG` sembradas **inactivas** al mismo precio que sus pares imantados (patrón histórico del catálogo), listas para activarse con un toggle en `/admin/productos` cuando el negocio lo decida; el seed respeta `isActive` al crear variantes. (4) `sync-catalog-stg-to-prd.mjs` gana `--only=<slug>` para la promoción quirúrgica de un producto (cadena de categorías + producto + variantes + plantillas; CMS intacto) — con ella la bola llegó a PRD sin arrastrar el catálogo extendido de STG. (5) LOCAL corre homologado con el flujo transaccional de STG/PRD y con catálogo e imágenes sincronizados.
 - **Motivo:** Un solo catálogo comercial vigente y verificable en los 3 ambientes (adiós a los catálogos extendidos divergentes entre STG y PRD), la bola como producto navideño estrella con opción magnética clara en precio y textos, la opción «Sin imán» de cuadrados lista sin despliegue para cuando se decida, y un entorno local que ejercita el mismo modo `full` que producción (carrito y checkout reales contra sandbox, no cotización por WhatsApp).
+
+### ADR-204 — Tienda full-only y retiro de cotizaciones individuales por WhatsApp
+
+- **Estado:** `Vigente`
+- **Decisión:** Eliminar el modo `catalog`, `NEXT_PUBLIC_STORE_MODE`, `stage-guard.ts` y todo el dominio `Quote`/`QuoteItem` con sus rutas, integraciones y datos de configuración. La venta individual usa exclusivamente carrito → envío → pago → pedido; la venta consultiva usa `/empresas-y-eventos` → `Opportunity` → seguimiento → pedido. `Quote` se elimina también del esquema mediante una migración hacia adelante, sin conservar compatibilidad ni construir un cotizador sustituto.
+- **Motivo:** La POC de cotización individual por WhatsApp no tuvo ejecución persistida en producción y quedó superada por el checkout completo. Mantenerla generaba ramas muertas, permisos, pruebas y conceptos contradictorios con la operación actual. `ADR-077` y `ADR-078` quedan superados; `ADR-203` ya había fijado LOCAL en el mismo comportamiento `full` de STG/PRD.

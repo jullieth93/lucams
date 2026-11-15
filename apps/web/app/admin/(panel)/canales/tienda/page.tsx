@@ -3,7 +3,7 @@
  *
  * Módulo SIN modelo: es una página de ESTADO (solo lectura), no de gestión.
  * La tienda no tiene configuración mutable en DB — su "config" vive en env
- * vars (NEXT_PUBLIC_STORE_MODE, NEXT_PUBLIC_SITE_URL) y en código, así que
+ * vars (NEXT_PUBLIC_SITE_URL) y en código, así que
  * acá solo se REFLEJA ese estado para que Lucy lo vea sin abrir Vercel, y se
  * concentran los links operativos del canal (tienda, sitemap, robots, status).
  *
@@ -50,18 +50,10 @@ import { requireCapability } from "@/lib/admin-rbac-guard";
 import { getSettingValue } from "@/lib/cms";
 import { prisma } from "@/lib/db";
 import { getCanonicalSiteUrl } from "@/lib/public-url";
-import { STORE_MODE } from "@/lib/store-mode";
 
 export const metadata: Metadata = {
   title: "Canal: Tienda online",
   robots: { index: false, follow: false },
-};
-
-// Mismo criterio fail-closed de lib/store-mode: solo el valor exacto "catalog"
-// activa el modo catálogo; cualquier otra cosa se muestra como tienda full.
-const MODE_LABEL: Record<typeof STORE_MODE, string> = {
-  catalog: "Catálogo (sin pagos en línea)",
-  full: "Tienda completa (con pagos)",
 };
 
 export default async function AdminCanalTiendaPage() {
@@ -69,7 +61,6 @@ export default async function AdminCanalTiendaPage() {
   const role = session.admin.role;
 
   const siteUrl = getCanonicalSiteUrl();
-  const isCatalog = STORE_MODE === "catalog";
   const canSeeConciliacion = canAccessAdminPath(role, "/admin/finanzas/conciliacion");
   const canSeeIntegraciones = canAccessAdminPath(role, "/admin/integraciones");
   const canSeeGlobalSettings = canAccessAdminPath(role, "/admin/contenido/paginas/global");
@@ -185,14 +176,11 @@ export default async function AdminCanalTiendaPage() {
               </h2>
             </div>
             <p className="mt-3">
-              <AdminBadge tone={isCatalog ? "blue" : "emerald"}>
-                {MODE_LABEL[STORE_MODE]}
-              </AdminBadge>
+              <AdminBadge tone="emerald">Tienda completa (con pagos)</AdminBadge>
             </p>
             <p className="text-brand-muted mt-2 text-xs">
-              {isCatalog
-                ? "Los clientes cotizan por WhatsApp; no hay pagos en línea ni envíos integrados."
-                : "Los clientes pagan en línea (Wompi) y el envío cotiza en tiempo real con Aveonline y Envío Lucams."}
+              Los clientes pagan en línea (Wompi) y el envío cotiza en tiempo real con Aveonline y
+              Envío Lucams.
             </p>
           </AdminCard>
         </div>
@@ -306,11 +294,9 @@ export default async function AdminCanalTiendaPage() {
                 </AdminBadge>
               </p>
               <p className="text-brand-muted mt-2 text-xs">
-                {isCatalog
-                  ? "Sin checkout de pagos en modo catálogo."
-                  : codEnabled
-                    ? "Los clientes pueden pagar al recibir."
-                    : "El checkout exige pago electrónico."}{" "}
+                {codEnabled
+                  ? "Los clientes pueden pagar al recibir."
+                  : "El checkout exige pago electrónico."}{" "}
                 {canSeeConciliacion && (
                   <Link
                     href="/admin/finanzas/conciliacion"

@@ -12,7 +12,7 @@
  *      Si revoca el consentimiento, el tracker borra la cookie de inmediato.
  *   2. Cero PII: cualquier valor que contenga `@` (emails), secuencias numéricas de
  *      teléfono/documento (>= 7 dígitos seguidos) o tokens de rutas sensibles
- *      (`/pedido/[token]`, `/cotizacion/[token]`) es descartado o enmascarado antes
+ *      (`/pedido/[token]`, `/carrito/recuperar/[token]`) es descartado o enmascarado antes
  *      de tocar cookie o base de datos.
  */
 
@@ -62,7 +62,6 @@ export function sanitizeLandingPath(
 
   const redacted = base
     .replace(/^\/pedido\/[^/]+/, "/pedido/[token]")
-    .replace(/^\/cotizacion\/[^/]+/, "/cotizacion/[token]")
     .replace(/^\/carrito\/recuperar\/[^/]+/, "/carrito/recuperar/[token]");
 
   return redacted.slice(0, maxLen);

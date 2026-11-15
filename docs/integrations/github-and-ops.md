@@ -239,28 +239,19 @@ Lucams opera toda su mensajería conversacional sobre enlaces profundos universa
 
 ### 5.2 Plantillas contextualizadas hacia el negocio (`buildWhatsAppUrl`)
 
-`WhatsAppContext` soporta **6 contextos** cuyas plantillas se administran en vivo desde el CMS con interpolación segura `{variable}`:
+`WhatsAppContext` soporta **5 contextos** cuyas plantillas se administran en vivo desde el CMS con interpolación segura `{variable}`:
 
-| `ctx.kind`                    | Clave CMS (`getSettingValue`)      | Variables interpoladas                                                       | Superficies donde se invoca                                                                                                                                                |
-| ----------------------------- | ---------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `"product"`                   | `WA_MSG_PRODUCT`                   | `{productName}`, `{sku}`                                                     | Ficha de producto (`/producto/[slug]`) y Estudio (`/estudio/[slug]`) para dudas previas a la compra                                                                        |
-| `"support"` _(sin asunto)_    | `WA_MSG_SUPPORT`                   | —                                                                            | Home (`/`), `/contacto`, `/empresas-y-eventos`, layout de autenticación y pie de página (`site-footer.tsx`)                                                                |
-| `"support"` _(con `subject`)_ | `WA_MSG_SUPPORT_SUBJECT`           | `{subject}`                                                                  | `/rastrear` («Quiero saber el estado de mi pedido») y consultas guiadas                                                                                                    |
-| `"order"`                     | `WA_MSG_ORDER`                     | `{orderNumber}` (`LCM-YYYY-NNNN`)                                            | Seguimiento posventa del pedido en `/pedido/[token]` (oculto si el pedido está cancelado)                                                                                  |
-| `"quote"`                     | `WA_MSG_QUOTE`                     | `{quoteNumber}`, `{customerName}`, `{itemsSummary}`, `{total}`, `{quoteUrl}` | Confirmación y vista pública de cotizaciones (`buildQuoteWhatsAppUrl` en `apps/web/features/quotes/service.ts`, esencial tanto en modo catálogo como en cierres asistidos) |
-| `"wholesale"` / `"custom"`    | `WA_MSG_WHOLESALE` / texto directo | —                                                                            | Consultas corporativas al por mayor y enlaces puntuales                                                                                                                    |
+| `ctx.kind`                    | Clave CMS (`getSettingValue`)      | Variables interpoladas            | Superficies donde se invoca                                                                                 |
+| ----------------------------- | ---------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `"product"`                   | `WA_MSG_PRODUCT`                   | `{productName}`, `{sku}`          | Ficha de producto (`/producto/[slug]`) y Estudio (`/estudio/[slug]`) para dudas previas a la compra         |
+| `"support"` _(sin asunto)_    | `WA_MSG_SUPPORT`                   | —                                 | Home (`/`), `/contacto`, `/empresas-y-eventos`, layout de autenticación y pie de página (`site-footer.tsx`) |
+| `"support"` _(con `subject`)_ | `WA_MSG_SUPPORT_SUBJECT`           | `{subject}`                       | `/rastrear` («Quiero saber el estado de mi pedido») y consultas guiadas                                     |
+| `"order"`                     | `WA_MSG_ORDER`                     | `{orderNumber}` (`LCM-YYYY-NNNN`) | Seguimiento posventa del pedido en `/pedido/[token]` (oculto si el pedido está cancelado)                   |
+| `"wholesale"` / `"custom"`    | `WA_MSG_WHOLESALE` / texto directo | —                                 | Consultas corporativas al por mayor y enlaces puntuales                                                     |
 
-### 5.3 Blindaje de longitud y formato en cotizaciones (`apps/web/features/quotes/service.ts`)
+### 5.3 Contacto saliente desde el Admin hacia el cliente (`customerWaLink` y `customerTelLink`)
 
-Cuando un carrito con muchos productos genera una cotización por WhatsApp, los navegadores Chromium rechazan silenciosamente lanzadores de protocolo (`whatsapp://`) cuya URL supere **2046 caracteres**. Para que el botón jamás falle ni corte el total al final del mensaje, `buildQuoteWhatsAppUrl` aplica tres defensas:
-
-- **Presupuesto codificado (`WA_MAX_DETAILED_ITEMS = 8`, `WA_ITEMS_ENCODED_BUDGET = 900` bytes URL-encoded, `WA_MAX_ITEM_NAME_CHARS = 60`):** detalla hasta 8 líneas dentro del presupuesto de 900 caracteres codificados y resume el resto con `…y N productos más — mira el detalle aquí: <quoteUrl>`, manteniendo la URL completa alrededor de `<= 1600` caracteres.
-- **Recorte seguro por grafemas (`truncateForWhatsApp`):** usa `Intl.Segmenter("es", { granularity: "grapheme" })` (con fallback a `Array.from` por code points) en lugar de `String.prototype.slice`, evitando partir un emoji compuesto o par subrogado UTF-16 por la mitad — lo que haría que `encodeURIComponent` lanzara `URIError: URI malformed` tumbando con `500` la página de la cotización.
-- **Neutralización de marcado de WhatsApp (`neutralizeWhatsAppMarkup`):** sustituye `*`, `_`, `~` y `` ` `` dentro de nombres de productos y variantes por equivalentes visuales (`∗`, `‗`, `∼`, `ʼ`) para que un SKU o nombre con guiones bajos no desconfigure las negritas/cursivas del mensaje.
-
-### 5.4 Contacto saliente desde el Admin hacia el cliente (`customerWaLink` y `customerTelLink`)
-
-Para que el equipo operativo contacte en un clic al comprador desde `/admin/{pedidos,cotizaciones,carritos,clientes,oportunidades}` y desde los correos internos de notificación (`order-admin-notification`, `quote-admin-notification`, `b2b-inquiry-admin-notification`):
+Para que el equipo operativo contacte en un clic al comprador desde `/admin/{pedidos,carritos,clientes,oportunidades}` y desde los correos internos de notificación (`order-admin-notification` y `b2b-inquiry-admin-notification`):
 
 - `normalizeCustomerPhone(phone)` limpia no-dígitos: si recibe un móvil colombiano de 10 dígitos (`^3\d{9}$`), **antepone automáticamente `57`** (`573XXXXXXXXX`); si ya viene en formato internacional plausible (`11` a `15` dígitos E.164), lo conserva; ante teléfonos fijos cortos o cadenas inválidas devuelve `null` para que la UI oculte el botón en vez de pintar un enlace roto.
 

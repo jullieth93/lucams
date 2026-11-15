@@ -8,9 +8,7 @@
 
 import Link from "next/link";
 import { ArrowLeft, Lock } from "lucide-react";
-import { WhatsAppIcon } from "@/components/icons/brand";
 import { LucamsLogo } from "@/components/lucams-logo";
-import { isCatalogMode } from "@/lib/store-mode";
 import { getCheckoutTexts } from "./checkout-texts.server";
 
 export default async function CheckoutLayout({ children }: { children: React.ReactNode }) {
@@ -44,9 +42,7 @@ export default async function CheckoutLayout({ children }: { children: React.Rea
 
           <div className="text-brand-muted hidden items-center gap-1.5 text-xs font-medium md:inline-flex">
             <Lock className="h-3.5 w-3.5" />
-            {/* Modo catálogo no procesa pagos: el badge promete cotización, no
-                "compra" (mismo gate por modo que el footer de abajo). */}
-            {isCatalogMode() ? texts.layout.secureCatalog : texts.layout.secure}
+            {texts.layout.secure}
           </div>
         </div>
       </header>
@@ -59,17 +55,8 @@ export default async function CheckoutLayout({ children }: { children: React.Rea
       <footer className="border-brand-purple/10 mt-auto border-t bg-white/60 py-5 backdrop-blur-sm">
         <div className="text-brand-muted mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-6 gap-y-2 px-4 text-xs sm:justify-between sm:px-6">
           <div className="flex items-center gap-1.5">
-            {isCatalogMode() ? (
-              <>
-                <WhatsAppIcon className="h-3 w-3" />
-                {texts.layout.footerCatalog}
-              </>
-            ) : (
-              <>
-                <Lock className="h-3 w-3" />
-                {texts.layout.footerPayments}
-              </>
-            )}
+            <Lock className="h-3 w-3" />
+            {texts.layout.footerPayments}
           </div>
           <div className="flex gap-4">
             <Link href="/legal/terminos" className="hover:text-brand-purple-dark -my-3 py-3">

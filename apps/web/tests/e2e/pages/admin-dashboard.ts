@@ -1,6 +1,6 @@
 /*
  * POM — Dashboard admin (/admin/dashboard).
- * Selectores verificados en catalog-mode.spec.ts y release-check-a1.spec.ts.
+ * Selectores verificados en release-check-a1.spec.ts.
  */
 import { expect, type Page } from "@playwright/test";
 

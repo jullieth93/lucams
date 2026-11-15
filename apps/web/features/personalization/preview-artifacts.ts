@@ -22,7 +22,7 @@
  * Qué superficie muestra qué versión (owner 2026-11-03 — ADR-191, SUPERSEDE
  * ADR-148): el watermark anti-copia se RETIRÓ de los previews de diseño — TODAS
  * las superficies exhiben LIMPIO (carrito, «Ver diseño», Mis diseños, /d +
- * OG, cotización, gracias, pedidos). Los artefactos wm históricos quedan
+ * OG, gracias y pedidos). Los artefactos wm históricos quedan
  * huérfanos (la purga de retención los cubre).
  *   - Canvas de edición en vivo y vistas 3D → LIMPIOS (son locales).
  *   - Admin y producción (production-assets, privado) → LIMPIOS siempre.
@@ -30,8 +30,8 @@
  *
  * Autorización (quién puede ABRIR cada variante — preview-access.ts):
  *   - Limpios y borradores: dueño (cookie/cuenta) o admin. NUNCA por token.
- *   - Watermark: dueño/admin o capacidad por token (st=share, qt=cotización,
- *     ot=pedido) — las superficies públicas la pasan por `capability`.
+ *   - Watermark: dueño/admin o capacidad por token (st=share y ot=pedido) —
+ *     las superficies públicas la pasan por `capability`.
  *
  * Fallbacks: sin previewWatermarkedAt la superficie cae al preview limpio
  * (visible solo para dueño/admin — en superficies por token la imagen no
@@ -95,11 +95,10 @@ export function designPreviewDerivedPaths(designId: string, pagesCount?: number 
 // ──────────── URLs autorizadas (Route Handler /api/design-preview/*) ────────────
 
 /**
- * Capacidad por token para superficies públicas: `st` (share /d/<token>),
- * `qt` (cotización), `ot` (pedido). El handler solo la honra en variantes
- * watermark — un token nunca abre el preview limpio ni los borradores.
+ * Capacidad por token para superficies públicas: `st` (share /d/<token>) y
+ * `ot` (pedido). Un token nunca abre borradores.
  */
-export type PreviewCapability = { name: "st" | "qt" | "ot"; value: string };
+export type PreviewCapability = { name: "st" | "ot"; value: string };
 
 function withCapability(url: string, capability?: PreviewCapability): string {
   return capability ? `${url}?${capability.name}=${encodeURIComponent(capability.value)}` : url;
@@ -172,12 +171,12 @@ export type DesignPreviewDisplay = {
  * los artefactos wm históricos quedan huérfanos en el bucket (la purga de
  * retención los cubre por designPreviewDerivedPaths). La autorización la
  * refuerza el handler (preview-access.ts): limpios para dueño/admin y — como
- * antes de 2026-10-13 — para las capacidades por token (link compartido,
- * cotización, pedido); los BORRADORES nunca salen por token.
+ * antes de 2026-10-13 — para las capacidades por token (link compartido y
+ * pedido); los BORRADORES nunca salen por token.
  *
  * Todas las URLs salen por el handler autorizado (el bucket ya no es público):
- * las superficies con sesión no necesitan capability; las públicas (/d/,
- * cotización, pedido por token) la pasan. null si el diseño no tiene preview o
+ * las superficies con sesión no necesitan capability; las públicas (/d/ y
+ * pedido por token) la pasan. null si el diseño no tiene preview o
  * la ref no sigue la convención (fail-closed: la URL vieja ya no resuelve).
  */
 export function designPreviewDisplay(

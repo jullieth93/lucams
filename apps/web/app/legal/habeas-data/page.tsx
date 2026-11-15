@@ -33,9 +33,9 @@ Según cómo uses la tienda, podemos recolectar y tratar:
 
 - **Identificación y contacto:** nombre, correo electrónico y teléfono.
 - **Datos de envío:** dirección de entrega, indicaciones de entrega, municipio y departamento.
-- **Datos de tu cotización o solicitud corporativa:** cuando pides una cotización especial por WhatsApp o nos escribes desde **[Empresas y Eventos](/empresas-y-eventos)**, tratamos tu nombre, correo, teléfono o WhatsApp, ciudad, empresa u organización (opcional), tipo de evento, cantidad estimada, presupuesto orientativo y las notas de tu solicitud.
+- **Datos de tu solicitud corporativa:** cuando pides una propuesta comercial para una empresa o evento por WhatsApp o desde **[Empresas y Eventos](/empresas-y-eventos)**, tratamos tu nombre, correo, teléfono o WhatsApp, ciudad, empresa u organización (opcional), tipo de evento, cantidad estimada, presupuesto orientativo y las notas de tu solicitud.
 - **Datos de la compra y posventa:** productos, historial de pedidos, puntos de lealtad y referidos, reseñas, favoritos y conversaciones de soporte o garantías. Los **datos sensibles de pago** (número de tarjeta, códigos de seguridad, etc.) los procesa directamente nuestra pasarela **Wompi** en su propia página segura; nosotros no los almacenamos en ningún caso.
-- **Historial unificado de atención:** vinculamos tus pedidos, cotizaciones y solicitudes de soporte asociados a tu correo o teléfono en una ficha interna de cliente para darte seguimiento continuo sin pedirte los mismos datos cada vez.
+- **Historial unificado de atención:** vinculamos tus pedidos, oportunidades comerciales y solicitudes de soporte asociados a tu correo o teléfono en una ficha interna de cliente para darte seguimiento continuo sin pedirte los mismos datos cada vez.
 - **Datos en herramientas de IA (sin datos personales):** en el Estudio de Personalización solo enviamos el texto depurado de la ocasión que describes (sin fotos ni datos de contacto), y en atención al cliente podemos apoyarnos en un redactor interno que recibe únicamente el texto de la consulta previamente anonimizado (reemplazando correos, teléfonos, direcciones y documentos antes de salir de nuestro servidor).
 - **Fotos e imágenes** que subes al **Estudio de Personalización** para crear tu producto.
 - **Datos de navegación y atribución:** cookies necesarias y, solo si nos das tu consentimiento en el banner, cookies analíticas y de campaña (ver nuestra [Política de Cookies](/legal/cookies)).
@@ -45,7 +45,7 @@ Según cómo uses la tienda, podemos recolectar y tratar:
 Tratamos tus datos únicamente para estas finalidades:
 
 - **Procesar tu pedido**, cobrarlo, prevenir fraude en envíos y coordinar la entrega hasta tu puerta.
-- **Atender tus cotizaciones y solicitudes de eventos o empresas:** responderte por correo o WhatsApp, prepararte propuestas a medida y coordinar la producción y entrega.
+- **Atender tus solicitudes de eventos o empresas:** responderte por correo o WhatsApp, prepararte propuestas a medida y coordinar la producción y entrega.
 - **Producir tu diseño personalizado** a partir de las fotos y textos que subes al Estudio, y **sugerirte ideas de diseño** con el asistente de IA a partir de la ocasión descrita.
 - **Comunicarnos contigo** sobre el estado de tu compra (correos y mensajes transaccionales) y gestionar tu cuenta y programa de puntos o referidos.
 - **Atender tus peticiones, quejas, reclamos, retractos y garantías** (PQR) y el ejercicio de tus derechos como titular.
@@ -74,7 +74,7 @@ Para operar la tienda usamos proveedores de tecnología ("encargados del tratami
 | Google LLC (Google Analytics 4) | Medición analítica agregada de visitas (solo si aceptas cookies Analíticas)                                                      | EE.UU.          |
 | Cloudflare                      | Seguridad anti-bot (Turnstile), enrutamiento de correo entrante y protección contra ataques                                      | EE.UU. / global |
 | Cloudflare R2                   | Respaldo cifrado externo de base de datos y archivos de almacenamiento (continuidad del negocio; retención de ~30 días)          | EE.UU. / global |
-| Meta / WhatsApp                 | Canal de atención, cotizaciones y ejercicio de derechos                                                                          | EE.UU. / global |
+| Meta / WhatsApp                 | Canal de atención, propuestas B2B y ejercicio de derechos                                                                        | EE.UU. / global |
 | Wompi                           | Procesamiento de pagos en línea                                                                                                  | Colombia        |
 | Aveonline y transportadoras     | Logística y envíos (cotización del envío, guía, seguimiento y recaudo contraentrega)                                             | Colombia        |
 
@@ -82,7 +82,7 @@ Para operar la tienda usamos proveedores de tecnología ("encargados del tratami
 
 ## Autorización
 
-Antes de recolectar tus datos te pedimos una autorización **previa, expresa e informada**, con una **casilla que tú marcas**: al crear tu cuenta, al pedir una cotización por WhatsApp, al enviar una solicitud en Empresas y Eventos, al completar tus datos de compra, al suscribirte a avisos o boletín y al elegir tus cookies. Guardamos el registro de esa autorización como prueba. Puedes **revocarla** en cualquier momento por los canales de esta política, salvo que exista un deber legal o contractual que nos obligue a conservar ciertos datos (como los soportes de tus pedidos).
+Antes de recolectar tus datos te pedimos una autorización **previa, expresa e informada**, con una **casilla que tú marcas**: al crear tu cuenta, al enviar una solicitud en Empresas y Eventos, al completar tus datos de compra, al suscribirte a avisos o boletín y al elegir tus cookies. Guardamos el registro de esa autorización como prueba. Puedes **revocarla** en cualquier momento por los canales de esta política, salvo que exista un deber legal o contractual que nos obligue a conservar ciertos datos (como los soportes de tus pedidos).
 
 ## Tus derechos
 
@@ -111,7 +111,7 @@ Tienes dos caminos:
 1. **Tú mismo, al instante:** puedes eliminar tu cuenta y tus datos desde [Mi cuenta → Seguridad](/mi-cuenta/seguridad). Para dejar de recibir correos de marketing, usa el enlace **"Cancelar suscripción"** al final de cualquier correo nuestro, y para cambiar o revocar cookies analíticas usa **"Abrir preferencias"** en el pie del sitio.
 2. **Escribiéndonos:** manda tu solicitud a **{{email_habeas_data}}** (o a **{{email_contacto}}**) o por WhatsApp, indicando:
    - Tu nombre completo y documento de identidad.
-   - El correo **o el número de WhatsApp** con el que nos escribiste, compraste o pediste tu cotización (si cotizaste como invitado, el correo es opcional y tu WhatsApp basta para identificarte).
+   - El correo **o el número de WhatsApp** con el que nos escribiste, compraste o enviaste tu solicitud de empresa o evento (si no tienes cuenta, tu WhatsApp basta para identificarte).
    - El derecho que quieres ejercer.
    - Una breve descripción de tu solicitud.
 
@@ -133,8 +133,8 @@ Conservamos tus datos **mientras exista una relación contigo** y durante los **
 | Diseños y fotos **anónimos abandonados** (sin cuenta y sin actividad)             | Se borran automáticamente a los **30 días**                                                                          |
 | Borradores de diseño **inactivos en cuentas registradas** (sin pedido asociado)   | Se borran automáticamente a los **90 días** sin actividad                                                            |
 | Fotos originales y artes de impresión de **pedidos entregados**                   | **90 días** después de la entrega (para cubrir garantías o reimpresiones); luego se purgan                           |
-| Fotos de una **cotización cerrada** (concretada o descartada)                     | **90 días** de gracia desde el último movimiento                                                                     |
-| Fotos de **cotizaciones abiertas sin movimiento**                                 | Techo de **365 días**; después se purgan                                                                             |
+| Diseños listos **sin pedido asociado** y fotos de **carritos cerrados**           | **90 días** de gracia desde el último movimiento                                                                     |
+| Diseños y fotos **sin actividad prolongada**                                      | Techo de **365 días**; después se purgan                                                                             |
 | Estadísticas diarias agregadas y anónimas del embudo de la tienda                 | **365 días**                                                                                                         |
 | Registros técnicos de eventos (correos enviados y notificaciones de pago o envío) | **180 días** (y **7 días** para contadores técnicos anti-abuso)                                                      |
 | Comprobantes de pedidos, garantías y soporte comercial                            | Durante el plazo legal aplicable en Colombia (deberes contables, tributarios y del Estatuto del Consumidor)          |

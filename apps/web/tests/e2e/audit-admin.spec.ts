@@ -15,7 +15,7 @@ import { completeMfaChallengeIfNeeded, enrollTotpFactor } from "./_helpers/mfa";
  *   2. Productos: lista + edición (rename temporal + restore).
  *   3. Categorías: lista + toggle activa/inactiva (verifica reflejo en front + restore).
  *   4. Plantillas: lista sin basura (solo las reales).
- *   5. Pedidos/cotizaciones: lista carga.
+ *   5. Pedidos/oportunidades: listas cargan.
  *   6. Configuración: toggle COD (cambia → verifica front → restaura).
  *   7. Reseñas: lista carga.
  *   8. Consola/red sin errores 5xx en el panel.
@@ -192,10 +192,10 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
     });
   });
 
-  test("5. Pedidos/cotizaciones: lista carga", async ({ page }) => {
+  test("5. Pedidos y oportunidades: listas cargan", async ({ page }) => {
     watch(page, "pedidos");
     await adminLogin(page);
-    for (const path of ["/admin/pedidos", "/admin/cotizaciones"]) {
+    for (const path of ["/admin/pedidos", "/admin/oportunidades"]) {
       const resp = await page.goto(path, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(2500);
       if (resp?.status() === 200) {
@@ -207,7 +207,7 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
     findings.push({
       area: "admin:pedidos",
       ok: false,
-      detail: "ni /admin/pedidos ni /admin/cotizaciones respondieron 200",
+      detail: "ni /admin/pedidos ni /admin/oportunidades respondieron 200",
     });
   });
 

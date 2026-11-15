@@ -12,7 +12,7 @@ Lucams integra cuatro familias del ecosistema de Google sin acoplar SDKs pesados
 | ------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | **Google Gemini API**           | REST `POST /v1beta/models/{model}:generateContent` + `GET /v1beta/models` (0 SDK npm, 100 % server-side) | `apps/web/features/ai/{provider,gemini-provider,service,actions,schemas,support-copilot}.ts`                                                                                                               | En modo `full` (`GEMINI_API_KEY` requerida por `FULL_MODE_REQUIRED` en `apps/web/lib/env.ts`)                  | **Ninguno** (tráfico exclusivo servidor → Google)                                                                           |
 | **Google Analytics 4 (GA4)**    | `gtag.js` (`afterInteractive`) con doble compuerta opt-in y sanitización de rutas/query                  | `apps/web/components/analytics-ga4.tsx`, `apps/web/lib/analytics.ts`, `apps/web/lib/security-headers.ts`                                                                                                   | Solo si `NEXT_PUBLIC_GA_MEASUREMENT_ID` coincide con `/^G-[A-Z0-9]+$/i` **y** `hasAnalyticsConsent() === true` | Condicional: solo agrega `googletagmanager.com` y `*.google-analytics.com` si `NEXT_PUBLIC_GA_MEASUREMENT_ID` está definida |
-| **Google Merchant Center**      | Feed XML RSS 2.0 (`xmlns:g="http://base.google.com/ns/1.0"`) en `GET /feeds/google-merchant.xml`         | `apps/web/app/feeds/google-merchant.xml/route.ts`, `apps/web/lib/feeds/google-merchant.ts`                                                                                                                 | Solo en modo `full` (`!isCatalogMode()`); devuelve `404` en modo catálogo                                      | **Ninguno** (consumido por el crawler de Google Shopping)                                                                   |
+| **Google Merchant Center**      | Feed XML RSS 2.0 (`xmlns:g="http://base.google.com/ns/1.0"`) en `GET /feeds/google-merchant.xml`         | `apps/web/app/feeds/google-merchant.xml/route.ts`, `apps/web/lib/feeds/google-merchant.ts`                                                                                                                 | Siempre sobre el catálogo público elegible para compra                                                         | **Ninguno** (consumido por el crawler de Google Shopping)                                                                   |
 | **Google Search Console & SEO** | Meta tag `google-site-verification` + TXT DNS, `/sitemap.xml`, `/robots.txt` y `<JsonLd>` con nonce CSP  | `apps/web/app/layout.tsx`, `apps/web/app/sitemap.ts`, `apps/web/app/robots.ts`, `apps/web/lib/seo/structured-data.ts`, `apps/web/components/json-ld.tsx`, `apps/web/app/producto/[slug]/product-jsonld.ts` | Permanente sobre `getCanonicalSiteUrl()`; meta tag condicional a `GOOGLE_SITE_VERIFICATION`                    | `<JsonLd>` inyecta el `x-nonce` de la respuesta                                                                             |
 
 > **Fuentes de letra (`next/font/google`):** `apps/web/app/layout.tsx` importa las familias tipográficas en tiempo de compilación con `next/font/google`, autoalojando los `.woff2` en el dominio propio; la CSP conserva `https://fonts.googleapis.com` en `style-src` como respaldo seguro, sin enviar IPs de visitantes a `fonts.gstatic.com` en cada vista.
@@ -75,10 +75,8 @@ Permite al comprador escribir la ocasión de su regalo dentro de [el Estudio de 
 #### Flujo completo de extremo a extremo
 
 1. **UI cliente (`apps/web/app/estudio/[slug]/studio-ai-panel.tsx`):**
-   - Solo se habilita cuando la tienda opera en modo `full` (`!isCatalogMode()`).
    - Modal accesible (`useDialogA11y`: foco inicial, focus trap, tecla `Escape`, retorno de foco) con campo `occasion` (`maxLength={200}`, botón deshabilitado si `occasion.trim().length < 3`) y aviso explícito de privacidad (`texts.ia.notaPrivacidad`) informando que el texto descriptivo se procesa con un proveedor externo de IA.
 2. **Server Action (`suggestDesignAction` en `apps/web/features/ai/actions.ts`):**
-   - **Compuerta server-side de modo tienda:** si `isCatalogMode()` es `true`, registra `ai.suggest.blocked_catalog_mode` y rechaza con mensaje amable (ocultar el botón en cliente nunca sustituye la autorización en el servidor).
    - **Validación de entrada (`DesignSuggestInputSchema` en `apps/web/features/ai/schemas.ts`):**
      - `occasion`: `z.string().trim().min(3).max(200)`
      - `productName`: `z.string().max(120)`
@@ -181,14 +179,13 @@ Lucams separa su observabilidad de producto y rendimiento en **cuatro canales in
    - Cada llamada a `trackEvent()` y cada `page_view` en navegación SPA vuelve a verificar `isGa4Ready()` (`GA_MEASUREMENT_ID` + `window.gtag` + `hasAnalyticsConsent()`). Si el usuario revoca «Analíticas» durante la misma sesión, la emisión de eventos y vistas se detiene de inmediato (el script ya cargado en el DOM desaparece en la siguiente recarga completa).
 3. **Sanitización anti-fuga de URLs y tokens (`sanitizeAnalyticsUrl`):**
    - **Exclusión total del backoffice:** cualquier ruta `/admin` o `/admin/*` devuelve `null` y jamás se reporta a GA4.
-   - **Enmascaramiento de los 6 patrones de capability tokens:** antes de armar `page_path` y `page_location`, reemplaza segmentos secretos por placeholders fijos:
+   - **Enmascaramiento de los 5 patrones de capability tokens:** antes de armar `page_path` y `page_location`, reemplaza segmentos secretos por placeholders fijos:
      - `/pedido/<token>` → `/pedido/[token]`
      - `/carrito/recuperar/<token>` → `/carrito/recuperar/[token]`
      - `/resena/<token>` → `/resena/[token]`
      - `/d/<token>` → `/d/[token]`
-     - `/cotizacion/<token>` → `/cotizacion/[token]`
      - `/soporte/<token>` → `/soporte/[token]`
-   - **Allowlist estricta de query params (`SAFE_ANALYTICS_QUERY_KEYS`, máx. 120 chars/valor):** solo conserva `categoria`, `subcategoria`, `ocasion`, `orden`, `pagina`, `variant`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `gclid` y `fbclid`. Descarta automáticamente `email`, `phone`, `token`, `code`, `id` de Wompi, `st`/`ot`/`qt`, `designId`, `q` de búsqueda libre y `error`.
+   - **Allowlist estricta de query params (`SAFE_ANALYTICS_QUERY_KEYS`, máx. 120 chars/valor):** solo conserva `categoria`, `subcategoria`, `ocasion`, `orden`, `pagina`, `variant`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `gclid` y `fbclid`. Descarta automáticamente `email`, `phone`, `token`, `code`, `id` de Wompi, `st`/`ot`, `designId`, `q` de búsqueda libre y `error`.
 4. **Conversión monetaria e inventario completo de eventos (`AnalyticsEvents`):**
    - La base de datos almacena precios en **centavos COP (`Int`)**; GA4 exige unidades enteras de moneda (pesos). Toda conversión pasa por `centsToCOP(centavos)` y `toGa4Item()` (`currency: "COP"`).
    - **9 eventos ecommerce estándar de GA4:**
@@ -222,12 +219,11 @@ Complementa a GA4 estampando el canal de adquisición directamente en la base de
   - Cuando hay consentimiento y la URL trae al menos un parámetro `utm_source`, `utm_medium` o `utm_campaign` válido (`extractUtmFromSearchParams`), escribe `lucams_utm` con `Max-Age=2592000` (**30 días**), `Path=/; SameSite=Lax` y flag `; Secure` en HTTPS. Si la navegación interna posterior no trae `utm_*`, conserva intacta la atribución original (first-touch dentro de la ventana).
 - **Sanitización doble (cliente + servidor) cero PII:**
   - `sanitizeUtmValue` rechaza cualquier cadena con `@` o con 7 o más dígitos consecutivos (`/\d{7,}/`, teléfonos/cédulas), limpia caracteres fuera de `[a-zA-Z0-9._\-+/ ]` y trunca a `80` chars (`120` para `utm_campaign`).
-  - `sanitizeLandingPath` elimina query/hash, exige prefijo `/`, rechaza `@` y enmascara `/pedido/[token]`, `/cotizacion/[token]` y `/carrito/recuperar/[token]` (`160` chars máx.).
+  - `sanitizeLandingPath` elimina query/hash, exige prefijo `/`, rechaza `@` y enmascara `/pedido/[token]` y `/carrito/recuperar/[token]` (`160` chars máx.).
   - `parseUtmCookie` en servidor rechaza cookies `> 1024` bytes y re-ejecuta `sanitizeUtmValue` + `sanitizeLandingPath` antes de tocar Prisma.
 - **Entidades donde se estampa:**
   - **`Order`** (`apps/web/features/checkout/service.ts` → `createOrderFromCart` en `apps/web/features/orders/service.ts`): persiste `utmSource`, `utmMedium`, `utmCampaign` y `landingPath`.
   - **`Opportunity`** (`submitB2bInquiryAction` en `apps/web/features/opportunities/actions.ts`): combina valores explícitos del formulario `/empresas-y-eventos` con fallback a `parseUtmCookie` y persiste `utmSource`, `utmMedium`, `utmCampaign` y `landingPath`.
-  - _Nota sobre `Quote`:_ el modelo `Quote` no almacena columnas `utm*` propias; la atribución comercial vive en la `Opportunity` B2B de origen o en la `Order` resultante al convertir.
 
 ---
 
@@ -251,7 +247,6 @@ El endpoint `apps/web/app/feeds/google-merchant.xml/route.ts` y el builder puro 
 
 ### Reglas de negocio, elegibilidad y formato XML
 
-- **Compuerta de modo tienda:** en modo catálogo (`isCatalogMode() === true`) responde **`404 Not found`**. Sin checkout en línea activo no se anuncian ofertas comprables en Google Shopping.
 - **Filtro de elegibilidad idéntico al storefront (`STOREFRONT_PRODUCT_WHERE`):** solo incluye productos activos (`isActive: true`, `deletedAt: null`) pertenecientes a una categoría activa y no eliminada, y dentro de cada producto solo variantes activas (`isActive: true`, `deletedAt: null`). Productos sin variantes activas no generan nodos `<item>`.
 - **Granularidad 1 `<item>` por variante activa:**
   - `<g:id>`: `variant.sku` (único globalmente en Prisma).

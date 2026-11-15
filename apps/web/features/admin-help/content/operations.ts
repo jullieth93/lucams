@@ -240,7 +240,7 @@ export const OPERATION_GUIDES: AdminModuleGuide[] = [
     route: "/admin/notificaciones",
     summary: "Centro interno de avisos operativos, comerciales y de salud filtrado según tu rol.",
     purpose:
-      "Conserva avisos dentro del alcance de tus permisos (pedidos, cotizaciones, stock o salud técnica) y distingue los pendientes de lectura con pulso de 14 días. Marcar como leído organiza tu bandeja sin alterar ni silenciar alertas reservadas a otros ámbitos.",
+      "Conserva avisos dentro del alcance de tus permisos (pedidos, oportunidades B2B, stock o salud técnica) y distingue los pendientes de lectura con pulso de 14 días. Marcar como leído organiza tu bandeja sin alterar ni silenciar alertas reservadas a otros ámbitos.",
     whenToUse: [
       "Cuando el contador del menú indica avisos sin leer.",
       "Para localizar el enlace al módulo afectado por una alerta.",

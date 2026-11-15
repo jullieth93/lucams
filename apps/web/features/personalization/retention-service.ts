@@ -9,32 +9,11 @@
  * Este job PURGA de forma segura y conservadora:
  *   1) Diseños DRAFT anónimos, viejos (updatedAt < corte) y que ya nadie reclama → borra sus fotos
  *      del bucket + sus DesignAsset + el Design.
- *   2) Diseños READY anónimos que pasaron por una COTIZACIÓN ya vencida (ver ciclo de vida abajo).
- *   3) DesignAsset anónimos HUÉRFANOS (nunca ligados a un diseño), viejos → borra bytes + fila.
+ *   2) DesignAsset anónimos HUÉRFANOS (nunca ligados a un diseño), viejos → borra bytes + fila.
  *
- * ── Qué significa "ya nadie lo reclama" (auditoría 2026-07-21 · C-gap2, Ley 1581 art. 5) ──
- * Antes bastaba con existir UN CartItem para blindar el diseño: `cartItems: { none: {} }`. Pero
- * `clearCartAfterPaid` (features/orders) SOFT-borra el Cart y deja vivos sus CartItem, y la
- * cotización de Etapa 1 vacía el carrito justo con esa función. Resultado: toda foto de invitado que
- * llegó a una cotización conservaba un CartItem para siempre → retención indefinida de imágenes de
- * personas (a veces menores). Por eso un CartItem solo protege mientras su Cart siga VIVO
- * (deletedAt = null); el carrito soft-borrado es un carrito muerto (el siguiente lookup crea uno
- * nuevo — features/cart/service.ts).
- *
- * ── Ciclo de vida de las fotos cotizadas ──
- * La finalidad de la foto es producir el pedido si la cotización se concreta, así que mientras la
- * cotización esté VIVA se conserva; cuando se apaga, se conserva un tiempo más y luego se purga:
- *   - PENDING / CONTACTED (no borrada): en curso → se conserva. Techo de un año sin movimiento
- *     (Quote.updatedAt) para que una cotización que nadie volvió a tocar no retenga fotos por
- *     siempre.
- *   - CLOSED (venta concretada fuera de la tienda) / DISCARDED / cotización borrada: terminal → se
- *     conservan PURGE_AFTER_QUOTE_CLOSED_DAYS días desde el último movimiento, ventana para
- *     producir, reimprimir o reponer, y después se purgan.
- * Los plazos son decisión de negocio revisable: la norma no fija un número, exige conservar solo por
- * el tiempo razonable y necesario a la finalidad (principio de finalidad, Ley 1581 art. 4 lit. b;
- * el desarrollo reglamentario de la vigencia de las bases de datos está en el Decreto 1377 de 2013
- * [pendiente verificación del artículo exacto]). Al purgar se limpia también QuoteItem.previewUrl:
- * ese preview muestra la misma cara y sus bytes ya no existen.
+ * Un CartItem solo protege el diseño mientras su Cart siga VIVO (deletedAt = null); los carritos
+ * soft-borrados ya no retienen fotos. Nada referenciado por un pedido se purga: USED_IN_ORDER y
+ * los ARCHIVED desde USED_IN_ORDER los rige retention-delivered.ts.
  *
  * NO toca nada referenciado por un carrito vivo o un pedido. USED_IN_ORDER y los
  * ARCHIVED desde USED_IN_ORDER los rige retention-delivered.ts; los ARCHIVED desde READY
@@ -71,54 +50,23 @@ export const PURGE_ANON_DESIGN_AFTER_DAYS = 7;
 /** Un diseño DRAFT de cliente logueado sin actividad por este tiempo se purga. */
 export const PURGE_IDLE_DESIGN_AFTER_DAYS = 30;
 
-/**
- * Gracia tras apagarse la cotización (CLOSED / DISCARDED / borrada) antes de purgar sus fotos.
- * Cubre producir y reponer una venta cerrada por WhatsApp sin retener la imagen indefinidamente.
- */
-export const PURGE_AFTER_QUOTE_CLOSED_DAYS = 90;
-
-/**
- * Techo para cotizaciones que nunca se resolvieron (PENDING / CONTACTED sin movimiento): pasado
- * este tiempo la finalidad ya no está vigente y las fotos se purgan aunque el estado siga abierto.
- */
-export const PURGE_STALE_QUOTE_AFTER_DAYS = 365;
-
-/**
- * Un diseño READY que NUNCA llegó a pedido (ni cotización vigente, ni carrito vivo) y lleva este
- * tiempo sin actividad se considera abandonado y se purga (ADR-130, 2026-10-08). READY es el
- * estado más pesado: tiene renders 300-DPI en production-assets (~2.6 MB c/u). Antes de ADR-130
- * estos diseños NO los cubría ninguna retención y acumulaban bytes para siempre (fuga medida en
- * STG: 1.5 GB en renders de diseños nunca ordenados). Mismo plazo que el DRAFT de logueado (90d):
- * el "Volver a pedir" se rehace desde cero con las fotos nuevas; conservar renders de un diseño
- * que nadie compró ni tocó en 3 meses no tiene finalidad (Ley 1581 art. 4 lit. f).
- */
+/** Un diseño READY sin actividad por este tiempo se considera abandonado y se purga. */
 export const PURGE_IDLE_READY_AFTER_DAYS = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Auditoría 2026-10-20 — en ambientes NO productivos de Vercel (STG/previews: VERCEL_ENV
- * definido y ≠ "production") los plazos de retención se acotan a este techo. STG acumula
- * renders 300-DPI de pruebas/E2E (920 MB medidos en 10 días) y los plazos de negocio
- * (30/90 días, pensados para PRD) los retienen meses sin finalidad. PRD no cambia; un
- * override explícito (env var PURGE_* u opts.olderThanDays) siempre manda sobre el techo.
- * VERCEL_ENV ausente (dev local, scripts) NO aplica el tope: un script local puede apuntar
- * a la BD de PRD y no debe endurecer plazos por accidente.
+ * En previews de Vercel los plazos de retención se acotan a este techo. Un override explícito
+ * (env var PURGE_* u opts.olderThanDays) siempre manda sobre el techo.
  */
 export const RETENTION_NONPROD_MAX_DAYS = 14;
 
-/** Aplica el techo no-productivo si el ambiente es un preview/staging de Vercel. */
 export function capRetentionDaysNonProd(days: number): number {
   const vercelEnv = process.env.VERCEL_ENV;
   if (!vercelEnv || vercelEnv === "production") return days;
   return Math.min(days, RETENTION_NONPROD_MAX_DAYS);
 }
 
-/**
- * Extrae el path de storage de una ref de preview. Acepta tres formatos:
- * URL pública legacy (bucket público, pre LUC-SEC-001), URL del handler
- * autorizado `/api/design-preview/<path>` (formato vigente) o path pelado.
- */
 export function pathFromPublicUrl(url: string, bucket: string): string | null {
   const marker = `/storage/v1/object/public/${bucket}/`;
   const i = url.indexOf(marker);
@@ -130,11 +78,6 @@ export function pathFromPublicUrl(url: string, bucket: string): string | null {
   return url.startsWith("http") ? null : url;
 }
 
-/**
- * Borra bytes de un bucket. Best-effort: devuelve `false` si falló (para que el caller NO borre las
- * filas y el próximo ciclo reintente → evita huérfanos de bytes sin registro en DB). Resiliente a que
- * el service client no esté disponible (no revienta el job).
- */
 export async function removeStorage(bucket: string, paths: string[]): Promise<boolean> {
   const clean = paths.filter(Boolean);
   if (clean.length === 0) return true;
@@ -157,41 +100,9 @@ export async function removeStorage(bucket: string, paths: string[]): Promise<bo
 
 export type PurgeResult = { designsPurged: number; assetsPurged: number };
 
-export type QuoteRetentionOptions = {
-  /** Días de gracia tras el cierre de la cotización (default PURGE_AFTER_QUOTE_CLOSED_DAYS). */
-  quoteClosedGraceDays?: number;
-  /** Techo para cotizaciones abiertas sin movimiento (default PURGE_STALE_QUOTE_AFTER_DAYS). */
-  staleQuoteDays?: number;
-  /** Reloj inyectable (tests). */
-  now?: Date;
-};
-
-/**
- * Cotizaciones cuya finalidad SIGUE vigente → sus fotos no se purgan. Se usa en negativo
- * (`quoteItems: { none: { quote: ... } }`): el diseño solo es purgable si NINGUNA de sus
- * cotizaciones cae aquí.
- */
-export function activeQuoteWhere(opts?: QuoteRetentionOptions): Prisma.QuoteWhereInput {
-  const now = opts?.now ?? new Date();
-  const graceDays = opts?.quoteClosedGraceDays ?? PURGE_AFTER_QUOTE_CLOSED_DAYS;
-  const staleDays = opts?.staleQuoteDays ?? PURGE_STALE_QUOTE_AFTER_DAYS;
-  return {
-    OR: [
-      // Abierta y con movimiento dentro del techo: Lucy todavía puede concretarla.
-      {
-        deletedAt: null,
-        status: { in: ["PENDING", "CONTACTED"] },
-        updatedAt: { gte: new Date(now.getTime() - staleDays * DAY_MS) },
-      },
-      // Cualquier cotización (también la cerrada, descartada o borrada) dentro de la gracia.
-      { updatedAt: { gte: new Date(now.getTime() - graceDays * DAY_MS) } },
-    ],
-  };
-}
-
 /**
  * Un CartItem solo protege el diseño mientras su Cart siga vivo — ver cabecera: el carrito
- * soft-borrado (checkout pagado o cotización creada) deja items colgando para siempre.
+ * soft-borrado tras el checkout pagado deja items colgando para siempre.
  */
 const NO_LIVE_CART_ITEM = {
   none: { cart: { deletedAt: null } },
@@ -298,12 +209,6 @@ async function purgeDesignBatch(
   // pendiente/en curso, la fila del job muere con él — el worker nunca procesa un diseño
   // purgado (buildRenderContext no lo encuentra → error, y la fila ya no existe para reintentar).
   await prisma.$transaction([
-    // El preview snapshoteado en la cotización apunta a los bytes que acabamos de borrar y muestra
-    // la misma cara: dejar la URL colgada rompería /cotizacion/<token> y conservaría el puntero.
-    prisma.quoteItem.updateMany({
-      where: { designId: { in: designIds }, previewUrl: { not: null } },
-      data: { previewUrl: null },
-    }),
     prisma.designAsset.deleteMany({ where: { designId: { in: designIds } } }),
     prisma.design.deleteMany({ where: { id: { in: designIds } } }),
   ]);
@@ -334,23 +239,12 @@ export async function deleteDesignsWithAssets(designIds: string[]): Promise<Purg
   return purgeDesignBatch(designs, { bestEffortBytes: true });
 }
 
-/**
- * Purga los diseños anónimos que ya nadie reclama y los assets anónimos huérfanos.
- * @param opts.olderThanDays antigüedad mínima del diseño (default PURGE_ANON_DESIGN_AFTER_DAYS).
- * @param opts.batchSize máximo de filas por corrida y por pasada (default 500) — el cron corre
- *   periódicamente.
- * @param opts.sessionIdPrefix si se pasa, ACOTA la purga a sesiones cuyo sessionId empieza con este
- *   prefijo (útil para purgas dirigidas y para aislar tests en la Supabase de dev compartida). En
- *   producción el cron lo omite → barrido global de todos los anónimos abandonados.
- * @param opts.quoteClosedGraceDays / opts.staleQuoteDays / opts.now ver QuoteRetentionOptions.
- */
-export async function purgeAbandonedAnonymousDesigns(
-  opts?: {
-    olderThanDays?: number;
-    batchSize?: number;
-    sessionIdPrefix?: string;
-  } & QuoteRetentionOptions,
-): Promise<PurgeResult> {
+export async function purgeAbandonedAnonymousDesigns(opts?: {
+  olderThanDays?: number;
+  batchSize?: number;
+  sessionIdPrefix?: string;
+  now?: Date;
+}): Promise<PurgeResult> {
   const now = opts?.now ?? new Date();
   const days = opts?.olderThanDays ?? PURGE_ANON_DESIGN_AFTER_DAYS;
   const batchSize = opts?.batchSize ?? 500;
@@ -358,12 +252,10 @@ export async function purgeAbandonedAnonymousDesigns(
   const sessionScope = opts?.sessionIdPrefix
     ? { sessionId: { startsWith: opts.sessionIdPrefix } }
     : {};
-  const stillNeeded = activeQuoteWhere(opts);
 
   let designsPurged = 0;
   let assetsPurged = 0;
 
-  // 1) Diseños DRAFT anónimos abandonados: sin carrito vivo, sin pedido y sin cotización vigente.
   const drafts = await prisma.design.findMany({
     where: {
       status: "DRAFT",
@@ -371,7 +263,6 @@ export async function purgeAbandonedAnonymousDesigns(
       updatedAt: { lt: cutoff },
       cartItems: NO_LIVE_CART_ITEM,
       orderItems: { none: {} },
-      quoteItems: { none: { quote: stillNeeded } },
       ...sessionScope,
     },
     select: CANDIDATE_SELECT,
@@ -381,27 +272,6 @@ export async function purgeAbandonedAnonymousDesigns(
   designsPurged += draftResult.designsPurged;
   assetsPurged += draftResult.assetsPurged;
 
-  // 2) Diseños READY anónimos que SÍ pasaron por una cotización y cuyas cotizaciones ya se
-  //    apagaron. El READY nunca cotizado no se toca (sigue la política anterior): esta pasada
-  //    existe solo para cerrar la retención indefinida de las fotos cotizadas.
-  const quoted = await prisma.design.findMany({
-    where: {
-      status: "READY",
-      customerId: null,
-      updatedAt: { lt: cutoff },
-      cartItems: NO_LIVE_CART_ITEM,
-      orderItems: { none: {} },
-      ...sessionScope,
-      AND: [{ quoteItems: { some: {} } }, { quoteItems: { none: { quote: stillNeeded } } }],
-    },
-    select: CANDIDATE_SELECT,
-    take: batchSize,
-  });
-  const quotedResult = await purgeDesignBatch(quoted);
-  designsPurged += quotedResult.designsPurged;
-  assetsPurged += quotedResult.assetsPurged;
-
-  // 3) DesignAsset anónimos huérfanos (subidos pero nunca ligados a un diseño), viejos.
   const orphans = await prisma.designAsset.findMany({
     where: { designId: null, customerId: null, createdAt: { lt: cutoff }, ...sessionScope },
     select: { id: true, storageUrl: true, canvasPath: true },
@@ -421,7 +291,6 @@ export async function purgeAbandonedAnonymousDesigns(
   logger.info({
     event: "retention.purge_anon_designs",
     designsPurged,
-    quotedDesignsPurged: quotedResult.designsPurged,
     assetsPurged,
     olderThanDays: days,
   });
@@ -444,19 +313,17 @@ function resolveIdleDays(overrideDays: number | undefined): number {
  * Purga los diseños DRAFT de clientes LOGUEADOS abandonados (feedback Lucy 2026-09-18): la cuenta
  * viva blindaba estos bocetos para siempre (la política original excluía todo lo con customerId),
  * acumulando fotos crudas sin finalidad vigente — mismo principio de temporalidad que la purga
- * anónima. Mismas guardas: sin carrito vivo, sin pedido y sin cotización vigente. NO toca READY
- * (cotizado o no), USED_IN_ORDER (lo rige retention-delivered.ts) ni ARCHIVED (decisión explícita
+ * anónima. Mismas guardas: sin carrito vivo y sin pedido. NO toca READY,
+ * USED_IN_ORDER (lo rige retention-delivered.ts) ni ARCHIVED (decisión explícita
  * del cliente; lo cubre la supresión de cuenta). Corre desde el mismo cron purge-anon-designs.
  * @param opts.olderThanDays días sin actividad (default PURGE_IDLE_DESIGN_AFTER_DAYS / env var).
  */
-export async function purgeIdleCustomerDesigns(
-  opts?: {
-    olderThanDays?: number;
-    batchSize?: number;
-    /** Acota por prefijo de customerId (tests/purgas dirigidas; el cron lo omite). */
-    customerIdPrefix?: string;
-  } & QuoteRetentionOptions,
-): Promise<PurgeResult> {
+export async function purgeIdleCustomerDesigns(opts?: {
+  olderThanDays?: number;
+  batchSize?: number;
+  customerIdPrefix?: string;
+  now?: Date;
+}): Promise<PurgeResult> {
   const now = opts?.now ?? new Date();
   const days = resolveIdleDays(opts?.olderThanDays);
   const batchSize = opts?.batchSize ?? 500;
@@ -464,7 +331,6 @@ export async function purgeIdleCustomerDesigns(
   const customerScope = opts?.customerIdPrefix
     ? { customerId: { startsWith: opts?.customerIdPrefix } }
     : {};
-  const stillNeeded = activeQuoteWhere(opts);
 
   const drafts = await prisma.design.findMany({
     where: {
@@ -473,7 +339,6 @@ export async function purgeIdleCustomerDesigns(
       updatedAt: { lt: cutoff },
       cartItems: NO_LIVE_CART_ITEM,
       orderItems: { none: {} },
-      quoteItems: { none: { quote: stillNeeded } },
     },
     select: CANDIDATE_SELECT,
     take: batchSize,
@@ -510,24 +375,22 @@ function resolveIdleReadyDays(overrideDays: number | undefined): number {
  *
  * Mismas guardas conservadoras que las pasadas hermanas: sin carrito VIVO, sin pedido
  * (orderItems: none — un diseño ordenado pasa a USED_IN_ORDER y lo rige
- * retention-delivered.ts) y sin cotización vigente. Aplica a anónimos y logueados
+ * retention-delivered.ts). Aplica a anónimos y logueados
  * (customerId indistinto): el plazo de 90d ya es la versión laxa; endurecer anónimos a
  * 30d quedó deliberadamente fuera para no bifurcar la política (ver ADR-130).
  * Un ARCHIVED desde READY entra con la misma guarda (archivedFrom conserva el origen).
  * Corre desde el mismo cron purge-anon-designs.
  * @param opts.olderThanDays días sin actividad (default PURGE_IDLE_READY_AFTER_DAYS / env var).
  */
-export async function purgeIdleReadyDesigns(
-  opts?: {
-    olderThanDays?: number;
-    batchSize?: number;
-  } & QuoteRetentionOptions,
-): Promise<PurgeResult> {
+export async function purgeIdleReadyDesigns(opts?: {
+  olderThanDays?: number;
+  batchSize?: number;
+  now?: Date;
+}): Promise<PurgeResult> {
   const now = opts?.now ?? new Date();
   const days = resolveIdleReadyDays(opts?.olderThanDays);
   const batchSize = opts?.batchSize ?? 500;
   const cutoff = new Date(now.getTime() - days * DAY_MS);
-  const stillNeeded = activeQuoteWhere(opts);
 
   const readys = await prisma.design.findMany({
     where: {
@@ -535,7 +398,6 @@ export async function purgeIdleReadyDesigns(
       updatedAt: { lt: cutoff },
       cartItems: NO_LIVE_CART_ITEM,
       orderItems: { none: {} },
-      quoteItems: { none: { quote: stillNeeded } },
     },
     select: CANDIDATE_SELECT,
     take: batchSize,

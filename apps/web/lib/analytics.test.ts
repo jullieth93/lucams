@@ -156,10 +156,6 @@ describe("sanitizeAnalyticsUrl — privacidad y cero fuga de tokens ([ANA-01])",
       pagePath: "/d/[token]",
       pageUrl: "/d/[token]",
     });
-    expect(mod.sanitizeAnalyticsUrl("/cotizacion/quote-token-xyz")).toEqual({
-      pagePath: "/cotizacion/[token]",
-      pageUrl: "/cotizacion/[token]",
-    });
     expect(mod.sanitizeAnalyticsUrl("/soporte/support-token-xyz")).toEqual({
       pagePath: "/soporte/[token]",
       pageUrl: "/soporte/[token]",

@@ -4,7 +4,7 @@
  *   form de contacto con Turnstile → SupportTicket OPEN en DB (+ 2 emails
  *   donde el ambiente los envía — Resend real, documentado; el ticket es la
  *   prueba durable) · las 8 páginas legales responden 200 con su h1 · /ayuda
- *   renderiza el FAQ (acordeón) coherente con modo catálogo.
+ *   renderiza el FAQ (acordeón) con los métodos de pago vigentes.
  *
  * Corre en LOCAL y STG × desktop/mobile. En PRD PROHIBIDO (crea el ticket).
  * El ticket de prueba lleva el RUN y se borra en afterAll.
@@ -124,18 +124,13 @@ test("contacto: form → ticket OPEN en DB + 8 legales 200 + /ayuda FAQ", async 
     }
     record("legal-pages-200", true, LEGAL_PAGES.join(", "));
 
-    // 3. /ayuda: FAQ con acordeón (details) — coherente con modo catálogo.
+    // 3. /ayuda: FAQ con acordeón (details) y pagos transaccionales.
     await anonPage.goto("/ayuda", { waitUntil: "domcontentloaded" });
     await expect(anonPage.locator("h1").first()).toBeVisible({ timeout: 15_000 });
     const details = anonPage.locator("details");
     expect(await details.count(), "el FAQ debe tener preguntas en acordeón").toBeGreaterThan(0);
-    // Coherencia con modo catálogo: NO debe prometer pago en línea.
-    await expect(anonPage.locator("body")).not.toContainText(/paga en línea con tarjeta/i);
-    record(
-      "ayuda-faq",
-      true,
-      `${await details.count()} preguntas en acordeón, sin "paga en línea"`,
-    );
+    await expect(anonPage.locator("body")).toContainText(/Wompi/i);
+    record("ayuda-faq", true, `${await details.count()} preguntas en acordeón, pagos con Wompi`);
 
     writeFileSync(
       resultsPath,

@@ -106,23 +106,23 @@ describe.skipIf(!hasDb)("notifications/service — integración DB", { timeout: 
 
   it("listNotifications filtra por type y unreadOnly", async () => {
     const unread = await notify({
-      type: "QUOTE",
+      type: "ORDER",
       severity: "info",
-      title: `${RUN} quote unread`,
+      title: `${RUN} order unread`,
       detail: "x",
       metadata: runMeta,
     });
     const read = await notify({
-      type: "QUOTE",
+      type: "ORDER",
       severity: "info",
-      title: `${RUN} quote read`,
+      title: `${RUN} order read`,
       detail: "x",
       metadata: runMeta,
     });
     await markRead(read.id, "SUPERADMIN");
 
-    const byType = await listNotifications({ role: "SUPERADMIN", type: "QUOTE", limit: 100 });
-    expect(byType.every((n) => n.type === "QUOTE")).toBe(true);
+    const byType = await listNotifications({ role: "SUPERADMIN", type: "ORDER", limit: 100 });
+    expect(byType.every((n) => n.type === "ORDER")).toBe(true);
     expect(byType.some((n) => n.id === unread.id)).toBe(true);
 
     const unreadOnly = await listNotifications({
@@ -190,12 +190,12 @@ describe.skipIf(!hasDb)("notifications/service — integración DB", { timeout: 
       actionUrl: "/admin/pedidos/LCM-2026-9999",
       metadata: runMeta,
     });
-    const opsQuote = await notify({
-      type: "QUOTE",
+    const opsOpportunity = await notify({
+      type: "ORDER",
       severity: "info",
-      title: `${RUN} cotización nueva`,
+      title: `${RUN} oportunidad B2B nueva`,
       detail: "Solicitud B2B",
-      actionUrl: "/admin/cotizaciones",
+      actionUrl: "/admin/oportunidades",
       metadata: runMeta,
     });
     const superDailySummary = await notify({
@@ -230,7 +230,7 @@ describe.skipIf(!hasDb)("notifications/service — integración DB", { timeout: 
     });
     const opsIds = new Set(opsFeed.map((n) => n.id));
     expect(opsIds.has(opsOrder.id)).toBe(true);
-    expect(opsIds.has(opsQuote.id)).toBe(true);
+    expect(opsIds.has(opsOpportunity.id)).toBe(true);
     expect(opsIds.has(superDailySummary.id)).toBe(false);
     expect(opsIds.has(superSecurity.id)).toBe(false);
     expect(opsIds.has(superInfra.id)).toBe(false);
@@ -253,13 +253,19 @@ describe.skipIf(!hasDb)("notifications/service — integración DB", { timeout: 
     const afterRows = await prisma.notification.findMany({
       where: {
         id: {
-          in: [opsOrder.id, opsQuote.id, superDailySummary.id, superSecurity.id, superInfra.id],
+          in: [
+            opsOrder.id,
+            opsOpportunity.id,
+            superDailySummary.id,
+            superSecurity.id,
+            superInfra.id,
+          ],
         },
       },
     });
     const byId = new Map(afterRows.map((r) => [r.id, r]));
     expect(byId.get(opsOrder.id)?.readAt).not.toBeNull();
-    expect(byId.get(opsQuote.id)?.readAt).not.toBeNull();
+    expect(byId.get(opsOpportunity.id)?.readAt).not.toBeNull();
     expect(byId.get(superDailySummary.id)?.readAt).toBeNull();
     expect(byId.get(superSecurity.id)?.readAt).toBeNull();
     expect(byId.get(superInfra.id)?.readAt).toBeNull();
@@ -272,7 +278,7 @@ describe.skipIf(!hasDb)("notifications/service — subrutas dinámicas y fail-cl
   });
 
   it("filtra producción, guías, taller y previews con la misma paridad RBAC", async () => {
-    const [production, guide, quoteWorkshop, cartPreview, cartDetail] = await Promise.all([
+    const [production, guide, orderWorkshop, cartPreview, cartDetail] = await Promise.all([
       notify({
         type: "ORDER",
         severity: "info",
@@ -290,11 +296,11 @@ describe.skipIf(!hasDb)("notifications/service — subrutas dinámicas y fail-cl
         metadata: runMeta,
       }),
       notify({
-        type: "QUOTE",
+        type: "ORDER",
         severity: "info",
-        title: `${RUN} taller cotización`,
+        title: `${RUN} taller pedido`,
         detail: "piezas de taller",
-        actionUrl: "/admin/cotizaciones/qt_1/taller",
+        actionUrl: "/admin/pedidos/LCM-2026-0001/produccion",
         metadata: runMeta,
       }),
       notify({
@@ -319,7 +325,7 @@ describe.skipIf(!hasDb)("notifications/service — subrutas dinámicas y fail-cl
       (await listNotifications({ role: "PRINT_WORKSHOP", limit: 100 })).map((row) => row.id),
     );
     expect(workshopIds.has(production.id)).toBe(true);
-    expect(workshopIds.has(quoteWorkshop.id)).toBe(true);
+    expect(workshopIds.has(orderWorkshop.id)).toBe(true);
     expect(workshopIds.has(guide.id)).toBe(false);
 
     const supportIds = new Set(
@@ -327,7 +333,7 @@ describe.skipIf(!hasDb)("notifications/service — subrutas dinámicas y fail-cl
     );
     expect(supportIds.has(guide.id)).toBe(true);
     expect(supportIds.has(cartPreview.id)).toBe(true);
-    expect(supportIds.has(quoteWorkshop.id)).toBe(false);
+    expect(supportIds.has(orderWorkshop.id)).toBe(false);
     expect(supportIds.has(production.id)).toBe(false);
 
     const fulfillmentIds = new Set(

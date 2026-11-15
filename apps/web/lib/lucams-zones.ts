@@ -59,7 +59,7 @@ export const LUCAMS_ZONE_CITIES: LucamsZoneCity[] = [
     ],
   },
   // Ejemplo de expansión (Medellín, comunas) — activar cuando el envío propio
-  // llegue a Medellín: descomentar y listo (admin/checkout/cotización se
+  // llegue a Medellín: descomentar y listo (admin/checkout/envío se
   // adaptan solos; las comunas oficiales son 16 + 5 corregimientos).
   // {
   //   cityCode: "05001",

@@ -998,7 +998,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             <Checkbox
               name="requiresVectorFile"
               label="✂️ Troquelado (corte con forma especial)"
-              hint="Sin editor en vivo: la cotización se cierra por WhatsApp con el archivo vectorial del cliente."
+              hint="Sin editor en vivo: la propuesta comercial se cierra por WhatsApp con el archivo vectorial del cliente."
               defaultChecked={personalization?.requiresVectorFile ?? false}
               disabled={pending}
             />

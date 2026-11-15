@@ -14,7 +14,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import {
   Award,
   BarChart3,
@@ -47,7 +46,6 @@ import {
 } from "@/components/admin-page";
 import { CountUp } from "@/components/admin/count-up";
 import { Button } from "@/components/ui/button";
-import { isCatalogMode } from "@/lib/store-mode";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import {
   ADMIN_ROLE_SETS,
@@ -75,7 +73,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export default async function FidelizacionAdminPage() {
   const session = await requireRole(ADMIN_ROLE_SETS.FIDELIZACION_READ);
   const role = session.admin.role;
-  if (isCatalogMode()) redirect(adminHomePath(role));
 
   const canEdit = role === "SUPERADMIN";
   const canReadPii = hasCapability(role, "orders:read_pii");

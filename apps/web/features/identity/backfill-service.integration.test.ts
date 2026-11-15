@@ -6,7 +6,7 @@
  *   1. Modo `--dry-run` (`apply: false`) verificado con `transaction_read_only = on`
  *      y `0` escrituras.
  *   2. Paginación real por cursor (`batchSize = 2`) sobre dataset mixto cubriendo las
- *      8 entidades relacionales (`Customer`, `Order`, `SupportTicket`, `Quote`,
+ *      7 entidades relacionales (`Customer`, `Order`, `SupportTicket`,
  *      `AbandonedCart`, `Consent`, `WarrantyClaim`, `RetractRequest`).
  *   3. Idempotencia estricta en 3 corridas consecutivas (`apply: true`): pasadas 2 y 3
  *      producen exactamente `totalMutations === 0` y `unlinkedEligibleTotal === 0`.
@@ -36,7 +36,6 @@ describe.skipIf(!hasDb)(
       customerIds: [] as string[],
       orderIds: [] as string[],
       cartIds: [] as string[],
-      quoteIds: [] as string[],
       ticketIds: [] as string[],
       consentIds: [] as string[],
     };
@@ -65,10 +64,6 @@ describe.skipIf(!hasDb)(
 
       if (cleanup.ticketIds.length > 0) {
         await safe(prisma.supportTicket.deleteMany({ where: { id: { in: cleanup.ticketIds } } }));
-      }
-
-      if (cleanup.quoteIds.length > 0) {
-        await safe(prisma.quote.deleteMany({ where: { id: { in: cleanup.quoteIds } } }));
       }
 
       if (cleanup.cartIds.length > 0) {
@@ -164,8 +159,6 @@ describe.skipIf(!hasDb)(
       const sharedPhoneE164 = "+573157778899";
       const giftRecipientPhoneRaw = "3190001122";
       const giftRecipientPhoneE164 = "+573190001122";
-      const quoteWaOnlyRaw = "3184445566";
-      const quoteWaOnlyE164 = "+573184445566";
       const sharedDocNumber = `901${Date.now().toString().slice(-6)}`;
 
       // 1. Tres Customer históricos (2 activos + 1 anonimizado Ley 1581) con contactId = null
@@ -347,37 +340,6 @@ describe.skipIf(!hasDb)(
       });
       cleanup.ticketIds.push(ticketGuest.id, ticketReg.id);
 
-      // 4. Quote (1 con email + 1 solo WhatsApp)
-      const quoteEmail = await prisma.quote.create({
-        data: {
-          number: `${RUN.slice(0, 10)}-Q1`.toUpperCase(),
-          customerName: `${RUN} Cotización Email`,
-          customerEmail: emailLeadNewsletter,
-          customerWhatsapp: "3115556677",
-          city: "Bogotá",
-          department: "Cundinamarca",
-          subtotal: 250_000,
-          total: 250_000,
-          publicAccessTokenHash: `${RUN}-qh-1`,
-          contactId: null,
-        },
-      });
-      const quoteWaOnly = await prisma.quote.create({
-        data: {
-          number: `${RUN.slice(0, 10)}-Q2`.toUpperCase(),
-          customerName: `${RUN} Cotización WhatsApp`,
-          customerEmail: null,
-          customerWhatsapp: quoteWaOnlyRaw,
-          city: "Medellín",
-          department: "Antioquia",
-          subtotal: 180_000,
-          total: 180_000,
-          publicAccessTokenHash: `${RUN}-qh-2`,
-          contactId: null,
-        },
-      });
-      cleanup.quoteIds.push(quoteEmail.id, quoteWaOnly.id);
-
       // 5. AbandonedCart histórico
       const cart = await prisma.cart.create({
         data: { sessionId: `sess-${RUN}`, currency: "COP" },
@@ -445,16 +407,15 @@ describe.skipIf(!hasDb)(
         customers: 2,
         orders: 4,
         supportTickets: 2,
-        quotes: 2,
         abandonedCarts: 1,
         consents: 1,
         warrantyClaims: 1,
         retractRequests: 1,
-        unlinkedEligibleTotal: 14,
+        unlinkedEligibleTotal: 12,
       });
 
       const afterDryRunPending = await countUnlinkedEligibleEntities(prisma, RUN);
-      expect(afterDryRunPending.unlinkedEligibleTotal).toBe(14);
+      expect(afterDryRunPending.unlinkedEligibleTotal).toBe(12);
 
       // ── PASADA 1: apply = true con cursor pequeño (batchSize = 2) ──
       const pass1 = await runContactsBackfill(prisma, {
@@ -468,7 +429,6 @@ describe.skipIf(!hasDb)(
         customers: 2,
         orders: 4,
         supportTickets: 2,
-        quotes: 2,
         abandonedCarts: 1,
         consents: 1,
         warrantyClaims: 1,
@@ -511,12 +471,6 @@ describe.skipIf(!hasDb)(
       });
       expect(leakedGiftPhone).toBeNull();
       expect(leakedGiftName).toBeNull();
-
-      // Verifica contacto WhatsApp-only creado para Quote sin email
-      const waIdentity = await prisma.contactIdentity.findFirst({
-        where: { type: "WHATSAPP", normalizedValue: quoteWaOnlyE164 },
-      });
-      expect(waIdentity).not.toBeNull();
 
       // Verifica garantía y retracto vinculados al Contact comprador
       const refreshedWarranty = await prisma.warrantyClaim.findUniqueOrThrow({

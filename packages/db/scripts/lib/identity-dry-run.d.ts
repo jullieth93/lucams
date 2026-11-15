@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 export type ContactSourceKind =
-  "CUSTOMER_AUTH" | "GUEST_ORDER" | "SUPPORT_TICKET" | "QUOTE" | "ABANDONED_CART" | "NEWSLETTER";
+  "CUSTOMER_AUTH" | "GUEST_ORDER" | "SUPPORT_TICKET" | "ABANDONED_CART" | "NEWSLETTER";
 
 export interface IdentityDryRunDataset {
   customers?: Array<{
@@ -28,12 +28,6 @@ export interface IdentityDryRunDataset {
     id: string;
     customerId?: string | null;
     email: string;
-  }>;
-  quotes?: Array<{
-    id: string;
-    customerEmail?: string | null;
-    customerWhatsapp?: string | null;
-    deletedAt?: Date | null;
   }>;
   abandonedCarts?: Array<{
     id: string;
@@ -72,10 +66,6 @@ export interface IdentityDryRunSimulation {
     supportTicketsTotal: number;
     registeredSupportTickets: number;
     guestSupportTickets: number;
-    activeQuotes: number;
-    softDeletedQuotes: number;
-    quotesWithEmail: number;
-    quotesPhoneOnly: number;
     abandonedCartsTotal: number;
     consentsTotal: number;
     activeNewsletterUniqueEmails: number;
@@ -117,7 +107,6 @@ export interface IdentityDryRunSimulation {
       ordersLinkedContextuallyToExistingContact: number;
       ordersLinkedToNewGuestContact: number;
       supportTicketsLinked: number;
-      quotesLinked: number;
       abandonedCartsLinked: number;
       consentsLinked: number;
       warrantyClaimsLinked: number;

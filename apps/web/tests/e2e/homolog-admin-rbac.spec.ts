@@ -47,7 +47,7 @@ const cases: Array<{
   {
     role: "MANAGER",
     home: "/admin/dashboard",
-    allowed: "/admin/cotizaciones",
+    allowed: "/admin/oportunidades",
     denied: "/admin/finanzas",
   },
   {

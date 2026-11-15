@@ -44,7 +44,6 @@ import {
   RETRACT_WINDOW_BUSINESS_DAYS,
   formatWarrantyTerm,
 } from "@/lib/consumer-law";
-import { isCatalogMode } from "@/lib/store-mode";
 import { getSettingValue } from "@/lib/cms";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { resolveVisibleVolumeTiers } from "@/features/cart/volume-pricing";
@@ -254,10 +253,6 @@ export default async function ProductoDetallePage({
     productExperience.experience === "christmas-ornament"
       ? { one: "bola", many: "bolas", label: "Bolas" }
       : undefined;
-  // Etapa 1 (modo catálogo): el strip de confianza NO promete pago en línea ni
-  // envío calculado — la compra se cierra por WhatsApp tras la cotización.
-  const catalog = isCatalogMode();
-
   // #4 — cuatro operaciones INDEPENDIENTES en paralelo (antes eran awaits secuenciales); solo la
   // wishlist depende del customer, así que se encadena después.
   const [related, ratingAggregate, waHref, customer, rawVolumeTiers, codSetting] =
@@ -350,7 +345,6 @@ export default async function ProductoDetallePage({
       ? selectable.map((v) => v.price ?? product.basePrice)
       : [product.basePrice]
   ).map((p) => p * perTileFactor);
-  // El shape (y el gate por modo de tienda) vive en product-jsonld.ts para poder testearlo puro.
   const jsonLd = buildProductJsonLd({
     name: product.name,
     description: product.description,
@@ -362,7 +356,6 @@ export default async function ProductoDetallePage({
     effectivePrices,
     priceValidUntil,
     outOfStock,
-    catalogMode: catalog,
   });
 
   // BreadcrumbList (auditoría 2026-07-13): Tienda → Categoría → Producto → migas en Google.
@@ -773,33 +766,19 @@ export default async function ProductoDetallePage({
                   <li className="flex items-start gap-2.5">
                     <Truck className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
                     <span>
-                      {catalog ? (
-                        <>
-                          <strong>
-                            Preparación estimada: alrededor de {product.productionDays} días hábiles
-                            antes del despacho
-                          </strong>
-                          . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
-                          {product.shippingDaysMax} días de tránsito según tu ciudad; el envío lo
-                          coordinamos por WhatsApp.
-                        </>
-                      ) : (
-                        <>
-                          Hecho a pedido.{" "}
-                          <strong>
-                            Preparación estimada: alrededor de {product.productionDays} días hábiles
-                            antes del despacho
-                          </strong>
-                          . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
-                          {product.shippingDaysMax} días de tránsito según tu ciudad. En Bogotá, con{" "}
-                          <strong>Envío Lucams</strong> (localidades habilitadas), la ruta se estima
-                          para el <strong>mismo día del despacho, sujeta a disponibilidad</strong>
-                          {product.productionDays === 0
-                            ? " — si pides antes de la hora límite, se estima para hoy"
-                            : ""}
-                          .
-                        </>
-                      )}
+                      Hecho a pedido.{" "}
+                      <strong>
+                        Preparación estimada: alrededor de {product.productionDays} días hábiles
+                        antes del despacho
+                      </strong>
+                      . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
+                      {product.shippingDaysMax} días de tránsito según tu ciudad. En Bogotá, con{" "}
+                      <strong>Envío Lucams</strong> (localidades habilitadas), la ruta se estima
+                      para el <strong>mismo día del despacho, sujeta a disponibilidad</strong>
+                      {product.productionDays === 0
+                        ? " — si pides antes de la hora límite, se estima para hoy"
+                        : ""}
+                      .
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">
@@ -808,11 +787,9 @@ export default async function ProductoDetallePage({
                       aria-hidden
                     />
                     <span>
-                      {catalog
-                        ? "Cierras la compra por WhatsApp: pides tu cotización y coordinamos pago y entrega contigo. Precios en pesos colombianos (COP)."
-                        : codEnabled
-                          ? "Contraentrega según cobertura de tu ciudad o pago en línea con Wompi. Precios en pesos colombianos (COP): es el valor final que pagas."
-                          : "Pago seguro en línea con Wompi (tarjeta, PSE, Nequi). Precios en pesos colombianos (COP): es el valor final que pagas."}
+                      {codEnabled
+                        ? "Contraentrega según cobertura de tu ciudad o pago en línea con Wompi. Precios en pesos colombianos (COP): es el valor final que pagas."
+                        : "Pago seguro en línea con Wompi (tarjeta, PSE, Nequi). Precios en pesos colombianos (COP): es el valor final que pagas."}
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">
@@ -820,11 +797,7 @@ export default async function ProductoDetallePage({
                       className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
                       aria-hidden
                     />
-                    <span>
-                      {catalog
-                        ? "El envío se coordina por WhatsApp al confirmar tu cotización."
-                        : "El costo de envío se calcula al finalizar según tu ciudad."}
-                    </span>
+                    <span>El costo de envío se calcula al finalizar según tu ciudad.</span>
                   </li>
                   {/* Retracto por producto (Ley 1480 art. 47): informarlo en la ficha, distinto según
                       sea a medida o de catálogo estándar. */}

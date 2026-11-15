@@ -35,10 +35,7 @@ function buildModerationRedirectUrl(params: Record<string, string | undefined>):
 function readPreservedQueueFilters(formData: FormData) {
   const q = String(formData.get("q") ?? formData.get("pedido") ?? "").trim() || undefined;
   const rawOrigen = String(formData.get("origen") ?? "").trim();
-  const origen =
-    rawOrigen === "pedido" || rawOrigen === "cotizacion" || rawOrigen === "compartido"
-      ? rawOrigen
-      : undefined;
+  const origen = rawOrigen === "pedido" || rawOrigen === "compartido" ? rawOrigen : undefined;
   const rawCalidad = String(formData.get("calidad") ?? "").trim();
   const calidad = rawCalidad === "con_aviso" ? "con_aviso" : undefined;
   return { q, origen, calidad };

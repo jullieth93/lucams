@@ -7,8 +7,8 @@
  * del comercio — responde 200 si las llaves y el ambiente WOMPI_ENV son coherentes).
  * La respuesta NUNCA incluye llaves: solo el ambiente declarado y la latencia.
  *
- * Si las WOMPI_* no están configuradas (modo catálogo / dev sin pagos en línea), devuelve
- * 200 con status="skipped" — no es un fallo: la tienda vende por cotización (Etapa 1).
+ * Si las WOMPI_* no están configuradas (dev sin pagos en línea), devuelve
+ * 200 con status="skipped" — permite diagnóstico local sin credenciales Wompi.
  */
 
 import { rateLimit } from "@/lib/rate-limit";
@@ -33,7 +33,7 @@ export async function GET(req: Request): Promise<Response> {
   const health = await probeWompiHealth();
   const timestamp = new Date().toISOString();
 
-  // Sin WOMPI_* la tienda corre en modo catálogo (venta por cotización): no es un fallo.
+  // Sin WOMPI_* el diagnóstico se omite de forma explícita; no es un fallo.
   if (health.status === "skipped") {
     return Response.json({
       status: "skipped",

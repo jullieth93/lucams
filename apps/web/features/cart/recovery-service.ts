@@ -376,20 +376,13 @@ export async function sendCartRecoveryReminders(
   let recovered = 0;
   for (const row of rows) {
     try {
-      // Convertido: el saga soft-deletea el cart tras PAID (o cotización si quote:create).
+      // Convertido: el saga soft-deletea el cart tras PAID.
       if (row.cart.deletedAt) {
-        if (row.cart.deletedBy === "quote:create") {
-          await prisma.abandonedCart.update({
-            where: { id: row.id },
-            data: { closedReason: "QUOTE_CREATED" },
-          });
-        } else {
-          await prisma.abandonedCart.update({
-            where: { id: row.id },
-            data: { recoveredAt: now, closedReason: "ORDER_PAID" },
-          });
-          recovered++;
-        }
+        await prisma.abandonedCart.update({
+          where: { id: row.id },
+          data: { recoveredAt: now, closedReason: "ORDER_PAID" },
+        });
+        recovered++;
         continue;
       }
       // Si el carrito vivo ya no tiene líneas, se vació manualmente — no enviar correo.
@@ -472,18 +465,11 @@ export async function sendReminderToCart(
   });
   if (!row) return { status: "failed", reason: "not-found" };
   if (row.recoveredAt) return { status: "recovered" };
-  if (row.closedReason === "QUOTE_CREATED" || row.closedReason === "CART_EMPTIED") {
+  if (row.closedReason === "CART_EMPTIED") {
     return { status: "skipped", reason: "empty-cart" };
   }
   // Conversión detectada al vuelo (el cron aún no la había marcado).
   if (row.cart.deletedAt) {
-    if (row.cart.deletedBy === "quote:create") {
-      await prisma.abandonedCart.update({
-        where: { id: row.id },
-        data: { closedReason: "QUOTE_CREATED" },
-      });
-      return { status: "skipped", reason: "empty-cart" };
-    }
     await prisma.abandonedCart.update({
       where: { id: row.id },
       data: { recoveredAt: now, closedReason: "ORDER_PAID" },

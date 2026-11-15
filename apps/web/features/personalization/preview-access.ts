@@ -105,7 +105,6 @@ export function canAccessDesignPreview(args: {
   variantClass: PreviewVariantClass;
   caller: PreviewCaller;
   shareToken?: string | null;
-  quoteTokenOk?: boolean;
   orderTokenOk?: boolean;
 }): boolean {
   const { design, variantClass, caller } = args;
@@ -118,7 +117,7 @@ export function canAccessDesignPreview(args: {
   }
   // Borradores: nunca por token (contienen trabajo en curso del dueño).
   if (variantClass !== "draft") {
-    if (args.quoteTokenOk === true || args.orderTokenOk === true) return true;
+    if (args.orderTokenOk === true) return true;
     if (args.shareToken && design.shareTokenHash) {
       // Comparación timing-safe de los hashes (el plano viaja por query-string).
       if (secureEquals(hashBearerToken(args.shareToken), design.shareTokenHash)) return true;

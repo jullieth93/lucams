@@ -101,7 +101,7 @@ Next.js sirve `/manifest.webmanifest` dinámicamente desde `apps/web/app/manifes
 - Paleta oficial: `background_color: "#FFF8F0"` (crema) y `theme_color: "#7C6AAD"` (púrpura).
 - Íconos en `public/`: `/icon-192.png` (`192x192`), `/icon-512.png` (`512x512`) e `/icon-maskable-512.png` (`512x512`, `purpose: "maskable"`).
 - **Sin bloqueo de `orientation`**: permite rotar a horizontal en tabletas y móviles dentro del Estudio de personalización y visores 3D.
-- **Descripción adaptativa**: usa `isCatalogMode()` para no prometer compra en línea si la tienda corre en modo catálogo.
+- **Descripción transaccional**: presenta la personalización y la compra en línea disponibles en la tienda.
 - **Sin Service Worker**: decisión deliberada para evitar cachés obsoletas de chunks tras despliegues o retención accidental de vistas privadas en dispositivos compartidos.
 
 ---
@@ -174,7 +174,7 @@ Las herramientas de inspección visual para desarrollo existen en el árbol de r
 | Ruta                                 | Archivo                                                   | Propósito en local                                                                                                |
 | ------------------------------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `/internal/3d-preview`               | `apps/web/app/internal/3d-preview/page.tsx`               | Banco de pruebas interactivo de escenas 3D (`react-three-fiber`) de productos magnéticos.                         |
-| `/internal/correos`                  | `apps/web/app/internal/correos/page.tsx`                  | Catálogo local para inspeccionar el renderizado HTML/texto de las 29 plantillas React Email con datos sintéticos. |
+| `/internal/correos`                  | `apps/web/app/internal/correos/page.tsx`                  | Catálogo local para inspeccionar el renderizado HTML/texto de las 31 plantillas React Email con datos sintéticos. |
 | `/internal/plantilla-preview/[slug]` | `apps/web/app/internal/plantilla-preview/[slug]/page.tsx` | Previsualizador de geometrías y zonas seguras de plantillas del Estudio.                                          |
 
 Las tres páginas declaran `robots: { index: false, follow: false }` y abren su componente servidor con:
@@ -198,11 +198,11 @@ Lucams utiliza `unstable_cache` de `next/cache` para lecturas públicas intensiv
 
 | Tag               | Clave(s) `unstable_cache`                                                                                               | Revalidate TTL  | Dónde se lee                                                                                                                          | Dónde se invalida                                                                                                                                                                                                           |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cms`             | `cms-snapshot-v2`                                                                                                       | `3 600 s` (1 h) | `apps/web/lib/cms.ts` (snapshot completo de los 169 campos CMS + settings operativas en 1 sola consulta Prisma).                      | `updateTag("cms")` en Server Actions de `/admin/contenido`, `/admin/envios`, `/admin/fidelizacion`, `/admin/carritos/configuracion` y `/admin/lifecycle`.                                                                   |
+| `cms`             | `cms-snapshot-v2`                                                                                                       | `3 600 s` (1 h) | `apps/web/lib/cms.ts` (snapshot completo de los 168 campos CMS + settings operativas en 1 sola consulta Prisma).                      | `updateTag("cms")` en Server Actions de `/admin/contenido`, `/admin/envios`, `/admin/fidelizacion`, `/admin/carritos/configuracion` y `/admin/lifecycle`.                                                                   |
 | `catalog`         | `public-products-list`, `public-product-detail`, `public-categories`, `public-occasions`, `storefront-product-slugs-v1` | `3 600 s` (1 h) | `apps/web/lib/catalog.ts` y `apps/web/features/products/public-service.ts` (listados, PDP, mega-menú y validación 404 en `proxy.ts`). | `updateTag("catalog")` en `/admin/productos`, `/admin/categorias`, `/admin/ocasiones`, moderación de reseñas y `revalidateTag("catalog", "max")` tras decrementar/reponer stock en `saga.ts` (`invalidateCatalogListings`). |
 | `redirects`       | `active-url-redirects`                                                                                                  | `300 s` (5 min) | `apps/web/features/redirects/service.ts` (`lookupActiveRedirectCached`, invocado en cada petición por `proxy.ts`).                    | `updateTag("redirects")` al crear, activar/desactivar o eliminar redirecciones en `/admin/redirecciones`.                                                                                                                   |
 | `gallery-thumbs`  | `admin-gallery-design-thumbs`                                                                                           | `3 600 s` (1 h) | `apps/web/app/admin/(panel)/disenos/` (miniaturas firmadas/optimizadas del catálogo de diseños prediseñados).                         | `updateTag("gallery-thumbs")` al crear, editar o reordenar diseños de galería en `/admin/disenos`.                                                                                                                          |
-| `email-overrides` | `email-template-overrides`                                                                                              | `3 600 s` (1 h) | `apps/web/features/emails/overrides.ts` (textos editables de asunto, preheader e intro de las 29 plantillas de correo).               | `updateTag("email-overrides")` al guardar o restaurar una plantilla en `/admin/email-templates`.                                                                                                                            |
+| `email-overrides` | `email-template-overrides`                                                                                              | `3 600 s` (1 h) | `apps/web/features/emails/overrides.ts` (textos editables de asunto, preheader e intro de las 31 plantillas de correo).               | `updateTag("email-overrides")` al guardar o restaurar una plantilla en `/admin/email-templates`.                                                                                                                            |
 
 ### Reglas críticas de `unstable_cache` en Next.js 16
 
@@ -217,11 +217,10 @@ Al iniciar cada instancia Node.js en Vercel (`NEXT_RUNTIME === "nodejs"`), `apps
 
 1. **`validateEnv()` (`apps/web/lib/env.ts`)**: validación _fail-fast_ por niveles:
    - **`CoreEnv` (siempre obligatorias)**: `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL` (`http(s)` válido), `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL` y `NEXT_PUBLIC_WA_NUMBER` (`10–15` dígitos).
-   - **Reglas estrictas cuando `NODE_ENV === "production"`**:
-     - Exige `NEXT_PUBLIC_STORE_MODE` explícito (`"catalog"` o `"full"`).
-     - Exige `PROD_REQUIRED`: `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `TURNSTILE_SECRET_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `CRON_SECRET` (`≥32` caracteres), `CART_RECOVERY_SECRET` (`≥32` caracteres), `CHECKOUT_COOKIE_SECRET` (`≥32` caracteres) y `PREVIEW_SHARE_SECRET` (`≥32` caracteres).
+   - **Reglas estrictas cuando `VERCEL_ENV === "production"`**:
+     - Exige `PROD_REQUIRED`: `SUPABASE_SECRET_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `TURNSTILE_SECRET_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `CRON_SECRET` (`≥32` caracteres), `CART_RECOVERY_SECRET` (`≥32` caracteres), `CHECKOUT_COOKIE_SECRET` (`≥32` caracteres) y `PREVIEW_SHARE_SECRET` (`≥32` caracteres).
      - Rechaza arrancar si `WOMPI_DISABLE_TIMESTAMP_CHECK === "true"` (escape hatch permitido únicamente fuera de producción).
-   - **`FULL_MODE_REQUIRED` (cuando `NODE_ENV === "production"` y `NEXT_PUBLIC_STORE_MODE === "full"`)**: exige `WOMPI_PUBLIC_KEY`, `WOMPI_PRIVATE_KEY`, `WOMPI_INTEGRITY_SECRET`, `WOMPI_EVENTS_SECRET`, `AVEONLINE_USUARIO`, `AVEONLINE_CLAVE` y `AVEONLINE_WEBHOOK_SECRET`.
+   - **`FULL_MODE_REQUIRED` (siempre en producción)**: exige `WOMPI_PUBLIC_KEY`, `WOMPI_PRIVATE_KEY`, `WOMPI_INTEGRITY_SECRET`, `WOMPI_EVENTS_SECRET`, `AVEONLINE_USUARIO`, `AVEONLINE_CLAVE`, `AVEONLINE_WEBHOOK_SECRET` y `GEMINI_API_KEY`.
 2. **Warm-up de Supavisor**: dispara `prisma.$queryRaw\`SELECT 1\`` en segundo plano para abrir el socket TLS hacia el pooler antes de que llegue la primera petición real del comprador.
 3. **Captura global de errores (`onRequestError`)**: persiste cualquier excepción no controlada de RSC, Route Handlers o Server Actions en la tabla `ErrorLog` (`captureServerError`), alimentando `/admin/observability` sin depender de Sentry.
 
@@ -253,7 +252,7 @@ Usa esta lista al auditar la configuración actual o levantar un proyecto equiva
 ### Paso 4 — Variables de Entorno Separadas por Scope
 
 - [ ] En **Settings → Environment Variables**, separar estrictamente los scopes **Production** vs **Preview**:
-  - **Production**: `NEXT_PUBLIC_APP_URL=https://lucamsshop.com`, `NEXT_PUBLIC_STORE_MODE=full`, credenciales de Supabase PRD (`zxkucphbsfygakgxcnik`), llaves `WOMPI_*` de producción (`WOMPI_ENV=production`), cuenta real de Aveonline (`AVEONLINE_ENV=production`, `AVEONLINE_GENERATE_REAL=true`), `NEXT_PUBLIC_GA_MEASUREMENT_ID`, Turnstile real y secretos HMAC únicos de ≥32 caracteres.
+  - **Production**: `NEXT_PUBLIC_SITE_URL=https://lucamsshop.com`, credenciales de Supabase PRD (`zxkucphbsfygakgxcnik`), llaves `WOMPI_*` de producción (`WOMPI_ENV=production`), cuenta real de Aveonline (`AVEONLINE_ENV=production`, `AVEONLINE_GENERATE_REAL=true`), `NEXT_PUBLIC_GA_MEASUREMENT_ID`, Turnstile real y secretos HMAC únicos de ≥32 caracteres.
   - **Preview**: `NEXT_PUBLIC_APP_URL` de preview/staging, credenciales de Supabase STG (`mjbdiqdkykhsixvqlrrp`), llaves sandbox de Wompi (`WOMPI_ENV=sandbox`), cuenta demo de Aveonline (`AVEONLINE_ENV=test`, `AVEONLINE_GENERATE_REAL=false`) y `CRON_JOBS_DISABLED=alerts,daily-summary,review-request,cart-recovery,back-in-stock`.
   - Confirmar que **jamás** exista una variable `NEXT_PUBLIC_WOMPI_*` ni `WOMPI_DISABLE_TIMESTAMP_CHECK=true` en Production.
 

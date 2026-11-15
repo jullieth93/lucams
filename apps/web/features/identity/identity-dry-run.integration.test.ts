@@ -30,7 +30,6 @@ describe.skipIf(!hasDb)(
       customerIds: [] as string[],
       orderIds: [] as string[],
       cartIds: [] as string[],
-      quoteIds: [] as string[],
       ticketIds: [] as string[],
       consentIds: [] as string[],
     };
@@ -47,10 +46,6 @@ describe.skipIf(!hasDb)(
         await safe(prisma.supportTicket.deleteMany({ where: { id: { in: cleanup.ticketIds } } }));
       }
       await safe(prisma.supportTicket.deleteMany({ where: { subject: { startsWith: RUN } } }));
-
-      if (cleanup.quoteIds.length > 0) {
-        await safe(prisma.quote.deleteMany({ where: { id: { in: cleanup.quoteIds } } }));
-      }
 
       if (cleanup.cartIds.length > 0) {
         await safe(prisma.abandonedCart.deleteMany({ where: { cartId: { in: cleanup.cartIds } } }));
@@ -334,23 +329,6 @@ describe.skipIf(!hasDb)(
       });
       cleanup.ticketIds.push(tktGuest.id, tktDeleted.id);
 
-      // Quote solo por WhatsApp (sin email)
-      const quoteWa = await prisma.quote.create({
-        data: {
-          number: `${RUN.slice(0, 10)}-Q1`.toUpperCase(),
-          customerName: `${RUN} Empresa Evento`,
-          customerWhatsapp: "3182221100",
-          customerEmail: null,
-          city: "Barranquilla",
-          department: "Atlántico",
-          subtotal: 300_000,
-          total: 300_000,
-          publicAccessTokenHash: `${RUN}-quote-hash-1`,
-        },
-        select: { id: true },
-      });
-      cleanup.quoteIds.push(quoteWa.id);
-
       // AbandonedCart invitado
       const cart = await prisma.cart.create({
         data: { sessionId: `${RUN}-sess-cart`, currency: "COP" },
@@ -392,10 +370,6 @@ describe.skipIf(!hasDb)(
         supportTicketsTotal: 2,
         registeredSupportTickets: 0,
         guestSupportTickets: 2,
-        activeQuotes: 1,
-        softDeletedQuotes: 0,
-        quotesWithEmail: 0,
-        quotesPhoneOnly: 1,
         abandonedCartsTotal: 1,
         consentsTotal: 1,
         activeNewsletterUniqueEmails: 1,
@@ -421,14 +395,13 @@ describe.skipIf(!hasDb)(
         },
       });
 
-      expect(scopedReport.simulatedProjection.totalContacts).toBe(7);
+      expect(scopedReport.simulatedProjection.totalContacts).toBe(6);
       expect(scopedReport.simulatedProjection.contactsWithCustomerAccount).toBe(2);
-      expect(scopedReport.simulatedProjection.contactsGuestOrLeadOnly).toBe(5);
+      expect(scopedReport.simulatedProjection.contactsGuestOrLeadOnly).toBe(4);
       expect(scopedReport.simulatedProjection.contactsBySource).toEqual({
         CUSTOMER_AUTH: 2,
         GUEST_ORDER: 1,
         SUPPORT_TICKET: 1,
-        QUOTE: 1,
         ABANDONED_CART: 1,
         NEWSLETTER: 1,
       });

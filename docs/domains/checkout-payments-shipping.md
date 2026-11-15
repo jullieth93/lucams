@@ -47,7 +47,7 @@ La validación y el cálculo residen en `apps/web/features/coupons/redemption.ts
   - Carritos vivos vacíos (`deletedAt: null`, sin ítems ni `AbandonedCart`): **7 días** (`PURGE_EMPTY_CART_AFTER_DAYS = 7`).
   - Carritos vivos inactivos (`deletedAt: null`, sin `AbandonedCart`): **60 días** (`PURGE_STALE_CART_AFTER_DAYS = 60`).
   - Registros `AbandonedCart`: **90 días** desde `createdAt` (`PURGE_ABANDONED_CART_AFTER_DAYS = 90`).
-- **Captura y seguimiento (`features/cart/recovery-service.ts`)**: al guardar el correo en `/checkout/datos`, `recordAbandonedCartEmail` vincula el `Contact` CRM, congela `itemsSnapshot` y `subtotalCents`, y avanza `checkoutStep` de forma monotónica (`"DATOS" -> "ENVIO" -> "PAGO"`). El registro se cierra (`closedReason`) con `"ORDER_PAID"`, `"QUOTE_CREATED"` o `"CART_EMPTIED"`.
+- **Captura y seguimiento (`features/cart/recovery-service.ts`)**: al guardar el correo en `/checkout/datos`, `recordAbandonedCartEmail` vincula el `Contact` CRM, congela `itemsSnapshot` y `subtotalCents`, y avanza `checkoutStep` de forma monotónica (`"DATOS" -> "ENVIO" -> "PAGO"`). El registro se cierra (`closedReason`) con `"ORDER_PAID"` o `"CART_EMPTIED"`.
 - **Recordatorios y enlace mágico (`GET /api/cron/cart-recovery` y `/carrito/recuperar/[token]`)**:
   - Gobernado por ajustes editables en `/admin/carritos/configuracion` (`CART_RECOVERY_ENABLED`, `CART_RECOVERY_MODE` `"automatic" | "manual"`, `CART_RECOVERY_IDLE_HOURS = 4`, `CART_RECOVERY_MAX_REMINDERS = 1` hasta 5, `CART_RECOVERY_INTERVAL_HOURS = 24`), restringidos exclusivamente a `SUPERADMIN` mediante capacidad `carts:configure` + **step-up MFA reciente (`requireRecentMfa()`, `≤ 10 min`)**.
   - Verifica no-supresión comercial y eventos de entregabilidad (`EmailEvent`: `email.bounced` / `email.complained` — ver [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md)), genera un token aleatorio de 24 bytes `base64url` y persiste solo su SHA-256 en `AbandonedCart.recoverTokenHash`.
@@ -219,7 +219,7 @@ El cálculo de costos de fabricación y el reporte de ingresos cobrados están d
 
 - Catálogo, variantes y escalas por volumen: [`./catalog-and-cms.md`](./catalog-and-cms.md)
 - Estudio de personalización y pipeline 300 DPI: [`./studio-and-production.md`](./studio-and-production.md)
-- CRM 360°, cotizaciones B2B, lealtad y referidos: [`./crm-b2b-and-loyalty.md`](./crm-b2b-and-loyalty.md)
+- CRM 360°, oportunidades B2B, lealtad y referidos: [`./crm-b2b-and-loyalty.md`](./crm-b2b-and-loyalty.md)
 - Seguimiento posventa, retractos y garantías: [`./post-sale-and-support.md`](./post-sale-and-support.md)
 - Integraciones externas: [`../integrations/wompi.md`](../integrations/wompi.md), [`../integrations/aveonline.md`](../integrations/aveonline.md) y [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md)
 - Seguridad, arquitectura y cumplimiento legal: [`../SECURITY.md`](../SECURITY.md), [`../ARCHITECTURE.md`](../ARCHITECTURE.md) y [`../COMPLIANCE.md`](../COMPLIANCE.md)

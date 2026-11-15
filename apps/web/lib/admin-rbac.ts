@@ -235,7 +235,7 @@ export const ADMIN_ROLE_SETS = {
   ),
   /** Gestión y operación de Lifecycle Journeys (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
   LIFECYCLE_MANAGE: rolesWithCapability("lifecycle:manage"),
-  /** Cotizaciones y oportunidades B2B/eventos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
+  /** Oportunidades B2B/eventos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   OPPORTUNITIES: rolesWithCapability("opportunities:manage"),
   /** Lectura de Contacto 360 (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   CONTACTS_360: rolesWithCapability("contacts:read_360"),
@@ -289,8 +289,7 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: readonly AdminRole[] }> = [
   { prefix: "/admin/soporte", roles: rolesWithCapability("support:manage") },
   { prefix: "/admin/mensajes", roles: rolesWithCapability("support:manage") },
 
-  // Oportunidades y cotizaciones B2B / eventos
-  { prefix: "/admin/cotizaciones", roles: rolesWithCapability("opportunities:manage") },
+  // Oportunidades B2B / eventos
   { prefix: "/admin/oportunidades", roles: rolesWithCapability("opportunities:manage") },
 
   // Producción y moderación (PRINT_WORKSHOP accede a moderación; plantillas/fichas siguen en catálogo/estudio)
@@ -413,13 +412,6 @@ const ROUTE_PATTERN_ROLES: ReadonlyArray<{
   roles: readonly AdminRole[];
   notification: { prefix: string; suffix: string };
 }> = [
-  {
-    // Hoja imprimible de producción/taller para cotizaciones con activos 300 DPI:
-    // habilita PRINT_WORKSHOP y restringe CUSTOMER_SUPPORT (exige production:download_assets).
-    pattern: /^\/admin\/cotizaciones\/[^/?]+\/taller(?:$|[/?])/,
-    roles: rolesWithCapability("production:download_assets"),
-    notification: { prefix: "/admin/cotizaciones/", suffix: "/taller" },
-  },
   {
     // Descarga de ZIP de producción 300 DPI del pedido (Bloque 5 — paridad N-21 con route.ts):
     // exige production:download_assets (excluye FULFILLMENT, CUSTOMER_SUPPORT y FINANCE_ANALYST).

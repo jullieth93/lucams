@@ -15,7 +15,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AlertTriangle, Bike, CheckCircle2, Cog, MapPin, Plug, Truck } from "lucide-react";
 import {
   AdminBadge,
@@ -29,7 +28,6 @@ import {
 } from "@/components/admin-page";
 import { getSettingValue } from "@/lib/cms";
 import { LUCAMS_ZONE_CITIES } from "@/lib/lucams-zones";
-import { isCatalogMode } from "@/lib/store-mode";
 import { requireCapability } from "@/lib/admin-rbac-guard";
 import { canAccessAdminPath } from "@/lib/admin-rbac";
 import { listCarriersForAdmin } from "@/features/shipping/aveonline";
@@ -53,8 +51,6 @@ export default async function EnviosAdminPage() {
   // B-7 (auditoría 2026-08-24): guard propio alineado con shipping:configure.
   const session = await requireCapability("shipping:configure");
   const role = session.admin.role;
-  // Modo catálogo (Etapa 1): no hay checkout con envíos — nada que configurar.
-  if (isCatalogMode()) redirect("/admin/dashboard");
 
   const canEditGlobalSettings = canAccessAdminPath(role, "/admin/contenido/paginas/global");
   const canSeeAveonlineWebhooks = canAccessAdminPath(role, "/admin/integraciones/aveonline");

@@ -105,11 +105,11 @@ function toSettingType(type: string): SiteSettingData["valueType"] {
  * - BUSINESS_NIT — identificación tributaria; solo la usa la guía Aveonline
  *   server-side.
  * - ALERT_EMAIL — buzón interno de alertas operativas; lo leen solo features
- *   server-side (observability/quotes/orders), nunca se renderiza en público.
+ *   server-side (observability/opportunities/orders), nunca se renderiza en público.
  * - PRIVACY_POLICY_VERSION — solo la persisten los consent records server-side.
  *
  * Esas lecturas siguen funcionando internamente vía getSettingValue (la saga y
- * el cotizador no pasan por HTTP); el filtro SOLO aplica al endpoint público.
+ * el checkout no pasan por HTTP); el filtro SOLO aplica al endpoint público.
  */
 const PUBLIC_SETTING_KEYS = new Set([
   // Identidad y contacto público
@@ -139,7 +139,6 @@ const PUBLIC_SETTING_KEYS = new Set([
   "WA_MSG_SUPPORT",
   "WA_MSG_SUPPORT_SUBJECT",
   "WA_MSG_ORDER",
-  "WA_MSG_QUOTE",
   "WA_MSG_WHOLESALE",
   // Comercio y tokens de copy pública
   "COD_ENABLED",
