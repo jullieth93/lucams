@@ -821,26 +821,30 @@ function orderBundlePrefix(orderId: string): string {
 }
 
 /**
- * Sube el ZIP de producción del pedido y devuelve su path. Antes borra los
- * ZIPs previos del MISMO pedido: el área se regenera por descarga y ninguna
- * purga de retención conoce `_bundles/` — sin la limpieza cada click dejaba
- * un ZIP huérfano. La limpieza es best-effort: un fallo ahí no bloquea la
- * descarga (a lo sumo queda un ZIP viejo extra hasta la próxima).
+ * Sube el ZIP de producción del pedido y devuelve su path. Con
+ * `cleanupPrevious` (default true) borra los ZIPs previos del MISMO pedido:
+ * se ejecuta solo al subir la primera parte de una descarga nueva para no
+ * eliminar las demás partes del mismo paquete. La limpieza es best-effort:
+ * un fallo ahí no bloquea la descarga.
  */
 export async function uploadOrderProductionBundle(opts: {
   orderId: string;
   filename: string;
   content: Buffer;
+  cleanupPrevious?: boolean;
 }): Promise<string> {
   const prefix = orderBundlePrefix(opts.orderId);
+  const cleanupPrevious = opts.cleanupPrevious ?? true;
   try {
-    const { data: prev } = await supabaseService.storage
-      .from(PRODUCTION_ASSETS_BUCKET)
-      .list(prefix);
-    if (prev && prev.length > 0) {
-      await supabaseService.storage
+    if (cleanupPrevious) {
+      const { data: prev } = await supabaseService.storage
         .from(PRODUCTION_ASSETS_BUCKET)
-        .remove(prev.map((f) => `${prefix}/${f.name}`));
+        .list(prefix);
+      if (prev && prev.length > 0) {
+        await supabaseService.storage
+          .from(PRODUCTION_ASSETS_BUCKET)
+          .remove(prev.map((f) => `${prefix}/${f.name}`));
+      }
     }
   } catch (err) {
     logger.warn(

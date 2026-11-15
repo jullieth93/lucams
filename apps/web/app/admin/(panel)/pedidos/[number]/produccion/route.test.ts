@@ -17,8 +17,12 @@ const {
   // Auditoría 2026-11-08 — el ZIP ya no viaja en el response: se publica en
   // production-assets (`_bundles/`) y la ruta redirige a su URL firmada.
   uploadOrderProductionBundle: vi.fn(
-    async (opts: { orderId: string; filename: string; content: Buffer }) =>
-      `_bundles/${opts.orderId}/${opts.filename}`,
+    async (opts: {
+      orderId: string;
+      filename: string;
+      content: Buffer;
+      cleanupPrevious?: boolean;
+    }) => `_bundles/${opts.orderId}/${opts.filename}`,
   ),
   signOrderProductionBundle: vi.fn(
     async (path: string) =>
@@ -162,6 +166,10 @@ describe("GET /admin/pedidos/[number]/produccion (S11 · [OPS-01] / [SEC-02])", 
     for (const [opts] of uploadOrderProductionBundle.mock.calls) {
       expect(opts.content.length).toBeLessThan(50 * 1024 * 1024);
     }
+    expect(uploadOrderProductionBundle.mock.calls.map(([opts]) => opts.cleanupPrevious)).toEqual([
+      true,
+      false,
+    ]);
     const html = await res.text();
     expect(html).toContain("Descargar parte 1 de 2");
     expect(html).toContain("Descargar parte 2 de 2");
