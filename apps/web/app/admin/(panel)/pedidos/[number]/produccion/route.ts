@@ -317,6 +317,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
         orderId: bundle.id,
         filename,
         content,
+        cleanupPrevious: index === 0,
       });
       const url = await signOrderProductionBundle(bundlePath, filename);
       downloads.push({ url, filename });
