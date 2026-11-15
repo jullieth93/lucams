@@ -16,8 +16,8 @@
  * convergencia: aunque el webhook falle, la orden termina en el estado real.
  *
  * Acotado: máx TRACKING_SYNC_BATCH órdenes por corrida (las más viejas primero),
- * ignora guías internas de «Envío Lucams» (INTERNO-*, no existen en Aveonline),
- * guías muy viejas (ya resueltas o devueltas por fuera) y el modo catálogo.
+ * ignora guías internas de «Envío Lucams» (INTERNO-*, no existen en Aveonline) y
+ * guías muy viejas (ya resueltas o devueltas por fuera).
  * Errores por guía se toleran y cuentan; el cron solo revienta si falla lo
  * estructural (DB, auth global) — igual que los demás /api/cron/*.
  */
@@ -25,7 +25,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { isCatalogMode } from "@/lib/store-mode";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { processTrackingUpdate } from "@/features/orders/saga";
 import { recordShipmentEvents } from "@/features/shipping/shipment-events";
@@ -42,9 +41,6 @@ export type TrackingSyncResult = {
 };
 
 export async function syncActiveShipmentTracking(): Promise<TrackingSyncResult> {
-  if (isCatalogMode()) {
-    return { checked: 0, transitioned: 0, failed: 0, skippedReason: "catalog_mode" };
-  }
   if (!process.env.AVEONLINE_USUARIO || !process.env.AVEONLINE_CLAVE) {
     return { checked: 0, transitioned: 0, failed: 0, skippedReason: "not_configured" };
   }

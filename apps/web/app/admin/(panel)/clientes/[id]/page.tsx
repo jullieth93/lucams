@@ -76,7 +76,6 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
 
   const access: Contact360Access = {
     canViewOrders: canAccessAdminPath(role, "/admin/pedidos"),
-    canViewQuotes: canAccessAdminPath(role, "/admin/cotizaciones"),
     canViewOpportunities: canAccessAdminPath(role, "/admin/oportunidades"),
     canViewCarts: canAccessAdminPath(role, "/admin/carritos"),
     canViewModeration: canAccessAdminPath(role, "/admin/moderacion"),

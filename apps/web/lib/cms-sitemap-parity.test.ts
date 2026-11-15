@@ -469,7 +469,7 @@ describe("CMS v2 — paridad exacta entre apps/web y cms-site-map.mjs", () => {
     }
 
     expect(pages.length).toBe(9);
-    // 2026-11-11 — 169 campos: +`home.seasonal.snowfall` (efectos de temporada).
-    expect(fieldKeys.size).toBe(169);
+    // ADR-204 — 168 campos tras retirar WA_MSG_QUOTE de la POC individual.
+    expect(fieldKeys.size).toBe(168);
   });
 });

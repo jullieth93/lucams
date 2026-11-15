@@ -2,7 +2,7 @@
  * Tests unitarios del polling de respaldo de tracking Aveonline
  * (features/shipping/tracking-sync.ts — cron /api/cron/tracking-sync).
  *
- * Cobertura: gates (modo catálogo / sin credenciales), selección de órdenes
+ * Cobertura: gates (sin credenciales), selección de órdenes
  * (solo FULFILLING/SHIPPED con guía, nunca INTERNO-* ni muy viejas), alimentación
  * del pipeline del webhook (processTrackingUpdate) y tolerancia a errores por
  * guía (una guía mala no tira el lote). Todo mockeado: NO pega a Aveonline ni a DB.
@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   getTracking: vi.fn(),
   processTrackingUpdate: vi.fn(),
-  isCatalogMode: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: { order: { findMany: mocks.findMany } } }));
@@ -27,30 +26,19 @@ vi.mock("@/features/orders/saga", () => ({
   processTrackingUpdate: mocks.processTrackingUpdate,
 }));
 
-vi.mock("@/lib/store-mode", () => ({ isCatalogMode: mocks.isCatalogMode }));
-
 vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 import { syncActiveShipmentTracking } from "./tracking-sync";
 
-const { findMany, getTracking, processTrackingUpdate, isCatalogMode } = mocks;
+const { findMany, getTracking, processTrackingUpdate } = mocks;
 
 describe("syncActiveShipmentTracking", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    isCatalogMode.mockReturnValue(false);
     process.env.AVEONLINE_USUARIO = "demo";
     process.env.AVEONLINE_CLAVE = "demo";
-  });
-
-  it("modo catálogo → skippedReason catalog_mode, sin llamar a DB ni provider", async () => {
-    isCatalogMode.mockReturnValue(true);
-    const res = await syncActiveShipmentTracking();
-    expect(res.skippedReason).toBe("catalog_mode");
-    expect(findMany).not.toHaveBeenCalled();
-    expect(getTracking).not.toHaveBeenCalled();
   });
 
   it("sin credenciales Aveonline → skippedReason not_configured", async () => {

@@ -135,7 +135,7 @@ describe("resolvePersonalizationSurface — otras superficies", () => {
     }
   });
 
-  it("BUSINESS_LOGO troquelado → requiresVectorFile true (cotización WhatsApp)", () => {
+  it("BUSINESS_LOGO troquelado → requiresVectorFile true (contacto comercial WhatsApp)", () => {
     const r = resolvePersonalizationSurface("BUSINESS_LOGO", {
       fields: ["logo"],
       requiresVectorFile: true,

@@ -201,12 +201,16 @@ const stage = (width, height) => ({ width, height, dpiPreview: 90, dpiProduction
 
 function miniTemplate(size, style, productId) {
   const small = size.key === "pequeno";
+  const fantasy = style === "fantasia";
   const coverX = size.key === "grande" ? 380 : 275;
   const spineX = size.key === "grande" ? 355 : 250;
   const inset = small ? 10 : 16;
-  const photoHeight = small ? 154 : 350;
-  const titleY = small ? 202 : 421;
-  const authorY = small ? 229 : 468;
+  const photoX = fantasy ? coverX + (small ? 55 : 68) : coverX + inset;
+  const photoY = fantasy ? (small ? 52 : 82) : inset;
+  const photoWidth = fantasy ? (small ? 115 : 194) : size.width - coverX - inset * 2;
+  const photoHeight = fantasy ? (small ? 122 : 250) : small ? 154 : 350;
+  const titleY = fantasy ? (small ? 194 : 382) : small ? 202 : 421;
+  const authorY = fantasy ? (small ? 29 : 49) : small ? 229 : 468;
   const backX = small ? 14 : 24;
   const backWidth = size.key === "grande" ? 282 : 197;
   const art = `mini-libro-${style}-${size.key}`;
@@ -214,51 +218,52 @@ function miniTemplate(size, style, productId) {
     slug: `${art}-asistido`,
     productId,
     kind: "CUSTOM_DECOR",
-    name: `${style === "clasico" ? "Tu foto · Clásico" : "Tu foto · Fantasía"} · ${size.label}`,
+    name: `${style === "clasico" ? "Tu foto · Clásico" : "Tu foto · Reino de cristal"} · ${size.label}`,
     order: style === "clasico" ? 1 : 2,
     previewUrl: `/templates/${art}-preview.svg`,
     canvasData: {
       version: 1,
       stage: stage(size.width, size.height),
       layers: [
-        background(style === "clasico" ? "#FFF8F0" : "#3D2E5C"),
+        background(style === "clasico" ? "#FFF8F0" : "#F7F0DF"),
         photo(
-          coverX + inset,
-          inset,
-          size.width - coverX - inset * 2,
+          photoX,
+          photoY,
+          photoWidth,
           photoHeight,
           "Foto para la portada",
+          fantasy ? photoWidth / 2 : 0,
         ),
         asset(`/templates/${art}.svg`, size.width, size.height),
         text("title", coverX + inset, titleY, "Título de tu historia", {
-          fontSize: small ? 20 : 30,
+          fontSize: fantasy ? (small ? 20 : 34) : small ? 20 : 30,
           width: size.width - coverX - inset * 2,
-          fill: style === "clasico" ? "#3D2E5C" : "#FFD93D",
-        }),
-        text("spine_title", spineX, size.height / 2, "Título de tu historia", {
-          fontSize: small ? 14 : 22,
-          width: size.height - inset * 2,
-          rotation: -90,
-          fill: style === "clasico" ? "#3D2E5C" : "#FFD93D",
-        }),
-        text("author", coverX + inset, authorY, "Tu nombre o dedicatoria", {
-          fontSize: small ? 11 : 16,
-          width: size.width - coverX - inset * 2,
-          fontWeight: "normal",
-          fill: style === "clasico" ? "#7C6AAD" : "#FFF8F0",
+          fill: style === "clasico" ? "#3D2E5C" : "#E8C875",
         }),
         text(
-          "back_message",
-          backX + backWidth / 2,
-          size.height / 2,
-          "Una dedicatoria para la contraportada",
+          "spine_title",
+          spineX,
+          size.height - inset + (small ? 7 : 11),
+          "Título de tu historia",
           {
-            fontSize: small ? 13 : 22,
-            width: backWidth,
-            fontWeight: "normal",
-            fill: style === "clasico" ? "#7C6AAD" : "#FFF8F0",
+            fontSize: small ? 14 : 22,
+            width: size.height - inset * 2,
+            rotation: -90,
+            fill: style === "clasico" ? "#3D2E5C" : "#E8C875",
           },
         ),
+        text("author", coverX + inset, authorY, "Tu nombre o dedicatoria", {
+          fontSize: fantasy ? (small ? 12 : 18) : small ? 11 : 16,
+          width: size.width - coverX - inset * 2,
+          fontWeight: "normal",
+          fill: style === "clasico" ? "#7C6AAD" : "#F7F0DF",
+        }),
+        text("back_message", backX, size.height / 2, "Una dedicatoria para la contraportada", {
+          fontSize: fantasy ? (small ? 11 : 17) : small ? 13 : 22,
+          width: backWidth,
+          fontWeight: "normal",
+          fill: style === "clasico" ? "#7C6AAD" : "#F7F0DF",
+        }),
       ],
     },
   };
@@ -529,7 +534,7 @@ function miniBookArt(item, preview = false) {
   <text x="${coverW / 2}" y="${h * 0.38}" text-anchor="middle" fill="${theme.ink}" fill-opacity=".82" font-family="Inter, sans-serif" font-size="${subSize}">Recuerdos que se quedan</text>
   <text x="${coverW / 2}" y="${h * 0.82}" text-anchor="middle" fill="${theme.ink}" font-family="Fredoka, sans-serif" font-size="${subSize + 2}" font-weight="700">Lucams</text>
   <text transform="translate(${coverW + spineW / 2} ${h / 2}) rotate(-90)" text-anchor="middle" fill="${theme.ink}" font-family="Fredoka, sans-serif" font-size="${subSize + 3}" font-weight="700">${esc(theme.title.toUpperCase())}</text>
-  ${preview ? `<rect x="${frontX + 8}" y="8" width="${coverW - 16}" height="${h - 16}" rx="8" fill="#FFF8F0" fill-opacity=".08"/>` : ""}
+${preview ? `  <rect x="${frontX + 8}" y="8" width="${coverW - 16}" height="${h - 16}" rx="8" fill="#FFF8F0" fill-opacity=".08"/>` : ""}
 </svg>`;
 }
 
@@ -550,18 +555,99 @@ export function gallerySvg(item) {
   return item.product === "mini-book" ? miniBookArt(item) : ornamentArt(item);
 }
 
-export function templateSvg(template) {
+function fantasyTemplateArt(size, preview) {
+  const { width: w, height: h } = size;
+  const small = size.key === "pequeno";
+  const spineW = 50;
+  const coverW = (w - spineW) / 2;
+  const frontX = coverW + spineW;
+  const photoX = frontX + (small ? 55 : 68);
+  const photoY = small ? 52 : 82;
+  const photoW = small ? 115 : 194;
+  const photoH = small ? 122 : 250;
+  const radius = photoW / 2;
+  const arch = `M${photoX} ${photoY + photoH}V${photoY + radius}A${radius} ${radius} 0 0 1 ${photoX + photoW} ${photoY + radius}V${photoY + photoH}Z`;
+  const stepY = photoY + photoH - (small ? 22 : 38);
+  const stars = [
+    [0.09, 0.16, 1.4],
+    [0.18, 0.31, 1],
+    [0.84, 0.12, 1.2],
+    [0.91, 0.27, 1.6],
+    [0.13, 0.76, 1.2],
+    [0.87, 0.69, 1],
+    [0.94, 0.82, 1.4],
+  ]
+    .map(
+      ([x, y, r]) =>
+        `<circle cx="${frontX + coverW * x}" cy="${h * y}" r="${small ? r * 0.65 : r}" fill="#F7E3A4" opacity=".72"/>`,
+    )
+    .join("");
+  const steps = [0, 1, 2, 3]
+    .map((index) => {
+      const width = photoW * (0.48 + index * 0.16);
+      const height = small ? 5 : 8;
+      return `<rect x="${photoX + (photoW - width) / 2}" y="${stepY + index * (small ? 7 : 10)}" width="${width}" height="${height}" rx="${small ? 1 : 2}" fill="${["#2A9FA5", "#35B5B5", "#55C9C3", "#83DED2"][index]}"/>`;
+    })
+    .join("");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <defs>
+      <linearGradient id="night" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#061522"/><stop offset=".52" stop-color="#0A3347"/><stop offset="1" stop-color="#08727A"/></linearGradient>
+      <linearGradient id="spine" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#040D19"/><stop offset=".5" stop-color="#17354B"/><stop offset="1" stop-color="#061522"/></linearGradient>
+      <linearGradient id="portal" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#10132F"/><stop offset=".42" stop-color="#642653"/><stop offset=".78" stop-color="#D64C79"/><stop offset="1" stop-color="#F3A076"/></linearGradient>
+      <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFF0B5"/><stop offset=".45" stop-color="#D5A94F"/><stop offset=".72" stop-color="#FFF0B5"/><stop offset="1" stop-color="#A77A31"/></linearGradient>
+      <clipPath id="portal-clip"><path d="${arch}"/></clipPath>
+    </defs>
+    ${
+      preview
+        ? `<g clip-path="url(#portal-clip)"><rect x="${photoX}" y="${photoY}" width="${photoW}" height="${photoH}" fill="url(#portal)"/><circle cx="${photoX + photoW * 0.72}" cy="${photoY + photoH * 0.28}" r="${small ? 10 : 18}" fill="#FFE8C2" opacity=".75"/><path d="M${photoX - 10} ${photoY + photoH * 0.78}L${photoX + photoW * 0.3} ${photoY + photoH * 0.42}L${photoX + photoW * 0.52} ${photoY + photoH * 0.7}L${photoX + photoW * 0.76} ${photoY + photoH * 0.48}L${photoX + photoW + 10} ${photoY + photoH * 0.8}V${photoY + photoH}H${photoX - 10}Z" fill="#11172B" opacity=".88"/></g>`
+        : ""
+    }
+    <path d="M0 0H${w}V${h}H0Z ${arch}" fill="url(#night)" fill-rule="evenodd"/>
+    <rect x="${coverW}" width="${spineW}" height="${h}" fill="url(#spine)"/>
+    <path d="M${coverW} 0V${h}M${frontX} 0V${h}" stroke="#E8C875" stroke-opacity=".38" stroke-width="${small ? 1.5 : 2.5}"/>
+    <rect x="${small ? 12 : 22}" y="${small ? 12 : 22}" width="${coverW - (small ? 24 : 44)}" height="${h - (small ? 24 : 44)}" rx="${small ? 3 : 5}" fill="none" stroke="#D5A94F" stroke-opacity=".55" stroke-width="${small ? 1 : 1.5}"/>
+    <path d="${arch}" fill="none" stroke="#F3D98B" stroke-opacity=".16" stroke-width="${small ? 8 : 13}"/>
+    <path d="${arch}" fill="none" stroke="url(#gold)" stroke-width="${small ? 2 : 3.5}"/>
+    ${stars}
+    <path d="M${frontX + 12} ${h * 0.18}Q${frontX + 38} ${h * 0.3} ${frontX + 18} ${h * 0.52}M${w - 12} ${h * 0.2}Q${w - 42} ${h * 0.38} ${w - 18} ${h * 0.58}" fill="none" stroke="#6CC8BD" stroke-opacity=".28" stroke-width="${small ? 2 : 3}"/>
+    ${steps}
+    <g fill="#F7F0DF" text-anchor="middle" font-family="Inter, sans-serif">
+      <text x="${coverW / 2}" y="${small ? 39 : 70}" font-size="${small ? 9 : 14}" letter-spacing="${small ? 1.5 : 2.5}">TU HISTORIA</text>
+      <text x="${coverW / 2}" y="${small ? 53 : 94}" font-size="${small ? 7 : 10}" fill-opacity=".68" letter-spacing="${small ? 1 : 1.8}">HECHA DE MOMENTOS</text>
+      <text x="${coverW / 2}" y="${h - (small ? 24 : 38)}" font-size="${small ? 10 : 15}" font-weight="700">Lucams</text>
+    </g>
+    <path d="M${small ? 42 : 70} ${h * 0.3}H${coverW - (small ? 42 : 70)}M${small ? 42 : 70} ${h * 0.72}H${coverW - (small ? 42 : 70)}" stroke="#D5A94F" stroke-opacity=".5" stroke-width="${small ? 1 : 1.5}"/>
+    <g fill="#E8C875" text-anchor="middle" font-family="Georgia, serif">
+      <text x="${coverW / 2}" y="${h * 0.19}" font-size="${small ? 12 : 20}">“</text>
+      <text x="${frontX + coverW / 2}" y="${small ? 224 : 449}" font-size="${small ? 7 : 10}" letter-spacing="${small ? 1 : 1.8}">UNA HISTORIA PARA SIEMPRE</text>
+    </g>
+    <path d="M${frontX + coverW / 2 - (small ? 16 : 26)} ${small ? 207 : 420}H${frontX + coverW / 2 + (small ? 16 : 26)}" stroke="url(#gold)" stroke-width="${small ? 1 : 1.5}"/>
+    <circle cx="${frontX + coverW / 2}" cy="${small ? 207 : 420}" r="${small ? 2 : 3}" fill="#E8C875"/>
+    ${
+      preview
+        ? `<g text-anchor="middle"><text x="${frontX + coverW / 2}" y="${small ? 29 : 49}" fill="#F7F0DF" font-family="Georgia, serif" font-size="${small ? 12 : 18}" letter-spacing="${small ? 1 : 2}">TU NOMBRE</text><text x="${frontX + coverW / 2}" y="${small ? 194 : 382}" fill="url(#gold)" font-family="Fredoka, sans-serif" font-size="${small ? 20 : 34}" font-weight="700">TU HISTORIA</text><text transform="translate(${coverW + spineW / 2} ${h / 2}) rotate(-90)" fill="#E8C875" font-family="Fredoka, sans-serif" font-size="${small ? 14 : 22}" font-weight="700">TU HISTORIA</text><g fill="#F7F0DF" font-family="Inter, sans-serif" font-size="${small ? 10 : 15}"><text x="${coverW / 2}" y="${h / 2 - (small ? 14 : 22)}">Hay recuerdos que merecen</text><text x="${coverW / 2}" y="${h / 2 + (small ? 1 : 8)}">quedarse para siempre.</text><text x="${coverW / 2}" y="${h / 2 + (small ? 16 : 38)}" fill-opacity=".72">Escribe aquí tu dedicatoria.</text></g></g>`
+        : ""
+    }
+  </svg>`.replace(/[ \t]+$/gm, "");
+}
+
+export function templateSvg(template, preview = false) {
   const src = template.canvasData.layers.find((layer) => layer.type === "asset")?.src;
   const base = src?.split("/").pop()?.replace(".svg", "") ?? template.slug;
   if (base.startsWith("mini-libro-")) {
     const size =
       MINI_BOOK_SIZES.find((candidate) => base.endsWith(candidate.key)) ?? MINI_BOOK_SIZES[0];
     const style = base.includes("fantasia") ? "fantasia" : "clasico";
-    const theme =
-      style === "fantasia"
-        ? { bg: "#3D2E5C", accent: "#FFD93D", ink: "#FFF8F0", motif: "stars", title: "Tu historia" }
-        : { bg: "#FFF8F0", accent: "#7C6AAD", ink: "#3D2E5C", motif: "book", title: "Tu historia" };
+    const theme = {
+      bg: "#FFF8F0",
+      accent: "#7C6AAD",
+      ink: "#3D2E5C",
+      motif: "book",
+      title: "Tu historia",
+    };
     if (base.includes("completo")) return miniBookArt({ ...size, theme }, true);
+    if (style === "fantasia") return fantasyTemplateArt(size, preview);
     const w = size.width;
     const h = size.height;
     const coverW = (w - 50) / 2;
@@ -590,14 +676,47 @@ export function productCoverSvg(slug) {
   if (slug === CHRISTMAS_ORNAMENT_SLUG) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1000" viewBox="0 0 1200 1000"><rect width="1200" height="1000" fill="#FFF8F0"/><path d="M80 170Q400 80 760 180" stroke="#315D46" stroke-width="55" stroke-linecap="round" fill="none"/><path d="M610 155V280" stroke="#B79A78" stroke-width="10"/><rect x="570" y="245" width="80" height="70" rx="16" fill="#D4AF37"/><circle cx="610" cy="565" r="280" fill="#DDF3F5" fill-opacity=".5" stroke="#A8D5DC" stroke-width="12"/><circle cx="610" cy="565" r="218" fill="#7C6AAD"/><circle cx="610" cy="565" r="205" fill="#FFD93D"/><path d="M610 405 640 510 750 510 660 575 695 680 610 620 525 680 560 575 470 510 580 510Z" fill="#FFF8F0"/><path d="M420 400Q480 320 540 335" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" opacity=".75"/><text x="610" y="920" text-anchor="middle" fill="#3D2E5C" font-family="Fredoka, sans-serif" font-size="48" font-weight="700">Tu foto dentro de la esfera</text></svg>`;
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1000" viewBox="0 0 1200 1000"><rect width="1200" height="1000" fill="#FFF8F0"/><ellipse cx="610" cy="790" rx="390" ry="65" fill="#3D2E5C" opacity=".12"/><path d="M330 250 810 250 900 320 900 770 330 770Z" fill="#3D2E5C"/><path d="M810 250 900 320V770L810 700Z" fill="#7C6AAD"/><path d="M330 250 810 250 810 700 330 700Z" fill="#E85B9F"/><path d="M350 280H780V670H350Z" fill="#FFF8F0" opacity=".16"/><path d="M380 740H850" stroke="#F5E6A8" stroke-width="12" stroke-dasharray="12 12"/><path d="M585 340 610 420 695 420 630 470 655 550 585 500 515 550 540 470 475 420 560 420Z" fill="#FFD93D"/><text x="565" y="620" text-anchor="middle" fill="#FFF8F0" font-family="Fredoka, sans-serif" font-size="48" font-weight="700">TU HISTORIA</text><text x="600" y="890" text-anchor="middle" fill="#3D2E5C" font-family="Fredoka, sans-serif" font-size="44" font-weight="700">Portada · lomo · contraportada</text></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1000" viewBox="0 0 1200 1000">
+    <defs>
+      <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFFDF8"/><stop offset="1" stop-color="#EDE4D6"/></linearGradient>
+      <linearGradient id="cover-night" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#061522"/><stop offset=".55" stop-color="#0A3B4D"/><stop offset="1" stop-color="#08727A"/></linearGradient>
+      <linearGradient id="cover-portal" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#151632"/><stop offset=".5" stop-color="#762C5C"/><stop offset="1" stop-color="#F08C77"/></linearGradient>
+      <linearGradient id="cover-gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFF0B5"/><stop offset=".5" stop-color="#C99B43"/><stop offset="1" stop-color="#F5D98C"/></linearGradient>
+      <filter id="book-shadow" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="28" stdDeviation="24" flood-color="#261C3D" flood-opacity=".24"/></filter>
+    </defs>
+    <rect width="1200" height="1000" fill="url(#paper)"/>
+    <circle cx="1020" cy="120" r="240" fill="#5DD9D1" opacity=".09"/><circle cx="120" cy="850" r="260" fill="#E85B9F" opacity=".06"/>
+    <text x="600" y="72" text-anchor="middle" fill="#3D2E5C" font-family="Inter, sans-serif" font-size="22" font-weight="700" letter-spacing="6">MINI LIBROS MAGNÉTICOS</text>
+    <ellipse cx="604" cy="790" rx="330" ry="55" fill="#3D2E5C" opacity=".13"/>
+    <g transform="translate(408 132) skewY(-3)" filter="url(#book-shadow)">
+      <path d="M0 26 34 0H408V610L0 636Z" fill="#07111F"/>
+      <path d="M0 26 34 0V610L0 636Z" fill="#102C40"/>
+      <path d="M408 22 438 38V594L408 610Z" fill="#D8CEBC"/>
+      <path d="M413 55 433 65M413 85 433 95M413 115 433 125M413 145 433 155M413 175 433 185M413 205 433 215M413 235 433 245M413 265 433 275M413 295 433 305M413 325 433 335M413 355 433 365M413 385 433 395M413 415 433 425M413 445 433 455M413 475 433 485M413 505 433 515M413 535 433 545" stroke="#F8F2E6" stroke-width="4"/>
+      <rect x="34" width="374" height="610" rx="5" fill="url(#cover-night)"/>
+      <rect x="48" y="14" width="346" height="582" rx="3" fill="none" stroke="#D5A94F" stroke-opacity=".38"/>
+      <text x="221" y="69" text-anchor="middle" fill="#F7F0DF" font-family="Georgia, serif" font-size="27" letter-spacing="3">TU NOMBRE</text>
+      <path d="M128 374V225a93 93 0 0 1 186 0v149Z" fill="url(#cover-portal)" stroke="url(#cover-gold)" stroke-width="4"/>
+      <circle cx="271" cy="211" r="22" fill="#FFE8C2" opacity=".72"/>
+      <path d="M128 330 178 247 218 309 267 234 314 315V374H128Z" fill="#11172B" opacity=".88"/>
+      <g fill="#F7E3A4"><circle cx="82" cy="132" r="2"/><circle cx="350" cy="112" r="2.5"/><circle cx="89" cy="279" r="1.8"/><circle cx="354" cy="308" r="2"/></g>
+      <g><rect x="165" y="346" width="112" height="10" rx="2" fill="#2A9FA5"/><rect x="153" y="359" width="136" height="10" rx="2" fill="#35B5B5"/><rect x="140" y="372" width="162" height="10" rx="2" fill="#55C9C3"/><rect x="126" y="385" width="190" height="10" rx="2" fill="#83DED2"/></g>
+      <text x="221" y="455" text-anchor="middle" fill="url(#cover-gold)" font-family="Georgia, serif" font-size="42" font-weight="700">TU HISTORIA</text>
+      <path d="M173 480H269" stroke="url(#cover-gold)" stroke-width="2"/><circle cx="221" cy="480" r="4" fill="#E8C875"/>
+      <text x="221" y="522" text-anchor="middle" fill="#F7F0DF" font-family="Inter, sans-serif" font-size="12" letter-spacing="3">UNA HISTORIA PARA SIEMPRE</text>
+      <text x="221" y="566" text-anchor="middle" fill="#F7F0DF" font-family="Fredoka, sans-serif" font-size="18" font-weight="700">Lucams</text>
+      <text transform="translate(17 330) rotate(-90)" text-anchor="middle" fill="#E8C875" font-family="Georgia, serif" font-size="17">TU HISTORIA</text>
+    </g>
+    <text x="600" y="890" text-anchor="middle" fill="#3D2E5C" font-family="Fredoka, sans-serif" font-size="43" font-weight="700">Portada · lomo · contraportada</text>
+    <text x="600" y="934" text-anchor="middle" fill="#6B6280" font-family="Inter, sans-serif" font-size="23">Tu foto y tus palabras en una carátula envolvente</text>
+  </svg>`;
 }
 
 export function templatePreviewSvg(template) {
   if (template.slug.startsWith("bola-navidena-foto-circular")) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800"><rect width="800" height="800" fill="#FFF8F0"/><circle cx="400" cy="400" r="350" fill="#A8D5DC"/><circle cx="400" cy="340" r="90" fill="#FFF8F0"/><path d="M210 650Q400 430 590 650" fill="#FFF8F0"/><circle cx="400" cy="400" r="385" fill="none" stroke="#7C6AAD" stroke-width="12"/></svg>`;
   }
-  const art = templateSvg(template);
+  const art = templateSvg(template, true);
   if (template.slug.startsWith("bola-navidena-")) {
     return art.replace(
       '<rect width="800" height="800"',

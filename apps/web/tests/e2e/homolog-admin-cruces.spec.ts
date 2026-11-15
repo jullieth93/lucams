@@ -1,6 +1,6 @@
 /*
  * HOMOLOGACIÓN E2E — cruces admin→cliente de la matriz §5.3 del prompt
- * (trazabilidad cliente-admin), modo catálogo:
+ * (trazabilidad cliente-admin):
  *
  *   1. Toggle COD_ENABLED (admin contenido global) → chip "contraentrega" del
  *      hero aparece/desaparece en la home → revertir → vuelve.
@@ -8,14 +8,8 @@
  *      deja de mostrarse al cliente SIN borrarse de la DB → reactivar → vuelve.
  *   3. Aprobar una reseña pendiente (admin resenas) → la PDP la muestra con su
  *      autor y texto → limpieza.
- *   4. Marcar leída una notificación QUOTE (admin notificaciones) → la pill de
+ *   4. Marcar leída una notificación ORDER (admin notificaciones) → la pill de
  *      no leídas del nav desaparece.
- *
- * Dos filas de la matriz §5.3 NO aplican en modo catálogo y quedan
- * documentadas en la auditoría (no se fuerzan): cupones (Etapa 2 — el modo
- * catálogo no tiene campo de cupón) y "estado de cotización visible en
- * /cotizacion/[token]" (la página pública de confirmación NO muestra estado
- * por diseño — solo número, ítems y CTA de WhatsApp).
  *
  * Corre en LOCAL y STG × desktop/mobile. En PRD PROHIBIDO (mutaciones).
  * Admin vía storageState (E2E_AUTH=1); el cliente es anonPage (sin cookies
@@ -286,22 +280,21 @@ test("cruz 3: admin aprueba reseña pendiente → la PDP la muestra", async ({
   }
 });
 
-/* ═══ Cruz 4 — Marcar leída una notificación QUOTE → pill del nav desaparece ═══ */
+/* ═══ Cruz 4 — Marcar leída una notificación ORDER → pill del nav desaparece ═══ */
 
-test("cruz 4: admin marca leída una notificación QUOTE → la pill de no leídas baja", async ({
+test("cruz 4: admin marca leída una notificación ORDER → la pill de no leídas baja", async ({
   adminPage,
 }, testInfo) => {
   projectName = testInfo.project.name;
   resultsPath = resolve(EVIDENCE_DIR, `results-${E2E_ENV}-${projectName}-${run}.json`);
-  // Semilla: una notificación QUOTE no leída (mismo shape que notify() de quotes).
   const seed = await db().notification.create({
     data: {
-      type: "QUOTE",
+      type: "ORDER",
       severity: "info",
-      title: `Nueva cotización COT-TEST — Cliente Prueba ${run}`,
-      detail: `Total: $199 · 1 item(s) · WhatsApp: ${customer.whatsapp}`,
-      actionUrl: "/admin/cotizaciones",
-      actionLabel: "Ver cotización",
+      title: `Nueva oportunidad OP-TEST — Cliente Prueba ${run}`,
+      detail: `Evento empresarial · WhatsApp: ${customer.whatsapp}`,
+      actionUrl: "/admin/oportunidades",
+      actionLabel: "Ver oportunidad",
       dedupKey: run,
     },
     select: { id: true },

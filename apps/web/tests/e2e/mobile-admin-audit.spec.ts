@@ -109,7 +109,7 @@ test("auditoría móvil E1 — pantallas críticas del admin a 375px", async ({ 
     { name: "contenido-mediateca", path: "/admin/contenido/mediateca" },
     { name: "contenido-borradores", path: "/admin/contenido/borradores" },
     { name: "pedidos", path: "/admin/pedidos" },
-    { name: "cotizaciones", path: "/admin/cotizaciones" },
+    { name: "oportunidades", path: "/admin/oportunidades" },
     { name: "productos", path: "/admin/productos" },
   ];
 

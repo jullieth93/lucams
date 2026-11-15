@@ -1,7 +1,7 @@
 /*
- * HOMOLOGACIÓN E2E — rate-limit + CSRF + doble submit (docs/TESTING.md): "429 tras N intentos en login/registro/cotización/contacto con
- * mensaje claro; server action con origen adulterado rechazada; doble submit
- * de cotización no duplica (idempotencia en UI + DB)".
+ * HOMOLOGACIÓN E2E — rate-limit + CSRF (docs/TESTING.md): "429 tras N intentos
+ * en login/registro/contacto con mensaje claro; server action con origen
+ * adulterado rechazada".
  *
  * Adaptación honesta al sistema real (verificado leyendo el código, §6.21 del
  * doc de auditoría): las acciones son SERVER ACTIONS — no devuelven 429, sino
@@ -25,16 +25,7 @@
  *   - contacto: 4 envíos REALES por UI con el mismo email (contact:email es
  *     3/día) → 3 tickets OPEN + 4º con el mensaje; bucket en 4.
  *
- * Test 2 (rate-limit de cotización, solo en modo catálogo):
- *   - (a) doble submit — click + requestSubmit() concurrente →
- *     UNA sola Quote en DB (idempotencia: botón disabled en pending + claim
- *     atómico del carrito server-side; el desenlace visible puede ser el
- *     redirect, "ya recibimos esta cotización" o "carrito está vacío" según
- *     dónde cae el 2º dispatch — el invariante certificado es la DB);
- *     (b) 4 envíos reales con el mismo WhatsApp (quote:phone es 3/día) →
- *     3 Quotes + 4º con el mensaje; buckets phone=4, ip=4.
- *
- * Test 3 (CSRF):
+ * Test 2 (CSRF):
  *   - POST de server action con Origin adulterado → 500 "Invalid Server
  *     Actions request" (rechazo PRE-dispatch de Next 16: el MISMO request con
  *     Origin correcto llega al dispatcher y devuelve 400 action-not-found).
@@ -42,12 +33,10 @@
  *   - POST /api/vitals con Origin adulterado → 403 "Forbidden" (proxy CORS,
  *     proxy.ts); con Origin correcto llega al handler → 400 (zod).
  *
- * En PRD PROHIBIDO (crea tickets/quotes y envenenaría buckets reales).
- * Limpieza: tickets y quotes (soft-delete, patrón del repo) borrados, buckets
- * login/signup/contact/quote reseteados, producto efímero borrado. Las filas
- * Consent de las cotizaciones QUEDAN (ledger legal append-only, marcadas RUN).
- * En STG cada cotización/ticket dispara los emails reales al admin (canal de
- * venta activo en previews — esperado y documentado).
+ * En PRD PROHIBIDO (crea tickets y envenenaría buckets reales).
+ * Limpieza: tickets y buckets login/signup/contact reseteados. Los consentimientos
+ * quedan como ledger legal append-only, marcados con el RUN. En STG cada ticket
+ * puede disparar el aviso operativo configurado.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -58,17 +47,9 @@ import { strip } from "./_setup/env";
 import { E2E_ENV, dismissCookieBanner, expect, test } from "./fixtures/auth";
 import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
-import {
-  createEphemeralProduct,
-  deleteEphemeralProductsByTag,
-  fakeCustomer,
-  type EphemeralProduct,
-} from "./fixtures/data-factory";
+import { fakeCustomer } from "./fixtures/data-factory";
 import { hashEmail } from "../../lib/rate-limit-keys";
 import { capitalizeName } from "../../lib/colombia-validators";
-import { PdpPage } from "./pages/pdp";
-import { CarritoPage } from "./pages/carrito";
-import { CotizacionPage } from "./pages/cotizacion";
 
 const EVIDENCE_DIR = resolve(__dirname, "../../tmp/e2e-homologacion");
 
@@ -77,11 +58,6 @@ test.skip(E2E_ENV === "prd", "Rate-limit/CSRF crean datos y envenenan buckets: p
 const run = newRunId("rl");
 const EMAIL = `${run}@e2e.test`;
 const EMAIL_SIGNUP = `${run}-su@e2e.test`;
-// Teléfonos colombianos sintéticos (10 dígitos, nunca reales) por fase.
-const digits = run.replace(/\D/g, "").slice(-7);
-const PHONE_A = `300${digits}`;
-const PHONE_B = `311${digits}`;
-
 type Step = { step: string; ok: boolean; detail?: string; screenshot?: string; at: string };
 
 function evidenceWriter(tag: string, project: string) {
@@ -125,17 +101,10 @@ async function bucketCounts(scope: string): Promise<{ key: string; count: number
     SELECT key, count FROM rate_limit_buckets WHERE key LIKE ${scope + ":%"} ORDER BY key`;
 }
 
-let product: EphemeralProduct | null = null;
-
 test.afterAll(async () => {
-  // Barrido por tag: cubre los retries (cada intento crea su producto y
-  // el último proceso solo ve el suyo — fuga reproducida 2026-08-07).
-  await deleteEphemeralProductsByTag("e2e-rl");
   await db()
     .supportTicket.deleteMany({ where: { email: EMAIL } })
     .catch(() => {});
-  await db()
-    .$executeRaw`UPDATE "Quote" SET "deletedAt" = NOW(), "updatedAt" = NOW() WHERE "deletedAt" IS NULL AND "customerEmail" ILIKE ${"%" + run + "%"}`;
   await db()
     .notification.deleteMany({ where: { title: { contains: "Prueba" } } })
     .catch(() => {});
@@ -159,7 +128,7 @@ test.afterAll(async () => {
       /* limpieza best-effort */
     }
   }
-  for (const scope of ["login", "signup", "contact", "quote"]) await cleanBuckets(scope);
+  for (const scope of ["login", "signup", "contact"]) await cleanBuckets(scope);
   await disconnectDb();
 });
 
@@ -178,7 +147,7 @@ test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4
     // El banner de cookies (fixed abajo) tapa el submit en 390px y el click
     // queda interceptado → el POST nunca sale (flake STG mobile 2026-08-07).
     // Una sola vez: el consentimiento persiste en el contexto para las fases
-    // siguientes (registro/contacto/cotización).
+    // siguientes (registro/contacto).
     await dismissCookieBanner(anonPage);
     const loginForm = anonPage.locator("form").first();
     const loginBtn = loginForm.locator('button[type="submit"]');
@@ -372,133 +341,6 @@ test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4
       await shot(anonPage, "3-contacto-ratelimit"),
     );
     await cleanBuckets("contact");
-
-    write("pass");
-  } catch (err) {
-    write("fail", err);
-    throw err;
-  }
-});
-
-test("rate-limit §6.21: cotización×4 + doble submit (solo modo catálogo)", async ({
-  anonPage,
-}, testInfo) => {
-  test.skip(
-    process.env.NEXT_PUBLIC_STORE_MODE !== "catalog",
-    "La cotización desde el carrito solo existe en modo catálogo; en modo tienda se usa el checkout.",
-  );
-  test.setTimeout(300_000);
-  const { record, shot, write } = evidenceWriter("quote-ratelimit", testInfo.project.name);
-  const customer = fakeCustomer(run);
-
-  try {
-    // ═══ 4. COTIZACIÓN — (a) doble submit → 1 Quote; (b) 4 envíos → 3 + bloqueo.
-    product = await createEphemeralProduct(run);
-    await cleanBuckets("quote");
-
-    // (a) doble submit: click real + requestSubmit concurrente (doble-click
-    // agresivo). La UI protege (botón disabled en pending) y el servidor
-    // reclama el carrito atómicamente (DUPLICATE_SUBMIT) → 1 sola Quote.
-    // La ventana de pending se hace DETERMINISTA retardando 1.5s el fulfill
-    // del POST de la acción (el servidor procesa igual; solo el cliente espera).
-    await anonPage.route("**/checkout/datos", async (route) => {
-      if (route.request().method() === "POST") {
-        const response = await route.fetch();
-        await new Promise((r) => setTimeout(r, 1_500));
-        await route.fulfill({ response });
-      } else {
-        await route.continue();
-      }
-    });
-    const pdp = new PdpPage(anonPage, product.slug);
-    await pdp.goto();
-    await pdp.addToCart();
-    const carrito = new CarritoPage(anonPage);
-    await carrito.expectItem(product.name);
-    await carrito.quoteCta().click();
-    const cotizacion = new CotizacionPage(anonPage);
-    await cotizacion.expectLoaded();
-    await cotizacion.fill({
-      name: customer.name,
-      whatsapp: PHONE_A,
-      email: EMAIL,
-      notes: `Doble submit ${run}`,
-    });
-    const quoteForm = anonPage.locator("form", {
-      has: anonPage.locator('input[name="customerName"]'),
-    });
-    await cotizacion.submitButton().click();
-    // El botón se localiza por type=submit (no por nombre): en pending el label
-    // cambia a "Enviando…" y un getByRole(name) pierde el match (bug reproducido).
-    const submitByType = quoteForm.locator('button[type="submit"]');
-    await expect(submitByType, "botón disabled durante el pending").toBeDisabled({
-      timeout: 3_000,
-    });
-    await quoteForm.evaluate((f) => (f as HTMLFormElement).requestSubmit());
-    // Tres desenlaces legítimos de la carrera (el invariante es la DB: 1 Quote):
-    // redirect a la confirmación (gana el 1º) · "ya recibimos esta cotización"
-    // (DUPLICATE_SUBMIT si el 2º llega durante el claim) · "carrito está vacío"
-    // (si el 2º llega justo DESPUÉS del claim — verificado 2026-08-07: con el
-    // doble-dispatch artificial, React aplica la última respuesta; la quote del
-    // 1º ya existe en DB. Un usuario real no llega ahí: el botón queda disabled).
-    const dupText = anonPage.getByText(/ya recibimos esta cotización/i);
-    const emptyText = anonPage.getByText(/tu carrito está vacío/i);
-    const outcome = await Promise.race([
-      anonPage.waitForURL(/\/cotizacion\/[a-f0-9]{32}/, { timeout: 30_000 }).then(() => "redirect"),
-      dupText.waitFor({ state: "visible", timeout: 30_000 }).then(() => "duplicate-msg"),
-      emptyText.waitFor({ state: "visible", timeout: 30_000 }).then(() => "empty-cart-msg"),
-    ]);
-    await anonPage.unroute("**/checkout/datos");
-    await expect(async () => {
-      const quotesA = await db().quote.count({
-        where: { customerWhatsapp: PHONE_A, deletedAt: null },
-      });
-      expect(quotesA, "doble submit → exactamente 1 Quote").toBe(1);
-    }).toPass({ timeout: 20_000 });
-    record(
-      "quote-doble-submit-1-quote",
-      true,
-      `desenlace en UI: ${outcome} · PHONE_A=${PHONE_A} → exactamente 1 Quote (idempotencia UI+DB)`,
-      await shot(anonPage, "4-quote-doble-submit"),
-    );
-    await cleanBuckets("quote");
-
-    // (b) 4 envíos reales mismo WhatsApp (quote:phone 3/día) → 3 + bloqueado.
-    for (let i = 1; i <= 4; i++) {
-      await pdp.goto();
-      await pdp.addToCart();
-      await carrito.expectItem(product.name);
-      await carrito.quoteCta().click();
-      await cotizacion.expectLoaded();
-      await cotizacion.fill({
-        name: customer.name,
-        whatsapp: PHONE_B,
-        email: EMAIL,
-        notes: `Rate-limit ${i}/4 ${run}`,
-      });
-      if (i <= 3) {
-        const token = await cotizacion.submitAndWaitConfirmation();
-        expect(token).toMatch(/^[a-f0-9]{32}$/);
-      } else {
-        await cotizacion.submitButton().click();
-        await expect(anonPage.locator("body")).toContainText(
-          /recibimos varias cotizaciones tuyas hoy/i,
-          { timeout: 30_000 },
-        );
-      }
-    }
-    const quotesB = await db().quote.count({
-      where: { customerWhatsapp: PHONE_B, deletedAt: null },
-    });
-    expect(quotesB, "3 quotes reales, la 4ª bloqueada").toBe(3);
-    const quoteBuckets = await bucketCounts("quote");
-    record(
-      "quote-3-mas-1-bloqueada",
-      true,
-      `3 Quotes + 4ª con mensaje · buckets ${JSON.stringify(quoteBuckets)}`,
-      await shot(anonPage, "4-quote-ratelimit"),
-    );
-    await cleanBuckets("quote");
 
     write("pass");
   } catch (err) {

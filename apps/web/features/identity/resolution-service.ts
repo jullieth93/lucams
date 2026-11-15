@@ -487,7 +487,7 @@ async function findActiveContactByEmailTx(
 
 /**
  * Resuelve o crea un `Contact` contextual por email (`UNVERIFIED_OBSERVED`) para flujos
- * no autenticados (checkout guest, soporte público, cotización con email, carrito abandonado,
+ * no autenticados (checkout guest, soporte público, oportunidad B2B, carrito abandonado,
  * newsletter/consent).
  */
 async function resolveOrCreateEmailContactTx(
@@ -497,7 +497,6 @@ async function resolveOrCreateEmailContactTx(
     source:
       | "GUEST_ORDER"
       | "SUPPORT_TICKET"
-      | "QUOTE"
       | "B2B_INQUIRY"
       | "ABANDONED_CART"
       | "NEWSLETTER"
@@ -822,14 +821,6 @@ export async function ensureCustomerContactTx(
         },
         data: { contactId },
       }),
-      tx.quote.updateMany({
-        where: {
-          contactId: null,
-          deletedAt: null,
-          customerEmail: { equals: email, mode: "insensitive" },
-        },
-        data: { contactId },
-      }),
       tx.abandonedCart.updateMany({
         where: {
           contactId: null,
@@ -1076,36 +1067,32 @@ export async function resolveSupportTicketContact(
   });
 }
 
-/**
- * Resuelve el `contactId` de una `Quote` dentro de su transacción.
- * Soporta cotizaciones con email y cotizaciones solo-WhatsApp (reutilizando `Contact` previo
- * de tipo `QUOTE` con el mismo `WHATSAPP` si no tenía `primaryEmail`, sin forzar unicidad global).
- */
-export async function resolveQuoteContactTx(
+/** Resuelve un contacto comercial por correo o WhatsApp dentro de una transacción. */
+export async function resolveCommercialContactTx(
   tx: Prisma.TransactionClient,
   input: {
     customerId?: string | null;
     customerName: string;
     customerWhatsapp: string;
     customerEmail?: string | null;
-    sourceOverride?: "QUOTE" | "B2B_INQUIRY";
+    sourceOverride?: "NEWSLETTER" | "B2B_INQUIRY";
   },
 ): Promise<string | null> {
   if (!hasIdentityDelegates(tx)) return null;
 
-  const quoteEmail = normalizeEmailIdentity(input.customerEmail);
+  const contactEmail = normalizeEmailIdentity(input.customerEmail);
   const whatsappE164 = normalizePhoneIdentityE164(input.customerWhatsapp);
   const displayName = buildDisplayName(null, null, input.customerName);
-  const sourceLabel = input.sourceOverride ?? "QUOTE";
+  const sourceLabel = input.sourceOverride ?? "NEWSLETTER";
 
   if (
     input.customerId &&
-    (await canBindSessionCustomerTx(tx, input.customerId, quoteEmail || null))
+    (await canBindSessionCustomerTx(tx, input.customerId, contactEmail || null))
   ) {
     const custContactId = await ensureCustomerContactTx(tx, {
       customerId: input.customerId,
       emailVerified: true,
-      verificationSource: "QUOTE_SESSION",
+      verificationSource: `${sourceLabel}_SESSION`,
     });
     if (custContactId) {
       if (whatsappE164) {
@@ -1121,9 +1108,9 @@ export async function resolveQuoteContactTx(
     }
   }
 
-  if (quoteEmail) {
+  if (contactEmail) {
     return resolveOrCreateEmailContactTx(tx, {
-      email: quoteEmail,
+      email: contactEmail,
       source: sourceLabel,
       displayName,
       whatsappE164: whatsappE164 || null,
@@ -1134,7 +1121,7 @@ export async function resolveQuoteContactTx(
 
   await acquireIdentityLocksTx(tx, [`whatsapp:${whatsappE164}`]);
 
-  const existingWhatsappQuote = await tx.contactIdentity.findFirst({
+  const existingWhatsappContact = await tx.contactIdentity.findFirst({
     where: {
       type: "WHATSAPP",
       normalizedValue: whatsappE164,
@@ -1149,15 +1136,15 @@ export async function resolveQuoteContactTx(
     select: { contactId: true },
   });
 
-  if (existingWhatsappQuote) {
+  if (existingWhatsappContact) {
     await upsertContactIdentityTx(tx, {
-      contactId: existingWhatsappQuote.contactId,
+      contactId: existingWhatsappContact.contactId,
       type: "WHATSAPP",
       normalizedValue: whatsappE164,
       verificationStatus: "UNVERIFIED_OBSERVED",
       verificationSource: sourceLabel,
     });
-    return existingWhatsappQuote.contactId;
+    return existingWhatsappContact.contactId;
   }
 
   const created = await tx.contact.create({
@@ -1251,7 +1238,7 @@ export async function resolveConsentContact(
       });
     }
     if (normalizedPhone) {
-      return resolveQuoteContactTx(tx, {
+      return resolveCommercialContactTx(tx, {
         customerName: "",
         customerWhatsapp: normalizedPhone,
         customerEmail: null,
@@ -1303,7 +1290,7 @@ export async function resolvePostSaleContact(
  *     parciales y sin dejar rastro del correo/teléfono/UID en la tabla de identidades).
  *  4. Elimina cualquier `IdentityMergeCandidate` en estado `PENDING` donde participe el `Contact`
  *     y limpia `evidenceJson`/`mergeSnapshotJson` de candidatos históricos si existieran.
- *  5. Desvincula `contactId -> null` en `Customer`, `Order`, `SupportTicket`, `Quote`,
+ *  5. Desvincula `contactId -> null` en `Customer`, `Order`, `SupportTicket`,
  *     `AbandonedCart`, `Consent`, `WarrantyClaim` y `RetractRequest`.
  */
 export async function scrubContactOnErasureTx(
@@ -1344,25 +1331,6 @@ export async function scrubContactOnErasureTx(
     tx.supportTicket.updateMany({
       where: { contactId: { in: targetIds } },
       data: { contactId: null },
-    }),
-    tx.quote.updateMany({
-      where: {
-        OR: [
-          { contactId: { in: targetIds } },
-          ...(normalizedEmail
-            ? [{ customerEmail: { equals: normalizedEmail, mode: "insensitive" as const } }]
-            : []),
-        ],
-      },
-      data: {
-        contactId: null,
-        customerName: "Cliente eliminado",
-        customerEmail: null,
-        customerWhatsapp: "",
-        notes: null,
-        deletedAt: now,
-        deletedBy: input.customerId,
-      },
     }),
     tx.abandonedCart.updateMany({
       where: { contactId: { in: targetIds } },

@@ -9,7 +9,7 @@
  *   1. Guarda de ambiente del repo (env-guard.mjs): nunca crear usuarios en PRD
  *      ni en remotos desconocidos.
  *   2. Crea un admin y un cliente EFÍMEROS vía service role (precedente del
- *      repo: release-check-a1 / cms-editing-flow / admin-mfa / catalog-mode).
+ *      repo: release-check-a1 / cms-editing-flow / admin-mfa).
  *      El admin efímero ENROLA TOTP vía API y completa el reto en el login por
  *      UI: desde B-1 (auditoría 2026-08-24) el MFA es obligatorio y un admin
  *      sin factor cae en /admin/seguridad?enroll=required en vez del dashboard.

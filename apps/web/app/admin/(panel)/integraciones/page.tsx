@@ -22,7 +22,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import {
   Plug,
   CheckCircle2,
@@ -57,7 +56,6 @@ import {
   probeWompiSafely,
   type PanelStatus,
 } from "@/lib/integration-health";
-import { isCatalogMode } from "@/lib/store-mode";
 import { getTrustedSelfBaseUrl, vercelBypassHeaders } from "@/lib/origin";
 
 export const metadata: Metadata = {
@@ -197,9 +195,6 @@ async function probeAveonlineTimed() {
 
 export default async function AdminIntegracionesPage() {
   await requireRole(ADMIN_ROLE_SETS.SUPER);
-  // Modo catálogo (Etapa 1): Wompi/Aveonline/Gemini están apagadas — el nav ya
-  // oculta esta página; esto cierra también el acceso por URL directa.
-  if (isCatalogMode()) redirect("/admin/dashboard");
 
   // ADR-062: base de self-fetch confiable (env del deployment), no spoofable.
   const baseUrl = getTrustedSelfBaseUrl();

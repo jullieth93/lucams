@@ -13,7 +13,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Wallet, ArrowLeft, ShieldBan, Search, Clock, Users } from "lucide-react";
 import {
   AdminBadge,
@@ -40,7 +39,6 @@ import { requireRole } from "@/lib/admin-rbac-guard";
 import { maskEmail, maskEmailsInText } from "@/lib/pii-mask";
 import { getSettingValue } from "@/lib/cms";
 import { formatCOP } from "@/lib/format";
-import { isCatalogMode } from "@/lib/store-mode";
 import {
   listCodReconciliation,
   getCodReconciliationTotals,
@@ -88,9 +86,6 @@ export default async function ConciliacionCodPage({
   const canViewContacts = canAccessAdminPath(role, "/admin/clientes");
   const homeHref = adminHomePath(role);
 
-  // Modo catálogo (Etapa 1): no hay pedidos contra entrega (sin checkout) —
-  // el nav oculta Finanzas; esto cierra el acceso por URL directa.
-  if (isCatalogMode()) redirect("/admin/dashboard");
   const sp = await searchParams;
   const filter: CodReconFilter = (["all", "pending", "remitted", "discrepancy"] as const).includes(
     sp.filter as CodReconFilter,

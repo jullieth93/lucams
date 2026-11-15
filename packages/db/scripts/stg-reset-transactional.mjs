@@ -5,7 +5,7 @@
  *
  * BORRA (datos de negocio de prueba):
  *   pedidos (con items, eventos de estado, eventos de guía, pagos Wompi, COD,
- *   retractos, garantías), cotizaciones, carritos y abandonados, clientes
+ *   retractos, garantías), carritos y abandonados, clientes
  *   (Customer + sus auth.users), Contact y todo su grafo (identidades, candidatos
  *   de fusión, actividades, tareas, oportunidades, organizaciones), soporte,
  *   consentimientos, fidelización, referidos, reseñas, direcciones, wishlist,
@@ -56,8 +56,6 @@ const DELETE_PLAN = [
   ["retractRequest", "RetractRequest"],
   ["warrantyClaim", "WarrantyClaim"],
   ["order", "Order"],
-  ["quoteItem", "QuoteItem"],
-  ["quote", "Quote"],
   ["cartItem", "CartItem"],
   ["abandonedCart", "AbandonedCart"],
   ["cart", "Cart"],

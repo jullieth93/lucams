@@ -6,7 +6,7 @@
  * cargadores de GIF, TIFF y VIPS (formatos que esta tienda no acepta) se CONSERVA como defensa
  * en profundidad: superficie no usada no se expone.
  *
- * La exposición es real: el Estudio está vivo en modo catálogo y procesa fotos de invitados.
+ * La exposición es real: el Estudio procesa fotos de invitados.
  *
  * Este test intenta decodificar un GIF real. Si alguien retira el bloqueo —o importa `sharp`
  * directo saltándose este módulo— el GIF se decodifica y el test falla.

@@ -14,7 +14,7 @@
  *   4. Los campos conservan los mismos `name` (el envío del form no cambia).
  *
  * `./actions` se mockea: es un módulo "use server" (db, cookies) que no
- * aplica a un render unitario — mismo patrón que quote-form.test.tsx.
+ * aplica a un render unitario del formulario de checkout.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";

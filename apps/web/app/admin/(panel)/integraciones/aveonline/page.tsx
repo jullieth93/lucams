@@ -11,7 +11,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -45,7 +44,6 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { mapAveonlineHealth, probeAveonlineSafely } from "@/lib/integration-health";
 import { getCanonicalSiteUrl, getTrustedSelfBaseUrl } from "@/lib/origin";
-import { isCatalogMode } from "@/lib/store-mode";
 import { listAveonlineWebhooks } from "@/features/shipping/aveonline";
 import { WebhookRegistrationForm } from "./webhook-form";
 import { deleteAveonlineWebhookAction } from "./actions";
@@ -64,7 +62,6 @@ export default async function AveonlineIntegrationPage({
   searchParams: SearchParams;
 }) {
   await requireRole(ADMIN_ROLE_SETS.SUPER);
-  if (isCatalogMode()) redirect("/admin/dashboard");
 
   const sp = await searchParams;
   const errorMsg = typeof sp.error === "string" ? sp.error : null;

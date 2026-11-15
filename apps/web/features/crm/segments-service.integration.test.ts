@@ -14,16 +14,12 @@ describe.skipIf(!HAS_DB)(
   "Segmentos comerciales CRM — gate duro Ley 1581 + neutralización CSV (S25)",
   () => {
     const createdOrderIds: string[] = [];
-    const createdQuoteIds: string[] = [];
     const createdContactIds: string[] = [];
     const createdEmails: string[] = [];
 
     afterAll(async () => {
       if (createdOrderIds.length > 0) {
         await prisma.order.deleteMany({ where: { id: { in: createdOrderIds } } }).catch(() => {});
-      }
-      if (createdQuoteIds.length > 0) {
-        await prisma.quote.deleteMany({ where: { id: { in: createdQuoteIds } } }).catch(() => {});
       }
       if (createdEmails.length > 0) {
         await prisma.consent
@@ -72,7 +68,7 @@ describe.skipIf(!HAS_DB)(
           data: {
             primaryEmail: emailIntentIn,
             displayName: "itest Mateo Cotizador",
-            source: "QUOTE",
+            source: "B2B_INQUIRY",
           },
         }),
       ]);
@@ -109,23 +105,14 @@ describe.skipIf(!HAS_DB)(
         }
       }
 
-      // Cotización sin compra para Mateo (alta intención)
-      const quote = await prisma.quote.create({
+      await prisma.opportunity.create({
         data: {
-          number: `COT-${suffix.slice(-6)}`,
+          number: `OP-${suffix.slice(-6)}`,
           contactId: cIntentIn.id,
-          status: "PENDING",
-          customerName: "itest Mateo Cotizador",
-          customerWhatsapp: "3004445566",
-          customerEmail: emailIntentIn,
-          city: "Medellín",
-          department: "Antioquia",
-          subtotal: 8000000,
-          total: 8000000,
-          publicAccessTokenHash: `seg-hash-${suffix}`,
+          title: "Evento empresarial de prueba",
+          expectedUnits: 50,
         },
       });
-      createdQuoteIds.push(quote.id);
 
       // Ledger Consent:
       // 1) Valentina: opt-in activo
@@ -209,7 +196,7 @@ describe.skipIf(!HAS_DB)(
         q: suffix,
       });
       expect(intentPage.items.map((m) => m.email)).toEqual([emailIntentIn]);
-      expect(intentPage.items[0]?.intentSignals).toContain("Cotización");
+      expect(intentPage.items[0]?.intentSignals).toContain("Oportunidad B2B");
     });
   },
 );

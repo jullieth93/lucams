@@ -48,7 +48,6 @@ import { orderPaymentDeclinedEmail } from "./templates/order-payment-declined";
 import { orderPaymentFailedEmail } from "./templates/order-payment-failed";
 import { orderReturnedEmail } from "./templates/order-returned";
 import { orderShippedEmail } from "./templates/order-shipped";
-import { quoteAdminNotificationEmail } from "./templates/quote-admin-notification";
 import { referralRewardEmail } from "./templates/referral-reward";
 import { refundIssuedEmail } from "./templates/refund-issued";
 import { retractApprovedEmail } from "./templates/retract-approved";
@@ -560,30 +559,6 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
     sampleData: undefined,
   }),
 
-  // ─────────────────────── Cotizaciones ───────────────────────
-  define({
-    id: "quote-admin-notification",
-    name: "Aviso interno: cotización nueva",
-    group: "Cotizaciones",
-    description:
-      "Notificación INTERNA al buzón de alertas apenas nace una cotización (Etapa 1, modo catálogo). Reply-To = email del cliente cuando lo dejó.",
-    render: quoteAdminNotificationEmail,
-    sampleData: {
-      quoteId: "quo_01JZXD8R2M",
-      quoteNumber: "COT-2026-0187",
-      customerName: CUSTOMER,
-      customerWhatsapp: "3004567890",
-      customerEmail: "camila@example.com",
-      city: "Medellín",
-      department: "Antioquia",
-      notes: "Es para un regalo de aniversario, ¿podrían empacarlo para regalo?",
-      total: 13_990_000,
-      items: [
-        { productName: "Set Corazón (x9)", variantName: null, quantity: 1, unitPrice: 13_990_000 },
-      ],
-    },
-  }),
-
   // ─────────────────────── Empresas y Eventos (B2B) ───────────────────────
   define({
     id: "b2b-inquiry-received",
@@ -758,11 +733,6 @@ export const renderWarrantyResolvedEmail = withOverrides(
 export const renderWarrantyRejectedEmail = withOverrides(
   "warranty-rejected",
   warrantyRejectedEmail,
-);
-
-export const renderQuoteAdminNotificationEmail = withOverrides(
-  "quote-admin-notification",
-  quoteAdminNotificationEmail,
 );
 
 export const renderB2bInquiryReceivedEmail = withOverrides(

@@ -9,7 +9,7 @@
  *     3. `winback_90d` — Reactivación (> 90 días desde la última compra pagada).
  *     4. `annual_occasion` — Ocasión anual (compra pagada hace 320–370 días).
  *     5. `high_intent_no_order` — Alta intención sin compra (carrito abandonado,
- *        cotización, oportunidad B2B, favoritos o alerta de stock, con 0 compras).
+ *        oportunidad B2B, favoritos o alerta de stock, con 0 compras).
  *
  * Garantía no negociable de privacidad (Ley 1581 de 2012):
  *   - El ledger `Consent(scope = 'NEWSLETTER')` es append-only; una baja escribe una
@@ -88,7 +88,7 @@ export const CRM_SEGMENT_DEFINITIONS: Record<CrmSegmentKey, CrmSegmentDefinition
     label: "Alta intención sin compra",
     shortLabel: "Alta intención",
     description:
-      "Contactos con 0 pedidos pagados pero con carrito abandonado, cotización, oportunidad B2B, favoritos o alerta de stock.",
+      "Contactos con 0 pedidos pagados pero con carrito abandonado, oportunidad B2B, favoritos o alerta de stock.",
     recommendedPlaybook:
       "Resolución de dudas sobre tiempos de producción, guía rápida del Estudio y prueba social verificada.",
   },
@@ -181,10 +181,6 @@ const SEGMENT_BASE_CTE = Prisma.sql`
           AND ac."closedReason" IS NULL
       ) AS has_abandoned_cart,
       EXISTS (
-        SELECT 1 FROM "Quote" q
-        WHERE q."contactId" = c."id" AND q."deletedAt" IS NULL
-      ) AS has_quote,
-      EXISTS (
         SELECT 1 FROM "Opportunity" op
         WHERE op."contactId" = c."id" AND op."deletedAt" IS NULL
       ) AS has_opportunity,
@@ -249,7 +245,7 @@ function segmentConditionSql(segmentKey: CrmSegmentKey): Prisma.Sql {
     case "annual_occasion":
       return Prisma.sql`has_annual_occasion_order = true`;
     case "high_intent_no_order":
-      return Prisma.sql`paid_orders_count = 0 AND (has_abandoned_cart OR has_quote OR has_opportunity OR has_wishlist OR has_back_in_stock)`;
+      return Prisma.sql`paid_orders_count = 0 AND (has_abandoned_cart OR has_opportunity OR has_wishlist OR has_back_in_stock)`;
   }
 }
 
@@ -263,7 +259,6 @@ type RawSegmentMemberRow = {
   last_paid_order_at: Date | null;
   last_utm_source: string | null;
   has_abandoned_cart: boolean;
-  has_quote: boolean;
   has_opportunity: boolean;
   has_wishlist: boolean;
   has_back_in_stock: boolean;
@@ -283,7 +278,6 @@ function mapSegmentMemberRow(row: RawSegmentMemberRow): CrmSegmentMember {
       `${row.gift_orders_count} ${row.gift_orders_count === 1 ? "regalo" : "regalos"}`,
     );
   if (row.has_abandoned_cart) intentSignals.push("Carrito abandonado");
-  if (row.has_quote) intentSignals.push("Cotización");
   if (row.has_opportunity) intentSignals.push("Oportunidad B2B");
   if (row.has_wishlist) intentSignals.push("Favoritos");
   if (row.has_back_in_stock) intentSignals.push("Alerta de stock");
@@ -367,12 +361,12 @@ export async function listCrmSegmentMembers(opts: {
         COUNT(*) FILTER (WHERE has_annual_occasion_order = true AND newsletter_opted_in = false)::int AS annual_out,
         COUNT(*) FILTER (
           WHERE paid_orders_count = 0
-            AND (has_abandoned_cart OR has_quote OR has_opportunity OR has_wishlist OR has_back_in_stock)
+            AND (has_abandoned_cart OR has_opportunity OR has_wishlist OR has_back_in_stock)
             AND newsletter_opted_in = true
         )::int AS intent_in,
         COUNT(*) FILTER (
           WHERE paid_orders_count = 0
-            AND (has_abandoned_cart OR has_quote OR has_opportunity OR has_wishlist OR has_back_in_stock)
+            AND (has_abandoned_cart OR has_opportunity OR has_wishlist OR has_back_in_stock)
             AND newsletter_opted_in = false
         )::int AS intent_out,
         COUNT(*) FILTER (
@@ -394,7 +388,6 @@ export async function listCrmSegmentMembers(opts: {
         last_paid_order_at,
         last_utm_source,
         has_abandoned_cart,
-        has_quote,
         has_opportunity,
         has_wishlist,
         has_back_in_stock,
@@ -474,7 +467,6 @@ export async function listAllConsentedSegmentMembersForExport(
       last_paid_order_at,
       last_utm_source,
       has_abandoned_cart,
-      has_quote,
       has_opportunity,
       has_wishlist,
       has_back_in_stock,

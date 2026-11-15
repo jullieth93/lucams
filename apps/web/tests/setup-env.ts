@@ -11,9 +11,6 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { checkDestructiveAllowed } from "../../../packages/db/scripts/lib/env-guard.mjs";
 
-// Si la shell ya trae la flag (CI o un override manual), manda la shell.
-const shellStoreMode = process.env.NEXT_PUBLIC_STORE_MODE;
-
 const envPath = resolve(__dirname, "../.env.local");
 if (existsSync(envPath)) {
   config({ path: envPath });
@@ -39,18 +36,6 @@ if (existsSync(envPath)) {
         `Apunta DATABASE_URL/DIRECT_URL al Supabase local (make db-local-start) o a STG.`,
     );
   }
-}
-
-/*
- * La suite corre en modo FULL por defecto. `.env.local` del día a día puede decir
- * `catalog` (Etapa 1) y eso apaga los servicios transaccionales vía stage-guard —
- * justo los que ejercitan los integration tests de orders/checkout/coupons. En CI
- * la var no existe y `lib/store-mode` ya cae a "full"; acá replicamos eso. Los
- * tests que dependen del modo (store-mode, stage-guard, admin-nav, env, manifest)
- * fijan la variable ellos mismos con imports frescos, así que no se ven afectados.
- */
-if (shellStoreMode === undefined) {
-  process.env.NEXT_PUBLIC_STORE_MODE = "full";
 }
 
 // Kill-switch de email (incidente 2026-11-05): `.env.local` trae RESEND_API_KEY viva y

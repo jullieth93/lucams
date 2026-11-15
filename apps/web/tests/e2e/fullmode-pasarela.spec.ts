@@ -34,11 +34,7 @@ import { CheckoutPagoPage } from "./pages/checkout-pago";
 
 const EVIDENCE_DIR = resolve(__dirname, "../../tmp/e2e-homologacion");
 
-test.skip(E2E_ENV !== "local", "La suite full-mode (Etapa 2) solo corre en LOCAL.");
-test.skip(
-  strip(process.env.NEXT_PUBLIC_STORE_MODE) !== "full",
-  "Requiere el server en modo full: scripts/e2e-fullmode.sh.",
-);
+test.skip(E2E_ENV !== "local", "La suite transaccional solo corre en LOCAL.");
 
 const RUN_STARTED = new Date();
 const run = newRunId("fm-pasarela");

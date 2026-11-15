@@ -45,7 +45,6 @@ import {
   CornerDownLeft,
   ArrowUpRight,
   Users,
-  FileText,
   Workflow,
   SlidersHorizontal,
   type LucideIcon,
@@ -55,7 +54,6 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Hint } from "@/components/ui/tooltip";
 import { getAdminNav, type NavBadge, type NavGroup } from "@/lib/admin-nav";
 import { adminHomePath, canAccessAdminPath, filterNavByRole } from "@/lib/admin-rbac";
-import { isCatalogMode } from "@/lib/store-mode";
 import type { AdminRole } from "@lucams/db";
 
 type AdminInfo = {
@@ -66,9 +64,8 @@ type AdminInfo = {
 /** Logo del sitio desde el CMS (setting `site.logo` → Mediateca). null = insignia gradiente actual. */
 export type AdminShellLogo = { url: string; alt: string };
 
-// NAV efectivo según el modo de tienda: getAdminNav() filtra "Finanzas" e
-// "Integraciones" en modo catálogo (Etapa 1 — lib/store-mode). La data base
-// vive en @/lib/admin-nav (compartida con la página catch-all [...placeholder],
+// NAV efectivo del rol. La data base vive en @/lib/admin-nav (compartida con
+// la página catch-all [...placeholder],
 // que sigue usando ADMIN_NAV completo para info contextual de módulos "Próximo").
 const NAV = getAdminNav();
 // Alias local para compatibilidad con el código que usaba `Badge`.
@@ -363,12 +360,6 @@ function labelForPath(p: string): string {
   if (p === "/admin/clientes/duplicados" || p.startsWith("/admin/clientes/duplicados/")) {
     return "Ventas · Duplicados CRM";
   }
-  if (/^\/admin\/cotizaciones\/[^/?]+\/taller(?:$|[/?])/.test(p)) {
-    return "Producción · Hoja de taller";
-  }
-  if (p === "/admin/cotizaciones" || p.startsWith("/admin/cotizaciones/")) {
-    return "Ventas · Cotizaciones";
-  }
   // Buscar match exacto primero, luego prefix (para nested como /[id])
   for (const group of NAV) {
     if (group.href && (p === group.href || p.startsWith(group.href + "/"))) {
@@ -615,7 +606,7 @@ function UnreadNotificationsPill({ count }: { count: number }) {
   return (
     <Hint content={`${count} sin leer`}>
       <span
-        className="bg-brand-pink min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] leading-none font-bold text-white"
+        className="bg-brand-pink-ink min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] leading-none font-bold text-white"
         aria-label={`${count} notificaciones sin leer`}
       >
         {count > 99 ? "99+" : count}
@@ -896,22 +887,6 @@ function AdminCommandPalette({
           "Crear un nuevo recorrido automatizado de activación, recompra, reactivación o seguimiento B2B.",
         href: "/admin/lifecycle/nuevo",
         icon: Workflow,
-      });
-    }
-    if (
-      isCatalogMode() &&
-      !seen.has("/admin/cotizaciones") &&
-      canAccessAdminPath(role, "/admin/cotizaciones")
-    ) {
-      seen.add("/admin/cotizaciones");
-      items.push({
-        key: "/admin/cotizaciones",
-        label: "Cotizaciones WhatsApp",
-        group: "Ventas · CRM",
-        description:
-          "Bandeja consultiva e histórico Etapa 1: seguimiento comercial y conversión a pedido u oportunidad B2B.",
-        href: "/admin/cotizaciones",
-        icon: FileText,
       });
     }
     if (!seen.has("/admin/ayuda")) {

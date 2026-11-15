@@ -3,7 +3,7 @@
  * /api/health/wompi y el panel admin (CF-03).
  *
  * Fija el contrato que el panel y el agregador consumen:
- *  - Sin las 4 llaves → "skipped" (no es un fallo: modo catálogo) y NO hay fetch.
+ *  - Sin las 4 llaves → "skipped" (no es un fallo) y NO hay fetch.
  *  - El ambiente declarado (WOMPI_ENV) decide el HOST sondeado: sandbox jamás
  *    pega contra production.wompi.co y viceversa (② del encargo N-03).
  *  - HTTP no-ok / error de red → "fail" con detalle estático (la URL lleva la

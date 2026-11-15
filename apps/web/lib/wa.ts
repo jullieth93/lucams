@@ -44,14 +44,6 @@ export type WhatsAppContext =
   | { kind: "product"; productName: string; sku: string }
   | { kind: "support"; subject?: string }
   | { kind: "order"; orderNumber: string }
-  | {
-      kind: "quote";
-      quoteNumber: string;
-      customerName: string;
-      itemsSummary: string;
-      total: string;
-      quoteUrl: string;
-    }
   | { kind: "wholesale" }
   | { kind: "custom"; text: string };
 
@@ -62,15 +54,6 @@ const FALLBACK_TEMPLATES = {
   support: "Hola Lucams 👋 Tengo una consulta y quería hablar por aquí.",
   support_subject: "Hola Lucams 👋 Tengo una consulta sobre: {subject}",
   order: "Hola Lucams 👋 Quiero consultar el estado de mi pedido {orderNumber}.",
-  // Etapa 1 (modo catálogo): mensaje de la cotización con número, items con
-  // cantidades, total formateado COP y nombre del cliente. itemsSummary llega
-  // pre-armado (una línea por item) desde features/quotes/service.ts.
-  // Formato de WhatsApp: *negrita*, _cursiva_, ~tachado~ y ```monoespaciado```.
-  // Fuente: https://faq.whatsapp.com/539178204879377 (consultado 2026-07-25).
-  // Llegaba todo plano y costaba leerlo de un vistazo; ahora el número de cotización y el total
-  // —lo que Lucy y el cliente buscan primero— resaltan sobre el detalle.
-  quote:
-    "Hola Lucams 👋 Soy *{customerName}*.\n\nAcabo de hacer la cotización *{quoteNumber}* en la tienda:\n\n{itemsSummary}\n\n*Total: {total}*\n\n_Ver el detalle:_ {quoteUrl}\n\nQuedo atento/a para concretar 🙌",
   wholesale:
     "Hola Lucams 👋 Estoy interesado/a en pedido al por mayor / corporativo. ¿Me puedes contar?",
 } as const;
@@ -103,16 +86,6 @@ export async function buildWhatsAppMessage(ctx: WhatsAppContext): Promise<string
       const tpl = await getSettingValue("WA_MSG_ORDER", FALLBACK_TEMPLATES.order);
       return interpolate(tpl, { orderNumber: ctx.orderNumber });
     }
-    case "quote": {
-      const tpl = await getSettingValue("WA_MSG_QUOTE", FALLBACK_TEMPLATES.quote);
-      return interpolate(tpl, {
-        quoteNumber: ctx.quoteNumber,
-        customerName: ctx.customerName,
-        itemsSummary: ctx.itemsSummary,
-        total: ctx.total,
-        quoteUrl: ctx.quoteUrl,
-      });
-    }
     case "wholesale":
       return await getSettingValue("WA_MSG_WHOLESALE", FALLBACK_TEMPLATES.wholesale);
     case "custom":
@@ -136,15 +109,15 @@ export async function buildWhatsAppUrl(
 // ─────────────────────── Teléfono del CLIENTE ───────────────────────
 // Ojo: `getWhatsAppNumber`/`buildWhatsAppUrl` apuntan al WhatsApp DEL NEGOCIO
 // (buzón de Lucy). Los helpers de abajo son para escribir/llamar AL CLIENTE
-// con el teléfono que dejó en el checkout o en la cotización.
+// con el teléfono que dejó en el checkout o en una oportunidad B2B.
 
 /**
  * Normaliza el teléfono de un cliente a dígitos con indicativo de país, apto
  * para wa.me y tel: (E.164 sin el '+').
  *
  * Supuestos (contexto Lucams, tienda es-CO):
- *  - El checkout valida móvil colombiano `^3\d{9}$` (10 dígitos, empieza en 3)
- *    y la cotización persiste 10 dígitos CO — esos casos SIEMPRE llevan el
+ *  - El checkout y el formulario B2B validan móvil colombiano `^3\d{9}$`
+ *    (10 dígitos, empieza en 3) — esos casos SIEMPRE llevan el
  *    indicativo 57 antepuesto, que es lo que wa.me exige (bug sistémico: los
  *    links salían como wa.me/300… sin 57 y WhatsApp los rechaza).
  *  - Si el número YA trae indicativo (57 + 10 dígitos = 12, u otro código de

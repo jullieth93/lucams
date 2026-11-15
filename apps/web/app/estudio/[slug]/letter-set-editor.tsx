@@ -24,7 +24,7 @@
  * de entrar (llega en `initialLanguage`, resuelto de los atributos de la variante o del
  * diseño recuperado) y el selector DENTRO del estudio se eliminó (era una elección
  * duplicada PDP↔estudio). Al cambiar el tema se re-resuelve la variante exacta (mismo
- * tamaño/imantado/idioma) para que la cotización quede precisa.
+ * tamaño/imantado/idioma) para que el precio y la producción queden precisos.
  *
  * Vista previa pre-carrito (Lucy 2026-07-25) — antes este editor mandaba el set al carrito sin que
  * el cliente viera cómo iba a quedar. Ahora "Vista previa" (antes "¡Listo!", renombrado 2026-09-09)

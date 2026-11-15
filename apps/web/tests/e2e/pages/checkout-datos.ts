@@ -1,9 +1,7 @@
 /*
- * POM — /checkout/datos en modo FULL (Etapa 2): formulario de contacto +
- * dirección estructurada. Selectores verificados en datos-form.tsx y en el
- * flujo live de wompi-sandbox.spec.ts. En modo catálogo esta página renderiza
- * el QuoteForm — este POM solo aplica a full (ver pages/cotizacion.ts para
- * catálogo).
+ * POM — /checkout/datos: formulario transaccional de contacto + dirección
+ * estructurada. Selectores verificados en datos-form.tsx y en el flujo live de
+ * wompi-sandbox.spec.ts.
  */
 import { expect, type Page } from "@playwright/test";
 
@@ -30,8 +28,7 @@ export class CheckoutDatosPage {
    * Llena contacto + dirección urbana (primera opción real del catálogo DANE)
    * + consentimiento Ley 1581 y continúa a /checkout/envio. Inputs controlados:
    * el toPass exige los EFECTOS React (hidden phone/department/city con valor)
-   * — un fill que cae antes de la hidratación se revierte en silencio (misma
-   * carrera documentada en pages/cotizacion.ts, 2026-08-06).
+   * — un fill que cae antes de la hidratación se revierte en silencio.
    */
   async fillAndContinue(data: DatosFormData) {
     const dept = this.page.locator("#deptCode");

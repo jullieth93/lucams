@@ -1,16 +1,4 @@
-/*
- * Builder puro del JSON-LD `Product` del PDP (schema.org).
- *
- * Vive fuera de page.tsx porque la decisión "¿emitimos una oferta comprable?" depende del modo de
- * tienda y hay que poder testearla sin renderizar el RSC. El escape XSS, el nonce CSP y el render
- * los sigue haciendo <JsonLd>.
- *
- * Etapa 1 (modo catálogo): la tienda NO vende en línea, solo cotiza por WhatsApp. Emitir
- * `offers` con `availability: InStock` le decía a Google que el producto se puede comprar acá
- * → rich results de precio/disponibilidad y elegibilidad para listados de Shopping sobre una
- * tienda sin checkout. En ese modo se omite la oferta y queda solo lo que sí es cierto
- * (nombre, descripción, SKU, imágenes, categoría, marca y el rating real).
- */
+/* Builder puro del JSON-LD `Product` del PDP (schema.org). */
 
 import { SITE_URL } from "@/lib/seo/structured-data";
 
@@ -28,8 +16,6 @@ export type ProductJsonLdInput = {
   /** Fecha `yyyy-mm-dd` hasta la que se sostiene el precio publicado. */
   priceValidUntil: string;
   outOfStock: boolean;
-  /** true = Etapa 1 (catálogo + cotización por WhatsApp) → sin Offer/AggregateOffer. */
-  catalogMode: boolean;
 };
 
 export function buildProductJsonLd(input: ProductJsonLdInput): Record<string, unknown> {
@@ -44,7 +30,6 @@ export function buildProductJsonLd(input: ProductJsonLdInput): Record<string, un
     effectivePrices,
     priceValidUntil,
     outOfStock,
-    catalogMode,
   } = input;
 
   return {
@@ -53,13 +38,10 @@ export function buildProductJsonLd(input: ProductJsonLdInput): Record<string, un
     name,
     description: description.slice(0, 5000),
     sku,
-    // Fallback absoluto (schema.org exige URL absoluta; una relativa no se resuelve
-    // contra metadataBase dentro del JSON-LD — auditoría SEO 2026-10-28).
     image: images.length > 0 ? images : [`${SITE_URL}/brand/lucams-logo.png`],
     category: categoryName,
     brand: { "@type": "Brand", name: "Lucams Shop" },
     // aggregateRating solo si hay reseñas reales aprobadas (Google rechaza rating vacío/inventado).
-    // El valor es visible en la página (sección Reseñas) — requisito de la política de rich results.
     ...(ratingAggregate
       ? {
           aggregateRating: {
@@ -69,10 +51,7 @@ export function buildProductJsonLd(input: ProductJsonLdInput): Record<string, un
           },
         }
       : {}),
-    // #17 — Offer (precio único) o AggregateOffer (rango) coincidente con el precio visible.
-    ...(catalogMode
-      ? {}
-      : { offers: buildOffers({ slug, effectivePrices, priceValidUntil, outOfStock }) }),
+    offers: buildOffers({ slug, effectivePrices, priceValidUntil, outOfStock }),
   };
 }
 

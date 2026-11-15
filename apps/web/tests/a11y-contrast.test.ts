@@ -36,6 +36,7 @@ const AUDITED_FILES = [
   join("app", "estudio", "[slug]", "studio-sidebar.tsx"),
   join("app", "estudio", "[slug]", "studio-photo-adjust-modal.tsx"),
   join("components", "site-header.tsx"),
+  join("components", "admin-shell.tsx"),
   join("components", "site-footer.tsx"),
   join("components", "newsletter-form.tsx"),
   join("components", "product-card.tsx"),

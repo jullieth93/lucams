@@ -156,14 +156,11 @@ async function resolveTargetEmailsForAudit(entry: AdminAuditEntry): Promise<stri
         select: {
           customer: { select: { email: true } },
           orderItems: { select: { order: { select: { email: true } } } },
-          quoteItems: { select: { quote: { select: { customerEmail: true } } } },
         },
       });
-      return [
-        row?.customer?.email,
-        ...(row?.orderItems.map((oi) => oi.order.email) ?? []),
-        ...(row?.quoteItems.map((qi) => qi.quote.customerEmail) ?? []),
-      ].filter((v): v is string => Boolean(v));
+      return [row?.customer?.email, ...(row?.orderItems.map((oi) => oi.order.email) ?? [])].filter(
+        (v): v is string => Boolean(v),
+      );
     }
     case "SupportTicket": {
       const row = await prisma.supportTicket.findUnique({

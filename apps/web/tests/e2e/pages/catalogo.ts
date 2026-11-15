@@ -1,6 +1,6 @@
 /*
  * POM — Catálogo público (/productos).
- * Selectores verificados en smoke.spec.ts y catalog-mode.spec.ts.
+ * Selectores verificados en smoke.spec.ts.
  */
 import { expect, type Page } from "@playwright/test";
 

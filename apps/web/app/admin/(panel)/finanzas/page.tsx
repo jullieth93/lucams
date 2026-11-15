@@ -11,7 +11,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import {
   DollarSign,
   TrendingUp,
@@ -51,7 +50,6 @@ import {
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
-import { isCatalogMode } from "@/lib/store-mode";
 import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
 import {
   COLLECTED_REVENUE_ORDER_WHERE,
@@ -85,9 +83,6 @@ const PAYMENT_METHOD_HINT: Record<PaymentMethod, string> = {
 
 export default async function AdminFinanzasPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await requireRole(ADMIN_ROLE_SETS.FINANCE);
-  // Modo catálogo (Etapa 1): sin pagos en línea no hay finanzas que mostrar.
-  // El nav ya oculta el módulo; esto cierra también el acceso por URL directa.
-  if (isCatalogMode()) redirect("/admin/dashboard");
 
   const sp = await searchParams;
   const periodoRaw = typeof sp.periodo === "string" ? sp.periodo : undefined;

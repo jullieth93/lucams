@@ -49,7 +49,7 @@ Algunas cookies las ponen proveedores que nos ayudan a operar y que están **fue
 
 - **Supabase** (EE.UU.) — sesión e infraestructura (necesaria).
 - **Cloudflare** (red global) — seguridad, anti-bot y entrega del sitio (necesaria).
-- **Google LLC — Google Analytics 4** (EE.UU.) — medición analítica agregada de visitas, **únicamente si autorizas la categoría Analíticas**. Antes de enviar cualquier evento depuramos las direcciones web para no compartir enlaces privados de pedidos, cotizaciones, soporte ni reseñas.
+- **Google LLC — Google Analytics 4** (EE.UU.) — medición analítica agregada de visitas, **únicamente si autorizas la categoría Analíticas**. Antes de enviar cualquier evento depuramos las direcciones web para no compartir enlaces privados de pedidos, soporte ni reseñas.
 
 Esto implica una **transmisión internacional de datos**: esos proveedores los tratan **por nuestra cuenta y siguiendo nuestras instrucciones**, y nosotras seguimos siendo las responsables. Con cada uno nos acogemos a un **contrato de transmisión / DPA** que fija el alcance y exige garantías de seguridad (Decreto 1074 de 2015, arts. 2.2.2.25.5.1 y 2.2.2.25.5.2). Puedes ver la lista completa y actualizada de proveedores en [Subprocesadores](/legal/subprocesadores).
 

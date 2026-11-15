@@ -1,5 +1,5 @@
 /*
- * Qué hay que fabricar, exactamente, para una línea de una cotización o un pedido.
+ * Qué hay que fabricar, exactamente, para una línea de un pedido.
  *
  * Lucy, 2026-07-25: «es muy importante cómo le va a llegar al admin para fabricación, que cubriría
  * todo: el producto, su personalización, colores, etc. Es el producto final y lo que el cliente

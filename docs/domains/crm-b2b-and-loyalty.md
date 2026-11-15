@@ -6,7 +6,7 @@
 
 ## 1. Grafo de Identidad CRM 360° (`ADR-193`)
 
-Lucams desacopla la persona comercial y posventa (`Contact`) de la cuenta autenticada (`Customer`), permitiendo consolidar en una sola vista la historia completa de compradores invitados, clientes registrados, solicitantes B2B, cotizaciones y tickets sin forzar registro previo (`apps/web/features/identity/`).
+Lucams desacopla la persona comercial y posventa (`Contact`) de la cuenta autenticada (`Customer`), permitiendo consolidar en una sola vista la historia completa de compradores invitados, clientes registrados, solicitantes B2B y tickets sin forzar registro previo (`apps/web/features/identity/`).
 
 ```mermaid
 flowchart TD
@@ -16,7 +16,7 @@ flowchart TD
   C --- CU["Customer (1:1 opcional)"]
   C --- ORG["Organization (N:1 solo B2B)"]
   C --> ORD["Order / AbandonedCart"]
-  C --> B2B["Opportunity / Quote"]
+  C --> B2B["Opportunity"]
   C --> POS["SupportTicket / RetractRequest / WarrantyClaim"]
   C --> CON["Consent / ContactActivity / Task"]
   C -.->|"Señales probables (0 auto-merge)"| IMC["IdentityMergeCandidate (/admin/clientes/duplicados)"]
@@ -28,7 +28,7 @@ flowchart TD
 - **Reglas de unicidad adaptadas a Colombia**:
   - `SUPABASE_USER` y `EMAIL` normalizado (`trim().toLowerCase()`) están protegidos por el índice único parcial SQL `"ContactIdentity_unique_owner_key"` (`WHERE "verificationStatus" <> 'REVOKED'`).
   - `PHONE` y `WHATSAPP` se normalizan a **E.164** (`+573XXXXXXXXX` para móviles colombianos de 10 dígitos) pero **deliberadamente carecen de `@unique` global**, ya que en Colombia es habitual compartir líneas familiares/corporativas y los operadores reciclan números.
-  - **Monotonía de verificación**: una identidad `VERIFIED` jamás se degrada a `UNVERIFIED_OBSERVED`. Durante el registro previo a validar el código OTP, el correo permanece en `UNVERIFIED_OBSERVED` y no puede sobrescribir el nombre de un `Contact` previo; solo al verificar el correo (`OTP`, login con contraseña o callback PKCE confirmado) pasa a `VERIFIED` y adopta retroactivamente pedidos, tickets, cotizaciones, carritos y garantías huérfanas con ese correo.
+  - **Monotonía de verificación**: una identidad `VERIFIED` jamás se degrada a `UNVERIFIED_OBSERVED`. Durante el registro previo a validar el código OTP, el correo permanece en `UNVERIFIED_OBSERVED` y no puede sobrescribir el nombre de un `Contact` previo; solo al verificar el correo (`OTP`, login con contraseña o callback PKCE confirmado) pasa a `VERIFIED` y adopta retroactivamente pedidos, tickets, oportunidades, carritos y garantías huérfanas con ese correo.
 - **Aislamiento de sesión `[ID-01]` y protección de regalos**:
   - Cuando existe un `Customer` autenticado en sesión, `Order.contactId` se vincula siempre al `Contact` del titular autenticado. Si en checkout digita un correo alterno distinto (sin ser regalo), la orden conserva su contacto y se encola un `IdentityMergeCandidate` (`AUTH_BUYER_ALT_ORDER_EMAIL`).
   - Los datos del destinatario de envío o regalo (`recipientName`, `recipientPhone`, `shippingAddress`) están excluidos por diseño de la firma de `resolveOrderContactTx`: enviar un regalo a otra persona jamás contamina la ficha del comprador.
@@ -69,7 +69,7 @@ La ficha `/admin/clientes/[id]` (`features/identity/contact-360-service.ts`, aud
 - Indicadores de valor neto pagado, semáforo de riesgo COD (`CLEAN`, `WATCH`, `BLOCKED`) y estado vigente de autorizaciones Ley 1581 (`HABEAS_DATA`, `NEWSLETTER`).
 - Alertas de fricción reciente (pago declinado, carrito abandonado, boceto en Estudio).
 - Panel de trabajo CRM (`<CrmWorkspacePanel>`) para crear tareas `Task` y registrar bitácora omnicanal `ContactActivity` (`NOTE`, `CALL`, `WHATSAPP`, `EMAIL`, `SYSTEM`).
-- Pestañas consolidadas con línea de tiempo, pedidos, carritos, cotizaciones, oportunidades B2B, casos posventa, identidades observadas/verificadas, reseñas, referidos y cupones personales.
+- Pestañas consolidadas con línea de tiempo, pedidos, carritos, oportunidades B2B, casos posventa, identidades observadas/verificadas, reseñas, referidos y cupones personales.
 
 ### Inteligencia conductual RFM, LTV de Margen Neto y Embudo (`/admin/metricas`)
 
@@ -92,44 +92,35 @@ El panel `/admin/metricas` (`SUPERADMIN` y `FINANCE_ANALYST`, `features/crm/inte
 
 ---
 
-## 3. Embudo Comercial B2B, Eventos y Cotizaciones
+## 3. Embudo Comercial B2B y Eventos
 
-Lucams atiende pedidos corporativos, bodas, grados y colegios en un flujo consultivo separado del checkout de autoservicio:
+Lucams atiende pedidos corporativos, bodas, grados y colegios en un flujo consultivo separado del checkout de autoservicio. La cotización individual por WhatsApp fue retirada (`ADR-204`): las compras individuales usan checkout, envío, pago y pedido; las negociaciones B2B usan Oportunidades y, cuando se concretan, se vinculan a un pedido real.
 
 ```mermaid
 sequenceDiagram
   participant L as "Cliente Corporativo / Evento"
   participant W as "/empresas-y-eventos"
   participant DB as "PostgreSQL (CRM + Pipeline)"
-  participant A as "Admin (/admin/oportunidades y /cotizaciones)"
+  participant A as "Admin (/admin/oportunidades)"
 
   L->>W: Envía solicitud (Turnstile + NIT mód-11 + Ley 1581)
   W->>DB: Crea Contact + Organization + Opportunity (OP-XXXXXX) + Task (+24h)
   W-->>L: Email b2b-inquiry-received
   W-->>A: Email b2b-inquiry-admin-notification + campana in-app
   A->>DB: Califica en Kanban (NEW -> QUALIFYING -> PROPOSAL_SENT -> WON/LOST)
-  A->>DB: Vincula Quote (COT-XXXXXX) o pedido final (convertedOrderId)
+  A->>DB: Vincula pedido final (convertedOrderId)
 ```
 
 ### Captura consultiva en `/empresas-y-eventos` (`features/opportunities/`)
 
 - Valida en cliente y servidor cantidad estimada (**`25..100 000` unidades** — mínimo unificado en todo el embudo el 2026-11-10: hero, beneficios, atajos rápidos y esquema Zod), fecha del evento, teléfono con indicativo hacia E.164, municipio DANE, y NIT empresarial mediante el algoritmo oficial DIAN **módulo 11** (`normalizeAndValidateNit` en `lib/colombia-validators.ts`).
 - Protegido con Cloudflare Turnstile, doble rate-limit de 24 h (`5/día` por IP y `3/día` por correo) y aislamiento de sesión (`getStorefrontCustomerForForm`, que ignora sesiones administrativas o de terceros).
-- En una sola transacción crea o enlaza `Contact` (`source: "B2B_INQUIRY"`), `Organization` (deduplicada por NIT), `Opportunity` con consecutivo `OP-XXXXXX` y snapshot inmutable del solicitante, autorizaciones Ley 1581, atribución UTM y una **`Task` automática con SLA comercial de 24 horas** (prioridad `URGENT` si supera 100 unidades, `HIGH` en el resto). En segundo plano despacha los correos `b2b-inquiry-received` y `b2b-inquiry-admin-notification` (ver [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md)) y alerta en la campana del panel.
+- En una sola transacción crea o enlaza `Contact` (`source: "B2B_INQUIRY"`), `Organization` (deduplicada por NIT), `Opportunity` con consecutivo `OP-XXXXXX` y snapshot inmutable del solicitante, autorizaciones Ley 1581, atribución UTM y una **`Task` automática con SLA comercial de 24 horas** (prioridad `URGENT` si supera 100 unidades, `HIGH` en el resto). En segundo plano despacha los correos `b2b-inquiry-received` y `b2b-inquiry-admin-notification` (ver [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md)) y alerta en la campana del panel con tipo `ORDER` y enlace a la oportunidad.
 
 ### Pipeline en `/admin/oportunidades`
 
 - Gestiona de forma paginada las etapas `NEW` («Nueva solicitud»), `QUALIFYING` («En calificación»), `PROPOSAL_SENT` («Propuesta enviada»), `WON` («Ganada») y `LOST` («Perdida», con motivo obligatorio `lostReason`), clasificadas por tipo de evento (`CORPORATE_GIFT`, `WEDDING_SOCIAL`, `SCHOOL_GRADUATION`, `BRAND_MERCH`, `OTHER`), con alertas de urgencia cuando `eventDate` está vencida o dentro de los próximos 14 días, tasa de cierre sobre negocios cerrados y desglose de demanda por vertical.
-- Integra `<CrmWorkspacePanel>` vinculando `Task.opportunityId` y metadatos en `ContactActivity`, y permite convertir cualquier cotización en oportunidad B2B con un clic desde `/admin/cotizaciones/[id]` (`convertQuoteToOpportunityAction`, enlazando `convertedQuoteId`) y asociar el pedido cerrado por su consecutivo `LCM-YYYY-NNNN` en `convertedOrderId`.
-
-### Cotizador (`Quote` `COT-XXXXXX`), portal `/cotizacion/[token]` y Hoja de taller
-
-- **Generación (`features/quotes/`)**: activo cuando la tienda opera en modo catálogo (`NEXT_PUBLIC_STORE_MODE=catalog`). Reclama atómicamente el carrito, cierra `AbandonedCart` (`QUOTE_CREATED`), sella snapshots en `QuoteItem` y genera `Quote` (`COT-XXXXXX`; estados `PENDING`, `CONTACTED`, `CLOSED`, `DISCARDED`) con token público de 128 bits almacenado solo como hash SHA-256 (`publicAccessTokenHash`).
-- **Portal público `/cotizacion/[token]`**: vista de confirmación de **solo lectura** (`noindex`) sin exponer notas internas ni teléfonos/correos en claro. El cliente revisa sus ítems y vistas previas personalizadas (autorizadas con `?qt=<token>`), copia el enlace o inicia conversación en WhatsApp con mensaje pre-armado.
-- **Gestión y Taller en `/admin/cotizaciones`**:
-  - `/admin/cotizaciones` y `/admin/cotizaciones/[id]` (`opportunities:manage`; fechas filtradas en `America/Bogota` `-05:00`): bandeja histórica y operativa con KPIs ejecutivos, banner contextual de continuidad con `/admin/oportunidades` cuando la tienda opera en modo `full`, contacto directo por WhatsApp, notas internas acumulativas, cambio de estado y promoción en 1 clic a `Opportunity`.
-  - **`/admin/cotizaciones/[id]/taller` (Hoja de taller)**: restringida estrictamente a `production:download_assets` (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `PRINT_WORKSHOP`; oculta para `CUSTOMER_SUPPORT` y `FINANCE_ANALYST`). Calcula unidades físicas reales, pasos de armado, estado de moderación de cada diseño y enlaces firmados de descarga de los PNG 300 DPI en `production-assets`, registrando `quote.production_sheet_view` en `AdminActionLog` y enmascarando en servidor `customerName`, `customerWhatsapp`, `notes` y precios comerciales cuando el actor es `PRINT_WORKSHOP`.
-- **Retención automática de archivos de cotización (`retention-service.ts`)**: las filas comerciales `Quote` se conservan (salvo anonimización por Habeas Data), pero los diseños y fotografías en Storage asociados a `QuoteItem` se purgan automáticamente a los **`90 días`** tras pasar a `CLOSED` o `DISCARDED` (`PURGE_AFTER_QUOTE_CLOSED_DAYS`), y a los **`365 días`** si una cotización permanece abierta sin actividad (`PURGE_STALE_QUOTE_AFTER_DAYS`).
+- Integra `<CrmWorkspacePanel>` vinculando `Task.opportunityId` y metadatos en `ContactActivity`, y permite asociar el pedido cerrado por su consecutivo `LCM-YYYY-NNNN` en `convertedOrderId`. Ganar una oportunidad no crea una orden ni prueba un pago por sí mismo: la evidencia transaccional siempre vive en `Order`.
 
 ---
 
@@ -185,7 +176,7 @@ Ambos programas se gobiernan en `/admin/fidelizacion`: la mutación de parámetr
 | `FIRST_PURCHASE`  | Registro, contacto, aceptación de consentimiento o diseño reciente sin compra pagada histórica (incluidos reembolsos); sale al comprar o delega un carrito vigente a la recuperación existente. |
 | `SECOND_PURCHASE` | Exige exactamente una compra pagada histórica y una entrega dentro de la ventana. Una segunda orden distinta de la que originó el ciclo lo cierra.                                              |
 | `REACTIVATION`    | Última compra dentro de la ventana de entrada pero anterior al corte de `inactivityDays`, sin compras posteriores; una nueva compra cierra el ciclo.                                            |
-| `HIGH_INTENT`     | Diseño, carrito reciente, favorito, alerta con stock, cotización u oportunidad abierta sin primera compra; personaliza el producto y delega carrito/reposición a sus flujos.                    |
+| `HIGH_INTENT`     | Diseño, carrito reciente, favorito, alerta con stock u oportunidad B2B abierta sin primera compra; personaliza el producto y delega carrito/reposición a sus flujos.                            |
 | `B2B_FOLLOW_UP`   | Oportunidad abierta dentro de la ventana de entrada e inactiva al menos un día, incluso sin correo; crea una tarea CRM idempotente con bitácora y sale al ganarla, perderla o cerrarla.         |
 
 Cada paso puede exigir `NO_PAID_ORDER`, `HAS_ABANDONED_CART`, `HAS_LOYALTY_POINTS`, `HAS_DESIGN_ACTIVITY`, `HAS_OPT_IN`, `ORDER_DELIVERED` o `NO_ORDER_SINCE_ENROLLMENT`. Si no se cumple, se omite sin enviar y se avanza. La audiencia se filtra en PostgreSQL por comportamiento, inscripciones vigentes, cooldown y aceptación `NEWSLETTER` de la versión vigente sin revocación posterior. Un carrito se considera reciente durante siete días calculados de nuevo en cada ciclo, nunca congelados al arrancar el proceso. Contactos eliminados, anonimizados o internos quedan fuera y sus inscripciones activas se cierran. Al fusionar contactos se conserva una sola inscripción activa y todo el historial se transfiere al sobreviviente, reasignando ciclos si hay colisiones.

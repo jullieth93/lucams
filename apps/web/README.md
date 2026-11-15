@@ -50,11 +50,11 @@ make db-local-start && make db-local-setup && make db-local-on && make db-local-
 
 ```text
 apps/web/
-├── app/            # App Router: storefront, /estudio/[slug], /checkout, /pedido, /cotizacion, /soporte, /legal, /admin, /api
+├── app/            # App Router: storefront, /estudio/[slug], /checkout, /pedido, /soporte, /legal, /admin, /api
 ├── assets/fonts/   # Fuentes vendorizadas: .subset.woff2 (next/font/local storefront) + 8 .ttf (Estudio y @napi-rs/canvas 300 DPI)
 ├── components/     # Sistema de diseño compartido (ui/ shadcn + marca, admin/, auth/, cms/, legal/, storefront)
 ├── features/       # Módulos de dominio (ai, analytics, catalog, cart, checkout, cms, contacts, costing, crm, emails,
-│                   #   loyalty, observability, opportunities, orders, payments, personalization, products, quotes,
+│                   #   loyalty, observability, opportunities, orders, payments, personalization, products,
 │                   #   referrals, reviews, security, shipping, support)
 ├── lib/            # Utilidades transversales (clientes Supabase, CSP/headers, env fail-fast, datetime America/Bogota,
 │                   #   sharp-safe, circuit-breaker, rate-limit, pii-mask, analytics/funnel)

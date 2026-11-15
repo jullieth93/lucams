@@ -37,22 +37,14 @@ import { CmsText } from "@/components/cms/cms-text";
 import { getCmsBanners, getSettingValue } from "@/lib/cms";
 import { getPageSeo } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
-import { isCatalogMode } from "@/lib/store-mode";
 import { getCanonicalSiteUrl } from "@/lib/public-url";
 import { SITE_NAME, SITE_TITLE } from "@/lib/site";
 
-/* La home define su PROPIA description y por eso pisa la del layout — que sí se derivaba del modo
-   (auditoría 2026-07-21). "Entrega a 1.100+ destinos" es la cobertura del operador logístico, que
-   en la Etapa 1 no está activa: hoy el envío se coordina y se cotiza por WhatsApp. Prometerlo en el
-   snippet de Google es información engañosa (Ley 1480 art. 23), así que también se deriva del flag.
-   Ruta A (2026-07-29): el bloque `seo.page.home` (title=meta title, body=meta description)
-   sobreescribe ambos desde /admin/contenido/paginas/seo; el fallback mantiene el gate de modo. */
 export async function generateMetadata(): Promise<Metadata> {
   const seo = await getPageSeo("seo.page.home", {
     title: SITE_TITLE,
-    description: isCatalogMode()
-      ? "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia; el envío lo coordinamos contigo por WhatsApp."
-      : "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a {{cobertura}} destinos.",
+    description:
+      "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a {{cobertura}} destinos.",
   });
   // Canonical explícito (H13, 2026-08-06): todas las rutas lo tenían MENOS la
   // home — justo la página que más lo necesita para consolidar el dominio.

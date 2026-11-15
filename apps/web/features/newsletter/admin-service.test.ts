@@ -7,7 +7,7 @@
  *   - revocación más nueva que el último accepted → DE BAJA.
  *   - re-suscripción tras baja (accepted más nuevo que la revocación) → ACTIVO,
  *     y subscribedAt es la fecha de la RE-suscripción (parte de H9).
- *   - email null (filas ancladas a phone, cotizaciones Etapa 1) se ignora.
+ *   - email null (filas ancladas a phone, formularios con teléfono) se ignora.
  *   - contadores sobre el universo completo (no sobre el filtro q/status).
  *   - CSV: escape RFC 4180 + BOM.
  *
@@ -142,7 +142,7 @@ describe("groupNewsletterConsents — dedupe último estado por email", () => {
     ]);
   });
 
-  it("ignora filas sin email (consent anclado a phone, cotizaciones Etapa 1)", () => {
+  it("ignora filas sin email (consent anclado a phone, formularios con teléfono)", () => {
     const list = groupNewsletterConsents(
       rows({ email: null, accepted: true, acceptedAt: T("2026-09-01T10:00:00Z"), version: "v1" }),
     );

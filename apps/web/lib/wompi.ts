@@ -87,8 +87,8 @@ export function getWompiConfig() {
  * comercio: responde 200 si las llaves y el ambiente WOMPI_ENV son coherentes).
  * NUNCA incluye llaves en el resultado: solo el ambiente declarado y la latencia.
  *
- * `skipped` (sin WOMPI_*) NO es un fallo: la tienda vende por cotización en
- * modo catálogo. Los detalles de error son estáticos a propósito: el mensaje
+ * `skipped` (sin WOMPI_*) NO es un fallo: permite diagnóstico local sin llaves.
+ * Los detalles de error son estáticos a propósito: el mensaje
  * crudo de red podría arrastrar la URL (que lleva la llave pública embebida).
  */
 export type WompiHealth = {
@@ -107,7 +107,7 @@ export async function probeWompiHealth(): Promise<WompiHealth> {
     return {
       status: "skipped",
       env: getWompiEnv(),
-      detail: "WOMPI_* no configuradas (modo catálogo).",
+      detail: "WOMPI_* no configuradas.",
       latencyMs: 0,
     };
   }

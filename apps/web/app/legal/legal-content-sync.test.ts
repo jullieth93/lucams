@@ -2,8 +2,8 @@
  * El texto legal que se renderiza DE VERDAD debe coincidir con la fuente canónica.
  *
  * Auditoría 2026-07-21 (blocker de contenido legal): se reescribieron los `.md` de
- * `packages/db/legal-content/` para reflejar la Etapa 1 (venta por cotización, sin cobro en
- * línea) y el cambio quedó INERTE. Las páginas leen el CmsBlock de la base y caen a un FALLBACK
+ * `packages/db/legal-content/` para reflejar los flujos comerciales vigentes y
+ * el cambio quedó INERTE. Las páginas leen el CmsBlock de la base y caen a un FALLBACK
  * hardcodeado cuando el bloque no existe, no está publicado o la DB falla — y ese fallback seguía
  * prometiendo «Eliges el medio de pago», «a través de Wompi, y pago contraentrega». Es decir: el
  * único texto garantizado ante una caída de la base era el que ya no era cierto (Ley 1480 arts. 23
@@ -135,8 +135,8 @@ describe("contenido legal — el fallback renderizado coincide con la fuente can
 });
 
 /*
- * La versión del aviso NO es cosmética: `Consent.version` y `Quote.dataConsentVersion` se estampan
- * desde el SiteSetting PRIVACY_POLICY_VERSION. Si el texto cambia y la versión no, la prueba de la
+ * La versión del aviso NO es cosmética: `Consent.version` se estampa desde el
+ * setting PRIVACY_POLICY_VERSION. Si el texto cambia y la versión no, la prueba de la
  * autorización apunta a un documento que ya no es el que el titular vio — la trazabilidad que pide
  * la Ley 1581 se rompe en silencio, y justo en el flujo nuevo.
  */
@@ -170,26 +170,5 @@ describe("contenido legal — versionado coherente", () => {
       canonicalMarkdown("terminos").match(/Versión (\d+) · vigente desde (\d{4}-\d{2}-\d{2})/) ??
       [];
     expect(header).toContain(`Última actualización: ${date} · Versión ${num}`);
-  });
-});
-
-/*
- * Las descripciones de metadata viajan al snippet de Google y vinculan al proveedor (Ley 1480
- * art. 23). Varias páginas definen la suya propia y PISAN la del layout, así que derivar solo la
- * del layout no basta: la home prometía "entrega a 1.100+ destinos" —cobertura del operador
- * logístico, inactiva en la Etapa 1— mucho después de que layout y manifest ya estuvieran
- * corregidos.
- */
-describe("metadata — sin promesas logísticas sin encuadrar", () => {
-  const PAGES = ["page.tsx", "productos/page.tsx"];
-
-  it.each(PAGES)("app/%s no promete cobertura de envío sin derivar del modo", (rel) => {
-    const src = readFileSync(join(__dirname, "..", rel), "utf-8");
-    const promisesCoverage = /1\.100\+|1100\+/.test(src);
-    if (!promisesCoverage) return; // no menciona cobertura: nada que encuadrar
-    expect(
-      src.includes("isCatalogMode"),
-      `app/${rel} menciona la cobertura logística pero no la deriva del modo de tienda`,
-    ).toBe(true);
   });
 });

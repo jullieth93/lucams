@@ -44,7 +44,6 @@ const SOURCE_LABEL: Record<string, string> = {
   CUSTOMER_AUTH: "Cuenta web",
   GUEST_ORDER: "Compra invitado",
   SUPPORT_TICKET: "Soporte",
-  QUOTE: "Cotización WA",
   ABANDONED_CART: "Carrito",
   NEWSLETTER: "Newsletter",
   B2B_INQUIRY: "Empresas / Eventos",
@@ -394,7 +393,7 @@ export function MergeCandidateCard({ item }: { item: MergeCandidateItem }) {
             {canApprove ? (
               <ReauthForm
                 action={approveContactMergeAction}
-                confirmMessage={`¿Unificar «${absorbedSummary.displayName}» dentro de «${survivorSummary.displayName}»? Todos los pedidos, tickets, cotizaciones y consentimientos pasarán al contacto principal y se guardará un snapshot reversible en auditoría.`}
+                confirmMessage={`¿Unificar «${absorbedSummary.displayName}» dentro de «${survivorSummary.displayName}»? Todos los pedidos, tickets, oportunidades y consentimientos pasarán al contacto principal y se guardará un snapshot reversible en auditoría.`}
               >
                 <input type="hidden" name="candidateId" value={item.id} />
                 <input type="hidden" name="survivorContactId" value={selectedSurvivorId} />

@@ -85,7 +85,7 @@ export const getCurrentAdmin = cache(
 /**
  * Devuelve la sesión `Customer` ÚNICAMENTE cuando debe vincularse a un formulario
  * público del storefront (`/empresas-y-eventos`, `/contacto`, `/checkout/datos`,
- * alertas de stock y cotizaciones):
+ * alertas de stock y oportunidades B2B):
  *  - Si el navegador tiene sesión activa de `AdminUser` (staff interno), retorna `null`
  *    para impedir que pruebas u operaciones asistidas contaminen el `Contact` del admin.
  *  - Si se proporciona `submittedEmail` y difiere (case-insensitive) del correo de la

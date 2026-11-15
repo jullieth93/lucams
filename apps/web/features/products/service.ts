@@ -551,7 +551,7 @@ export async function restoreProduct(id: string, restoredBy: string | null) {
  * sus variantes (Restrict — misma razón) y reseñas (Cascade — sin la guarda el
  * borrado se llevaría contenido de clientes en silencio). Todo lo demás cuelga
  * con Cascade seguro (variantes, plantillas, wishlist, back-in-stock, tiers,
- * receta de materiales, ocasiones) o SetNull (QuoteItem).
+ * receta de materiales y ocasiones.
  */
 export type ProductPurgeBlockers = {
   designs: number;

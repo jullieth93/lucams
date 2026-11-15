@@ -81,7 +81,7 @@ describe("① servicio deshabilitado/no configurado: NUNCA falsa alarma", () => 
     expect(r.status).not.toBe("warn");
   });
 
-  it("Wompi con sonda skipped (modo catálogo) → not-configured", () => {
+  it("Wompi con sonda skipped (sin credenciales) → not-configured", () => {
     const r = mapWompiHealth(ok(wompi({ status: "skipped", detail: "WOMPI_* no configuradas" })), {
       productionDeployment: true,
     });

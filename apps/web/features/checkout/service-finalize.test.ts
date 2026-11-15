@@ -70,7 +70,6 @@ vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn(async () => null) }));
 vi.mock("@/lib/cms", () => {
   return { getSettingValue: vi.fn(async (_k: string, fallback: string) => fallback) };
 });
-vi.mock("@/lib/stage-guard", () => ({ assertTransactionalAllowed: vi.fn() }));
 vi.mock("@/features/orders/service", () => ({ createOrderFromCart }));
 vi.mock("@/features/orders/payment-reference", () => ({ resolveWompiPaymentReference }));
 vi.mock("@/features/orders/saga", () => ({ processPaidOrder: vi.fn() }));

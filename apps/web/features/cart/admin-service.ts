@@ -5,11 +5,11 @@
  *   - `pending`: activo, con productos, sin recordatorio enviado aún.
  *   - `reminded`: activo, con productos y al menos un recordatorio enviado.
  *   - `recovered`: convertido en pedido pagado (`recoveredAt` o `closedReason === "ORDER_PAID"`).
- *   - `closed`: cerrado sin pago online directo (`QUOTE_CREATED` por cotización o `CART_EMPTIED` al vaciarse).
+ *   - `closed`: cerrado sin pago online directo (`CART_EMPTIED` al vaciarse).
  *
  * Incluye snapshot inmutable de productos/diseños, etapa de checkout alcanzada
- * (`DATOS` → `ENVIO` → `PAGO`), pedidos asociados (incluyendo intentos/rechazos Wompi),
- * cotizaciones vinculadas y ficha `Contacto 360` + WhatsApp del cliente.
+ * (`DATOS` → `ENVIO` → `PAGO`), pedidos asociados (incluyendo intentos/rechazos Wompi)
+ * y ficha `Contacto 360` + WhatsApp del cliente.
  */
 
 import "server-only";
@@ -27,7 +27,7 @@ export const ABANDONED_STATUS_LABEL: Record<AbandonedCartStatus, string> = {
   pending: "Pendiente",
   reminded: "Recordatorio enviado",
   recovered: "Recuperado (pagado)",
-  closed: "Cerrado (cotizado / vaciado)",
+  closed: "Cerrado (vaciado)",
 };
 
 export const CHECKOUT_STEP_LABEL: Record<string, string> = {
@@ -38,7 +38,6 @@ export const CHECKOUT_STEP_LABEL: Record<string, string> = {
 
 export const CLOSED_REASON_LABEL: Record<string, string> = {
   ORDER_PAID: "Convertido en pedido pagado",
-  QUOTE_CREATED: "Convertido en cotización comercial",
   CART_EMPTIED: "Vaciado manualmente por el cliente",
 };
 
@@ -81,20 +80,14 @@ const RECOVERED_WHERE: Prisma.AbandonedCartWhereInput = {
     {
       recoveredAt: null,
       closedReason: null,
-      cart: {
-        deletedAt: { not: null },
-        OR: [{ deletedBy: null }, { deletedBy: { not: "quote:create" } }],
-      },
+      cart: { deletedAt: { not: null } },
     },
   ],
 };
 
 const CLOSED_NON_PAID_WHERE: Prisma.AbandonedCartWhereInput = {
   recoveredAt: null,
-  OR: [
-    { closedReason: { in: ["QUOTE_CREATED", "CART_EMPTIED"] } },
-    { closedReason: null, cart: { deletedAt: { not: null }, deletedBy: "quote:create" } },
-  ],
+  closedReason: "CART_EMPTIED",
 };
 
 const OPEN_CART_WHERE: Prisma.AbandonedCartWhereInput = {
@@ -156,15 +149,11 @@ function classifyStatus(row: {
   if (
     row.recoveredAt ||
     row.closedReason === "ORDER_PAID" ||
-    (row.cart.deletedAt && row.cart.deletedBy !== "quote:create" && row.closedReason === null)
+    (row.cart.deletedAt && row.closedReason === null)
   ) {
     return "recovered";
   }
-  if (
-    row.closedReason === "QUOTE_CREATED" ||
-    row.closedReason === "CART_EMPTIED" ||
-    (row.cart.deletedAt && row.cart.deletedBy === "quote:create")
-  ) {
+  if (row.closedReason === "CART_EMPTIED") {
     return "closed";
   }
   return row.lastReminderSentAt ? "reminded" : "pending";
@@ -263,8 +252,7 @@ function toListItem(row: ListRow, bouncedSet: Set<string>): AbandonedCartListIte
     reminderCount: row.reminderCount,
     recoveredAt: row.recoveredAt,
     checkoutStep: row.checkoutStep,
-    closedReason:
-      row.closedReason ?? (row.cart.deletedBy === "quote:create" ? "QUOTE_CREATED" : null),
+    closedReason: row.closedReason,
     recoveredOrderNumber: row.recoveredOrder?.number ?? null,
     status,
     itemCount,
@@ -315,14 +303,6 @@ export type AbandonedCartDiagnosticOrder = {
   }>;
 };
 
-export type AbandonedCartDiagnosticQuote = {
-  id: string;
-  number: string;
-  status: string;
-  total: number;
-  createdAt: Date;
-};
-
 export type AbandonedCartDetail = {
   id: string;
   cartId: string;
@@ -348,7 +328,6 @@ export type AbandonedCartDetail = {
   } | null;
   bouncedOrComplained: boolean;
   linkedOrders: AbandonedCartDiagnosticOrder[];
-  linkedQuotes: AbandonedCartDiagnosticQuote[];
 };
 
 /** Detalle completo de un registro para diagnóstico y envío (`/admin/carritos/[id]`). */
@@ -414,8 +393,7 @@ export async function getAbandonedCartDetail(id: string): Promise<AbandonedCartD
   if (!row) return null;
 
   const status = classifyStatus(row);
-  const effectiveClosedReason =
-    row.closedReason ?? (row.cart.deletedBy === "quote:create" ? "QUOTE_CREATED" : null);
+  const effectiveClosedReason = row.closedReason;
 
   // Pedidos asociados al mismo cartId o al recoveredOrderId
   const orderWhereOr: Prisma.OrderWhereInput[] = [{ cartId: row.cartId }];
@@ -471,29 +449,6 @@ export async function getAbandonedCartDetail(id: string): Promise<AbandonedCartD
       },
     },
   });
-
-  // Cotizaciones asociadas (si se convirtió en cotización o coincide contacto/correo cercano)
-  const linkedQuotes: AbandonedCartDiagnosticQuote[] =
-    effectiveClosedReason === "QUOTE_CREATED" || row.contactId
-      ? await prisma.quote.findMany({
-          where: {
-            deletedAt: null,
-            OR: [
-              ...(row.contactId ? [{ contactId: row.contactId }] : []),
-              { customerEmail: { equals: row.email, mode: "insensitive" } },
-            ],
-          },
-          orderBy: { createdAt: "desc" },
-          take: 3,
-          select: {
-            id: true,
-            number: true,
-            status: true,
-            total: true,
-            createdAt: true,
-          },
-        })
-      : [];
 
   // Resolver líneas de producto con fallback: live CartItem -> itemsSnapshot -> OrderItem
   let itemsSource: AbandonedCartDetail["itemsSource"] = "empty";
@@ -609,7 +564,6 @@ export async function getAbandonedCartDetail(id: string): Promise<AbandonedCartD
       : null,
     bouncedOrComplained: bouncedSet.has(row.email.trim().toLowerCase()),
     linkedOrders,
-    linkedQuotes,
   };
 }
 
@@ -620,7 +574,7 @@ export type CartRecoveryMetrics = {
   /** Registros con al menos un recordatorio, aún sin recuperar. */
   remindedCount: number;
   recoveredCount: number;
-  /** Registros cerrados por cotización o vaciado manual (excluidos de envíos). */
+  /** Registros cerrados por vaciado manual (excluidos de envíos). */
   closedCount: number;
   totalCount: number;
   /** % recuperados sobre registros con recordatorio enviado (los contactados). */
@@ -679,7 +633,6 @@ export async function getCartRecoveryMetrics(): Promise<CartRecoveryMetrics> {
              ac."recoveredAt" IS NULL
              AND ac."closedReason" IS NULL
              AND c."deletedAt" IS NOT NULL
-             AND COALESCE(c."deletedBy", '') <> 'quote:create'
            )
       `,
     ]);

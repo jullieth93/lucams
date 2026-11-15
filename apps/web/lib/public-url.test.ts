@@ -23,7 +23,7 @@ describe("buildPublicShareUrl", () => {
 
   it("normaliza un path sin slash inicial", () => {
     process.env[KEY] = "https://lucamsshop.com";
-    expect(buildPublicShareUrl("cotizacion/tok")).toBe("https://lucamsshop.com/cotizacion/tok");
+    expect(buildPublicShareUrl("pedido/tok")).toBe("https://lucamsshop.com/pedido/tok");
   });
 
   it("sin env cae al dominio de producción por defecto (NUNCA vercel.app)", () => {

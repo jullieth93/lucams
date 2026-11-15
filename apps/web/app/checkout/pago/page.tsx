@@ -11,7 +11,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { AlertCircle, CreditCard, MapPin, User, Receipt } from "lucide-react";
-import { isCatalogMode } from "@/lib/store-mode";
 import { carrierLogo } from "@/lib/carrier-logos";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
@@ -49,10 +48,6 @@ export const maxDuration = 60;
 type SearchParams = Promise<{ error?: string; couponNotice?: string }>;
 
 export default async function CheckoutPagoPage({ searchParams }: { searchParams: SearchParams }) {
-  // Etapa 1 (modo catálogo): no hay pagos en línea — el checkout es solo el
-  // formulario de cotización de 1 paso en /checkout/datos.
-  if (isCatalogMode()) redirect("/checkout/datos");
-
   let ctx;
   try {
     ctx = await loadCheckoutContext();

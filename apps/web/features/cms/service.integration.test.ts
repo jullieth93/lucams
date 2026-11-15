@@ -977,7 +977,6 @@ describe.skipIf(!hasDb)(
         expect(texts.datos.consent).toContain("[Política de Privacidad](/legal/privacidad)");
         expect(texts.datos.refError).toContain("Mínimo 20 caracteres");
         expect(texts.datos.viaTypeAria).toBe("Tipo de vía");
-        expect(texts.quote.consent).toContain("Ley 1581 de 2012");
         expect(texts.shipping.note).toContain("**preparación toma alrededor de 2 días hábiles");
         expect(texts.shipping.note).toContain("**después del despacho**");
         expect(texts.shipping.note).toContain("**30 días calendario**");

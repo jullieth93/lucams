@@ -8,7 +8,7 @@
  * Reglas (actualizado 2026-11-03, ADR-191 — watermark anti-copia retirado):
  *   - Admin activo → todo.
  *   - Dueño (customerId autenticado o sessionId anónimo que coincide) → todo.
- *   - Capacidades por token (share /d/, quote, order) → variantes de EXHIBICIÓN
+ *   - Capacidades por token (share /d/ y order) → variantes de EXHIBICIÓN
  *     (preview limpio, páginas, artefactos watermark legacy) — jamás borradores.
  *   - Cualquier otro caso → denegado (el handler responde 404, sin oráculo).
  */
@@ -171,13 +171,13 @@ describe("canAccessDesignPreview — matriz completa", () => {
     ).toBe(false);
   });
 
-  it("quote/order token válidos → exhibición (limpio incluido), nunca borradores", () => {
+  it("order token válido → exhibición (limpio incluido), nunca borradores", () => {
     expect(
       canAccessDesignPreview({
         design: DESIGN,
         variantClass: "watermark",
         caller: NOBODY,
-        quoteTokenOk: true,
+        orderTokenOk: true,
       }),
     ).toBe(true);
     // ADR-191 (2026-11-03): el limpio también abre por token.

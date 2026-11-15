@@ -1,8 +1,8 @@
 /*
  * HOMOLOGACIÓN E2E — SEO/estáticos (docs/TESTING.md):
  *   sitemap.xml (productos + legales), robots.txt (bloquea /admin, SIN /_next),
- *   OG image real, canonical al dominio del ambiente y JSON-LD coherente con
- *   NEXT_PUBLIC_STORE_MODE (catálogo sin ofertas; full con ofertas e inventario),
+ *   OG image real, canonical al dominio del ambiente y JSON-LD de producto con
+ *   ofertas e inventario coherentes con la tienda transaccional,
  *   PDP inexistente → 404 HTTP real (decidido en el proxy, SEO-001) y /status
  *   con noindex.
  *   Solo lectura — corre en LOCAL y STG × desktop.
@@ -27,7 +27,7 @@ test.afterAll(async () => {
   await disconnectDb();
 });
 
-test("seo: sitemap + robots + OG image + canonical + JSON-LD coherente con el modo de tienda", async ({
+test("seo: sitemap + robots + OG image + canonical + JSON-LD transaccional", async ({
   anonPage,
   request,
 }, testInfo) => {
@@ -89,7 +89,7 @@ test("seo: sitemap + robots + OG image + canonical + JSON-LD coherente con el mo
     expect(homeScripts.length).toBeGreaterThan(0);
     record("jsonld-home", true, `${homeScripts.length} scripts JSON-LD en home`);
 
-    // 6. JSON-LD PDP coherente con el modo de tienda: catálogo no vende; full sí ofrece.
+    // 6. JSON-LD PDP: la tienda transaccional publica oferta e inventario.
     const product = await getActiveProduct();
     expect(product).not.toBeNull();
     await anonPage.goto(`/producto/${product!.slug}`, { waitUntil: "domcontentloaded" });
@@ -98,15 +98,9 @@ test("seo: sitemap + robots + OG image + canonical + JSON-LD coherente con el mo
       (s) => s.includes('"@type":"Product"') || s.includes('"@type": "Product"'),
     );
     expect(productLd, "la PDP debe tener JSON-LD Product").toBeTruthy();
-    if (process.env.NEXT_PUBLIC_STORE_MODE === "full") {
-      expect(productLd!).toContain('"offers"');
-      expect(productLd!).toContain("InStock");
-      record("jsonld-pdp-full", true, `Product con offers/InStock (${product!.slug})`);
-    } else {
-      expect(productLd!).not.toContain('"offers"');
-      expect(productLd!).not.toContain("InStock");
-      record("jsonld-pdp-catalog", true, `Product sin offers/InStock (${product!.slug})`);
-    }
+    expect(productLd!).toContain('"offers"');
+    expect(productLd!).toContain("InStock");
+    record("jsonld-pdp", true, `Product con offers/InStock (${product!.slug})`);
 
     // 7. PDP inexistente → 404 HTTP REAL. Auditoría SEO 2026-10-28 (SEO-001):
     // el proxy decide el 404 antes del render contra el set cacheado de slugs

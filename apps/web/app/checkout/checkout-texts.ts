@@ -31,8 +31,6 @@ export type CheckoutTexts = {
     backCart: string;
     cartShort: string;
     secure: string;
-    secureCatalog: string;
-    footerCatalog: string;
     footerPayments: string;
     linkTerminos: string;
     linkPrivacidad: string;
@@ -46,12 +44,10 @@ export type CheckoutTexts = {
     personalized: string;
     subtotal: string;
     shippingLabel: string;
-    shippingCatalog: string;
     shippingPending: string;
     free: string;
     discount: string;
     total: string;
-    noteCatalog: string;
     noteFinal: string;
     /** Preview de puntos a ganar ({n} = cantidad). Puntos Lucams, 2026-10-13. */
     loyaltyEarn: string;
@@ -176,24 +172,6 @@ export type CheckoutTexts = {
      *  navegador ya no corre — el form usa noValidate y esta capa lo reemplaza). */
     requiredField: string;
   };
-  quote: {
-    title: string;
-    heading: string;
-    subtext: string;
-    customBadge: string;
-    total: string;
-    ctaTitle: string;
-    ctaSub: string;
-    shipNote: string;
-    whatsappLabel: string;
-    emailPlaceholder: string;
-    cityLabel: string;
-    notePlaceholder: string;
-    pending: string;
-    submit: string;
-    consent: string;
-    noSpam: string;
-  };
   shipping: {
     loading: string;
     loadingSub: string;
@@ -279,10 +257,6 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     backCart: "Volver al carrito",
     cartShort: "Carrito",
     secure: "Compra segura",
-    // Badge de cabecera en modo catálogo (no hay compra en línea) — mismo gate
-    // por isCatalogMode() que footerCatalog/footerPayments en checkout/layout.tsx.
-    secureCatalog: "Cotización sin pago en línea",
-    footerCatalog: "Cotización sin pago en línea · coordinamos por WhatsApp",
     footerPayments: "Pago seguro Wompi · Envío Aveonline",
     linkTerminos: "Términos",
     linkPrivacidad: "Privacidad",
@@ -296,13 +270,10 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     personalized: "Personalizado",
     subtotal: "Subtotal",
     shippingLabel: "Envío",
-    shippingCatalog: "Se coordina por WhatsApp",
     shippingPending: "Se calcula al elegir envío",
     free: "Gratis",
     discount: "Descuento",
     total: "Total",
-    noteCatalog:
-      "Precios en pesos colombianos (COP) · el envío se coordina por WhatsApp al confirmar tu cotización",
     noteFinal: "Precios en pesos colombianos (COP) · el total es el valor final que pagas",
     loyaltyEarn: "✨ Ganarás {n} Puntos Lucams con esta compra",
   },
@@ -423,27 +394,6 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     pending: "Guardando…",
     errorSummary: "Revisa estos campos antes de continuar:",
     requiredField: "Este campo es obligatorio",
-  },
-  quote: {
-    title: "Productos de tu cotización",
-    heading: "Lo que estás cotizando",
-    subtext:
-      "Esto es exactamente lo que vas a recibir. Revísalo con calma antes de enviarnos tu cotización.",
-    customBadge: "✨ Con tu diseño personalizado",
-    total: "Total",
-    ctaTitle: "Pide tu cotización ✨",
-    ctaSub:
-      "Déjanos tus datos y te contactamos por WhatsApp para confirmar precio, pago y entrega.",
-    shipNote: "El envío se coordina por WhatsApp al confirmar tu cotización.",
-    whatsappLabel: "Tu WhatsApp",
-    emailPlaceholder: "tu@correo.com",
-    cityLabel: "Ciudad",
-    notePlaceholder: "Ej. es para un regalo, lo necesito antes del viernes...",
-    pending: "Creando tu cotización…",
-    submit: "Pedir cotización por WhatsApp",
-    consent:
-      "Autorizo el **tratamiento de mis datos personales** para responder esta cotización por WhatsApp, conforme a la [Política de Privacidad](/legal/privacidad) (Ley 1581 de 2012).",
-    noSpam: "Sin spam: solo te escribimos por esta cotización.",
   },
   shipping: {
     loading: "Cotizando tu envío…",

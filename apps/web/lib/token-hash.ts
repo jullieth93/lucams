@@ -2,7 +2,7 @@ import "server-only";
 import { createHash, timingSafeEqual } from "node:crypto";
 
 /**
- * F-11 (security audit 2026-08-24): public bearer tokens — Order/Quote
+ * F-11 (security audit 2026-08-24): public bearer tokens — Order
  * publicAccessToken, Design.shareToken, AbandonedCart.recoverToken — are
  * stored at rest ONLY as their SHA-256 hex digest (`<field>Hash` columns).
  *

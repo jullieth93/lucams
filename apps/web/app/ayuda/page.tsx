@@ -23,7 +23,6 @@ import { CmsMarkdown } from "@/components/cms/cms-markdown";
 import { getCmsBlocksByCategory, getSettingValue } from "@/lib/cms";
 import { getPageSeo, resolveCmsTokens } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
-import { isCatalogMode } from "@/lib/store-mode";
 
 export async function generateMetadata(): Promise<Metadata> {
   const seo = await getPageSeo("seo.page.ayuda", {
@@ -43,23 +42,15 @@ export const dynamic = "force-dynamic";
 // getCmsBlocksByCategory devuelva blocks, esos reemplazan al fallback
 // (orden por key).
 //
-// `catalog` = Etapa 1 (modo catálogo): sin pago en línea ni envío
-// integrado — la compra se cierra por WhatsApp. Los textos de pago/envío
-// se condicionan al modo para no prometer lo que no está activo.
 // `codEnabled`: el toggle COD del admin (SiteSetting COD_ENABLED) también
 // gobierna la mención de contraentrega — apagarlo quita la promesa (2026-07-22).
 // FAIL-CLOSED (CF-35): setting ausente/despublicada = no se promete contraentrega.
 // La FAQ `envio-mismo-dia` (Envío Lucams, administrado en /admin/envios) NO se
 // muestra sin más: AyudaPage la filtra salvo que la setting LUCAMS_SHIPPING_ENABLED
-// sea "true" y el modo sea full — mismo patrón fail-closed que COD_ENABLED
-// (ningún texto público promete lo que la tienda no opera hoy).
+// sea "true" — mismo patrón fail-closed que COD_ENABLED.
 function buildFallbackFaqs(
-  catalog: boolean,
   codEnabled: boolean,
 ): { slug: string; question: string; answer: string }[] {
-  const codCatalog = codEnabled
-    ? " Además tienes **contraentrega disponible**: pagas en efectivo al recibir tu pedido."
-    : "";
   const codFull = codEnabled
     ? " También aceptamos **pago contraentrega**: pagas en efectivo al recibir tu pedido."
     : "";
@@ -67,30 +58,25 @@ function buildFallbackFaqs(
     {
       slug: "01-como-personalizo",
       question: "¿Cómo personalizo un producto?",
-      answer: catalog
-        ? "Elige el producto, haz clic en **Personalizar** y lo diseñas en vivo en nuestro Estudio: subes tus fotos, agregas texto y plantillas, y lo ves con vista previa 3D. Al terminar, lo agregas al carrito y confirmas tu pedido por WhatsApp."
-        : "Elige el producto, haz clic en **Personalizar** y lo diseñas en vivo en nuestro Estudio: subes tus fotos, agregas texto y plantillas, y lo ves con vista previa 3D. Al terminar, lo agregas al carrito.",
+      answer:
+        "Elige el producto, haz clic en **Personalizar** y lo diseñas en vivo en nuestro Estudio: subes tus fotos, agregas texto y plantillas, y lo ves con vista previa 3D. Al terminar, lo agregas al carrito.",
     },
     {
       slug: "02-cuanto-demora",
       question: "¿Cuánto demora mi pedido?",
-      answer: catalog
-        ? "La **preparación toma alrededor de {{fab}} días hábiles antes del despacho**. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas (tránsito estimado: ~{{entrega}} días después del despacho, según tu ciudad) y te pasamos el número de guía para que sigas tu pedido."
-        : "La **preparación toma alrededor de {{fab}} días hábiles antes del despacho**. Desde ahí, el tránsito estimado de la transportadora es de ~{{entrega}} días según tu ciudad; al despachar te enviamos el número de guía para que sigas tu pedido.",
+      answer:
+        "La **preparación toma alrededor de {{fab}} días hábiles antes del despacho**. Desde ahí, el tránsito estimado de la transportadora es de ~{{entrega}} días según tu ciudad; al despachar te enviamos el número de guía para que sigas tu pedido.",
     },
     {
       slug: "03-metodos-pago",
       question: "¿Qué métodos de pago aceptan?",
-      answer: catalog
-        ? `Los medios de pago se acuerdan por **WhatsApp** al confirmar tu cotización.${codCatalog}`
-        : `Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada).${codFull}`,
+      answer: `Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada).${codFull}`,
     },
     {
       slug: "04-envios-cobertura",
       question: "¿Hacen envíos a mi ciudad?",
-      answer: catalog
-        ? "Llegamos a **{{cobertura}} destinos** en Colombia a través de nuestras transportadoras aliadas. El costo del envío y el tiempo estimado te los confirmamos por **WhatsApp** al cotizar tu pedido."
-        : "Llegamos a **{{cobertura}} destinos** en Colombia a través de nuestras transportadoras aliadas. Al hacer el pedido calculamos automáticamente el costo, el tiempo estimado y qué transportadora llega a tu ciudad.",
+      answer:
+        "Llegamos a **{{cobertura}} destinos** en Colombia a través de nuestras transportadoras aliadas. Al hacer el pedido calculamos automáticamente el costo, el tiempo estimado y qué transportadora llega a tu ciudad.",
     },
     {
       slug: "05-cambios-devoluciones",
@@ -151,52 +137,26 @@ export default async function AyudaPage() {
     getSettingValue("COD_ENABLED", "false"),
     getSettingValue("LUCAMS_SHIPPING_ENABLED", "false"),
   ]);
-  const catalog = isCatalogMode();
   const codEnabled = codSetting === "true";
-  // Envío Lucams (mismo día, Bogotá) — feature en construcción paralela. Gate
-  // fail-closed: la FAQ solo se muestra cuando la tienda la tiene activa (setting
-  // explícita) y hay checkout donde ver la opción (modo full).
-  const sameDayEnabled = sameDaySetting === "true" && !catalog;
-
-  // FAQs SENSIBLES al modo de tienda (pago/envío/cierre): la DB arrastra la
-  // variante del modo en que se sembró y NO cambia al flipear STORE_MODE
-  // (auditoría 2026-09-11: en PRD, ya en modo full, se seguía sirviendo texto
-  // de catálogo en la home). En modo catálogo ganan SIEMPRE las variantes
-  // catálogo del fallback; el cuerpo CMS aplica solo en modo full.
-  const MODE_SENSITIVE = new Set([
-    "como-personalizo",
-    "cuanto-demora",
-    "metodos-pago",
-    "envios-cobertura",
-  ]);
-  const fallbackSet = buildFallbackFaqs(catalog, codEnabled);
-  const catalogBodyBySlug = new Map(
-    fallbackSet.map((f) => [f.slug.replace(/^\d+-/, ""), f.answer]),
-  );
+  const sameDayEnabled = sameDaySetting === "true";
+  const fallbackSet = buildFallbackFaqs(codEnabled);
 
   // Si hay FAQs en CMS, las usamos. Si no, fallback editorial.
   const rawItems =
     faqs.length > 0
-      ? faqs.map((b) => {
-          const slug = b.key.replace(/^faq\./, "");
-          const baseSlug = slug.replace(/^\d+-/, "");
-          const override = catalog ? catalogBodyBySlug.get(baseSlug) : undefined;
-          const forced = MODE_SENSITIVE.has(baseSlug) && !!override;
-          return {
-            slug,
-            question: b.title ?? b.key,
-            answer: forced ? override : b.body,
-            forced,
-          };
-        })
+      ? faqs.map((b) => ({
+          slug: b.key.replace(/^faq\./, ""),
+          question: b.title ?? b.key,
+          answer: b.body,
+          forced: false,
+        }))
       : fallbackSet.map((f) => ({
           ...f,
           forced: false,
         }));
 
   // Gate del Envío Lucams: la FAQ `envio-mismo-dia` se oculta (venga del CMS o del
-  // fallback) mientras la setting LUCAMS_SHIPPING_ENABLED no sea "true" en modo full
-  // — ningún texto público promete lo que la tienda no tiene activo hoy.
+  // fallback) mientras la setting LUCAMS_SHIPPING_ENABLED no sea "true".
   const filteredItems = sameDayEnabled
     ? rawItems
     : rawItems.filter((it) => it.slug.replace(/^\d+-/, "") !== "envio-mismo-dia");

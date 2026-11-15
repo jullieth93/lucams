@@ -11,7 +11,7 @@ import {
   resolveConsentContact,
   resolveOrderContactTx,
   resolvePostSaleContact,
-  resolveQuoteContactTx,
+  resolveCommercialContactTx,
   resolveSupportTicketContact,
 } from "./resolution-service";
 
@@ -76,7 +76,7 @@ describe("resolution-service — normalizadores puros e invariantes unitarios (S
       resolveSupportTicketContact(partialMock, { email: "guest@test.local" }),
     ).resolves.toBeNull();
     await expect(
-      resolveQuoteContactTx(partialMock, {
+      resolveCommercialContactTx(partialMock, {
         customerName: "Ana",
         customerWhatsapp: "3001234567",
       }),

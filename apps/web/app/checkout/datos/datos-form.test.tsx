@@ -10,7 +10,7 @@
  * que mockea el flag.
  *
  * `./actions` se mockea: es un módulo "use server" (db, cookies) que no
- * aplica a un render unitario — mismo patrón que quote-form.test.tsx.
+ * aplica a un render unitario del formulario de checkout.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

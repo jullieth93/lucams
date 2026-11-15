@@ -6,9 +6,8 @@
  * verificar si "el sitio está caído" sin esperar respuesta del soporte.
  *
  * Chequea en vivo: /api/health (web), /api/health/db, /api/health/storage,
- * /api/health/resend y — en modo full — /api/health/wompi (pagos) y
- * /api/health/aveonline (envíos). En modo catálogo los pagos en línea aún
- * no aplican (se declaran "Pendiente") y los envíos integrados no se listan.
+ * /api/health/resend, /api/health/wompi (pagos) y /api/health/aveonline
+ * (envíos).
  * Página PÚBLICA: solo se muestra el estado, nunca los detalles internos
  * de los endpoints (lib/public-status.ts decide el veredicto).
  */
@@ -24,7 +23,6 @@ import {
   type PublicHealthVerdict,
   type PublicServiceState,
 } from "@/lib/public-status";
-import { isCatalogMode } from "@/lib/store-mode";
 import { formatDateTimeCO } from "@/lib/datetime";
 
 export const metadata: Metadata = {
@@ -110,7 +108,6 @@ async function checkThirdParty(
 }
 
 export default async function StatusPage() {
-  const catalog = isCatalogMode();
   const [web, db, storage, resend, wompi, aveonline] = await Promise.all([
     checkService("Sitio web (Vercel)", "Storefront público y admin", "/api/health"),
     checkService("Base de datos (Postgres)", "Catálogo, pedidos, contenido CMS", "/api/health/db"),
@@ -124,34 +121,21 @@ export default async function StatusPage() {
       "Confirmaciones, OTP, recuperación de password",
       "/api/health/resend",
     ),
-    // En modo catálogo los pagos en línea llegan con la Etapa 2: se declaran
-    // "Pendiente" en vez de sondear un Wompi intencionalmente apagado.
-    catalog
-      ? Promise.resolve<ServiceStatus>({
-          name: "Pagos (Wompi)",
-          description: "Procesamiento de tarjetas y PSE",
-          status: "pending",
-          detail: "Llega con la Etapa 2 (pagos en línea)",
-        })
-      : checkThirdParty(
-          "Pagos (Wompi)",
-          "Procesamiento de tarjetas y PSE",
-          "/api/health/wompi",
-          wompiPublicVerdict,
-        ),
-    // Los envíos integrados no aplican en modo catálogo: no se listan.
-    catalog
-      ? Promise.resolve(null)
-      : checkThirdParty(
-          "Envíos (Aveonline)",
-          "Cotización y despacho con transportadoras",
-          "/api/health/aveonline",
-          aveonlinePublicVerdict,
-        ),
+    checkThirdParty(
+      "Pagos (Wompi)",
+      "Procesamiento de tarjetas y PSE",
+      "/api/health/wompi",
+      wompiPublicVerdict,
+    ),
+    checkThirdParty(
+      "Envíos (Aveonline)",
+      "Cotización y despacho con transportadoras",
+      "/api/health/aveonline",
+      aveonlinePublicVerdict,
+    ),
   ]);
 
-  const services: ServiceStatus[] = [web, db, storage, resend, wompi];
-  if (aveonline) services.push(aveonline);
+  const services: ServiceStatus[] = [web, db, storage, resend, wompi, aveonline];
   const allOk = services.every((s) => s.status === "ok" || s.status === "pending");
   const anyDown = services.some((s) => s.status === "down");
 

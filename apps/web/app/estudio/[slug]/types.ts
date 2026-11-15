@@ -317,7 +317,7 @@ export type MultiSlotCanvasData = {
   /**
    * Ola 2A (Lucy 2026-07-22) — color del MARCO alrededor de la foto (hex #RRGGBB), elegido
    * en el Estudio como estilo visual (antes era la variante "Estilo"/"Marco" de la PDP).
-   * null/undefined = sin marco. Viaja con el diseño a la cotización y al render de producción.
+   * null/undefined = sin marco. Viaja con el diseño al pedido y al render de producción.
    */
   borderColor?: string | null;
   /**

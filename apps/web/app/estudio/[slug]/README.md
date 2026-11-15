@@ -54,7 +54,7 @@ Para un producto multipieza como un pack de **6 Fotoimanes Polaroid**:
 - Al finalizar:
   - **Vista previa**: se genera **1 mosaico limpio** (`clean.webp`) + páginas individuales por
     unidad (`pages/00.webp`, `pages/01.webp`…) en el bucket privado `design-previews` para mostrar
-    en el modal de confirmación, carrito, cotización, orden y portal de seguimiento.
+    en el modal de confirmación, carrito, pedido y portal de seguimiento.
   - **Producción**: el pipeline genera **`N` archivos PNG independientes a 300 DPI** en el bucket
     privado `design-outputs` (uno por cada pieza física que entra a impresión y troquelado).
 
@@ -424,7 +424,7 @@ apps/web/app/estudio/
     ├── shelf-3d-view.tsx                # Escena 6: Repisa 3D con piezas recostadas a escala real (ADR-172)
     ├── gift-3d-view.tsx                 # Escena 7: Caja de regalo 3D con piezas recostadas (ADR-172)
     ├── ornament-3d-view.tsx             # Escena 8: UNA bola dúplex A/B, argolla ovalada, moño exterior e icopor con botones/arrastre
-    ├── mini-book-3d-view.tsx            # Escenas 9 y 10: mini libro cerrado/extendido y nevera con/sin imán
+    ├── mini-book-3d-view.tsx            # Escenas 9 y 10: tapas/páginas/lomo, vistas por cara, extendida y nevera
     ├── mini-book-fields.tsx             # Asistente mini libro: título portada+lomo, autor y contraportada
     ├── calendar-card-focus.tsx          # Visor 3D focal 1 a 1 de calendario con paginador de 2 niveles (Set + Mes)
     ├── calendar-view-3d.tsx             # Escena 3D auxiliar de calendario de escritorio
@@ -999,7 +999,7 @@ vacías alrededor de la foto:
 
 - **Cero marca de agua sobre fotos del cliente (`ADR-191`)**: las vistas previas de diseños
   personalizados (`clean.webp`, `draft-preview.webp` y `pages/NN.webp`) se sirven **100 % limpias**
-  en todas las superficies (Estudio, carrito, `/d/[token]`, cotizaciones y órdenes). Únicamente los
+  en todas las superficies (Estudio, carrito, `/d/[token]` y pedidos). Únicamente los
   artes propios de tienda en `DesignGalleryImage` (bucket público `product-images`) llevan marca de
   agua de protección de catálogo.
 - **Pasarela autorizada `GET /api/design-preview/[...path]` (`features/personalization/preview-access.ts`)**:
@@ -1007,8 +1007,8 @@ vacías alrededor de la foto:
   con `Vary: Cookie` y `Cache-Control: private, max-age=300`:
   - **Staff autenticado con `designs.read` + MFA `aal2`** o **dueño del diseño** (`customerId` o
     cookie `cart_session`): acceso a `clean`, `draft-preview` y `pages/NN.webp`.
-  - **Portador de capability secret en URL** (`?st=` de `/d/[token]`, `?qt=` de `/cotizacion/[token]`
-    u `?ot=` de `/pedido/[token]`, comparación en tiempo constante): acceso solo a `clean` y
+  - **Portador de capability secret en URL** (`?st=` de `/d/[token]` u `?ot=` de
+    `/pedido/[token]`, comparación en tiempo constante): acceso solo a `clean` y
     `pages/NN.webp` (**nunca** a `draft-preview`).
 
 ---

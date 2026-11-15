@@ -1,356 +1,120 @@
-/*
- * Tests de lib/admin-nav.ts — getAdminNav() según el modo de tienda.
- *
- * El módulo evalúa NEXT_PUBLIC_STORE_MODE AL IMPORTARSE (vía lib/store-mode),
- * así que cada caso corre con `vi.resetModules()` + import dinámico tras fijar
- * el valor (mismo patrón que lib/store-mode.test.ts).
- *
- * FOCO:
- *   - En AMBOS modos se ocultan los módulos futuros descopeados:
- *     "Mercado Libre" dentro de Canales y "Bot WhatsApp" dentro de Contenido.
- *   - modo full: todo lo demás visible (Finanzas, Integraciones, Precios al por mayor).
- *   - modo catalog: además oculta el grupo "Finanzas" completo, el item
- *     "Integraciones" de "Configuración" (no hay pagos ni envíos integrados)
- *     y "Precios al por mayor" de "Promociones" (WholesaleTier sin consumidor en Etapa 1).
- *   - "Cotizaciones" ya NO está en el nav (feedback Lucy 2026-09-18: módulo
- *     heredado de Etapa 1; las páginas siguen por URL directa). "Pedidos" es
- *     ahora el primer item de "Ventas" en AMBOS modos.
- *   - Grupo "Marketing" (Fase 3A): "Suscriptores" (/admin/marketing/suscriptores)
- *     visible en ambos modos para MANAGER_UP; FULFILLMENT/CMS_EDITOR no lo ven.
- *   - Entradas del Estudio en "Catálogo" (N-16): /admin/disenos junto a
- *     "Plantillas del Estudio", visible para MANAGER_UP (permiso de ruta
- *     CATALOG en admin-rbac). 2026-09-15: "Fichas del abecedario" dejó de ser
- *     item plano — es un tab dentro de /admin/disenos (/admin/fichas es redirect).
- *   - N-09: NO existe entrada "Mensajes" (/admin/mensajes se consolidó en
- *     /admin/soporte, que sigue bajo "Servicio al cliente").
- *   - El filtrado NO muta ADMIN_NAV (el catch-all placeholder sigue viendo
- *     todos los módulos para su info contextual).
- *   - filterNavByRole(getAdminNav(), "CMS_EDITOR") deja el contenido del sitio
- *     (Páginas del sitio, Ajustes del sitio, Plantillas de correo) + Seguridad
- *     (autoservicio de cuenta — MFA obligatorio para todo rol, B-1 2026-08-24).
- */
-
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { ADMIN_NAV, getAdminNav } from "./admin-nav";
 import { filterNavByRole } from "./admin-rbac";
 
-const KEY = "NEXT_PUBLIC_STORE_MODE";
-const original = process.env[KEY];
-
-async function loadNav() {
-  return import("./admin-nav");
-}
-
-beforeEach(() => {
-  vi.resetModules();
-});
-
-afterEach(() => {
-  if (original === undefined) delete process.env[KEY];
-  else process.env[KEY] = original;
-});
-
-async function getNavForMode(mode: "full" | "catalog") {
-  process.env[KEY] = mode;
-  const mod = await loadNav();
-  return { mod, nav: mod.getAdminNav() };
-}
-
 describe("getAdminNav", () => {
-  it("modo full: Finanzas e Integraciones están visibles", async () => {
-    const { nav } = await getNavForMode("full");
-
+  it("muestra Finanzas, Integraciones, Mayorista y Fidelización", () => {
+    const nav = getAdminNav();
     expect(nav.some((g) => g.title === "Finanzas")).toBe(true);
     const config = nav.find((g) => g.title === "Configuración");
     expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(true);
-  });
-
-  it.each(["full", "catalog"] as const)(
-    "modo %s: oculta Mercado Libre y Bot WhatsApp IA",
-    async (mode) => {
-      const { nav } = await getNavForMode(mode);
-
-      const allHrefs = nav.flatMap((g) => (g.items ?? []).map((it) => it.href));
-      const allLabels = nav.flatMap((g) => (g.items ?? []).map((it) => it.label));
-
-      expect(allHrefs).not.toContain("/admin/canales/mercadolibre");
-      expect(allLabels).not.toContain("Mercado Libre");
-      expect(allLabels).not.toContain("Bot WhatsApp");
-    },
-  );
-
-  it("modo catalog: oculta el grupo Finanzas y el item Integraciones", async () => {
-    const { nav } = await getNavForMode("catalog");
-
-    expect(nav.some((g) => g.title === "Finanzas")).toBe(false);
-    const config = nav.find((g) => g.title === "Configuración");
-    expect(config).toBeDefined();
-    expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(false);
-    // El resto de items de Configuración sigue (Ajustes del sitio, Seguridad, Redirects…).
-    expect(config?.items?.some((it) => it.href === "/admin/contenido/paginas/global")).toBe(true);
-    expect(config?.items?.some((it) => it.href === "/admin/seguridad")).toBe(true);
-  });
-
-  it("modo catalog: Precios al por mayor VISIBLE en Promociones (desde 2026-10-02 lo consume el carrito)", async () => {
-    process.env[KEY] = "catalog";
-    const mod = await loadNav();
-    const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
-
-    expect(promo).toBeDefined();
-    // Hasta 2026-10-02 se ocultaba en modo catálogo (WholesaleTier sin
-    // consumidor). Ese día el carrito pasó a aplicar los niveles como
-    // descuento por volumen público (features/cart/volume-pricing.ts) → el
-    // módulo queda visible en TODOS los modos.
+    const promo = nav.find((g) => g.title === "Promociones");
     expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(true);
-    // Cupones sí aplica en Etapa 1 (se crean ahora, se activan con los pagos).
     expect(promo?.items?.some((it) => it.href === "/admin/cupones")).toBe(true);
-    // Fidelización requiere pagos en línea (la página redirige en modo catálogo).
-    expect(promo?.items?.some((it) => it.href === "/admin/fidelizacion")).toBe(false);
-  });
-
-  it("modo full: Precios al por mayor y Fidelización visibles en Promociones", async () => {
-    process.env[KEY] = "full";
-    const mod = await loadNav();
-    const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
-
-    expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(true);
     expect(promo?.items?.some((it) => it.href === "/admin/fidelizacion")).toBe(true);
   });
 
-  it.each(["full", "catalog"] as const)(
-    "Cotizaciones ya NO está en el nav; Pedidos es el primer item de Ventas (modo %s, feedback Lucy 2026-09-18)",
-    async (mode) => {
-      const { mod, nav } = await getNavForMode(mode);
+  it("oculta módulos descopeados sin mutar ADMIN_NAV", () => {
+    const nav = getAdminNav();
+    const allLabels = nav.flatMap((g) => (g.items ?? []).map((it) => it.label));
+    expect(allLabels).not.toContain("Mercado Libre");
+    expect(allLabels).not.toContain("Bot WhatsApp");
+    expect(nav).not.toBe(ADMIN_NAV);
+    const canales = ADMIN_NAV.find((g) => g.title === "Canales");
+    expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
+  });
 
-      // Ni el nav efectivo ni ADMIN_NAV (fuente del catch-all) lo listan: el
-      // módulo heredado de Etapa 1 sigue vivo solo por URL directa.
-      for (const source of [nav, mod.ADMIN_NAV]) {
-        const ventas = source.find((g) => g.title === "Ventas");
-        expect(ventas?.items?.[0]?.label).toBe("Pedidos");
-        expect(ventas?.items?.some((it) => it.href === "/admin/cotizaciones")).toBe(false);
-      }
-    },
-  );
+  it("Pedidos es el primer item de Ventas y Cotizaciones no existe", () => {
+    for (const source of [getAdminNav(), ADMIN_NAV]) {
+      const ventas = source.find((g) => g.title === "Ventas");
+      expect(ventas?.items?.[0]?.label).toBe("Pedidos");
+    }
+  });
 
-  it.each(["full", "catalog"] as const)(
-    "modo %s: Marketing > Suscriptores visible (/admin/marketing/suscriptores) — Fase 3A",
-    async (mode) => {
-      const { nav } = await getNavForMode(mode);
-      const marketing = nav.find((g) => g.title === "Marketing");
+  it("conserva Marketing y los módulos del Estudio", () => {
+    const nav = getAdminNav();
+    const marketing = nav.find((g) => g.title === "Marketing");
+    expect(marketing?.items?.some((it) => it.href === "/admin/marketing/suscriptores")).toBe(true);
+    const catalogo = nav.find((g) => g.title === "Catálogo");
+    const hrefs = (catalogo?.items ?? []).map((it) => it.href);
+    expect(hrefs).toContain("/admin/disenos");
+    expect(hrefs).not.toContain("/admin/fichas");
+    const iPlantillas = hrefs.indexOf("/admin/plantillas");
+    expect(hrefs[iPlantillas + 1]).toBe("/admin/disenos");
+  });
 
-      expect(marketing?.items?.some((it) => it.href === "/admin/marketing/suscriptores")).toBe(
-        true,
-      );
-    },
-  );
+  it("NO hay entrada Mensajes; Soporte vive en Servicio al cliente", () => {
+    for (const source of [getAdminNav(), ADMIN_NAV]) {
+      const hrefs = [
+        ...source.flatMap((g) => (g.items ?? []).map((it) => it.href)),
+        ...source.filter((g) => g.href).map((g) => g.href as string),
+      ];
+      const labels = [
+        ...source.flatMap((g) => (g.items ?? []).map((it) => it.label)),
+        ...source.map((g) => g.title),
+      ];
+      expect(hrefs).not.toContain("/admin/mensajes");
+      expect(labels).not.toContain("Mensajes");
+      const servicio = source.find((g) => g.title === "Servicio al cliente");
+      expect(servicio?.items?.some((it) => it.href === "/admin/soporte")).toBe(true);
+    }
+  });
+});
 
-  it("filterNavByRole: MANAGER ve Suscriptores (CATALOG); FULFILLMENT y CMS_EDITOR no", async () => {
-    const { nav } = await getNavForMode("full");
-
+describe("filterNavByRole(getAdminNav())", () => {
+  it("MANAGER ve Suscriptores; FULFILLMENT y CMS_EDITOR no", () => {
+    const nav = getAdminNav();
     const manager = filterNavByRole(nav, "MANAGER");
     expect(
       manager
         .find((g) => g.title === "Marketing")
         ?.items?.some((it) => it.href === "/admin/marketing/suscriptores"),
     ).toBe(true);
-
     for (const role of ["FULFILLMENT", "CMS_EDITOR"] as const) {
-      const visible = filterNavByRole(nav, role);
-      expect(visible.some((g) => g.title === "Marketing")).toBe(false);
+      expect(filterNavByRole(nav, role).some((g) => g.title === "Marketing")).toBe(false);
     }
   });
 
-  it.each(["full", "catalog"] as const)(
-    "modo %s: Catálogo incluye los módulos del Estudio (plantillas, diseños con tab fichas) — N-16",
-    async (mode) => {
-      const { nav } = await getNavForMode(mode);
-      const catalogo = nav.find((g) => g.title === "Catálogo");
-
-      const hrefs = (catalogo?.items ?? []).map((it) => it.href);
-      // Antes del N-16 solo era alcanzable desde los QuickLinks del dashboard.
-      expect(hrefs).toContain("/admin/disenos");
-      // 2026-09-15: fichas se embebió como tab de /admin/disenos — ya no es item plano.
-      expect(hrefs).not.toContain("/admin/fichas");
-      // Junto a "Plantillas del Estudio" (ambos alimentan el Estudio).
-      const iPlantillas = hrefs.indexOf("/admin/plantillas");
-      expect(hrefs[iPlantillas + 1]).toBe("/admin/disenos");
-    },
-  );
-
-  it.each(["full", "catalog"] as const)(
-    "modo %s: NO hay entrada Mensajes; Soporte vive en Servicio al cliente (N-09)",
-    async (mode) => {
-      const { mod, nav } = await getNavForMode(mode);
-
-      for (const source of [nav, mod.ADMIN_NAV]) {
-        const hrefs = [
-          ...source.flatMap((g) => (g.items ?? []).map((it) => it.href)),
-          ...source.filter((g) => g.href).map((g) => g.href as string),
-        ];
-        const labels = [
-          ...source.flatMap((g) => (g.items ?? []).map((it) => it.label)),
-          ...source.map((g) => g.title),
-        ];
-        // La bandeja vieja no existe en ninguna fuente del nav.
-        expect(hrefs).not.toContain("/admin/mensajes");
-        expect(labels).not.toContain("Mensajes");
-        // La única bandeja operativa sigue siendo Soporte, bajo Servicio al cliente.
-        const servicio = source.find((g) => g.title === "Servicio al cliente");
-        expect(servicio?.items?.some((it) => it.href === "/admin/soporte")).toBe(true);
-      }
-    },
-  );
-
-  it("filterNavByRole: MANAGER y OPERATIONS_MANAGER ven Canales > Tienda Lucams y Envíos, pero NO Integraciones", async () => {
-    const { nav } = await getNavForMode("full");
-
+  it("MANAGER y OPERATIONS_MANAGER ven Tienda y Envíos, pero NO Integraciones", () => {
+    const nav = getAdminNav();
     for (const role of ["MANAGER", "OPERATIONS_MANAGER"] as const) {
       const visible = filterNavByRole(nav, role);
       const canales = visible.find((g) => g.title === "Canales");
       expect(canales?.items?.map((it) => it.href)).toEqual(["/admin/canales/tienda"]);
-
-      const config = visible.find((g) => g.title === "Configuración");
-      const configHrefs = config?.items?.map((it) => it.href) ?? [];
+      const configHrefs =
+        visible.find((g) => g.title === "Configuración")?.items?.map((it) => it.href) ?? [];
       expect(configHrefs).toContain("/admin/envios");
       expect(configHrefs).not.toContain("/admin/integraciones");
       expect(configHrefs).not.toContain("/admin/email-templates");
     }
   });
 
-  it("filterNavByRole: MANAGER ve diseños (con tab fichas; permiso CATALOG); FULFILLMENT no", async () => {
-    const { nav } = await getNavForMode("catalog");
-
+  it("MANAGER ve diseños, Garantías y Retractos; FULFILLMENT no", () => {
+    const nav = getAdminNav();
     const manager = filterNavByRole(nav, "MANAGER");
     const managerHrefs = manager.flatMap((g) => (g.items ?? []).map((it) => it.href));
     expect(managerHrefs).toContain("/admin/disenos");
+    expect(managerHrefs).toContain("/admin/garantias");
+    expect(managerHrefs).toContain("/admin/retractos");
 
     const fulfillment = filterNavByRole(nav, "FULFILLMENT");
     const fulfillmentHrefs = fulfillment.flatMap((g) => (g.items ?? []).map((it) => it.href));
     expect(fulfillmentHrefs).not.toContain("/admin/disenos");
+    expect(fulfillmentHrefs).not.toContain("/admin/garantias");
+    expect(fulfillmentHrefs).not.toContain("/admin/retractos");
+    expect(fulfillment.some((g) => g.title === "Servicio al cliente")).toBe(false);
   });
 
-  it.each(["full", "catalog"] as const)("modo %s: el filtrado NO muta ADMIN_NAV", async (mode) => {
-    const { mod } = await getNavForMode(mode);
-
-    // ADMIN_NAV conserva los módulos originales activos y retira el placeholder /admin/bot (S26).
-    expect(mod.ADMIN_NAV.some((g) => g.title === "Finanzas")).toBe(true);
-    const canales = mod.ADMIN_NAV.find((g) => g.title === "Canales");
-    expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
-    const contenido = mod.ADMIN_NAV.find((g) => g.title === "Contenido");
-    expect(contenido?.items?.some((it) => it.label === "Bot WhatsApp")).toBe(false);
+  it("CMS_EDITOR ve únicamente sus módulos de contenido y seguridad", () => {
+    const visible = filterNavByRole(getAdminNav(), "CMS_EDITOR");
+    expect(visible.map((g) => g.title)).toEqual(["Contenido", "Configuración"]);
+    expect(visible.find((g) => g.title === "Contenido")?.items?.map((it) => it.href)).toEqual([
+      "/admin/contenido",
+      "/admin/contenido/mediateca",
+    ]);
+    expect(visible.find((g) => g.title === "Configuración")?.items?.map((it) => it.href)).toEqual([
+      "/admin/seguridad",
+      "/admin/redirects",
+    ]);
   });
-
-  it("modo full: getAdminNav() filtra descopeados sin mutar ADMIN_NAV", async () => {
-    process.env[KEY] = "full";
-    const mod = await loadNav();
-    const nav = mod.getAdminNav();
-
-    // Filtra: no devuelve la misma referencia porque oculta módulos descopeados.
-    expect(nav).not.toBe(mod.ADMIN_NAV);
-
-    // Los descopeados no aparecen en el NAV efectivo.
-    const allLabels = nav.flatMap((g) => (g.items ?? []).map((it) => it.label));
-    expect(allLabels).not.toContain("Mercado Libre");
-    expect(allLabels).not.toContain("Bot WhatsApp");
-
-    // ADMIN_NAV original conserva todo (lo usa el catch-all placeholder).
-    expect(mod.ADMIN_NAV.some((g) => g.title === "Canales")).toBe(true);
-    const canales = mod.ADMIN_NAV.find((g) => g.title === "Canales");
-    expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// filterNavByRole sobre el NAV real — N-21 (2026-09-11): nav ⊆ páginas accesibles
-// por rol. Antes /admin/garantias se ofrecía a FULFILLMENT y /admin/retractos a
-// MANAGER/FULFILLMENT, y la página los rebotaba con ?denied=1.
-// ---------------------------------------------------------------------------
-
-describe("filterNavByRole(getAdminNav()) — N-21: garantías y retractos según su página", () => {
-  it.each(["full", "catalog"] as const)(
-    "modo %s: MANAGER ve Garantías y Retractos (ciclo operativo MANAGER_UP) en Servicio al cliente",
-    async (mode) => {
-      const { nav } = await getNavForMode(mode);
-      const visible = filterNavByRole(nav, "MANAGER");
-
-      const servicio = visible.find((g) => g.title === "Servicio al cliente");
-      const hrefs = (servicio?.items ?? []).map((it) => it.href);
-      expect(hrefs).toContain("/admin/garantias");
-      expect(hrefs).toContain("/admin/retractos");
-    },
-  );
-
-  it.each(["full", "catalog"] as const)(
-    "modo %s: FULFILLMENT no ve ni Garantías ni Retractos (el grupo Servicio al cliente desaparece)",
-    async (mode) => {
-      const { nav } = await getNavForMode(mode);
-      const visible = filterNavByRole(nav, "FULFILLMENT");
-
-      const allHrefs = visible.flatMap((g) => (g.items ?? []).map((it) => it.href));
-      expect(allHrefs).not.toContain("/admin/garantias");
-      expect(allHrefs).not.toContain("/admin/retractos");
-      // Y sin esos items el grupo entero se oculta (Soporte/Moderación/Reclamos son CATALOG).
-      expect(visible.some((g) => g.title === "Servicio al cliente")).toBe(false);
-    },
-  );
-});
-
-// ---------------------------------------------------------------------------
-// filterNavByRole sobre el NAV real — rol CMS_EDITOR (solo contenido del sitio)
-// ---------------------------------------------------------------------------
-
-describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
-  it.each(["full", "catalog"] as const)(
-    "modo %s: ve SOLO los grupos Contenido y Configuración",
-    async (mode) => {
-      const { nav } = await getNavForMode(mode);
-      const visible = filterNavByRole(nav, "CMS_EDITOR");
-
-      expect(visible.map((g) => g.title)).toEqual(["Contenido", "Configuración"]);
-    },
-  );
-
-  it.each(["full", "catalog"] as const)(
-    "modo %s: ve exactamente Páginas del sitio, Mediateca, Redirects y Seguridad (Ajustes del sitio y Plantillas de correo son SUPERADMIN)",
-    async (mode) => {
-      const { nav } = await getNavForMode(mode);
-      const visible = filterNavByRole(nav, "CMS_EDITOR");
-
-      const contenido = visible.find((g) => g.title === "Contenido");
-      expect(contenido?.items?.map((it) => it.href)).toEqual([
-        "/admin/contenido",
-        "/admin/contenido/mediateca",
-      ]);
-
-      const config = visible.find((g) => g.title === "Configuración");
-      // Seguridad (autoservicio MFA + contraseña) + Redirects (cms:write) están habilitados para CMS_EDITOR.
-      // Ajustes del sitio (/admin/contenido/paginas/global) y /admin/email-templates
-      // son solo-SUPERADMIN.
-      expect(config?.items?.map((it) => it.href)).toEqual(["/admin/seguridad", "/admin/redirects"]);
-    },
-  );
-
-  it.each(["full", "catalog"] as const)(
-    "modo %s: NO ve dashboard, usuarios, finanzas ni cupones",
-    async (mode) => {
-      const { nav } = await getNavForMode(mode);
-      const visible = filterNavByRole(nav, "CMS_EDITOR");
-
-      const allHrefs = [
-        ...visible.flatMap((g) => (g.items ?? []).map((it) => it.href)),
-        ...visible.filter((g) => g.href).map((g) => g.href as string),
-      ];
-      expect(allHrefs).not.toContain("/admin/dashboard");
-      expect(allHrefs).not.toContain("/admin/usuarios");
-      expect(allHrefs).not.toContain("/admin/finanzas");
-      expect(allHrefs).not.toContain("/admin/cupones");
-      expect(allHrefs).not.toContain("/admin/email-templates");
-      for (const href of allHrefs) {
-        expect(
-          href.startsWith("/admin/contenido") ||
-            href === "/admin/redirects" ||
-            href === "/admin/seguridad",
-        ).toBe(true);
-      }
-    },
-  );
 });

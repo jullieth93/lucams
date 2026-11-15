@@ -1,40 +1,24 @@
 /*
  * HOMOLOGACIÓN E2E — Capa ADMIN §7 (módulos no cubiertos por la matriz §6):
- * cotizaciones (detalle/cambio de estado/WhatsApp), notificaciones (filtros/
- * deep link/marcar todas), observability y RBAC. El resto de §7 ya está
+ * notificaciones (filtros/deep link/marcar todas), observability y RBAC.
+ * El resto de §7 ya está
  * certificado: auth+MFA (admin-login/admin-mfa), contenido CMS
  * (homolog-admin-cms), cruces §5.3 (homolog-admin-cruces: toggle COD,
  * desactivar producto, aprobar reseña, marcar leída), inventario
  * (homolog-back-in-stock) y mobile admin integral (mobile-admin-audit).
  *
- * Corre en LOCAL y STG (modo catálogo — la capa admin es la misma en ambos
- * modos) × desktop/mobile; requiere E2E_AUTH=1 (storageState del admin
- * efímero SUPERADMIN del setup). En PRD skip (crea y muta datos de prueba).
- *
- * Flujo §7.2: una cotización REAL creada por UI (anónimo) → el admin la ve en
- * la lista → detalle → link wa.me/57<phone> del cliente → "Marcar contactada"
- * (con confirm() nativo) → success en UI + status CONTACTED en DB +
- * AdminActionLog escrito (entityId = quote.id). La cotización es efímera del
- * RUN: se soft-borra en afterAll (patrón del repo); la notificación QUOTE se
- * borra; el Consent queda (ledger legal). En STG cada corrida envía 1 email
- * real al admin (canal de venta activo en previews — esperado y documentado).
+ * Corre en LOCAL y STG × desktop/mobile; requiere E2E_AUTH=1 (storageState
+ * del admin efímero SUPERADMIN del setup). En PRD skip (crea y muta datos de
+ * prueba). Las oportunidades B2B y sus contactos se limpian al terminar.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { baseUrlFor, extraHeadersFor, strip } from "./_setup/env";
-import { E2E_ENV, dismissCookieBanner, expect, test } from "./fixtures/auth";
+import { E2E_ENV, expect, test } from "./fixtures/auth";
 import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
-import {
-  createEphemeralProduct,
-  deleteEphemeralProductsByTag,
-  fakeCustomer,
-  type EphemeralProduct,
-} from "./fixtures/data-factory";
-import { PdpPage } from "./pages/pdp";
-import { CarritoPage } from "./pages/carrito";
-import { CotizacionPage } from "./pages/cotizacion";
+import { fakeCustomer } from "./fixtures/data-factory";
 import { enrollTotpFactor, loginAdminWithTotp } from "./_helpers/mfa";
 
 const EVIDENCE_DIR = resolve(__dirname, "../../tmp/e2e-homologacion");
@@ -43,9 +27,9 @@ test.skip(E2E_ENV === "prd", "La capa §7 crea/muta datos de prueba: prohibido e
 
 const run = newRunId("admin7");
 const customer = fakeCustomer(run);
-let product: EphemeralProduct | null = null;
-let quoteId = "";
-let quoteNumber = "";
+let opportunityId = "";
+let opportunityNumber = "";
+let opportunityContactId = "";
 let managerAuthId = "";
 let managerRowId = "";
 const MANAGER_EMAIL = `${run}-mgr@e2e.test`;
@@ -78,13 +62,9 @@ function writeEvidence(status: "pass" | "fail", error?: unknown) {
 }
 
 test.afterAll(async () => {
-  // Cotización efímera: soft-delete (patrón homolog-cotizacion).
-  if (quoteId) {
+  if (opportunityContactId) {
     await db()
-      .quote.update({ where: { id: quoteId }, data: { deletedAt: new Date() } })
-      .catch(() => {});
-    await db()
-      .adminActionLog.deleteMany({ where: { entityId: quoteId } })
+      .contact.deleteMany({ where: { id: opportunityContactId } })
       .catch(() => {});
   }
   await db()
@@ -112,105 +92,12 @@ test.afterAll(async () => {
       /* limpieza best-effort */
     }
   }
-  // Barrido por tag: cubre los retries (cada intento crea su producto y
-  // el último proceso solo ve el suyo — fuga reproducida 2026-08-07).
-  await deleteEphemeralProductsByTag("e2e-admin7");
-  for (const scope of ["quote"]) {
-    await db()
-      .$executeRawUnsafe(`DELETE FROM rate_limit_buckets WHERE key LIKE '${scope}:%'`)
-      .catch(() => {});
-  }
   await disconnectDb();
-});
-
-/* ═══ §7.2 — Cotizaciones admin: lista → detalle → WhatsApp → cambio de estado ═══ */
-
-test("§7.2 cotizaciones: cotización real aparece en admin · detalle con wa.me · cambio de estado con log", async ({
-  anonPage,
-  adminPage,
-}, testInfo) => {
-  test.skip(
-    process.env.NEXT_PUBLIC_STORE_MODE !== "catalog",
-    "La creación de cotizaciones desde el carrito solo está disponible en modo catálogo.",
-  );
-  test.setTimeout(300_000);
-  projectName = testInfo.project.name;
-  resultsPath = resolve(EVIDENCE_DIR, `results-${E2E_ENV}-${projectName}-${run}-cotizaciones.json`);
-
-  try {
-    // 1. El cliente crea una cotización REAL por UI (modo catálogo Etapa 1).
-    product = await createEphemeralProduct(run);
-    const pdp = new PdpPage(anonPage, product.slug);
-    await pdp.goto();
-    await dismissCookieBanner(anonPage);
-    await pdp.addToCart();
-    const carrito = new CarritoPage(anonPage);
-    await carrito.expectItem(product.name);
-    await carrito.quoteCta().click();
-    const cotizacion = new CotizacionPage(anonPage);
-    await cotizacion.expectLoaded();
-    await cotizacion.fill({
-      name: customer.name,
-      whatsapp: customer.whatsapp,
-      email: customer.email,
-      notes: `Admin §7.2 ${run}`,
-    });
-    await cotizacion.submitAndWaitConfirmation();
-    const quote = await db().quote.findFirstOrThrow({
-      where: { customerWhatsapp: customer.whatsapp, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, number: true, status: true },
-    });
-    quoteId = quote.id;
-    quoteNumber = quote.number;
-    record("quote-creada-por-ui", true, `${quote.number} PENDING (cliente anónimo)`);
-
-    // 2. El admin la ve en la lista de cotizaciones.
-    await adminPage.goto("/admin/cotizaciones", { waitUntil: "domcontentloaded" });
-    await expect(
-      adminPage.getByText(quoteNumber).first(),
-      "la cotización del RUN aparece en la lista",
-    ).toBeVisible({ timeout: 30_000 });
-    record("admin-lista", true, `${quoteNumber} visible en /admin/cotizaciones`);
-
-    // 3. Detalle: link de WhatsApp del cliente bien formado (wa.me/57<10 dígitos>).
-    await adminPage.goto(`/admin/cotizaciones/${quoteId}`, { waitUntil: "domcontentloaded" });
-    const waLink = adminPage.getByRole("link", { name: /abrir whatsapp/i }).first();
-    await expect(waLink, "link 'Abrir WhatsApp' presente").toBeVisible({ timeout: 30_000 });
-    const href = await waLink.getAttribute("href");
-    expect(href, "wa.me con prefijo 57 + móvil de 10 dígitos").toContain(
-      `wa.me/57${customer.whatsapp}`,
-    );
-    record("detalle-wa-link", true, `href=${href?.slice(0, 60)}…`);
-
-    // 4. Cambio de estado PENDING → CONTACTED (confirm() nativo aceptado).
-    adminPage.once("dialog", (d) => void d.accept());
-    await adminPage.getByRole("button", { name: /marcar contactada/i }).click();
-    await expect(
-      adminPage.getByText(/cotización marcada como contactada/i),
-      "feedback de éxito",
-    ).toBeVisible({ timeout: 20_000 });
-    await expect(async () => {
-      const q = await db().quote.findUniqueOrThrow({
-        where: { id: quoteId },
-        select: { status: true },
-      });
-      expect(q.status).toBe("CONTACTED");
-      const logs = await db().adminActionLog.count({ where: { entityId: quoteId } });
-      expect(logs, "AdminActionLog escrito (§7.1)").toBeGreaterThanOrEqual(1);
-    }).toPass({ timeout: 20_000 });
-    record("estado-contactada-con-log", true, "UI success + DB CONTACTED + AdminActionLog ≥1");
-
-    writeEvidence("pass");
-  } catch (err) {
-    writeEvidence("fail", err);
-    throw err;
-  }
 });
 
 /* ═══ §7.4 — Notificaciones: filtros, deep link, marcar todas ═══ */
 
-test("§7.4 notificaciones: filtro QUOTE · deep link al detalle · marcar todas → pill baja", async ({
+test("§7.4 notificaciones: filtro ORDER · deep link B2B · marcar todas → pill baja", async ({
   adminPage,
 }, testInfo) => {
   test.setTimeout(180_000);
@@ -221,84 +108,69 @@ test("§7.4 notificaciones: filtro QUOTE · deep link al detalle · marcar todas
   );
 
   try {
-    // Usa la cotización del test anterior; en un retry AISLADO (ese test no
-    // re-corre) quoteId viene vacío → semilla directa en DB con el mismo shape
-    // (patrón homolog-admin-cruces ④).
-    if (!quoteId) {
-      product ??= await createEphemeralProduct(run);
-      const { createHash } = await import("node:crypto");
-      const seeded = await db().quote.create({
-        data: {
-          number: `E2E-${run}`,
-          customerName: customer.name,
-          customerWhatsapp: customer.whatsapp,
-          customerEmail: customer.email,
-          city: "Bogotá",
-          department: "Cundinamarca",
-          subtotal: 19_900,
-          total: 19_900,
-          // F-11 — solo el hash sha256 del token se persiste (NOT NULL + unique).
-          publicAccessTokenHash: createHash("sha256").update(`e2e-${run}`).digest("hex"),
-          items: {
-            create: [
-              { productName: product.name, variantName: "Default", unitPrice: 19_900, quantity: 1 },
-            ],
-          },
-        },
-        select: { id: true, number: true },
-      });
-      quoteId = seeded.id;
-      quoteNumber = seeded.number;
-      await db().notification.create({
-        data: {
-          type: "QUOTE",
-          severity: "info",
-          title: `Nueva cotización ${quoteNumber} — ${customer.name} (Bogotá)`,
-          detail: `Total: $199 · 1 item(s) · WhatsApp: ${customer.whatsapp}`,
-          actionUrl: `/admin/cotizaciones/${quoteId}`,
-          actionLabel: "Ver cotización",
-          dedupKey: `quote:${quoteId}`,
-        },
-      });
-    }
-    // toPass: read-after-write del pooler — la fila puede tardar un instante.
+    const contact = await db().contact.create({
+      data: {
+        primaryEmail: customer.email,
+        displayName: customer.name,
+        source: "B2B_INQUIRY",
+      },
+      select: { id: true },
+    });
+    opportunityContactId = contact.id;
+    const opportunity = await db().opportunity.create({
+      data: {
+        number: `OP-${run}`,
+        contactId: contact.id,
+        title: `Evento empresarial ${run}`,
+        expectedUnits: 100,
+      },
+      select: { id: true, number: true },
+    });
+    opportunityId = opportunity.id;
+    opportunityNumber = opportunity.number;
+    await db().notification.create({
+      data: {
+        type: "ORDER",
+        severity: "info",
+        title: `Nueva oportunidad ${opportunityNumber} — ${customer.name} (100 uds.)`,
+        detail: `Evento empresarial · Bogotá · WhatsApp: ${customer.whatsapp}`,
+        actionUrl: `/admin/oportunidades/${opportunityId}`,
+        actionLabel: "Ver oportunidad",
+        dedupKey: `opportunity:${opportunityId}`,
+      },
+    });
+
     let notif: { id: string; title: string; actionUrl: string | null } | null = null;
     await expect(async () => {
       notif = await db().notification.findFirstOrThrow({
-        where: { title: { contains: quoteNumber } },
+        where: { title: { contains: opportunityNumber } },
         orderBy: { createdAt: "desc" },
         select: { id: true, title: true, actionUrl: true },
       });
     }).toPass({ timeout: 20_000 });
-    expect(notif!.actionUrl).toBe(`/admin/cotizaciones/${quoteId}`);
+    expect(notif!.actionUrl).toBe(`/admin/oportunidades/${opportunityId}`);
 
-    // 1. Filtro por tipo QUOTE (vista "Todas" para incluir leídas).
-    await adminPage.goto("/admin/notificaciones?view=all&type=QUOTE", {
+    await adminPage.goto("/admin/notificaciones?view=all&type=ORDER", {
       waitUntil: "domcontentloaded",
     });
     await expect(
-      adminPage.getByText(new RegExp(quoteNumber)).first(),
-      "la notificación QUOTE del RUN aparece con el filtro",
+      adminPage.getByText(new RegExp(opportunityNumber)).first(),
+      "la notificación ORDER del RUN aparece con el filtro",
     ).toBeVisible({ timeout: 30_000 });
-    record("filtro-quote", true, `?view=all&type=QUOTE muestra "${notif!.title.slice(0, 60)}…"`);
+    record("filtro-order", true, `?view=all&type=ORDER muestra "${notif!.title.slice(0, 60)}…"`);
 
-    // 2. Deep link "Ver cotización" → detalle de la cotización.
     await adminPage
-      .getByRole("link", { name: /ver cotización/i })
+      .getByRole("link", { name: /ver oportunidad/i })
       .first()
       .click();
-    await expect(adminPage).toHaveURL(new RegExp(`/admin/cotizaciones/${quoteId}`), {
+    await expect(adminPage).toHaveURL(new RegExp(`/admin/oportunidades/${opportunityId}`), {
       timeout: 20_000,
     });
-    await expect(adminPage.getByText(quoteNumber).first()).toBeVisible({ timeout: 20_000 });
-    record("deep-link", true, `actionUrl → /admin/cotizaciones/${quoteId}`);
+    await expect(adminPage.getByText(opportunityNumber).first()).toBeVisible({ timeout: 20_000 });
+    record("deep-link", true, `actionUrl → /admin/oportunidades/${opportunityId}`);
 
-    // 3. Marcar todas como leídas → pill del nav desaparece (o queda en 0).
     await adminPage.goto("/admin/notificaciones", { waitUntil: "domcontentloaded" });
     await adminPage.getByRole("button", { name: /marcar todas como leídas/i }).click();
-    // El contrato es "las que existían quedan leídas" — NO "0 globales para
-    // siempre": un cron puede crear una alerta nueva entre el click y la
-    // consulta (flake reproducido 2026-08-07: 2 no leídas nuevas en la ventana).
     const clickedAt = new Date();
     await expect(async () => {
       const unread = await db().notification.count({
@@ -306,7 +178,6 @@ test("§7.4 notificaciones: filtro QUOTE · deep link al detalle · marcar todas
       });
       expect(unread, "toda notificación previa al click quedó leída").toBe(0);
     }).toPass({ timeout: 20_000 });
-    // Pill del nav: en mobile vive dentro del drawer (hamburguesa).
     const hamburger = adminPage.getByRole("button", { name: /abrir menú/i });
     if (await hamburger.isVisible().catch(() => false)) await hamburger.click();
     const pill = adminPage.locator('span[aria-label*="notificaciones sin leer"]:visible');
@@ -407,7 +278,7 @@ test("§7.6 observability: salud técnica carga + sección de crons + /api/healt
 
 /* ═══ §7.7 — RBAC: deny-by-default para rol no-SUPER ═══ */
 
-test("§7.7 RBAC: MANAGER no entra a finanzas (redirect) ni ve el nav item, sí entra a cotizaciones", async ({
+test("§7.7 RBAC: MANAGER no entra a finanzas (redirect) ni ve el nav item, sí entra a oportunidades", async ({
   browser,
 }, testInfo) => {
   test.setTimeout(180_000);
@@ -473,14 +344,14 @@ test("§7.7 RBAC: MANAGER no entra a finanzas (redirect) ni ve el nav item, sí 
         "/admin/finanzas → redirect /admin/dashboard + sin nav item",
       );
 
-      // Módulo permitido (cotizaciones = MANAGER_UP) → carga.
-      await page.goto("/admin/cotizaciones", { waitUntil: "domcontentloaded" });
-      await expect(page).toHaveURL(/\/admin\/cotizaciones/, { timeout: 20_000 });
+      // Módulo permitido (Oportunidades B2B = MANAGER_UP) → carga.
+      await page.goto("/admin/oportunidades", { waitUntil: "domcontentloaded" });
+      await expect(page).toHaveURL(/\/admin\/oportunidades/, { timeout: 20_000 });
       await expect(
-        page.getByRole("heading", { name: /cotizaciones/i }).first(),
-        "cotizaciones carga para MANAGER",
+        page.getByRole("heading", { name: /oportunidades/i }).first(),
+        "oportunidades carga para MANAGER",
       ).toBeVisible({ timeout: 20_000 });
-      record("cotizaciones-permitido", true, "MANAGER sí carga /admin/cotizaciones");
+      record("oportunidades-permitido", true, "MANAGER sí carga /admin/oportunidades");
     } finally {
       await context.close();
     }

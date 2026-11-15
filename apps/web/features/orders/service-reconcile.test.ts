@@ -61,7 +61,6 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("@/lib/stage-guard", () => ({ assertTransactionalAllowed: vi.fn() }));
 vi.mock("@/lib/catalog", () => ({ invalidateCatalogListings: vi.fn() }));
 vi.mock("@/features/coupons/redemption", () => ({
   priceCouponForCart: vi.fn(),
