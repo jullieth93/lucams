@@ -101,11 +101,6 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "kebab-late-batting.ngrok-free.dev",
-        pathname: "/storage/v1/object/**",
-      },
-      {
-        protocol: "https",
         hostname: "images.unsplash.com",
       },
       {
