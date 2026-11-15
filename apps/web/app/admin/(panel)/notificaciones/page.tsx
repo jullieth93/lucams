@@ -2,9 +2,9 @@
  * Admin — Centro de notificaciones (2026-08-05).
  *
  * Feed in-app de eventos del sistema aislado por alcance RBAC:
- *   - `SUPERADMIN`: vista completa (alertas técnicas, crons, finanzas/DIAN, pedidos y cotizaciones).
+ *   - `SUPERADMIN`: vista completa (alertas técnicas, crons, finanzas/DIAN, pedidos y oportunidades).
  *   - `OPERATIONS_MANAGER` / `MANAGER`: avisos operativos y comerciales dentro de sus rutas permitidas
- *     (pedidos, inventario, cotizaciones, oportunidades), sin exponer ingresos COP, DIAN ni seguridad.
+ *     (pedidos, inventario y oportunidades), sin exponer ingresos COP, DIAN ni seguridad.
  */
 
 import type { Metadata } from "next";
@@ -19,7 +19,6 @@ import {
   Clock,
   Info,
   Package,
-  ShoppingBag,
   type LucideIcon,
 } from "lucide-react";
 import { adminHomePath, canAccessAdminPath } from "@/lib/admin-rbac";
@@ -68,11 +67,6 @@ const TYPE_META: Record<NotificationType, { label: string; Icon: LucideIcon; ico
   {
     ALERT: { label: "Alerta", Icon: AlertTriangle, iconClass: "bg-amber-100 text-amber-600" },
     CRON: { label: "Cron", Icon: Clock, iconClass: "bg-brand-purple/10 text-brand-purple" },
-    QUOTE: {
-      label: "Cotización",
-      Icon: ShoppingBag,
-      iconClass: "bg-brand-turquoise/15 text-cyan-700",
-    },
     ORDER: {
       label: "Pedido",
       Icon: Package,
@@ -97,7 +91,6 @@ const ALL_TYPE_FILTERS: Array<{
 }> = [
   { key: null, label: "Todos" },
   { key: "ORDER", label: "Pedidos" },
-  { key: "QUOTE", label: "Cotizaciones" },
   { key: "ALERT", label: "Alertas" },
   { key: "CRON", label: "Crons", techOnly: true },
   { key: "SYSTEM", label: "Sistema", techOnly: true },
@@ -164,13 +157,6 @@ export default async function AdminNotificacionesPage({
       href: filterHref("all", "ORDER"),
     },
     {
-      key: "QUOTE",
-      label: "Cotizaciones",
-      count: summary.byType.QUOTE,
-      tone: "turquoise",
-      href: filterHref("all", "QUOTE"),
-    },
-    {
       key: "ALERT",
       label: "Alertas",
       count: summary.byType.ALERT,
@@ -206,8 +192,8 @@ export default async function AdminNotificacionesPage({
         subtitle={
           <>
             {canSeeObservability
-              ? "Centro unificado de eventos del sistema: pedidos, cotizaciones nuevas, alertas operativas, crons y resumen diario — sin llenar tu correo."
-              : "Avisos operativos y comerciales de tu ámbito: pedidos confirmados, alertas de stock o despacho y cotizaciones nuevas — sin llenar tu correo."}
+              ? "Centro unificado de eventos del sistema: pedidos, oportunidades B2B, alertas operativas, crons y resumen diario — sin llenar tu correo."
+              : "Avisos operativos y comerciales de tu ámbito: pedidos confirmados, oportunidades B2B y alertas de stock o despacho — sin llenar tu correo."}
             {canSeeObservability && (
               <span className="mt-1 block text-xs text-slate-500">
                 Acá queda el historial de avisos. Para revisar telemetría e infraestructura en vivo,
@@ -292,7 +278,7 @@ export default async function AdminNotificacionesPage({
             <p className="mt-1 text-[11px] text-slate-500">Hora Colombia (UTC-5)</p>
           </div>
           <div className="border-brand-purple/10 rounded-2xl border bg-white p-4 shadow-sm">
-            <p className="text-xs font-medium text-slate-500">Pedidos y cotizaciones (14d)</p>
+            <p className="text-xs font-medium text-slate-500">Pedidos y oportunidades (14d)</p>
             <p className="text-brand-purple-dark font-display mt-1 text-2xl font-bold tabular-nums">
               <CountUp value={summary.commercialWindowCount} />
             </p>
@@ -385,8 +371,8 @@ export default async function AdminNotificacionesPage({
               view === "unread"
                 ? "Ya estás al día: no queda nada sin leer. Cuando algo necesite tu atención va a aparecer acá."
                 : canSeeObservability
-                  ? "Cuando algo necesite tu atención (una alerta, un cron que falle, una cotización nueva o tu resumen diario), va a aparecer acá — sin llenar tu correo."
-                  : "Cuando entre un pedido nuevo, una cotización o una alerta operativa de tu ámbito, va a aparecer acá — sin llenar tu correo."
+                  ? "Cuando algo necesite tu atención (una alerta, un cron que falle, una oportunidad B2B o tu resumen diario), va a aparecer acá — sin llenar tu correo."
+                  : "Cuando entre un pedido nuevo, una oportunidad B2B o una alerta operativa de tu ámbito, va a aparecer acá — sin llenar tu correo."
             }
           />
         ) : (

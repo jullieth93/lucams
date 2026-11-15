@@ -5,19 +5,18 @@ calendarios, tiras fotográficas y sets de letras/abecedario), con **Estudio de 
 en vivo**, renderizado de imprenta a 300 DPI, asistente IA, pagos en línea con Wompi, contraentrega
 y logística multi-transportadora.
 
-- **Sitio en producción:** [lucamsshop.com](https://lucamsshop.com) — vendiendo en modo `full`
+- **Sitio en producción:** [lucamsshop.com](https://lucamsshop.com) — tienda transaccional activa
 - **Instagram:** [`@lucams_shop`](https://www.instagram.com/lucams_shop) (handle de red social)
 - **Linktree comercial:** [`linktr.ee/Lucams_shop`](https://linktr.ee/Lucams_shop)
 - **WhatsApp comercial:** +57 320 887 3826
 
 ## Estado del proyecto
 
-**Salida en 2 etapas (`ADR-077`)** sobre una única base de código gobernada por `NEXT_PUBLIC_STORE_MODE`:
-
-- **Etapa 1 (superada):** modo `catalog` + cotización asistida por WhatsApp.
-- **Etapa 2 (activa en PRD):** tienda `full` operando con cobros Wompi, contraentrega y envíos
-  reales con Aveonline + Envío Lucams Bogotá. El pendiente externo no técnico es el trámite de
-  facturación electrónica ante la DIAN (NIT/RUT, revisión contable y proveedor tecnológico).
+**Tienda transaccional única (`ADR-204`)**: la venta individual opera con cobros Wompi,
+contraentrega y envíos reales con Aveonline + Envío Lucams Bogotá. Las empresas y eventos se
+gestionan mediante oportunidades B2B; la antigua POC de cotización individual por WhatsApp fue
+retirada. El pendiente externo no técnico es el trámite de facturación electrónica ante la DIAN
+(NIT/RUT, revisión contable y proveedor tecnológico).
 
 El estado operativo actual y todos los pendientes abiertos viven en [`docs/STATE.md`](docs/STATE.md).
 

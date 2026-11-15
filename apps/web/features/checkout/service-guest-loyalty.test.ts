@@ -5,7 +5,7 @@
  *
  *  - Solo invitados: con sesión el cliente ya ve earnPreviewPoints
  *    (getCheckoutLoyalty) y el incentivo sería ruido → null.
- *  - null si el programa está apagado, en modo catálogo o si la compra no
+ *  - null si el programa está apagado o si la compra no
  *    alcanza ni 1 punto.
  *  - Puntos = floor(totalEstimado / earnCopPerPoint) sobre productos tras
  *    cupón + envío ya seleccionado (en datos no hay envío aún).
@@ -17,32 +17,29 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prisma, checkoutState, catalogMode, loyaltySettings, referralSettings } = vi.hoisted(
-  () => ({
-    prisma: {
-      order: { findFirst: vi.fn(async () => null), updateMany: vi.fn(), update: vi.fn() },
-      productVariant: { findMany: vi.fn(async () => []) },
-      address: { findFirst: vi.fn(async () => null) },
-      customer: { findFirst: vi.fn(async () => null), updateMany: vi.fn() },
+const { prisma, checkoutState, loyaltySettings, referralSettings } = vi.hoisted(() => ({
+  prisma: {
+    order: { findFirst: vi.fn(async () => null), updateMany: vi.fn(), update: vi.fn() },
+    productVariant: { findMany: vi.fn(async () => []) },
+    address: { findFirst: vi.fn(async () => null) },
+    customer: { findFirst: vi.fn(async () => null), updateMany: vi.fn() },
+  },
+  checkoutState: { current: null as null | Record<string, unknown> },
+  loyaltySettings: {
+    current: {
+      enabled: true,
+      earnCopPerPoint: 1_000,
+      redeemPointsPer1000: 100,
+      redeemMinPoints: 100,
+      redeemMaxPercent: 50,
+      expirationEnabled: false,
+      expirationDays: 365,
     },
-    checkoutState: { current: null as null | Record<string, unknown> },
-    catalogMode: { current: false },
-    loyaltySettings: {
-      current: {
-        enabled: true,
-        earnCopPerPoint: 1_000,
-        redeemPointsPer1000: 100,
-        redeemMinPoints: 100,
-        redeemMaxPercent: 50,
-        expirationEnabled: false,
-        expirationDays: 365,
-      },
-    },
-    referralSettings: {
-      current: { enabled: true, rewardPercent: 10, rewardDays: 90 },
-    },
-  }),
-);
+  },
+  referralSettings: {
+    current: { enabled: true, rewardPercent: 10, rewardDays: 90 },
+  },
+}));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/logger", () => ({
@@ -54,8 +51,6 @@ vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn(async () => null) }));
 vi.mock("@/lib/cms", () => ({
   getSettingValue: vi.fn(async (_k: string, fallback: string) => fallback),
 }));
-vi.mock("@/lib/stage-guard", () => ({ assertTransactionalAllowed: vi.fn() }));
-vi.mock("@/lib/store-mode", () => ({ isCatalogMode: () => catalogMode.current }));
 vi.mock("@/features/orders/service", () => ({ createOrderFromCart: vi.fn() }));
 vi.mock("@/features/orders/payment-reference", () => ({ resolveWompiPaymentReference: vi.fn() }));
 vi.mock("@/features/orders/saga", () => ({ processPaidOrder: vi.fn() }));
@@ -140,7 +135,6 @@ function guestCtx(over?: {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  catalogMode.current = false;
   loyaltySettings.current.enabled = true;
   loyaltySettings.current.earnCopPerPoint = 1_000;
   referralSettings.current.enabled = true;
@@ -183,12 +177,6 @@ describe("getGuestLoyaltyIncentive", () => {
 
   it("compra que no alcanza ni 1 punto → null (nada que prometer)", async () => {
     const incentive = await getGuestLoyaltyIncentive(guestCtx({ subtotal: 99_900 })); // $999
-    expect(incentive).toBeNull();
-  });
-
-  it("modo catálogo → null (no hay compra en línea que acredite puntos)", async () => {
-    catalogMode.current = true;
-    const incentive = await getGuestLoyaltyIncentive(guestCtx());
     expect(incentive).toBeNull();
   });
 });

@@ -18,7 +18,7 @@ vi.mock("@/features/notifications/service", () => ({
     priorityUnreadCount: 0,
     windowTotal: mocks.notifications.length,
     commercialWindowCount: 0,
-    byType: { ORDER: 0, QUOTE: 0, ALERT: 0, CRON: 0, SYSTEM: 0 },
+    byType: { ORDER: 0, ALERT: 0, CRON: 0, SYSTEM: 0 },
     buckets: [],
   })),
 }));

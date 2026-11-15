@@ -87,7 +87,7 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     // img-src incluye images.unsplash.com TEMPORALMENTE: fotos placeholder del seed que
     // Lucy reemplazará por fotos reales (vía admin/Supabase Storage). La decisión es
     // coherente con next.config images.remotePatterns (que ya permite Unsplash vía proxy
-    // /_next/image); acá se permite además la carga directa (previews admin/cotización).
+    // /_next/image); acá se permite además la carga directa de previews admin.
     // TODO (contenido): retirar Unsplash cuando las fotos reales estén montadas.
     // `${supabaseOrigin}` (2026-08-07): en LOCAL las signed URLs del bucket privado
     // customer-uploads salen con el host del stack local (http://<lan-ip>:54321) y la

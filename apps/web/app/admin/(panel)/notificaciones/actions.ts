@@ -15,7 +15,7 @@ import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { markRead, markAllRead, type NotificationType } from "@/features/notifications/service";
 import { logger } from "@/lib/logger";
 
-const VALID_TYPES: readonly NotificationType[] = ["ALERT", "CRON", "QUOTE", "SYSTEM", "ORDER"];
+const VALID_TYPES: readonly NotificationType[] = ["ALERT", "CRON", "SYSTEM", "ORDER"];
 
 /** Marca UNA notificación como leída dentro del ámbito RBAC del actor. */
 export async function markReadAction(formData: FormData): Promise<void> {

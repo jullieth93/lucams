@@ -46,7 +46,7 @@ describe("admin help registry", () => {
   it("tiene identificadores únicos, contenido completo y relaciones válidas", () => {
     const ids = ADMIN_MODULE_GUIDES.map((guide) => guide.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ADMIN_MODULE_GUIDES).toHaveLength(44);
+    expect(ADMIN_MODULE_GUIDES).toHaveLength(43);
 
     for (const guide of ADMIN_MODULE_GUIDES) {
       expect(guide.purpose.length, guide.id).toBeGreaterThan(80);

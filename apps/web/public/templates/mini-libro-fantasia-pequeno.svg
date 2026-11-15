@@ -1,9 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="500" height="250" viewBox="0 0 500 250">
-      <rect width="500" height="250" fill="#3D2E5C"/>
-      <rect x="275" width="225" height="250" fill="#FFD93D" fill-opacity=".12"/>
-      <path d="M225 0V250M275 0V250" stroke="#FFD93D" stroke-width="3" stroke-dasharray="10 6"/>
-      <rect x="291" y="16" width="193" height="170" rx="12" fill="#FFD93D" fill-opacity=".18" stroke="#FFD93D" stroke-width="3"/>
-      <g transform="translate(387.5 67.5) scale(0.5)"><path d="M0-45 10-12 45-10 17 10 27 45 0 25-27 45-17 10-45-10-10-12Z" fill="#FFD93D"/><circle cx="-42" cy="-28" r="6" fill="#FFD93D"/><circle cx="45" cy="38" r="5" fill="#FFD93D"/></g>
-      <path d="M305 205H470M305 225H440" stroke="#FFD93D" stroke-width="5" stroke-linecap="round"/>
-      <path d="M35 95H190M35 115H170M35 135H180" stroke="#FFD93D" stroke-width="4" stroke-linecap="round" opacity=".65"/>
-    </svg>
+    <defs>
+      <linearGradient id="night" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#061522"/><stop offset=".52" stop-color="#0A3347"/><stop offset="1" stop-color="#08727A"/></linearGradient>
+      <linearGradient id="spine" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#040D19"/><stop offset=".5" stop-color="#17354B"/><stop offset="1" stop-color="#061522"/></linearGradient>
+      <linearGradient id="portal" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#10132F"/><stop offset=".42" stop-color="#642653"/><stop offset=".78" stop-color="#D64C79"/><stop offset="1" stop-color="#F3A076"/></linearGradient>
+      <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFF0B5"/><stop offset=".45" stop-color="#D5A94F"/><stop offset=".72" stop-color="#FFF0B5"/><stop offset="1" stop-color="#A77A31"/></linearGradient>
+      <clipPath id="portal-clip"><path d="M330 174V109.5A57.5 57.5 0 0 1 445 109.5V174Z"/></clipPath>
+    </defs>
+
+    <path d="M0 0H500V250H0Z M330 174V109.5A57.5 57.5 0 0 1 445 109.5V174Z" fill="url(#night)" fill-rule="evenodd"/>
+    <rect x="225" width="50" height="250" fill="url(#spine)"/>
+    <path d="M225 0V250M275 0V250" stroke="#E8C875" stroke-opacity=".38" stroke-width="1.5"/>
+    <rect x="12" y="12" width="201" height="226" rx="3" fill="none" stroke="#D5A94F" stroke-opacity=".55" stroke-width="1"/>
+    <path d="M330 174V109.5A57.5 57.5 0 0 1 445 109.5V174Z" fill="none" stroke="#F3D98B" stroke-opacity=".16" stroke-width="8"/>
+    <path d="M330 174V109.5A57.5 57.5 0 0 1 445 109.5V174Z" fill="none" stroke="url(#gold)" stroke-width="2"/>
+    <circle cx="295.25" cy="40" r="0.9099999999999999" fill="#F7E3A4" opacity=".72"/><circle cx="315.5" cy="77.5" r="0.65" fill="#F7E3A4" opacity=".72"/><circle cx="464" cy="30" r="0.78" fill="#F7E3A4" opacity=".72"/><circle cx="479.75" cy="67.5" r="1.04" fill="#F7E3A4" opacity=".72"/><circle cx="304.25" cy="190" r="0.78" fill="#F7E3A4" opacity=".72"/><circle cx="470.75" cy="172.5" r="0.65" fill="#F7E3A4" opacity=".72"/><circle cx="486.5" cy="205" r="0.9099999999999999" fill="#F7E3A4" opacity=".72"/>
+    <path d="M287 45Q313 75 293 130M488 50Q458 95 482 145" fill="none" stroke="#6CC8BD" stroke-opacity=".28" stroke-width="2"/>
+    <rect x="359.9" y="152" width="55.199999999999996" height="5" rx="1" fill="#2A9FA5"/><rect x="350.7" y="159" width="73.60000000000001" height="5" rx="1" fill="#35B5B5"/><rect x="341.5" y="166" width="92" height="5" rx="1" fill="#55C9C3"/><rect x="332.3" y="173" width="110.39999999999999" height="5" rx="1" fill="#83DED2"/>
+    <g fill="#F7F0DF" text-anchor="middle" font-family="Inter, sans-serif">
+      <text x="112.5" y="39" font-size="9" letter-spacing="1.5">TU HISTORIA</text>
+      <text x="112.5" y="53" font-size="7" fill-opacity=".68" letter-spacing="1">HECHA DE MOMENTOS</text>
+      <text x="112.5" y="226" font-size="10" font-weight="700">Lucams</text>
+    </g>
+    <path d="M42 75H183M42 180H183" stroke="#D5A94F" stroke-opacity=".5" stroke-width="1"/>
+    <g fill="#E8C875" text-anchor="middle" font-family="Georgia, serif">
+      <text x="112.5" y="47.5" font-size="12">“</text>
+      <text x="387.5" y="224" font-size="7" letter-spacing="1">UNA HISTORIA PARA SIEMPRE</text>
+    </g>
+    <path d="M371.5 207H403.5" stroke="url(#gold)" stroke-width="1"/>
+    <circle cx="387.5" cy="207" r="2" fill="#E8C875"/>
+
+  </svg>

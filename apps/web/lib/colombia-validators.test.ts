@@ -598,9 +598,9 @@ describe("viaExample / viaHintText / CRUCE_HINT — ayuda con ejemplo por tipo d
   });
 });
 
-// ─── Estandarización 2026-10-12 (mi-cuenta + cotización + registro) ───
+// ─── Estandarización 2026-10-12 (mi-cuenta + checkout + registro) ───
 // NAME_REGEX/PHONE_REGEX exportadas como fuente única (antes duplicadas
-// inline en checkout/quotes); normalizePhoneWithDial alimenta los Server
+// inline en formularios); normalizePhoneWithDial alimenta los Server
 // Actions de perfil y direcciones (teléfono con indicativo del PhoneInput).
 
 describe("NAME_REGEX / PHONE_REGEX — exportadas como fuente única", () => {

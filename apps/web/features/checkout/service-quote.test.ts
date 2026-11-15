@@ -43,7 +43,6 @@ vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn(async () => null) }));
 vi.mock("@/lib/cms", () => ({
   getSettingValue: vi.fn(async (_k: string, fallback: string) => fallback),
 }));
-vi.mock("@/lib/stage-guard", () => ({ assertTransactionalAllowed: vi.fn() }));
 vi.mock("@/features/orders/service", () => ({ createOrderFromCart: vi.fn() }));
 vi.mock("@/features/orders/saga", () => ({ processPaidOrder: vi.fn() }));
 vi.mock("@/features/orders/stock", () => ({ assertStockAvailable: vi.fn(async () => {}) }));

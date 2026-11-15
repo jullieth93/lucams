@@ -1,14 +1,3 @@
-/*
- * Tests de buildProductJsonLd — datos estructurados del PDP.
- *
- * FOCO: el gate por modo de tienda. En Etapa 1 (catálogo + cotización por WhatsApp) no hay
- * checkout de pago: si el JSON-LD emite `offers` con `availability: InStock` + `seller`, Google
- * entiende que el producto se compra acá y puede generar rich results de precio/disponibilidad
- * (y listados de Shopping) sobre una tienda que solo cotiza — información engañosa (Ley 1480).
- * El resto del Product (nombre, descripción, SKU, imágenes, marca, rating real) sí es cierto en
- * ambos modos y debe seguir emitiéndose.
- */
-
 import { describe, expect, it } from "vitest";
 import { SITE_URL } from "@/lib/seo/structured-data";
 import { buildProductJsonLd, type ProductJsonLdInput } from "./product-jsonld";
@@ -21,49 +10,12 @@ const BASE: ProductJsonLdInput = {
   images: ["/productos/iman-polaroid.jpg"],
   categoryName: "Imanes",
   ratingAggregate: null,
-  // Centavos COP (enteros), como todo precio del proyecto.
   effectivePrices: [1_500_000],
   priceValidUntil: "2027-07-24",
   outOfStock: false,
-  catalogMode: false,
 };
 
-describe("buildProductJsonLd — modo catálogo (Etapa 1)", () => {
-  it("NO emite offers: la tienda solo cotiza por WhatsApp", () => {
-    const jsonLd = buildProductJsonLd({ ...BASE, catalogMode: true });
-    expect(jsonLd).not.toHaveProperty("offers");
-    expect(JSON.stringify(jsonLd)).not.toContain("InStock");
-  });
-
-  it("conserva el resto del Product, que sí es cierto sin checkout", () => {
-    const jsonLd = buildProductJsonLd({
-      ...BASE,
-      catalogMode: true,
-      ratingAggregate: { ratingValue: 4.5, reviewCount: 12 },
-    });
-    expect(jsonLd).toMatchObject({
-      "@type": "Product",
-      name: "Imán Polaroid",
-      description: "Imán con tu foto",
-      sku: "IMA-001",
-      category: "Imanes",
-      brand: { "@type": "Brand", name: "Lucams Shop" },
-      image: ["/productos/iman-polaroid.jpg"],
-      aggregateRating: { "@type": "AggregateRating", ratingValue: "4.5", reviewCount: 12 },
-    });
-  });
-
-  it("tampoco emite AggregateOffer cuando hay rango de precios", () => {
-    const jsonLd = buildProductJsonLd({
-      ...BASE,
-      catalogMode: true,
-      effectivePrices: [1_500_000, 2_500_000],
-    });
-    expect(jsonLd).not.toHaveProperty("offers");
-  });
-});
-
-describe("buildProductJsonLd — modo full (Etapa 2)", () => {
+describe("buildProductJsonLd", () => {
   it("emite Offer con el precio en pesos y disponibilidad InStock", () => {
     const jsonLd = buildProductJsonLd(BASE);
     expect(jsonLd.offers).toEqual({
@@ -97,9 +49,20 @@ describe("buildProductJsonLd — modo full (Etapa 2)", () => {
     expect(jsonLd).not.toHaveProperty("aggregateRating");
   });
 
+  it("incluye el rating real cuando existen reseñas aprobadas", () => {
+    const jsonLd = buildProductJsonLd({
+      ...BASE,
+      ratingAggregate: { ratingValue: 4.5, reviewCount: 12 },
+    });
+    expect(jsonLd.aggregateRating).toEqual({
+      "@type": "AggregateRating",
+      ratingValue: "4.5",
+      reviewCount: 12,
+    });
+  });
+
   it("usa el logo de marca como imagen ABSOLUTA cuando el producto no tiene fotos", () => {
     const jsonLd = buildProductJsonLd({ ...BASE, images: [] });
-    // schema.org exige URL absoluta: una relativa no se resuelve dentro del JSON-LD.
     expect(jsonLd.image).toEqual([`${SITE_URL}/brand/lucams-logo.png`]);
     expect((jsonLd.image as string[])[0]).toMatch(/^https?:\/\//);
     expect((jsonLd.image as string[])[0]).toMatch(/\/brand\/lucams-logo\.png$/);

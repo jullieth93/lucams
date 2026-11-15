@@ -55,7 +55,7 @@ const POPULAR_DOMAINS = [
 // navegadores modernos compilan el atributo `pattern` con la flag /v
 // (unicodeSets), donde un `-` sin escapar dentro de […] es inválido y el
 // navegador logueaba "Pattern attribute value … is not a valid regular
-// expression" en TODOS los formularios (login, registro, cotización, admin).
+// expression" en TODOS los formularios (login, registro, checkout, admin).
 const EMAIL_PATTERN = "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,24}$";
 const EMAIL_REGEX = new RegExp(EMAIL_PATTERN);
 

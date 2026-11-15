@@ -10,7 +10,6 @@ export interface UnlinkedEligibleEntityCounts {
   customers: number;
   orders: number;
   supportTickets: number;
-  quotes: number;
   abandonedCarts: number;
   consents: number;
   warrantyClaims: number;
@@ -40,7 +39,6 @@ export interface ContactsBackfillReport {
     customers: number;
     orders: number;
     supportTickets: number;
-    quotes: number;
     abandonedCarts: number;
     consents: number;
     warrantyClaims: number;

@@ -54,7 +54,6 @@ import { resolveOrderContactTx } from "@/features/identity/resolution-service";
 import { resolveOrderCustomerId } from "./order-customer";
 import { generateOrderNumber } from "./order-number";
 import { sendOrderRefunded } from "./emails";
-import { assertTransactionalAllowed } from "@/lib/stage-guard";
 
 const ORDER_PAGE_SIZE = 20;
 
@@ -149,10 +148,6 @@ export type CreateOrderFromCartResult = {
 export async function createOrderFromCart(
   input: CreateOrderFromCartInput,
 ): Promise<CreateOrderFromCartResult> {
-  // Última línea de defensa de etapa: ninguna Order real nace mientras la tienda esté en modo
-  // catálogo, venga la llamada de donde venga (auditoría 2026-07-21, hallazgo A3).
-  assertTransactionalAllowed("createOrderFromCart");
-
   // #15 (post-launch Bloque A) — retry sobre colisión de Order.number.
   // generateOrderNumber usa max(number)+1 bajo advisory lock transaccional; aun
   // así, dos checkouts concurrentes de carts DISTINTOS podrían calcular el mismo
@@ -764,9 +759,6 @@ async function createOrderFromCartTx(
 export async function clearCartAfterPaid(
   cartId: string,
   client: Prisma.TransactionClient | typeof prisma = prisma,
-  // Etapa 1 (modo catálogo): features/quotes lo reusa para vaciar el cart al
-  // crear la cotización, con su propia marca de auditoría ("quote:create").
-  deletedBy = "saga:order-paid",
   orderId?: string,
 ): Promise<void> {
   const now = new Date();
@@ -774,28 +766,19 @@ export async function clearCartAfterPaid(
     where: { id: cartId, deletedAt: null },
     data: {
       deletedAt: now,
-      deletedBy,
+      deletedBy: "saga:order-paid",
     },
   });
 
   if ("abandonedCart" in client && client.abandonedCart) {
-    if (deletedBy === "saga:order-paid") {
-      await client.abandonedCart.updateMany({
-        where: { cartId, recoveredAt: null },
-        data: {
-          recoveredAt: now,
-          closedReason: "ORDER_PAID",
-          ...(orderId ? { recoveredOrderId: orderId } : {}),
-        },
-      });
-    } else if (deletedBy === "quote:create") {
-      await client.abandonedCart.updateMany({
-        where: { cartId, recoveredAt: null },
-        data: {
-          closedReason: "QUOTE_CREATED",
-        },
-      });
-    }
+    await client.abandonedCart.updateMany({
+      where: { cartId, recoveredAt: null },
+      data: {
+        recoveredAt: now,
+        closedReason: "ORDER_PAID",
+        ...(orderId ? { recoveredOrderId: orderId } : {}),
+      },
+    });
   }
 }
 

@@ -23,8 +23,8 @@ export function getCanonicalSiteUrl(): string {
 }
 
 /**
- * URL pública ABSOLUTA para compartir (links de diseños /d/<token>, cotizaciones
- * /cotizacion/<token>, pedidos /pedido/<token>). SIEMPRE sobre el dominio canónico:
+ * URL pública ABSOLUTA para compartir (links de diseños /d/<token> y pedidos
+ * /pedido/<token>). SIEMPRE sobre el dominio canónico:
  * el origen del navegador (window.location.origin) puede ser el alias del deployment
  * (`*.vercel.app`) si Lucy entra por ahí, y el link compartido quedaría en un dominio
  * ajeno a la marca.

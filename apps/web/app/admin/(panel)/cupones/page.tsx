@@ -27,7 +27,6 @@ import { listCoupons } from "@/features/coupons/service";
 import { ADMIN_ROLE_SETS, canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
-import { isCatalogMode } from "@/lib/store-mode";
 import { prisma } from "@/lib/db";
 import { maskEmailsInText } from "@/lib/pii-mask";
 import {
@@ -231,7 +230,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                 </Link>
               </Button>
             )}
-            {canViewFidelizacion && !isCatalogMode() && (
+            {canViewFidelizacion && (
               <Button asChild variant="outline" size="sm">
                 <Link href="/admin/fidelizacion">
                   <Award className="mr-1.5 h-4 w-4" />
@@ -252,13 +251,6 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
             </span>{" "}
             Puedes consultar vigencias, restricciones y redenciones confirmadas de todos los
             cupones. La creación, edición y archivo están reservados a Superadmin.
-          </AdminNotice>
-        )}
-
-        {isCatalogMode() && (
-          <AdminNotice tone="info">
-            <strong>Modo catálogo:</strong> los cupones creados acá entrarán en vigor cuando el
-            checkout en línea esté habilitado.
           </AdminNotice>
         )}
 

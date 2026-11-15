@@ -2,10 +2,9 @@
  * Centro de notificaciones del admin (2026-08-05).
  *
  * Qué es: feed in-app de eventos del SISTEMA (alertas que disparan, crons que
- * fallan, cotizaciones nuevas, resumen diario). Es la fuente de verdad
- * operativa: el email queda solo para alertas críticas y para el aviso de
- * cotización nueva (canal de venta) — el resto del correo operativo se elimina
- * (adiós al spam de "⚠️ N alertas Lucams").
+ * fallan, pedidos nuevos, resumen diario). Es la fuente de verdad operativa:
+ * el email queda para alertas críticas y avisos comerciales puntuales; el resto
+ * del correo operativo se elimina (adiós al spam de "⚠️ N alertas Lucams").
  *
  * Política anti-ruido (mandato del plan):
  *   - Los éxitos NO se registran (un cron que corre bien no avisa nada).
@@ -14,7 +13,7 @@
  *     feed) en vez de duplicar filas.
  *
  * Quién escribe: features/observability/alerts.ts (ALERT), los catch de los
- * /api/cron/* (CRON), features/quotes/emails.ts (QUOTE),
+ * /api/cron/* (CRON), features/orders/emails.ts (ORDER),
  * features/orders/stock-alerts.ts (ALERT — venta perdida por stock, inmediata),
  * features/orders/saga.ts (ALERT — tracking sin orden) y
  * features/observability/daily-summary.ts (SYSTEM).
@@ -28,7 +27,7 @@ import { formatDayMonthCO, formatIsoDateCO } from "@/lib/datetime";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
-export type NotificationType = "ALERT" | "CRON" | "QUOTE" | "SYSTEM" | "ORDER";
+export type NotificationType = "ALERT" | "CRON" | "SYSTEM" | "ORDER";
 export type NotificationSeverity = "info" | "warning" | "critical";
 
 function prefixActionUrlClause(prefix: string): Prisma.NotificationWhereInput {
@@ -258,7 +257,6 @@ export async function getNotificationPulseAndSummary(opts: {
 
   const byType: Record<NotificationType, number> = {
     ORDER: 0,
-    QUOTE: 0,
     ALERT: 0,
     CRON: 0,
     SYSTEM: 0,
@@ -282,7 +280,7 @@ export async function getNotificationPulseAndSummary(opts: {
     unreadCount,
     priorityUnreadCount,
     windowTotal: recentRows.length,
-    commercialWindowCount: byType.ORDER + byType.QUOTE,
+    commercialWindowCount: byType.ORDER,
     byType,
     buckets,
   };

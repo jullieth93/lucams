@@ -7,7 +7,7 @@
  * (vitest-global-teardown.ts) reconoce como basura de test:
  *   - catálogo: slug ~ [0-9]{13,}
  *   - transaccional: number/email ~ [0-9]{15,} (tag+digits suelen dar 15+)
- * Para emails de cliente/cotización preferir el dominio `.test` (data-factory
+ * Para emails de cliente preferir el dominio `.test` (data-factory
  * lo aplica): también entra en la red por `email ILIKE '%.test'`.
  */
 export function newRunId(tag: string): string {

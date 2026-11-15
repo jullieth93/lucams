@@ -152,22 +152,6 @@ describe("simulateIdentityResolution (ADR-193 matrix)", () => {
           email: "deleted-cust_deleted@deleted.lucamsshop.com",
         },
       ],
-      quotes: [
-        // Cotización solo por WhatsApp compartiendo el móvil 3112223344 de invitado.b -> NO auto-fusiona, crea Contact QUOTE + candidato
-        {
-          id: "quo_wa_only",
-          customerEmail: null,
-          customerWhatsapp: "3112223344",
-          deletedAt: null,
-        },
-        // Cotización del destinatario del regalo con su teléfono 3998887766 -> NO debe colisionar con Ana porque Ana jamás absorbió recipientPhone
-        {
-          id: "quo_gift_recipient",
-          customerEmail: null,
-          customerWhatsapp: "3998887766",
-          deletedAt: null,
-        },
-      ],
       abandonedCarts: [
         {
           id: "ac_1",
@@ -229,7 +213,7 @@ describe("simulateIdentityResolution (ADR-193 matrix)", () => {
     assert.equal(result.forensics.authOrderEmailMismatchGift, 0);
     assert.equal(result.forensics.authOrderEmailMismatchNonGift, 1);
     assert.equal(result.forensics.sharedPhonesAcrossActiveCustomers, 1);
-    assert.equal(result.forensics.sharedPhonesAcrossContacts, 2); // +573001112233 (Ana/Carlos) y +573112223344 (guest B / quote WA)
+    assert.equal(result.forensics.sharedPhonesAcrossContacts, 1); // +573001112233 (Ana/Carlos)
     assert.equal(result.forensics.sharedTaxDocsAcrossContacts, 1); // CC:10203040 (Ana / guest B)
     assert.equal(result.forensics.giftRecipientPhonesIsolated, 1);
     assert.equal(result.forensics.anonymizedRecordsPreservedNull.orders, 1);
@@ -241,18 +225,16 @@ describe("simulateIdentityResolution (ADR-193 matrix)", () => {
     // 2 CUSTOMER_AUTH (Ana, Carlos)
     // + 1 GUEST_ORDER (invitado.b)
     // + 1 SUPPORT_TICKET (soporte.nuevo)
-    // + 2 QUOTE (quo_wa_only, quo_gift_recipient)
     // + 1 ABANDONED_CART (carrito.abandonado)
     // + 2 NEWSLETTER (boletin.lector, revocado.lector)
-    // = 9 contactos totales
-    assert.equal(result.simulatedProjection.totalContacts, 9);
+    // = 7 contactos totales
+    assert.equal(result.simulatedProjection.totalContacts, 7);
     assert.equal(result.simulatedProjection.contactsWithCustomerAccount, 2);
-    assert.equal(result.simulatedProjection.contactsGuestOrLeadOnly, 7);
+    assert.equal(result.simulatedProjection.contactsGuestOrLeadOnly, 5);
     assert.deepEqual(result.simulatedProjection.contactsBySource, {
       CUSTOMER_AUTH: 2,
       GUEST_ORDER: 1,
       SUPPORT_TICKET: 1,
-      QUOTE: 2,
       ABANDONED_CART: 1,
       NEWSLETTER: 2,
     });
@@ -268,11 +250,9 @@ describe("simulateIdentityResolution (ADR-193 matrix)", () => {
     // Pares candidatos:
     // 1. (cust_ana, cust_carlos) -> SAME_BUYER_PHONE_E164
     // 2. (cust_ana, guest_b) -> SAME_BILLING_DOCUMENT + HISTORICAL_ID01_EMAIL_MISMATCH (1 solo par deduplicado con 2 razones)
-    // 3. (guest_b, quo_wa_only) -> SAME_BUYER_PHONE_E164
-    // (quo_gift_recipient NO colisiona con Ana gracias al aislamiento de regalos)
-    assert.equal(result.simulatedProjection.mergeCandidatesTotalPairs, 3);
+    assert.equal(result.simulatedProjection.mergeCandidatesTotalPairs, 2);
     assert.deepEqual(result.simulatedProjection.mergeCandidatesByReason, {
-      SAME_BUYER_PHONE_E164: 2,
+      SAME_BUYER_PHONE_E164: 1,
       SAME_BILLING_DOCUMENT: 1,
       HISTORICAL_ID01_EMAIL_MISMATCH: 1,
     });

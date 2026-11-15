@@ -2,7 +2,7 @@
 
 > **Registro canónico de los consensos de diseño del catálogo (80 decisiones, numeración estable `[1.1]`–`[8.10]`).** El plan está cerrado e implementado: múltiples cabeceras y módulos del código referencian estas decisiones por número (`PLAN_CATALOG_V2 2.10`, etc.) junto con `ADR-038` y `ADR-039`. Ante cualquier divergencia posterior, la fuente de verdad del modelo de datos es [`../packages/db/prisma/schema.prisma`](../packages/db/prisma/schema.prisma), la especificación viva del subsistema vive en [`domains/catalog-and-cms.md`](domains/catalog-and-cms.md) y [`ARCHITECTURE.md`](ARCHITECTURE.md), y las reglas transversales vigentes viven en [`DECISIONS.md`](DECISIONS.md).
 >
-> **Resumen de evoluciones vigentes en código respecto al texto fundacional:** el control de acceso administrativo evolucionó a la matriz de **8 roles × 34 capacidades** (`SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `PRINT_WORKSHOP`, `FINANCE_ANALYST`, `MANAGER`, `FULFILLMENT`, `CMS_EDITOR`); la captura tributaria DIAN vive estructurada en `Order` detrás de `BILLING_DOCUMENT_ENABLED = false` (`ADR-160`, sin filas legacy en `SiteSetting`); el canal corporativo B2B y de eventos opera en `/empresas-y-eventos` → `Opportunity` → `/cotizacion/[token]` (`ADR-193`); las redirecciones 301 viven en la tabla administrable `UrlRedirect`; el precio lineal de `ProductVariant.price` se complementa con `WholesaleTier` y variantes gemelas `-NOMAG` (`ADR-099`); el flujo `PREMADE` sin Estudio y `premadeSurcharge` se retiraron en `ADR-090`/`ADR-125` (cubiertos por la galería curada `DesignGalleryImage`); la telemetría agregada vive en `FunnelEventDaily` sin `RecommendationLog`; los respaldos fuera del sitio corren automatizados y cifrados en Cloudflare R2; y las alertas operativas confluyen en `/admin/hoy` y `Notification`.
+> **Resumen de evoluciones vigentes en código respecto al texto fundacional:** el control de acceso administrativo evolucionó a la matriz de **8 roles × 34 capacidades** (`SUPERADMIN`, `OPERATIONS_MANAGER`, `CUSTOMER_SUPPORT`, `PRINT_WORKSHOP`, `FINANCE_ANALYST`, `MANAGER`, `FULFILLMENT`, `CMS_EDITOR`); la captura tributaria DIAN vive estructurada en `Order` detrás de `BILLING_DOCUMENT_ENABLED = false` (`ADR-160`, sin filas legacy en `SiteSetting`); el canal corporativo B2B y de eventos opera en `/empresas-y-eventos` → `Opportunity` → seguimiento → `Order` (`ADR-193` y `ADR-204`); las redirecciones 301 viven en la tabla administrable `UrlRedirect`; el precio lineal de `ProductVariant.price` se complementa con `WholesaleTier` y variantes gemelas `-NOMAG` (`ADR-099`); el flujo `PREMADE` sin Estudio y `premadeSurcharge` se retiraron en `ADR-090`/`ADR-125` (cubiertos por la galería curada `DesignGalleryImage`); la telemetría agregada vive en `FunnelEventDaily` sin `RecommendationLog`; los respaldos fuera del sitio corren automatizados y cifrados en Cloudflare R2; y las alertas operativas confluyen en `/admin/hoy` y `Notification`.
 
 ## Decisiones cerradas
 
@@ -111,7 +111,7 @@
 
 ### [1.6] B2B Publicitarios con flujo `/mayorista` (2026-05-15)
 
-> **Estado vigente en código:** los productos publicitarios siguen públicos en `/productos/publicitarios` (con tramos por volumen en `WholesaleTier`) y el embudo consultivo B2B y de eventos vive hoy en **`/empresas-y-eventos`** → pipeline `Opportunity` (`/admin/oportunidades`) → cotizador **`/cotizacion/[token]`** con hoja de taller propia (`ADR-193`, ver [`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md)), manteniendo inalterada la regla de no prometer factura electrónica DIAN mientras no aplique obligatoriedad.
+> **Estado vigente en código:** los productos publicitarios siguen públicos en `/productos/publicitarios` (con tramos por volumen en `WholesaleTier`) y el embudo consultivo B2B y de eventos vive hoy en **`/empresas-y-eventos`** → pipeline `Opportunity` (`/admin/oportunidades`) → seguimiento comercial → `Order` (`ADR-193` y `ADR-204`, ver [`domains/crm-b2b-and-loyalty.md`](domains/crm-b2b-and-loyalty.md)), manteniendo inalterada la regla de no prometer factura electrónica DIAN mientras no aplique obligatoriedad.
 
 - **Decisión**: la categoría Publicitarios opera como categoría pública normal + se complementa con página `/mayorista` para pedidos corporativos grandes.
 - **Aterrizado**:
@@ -122,10 +122,10 @@
 - **Copy obligatorio**: NO mencionar "factura electrónica DIAN obligatoria" en banner ni en páginas B2B hasta que Lucams efectivamente esté en régimen como facturador electrónico (ver `[1.8]`). Usar "documentación tributaria (cuenta de cobro o factura electrónica según corresponda)".
 - **Rationale**: cliente individual y empresa chica compran directo; empresa grande necesita cotización personalizada. Mantener visibilidad pública del catálogo B2B sin obligar flujo aparte para todos.
 - **Implica**:
-  - Nuevo modelo inicial: `SupportTicket.kind` enum suma `B2B_INQUIRY` (hoy evolucionado a `Contact` + `Opportunity` + `Quote`).
+  - Nuevo modelo inicial: `SupportTicket.kind` enum suma `B2B_INQUIRY` (hoy evolucionado a `Contact` + `Opportunity`).
   - Página de captación corporativa + form server action.
   - Banner condicional en `/productos/publicitarios`.
-- **Admin**: gestión comercial desde `/admin/oportunidades` y `/admin/cotizaciones` (además de `/admin/soporte`).
+- **Admin**: gestión comercial desde `/admin/oportunidades` (además de `/admin/soporte`).
 
 ---
 

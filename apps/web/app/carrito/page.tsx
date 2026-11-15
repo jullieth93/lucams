@@ -6,8 +6,7 @@
  * catálogo simple — las personalizadas (designId) muestran las unidades del
  * diseño como texto y ofrecen "Editar" (Estudio) y "Ver" (lightbox del
  * preview); remover ítem en todas.
- * CTA principal → /checkout/datos: "Ir a pagar" en modo full; "Cotizar
- * por WhatsApp" en modo catálogo (Etapa 1 — features/quotes).
+ * CTA principal → /checkout/datos.
  *
  * Si no hay cart o está vacío → empty state.
  */
@@ -24,7 +23,6 @@ import { getCartDetail } from "@/features/cart/service";
 import { physicalUnitPriceCents } from "@/features/cart/physical-unit-price";
 import { CartCrossSell } from "@/components/cart-cross-sell";
 import { formatCOP } from "@/lib/format";
-import { isCatalogMode } from "@/lib/store-mode";
 import { getCurrentCustomer } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
@@ -48,9 +46,6 @@ export default async function CarritoPage() {
   // toast sonner, así que acá ya no rendereamos los banners inline.
   const [sessionId, customer] = await Promise.all([peekCartSession(), getCurrentCustomer()]);
   const cart = sessionId ? await getCartDetail(sessionId, customer?.customer.id ?? null) : null;
-  // Etapa 1 (modo catálogo): el CTA principal pide cotización por WhatsApp
-  // (misma ruta /checkout/datos, que en este modo es el form de cotización).
-  const catalog = isCatalogMode();
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -258,7 +253,7 @@ export default async function CarritoPage() {
                               <p className="text-brand-muted text-xs">{item.borderNote}</p>
                             )}
                             {/* Resumen de pieza ("2 tiras de 3 fotos · 5×15 cm cada tira"):
-                              mismo dato que muestra el checkout (quote-form) — multi-unidad
+                              mismo dato que muestra el checkout — multi-unidad
                               2026-09-09: la línea describe las unidades del diseño. */}
                             {detail.pieceSummary && (
                               <p className="text-brand-purple-dark/80 mt-1 text-xs">
@@ -333,7 +328,7 @@ export default async function CarritoPage() {
                   </div>
                   <div className="text-brand-muted flex justify-between">
                     <span>Envío</span>
-                    <span>{catalog ? "Se coordina por WhatsApp" : "Calculado en checkout"}</span>
+                    <span>Calculado en checkout</span>
                   </div>
                 </div>
                 <div className="border-brand-purple/10 text-brand-purple-dark flex justify-between border-t pt-3 text-lg font-bold">
@@ -350,20 +345,13 @@ export default async function CarritoPage() {
                   de <a>, HTML inválido). */}
                 <Button
                   asChild
-                  className={
-                    catalog
-                      ? // a11y contraste: emerald-700 + blanco da 5.49:1 (AA); emerald-600 quedaba en 3.77:1.
-                        "w-full bg-emerald-700 text-white hover:bg-emerald-800"
-                      : "bg-gradient-brand w-full text-white hover:brightness-110"
-                  }
+                  className="bg-gradient-brand w-full text-white hover:brightness-110"
                   size="lg"
                 >
                   <Link href="/checkout/datos" prefetch={false}>
                     {/* Spinner mientras la navegación (sin prefetch) resuelve —
                         antes el clic no daba señal y el usuario re-clickeaba. */}
-                    <LinkPendingLabel>
-                      {catalog ? "Cotizar por WhatsApp →" : "Ir a pagar →"}
-                    </LinkPendingLabel>
+                    <LinkPendingLabel>Ir a pagar →</LinkPendingLabel>
                   </Link>
                 </Button>
                 <Link

@@ -1,7 +1,7 @@
 /*
  * Admin > Clientes y Contactos — Directorio unificado sobre `Contact` (Fase 9 · S19).
  *
- * Unifica cuentas autenticadas (`Customer`) con compradores invitados, cotizaciones
+ * Unifica cuentas autenticadas (`Customer`) con compradores invitados, oportunidades B2B
  * WhatsApp, tickets de soporte, carritos abandonados y suscriptores bajo la entidad
  * canónica `Contact` (ADR-193), respetando RBAC por capacidades y enmascaramiento
  * determinista de PII en servidor.
@@ -68,7 +68,6 @@ const SOURCE_LABEL: Record<string, string> = {
   CUSTOMER_AUTH: "Cuenta web",
   GUEST_ORDER: "Compra invitado",
   SUPPORT_TICKET: "Soporte",
-  QUOTE: "Cotización WA",
   ABANDONED_CART: "Carrito",
   NEWSLETTER: "Newsletter",
   B2B_INQUIRY: "Empresas / Eventos",
@@ -79,7 +78,6 @@ const SOURCE_TONE: Record<string, ChartTone> = {
   CUSTOMER_AUTH: "purple",
   GUEST_ORDER: "turquoise",
   B2B_INQUIRY: "pink",
-  QUOTE: "coral",
   NEWSLETTER: "emerald",
   ABANDONED_CART: "amber",
   SUPPORT_TICKET: "blue",
@@ -463,7 +461,7 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
             description={
               hasActiveFilters
                 ? "Prueba quitar algún filtro o cambiar el texto de búsqueda."
-                : "Cuando ingrese el primer pedido, cotización o registro, aparecerá aquí."
+                : "Cuando ingrese el primer pedido, solicitud B2B o registro, aparecerá aquí."
             }
           />
         ) : (

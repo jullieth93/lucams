@@ -11,7 +11,7 @@
  * requireAdminAction/recordAdminAction/CMS_EDIT_COOKIE van mockeados (su
  * lógica interna tiene cobertura propia); acá se prueba el cableado de la
  * ruta. El mock del guard imita a next/navigation: redirect() nunca retorna,
- * lanza NEXT_REDIRECT (mismo patrón que lib/stage-guard.test.ts).
+ * lanza NEXT_REDIRECT.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";

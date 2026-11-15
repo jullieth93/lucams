@@ -147,7 +147,6 @@ const TOKEN_PATH_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/^\/carrito\/recuperar\/[^/]+$/, "/carrito/recuperar/[token]"],
   [/^\/resena\/[^/]+$/, "/resena/[token]"],
   [/^\/d\/[^/]+$/, "/d/[token]"],
-  [/^\/cotizacion\/[^/]+$/, "/cotizacion/[token]"],
   [/^\/soporte\/[^/]+$/, "/soporte/[token]"],
 ];
 
@@ -156,7 +155,7 @@ const TOKEN_PATH_PATTERNS: ReadonlyArray<[RegExp, string]> = [
  *  - Excluye el panel `/admin` (backoffice privado, nunca se reporta a terceros).
  *  - Enmascara tokens de capacidad en la ruta (`/pedido/<32hex>` → `/pedido/[token]`).
  *  - Filtra query params por allowlist estricta (descarta `email`, `phone`, `token`,
- *    `code`, `id` de Wompi, `st`/`ot`/`qt`, `designId`, `q`, `error`, etc.).
+ *    `code`, `id` de Wompi, `st`/`ot`, `designId`, `q`, `error`, etc.).
  */
 export function sanitizeAnalyticsUrl(
   pathname: string,

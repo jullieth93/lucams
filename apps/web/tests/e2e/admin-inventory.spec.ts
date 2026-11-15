@@ -29,7 +29,6 @@ let totpSecret = "";
 
 const ROUTES = [
   "/admin/dashboard",
-  "/admin/cotizaciones",
   "/admin/pedidos",
   "/admin/moderacion",
   "/admin/retractos",

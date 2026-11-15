@@ -38,7 +38,7 @@ import {
   resolveConsentContact,
   resolveOrderContactTx,
   resolvePostSaleContact,
-  resolveQuoteContactTx,
+  resolveCommercialContactTx,
   resolveSupportTicketContact,
 } from "./resolution-service";
 
@@ -51,7 +51,6 @@ describe.skipIf(!hasDb)(
     const createdCustomerIds: string[] = [];
     const createdOrderIds: string[] = [];
     const createdTicketIds: string[] = [];
-    const createdQuoteIds: string[] = [];
     const createdCartIds: string[] = [];
     const createdConsentIds: string[] = [];
     const createdContactIds = new Set<string>();
@@ -60,9 +59,6 @@ describe.skipIf(!hasDb)(
       const safe = (p: Promise<unknown>) => p.catch(() => {});
       if (createdTicketIds.length > 0) {
         await safe(prisma.supportTicket.deleteMany({ where: { id: { in: createdTicketIds } } }));
-      }
-      if (createdQuoteIds.length > 0) {
-        await safe(prisma.quote.deleteMany({ where: { id: { in: createdQuoteIds } } }));
       }
       if (createdConsentIds.length > 0) {
         await safe(prisma.consent.deleteMany({ where: { id: { in: createdConsentIds } } }));
@@ -362,7 +358,7 @@ describe.skipIf(!hasDb)(
       expect(afterReject?.status).toBe("REJECTED");
     });
 
-    it("resuelve cotizaciones solo-WhatsApp, ignora cookies anónimas y ejecuta cascada completa Ley 1581", async () => {
+    it("resuelve contactos comerciales por WhatsApp, ignora cookies anónimas y ejecuta cascada completa Ley 1581", async () => {
       // 1. Cookie banner anónimo -> null (cero filas basura en Contact)
       const anonConsentContact = await resolveConsentContact(prisma, {
         customerId: null,
@@ -371,17 +367,17 @@ describe.skipIf(!hasDb)(
       });
       expect(anonConsentContact).toBeNull();
 
-      // 2. Quote solo-WhatsApp reutiliza su Contact sin email
+      // 2. Contacto comercial solo-WhatsApp reutiliza su Contact sin email
       const waPhone = "3228887766";
       const q1Contact = await prisma.$transaction((tx) =>
-        resolveQuoteContactTx(tx, {
+        resolveCommercialContactTx(tx, {
           customerName: "Cliente Evento",
           customerWhatsapp: waPhone,
           customerEmail: null,
         }),
       );
       const q2Contact = await prisma.$transaction((tx) =>
-        resolveQuoteContactTx(tx, {
+        resolveCommercialContactTx(tx, {
           customerName: "Cliente Evento",
           customerWhatsapp: `+57 ${waPhone}`,
           customerEmail: null,

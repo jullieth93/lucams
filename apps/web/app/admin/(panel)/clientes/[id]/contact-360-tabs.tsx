@@ -75,7 +75,6 @@ const OPPORTUNITY_STAGE_TONE: Record<string, "purple" | "blue" | "amber" | "emer
 
 export interface Contact360Access {
   canViewOrders: boolean;
-  canViewQuotes: boolean;
   canViewOpportunities: boolean;
   canViewCarts: boolean;
   canViewModeration: boolean;
@@ -87,20 +86,6 @@ export interface Contact360Access {
   canViewRetracts: boolean;
   canMerge: boolean;
 }
-
-const QUOTE_STATUS_LABEL: Record<string, string> = {
-  NEW: "Nueva",
-  CONTACTED: "Contactada",
-  CLOSED_WON: "Cerrada (ganada)",
-  CLOSED_LOST: "Cerrada (perdida)",
-};
-
-const QUOTE_STATUS_TONE: Record<string, "purple" | "blue" | "emerald" | "slate"> = {
-  NEW: "purple",
-  CONTACTED: "blue",
-  CLOSED_WON: "emerald",
-  CLOSED_LOST: "slate",
-};
 
 const DESIGN_STATUS_LABEL: Record<string, string> = {
   DRAFT: "Borrador",
@@ -185,7 +170,6 @@ const VERIFICATION_SOURCE_LABEL: Record<string, string> = {
   WOMPI_PAYMENT: "Pago Wompi",
   CONTACT_MERGE: "Fusión de contactos",
   CHECKOUT_FORM: "Checkout",
-  QUOTE_FORM: "Cotización",
   SUPPORT_FORM: "Soporte",
   B2B_FORM: "Formulario B2B",
 };
@@ -211,8 +195,8 @@ export function Contact360Tabs({
   }> = [
     {
       id: "orders",
-      label: "Pedidos, cotizaciones y B2B",
-      count: data.orders.length + data.quotes.length + data.opportunities.length,
+      label: "Pedidos y B2B",
+      count: data.orders.length + data.opportunities.length,
     },
     {
       id: "studio",
@@ -350,49 +334,6 @@ export function Contact360Tabs({
             )}
           </section>
 
-          {data.quotes.length > 0 && (
-            <section>
-              <h3 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
-                Cotizaciones WhatsApp ({data.quotes.length})
-              </h3>
-              <AdminCard className="overflow-hidden p-0">
-                <ul className="divide-brand-purple/10 divide-y">
-                  {data.quotes.map((quote) => (
-                    <li
-                      key={quote.id}
-                      className="flex flex-wrap items-center justify-between gap-3 p-4"
-                    >
-                      <div>
-                        {access.canViewQuotes ? (
-                          <Link
-                            href={`/admin/cotizaciones/${encodeURIComponent(quote.id)}`}
-                            className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-bold hover:underline"
-                          >
-                            {quote.number}
-                          </Link>
-                        ) : (
-                          <span className="text-brand-purple-dark font-mono text-sm font-bold">
-                            {quote.number}
-                          </span>
-                        )}
-                        <div className="text-brand-muted text-xs">
-                          {quote.city}, {quote.department} · {formatDateCO(toDate(quote.createdAt))}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-                          {formatCOP(quote.totalCents)}
-                        </div>
-                        <AdminBadge tone={QUOTE_STATUS_TONE[quote.status] ?? "slate"}>
-                          {QUOTE_STATUS_LABEL[quote.status] ?? quote.status}
-                        </AdminBadge>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </AdminCard>
-            </section>
-          )}
           {data.opportunities.length > 0 && (
             <section>
               <h3 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
@@ -462,7 +403,7 @@ export function Contact360Tabs({
                 description={
                   data.customer
                     ? "Cuando personalice en el Estudio, sus borradores y diseños aparecerán aquí."
-                    : "Aquí aparecerán los diseños personalizados de sus pedidos, cotizaciones o carritos."
+                    : "Aquí aparecerán los diseños personalizados de sus pedidos o carritos."
                 }
               />
             ) : (
@@ -547,13 +488,11 @@ export function Contact360Tabs({
                     const isClosedOther = !isRecovered && Boolean(ac.closedReason);
                     const statusLabel = isRecovered
                       ? "Compra cerrada"
-                      : ac.closedReason === "QUOTE_CREATED"
-                        ? "Convertido a cotización"
-                        : ac.closedReason === "CART_EMPTIED"
-                          ? "Vaciado por cliente"
-                          : isClosedOther
-                            ? "Cerrado"
-                            : "Abierto";
+                      : ac.closedReason === "CART_EMPTIED"
+                        ? "Vaciado por cliente"
+                        : isClosedOther
+                          ? "Cerrado"
+                          : "Abierto";
                     const statusTone = isRecovered ? "emerald" : isClosedOther ? "slate" : "amber";
                     return (
                       <div

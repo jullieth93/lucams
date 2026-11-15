@@ -9,7 +9,7 @@
  *      sin <img> de carrier.
  *   3. La lógica de selección queda intacta (primer quote preseleccionado).
  *
- * `./actions` se mockea: es un módulo "use server" (db, stage-guard) que no
+ * `./actions` se mockea: es un módulo "use server" (db) que no
  * aplica a un render unitario.
  */
 

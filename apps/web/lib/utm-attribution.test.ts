@@ -18,7 +18,6 @@ describe("utm-attribution — higiene sin PII y round-trip seguro (S25)", () => 
 
   it("enmascara tokens privados en landingPath y descarta rutas con @", () => {
     expect(sanitizeLandingPath("/pedido/abc123secret?utm_source=ig")).toBe("/pedido/[token]");
-    expect(sanitizeLandingPath("/cotizacion/999888")).toBe("/cotizacion/[token]");
     expect(sanitizeLandingPath("/carrito/recuperar/tok_xyz")).toBe("/carrito/recuperar/[token]");
     expect(sanitizeLandingPath("/productos/iman-calendario?utm_source=ig")).toBe(
       "/productos/iman-calendario",

@@ -9,18 +9,10 @@ import { MousePointerClick, Sparkles, Package } from "lucide-react";
 import { CmsText } from "@/components/cms/cms-text";
 import { getCmsBlock, getSettingValue } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
-import { isCatalogMode } from "@/lib/store-mode";
 
 // El compromiso propio es el DESPACHO (máx. {{fab}} días hábiles de fabricación);
 // el tránsito final lo pone la transportadora y varía según la ciudad — NUNCA se
-// promete una fecha de entrega total (regla de certificación; la versión vieja
-// "entregamos en máx. 3 días" incluía la pierna del courier y era riesgosa).
-// Además el cierre de compra depende del modo: catálogo = WhatsApp, full = pago
-// en línea (Wompi) — el texto viejo decía "Pagas en línea" sin gatear y mentía
-// en producción (catálogo). La coletilla COD se mantiene al final para que
-// stripCodMention la recorte si COD_ENABLED está apagado.
-const STEP3_DESC_CATALOG =
-  "La preparación toma alrededor de {{fab}} días hábiles antes del despacho; desde ahí, el tránsito estimado es de ~{{entrega}} días según tu ciudad (te lo confirmamos por WhatsApp). Cierras la compra por WhatsApp — contraentrega disponible.";
+// promete una fecha de entrega total.
 const STEP3_DESC_FULL =
   "La preparación toma alrededor de {{fab}} días hábiles antes del despacho; desde ahí, el tránsito estimado es de ~{{entrega}} días según tu ciudad. Pagas en línea de forma segura — contraentrega disponible.";
 
@@ -46,48 +38,26 @@ const STEPS = [
     titleKey: "home.howitworks.step3.title",
     titleFallback: "Llega a tus manos",
     descKey: "home.howitworks.step3.description",
-    descFallback: isCatalogMode() ? STEP3_DESC_CATALOG : STEP3_DESC_FULL,
-    // La descripción promete contraentrega: depende del toggle COD_ENABLED (igual que
-    // el chip del hero) — con COD apagado se recorta esa coletilla.
+    descFallback: STEP3_DESC_FULL,
     codAware: true,
   },
 ] as const;
 
-/**
- * Quita la mención a la contraentrega de un texto (CMS o fallback) conservando
- * una frase gramatical: "…se coordinan por WhatsApp — contraentrega disponible."
- * → "…se coordinan por WhatsApp." No-op si el texto no la menciona.
- */
 function stripCodMention(text: string): string {
   const cleaned = text
     .replace(/\s*[—–,;]\s*contraentrega disponible/gi, "")
     .replace(/contraentrega disponible/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
-  // Si al recortar la frase quedó sin cierre, la cerramos con punto.
   return /[.!?…:]$/.test(cleaned) ? cleaned : `${cleaned}.`;
 }
 
-/**
- * <CmsText> variante COD-aware: si COD_ENABLED está apagado, recorta la coletilla
- * "contraentrega disponible" del paso 3 (aplica igual al texto CMS que al fallback).
- * FAIL-CLOSED (CF-35): setting ausente/despublicada = NO se promete contraentrega
- * (fallback "false"), igual que la decisión de capacidad en el checkout.
- *
- * El texto del paso 3 es SENSIBLE al modo de tienda (catálogo = cierras por
- * WhatsApp; full = pagas en línea). La DB arrastra la variante del modo en que
- * se sembró y NO cambia al flipear STORE_MODE (auditoría 2026-09-11: el flip a
- * full del 2026-09-03 dejó el texto de catálogo sirviéndose en PRD). Regla: en
- * modo catálogo gana SIEMPRE el fallback (ya es la variante catálogo); el cuerpo
- * CMS aplica solo en modo full.
- */
 async function CodAwareCmsText({ blockKey, fallback }: { blockKey: string; fallback: string }) {
   const [block, codValue] = await Promise.all([
     getCmsBlock(blockKey),
     getSettingValue("COD_ENABLED", "false"),
   ]);
-  // Tokens canónicos ({{total}}/{{fab}}/{{entrega}}…) se resuelven ANTES del recorte COD.
-  const text = await resolveCmsTokens(isCatalogMode() ? fallback : (block?.body ?? fallback));
+  const text = await resolveCmsTokens(block?.body ?? fallback);
   return <>{codValue === "true" ? text : stripCodMention(text)}</>;
 }
 

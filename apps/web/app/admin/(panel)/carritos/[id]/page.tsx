@@ -3,7 +3,7 @@
  *
  * Muestra qué sucedió realmente con el carrito:
  *   1. Línea de tiempo de checkout (`Datos` → `Envío` → `Pago`), recordatorios,
- *      pedidos creados, rechazos Wompi o cotizaciones vinculadas.
+ *      pedidos creados y rechazos Wompi.
  *   2. Productos y diseños personalizados del carrito (vivos o desde snapshot inmutable).
  *   3. Ficha del cliente (`Contacto 360` + WhatsApp directo al comprador).
  *   4. Preview real del correo y acción de envío manual con confirmación.
@@ -77,7 +77,6 @@ export default async function AdminCarritoDetallePage({
     hasCapability(role, "orders:read_pii") || hasCapability(role, "contacts:read_pii");
   const canRead360 =
     hasCapability(role, "contacts:read_360") && canAccessAdminPath(role, "/admin/clientes");
-  const canReadQuotes = canAccessAdminPath(role, "/admin/cotizaciones");
 
   const { id } = await params;
   const sp = await searchParams;
@@ -286,7 +285,7 @@ export default async function AdminCarritoDetallePage({
             })}
           </div>
 
-          {/* Señales concretas: rechazos Wompi, pedidos y cotizaciones */}
+          {/* Señales concretas: rechazos Wompi y pedidos */}
           <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
             {/* Pedidos asociados / intentos de pago */}
             <div className="border-brand-purple/10 rounded-xl border bg-[#FFF8F0]/50 p-3.5">
@@ -355,11 +354,11 @@ export default async function AdminCarritoDetallePage({
               )}
             </div>
 
-            {/* Cotizaciones / Recordatorios enviados */}
+            {/* Recordatorios enviados */}
             <div className="border-brand-purple/10 rounded-xl border bg-[#FFF8F0]/50 p-3.5">
               <p className="text-brand-purple-dark flex items-center gap-1.5 text-xs font-bold">
                 <FileText className="text-brand-purple h-4 w-4" />
-                Historial de recuperación y cotizaciones
+                Historial de recuperación
               </p>
               <div className="text-brand-purple-dark/85 mt-1.5 space-y-1 text-xs">
                 <p>
@@ -373,38 +372,6 @@ export default async function AdminCarritoDetallePage({
                   </p>
                 )}
               </div>
-
-              {detail.linkedQuotes.length > 0 && (
-                <div className="mt-2.5 border-t border-purple-200/50 pt-2">
-                  <p className="text-brand-muted mb-1.5 text-[11px] font-semibold">
-                    Cotizaciones vinculadas a este cliente:
-                  </p>
-                  <ul className="space-y-1.5">
-                    {detail.linkedQuotes.map((qt) => (
-                      <li
-                        key={qt.id}
-                        className="border-brand-purple/10 flex items-center justify-between rounded-lg border bg-white px-2.5 py-1.5 text-xs"
-                      >
-                        {canReadQuotes ? (
-                          <Link
-                            href={`/admin/cotizaciones/${encodeURIComponent(qt.id)}`}
-                            className="text-brand-purple font-mono font-bold hover:underline"
-                          >
-                            {qt.number}
-                          </Link>
-                        ) : (
-                          <span className="text-brand-purple-dark font-mono font-bold">
-                            {qt.number}
-                          </span>
-                        )}
-                        <span className="text-brand-muted text-[11px]">
-                          {formatCOP(qt.total)} · {qt.status}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           </div>
         </AdminCard>

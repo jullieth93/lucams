@@ -438,7 +438,7 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
             id: "origen-historial",
             label: "Origen 360° e historial de solo lectura",
             description:
-              "Enlaza al pedido o a la cotización/ficha de taller según tu rol y conserva los últimos diseños revisados para consulta.",
+              "Enlaza al pedido y a sus piezas de producción según tu rol y conserva los últimos diseños revisados para consulta.",
             interpretation:
               "No fabriques un pedido completo si aún tiene piezas pendientes o rechazadas en la cola activa.",
           },
@@ -451,7 +451,7 @@ export const SUPPORT_GUIDES: AdminModuleGuide[] = [
         title: "Revisar un diseño",
         goal: "Autorizar únicamente contenido completo y apto para producción.",
         steps: [
-          "Abre el diseño en la cola activa y verifica su tiempo de espera y el pedido o cotización asociada.",
+          "Abre el diseño en la cola activa y verifica su tiempo de espera y el pedido asociado.",
           "Amplía la vista previa y abre las piezas reales de producción cuando requieras validar detalle fino.",
           "Contrasta contenido, orientación, recorte y si existe advertencia de resolución aceptada por el cliente.",
           "Aprueba si está apto o rechaza redactando un motivo claro que el cliente recibirá por correo.",

@@ -9,7 +9,7 @@ import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 import { PrismaClient } from "@lucams/db";
 
 /*
- * AUDITORÍA PROFUNDA — catalogo-whatsapp (capa CLIENTE) contra PRODUCCIÓN.
+ * AUDITORÍA PROFUNDA — capa CLIENTE de la tienda transaccional.
  *
  * Cobertura:
  *   1. Home: TODAS las categorías raíz con productos (derivadas de la DB), CTAs,
@@ -19,8 +19,7 @@ import { PrismaClient } from "@lucams/db";
  *   3. PDP ×N (todos los productos vivos): carga 200, precio, CTA.
  *   4. Estudio ×N: superficie esperada por producto (foto→canvas, letterset,
  *      nombre, gate ADR-063, direct-cart) sin 500.
- *   5. Flujo de cotización: PDP → Estudio (foto-pack, sube fotos) → finalizar →
- *      form de cotización → link de WhatsApp con número y mensaje correctos.
+ *   5. Flujo de compra: Estudio (foto-pack, sube fotos) → carrito → checkout de datos.
  *   6. Autenticación: /ingresar y /registro renderizan con Turnstile.
  *   7. Páginas estáticas: /ayuda (sin promesas DIAN), legales.
  *   8. Header/footer: WhatsApp 57 320 887 3826, Facebook, email correctos.
@@ -395,7 +394,7 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
             timeout: 30_000,
           });
         } else {
-          // gate (phrase/event/logo): aviso claro + cotización por WhatsApp
+          // gate (phrase/event/logo): aviso claro + contacto comercial por WhatsApp
           // (ADR-063 D1) — se verifica que renderice, no que abra el editor de foto.
           await expect(page.locator("h1").first()).toBeVisible({ timeout: 30_000 });
         }
@@ -408,10 +407,8 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     });
   });
 
-  test("5. Flujo cotización: foto-pack → estudio → finalizar → form → WhatsApp", async ({
-    page,
-  }) => {
-    watch(page, "cotizacion");
+  test("5. Flujo compra: foto-pack → estudio → carrito → checkout", async ({ page }) => {
+    watch(page, "compra");
     // Producto del flujo: un foto-pack del catálogo VIVO (polaroid preferido;
     // el pack completo de fotos es requisito para habilitar «Vista previa»).
     // Antes estaba hardcodeado a set-fotoimanes-polaroid: si ese slug se
@@ -422,7 +419,7 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     const target =
       photoPacks.find((p) => p.slug.includes("polaroid") && Number(p.schema.photoSlots) <= 6) ??
       photoPacks.sort((a, b) => Number(a.schema.photoSlots) - Number(b.schema.photoSlots))[0];
-    expect(target, "el catálogo vivo tiene un foto-pack para el flujo de cotización").toBeTruthy();
+    expect(target, "el catálogo vivo tiene un foto-pack para el flujo de compra").toBeTruthy();
     const slots = Number(target!.schema.photoSlots);
     await page.goto(`/estudio/${target!.slug}`, { waitUntil: "domcontentloaded" });
     // El onboarding del estudio monta DESPUÉS de hidratar: si se intenta
@@ -491,7 +488,7 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
         await expect(closeTools).not.toBeVisible({ timeout: 5_000 });
       }).toPass({ timeout: 30_000 });
     }
-    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-cotizacion-estudio.png" });
+    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-compra-estudio.png" });
 
     // Finalizar diseño: «Vista previa» abre el modal "Así se verá tu pedido" y
     // de ahí se agrega al carrito (flujo vigente 2026-09; antes era directo).
@@ -516,28 +513,18 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     // sembrado). 20s de timeout hacían flaky este paso aun con el render OK.
     await page.waitForURL(/\/carrito/, { timeout: 60_000 });
     await page.waitForTimeout(3000);
-    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-cotizacion-form.png" });
-    // Buscar el CTA de WhatsApp en el carrito
-    const waLink = page.locator('a[href*="wa.me"], a[href*="whatsapp"]').first();
-    if (await waLink.count()) {
-      const href = await waLink.getAttribute("href");
-      expect(href).toContain("573208873826");
-      findings.push({
-        area: "cotizacion",
-        ok: true,
-        detail: `WhatsApp link OK (${href?.slice(0, 80)})`,
-      });
-    } else {
-      await page.screenshot({
-        caret: "initial",
-        path: "/tmp/audit-cliente-cotizacion-sin-wa.png",
-      });
-      findings.push({
-        area: "cotizacion",
-        ok: false,
-        detail: "no se encontró link wa.me tras finalizar",
-      });
-    }
+    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-compra-carrito.png" });
+    const checkoutLink = page.getByRole("link", { name: /ir a pagar/i });
+    await expect(checkoutLink).toBeVisible({ timeout: 15_000 });
+    await checkoutLink.click();
+    await page.waitForURL(/\/checkout\/datos/, { timeout: 30_000 });
+    await expect(page.locator("#fullName")).toBeVisible({ timeout: 20_000 });
+    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-compra-checkout.png" });
+    findings.push({
+      area: "compra",
+      ok: true,
+      detail: "Estudio → carrito → /checkout/datos con formulario transaccional",
+    });
   });
 
   test("6. Auth: /login y /registro con Turnstile", async ({ page }) => {
@@ -548,7 +535,7 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     });
     // /login NO lleva Turnstile a propósito: el login se protege con rate limit
     // dual (IP + email, 15 intentos/15 min en prod — app/(auth)/login/actions.ts).
-    // El widget va en registro/recuperación/contacto/cotización/newsletter.
+    // El widget va en registro/recuperación/contacto/compra/newsletter.
     // Verificado 2026-09-26 en LOCAL y PRD: /login sin host, /registro con host.
     await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-login.png" });
     await page.goto("/registro", { waitUntil: "domcontentloaded" });

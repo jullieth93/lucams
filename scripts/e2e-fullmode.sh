@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Suite E2E modo FULL (Etapa 2 — docs/TESTING.md). LOCAL only.
+# Suite E2E transaccional (docs/TESTING.md). LOCAL only.
 #
-# Levanta un dev server DEDICADO en :4100 con NEXT_PUBLIC_STORE_MODE=full (el
-# stack catálogo de :4000 no se toca — Next 16 dev permite UN solo servidor por
-# proyecto, así que el script baja el web-dev del repo si está arriba) y corre
-# los specs `fullmode-*` contra él con PLAYWRIGHT_BASE_URL.
+# Levanta un dev server DEDICADO en :4100 (Next 16 dev permite UN solo servidor
+# por proyecto, así que el script baja el web-dev del repo si está arriba) y
+# corre los specs `fullmode-*` contra él con PLAYWRIGHT_BASE_URL.
 #
 #   scripts/e2e-fullmode.sh [args extra de playwright…]
 #
@@ -38,8 +37,8 @@ STARTED=""
 if curl -sf -o /dev/null --max-time 3 "http://localhost:${PORT}/api/health"; then
   echo "fullmode: reutilizando el server ya activo en :${PORT}"
 else
-  echo "fullmode: levantando dev server en :${PORT} (NEXT_PUBLIC_STORE_MODE=full) — log: ${LOG}"
-  nohup setsid bash -c "cd apps/web && exec env NEXT_PUBLIC_STORE_MODE=full RESEND_API_KEY= PORT=${PORT} pnpm dev" >"${LOG}" 2>&1 &
+  echo "fullmode: levantando dev server en :${PORT} — log: ${LOG}"
+  nohup setsid bash -c "cd apps/web && exec env RESEND_API_KEY= PORT=${PORT} pnpm dev" >"${LOG}" 2>&1 &
   echo $! >"${PID_FILE}"
   STARTED=1
   for i in $(seq 1 60); do
@@ -77,7 +76,6 @@ if [ "$#" -gt 0 ]; then
 else
   FILTERS=("fullmode-")
 fi
-NEXT_PUBLIC_STORE_MODE=full \
 PLAYWRIGHT_BASE_URL="http://localhost:${PORT}" \
 E2E_ENV=local E2E_AUTH=1 \
   pnpm exec playwright test "${FILTERS[@]}"

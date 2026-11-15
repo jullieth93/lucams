@@ -61,7 +61,6 @@ import { canAccessAdminPath, canManageOrderRenderJobs, hasCapability } from "@/l
 import { requireCapability } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
-import { isCatalogMode } from "@/lib/store-mode";
 import { getPeriodAggregates, startOfMonthCO } from "@/features/finanzas/service";
 import { getInventorySummary } from "@/features/products/inventory-service";
 import { countOpenSupportTickets } from "@/features/support/admin-service";
@@ -102,7 +101,7 @@ export default async function AdminDashboardPage({
   const monthStart = startOfMonthCO(now);
 
   const role = session.admin.role;
-  const showCommercialPulse = !isCatalogMode() && canAccessAdminPath(role, "/admin/metricas");
+  const showCommercialPulse = canAccessAdminPath(role, "/admin/metricas");
   const showBusinessKpis = role !== "FULFILLMENT" && role !== "PRINT_WORKSHOP";
   const canRetryRenders = canManageOrderRenderJobs(role);
 

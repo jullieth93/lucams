@@ -300,7 +300,7 @@ export default async function AdminCarritosPage({ searchParams }: { searchParams
               </h2>
               <p className="text-brand-muted mb-4 text-xs">
                 Distribución histórica entre cola activa, seguimientos en curso, cierres pagados y
-                cotizaciones/vaciados.
+                vaciados manuales.
               </p>
               <AdminSegmentedBar
                 ariaLabel="Composición histórica de carritos abandonados por estado"

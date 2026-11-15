@@ -7,10 +7,10 @@ import {
 } from "./schemas";
 import { AiUnavailableError } from "./provider";
 
-// Guard de etapa: suggestDesignAction debe rechazar en modo catálogo (la UI la oculta,
-// pero una Server Action es un POST endpoint invocable por un request crafteado).
-// El guard es lo PRIMERO de la acción → el mock basta; no se toca rate-limit/DB/Gemini.
-vi.mock("@/lib/store-mode", () => ({ isCatalogMode: () => true, STORE_MODE: "catalog" }));
+vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
+vi.mock("@/lib/rate-limit", () => ({ rateLimit: vi.fn(async () => ({ allowed: true })) }));
+vi.mock("@/lib/auth", () => ({ getCurrentCustomer: vi.fn(async () => null) }));
+vi.mock("@/lib/cart-session", () => ({ peekCartSession: vi.fn(async () => null) }));
 
 const VALID_INPUT = {
   occasion: "cumpleaños de mi mamá",
@@ -175,8 +175,8 @@ describe("IA — probeGeminiHealth (N-19c: sonda segura, SIN generación de cont
   });
 });
 
-describe("IA — guard de modo catálogo (suggestDesignAction)", () => {
-  it("en modo catálogo la Server Action rechaza con el shape de error habitual", async () => {
+describe("IA — proveedor no disponible (suggestDesignAction)", () => {
+  it("sin Gemini la Server Action rechaza con el shape de error habitual", async () => {
     const { suggestDesignAction } = await import("./actions");
     const res = await suggestDesignAction(VALID_INPUT);
     expect(res.ok).toBe(false);

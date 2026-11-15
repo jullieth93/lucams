@@ -3,7 +3,7 @@
  *
  * Unifica en el directorio `/admin/clientes` y en la ficha `/admin/clientes/[id]`
  * tanto a clientes registrados (`Customer`) como a compradores invitados,
- * cotizaciones WhatsApp, tickets de soporte, carritos abandonados y suscriptores
+ * oportunidades B2B, tickets de soporte, carritos abandonados y suscriptores
  * a través de la entidad canónica `Contact`.
  *
  * Garantías de seguridad (cero suposiciones):
@@ -662,15 +662,6 @@ export interface Contact360Data {
     isGift: boolean;
     createdAt: Date;
   }>;
-  quotes: Array<{
-    id: string;
-    number: string;
-    status: string;
-    totalCents: number;
-    city: string;
-    department: string;
-    createdAt: Date;
-  }>;
   opportunities: Array<{
     id: string;
     number: string;
@@ -839,20 +830,6 @@ export async function getContact360ForActor(
           },
         },
       },
-      quotes: {
-        where: { deletedAt: null },
-        orderBy: { createdAt: "desc" },
-        take: 25,
-        include: {
-          items: {
-            select: {
-              design: {
-                include: { product: { select: { name: true, slug: true } } },
-              },
-            },
-          },
-        },
-      },
       opportunities: {
         where: { deletedAt: null },
         orderBy: { createdAt: "desc" },
@@ -1009,7 +986,7 @@ export async function getContact360ForActor(
   );
   const marketingOptInAt = marketingOptIn ? (latestNewsletterConsent?.acceptedAt ?? null) : null;
 
-  // Consolidar diseños del Estudio (cuenta + pedidos invitado + cotizaciones + carritos)
+  // Consolidar diseños del Estudio (cuenta + pedidos invitado + carritos)
   type DesignWithProduct = NonNullable<typeof contact.customer>["designs"][number];
   const designsMap = new Map<string, DesignWithProduct>();
   for (const d of contact.customer?.designs ?? []) {
@@ -1017,13 +994,6 @@ export async function getContact360ForActor(
   }
   for (const ord of contact.orders) {
     for (const it of ord.items) {
-      if (it.design && !designsMap.has(it.design.id)) {
-        designsMap.set(it.design.id, it.design);
-      }
-    }
-  }
-  for (const q of contact.quotes) {
-    for (const it of q.items) {
       if (it.design && !designsMap.has(it.design.id)) {
         designsMap.set(it.design.id, it.design);
       }
@@ -1225,15 +1195,6 @@ export async function getContact360ForActor(
       totalCents: o.total,
       isGift: o.isGift,
       createdAt: o.createdAt,
-    })),
-    quotes: contact.quotes.map((q) => ({
-      id: q.id,
-      number: q.number,
-      status: q.status,
-      totalCents: q.total,
-      city: q.city,
-      department: q.department,
-      createdAt: q.createdAt,
     })),
     opportunities: contact.opportunities.map((op) => ({
       id: op.id,

@@ -1496,7 +1496,7 @@ export const SITE_MAP = {
               type: "EMAIL",
               label: "Email de avisos internos al negocio",
               helpText:
-                "Acá llegan los avisos internos: nueva cotización, alertas operativas y resumen diario.",
+                "Acá llegan los avisos internos: pedidos, oportunidades B2B, alertas operativas y resumen diario.",
               category: "CONTACT",
               body: "hola@lucamsshop.com",
               sortOrder: 20,
@@ -1660,17 +1660,6 @@ export const SITE_MAP = {
               category: "WHATSAPP",
               body: "Hola Lucams 👋 Quiero consultar el estado de mi pedido {orderNumber}.",
               sortOrder: 50,
-            },
-            {
-              key: "WA_MSG_QUOTE",
-              kind: "SETTING",
-              type: "TEXTAREA",
-              label: "Mensaje WhatsApp: cotización",
-              helpText:
-                "Mensaje que se abre en WhatsApp al enviar una cotización. Variables: {customerName}, {quoteNumber}, {itemsSummary}, {total}, {quoteUrl}.",
-              category: "WHATSAPP",
-              body: `Hola Lucams 👋 Soy *{customerName}*.\n\nAcabo de hacer la cotización *{quoteNumber}* en la tienda:\n\n{itemsSummary}\n\n*Total: {total}*\n\n_Ver el detalle:_ {quoteUrl}\n\nQuedo atento/a para concretar 🙌`,
-              sortOrder: 60,
             },
             {
               key: "WA_MSG_WHOLESALE",

@@ -99,11 +99,6 @@ export function getLifecycleContactSelect(now: Date) {
       take: 1,
       select: { id: true, number: true, stage: true, updatedAt: true, ownerAdminId: true },
     },
-    quotes: {
-      orderBy: { createdAt: "desc" },
-      take: 1,
-      select: { id: true, createdAt: true },
-    },
   } satisfies Prisma.ContactSelect;
 }
 
@@ -270,15 +265,6 @@ function eligibleWhere(journey: LifecycleJourney, now: Date): Prisma.ContactWher
                 deletedAt: null,
                 updatedAt: { gte: lookback },
                 stage: { in: ["NEW", "QUALIFYING", "PROPOSAL_SENT"] },
-              },
-            },
-          },
-          {
-            quotes: {
-              some: {
-                deletedAt: null,
-                createdAt: { gte: lookback },
-                status: { in: ["PENDING", "CONTACTED"] },
               },
             },
           },

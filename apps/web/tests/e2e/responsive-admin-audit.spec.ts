@@ -128,7 +128,7 @@ type SummaryEntry = {
   scrollWidth: number;
   clientWidth: number;
   status: number | null;
-  /** URL final tras redirects (modo catálogo, guards RBAC, etc.). */
+  /** URL final tras redirects y guards RBAC. */
   finalUrl: string;
 };
 

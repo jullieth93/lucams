@@ -1,6 +1,6 @@
 /*
  * POM — PDP (/producto/[slug]).
- * Selectores verificados en compra.spec.ts y catalog-mode.spec.ts.
+ * Selectores verificados en compra.spec.ts.
  */
 import { expect, type Page } from "@playwright/test";
 

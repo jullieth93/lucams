@@ -417,11 +417,9 @@ async function ensureCart(sessionId: string, customerId: string | null) {
           data: {
             itemsSnapshot: snap,
             subtotalCents,
-            ...(existingAbandoned.closedReason === null && soft.deletedBy === "quote:create"
-              ? { closedReason: "QUOTE_CREATED" }
-              : existingAbandoned.recoveredAt === null && soft.deletedAt
-                ? { recoveredAt: soft.deletedAt, closedReason: "ORDER_PAID" }
-                : {}),
+            ...(existingAbandoned.recoveredAt === null && soft.deletedAt
+              ? { recoveredAt: soft.deletedAt, closedReason: "ORDER_PAID" }
+              : {}),
           },
         });
       }

@@ -46,7 +46,7 @@ export type EventSurfaceConfig = {
 export type LogoSurfaceConfig = {
   /** Campos de contacto a pedir (ej. ["logo","phone","email","website"]). */
   fields: string[];
-  /** Troquelado (corte especial): sin editor en vivo → cotización por WhatsApp. */
+  /** Troquelado (corte especial): sin editor en vivo → contacto comercial por WhatsApp. */
   requiresVectorFile: boolean;
 };
 

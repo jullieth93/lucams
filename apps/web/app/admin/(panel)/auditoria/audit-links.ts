@@ -71,8 +71,6 @@ export function resolveAuditEntityHref(
     }
     case "Opportunity":
       return `/admin/oportunidades/${encodeURIComponent(entityId)}`;
-    case "Quote":
-      return `/admin/cotizaciones/${encodeURIComponent(entityId)}`;
     case "Coupon":
       return `/admin/cupones/${encodeURIComponent(entityId)}`;
     case "SupportTicket":

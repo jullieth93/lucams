@@ -708,38 +708,27 @@ describe("S17 — Matriz por capacidades (AdminCapability) y nuevos perfiles ope
     expect(rolesWithCapability("staff:manage")).toEqual(["SUPERADMIN"]);
   });
 
-  it("Bloque 4 — paridad N-21 en CRM 360, duplicados, oportunidades B2B, cotizaciones y hoja de taller", () => {
-    // Hoja de taller (/admin/cotizaciones/[id]/taller): exige production:download_assets
-    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones")).toBe(false);
-    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123")).toBe(false);
-    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123/taller")).toBe(true);
-    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123/taller?print=1")).toBe(
-      true,
-    );
-    // Bordes de seguridad sobre el patrón dinámico
-    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones/qt_123/tallerX")).toBe(false);
-    expect(canAccessAdminPath("PRINT_WORKSHOP", "/admin/cotizaciones//taller")).toBe(false);
-
-    // CUSTOMER_SUPPORT gestiona cotizaciones y oportunidades, pero NO descarga activos 300 DPI de taller
+  it("Bloque 4 — paridad N-21 en CRM 360, duplicados y oportunidades B2B", () => {
+    // CUSTOMER_SUPPORT gestiona oportunidades y pedidos, pero NO descarga activos 300 DPI.
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/oportunidades")).toBe(true);
     expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/oportunidades/opp_123")).toBe(true);
-    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/cotizaciones")).toBe(true);
-    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/cotizaciones/qt_123")).toBe(true);
-    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/cotizaciones/qt_123/taller")).toBe(false);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/pedidos")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/pedidos/LCM-2026-0001")).toBe(true);
+    expect(canAccessAdminPath("CUSTOMER_SUPPORT", "/admin/pedidos/LCM-2026-0001/produccion")).toBe(
+      false,
+    );
 
-    // OPERATIONS_MANAGER y MANAGER acceden tanto al flujo comercial como a la hoja de taller
+    // Gerencia operativa accede al flujo comercial, pedidos y producción.
     for (const role of ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"] as const) {
       expect(canAccessAdminPath(role, "/admin/oportunidades")).toBe(true);
-      expect(canAccessAdminPath(role, "/admin/cotizaciones")).toBe(true);
-      expect(canAccessAdminPath(role, "/admin/cotizaciones/qt_123/taller")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/pedidos")).toBe(true);
+      expect(canAccessAdminPath(role, "/admin/pedidos/LCM-2026-0001/produccion")).toBe(true);
       expect(canAccessAdminPath(role, "/admin/clientes/duplicados")).toBe(true);
     }
 
-    // FINANCE_ANALYST, FULFILLMENT y CMS_EDITOR no acceden a embudo B2B, cotizaciones ni hoja de taller
+    // Estos roles no acceden al embudo B2B ni a duplicados.
     for (const role of ["FINANCE_ANALYST", "FULFILLMENT", "CMS_EDITOR"] as const) {
       expect(canAccessAdminPath(role, "/admin/oportunidades")).toBe(false);
-      expect(canAccessAdminPath(role, "/admin/cotizaciones")).toBe(false);
-      expect(canAccessAdminPath(role, "/admin/cotizaciones/qt_123/taller")).toBe(false);
       expect(canAccessAdminPath(role, "/admin/clientes/duplicados")).toBe(false);
     }
   });
@@ -961,7 +950,7 @@ describe("Bloque 8 — salud técnica, performance y alcance RBAC de notificacio
       "/admin/pedidos",
       "/admin/pedidos?atencion=1",
       "/admin/pedidos/LCM-2026-0001",
-      "/admin/cotizaciones",
+      "/admin/oportunidades",
       "/admin/oportunidades/opp_1",
       "/admin/inventario?stock=low",
       "/admin/metricas",
@@ -1026,9 +1015,8 @@ describe("Bloque C1 — guías, filtros y alcance dinámico de notificaciones", 
 
   it("ROUTE_PATTERN_ROLES permite y deniega las mismas subrutas que canAccessAdminPath", () => {
     const urls = [
-      "/admin/cotizaciones/qt_1/taller",
-      "/admin/cotizaciones/qt_1/taller?print=1",
-      "/admin/cotizaciones/qt_1/tallerX",
+      "/admin/pedidos/LCM-2026-0001/produccion?print=1",
+      "/admin/pedidos/LCM-2026-0001/produccionX",
       "/admin/pedidos/LCM-2026-0001/produccion",
       "/admin/pedidos/LCM-2026-0001/guia",
       "/admin/pedidos/LCM-2026-0001/guia/etiqueta?fuente=externa",

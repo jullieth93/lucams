@@ -1,4 +1,4 @@
-.PHONY: help local-up local-down local-status db-local-start db-local-stop db-local-setup db-local-on db-local-off db-local-seed db-local-reset web-start web-stop check verify-db audit-script-guards audit-content test-local test-rls test-e2e test-e2e-fullmode test-load build migrate-cms-v2 seed-products seed-new-products seed-letter-sets seed-admin admin-mfa-reset db-stg-setup db-stg-seed stg-reset stg-reset-apply clean clean-tmp
+.PHONY: help local-up local-down local-status db-local-start db-local-stop db-local-setup db-local-on db-local-off db-local-seed db-local-reset web-start web-stop tunnel tunnel-stop tunnel-status check verify-db audit-script-guards audit-content test-local test-rls test-e2e test-e2e-fullmode test-load build migrate-cms-v2 seed-products seed-new-products seed-letter-sets seed-admin admin-mfa-reset db-stg-setup db-stg-seed stg-reset stg-reset-apply clean clean-tmp
 
 # Makefile operativo — Lucams Shop
 # Orquesta únicamente lo que aporta valor real sobre `pnpm`:
@@ -18,6 +18,9 @@ help:
 	@echo "    make local-down       Baja app + DB local (conserva datos)"
 	@echo "    make local-status     Estado de contenedores, keys y PID de :4000"
 	@echo "    make web-start/stop   Arranca o detiene solo Next dev (:4000)"
+	@echo "    make tunnel           Expone LOCAL por HTTPS con ngrok y autenticación"
+	@echo "    make tunnel-status    Muestra URL y credenciales del túnel activo"
+	@echo "    make tunnel-stop      Detiene túnel, proxy y Next público"
 	@echo ""
 	@echo "  2. Base de datos LOCAL (Supabase en Podman):"
 	@echo "    make db-local-start   Levanta/reanuda contenedores sin perder volúmenes"
@@ -124,7 +127,7 @@ web-stop:
 local-up: db-local-start web-start
 	@echo "✓ Entorno completo arriba: app http://localhost:4000 · Studio :54323 · Mailpit :54324"
 
-local-down: web-stop db-local-stop
+local-down: tunnel-stop web-stop db-local-stop
 	@echo "✓ Entorno local abajo (los datos de la DB persisten)"
 
 local-status:
@@ -135,6 +138,16 @@ local-status:
 		rm -f $(WEB_PID); \
 		echo "web: detenida"; \
 	fi
+	@$(MAKE) tunnel-status
+
+tunnel:
+	bash scripts/dev-tunnel.sh start
+
+tunnel-stop:
+	bash scripts/dev-tunnel.sh stop
+
+tunnel-status:
+	bash scripts/dev-tunnel.sh status
 
 # ─── 2. Verificación, Seguridad y Build ─────────────────────────────────────
 

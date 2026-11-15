@@ -61,7 +61,6 @@ import {
   Award,
   Workflow,
 } from "lucide-react";
-import { isCatalogMode } from "@/lib/store-mode";
 
 /** Badge visual + filtro de estado. */
 export type NavBadge = {
@@ -110,19 +109,13 @@ export const ADMIN_NAV: NavGroup[] = [
     icon: Bell,
     href: "/admin/notificaciones",
     description:
-      "Avisos de tu tienda (pedidos nuevos, alertas, cotizaciones, resumen diario) con pendientes por leer.",
+      "Avisos de tu tienda (pedidos nuevos, alertas, resumen diario) con pendientes por leer.",
   },
   {
     title: "Ventas",
     icon: ShoppingCart,
     defaultOpen: true,
     items: [
-      // Feedback Lucy 2026-09-18: "Cotizaciones" (/admin/cotizaciones) salió del
-      // nav — es módulo heredado de la Etapa 1 (modo catálogo) y la tienda corre
-      // en modo full (Wompi/COD); el QuoteForm ni se renderiza (isCatalogMode).
-      // Las páginas SIGUEN vivas por URL directa (histórico Etapa 1 + RBAC
-      // CATALOG en admin-rbac): solo se oculta la entrada del sidebar, en AMBOS
-      // modos. Además createQuoteAction rechaza creaciones fuera de modo catálogo.
       {
         label: "Pedidos",
         href: "/admin/pedidos",
@@ -412,7 +405,7 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Métricas",
         href: "/admin/metricas",
         icon: TrendingUp,
-        description: "Métricas de ventas: pedidos, cotizaciones, ingresos del mes y top productos.",
+        description: "Métricas de ventas: pedidos, ingresos del mes y top productos.",
       },
       {
         label: "Salud técnica",
@@ -500,29 +493,8 @@ export const ADMIN_NAV: NavGroup[] = [
  * queda como redirect permanente (308) a /admin/garantias; el flujo largo de
  * garantías (que sí notifica en RESOLVED y REJECTED) es el único operativo. */
 
-/**
- * NAV efectivo según el modo de tienda (Etapa 1/2 — lib/store-mode).
- *
- * En TODOS los modos se ocultan los módulos futuros descopeados (decisión
- * develop 5499161): "Mercado Libre" (Canales) y "Bot WhatsApp IA".
- * En modo catálogo (Etapa 1), además, no hay pagos en línea ni envíos
- * integrados, así que el sidebar oculta lo que no aplica:
- *   - el grupo "Finanzas" completo (resumen, conciliación y bloqueos COD),
- *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas).
- * ("Precios al por mayor" se OCULTABA aquí hasta el 2026-10-02; ese día el
- * carrito pasó a aplicar los WholesaleTier como descuento por volumen público
- * — features/cart/volume-pricing.ts — y el módulo quedó visible en todos los
- * modos.)
- *
- * ADMIN_NAV se mantiene exportado e intacto: lo usa el catch-all placeholder
- * (findNavItem) para mostrar info contextual de módulos "Próximo". El consumidor
- * del sidebar (admin-shell.tsx) usa ESTA función.
- */
+/** NAV efectivo sin módulos descopeados. */
 export function getAdminNav(): NavGroup[] {
-  // Módulo futuro explícitamente descopeado: oculto en TODOS los modos
-  // (decisión develop 5499161): Mercado Libre (Canales).
-  // Nota (`Fase 12 · S26`): `/admin/bot` ("Bot WhatsApp") se retiró definitivamente
-  // en favor del copiloto ARM Human-in-the-Loop integrado en `/admin/soporte/[id]`.
   const withoutFuture = ADMIN_NAV.map((group) => {
     if (group.title === "Canales" && group.items) {
       return {
@@ -532,34 +504,7 @@ export function getAdminNav(): NavGroup[] {
     }
     return group;
   });
-  if (!isCatalogMode()) {
-    return withoutFuture.filter((group) => !group.items || group.items.length > 0 || group.href);
-  }
-  // Modo catálogo (Etapa 1): además de los futuros, se oculta lo que solo aplica
-  // con pagos/envíos online (grupo Finanzas completo, Fidelización, Integraciones y Envíos).
-  // Coherente con los gates de página (esas rutas redirigen fuera en este modo).
-  // "Precios al por mayor" YA NO se oculta (2026-10-02): el carrito aplica los
-  // niveles de volumen a todos los clientes.
-  return withoutFuture
-    .filter((group) => group.title !== "Finanzas")
-    .map((group) => {
-      if (group.title === "Promociones" && group.items) {
-        return {
-          ...group,
-          items: group.items.filter((it) => it.href !== "/admin/fidelizacion"),
-        };
-      }
-      if (group.title === "Configuración" && group.items) {
-        return {
-          ...group,
-          items: group.items.filter(
-            (it) => it.href !== "/admin/integraciones" && it.href !== "/admin/envios",
-          ),
-        };
-      }
-      return group;
-    })
-    .filter((group) => !group.items || group.items.length > 0 || group.href);
+  return withoutFuture.filter((group) => !group.items || group.items.length > 0 || group.href);
 }
 
 /**

@@ -51,13 +51,13 @@ Los colores y acabados pueden variar levemente respecto a lo que ves en pantalla
 4. Eliges el medio de pago —**tarjeta de crédito o débito, PSE o pago contraentrega** donde esté disponible— y confirmas el pedido.
 5. Recibes la confirmación por correo y, cuando despachamos, el número de guía para hacer seguimiento.
 
-Si prefieres que te acompañemos o quieres un pedido especial, escríbenos por **WhatsApp**: te ayudamos con la compra y, si lo tuyo no está en el catálogo, lo cotizamos contigo por ese canal.
+Si prefieres que te acompañemos, escríbenos por **WhatsApp**. Para propuestas de empresas o eventos, usa **[Empresas y Eventos](/empresas-y-eventos)**: allí iniciamos el seguimiento comercial y, al confirmar la venta, la convertimos en pedido.
 
 ## Precios y pago
 
 - Los precios están en **pesos colombianos (COP)** y son el **valor final que pagas** por el producto.
-- El **costo de envío** se calcula en el sitio y se te muestra **antes** de que pagues, a través de nuestro operador logístico. No hay cobros ocultos. Si tu pedido nace de una cotización especial por WhatsApp, te confirmamos el costo del envío por ese canal, también **antes** de que pagues.
-- Aceptamos **tarjeta de crédito y débito y PSE** a través de **Wompi**, nuestra pasarela de pagos, y **pago contraentrega** donde esté disponible. El pago en línea lo haces en la página segura de Wompi: **nosotros no vemos ni almacenamos los datos de tu tarjeta**. Si cerramos contigo una cotización por WhatsApp, el medio de pago lo acordamos por ese canal antes de producir tu pedido.
+- El **costo de envío** se calcula en el sitio y se te muestra **antes** de que pagues, a través de nuestro operador logístico. No hay cobros ocultos. Si tu pedido de empresa o evento nace de una propuesta comercial por WhatsApp, te confirmamos el costo del envío por ese canal, también **antes** de que pagues.
+- Aceptamos **tarjeta de crédito y débito y PSE** a través de **Wompi**, nuestra pasarela de pagos, y **pago contraentrega** donde esté disponible. El pago en línea lo haces en la página segura de Wompi: **nosotros no vemos ni almacenamos los datos de tu tarjeta**. Si cerramos contigo una propuesta comercial por WhatsApp, el medio de pago lo acordamos por ese canal antes de producir tu pedido.
 - **Sobre comprobantes.** Hoy la vendedora **no está obligada a expedir factura de venta**, por ser persona natural **no responsable de IVA** (Estatuto Tributario, art. 437 parágrafo 3, y Decreto 1625 de 2016, art. 1.6.1.4.3 numeral 3). Por cada compra te entregamos la **constancia de la operación** con el detalle de lo que pediste, lo que pagaste y la fecha. Si en el futuro quedamos obligadas a facturar, lo publicaremos aquí antes de que aplique.
 
 ## Envío y entrega
@@ -70,7 +70,7 @@ El costo del envío se **calcula en el sitio durante el checkout**, a través de
 
 ## Derecho de retracto
 
-Como consumidor tienes **derecho de retracto** (Ley 1480 de 2011, art. 47): dentro de los **{{retracto_dias}} días hábiles** siguientes a la entrega puedes retractarte de la compra **sin dar explicaciones**, siempre que devuelvas el producto en las mismas condiciones en que lo recibiste. Es un derecho de las **ventas a distancia**, así que también cubre los pedidos que cerramos contigo por WhatsApp a partir de una cotización del sitio.
+Como consumidor tienes **derecho de retracto** (Ley 1480 de 2011, art. 47): dentro de los **{{retracto_dias}} días hábiles** siguientes a la entrega puedes retractarte de la compra **sin dar explicaciones**, siempre que devuelvas el producto en las mismas condiciones en que lo recibiste. Es un derecho de las **ventas a distancia**, así que también cubre los pedidos de empresas o eventos que cerramos contigo por WhatsApp tras una propuesta comercial.
 
 Cuando ejerces el retracto, te **devolvemos el dinero en un máximo de {{retracto_reembolso_dias}} días calendario** contados desde que ejerces el derecho (plazo de la **Ley 2439 de 2024**, que modificó el art. 47).
 

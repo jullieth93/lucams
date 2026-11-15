@@ -23,7 +23,7 @@ const FALLBACK = `
 
 En **Lucams Shop** queremos que ames lo que recibes. Aquí te contamos, en cristiano, cómo funciona el **derecho de retracto**, cuándo puedes devolver un producto y cómo te regresamos tu dinero. Nuestro mapache está pendiente de que todo salga bien.
 
-> Esta política aplica a las compras hechas en **lucamsshop.com** y también a los pedidos que cerremos contigo por **WhatsApp** a partir de una cotización del sitio: el retracto protege las ventas a distancia, sin importar por cuál de esos dos canales compres. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
+> Esta política aplica a las compras hechas en **lucamsshop.com** y también a los pedidos de empresas o eventos que cerremos contigo por **WhatsApp** tras una propuesta comercial: el retracto protege las ventas a distancia, sin importar por cuál de esos dos canales compres. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
 
 ## Tu derecho de retracto
 
@@ -44,7 +44,7 @@ Los productos personalizados quedan por fuera del retracto porque la ley except�
 
 Es sencillo, y estamos para ayudarte en cada paso:
 
-1. **Escríbenos dentro de los {{retracto_dias}} días hábiles** siguientes a la entrega, a **{{email_retracto}}** o por **WhatsApp**. Cuéntanos tu número de pedido o de cotización.
+1. **Escríbenos dentro de los {{retracto_dias}} días hábiles** siguientes a la entrega, a **{{email_retracto}}** o por **WhatsApp**. Cuéntanos tu número de pedido o de oportunidad.
 2. Te confirmamos que tu retracto aplica y te damos las instrucciones para la **devolución del producto**.
 3. **Devuelves el producto** en las mismas condiciones en que lo recibiste (sin uso, con su empaque original y lo que venía incluido).
 4. Nos indicas los datos para hacerte el **reembolso**.
@@ -61,7 +61,7 @@ Cuando te retractas (o sea, cambiaste de opinión, sin que el producto tenga nin
 Una vez ejerces el retracto y devuelves el producto, te regresamos **todo el dinero que pagaste**, en un plazo máximo de **{{retracto_reembolso_dias}} días calendario** contados **desde el día en que ejerciste el retracto** (Ley 1480, art. 47, modificado por la **Ley 2439 de 2024**).
 
 - Si pagaste con **tarjeta o PSE**, el reembolso se hace al **mismo medio de pago**, a través de la pasarela de pagos (Wompi).
-- Si pagaste **contraentrega (en efectivo)**, o si acordamos el pago por **transferencia** al cerrar una cotización por WhatsApp, el reembolso se hace por **transferencia bancaria** a la cuenta que nos indiques.
+- Si pagaste **contraentrega (en efectivo)**, o si acordamos el pago por **transferencia** al cerrar una propuesta comercial por WhatsApp, el reembolso se hace por **transferencia bancaria** a la cuenta que nos indiques.
 
 ## Reversión del pago
 

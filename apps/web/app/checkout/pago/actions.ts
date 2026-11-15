@@ -20,7 +20,6 @@ import {
 import { InsufficientStockError } from "@/features/orders/errors";
 import { advanceAbandonedCartCheckoutStep } from "@/features/cart/recovery-service";
 import { getClientIp } from "@/lib/client-ip";
-import { guardTransactionalAction } from "@/lib/stage-guard";
 
 // #12 — códigos de CheckoutError cuyos mensajes son copy es-CO DELIBERADAMENTE seguro para mostrar al
 // cliente. Los demás (ORDER_CREATE_FAILED, PAYMENT_INIT_FAILED…) envuelven detalle interno crudo
@@ -47,9 +46,6 @@ function safeCheckoutMessage(err: unknown, fallback: string): string {
 }
 
 export async function payWompiAction(formData: FormData): Promise<void> {
-  // Etapa 1: no se cobra. Primero que todo — esta acción crea una Order real y pega a Wompi.
-  guardTransactionalAction("payWompiAction");
-
   // T4 — rate-limit por IP: finalizeCheckout crea una orden + pega a Wompi, así
   // que limitamos el abuso (creación masiva de órdenes basura). Generoso para no
   // bloquear reintentos legítimos de un cliente con errores.
@@ -189,10 +185,6 @@ export async function payWompiAction(formData: FormData): Promise<void> {
 }
 
 export async function payCodAction(formData: FormData): Promise<void> {
-  // Etapa 1: no se despacha. Es la acción más sensible — confirma la orden, commitea stock,
-  // pide guía y manda el correo de confirmación desde el dominio de marca.
-  guardTransactionalAction("payCodAction");
-
   const hdrs = await headers();
   const ip = getClientIp(hdrs);
 
@@ -328,9 +320,6 @@ export async function applyCouponAction(
   _prev: CouponActionState,
   formData: FormData,
 ): Promise<CouponActionState> {
-  // Etapa 1: la cotización no lleva cupones (Quote.total == subtotal).
-  guardTransactionalAction("applyCouponAction");
-
   const hdrs = await headers();
   const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
@@ -361,7 +350,6 @@ export async function applyCouponAction(
 
 /** Quita el cupón aplicado y refresca el resumen. */
 export async function removeCouponAction(): Promise<void> {
-  guardTransactionalAction("removeCouponAction");
   await removeCoupon();
   revalidatePath("/checkout/pago");
 }
@@ -384,8 +372,6 @@ export async function applyLoyaltyAction(
   _prev: LoyaltyActionState,
   formData: FormData,
 ): Promise<LoyaltyActionState> {
-  guardTransactionalAction("applyLoyaltyAction");
-
   const hdrs = await headers();
   const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
@@ -421,7 +407,6 @@ export async function applyLoyaltyAction(
 
 /** Quita la redención de puntos aplicada y refresca el resumen. */
 export async function removeLoyaltyAction(): Promise<void> {
-  guardTransactionalAction("removeLoyaltyAction");
   await removeLoyaltyPoints();
   revalidatePath("/checkout/pago");
 }

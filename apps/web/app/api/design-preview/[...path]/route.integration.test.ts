@@ -91,7 +91,6 @@ const SHARE_TOKEN = `${RUN}-share-token-32hexchars0000`.slice(0, 32);
 // Tokens de 32 hex ÚNICOS por corrida (un residuo de una corrida fallida
 // anterior no puede colisionar por el unique de publicAccessTokenHash).
 const ORDER_TOKEN = randomBytes(16).toString("hex");
-const QUOTE_TOKEN = randomBytes(16).toString("hex");
 const CLEAN_BYTES = Buffer.from("preview-limpio");
 const WM_BYTES = Buffer.from("preview-watermark");
 const DRAFT_BYTES = Buffer.from("borrador");
@@ -161,7 +160,7 @@ beforeAll(async () => {
     data: { previewUrl: `/api/design-preview/${designId}/preview.png` },
   });
 
-  // Orden y cotización que referencian el diseño (capacidades ot/qt)
+  // Pedido que referencia el diseño (capacidad ot)
   const variant = await prisma.productVariant.create({
     data: {
       productId: product.id,
@@ -191,30 +190,11 @@ beforeAll(async () => {
     },
     select: { id: true },
   });
-  const quote = await prisma.quote.create({
-    data: {
-      number: `COT-${RUN}`,
-      customerName: "Test",
-      customerWhatsapp: "3001112233",
-      city: "Bogotá",
-      department: "Bogotá D.C.",
-      status: "CONTACTED",
-      subtotal: 10_000,
-      total: 10_000,
-      publicAccessTokenHash: hashBearerToken(QUOTE_TOKEN),
-      items: {
-        create: [{ productName: `Imán ${RUN}`, unitPrice: 10_000, quantity: 1, designId }],
-      },
-    },
-    select: { id: true },
-  });
-
   mock.objects.set(`design-previews/${designId}/preview.png`, CLEAN_BYTES);
   mock.objects.set(`design-previews/${designId}/preview-wm.webp`, WM_BYTES);
   mock.objects.set(`design-previews/${designId}/draft-preview.webp`, DRAFT_BYTES);
 
   cleanup.push(
-    prisma.quote.deleteMany({ where: { id: quote.id } }),
     prisma.order.deleteMany({ where: { id: order.id } }),
     prisma.design.deleteMany({ where: { id: designId } }),
     prisma.productVariant.deleteMany({ where: { productId: product.id } }),
@@ -332,17 +312,11 @@ describe.skipIf(!hasDb)("GET /api/design-preview — autorización (LUC-SEC-001)
     );
   });
 
-  it("order/quote token → exhibición 200, incluido el preview limpio (ADR-191)", async () => {
+  it("order token → exhibición 200, incluido el preview limpio (ADR-191)", async () => {
     expect(
       (await call(`${designId}/preview-wm.webp`, { query: `?ot=${ORDER_TOKEN}` })).status,
     ).toBe(200);
     expect((await call(`${designId}/preview.png`, { query: `?ot=${ORDER_TOKEN}` })).status).toBe(
-      200,
-    );
-    expect(
-      (await call(`${designId}/preview-wm.webp`, { query: `?qt=${QUOTE_TOKEN}` })).status,
-    ).toBe(200);
-    expect((await call(`${designId}/preview.png`, { query: `?qt=${QUOTE_TOKEN}` })).status).toBe(
       200,
     );
   });

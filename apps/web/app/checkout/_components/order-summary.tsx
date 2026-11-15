@@ -2,16 +2,12 @@
  * Resumen del pedido — sticky sidebar visible en todos los steps.
  * Muestra items + subtotal + envío (si ya se eligió) + total.
  *
- * Etapa 1 (modo catálogo): no hay envío calculado ni cupones — la línea de
- * envío avisa que se coordina por WhatsApp y el total es el subtotal de
- * productos (la cotización se concreta en la conversación).
  */
 
 import Image from "next/image";
 import Link from "next/link";
 import { ShoppingBag, Sparkles } from "lucide-react";
 import { formatCOP } from "@/lib/format";
-import { isCatalogMode } from "@/lib/store-mode";
 import type { CartDetail } from "@/features/cart/service";
 import type { GuestLoyaltyIncentive } from "@/features/checkout/service";
 import type { CheckoutTexts } from "../checkout-texts";
@@ -55,7 +51,6 @@ export function OrderSummary({
   const appliedDiscount = discount ?? 0;
   const appliedLoyaltyDiscount = loyaltyDiscount ?? 0;
   const total = Math.max(0, subtotal + (shipping ?? 0) - appliedDiscount - appliedLoyaltyDiscount);
-  const catalog = isCatalogMode();
 
   return (
     <aside className="border-brand-purple/15 sticky top-24 rounded-2xl border bg-white p-5 shadow-sm">
@@ -134,9 +129,7 @@ export function OrderSummary({
         <div className="flex justify-between">
           <dt className="text-brand-purple-dark/70">{texts.shippingLabel}</dt>
           <dd className="text-brand-purple-dark/85 text-right tabular-nums">
-            {catalog ? (
-              <span className="text-brand-muted text-xs italic">{texts.shippingCatalog}</span>
-            ) : shipping === null ? (
+            {shipping === null ? (
               <span className="text-brand-muted text-xs italic">{texts.shippingPending}</span>
             ) : shipping === 0 ? (
               <span className="font-semibold text-emerald-700">{texts.free}</span>
@@ -184,7 +177,7 @@ export function OrderSummary({
             {formatCOP(total)}
           </dd>
         </div>
-        {loyaltyEarnPreview != null && loyaltyEarnPreview > 0 && !catalog && (
+        {loyaltyEarnPreview != null && loyaltyEarnPreview > 0 && (
           <p className="text-brand-purple text-[11px] font-semibold">
             {texts.loyaltyEarn.replace("{n}", loyaltyEarnPreview.toLocaleString("es-CO"))}
           </p>
@@ -193,7 +186,7 @@ export function OrderSummary({
             el guest no tiene balance que redimir ni preview de puntos; el
             bloque le muestra lo que ganaría y lo lleva a /registro. El
             carrito vive en cookie de sesión, así que sobrevive al registro. */}
-        {guestIncentive && guestTexts && !catalog && (
+        {guestIncentive && guestTexts && (
           <div className="border-brand-purple/15 from-brand-pink/10 to-brand-purple/10 mt-3 rounded-xl border bg-gradient-to-br p-3.5">
             <p className="text-brand-purple-dark text-xs font-bold">{guestTexts.title}</p>
             <p className="text-brand-purple-dark/80 mt-1 text-[11px] leading-snug">
@@ -215,9 +208,7 @@ export function OrderSummary({
             <p className="text-brand-muted mt-1.5 text-[10px] italic">{guestTexts.cartNote}</p>
           </div>
         )}
-        <p className="text-brand-muted mt-1 text-[10px]">
-          {catalog ? texts.noteCatalog : texts.noteFinal}
-        </p>
+        <p className="text-brand-muted mt-1 text-[10px]">{texts.noteFinal}</p>
       </dl>
     </aside>
   );

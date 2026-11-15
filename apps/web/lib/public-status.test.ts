@@ -22,7 +22,7 @@ describe("wompiPublicVerdict", () => {
   it("200 + skipped (pagos no habilitados) → pending, NUNCA down", () => {
     const v = wompiPublicVerdict(200, {
       status: "skipped",
-      detail: "WOMPI_* no configuradas (modo catálogo).",
+      detail: "WOMPI_* no configuradas.",
     });
     expect(v.status).toBe("pending");
     expect(v.status).not.toBe("down");

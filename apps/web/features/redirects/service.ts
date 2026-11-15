@@ -194,7 +194,6 @@ const RESERVED_FROM_PREFIXES = [
   "/mi-cuenta",
   "/estudio",
   "/pedido",
-  "/cotizacion",
   "/soporte",
   "/resena",
   "/feeds",

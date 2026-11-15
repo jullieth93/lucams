@@ -14,7 +14,7 @@
 
 | Si tu tarea toca…                                                                                      | Lee primero                                                                                                                                                             |
 | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Schema Prisma (77 modelos), estructura del monorepo, RBAC, RLS                                         | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)                                                                                                                          |
+| Schema Prisma (75 modelos), estructura del monorepo, RBAC, RLS                                         | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)                                                                                                                          |
 | Catálogo, gemelas `-NOMAG`, precios mayoristas, CMS v2 (3 capas) y APIs `/api/catalog\|cms`            | [`docs/domains/catalog-and-cms.md`](docs/domains/catalog-and-cms.md)                                                                                                    |
 | Estudio de personalización (Konva, 7 escenas 3D, auto-save `clientRev`, renders 300 DPI)               | [`docs/domains/studio-and-production.md`](docs/domains/studio-and-production.md) + [`apps/web/app/estudio/[slug]/README.md`](apps/web/app/estudio/%5Bslug%5D/README.md) |
 | Carrito, checkout en 3 pasos, saga `Order`, riesgo COD, conciliación y costeo por receta               | [`docs/domains/checkout-payments-shipping.md`](docs/domains/checkout-payments-shipping.md)                                                                              |
@@ -60,14 +60,14 @@
 **Lucams Shop** (`lucamsshop.com`, registrado en `mi.com.co`, WhatsApp `+57 320 887 3826`, ~$20
 USD/mes en Vercel Pro) es un e-commerce colombiano 100 % productivo de productos magnéticos
 personalizados (fotoimanes, separadores, calendarios, tiras, abecedarios/letras), operando en
-producción en modo **`full`** (`NEXT_PUBLIC_STORE_MODE=full`; referencia a superar: `magneticas.cl`).
+producción exclusivamente en modo **`full`** (`ADR-204`; referencia a superar: `magneticas.cl`).
 
 1. **Calidad productiva total:** no es un MVP.
 2. **Stack fijo:** Next.js **16** (App Router, RSC, Server Actions, Turbopack; lee
    [`apps/web/AGENTS.md`](apps/web/AGENTS.md)) + TypeScript strict + **Tailwind v4** + shadcn/ui,
    monorepo `pnpm` (`apps/web` + `packages/db`), Prisma + Supabase, Vercel Pro (`iad1`).
-3. **Modo de tienda por bandera (`ADR-077`):** `NEXT_PUBLIC_STORE_MODE` = `catalog` | `full` sobre
-   una única base de código (`lib/stage-guard.ts`). PRD y STG operan en `full`.
+3. **Modelo comercial único (`ADR-204`):** compras individuales por carrito, envío, pago y pedido;
+   negociaciones de empresas y eventos por Oportunidades B2B. No existe cotización individual por WhatsApp.
 4. **Pagos y logística:** Wompi (`PaymentProvider`; listo para sumar pasarelas después) y Aveonline
    (`ADR-039`) + mensajería interna Bogotá (`ShippingProvider`).
 5. **Comunicaciones y SaaS austeros:** correo por Resend (`mail.lucamsshop.com` + `hola@lucamsshop.com`
