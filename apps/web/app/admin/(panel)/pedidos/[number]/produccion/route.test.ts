@@ -17,7 +17,7 @@ const {
   // Auditoría 2026-11-08 — el ZIP ya no viaja en el response: se publica en
   // production-assets (`_bundles/`) y la ruta redirige a su URL firmada.
   uploadOrderProductionBundle: vi.fn(
-    async (opts: { orderId: string; filename: string }) =>
+    async (opts: { orderId: string; filename: string; content: Buffer }) =>
       `_bundles/${opts.orderId}/${opts.filename}`,
   ),
   signOrderProductionBundle: vi.fn(
@@ -116,8 +116,55 @@ describe("GET /admin/pedidos/[number]/produccion (S11 · [OPS-01] / [SEC-02])", 
         totalPieces: 1,
         unapprovedPieces: 0,
         missingPieces: 0,
+        bundleParts: 1,
       },
     });
+  });
+
+  it("divide en partes menores de 50 MB un pedido que supera el límite de Supabase Free", async () => {
+    getOrderProductionBundle.mockResolvedValue({
+      id: "ord_123",
+      number: "LCM-2026-0099",
+      createdAt: new Date("2026-10-01T12:00:00Z"),
+      items: [
+        {
+          productName: "Calendario",
+          sku: "CAL-12",
+          qty: 1,
+          personalizationKind: "CALENDAR_PHOTO_MONTH",
+          moderationStatus: "APPROVED",
+          productionUrls: ["prod/ord_123/mes-01.png", "prod/ord_123/mes-02.png"],
+          renderPending: false,
+          renderFailed: false,
+          renderProgress: null,
+          startMonth: 0,
+          calendarYear: 2026,
+          productSchema: null,
+          variantAttrs: {},
+          physicalSpecs: null,
+          canvasData: null,
+          designMetadata: null,
+        },
+      ],
+    });
+    downloadProductionAsset.mockResolvedValue(Buffer.alloc(24 * 1024 * 1024, 1));
+
+    const req = new Request("http://localhost/admin/pedidos/LCM-2026-0099/produccion");
+    const res = await GET(req, { params: Promise.resolve({ number: "LCM-2026-0099" }) });
+
+    expect(res.status).toBe(200);
+    expect(uploadOrderProductionBundle).toHaveBeenCalledTimes(2);
+    const filenames = uploadOrderProductionBundle.mock.calls.map(([opts]) => opts.filename);
+    expect(filenames).toEqual([
+      "pedido-lcm-2026-0099-produccion-parte-1-de-2.zip",
+      "pedido-lcm-2026-0099-produccion-parte-2-de-2.zip",
+    ]);
+    for (const [opts] of uploadOrderProductionBundle.mock.calls) {
+      expect(opts.content.length).toBeLessThan(50 * 1024 * 1024);
+    }
+    const html = await res.text();
+    expect(html).toContain("Descargar parte 1 de 2");
+    expect(html).toContain("Descargar parte 2 de 2");
   });
 
   it("si el ZIP no se puede publicar en Storage responde 500 claro (sin redirect roto)", async () => {

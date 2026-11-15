@@ -6,11 +6,12 @@
  *     por item del pedido;
  *   - armado.png (hoja de armado: miniaturas + etiquetas + estado de moderación);
  *   - LEEME.txt (resumen + advertencias).
- * y lo entrega como REDIRECT 302 a una URL firmada del bucket privado
- * production-assets (área `_bundles/<orderId>/`), NO en el response de la
- * función: Vercel corta cualquier response en ~4.5 MB y el ZIP de un pedido
- * real lo supera siempre (auditoría 2026-11-08; migración 059 habilita
- * application/zip en el bucket).
+ * y publica el resultado en production-assets (`_bundles/<orderId>/`). Un ZIP
+ * pequeño se entrega como REDIRECT 302 a su URL firmada; si supera el límite
+ * global de Supabase Free (50 MB), se divide en partes de hasta 45 MiB con
+ * enlaces firmados propios. El ZIP nunca viaja en el response de la función:
+ * Vercel corta cualquier response en ~4.5 MB (auditoría 2026-11-08; migración
+ * 059 habilita application/zip en el bucket).
  *
  * Reemplaza el flujo manual (bajar pieza por pieza) del detalle. Ruta bajo /admin/* → protegida por
  * el middleware; además valida rol + MFA con requireRole (defensa en profundidad).
@@ -114,7 +115,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
     );
   }
 
-  const zip = new JSZip();
+  const files: Array<{ name: string; content: Buffer }> = [];
   const pieces: AssemblyPiece[] = [];
   let missing = 0;
   let totalPieces = 0;
@@ -245,7 +246,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
         summary.push(`  ✗ ${label}: archivo no disponible en storage.`);
         continue;
       }
-      zip.file(`${folder}${fileName}`, bytes);
+      files.push({ name: `${folder}${fileName}`, content: bytes });
       pieces.push({
         // La hoja de armado es lo que se mira mientras se produce: si hay que sacar más de una
         // copia, tiene que verse ahí y no solo en el resumen de texto.
@@ -259,13 +260,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
 
   // Hoja de armado (armado.png) — no rompe la descarga si falla la composición.
   const createdAtLabel = formatDateCO(bundle.createdAt);
+  let assemblySheet: Buffer | null = null;
   try {
-    const sheet = await composeAssemblySheet({
+    assemblySheet = await composeAssemblySheet({
       orderNumber: bundle.number,
       createdAtLabel,
       pieces,
     });
-    zip.file("armado.png", sheet);
   } catch (err) {
     logger.warn(
       { event: "order.production_zip.assembly_fail", orderNumber: bundle.number, err: String(err) },
@@ -277,24 +278,49 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
     summary.push("", `⚠️ ${missing} archivo(s) no se pudieron descargar.`);
   }
   summary.push("", "Generado por Lucams Shop · admin.");
-  zip.file("LEEME.txt", summary.join("\n"));
 
-  const content = await zip.generateAsync({ type: "nodebuffer" });
-  const filename = `pedido-${slug(bundle.number)}-produccion.zip`;
+  // Supabase Free limita cada objeto a 50 MB. Se deja margen para el contenedor
+  // ZIP y el LEEME; los pedidos pequeños conservan el 302 de siempre y los
+  // grandes presentan enlaces firmados por partes.
+  const maxPartBytes = 45 * 1024 * 1024;
+  const sourceFiles = assemblySheet
+    ? [{ name: "armado.png", content: assemblySheet }, ...files]
+    : files;
+  const parts: Array<typeof sourceFiles> = [];
+  let currentPart: typeof sourceFiles = [];
+  let currentBytes = 0;
+  for (const file of sourceFiles) {
+    if (currentPart.length > 0 && currentBytes + file.content.length > maxPartBytes) {
+      parts.push(currentPart);
+      currentPart = [];
+      currentBytes = 0;
+    }
+    currentPart.push(file);
+    currentBytes += file.content.length;
+  }
+  if (currentPart.length > 0) parts.push(currentPart);
 
-  // Auditoría 2026-11-08 — el ZIP NO viaja en el response de la función: Vercel
-  // corta cualquier response en ~4.5 MB y un pedido real lo supera siempre. Se
-  // sube al bucket privado production-assets (`_bundles/<orderId>/`, migración
-  // 059) y se redirige a una URL firmada de TTL corto (5 min). El detalle del
-  // pedido enlaza esta ruta con <a href>: el 302 resuelve la descarga igual.
-  let downloadUrl: string;
+  const downloads: Array<{ url: string; filename: string }> = [];
   try {
-    const bundlePath = await uploadOrderProductionBundle({
-      orderId: bundle.id,
-      filename,
-      content,
-    });
-    downloadUrl = await signOrderProductionBundle(bundlePath, filename);
+    for (let index = 0; index < parts.length; index++) {
+      const zip = new JSZip();
+      for (const file of parts[index]!) zip.file(file.name, file.content);
+      if (parts.length > 1) {
+        zip.file("LEEME.txt", [...summary, `Parte ${index + 1} de ${parts.length}.`].join("\n"));
+      } else {
+        zip.file("LEEME.txt", summary.join("\n"));
+      }
+      const content = await zip.generateAsync({ type: "nodebuffer" });
+      const suffix = parts.length > 1 ? `-parte-${index + 1}-de-${parts.length}` : "";
+      const filename = `pedido-${slug(bundle.number)}-produccion${suffix}.zip`;
+      const bundlePath = await uploadOrderProductionBundle({
+        orderId: bundle.id,
+        filename,
+        content,
+      });
+      const url = await signOrderProductionBundle(bundlePath, filename);
+      downloads.push({ url, filename });
+    }
   } catch (err) {
     logger.error(
       { event: "order.production_zip.bundle_fail", orderNumber: bundle.number, err: String(err) },
@@ -316,14 +342,31 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
       totalPieces,
       unapprovedPieces,
       missingPieces: missing,
+      bundleParts: downloads.length,
     },
   });
 
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: downloadUrl,
-      "Cache-Control": "no-store",
+  if (downloads.length === 1) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: downloads[0]!.url,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  const links = downloads
+    .map(
+      (download, index) =>
+        `<li><a href="${download.url.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer">Descargar parte ${index + 1} de ${downloads.length}</a></li>`,
+    )
+    .join("");
+  return new Response(
+    `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Descarga de producción · ${bundle.number}</title></head><body style="font-family:system-ui,sans-serif;max-width:640px;margin:48px auto;padding:0 20px;color:#352d4f"><h1>ZIP de producción por partes</h1><p>El pedido <strong>${bundle.number}</strong> supera el límite de 50 MB por archivo. Descarga todas las partes para tener las ${totalPieces} piezas de impresión.</p><ul>${links}</ul><p>Los enlaces firmados vencen en 5 minutos. Si vencen, vuelve a abrir esta página desde el pedido.</p></body></html>`,
+    {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
     },
-  });
+  );
 }
