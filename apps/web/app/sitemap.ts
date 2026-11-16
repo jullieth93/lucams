@@ -20,6 +20,7 @@
 import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/db";
 import { getCanonicalSiteUrl } from "@/lib/origin";
+import { STOREFRONT_PRODUCT_WHERE } from "@/features/products/storefront-visibility";
 
 const STATIC_PATHS = [
   { path: "", priority: 1.0, changeFrequency: "daily" as const },
@@ -82,7 +83,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         select: { slug: true, updatedAt: true },
       }),
       prisma.product.findMany({
-        where: { deletedAt: null, isActive: true, category: { isActive: true, deletedAt: null } },
+        where: STOREFRONT_PRODUCT_WHERE,
         select: { slug: true, updatedAt: true },
       }),
     ]);

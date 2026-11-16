@@ -37,6 +37,8 @@ const product = (over = {}) => ({
   cost: null,
   isPersonalizable: false,
   personalizationKind: "NONE",
+  fulfillmentMode: "PHYSICAL_STOCK",
+  publishedOnStorefront: true,
   personalizationSchema: null,
   richDescription: null,
   whyChooseThis: null,
@@ -69,13 +71,27 @@ describe("ENTITY_DEFS", () => {
     assert.equal(ENTITY_DEFS.template.keyOf({ slug: "polaroid-clasico" }), "polaroid-clasico");
   });
 
-  it("ProductVariant NUNCA sincroniza stock (operativo real de PRD) ni timestamps", () => {
-    for (const banned of ["stock", "createdAt", "updatedAt", "id"]) {
+  it("ProductVariant NUNCA sincroniza stock, safetyStock ni timestamps", () => {
+    for (const banned of ["stock", "safetyStock", "createdAt", "updatedAt", "id"]) {
       assert.ok(
         !ENTITY_DEFS.variant.contentFields.includes(banned),
         `variant.contentFields no debe incluir ${banned}`,
       );
     }
+  });
+
+  it("Product sincroniza fulfillmentMode y publishedOnStorefront como contenido", () => {
+    for (const field of ["fulfillmentMode", "publishedOnStorefront"]) {
+      assert.ok(ENTITY_DEFS.product.contentFields.includes(field), field);
+    }
+    const data = buildProductData(
+      product({ fulfillmentMode: "MADE_TO_ORDER", publishedOnStorefront: false }),
+      ["fulfillmentMode", "publishedOnStorefront"],
+    );
+    assert.deepEqual(data, {
+      fulfillmentMode: "MADE_TO_ORDER",
+      publishedOnStorefront: false,
+    });
   });
 
   it("ninguna entidad sincroniza ids ni timestamps como contenido", () => {

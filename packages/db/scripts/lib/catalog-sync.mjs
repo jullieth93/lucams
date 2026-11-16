@@ -10,11 +10,11 @@
  * filas solo-PRD nunca se tocan (solo se reportan).
  *
  * Campos que NUNCA se sincronizan (quedan en PRD tal cual):
- *   - ProductVariant.stock: el stock de PRD es OPERATIVO REAL (lo descuentan
- *     órdenes pagadas vía InventoryLog). Sobrescribirlo con el stock de
- *     pruebas de STG vendería inventario fantasma o dejaría sin stock
- *     productos que sí hay. Los INSERTS de variantes nuevas entran con
- *     stock=0 (default del schema) y Lucy carga el stock operativo a mano.
+ *   - ProductVariant.stock y ProductVariant.safetyStock: son valores
+ *     OPERATIVOS REALES de PRD. Sobrescribirlos con datos de pruebas de STG
+ *     vendería inventario fantasma o alteraría la reserva de seguridad. Los
+ *     INSERTS de variantes nuevas usan los defaults 0 del schema y Lucy carga
+ *     ambos valores operativos a mano.
  *   - createdAt/updatedAt: en updates se preservan (updatedAt se actualiza
  *     solo vía @updatedAt); en inserts se copia el createdAt de STG.
  *   - ids de PRD en filas cruzadas por clave natural (hay FKs apuntando a
@@ -72,6 +72,8 @@ export const ENTITY_DEFS = {
       "cost",
       "isPersonalizable",
       "personalizationKind",
+      "fulfillmentMode",
+      "publishedOnStorefront",
       "personalizationSchema",
       "richDescription",
       "whyChooseThis",
@@ -343,6 +345,8 @@ export function buildProductData(row, fields, { categoryId = null, fromBase, toB
     cost: row.cost,
     isPersonalizable: row.isPersonalizable,
     personalizationKind: row.personalizationKind,
+    fulfillmentMode: row.fulfillmentMode,
+    publishedOnStorefront: row.publishedOnStorefront,
     personalizationSchema: row.personalizationSchema,
     richDescription: row.richDescription,
     whyChooseThis: row.whyChooseThis,

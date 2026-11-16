@@ -29,7 +29,10 @@ import { prisma } from "@/lib/db";
 export type VariantActionState = {
   error?: string;
   fieldErrors?: Partial<
-    Record<"name" | "sku" | "price" | "compareAtPrice" | "stock" | "description", string[]>
+    Record<
+      "name" | "sku" | "price" | "compareAtPrice" | "stock" | "safetyStock" | "description",
+      string[]
+    >
   >;
 };
 
@@ -63,6 +66,7 @@ export async function createVariantAction(
     price: priceStr === "" ? null : Math.round(Number(priceStr) * 100),
     compareAtPrice: compareStr === "" ? null : Math.round(Number(compareStr) * 100),
     stock: Number(formData.get("stock") ?? 0),
+    safetyStock: Number(formData.get("safetyStock") ?? 0),
     isActive: formData.get("isActive") === "on",
     attributes: parseAttributesFromForm(formData),
   });
@@ -141,6 +145,7 @@ export async function updateVariantAction(
     // 3d (Lucy 2026-06-27): el stock NO se edita en este form (se hace con el
     // editor rápido del listado/Inventario). Lo omitimos para no pisarlo —
     // VariantUpdateSchema.stock es opcional y updateVariant no lo toca si falta.
+    safetyStock: Number(formData.get("safetyStock") ?? 0),
     isActive: formData.get("isActive") === "on",
     attributes: mergedAttributes,
   });

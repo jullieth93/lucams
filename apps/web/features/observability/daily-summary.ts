@@ -139,7 +139,7 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
         stock: { lte: 5 },
         isActive: true,
         deletedAt: null,
-        product: { isActive: true, deletedAt: null },
+        product: { isActive: true, deletedAt: null, fulfillmentMode: "PHYSICAL_STOCK" },
       },
     }),
     prisma.review.count({ where: { isApproved: false, deletedAt: null } }),

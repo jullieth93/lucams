@@ -448,7 +448,8 @@ function DesignUnitsLabel({
  * o stock ≤ 5 (piso absoluto). Con stock 0 la línea quedó "en vuelo" tras un
  * agotado — lo decimos explícito para que el cliente la ajuste o quite.
  */
-function LowStockBadge({ qty, stock }: { qty: number; stock: number }) {
+function LowStockBadge({ qty, stock }: { qty: number; stock: number | null }) {
+  if (stock === null) return null;
   if (stock <= 0) {
     return (
       <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
@@ -466,11 +467,16 @@ function LowStockBadge({ qty, stock }: { qty: number; stock: number }) {
   return null;
 }
 
-function QtyControls({ itemId, qty, stock }: { itemId: string; qty: number; stock: number }) {
-  // Tope del stepper: el stock real de la variante (el 99 queda como límite
-  // secundario). El server valida igual — esto solo evita el roundtrip con
-  // error cuando el cliente llega al máximo disponible.
-  const maxQty = Math.min(99, Math.max(stock, 1));
+function QtyControls({
+  itemId,
+  qty,
+  stock,
+}: {
+  itemId: string;
+  qty: number;
+  stock: number | null;
+}) {
+  const maxQty = stock === null ? 99 : Math.min(99, Math.max(stock, 1));
   return (
     <div className="border-brand-purple/20 inline-flex items-center rounded-md border bg-white">
       <form action={updateQtyAction}>

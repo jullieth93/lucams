@@ -270,9 +270,10 @@ async function firstShortItemName(
   }
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: [...totals.keys()] } },
-    select: { id: true, stock: true },
+    select: { id: true, stock: true, product: { select: { fulfillmentMode: true } } },
   });
   for (const v of variants) {
+    if (v.product.fulfillmentMode === "MADE_TO_ORDER") continue;
     const acc = totals.get(v.id);
     if (acc && v.stock < acc.qty) return acc.productName;
   }

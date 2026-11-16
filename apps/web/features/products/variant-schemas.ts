@@ -406,6 +406,7 @@ function orderVariantDimensionValues(key: string, values: string[]): string[] {
  */
 export function pdpDefaultVariant<T extends { attributes: unknown; stock?: number }>(
   variants: readonly T[],
+  opts: { trackStock?: boolean } = {},
 ): T | null {
   if (variants.length === 0) return null;
   // Sort estable "Con imán primero" (mismo criterio del VariantSelector):
@@ -443,7 +444,7 @@ export function pdpDefaultVariant<T extends { attributes: unknown; stock?: numbe
     }
     return 0;
   };
-  const hasStock = (v: T) => (v.stock ?? 1) > 0;
+  const hasStock = (v: T) => opts.trackStock === false || (v.stock ?? 1) > 0;
   const inStock = sorted.filter(hasStock);
   const pool = inStock.length > 0 ? inStock : sorted;
   let best: T | null = null;
@@ -763,6 +764,7 @@ export const VariantCreateSchema = z.object({
   /** Precio tachado (promo) en centavos COP. null = sin promo. */
   compareAtPrice: z.number().int().min(0).max(100_000_000).nullable().optional(),
   stock: z.number().int().min(0).max(100_000).default(0),
+  safetyStock: z.number().int().min(0).max(100_000).default(0),
   isActive: z.boolean().default(true),
   attributes: ProductVariantAttributesSchema.default({}),
 });
@@ -792,6 +794,7 @@ export const VariantUpdateSchema = z.object({
   price: z.number().int().min(0).max(100_000_000).nullable().optional(),
   compareAtPrice: z.number().int().min(0).max(100_000_000).nullable().optional(),
   stock: z.number().int().min(0).max(100_000).optional(),
+  safetyStock: z.number().int().min(0).max(100_000).optional(),
   isActive: z.boolean().optional(),
   attributes: ProductVariantAttributesSchema.optional(),
 });

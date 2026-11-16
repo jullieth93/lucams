@@ -14,7 +14,7 @@
  * Gate de visibilidad (F-04 / A4-02, cert 2026-09-26): TODA query de productos
  * de este módulo aplica el predicado compartido STOREFRONT_PRODUCT_WHERE de
  * `@/features/products/storefront-visibility` (producto activo + no archivado
- * + CATEGORÍA activa + no archivada) — el mismo que el stack SSR
+ * + publicado en tienda + CATEGORÍA activa + no archivada) — el mismo que el stack SSR
  * (features/products/public-service.ts). Antes el gate se escribía inline sin
  * el filtro de categoría y los stacks divergían (cards fantasma → PDP 404).
  * Las queries $queryRaw (searchCatalog) replican el gate con el JOIN a
@@ -93,6 +93,7 @@ export type CatalogProductSummary = {
   parentCategoryName: string | null;
   isPersonalizable: boolean;
   personalizationKind: string;
+  fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
   isFeatured: boolean;
   warrantyMonths: number;
   productionDays: number;
@@ -184,7 +185,7 @@ export const getCategoryTree = unstable_cache(
         // del cliente. Bug reportado por Lucy 2026-06-27.
         orderBy: [{ order: "asc" }, { name: "asc" }],
         include: {
-          _count: { select: { products: { where: { isActive: true, deletedAt: null } } } },
+          _count: { select: { products: { where: STOREFRONT_PRODUCT_WHERE } } },
         },
       });
 
@@ -260,12 +261,12 @@ export const getCategoryBySlug = unstable_cache(
             orderBy: [{ order: "asc" }, { name: "asc" }],
             include: {
               _count: {
-                select: { products: { where: { isActive: true, deletedAt: null } } },
+                select: { products: { where: STOREFRONT_PRODUCT_WHERE } },
               },
             },
           },
           _count: {
-            select: { products: { where: { isActive: true, deletedAt: null } } },
+            select: { products: { where: STOREFRONT_PRODUCT_WHERE } },
           },
         },
       });
@@ -344,6 +345,7 @@ function summarizeProduct(p: ProductWithIncludes): CatalogProductSummary {
     parentCategoryName: p.category.parent?.name ?? null,
     isPersonalizable: p.isPersonalizable,
     personalizationKind: p.personalizationKind,
+    fulfillmentMode: p.fulfillmentMode,
     isFeatured: p.isFeatured,
     warrantyMonths: p.warrantyMonths,
     productionDays: p.productionDays,
@@ -352,7 +354,9 @@ function summarizeProduct(p: ProductWithIncludes): CatalogProductSummary {
     minimumQuantity: p.minimumQuantity,
     maximumQuantity: p.maximumQuantity,
     variantCount: p.variants.filter((v) => v.isActive && !v.deletedAt).length,
-    inStock: p.variants.some((v) => v.isActive && !v.deletedAt && v.stock > 0), // #5
+    inStock:
+      p.fulfillmentMode === "MADE_TO_ORDER" ||
+      p.variants.some((v) => v.isActive && !v.deletedAt && v.stock > 0),
     minPrice: Math.min(...allPrices),
     maxPrice: Math.max(...allPrices),
     ocasionSlugs: p.ocasionTags.map((t) => t.ocasionTag.slug),
@@ -925,6 +929,7 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
       FROM "Product" p
       JOIN "Category" c ON c.id = p."categoryId"
       WHERE p."isActive" = true
+        AND p."publishedOnStorefront" = true
         AND p."deletedAt" IS NULL
         AND c."isActive" = true
         AND c."deletedAt" IS NULL

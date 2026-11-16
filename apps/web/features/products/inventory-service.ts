@@ -16,6 +16,7 @@
 import "server-only";
 import { Prisma, prisma } from "@/lib/db";
 import { LOW_STOCK_THRESHOLD, type StockStatus } from "./stock-constants";
+import { netAvailableStock } from "./fulfillment";
 
 const INVENTORY_PAGE_SIZE = 50;
 
@@ -36,6 +37,8 @@ export type InventoryRow = {
   variantName: string;
   variantSku: string;
   stock: number;
+  safetyStock: number;
+  availableStock: number;
   status: StockStatus;
   productId: string;
   productName: string;
@@ -85,18 +88,10 @@ export async function listVariantsAcrossProducts(opts: InventoryListOpts = {}): 
     deletedAt: null,
     product: {
       deletedAt: null,
+      fulfillmentMode: "PHYSICAL_STOCK",
       ...(opts.categoryId ? { categoryId: opts.categoryId } : {}),
     },
   };
-
-  // Filtro por estado de stock — traducimos status a rango numérico.
-  if (status === "out") {
-    where.stock = { lte: 0 };
-  } else if (status === "low") {
-    where.stock = { gt: 0, lte: LOW_STOCK_THRESHOLD };
-  } else if (status === "ok") {
-    where.stock = { gt: LOW_STOCK_THRESHOLD };
-  }
 
   // Búsqueda libre — matchea variant.name, variant.sku, product.name, product.sku.
   if (opts.q && opts.q.trim()) {
@@ -107,6 +102,24 @@ export async function listVariantsAcrossProducts(opts: InventoryListOpts = {}): 
       { product: { name: { contains: q, mode: "insensitive" } } },
       { product: { sku: { contains: q, mode: "insensitive" } } },
     ];
+  }
+
+  if (status !== "all") {
+    const variants = await prisma.productVariant.findMany({
+      where,
+      select: { id: true, stock: true, safetyStock: true },
+    });
+    const ids = variants
+      .filter((variant) =>
+        status === "out"
+          ? netAvailableStock(variant.stock, variant.safetyStock) === 0
+          : status === "low"
+            ? netAvailableStock(variant.stock, variant.safetyStock) > 0 &&
+              netAvailableStock(variant.stock, variant.safetyStock) <= LOW_STOCK_THRESHOLD
+            : netAvailableStock(variant.stock, variant.safetyStock) > LOW_STOCK_THRESHOLD,
+      )
+      .map((variant) => variant.id);
+    where.id = { in: ids };
   }
 
   // Orden — stock-asc por default (los más críticos primero).
@@ -134,6 +147,7 @@ export async function listVariantsAcrossProducts(opts: InventoryListOpts = {}): 
         name: true,
         sku: true,
         stock: true,
+        safetyStock: true,
         attributes: true,
         product: {
           select: {
@@ -157,7 +171,9 @@ export async function listVariantsAcrossProducts(opts: InventoryListOpts = {}): 
     variantName: v.name,
     variantSku: v.sku,
     stock: v.stock,
-    status: classifyStock(v.stock),
+    safetyStock: v.safetyStock,
+    availableStock: netAvailableStock(v.stock, v.safetyStock),
+    status: classifyStock(netAvailableStock(v.stock, v.safetyStock)),
     productId: v.product.id,
     productName: v.product.name,
     productSlug: v.product.slug,
@@ -191,9 +207,9 @@ export async function getInventorySummary(): Promise<InventorySummary> {
   const activeVariants = await prisma.productVariant.findMany({
     where: {
       deletedAt: null,
-      product: { deletedAt: null },
+      product: { deletedAt: null, fulfillmentMode: "PHYSICAL_STOCK" },
     },
-    select: { stock: true },
+    select: { stock: true, safetyStock: true },
   });
 
   let outCount = 0;
@@ -202,7 +218,7 @@ export async function getInventorySummary(): Promise<InventorySummary> {
   let totalUnits = 0;
   for (const v of activeVariants) {
     totalUnits += Math.max(0, v.stock);
-    const status = classifyStock(v.stock);
+    const status = classifyStock(netAvailableStock(v.stock, v.safetyStock));
     if (status === "out") outCount++;
     else if (status === "low") lowCount++;
     else okCount++;
@@ -227,7 +243,7 @@ export async function listCategoriesForInventoryFilter(): Promise<
     where: {
       deletedAt: null,
       isActive: true,
-      products: { some: { deletedAt: null } },
+      products: { some: { deletedAt: null, fulfillmentMode: "PHYSICAL_STOCK" } },
     },
     select: { id: true, name: true },
     orderBy: { name: "asc" },

@@ -9,6 +9,7 @@
  * (lib/catalog.ts) para que ambos no puedan divergir:
  *   - deletedAt: null   (no archivados)
  *   - isActive: true    (admin-toggled visible)
+ *   - publishedOnStorefront: true (producto habilitado para el canal web)
  *   - category.isActive: true + category.deletedAt: null
  *
  * Cache (auditoría 2026-07-13): getStorefrontProductBySlug usa React cache() → dedup por
@@ -33,6 +34,7 @@ import { unstable_cache } from "next/cache";
 import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { STOREFRONT_PRODUCT_WHERE } from "./storefront-visibility";
+import { hasStockForSale, type FulfillmentMode } from "./fulfillment";
 
 /* Mismo tag/TTL que lib/catalog.ts: updateTag("catalog") en las mutaciones admin
    (features/products/service.ts, features/categories/service.ts, stock-admin.ts,
@@ -75,6 +77,7 @@ export type StorefrontProductCard = {
   basePrice: number;
   compareAtPrice: number | null;
   isPersonalizable: boolean;
+  fulfillmentMode?: FulfillmentMode;
   images: string[];
   category: { slug: string; name: string };
   /** M.3.b.CAT.6 — Cantidad de variants activos. Si > 1, mostrar chip
@@ -95,6 +98,7 @@ export type StorefrontProductCard = {
 };
 
 export type StorefrontProductDetail = StorefrontProductCard & {
+  fulfillmentMode: FulfillmentMode;
   description: string;
   sku: string;
   seoTitle: string | null;
@@ -203,7 +207,7 @@ const fetchStorefrontCategoryTree = cachedCatalog(
         gradient: true,
         _count: {
           select: {
-            products: { where: { deletedAt: null, isActive: true } },
+            products: { where: STOREFRONT_PRODUCT_WHERE },
           },
         },
       },
@@ -412,6 +416,7 @@ const STOREFRONT_CARD_SELECT = {
   basePrice: true,
   compareAtPrice: true,
   isPersonalizable: true,
+  fulfillmentMode: true,
   images: true,
   category: { select: { slug: true, name: true } },
   _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
@@ -437,7 +442,7 @@ function toStorefrontCard({
     ...p,
     variantCount: _count.variants,
     minVariantPrice,
-    inStock: variants.some((v) => v.stock > 0),
+    inStock: p.fulfillmentMode === "MADE_TO_ORDER" || variants.some((v) => v.stock > 0),
   };
 }
 
@@ -606,6 +611,7 @@ export async function searchStorefrontProducts(
     JOIN "Category" c ON c.id = p."categoryId"
     WHERE p."deletedAt" IS NULL
       AND p."isActive" = true
+      AND p."publishedOnStorefront" = true
       AND c."deletedAt" IS NULL
       AND c."isActive" = true
       ${categoryClause}
@@ -637,6 +643,7 @@ export async function searchStorefrontProducts(
     JOIN "Category" c ON c.id = p."categoryId"
     WHERE p."deletedAt" IS NULL
       AND p."isActive" = true
+      AND p."publishedOnStorefront" = true
       AND c."deletedAt" IS NULL
       AND c."isActive" = true
       ${categoryClause}
@@ -712,6 +719,7 @@ export const getStorefrontProductBySlug = cache(async function getStorefrontProd
       compareAtPrice: true,
       sku: true,
       isPersonalizable: true,
+      fulfillmentMode: true,
       personalizationKind: true,
       personalizationSchema: true,
       images: true,
@@ -745,8 +753,10 @@ export const getStorefrontProductBySlug = cache(async function getStorefrontProd
     },
   });
   if (!p) return null;
-  // inStock del producto = alguna opción con stock > 0 (auditoría 2026-07-13).
-  return { ...p, inStock: p.variants.some((v) => v.stock > 0) };
+  return {
+    ...p,
+    inStock: p.fulfillmentMode === "MADE_TO_ORDER" || p.variants.some((v) => v.stock > 0),
+  };
 });
 
 /**
@@ -808,6 +818,7 @@ export async function listRelatedProducts(opts: {
       basePrice: true,
       compareAtPrice: true,
       isPersonalizable: true,
+      fulfillmentMode: true,
       isFeatured: true,
       images: true,
       categoryId: true,
@@ -842,10 +853,11 @@ export async function listRelatedProducts(opts: {
     basePrice: p.basePrice,
     compareAtPrice: p.compareAtPrice,
     isPersonalizable: p.isPersonalizable,
+    fulfillmentMode: p.fulfillmentMode,
     images: p.images,
     category: { slug: p.category.slug, name: p.category.name },
     variantCount: p._count.variants,
-    ...relatedCardPricing(p.basePrice, p.variants), // #13 — minVariantPrice + inStock
+    ...relatedCardPricing(p.basePrice, p.variants, p.fulfillmentMode),
   }));
 
   if (top.length >= take) return top;
@@ -869,6 +881,7 @@ export async function listRelatedProducts(opts: {
       basePrice: true,
       compareAtPrice: true,
       isPersonalizable: true,
+      fulfillmentMode: true,
       images: true,
       category: { select: { slug: true, name: true } },
       _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
@@ -881,7 +894,7 @@ export async function listRelatedProducts(opts: {
   const featured: StorefrontProductCard[] = featuredRaw.map(({ _count, variants, ...p }) => ({
     ...p,
     variantCount: _count.variants,
-    ...relatedCardPricing(p.basePrice, variants), // #13
+    ...relatedCardPricing(p.basePrice, variants, p.fulfillmentMode),
   }));
   return [...top, ...featured];
 }
@@ -891,12 +904,16 @@ export async function listRelatedProducts(opts: {
 function relatedCardPricing(
   basePrice: number,
   variants: Array<{ price: number | null; stock: number }>,
+  fulfillmentMode: FulfillmentMode,
 ): { minVariantPrice: number; inStock: boolean } {
   const overridePrices = variants
     .map((v) => v.price)
     .filter((price): price is number => price !== null && price > 0);
   return {
     minVariantPrice: overridePrices.length > 0 ? Math.min(basePrice, ...overridePrices) : basePrice,
-    inStock: variants.some((v) => v.stock > 0),
+    inStock: hasStockForSale(
+      fulfillmentMode,
+      variants.reduce((total, variant) => total + variant.stock, 0),
+    ),
   };
 }

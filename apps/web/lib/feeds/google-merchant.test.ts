@@ -22,6 +22,7 @@ function makeProduct(
     name: "Set de Fotoimanes",
     description: "Imanes personalizados con tus fotos.",
     basePrice: 4_500_000, // centavos → $45.000
+    fulfillmentMode: "PHYSICAL_STOCK",
     images: ["https://cdn.example.com/producto.jpg"],
     variants: [],
     ...overrides,
@@ -147,6 +148,59 @@ describe("buildGoogleMerchantFeed", () => {
       (i) => i.querySelector("g\\:availability, availability")?.textContent,
     );
     expect(availability).toEqual(["in stock", "out of stock"]);
+  });
+
+  it("MADE_TO_ORDER informa disponibilidad sin publicar un buffer ficticio", () => {
+    const xml = buildGoogleMerchantFeed(
+      [
+        makeProduct({
+          fulfillmentMode: "MADE_TO_ORDER",
+          variants: [
+            { id: "v1", sku: "SKU-MADE", name: "Única", price: null, stock: 0, images: [] },
+          ],
+        }),
+      ],
+      { siteUrl: SITE_URL },
+    );
+    const doc = parseXml(xml);
+    expect(doc.querySelector("g\\:availability, availability")?.textContent).toBe("in stock");
+    expect(xml).not.toContain("100000");
+  });
+
+  it("PHYSICAL_STOCK descuenta safetyStock para disponibilidad del feed", () => {
+    const xml = buildGoogleMerchantFeed(
+      [
+        makeProduct({
+          fulfillmentMode: "PHYSICAL_STOCK",
+          variants: [
+            {
+              id: "v-res",
+              sku: "SKU-RESERVED",
+              name: "Reservada",
+              price: null,
+              stock: 3,
+              safetyStock: 3,
+              images: [],
+            },
+            {
+              id: "v-net",
+              sku: "SKU-NET",
+              name: "Disponible",
+              price: null,
+              stock: 4,
+              safetyStock: 3,
+              images: [],
+            },
+          ],
+        }),
+      ],
+      { siteUrl: SITE_URL },
+    );
+    const doc = parseXml(xml);
+    const availability = [...doc.querySelectorAll("item")].map(
+      (i) => i.querySelector("g\\:availability, availability")?.textContent,
+    );
+    expect(availability).toEqual(["out of stock", "in stock"]);
   });
 
   it("imagen: la de la variante si tiene, si no hereda la del producto; omite si no hay", () => {

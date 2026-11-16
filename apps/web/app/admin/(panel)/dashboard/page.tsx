@@ -290,7 +290,9 @@ export default async function AdminDashboardPage({
       label: "Opciones agotadas",
       value: inventorySummary.outCount,
       description:
-        inventorySummary.outCount > 0 ? "No se pueden vender hasta reponer" : "Todo con stock",
+        inventorySummary.outCount > 0
+          ? "Sin disponible neto (0 físicas o en reserva) — reponer"
+          : "Todo con stock disponible",
       tone: "amber",
       urgent: inventorySummary.outCount > 0,
       countInHeaderAlert: true,
@@ -301,7 +303,9 @@ export default async function AdminDashboardPage({
       label: "Stock bajo",
       value: inventorySummary.lowCount,
       description:
-        inventorySummary.lowCount > 0 ? "5 unidades o menos" : "Sin alertas de stock bajo",
+        inventorySummary.lowCount > 0
+          ? "5 unidades netas o menos tras reserva"
+          : "Sin alertas de stock bajo",
       tone: "coral",
       urgent: false,
       countInHeaderAlert: false,

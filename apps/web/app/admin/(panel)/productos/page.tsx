@@ -465,11 +465,13 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               {items.map((p) => {
                 const visibility = getStorefrontVisibility({
                   productIsActive: p.isActive,
+                  productPublishedOnStorefront: p.publishedOnStorefront,
                   productDeletedAt: p.deletedAt,
                   categoryIsActive: p.categoryIsActive,
                   categoryDeletedAt: p.categoryDeletedAt,
                   activeVariantCount: p.activeVariantCount,
                   inStockAny: p.inStockAny,
+                  fulfillmentMode: p.fulfillmentMode,
                 });
                 return (
                   <AdminTableRow key={p.id}>

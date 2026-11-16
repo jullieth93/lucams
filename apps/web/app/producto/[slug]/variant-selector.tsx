@@ -126,6 +126,7 @@ type VariantSelectorProps = {
    * (photoSlots) y la selección NO cambian — es solo presentación.
    */
   packSize?: { unitsPerPack: number };
+  trackStock?: boolean;
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -302,6 +303,7 @@ export function VariantSelector({
   singleDimAsChips = false,
   quantityStepperExclusions,
   packSize,
+  trackStock = true,
 }: VariantSelectorProps) {
   // ──── SINGLE SOURCE OF TRUTH: el Context del buy-box (H12) ────
   // Antes el estado vivía LOCAL acá + router.replace; las acciones (CTA/carrito/precio) no se
@@ -330,6 +332,7 @@ export function VariantSelector({
   }, [rawVariants]);
 
   const selectedVariant = variants.find((v) => v.id === selectedId);
+  const variantInStock = (variant: Variant) => !trackStock || variant.stock > 0;
 
   function selectVariant(id: string) {
     if (id === selectedId) return; // mismo variant, nada que hacer
@@ -493,7 +496,7 @@ export function VariantSelector({
    *  elegidas (match parcial — solo las que tienen valor actual). */
   function findCompatibleInStock(dimKey: string, value: string) {
     return variants.find((v) => {
-      if (v.stock <= 0) return false;
+      if (!variantInStock(v)) return false;
       const attrs = parseVariantAttributes(v.attributes);
       const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
       if (dimValue === undefined || String(dimValue) !== value) return false;
@@ -510,7 +513,7 @@ export function VariantSelector({
    *  dimensiones (sirve para re-anclar la selección). */
   function findGlobalInStock(dimKey: string, value: string) {
     return variants.find((v) => {
-      if (v.stock <= 0) return false;
+      if (!variantInStock(v)) return false;
       const attrs = parseVariantAttributes(v.attributes);
       const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
       return dimValue !== undefined && String(dimValue) === value;
@@ -536,7 +539,7 @@ export function VariantSelector({
   // Misma mecánica que isCombinationAvailable pero exigiendo stock > 0 (Fase 1).
   function hasStockForCombination(dimKey: string, value: string): boolean {
     const match = findExactVariant(dimKey, value);
-    return match !== undefined && match.stock > 0;
+    return match !== undefined && variantInStock(match);
   }
 
   if (variants.length < 2 && dimensions.length === 0) return null;
@@ -576,7 +579,7 @@ export function VariantSelector({
             const isSelected = v.id === selectedId;
             // Fase 1 — variante agotada: fila deshabilitada con sufijo "· Agotado"
             // (mismo estilo muted de los chips deshabilitados del modo multi-dim).
-            const soldOut = v.stock <= 0;
+            const soldOut = !variantInStock(v);
             return (
               <button
                 key={v.id}
@@ -639,7 +642,7 @@ export function VariantSelector({
   // Con el salto por fallback (QA 2026-08-12) toda opción listada es alcanzable;
   // el único estado deshabilitado restante es "Agotado" (sin stock en ninguna
   // variante con ese valor) — la nota explica eso y solo se muestra si aplica.
-  const hasSoldOutOptions = variants.some((v) => v.stock <= 0);
+  const hasSoldOutOptions = variants.some((v) => !variantInStock(v));
 
   return (
     <div className="mb-4 space-y-4">

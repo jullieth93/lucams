@@ -12,8 +12,8 @@
  *        - Stack AI-ready: lib/catalog.ts (listCatalogProducts, searchCatalog,
  *          recommendProducts, getCatalogFilters, …)
  *      Regla: un producto es visible si no está archivado (deletedAt null),
- *      está activo (isActive) y su CATEGORÍA también (una categoría pausada o
- *      archivada esconde todos sus productos del storefront).
+ *      está activo (isActive), publicado en el canal web y su CATEGORÍA también
+ *      (una categoría pausada o archivada esconde todos sus productos).
  *      (Las queries $queryRaw — searchCatalog/searchStorefrontProducts — no
  *      pueden consumir el fragmento; replican el mismo gate con el JOIN a
  *      "Category" y quedan cubiertas por el test de integración del gate.)
@@ -39,6 +39,7 @@
 export const STOREFRONT_PRODUCT_WHERE = {
   deletedAt: null,
   isActive: true,
+  publishedOnStorefront: true,
   category: { deletedAt: null, isActive: true },
 } as const;
 
@@ -48,6 +49,8 @@ export const STOREFRONT_CATEGORY_WHERE = { deletedAt: null, isActive: true } as 
 export type StorefrontVisibilityInput = {
   /** product.isActive — false = "pausado" en el copy del admin. */
   productIsActive: boolean;
+  /** product.publishedOnStorefront — false = ficha retirada del canal web. */
+  productPublishedOnStorefront: boolean;
   /** product.deletedAt — distinto de null = archivado (papelera). */
   productDeletedAt: Date | null;
   /** isActive de la categoría del producto. */
@@ -58,6 +61,7 @@ export type StorefrontVisibilityInput = {
   activeVariantCount: number;
   /** ¿Alguna de esas opciones activas tiene stock > 0? */
   inStockAny: boolean;
+  fulfillmentMode?: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
 };
 
 export type StorefrontVisibilityStatus = "visible" | "visible-agotado" | "no-visible";
@@ -71,7 +75,7 @@ export type StorefrontVisibility =
  * Clasifica la visibilidad del producto en la tienda.
  *
  * Cuando hay varias causas a la vez, gana la PRIMERA de este orden (de lo más
- * cercano al producto a lo más externo): papelera → pausa → categoría →
+ * cercano al producto a lo más externo): papelera → pausa → publicación → categoría →
  * opciones → stock. Es la razón que el admin debe resolver primero.
  */
 export function getStorefrontVisibility(input: StorefrontVisibilityInput): StorefrontVisibility {
@@ -80,6 +84,9 @@ export function getStorefrontVisibility(input: StorefrontVisibilityInput): Store
   }
   if (!input.productIsActive) {
     return { status: "no-visible", reason: "Producto pausado" };
+  }
+  if (!input.productPublishedOnStorefront) {
+    return { status: "no-visible", reason: "Publicación en tienda desactivada" };
   }
   if (input.categoryDeletedAt !== null) {
     return { status: "no-visible", reason: "Categoría archivada" };
@@ -90,7 +97,7 @@ export function getStorefrontVisibility(input: StorefrontVisibilityInput): Store
   if (input.activeVariantCount === 0) {
     return { status: "no-visible", reason: "Sin opciones activas" };
   }
-  if (!input.inStockAny) {
+  if (input.fulfillmentMode !== "MADE_TO_ORDER" && !input.inStockAny) {
     return { status: "visible-agotado", reason: "Visible con todas las opciones agotadas" };
   }
   return { status: "visible" };
@@ -100,6 +107,7 @@ export type PurchasableVariantInput = {
   variantIsActive: boolean;
   variantDeletedAt: Date | null;
   productIsActive: boolean;
+  productPublishedOnStorefront: boolean;
   productDeletedAt: Date | null;
   categoryIsActive: boolean;
   categoryDeletedAt: Date | null;
@@ -111,6 +119,7 @@ export function isPurchasableVariant(input: PurchasableVariantInput): boolean {
     input.variantIsActive &&
     input.variantDeletedAt === null &&
     input.productIsActive &&
+    input.productPublishedOnStorefront &&
     input.productDeletedAt === null &&
     input.categoryIsActive &&
     input.categoryDeletedAt === null

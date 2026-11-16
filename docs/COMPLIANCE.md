@@ -127,7 +127,7 @@ Cualquier consumidor interno de plazos importa exclusivamente desde `lib/consume
    - Características esenciales del producto: dimensiones en cm, materiales, acabado, peso y advertencia de seguridad por imanes/piezas pequeñas fuera del alcance de menores de 3 años.
    - Precio total en pesos colombianos sin cargos ocultos (art. 26).
    - Medios de pago habilitados (Wompi — tarjetas, PSE, Nequi/billeteras — y pago contraentrega donde aplique cobertura y validación antifraude).
-   - Desglose separado de tiempo de preparación y tiempo/costo de envío.
+   - Desglose separado de tiempo de preparación y tiempo/costo de envío. La PDP conserva «Hecho a pedido» y su preparación estimada en `MADE_TO_ORDER`; en `PHYSICAL_STOCK` con unidades reales informa «En stock · Listo para despachar» y no presenta ese copy cuando está agotado.
    - Existencia del derecho de retracto de 5 días hábiles o aviso expreso de excepción por producto claramente personalizado (art. 47 num. 3).
    - Término individual de garantía legal anunciado (`Product.warrantyMonths`) y condiciones para hacerla efectiva.
    - Acceso directo y casilla desmarcada de aceptación de Términos y Condiciones (`/legal/terminos`) y Política de Datos (`/legal/habeas-data`).
