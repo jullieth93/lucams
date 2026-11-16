@@ -89,6 +89,10 @@ La tienda opera exclusivamente con cobros en línea con Wompi, contraentrega (si
 
 La venta individual sigue carrito → envío → pago → pedido. Las propuestas para empresas y eventos se gestionan como `Opportunity`; no existe un modo catálogo ni un dominio de cotización individual por WhatsApp (`ADR-204`).
 
+### Panel administrativo modular (`ADR-206`)
+
+`/admin/integraciones` separa el catálogo estático (`apps/web/features/integrations/registry.ts`), las sondas y el estado en vivo (`app/admin/(panel)/integraciones/page.tsx`) y la presentación (`apps/web/components/admin/integrations/`). Cada integración declara disponibilidad, modo de conexión, activación, dependencias, variables y enlaces; el estado distingue configuración, conexión, activación y salud. Las operaciones permanecen en sus módulos de negocio y no se exponen interruptores sin implementación real.
+
 ---
 
 ## 2. Índice canónico de documentos (`docs/integrations/`)
@@ -105,6 +109,7 @@ Lee únicamente el documento del proveedor involucrado en tu tarea:
 | 6   | [`./cloudflare.md`](./cloudflare.md)               | Zona DNS en Cloudflare, protección anti-abuso con Cloudflare Turnstile (`fail-closed` en formularios públicos/auth/B2B), buckets S3 en Cloudflare R2 para backups cifrados de DB y Storage, y validación de contraseñas filtradas contra HIBP (`k-anonymity`).                                                                                                                                                                    | Registros DNS/dominios, formularios públicos protegidos por captcha, respaldos off-site en R2 o políticas de contraseñas.                           |
 | 7   | [`./google-and-ai.md`](./google-and-ai.md)         | Proveedor Google Gemini (`gemini-2.5-flash-lite` con fallback a `gemini-2.5-flash`), sanitización cero-PII en soporte (`sanitizeSupportTextForAi`), GA4 con doble compuerta de consentimiento + anonimización de tokens en URLs, feed `/feeds/google-merchant.xml` y Google Search Console.                                                                                                                                       | Asistentes de redacción/soporte con IA, medición de eventos ecommerce/embudo, SEO técnico o catálogo en Google Shopping.                            |
 | 8   | [`./github-and-ops.md`](./github-and-ops.md)       | Workflows de GitHub Actions (`ci.yml`, `post-deploy-smoke.yml`, `backup.yml`, `domain-watch.yml`), ruleset de ramas críticas, secretos de repositorio, latidos hacia `/api/cron/*` y canal de atención por WhatsApp (`lib/wa.ts` sobre `wa.me`, sin API de terceros).                                                                                                                                                             | Pipelines CI/CD, smokes automatizados, monitoreo RDAP de dominio, restauración DR o enlaces contextuales de WhatsApp.                               |
+| 9   | [`./mercadolibre.md`](./mercadolibre.md)           | **Diseño preimplementación, sin integración operativa (`ADR-205`):** especificación de integración directa completa para productos con stock, cobertura oficial de APIs, módulo admin único, arquitectura, modelo lógico, seguridad, pruebas y fases verificables por sesiones.                                                                                                                                                   | Trabajo funcional o técnico del canal Mercado Libre Colombia; leer junto con `docs/STATE.md` para conocer la fase vigente.                          |
 
 ---
 
