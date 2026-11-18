@@ -148,13 +148,25 @@ export async function transitionOrderAction(
           : "Tu rol no tiene permiso para pasar un pedido a este estado de despacho.",
     };
   }
-  // Gate de moderación (ADR-062 P0-2): marcar SHIPPED implica que ya se imprimió y despachó.
-  // Print-on-demand → no se despacha nada con diseños sin aprobar. Revisa /admin/moderacion.
-  if (to === "SHIPPED" && (await orderHasUnmoderatedDesigns(orderId))) {
-    return {
-      error:
-        "Este pedido tiene diseños sin aprobar en Moderación. Apruébalos antes de marcarlo como enviado.",
-    };
+  // Gate de moderación (ADR-062 P0-2) + compuerta de arte B2B (ADR-210):
+  // marcar SHIPPED implica que ya se imprimió y despachó.
+  if (to === "SHIPPED") {
+    const orderArt = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { b2bArtworkReady: true },
+    });
+    if (orderArt?.b2bArtworkReady === false) {
+      return {
+        error:
+          "Este pedido B2B aún no tiene cargados sus archivos maestros 300 DPI de taller. Cárgalos en la sección de producción antes de despachar.",
+      };
+    }
+    if (await orderHasUnmoderatedDesigns(orderId)) {
+      return {
+        error:
+          "Este pedido tiene diseños sin aprobar en Moderación. Apruébalos antes de marcarlo como enviado.",
+      };
+    }
   }
 
   try {
@@ -578,4 +590,168 @@ export async function retryRenderJobAction(
   return {
     success: `Render reencolado (${after?.doneUnits ?? 0} de ${after?.totalUnits ?? job.totalUnits} piezas listas). Terminará en unos minutos.`,
   };
+}
+
+/**
+ * ADR-210 — Confirmación bancaria de un Pago Directo B2B (Bre-B / Transferencia)
+ * exclusiva de SUPERADMIN con step-up MFA reciente (`<= 10 min`) y auditoría `selfDealing`.
+ */
+export async function confirmDirectTransferPaymentAction(
+  _prev: { error?: string; success?: string; requiresReauth?: boolean } | null,
+  formData: FormData,
+): Promise<{ error?: string; success?: string; requiresReauth?: boolean }> {
+  const session = await requireAdminAction({ capability: "finance:confirm_direct_payment" });
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) {
+      return { error: MFA_REAUTH_MESSAGE, requiresReauth: true };
+    }
+    throw err;
+  }
+
+  const { ConfirmDirectPaymentSchema } = await import("@/features/opportunities/schemas");
+  const { confirmDirectTransferByAdmin } =
+    await import("@/features/opportunities/proposal-conversion-service");
+  const { OpportunityValidationError } = await import("@/features/opportunities/service");
+
+  const cleanCash = String(formData.get("receivedCashPesos") ?? "0").replace(/[.,\s$]/g, "");
+  const cleanWithholding = String(formData.get("withholdingPesos") ?? "0").replace(/[.,\s$]/g, "");
+
+  const parsed = ConfirmDirectPaymentSchema.safeParse({
+    orderId: String(formData.get("orderId") ?? ""),
+    receivedCashPesos: cleanCash || "0",
+    withholdingPesos: cleanWithholding || "0",
+    referenceOverride: String(formData.get("referenceOverride") ?? ""),
+    notes: String(formData.get("notes") ?? ""),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Revisa los montos ingresados." };
+  }
+
+  try {
+    const res = await confirmDirectTransferByAdmin({
+      orderId: parsed.data.orderId,
+      actorAdminId: session.admin.id,
+      receivedCashCents: parsed.data.receivedCashPesos * 100,
+      withholdingCents: parsed.data.withholdingPesos * 100,
+      referenceOverride: parsed.data.referenceOverride,
+      notes: parsed.data.notes,
+    });
+
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "order.confirm_direct_payment",
+      entityType: "Order",
+      entityId: parsed.data.orderId,
+      targetEmails: [res.targetEmail],
+      metadata: {
+        orderNumber: res.orderNumber,
+        receivedCashCents: parsed.data.receivedCashPesos * 100,
+        withholdingCents: parsed.data.withholdingPesos * 100,
+        sagaStatus: res.sagaStatus,
+      },
+    });
+
+    revalidatePath("/admin/pedidos");
+    revalidatePath(`/admin/pedidos/${encodeURIComponent(res.orderNumber)}`);
+    revalidatePath("/admin/finanzas");
+    revalidatePath("/admin/oportunidades");
+    revalidatePath("/admin/hoy");
+
+    return {
+      success: `Pago directo confirmado en ${res.orderNumber}. El pedido avanzó al flujo operativo.`,
+    };
+  } catch (err) {
+    if (err instanceof OpportunityValidationError) {
+      return { error: err.message };
+    }
+    logger.error({
+      event: "admin.order.confirm_direct_payment_failed",
+      orderId: parsed.data.orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: "No se pudo confirmar el pago directo. Intenta nuevamente." };
+  }
+}
+
+/**
+ * ADR-210 — Carga administrativa de archivos maestros 300 DPI para una línea de pedido B2B.
+ */
+export async function uploadB2bOrderPrintMastersAction(
+  _prev: { error?: string; success?: string } | null,
+  formData: FormData,
+): Promise<{ error?: string; success?: string }> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.PRODUCTION_DOWNLOAD });
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const orderItemId = String(formData.get("orderItemId") ?? "").trim();
+  const workshopNote = String(formData.get("workshopNote") ?? "").trim();
+
+  if (!orderId || !orderItemId) {
+    return { error: "Faltan identificadores del pedido o de la línea." };
+  }
+
+  const rawFiles = formData.getAll("masterFiles");
+  const validFiles: Array<{ name: string; buffer: Buffer }> = [];
+  for (const entry of rawFiles) {
+    if (entry instanceof File && entry.size > 0) {
+      const arrayBuf = await entry.arrayBuffer();
+      validFiles.push({ name: entry.name || "master.png", buffer: Buffer.from(arrayBuf) });
+    }
+  }
+  if (validFiles.length === 0) {
+    return {
+      error: "Selecciona al menos una imagen maestra de alta resolución (PNG, JPG o WebP).",
+    };
+  }
+
+  const { attachB2bPrintMastersToOrderItem } =
+    await import("@/features/opportunities/workshop-bridge");
+  const { OpportunityValidationError } = await import("@/features/opportunities/service");
+
+  try {
+    const res = await attachB2bPrintMastersToOrderItem({
+      orderId,
+      orderItemId,
+      actorAdminId: session.admin.id,
+      files: validFiles,
+      workshopNote,
+    });
+
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "order.b2b_attach_print_masters",
+      entityType: "Order",
+      entityId: orderId,
+      metadata: {
+        orderNumber: res.orderNumber,
+        orderItemId,
+        designId: res.designId,
+        filesCount: validFiles.length,
+        orderArtworkReady: res.orderArtworkReady,
+      },
+    });
+
+    revalidatePath(`/admin/pedidos/${encodeURIComponent(res.orderNumber)}`);
+    revalidatePath("/admin/pedidos");
+    revalidatePath("/admin/hoy");
+
+    return {
+      success: res.orderArtworkReady
+        ? "Arte 300 DPI cargado y aprobado. El paquete ZIP de taller ya está habilitado."
+        : "Arte 300 DPI cargado en esta línea. Completa las líneas restantes para liberar el pedido.",
+    };
+  } catch (err) {
+    if (err instanceof OpportunityValidationError) {
+      return { error: err.message };
+    }
+    logger.error({
+      event: "admin.order.b2b_attach_masters_failed",
+      orderId,
+      orderItemId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: "No pudimos procesar las imágenes maestras. Verifica el formato y tamaño." };
+  }
 }

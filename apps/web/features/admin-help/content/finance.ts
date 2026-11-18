@@ -47,11 +47,11 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
           },
           {
             id: "ingresos",
-            label: "Ingresos y puente de caja real",
+            label: "Ingresos, Pago Directo B2B y puente de caja real",
             description:
-              "Separa ingresos pagados en línea de recaudos contraentrega remitidos, en calle o con discrepancia.",
+              "Separa ingresos pagados en línea (Wompi), pagos directos corporativos (Bre-B / Transferencia netos de retenciones practicadas) y recaudos contraentrega remitidos, en calle o con discrepancia.",
             interpretation:
-              "Revisa estados, devoluciones y el puente de caja COD antes de interpretarlos como saldo bancario.",
+              "En pedidos B2B con retención en la fuente, el ingreso bruto fiscal se mantiene íntegro y el puente de caja descuenta las retenciones certificadas para reflejar el efectivo real en banco.",
           },
           {
             id: "descuentos",
@@ -101,9 +101,19 @@ export const FINANCE_GUIDES: AdminModuleGuide[] = [
           "El rol Analista Financiero recibe los campos tributarios DIAN completos para conciliación contable, mientras el correo comercial se enmascara por protección de datos personales.",
       },
     ],
-    related: ["conciliacion", "costos", "metricas", "pedidos"],
-    keywords: ["ingresos", "CSV", "contabilidad", "descuentos", "fletes", "reporte", "DIAN"],
-    version: 2,
+    related: ["conciliacion", "costos", "metricas", "pedidos", "oportunidades"],
+    keywords: [
+      "ingresos",
+      "CSV",
+      "contabilidad",
+      "Bre-B",
+      "retenciones",
+      "descuentos",
+      "fletes",
+      "reporte",
+      "DIAN",
+    ],
+    version: 3,
   },
   {
     id: "conciliacion",

@@ -37,6 +37,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
           "/api/",
           "/auth/",
           "/mi-cuenta/",
+          "/propuesta/",
           "/maintenance",
           // Nota (auditoría 2026-07-13): antes se bloqueaba "/productos?*", pero eso bloqueaba
           // también las páginas de categoría (?categoria=X) que el sitemap SÍ lista → se

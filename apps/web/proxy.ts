@@ -124,7 +124,7 @@ const IS_DEV = process.env.NODE_ENV === "development";
 // Server Actions and /api/* manages its own Cache-Control. RSC fetches for client navigations
 // are GETs on the same path and take the same header — they feed the client router's in-memory
 // cache, not the HTTP cache, so there is no interference with the RSC payload.
-const PRIVATE_PAGE_PREFIXES = ["/mi-cuenta", "/checkout", "/admin"];
+const PRIVATE_PAGE_PREFIXES = ["/mi-cuenta", "/checkout", "/admin", "/propuesta"];
 
 function isPrivatePageGet(method: string, path: string, isApi: boolean): boolean {
   return (
@@ -213,10 +213,10 @@ export async function proxy(request: NextRequest) {
       const targetUrl = isAbsolute
         ? dynamicRedirect.toPath
         : // #30 — preserva UTM entrantes solo para destinos internos.
-          preserveIncomingQuery(
-            new URL(dynamicRedirect.toPath, request.url),
-            request.nextUrl.searchParams,
-          );
+        preserveIncomingQuery(
+          new URL(dynamicRedirect.toPath, request.url),
+          request.nextUrl.searchParams,
+        );
       return withSecurityHeaders(
         NextResponse.redirect(targetUrl, dynamicRedirect.statusCode),
         requestId,
@@ -420,7 +420,7 @@ export async function proxy(request: NextRequest) {
           secFetchMode: request.headers.get("sec-fetch-mode"),
           referer: request.headers.get("referer") ? "present" : null,
         });
-        await supabase.auth.signOut({ scope: "global" }).catch(() => {});
+        await supabase.auth.signOut({ scope: "global" }).catch(() => { });
         const url = new URL("/admin/login", request.url);
         url.searchParams.set("expired", "1");
         const expired = withSecurityHeaders(NextResponse.redirect(url), requestId);
@@ -505,7 +505,7 @@ export async function proxy(request: NextRequest) {
         });
         // Best-effort (igual que admin): si el Auth server falla, el borrado
         // local de cookies igual se hace.
-        await supabase.auth.signOut({ scope: "global" }).catch(() => {});
+        await supabase.auth.signOut({ scope: "global" }).catch(() => { });
         const requiresSession = CUSTOMER_SESSION_REQUIRED_PREFIXES.some(
           (p) => path === p || path.startsWith(`${p}/`),
         );

@@ -136,7 +136,7 @@ export type CreateOrderFromCartResult = {
   shipping: number;
   discount: number;
   publicAccessToken: string | null;
-  paymentMethod: "WOMPI" | "COD";
+  paymentMethod: "WOMPI" | "COD" | "DIRECT_TRANSFER";
 };
 
 /**
@@ -1074,6 +1074,7 @@ export async function getOrder(idOrNumber: string) {
               product: {
                 select: {
                   name: true,
+                  fulfillmentMode: true,
                   productionDays: true,
                   personalizationKind: true,
                   personalizationSchema: true,
@@ -1184,6 +1185,7 @@ export async function getOrderProductionBundle(idOrNumber: string) {
       id: true,
       number: true,
       createdAt: true,
+      b2bArtworkReady: true,
       items: {
         select: {
           id: true,
@@ -1253,7 +1255,13 @@ export async function getOrderProductionBundle(idOrNumber: string) {
       };
     })
     .filter((it): it is NonNullable<typeof it> => it !== null);
-  return { id: order.id, number: order.number, createdAt: order.createdAt, items };
+  return {
+    id: order.id,
+    number: order.number,
+    createdAt: order.createdAt,
+    b2bArtworkReady: order.b2bArtworkReady,
+    items,
+  };
 }
 
 export type OrderListSort =
@@ -1270,7 +1278,7 @@ export type OrderListOpts = {
     | "DELIVERED"
     | "CANCELLED"
     | "REFUNDED";
-  paymentMethod?: "all" | "WOMPI" | "COD";
+  paymentMethod?: "all" | "WOMPI" | "COD" | "DIRECT_TRANSFER";
   /** Fecha inicial YYYY-MM-DD en zona America/Bogota (-05:00). */
   fromDate?: string;
   /** Fecha final YYYY-MM-DD en zona America/Bogota (-05:00). */

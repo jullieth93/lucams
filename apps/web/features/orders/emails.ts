@@ -796,7 +796,9 @@ export async function notifyOrderReturned(input: {
     const moneyHint =
       order.paymentMethod === "WOMPI"
         ? "si el pago fue en línea, evalúa reembolso en Wompi (botón Reembolsar del pedido)"
-        : "es contra entrega: no hay dinero que devolver si no se cobró";
+        : order.paymentMethod === "DIRECT_TRANSFER"
+          ? "fue pago directo verificado (Bre-B / Transferencia): evalúa reembolso bancario desde el pedido"
+          : "es contra entrega: no hay dinero que devolver si no se cobró";
     await notify({
       type: "ORDER",
       severity: "warning",

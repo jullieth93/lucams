@@ -554,6 +554,19 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   const estilo = s(e.designMetadata?.styleSetId);
   if (estilo) personalizacion.push({ etiqueta: "Estilo ilustrado", valor: estilo });
 
+  const b2bPackaging = s(e.designMetadata?.b2bPackagingLabel);
+  if (b2bPackaging) {
+    personalizacion.push({ etiqueta: "Empaque B2B acordado", valor: b2bPackaging });
+  }
+  const b2bArtwork = s(e.designMetadata?.b2bArtworkLabel);
+  if (b2bArtwork) {
+    personalizacion.push({ etiqueta: "Modalidad arte B2B", valor: b2bArtwork });
+  }
+  const b2bWorkshopNote = s(e.designMetadata?.b2bWorkshopNote);
+  if (b2bWorkshopNote) {
+    personalizacion.push({ etiqueta: "Instrucción taller B2B", valor: b2bWorkshopNote });
+  }
+
   // Lucy 2026-09-05 — opción de diseño "Sin borde" de los sets de letras; Lucy 2026-09-09 —
   // la misma opción en las tiras de nombre. El PNG la refleja, pero la ficha debe decirla
   // explícita: sin borde la lámina se recorta por el contorno de cada ficha, no por el marco

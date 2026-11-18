@@ -255,6 +255,7 @@ export async function processPaidOrder(
         await decrementStockForOrder(tx, {
           id: order.id,
           number: order.number,
+          channel: order.b2bProposalId ? "B2B" : "STOREFRONT",
           items: order.items.map((it) => ({
             variantId: it.variantId,
             qty: inventoryUnitsForOrderItem(it),
@@ -268,6 +269,73 @@ export async function processPaidOrder(
             ...(input.wompiTransactionId ? { wompiTransactionId: input.wompiTransactionId } : {}),
           },
         });
+        await tx.orderStatusEvent.create({
+          data: {
+            orderId: order.id,
+            fromStatus: "PENDING_PAYMENT",
+            toStatus: "PAID",
+            source: input.wompiTransactionId ? "webhook" : "admin",
+            note: input.wompiTransactionId
+              ? `Pago Wompi aprobado (${input.wompiTransactionId})`
+              : order.paymentMethod === "DIRECT_TRANSFER"
+                ? "Pago directo verificado (Bre-B / Transferencia)"
+                : "Pago confirmado",
+          },
+        });
+        if (order.b2bProposalId) {
+          const prop = await tx.opportunityProposal.findUnique({
+            where: { id: order.b2bProposalId },
+            select: { id: true, number: true, opportunityId: true, approvedAt: true },
+          });
+          if (prop) {
+            const paidNow = new Date();
+            await tx.opportunityProposal.update({
+              where: { id: prop.id },
+              data: {
+                status: "CONVERTED",
+                ...(prop.approvedAt ? {} : { approvedAt: paidNow }),
+              },
+            });
+            await tx.opportunity.update({
+              where: { id: prop.opportunityId },
+              data: {
+                stage: "WON",
+                convertedOrderId: order.id,
+              },
+            });
+            await tx.task.updateMany({
+              where: {
+                opportunityId: prop.opportunityId,
+                status: { in: ["OPEN", "IN_PROGRESS"] },
+              },
+              data: { status: "DONE" },
+            });
+            if (order.contactId) {
+              const otherOpenOpps = await tx.opportunity.count({
+                where: {
+                  contactId: order.contactId,
+                  id: { not: prop.opportunityId },
+                  deletedAt: null,
+                  stage: { in: ["NEW", "QUALIFYING", "PROPOSAL_SENT"] },
+                },
+              });
+              if (otherOpenOpps === 0) {
+                await tx.lifecycleEnrollment.updateMany({
+                  where: {
+                    contactId: order.contactId,
+                    journey: { trigger: "B2B_FOLLOW_UP" },
+                    status: "ACTIVE",
+                  },
+                  data: {
+                    status: "EXITED",
+                    exitReason: "OPPORTUNITY_WON",
+                    completedAt: paidNow,
+                  },
+                });
+              }
+            }
+          }
+        }
         const designIds = order.items.flatMap((item) => (item.designId ? [item.designId] : []));
         if (designIds.length > 0) {
           await tx.design.updateMany({
@@ -541,29 +609,19 @@ export async function processPaidOrder(
   // el mismo motivo: corre en first-pass y en retries sin duplicar.
   await notifyNewOrderToAdmin(order.id);
 
-  // Referidos v1 (2026-08-11): si el comprador llegó con un código y este es
-  // su PRIMER pedido pagado, ambos reciben su cupón (% y vigencia desde la
-  // config REFERRAL_* de /admin/fidelizacion). Idempotente por Referral.status
-  // y best-effort (nunca interrumpe la saga).
-  await issueReferralRewardsIfFirstPaidOrder(order.id);
+  // ADR-210: los pedidos nacidos de propuesta B2B ya tienen tarifa corporativa negociada,
+  // por lo que no emiten premios de referido B2C ni acreditan Puntos Lucams.
+  if (!order.b2bProposalId) {
+    await issueReferralRewardsIfFirstPaidOrder(order.id);
+    await awardLoyaltyPointsForPaidOrder(order.id);
+  }
 
-  // Puntos Lucams (2026-10-12): el cliente gana floor(totalPagado /
-  // earnCopPerPoint) puntos por el pago confirmado. Mismo sitio de la saga que
-  // la recompensa de referidos: idempotente por orden (índice único
-  // LoyaltyTxn(orderId, "EARN") → el retry es P2002 no-op) y best-effort.
-  // No-op si el programa está apagado o el pedido es de invitado.
-  await awardLoyaltyPointsForPaidOrder(order.id);
-
-  // Envío propio "Envío Lucams" (carrier "lucams"): NO se genera guía Aveonline
-  // — la entrega es mensajería interna de Bogotá que se opera a mano desde
-  // /admin/pedidos. Se marca trackingNumber INTERNO-<orderNumber>: el guard
-  // `if (order.trackingNumber)` de arriba hace los reintentos idempotentes y el
-  // webhook de Aveonline nunca la toca (esa guía no existe en su sistema). El
-  // claim condicional (trackingNumber IS NULL) serializa invocaciones
-  // concurrentes, igual que el claim de guía. Va ANTES del armado de items con
-  // dims: la entrega interna no necesita peso/dimensiones de Aveonline.
-  if (order.shippingCarrier === LUCAMS_CARRIER) {
-    const trackingNumber = `INTERNO-${order.number}`;
+  //Envío propio "Envío Lucams" ("lucams") o despacho asistido/multi-caja B2B ("b2b-manual"):
+  // NO se genera guía automática de 1 bulto en Aveonline; se reclama un tracking interno
+  // idempotente y el equipo de Despachos gestiona la entrega o guías multi-caja en /admin/pedidos.
+  if (order.shippingCarrier === LUCAMS_CARRIER || order.shippingCarrier === "b2b-manual") {
+    const trackingNumber =
+      order.shippingCarrier === "b2b-manual" ? `B2B-${order.number}` : `INTERNO-${order.number}`;
     const internalClaim = await prisma.order.updateMany({
       where: { id: order.id, trackingNumber: null },
       data: { trackingNumber, shipmentClaimedAt: new Date() },

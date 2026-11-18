@@ -171,6 +171,7 @@ export async function decrementStockForOrder(
   order: {
     id: string;
     number: string;
+    channel?: "STOREFRONT" | "B2B";
     items: Array<{ variantId: string; qty: number }>;
   },
 ): Promise<{ decrementedVariants: string[]; alreadyApplied: boolean }> {
@@ -223,6 +224,7 @@ export async function decrementStockForOrder(
           variantId: item.variantId,
           delta: -item.qty,
           reason: INVENTORY_REASON.ORDER_PAID,
+          channel: order.channel ?? "STOREFRONT",
           orderId: order.id,
           createdBy: "system:order-saga",
         },
@@ -284,7 +286,7 @@ export async function revertStockForOrder(
   // 1. ¿Hubo decremento previo? Si no → no-op.
   const paidLog = await tx.inventoryLog.findFirst({
     where: { orderId: order.id, reason: INVENTORY_REASON.ORDER_PAID },
-    select: { id: true },
+    select: { id: true, channel: true },
   });
   if (!paidLog) {
     logger.info({
@@ -324,6 +326,7 @@ export async function revertStockForOrder(
           variantId: item.variantId,
           delta: item.qty,
           reason,
+          channel: paidLog.channel,
           orderId: order.id,
           createdBy: "system:order-saga",
         },

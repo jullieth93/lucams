@@ -113,12 +113,14 @@ export function StructuredAddressFields({
   onChange,
   errors,
   disabled,
+  lockCityDept = false,
   neighborhoodPlaceholder,
 }: {
   value: StructuredAddressValue;
   onChange: (patch: Partial<StructuredAddressValue>) => void;
   errors?: Record<string, string[] | undefined>;
   disabled?: boolean;
+  lockCityDept?: boolean;
   /* Copy CMS (account.address.neighborhood-placeholder): baja resuelto por
      props porque este client no lee el CMS (mismo patrón que los demás
      textos del área de cliente). */
@@ -139,6 +141,12 @@ export function StructuredAddressFields({
       <input type="hidden" name="department" value={deptName} />
       <input type="hidden" name="city" value={cityName} />
       <input type="hidden" name="addressKind" value={value.kind} />
+      {lockCityDept && (
+        <>
+          <input type="hidden" name="deptCode" value={value.deptCode} />
+          <input type="hidden" name="cityCode" value={value.cityCode} />
+        </>
+      )}
 
       {/* Depto → Ciudad → Localidad → Barrio */}
       <div className="grid gap-3 sm:grid-cols-6">
@@ -146,10 +154,10 @@ export function StructuredAddressFields({
           <Label htmlFor="deptCode">Departamento *</Label>
           <select
             id="deptCode"
-            name="deptCode"
-            required
+            name={lockCityDept ? undefined : "deptCode"}
+            required={!lockCityDept}
             value={value.deptCode}
-            disabled={disabled}
+            disabled={disabled || lockCityDept}
             onChange={(e) =>
               onChange({ deptCode: e.target.value, cityCode: "", localityId: "", zip: "" })
             }
@@ -168,10 +176,10 @@ export function StructuredAddressFields({
           <Label htmlFor="cityCode">Ciudad *</Label>
           <select
             id="cityCode"
-            name="cityCode"
-            required
+            name={lockCityDept ? undefined : "cityCode"}
+            required={!lockCityDept}
             value={value.cityCode}
-            disabled={disabled || !value.deptCode}
+            disabled={disabled || lockCityDept || !value.deptCode}
             onChange={(e) => {
               // CP derivado de la ciudad elegida (mismo criterio que el checkout):
               // solo el CP REAL del catálogo DANE; si la ciudad no lo tiene, el

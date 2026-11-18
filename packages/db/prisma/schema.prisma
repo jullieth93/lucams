@@ -56,6 +56,7 @@ enum OrderStatus {
 enum PaymentMethod {
   WOMPI
   COD
+  DIRECT_TRANSFER
 }
 
 // ADR-064 — Conciliación del efectivo contraentrega (COD). El courier cobra el efectivo al entregar
@@ -418,6 +419,7 @@ model AdminUser {
   ownedTasks              Task[]                   @relation("TaskOwner")
   createdTasks            Task[]                   @relation("TaskCreator")
   ownedOpportunities      Opportunity[]            @relation("OpportunityOwner")
+  createdB2bProposals     OpportunityProposal[]    @relation("B2bProposalCreator")
   helpProgress            AdminHelpProgress[]
   helpFeedback            AdminHelpFeedback[]
 
@@ -667,9 +669,10 @@ model ProductVariant {
   images         String[]       @default([])
   attributes     Json
   inventoryLogs  InventoryLog[]
-  cartItems      CartItem[]
-  orderItems     OrderItem[]
-  wholesaleTiers WholesaleTier[]
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
+  b2bProposalItems OpportunityProposalItem[]
+  wholesaleTiers   WholesaleTier[]
   isActive       Boolean         @default(true)
 
   createdAt DateTime  @default(now())
@@ -953,6 +956,21 @@ model Order {
   utmCampaign String?
   landingPath String?
 
+  // ADR-210 — Cierre B2B desde propuesta formal (/propuesta/[token]) y riel de pago directo
+  // (Bre-B / transferencia bancaria verificada con MFA + soporte de retenciones B2B).
+  b2bProposalId            String?              @unique
+  b2bProposal              OpportunityProposal? @relation("B2bProposalOrder", fields: [b2bProposalId], references: [id], onDelete: SetNull)
+  paymentExpiresAt         DateTime?
+  b2bArtworkReady          Boolean              @default(true)
+  directPaymentMethod      String?
+  directPaymentReference   String?
+  directPaymentReceiptPath String?
+  directPaymentReportedAt  DateTime?
+  withholdingCents         Int                  @default(0)
+  directPaymentConfirmedAt DateTime?
+  directPaymentConfirmedBy String?
+  directPaymentNotes       String?
+
   contactActivities       ContactActivity[]
   tasks                   Task[]
   lifecycleConversions    LifecycleMessage[]
@@ -984,6 +1002,7 @@ model Order {
   @@index([needsReconciliation])
   @@index([utmSource, status, createdAt])
   @@index([shippingAddressKey])
+  @@index([paymentMethod, status, directPaymentReportedAt])
 }
 
 // Historial de transiciones de estado del pedido (2026-10-29): cada salto de
@@ -2216,6 +2235,7 @@ model Design {
   assets                DesignAsset[]
   cartItems             CartItem[]
   orderItems            OrderItem[]
+  b2bProposalItems      OpportunityProposalItem[]
   // Render 300 DPI asíncrono (ADR-131): a lo sumo UN job por diseño; se
   // resetea si el diseño se re-finaliza. Cascade: purgar el diseño mata el job.
   renderJob             RenderJob?
@@ -2795,10 +2815,11 @@ model Opportunity {
   city               String?
   department         String?
   notes              String?
+  requestedConfig    Json?
   internalNotes      String?
   lostReason         String?
   convertedOrderId   String?
-  convertedOrder     Order?        @relation("OpportunityConvertedOrder", fields: [convertedOrderId], references: [id], onDelete: SetNull)
+  convertedOrder     Order?                @relation("OpportunityConvertedOrder", fields: [convertedOrderId], references: [id], onDelete: SetNull)
   dataConsentAt      DateTime?
   dataConsentVersion String?
   utmSource          String?
@@ -2806,6 +2827,7 @@ model Opportunity {
   utmCampaign        String?
   landingPath        String?
   tasks              Task[]
+  proposals          OpportunityProposal[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2819,4 +2841,80 @@ model Opportunity {
   @@index([contactId, deletedAt])
   @@index([organizationId, deletedAt])
   @@index([ownerAdminId, stage])
+}
+
+/// Propuesta comercial versionada B2B / Eventos con enlace privado por capacidad (`/propuesta/[token]`, `ADR-210`).
+model OpportunityProposal {
+  id                      String                    @id @default(cuid())
+  opportunityId           String
+  opportunity             Opportunity               @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  version                 Int
+  number                  String                    @unique
+  // "DRAFT" | "SENT" | "APPROVED" | "CONVERTED" | "EXPIRED" | "SUPERSEDED" | "CANCELLED"
+  status                  String                    @default("DRAFT")
+  // Hash SHA-256 hex del secreto opaco entregado en `/propuesta/[token]` (nunca texto plano en DB).
+  tokenHash               String?                   @unique
+  validUntil              DateTime
+  // "BEFORE_PAYMENT" | "AFTER_PAYMENT"
+  proofMode               String                    @default("AFTER_PAYMENT")
+  proofAssetPath          String?
+  proofApprovedAt         DateTime?
+  proofApprovedByIp       String?
+  artworkMode             String                    @default("SAME_DESIGN")
+  packagingType           String                    @default("BULK_STANDARD")
+  clientNotes             String?
+  termsNotes              String?
+  estimatedProductionDays Int                       @default(3)
+  // "QUOTED" | "PACTED_MANUAL"
+  shippingMode            String                    @default("QUOTED")
+  shippingCarrier         String?
+  shippingService         String?
+  packageCount            Int                       @default(1)
+  departmentCode          String?
+  departmentName          String?
+  cityCode                String?
+  cityName                String?
+  // Importes siempre en centavos COP enteros (`Int >= 0` con CHECK SQL).
+  subtotalCents           Int                       @default(0)
+  discountCents           Int                       @default(0)
+  shippingCents           Int                       @default(0)
+  totalCents              Int                       @default(0)
+  allowDirectTransfer     Boolean                   @default(false)
+  createdByAdminId        String?
+  createdByAdmin          AdminUser?                @relation("B2bProposalCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  sentAt                  DateTime?
+  approvedAt              DateTime?
+  order                   Order?                    @relation("B2bProposalOrder")
+  items                   OpportunityProposalItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([opportunityId, version])
+  @@index([opportunityId, status])
+  @@index([status, validUntil])
+}
+
+/// Renglón de producto/opción real dentro de una propuesta B2B (`ADR-210`).
+model OpportunityProposalItem {
+  id                    String              @id @default(cuid())
+  proposalId            String
+  proposal              OpportunityProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  variantId             String
+  variant               ProductVariant      @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  titleSnapshot         String
+  skuSnapshot           String
+  qty                   Int
+  designUnits           Int                 @default(1)
+  unitPriceCents        Int
+  unitCostSnapshotCents Int?
+  packagingNote         String?
+  designId              String?
+  design                Design?             @relation(fields: [designId], references: [id], onDelete: SetNull)
+  sortOrder             Int                 @default(0)
+  createdAt             DateTime            @default(now())
+
+  @@index([proposalId, sortOrder])
+  @@index([variantId])
+  @@index([designId])
 }

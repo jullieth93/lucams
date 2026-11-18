@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
+import { B2bInquirySchema } from "./schemas";
 import {
   createPublicB2bOpportunity,
   getOpportunityDetail,
@@ -49,11 +50,11 @@ describe.skipIf(!HAS_DB)(
 
     it("crea Contact + Organization deduplicada por NIT + Consent Ley 1581 + Task automática y transiciona etapas", async () => {
       const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-      const nit = `901${suffix.slice(-6)}-1`;
+      const nit = `901${suffix.slice(-6)}`;
       const email = `itest-b2b-${suffix}@lucams.test`;
 
       const created = await createPublicB2bOpportunity(
-        {
+        B2bInquirySchema.parse({
           contactName: "itest Carolina Mejía",
           organizationName: `itest Estudio Creativo ${suffix}`,
           nit,
@@ -67,7 +68,7 @@ describe.skipIf(!HAS_DB)(
           notes: "Necesitamos 120 fotoimanes corporativos con empaque navideño.",
           acceptHabeasData: true,
           acceptNewsletter: true,
-        },
+        }),
         {
           ip: "127.0.0.1",
           userAgent: "vitest",

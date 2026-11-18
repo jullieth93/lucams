@@ -47,7 +47,7 @@ import {
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { getOrderComplementaryContextForActor, getOrderForActor } from "@/features/orders/service";
-import { getProductionAssetSignedUrls } from "@/lib/storage";
+import { getProductionAssetSignedUrls, refreshCustomerUploadSignedUrl } from "@/lib/storage";
 import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
 import {
   parseShipmentLastError,
@@ -72,6 +72,7 @@ import {
   listTasksForEntity,
 } from "@/features/crm/service";
 import { OrderActions } from "./order-actions";
+import { B2bWorkshopMastersPanel, DirectPaymentVerificationPanel } from "./b2b-order-panels";
 import { RegenLettersetButton } from "./regen-letterset-button";
 import { RetryRenderJobButton } from "./retry-render-job-button";
 import { ProductionPiecesGallery } from "./production-pieces-gallery";
@@ -124,6 +125,7 @@ const SOURCE_LABEL: Record<string, string> = {
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
   WOMPI: "Pago en línea (Wompi)",
   COD: "Contraentrega (efectivo)",
+  DIRECT_TRANSFER: "Pago directo (Bre-B / Transferencia)",
 };
 
 const WOMPI_STATUS_LABEL: Record<string, string> = {
@@ -227,6 +229,28 @@ export default async function AdminPedidoDetallePage({
   const canManageActivities = hasCapability(role, "crm:manage_activities");
   const canViewActivities = canRead360 && canReadPii;
   const canViewCatalog = canAccessAdminPath(role, "/admin/productos");
+  const canConfirmDirectPayment = hasCapability(role, "finance:confirm_direct_payment");
+
+  const directReceiptSignedUrl =
+    canSeeMoney && order.directPaymentReceiptPath
+      ? await refreshCustomerUploadSignedUrl(order.directPaymentReceiptPath).catch(() => null)
+      : null;
+
+  const b2bWorkshopLines = order.b2bProposalId
+    ? order.items
+        .filter(
+          (it) => it.variant.product.fulfillmentMode !== "PHYSICAL_STOCK" || Boolean(it.design),
+        )
+        .map((it) => ({
+          orderItemId: it.id,
+          title: `${it.variant.product.name} · ${it.variant.name}`,
+          sku: it.variant.sku,
+          qty: it.qty,
+          designUnits: it.designUnits,
+          productionCount: it.design?.productionUrls?.length ?? 0,
+          moderationStatus: it.design?.moderationStatus ?? null,
+        }))
+    : [];
 
   const [rawCrmTasks, crmActivities, rawAssignableAdmins, rawStatusEvents, complementary] =
     await Promise.all([
@@ -538,9 +562,17 @@ export default async function AdminPedidoDetallePage({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {/* Columna principal */}
           <div className="space-y-4 lg:col-span-2">
+            {order.b2bProposalId && canDownloadProduction && (
+              <B2bWorkshopMastersPanel
+                orderId={order.id}
+                b2bArtworkReady={order.b2bArtworkReady}
+                lines={b2bWorkshopLines}
+              />
+            )}
+
             {/* Ítems */}
             <Card icon={<Package className="h-4 w-4" />} title={`Ítems (${order.items.length})`}>
-              {hasProduction && canDownloadProduction && (
+              {hasProduction && canDownloadProduction && order.b2bArtworkReady && (
                 <div className="border-brand-purple/10 bg-brand-cream/40 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5">
                   <div className="min-w-0">
                     <div className="text-brand-purple-dark text-xs font-bold">
@@ -1040,8 +1072,45 @@ export default async function AdminPedidoDetallePage({
                         {formatCOP(order.total)}
                       </dd>
                     </div>
+                    {order.withholdingCents > 0 && (
+                      <>
+                        <Row
+                          label="Retenciones B2B"
+                          value={`- ${formatCOP(order.withholdingCents)}`}
+                        />
+                        <Row
+                          label="Efectivo neto en banco"
+                          value={formatCOP(Math.max(0, order.total - order.withholdingCents))}
+                        />
+                      </>
+                    )}
                   </dl>
                 </Card>
+
+                {order.paymentMethod === "DIRECT_TRANSFER" && (
+                  <DirectPaymentVerificationPanel
+                    orderId={order.id}
+                    orderNumber={order.number}
+                    orderStatus={order.status}
+                    totalCents={order.total}
+                    withholdingCents={order.withholdingCents}
+                    directPaymentMethod={order.directPaymentMethod}
+                    directPaymentReference={order.directPaymentReference}
+                    directPaymentReportedLabel={
+                      order.directPaymentReportedAt
+                        ? formatDateTimeCO(order.directPaymentReportedAt)
+                        : null
+                    }
+                    directPaymentConfirmedLabel={
+                      order.directPaymentConfirmedAt
+                        ? formatDateTimeCO(order.directPaymentConfirmedAt)
+                        : null
+                    }
+                    directPaymentNotes={order.directPaymentNotes}
+                    receiptSignedUrl={directReceiptSignedUrl}
+                    canConfirm={canConfirmDirectPayment}
+                  />
+                )}
 
                 {order.status === "REFUNDED" && (
                   <Card icon={<Undo2 className="h-4 w-4" />} title="Reembolso">
@@ -1132,7 +1201,11 @@ export default async function AdminPedidoDetallePage({
                 ) : (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                     <p className="text-xs font-bold text-emerald-900">
-                      ✔ Pagado en línea — no cobrar al entregar
+                      ✔{" "}
+                      {order.paymentMethod === "DIRECT_TRANSFER"
+                        ? "Pago directo B2B"
+                        : "Pagado en línea"}{" "}
+                      — no cobrar al entregar
                     </p>
                     <p className="mt-0.5 text-[11px] text-emerald-800">
                       El pago ya fue procesado; entrega el paquete sin recaudar efectivo.

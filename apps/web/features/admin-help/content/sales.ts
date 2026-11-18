@@ -69,19 +69,19 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
         topics: [
           {
             id: "pago",
-            label: "Pago y confidencialidad comercial",
+            label: "Pago, Pago Directo B2B y confidencialidad comercial",
             description:
-              "Muestra medio de pago, intentos Wompi o monto COD a recaudar según los permisos de tu rol.",
+              "Muestra medio de pago, intentos Wompi, soporte de Pago Directo (Bre-B / Transferencia con confirmación MFA) o monto COD según los permisos de tu rol.",
             interpretation:
-              "Taller opera sin importes comerciales; Alistamiento solo visualiza el valor a cobrar cuando el pedido es contraentrega.",
+              "Taller opera sin importes comerciales; Alistamiento solo visualiza el valor a cobrar cuando el pedido es contraentrega; la confirmación bancaria de pagos directos es exclusiva de SUPERADMIN con MFA reciente.",
           },
           {
             id: "disenos",
-            label: "Diseños, moderación y renders 300 DPI",
+            label: "Diseños, arte maestro B2B y renders 300 DPI",
             description:
-              "Relaciona los ítems personalizados con su estado de moderación, progreso de RenderJob y paquete ZIP de taller.",
+              "Relaciona los ítems personalizados con su estado de moderación, carga de arte maestro 300 DPI en pedidos B2B/eventos, progreso de RenderJob y paquete ZIP de taller.",
             interpretation:
-              "Descarga el ZIP de taller únicamente cuando los diseños estén aprobados y los renders hayan completado.",
+              "En pedidos B2B/eventos con arte posterior al pago, el paquete ZIP y el despacho permanecen bloqueados hasta cargar todas las piezas maestras 300 DPI.",
           },
           {
             id: "envio",
@@ -186,9 +186,21 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
           "Abre el detalle del pedido con un rol de Alistamiento u Operaciones, revisa el error reportado y reintenta la guía tras corregir la causa.",
       },
     ],
-    related: ["moderacion", "envios", "soporte", "finanzas", "conciliacion"],
-    keywords: ["orden", "LCM", "pago", "taller", "ZIP", "guía", "despacho", "entrega", "estado"],
-    version: 2,
+    related: ["moderacion", "envios", "soporte", "finanzas", "conciliacion", "oportunidades"],
+    keywords: [
+      "orden",
+      "LCM",
+      "pago",
+      "Bre-B",
+      "transferencia",
+      "taller",
+      "ZIP",
+      "guía",
+      "despacho",
+      "entrega",
+      "estado",
+    ],
+    version: 3,
   },
   {
     id: "clientes",
@@ -461,26 +473,53 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
       },
       {
         id: "ficha",
-        title: "Ficha comercial",
-        summary: "Reúne contacto, necesidades, propuestas, actividades y vínculos.",
+        title: "Ficha comercial y constructor de propuestas",
+        summary:
+          "Reúne configuración solicitada, propuestas versionadas, muestra digital y pedido resultante.",
         topics: [
           {
             id: "requisitos",
-            label: "Necesidad y alcance",
-            description: "Documenta productos, cantidades, fechas y personalización solicitada.",
-            interpretation: "Valida factibilidad antes de prometer precio o entrega.",
+            label: "Configuración solicitada y semáforo SLA",
+            description:
+              "Muestra las líneas del catálogo elegidas por el cliente en /empresas-y-eventos, modalidad de arte, empaque y días hábiles disponibles.",
+            interpretation:
+              "El rango mostrado al cliente en la web es orientativo; la oferta vinculante nace al emitir una propuesta formal.",
+          },
+          {
+            id: "propuestas",
+            label: "Propuestas versionadas (v1, v2…) y enlace privado",
+            description:
+              "Permite cotizar líneas reales con verificación de margen sobre costo BOM, cotización de envío Aveonline/Envío Lucams, muestra digital y enlace cifrado /propuesta/[token].",
+            interpretation:
+              "Emitir una nueva versión reemplaza automáticamente la anterior para evitar pagos sobre cotizaciones desactualizadas.",
           },
           {
             id: "vinculos",
-            label: "Pedido vinculado",
-            description: "Relaciona la gestión consultiva con la venta confirmada.",
+            label: "Conversión a pedido real",
+            description:
+              "Cuando el cliente aprueba y elige medio de pago en su portal privado, se genera automáticamente un pedido LCM conectado a Wompi o Pago Directo, taller 300 DPI, Aveonline y Finanzas.",
             interpretation:
-              "Usa el vínculo para evitar duplicar pedidos y conservar la trazabilidad comercial.",
+              "La oportunidad pasa a Ganada automáticamente cuando se confirma el pago real del pedido.",
           },
         ],
       },
     ],
     procedures: [
+      {
+        id: "emitir-propuesta-b2b",
+        title: "Armar y enviar una propuesta formal B2B / Eventos",
+        goal: "Entregar una oferta clara, rentable y pagable en un clic desde /propuesta/[token].",
+        roles: ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"],
+        steps: [
+          "Revisa la configuración solicitada por el cliente, la fecha objetivo y el destino DANE.",
+          "En el Constructor de Propuestas ajusta variantes, cantidades, precios negociados y revisa el margen sobre costo BOM.",
+          "Cotiza el transporte en vivo (o define tarifa pactada si requiere múltiples cajas o logística asistida).",
+          "Elige si la muestra digital se aprueba antes o después del pago y sube el arte de prueba cuando corresponda.",
+          "Guarda el borrador y pulsa Emitir y enviar al cliente (o genera el enlace privado para compartirlo por WhatsApp).",
+        ],
+        expected:
+          "El cliente recibe su propuesta versionada con enlace seguro para aprobar dirección exacta, muestra y pago, convirtiéndose en una orden real.",
+      },
       {
         id: "avanzar-oportunidad",
         title: "Hacer seguimiento y avanzar una oportunidad",
@@ -489,7 +528,7 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
           "Revisa necesidades, historial, responsable y tareas abiertas.",
           "Registra la interacción y actualiza requisitos o condiciones confirmadas.",
           "Cambia la etapa únicamente si se cumplió su criterio comercial.",
-          "Vincula el pedido existente cuando la oportunidad se concrete en una venta.",
+          "Vincula el pedido existente cuando la oportunidad se concrete fuera del portal o verifica la conversión automática.",
           "Crea el siguiente compromiso con fecha o cierra indicando el resultado y motivo.",
         ],
         expected:
@@ -497,18 +536,19 @@ export const SALES_GUIDES: AdminModuleGuide[] = [
       },
     ],
     cautions: [
-      "No conviertas una oportunidad en ingreso proyectado o real sin revisar los documentos vinculados.",
+      "No conviertas una oportunidad en ingreso proyectado o real sin revisar el pedido confirmado.",
+      "Los precios por debajo del costo unitario BOM están bloqueados salvo autorización expresa de SUPERADMIN.",
     ],
     faqs: [
       {
-        question: "¿Una oportunidad ganada crea automáticamente un pedido?",
+        question: "¿Cómo se convierte una propuesta en pedido?",
         answer:
-          "Debes verificar el vínculo comercial correspondiente; la etapa por sí sola no prueba que exista una orden pagada.",
+          "Al aprobar condiciones y dirección exacta en /propuesta/[token], el sistema crea automáticamente el pedido LCM y al confirmarse el pago (Wompi o Pago Directo verificado) marca la oportunidad como Ganada.",
       },
     ],
-    related: ["clientes", "pedidos", "hoy"],
-    keywords: ["B2B", "empresa", "evento", "pipeline", "etapa", "venta consultiva"],
-    version: 1,
+    related: ["clientes", "pedidos", "hoy", "finanzas"],
+    keywords: ["B2B", "empresa", "evento", "propuesta", "cotización", "Bre-B", "pipeline", "etapa"],
+    version: 2,
   },
   {
     id: "resenas",

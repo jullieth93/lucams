@@ -37,8 +37,10 @@ export const ADMIN_CAPABILITIES = [
   "marketing:read",
   "marketing:export_csv",
   "opportunities:manage",
+  "opportunities:propose",
   "finance:read",
   "finance:reconcile_cod",
+  "finance:confirm_direct_payment",
   "finance:export_csv",
   "metrics:read",
   "catalog:write",
@@ -75,6 +77,7 @@ const OPS_MANAGER_CAPS: readonly AdminCapability[] = [
   "marketing:read",
   "marketing:export_csv",
   "opportunities:manage",
+  "opportunities:propose",
   "catalog:write",
   "shipping:configure",
   "lifecycle:manage",
@@ -237,6 +240,8 @@ export const ADMIN_ROLE_SETS = {
   LIFECYCLE_MANAGE: rolesWithCapability("lifecycle:manage"),
   /** Oportunidades B2B/eventos (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   OPPORTUNITIES: rolesWithCapability("opportunities:manage"),
+  /** Emisión de propuestas formales B2B y lectura de margen BOM en oportunidad (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
+  OPPORTUNITIES_PROPOSE: rolesWithCapability("opportunities:propose"),
   /** Lectura de Contacto 360 (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`, `CUSTOMER_SUPPORT`). */
   CONTACTS_360: rolesWithCapability("contacts:read_360"),
   /** Fusión humana de duplicados (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */
@@ -245,6 +250,8 @@ export const ADMIN_ROLE_SETS = {
   FINANCE: rolesWithCapability("finance:read"),
   /** Conciliación contraentrega COD (`SUPERADMIN`, `FINANCE_ANALYST`). */
   FINANCE_COD: rolesWithCapability("finance:reconcile_cod"),
+  /** Confirmación bancaria de pagos directos Bre-B / Transferencia B2B (exclusivo `SUPERADMIN` + MFA). */
+  FINANCE_DIRECT_PAYMENT: rolesWithCapability("finance:confirm_direct_payment"),
   /** Exportación CSV contable (`SUPERADMIN`, `FINANCE_ANALYST`). */
   FINANCE_EXPORT: rolesWithCapability("finance:export_csv"),
   /** Exportación CSV marketing con opt-in (`SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`). */

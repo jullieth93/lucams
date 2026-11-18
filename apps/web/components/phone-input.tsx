@@ -73,6 +73,7 @@ export function PhoneInput({
   required,
   error,
   placeholder,
+  size = "default",
   onChange,
   onBlur,
 }: {
@@ -86,6 +87,8 @@ export function PhoneInput({
   /** Error efectivo (server o del padre) — se renderiza y marca aria-invalid. */
   error?: string | null;
   placeholder?: string;
+  /** Variante de altura/radio para igualar formularios altos (`h-11 rounded-xl`). */
+  size?: "default" | "lg";
   /** Notifica (dígitos nacionales, indicativo) para validación live del padre. */
   onChange?: (national: string, dial: string) => void;
   onBlur?: () => void;
@@ -103,8 +106,8 @@ export function PhoneInput({
     onChange?.(nextNational, nextDial);
   }
 
-  const selectClass =
-    "border-brand-purple/25 focus:border-brand-purple h-10 rounded-md border bg-white px-2 text-sm focus:outline-none disabled:bg-slate-50 disabled:text-slate-400";
+  const sizeClasses = size === "lg" ? "h-11 rounded-xl" : "h-10 rounded-md";
+  const selectClass = `border-brand-purple/25 focus:border-brand-purple ${sizeClasses} border bg-white px-2 text-sm focus:outline-none disabled:bg-slate-50 disabled:text-slate-400`;
 
   return (
     <div className="space-y-1.5">
@@ -114,7 +117,7 @@ export function PhoneInput({
           value={dial}
           disabled={disabled}
           onChange={(e) => emit(national, e.target.value)}
-          className={`${selectClass} w-[7.5rem] flex-shrink-0`}
+          className={`${selectClass} w-[5.75rem] flex-shrink-0`}
         >
           {PHONE_DIAL_CODES.map((c) => (
             <option key={c.iso} value={c.dial}>
@@ -136,7 +139,7 @@ export function PhoneInput({
           aria-describedby={error && id ? `${id}-error` : undefined}
           onChange={(e) => emit(e.target.value.replace(/\D/g, "").slice(0, 15), dial)}
           onBlur={onBlur}
-          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-10 min-w-0 flex-1 bg-white"
+          className={`border-brand-purple/20 focus-visible:ring-brand-purple/30 ${sizeClasses} min-w-[9.5rem] flex-1 bg-white tabular-nums`}
         />
       </div>
       {/* Lo que valida/persiste el server: indicativo + dígitos nacionales. */}

@@ -154,7 +154,7 @@ describe("GET /admin/finanzas/export — RBAC, step-up MFA y sanitización CSV",
     expect(Array.from(rawBytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
     expect(csv.startsWith("numero_pedido,")).toBe(true);
     expect(csv).toContain("LCM-2026-0101");
-    expect(csv).toContain(",65000,5000,0,12000,0,72000,10000,62000,");
+    expect(csv).toContain(",65000,5000,0,12000,0,72000,0,10000,62000,");
     expect(csv).toContain("1020304050");
     expect(csv).toContain("'=CMD|' /C calc'!A0");
     expect(csv).not.toContain(",=CMD|");

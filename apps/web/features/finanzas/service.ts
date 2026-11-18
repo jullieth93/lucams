@@ -38,6 +38,7 @@ export const COLLECTED_REVENUE_ORDER_WHERE = {
   deletedAt: null,
   OR: [
     { paymentMethod: "WOMPI" as const, status: { in: REVENUE_STATUSES } },
+    { paymentMethod: "DIRECT_TRANSFER" as const, status: { in: REVENUE_STATUSES } },
     { paymentMethod: "COD" as const, status: "DELIVERED" as const },
   ],
 };
@@ -46,32 +47,39 @@ export interface NetRevenueBreakdown {
   grossCollectedCents: number;
   codShortfallCents: number;
   retractRefundedCents: number;
+  withholdingCents: number;
   totalDeductionsCents: number;
   netCollectedCents: number;
 }
 
 /**
- * Conciliación pura del ingreso neto real en centavos COP (`[FIN-01]`):
- *  `Cobrado bruto (Wompi + COD entregado) − Reembolsos por retracto − Faltante COD`.
+ * Conciliación pura del ingreso neto real en centavos COP (`[FIN-01]` + `ADR-210`):
+ *  `Cobrado bruto (Wompi + Pago Directo B2B + COD entregado) − Reembolsos retracto − Faltante COD − Retenciones B2B`.
  */
 export function computeNetCollectedRevenue(input: {
   wompiCollectedCents: number;
+  directTransferCollectedCents?: number;
   codDeliveredCents: number;
   codShortfallCents: number;
   retractRefundedCents: number;
+  withholdingCents?: number;
 }): NetRevenueBreakdown {
   const grossCollectedCents = Math.max(
     0,
-    Math.trunc(input.wompiCollectedCents) + Math.trunc(input.codDeliveredCents),
+    Math.trunc(input.wompiCollectedCents) +
+      Math.trunc(input.directTransferCollectedCents ?? 0) +
+      Math.trunc(input.codDeliveredCents),
   );
   const codShortfallCents = Math.max(0, Math.trunc(input.codShortfallCents));
   const retractRefundedCents = Math.max(0, Math.trunc(input.retractRefundedCents));
-  const totalDeductionsCents = codShortfallCents + retractRefundedCents;
+  const withholdingCents = Math.max(0, Math.trunc(input.withholdingCents ?? 0));
+  const totalDeductionsCents = codShortfallCents + retractRefundedCents + withholdingCents;
   const netCollectedCents = Math.max(0, grossCollectedCents - totalDeductionsCents);
   return {
     grossCollectedCents,
     codShortfallCents,
     retractRefundedCents,
+    withholdingCents,
     totalDeductionsCents,
     netCollectedCents,
   };
@@ -284,7 +292,7 @@ export async function getPeriodAggregates(period: FinanzasPeriod): Promise<Perio
         ...COLLECTED_REVENUE_ORDER_WHERE,
         createdAt: { gte: range.previousFrom, lte: range.to },
       },
-      select: { total: true, paymentMethod: true, createdAt: true },
+      select: { total: true, withholdingCents: true, paymentMethod: true, createdAt: true },
     }),
     prisma.retractRequest.aggregate({
       where: {
@@ -306,12 +314,17 @@ export async function getPeriodAggregates(period: FinanzasPeriod): Promise<Perio
   const current = rows.filter((r) => r.createdAt >= range.from);
   const previous = rows.filter((r) => r.createdAt < range.from);
   const totalCents = current.reduce((acc, r) => acc + r.total, 0);
+  const currentWithholdingCents = current.reduce((acc, r) => acc + (r.withholdingCents ?? 0), 0);
   const retractRefundedCents = retractAgg._sum.refundAmount ?? 0;
-  const netTotalCents = Math.max(0, totalCents - retractRefundedCents);
+  const netTotalCents = Math.max(0, totalCents - retractRefundedCents - currentWithholdingCents);
 
   const prevGrossCents = previous.reduce((acc, r) => acc + r.total, 0);
+  const prevWithholdingCents = previous.reduce((acc, r) => acc + (r.withholdingCents ?? 0), 0);
   const prevRetractCents = prevRetractAgg._sum.refundAmount ?? 0;
-  const previousNetTotalCents = Math.max(0, prevGrossCents - prevRetractCents);
+  const previousNetTotalCents = Math.max(
+    0,
+    prevGrossCents - prevRetractCents - prevWithholdingCents,
+  );
 
   const aovCents = computeAov(current);
   return {
@@ -343,8 +356,10 @@ export interface AccountingOrderExportRow {
   taxCents: number;
   totalCents: number;
   retractRefundedCents: number;
+  withholdingCents?: number;
   wompiReference: string | null;
   wompiTransactionId: string | null;
+  directPaymentReference?: string | null;
   codStatus: CodReconciliationStatus | "PENDING_REMITTANCE" | null;
   codRemittedCents: number | null;
   billingDocumentType: DocumentType | null;
@@ -403,10 +418,12 @@ export function buildAccountingOrdersCsv(
     "envio_cop",
     "impuesto_cop",
     "total_bruto_cop",
+    "retencion_b2b_cop",
     "reembolso_retracto_cop",
     "total_neto_cop",
     "referencia_wompi",
     "transaccion_wompi",
+    "referencia_pago_directo",
     "conciliacion_cod",
     "remesa_cod_cop",
     "tipo_doc_dian",
@@ -418,7 +435,8 @@ export function buildAccountingOrdersCsv(
   ].join(",");
 
   const lines = rows.map((row) => {
-    const netCents = Math.max(0, row.totalCents - row.retractRefundedCents);
+    const withholdingCents = Math.max(0, row.withholdingCents ?? 0);
+    const netCents = Math.max(0, row.totalCents - row.retractRefundedCents - withholdingCents);
     const buyerEmail = redactBuyerEmail ? maskEmail(row.email) : row.email;
     return [
       escapeAccountingCsvCell(row.number),
@@ -431,10 +449,12 @@ export function buildAccountingOrdersCsv(
       centsToCopCsvNumber(row.shippingCents),
       centsToCopCsvNumber(row.taxCents),
       centsToCopCsvNumber(row.totalCents),
+      centsToCopCsvNumber(withholdingCents),
       centsToCopCsvNumber(row.retractRefundedCents),
       centsToCopCsvNumber(netCents),
       escapeAccountingCsvCell(row.wompiReference ?? ""),
       escapeAccountingCsvCell(row.wompiTransactionId ?? ""),
+      escapeAccountingCsvCell(row.directPaymentReference ?? ""),
       escapeAccountingCsvCell(row.codStatus ?? ""),
       row.codRemittedCents !== null ? centsToCopCsvNumber(row.codRemittedCents) : "",
       escapeAccountingCsvCell(row.billingDocumentType ?? ""),
@@ -473,8 +493,10 @@ export async function listCollectedOrdersForExport(
       shipping: true,
       tax: true,
       total: true,
+      withholdingCents: true,
       wompiReference: true,
       wompiTransactionId: true,
+      directPaymentReference: true,
       billingDocumentType: true,
       billingDocumentNumber: true,
       billingName: true,
@@ -519,8 +541,10 @@ export async function listCollectedOrdersForExport(
       taxCents: order.tax,
       totalCents: order.total,
       retractRefundedCents,
+      withholdingCents: order.withholdingCents,
       wompiReference: order.wompiReference,
       wompiTransactionId: order.wompiTransactionId,
+      directPaymentReference: order.directPaymentReference,
       codStatus,
       codRemittedCents: order.codReconciliation?.remittedAmount ?? null,
       billingDocumentType: order.billingDocumentType,

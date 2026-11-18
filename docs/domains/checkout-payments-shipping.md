@@ -148,9 +148,11 @@ Definidas en `apps/web/features/checkout/destination-types.ts` y `schemas.ts` me
   - **Atribución UTM sin PII (`lib/utm-attribution.ts`)**: lee la cookie `lucams_utm` (creada solo bajo consentimiento `COOKIES_ANALYTICS`), purga cualquier patrón de correo/teléfono/token y congela `utmSource`, `utmMedium`, `utmCampaign` y `landingPath`.
   - **Puntos Lucams (`features/loyalty/service.ts`)**: cotizados sobre mercancía neta (`subtotal - discount`, nunca sobre el envío). Se **reservan atómicamente al crear `PENDING_PAYMENT`** (`reserveRedeemedPoints` -> `LoyaltyTxn` `REDEEM`, congelando `loyaltyPointsRedeemed` y `loyaltyDiscount`) y acreditan puntos ganados (`EARN`) al pasar a `PAID` (ver [`./crm-b2b-and-loyalty.md`](./crm-b2b-and-loyalty.md)).
 
-### Ledger de intentos Wompi
+### Ledger de intentos Wompi y riel de Pago Directo B2B (`DIRECT_TRANSFER`, `ADR-210`)
 
 Cada apertura del checkout de Wompi pasa por `resolveWompiPaymentReference` (`features/orders/payment-reference.ts`), que sincroniza `WompiPaymentAttempt` (`OPEN | IN_FLIGHT | APPROVED | FAILED | SUPERSEDED | REVIEW`) y `WompiPaymentTransaction` contra la API de Wompi antes de reutilizar o rotar la referencia única `${orderNumber}-${uuid}`. El webhook `POST /api/webhooks/wompi` valida firma SHA-256, ventana anti-replay de 25 horas, ambiente y exactitud `amount_in_cents === order.total` antes de invocar la saga (detalle completo en [`../integrations/wompi.md`](../integrations/wompi.md)). Los rechazos `DECLINED` o `ERROR` **no** cancelan la orden: la mantienen en `PENDING_PAYMENT` para que el cliente reintente con otro medio de pago.
+
+En propuestas formales B2B (`/propuesta/[token]`) que habilitan `allowDirectTransfer = true` cuando el servidor cuenta con credenciales privadas `DIRECT_PAYMENT_*` (`lib/direct-payment-config.ts`), el cliente puede elegir **`PaymentMethod.DIRECT_TRANSFER`** (`BRE_B` con referencia regulatoria `1.000 UVB` o `BANK_TRANSFER`), reportar número de comprobante/CUS y subir soporte a `customer-uploads/b2b-receipts/`. La confirmación que dispara `processPaidOrder` es **exclusiva de `SUPERADMIN` con `finance:confirm_direct_payment` + `requireRecentMfa()`** en `/admin/pedidos/[number]`, exigiendo cuadre contable exacto `receivedCashCents + withholdingCents === order.total` y reflejando tanto el ingreso bruto como las retenciones practicadas (`Order.withholdingCents`) en `/admin/finanzas`, CSV DIAN y `FiscalWatch`.
 
 ### Máquina de estados de `OrderStatus`
 
@@ -190,7 +192,7 @@ stateDiagram-v2
 
 ### Expiración automática de órdenes impagas (`/api/cron/expire-pending-orders`)
 
-`expirePendingWompiOrders` (`features/orders/expire-pending.ts`) barre en lotes de 500 las órdenes `PENDING_PAYMENT` de Wompi con `needsReconciliation = false` y antigüedad mayor a **`PENDING_PAYMENT_EXPIRY_HOURS = 24` horas**:
+`expirePendingWompiOrders` (`features/orders/expire-pending.ts`) barre en lotes de 500 las órdenes `PENDING_PAYMENT` (`WOMPI` o `DIRECT_TRANSFER`) con `needsReconciliation = false` cuya vigencia haya vencido (`paymentExpiresAt < now` en pedidos B2B nacidos de propuesta formal `ADR-210`, o antigüedad mayor a **`PENDING_PAYMENT_EXPIRY_HOURS = 24` horas** cuando `paymentExpiresAt IS NULL`), marcando también la `OpportunityProposal` asociada como `EXPIRED`:
 
 1. Si la orden tuvo intentos en Wompi (`wompiReference` / `paymentAttempt > 0`), consulta primero `listTransactionsByReference` en vivo:
    - Si encuentra una transacción `APPROVED` por el monto exacto, **auto-sana** el pedido ejecutando `processPaidOrder` en lugar de cancelarlo.

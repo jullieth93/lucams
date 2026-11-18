@@ -32,8 +32,10 @@
 
 import { EMAIL_OVERRIDE_KEYS, withOverrides, type EmailOverrideKey } from "./overrides";
 import { accountExistsNoticeEmail } from "./templates/account-exists-notice";
+import { b2bDirectPaymentReportedEmail } from "./templates/b2b-direct-payment-reported";
 import { b2bInquiryAdminNotificationEmail } from "./templates/b2b-inquiry-admin-notification";
 import { b2bInquiryReceivedEmail } from "./templates/b2b-inquiry-received";
+import { b2bProposalSentEmail } from "./templates/b2b-proposal-sent";
 import { backInStockEmail } from "./templates/back-in-stock";
 import { cartRecoveryEmail } from "./templates/cart-recovery";
 import { designRejectedEmail } from "./templates/design-rejected";
@@ -602,6 +604,55 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       notes: "Queremos 150 sets de imanes con nuestro logo y tarjeta de agradecimiento.",
     },
   }),
+  define({
+    id: "b2b-proposal-sent",
+    name: "Propuesta comercial B2B enviada",
+    group: "Cotizaciones",
+    description:
+      "Envía al cliente corporativo o de evento el enlace privado /propuesta/[token] para revisar, aprobar muestra digital y pagar su propuesta formal.",
+    render: b2bProposalSentEmail,
+    sampleData: {
+      proposalNumber: "PROP-OP7K9M2P-V1",
+      opportunityNumber: "OP-7K9M2P",
+      version: 1,
+      contactName: CUSTOMER,
+      organizationName: "Café Cordillera S.A.S.",
+      totalCents: 425_000_00,
+      validUntilLabel: "25 nov 2026",
+      city: "Bogotá D.C.",
+      department: "Bogotá D.C.",
+      proposalToken: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      proofIncludedLabel: "Incluida para aprobación en línea antes de pagar",
+      items: [
+        {
+          title: "Calendario Magnético · Con imán",
+          qty: 100,
+          unitPriceCents: 4_100_00,
+          lineTotalCents: 410_000_00,
+        },
+      ],
+      clientNotes: "Incluye adaptación con logotipo institucional y envío asegurado.",
+    },
+  }),
+  define({
+    id: "b2b-direct-payment-reported",
+    name: "Aviso interno: pago directo B2B reportado",
+    group: "Cotizaciones",
+    description:
+      "Alerta INTERNA al buzón operativo cuando un cliente B2B reporta haber pagado por llave Bre-B o transferencia bancaria y requiere confirmación con MFA.",
+    render: b2bDirectPaymentReportedEmail,
+    sampleData: {
+      orderNumber: "LCM-2026-0190",
+      proposalNumber: "PROP-OP7K9M2P-V1",
+      contactName: CUSTOMER,
+      contactEmail: "camila@cafecordillera.co",
+      organizationName: "Café Cordillera S.A.S.",
+      methodLabel: "Llave Bre-B (pago inmediato)",
+      reference: "BREB-99482104",
+      totalCents: 425_000_00,
+      notes: "Transferencia enviada desde cuenta empresarial Bancolombia.",
+    },
+  }),
   // ──────────────────────── Administración ────────────────────────
   define({
     id: "fiscal-threshold-alert",
@@ -743,6 +794,13 @@ export const renderB2bInquiryReceivedEmail = withOverrides(
 export const renderB2bInquiryAdminNotificationEmail = withOverrides(
   "b2b-inquiry-admin-notification",
   b2bInquiryAdminNotificationEmail,
+);
+
+export const renderB2bProposalSentEmail = withOverrides("b2b-proposal-sent", b2bProposalSentEmail);
+
+export const renderB2bDirectPaymentReportedEmail = withOverrides(
+  "b2b-direct-payment-reported",
+  b2bDirectPaymentReportedEmail,
 );
 
 export const renderLifecycleMessageEmail = withOverrides(

@@ -109,6 +109,27 @@ describe("classifyStorageOrphan (reglas del one-shot 2026-10-12)", () => {
     ).toBeNull();
   });
 
+  it("ADR-210: b2b-proofs/ en design-previews y b2b-receipts/ en customer-uploads nunca son huérfanos de Design", () => {
+    expect(
+      classifyStorageOrphan(
+        "design-previews",
+        "b2b-proofs/prop_123/proof.webp",
+        daysAgo(400),
+        live,
+        NOW,
+      ),
+    ).toBeNull();
+    expect(
+      classifyStorageOrphan(
+        "customer-uploads",
+        "b2b-receipts/ord_123/receipt.webp",
+        daysAgo(400),
+        live,
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
   it("bucket desconocido nunca es huérfano", () => {
     expect(classifyStorageOrphan("cms-media", "x/y.jpg", daysAgo(999), new Set(), NOW)).toBeNull();
   });
