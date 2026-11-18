@@ -85,16 +85,16 @@ describe("CopiesQtyInput", () => {
     expect(qtyHidden().value).toBe("1");
   });
 
-  it("respeta el máximo 99 (tope de AddToCartSchema): + se deshabilita al llegar", () => {
+  it("respeta el máximo 100 (tope de compra directa ADR-209): + se deshabilita al llegar", () => {
     renderStepper();
     const unidades = screen.getByRole("group", { name: "Unidades" });
     const increase = screen.getByLabelText("Aumentar unidades");
 
-    for (let i = 0; i < 98; i++) {
+    for (let i = 0; i < 99; i++) {
       fireEvent.click(increase);
     }
-    expect(within(unidades).getByText("99")).toBeInTheDocument();
-    expect(qtyHidden().value).toBe("99");
+    expect(within(unidades).getByText("100")).toBeInTheDocument();
+    expect(qtyHidden().value).toBe("100");
     expect(increase).toBeDisabled();
     expect(screen.getByLabelText("Disminuir unidades")).toBeEnabled();
   });

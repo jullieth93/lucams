@@ -664,6 +664,7 @@ export async function listStorefrontVolumeTiers(productId: string) {
     },
     select: {
       productId: true,
+      variantId: true,
       minQty: true,
       unitPrice: true,
       isActive: true,

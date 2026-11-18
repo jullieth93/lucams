@@ -187,6 +187,7 @@ export default async function CheckoutGraciasPage({
             select: {
               id: true,
               qty: true,
+              designUnits: true,
               // E09 (GA4 purchase): precio unitario cobrado + SKU para los ítems del evento.
               unitPrice: true,
               designAssetUrl: true,
@@ -325,6 +326,7 @@ export default async function CheckoutGraciasPage({
               select: {
                 id: true,
                 qty: true,
+                designUnits: true,
                 // E09 (GA4 purchase): precio unitario cobrado + SKU para los ítems del evento.
                 unitPrice: true,
                 designAssetUrl: true,
@@ -443,6 +445,7 @@ async function ApprovedPage({
     items: {
       id: string;
       qty: number;
+      designUnits: number;
       unitPrice: number;
       designAssetUrl: string | null;
       variant: {
@@ -493,13 +496,16 @@ async function ApprovedPage({
           valueCents={order.total}
           shippingCents={order.shipping}
           taxCents={order.tax}
-          items={order.items.map((it) => ({
-            sku: it.variant.sku || it.variant.product.sku,
-            name: it.variant.product.name,
-            variantName: it.variant.name,
-            priceCents: it.unitPrice,
-            quantity: it.qty,
-          }))}
+          items={order.items.map((it) => {
+            const du = Math.max(1, it.designUnits);
+            return {
+              sku: it.variant.sku || it.variant.product.sku,
+              name: it.variant.product.name,
+              variantName: it.variant.name,
+              priceCents: Math.round(it.unitPrice / du),
+              quantity: it.qty * du,
+            };
+          })}
           funnelLines={order.items.map((it) => ({
             productSlug: it.variant.product.slug,
             editorKind: resolveFunnelEditorKind({
@@ -659,7 +665,9 @@ async function ApprovedPage({
                     )}
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       <span className="text-brand-purple-dark/70 text-xs font-semibold tabular-nums">
-                        ×{it.qty}
+                        {personalized && (it.designUnits > 1 || it.qty > 1)
+                          ? `${it.designUnits} ${it.designUnits === 1 ? "diseño" : "diseños"} × ${it.qty} ${it.qty === 1 ? "copia" : "copias"} (${it.designUnits * it.qty} ${unitNounPlural})`
+                          : `×${it.qty}`}
                       </span>
                       {personalized && (
                         <span className="bg-brand-purple/10 text-brand-purple inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold">

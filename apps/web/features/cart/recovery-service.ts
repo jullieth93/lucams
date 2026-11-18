@@ -84,6 +84,18 @@ const REMINDER_ROW_SELECT = {
       deletedAt: true,
       deletedBy: true,
       items: {
+        where: {
+          variant: {
+            isActive: true,
+            deletedAt: null,
+            product: {
+              isActive: true,
+              publishedOnStorefront: true,
+              deletedAt: null,
+              category: { isActive: true, deletedAt: null },
+            },
+          },
+        },
         select: {
           qty: true,
           variant: { select: { product: { select: { name: true } } } },

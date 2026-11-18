@@ -26,6 +26,7 @@ export type TierRowData = {
   id: string;
   minQty: number;
   unitPrice: number;
+  variantLabel?: string | null;
   note: string | null;
   isActive: boolean;
   createdLabel: string;
@@ -38,11 +39,15 @@ export function TierRow({
   tier,
   referencePrice,
   unitCost,
+  maxMinQty = 100,
+  unitPlural = "unidades",
   canEdit,
 }: {
   tier: TierRowData;
   referencePrice: number | null;
   unitCost: number | null;
+  maxMinQty?: number;
+  unitPlural?: string;
   canEdit: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -79,13 +84,13 @@ export function TierRow({
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[10rem_12rem_1fr_auto] sm:items-end">
               <label className="block">
                 <span className="text-brand-purple-dark mb-0.5 block text-[11px] font-semibold">
-                  Cantidad mínima
+                  Cantidad mínima (2–{maxMinQty})
                 </span>
                 <input
                   type="number"
                   name="minQty"
                   min={2}
-                  max={100000}
+                  max={maxMinQty}
                   required
                   defaultValue={tier.minQty}
                   className={inputClass}
@@ -159,12 +164,24 @@ export function TierRow({
   }
 
   return (
-    <AdminTableRow className={isBelowCost ? "bg-rose-50/40" : undefined}>
+    <AdminTableRow className={isBelowCost || tier.minQty > maxMinQty ? "bg-rose-50/40" : undefined}>
       <td className="px-4 py-3 align-top">
         <span className="text-brand-purple-dark block font-semibold tabular-nums">
-          {tier.minQty.toLocaleString("es-CO")}+ unidades
+          {tier.minQty.toLocaleString("es-CO")}
+          {tier.minQty >= maxMinQty ? "" : "+"} {unitPlural}
         </span>
-        <span className="text-brand-muted text-[11px] tabular-nums">
+        {tier.minQty > maxMinQty && (
+          <span className="mt-0.5 inline-flex items-center gap-1 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800">
+            <AlertTriangle className="h-3 w-3" />
+            Supera el tope de {maxMinQty} {unitPlural}
+          </span>
+        )}
+        {tier.variantLabel && (
+          <span className="bg-brand-purple/10 text-brand-purple-dark mt-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold">
+            Opción: {tier.variantLabel}
+          </span>
+        )}
+        <span className="text-brand-muted block text-[11px] tabular-nums">
           Mín. {formatCOP(tier.minQty * tier.unitPrice)}
         </span>
       </td>

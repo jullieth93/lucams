@@ -22,7 +22,17 @@ export type ProductOption = {
   basePrice: number; // centavos
   referencePrice: number; // centavos (precio mínimo de opción activa o basePrice)
   cost: number | null; // centavos BOM
-  activeTiers: Array<{ minQty: number; unitPrice: number }>;
+  maxMinQty: number;
+  unitPlural: string;
+  variants: Array<{
+    id: string;
+    name: string;
+    sku: string;
+    price: number;
+    maxMinQty: number;
+    unitPlural: string;
+  }>;
+  activeTiers: Array<{ variantId: string | null; minQty: number; unitPrice: number }>;
 };
 
 export function CreateTierForm({
@@ -42,41 +52,61 @@ export function CreateTierForm({
   );
 
   const [productId, setProductId] = useState(defaultProductId);
+  const [variantId, setVariantId] = useState("");
   const [minQtyRaw, setMinQtyRaw] = useState("");
   const [pricePesosRaw, setPricePesosRaw] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const selectedProduct = productId ? (products.find((p) => p.id === productId) ?? null) : null;
+  const selectedVariant =
+    selectedProduct && variantId
+      ? (selectedProduct.variants.find((v) => v.id === variantId) ?? null)
+      : null;
+  const effectiveRefPrice = selectedVariant
+    ? selectedVariant.price
+    : (selectedProduct?.referencePrice ?? null);
+  const effectiveMaxMinQty = selectedVariant
+    ? selectedVariant.maxMinQty
+    : (selectedProduct?.maxMinQty ?? 100);
+  const effectiveUnitPlural = selectedVariant
+    ? selectedVariant.unitPlural
+    : (selectedProduct?.unitPlural ?? "unidades");
   const minQty = Number.parseInt(minQtyRaw, 10);
   const pricePesos = Number(pricePesosRaw);
   const unitPriceCents =
     Number.isFinite(pricePesos) && pricePesos > 0 ? Math.round(pricePesos * 100) : 0;
 
-  const activeSiblings = selectedProduct ? selectedProduct.activeTiers : globalActiveTiers;
+  const activeSiblings = selectedProduct
+    ? selectedProduct.activeTiers
+        .filter((t) => t.variantId === (selectedVariant?.id ?? null))
+        .map((t) => ({ minQty: t.minQty, unitPrice: t.unitPrice }))
+    : globalActiveTiers;
   const liveViolation =
-    Number.isInteger(minQty) && minQty >= 2 && unitPriceCents >= 100
-      ? validateWholesaleTierCandidate({
-          minQty,
-          unitPrice: unitPriceCents,
-          willBeActive: isActive,
-          referencePrice: selectedProduct ? selectedProduct.referencePrice : null,
-          activeSiblings,
-        })
-      : null;
+    Number.isInteger(minQty) && minQty > effectiveMaxMinQty
+      ? ({ kind: "EXCEEDS_MAX_UNITS", maxAllowedQty: effectiveMaxMinQty } as const)
+      : Number.isInteger(minQty) && minQty >= 2 && unitPriceCents >= 100
+        ? validateWholesaleTierCandidate({
+            minQty,
+            unitPrice: unitPriceCents,
+            willBeActive: isActive,
+            referencePrice: effectiveRefPrice,
+            activeSiblings,
+            maxAllowedQty: effectiveMaxMinQty,
+          })
+        : null;
 
   const savingsPct =
-    selectedProduct &&
-    selectedProduct.referencePrice > 0 &&
+    effectiveRefPrice !== null &&
+    effectiveRefPrice > 0 &&
     unitPriceCents > 0 &&
-    unitPriceCents < selectedProduct.referencePrice
-      ? Math.max(
-          1,
-          Math.round(
-            ((selectedProduct.referencePrice - unitPriceCents) / selectedProduct.referencePrice) *
-              100,
-          ),
-        )
+    unitPriceCents < effectiveRefPrice
+      ? Math.max(1, Math.round(((effectiveRefPrice - unitPriceCents) / effectiveRefPrice) * 100))
       : null;
+
+  const distinctOptionPrices = selectedProduct
+    ? [...new Set(selectedProduct.variants.map((v) => v.price))]
+    : [];
+  const hasDifferentOptionPrices = distinctOptionPrices.length > 1;
 
   const costCents = selectedProduct?.cost ?? null;
   const marginCents = costCents !== null && unitPriceCents > 0 ? unitPriceCents - costCents : null;
@@ -88,7 +118,7 @@ export function CreateTierForm({
 
   return (
     <form action={formAction} className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
         <div>
           <label
             htmlFor="t-product"
@@ -100,7 +130,10 @@ export function CreateTierForm({
             id="t-product"
             name="productId"
             value={productId}
-            onChange={(e) => setProductId(e.target.value)}
+            onChange={(e) => {
+              setProductId(e.target.value);
+              setVariantId("");
+            }}
             className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-10 w-full rounded-lg border bg-white px-3 text-sm focus:ring-2 focus:outline-none"
           >
             <option value="">Todo el catálogo (global)</option>
@@ -114,7 +147,39 @@ export function CreateTierForm({
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.productId[0]}</p>
           )}
           <p className="text-brand-muted mt-1 text-xs">
-            Los niveles propios de un producto tienen prioridad sobre los globales.
+            Precedencia: opción específica &gt; producto completo &gt; global.
+          </p>
+        </div>
+
+        <div>
+          <label
+            htmlFor="t-variant"
+            className="text-brand-purple-dark/80 mb-1 block text-xs font-semibold"
+          >
+            Opción / tamaño (opcional)
+          </label>
+          <select
+            id="t-variant"
+            name="variantId"
+            value={variantId}
+            disabled={!selectedProduct || selectedProduct.variants.length <= 1}
+            onChange={(e) => setVariantId(e.target.value)}
+            className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-10 w-full rounded-lg border bg-white px-3 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+          >
+            <option value="">Todas las opciones del producto</option>
+            {(selectedProduct?.variants ?? []).map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name === "Default" ? "Única" : v.name} ({formatCOP(v.price)})
+              </option>
+            ))}
+          </select>
+          {state?.fieldErrors?.variantId && (
+            <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.variantId[0]}</p>
+          )}
+          <p className="text-brand-muted mt-1 text-xs">
+            {selectedProduct && hasDifferentOptionPrices && !variantId
+              ? "Este producto tiene opciones con distinto precio; puedes elegir una opción específica."
+              : "Elige una opción si cada tamaño maneja su propia escala."}
           </p>
         </div>
 
@@ -130,19 +195,21 @@ export function CreateTierForm({
             name="minQty"
             type="number"
             min={2}
-            max={100000}
+            max={effectiveMaxMinQty}
             step={1}
             required
             value={minQtyRaw}
             onChange={(e) => setMinQtyRaw(e.target.value)}
-            placeholder="10"
+            placeholder={String(Math.min(3, effectiveMaxMinQty))}
             className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-10 w-full rounded-lg border bg-white px-3 text-sm tabular-nums focus:ring-2 focus:outline-none"
           />
           {state?.fieldErrors?.minQty && (
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.minQty[0]}</p>
           )}
           <p className="text-brand-muted mt-1 text-xs">
-            A partir de cuántas unidades aplica este precio (entre 2 y 100.000).
+            {selectedProduct
+              ? `Permitido para esta opción: 2 a ${effectiveMaxMinQty} ${effectiveUnitPlural}.`
+              : `A partir de cuántas unidades aplica (entre 2 y ${effectiveMaxMinQty}).`}
           </p>
         </div>
 
@@ -192,18 +259,17 @@ export function CreateTierForm({
                 <Sparkles className="text-brand-purple h-3.5 w-3.5" />
                 Simulación en vivo
               </span>
-              {selectedProduct && (
+              {effectiveRefPrice !== null && (
                 <span className="text-brand-muted">
-                  Precio base:{" "}
+                  Precio base{selectedVariant ? ` (${selectedVariant.name})` : ""}:{" "}
                   <strong className="text-brand-purple-dark tabular-nums">
-                    {formatCOP(selectedProduct.referencePrice)}
+                    {formatCOP(effectiveRefPrice)}
                   </strong>
                 </span>
               )}
-              {savingsPct !== null && selectedProduct && (
+              {savingsPct !== null && effectiveRefPrice !== null && (
                 <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800 tabular-nums">
-                  −{savingsPct}% ({formatCOP(selectedProduct.referencePrice - unitPriceCents)}{" "}
-                  menos/u)
+                  −{savingsPct}% ({formatCOP(effectiveRefPrice - unitPriceCents)} menos/u)
                 </span>
               )}
               {Number.isInteger(minQty) && minQty >= 2 && unitPriceCents > 0 && (
@@ -268,11 +334,13 @@ export function CreateTierForm({
           {liveViolation && (
             <p className="mt-2 flex items-center gap-1.5 font-medium text-rose-700">
               <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-              {liveViolation.kind === "ABOVE_OR_EQUAL_BASE"
-                ? `No se puede guardar: el precio mayorista debe ser estrictamente menor a ${formatCOP(liveViolation.referencePrice)}.`
-                : liveViolation.kind === "INVERTED_HIGHER_QTY"
-                  ? `Escala invertida: a ${minQty}+ unidades el precio debe ser menor que el nivel activo de ${liveViolation.conflictMinQty}+ unidades (${formatCOP(liveViolation.conflictUnitPrice)}).`
-                  : `Escala invertida: a ${minQty}+ unidades el precio debe ser mayor que el nivel activo de ${liveViolation.conflictMinQty}+ unidades (${formatCOP(liveViolation.conflictUnitPrice)}).`}
+              {liveViolation.kind === "EXCEEDS_MAX_UNITS"
+                ? `No se puede guardar: el selector de este producto permite máximo ${liveViolation.maxAllowedQty} ${effectiveUnitPlural} (usa Empresas y Eventos para pedidos mayores).`
+                : liveViolation.kind === "ABOVE_OR_EQUAL_BASE"
+                  ? `No se puede guardar: el precio mayorista debe ser estrictamente menor a ${formatCOP(liveViolation.referencePrice)}.`
+                  : liveViolation.kind === "INVERTED_HIGHER_QTY"
+                    ? `Escala invertida: a ${minQty}+ ${effectiveUnitPlural} el precio debe ser menor que el nivel activo de ${liveViolation.conflictMinQty}+ (${formatCOP(liveViolation.conflictUnitPrice)}).`
+                    : `Escala invertida: a ${minQty}+ ${effectiveUnitPlural} el precio debe ser mayor que el nivel activo de ${liveViolation.conflictMinQty}+ (${formatCOP(liveViolation.conflictUnitPrice)}).`}
             </p>
           )}
 

@@ -13,7 +13,10 @@
  * componente de servidor como desde el formulario cliente.
  */
 
-import { readProductExperience } from "@/features/personalization/product-experience";
+import {
+  readProductExperience,
+  twoFaceConstructionForProduct,
+} from "@/features/personalization/product-experience";
 
 /** Cómo se llama la pieza física. Mismo criterio que la modal del Estudio. */
 export type PieceKind = "magnets" | "calendar" | "bookmarks" | "tiles" | "strips" | "ornaments";
@@ -83,7 +86,12 @@ export function pieceKindFor(
 ): PieceKind {
   if (readProductExperience(productSchema).experience === "christmas-ornament") return "ornaments";
   if (personalizationKind === "CALENDAR_PHOTO_MONTH") return "calendar";
-  if (personalizationKind === "BOOKMARK_PHOTO") return "bookmarks";
+  if (
+    personalizationKind === "BOOKMARK_PHOTO" ||
+    twoFaceConstructionForProduct(productSchema) === "folded-strip"
+  ) {
+    return "bookmarks";
+  }
   // Tiras photobooth: la variante se llama "Tira de N fotos…" — la unidad es la tira.
   if (variantName && /^\s*tira\b/i.test(variantName)) return "strips";
   // La variante "Sin imán" es lo único que distingue una ficha de un imán en los sets de letras.

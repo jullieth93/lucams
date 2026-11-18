@@ -704,8 +704,22 @@ export default async function AdminPedidoDetallePage({
 
                         <div className="text-brand-muted text-xs">
                           {canSeeMoney ? `${formatCOP(it.unitPrice)} c/u · ` : ""}
-                          cant. {it.qty} · <span className="font-mono">{it.variant.sku}</span>
+                          cant. {it.qty}
+                          {it.design && (it.designUnits > 1 || it.qty > 1)
+                            ? ` (${it.designUnits} ${it.designUnits === 1 ? "diseño" : "diseños"} × ${it.qty} ${it.qty === 1 ? "copia" : "copias"} = ${productionSpec?.unidadesFisicas ?? it.designUnits * it.qty} uds.)`
+                            : ""}{" "}
+                          · <span className="font-mono">{it.variant.sku}</span>
                         </div>
+
+                        {it.design && (it.designUnits > 1 || it.qty > 1) && (
+                          <div className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                            Producir y empacar: {it.designUnits}{" "}
+                            {it.designUnits === 1 ? "diseño" : "diseños"} × {it.qty}{" "}
+                            {it.qty === 1 ? "copia" : "copias"} ={" "}
+                            {productionSpec?.unidadesFisicas ?? it.designUnits * it.qty} uds.
+                            físicas
+                          </div>
+                        )}
 
                         {it.design?.productionUrls && it.design.productionUrls.length > 0 ? (
                           <div className="mt-1.5">
@@ -768,6 +782,7 @@ export default async function AdminPedidoDetallePage({
                                 <ProductionPiecesGallery
                                   pieces={galleryPieces}
                                   groups={galleryGroups}
+                                  copies={it.qty}
                                 />
                                 {galleryPieces.length === 0 && (
                                   <p className="text-brand-muted text-[11px]">

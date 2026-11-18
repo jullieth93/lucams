@@ -27,6 +27,8 @@ type SearchParams = Promise<{
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
+  unidades?: string;
+  producto?: string;
 }>;
 
 const BENEFITS = [
@@ -52,7 +54,7 @@ const BENEFITS = [
     icon: HeartHandshake,
     title: "Acompañamiento humano de principio a fin",
     detail:
-      "Validamos juntos tu muestra digital antes de pasar a producción y emitimos facturación para empresas.",
+      "Validamos juntos tu muestra digital antes de pasar a producción y entregamos documentación tributaria (cuenta de cobro o factura electrónica según corresponda).",
   },
 ] as const;
 
@@ -114,16 +116,17 @@ export default async function EmpresasYEventosPage({
                   ¿Por qué elegir Lucams para tu evento o empresa?
                 </h2>
                 <p className="text-brand-purple-dark/75 mt-2 text-sm">
-                  Si necesitas pocas unidades listas para diseñar hoy mismo, puedes comprarlas
-                  directo en nuestro{" "}
+                  Si buscas un pedido estándar de hasta 100 unidades con tus propias fotos, puedes
+                  comprarlo de inmediato con descuentos automáticos por cantidad en nuestro{" "}
                   <Link
                     href="/productos"
                     className="text-brand-purple font-semibold underline underline-offset-2"
                   >
                     catálogo online
                   </Link>
-                  . Si planeas un pedido por volumen o empaque corporativo, te acompañamos paso a
-                  paso.
+                  . Si necesitas integrar el logo de tu marca, muestra digital previa, empaque
+                  especial, documentación tributaria para empresas o más de 100 unidades, te
+                  acompañamos paso a paso desde 25 unidades.
                 </p>
               </div>
 
@@ -186,6 +189,8 @@ export default async function EmpresasYEventosPage({
                   initialUtmSource={sp.utm_source ?? ""}
                   initialUtmMedium={sp.utm_medium ?? ""}
                   initialUtmCampaign={sp.utm_campaign ?? ""}
+                  initialUnits={sp.unidades}
+                  initialProductSlug={sp.producto}
                 />
               </div>
             </div>

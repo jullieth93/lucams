@@ -54,26 +54,32 @@ export default async function CarritoPage() {
         <>
           <TrackViewCart
             valueCents={cart.subtotal}
-            items={cart.items.map((i) => ({
-              sku: i.variantSku,
-              name: i.productName,
-              variantName: i.variantName,
-              priceCents: i.unitPrice,
-              quantity: i.qty,
-            }))}
-          />
-          <Suspense fallback={null}>
-            <TrackPersonalizedAddToCart
-              fallbackItems={cart.items.map((i) => ({
-                designId: i.designId,
+            items={cart.items.map((i) => {
+              const du = Math.max(1, i.designUnits ?? 1);
+              return {
                 sku: i.variantSku,
                 name: i.productName,
                 variantName: i.variantName,
-                priceCents: i.unitPrice,
-                quantity: i.qty,
-                productSlug: i.productSlug,
-                editorKind: i.editorKind,
-              }))}
+                priceCents: Math.round(i.unitPrice / du),
+                quantity: i.qty * du,
+              };
+            })}
+          />
+          <Suspense fallback={null}>
+            <TrackPersonalizedAddToCart
+              fallbackItems={cart.items.map((i) => {
+                const du = Math.max(1, i.designUnits ?? 1);
+                return {
+                  designId: i.designId,
+                  sku: i.variantSku,
+                  name: i.productName,
+                  variantName: i.variantName,
+                  priceCents: Math.round(i.unitPrice / du),
+                  quantity: i.qty * du,
+                  productSlug: i.productSlug,
+                  editorKind: i.editorKind,
+                };
+              })}
             />
           </Suspense>
         </>
@@ -286,14 +292,18 @@ export default async function CarritoPage() {
                             editando el diseño. Líneas de catálogo simple conservan
                             el stepper. */}
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                            {item.designId ? (
+                            <QtyControls
+                              itemId={item.itemId}
+                              qty={item.qty}
+                              stock={item.stock}
+                              maxQty={item.maxQty}
+                            />
+                            {item.designId && (
                               <DesignUnitsLabel
                                 units={item.designUnits}
                                 qty={item.qty}
                                 noun={item.unitNoun}
                               />
-                            ) : (
-                              <QtyControls itemId={item.itemId} qty={item.qty} stock={item.stock} />
                             )}
                             <LowStockBadge qty={item.qty} stock={item.stock} />
                           </div>
@@ -434,10 +444,13 @@ function DesignUnitsLabel({
   qty: number;
   noun: UnitNoun;
 }) {
-  const total = (units ?? 1) * qty;
+  const perCopy = units ?? 1;
+  const total = perCopy * qty;
   return (
-    <span className="text-brand-purple-dark/80 text-sm font-medium tabular-nums">
-      {total} {total === 1 ? noun.singular : noun.plural}
+    <span className="text-brand-purple-dark/80 text-xs font-medium tabular-nums">
+      {qty > 1
+        ? `${perCopy} ${perCopy === 1 ? noun.singular : noun.plural} × ${qty} copias = ${total} ${total === 1 ? noun.singular : noun.plural}`
+        : `${total} ${total === 1 ? noun.singular : noun.plural}`}
     </span>
   );
 }
@@ -471,12 +484,14 @@ function QtyControls({
   itemId,
   qty,
   stock,
+  maxQty: lineMaxQty = 100,
 }: {
   itemId: string;
   qty: number;
   stock: number | null;
+  maxQty?: number;
 }) {
-  const maxQty = stock === null ? 99 : Math.min(99, Math.max(stock, 1));
+  const maxQty = stock === null ? lineMaxQty : Math.min(lineMaxQty, Math.max(stock, 1));
   return (
     <div className="border-brand-purple/20 inline-flex items-center rounded-md border bg-white">
       <form action={updateQtyAction}>

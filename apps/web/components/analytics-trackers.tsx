@@ -141,7 +141,7 @@ export function TrackAddToCartSuccess({
       const variantId = searchParams.get("cartVariant");
       const item = (variantId ? itemsByVariantId[variantId] : undefined) ?? fallbackItem;
       const qtyRaw = Number.parseInt(searchParams.get("cartQty") ?? "1", 10);
-      const quantity = Number.isFinite(qtyRaw) ? Math.min(99, Math.max(1, qtyRaw)) : 1;
+      const quantity = Number.isFinite(qtyRaw) ? Math.min(100, Math.max(1, qtyRaw)) : 1;
       trackEvent("add_to_cart", {
         currency: "COP",
         value: centsToCOP(item.priceCents * quantity),

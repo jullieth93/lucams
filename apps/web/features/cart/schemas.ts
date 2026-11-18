@@ -22,7 +22,7 @@ export const AddToCartSchema = z.object({
     .number({ message: "Cantidad inválida" })
     .int("Cantidad debe ser entero")
     .min(1, "Mínimo 1")
-    .max(99, "Máximo 99 por agregada"),
+    .max(100, "Máximo 100 por agregada"),
   returnTo: z
     .string()
     .max(500)
@@ -36,7 +36,7 @@ export type AddToCartInput = z.infer<typeof AddToCartSchema>;
 
 export const UpdateQtySchema = z.object({
   itemId: z.string().cuid("ID de ítem inválido"),
-  qty: z.number().int().min(0).max(99),
+  qty: z.number().int().min(0).max(100),
 });
 
 export type UpdateQtyInput = z.infer<typeof UpdateQtySchema>;

@@ -195,8 +195,8 @@ export const CanvasDataV2Schema = z
   .object({
     version: z.literal(2),
     unitTemplate: CanvasDataV1Schema,
-    slotCount: z.number().int().min(1).max(50), // soporte hasta 50 slots (calendarios + extreme cases)
-    slots: z.array(SlotStateSchema).max(50),
+    slotCount: z.number().int().min(1).max(60), // soporte hasta 60 slots (15 tiras × 4 fotos, ADR-209)
+    slots: z.array(SlotStateSchema).max(60),
     gridLayout: GridLayoutSchema,
     // Ola 2A — color del marco alrededor de la foto (estilo elegido en el Estudio; viaja a la
     // cotización y al render de producción). null = sin marco.
@@ -212,7 +212,7 @@ export const CanvasDataV2Schema = z
     // (features/products/photo-pack-resolve.ts). SIN catchall en este schema: Zod
     // stripea claves desconocidas, así que declararlas acá es lo que las hace
     // sobrevivir el auto-save.
-    photoSlots: z.number().int().min(1).max(50).optional(),
+    photoSlots: z.number().int().min(1).max(60).optional(),
     sizeCm: z.string().max(40).optional(),
     // Lucy 2026-09-08 — "¿Con imán?" en los packs de foto: la elección de la PDP
     // (dimensión `magnet` de la variante) persiste acá para que el carrito la incluya
@@ -229,8 +229,8 @@ export const CanvasDataV2Schema = z
     // Invariante: slotCount = unitCount × unitSlots; el editor solo los escribe cuando
     // unitSlots > 1 (los packs de imán suelto no los declaran — su variante YA es el pack).
     // El precio NUNCA confía en estos campos: se deriva de slotCount (design-units.ts).
-    unitCount: z.number().int().min(1).max(50).optional(),
-    unitSlots: z.number().int().min(1).max(50).optional(),
+    unitCount: z.number().int().min(1).max(60).optional(),
+    unitSlots: z.number().int().min(1).max(60).optional(),
     // Rediseño IG (owner 2026-10-05) — modo SIN BORDE de la Polaroid Instagram como
     // FLAG EXPLÍCITO (antes se infería por la geometría del image-placeholder:
     // comparación exacta contra el stage 450×600, frágil). true = foto a lo ancho
@@ -402,7 +402,7 @@ export const FinalizeDesignSchema = z
      * Uno por slot. Array de longitud === Design.slotCount. Cada elemento
      * es PNG 300 DPI del slot individual (para producción).
      */
-    productionDataUrls: z.array(DataUrlSchema).min(1).max(50),
+    productionDataUrls: z.array(DataUrlSchema).min(1).max(60),
   })
   .refine(
     (data) =>
@@ -486,7 +486,7 @@ export const BORDER_WIDTH_CONFIG_DEFAULTS: BorderWidthConfig = {
 };
 
 export const PhotoProductConfigSchema = z.object({
-  photoSlots: z.number().int().min(1).max(50),
+  photoSlots: z.number().int().min(1).max(60),
   aspectRatio: z.string().optional(),
   sizeCm: z.string().optional(),
   shape: z.enum(["rectangle", "circle", "heart", "custom"]).optional(),

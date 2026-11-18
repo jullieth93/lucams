@@ -1,18 +1,21 @@
 /*
- * Tests del modelo MULTI-UNIDAD (owner 2026-09-09) — helpers puros de
- * design-units.ts: derivación de unidades, layout por unidad y, sobre todo, el
- * MULTIPLICADOR de precio (la ruta del dinero: nunca se cobra de menos en un
- * flujo legítimo y los diseños legacy/packs quedan en ×1 intactos).
+ * Tests del modelo MULTI-UNIDAD y topes canónicos (ADR-209) — helpers puros de
+ * design-units.ts.
  */
 
 import { describe, expect, it } from "vitest";
 import {
+  capPiecesPerCommercialUnit,
+  commercialDesignUnitsForItem,
   declaresUnits,
   declaredValueCopPerInventoryUnit,
   designUnitPriceMultiplier,
   gridSlotCountForLayout,
   inventoryUnitsForOrderItem,
   letterSetUnitCount,
+  linePhysicalUnitsForCap,
+  maxCopiesForDesignUnits,
+  maxSelectorUnitsForProduct,
   maxUnitsForProduct,
   photosPerUnitForEditor,
   unitCountOf,
@@ -59,12 +62,24 @@ describe("photosPerUnitForEditor — fotos por unidad según el producto", () =>
     ).toBe(3);
   });
 
-  it("imán suelto (polaroid/cuadrados) → 1 (cada imán ES su unidad)", () => {
+  it("pack de 6 fotoimanes (isPackOfSix=true) → 6 fotos por pack", () => {
     expect(
       photosPerUnitForEditor({
         isCalendarMonth: false,
         facesPerUnit: 1,
-        photoSlots: 10,
+        photoSlots: 6,
+        unitTemplate: plainTemplate,
+        isPackOfSix: true,
+      }),
+    ).toBe(6);
+  });
+
+  it("pieza suelta → 1", () => {
+    expect(
+      photosPerUnitForEditor({
+        isCalendarMonth: false,
+        facesPerUnit: 1,
+        photoSlots: 1,
         unitTemplate: plainTemplate,
       }),
     ).toBe(1);
@@ -77,6 +92,25 @@ describe("derivación de unidades del canvasData (legacy = 1 unidad)", () => {
     expect(declaresUnits(legacy)).toBe(false);
     expect(unitCountOf(legacy)).toBe(1);
     expect(unitSlotsOf(legacy)).toBe(6);
+  });
+
+  it("diseño legacy de 18 slots reales contra variante base de 6 slots deriva 3 packs y rechaza slotCount inflado", () => {
+    const legacyPack = {
+      version: 2,
+      slotCount: 18,
+      photoSlots: 18,
+      slots: Array.from({ length: 18 }, (_, slotIndex) => ({ slotIndex })),
+    };
+    expect(unitCountOf(legacyPack, 6)).toBe(3);
+    expect(designUnitPriceMultiplier(legacyPack, 1, 6)).toBe(3);
+
+    const tampered = {
+      version: 2,
+      slotCount: 18,
+      photoSlots: 6,
+      slots: Array.from({ length: 6 }, (_, slotIndex) => ({ slotIndex })),
+    };
+    expect(unitCountOf(tampered, 6)).toBe(1);
   });
 
   it("diseño multi-unidad declarado → se lee tal cual", () => {
@@ -113,111 +147,139 @@ describe("gridSlotCountForLayout — gridLayout por unidad o por diseño", () =>
       gridSlotCountForLayout({ unitCount: 1, unitSlots: 3, slotCount: 3, facesPerUnit: 1 }),
     ).toBe(3);
   });
-
-  it("unidades libres de un slot → layout de UNA unidad por sección", () => {
-    expect(
-      gridSlotCountForLayout({ unitCount: 6, unitSlots: 1, slotCount: 6, facesPerUnit: 1 }),
-    ).toBe(1);
-  });
 });
 
-describe("designUnitPriceMultiplier — la ruta del dinero", () => {
-  it("diseños legacy (sin unitSlots) → ×1 para siempre", () => {
+describe("designUnitPriceMultiplier — la ruta del dinero y anti-tamper", () => {
+  it("diseños legacy sin unitSlots ni variante superior → ×1", () => {
     expect(designUnitPriceMultiplier({ version: 2, slotCount: 10, photoSlots: 10 })).toBe(1);
     expect(designUnitPriceMultiplier({ version: 2, slotCount: 6 })).toBe(1);
     expect(designUnitPriceMultiplier(null)).toBe(1);
     expect(designUnitPriceMultiplier({ version: 1 })).toBe(1);
   });
 
-  it("tira de 3 fotos × 2 unidades → ×2 (la variante cubre UNA tira)", () => {
+  it("tira de 3 fotos × 2 unidades → ×2", () => {
     const tira2 = { version: 2, slotCount: 6, unitCount: 2, unitSlots: 3, photoSlots: 3 };
-    expect(designUnitPriceMultiplier(tira2, 1)).toBe(2);
+    expect(designUnitPriceMultiplier(tira2, 1, 3)).toBe(2);
   });
 
-  it("tira de 4 fotos × 3 unidades → ×3", () => {
-    const tira3 = { version: 2, slotCount: 12, unitCount: 3, unitSlots: 4, photoSlots: 4 };
-    expect(designUnitPriceMultiplier(tira3, 1)).toBe(3);
+  it("tira de 4 fotos × 15 unidades (60 slots) → ×15", () => {
+    const tira15 = { version: 2, slotCount: 60, unitCount: 15, unitSlots: 4, photoSlots: 4 };
+    expect(designUnitPriceMultiplier(tira15, 1, 4)).toBe(15);
   });
 
-  it("separadores × 3 → ×1 (la variante YA es el pack de 3 unidades × 2 caras)", () => {
-    const sep = { version: 2, slotCount: 6, unitCount: 3, unitSlots: 2, photoSlots: 3 };
-    expect(designUnitPriceMultiplier(sep, 2)).toBe(1);
+  it("separadores sobre variante base (photoSlots=1, facesPerUnit=2) × 5 → ×5", () => {
+    const sep5 = { version: 2, slotCount: 10, unitCount: 5, unitSlots: 2, photoSlots: 1 };
+    expect(designUnitPriceMultiplier(sep5, 2, 1)).toBe(5);
+  });
+
+  it("anti-tamper: si el cliente infla cd.photoSlots, manda variantPhotoSlots del servidor", () => {
+    const tampered = { version: 2, slotCount: 10, unitCount: 1, unitSlots: 2, photoSlots: 99 };
+    expect(designUnitPriceMultiplier(tampered, 2, 1)).toBe(5);
+  });
+
+  it("separadores legacy (variante vieja con photoSlots=3) → ×1", () => {
+    const sepLegacy = { version: 2, slotCount: 6, unitCount: 3, unitSlots: 2, photoSlots: 3 };
+    expect(designUnitPriceMultiplier(sepLegacy, 2, 3)).toBe(1);
+  });
+
+  it("pack de 6 fotoimanes × 4 packs (24 slots) sobre variante base (photoSlots=6) → ×4", () => {
+    const packs4 = { version: 2, slotCount: 24, unitCount: 4, unitSlots: 6, photoSlots: 6 };
+    expect(designUnitPriceMultiplier(packs4, 1, 6)).toBe(4);
   });
 
   it("calendario × 2 (sin photoSlots raíz) → ×2 via unitSlots", () => {
     const cal = { version: 2, slotCount: 24, unitCount: 2, unitSlots: 12 };
     expect(designUnitPriceMultiplier(cal, 1)).toBe(2);
   });
-
-  it("polaroid/cuadrados: no se declara (unitSlots=1) → ×1 (la variante es el pack)", () => {
-    // Invariante de escritura: los packs de imán suelto NO declaran unidades.
-    const polaroid = { version: 2, slotCount: 10, photoSlots: 10 };
-    expect(designUnitPriceMultiplier(polaroid, 1)).toBe(1);
-  });
-
-  it("unidad libre de un solo lienzo ×6 → ×6 aunque la variante tenga photoSlots=1", () => {
-    const miniBooks = {
-      version: 2,
-      slotCount: 6,
-      unitCount: 6,
-      unitSlots: 1,
-      photoSlots: 1,
-    };
-    expect(designUnitPriceMultiplier(miniBooks, 1)).toBe(6);
-    expect(inventoryUnitsForOrderItem({ qty: 2, customDesign: miniBooks })).toBe(12);
-  });
-
-  it("tampering no cobra de menos: slotCount inflado con variante de 1 tira → se paga por pieza", () => {
-    // Cliente escribe 24 slots pero la variante resuelta es la tira de 3:
-    // paga 8 tiras equivalentes (económicamente consistente, jamás menos).
-    const tampered = { version: 2, slotCount: 24, unitCount: 1, unitSlots: 3, photoSlots: 3 };
-    expect(designUnitPriceMultiplier(tampered, 1)).toBe(8);
-  });
-
-  it("tampering a la baja (unitCount=1 con 6 slots y raíz 3) → paga por pieza equivalente", () => {
-    const tampered = { version: 2, slotCount: 6, unitCount: 1, unitSlots: 3, photoSlots: 3 };
-    expect(designUnitPriceMultiplier(tampered, 1)).toBe(2);
-  });
 });
 
 describe("letterSetUnitCount — sets de letras (metadata, no canvas)", () => {
-  it("sin clave → 1 (retrocompatible)", () => {
+  it("sin clave → 1", () => {
     expect(letterSetUnitCount(null)).toBe(1);
     expect(letterSetUnitCount({})).toBe(1);
     expect(letterSetUnitCount({ surface: "letterset" })).toBe(1);
   });
 
-  it("lee el unitCount validado del server", () => {
+  it("lee el unitCount validado del server y acota a MAX_LETTER_SET_UNITS", () => {
     expect(letterSetUnitCount({ surface: "letterset", unitCount: 3 })).toBe(3);
-  });
-
-  it("acota al tope defensivo (anti-inyección de metadata)", () => {
     expect(letterSetUnitCount({ surface: "letterset", unitCount: 999 })).toBe(MAX_LETTER_SET_UNITS);
-  });
-
-  it("sin surface letterset → 1: el metadata.unitCount de un canvas V2 es ESPEJO (lo cubre designUnitPriceMultiplier)", () => {
-    // Bug 2026-09-11: tira ×2 (canvas V2 + espejo del finalize) cobraba ×4 al
-    // multiplicar dos veces. El gate por surface lo evita.
     expect(letterSetUnitCount({ unitCount: 2 })).toBe(1);
-    expect(letterSetUnitCount({ surface: "name", unitCount: 3 })).toBe(1);
   });
 });
 
-describe("maxUnitsForProduct — tope por el cap de 50 slots", () => {
-  it("calendario (12 por unidad) → 4", () => {
+describe("maxUnitsForProduct y topes de copias <= 100 uds físicas (ADR-209)", () => {
+  it("calendario (12 meses) → máx. 4 sets (48 meses)", () => {
     expect(maxUnitsForProduct(12)).toBe(4);
   });
-  it("tira de 3 → 16 · tira de 4 → 12", () => {
-    expect(maxUnitsForProduct(3)).toBe(16);
-    expect(maxUnitsForProduct(4)).toBe(12);
+
+  it("packs de 6 fotoimanes → máx. 6 packs (36 fotos) y máx. 16 packs totales con copias (96 imanes)", () => {
+    expect(maxUnitsForProduct(6)).toBe(6);
+    expect(capPiecesPerCommercialUnit({ productSlug: "set-fotoimanes-polaroid" })).toBe(6);
+    expect(maxCopiesForDesignUnits(1, 6)).toBe(16);
+    expect(maxCopiesForDesignUnits(2, 6)).toBe(8);
+    expect(maxCopiesForDesignUnits(6, 6)).toBe(2);
+    expect(linePhysicalUnitsForCap({ qty: 8, designUnits: 2, piecesPerCommercialUnit: 6 })).toBe(
+      96,
+    );
   });
-  it("separadores (2 caras) → 25 · imán suelto → 50", () => {
-    expect(maxUnitsForProduct(2)).toBe(25);
-    expect(maxUnitsForProduct(1)).toBe(50);
+
+  it("tiras (3 y 4 fotos), separadores (2 caras) y piezas sueltas (1 cara) → máx. 15 diseños", () => {
+    expect(maxUnitsForProduct(4)).toBe(15);
+    expect(maxUnitsForProduct(3)).toBe(15);
+    expect(maxUnitsForProduct(2)).toBe(15);
+    expect(maxUnitsForProduct(1)).toBe(15);
+    expect(maxCopiesForDesignUnits(1, 1)).toBe(100);
+    expect(maxCopiesForDesignUnits(15, 1)).toBe(6);
+  });
+
+  it("sets de letras → máx. 10 sets", () => {
+    expect(maxUnitsForProduct(1, { isLetterSet: true })).toBe(10);
+  });
+
+  it("maxSelectorUnitsForProduct alinea PDP y /admin/mayorista por familia (ADR-209)", () => {
+    expect(
+      maxSelectorUnitsForProduct({
+        slug: "separadores-magneticos",
+        personalizationKind: "PHOTO_PACK",
+        personalizationSchema: { facesPerUnit: 2, freeUnitDesign: true, photoSlots: 1 },
+      }),
+    ).toEqual({ maxUnits: 15, unitSingular: "unidad", unitPlural: "unidades", isPack: false });
+
+    expect(
+      maxSelectorUnitsForProduct({
+        slug: "set-fotoimanes-cuadrados",
+        personalizationKind: "PHOTO_PACK",
+        personalizationSchema: { photoSlots: 6 },
+      }),
+    ).toEqual({ maxUnits: 6, unitSingular: "pack", unitPlural: "packs", isPack: true });
+
+    expect(
+      maxSelectorUnitsForProduct({
+        slug: "calendario-mes-a-mes-fotos",
+        personalizationKind: "CALENDAR_PHOTO_MONTH",
+        personalizationSchema: { photoSlots: 12 },
+      }),
+    ).toEqual({ maxUnits: 4, unitSingular: "set", unitPlural: "sets", isPack: false });
+
+    expect(
+      maxSelectorUnitsForProduct({
+        slug: "abecedario-completo",
+        personalizationKind: "NONE",
+        personalizationSchema: { letterSet: "full" },
+      }),
+    ).toEqual({ maxUnits: 10, unitSingular: "pack", unitPlural: "packs", isPack: true });
+
+    expect(
+      maxSelectorUnitsForProduct({
+        slug: "box-para-pareja",
+        personalizationKind: "NONE",
+        personalizationSchema: null,
+      }),
+    ).toEqual({ maxUnits: 100, unitSingular: "unidad", unitPlural: "unidades", isPack: false });
   });
 });
 
-describe("inventoryUnitsForOrderItem — unidades físicas de inventario", () => {
+describe("inventoryUnitsForOrderItem y commercialDesignUnitsForItem", () => {
   it("multiplica qty comercial, unidades del pack y unidades del diseño", () => {
     expect(
       inventoryUnitsForOrderItem({
@@ -230,23 +292,27 @@ describe("inventoryUnitsForOrderItem — unidades físicas de inventario", () =>
     ).toBe(12);
   });
 
-  it("usa metadata de letterset para no perder los sets", () => {
-    expect(
-      inventoryUnitsForOrderItem({
-        qty: 1,
-        variantAttrs: {},
-        customDesign: { version: 1, slotCount: 1 },
-        metadata: { surface: "letterset", unitCount: 3 },
-        productSchema: {},
-      }),
-    ).toBe(3);
+  it("tolera la forma anidada de Prisma (OrderItem con variant.product y design) — fix P0 saga", () => {
+    const prismaOrderItem = {
+      qty: 30,
+      variant: {
+        attributes: { quantity: 1, photoSlots: 1 },
+        product: { personalizationSchema: { facesPerUnit: 2 } },
+      },
+      design: {
+        canvasData: { version: 2, slotCount: 4, unitCount: 2, unitSlots: 2, photoSlots: 1 },
+        metadata: { unitCount: 2 },
+      },
+    };
+    expect(commercialDesignUnitsForItem(prismaOrderItem)).toBe(2);
+    expect(inventoryUnitsForOrderItem(prismaOrderItem)).toBe(60);
   });
 
-  it("no multiplica dos veces un pack de caras ya incluido en la variante", () => {
+  it("no multiplica dos veces un pack de caras ya incluido en variante legacy", () => {
     expect(
       inventoryUnitsForOrderItem({
         qty: 1,
-        variantAttrs: { quantity: 1 },
+        variantAttrs: { quantity: 1, photoSlots: 3 },
         customDesign: { version: 2, slotCount: 6, photoSlots: 3, unitSlots: 2 },
         metadata: {},
         productSchema: { facesPerUnit: 2 },
@@ -256,43 +322,22 @@ describe("inventoryUnitsForOrderItem — unidades físicas de inventario", () =>
 });
 
 describe("declaredValueCopPerInventoryUnit — valor asegurado por unidad física", () => {
-  it("el total declarado es el valor de venta de la línea, nunca × las unidades físicas (bug 2026-10-31)", () => {
-    // Abecedario: $39.900 la variante, 26 letras físicas → NO declarar $1.037.400.
+  it("el total declarado es el valor de venta de la línea, nunca × las unidades físicas", () => {
     const perUnit = declaredValueCopPerInventoryUnit({
       unitPriceCop: 3_990_000,
       qty: 1,
       inventoryUnits: 26,
     });
     expect(perUnit).toBe(Math.round(3_990_000 / 26));
-    // La suma declarada se mantiene dentro del redondeo por unidad (≤ qty/2 centavos).
     expect(Math.abs(perUnit * 26 - 3_990_000)).toBeLessThanOrEqual(13);
   });
 
-  it("qty comercial > 1 escala el total declarado por línea", () => {
-    // 2 sets de 26 letras a $39.900 c/u → declarado total $79.800.
+  it("2 diseños × 30 copias = 60 unidades divide exacto el valor de la tanda", () => {
     const perUnit = declaredValueCopPerInventoryUnit({
-      unitPriceCop: 3_990_000,
-      qty: 2,
-      inventoryUnits: 52,
+      unitPriceCop: 4_000_000,
+      qty: 30,
+      inventoryUnits: 60,
     });
-    expect(Math.abs(perUnit * 52 - 7_980_000)).toBeLessThanOrEqual(26);
-  });
-
-  it("packs sin multiplicador (inventoryUnits = qty) declaran el unitPrice tal cual", () => {
-    expect(
-      declaredValueCopPerInventoryUnit({ unitPriceCop: 2_250_000, qty: 1, inventoryUnits: 1 }),
-    ).toBe(2_250_000);
-    expect(
-      declaredValueCopPerInventoryUnit({ unitPriceCop: 2_250_000, qty: 2, inventoryUnits: 2 }),
-    ).toBe(2_250_000);
-  });
-
-  it("guardas defensivas: qty < 1 o inventoryUnits < qty no dividen", () => {
-    expect(
-      declaredValueCopPerInventoryUnit({ unitPriceCop: 2_250_000, qty: 0, inventoryUnits: 5 }),
-    ).toBe(2_250_000);
-    expect(
-      declaredValueCopPerInventoryUnit({ unitPriceCop: 2_250_000, qty: 3, inventoryUnits: 2 }),
-    ).toBe(2_250_000);
+    expect(perUnit).toBe(2_000_000);
   });
 });

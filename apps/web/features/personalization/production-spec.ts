@@ -369,7 +369,7 @@ function describirFormato(
             "Alinea ambas caras por el centro de una MISMA pieza dúplex y recorta el contorno circular de 8 cm.",
             "Mantén el inserto plano y centrado dentro de la esfera; no unas dos impresiones para formar otra unidad ni curves la pieza.",
             "Cierra la esfera y coloca la cinta sin forzar el inserto.",
-            "⚠️ Esta variante va SIN imán: no le pegues imán.",
+            ...pegarImán,
           ],
         };
       }
@@ -379,7 +379,7 @@ function describirFormato(
           "Imprime y recorta cada foto por su contorno circular de 8 cm.",
           "Mantén el inserto plano y centrado dentro de la esfera; no lo curves ni lo pegues contra la carcasa.",
           "Cierra la esfera y coloca la tapa y la cinta sin forzar el inserto.",
-          "⚠️ Esta variante va SIN imán: no le pegues imán.",
+          ...pegarImán,
         ],
       };
     }
@@ -415,14 +415,18 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   // Multiplicador de pack: "Set Notas Magnéticas ×2" son 8 imanes, no 2. 101 variantes lo traen y
   // hasta hoy no lo leía nadie.
   const piezasPorPack = n(attrs.quantity) ?? 1;
-  // Multi-unidad (2026-09-09): el DISEÑO puede contener N unidades cuando la variante
-  // cubre UNA (tiras, calendarios, sets de letras ×N). Mismo multiplicador que el
-  // precio en el carrito (design-units.ts) — imprenta debe fabricar TODAS las
-  // unidades de la línea. Packs (polaroid/separadores) → 1: la variante ya es el pack.
+  const variantPhotoSlots = n(attrs.photoSlots);
+  const facesPerUnit = n(e.productSchema?.facesPerUnit) ?? 1;
   const designUnits =
-    designUnitPriceMultiplier(e.canvasData, n(e.productSchema?.facesPerUnit) ?? 1) *
+    designUnitPriceMultiplier(e.canvasData, facesPerUnit, variantPhotoSlots) *
     letterSetUnitCount(e.designMetadata);
-  const unidadesFisicas = e.lineQty * piezasPorPack * designUnits;
+  const piezasPorUnidadComercial =
+    piezasPorPack > 1
+      ? piezasPorPack
+      : e.personalizationKind === "PHOTO_PACK" && variantPhotoSlots === 6 && facesPerUnit === 1
+        ? 6
+        : 1;
+  const unidadesFisicas = e.lineQty * piezasPorUnidadComercial * designUnits;
 
   // `magnet: false` existe en 33 variantes (los sets de letras y el nombre se venden en las dos
   // versiones). Por defecto SÍ lleva: es lo que vende la tienda.
@@ -446,6 +450,11 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
         })
       : [];
   const pasos = [...pasosBase];
+  if (e.lineQty > 1) {
+    pasos.push(
+      `⚠️ Repite este juego completo ${e.lineQty} veces (${e.lineQty} copias iguales solicitadas — ${unidadesFisicas} unidad(es) física(s) en total).`,
+    );
+  }
 
   const especificaciones: DatoDeFicha[] = [];
   // La medida sale de la VARIANTE. `physicalSpecs` describe el EMPAQUE y engaña: el abecedario dice

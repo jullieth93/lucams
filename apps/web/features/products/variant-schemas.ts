@@ -17,13 +17,13 @@
  */
 
 import { z } from "zod";
-import { readProductExperience } from "@/features/personalization/product-experience";
+import { twoFaceConstructionForProduct } from "@/features/personalization/product-experience";
 
 export const ProductVariantAttributesSchema = z.object({
   /** Tamaño físico del producto. Override de product.personalizationSchema.sizeCm. */
   sizeCm: z.string().optional(),
   /** Cantidad de slots de foto. Override de product.personalizationSchema.photoSlots. */
-  photoSlots: z.number().int().min(1).max(50).optional(),
+  photoSlots: z.number().int().min(1).max(60).optional(),
   /**
    * Cantidad de UNIDADES del set/pack (distinto de photoSlots). Ej: recordatorios
    * pre-armados x20 invitados, separadores x10, mini calendarios x20. Cada unidad
@@ -642,10 +642,17 @@ export function describeVariantAttributes(
   attrs: ProductVariantAttributes,
   productSchema?: unknown,
 ): string[] {
-  if (readProductExperience(productSchema).experience === "christmas-ornament") {
+  const twoFace = twoFaceConstructionForProduct(productSchema);
+  if (twoFace === "duplex") {
     return [
       ...describeVariantAttributes({ ...attrs, quantity: undefined, photoSlots: undefined }),
       "Dúplex: frente y reverso",
+    ];
+  }
+  if (twoFace === "folded-strip" && (attrs.quantity ?? 1) === 1 && (attrs.photoSlots ?? 1) === 1) {
+    return [
+      ...describeVariantAttributes({ ...attrs, quantity: undefined, photoSlots: undefined }),
+      "Doble cara",
     ];
   }
   const parts: string[] = [];

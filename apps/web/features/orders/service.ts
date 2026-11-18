@@ -48,7 +48,10 @@ import {
 import { computeShippingAddressKey } from "@/features/checkout/address-key";
 import { consolidateIdenticalLines } from "@/features/cart/design-identity";
 import { isPurchasableVariant } from "@/features/products/storefront-visibility";
-import { inventoryUnitsForOrderItem } from "@/features/personalization/design-units";
+import {
+  commercialDesignUnitsForItem,
+  inventoryUnitsForOrderItem,
+} from "@/features/personalization/design-units";
 import { hashBearerToken } from "@/lib/token-hash";
 import { resolveOrderContactTx } from "@/features/identity/resolution-service";
 import { resolveOrderCustomerId } from "./order-customer";
@@ -508,9 +511,18 @@ async function createOrderFromCartTx(
             },
           }
         : (baseMeta as Prisma.InputJsonValue);
+      const designUnits = ci.designId
+        ? commercialDesignUnitsForItem({
+            customDesign: ci.design?.canvasData ?? ci.customDesign,
+            metadata: ci.design?.metadata ?? ci.metadata,
+            variantAttrs: ci.variant.attributes,
+            productSchema: ci.variant.product.personalizationSchema,
+          })
+        : 1;
       return {
         variantId: ci.variantId,
         qty: ci.qty,
+        designUnits,
         unitPrice: ci.unitPrice,
         // Garantía inmutable de esta compra: una edición futura del producto
         // nunca reduce el término anunciado y aceptado al confirmar el pedido.
@@ -877,6 +889,7 @@ export async function transitionOrder(
             select: {
               variantId: true,
               qty: true,
+              designUnits: true,
               customDesign: true,
               metadata: true,
               variant: {

@@ -1,29 +1,31 @@
 /*
- * Unit tests del helper puro de precio por volumen (WholesaleTier → carrito).
+ * Unit tests del helper puro de precio por volumen (WholesaleTier → carrito, ADR-209).
  *
- * Regla de negocio (2026-10-02): descuento por volumen PÚBLICO, para todos los
- * clientes (invitados incluidos). `unitPrice` del tier es ABSOLUTO (centavos
- * COP) y REEMPLAZA el unitPrice de la línea. Precedencia: niveles propios del
- * producto > globales (productId null). Gana el mayor minQty <= qty. Nunca
- * subir el precio (tier >= base → no aplica).
+ * Precedencia estricta:
+ *   opción específica (`variantId`) > producto (`productId`, `variantId: null`) > global (`productId: null`).
+ * Solo aplican niveles con `minQty >= 2` y `unitPrice < base`.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   applyVolumePricing,
-  derivePackVolumeTiers,
+  formatVolumeTierQtyLabel,
   resolveVisibleVolumeTiers,
   resolveVolumeTierPrice,
+  unitPriceWithVolumeTier,
   validateWholesaleTierCandidate,
   type VolumeTierInput,
 } from "./volume-pricing";
 
 const PRODUCT = "prod_1";
 const OTRO = "prod_2";
+const VAR_SMALL = "var_4x4";
+const VAR_LARGE = "var_7x7";
 
 function tier(partial: Partial<VolumeTierInput> & Pick<VolumeTierInput, "minQty" | "unitPrice">) {
   return {
     productId: null,
+    variantId: null,
     isActive: true,
     deletedAt: null,
     ...partial,
@@ -45,318 +47,145 @@ describe("resolveVolumeTierPrice", () => {
     expect(resolveVolumeTierPrice(tiers, PRODUCT, 10)).toBeNull();
   });
 
-  it("el tier propio del producto GANA al global aunque el global sea más barato", () => {
+  it("precedencia 3 niveles: opción específica (variantId) > producto > global", () => {
     const tiers = [
-      tier({ minQty: 3, unitPrice: 8_000 }), // global más generoso
-      tier({ productId: PRODUCT, minQty: 3, unitPrice: 9_500 }), // propio
+      tier({ minQty: 2, unitPrice: 18_000 }), // global
+      tier({ productId: PRODUCT, minQty: 2, unitPrice: 21_000 }), // producto general
+      tier({ productId: PRODUCT, variantId: VAR_LARGE, minQty: 2, unitPrice: 33_800 }), // opción 7×7
     ];
-    expect(resolveVolumeTierPrice(tiers, PRODUCT, 3)).toBe(9_500);
+    // VAR_LARGE usa su escala propia ($33.800) y jamás cae al $21.000 de otra opción más chica.
+    expect(resolveVolumeTierPrice(tiers, PRODUCT, 2, VAR_LARGE)).toBe(33_800);
+    // VAR_SMALL no tiene escala propia → hereda la escala del producto ($21.000).
+    expect(resolveVolumeTierPrice(tiers, PRODUCT, 2, VAR_SMALL)).toBe(21_000);
   });
 
-  it("producto con tiers propios: NO mira los globales aunque ningún tier propio alcance el umbral", () => {
+  it("opción con tiers propios hace sombra sobre los del producto aunque no alcance el umbral", () => {
     const tiers = [
-      tier({ minQty: 2, unitPrice: 8_000 }), // global alcanzable
-      tier({ productId: PRODUCT, minQty: 50, unitPrice: 9_000 }), // propio fuera de alcance
+      tier({ productId: PRODUCT, minQty: 2, unitPrice: 21_000 }),
+      tier({ productId: PRODUCT, variantId: VAR_LARGE, minQty: 4, unitPrice: 30_600 }),
+    ];
+    expect(resolveVolumeTierPrice(tiers, PRODUCT, 2, VAR_LARGE)).toBeNull();
+    expect(resolveVolumeTierPrice(tiers, PRODUCT, 4, VAR_LARGE)).toBe(30_600);
+  });
+
+  it("producto con tiers propios hace sombra sobre globales aunque no alcance el umbral", () => {
+    const tiers = [
+      tier({ minQty: 2, unitPrice: 8_000 }),
+      tier({ productId: PRODUCT, minQty: 50, unitPrice: 9_000 }),
     ];
     expect(resolveVolumeTierPrice(tiers, PRODUCT, 10)).toBeNull();
-  });
-
-  it("umbral exacto: qty == minQty aplica el nivel", () => {
-    const tiers = [tier({ minQty: 12, unitPrice: 7_500 })];
-    expect(resolveVolumeTierPrice(tiers, PRODUCT, 12)).toBe(7_500);
-  });
-
-  it("una unidad por debajo del umbral NO aplica", () => {
-    const tiers = [tier({ minQty: 12, unitPrice: 7_500 })];
-    expect(resolveVolumeTierPrice(tiers, PRODUCT, 11)).toBeNull();
   });
 
   it("entre umbrales: gana el MAYOR minQty <= qty", () => {
     const tiers = [
-      tier({ minQty: 5, unitPrice: 9_000 }),
-      tier({ minQty: 20, unitPrice: 7_000 }),
+      tier({ minQty: 3, unitPrice: 9_000 }),
+      tier({ minQty: 12, unitPrice: 7_500 }),
       tier({ minQty: 50, unitPrice: 6_000 }),
     ];
-    expect(resolveVolumeTierPrice(tiers, PRODUCT, 25)).toBe(7_000);
-    expect(resolveVolumeTierPrice(tiers, PRODUCT, 50)).toBe(6_000);
-    expect(resolveVolumeTierPrice(tiers, PRODUCT, 99)).toBe(6_000);
+    expect(resolveVolumeTierPrice(tiers, PRODUCT, 2)).toBeNull();
+    expect(resolveVolumeTierPrice(tiers, PRODUCT, 12)).toBe(7_500);
+    expect(resolveVolumeTierPrice(tiers, PRODUCT, 60)).toBe(6_000);
   });
 
-  it("tiers desordenados: el ganador es por minQty, no por orden de llegada", () => {
-    const tiers = [
-      tier({ minQty: 50, unitPrice: 6_000 }),
-      tier({ minQty: 5, unitPrice: 9_000 }),
-      tier({ minQty: 20, unitPrice: 7_000 }),
-    ];
-    expect(resolveVolumeTierPrice(tiers, PRODUCT, 30)).toBe(7_000);
-  });
-
-  it("tiers inactivos o soft-eliminados quedan fuera (filtro defensivo del helper)", () => {
-    const tiers = [
-      tier({ minQty: 5, unitPrice: 9_000, isActive: false }),
-      tier({ minQty: 5, unitPrice: 8_500, deletedAt: new Date("2026-09-01") }),
-    ];
-    expect(resolveVolumeTierPrice(tiers, PRODUCT, 10)).toBeNull();
-  });
-
-  it("minQty inválido (<= 0) se ignora: la DB lo impide con CHECK, el helper no confía", () => {
-    const tiers = [tier({ minQty: 0, unitPrice: 1 })];
+  it("minQty < 2 o qty < 2 nunca aplican (paridad de precio unitario en tienda y feeds)", () => {
+    const tiers = [tier({ minQty: 1, unitPrice: 5_000 }), tier({ minQty: 2, unitPrice: 8_000 })];
     expect(resolveVolumeTierPrice(tiers, PRODUCT, 1)).toBeNull();
-  });
-
-  it("qty < 1 → null", () => {
-    const tiers = [tier({ minQty: 1, unitPrice: 9_000 })];
-    expect(resolveVolumeTierPrice(tiers, PRODUCT, 0)).toBeNull();
+    expect(resolveVolumeTierPrice(tiers, PRODUCT, 2)).toBe(8_000);
   });
 });
 
-describe("applyVolumePricing", () => {
-  it("sin tiers → devuelve el base intacto", () => {
-    expect(applyVolumePricing(12_000, [], PRODUCT, 50)).toBe(12_000);
-  });
-
-  it("qty=1 sin tier de minQty 1 → base", () => {
-    const tiers = [tier({ minQty: 5, unitPrice: 9_000 })];
-    expect(applyVolumePricing(12_000, tiers, PRODUCT, 1)).toBe(12_000);
-  });
-
-  it("qty=1 con tier de minQty 1 → aplica (descuento desde la primera unidad)", () => {
-    const tiers = [tier({ minQty: 1, unitPrice: 11_000 })];
-    expect(applyVolumePricing(12_000, tiers, PRODUCT, 1)).toBe(11_000);
-  });
-
-  it("el tier REEMPLAZA el unitPrice de la línea (precio absoluto, no descuento)", () => {
-    const tiers = [tier({ minQty: 10, unitPrice: 9_990 })];
-    expect(applyVolumePricing(12_000, tiers, PRODUCT, 10)).toBe(9_990);
-  });
-
-  it("tier MÁS CARO que el base NO aplica (defensa anti-config errónea)", () => {
-    const tiers = [tier({ minQty: 10, unitPrice: 15_000 })];
-    expect(applyVolumePricing(12_000, tiers, PRODUCT, 10)).toBe(12_000);
-  });
-
-  it("tier igual al base → base (equivalente, pero nunca se 'sube')", () => {
-    const tiers = [tier({ minQty: 10, unitPrice: 12_000 })];
-    expect(applyVolumePricing(12_000, tiers, PRODUCT, 10)).toBe(12_000);
-  });
-
-  it("el base ya multiplicado (personalizado multi-unidad) es la referencia del anti-subida", () => {
-    // Base de línea personalizada: variante 20_000 × 2 unidades = 40_000.
-    const tiers = [tier({ minQty: 2, unitPrice: 35_000 })];
-    expect(applyVolumePricing(40_000, tiers, PRODUCT, 2)).toBe(35_000);
-    // Un tier por encima del base multiplicado no aplica.
-    const caros = [tier({ minQty: 2, unitPrice: 45_000 })];
-    expect(applyVolumePricing(40_000, caros, PRODUCT, 2)).toBe(40_000);
-  });
-
-  it("modo por unidad física: evalúa el umbral total y conserva el multiplicador del diseño", () => {
-    const tiers = [tier({ minQty: 6, unitPrice: 8_000 }), tier({ minQty: 12, unitPrice: 7_000 })];
-    expect(applyVolumePricing(60_000, tiers, PRODUCT, 1, 6)).toBe(48_000);
-    expect(applyVolumePricing(120_000, tiers, PRODUCT, 1, 12)).toBe(84_000);
-    expect(applyVolumePricing(120_000, tiers, PRODUCT, 2, 6)).toBe(42_000);
-    expect(applyVolumePricing(30_000, tiers, PRODUCT, 1, 3)).toBe(30_000);
-  });
-
-  it("modo por unidad física: nunca aplica un tier más caro que la unidad base", () => {
-    const tiers = [tier({ minQty: 3, unitPrice: 11_000 })];
-    expect(applyVolumePricing(30_000, tiers, PRODUCT, 1, 3)).toBe(30_000);
-  });
-});
-
-describe("resolveVisibleVolumeTiers ([CX-01] PDP)", () => {
-  it("ordena escalas válidas por minQty asc y calcula savingsPct con precedencia de producto", () => {
+describe("applyVolumePricing — copias × unidades de la tanda", () => {
+  it("evalúa qty × designUnits y multiplica el precio del tier por las unidades de la tanda", () => {
     const tiers = [
-      tier({ minQty: 2, unitPrice: 6_000 }), // global ignorado porque hay propios
-      tier({ productId: PRODUCT, minQty: 10, unitPrice: 8_000 }),
-      tier({ productId: PRODUCT, minQty: 3, unitPrice: 9_000 }),
-      tier({ productId: PRODUCT, minQty: 20, unitPrice: 8_500 }), // incoherente (más caro que 10+) → omitido
-      tier({ productId: PRODUCT, minQty: 2, unitPrice: 12_000 }), // >= base → omitido
+      tier({ productId: PRODUCT, minQty: 3, unitPrice: 270_000 }),
+      tier({ productId: PRODUCT, minQty: 50, unitPrice: 200_000 }),
     ];
-    expect(resolveVisibleVolumeTiers(tiers, PRODUCT, 10_000)).toEqual([
-      { minQty: 3, unitPrice: 9_000, savingsPct: 10 },
-      { minQty: 10, unitPrice: 8_000, savingsPct: 20 },
-    ]);
-  });
-});
-
-describe("derivePackVolumeTiers (escala derivada de variantes — SOLO ahorro por volumen)", () => {
-  const packVariant = (
-    photoSlots: number,
-    price: number,
-    extra?: { sizeCm?: string; magnet?: boolean; compareAtPrice?: number | null },
-  ) => ({
-    price,
-    compareAtPrice: extra?.compareAtPrice ?? null,
-    attributes: {
-      photoSlots,
-      ...(extra?.sizeCm ? { sizeCm: extra.sizeCm } : {}),
-      ...(typeof extra?.magnet === "boolean" ? { magnet: extra.magnet } : {}),
-    },
-  });
-  const qtyVariant = (quantity: number, price: number, sizeCm?: string) => ({
-    price,
-    compareAtPrice: null,
-    attributes: { quantity, ...(sizeCm ? { sizeCm } : {}) },
+    // 1 separador ($3.000) × 60 copias → umbral 60 >= 50 → $2.000 c/u
+    expect(applyVolumePricing(300_000, tiers, PRODUCT, 60, 1)).toBe(200_000);
+    // 15 separadores ($45.000 la tanda) × 4 copias = 60 → $2.000 × 15 = $30.000 por tanda
+    expect(applyVolumePricing(4_500_000, tiers, PRODUCT, 4, 15)).toBe(3_000_000);
+    // 2 separadores ($6.000 la tanda) × 2 copias = 4 >= 3 → $2.700 × 2 = $5.400 por tanda
+    expect(applyVolumePricing(600_000, tiers, PRODUCT, 2, 2)).toBe(540_000);
   });
 
-  it("precio lineal → sin escala (nunca anuncia ahorro que no existe)", () => {
-    // Polaroid pre-2026-11-11: $22.500 por pack, lineal.
-    const groups = derivePackVolumeTiers(
-      [packVariant(6, 2_250_000), packVariant(12, 4_500_000), packVariant(18, 6_750_000)],
-      2_250_000,
-    );
-    expect(groups).toEqual([]);
+  it("nunca encarece el precio base aunque el tier esté mal configurado", () => {
+    const tiers = [tier({ productId: PRODUCT, minQty: 2, unitPrice: 500_000 })];
+    expect(applyVolumePricing(300_000, tiers, PRODUCT, 5, 1)).toBe(300_000);
+    expect(applyVolumePricing(600_000, tiers, PRODUCT, 5, 2)).toBe(600_000);
   });
 
-  it("precio por pack que baja al subir de presentación → escala derivada", () => {
-    const groups = derivePackVolumeTiers(
-      [packVariant(6, 2_250_000), packVariant(12, 4_000_000), packVariant(18, 5_400_000)],
-      2_250_000,
-    );
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.noun).toBe("pack");
-    expect(groups[0]!.tiers).toEqual([
-      { units: 2, totalPrice: 4_000_000, unitPrice: 2_000_000, savingsPct: 11 },
-      { units: 3, totalPrice: 5_400_000, unitPrice: 1_800_000, savingsPct: 20 },
-    ]);
-  });
-
-  it("la promo (compareAt) NO alimenta el bloque — eso lo muestra el tachado por presentación", () => {
-    const groups = derivePackVolumeTiers(
-      [packVariant(6, 2_250_000, { compareAtPrice: 2_750_000 }), packVariant(12, 4_500_000)],
-      2_250_000,
-    );
-    expect(groups).toEqual([]);
-  });
-
-  it("agrupa por tamaño × imán (cuadrados: 3 tamaños; tiras: con/sin imán)", () => {
-    const groups = derivePackVolumeTiers(
+  it("unitPriceWithVolumeTier refleja la misma regla en vivo en cliente", () => {
+    const visible = resolveVisibleVolumeTiers(
       [
-        packVariant(6, 2_400_000, { sizeCm: "4×4" }),
-        packVariant(12, 4_200_000, { sizeCm: "4×4" }),
-        packVariant(6, 2_700_000, { sizeCm: "5×5" }),
-        packVariant(12, 5_400_000, { sizeCm: "5×5" }), // lineal → grupo vacío
-        packVariant(3, 1_900_000, { sizeCm: "5×15", magnet: true }),
-        packVariant(3, 1_900_000, { sizeCm: "5×15", magnet: false }),
+        tier({ productId: PRODUCT, variantId: VAR_LARGE, minQty: 2, unitPrice: 3_380_000 }),
+        tier({ productId: PRODUCT, variantId: VAR_LARGE, minQty: 4, unitPrice: 3_060_000 }),
       ],
-      2_400_000,
+      PRODUCT,
+      3_600_000,
+      VAR_LARGE,
     );
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.sizeCm).toBe("4×4");
-    expect(groups[0]!.tiers).toEqual([
-      { units: 2, totalPrice: 4_200_000, unitPrice: 2_100_000, savingsPct: 13 },
-    ]);
-  });
-
-  it("modo cantidad (separadores 1-6): precio por unidad no lineal → escala derivada", () => {
-    const groups = derivePackVolumeTiers(
-      [
-        qtyVariant(1, 300_000, "2×6"),
-        qtyVariant(2, 600_000, "2×6"),
-        qtyVariant(3, 800_000, "2×6"), // $2.667 c/u → −11%
-        qtyVariant(6, 1_600_000, "2×6"), // $2.667 c/u → −11%
-      ],
-      300_000,
-    );
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.noun).toBe("unidad");
-    expect(groups[0]!.tiers).toEqual([
-      { units: 3, totalPrice: 800_000, unitPrice: 266_667, savingsPct: 11 },
-      { units: 6, totalPrice: 1_600_000, unitPrice: 266_667, savingsPct: 11 },
-    ]);
-  });
-
-  it("ignora variantes sin photoSlots/quantity comparable y packs no enteros", () => {
-    const groups = derivePackVolumeTiers(
-      [
-        { price: 1_000_000, compareAtPrice: null, attributes: { quantity: 30 } }, // solo 1 variante
-        packVariant(6, 2_250_000),
-        packVariant(9, 2_700_000), // 9/6 no es entero → fuera
-      ],
-      2_250_000,
-    );
-    expect(groups).toEqual([]);
+    expect(visible).toHaveLength(2);
+    expect(unitPriceWithVolumeTier(3_600_000, 1, visible)).toBe(3_600_000);
+    expect(unitPriceWithVolumeTier(3_600_000, 3, visible)).toBe(3_380_000);
+    expect(unitPriceWithVolumeTier(3_600_000, 4, visible)).toBe(3_060_000);
   });
 });
 
 describe("validateWholesaleTierCandidate", () => {
-  it("rechaza precio igual o mayor al precio base de referencia del producto", () => {
+  it("rechaza precio >= referencia de la variante o producto", () => {
     expect(
       validateWholesaleTierCandidate({
-        minQty: 5,
-        unitPrice: 1_000_000,
+        minQty: 3,
+        unitPrice: 300_000,
         willBeActive: true,
-        referencePrice: 1_000_000,
+        referencePrice: 300_000,
         activeSiblings: [],
       }),
-    ).toEqual({ kind: "ABOVE_OR_EQUAL_BASE", referencePrice: 1_000_000 });
-
-    expect(
-      validateWholesaleTierCandidate({
-        minQty: 5,
-        unitPrice: 1_200_000,
-        willBeActive: false,
-        referencePrice: 1_000_000,
-        activeSiblings: [],
-      }),
-    ).toEqual({ kind: "ABOVE_OR_EQUAL_BASE", referencePrice: 1_000_000 });
+    ).toEqual({ kind: "ABOVE_OR_EQUAL_BASE", referencePrice: 300_000 });
   });
 
-  it("rechaza escalas invertidas hacia arriba o hacia abajo cuando el nivel estará activo", () => {
-    // Ya existe 3+ -> $9.000; intentar crear 5+ -> $9.000 o $9.500 es inversión
+  it("exige monotonía estrictamente decreciente entre hermanos activos del mismo alcance", () => {
     expect(
       validateWholesaleTierCandidate({
-        minQty: 5,
-        unitPrice: 900_000,
+        minQty: 10,
+        unitPrice: 280_000,
         willBeActive: true,
-        referencePrice: 1_000_000,
-        activeSiblings: [{ minQty: 3, unitPrice: 900_000 }],
+        referencePrice: 300_000,
+        activeSiblings: [{ minQty: 5, unitPrice: 270_000 }],
       }),
     ).toEqual({
       kind: "INVERTED_HIGHER_QTY",
-      conflictMinQty: 3,
-      conflictUnitPrice: 900_000,
-    });
-
-    // Ya existe 10+ -> $8.000; intentar crear 4+ -> $7.500 es inversión hacia abajo
-    expect(
-      validateWholesaleTierCandidate({
-        minQty: 4,
-        unitPrice: 750_000,
-        willBeActive: true,
-        referencePrice: 1_000_000,
-        activeSiblings: [{ minQty: 10, unitPrice: 800_000 }],
-      }),
-    ).toEqual({
-      kind: "INVERTED_LOWER_QTY",
-      conflictMinQty: 10,
-      conflictUnitPrice: 800_000,
+      conflictMinQty: 5,
+      conflictUnitPrice: 270_000,
     });
   });
 
-  it("permite escalas estrictamente decrecientes y borradores desactivados menores al base", () => {
+  it("rechaza umbrales que superen el tope del selector del producto y formatea el tope sin '+'", () => {
     expect(
       validateWholesaleTierCandidate({
-        minQty: 5,
-        unitPrice: 800_000,
+        minQty: 25,
+        unitPrice: 220_000,
         willBeActive: true,
-        referencePrice: 1_000_000,
-        activeSiblings: [
-          { minQty: 3, unitPrice: 900_000 },
-          { minQty: 10, unitPrice: 700_000 },
-        ],
+        referencePrice: 300_000,
+        activeSiblings: [],
+        maxAllowedQty: 15,
       }),
-    ).toBeNull();
+    ).toEqual({ kind: "EXCEEDS_MAX_UNITS", maxAllowedQty: 15 });
 
-    // Si está desactivado, permite guardar temporalmente sin chocar con otros niveles activos
-    expect(
-      validateWholesaleTierCandidate({
-        minQty: 5,
-        unitPrice: 920_000,
-        willBeActive: false,
-        referencePrice: 1_000_000,
-        activeSiblings: [{ minQty: 3, unitPrice: 900_000 }],
-      }),
-    ).toBeNull();
+    const visible = resolveVisibleVolumeTiers(
+      [
+        tier({ productId: PRODUCT, minQty: 3, unitPrice: 270_000 }),
+        tier({ productId: PRODUCT, minQty: 15, unitPrice: 230_000 }),
+        tier({ productId: PRODUCT, minQty: 25, unitPrice: 220_000 }),
+      ],
+      PRODUCT,
+      300_000,
+      null,
+      15,
+    );
+    expect(visible.map((t) => t.minQty)).toEqual([3, 15]);
+    expect(formatVolumeTierQtyLabel(3, { maxQty: 15 })).toBe("3+ unid.");
+    expect(formatVolumeTierQtyLabel(15, { maxQty: 15 })).toBe("15 unid.");
+    expect(formatVolumeTierQtyLabel(6, { maxQty: 6, isPack: true })).toBe("6 packs");
   });
 });

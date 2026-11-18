@@ -289,13 +289,16 @@ export default async function PublicOrderPage({
                   valueCents={order.total}
                   shippingCents={order.shipping}
                   taxCents={order.tax}
-                  items={order.items.map((it) => ({
-                    sku: it.variant.sku || it.variant.product.sku,
-                    name: it.variant.product.name,
-                    variantName: it.variant.name,
-                    priceCents: it.unitPrice,
-                    quantity: it.qty,
-                  }))}
+                  items={order.items.map((it) => {
+                    const du = Math.max(1, it.designUnits);
+                    return {
+                      sku: it.variant.sku || it.variant.product.sku,
+                      name: it.variant.product.name,
+                      variantName: it.variant.name,
+                      priceCents: Math.round(it.unitPrice / du),
+                      quantity: it.qty * du,
+                    };
+                  })}
                   funnelLines={order.items.map((it) => ({
                     productSlug: it.variant.product.slug,
                     editorKind: resolveFunnelEditorKind({
@@ -586,7 +589,11 @@ export default async function PublicOrderPage({
                         {it.variant.product.name}
                       </div>
                       <div className="text-brand-muted text-xs">
-                        {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
+                        {it.variant.name} ·{" "}
+                        {it.design && it.designUnits > 1
+                          ? `${it.designUnits} diseños × ${it.qty} ${it.qty === 1 ? "copia" : "copias"} (${it.designUnits * it.qty} ${unitNounPlural}) · `
+                          : ""}
+                        {it.qty} × {formatCOP(it.unitPrice)}
                       </div>
                       {variantBreakdown.length > 0 && (
                         <div className="text-brand-purple-dark/70 text-xs">

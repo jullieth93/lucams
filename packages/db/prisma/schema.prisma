@@ -669,7 +669,8 @@ model ProductVariant {
   inventoryLogs  InventoryLog[]
   cartItems      CartItem[]
   orderItems     OrderItem[]
-  isActive       Boolean        @default(true)
+  wholesaleTiers WholesaleTier[]
+  isActive       Boolean         @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1092,6 +1093,7 @@ model OrderItem {
   variantId      String
   variant        ProductVariant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
   qty            Int
+  designUnits    Int                      @default(1)
   unitPrice      Int
   // Garantía ofrecida al confirmar esta compra. Es un snapshot: editar el
   // producto después solo afecta ventas futuras, nunca derechos ya adquiridos.
@@ -2559,13 +2561,15 @@ model BackInStockSubscription {
 /// unidad es `unitPrice` (centavos COP). Por producto (null = aplica a todo el
 /// catálogo). El admin no técnico lo gestiona desde /admin/mayorista.
 model WholesaleTier {
-  id        String   @id @default(cuid())
+  id        String          @id @default(cuid())
   productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
   minQty    Int
-  unitPrice Int // centavos COP por unidad en este nivel
+  unitPrice Int // centavos COP por unidad comercial en este nivel
   note      String?
-  isActive  Boolean  @default(true)
+  isActive  Boolean         @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2579,8 +2583,11 @@ model WholesaleTier {
   // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
   // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
   // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+  // 20261118123000_unified_variant_wholesale_pricing suma variantId, minQty >= 2,
+  // variantId => productId NOT NULL e índice único parcial activo.
 
   @@index([productId, isActive])
+  @@index([variantId, isActive])
   @@index([deletedAt])
 }
 

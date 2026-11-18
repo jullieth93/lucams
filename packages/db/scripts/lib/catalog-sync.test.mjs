@@ -69,6 +69,14 @@ describe("ENTITY_DEFS", () => {
     assert.equal(ENTITY_DEFS.cmsSection.keyOf({ pageSlug: "inicio", key: "hero" }), "inicio|hero");
     assert.equal(ENTITY_DEFS.cmsField.keyOf({ key: "CONTACT_EMAIL" }), "CONTACT_EMAIL");
     assert.equal(ENTITY_DEFS.template.keyOf({ slug: "polaroid-clasico" }), "polaroid-clasico");
+    assert.equal(
+      ENTITY_DEFS.wholesaleTier.keyOf({
+        productSlug: "set-fotoimanes-cuadrados",
+        variantSku: "FI-CUAD-12-V11",
+        minQty: 2,
+      }),
+      "set-fotoimanes-cuadrados|FI-CUAD-12-V11|2",
+    );
   });
 
   it("ProductVariant NUNCA sincroniza stock, safetyStock ni timestamps", () => {

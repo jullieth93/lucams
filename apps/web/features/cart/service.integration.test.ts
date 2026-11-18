@@ -542,7 +542,7 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(detail.items.find((item) => !item.designId)?.qty).toBe(1);
     });
 
-    it("clamp: sumar qty que excede MAX_QTY_PER_ITEM (99) se topa en 99", async () => {
+    it("clamp: sumar qty que excede MAX_QTY_PER_ITEM (100) se topa en 100", async () => {
       const sessionId = sid("add");
       await addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 90 });
       const detail = await addProductToCart({
@@ -551,8 +551,8 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         productSlug: simpleSlug,
         qty: 50,
       });
-      // 90 + 50 = 140 → clamp a 99.
-      expect(detail.items[0].qty).toBe(99);
+      // 90 + 50 = 140 → clamp a 100.
+      expect(detail.items[0].qty).toBe(100);
     });
 
     it("setea customerId en el cart cuando se pasa (cart de usuario logueado)", async () => {
@@ -617,10 +617,10 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(await prisma.cart.count({ where: { sessionId } })).toBe(0);
     });
 
-    it("qty=100 (>MAX) lanza QTY_INVALID antes de tocar la DB", async () => {
+    it("qty=101 (>MAX) lanza QTY_INVALID antes de tocar la DB", async () => {
       const sessionId = sid("add");
       await expect(
-        addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 100 }),
+        addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 101 }),
       ).rejects.toMatchObject({ code: "QTY_INVALID" });
       expect(await prisma.cart.count({ where: { sessionId } })).toBe(0);
     });
@@ -1289,17 +1289,17 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(item!.qty).toBe(4);
     });
 
-    it("qty > MAX (100) lanza QTY_INVALID", async () => {
+    it("qty > MAX (101) lanza QTY_INVALID", async () => {
       const { sessionId, itemId } = await seedOneItemCart();
-      await expect(updateCartItemQty(sessionId, itemId, 100)).rejects.toMatchObject({
+      await expect(updateCartItemQty(sessionId, itemId, 101)).rejects.toMatchObject({
         code: "QTY_INVALID",
       });
     });
 
-    it("qty exactamente MAX (99) es válido", async () => {
+    it("qty exactamente MAX (100) es válido", async () => {
       const { sessionId, itemId } = await seedOneItemCart();
-      const detail = await updateCartItemQty(sessionId, itemId, 99);
-      expect(detail.items[0].qty).toBe(99);
+      const detail = await updateCartItemQty(sessionId, itemId, 100);
+      expect(detail.items[0].qty).toBe(100);
     });
 
     it("itemId que no pertenece al cart lanza ITEM_NOT_FOUND", async () => {
@@ -1353,7 +1353,12 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
     // Tiers RUN-prefijados en `note`; se borran en el propio test (finally) y
     // por barrido en afterAll — un tier GLOBAL que quede vivo alteraría el
     // precio de productos REALES en esta DB compartida.
-    async function makeTier(data: { productId?: string; minQty: number; unitPrice: number }) {
+    async function makeTier(data: {
+      productId?: string;
+      variantId?: string;
+      minQty: number;
+      unitPrice: number;
+    }) {
       return prisma.wholesaleTier.create({
         data: { ...data, note: `${RUN} tier-test` },
         select: { id: true },
@@ -1487,10 +1492,79 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         await cleanupTiers();
       }
     });
-  });
+    it("ADR-209: el tier por opción (variantId) tiene PRECEDENCIA sobre el de producto y el global, sin cruzar opciones", async () => {
+      await makeTier({ minQty: 5, unitPrice: 7_000 }); // global
+      await makeTier({ productId: simpleProductId, minQty: 5, unitPrice: 8_500 }); // producto
+      await makeTier({
+        productId: simpleProductId,
+        variantId: extraVariantId,
+        minQty: 5,
+        unitPrice: 4_200,
+      }); // solo opción Extra
+      try {
+        const sessionId = sid("vol-var");
+        const detailExtra = await addProductToCart({
+          sessionId,
+          customerId: null,
+          productSlug: simpleSlug,
+          variantId: extraVariantId,
+          qty: 5,
+        });
+        expect(detailExtra.items[0].unitPrice).toBe(4_200);
 
-  // ════════════════════════════════════════════════════════════════════════
-  // getCartDetail / getCartItemCount — filtrado de productos archivados
+        const detailDefault = await addProductToCart({
+          sessionId: sid("vol-def"),
+          customerId: null,
+          productSlug: simpleSlug,
+          qty: 5,
+        });
+        expect(detailDefault.items[0].unitPrice).toBe(8_500);
+      } finally {
+        await cleanupTiers();
+      }
+    });
+
+    it("ADR-209: tanda personalizada multi-unidad aplica escala por tanda (qty * designUnits) y respeta tope de 100 uds físicas", async () => {
+      await prisma.productVariant.update({ where: { id: persoVariantBId }, data: { stock: 200 } });
+      await makeTier({
+        productId: persoProductId,
+        variantId: persoVariantBId,
+        minQty: 60,
+        unitPrice: 18_000,
+      });
+      try {
+        const d10 = await prisma.design.create({
+          data: {
+            sessionId: sid("design-cap"),
+            productId: persoProductId,
+            status: "READY",
+            canvasData: { version: 2, slotCount: 30, unitCount: 10, unitSlots: 3, photoSlots: 3 },
+            previewUrl: "https://cdn.lucams.test/preview-cap.png",
+          },
+          select: { id: true },
+        });
+        const sessionId = sid("vol-tanda");
+        // 10 diseños × 6 copias = 60 unidades físicas → cruza minQty=60 → 10 × 18.000 = 180.000 por copia
+        const detail = await addPersonalizedToCart({
+          sessionId,
+          customerId: null,
+          designId: d10.id,
+          variantId: persoVariantBId,
+          qty: 6,
+        });
+        expect(detail.items[0].qty).toBe(6);
+        expect(detail.items[0].maxQty).toBe(10); // floor(100 / 10) = 10 copias máx. aunque stock sea 200
+        expect(detail.items[0].unitPrice).toBe(10 * 18_000);
+
+        // Si intenta subir a 25 copias en carrito, se topa en maxQty = 10 (100 uds físicas).
+        const clamped = await updateCartItemQty(sessionId, detail.items[0].itemId, 25);
+        expect(clamped.items[0].qty).toBe(10);
+      } finally {
+        await cleanupTiers();
+        await prisma.productVariant.update({ where: { id: persoVariantBId }, data: { stock: 50 } });
+      }
+    });
+  });
   // ════════════════════════════════════════════════════════════════════════
 
   describe("getCartDetail / getCartItemCount", () => {
@@ -1818,7 +1892,7 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
 
       await mergeAnonCartIntoCustomer(anonSession, customer.id);
       const merged = await getCartDetail(custSession, customer.id);
-      expect(merged!.items.map((item) => item.qty)).toEqual([99, 21]);
+      expect(merged!.items.map((item) => item.qty)).toEqual([100, 20]);
       expect(merged!.itemCount).toBe(120);
     });
 

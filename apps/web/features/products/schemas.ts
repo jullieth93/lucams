@@ -229,7 +229,7 @@ const ProductBaseSchema = z.object({
     .number()
     .int("Debe ser un entero")
     .min(1, "Mínimo 1 foto")
-    .max(50, "Máximo 50 fotos")
+    .max(60, "Máximo 60 fotos")
     .optional()
     .nullable(),
   facesPerUnit: z

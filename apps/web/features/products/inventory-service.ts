@@ -86,6 +86,7 @@ export async function listVariantsAcrossProducts(opts: InventoryListOpts = {}): 
   //   pero NO de productos en papelera — esos no se venden ni se reponen)
   const where: Prisma.ProductVariantWhereInput = {
     deletedAt: null,
+    isActive: true,
     product: {
       deletedAt: null,
       fulfillmentMode: "PHYSICAL_STOCK",
@@ -207,6 +208,7 @@ export async function getInventorySummary(): Promise<InventorySummary> {
   const activeVariants = await prisma.productVariant.findMany({
     where: {
       deletedAt: null,
+      isActive: true,
       product: { deletedAt: null, fulfillmentMode: "PHYSICAL_STOCK" },
     },
     select: { stock: true, safetyStock: true },

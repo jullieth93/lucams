@@ -1,51 +1,17 @@
 /*
- * Modelo MULTI-UNIDAD del Estudio (regla general del owner, 2026-09-09).
+ * Modelo MULTI-UNIDAD del Estudio y topes canónicos de compra directa (ADR-209).
  *
- * "Unidades" = N unidades físicas del mismo producto, CADA UNA diseñable por
- * separado en el Estudio. El concepto viejo de "copias idénticas" desaparece de
- * las superficies personalizables: la PDP manda `?copies=N` y el Estudio abre
- * con N unidades a diseñar (2 tiras de 3 fotos = 2 × 3 slots; 2 calendarios =
- * 2 × 12 tarjetas; 3 separadores = 3 × 2 caras — el caso que ya existía vía
- * facesPerUnit).
+ * "Unidades" = N unidades comerciales del producto diseñadas por separado en una
+ * misma tanda del Estudio (`1..15` piezas sueltas/tiras/separadores/bolas, `1..6`
+ * packs de 6 fotoimanes, `1..4` calendarios de 12 meses, `1..10` sets de letras).
  *
- * Modelo de datos (canvasData V2, aditivo — sin bump de versión):
- *
- *   unitCount?: number   — N unidades del diseño. Ausente = 1 (diseños legacy).
- *   unitSlots?: number   — slots de diseño por unidad (tira de 3 → 3;
- *                          calendario → 12; separador 2 caras → 2; imán suelto → 1).
- *   Invariante: slotCount = unitCount × unitSlots.
- *
- * Cuando unitCount > 1 y unitSlots > 1 (y el producto NO es de caras agrupadas),
- * `gridLayout` describe la grilla de UNA unidad (unitSlots slots); en el resto
- * de los casos sigue describiendo el diseño completo (retrocompatible).
- *
- * Precio (la ruta del dinero NO confía en el cliente): la variante cubre UNA
- * unidad (productos de composición fija: calendario, tira, set de letras) o el
- * pack declarado en la raíz del canvasData (packs de foto: photoSlots = unidades
- * del pack — imanes polaroid, separadores — o fotos por tira en las tiras). El
- * multiplicador se DERIVA de slotCount vs lo que cubre la variante — nunca del
- * unitCount crudo, que lo escribe el cliente. `facesPerUnit` viene del SCHEMA
- * DEL PRODUCTO (servidor), no del canvas:
- *
- *   multiplier = ceil(slotCount / (photoSlots_raíz × facesPerUnit))  [packs]
- *   multiplier = ceil(slotCount / unitSlots)                         [fija]
- *
- *   · polaroid 10 imanes: no declara unidades (unitSlots = 1) → 1 (la variante
- *     ya es el pack de 10).
- *   · tira 3 fotos × 2 unidades: slotCount 6, photoSlots raíz 3 × 1 cara → 2.
- *   · separadores × 3: slotCount 6, photoSlots raíz 3 (unidades) × 2 caras → 1
- *     (la variante ya es el pack de 3).
- *   · calendario × 2: slotCount 24, sin photoSlots raíz → ceil(24/12) = 2.
- *   · diseños legacy (sin unitSlots): 1 — comportamiento intacto de siempre.
- *
- * Invariante de ESCRITURA (editor): `unitCount`/`unitSlots` solo se persisten
- * cuando unitSlots > 1 — los packs de imán suelto (polaroid/cuadrados) NO los
- * declaran, así que su multiplicador queda en 1 para siempre (la variante ya
- * es el pack). Con cualquier tampering del cliente el resultado queda
- * económicamente consistente (se paga por pieza equivalente).
+ * En Vista Previa y en `/carrito`, el cliente puede multiplicar su tanda por
+ * `qty` («Copias iguales de esta tanda») siempre que el total físico de la línea
+ * no supere `MAX_SELF_SERVICE_PHYSICAL_UNITS` (`100` unidades; `16 packs = 96`
+ * imanes en packs de 6).
  *
  * Módulo PURO (sin server-only, sin Prisma): lo usan el editor (client), el
- * carrito y el spec de producción (server) — una sola fuente de verdad.
+ * carrito, los pedidos, las métricas y el spec de producción (server).
  */
 
 /** Shape mínima que leen estos helpers (compatible con el Json de Prisma). */
@@ -60,6 +26,11 @@ export type DesignUnitsShape = {
 
 const intOrNull = (v: unknown): number | null =>
   typeof v === "number" && Number.isInteger(v) && v >= 1 ? v : null;
+
+function positiveInt(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : null;
+}
 
 /** ¿El canvasData es V2 y declara el modelo multi-unidad? */
 export function declaresUnits(canvasData: unknown): boolean {
@@ -85,8 +56,8 @@ export function unitSlotsOf(canvasData: unknown, slotCountFallback = 1): number 
   return Math.max(1, slotCount);
 }
 
-/** Unidades físicas del diseño (≥ 1). Ausente = 1 (legacy). */
-export function unitCountOf(canvasData: unknown): number {
+/** Unidades comerciales dentro del diseño (≥ 1). Ausente = 1 (legacy). */
+export function unitCountOf(canvasData: unknown, variantPhotoSlots?: number | null): number {
   const cd = (canvasData ?? {}) as DesignUnitsShape;
   const declared = intOrNull(cd.unitCount);
   if (declared !== null) return declared;
@@ -95,23 +66,32 @@ export function unitCountOf(canvasData: unknown): number {
   if (unitSlots !== null && unitSlots > 0 && unitSlots < slotCount) {
     return Math.ceil(slotCount / unitSlots);
   }
+  const vSlots = positiveInt(variantPhotoSlots);
+  if (
+    cd.version === 2 &&
+    vSlots === 6 &&
+    slotCount > 6 &&
+    slotCount % 6 === 0 &&
+    slotCount <= MAX_PHOTO_PACK_DESIGN_UNITS * 6 &&
+    (!Array.isArray(cd.slots) || cd.slots.length === slotCount)
+  ) {
+    return slotCount / 6;
+  }
   return 1;
 }
 
 /**
- * Unidades físicas reales de un diseño para MOSTRAR en correos/admin (×N).
+ * Unidades comerciales reales que contiene un diseño para MOSTRAR en UI/correos/admin.
  *
- * Lee primero el canvas (`unitCountOf`); como fallback usa `metadata.unitCount`,
- * que el finalize escribe como espejo del canvas en V2 (service.ts) y los sets
- * de letras escriben al crear. Devuelve null cuando no hay diseño (el caller
- * cae al `qty` de la línea). Nunca toca el dinero: `lineTotal` sigue siendo
- * `unitPrice × qty` con `unitPrice` = precio del pack.
+ * Lee primero el canvas (`unitCountOf`); como fallback usa `metadata.unitCount`
+ * (escrito en finalize y en sets de letras). Devuelve null cuando no hay diseño.
  */
 export function designDisplayUnits(
   design: { canvasData?: unknown; metadata?: unknown } | null | undefined,
+  variantPhotoSlots?: number | null,
 ): number | null {
   if (!design) return null;
-  const fromCanvas = unitCountOf(design.canvasData);
+  const fromCanvas = unitCountOf(design.canvasData, variantPhotoSlots);
   if (fromCanvas > 1) return fromCanvas;
   const meta = design.metadata as { unitCount?: unknown } | null | undefined;
   const n = meta && typeof meta === "object" ? meta.unitCount : undefined;
@@ -154,65 +134,233 @@ export function gridSlotCountForLayout(opts: {
  * Fotos por unidad física según el producto/plantilla (para construir el
  * modelo en el editor):
  *   - calendario mes-a-mes → photoSlots (12 tarjetas por calendario).
- *   - separadores (facesPerUnit=2) → 1 foto por cara (las caras son los slots).
+ *   - separadores / bola dúplex (facesPerUnit=2) → 1 foto por cara.
  *   - tira photobooth (plantilla gridCols=1/gridGap=0) → photoSlots por tira.
- *   - resto (polaroid, cuadrados…) → 1: cada imán ES su propia unidad.
+ *   - packs de 6 fotoimanes (photoSlots múltiplo de 6) → photoSlots por pack (6).
+ *   - resto → 1: cada pieza es su propia unidad.
  */
 export function photosPerUnitForEditor(opts: {
   isCalendarMonth: boolean;
   facesPerUnit: number;
   photoSlots: number;
   unitTemplate: unknown;
+  isPackOfSix?: boolean;
 }): number {
   if (opts.isCalendarMonth) return Math.max(1, opts.photoSlots);
   if (opts.facesPerUnit === 2) return 1;
+  if (opts.isPackOfSix) return Math.max(1, opts.photoSlots);
   const tpl = opts.unitTemplate as { gridCols?: unknown; gridGap?: unknown } | null;
   const isStrip = tpl?.gridCols === 1 && tpl?.gridGap === 0;
   if (isStrip) return Math.max(1, opts.photoSlots);
   return 1;
 }
 
-/**
- * Tope de unidades diseñables por producto: el schema Zod capa slotCount en 50
- * (payload/abuso), así que unitCount × unitSlots ≤ 50.
- */
-export const MAX_DESIGN_SLOTS = 50;
-export function maxUnitsForProduct(unitSlots: number): number {
-  return Math.max(1, Math.floor(MAX_DESIGN_SLOTS / Math.max(1, unitSlots)));
+/** Tope técnico de lienzos en un mismo diseño (cubre 15 tiras × 4 fotos = 60). */
+export const MAX_DESIGN_SLOTS = 60;
+/** Tope general de diseños distintos en una tanda de Estudio (ADR-209). */
+export const MAX_DESIGN_UNITS = 15;
+/** Tope en calendarios de 12 meses (4 × 12 = 48 <= CALENDAR_PAGE_CACHE_LIMIT). */
+export const MAX_CALENDAR_DESIGN_UNITS = 4;
+/** Tope en packs de 6 fotoimanes (6 packs × 6 = 36 fotos por tanda). */
+export const MAX_PHOTO_PACK_DESIGN_UNITS = 6;
+/** Tope de sets de letras por diseño (un PNG por ficha vía RenderJob — ADR-188). */
+export const MAX_LETTER_SET_UNITS = 10;
+/** Tope máximo de unidades físicas por línea en compra directa antes de B2B. */
+export const MAX_SELF_SERVICE_PHYSICAL_UNITS = 100;
+
+export function maxUnitsForProduct(
+  unitSlots: number,
+  opts?: { isCalendar?: boolean; isPackOfSix?: boolean; isLetterSet?: boolean },
+): number {
+  if (opts?.isLetterSet) return MAX_LETTER_SET_UNITS;
+  const normalizedSlots = Math.max(1, Math.trunc(unitSlots) || 1);
+  if (opts?.isCalendar || normalizedSlots === 12) return MAX_CALENDAR_DESIGN_UNITS;
+  if (opts?.isPackOfSix || normalizedSlots === 6) return MAX_PHOTO_PACK_DESIGN_UNITS;
+  return Math.min(MAX_DESIGN_UNITS, Math.max(1, Math.floor(MAX_DESIGN_SLOTS / normalizedSlots)));
 }
 
-/** Tope de sets de letras por diseño (producción: un PNG por ficha vía RenderJob — ADR-188). */
-export const MAX_LETTER_SET_UNITS = 10;
+/**
+ * Tope exacto del selector de unidades en la PDP y en `/admin/mayorista` (ADR-209):
+ * ninguna escala mayorista puede exigir una cantidad mínima superior a las unidades
+ * que el selector del producto/opción permite escoger directamente (`15` unid. en
+ * separadores/bola/mini-libros/tiras/nombre, `6` packs en fotoimanes Polaroid/Cuadrados,
+ * `4` sets en calendario, `10` packs en sets de letras y `100` en stock físico directo).
+ */
+export function maxSelectorUnitsForProduct(opts: {
+  slug?: string | null;
+  personalizationKind?: string | null;
+  personalizationSchema?: unknown;
+  variantAttrs?: unknown;
+  allVariantsAttrs?: readonly unknown[];
+}): { maxUnits: number; unitSingular: string; unitPlural: string; isPack: boolean } {
+  const schema = (opts.personalizationSchema ?? {}) as Record<string, unknown>;
+  const vAttrs = (opts.variantAttrs ?? {}) as Record<string, unknown>;
+  const allAttrs = (opts.allVariantsAttrs ?? [vAttrs]).map(
+    (a) => (a ?? {}) as Record<string, unknown>,
+  );
+
+  const letterSet = schema.letterSet;
+  if (letterSet === "full" || letterSet === "vowels") {
+    return {
+      maxUnits: MAX_LETTER_SET_UNITS,
+      unitSingular: "pack",
+      unitPlural: "packs",
+      isPack: true,
+    };
+  }
+
+  const isNamePerTile =
+    vAttrs.variant === "name" || allAttrs.some((attrs) => attrs.variant === "name");
+  if (isNamePerTile) {
+    return {
+      maxUnits: MAX_DESIGN_UNITS,
+      unitSingular: "unidad",
+      unitPlural: "unidades",
+      isPack: false,
+    };
+  }
+
+  const kind = opts.personalizationKind ?? "NONE";
+  if (kind === "CALENDAR_PHOTO_MONTH") {
+    return {
+      maxUnits: MAX_CALENDAR_DESIGN_UNITS,
+      unitSingular: "set",
+      unitPlural: "sets",
+      isPack: false,
+    };
+  }
+
+  const facesPerUnit = positiveInt(vAttrs.facesPerUnit) ?? positiveInt(schema.facesPerUnit) ?? 1;
+  const variantPhotoSlots = positiveInt(vAttrs.photoSlots);
+  const schemaPhotoSlots = positiveInt(schema.photoSlots);
+  const effectivePhotoSlots = variantPhotoSlots ?? schemaPhotoSlots ?? 1;
+  const isPackOfSix =
+    opts.slug === "set-fotoimanes-polaroid" ||
+    opts.slug === "set-fotoimanes-cuadrados" ||
+    (kind !== "NONE" &&
+      facesPerUnit !== 2 &&
+      schema.freeUnitDesign !== true &&
+      effectivePhotoSlots === 6);
+
+  if (isPackOfSix) {
+    return {
+      maxUnits: MAX_PHOTO_PACK_DESIGN_UNITS,
+      unitSingular: "pack",
+      unitPlural: "packs",
+      isPack: true,
+    };
+  }
+
+  if (kind !== "NONE") {
+    const unitSlots = facesPerUnit === 2 ? 2 : Math.max(1, effectivePhotoSlots);
+    return {
+      maxUnits: maxUnitsForProduct(unitSlots),
+      unitSingular: "unidad",
+      unitPlural: "unidades",
+      isPack: false,
+    };
+  }
+
+  return {
+    maxUnits: MAX_SELF_SERVICE_PHYSICAL_UNITS,
+    unitSingular: "unidad",
+    unitPlural: "unidades",
+    isPack: false,
+  };
+}
 
 /**
- * Multiplicador del precio de variante por las unidades del diseño (ver la
- * doc del módulo). Servidor-side en el carrito; puro para testear sin mocks.
- *
- * `facesPerUnit` sale del personalizationSchema del PRODUCTO (verdad del
- * servidor — separadores: 2), nunca del canvasData (lo escribe el cliente).
+ * Piezas físicas para el tope de compra directa (100) que aporta 1 unidad comercial:
+ * - En packs de 6 fotoimanes: 6 imanes por pack → máx. 16 packs (96 imanes).
+ * - En el resto de familias: 1 unidad comercial (separador, tira, bola, calendario, set).
  */
-export function designUnitPriceMultiplier(canvasData: unknown, facesPerUnit = 1): number {
-  if (!declaresUnits(canvasData)) return 1;
+export function capPiecesPerCommercialUnit(opts: {
+  isPackOfSix?: boolean;
+  variantAttrs?: unknown;
+  productSlug?: string | null;
+}): number {
+  if (opts.isPackOfSix) return 6;
+  if (
+    opts.productSlug === "set-fotoimanes-polaroid" ||
+    opts.productSlug === "set-fotoimanes-cuadrados"
+  ) {
+    return 6;
+  }
+  const attrs = (opts.variantAttrs ?? {}) as Record<string, unknown>;
+  const photoSlots = positiveInt(attrs.photoSlots);
+  if (photoSlots !== null && photoSlots >= 6 && photoSlots % 6 === 0) {
+    return 6;
+  }
+  return 1;
+}
+
+/** Máximo de copias (`qty`) permitidas en Vista Previa y Carrito para una tanda. */
+export function maxCopiesForDesignUnits(designUnits: number, piecesPerCommercialUnit = 1): number {
+  const units = Math.max(1, Math.trunc(designUnits) || 1);
+  const perUnit = Math.max(1, Math.trunc(piecesPerCommercialUnit) || 1);
+  return Math.max(1, Math.floor(MAX_SELF_SERVICE_PHYSICAL_UNITS / (units * perUnit)));
+}
+
+/** Total de piezas físicas contra el tope de 100 en compra directa. */
+export function linePhysicalUnitsForCap(opts: {
+  qty: number;
+  designUnits?: number;
+  piecesPerCommercialUnit?: number;
+}): number {
+  const qty = Math.max(0, Math.trunc(opts.qty) || 0);
+  const units = Math.max(1, Math.trunc(opts.designUnits ?? 1) || 1);
+  const perUnit = Math.max(1, Math.trunc(opts.piecesPerCommercialUnit ?? 1) || 1);
+  return qty * units * perUnit;
+}
+
+/**
+ * Multiplicador del precio de variante por las unidades del diseño (ruta del dinero).
+ *
+ * `facesPerUnit` y `variantPhotoSlots` vienen del servidor (producto y variante en DB)
+ * cuando están disponibles, impidiendo que un `photoSlots` alterado en cliente subcobre,
+ * y permitiendo que borradores legados de packs múltiples resuelvan contra la variante base.
+ */
+export function designUnitPriceMultiplier(
+  canvasData: unknown,
+  facesPerUnit = 1,
+  variantPhotoSlots?: number | null,
+): number {
+  const faces = Math.max(1, positiveInt(facesPerUnit) ?? 1);
+  const serverPhotoSlots = positiveInt(variantPhotoSlots);
+
+  if (!declaresUnits(canvasData)) {
+    if (canvasData && typeof canvasData === "object" && serverPhotoSlots !== null) {
+      const cd = canvasData as DesignUnitsShape;
+      if (cd.version === 2) {
+        const slotCount = intOrNull(cd.slotCount) ?? 1;
+        const covered = serverPhotoSlots * faces;
+        if (slotCount > covered) {
+          return Math.max(1, Math.ceil(slotCount / covered));
+        }
+      }
+    }
+    return 1;
+  }
+
   const cd = canvasData as DesignUnitsShape;
   const slotCount = intOrNull(cd.slotCount) ?? 1;
-  const rootPhotoSlots = intOrNull(cd.photoSlots);
-  const covered =
-    rootPhotoSlots !== null
-      ? rootPhotoSlots * Math.max(1, facesPerUnit)
-      : (intOrNull(cd.unitSlots) ?? 1);
+  const declaredPhotoSlots = intOrNull(cd.photoSlots);
+  const declaredUnitSlots = intOrNull(cd.unitSlots);
+  let covered: number;
+  if (declaredPhotoSlots !== null) {
+    covered = (serverPhotoSlots ?? declaredPhotoSlots) * faces;
+  } else if (faces > 1 && serverPhotoSlots !== null) {
+    covered = serverPhotoSlots * faces;
+  } else if (serverPhotoSlots !== null && declaredUnitSlots !== 12) {
+    covered = serverPhotoSlots;
+  } else {
+    covered = declaredUnitSlots ?? 1;
+  }
   return Math.max(1, Math.ceil(slotCount / Math.max(1, covered)));
 }
 
 /**
- * Unidades declaradas por un diseño de SET DE LETRAS (metadata, no canvasData:
- * el set se guarda como V1 stub + metadata). El servidor escribe
- * `metadata.unitCount` validado al crear; ausente/inválido → 1.
- *
- * El gate es `surface === "letterset"`: en diseños de canvas V2 (tiras,
- * calendarios, separadores) el finalize escribe `metadata.unitCount` como
- * ESPEJO del canvas (para que el carrito describa la línea sin deserializar)
- * — contarlo aquí duplicaría el multiplicador que ya deriva
- * `designUnitPriceMultiplier` del canvas (bug 2026-09-11: tira ×2 cobraba ×4).
+ * Unidades declaradas por un diseño de SET DE LETRAS (metadata, no canvasData).
  */
 export function letterSetUnitCount(metadata: unknown): number {
   if (!metadata || typeof metadata !== "object") return 1;
@@ -224,37 +372,66 @@ export function letterSetUnitCount(metadata: unknown): number {
     : 1;
 }
 
-function positiveInt(value: unknown): number | null {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isInteger(parsed) && parsed >= 1 ? parsed : null;
-}
-
-/** Unidades físicas que una línea descuenta de inventario y declara a logística. */
-export function inventoryUnitsForOrderItem(input: {
-  qty: number;
+/** Unidades comerciales por copia de una línea (diseños en canvas × sets de letras). */
+export function commercialDesignUnitsForItem(input: {
   customDesign?: unknown;
   metadata?: unknown;
   variantAttrs?: unknown;
   productSchema?: unknown;
+  design?: { canvasData?: unknown; metadata?: unknown } | null;
+  variant?: {
+    attributes?: unknown;
+    product?: { personalizationSchema?: unknown } | null;
+  } | null;
 }): number {
-  const variantAttrs = (input.variantAttrs ?? {}) as Record<string, unknown>;
-  const productSchema = (input.productSchema ?? {}) as Record<string, unknown>;
-  const packUnits = positiveInt(variantAttrs.quantity) ?? 1;
+  const variantAttrs = (input.variantAttrs ?? input.variant?.attributes ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const productSchema = (input.productSchema ??
+    input.variant?.product?.personalizationSchema ??
+    {}) as Record<string, unknown>;
+  const canvasData = input.customDesign ?? input.design?.canvasData;
+  const designMeta = input.design?.metadata ?? input.metadata;
   const facesPerUnit = positiveInt(productSchema.facesPerUnit) ?? 1;
-  const designUnits =
-    designUnitPriceMultiplier(input.customDesign, facesPerUnit) *
-    letterSetUnitCount(input.metadata);
+  const variantPhotoSlots = positiveInt(variantAttrs.photoSlots);
+  return (
+    designUnitPriceMultiplier(canvasData, facesPerUnit, variantPhotoSlots) *
+    letterSetUnitCount(designMeta)
+  );
+}
+
+/**
+ * Unidades físicas que una línea descuenta de inventario y declara a logística.
+ * Tolera tanto el contrato plano (`variantAttrs`, `productSchema`) como una fila
+ * `OrderItem` / `CartItem` hidratada de Prisma (`variant.attributes`, `design.canvasData`).
+ */
+export function inventoryUnitsForOrderItem(input: {
+  qty: number;
+  designUnits?: number | null;
+  customDesign?: unknown;
+  metadata?: unknown;
+  variantAttrs?: unknown;
+  productSchema?: unknown;
+  design?: { canvasData?: unknown; metadata?: unknown } | null;
+  variant?: {
+    attributes?: unknown;
+    product?: { personalizationSchema?: unknown } | null;
+  } | null;
+}): number {
+  const variantAttrs = (input.variantAttrs ?? input.variant?.attributes ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const packUnits = positiveInt(variantAttrs.quantity) ?? 1;
+  const explicitDesignUnits = positiveInt(input.designUnits);
+  const designUnits = explicitDesignUnits ?? commercialDesignUnitsForItem(input);
   return input.qty * packUnits * designUnits;
 }
 
 /**
  * Valor declarado POR unidad física para cotización/guía (ShipmentItem.qty
- * cuenta unidades FÍSICAS — inventoryUnits; ej. las 26 letras del abecedario)
- * cuando `unitPriceCop` es el precio de la UNIDAD DE VENTA (la variante/pack).
- * Declarar unitPrice × inventoryUnits inflaba el asegurado ×N (un abecedario
- * de $39.900 se declaraba en $1.037.400 y la valoración ~1 % de la
- * transportadora sumaba ~$10.000 al flete — bug 2026-10-31). Con la división,
- * Σ(valorDeclarado × qty) = unitPrice × qty = el valor real de la línea.
+ * cuenta unidades FÍSICAS — inventoryUnits).
  */
 export function declaredValueCopPerInventoryUnit(input: {
   unitPriceCop: number;

@@ -48,6 +48,7 @@ const products = await prisma.product.findMany({
   orderBy: { name: "asc" },
   include: {
     variants: { where: { deletedAt: null, isActive: true }, orderBy: { createdAt: "asc" } },
+    wholesaleTiers: { where: { deletedAt: null, isActive: true }, orderBy: { minQty: "asc" } },
   },
 });
 
@@ -77,6 +78,61 @@ for (const p of products) {
       if (ladder[i].price < ladder[i - 1].price) {
         flag(
           `escalera NO monótona (${magnet === "true" ? "Con" : "Sin"} imán${sizeCm ? `, ${sizeCm} cm` : ""}): ${ladder[i - 1].n} unid. ${pesos(ladder[i - 1].price)} > ${ladder[i].n} unid. ${pesos(ladder[i].price)}`,
+        );
+      }
+    }
+  }
+
+  // 1b. Escalas mayoristas (WholesaleTier): dentro del tope del selector y monótonas decrecientes por (variantId ?? producto)
+  const isLetterSetProd = schema.letterSet === "full" || schema.letterSet === "vowels";
+  const isNamePerTileProd = p.variants.some((v) => v.attributes?.variant === "name");
+  const isPackOfSixProd =
+    p.slug === "set-fotoimanes-polaroid" ||
+    p.slug === "set-fotoimanes-cuadrados" ||
+    (p.personalizationKind !== "NONE" &&
+      schema.facesPerUnit !== 2 &&
+      schema.freeUnitDesign !== true &&
+      Number(schema.photoSlots) === 6);
+  const maxSelectorUnits = isLetterSetProd
+    ? 10
+    : isNamePerTileProd
+      ? 15
+      : p.personalizationKind === "CALENDAR_PHOTO_MONTH"
+        ? 4
+        : isPackOfSixProd
+          ? 6
+          : p.personalizationKind !== "NONE"
+            ? 15
+            : 100;
+
+  const tiersByScope = new Map();
+  for (const wt of p.wholesaleTiers ?? []) {
+    const scopeKey = wt.variantId ?? "__product__";
+    if (!tiersByScope.has(scopeKey)) tiersByScope.set(scopeKey, []);
+    tiersByScope.get(scopeKey).push(wt);
+  }
+  for (const [scopeKey, tiers] of tiersByScope) {
+    tiers.sort((a, b) => a.minQty - b.minQty);
+    const refVariant = scopeKey !== "__product__" ? p.variants.find((v) => v.id === scopeKey) : null;
+    const refPrice = refVariant
+      ? (refVariant.price ?? p.basePrice)
+      : p.variants.length > 0
+        ? Math.min(...p.variants.map((v) => v.price ?? p.basePrice))
+        : p.basePrice;
+    for (let i = 0; i < tiers.length; i++) {
+      if (tiers[i].minQty > maxSelectorUnits) {
+        flag(
+          `escala mayorista supera el tope del selector (${refVariant ? refVariant.sku : "producto"}): ${tiers[i].minQty}+ > máx ${maxSelectorUnits}`,
+        );
+      }
+      if (tiers[i].unitPrice >= refPrice) {
+        flag(
+          `escala mayorista >= precio base (${refVariant ? refVariant.sku : "producto"}): ${tiers[i].minQty}+ uds ${pesos(tiers[i].unitPrice)} >= ${pesos(refPrice)}`,
+        );
+      }
+      if (i > 0 && tiers[i].unitPrice >= tiers[i - 1].unitPrice) {
+        flag(
+          `escala mayorista invertida (${refVariant ? refVariant.sku : "producto"}): ${tiers[i].minQty}+ uds ${pesos(tiers[i].unitPrice)} >= ${tiers[i - 1].minQty}+ uds ${pesos(tiers[i - 1].unitPrice)}`,
         );
       }
     }

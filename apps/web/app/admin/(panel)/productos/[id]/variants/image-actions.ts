@@ -63,7 +63,7 @@ async function loadCoverGroup(variantId: string) {
   const variant = await loadVariant(variantId);
   if (!variant) return null;
   const siblings = await prisma.productVariant.findMany({
-    where: { productId: variant.productId, deletedAt: null },
+    where: { productId: variant.productId, deletedAt: null, isActive: true },
     select: { id: true, images: true, attributes: true },
   });
   const signature = variantCoverSignature(parseVariantAttributes(variant.attributes));

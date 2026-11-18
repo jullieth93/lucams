@@ -46,13 +46,16 @@ export default async function CheckoutDatosPage() {
       <CheckoutStepper current={1} />
       <TrackBeginCheckout
         valueCents={ctx.cart.subtotal}
-        items={ctx.cart.items.map((i) => ({
-          sku: i.variantSku,
-          name: i.productName,
-          variantName: i.variantName,
-          priceCents: i.unitPrice,
-          quantity: i.qty,
-        }))}
+        items={ctx.cart.items.map((i) => {
+          const du = Math.max(1, i.designUnits ?? 1);
+          return {
+            sku: i.variantSku,
+            name: i.productName,
+            variantName: i.variantName,
+            priceCents: Math.round(i.unitPrice / du),
+            quantity: i.qty * du,
+          };
+        })}
         funnelLines={ctx.cart.items.map((i) => ({
           productSlug: i.productSlug,
           editorKind: i.editorKind,
