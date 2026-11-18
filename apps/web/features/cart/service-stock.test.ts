@@ -53,6 +53,8 @@ type CartItemFixture = {
       images: string[];
       isPersonalizable: boolean;
       isActive: boolean;
+      publishedOnStorefront: boolean;
+      fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
       deletedAt: null;
       category: { isActive: boolean; deletedAt: null };
       personalizationKind: string;
@@ -66,6 +68,7 @@ const state = vi.hoisted(() => ({
     id: string;
     basePrice: number;
     name: string;
+    fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
     variants: Array<{ id: string; price: number | null; stock: number }>;
   },
   cart: null as null | {
@@ -121,7 +124,9 @@ vi.mock("@/lib/db", () => ({
             templateId: null,
             metadata: null,
             design: null,
-            variant: makeVariant(variant?.id ?? data.variantId, variant?.stock ?? 0),
+            variant: makeVariant(variant?.id ?? data.variantId, variant?.stock ?? 0, {
+              fulfillmentMode: state.product?.fulfillmentMode,
+            }),
           };
           state.cart!.items.push(item);
           return item;
@@ -142,7 +147,13 @@ const PRODUCT = { id: "prod_1", slug: "iman-nevera", name: "Imán Nevera", baseP
 function makeVariant(
   id: string,
   stock: number,
-  opts?: { images?: string[]; attributes?: unknown; productImages?: string[] },
+  opts?: {
+    images?: string[];
+    attributes?: unknown;
+    productImages?: string[];
+    fulfillmentMode?: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
+    publishedOnStorefront?: boolean;
+  },
 ): CartItemFixture["variant"] {
   return {
     id,
@@ -162,6 +173,8 @@ function makeVariant(
       images: opts?.productImages ?? [],
       isPersonalizable: false,
       isActive: true,
+      publishedOnStorefront: opts?.publishedOnStorefront ?? true,
+      fulfillmentMode: opts?.fulfillmentMode ?? "PHYSICAL_STOCK",
       deletedAt: null,
       category: { isActive: true, deletedAt: null },
       personalizationKind: "NONE",
@@ -170,11 +183,15 @@ function makeVariant(
   };
 }
 
-function seedProduct(stock: number) {
+function seedProduct(
+  stock: number,
+  fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK" = "PHYSICAL_STOCK",
+) {
   state.product = {
     id: PRODUCT.id,
     basePrice: PRODUCT.basePrice,
     name: PRODUCT.name,
+    fulfillmentMode,
     variants: [{ id: "var_1", price: null, stock }],
   };
 }
@@ -187,6 +204,8 @@ function seedCart(
     variantImages?: string[];
     productImages?: string[];
     attributes?: unknown;
+    fulfillmentMode?: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
+    publishedOnStorefront?: boolean;
     design?: CartItemFixture["design"];
   }>,
 ) {
@@ -213,6 +232,8 @@ function seedCart(
           images: it.variantImages,
           productImages: it.productImages,
           attributes: it.attributes,
+          fulfillmentMode: it.fulfillmentMode,
+          publishedOnStorefront: it.publishedOnStorefront,
         },
       ),
     })),
@@ -336,6 +357,19 @@ describe("addProductToCart — validación de qty contra stock", () => {
       }),
     ).rejects.toMatchObject({ code: "QTY_INVALID" });
   });
+
+  it("MADE_TO_ORDER admite stock legado 0 sin exponerlo como disponibilidad", async () => {
+    seedProduct(0, "MADE_TO_ORDER");
+    seedCart([]);
+    const detail = await addProductToCart({
+      sessionId: "sess_1",
+      customerId: null,
+      productSlug: "iman-nevera",
+      qty: 3,
+    });
+    expect(detail.items[0].qty).toBe(3);
+    expect(detail.items[0].stock).toBeNull();
+  });
 });
 
 describe("updateCartItemQty — validación de qty contra stock", () => {
@@ -373,6 +407,13 @@ describe("updateCartItemQty — validación de qty contra stock", () => {
       detail: "«Imán Nevera» está agotado por ahora.",
     });
     expect(err.detail).not.toContain("var_1");
+  });
+
+  it("MADE_TO_ORDER permite cambiar cantidad con stock legado 0", async () => {
+    seedCart([{ qty: 1, stock: 0, fulfillmentMode: "MADE_TO_ORDER" }]);
+    const detail = await updateCartItemQty("sess_1", "ci_1", 2);
+    expect(detail.items[0].qty).toBe(2);
+    expect(detail.items[0].stock).toBeNull();
   });
 });
 

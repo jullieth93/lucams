@@ -25,6 +25,7 @@ type VariantInput = {
   price?: number | null;
   compareAtPrice?: number | null;
   stock?: number;
+  safetyStock?: number;
   isActive?: boolean;
   attributes?: ProductVariantAttributes;
 };
@@ -33,10 +34,12 @@ export function VariantForm({
   productId,
   variant,
   onClose,
+  trackStock = true,
 }: {
   productId: string;
   variant?: VariantInput;
   onClose?: () => void;
+  trackStock?: boolean;
 }) {
   const isEdit = !!variant?.id;
   const [state, formAction, pending] = useActionState<VariantActionState | null, FormData>(
@@ -133,6 +136,18 @@ export function VariantForm({
           error={state?.fieldErrors?.compareAtPrice?.[0]}
           hint="Precio “antes” que se muestra tachado al lado del precio. Déjalo vacío si no hay promo."
         />
+        {trackStock && (
+          <Field
+            label="Stock de seguridad"
+            name="safetyStock"
+            type="number"
+            defaultValue={variant?.safetyStock?.toString() ?? "0"}
+            placeholder="0"
+            mono
+            error={state?.fieldErrors?.safetyStock?.[0]}
+            hint="Colchón reservado frente a canales externos y feeds (disponible neto = stock físico − reserva). En lucamsshop.com se vende hasta agotar el stock físico."
+          />
+        )}
         {/* El stock se edita con el botón rápido del listado de opciones y en
             Inventario, no acá — para no tenerlo en dos lados. */}
       </div>

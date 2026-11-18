@@ -86,6 +86,22 @@ function aggregateByVariant(items: ReadonlyArray<StockItem>): StockItem[] {
   return [...totals].map(([variantId, qty]) => ({ variantId, qty }));
 }
 
+async function physicalStockItems(
+  tx: Prisma.TransactionClient,
+  items: ReadonlyArray<StockItem>,
+): Promise<StockItem[]> {
+  const aggregated = aggregateByVariant(items);
+  if (aggregated.length === 0) return [];
+  const variants = await tx.productVariant.findMany({
+    where: { id: { in: aggregated.map((item) => item.variantId) } },
+    select: { id: true, product: { select: { fulfillmentMode: true } } },
+  });
+  const modes = new Map(
+    variants.map((variant) => [variant.id, variant.product.fulfillmentMode] as const),
+  );
+  return aggregated.filter((item) => modes.get(item.variantId) !== "MADE_TO_ORDER");
+}
+
 /**
  * Verifica que cada item tiene stock suficiente — lectura, NO escritura.
  *
@@ -112,9 +128,16 @@ export async function assertStockAvailable(
       where: { id: it.variantId },
       // name/sku + product.name: el error los propaga para que el checkout nombre el
       // producto agotado en el aviso al cliente (no solo el variantId interno).
-      select: { id: true, stock: true, name: true, sku: true, product: { select: { name: true } } },
+      select: {
+        id: true,
+        stock: true,
+        name: true,
+        sku: true,
+        product: { select: { name: true, fulfillmentMode: true } },
+      },
     });
     if (!v) throw new InsufficientStockError(it.variantId, it.qty, 0);
+    if (v.product.fulfillmentMode === "MADE_TO_ORDER") continue;
     if (v.stock < it.qty) {
       throw new InsufficientStockError(it.variantId, it.qty, v.stock, variantDisplayName(v));
     }
@@ -151,6 +174,9 @@ export async function decrementStockForOrder(
     items: Array<{ variantId: string; qty: number }>;
   },
 ): Promise<{ decrementedVariants: string[]; alreadyApplied: boolean }> {
+  const items = await physicalStockItems(tx, order.items);
+  if (items.length === 0) return { decrementedVariants: [], alreadyApplied: false };
+
   // Idempotency capa 3: ¿ya se decrementó para esta Order?
   const existingLog = await tx.inventoryLog.findFirst({
     where: { orderId: order.id, reason: INVENTORY_REASON.ORDER_PAID },
@@ -168,7 +194,7 @@ export async function decrementStockForOrder(
   const decremented: string[] = [];
   // Agregado por variant: un solo UPDATE + un solo InventoryLog por variant, aunque la orden tenga
   // varias líneas del mismo variant (ver aggregateByVariant — evita el P2002 del índice único).
-  for (const item of aggregateByVariant(order.items)) {
+  for (const item of items) {
     // Optimistic atómico: UPDATE … WHERE id=$1 AND stock>=$2
     const res = await tx.productVariant.updateMany({
       where: { id: item.variantId, stock: { gte: item.qty } },
@@ -252,6 +278,9 @@ export async function revertStockForOrder(
   },
   reason: "ORDER_CANCELLED" | "ORDER_REFUNDED",
 ): Promise<{ revertedVariants: string[]; skipped: boolean }> {
+  const items = await physicalStockItems(tx, order.items);
+  if (items.length === 0) return { revertedVariants: [], skipped: true };
+
   // 1. ¿Hubo decremento previo? Si no → no-op.
   const paidLog = await tx.inventoryLog.findFirst({
     where: { orderId: order.id, reason: INVENTORY_REASON.ORDER_PAID },
@@ -284,7 +313,7 @@ export async function revertStockForOrder(
 
   // 3. Incrementar + log (agregado por variant, simétrico al decremento).
   const reverted: string[] = [];
-  for (const item of aggregateByVariant(order.items)) {
+  for (const item of items) {
     await tx.productVariant.update({
       where: { id: item.variantId },
       data: { stock: { increment: item.qty } },

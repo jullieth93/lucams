@@ -450,7 +450,7 @@ make stg-reset-apply   # Paso 2: ejecuta el borrado atómico en STG (exige confi
 
 ### 6.2 Reglas invariantes de homologación
 
-- **El stock jamás viaja de `STG` a `PRD`:** en PRD las existencias son físicas y reales; toda variante nueva creada en PRD por sincronización nace con `stock = 0` para carga manual verificada en `/admin/inventario`.
+- **El stock y `safetyStock` jamás viajan de `STG` a `PRD`:** en PRD las existencias y la reserva son físicas y reales; toda variante nueva creada en PRD por sincronización nace con ambos valores en `0` para carga manual verificada en `/admin/inventario`. `fulfillmentMode` y `publishedOnStorefront` sí se sincronizan como configuración comercial.
 - **Excepciones deliberadas entre ambientes:** `AdminUser` (las cuentas de prueba de STG nunca se copian a PRD), tablas transaccionales (`Order`, `Customer`, `Contact`), secretos de Vault y `CRON_JOBS_DISABLED`.
 - **Trampa de `Json?` en Prisma:** al escribir columnas JSON anulables (como `DesignGalleryImage.variantFilter`), pasar `null` plano escribe el literal JSON `'null'` en vez de `SQL NULL`; usa siempre `Prisma.DbNull` en updates o `undefined` en creates.
 - **Jamás ejecutes Vitest con `.env.local.nube-backup` exportado en tu shell:** las suites de integración crean fixtures y `env-guard.mjs` protege scripts administrativos, no runners de pruebas arbitrarios.
@@ -516,7 +516,7 @@ Todo script que ejecute operaciones de escritura o borrado en `packages/db/scrip
 
 En `seed-catalog-v2.mjs`, una geometría definida por `personalizationSchema.experience` conserva `physicalSpecs = null` mientras no existan medidas reales: no recibe valores logísticos genéricos.
 
-En `seed-catalog-canonical.mjs`, las promociones declaradas se crean solo si falta un nivel vivo con el mismo `productId` y `minQty`. Los niveles existentes, precios, activación y especificaciones físicas editados en admin se preservan al repetir la semilla.
+En `seed-catalog-canonical.mjs`, las promociones declaradas se crean solo si falta un nivel vivo con el mismo `productId` y `minQty`. Los niveles existentes, precios, activación y especificaciones físicas editados en admin se preservan al repetir la semilla. El seed alinea `fulfillmentMode` con las cuatro familias del Estudio y conserva transitoriamente el buffer legado `MADE_TO_ORDER_STOCK` hasta completar el despliegue en STG/PRD y normalizar a `0` el stock de `MADE_TO_ORDER`.
 
 | #   | Script (`packages/db/scripts/`)                                                               | Modo por defecto                           | Flags y variables admitidas                                                  | Propósito exacto                                                                                                                                                                                                                                     |
 | --- | --------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -93,6 +93,9 @@ type Props = {
     isPersonalizable: boolean;
     isActive: boolean;
     isFeatured: boolean;
+    fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
+    publishedOnStorefront: boolean;
+    hasNameVariants: boolean;
     seoTitle: string | null;
     seoDescription: string | null;
     richDescription?: string | null;
@@ -153,6 +156,15 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
   // El kind que se persiste: LETTERSET → NONE (el marcador letterSet va aparte).
   const effectiveKind: ProductPersonalizationKind = kindSel === "LETTERSET" ? "NONE" : kindSel;
   const isPhotoKind = PHOTO_SURFACE_KINDS.has(effectiveKind);
+  const [selectedFulfillmentMode, setSelectedFulfillmentMode] = useState(
+    initialProduct?.fulfillmentMode ?? "PHYSICAL_STOCK",
+  );
+  const studioForced =
+    effectiveKind !== "NONE" ||
+    kindSel === "LETTERSET" ||
+    initialProduct?.isPersonalizable === true ||
+    initialProduct?.hasNameVariants === true;
+  const fulfillmentMode = studioForced ? "MADE_TO_ORDER" : selectedFulfillmentMode;
 
   const [slugTouched, setSlugTouched] = useState(false);
   const onNameChange = (v: string) => {
@@ -291,12 +303,49 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
           </SectionCard>
         )}
 
-        <SectionCard title="Visibilidad" description="Quién ve este producto en la tienda.">
+        <SectionCard
+          title="Visibilidad"
+          description="Cómo se vende y quién ve este producto en la tienda."
+        >
+          <div>
+            <label
+              htmlFor="fulfillmentMode"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
+              Modalidad de inventario
+            </label>
+            <select
+              id="fulfillmentMode"
+              name="fulfillmentMode"
+              value={fulfillmentMode}
+              onChange={(event) =>
+                setSelectedFulfillmentMode(event.target.value as "MADE_TO_ORDER" | "PHYSICAL_STOCK")
+              }
+              disabled={pending || studioForced}
+              className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <option value="PHYSICAL_STOCK">Producto terminado con stock físico</option>
+              <option value="MADE_TO_ORDER">Bajo pedido, sin stock de producto terminado</option>
+            </select>
+            <p className="text-brand-muted mt-1 text-xs">
+              {studioForced
+                ? "Este producto usa el Estudio: siempre se fabrica bajo pedido."
+                : "En stock físico, la venta descuenta las unidades terminadas de cada opción."}
+            </p>
+            {studioForced && <input type="hidden" name="fulfillmentMode" value="MADE_TO_ORDER" />}
+          </div>
           <Checkbox
             name="isActive"
             label="🟢 Visible en la tienda"
             hint="Cuando está apagado, el producto sigue acá pero deja de mostrarse al cliente."
             defaultChecked={initialProduct?.isActive ?? true}
+            disabled={pending}
+          />
+          <Checkbox
+            name="publishedOnStorefront"
+            label="🌐 Publicado en el canal web"
+            hint="Apágalo para retirar la ficha del catálogo, la búsqueda y la compra web sin archivar el producto."
+            defaultChecked={initialProduct?.publishedOnStorefront ?? true}
             disabled={pending}
           />
           <Checkbox

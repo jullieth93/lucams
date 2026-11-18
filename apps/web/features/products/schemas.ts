@@ -89,6 +89,8 @@ const ProductBaseSchema = z.object({
   isPersonalizable: z.boolean().default(false),
   isActive: z.boolean().default(true),
   isFeatured: z.boolean().default(false),
+  fulfillmentMode: z.enum(["MADE_TO_ORDER", "PHYSICAL_STOCK"]).optional(),
+  publishedOnStorefront: z.boolean().optional(),
   seoTitle: z.string().max(70).optional().nullable(),
   seoDescription: z.string().max(160).optional().nullable(),
   // PLAN_CATALOG_V2 2.10 — campos AI-ready opcionales

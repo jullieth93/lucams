@@ -23,15 +23,18 @@ export async function subscribeBackInStock(
   meta?: { ipAddress?: string | null; userAgent?: string | null },
 ): Promise<{ ok: boolean; reason?: "not_found" | "in_stock" }> {
   const product = await prisma.product.findFirst({
-    where: { id: productId, isActive: true, deletedAt: null },
+    where: { id: productId, isActive: true, publishedOnStorefront: true, deletedAt: null },
     select: {
       id: true,
+      fulfillmentMode: true,
       variants: { where: { deletedAt: null, isActive: true }, select: { stock: true } },
     },
   });
   if (!product) return { ok: false, reason: "not_found" };
   // Solo tiene sentido suscribirse a algo AGOTADO (anti-abuso + evita subs inútiles).
-  if (product.variants.some((v) => v.stock > 0)) return { ok: false, reason: "in_stock" };
+  if (product.fulfillmentMode === "MADE_TO_ORDER" || product.variants.some((v) => v.stock > 0)) {
+    return { ok: false, reason: "in_stock" };
+  }
 
   const normalizedEmail = email.trim().toLowerCase();
   await prisma.backInStockSubscription.upsert({
@@ -79,7 +82,9 @@ export async function sendBackInStockNotifications(
       notifiedAt: null,
       product: {
         isActive: true,
+        publishedOnStorefront: true,
         deletedAt: null,
+        fulfillmentMode: "PHYSICAL_STOCK",
         variants: { some: { deletedAt: null, isActive: true, stock: { gt: 0 } } },
       },
     },

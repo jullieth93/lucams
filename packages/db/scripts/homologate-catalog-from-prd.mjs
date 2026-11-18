@@ -155,6 +155,8 @@ const PRODUCT_SELECT = {
   cost: true,
   isPersonalizable: true,
   personalizationKind: true,
+  fulfillmentMode: true,
+  publishedOnStorefront: true,
   personalizationSchema: true,
   richDescription: true,
   whyChooseThis: true,

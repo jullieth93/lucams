@@ -13,6 +13,7 @@
 import { describe, it, expect } from "vitest";
 import {
   getStorefrontVisibility,
+  isPurchasableVariant,
   STOREFRONT_CATEGORY_WHERE,
   STOREFRONT_PRODUCT_WHERE,
   type StorefrontVisibilityInput,
@@ -21,6 +22,7 @@ import {
 /** Base "todo en regla": producto activo, categoría activa, opciones con stock. */
 const VISIBLE: StorefrontVisibilityInput = {
   productIsActive: true,
+  productPublishedOnStorefront: true,
   productDeletedAt: null,
   categoryIsActive: true,
   categoryDeletedAt: null,
@@ -121,14 +123,13 @@ describe("STOREFRONT_PRODUCT_WHERE — predicado compartido de ambos stacks (F-0
     expect(STOREFRONT_PRODUCT_WHERE).toEqual({
       deletedAt: null,
       isActive: true,
+      publishedOnStorefront: true,
       category: { deletedAt: null, isActive: true },
     });
     expect(STOREFRONT_CATEGORY_WHERE).toEqual({ deletedAt: null, isActive: true });
   });
 
   it("el clasificador puro y el predicado Prisma dicen lo mismo sobre la categoría", () => {
-    // Coherencia semántica: toda combinación que el where excluiría de una query
-    // (categoría pausada o archivada) el clasificador la reporta "no-visible".
     for (const input of [
       { categoryIsActive: false, categoryDeletedAt: null },
       { categoryIsActive: true, categoryDeletedAt: new Date() },
@@ -136,5 +137,41 @@ describe("STOREFRONT_PRODUCT_WHERE — predicado compartido de ambos stacks (F-0
     ]) {
       expect(getStorefrontVisibility({ ...VISIBLE, ...input }).status).toBe("no-visible");
     }
+  });
+
+  it("publishedOnStorefront=false oculta el producto aunque todo lo demás esté activo", () => {
+    expect(getStorefrontVisibility({ ...VISIBLE, productPublishedOnStorefront: false })).toEqual({
+      status: "no-visible",
+      reason: "Publicación en tienda desactivada",
+    });
+  });
+
+  it("MADE_TO_ORDER sigue visible con stock legado en cero", () => {
+    expect(
+      getStorefrontVisibility({
+        ...VISIBLE,
+        fulfillmentMode: "MADE_TO_ORDER",
+        inStockAny: false,
+      }),
+    ).toEqual({ status: "visible" });
+  });
+});
+
+describe("isPurchasableVariant", () => {
+  const purchasable = {
+    variantIsActive: true,
+    variantDeletedAt: null,
+    productIsActive: true,
+    productPublishedOnStorefront: true,
+    productDeletedAt: null,
+    categoryIsActive: true,
+    categoryDeletedAt: null,
+  };
+
+  it("bloquea la compra cuando el producto no está publicado en tienda", () => {
+    expect(isPurchasableVariant(purchasable)).toBe(true);
+    expect(isPurchasableVariant({ ...purchasable, productPublishedOnStorefront: false })).toBe(
+      false,
+    );
   });
 });

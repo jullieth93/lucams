@@ -26,7 +26,7 @@ import { GalleryManager } from "./gallery-manager";
 import { FichasSection } from "./fichas-section";
 import { DisenosTabs } from "./disenos-tabs";
 
-export const metadata: Metadata = { title: "Diseños prediseñados" };
+export const metadata: Metadata = { title: "Artes de galería para el Estudio" };
 export const dynamic = "force-dynamic";
 
 export default async function DisenosAdminPage() {
@@ -55,12 +55,12 @@ export default async function DisenosAdminPage() {
     <AdminPage>
       <AdminPageHeader
         icon={<Shapes className="h-5 w-5" />}
-        title="Diseños prediseñados y fichas"
-        subtitle="Todo el material visual que alimenta el Estudio: diseños print-grade listos por producto y fichas ilustradas del abecedario."
+        title="Artes de galería para el Estudio"
+        subtitle="Activos digitales para personalizar en el Estudio: artes de galería y fichas ilustradas. No son productos con SKU ni tienen stock físico."
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Producción" },
-          { label: "Diseños prediseñados" },
+          { label: "Artes de galería" },
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">

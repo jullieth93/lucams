@@ -55,6 +55,9 @@ const INITIAL_PRODUCT = {
   isPersonalizable: true,
   isActive: true,
   isFeatured: false,
+  fulfillmentMode: "MADE_TO_ORDER" as const,
+  publishedOnStorefront: true,
+  hasNameVariants: false,
   seoTitle: null,
   seoDescription: null,
 };
@@ -332,5 +335,21 @@ describe("ProductForm — tab Personalización (2026-10-02)", () => {
     });
     expect(costLink).toHaveAttribute("href", "/admin/costos?q=IMAN-FOTO");
     expect(screen.getByText(/\$\s*4\.500/)).toBeInTheDocument();
+  });
+
+  it("expone publicación web y fuerza bajo pedido para un producto del Estudio", () => {
+    renderForm({});
+    const published = screen.getByLabelText(/publicado en el canal web/i) as HTMLInputElement;
+    expect(published.checked).toBe(true);
+    fireEvent.click(published);
+    expect(published.checked).toBe(false);
+
+    const mode = screen.getByLabelText("Modalidad de inventario") as HTMLSelectElement;
+    expect(mode.value).toBe("MADE_TO_ORDER");
+    expect(mode).toBeDisabled();
+    expect(
+      document.querySelector<HTMLInputElement>('input[type="hidden"][name="fulfillmentMode"]')
+        ?.value,
+    ).toBe("MADE_TO_ORDER");
   });
 });

@@ -149,6 +149,7 @@ const PRODUCT_UPDATE_FIELDS = [
   "description",
   "isPersonalizable",
   "personalizationKind",
+  "fulfillmentMode",
   "personalizationSchema",
 ];
 const CATEGORY_UPDATE_FIELDS = ["name", "description", "order"];
@@ -184,10 +185,9 @@ function changedFields(existing, declared, fields) {
   return fields.filter((f) => !sameValue(existing[f], declared[f]));
 }
 
-// Auditoría v3 · H11 — los productos PERSONALIZABLES son "hechos a pedido": no
-// llevan inventario de unidades terminadas (se fabrican por orden). Stock
-// made-to-order amplio para que no salgan "Agotado" (la saga descuenta de un
-// buffer holgado). Si Lucy quiere limitar una edición, ajusta desde el admin.
+// PR-1A conserva el buffer solo para que los contenedores anteriores sigan
+// viendo stock durante la conmutación. El código nuevo clasifica estos productos
+// como MADE_TO_ORDER y no lo usa para disponibilidad ni para la saga. PR-1B lo retira.
 const MADE_TO_ORDER_STOCK = 100_000;
 
 // ─────────── Categorías (9) ───────────
@@ -1507,6 +1507,13 @@ async function run(db, write) {
       wholesaleTiers: declaredWholesaleTiers,
       ...rest
     } = p;
+    rest.fulfillmentMode =
+      (p.personalizationKind ?? "NONE") !== "NONE" ||
+      p.isPersonalizable === true ||
+      ["full", "vowels"].includes(p.personalizationSchema?.letterSet) ||
+      (declaredVariants ?? []).some((variant) => variant.attributes?.variant === "name")
+        ? "MADE_TO_ORDER"
+        : "PHYSICAL_STOCK";
     // Upsert por SKU (clave estable del catálogo): si Lucy cambia el slug pero
     // mantiene el SKU, se alinea; SKU nuevo → producto nuevo.
     const existing = await db.product.findUnique({ where: { sku: p.sku } });
