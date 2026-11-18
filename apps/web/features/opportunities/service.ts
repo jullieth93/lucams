@@ -24,14 +24,29 @@ import {
   resolveCommercialContactTx,
 } from "@/features/identity/resolution-service";
 import {
+  B2B_ARTWORK_MODE_LABELS,
+  B2B_PACKAGING_TYPE_LABELS,
+  B2bConfiguredLineInputSchema,
+  isB2bArtworkMode,
+  isB2bPackagingType,
   isOpportunityEventType,
   isOpportunityStage,
   OPPORTUNITY_EVENT_LABELS,
   OPPORTUNITY_EVENT_TYPES,
+  todayBogotaIso,
+  type B2bArtworkMode,
   type B2bInquiryInput,
+  type B2bPackagingType,
+  type B2bRequestedConfig,
   type OpportunityEventType,
   type OpportunityStage,
 } from "./schemas";
+import {
+  computeConfiguratorEstimate,
+  evaluateEventDateFeasibility,
+  MIN_B2B_PHYSICAL_UNITS,
+} from "./configurator-math";
+import { getPublicB2bConfiguratorCatalog } from "./configurator-catalog";
 
 const OP_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -83,9 +98,149 @@ export async function createPublicB2bOpportunity(
   const cleanContactEmail = normalizeEmailIdentity(input.email);
   const cleanContactWhatsapp = normalizePhoneIdentityE164(input.whatsapp) || input.whatsapp.trim();
 
+  const artworkMode: B2bArtworkMode =
+    input.artworkMode && isB2bArtworkMode(input.artworkMode) ? input.artworkMode : "SAME_DESIGN";
+  const packagingType: B2bPackagingType =
+    input.packagingType && isB2bPackagingType(input.packagingType)
+      ? input.packagingType
+      : "BULK_STANDARD";
+
+  let effectiveExpectedUnits = input.expectedUnits;
+  let effectiveExpectedAmountCop = 0;
+  let maxBaseProductionDays = 2;
+  let requestedConfig: B2bRequestedConfig;
+  const structuredSummaryLines: string[] = [];
+
+  if (input.configMode === "CATALOG_LINES") {
+    let rawLines: unknown = [];
+    try {
+      rawLines = JSON.parse(input.configuredLinesJson || "[]");
+    } catch {
+      throw new OpportunityValidationError(
+        "La selección de productos del configurador es inválida.",
+      );
+    }
+    const parsedLines = B2bConfiguredLineInputSchema.array().min(1).max(5).safeParse(rawLines);
+    if (!parsedLines.success) {
+      throw new OpportunityValidationError(
+        "Selecciona entre 1 y 5 referencias válidas del catálogo.",
+      );
+    }
+
+    const catalog = await getPublicB2bConfiguratorCatalog();
+    const estimate = computeConfiguratorEstimate(
+      catalog,
+      parsedLines.data,
+      artworkMode,
+      packagingType,
+    );
+
+    if (estimate.resolvedLines.length === 0) {
+      throw new OpportunityValidationError(
+        "Las opciones seleccionadas ya no están disponibles. Actualiza la página e intenta de nuevo.",
+      );
+    }
+    if (!estimate.meetsMinimumUnits) {
+      throw new OpportunityValidationError(
+        `Para proyectos empresariales o eventos atendemos desde ${MIN_B2B_PHYSICAL_UNITS} unidades físicas en total.`,
+      );
+    }
+
+    effectiveExpectedUnits = estimate.totalPhysicalPieces;
+    effectiveExpectedAmountCop = estimate.estimatedMaxCents;
+
+    for (const line of estimate.resolvedLines) {
+      const prod = catalog.products.find((p) => p.id === line.productId);
+      if (prod && prod.productionDays > maxBaseProductionDays) {
+        maxBaseProductionDays = prod.productionDays;
+      }
+      const packDetail =
+        line.piecesPerUnit > 1
+          ? `${line.commercialQty} packs (${line.physicalPieces} uds.)`
+          : `${line.physicalPieces} uds.`;
+      structuredSummaryLines.push(`• ${line.productName} — ${line.variantName}: ${packDetail}`);
+    }
+
+    const feasibility = evaluateEventDateFeasibility({
+      todayIso: todayBogotaIso(),
+      eventDateIso: input.eventDate ?? "",
+      cityCode: input.cityCode || null,
+      cityName: input.city,
+      totalPhysicalPieces: effectiveExpectedUnits,
+      maxBaseProductionDays,
+      artworkMode,
+      packagingType,
+    });
+
+    requestedConfig = {
+      version: 1,
+      mode: "CATALOG_LINES",
+      lines: estimate.resolvedLines,
+      artworkMode,
+      packagingType,
+      cityCode: input.cityCode || null,
+      departmentCode: input.departmentCode || null,
+      dateSemaphore: feasibility.state,
+      businessDaysAvailable: feasibility.businessDaysAvailable,
+      recommendedMinBusinessDays: feasibility.recommendedMinBusinessDays,
+      estimatedMinCents: estimate.estimatedMinCents,
+      estimatedMaxCents: estimate.estimatedMaxCents,
+    };
+  } else {
+    const feasibility = evaluateEventDateFeasibility({
+      todayIso: todayBogotaIso(),
+      eventDateIso: input.eventDate ?? "",
+      cityCode: input.cityCode || null,
+      cityName: input.city,
+      totalPhysicalPieces: effectiveExpectedUnits,
+      maxBaseProductionDays,
+      artworkMode,
+      packagingType,
+    });
+
+    requestedConfig = {
+      version: 1,
+      mode: "ADVISORY_OPEN",
+      lines: [],
+      artworkMode,
+      packagingType,
+      cityCode: input.cityCode || null,
+      departmentCode: input.departmentCode || null,
+      dateSemaphore: feasibility.state,
+      businessDaysAvailable: feasibility.businessDaysAvailable,
+      recommendedMinBusinessDays: feasibility.recommendedMinBusinessDays,
+      estimatedMinCents: null,
+      estimatedMaxCents: null,
+    };
+  }
+
+  const clientFreeNotes = (input.notes ?? "").trim();
+  const configFooter = [
+    `Arte: ${B2B_ARTWORK_MODE_LABELS[artworkMode]}`,
+    `Empaque: ${B2B_PACKAGING_TYPE_LABELS[packagingType]}`,
+  ].join(" · ");
+  const composedNotes =
+    structuredSummaryLines.length > 0
+      ? [
+          "Configuración solicitada:",
+          ...structuredSummaryLines,
+          configFooter,
+          ...(clientFreeNotes ? ["", `Notas del cliente: ${clientFreeNotes}`] : []),
+        ]
+          .join("\n")
+          .slice(0, 2500)
+      : clientFreeNotes || configFooter;
+
+  const taskPriority: "URGENT" | "HIGH" =
+    effectiveExpectedUnits >= 100 ||
+    requestedConfig.dateSemaphore === "CRITICAL_TIGHT" ||
+    requestedConfig.dateSemaphore === "URGENT_VIABLE"
+      ? "URGENT"
+      : "HIGH";
+
   const titlePrefix = cleanOrgName || cleanContactName;
   const title =
-    `${titlePrefix} · ${OPPORTUNITY_EVENT_LABELS[input.eventType]} (${input.expectedUnits} uds.)`.slice(
+    `${titlePrefix} · ${OPPORTUNITY_EVENT_LABELS[input.eventType]} (${effectiveExpectedUnits} uds.)`.slice(
       0,
       190,
     );
@@ -159,12 +314,13 @@ export async function createPublicB2bOpportunity(
               title,
               eventType: input.eventType,
               stage: "NEW",
-              expectedUnits: input.expectedUnits,
-              expectedAmountCop: 0,
+              expectedUnits: effectiveExpectedUnits,
+              expectedAmountCop: effectiveExpectedAmountCop,
               eventDate: eventDate && !Number.isNaN(eventDate.getTime()) ? eventDate : null,
               city: input.city.trim(),
               department: input.department?.trim() || null,
-              notes: input.notes.trim(),
+              notes: composedNotes,
+              requestedConfig: requestedConfig as unknown as Prisma.InputJsonValue,
               dataConsentAt: now,
               dataConsentVersion: context.privacyPolicyVersion,
               utmSource: sanitizeUtmSlug(context.utmSource),
@@ -222,9 +378,9 @@ export async function createPublicB2bOpportunity(
       await tx.task.create({
         data: {
           title: `Contactar oportunidad ${createdOpp.number} (${titlePrefix})`,
-          description: `${input.expectedUnits} unidades · ${OPPORTUNITY_EVENT_LABELS[input.eventType]} · Ciudad: ${input.city}`,
+          description: `${effectiveExpectedUnits} unidades · ${OPPORTUNITY_EVENT_LABELS[input.eventType]} · Ciudad: ${input.city}`,
           status: "OPEN",
-          priority: input.expectedUnits >= 100 ? "URGENT" : "HIGH",
+          priority: taskPriority,
           dueAt: dueIn24h,
           contactId,
           opportunityId: createdOpp.id,
@@ -236,11 +392,11 @@ export async function createPublicB2bOpportunity(
         data: {
           contactId,
           kind: "SYSTEM",
-          body: `Solicitud B2B / Eventos ${createdOpp.number} recibida (${input.expectedUnits} unidades · ${OPPORTUNITY_EVENT_LABELS[input.eventType]}).`,
+          body: `Solicitud B2B / Eventos ${createdOpp.number} recibida (${effectiveExpectedUnits} unidades · ${OPPORTUNITY_EVENT_LABELS[input.eventType]}).`,
           metadata: {
             opportunityId: createdOpp.id,
             opportunityNumber: createdOpp.number,
-            expectedUnits: input.expectedUnits,
+            expectedUnits: effectiveExpectedUnits,
           },
         },
       });
@@ -504,7 +660,57 @@ export async function getOpportunityDetail(idOrNumber: string) {
         },
       },
       ownerAdmin: { select: { id: true, email: true } },
-      convertedOrder: { select: { id: true, number: true, total: true, status: true } },
+      convertedOrder: {
+        select: {
+          id: true,
+          number: true,
+          total: true,
+          status: true,
+          paymentMethod: true,
+          b2bArtworkReady: true,
+          directPaymentReportedAt: true,
+          directPaymentConfirmedAt: true,
+        },
+      },
+      proposals: {
+        orderBy: [{ version: "desc" }],
+        include: {
+          createdByAdmin: { select: { id: true, email: true } },
+          order: {
+            select: {
+              id: true,
+              number: true,
+              status: true,
+              total: true,
+              paymentMethod: true,
+              directPaymentMethod: true,
+              directPaymentReference: true,
+              directPaymentReportedAt: true,
+              directPaymentConfirmedAt: true,
+            },
+          },
+          items: {
+            orderBy: [{ sortOrder: "asc" }],
+            include: {
+              variant: {
+                select: {
+                  id: true,
+                  name: true,
+                  sku: true,
+                  attributes: true,
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                      slug: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 }

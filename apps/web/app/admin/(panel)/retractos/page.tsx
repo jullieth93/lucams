@@ -493,7 +493,12 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
                     )}
                     {r.orderPaymentMethod && (
                       <span className="text-brand-muted text-xs">
-                        Pago original: {r.orderPaymentMethod === "COD" ? "Contraentrega" : "Wompi"}
+                        Pago original:{" "}
+                        {r.orderPaymentMethod === "COD"
+                          ? "Contraentrega"
+                          : r.orderPaymentMethod === "DIRECT_TRANSFER"
+                            ? "Bre-B / Transferencia"
+                            : "Wompi"}
                       </span>
                     )}
                   </div>

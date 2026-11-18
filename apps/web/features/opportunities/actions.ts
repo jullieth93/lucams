@@ -67,6 +67,14 @@ export async function submitB2bInquiryAction(
     eventDate: String(formData.get("eventDate") ?? ""),
     city: String(formData.get("city") ?? ""),
     department: String(formData.get("department") ?? ""),
+    cityCode: String(formData.get("cityCode") ?? ""),
+    departmentCode: String(formData.get("departmentCode") ?? ""),
+    configMode: formData.get("configMode") === "CATALOG_LINES" ? "CATALOG_LINES" : "ADVISORY_OPEN",
+    configuredLinesJson: String(formData.get("configuredLinesJson") ?? ""),
+    artworkMode: formData.get("artworkMode") ? String(formData.get("artworkMode")) : undefined,
+    packagingType: formData.get("packagingType")
+      ? String(formData.get("packagingType"))
+      : undefined,
     notes: String(formData.get("notes") ?? ""),
     acceptHabeasData: formData.get("acceptHabeasData") === "on",
     acceptNewsletter: formData.get("acceptNewsletter") === "on",

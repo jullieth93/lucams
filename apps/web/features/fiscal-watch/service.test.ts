@@ -69,10 +69,11 @@ function mockAggregates(input: {
   grossYtd: number;
   cardYtd: number;
   electronicYtd: number;
+  directTransferYtd?: number;
   grossRecent: number;
   cardRecent: number;
 }) {
-  const orderQueue = [input.grossYtd, input.grossRecent];
+  const orderQueue = [input.grossYtd, input.directTransferYtd ?? 0, input.grossRecent];
   const txQueue = [input.cardYtd, input.electronicYtd, input.cardRecent];
   mockPrisma.order.aggregate.mockImplementation(async () => ({
     _sum: { total: orderQueue.shift() ?? 0 },

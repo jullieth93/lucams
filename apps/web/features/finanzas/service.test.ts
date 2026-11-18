@@ -135,8 +135,27 @@ describe("computeNetCollectedRevenue ([FIN-01])", () => {
       grossCollectedCents: 16_000_000,
       codShortfallCents: 500_000,
       retractRefundedCents: 2_500_000,
+      withholdingCents: 0,
       totalDeductionsCents: 3_000_000,
       netCollectedCents: 13_000_000,
+    });
+
+    expect(
+      computeNetCollectedRevenue({
+        wompiCollectedCents: 10_000_000,
+        directTransferCollectedCents: 5_000_000,
+        codDeliveredCents: 0,
+        codShortfallCents: 0,
+        retractRefundedCents: 0,
+        withholdingCents: 125_000,
+      }),
+    ).toEqual({
+      grossCollectedCents: 15_000_000,
+      codShortfallCents: 0,
+      retractRefundedCents: 0,
+      withholdingCents: 125_000,
+      totalDeductionsCents: 125_000,
+      netCollectedCents: 14_875_000,
     });
   });
 

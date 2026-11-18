@@ -125,6 +125,6 @@ describe("admin help registry", () => {
   });
 
   it("mantiene el catálogo RBAC alineado con las capacidades usadas por las guías", () => {
-    expect(ADMIN_CAPABILITIES).toHaveLength(36);
+    expect(ADMIN_CAPABILITIES).toHaveLength(38);
   });
 });

@@ -230,9 +230,17 @@ describe("evaluateAlerts — pending_payment_wompi_stale (N-12b: ventana de auto
         status: "PENDING_PAYMENT",
         paymentMethod: "WOMPI",
         deletedAt: null,
-        createdAt: {
-          lt: new Date(now.getTime() - PENDING_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000),
-        },
+        OR: [
+          {
+            paymentExpiresAt: null,
+            createdAt: {
+              lt: new Date(now.getTime() - PENDING_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000),
+            },
+          },
+          {
+            paymentExpiresAt: { lt: now },
+          },
+        ],
       },
     });
   });

@@ -1,8 +1,9 @@
 /*
- * `/empresas-y-eventos` — Landing y captación consultiva B2B / Eventos (`Fase 12 · S24`).
+ * `/empresas-y-eventos` — Landing y configurador interactivo consultivo B2B / Eventos (`ADR-210`).
  *
  * Separa limpiamente la venta consultiva por volumen (regalos corporativos, bodas,
- * colegios, merchandising magnético) del checkout self-service B2C.
+ * colegios, merchandising magnético) del checkout self-service B2C y pre-alimenta
+ * el constructor de propuestas en `/admin/oportunidades/[id]`.
  */
 
 import type { Metadata } from "next";
@@ -12,12 +13,14 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { buildWhatsAppUrl } from "@/lib/wa";
+import { BILLING_DOCUMENT_ENABLED } from "@/features/checkout/billing-document";
+import { getPublicB2bConfiguratorCatalog } from "@/features/opportunities/configurator-catalog";
 import { B2bInquiryForm } from "./b2b-inquiry-form";
 
 export const metadata: Metadata = {
   title: "Regalos Corporativos y Eventos | Lucams Shop",
   description:
-    "Fotoimanes personalizados, calendarios y detalles magnéticos por volumen para empresas, bodas, grados y eventos en toda Colombia.",
+    "Configura fotoimanes personalizados, calendarios y detalles magnéticos por volumen para empresas, bodas, grados y eventos en toda Colombia.",
   alternates: { canonical: "/empresas-y-eventos" },
 };
 
@@ -34,27 +37,28 @@ type SearchParams = Promise<{
 const BENEFITS = [
   {
     icon: Gift,
-    title: "Personalización con tu marca o evento",
+    title: "Personalización con tu marca o celebración",
     detail:
-      "Integramos tu logotipo, paleta corporativa, mensaje de agradecimiento o diseños individuales por invitado.",
+      "Integramos tu logotipo, paleta corporativa, mensaje de agradecimiento o diseños surtidos e individuales por invitado.",
   },
   {
     icon: Award,
     title: "Calidad fotográfica laminada 300 DPI",
     detail:
-      "Impresión de alta definición con protección UV y respaldo magnético completo que perdura por años.",
+      "Impresión de alta definición con protección UV y versiones con respaldo magnético completo o tarjeta sin imán.",
   },
   {
     icon: PackageCheck,
     title: "Tarifas escalonadas y envío nacional",
     detail:
-      "Precios preferenciales desde 25, 50, 100 y +500 unidades, con despacho asegurado a cualquier ciudad de Colombia.",
+      "Precios preferenciales desde 25, 50, 100 y +500 unidades, con despacho asegurado a cualquier municipio de Colombia.",
   },
   {
     icon: HeartHandshake,
-    title: "Acompañamiento humano de principio a fin",
-    detail:
-      "Validamos juntos tu muestra digital antes de pasar a producción y entregamos documentación tributaria (cuenta de cobro o factura electrónica según corresponda).",
+    title: "Muestra digital y propuesta formal con enlace privado",
+    detail: BILLING_DOCUMENT_ENABLED
+      ? "Validamos juntos tu muestra digital antes de producir y emitimos propuesta formal con pago en línea y facturación electrónica DIAN."
+      : "Validamos juntos tu muestra digital antes de producir y emitimos propuesta formal con enlace de aprobación y soporte comercial (cuenta de cobro y RUT).",
   },
 ] as const;
 
@@ -63,9 +67,10 @@ export default async function EmpresasYEventosPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const [waSupportUrl, sp] = await Promise.all([
+  const [waSupportUrl, sp, catalog] = await Promise.all([
     buildWhatsAppUrl({ kind: "support" }),
     searchParams,
+    getPublicB2bConfiguratorCatalog(),
   ]);
 
   return (
@@ -85,8 +90,9 @@ export default async function EmpresasYEventosPage({
                 Detalles magnéticos que tus clientes e invitados sí conservan
               </h1>
               <p className="mt-4 max-w-2xl text-base text-white/85 sm:text-lg">
-                Creamos fotoimanes, calendarios y recordatorios personalizados en volumen con
-                acabado artesanal colombiano, tiempos claros de taller y atención dedicada.
+                Configura fotoimanes, calendarios y recordatorios personalizados en volumen con
+                estimado orientativo al instante, validación de tiempos de taller y acompañamiento
+                dedicado.
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white/90">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
@@ -95,7 +101,7 @@ export default async function EmpresasYEventosPage({
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
                   <CheckCircle2 className="h-4 w-4 text-[#5DD9D1]" />
-                  Propuesta en menos de 24h hábiles
+                  Propuesta formal en menos de 24h hábiles
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5">
                   <CheckCircle2 className="h-4 w-4 text-[#5DD9D1]" />
@@ -106,11 +112,11 @@ export default async function EmpresasYEventosPage({
           </div>
         </section>
 
-        {/* Contenido principal: Beneficios + Formulario consultivo */}
+        {/* Contenido principal: Beneficios + Configurador consultivo */}
         <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:py-16">
           <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
             {/* Columna izquierda: beneficios y acompañamiento */}
-            <div className="space-y-6 lg:col-span-5">
+            <div className="space-y-6 lg:col-span-4">
               <div>
                 <h2 className="font-display text-brand-purple-dark text-2xl font-bold">
                   ¿Por qué elegir Lucams para tu evento o empresa?
@@ -124,9 +130,9 @@ export default async function EmpresasYEventosPage({
                   >
                     catálogo online
                   </Link>
-                  . Si necesitas integrar el logo de tu marca, muestra digital previa, empaque
-                  especial, documentación tributaria para empresas o más de 100 unidades, te
-                  acompañamos paso a paso desde 25 unidades.
+                  . Si necesitas integrar tu marca, muestra digital previa, empaque individual,
+                  soporte tributario corporativo o más de 100 unidades, arma aquí tu proyecto desde
+                  25 unidades.
                 </p>
               </div>
 
@@ -173,18 +179,20 @@ export default async function EmpresasYEventosPage({
               </div>
             </div>
 
-            {/* Columna derecha: Formulario estructurado */}
-            <div className="lg:col-span-7">
-              <div className="border-brand-purple/15 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
+            {/* Columna derecha: Configurador interactivo */}
+            <div className="lg:col-span-8">
+              <div className="border-brand-purple/15 rounded-3xl border bg-white p-5 shadow-sm sm:p-8">
                 <h2 className="font-display text-brand-purple-dark text-xl font-bold sm:text-2xl">
-                  Cuéntanos sobre tu pedido por volumen
+                  Configura tu pedido para empresa o evento
                 </h2>
                 <p className="text-brand-muted mt-1 mb-6 text-sm">
-                  Completa estos datos en 1 minuto y prepararemos opciones ideales según tu fecha y
-                  cantidad.
+                  Elige referencias reales del catálogo (o pide asesoría abierta), valida tu fecha y
+                  obtén un estimado orientativo al instante.
                 </p>
 
                 <B2bInquiryForm
+                  catalog={catalog}
+                  billingDocumentEnabled={BILLING_DOCUMENT_ENABLED}
                   waSupportUrl={waSupportUrl}
                   initialUtmSource={sp.utm_source ?? ""}
                   initialUtmMedium={sp.utm_medium ?? ""}

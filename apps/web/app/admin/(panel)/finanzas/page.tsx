@@ -73,11 +73,13 @@ type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   WOMPI: "Wompi (pago en línea)",
+  DIRECT_TRANSFER: "Bre-B / Transferencia directa",
   COD: "Contra entrega",
 };
 
 const PAYMENT_METHOD_HINT: Record<PaymentMethod, string> = {
   WOMPI: "Tarjeta, PSE o Nequi — se reconoce al confirmar el pago",
+  DIRECT_TRANSFER: "Llave Bre-B o transferencia B2B — se reconoce al confirmar abono con MFA",
   COD: "Efectivo — se reconoce solo cuando el pedido queda entregado",
 };
 
@@ -94,6 +96,7 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
   const [
     totalPaidOrders,
     wompiRevenue,
+    directTransferAgg,
     codDeliveredRevenue,
     codToCollect,
     totalRefunded,
@@ -105,8 +108,8 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
     prisma.order.count({
       where: { deletedAt: null, status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] } },
     }),
-    // Ingresos = efectivo REALMENTE cobrado: Wompi capturado online + COD ENTREGADO
-    // (el efectivo del contraentrega solo entra al entregar). Revisión adversarial COD.
+    // Ingresos = efectivo REALMENTE cobrado: Wompi capturado online + Pago Directo B2B verificado + COD ENTREGADO
+    // (el efectivo del contraentrega solo entra al entregar). Revisión adversarial COD + ADR-210.
     prisma.order
       .aggregate({
         where: {
@@ -117,6 +120,19 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
         _sum: { total: true },
       })
       .then((r) => r._sum?.total ?? 0),
+    prisma.order
+      .aggregate({
+        where: {
+          deletedAt: null,
+          paymentMethod: "DIRECT_TRANSFER",
+          status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] },
+        },
+        _sum: { total: true, withholdingCents: true },
+      })
+      .then((r) => ({
+        grossCents: r._sum?.total ?? 0,
+        withholdingCents: r._sum?.withholdingCents ?? 0,
+      })),
     prisma.order
       .aggregate({
         where: { deletedAt: null, paymentMethod: "COD", status: "DELIVERED" },
@@ -179,9 +195,11 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
   // menos discrepancias COD confirmadas y retractos reembolsados en efectivo.
   const netBreakdown = computeNetCollectedRevenue({
     wompiCollectedCents: wompiRevenue,
+    directTransferCollectedCents: directTransferAgg.grossCents,
     codDeliveredCents: codDeliveredRevenue,
     codShortfallCents: codRecon.shortfallCop,
     retractRefundedCents: retractRefundSummary.totalCents,
+    withholdingCents: directTransferAgg.withholdingCents,
   });
   const totalRevenue = netBreakdown.netCollectedCents;
   const hasRealData = totalPaidOrders > 0;
