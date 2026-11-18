@@ -119,9 +119,15 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
           status: "PENDING_PAYMENT",
           paymentMethod: "WOMPI",
           deletedAt: null,
-          createdAt: {
-            lt: new Date(now.getTime() - PENDING_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000),
-          },
+          OR: [
+            {
+              paymentExpiresAt: null,
+              createdAt: {
+                lt: new Date(now.getTime() - PENDING_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000),
+              },
+            },
+            { paymentExpiresAt: { lt: now } },
+          ],
         },
       }),
       // F-07 (2026-09-19) — reglas de seguridad sobre SecurityEvent (la persistencia

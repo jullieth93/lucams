@@ -122,7 +122,10 @@ export async function expireStalePendingOrders(
       status: "PENDING_PAYMENT",
       paymentMethod: "WOMPI",
       deletedAt: null,
-      createdAt: { lt: cutoff },
+      OR: [
+        { paymentExpiresAt: null, createdAt: { lt: cutoff } },
+        { paymentExpiresAt: { lt: now } },
+      ],
       // NO se expiran órdenes marcadas para reconciliación: pueden tener dinero
       // CAPTURADO (Wompi APPROVED sin stock, monto desfasado, saga reventada) —
       // cancelarlas es decisión de un humano, no del cron.
@@ -133,6 +136,7 @@ export async function expireStalePendingOrders(
       number: true,
       total: true,
       createdAt: true,
+      b2bProposalId: true,
       paymentAttempt: true,
       wompiReference: true,
       wompiTransactionId: true,
@@ -258,6 +262,14 @@ export async function expireStalePendingOrders(
 
     try {
       await transitionOrder(order.id, "CANCELLED", { actorAdminId: EXPIRE_PENDING_ACTOR });
+      if (order.b2bProposalId) {
+        await prisma.opportunityProposal
+          .updateMany({
+            where: { id: order.b2bProposalId, status: { in: ["SENT", "APPROVED", "CONVERTED"] } },
+            data: { status: "EXPIRED" },
+          })
+          .catch(() => null);
+      }
       expired += 1;
       // F-03 (auditoría 2026-09-19): si la orden TENÍA txId pero la verificación
       // contra Wompi NO se ejecutó (sin llaves o API caída/404), la cancelación

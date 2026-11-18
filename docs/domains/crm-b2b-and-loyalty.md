@@ -92,35 +92,38 @@ El panel `/admin/metricas` (`SUPERADMIN` y `FINANCE_ANALYST`, `features/crm/inte
 
 ---
 
-## 3. Embudo Comercial B2B y Eventos
+## 3. Embudo Comercial B2B y Eventos (`ADR-210`)
 
-Lucams atiende pedidos corporativos, bodas, grados y colegios en un flujo consultivo separado del checkout de autoservicio. La cotización individual por WhatsApp fue retirada (`ADR-204`): las compras individuales usan checkout, envío, pago y pedido; las negociaciones B2B usan Oportunidades y, cuando se concretan, se vinculan a un pedido real.
+Lucams atiende pedidos corporativos, bodas, grados y colegios en un flujo consultivo integrado de punta a punta con el ecosistema transaccional. La cotización individual por WhatsApp fue retirada (`ADR-204`): las compras individuales usan checkout, envío, pago y pedido; los proyectos corporativos y eventos usan el configurador `/empresas-y-eventos` → propuesta formal `/propuesta/[token]` → `Order` real.
 
 ```mermaid
 sequenceDiagram
   participant L as "Cliente Corporativo / Evento"
   participant W as "/empresas-y-eventos"
-  participant DB as "PostgreSQL (CRM + Pipeline)"
-  participant A as "Admin (/admin/oportunidades)"
+  participant DB as "PostgreSQL (CRM + Proposals + Order)"
+  participant A as "Admin (/admin/oportunidades/[id])"
+  participant P as "Portal (/propuesta/[token])"
 
-  L->>W: Envía solicitud (Turnstile + NIT mód-11 + Ley 1581)
-  W->>DB: Crea Contact + Organization + Opportunity (OP-XXXXXX) + Task (+24h)
-  W-->>L: Email b2b-inquiry-received
-  W-->>A: Email b2b-inquiry-admin-notification + campana in-app
-  A->>DB: Califica en Kanban (NEW -> QUALIFYING -> PROPOSAL_SENT -> WON/LOST)
-  A->>DB: Vincula pedido final (convertedOrderId)
+  L->>W: Configura 1..5 líneas + arte/empaque + fecha (Turnstile + Ley 1581)
+  W->>DB: Crea Contact + Organization + Opportunity (requestedConfig) + Task (+24h)
+  A->>DB: Construye OpportunityProposal v1/v2 (piso BOM + flete + muestra digital)
+  A-->>L: Email b2b-proposal-sent con enlace cifrado /propuesta/[token]
+  L->>P: Aprueba muestra + dirección DANE exacta + elige Wompi o Pago Directo
+  P->>DB: Crea Order (LCM-YYYY-NNNN) + Consent Ley 1581
+  DB-->>A: Al pagar (Wompi o confirmación MFA Bre-B/Banco): Order FULFILLING + Opportunity WON
 ```
 
-### Captura consultiva en `/empresas-y-eventos` (`features/opportunities/`)
+### Configurador público multicategoría en `/empresas-y-eventos` (`features/opportunities/`)
 
-- Valida en cliente y servidor cantidad estimada (**`25..100 000` unidades** — mínimo consultivo unificado en todo el embudo para pedidos con logo corporativo, muestra digital previa, empaque especial, documentación tributaria empresarial o más de 100 unidades, mientras los pedidos estándar con fotos propias de hasta 100 unidades se compran en autoservicio con `/admin/mayorista`; `ADR-209`), prellena `?unidades=` y `?producto=` al llegar desde el tope de la vista previa del Estudio o `/carrito`, y valida fecha del evento, teléfono con indicativo hacia E.164, municipio DANE y NIT empresarial mediante el algoritmo oficial DIAN **módulo 11** (`normalizeAndValidateNit` en `lib/colombia-validators.ts`).
+- Permite configurar **`1..5` líneas reales del catálogo** (filtrando soporte con/sin imán y convirtiendo packs a piezas físicas reales mediante `piecesPerCommercialUnit`, exigiendo un mínimo consolidado de **`>= 25` piezas físicas**) o activar **modo asesoría abierta** (`ADVISORY_OPEN`). Calcula en tiempo real un **rango orientativo no vinculante** a partir de `WholesaleTier` sin exponer jamás `Product.cost` al navegador, un **semáforo colombiano de días hábiles** (`colombian-sla.ts`) contra `eventDate`, y captura estructurada de modalidad de arte (`SAME_DESIGN`, `ASSORTED_BATCH`, `INDIVIDUAL_NOMINAL`, `CREATIVE_ASSISTANCE`) y empaque (`BULK_STANDARD`, `INDIVIDUAL_FAVOR`, `SPECIAL_KIT`), persistidos en `Opportunity.requestedConfig`. Prellena `?unidades=` y `?producto=` desde la vista previa del Estudio o `/carrito`, y valida NIT empresarial por **módulo 11** (`normalizeAndValidateNit`).
 - Protegido con Cloudflare Turnstile, doble rate-limit de 24 h (`5/día` por IP y `3/día` por correo) y aislamiento de sesión (`getStorefrontCustomerForForm`, que ignora sesiones administrativas o de terceros).
 - En una sola transacción crea o enlaza `Contact` (`source: "B2B_INQUIRY"`), `Organization` (deduplicada por NIT), `Opportunity` con consecutivo `OP-XXXXXX` y snapshot inmutable del solicitante, autorizaciones Ley 1581, atribución UTM y una **`Task` automática con SLA comercial de 24 horas** (prioridad `URGENT` si supera 100 unidades, `HIGH` en el resto). En segundo plano despacha los correos `b2b-inquiry-received` y `b2b-inquiry-admin-notification` (ver [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md)) y alerta en la campana del panel con tipo `ORDER` y enlace a la oportunidad.
 
-### Pipeline en `/admin/oportunidades`
+### Pipeline y Constructor de Propuestas en `/admin/oportunidades` (`proposals-service.ts`, `proposal-conversion-service.ts`)
 
-- Gestiona de forma paginada las etapas `NEW` («Nueva solicitud»), `QUALIFYING` («En calificación»), `PROPOSAL_SENT` («Propuesta enviada»), `WON` («Ganada») y `LOST` («Perdida», con motivo obligatorio `lostReason`), clasificadas por tipo de evento (`CORPORATE_GIFT`, `WEDDING_SOCIAL`, `SCHOOL_GRADUATION`, `BRAND_MERCH`, `OTHER`), con alertas de urgencia cuando `eventDate` está vencida o dentro de los próximos 14 días, tasa de cierre sobre negocios cerrados y desglose de demanda por vertical.
-- Integra `<CrmWorkspacePanel>` vinculando `Task.opportunityId` y metadatos en `ContactActivity`, y permite asociar el pedido cerrado por su consecutivo `LCM-YYYY-NNNN` en `convertedOrderId`. Ganar una oportunidad no crea una orden ni prueba un pago por sí mismo: la evidencia transaccional siempre vive en `Order`.
+- Gestiona de forma paginada las etapas `NEW` («Nueva solicitud»), `QUALIFYING` («En calificación»), `PROPOSAL_SENT` («Propuesta enviada»), `WON` («Ganada») y `LOST` («Perdida», con motivo obligatorio `lostReason`), clasificadas por tipo de evento (`CORPORATE_GIFT`, `WEDDING_SOCIAL`, `SCHOOL_GRADUATION`, `BRAND_MERCH`, `OTHER`), con alertas de urgencia e integración en `/admin/hoy` (carril `RECOVERY` para propuestas próximas a vencer en `<= 48 h` y carril `FINANCE` para pagos directos reportados).
+- **Constructor de Propuestas B2B (`opportunities:propose` — `SUPERADMIN`, `OPERATIONS_MANAGER`, `MANAGER`):** permite armar versiones `PROP-OPXXXXXX-V1`, `V2`… prellenadas desde `requestedConfig`, verificando en vivo margen y **piso de costo BOM (`unitPriceCents >= Product.cost`, salvo override explícito de `SUPERADMIN`)**, cotizando envío en vivo (`QUOTED` Aveonline/`lucams` o `PACTED_MANUAL` con número de cajas `packageCount`), adjuntando muestra digital privada en `design-previews/b2b-proofs/` (`BEFORE_PAYMENT` o `AFTER_PAYMENT`, servida por `/api/b2b-proof/[proposalId]`) y emitiendo un enlace con token CSPRNG de 256 bits (`tokenHash` SHA-256) que marca versiones previas como `SUPERSEDED`. `CUSTOMER_SUPPORT` mantiene `opportunities:manage` para calificar sin ver costos BOM ni emitir precios.
+- **Portal privado `/propuesta/[token]` y cierre en `Order`:** vista ejecutiva imprimible (`noindex`, `Cache-Control: private, no-store`) donde el cliente aprueba la muestra digital, completa la dirección DANE exacta (fijada al departamento/municipio cotizado) y elige entre **Wompi en línea** o **Pago Directo (`DIRECT_TRANSFER`: llave Bre-B / transferencia bancaria)** si la propuesta habilitó `allowDirectTransfer`. Al convertirse nace un `Order` real (`LCM-YYYY-NNNN`) con `paymentExpiresAt = proposal.validUntil`, sin `COD`, sin cupones y sin otorgar Puntos Lucams ni comisiones de referidos; al confirmarse el pago (automático en Wompi o mediante `confirmDirectTransferByAdmin` exclusivo de `SUPERADMIN` + MFA reciente), `processPaidOrder` pasa automáticamente la `Opportunity` a `WON`, cierra sus tareas abiertas y finaliza inscripciones activas de `B2B_FOLLOW_UP`.
 
 ---
 

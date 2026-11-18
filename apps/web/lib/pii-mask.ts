@@ -229,6 +229,10 @@ export type OrderLikeWithPii = {
   wompiTransactionId?: string | null;
   wompiReference?: string | null;
   wompiAttempts?: unknown[];
+  withholdingCents?: number;
+  directPaymentReference?: string | null;
+  directPaymentReceiptPath?: string | null;
+  directPaymentNotes?: string | null;
   items?: Array<Record<string, unknown>>;
   customer?: {
     id?: string;
@@ -273,6 +277,8 @@ export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: Ad
     ...(stripCarrierLabelUrls && order.labelUrl !== undefined ? { labelUrl: null } : {}),
     ...(stripCarrierLabelUrls && order.trackingUrl !== undefined ? { trackingUrl: null } : {}),
     ...(role === "FINANCE_ANALYST" && order.giftMessage !== undefined ? { giftMessage: null } : {}),
+    ...(order.directPaymentReceiptPath !== undefined ? { directPaymentReceiptPath: null } : {}),
+    ...(order.directPaymentNotes !== undefined ? { directPaymentNotes: null } : {}),
     ...(role === "PRINT_WORKSHOP"
       ? {
           ...(order.billingDocumentType !== undefined ? { billingDocumentType: null } : {}),
@@ -350,6 +356,8 @@ export function maskOrderForActor<T extends OrderLikeWithPii>(order: T, role: Ad
           ...(order.wompiTransactionId !== undefined ? { wompiTransactionId: null } : {}),
           ...(order.wompiReference !== undefined ? { wompiReference: null } : {}),
           ...(order.wompiAttempts !== undefined ? { wompiAttempts: [] } : {}),
+          ...(order.withholdingCents !== undefined ? { withholdingCents: 0 } : {}),
+          ...(order.directPaymentReference !== undefined ? { directPaymentReference: null } : {}),
         }
       : {}),
     ...(order.items !== undefined && (hideCommercialBreakdown || hideDesignContent)

@@ -26,7 +26,7 @@ export type OrderAdminNotificationData = {
   customerEmail: string;
   city: string;
   department: string;
-  paymentMethod: "WOMPI" | "COD";
+  paymentMethod: "WOMPI" | "COD" | "DIRECT_TRANSFER";
   /** Suma de items (sin envío ni descuentos), centavos COP. */
   subtotal: number;
   /** Costo del envío cobrado al cliente, centavos COP. */
@@ -73,7 +73,12 @@ export async function orderAdminNotificationEmail(data: OrderAdminNotificationDa
   );
   const customerTelUrl = customerTelLink(data.customerPhone);
   const location = formatCityDept(data.city, data.department);
-  const paymentLabel = data.paymentMethod === "COD" ? "Contraentrega" : "Wompi (online)";
+  const paymentLabel =
+    data.paymentMethod === "COD"
+      ? "Contraentrega"
+      : data.paymentMethod === "DIRECT_TRANSFER"
+        ? "Pago directo verificado (Bre-B / Transferencia)"
+        : "Wompi (online)";
 
   const itemsRows = data.items
     .map(

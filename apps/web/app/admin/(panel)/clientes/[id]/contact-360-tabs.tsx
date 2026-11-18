@@ -306,7 +306,11 @@ export function Contact360Tabs({
                             </span>
                           )}
                           <span className="text-brand-muted text-xs">
-                            {order.paymentMethod === "COD" ? "Contra entrega" : "Wompi"}
+                            {order.paymentMethod === "COD"
+                              ? "Contra entrega"
+                              : order.paymentMethod === "DIRECT_TRANSFER"
+                                ? "Bre-B / Transferencia"
+                                : "Wompi"}
                           </span>
                           {order.isGift && (
                             <AdminBadge tone="purple">

@@ -65,6 +65,8 @@ const DELETE_PLAN = [
   ["task", "Task"],
   ["identityMergeCandidate", "IdentityMergeCandidate"],
   ["contactIdentity", "ContactIdentity"],
+  ["opportunityProposalItem", "OpportunityProposalItem"],
+  ["opportunityProposal", "OpportunityProposal"],
   ["opportunity", "Opportunity"],
   ["consent", "Consent"],
   ["loyaltyTxn", "LoyaltyTxn"],
@@ -100,7 +102,9 @@ try {
     select: { id: true, email: true, supabaseUserId: true },
   });
   if (superAdmins.length === 0) {
-    throw new Error("No hay AdminUser SUPERADMIN activo — abortando (sin él nadie entra al admin).");
+    throw new Error(
+      "No hay AdminUser SUPERADMIN activo — abortando (sin él nadie entra al admin).",
+    );
   }
   const keepAuthIds = superAdmins.map((a) => a.supabaseUserId).filter(Boolean);
   console.log(
@@ -125,7 +129,9 @@ try {
     WHERE NOT ("id"::text = ANY(${keepAuthIds}))
   `;
   console.log(`    AdminUser no-SUPERADMIN: ${nonSuperAdmins}`);
-  console.log(`    auth.users: ${authUsers[0].n} (se borrarían ${authToDelete[0].n}, se conservan ${keepAuthIds.length})`);
+  console.log(
+    `    auth.users: ${authUsers[0].n} (se borrarían ${authToDelete[0].n}, se conservan ${keepAuthIds.length})`,
+  );
 
   if (!apply) {
     console.log("\n  DRY-RUN completo. Re-ejecuta con --apply para borrar de verdad.\n");

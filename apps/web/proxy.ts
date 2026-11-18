@@ -124,7 +124,7 @@ const IS_DEV = process.env.NODE_ENV === "development";
 // Server Actions and /api/* manages its own Cache-Control. RSC fetches for client navigations
 // are GETs on the same path and take the same header — they feed the client router's in-memory
 // cache, not the HTTP cache, so there is no interference with the RSC payload.
-const PRIVATE_PAGE_PREFIXES = ["/mi-cuenta", "/checkout", "/admin"];
+const PRIVATE_PAGE_PREFIXES = ["/mi-cuenta", "/checkout", "/admin", "/propuesta"];
 
 function isPrivatePageGet(method: string, path: string, isApi: boolean): boolean {
   return (

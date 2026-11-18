@@ -141,22 +141,27 @@ export async function getFiscalYearSnapshot(now: Date = new Date()): Promise<Fis
     attempt: { order: { deletedAt: null, createdAt: orderCreatedAt } },
   });
 
-  const [grossYtd, cardYtd, electronicYtd, grossRecent, cardRecent] = await Promise.all([
-    prisma.order.aggregate({ _sum: { total: true }, where: ytdSaleWhere }),
-    prisma.wompiPaymentTransaction.aggregate({
-      _sum: { amountInCents: true },
-      where: { ...cardWhere({ gte: startUtc, lt: endUtc }), paymentMethodType: "CARD" },
-    }),
-    prisma.wompiPaymentTransaction.aggregate({
-      _sum: { amountInCents: true },
-      where: cardWhere({ gte: startUtc, lt: endUtc }),
-    }),
-    prisma.order.aggregate({ _sum: { total: true }, where: recentSaleWhere }),
-    prisma.wompiPaymentTransaction.aggregate({
-      _sum: { amountInCents: true },
-      where: { ...cardWhere({ gte: recentStart, lte: now }), paymentMethodType: "CARD" },
-    }),
-  ]);
+  const [grossYtd, cardYtd, electronicYtd, directTransferYtd, grossRecent, cardRecent] =
+    await Promise.all([
+      prisma.order.aggregate({ _sum: { total: true }, where: ytdSaleWhere }),
+      prisma.wompiPaymentTransaction.aggregate({
+        _sum: { amountInCents: true },
+        where: { ...cardWhere({ gte: startUtc, lt: endUtc }), paymentMethodType: "CARD" },
+      }),
+      prisma.wompiPaymentTransaction.aggregate({
+        _sum: { amountInCents: true },
+        where: cardWhere({ gte: startUtc, lt: endUtc }),
+      }),
+      prisma.order.aggregate({
+        _sum: { total: true },
+        where: { ...ytdSaleWhere, paymentMethod: "DIRECT_TRANSFER" },
+      }),
+      prisma.order.aggregate({ _sum: { total: true }, where: recentSaleWhere }),
+      prisma.wompiPaymentTransaction.aggregate({
+        _sum: { amountInCents: true },
+        where: { ...cardWhere({ gte: recentStart, lte: now }), paymentMethodType: "CARD" },
+      }),
+    ]);
 
   const uvtCop = FISCAL_UVT_COP_BY_YEAR[year] ?? FISCAL_UVT_COP_BY_YEAR[year - 1];
   if (!FISCAL_UVT_COP_BY_YEAR[year]) {
@@ -176,7 +181,8 @@ export async function getFiscalYearSnapshot(now: Date = new Date()): Promise<Fis
     remainingDays: totalDaysInYear - elapsedDays,
     grossIncomeYtdCop: grossYtd._sum?.total ?? 0,
     cardIncomeYtdCop: cardYtd._sum?.amountInCents ?? 0,
-    electronicIncomeYtdCop: electronicYtd._sum?.amountInCents ?? 0,
+    electronicIncomeYtdCop:
+      (electronicYtd._sum?.amountInCents ?? 0) + (directTransferYtd._sum?.total ?? 0),
     grossIncomeRecentCop: grossRecent._sum?.total ?? 0,
     cardIncomeRecentCop: cardRecent._sum?.amountInCents ?? 0,
   };

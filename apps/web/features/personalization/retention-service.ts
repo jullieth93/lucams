@@ -465,12 +465,16 @@ export function classifyStorageOrphan(
 ): OrphanReason | null {
   const parts = name.split("/");
   if (bucket === PRODUCTION_BUCKET || bucket === PREVIEWS_BUCKET) {
-    // `_bundles/` (ZIPs de taller, 2026-11-08) no ancla a ningún Design: su
-    // higiene es por re-upload del mismo pedido, no por este barrido.
+    // `_bundles/` (ZIPs de taller, 2026-11-08) y `b2b-proofs/` (muestras digitales de
+    // OpportunityProposal, ADR-210) no anclan a ningún Design.
     if (bucket === PRODUCTION_BUCKET && parts[0] === "_bundles") return null;
+    if (bucket === PREVIEWS_BUCKET && parts[0] === "b2b-proofs") return null;
     return !designIds.has(parts[0]) ? "design-inexistente" : null;
   }
   if (bucket === CUSTOMER_UPLOADS_BUCKET) {
+    // `b2b-receipts/` (soportes de transferencia / Bre-B en Order.directPaymentReceiptPath,
+    // ADR-210) son evidencia contable y no anclan a Design.
+    if (parts[0] === "b2b-receipts") return null;
     const designPart = parts[1] ?? "";
     // `pending/` (upload temporal aún asociable) y `_staging/` (área de paso
     // de la subida directa, 2026-11-08) tienen gracia de 7 días.
@@ -512,12 +516,14 @@ export async function sweepOrphanStorageObjects(opts?: {
   >`
     SELECT o.bucket_id AS "bucket", o.name, o.created_at AS "createdAt"
     FROM storage.objects o
-    WHERE (
+      WHERE (
         o.bucket_id IN ('production-assets', 'design-previews')
         AND (o.bucket_id <> 'production-assets' OR split_part(o.name, '/', 1) <> '_bundles')
+        AND (o.bucket_id <> 'design-previews' OR split_part(o.name, '/', 1) <> 'b2b-proofs')
         AND NOT EXISTS (SELECT 1 FROM "Design" d WHERE d.id = split_part(o.name, '/', 1))
       ) OR (
         o.bucket_id = 'customer-uploads'
+        AND split_part(o.name, '/', 1) <> 'b2b-receipts'
         AND (
           (split_part(o.name, '/', 2) IN ('pending', '_staging') AND o.created_at < ${pendingCutoff})
           OR (

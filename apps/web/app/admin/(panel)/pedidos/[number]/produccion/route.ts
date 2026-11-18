@@ -92,6 +92,15 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
   if (!bundle) {
     return new Response("Pedido no encontrado", { status: 404 });
   }
+  if (bundle.b2bArtworkReady === false) {
+    return Response.json(
+      {
+        error:
+          "Este pedido B2B aún tiene pendiente la carga de los archivos maestros 300 DPI aprobados.",
+      },
+      { status: 409, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   if (bundle.items.length === 0) {
     return new Response("Este pedido no tiene diseños finalizados para imprimir.", { status: 404 });
   }

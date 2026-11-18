@@ -1054,4 +1054,33 @@ describe("Bloque C1 — guías, filtros y alcance dinámico de notificaciones", 
       }
     }
   });
+
+  it("ADR-210: separa opportunities:propose de CUSTOMER_SUPPORT y restringe finance:confirm_direct_payment a SUPERADMIN", () => {
+    for (const role of ["SUPERADMIN", "OPERATIONS_MANAGER", "MANAGER"] as const) {
+      expect(hasCapability(role, "opportunities:propose")).toBe(true);
+    }
+    for (const role of [
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(hasCapability(role, "opportunities:propose")).toBe(false);
+    }
+
+    expect(hasCapability("SUPERADMIN", "finance:confirm_direct_payment")).toBe(true);
+    for (const role of [
+      "OPERATIONS_MANAGER",
+      "MANAGER",
+      "CUSTOMER_SUPPORT",
+      "FINANCE_ANALYST",
+      "FULFILLMENT",
+      "PRINT_WORKSHOP",
+      "CMS_EDITOR",
+    ] as const) {
+      expect(hasCapability(role, "finance:confirm_direct_payment")).toBe(false);
+    }
+    expect(ADMIN_ROLE_SETS.FINANCE_DIRECT_PAYMENT).toEqual(["SUPERADMIN"]);
+  });
 });

@@ -131,7 +131,10 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
 
   const pagoRaw = pickString(sp, "pago");
   const paymentMethod: OrderListOpts["paymentMethod"] =
-    canFilterPaymentMethod && (pagoRaw === "WOMPI" || pagoRaw === "COD") ? pagoRaw : "all";
+    canFilterPaymentMethod &&
+    (pagoRaw === "WOMPI" || pagoRaw === "COD" || pagoRaw === "DIRECT_TRANSFER")
+      ? pagoRaw
+      : "all";
 
   const desdeRaw = pickString(sp, "desde");
   const fromDate = desdeRaw && ISO_DATE_RE.test(desdeRaw) ? desdeRaw : undefined;
@@ -560,6 +563,7 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
               >
                 <option value="all">Todos</option>
                 <option value="WOMPI">Pago en línea (Wompi)</option>
+                <option value="DIRECT_TRANSFER">Bre-B / Transferencia B2B</option>
                 <option value="COD">Contraentrega</option>
               </select>
             </div>
@@ -743,7 +747,11 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                           {formatCOP(o.total)}
                         </div>
                         <div className="text-brand-muted text-[10px]">
-                          {o.paymentMethod === "COD" ? "Contraentrega" : "Wompi"}
+                          {o.paymentMethod === "COD"
+                            ? "Contraentrega"
+                            : o.paymentMethod === "DIRECT_TRANSFER"
+                              ? "Bre-B / Transferencia"
+                              : "Wompi"}
                         </div>
                       </td>
                     ) : canSeeCodTotal ? (
@@ -756,7 +764,11 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                             </div>
                           </div>
                         ) : (
-                          <AdminBadge tone="emerald">Pagado en línea</AdminBadge>
+                          <AdminBadge tone="emerald">
+                            {o.paymentMethod === "DIRECT_TRANSFER"
+                              ? "Pago directo B2B"
+                              : "Pagado en línea"}
+                          </AdminBadge>
                         )}
                       </td>
                     ) : (

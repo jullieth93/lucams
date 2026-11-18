@@ -1,5 +1,5 @@
 /*
- * Admin > Oportunidades B2B > [id] — Detalle y seguimiento de oportunidad consultiva (`S24`).
+ * Admin > Oportunidades B2B > [id] — Detalle, seguimiento y Constructor de Propuestas (`S24` + `ADR-210`).
  */
 
 import type { Metadata } from "next";
@@ -17,28 +17,38 @@ import { CrmWorkspacePanel } from "@/components/admin/crm-workspace-panel";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { canAccessAdminPath, hasCapability } from "@/lib/admin-rbac";
 import { requireCapability } from "@/lib/admin-rbac-guard";
+import { getDirectPaymentConfig } from "@/lib/direct-payment-config";
+import { getCanonicalSiteUrl } from "@/lib/origin";
 import { maskEmail, maskPersonName, maskPhone, maskTaxDocument } from "@/lib/pii-mask";
 import { customerWaLink } from "@/lib/wa";
 import { formatCOP } from "@/lib/format";
+import { formatDateCO } from "@/lib/datetime";
 import {
   listActivitiesForEntity,
   listAssignableCrmAdmins,
   listTasksForEntity,
 } from "@/features/crm/service";
 import {
+  B2B_ARTWORK_MODE_LABELS,
+  B2B_PACKAGING_TYPE_LABELS,
+  B2bRequestedConfigSchema,
   isOpportunityEventType,
   isOpportunityStage,
+  isProposalStatus,
   OPPORTUNITY_EVENT_LABELS,
   OPPORTUNITY_STAGE_LABELS,
   OPPORTUNITY_STAGE_TONES,
+  PROPOSAL_STATUS_LABELS,
+  PROPOSAL_STATUS_TONES,
 } from "@/features/opportunities/schemas";
 import {
   getOpportunityDetail,
   getServerNowMs,
   listAssignableOpportunityAdmins,
 } from "@/features/opportunities/service";
+import { getAdminProposalCatalog } from "@/features/opportunities/configurator-catalog";
 import { OpportunityEditForm } from "./opportunity-edit-form";
-import { formatDateCO } from "@/lib/datetime";
+import { ProposalBuilder, type ExistingProposalSummary } from "./proposal-builder";
 
 export const metadata: Metadata = {
   title: "Detalle Oportunidad B2B",
@@ -55,6 +65,7 @@ export default async function AdminOpportunityDetailPage({
   const session = await requireCapability("opportunities:manage");
   const role = session.admin.role;
   const canReadPii = hasCapability(role, "contacts:read_pii");
+  const canPropose = hasCapability(role, "opportunities:propose");
   const canManageTasks = hasCapability(role, "crm:manage_tasks");
   const canManageActivities = hasCapability(role, "crm:manage_activities");
   const canViewActivities = hasCapability(role, "contacts:read_360") && canReadPii;
@@ -63,11 +74,12 @@ export default async function AdminOpportunityDetailPage({
   const canViewSupport = canAccessAdminPath(role, "/admin/soporte");
 
   const { id } = await params;
-  const [opp, assignableAdmins, crmAssignableAdmins, nowMs] = await Promise.all([
+  const [opp, assignableAdmins, crmAssignableAdmins, nowMs, proposalCatalog] = await Promise.all([
     getOpportunityDetail(decodeURIComponent(id)),
     listAssignableOpportunityAdmins(),
     canManageTasks ? listAssignableCrmAdmins() : Promise.resolve([]),
     getServerNowMs(),
+    canPropose ? getAdminProposalCatalog() : Promise.resolve(null),
   ]);
   if (!opp) notFound();
 
@@ -77,6 +89,11 @@ export default async function AdminOpportunityDetailPage({
       ? listActivitiesForEntity({ contactId: opp.contact.id })
       : Promise.resolve([]),
   ]);
+
+  const parsedConfig = B2bRequestedConfigSchema.safeParse(opp.requestedConfig);
+  const requestedConfig = parsedConfig.success ? parsedConfig.data : null;
+  const directPaymentConfigured = getDirectPaymentConfig().enabled;
+  const siteOrigin = getCanonicalSiteUrl();
 
   const stage = isOpportunityStage(opp.stage) ? opp.stage : "NEW";
   const eventType = isOpportunityEventType(opp.eventType) ? opp.eventType : "OTHER";
@@ -121,6 +138,45 @@ export default async function AdminOpportunityDetailPage({
           `Hola ${rawContactName}, te escribo de Lucams Shop sobre tu solicitud ${opp.number}. `,
         )
       : null;
+
+  const proposalSummaries: ExistingProposalSummary[] = opp.proposals.map((p) => ({
+    id: p.id,
+    version: p.version,
+    number: p.number,
+    status: p.status,
+    validUntilIso: p.validUntil.toISOString(),
+    proofMode: p.proofMode,
+    hasProofAsset: Boolean(p.proofAssetPath),
+    artworkMode: p.artworkMode,
+    packagingType: p.packagingType,
+    estimatedProductionDays: p.estimatedProductionDays,
+    shippingMode: p.shippingMode,
+    shippingCarrier: p.shippingCarrier,
+    shippingService: p.shippingService,
+    packageCount: p.packageCount,
+    departmentCode: p.departmentCode,
+    cityCode: p.cityCode,
+    subtotalCents: p.subtotalCents,
+    discountCents: p.discountCents,
+    shippingCents: p.shippingCents,
+    totalCents: p.totalCents,
+    allowDirectTransfer: p.allowDirectTransfer,
+    clientNotes: p.clientNotes,
+    termsNotes: p.termsNotes,
+    sentAtIso: p.sentAt ? p.sentAt.toISOString() : null,
+    orderNumber: p.order?.number ?? null,
+    orderStatus: p.order?.status ?? null,
+    items: p.items.map((it) => ({
+      id: it.id,
+      variantId: it.variantId,
+      titleSnapshot: it.titleSnapshot,
+      skuSnapshot: it.skuSnapshot,
+      qty: it.qty,
+      designUnits: it.designUnits,
+      unitPriceCents: it.unitPriceCents,
+      packagingNote: it.packagingNote,
+    })),
+  }));
 
   return (
     <AdminPage>
@@ -170,12 +226,48 @@ export default async function AdminOpportunityDetailPage({
       <AdminPageBody>
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="space-y-5 lg:col-span-2">
-            {/* Solicitud original del cliente */}
+            {/* Solicitud original y configuración estructurada del cliente */}
             <AdminCard className="p-5">
               <h2 className="text-brand-purple-dark font-display text-base font-bold">
-                Requerimiento del cliente
+                Requerimiento configurado por el cliente
               </h2>
-              <p className="text-brand-purple-dark/90 mt-2 text-sm whitespace-pre-wrap">
+
+              {requestedConfig && requestedConfig.lines.length > 0 && (
+                <div className="mt-3 rounded-xl border bg-[#FFF8F0]/60 p-3.5 text-xs">
+                  <p className="text-brand-purple-dark font-bold">Referencias solicitadas</p>
+                  <ul className="mt-1.5 space-y-1">
+                    {requestedConfig.lines.map((line, i) => (
+                      <li
+                        key={`${line.variantId}-${i}`}
+                        className="flex flex-wrap justify-between gap-2"
+                      >
+                        <span>
+                          <strong>{line.productName}</strong> · {line.variantName} ({line.sku})
+                        </span>
+                        <span className="font-semibold">
+                          {line.piecesPerUnit > 1
+                            ? `${line.commercialQty} packs (${line.physicalPieces} piezas)`
+                            : `${line.physicalPieces} uds.`}{" "}
+                          · ref. {formatCOP(line.indicativeUnitCents)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="text-brand-muted mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-[11px]">
+                    <span>Arte: {B2B_ARTWORK_MODE_LABELS[requestedConfig.artworkMode]}</span>
+                    <span>Empaque: {B2B_PACKAGING_TYPE_LABELS[requestedConfig.packagingType]}</span>
+                    {requestedConfig.estimatedMinCents != null &&
+                      requestedConfig.estimatedMaxCents != null && (
+                        <span>
+                          Rango orientativo visto: {formatCOP(requestedConfig.estimatedMinCents)} –{" "}
+                          {formatCOP(requestedConfig.estimatedMaxCents)}
+                        </span>
+                      )}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-brand-purple-dark/90 mt-3 text-sm whitespace-pre-wrap">
                 {opp.notes || "Sin notas adicionales."}
               </p>
 
@@ -209,6 +301,52 @@ export default async function AdminOpportunityDetailPage({
                 )}
               </div>
             </AdminCard>
+
+            {/* Constructor de Propuestas (roles con opportunities:propose) o vista de lectura para Soporte */}
+            {canPropose && proposalCatalog ? (
+              <ProposalBuilder
+                opportunityId={opp.id}
+                opportunityNumber={opp.number}
+                contactName={rawContactName}
+                contactEmail={canReadPii ? rawContactEmail : null}
+                contactWhatsappE164={canReadPii ? rawContactWhatsapp : null}
+                defaultCityName={opp.city}
+                defaultDeptName={opp.department}
+                requestedConfig={requestedConfig}
+                existingProposals={proposalSummaries}
+                catalog={proposalCatalog}
+                directPaymentConfigured={directPaymentConfigured}
+                isSuperadmin={role === "SUPERADMIN"}
+                siteOrigin={siteOrigin}
+              />
+            ) : (
+              proposalSummaries.length > 0 && (
+                <AdminCard className="p-5">
+                  <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                    Propuestas comerciales emitidas
+                  </h2>
+                  <div className="mt-3 divide-y rounded-xl border text-xs">
+                    {proposalSummaries.map((p) => {
+                      const st = isProposalStatus(p.status) ? p.status : "DRAFT";
+                      return (
+                        <div
+                          key={p.id}
+                          className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold">{p.number}</span>
+                            <AdminBadge tone={PROPOSAL_STATUS_TONES[st]}>
+                              {PROPOSAL_STATUS_LABELS[st]}
+                            </AdminBadge>
+                          </div>
+                          <span className="font-semibold">{formatCOP(p.totalCents)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </AdminCard>
+              )
+            )}
 
             <OpportunityEditForm
               opportunityId={opp.id}
@@ -305,7 +443,7 @@ export default async function AdminOpportunityDetailPage({
                   </p>
                 )}
                 <p className="mt-0.5 text-xs text-emerald-800">
-                  Total pedido: {formatCOP(opp.convertedOrder.total)}
+                  Total pedido: {formatCOP(opp.convertedOrder.total)} · {opp.convertedOrder.status}
                 </p>
               </AdminCard>
             )}

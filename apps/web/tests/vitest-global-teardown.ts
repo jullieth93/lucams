@@ -129,7 +129,10 @@ export async function teardown() {
       contactsTest,
     ] = await Promise.all([
       prisma.$executeRaw`UPDATE "Order" SET "deletedAt" = NOW(), "updatedAt" = NOW()
-        WHERE "deletedAt" IS NULL AND (number ~ ${RUN_ID} OR number LIKE 'TEST%')`,
+        WHERE "deletedAt" IS NULL AND (
+          number ~ ${RUN_ID} OR number LIKE 'TEST%'
+          OR email ILIKE '%@lucams.test' OR email ILIKE 'itest%'
+        )`,
       prisma.$executeRaw`UPDATE "Customer" SET "deletedAt" = NOW(), "updatedAt" = NOW()
         WHERE "deletedAt" IS NULL AND (
           email ILIKE '%@lucams.test' OR email ILIKE '%@cust.test'

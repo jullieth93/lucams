@@ -117,6 +117,9 @@ export async function getTodayOperationalInbox(
   const canModerate = hasCapability(role, "production:moderate");
   const canReconcileOrders = hasCapability(role, "orders:reconcile");
   const canReconcileCod = hasCapability(role, "finance:reconcile_cod");
+  const canConfirmDirectPayment =
+    hasCapability(role, "finance:confirm_direct_payment") || hasCapability(role, "finance:read");
+  const canProposeOpportunities = hasCapability(role, "opportunities:propose");
   const canRecoverCarts = hasCapability(role, "carts:recover") && canReadOrderPii;
   const canReadMarketing = hasCapability(role, "marketing:read");
 
@@ -137,6 +140,8 @@ export async function getTodayOperationalInbox(
     pendingDesigns,
     reconciliationOrders,
     codUnreconciled,
+    directPaymentsReported,
+    expiringProposals,
     declinedOrders,
     annualOccasionCount,
     abandonedCarts,
@@ -324,6 +329,57 @@ export async function getTodayOperationalInbox(
             updatedAt: true,
             shippingAddress: true,
             codReconciliation: { select: { status: true } },
+          },
+        })
+      : Promise.resolve([]),
+
+    // 8b. Pagos directos B2B (Bre-B / Transferencia) reportados por el cliente pendientes de verificación MFA
+    canConfirmDirectPayment
+      ? prisma.order.findMany({
+          where: {
+            deletedAt: null,
+            paymentMethod: "DIRECT_TRANSFER",
+            status: "PENDING_PAYMENT",
+            directPaymentReportedAt: { not: null },
+          },
+          orderBy: { directPaymentReportedAt: "asc" },
+          take: 20,
+          select: {
+            id: true,
+            number: true,
+            total: true,
+            directPaymentMethod: true,
+            directPaymentReference: true,
+            directPaymentReportedAt: true,
+            shippingAddress: true,
+          },
+        })
+      : Promise.resolve([]),
+
+    // 8c. Propuestas B2B enviadas próximas a vencer (<= 48 h) sin pedido convertido aún
+    canProposeOpportunities
+      ? prisma.opportunityProposal.findMany({
+          where: {
+            status: "SENT",
+            validUntil: { gte: now, lte: next48h },
+            opportunity: { deletedAt: null },
+          },
+          orderBy: { validUntil: "asc" },
+          take: 15,
+          select: {
+            id: true,
+            number: true,
+            totalCents: true,
+            validUntil: true,
+            createdAt: true,
+            opportunity: {
+              select: {
+                id: true,
+                number: true,
+                contactName: true,
+                organization: { select: { name: true } },
+              },
+            },
           },
         })
       : Promise.resolve([]),
@@ -626,6 +682,57 @@ export async function getTodayOperationalInbox(
       createdAtIso: cod.updatedAt.toISOString(),
       actionHref: "/admin/finanzas/conciliacion",
       actionLabel: "Conciliar remesa",
+      completableTaskId: null,
+    });
+  }
+
+  // --- Mapear Pagos directos B2B (Bre-B / Transferencia) por verificar ---
+  for (const dp of directPaymentsReported) {
+    const customerName = extractShippingCustomerName(dp.shippingAddress, !canReadOrderPii);
+    const methodShort = dp.directPaymentMethod === "BRE_B" ? "Bre-B" : "Transferencia";
+    items.push({
+      id: `direct-pay:${dp.id}`,
+      sourceId: dp.id,
+      category: "FINANCE",
+      severity: "CRITICAL",
+      title: `Pago ${methodShort} reportado · ${dp.number}`,
+      subtitle: `${customerName} · ${formatCOP(dp.total)}${dp.directPaymentReference ? ` · Ref: ${dp.directPaymentReference}` : ""}`,
+      badgeLabel: "Confirmar en banco",
+      badgeTone: "rose",
+      assignedToMe: false,
+      isOverdue: false,
+      dueAtIso: null,
+      createdAtIso: (dp.directPaymentReportedAt ?? now).toISOString(),
+      actionHref: `/admin/pedidos/${encodeURIComponent(dp.number)}`,
+      actionLabel: "Verificar con MFA",
+      completableTaskId: null,
+    });
+  }
+
+  // --- Mapear Propuestas B2B próximas a vencer (<= 48 h) ---
+  for (const prop of expiringProposals) {
+    const rawWho =
+      prop.opportunity.organization?.name ??
+      (prop.opportunity.contactName
+        ? canReadContactPii
+          ? prop.opportunity.contactName
+          : maskPersonName(prop.opportunity.contactName)
+        : prop.opportunity.number);
+    items.push({
+      id: `prop-expiring:${prop.id}`,
+      sourceId: prop.id,
+      category: "RECOVERY",
+      severity: "HIGH",
+      title: `Propuesta B2B por vencer · ${prop.number}`,
+      subtitle: `${rawWho} · ${formatCOP(prop.totalCents)}`,
+      badgeLabel: "Vence ≤ 48 h",
+      badgeTone: "purple",
+      assignedToMe: false,
+      isOverdue: false,
+      dueAtIso: prop.validUntil.toISOString(),
+      createdAtIso: prop.createdAt.toISOString(),
+      actionHref: `/admin/oportunidades/${encodeURIComponent(prop.opportunity.id)}`,
+      actionLabel: "Hacer seguimiento",
       completableTaskId: null,
     });
   }

@@ -48,7 +48,7 @@ export type OrderConfirmationData = {
    */
   accountOrderUrl?: string | null;
   /** COD ⇒ el cliente paga en efectivo al recibir (no hubo pago online). */
-  paymentMethod?: "WOMPI" | "COD";
+  paymentMethod?: "WOMPI" | "COD" | "DIRECT_TRANSFER";
   /** true = entrega propia "Envío Lucams": no hay guía ni transportadora
    *  externa — el texto lo dice en esos términos. */
   internalDelivery?: boolean;

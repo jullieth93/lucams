@@ -658,7 +658,12 @@ export default async function AdminGarantiasPage({ searchParams }: { searchParam
                       <>
                         <span aria-hidden>·</span>
                         <span>
-                          Pago: {c.orderPaymentMethod === "COD" ? "Contraentrega" : "Wompi"}
+                          Pago:{" "}
+                          {c.orderPaymentMethod === "COD"
+                            ? "Contraentrega"
+                            : c.orderPaymentMethod === "DIRECT_TRANSFER"
+                              ? "Bre-B / Transferencia"
+                              : "Wompi"}
                         </span>
                       </>
                     )}
