@@ -111,17 +111,17 @@ describe("StudioUnitCountControl", () => {
     expect(screen.getByLabelText("Aumentar unidades")).toBeEnabled();
   });
 
-  it("tope del cap de 50 slots (tira de 4 → 12 unidades): el + se deshabilita", () => {
-    const bare = makeStripCanvas(12);
+  it("tope del cap de 60 slots (tira de 4 → 15 unidades, ADR-209): el + se deshabilita", () => {
+    const bare = makeStripCanvas(15);
     bare.unitSlots = 4;
     bare.photoSlots = 4;
-    bare.slotCount = 48;
-    bare.slots = Array.from({ length: 48 }, (_, i) => ({
+    bare.slotCount = 60;
+    bare.slots = Array.from({ length: 60 }, (_, i) => ({
       slotIndex: i,
       assetId: null,
       assetUrl: null,
     }));
-    setup(12, { bare });
+    setup(15, { bare });
     expect(screen.getByLabelText("Aumentar unidades")).toBeDisabled();
     expect(screen.getByLabelText("Disminuir unidades")).toBeEnabled();
   });

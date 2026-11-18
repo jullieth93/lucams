@@ -212,7 +212,7 @@ describe("NameEditor — vista previa antes del carrito", () => {
     renderEditor({ initialCopies: 3 });
     await openPreviewWith("LUCIA");
 
-    expect(screen.getByText(/3 copias idénticas/)).toBeInTheDocument();
+    expect(screen.getByText(/1 diseño × 3 copias = 3 unidades/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
 

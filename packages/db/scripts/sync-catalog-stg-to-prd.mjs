@@ -357,6 +357,18 @@ const SELECTS = {
     deletedAt: true,
     product: { select: { slug: true } },
   },
+  wholesaleTier: {
+    id: true,
+    minQty: true,
+    unitPrice: true,
+    note: true,
+    isActive: true,
+    createdAt: true,
+    createdBy: true,
+    deletedAt: true,
+    product: { select: { slug: true } },
+    variant: { select: { sku: true } },
+  },
 };
 
 /** Aplana las relaciones del select a claves naturales (parentSlug, …). */
@@ -372,6 +384,13 @@ const FLATTEN = {
     section: undefined,
   }),
   template: (r) => ({ ...r, productSlug: r.product?.slug ?? null, product: undefined }),
+  wholesaleTier: (r) => ({
+    ...r,
+    productSlug: r.product?.slug ?? null,
+    variantSku: r.variant?.sku ?? null,
+    product: undefined,
+    variant: undefined,
+  }),
 };
 
 const failures = [];
@@ -385,6 +404,7 @@ async function main() {
     category: "category",
     product: "product",
     variant: "productVariant",
+    wholesaleTier: "wholesaleTier",
     cmsPage: "cmsPage",
     cmsSection: "cmsSection",
     cmsField: "cmsField",
@@ -425,6 +445,7 @@ async function main() {
     }
     raw.product.stg = [product];
     raw.variant.stg = raw.variant.stg.filter((v) => v.productSlug === ONLY);
+    raw.wholesaleTier.stg = raw.wholesaleTier.stg.filter((w) => w.productSlug === ONLY);
     raw.template.stg = raw.template.stg.filter((t) => t.productSlug === ONLY);
     raw.category.stg = raw.category.stg.filter((c) => neededCats.has(c.slug));
     raw.cmsPage.stg = [];
@@ -468,6 +489,7 @@ async function main() {
     new Map(raw[entity].stg.map((r) => [ENTITY_DEFS[entity].keyOf(r), r.id]));
   const catIdBySlug = stgIdByKey("category");
   const productIdBySlug = stgIdByKey("product");
+  const variantIdBySku = stgIdByKey("variant");
   const pageIdBySlug = stgIdByKey("cmsPage");
   const sectionIdByRef = stgIdByKey("cmsSection");
 
@@ -816,6 +838,28 @@ async function main() {
       }
       return data;
     },
+    wholesaleTier: (row, fields) => {
+      const all = {
+        minQty: row.minQty,
+        unitPrice: row.unitPrice,
+        note: row.note,
+        isActive: row.isActive,
+        deletedAt: row.deletedAt,
+        productId: row.productSlug
+          ? resolveFk(productIdBySlug.get(row.productSlug), idMaps.product)
+          : null,
+        variantId: row.variantSku
+          ? resolveFk(variantIdBySku.get(row.variantSku), idMaps.variant)
+          : null,
+      };
+      if (!fields) return all;
+      const data = {};
+      for (const f of fields) {
+        const k = f === "productSlug" ? "productId" : f === "variantSku" ? "variantId" : f;
+        data[k] = all[k];
+      }
+      return data;
+    },
   };
 
   const writeEntity = async (entity, model, orderRows) => {
@@ -869,6 +913,7 @@ async function main() {
   );
   totals.product = await writeEntity("product", "product");
   totals.variant = await writeEntity("variant", "productVariant");
+  totals.wholesaleTier = await writeEntity("wholesaleTier", "wholesaleTier");
   totals.cmsPage = await writeEntity("cmsPage", "cmsPage");
   totals.cmsSection = await writeEntity("cmsSection", "cmsSection");
   totals.cmsField = await writeEntity("cmsField", "cmsField");

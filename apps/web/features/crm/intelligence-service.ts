@@ -305,7 +305,7 @@ export async function getCrmBehavioralIntelligence(
       WITH order_cogs AS (
         SELECT
           oi."orderId" AS order_id,
-          COALESCE(SUM(oi."qty" * COALESCE(p."cost", 0)), 0)::bigint AS cogs_cents
+          COALESCE(SUM(oi."qty" * oi."designUnits" * COALESCE(p."cost", 0)), 0)::bigint AS cogs_cents
         FROM "OrderItem" oi
         JOIN "ProductVariant" pv ON pv."id" = oi."variantId"
         JOIN "Product" p ON p."id" = pv."productId"
@@ -376,7 +376,7 @@ export async function getCrmBehavioralIntelligence(
       WITH order_cogs AS (
         SELECT
           oi."orderId" AS order_id,
-          COALESCE(SUM(oi."qty" * COALESCE(p."cost", 0)), 0)::bigint AS cogs_cents
+          COALESCE(SUM(oi."qty" * oi."designUnits" * COALESCE(p."cost", 0)), 0)::bigint AS cogs_cents
         FROM "OrderItem" oi
         JOIN "ProductVariant" pv ON pv."id" = oi."variantId"
         JOIN "Product" p ON p."id" = pv."productId"

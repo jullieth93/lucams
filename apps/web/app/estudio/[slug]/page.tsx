@@ -30,7 +30,11 @@ import {
 } from "@/features/personalization/service";
 import { extractCanvasReferencedAssetIds } from "@/features/personalization/canvas-remap";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
-import { declaresUnits, unitCountOf } from "@/features/personalization/design-units";
+import {
+  declaresUnits,
+  maxSelectorUnitsForProduct,
+  unitCountOf,
+} from "@/features/personalization/design-units";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
 import { readPhotoPackDesignInfo } from "@/features/products/photo-pack-resolve";
 import {
@@ -137,6 +141,7 @@ export default async function EstudioPage({
   // caía a la primera del producto (precio mostrado incorrecto en multi-variante).
   let recoverOwner: { customerId: string | null; sessionId: string | null } | null = null;
   let recoverDesign: Awaited<ReturnType<typeof getOwnedDesign>> = null;
+  let recoveredOrderCopies: number | undefined;
   if (sp.designId) {
     const customer = await getCurrentCustomer();
     recoverOwner = {
@@ -144,6 +149,22 @@ export default async function EstudioPage({
       sessionId: customer ? null : await peekCartSession(),
     };
     recoverDesign = await getOwnedDesign(sp.designId, recoverOwner);
+    if (recoverDesign?.status === "READY") {
+      const cartWhere = recoverOwner.customerId
+        ? { customerId: recoverOwner.customerId }
+        : recoverOwner.sessionId
+          ? { sessionId: recoverOwner.sessionId }
+          : null;
+      if (cartWhere) {
+        const existingItem = await prisma.cartItem.findFirst({
+          where: { designId: recoverDesign.id, cart: cartWhere },
+          select: { qty: true },
+        });
+        if (existingItem && existingItem.qty >= 1) {
+          recoveredOrderCopies = existingItem.qty;
+        }
+      }
+    }
   }
 
   // M.3.b.CAT.4 — Si el query trae ?variant=id, mergear sus attributes
@@ -169,17 +190,26 @@ export default async function EstudioPage({
       )
     : (product.personalizationSchema as Record<string, unknown>);
 
-  // 2026-11-07 (bug owner) — promo por volumen en la modal de confirmación del
-  // Estudio: solo para experiencias que cobran por UNIDAD FÍSICA (bola/mini
-  // libros — el carrito evalúa los niveles contra las unidades del diseño vía
-  // volumeUnitMultiplierForDesign). Misma escala VISIBLE de la PDP.
-  const studioVolumeTiers = readProductExperience(mergedSchema).volumePricingByPhysicalUnit
-    ? resolveVisibleVolumeTiers(
-        await listStorefrontVolumeTiers(product.id),
-        product.id,
-        selectedVariant?.price ?? product.basePrice,
-      )
-    : undefined;
+  // ADR-209: todas las superficies personalizables (excepto nombre por ficha)
+  // aplican WholesaleTier sobre el total comercial de la tanda (diseños × copias),
+  // respetando la opción elegida (selectedVariant?.id).
+  void readProductExperience;
+  const studioVolumeTiers =
+    parseVariantAttributes(selectedVariant?.attributes).variant === "name"
+      ? undefined
+      : resolveVisibleVolumeTiers(
+          await listStorefrontVolumeTiers(product.id),
+          product.id,
+          selectedVariant?.price ?? product.basePrice,
+          selectedVariant?.id ?? null,
+          maxSelectorUnitsForProduct({
+            slug: product.slug,
+            personalizationKind: product.personalizationKind,
+            personalizationSchema: product.personalizationSchema,
+            variantAttrs: selectedVariant?.attributes,
+            allVariantsAttrs: product.variants.map((v) => v.attributes),
+          }).maxUnits,
+        );
 
   // ADR-057 — Enrutador de superficie: cada tipo de producto (y variante) abre la
   // experiencia correcta, no el editor de foto genérico.
@@ -200,7 +230,7 @@ export default async function EstudioPage({
   // cada superficie (foto: slotCount ≤ 50 → floor(50/unitSlots); sets: 10).
   const rawCopies = Number.parseInt(typeof sp.copies === "string" ? sp.copies : "", 10);
   const initialCopies = Number.isFinite(rawCopies)
-    ? Math.min(99, Math.max(1, rawCopies))
+    ? Math.min(100, Math.max(1, rawCopies))
     : undefined;
 
   // Set fijo (abecedario completo/vocales) o no personalizable → no abrir el Estudio.
@@ -308,7 +338,7 @@ export default async function EstudioPage({
             // ?copies=N (stepper "Unidades" de la PDP) → la modal de
             // "Vista previa" lo confirma tal cual (igual que letterset y el
             // editor de foto).
-            initialCopies={initialCopies}
+            initialCopies={recoveredOrderCopies ?? initialCopies}
             // ?designId= (re-apertura) → opción de borde guardada en el diseño.
             initialWithBorder={initialWithBorder}
             // ?designId= (re-apertura) → nombre, estilo y colores persistidos.
@@ -465,6 +495,8 @@ export default async function EstudioPage({
             // 2026-09-09) → N sets a diseñar, cada uno con sus colores. Al
             // re-abrir (?designId=) manda el nº de sets GUARDADO en el diseño.
             initialUnits={recoveredUnits ?? initialCopies}
+            initialOrderCopies={recoveredOrderCopies}
+            volumeTiers={studioVolumeTiers}
             // ?designId= (re-apertura) → selección persistida del diseño.
             // 2026-10-19 — estilo y borde POR SET (metadata.units[u]); las
             // claves raíz siguen llegando como default del set 1 / sets sin
@@ -750,12 +782,16 @@ export default async function EstudioPage({
         price: number;
       } => v.photoSlots != null,
     );
-  // Solo PHOTO_PACK con catálogo de fotos: calendarios/grid/custom quedan intactos.
-  const isPhotoPackStudio = product.personalizationKind === "PHOTO_PACK" && packCatalog.length > 0;
-  // Filtrado al tamaño efectivo: el stepper ofrece 1..max fotos DE ESE tamaño.
-  const packVariants = isPhotoPackStudio
-    ? packCatalog.filter((v) => v.sizeCm === undefined || v.sizeCm === effectiveSizeCm)
-    : [];
+  const candidatePackVariants =
+    product.personalizationKind === "PHOTO_PACK"
+      ? packCatalog.filter((v) => v.sizeCm === undefined || v.sizeCm === effectiveSizeCm)
+      : [];
+  const distinctCandidatePackSlots = new Set(candidatePackVariants.map((v) => v.photoSlots));
+  // ADR-209: cuando el catálogo ya está unificado a 1 unidad/pack base por tamaño,
+  // el Estudio usa StudioUnitCountControl (1..15 o 1..6 packs) en lugar del
+  // photoStepper legado de variantes múltiples.
+  const isPhotoPackStudio = distinctCandidatePackSlots.size > 1;
+  const packVariants = isPhotoPackStudio ? candidatePackVariants : [];
 
   // Fase 5 (2026-10-02) — la galería se filtra server-side por los attributes
   // de la variante elegida (?variant= o la primera): un diseño con
@@ -847,7 +883,12 @@ export default async function EstudioPage({
           // (cada una editable; la Vista previa las muestra todas; el carrito
           // recibe 1 línea con el diseño completo). El editor las acota al
           // máximo del producto (slotCount ≤ 50); sin parámetro = 1.
-          initialUnits={initialCopies}
+          initialUnits={
+            !isPhotoPackStudio && recoverDesign && initialDesignCanvas?.version === 2
+              ? unitCountOf(initialDesignCanvas, photoConfig.photoSlots)
+              : initialCopies
+          }
+          initialOrderCopies={recoveredOrderCopies}
           // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
           replacesCartDesignId={replacesCartDesignId}
           templates={templates}

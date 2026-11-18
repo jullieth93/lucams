@@ -14,6 +14,8 @@
 
 import { prisma, Prisma } from "@/lib/db";
 import type { CouponType } from "@lucams/db";
+import { isPurchasableVariant } from "@/features/products/storefront-visibility";
+import { commercialDesignUnitsForItem } from "@/features/personalization/design-units";
 
 export type CouponRejectReason =
   | "NOT_FOUND"
@@ -260,19 +262,49 @@ export async function priceCouponForCart(
         select: {
           qty: true,
           unitPrice: true,
+          customDesign: true,
+          metadata: true,
+          design: { select: { canvasData: true, metadata: true } },
           variant: {
-            select: { product: { select: { slug: true, category: { select: { slug: true } } } } },
+            select: {
+              isActive: true,
+              deletedAt: true,
+              attributes: true,
+              product: {
+                select: {
+                  slug: true,
+                  isActive: true,
+                  publishedOnStorefront: true,
+                  deletedAt: true,
+                  personalizationSchema: true,
+                  category: { select: { slug: true, isActive: true, deletedAt: true } },
+                },
+              },
+            },
           },
         },
       },
     },
   });
-  const items: CouponEligibleItem[] = (cart?.items ?? []).map((it) => ({
-    productSlug: it.variant.product.slug,
-    categorySlug: it.variant.product.category.slug,
-    qty: it.qty,
-    lineTotal: it.unitPrice * it.qty,
-  }));
+  const items: CouponEligibleItem[] = (cart?.items ?? [])
+    .filter((it) =>
+      isPurchasableVariant({
+        variantIsActive: it.variant.isActive,
+        variantDeletedAt: it.variant.deletedAt,
+        productIsActive: it.variant.product.isActive,
+        productPublishedOnStorefront: it.variant.product.publishedOnStorefront,
+        productDeletedAt: it.variant.product.deletedAt,
+        categoryIsActive: it.variant.product.category.isActive,
+        categoryDeletedAt: it.variant.product.category.deletedAt,
+      }),
+    )
+    .map((it) => ({
+      productSlug: it.variant.product.slug,
+      categorySlug: it.variant.product.category.slug,
+      // ADR-209: requiresMinQuantity cuenta unidades comerciales reales (copias × diseños en la tanda).
+      qty: it.qty * commercialDesignUnitsForItem(it),
+      lineTotal: it.unitPrice * it.qty,
+    }));
   const subtotal = items.reduce((a, it) => a + it.lineTotal, 0);
 
   let perCustomerUses = 0;

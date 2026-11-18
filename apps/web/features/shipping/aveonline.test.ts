@@ -82,6 +82,25 @@ describe("computePackedPackage", () => {
   it("piso de peso 0.1 kg para ítems muy livianos", () => {
     expect(computePackedPackage([item({ weightGrams: 30, qty: 1 })]).pesoKg).toBe(0.1);
   });
+
+  it("ADR-209: pedidos de volumen (60–100 uds) redistribuyen la pila en caja 3D realista sin superar límites del carrier", () => {
+    // 100 bolas navideñas 8×8×8 cm: en 1D daría 800 cm (8 metros); en 3D conserva 51.200 cm³ en ~38×38×35.5 cm
+    const pkg = computePackedPackage([
+      item({
+        productSlug: "inserto-circular-navideno",
+        widthCm: 8,
+        heightCm: 8,
+        depthCm: 8,
+        weightGrams: 40,
+        qty: 100,
+      }),
+    ]);
+    expect(pkg.altoCm).toBeLessThanOrEqual(60);
+    expect(pkg.anchoCm).toBeLessThanOrEqual(60);
+    expect(pkg.largoCm).toBeLessThanOrEqual(60);
+    expect(Math.round(pkg.altoCm * pkg.anchoCm * pkg.largoCm)).toBeGreaterThanOrEqual(51_000);
+    expect(pkg.pesoKg).toBe(4);
+  });
 });
 
 describe("buildCotizarProductos", () => {

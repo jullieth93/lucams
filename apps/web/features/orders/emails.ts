@@ -57,10 +57,34 @@ function formatAddressLine(ship: ShippingAddrSnapshot): string {
  */
 function lineDisplayUnits(item: {
   qty: number;
+  designUnits?: number;
   design: { canvasData: unknown; metadata: unknown } | null;
 }): number | undefined {
+  if (typeof item.designUnits === "number" && item.designUnits > 1) {
+    return item.designUnits * item.qty;
+  }
   const perDesign = designDisplayUnits(item.design);
   return perDesign === null ? undefined : perDesign * item.qty;
+}
+
+function lineBreakdownWithBatch(item: {
+  qty: number;
+  designUnits?: number;
+  design: { canvasData: unknown; metadata: unknown } | null;
+  variant: { attributes: unknown; product: { personalizationSchema: unknown } };
+}): string[] {
+  const base = describeVariantAttributes(
+    parseVariantAttributes(item.variant.attributes),
+    item.variant.product.personalizationSchema,
+  );
+  const perCopy =
+    typeof item.designUnits === "number" && item.designUnits > 1
+      ? item.designUnits
+      : (designDisplayUnits(item.design) ?? 1);
+  if (item.design && perCopy > 1 && item.qty > 1) {
+    return [...base, `${perCopy} diseños × ${item.qty} copias (${perCopy * item.qty} uds.)`];
+  }
+  return base;
 }
 
 /** Envia order-confirmation tras Order PAID. */
@@ -126,10 +150,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
         qty: it.qty,
         units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
-        breakdown: describeVariantAttributes(
-          parseVariantAttributes(it.variant.attributes),
-          it.variant.product.personalizationSchema,
-        ),
+        breakdown: lineBreakdownWithBatch(it),
         warrantyMonths: it.warrantyMonths,
       })),
       shippingAddress: formatAddressLine(ship),
@@ -707,10 +728,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
         qty: it.qty,
         units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
-        breakdown: describeVariantAttributes(
-          parseVariantAttributes(it.variant.attributes),
-          it.variant.product.personalizationSchema,
-        ),
+        breakdown: lineBreakdownWithBatch(it),
       })),
     });
     const result = await sendEmail({

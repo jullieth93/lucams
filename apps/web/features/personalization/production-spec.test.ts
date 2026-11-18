@@ -625,6 +625,29 @@ describe("nuevas formas físicas", () => {
     expect(spec.pasosArmado.join(" ")).toMatch(/MISMA pieza dúplex/i);
     expect(spec.pasosArmado.join(" ")).not.toMatch(/tira/i);
   });
+
+  it("ADR-209: bola navideña CON imán respeta magnet=true y fotoimanes multi-pack × copias cuenta imanes reales", () => {
+    const bolaConIman = resolveProductionSpec({
+      ...vacio,
+      personalizationKind: "CUSTOM_DECOR",
+      productSchema: { experience: "christmas-ornament" },
+      variantAttrs: { sizeCm: "8", magnet: true },
+      productionUrls: ["inserto-1.png"],
+    });
+    expect(bolaConIman.pasosArmado.join(" ")).toMatch(/pega el imán/i);
+    expect(bolaConIman.pasosArmado.join(" ")).not.toMatch(/no le pegues imán/i);
+
+    const packs = resolveProductionSpec({
+      ...vacio,
+      personalizationKind: "PHOTO_PACK",
+      variantAttrs: { photoSlots: 6, sizeCm: "5×5", magnet: true },
+      canvasData: { version: 2, slotCount: 12, unitCount: 2, unitSlots: 6, photoSlots: 6 },
+      productionUrls: Array.from({ length: 12 }, (_, i) => `iman-${i + 1}.png`),
+      lineQty: 3,
+    });
+    expect(packs.unidadesFisicas).toBe(36); // 2 packs × 6 imanes × 3 copias = 36 imanes
+    expect(packs.pasosArmado.join(" ")).toMatch(/3 copias iguales/i);
+  });
 });
 
 describe("productionPieceGroups — bola navideña dúplex", () => {

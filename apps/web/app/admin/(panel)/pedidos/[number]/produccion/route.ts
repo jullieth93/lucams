@@ -181,9 +181,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
     // porque antes no aparecía en ninguna parte y un pedido de 2 se imprimía como 1.
     const copias = item.qty > 1 ? ` ×${item.qty}` : "";
     const folder =
-      bundle.items.length > 1 ? `${itemIdx + 1}-${slug(item.productName)}${copias}/` : "";
+      bundle.items.length > 1
+        ? `${itemIdx + 1}-${slug(item.productName)}${copias}/`
+        : item.qty > 1
+          ? `${slug(item.productName)}-x${item.qty}/`
+          : "";
     summary.push(
-      `• ${item.productName} (${item.sku}) — ${item.productionUrls.length} pieza(s)` +
+      `• ${item.productName} (${item.sku}) — ${item.productionUrls.length} archivo(s) · ${spec.unidadesFisicas} unidad(es) física(s) a entregar` +
         (item.qty > 1
           ? `  ⚠️ IMPRIMIR ${item.qty} COPIAS DE CADA PIEZA (${item.productionUrls.length} × ${item.qty} = ${item.productionUrls.length * item.qty} impresiones)`
           : ""),
@@ -227,15 +231,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ number: string 
 
     for (let i = 0; i < item.productionUrls.length; i++) {
       const monthIndex0 = (((item.startMonth + i) % 12) + 12) % 12;
+      const calendarSetIdx =
+        isCalendar && item.productionUrls.length > 12 ? Math.floor(i / 12) + 1 : null;
       const grouped = pieceInfo.get(i);
       const label = isCalendar
-        ? `${MONTH_NAMES_ES[monthIndex0] ?? `Mes ${i + 1}`}${item.calendarYear ? ` ${item.calendarYear}` : ""}`
+        ? `${calendarSetIdx !== null ? `Set ${calendarSetIdx} · ` : ""}${MONTH_NAMES_ES[monthIndex0] ?? `Mes ${(i % 12) + 1}`}${item.calendarYear ? ` ${item.calendarYear}` : ""}`
         : (grouped?.label ??
           (spec.reversosConMarcaAgua.includes(i + 1)
             ? `Pieza ${i + 1} · frente A + reverso B con marca de agua Lucams`
             : `Pieza ${i + 1}`));
       const fileName = isCalendar
-        ? `${String(i + 1).padStart(2, "0")}-${MONTH_SLUG[monthIndex0] ?? `mes-${i + 1}`}.png`
+        ? `${calendarSetIdx !== null ? `set-${calendarSetIdx}/` : ""}${String((i % 12) + 1).padStart(2, "0")}-${MONTH_SLUG[monthIndex0] ?? `mes-${(i % 12) + 1}`}.png`
         : grouped
           ? `${grouped.subfolder}${String(i + 1).padStart(2, "0")}-${slug(grouped.label)}.png`
           : `pieza-${String(i + 1).padStart(2, "0")}.png`;

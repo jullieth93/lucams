@@ -290,6 +290,8 @@ export type StudioEditorProps = {
    * precio = variante × N lo deriva el servidor — design-units.ts). undefined → 1.
    */
   initialUnits?: number;
+  /** ADR-209 — copias actuales en carrito al re-abrir vía «Editar». */
+  initialOrderCopies?: number;
   /** Edición desde el carrito: id del diseño original a reemplazar al finalizar (no duplicar). */
   replacesCartDesignId?: string | null;
   /** ADR-057 B2 — diseños prediseñados aplicables por slot (galería). */
@@ -356,6 +358,7 @@ export function StudioEditor({
   volumeTiers,
   initialMagnet,
   initialUnits,
+  initialOrderCopies,
   replacesCartDesignId,
   predesigned = [],
   slotLabels,
@@ -738,24 +741,25 @@ export function StudioEditor({
   // (photosPerUnitForEditor) y las ramas de calendario del editor. Declarado
   // antes del bloque multi-unidad (2026-09-09) para no usarlo antes de tiempo.
   const isCalendarMonth = product.personalizationKind === "CALENDAR_PHOTO_MONTH";
-  // ── Modelo MULTI-UNIDAD (owner 2026-09-09) ──
-  // Fotos por unidad física: calendario → 12; tira photobooth → photoSlots de la
-  // composición; separador → 1 por cara (los slots son las caras); imán suelto
-  // (polaroid/cuadrados) → 1 (cada imán ES su unidad — la grilla plana intacta).
+  const isPackOfSix =
+    product.slug === "set-fotoimanes-polaroid" || product.slug === "set-fotoimanes-cuadrados";
   const photosPerUnit = photosPerUnitForEditor({
     isCalendarMonth,
     facesPerUnit,
     photoSlots,
     unitTemplate: templates[0]?.canvasData ?? null,
+    isPackOfSix: !isPhotoPack && isPackOfSix,
   });
   const bootUnitSlots = photosPerUnit * facesPerUnit;
-  // Unidades a diseñar: con composición multi-foto (tiras, calendario) vienen de la
-  // PDP (?copies=N → initialUnits); con unidad de 1 foto (separadores/polaroid) el
-  // N ya ES photoSlots (el pack size de la variante — comportamiento histórico).
   const requestedUnits =
-    experience.freeUnitDesign || photosPerUnit > 1 ? (initialUnits ?? 1) : Math.max(1, photoSlots);
+    !isPhotoPack || experience.freeUnitDesign || photosPerUnit > 1
+      ? (initialUnits ?? 1)
+      : Math.max(1, photoSlots);
   const bootUnitCount = Math.min(
-    maxUnitsForProduct(bootUnitSlots),
+    maxUnitsForProduct(bootUnitSlots, {
+      isCalendar: isCalendarMonth,
+      isPackOfSix: !isPhotoPack && isPackOfSix,
+    }),
     Math.max(1, Math.trunc(requestedUnits) || 1),
   );
   // slotCount INICIAL (boot del canvasData). Durante la sesión el vivo sale del
@@ -806,7 +810,9 @@ export function StudioEditor({
   // de 5 unidades cuesta $12.500 en total → multiplicador 1, no 5). La modal de
   // confirmación lo usa en vez del unitCount crudo (bug: mostraba $62.500).
   const livePriceMultiplier = useStore(store, (s) =>
-    s.canvasData ? designUnitPriceMultiplier(s.canvasData, facesPerUnit) : 1,
+    s.canvasData
+      ? designUnitPriceMultiplier(s.canvasData, facesPerUnit, isPhotoPack ? undefined : photoSlots)
+      : 1,
   );
   // "Sin imán" (2026-09-22 → Paquete D 2026-10-02 → REVERTIDO por el owner 2026-10-07):
   // la variante sin imán NO esconde el BOTÓN, pero la galería filtra las escenas que
@@ -2275,7 +2281,8 @@ export function StudioEditor({
   // precio = variante × N lo deriva el SERVIDOR del canvasData guardado
   // (design-units.ts — nunca se confía en un multiplicador del cliente).
   const handleConfirmFinalize = useCallback(
-    async (_copies: number, opts?: { qualityAcknowledged?: boolean }) => {
+    async (copies: number, opts?: { qualityAcknowledged?: boolean }) => {
+      const orderCopies = Math.max(1, Math.trunc(copies) || 1);
       const state = store.getState();
       if (!state.canvasData || state.isFinalizing || !previewDataUrl) return;
       state.setIsFinalizing(true);
@@ -2528,7 +2535,7 @@ export function StudioEditor({
         // cliente cambió N acá (la ruta del dinero no confía en el cliente).
         const addResult = await addPersonalizedToCartAction({
           designId,
-          qty: 1,
+          qty: orderCopies,
           variantId: isPhotoPack ? undefined : variantId,
           replaceDesignId: replacesCartDesignId ?? undefined,
         });
@@ -3421,7 +3428,13 @@ export function StudioEditor({
           // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de
           // diseño (2N). Multi-unidad (2026-09-09): tiras/calendarios muestran las
           // unidades vivas del diseño y sus piezas por unidad.
-          slotCount={isOrnament || liveIsStrip || isCalendarMonth ? liveUnitCount : livePhotoSlots}
+          slotCount={
+            isOrnament || liveIsStrip || isCalendarMonth || (!isPhotoPack && facesPerUnit === 2)
+              ? liveUnitCount
+              : !isPhotoPack && isPackOfSix
+                ? liveSlotCount
+                : livePhotoSlots
+          }
           slotsPerUnit={liveIsStrip || isCalendarMonth ? liveUnitSlots : undefined}
           sizeCm={
             isOrnament && productConfig.sizeCm && !/\bcm\b/i.test(productConfig.sizeCm)
@@ -3429,22 +3442,13 @@ export function StudioEditor({
               : productConfig.sizeCm
           }
           unitPrice={effectiveUnitPrice}
-          // 2026-11-07 (bug owner) — la modal refleja la promo por volumen
-          // (misma escala visible de la PDP); el servidor cobra lo mismo vía
-          // volumeUnitMultiplierForDesign.
           volumeTiers={volumeTiers}
-          // 2026-09-22 — multiplicador del SERVIDOR (design-units): la variante
-          // puede YA ser el pack (separadores ×5 → ×1). La modal lo usa en vez
-          // del unitCount crudo para el total (bug: mostraba pack × N).
           priceMultiplier={livePriceMultiplier}
-          // Piezas planas y bola dúplex: textos sin "doblado".
           noFold={productConfig.noFold === true || isOrnament}
-          // Multi-unidad: el diseño YA contiene las unidades → qty 1 al carrito;
-          // el total de la modal = precio unitario × unidades.
           unitCount={liveUnitCount}
-          // 2026-10-12 — sustantivo de la unidad para la línea de la modal
-          // ("3 separadores — cada uno con su propio diseño", nunca "N unidades").
-          unitNoun={unitNounPair}
+          initialOrderCopies={initialOrderCopies}
+          piecesPerCommercialUnit={!isPhotoPack && isPackOfSix ? 6 : 1}
+          unitNoun={!isPhotoPack && isPackOfSix ? { one: "pack", many: "packs" } : unitNounPair}
           isFinalizing={isFinalizingFlag}
           errorMessage={previewError}
           renderProgressLabel={

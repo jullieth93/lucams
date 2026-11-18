@@ -196,7 +196,7 @@ export async function updateQtyAction(formData: FormData): Promise<void> {
 
 const AddPersonalizedSchema = z.object({
   designId: z.string().min(1),
-  qty: z.number().int().min(1).max(99).default(1),
+  qty: z.number().int().min(1).max(100).default(1),
   // variantId elegido en PDP → Estudio (M.3.b.CAT consolidación familias).
   // Service valida que pertenece a design.product.id (anti-tamper).
   variantId: z.string().min(1).optional(),
@@ -310,8 +310,10 @@ export async function addPersonalizedToCartAction(input: {
               sku: matchedLine.variantSku,
               name: matchedLine.productName,
               variantName: matchedLine.variantName,
-              priceCents: matchedLine.unitPrice,
-              quantity: parsed.data.qty,
+              priceCents: Math.round(
+                matchedLine.unitPrice / Math.max(1, matchedLine.designUnits ?? 1),
+              ),
+              quantity: parsed.data.qty * Math.max(1, matchedLine.designUnits ?? 1),
               productSlug: matchedLine.productSlug,
               editorKind: matchedLine.editorKind,
             },

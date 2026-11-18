@@ -47,10 +47,13 @@ import {
 import { getSettingValue } from "@/lib/cms";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { resolveVisibleVolumeTiers } from "@/features/cart/volume-pricing";
-import { derivePackVolumeTiers, packVolumeTierGroupKey } from "@/features/cart/volume-pricing";
-import { VolumeTiersNote } from "@/components/volume-tiers-note";
-import { PackVolumeTiersNote } from "./pack-volume-tiers-note";
+import { VariantVolumeTiersNote } from "./pack-volume-tiers-note";
 import { addToCartAction } from "@/app/carrito/actions";
+import {
+  MAX_DESIGN_UNITS,
+  MAX_SELF_SERVICE_PHYSICAL_UNITS,
+  maxUnitsForProduct,
+} from "@/features/personalization/design-units";
 import {
   selectableVariants,
   parseVariantAttributes,
@@ -228,33 +231,57 @@ export default async function ProductoDetallePage({
   // CTA genérico: no todos los productos son imanes (separadores, fichas, sets)
   // → "Personalizar producto" sirve para todo el catálogo.
   const ctaNoun = "producto";
-  // Modelo multi-unidad (owner 2026-09-09): tope de UNIDADES A DISEÑAR del stepper
-  // "Unidades" de la PDP. El Estudio capa el diseño en 50 slots (Zod) → calendario
-  // 4 sets de 12 tarjetas; tiras floor(50/fotos-por-tira máx del catálogo); sets de
-  // letras 10 láminas. Los packs variables no usan este stepper (su "Unidades" es
-  // pack size del VariantSelector) y la compra directa queda en 99 (qty clásico).
-  const photoSlotsForCap = Math.max(
-    selectedAttrs.photoSlots ?? 0,
-    ...selectable.map((v) => parseVariantAttributes(v.attributes).photoSlots ?? 0),
-    parsePhotoProductConfig(product.personalizationSchema).photoSlots,
-    1,
+  const isPackOfSixProduct = PDP_PACKS_OF_SIX_SLUGS.has(product.slug);
+  const packLabel = isLetterSetProduct
+    ? letterSetPackLabel
+    : isPackOfSixProduct
+      ? {
+          label: "Packs",
+          perPack: PHOTO_PACK_UNITS_PER_PACK,
+          pieceOne: "imán",
+          pieceMany: "imanes",
+        }
+      : undefined;
+  const distinctPackQuantities = new Set(
+    selectable.map(
+      (v) =>
+        parseVariantAttributes(v.attributes).photoSlots ??
+        parseVariantAttributes(v.attributes).quantity ??
+        1,
+    ),
   );
+  const hasVariablePackVariants =
+    isPhotoPack && distinctPackQuantities.size > 1 && !PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug);
   const productExperience = readProductExperience(product.personalizationSchema);
   const facesForCap =
     parsePhotoProductConfig(product.personalizationSchema).facesPerUnit === 2 ? 2 : 1;
+  const unitSlotsForCap =
+    product.personalizationKind === "CALENDAR_PHOTO_MONTH"
+      ? 12
+      : isPackOfSixProduct
+        ? PHOTO_PACK_UNITS_PER_PACK
+        : facesForCap === 2
+          ? 2
+          : Math.max(
+              selectedAttrs.photoSlots ?? 0,
+              parsePhotoProductConfig(product.personalizationSchema).photoSlots,
+              1,
+            );
   const maxDesignUnits = isLetterSetProduct
-    ? 10
-    : product.personalizationKind === "CALENDAR_PHOTO_MONTH" ||
-        PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug) ||
-        productExperience.freeUnitDesign
-      ? Math.max(1, Math.floor(50 / (photoSlotsForCap * facesForCap)))
-      : 99;
+    ? maxUnitsForProduct(1, { isLetterSet: true })
+    : isNamePerTile
+      ? MAX_DESIGN_UNITS
+      : product.personalizationKind !== "NONE"
+        ? maxUnitsForProduct(unitSlotsForCap, {
+            isCalendar: product.personalizationKind === "CALENDAR_PHOTO_MONTH",
+            isPackOfSix: isPackOfSixProduct,
+          })
+        : MAX_SELF_SERVICE_PHYSICAL_UNITS;
+  void productExperience;
   const designUnitNoun =
-    productExperience.experience === "christmas-ornament"
+    readProductExperience(product.personalizationSchema).experience === "christmas-ornament"
       ? { one: "bola", many: "bolas", label: "Bolas" }
       : undefined;
-  // #4 — cuatro operaciones INDEPENDIENTES en paralelo (antes eran awaits secuenciales); solo la
-  // wishlist depende del customer, así que se encadena después.
   const [related, ratingAggregate, waHref, customer, rawVolumeTiers, codSetting] =
     await Promise.all([
       listRelatedProducts({
@@ -262,10 +289,8 @@ export default async function ProductoDetallePage({
         categorySlug: product.category.slug,
         limit: 4,
       }),
-      // Rating real para el JSON-LD (auditoría 2026-07-16). null si no hay reseñas.
       getProductRatingAggregate(product.id),
       buildWhatsAppUrl({ kind: "product", productName: product.name, sku: product.sku }),
-      // Wishlist + "avísame cuando vuelva": cliente logueado para el estado del corazón + su email.
       getCurrentCustomer(),
       listStorefrontVolumeTiers(product.id),
       getSettingValue("COD_ENABLED", "false"),
@@ -273,21 +298,27 @@ export default async function ProductoDetallePage({
   const codEnabled = codSetting === "true";
   const visibleVolumeTiers = isNamePerTile
     ? []
-    : resolveVisibleVolumeTiers(rawVolumeTiers, product.id, displayPrice);
-  // 2026-11-10/11 (owner) — familias sin WholesaleTier (polaroid/cuadrados por
-  // packs, separadores por cantidad): la escala se DERIVE de las presentaciones
-  // (precio por unidad que baja al llevar más) y se muestra con el MISMO bloque
-  // «Ahorra llevando más» (VolumeTiersNote), reactivo al tamaño elegido. El
-  // bloque reporta SOLO ahorro por volumen real; la promo (compareAt) va como
-  // precio tachado por presentación — dos mecanismos, dos visuales.
-  const packTierGroups =
-    !isNamePerTile && visibleVolumeTiers.length === 0
-      ? derivePackVolumeTiers(selectable, product.basePrice)
-      : [];
-  const packTierGroupKeyByVariantId =
-    packTierGroups.length > 0
-      ? Object.fromEntries(selectable.map((v) => [v.id, packVolumeTierGroupKey(v.attributes)]))
-      : {};
+    : resolveVisibleVolumeTiers(
+        rawVolumeTiers,
+        product.id,
+        displayPrice,
+        selectedVariant?.id ?? null,
+        maxDesignUnits,
+      );
+  const volumeTiersByVariantId = isNamePerTile
+    ? {}
+    : Object.fromEntries(
+        selectable.map((v) => [
+          v.id,
+          resolveVisibleVolumeTiers(
+            rawVolumeTiers,
+            product.id,
+            v.price ?? product.basePrice,
+            v.id,
+            maxDesignUnits,
+          ),
+        ]),
+      );
 
   // Precio tachado con REFLEJO TOTAL (owner 2026-09-14): la promo vive por
   // opción en el admin y el front la refleja SIEMPRE — tachado si la opción
@@ -541,28 +572,13 @@ export default async function ProductoDetallePage({
                   acciones. No renderiza nodo DOM: los order-* siguen aplicando
                   sobre el flex padre. */}
               <SelectedVariantProvider variantIds={variantIds} initialId={firstVariantId}>
-                {visibleVolumeTiers.length > 0 ? (
-                  <VolumeTiersNote
-                    className="order-2"
-                    title="Ahorra llevando más unidades (se aplica automáticamente en tu carrito)"
-                    items={visibleVolumeTiers.map((vt) => ({
-                      key: String(vt.minQty),
-                      qtyLabel: `${vt.minQty}+ unid.`,
-                      unitPrice: vt.unitPrice,
-                      priceSuffix: "c/u",
-                      savingsPct: vt.savingsPct,
-                    }))}
-                  />
-                ) : (
-                  // 2026-11-10 — packs sin WholesaleTier (polaroid/cuadrados):
-                  // misma pieza visual alimentada por la escala derivada de las
-                  // presentaciones; se oculta (null) cuando no hay ahorro real.
-                  <PackVolumeTiersNote
-                    className="order-2"
-                    groups={packTierGroups}
-                    groupKeyByVariantId={packTierGroupKeyByVariantId}
-                  />
-                )}
+                <VariantVolumeTiersNote
+                  className="order-2"
+                  tiersByVariantId={volumeTiersByVariantId}
+                  fallbackTiers={visibleVolumeTiers}
+                  isPack={isPackOfSixProduct || isLetterSetProduct}
+                  maxQty={maxDesignUnits}
+                />
 
                 <p className="text-brand-purple-dark/80 order-4 text-base leading-relaxed whitespace-pre-line md:order-3">
                   {product.description}
@@ -668,38 +684,20 @@ export default async function ProductoDetallePage({
                       //     "Unidades" (tiras a diseñar, stepper acá) → el Estudio
                       //     abre con N tiras de M fotos (?variant= + ?copies=N).
                       <>
-                        {(!isPhotoPack || PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug)) && (
-                          // A2 (2026-09-15) — total VIVO junto al stepper:
-                          // unitario de la variante elegida × N (antes el ×N solo
-                          // se veía en la modal de vista previa y el carrito).
-                          // B2 — sets de letras: el stepper cuenta PACKS con
-                          // desglose de fichas (1 pack = abecedario completo).
+                        {!hasVariablePackVariants && (
                           <CopiesQtyInput
                             max={maxDesignUnits}
                             unitNoun={designUnitNoun}
                             hint={
-                              letterSetPackLabel
-                                ? "Cada pack se diseña por separado en el Estudio"
-                                : designUnitNoun
-                                  ? "Cada bola se diseña por separado en el Estudio"
-                                  : undefined
+                              packLabel
+                                ? `Diseña hasta ${maxDesignUnits} packs en esta tanda · En Vista previa o en tu carrito puedes multiplicar copias iguales.`
+                                : `Diseña hasta ${maxDesignUnits} en esta tanda · En Vista previa o en tu carrito puedes multiplicar copias iguales (hasta 100 unidades).`
                             }
                             unitPriceByVariantId={priceByVariantId}
                             fallbackUnitPrice={displayPrice}
-                            packLabel={letterSetPackLabel}
-                            // 2026-11-07 (bug owner) — el total del stepper refleja la
-                            // promo por volumen cuando el diseño multi-unidad cobra por
-                            // UNIDAD FÍSICA (volumePricingByPhysicalUnit: bola/mini
-                            // libros) — el servidor evalúa los niveles contra las
-                            // unidades del diseño (volumeUnitMultiplierForDesign), así
-                            // que el N del stepper ES el qty del nivel. Sin ese flag la
-                            // línea entra con qty=1 y ningún nivel alcanzaría: mostrarlo
-                            // acá prometería un precio que el carrito no cobra.
-                            volumeTiers={
-                              productExperience.volumePricingByPhysicalUnit
-                                ? visibleVolumeTiers
-                                : undefined
-                            }
+                            packLabel={packLabel}
+                            volumeTiers={visibleVolumeTiers}
+                            volumeTiersByVariantId={volumeTiersByVariantId}
                           />
                         )}
                         <EstudioCtaLink
@@ -711,23 +709,13 @@ export default async function ProductoDetallePage({
                     ) : (
                       <form action={addToCartAction}>
                         <input type="hidden" name="slug" value={product.slug} />
-                        {/* Compra directa (sin personalización): el stepper "Unidades"
-                          fija CartItem.qty (unidades idénticas, qty clásico 1..99)
-                          vía su input oculto. El cliente puede ajustar después en
-                          el carrito (QtyControls). */}
-                        {/* A2 (2026-09-15) — total vivo ×N también en la compra
-                          directa (qty clásico): mismo cálculo que el carrito. */}
-                        {/* 2026-11-07 — el stepper cuenta UNIDADES de compra
-                          (CartItem.qty) → la promo por volumen aplica directo:
-                          el total muestra el nivel alcanzado (el servidor
-                          re-pricea con la MISMA qty en addToCart/updateQty). */}
                         <CopiesQtyInput
+                          max={MAX_SELF_SERVICE_PHYSICAL_UNITS}
                           hint="Copias idénticas del mismo producto"
                           unitPriceByVariantId={priceByVariantId}
                           fallbackUnitPrice={displayPrice}
-                          volumeTiers={
-                            visibleVolumeTiers.length > 0 ? visibleVolumeTiers : undefined
-                          }
+                          volumeTiers={visibleVolumeTiers}
+                          volumeTiersByVariantId={volumeTiersByVariantId}
                         />
                         <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
                         {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}

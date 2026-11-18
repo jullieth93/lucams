@@ -331,7 +331,11 @@ export default async function CustomerPedidoDetallePage({
                     {it.variant.product.name}
                   </div>
                   <div className="text-brand-muted text-xs">
-                    {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
+                    {it.variant.name} ·{" "}
+                    {it.design && it.designUnits > 1
+                      ? `${it.designUnits} diseños × ${it.qty} ${it.qty === 1 ? "copia" : "copias"} (${it.designUnits * it.qty} ${unitNounPlural}) · `
+                      : ""}
+                    {it.qty} × {formatCOP(it.unitPrice)}
                   </div>
                   {variantBreakdown.length > 0 && (
                     <div className="text-brand-purple-dark/70 text-xs">

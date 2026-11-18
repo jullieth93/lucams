@@ -161,6 +161,20 @@ export const ENTITY_DEFS = {
     ],
     imageFields: ["previewUrl"],
   },
+  wholesaleTier: {
+    label: "WholesaleTier",
+    keyOf: (r) => `${r.productSlug ?? ""}|${r.variantSku ?? ""}|${r.minQty}`,
+    contentFields: [
+      "productSlug",
+      "variantSku",
+      "minQty",
+      "unitPrice",
+      "note",
+      "isActive",
+      "deletedAt",
+    ],
+    imageFields: [],
+  },
 };
 
 /** Campos aplanados que al escribir se traducen a FK cuid del destino. */
@@ -168,6 +182,7 @@ export const MAPPED_FK_FIELDS = new Set([
   "parentSlug",
   "categorySlug",
   "productSlug",
+  "variantSku",
   "sectionRef",
   "pageSlug",
 ]);

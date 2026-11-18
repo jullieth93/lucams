@@ -40,7 +40,7 @@ describe("readPhotoPackDesignInfo", () => {
 
   it("aclampa photoSlots fuera de rango en vez de explotar", () => {
     expect(readPhotoPackDesignInfo({ version: 2, photoSlots: 0 })).toEqual({ photoSlots: 1 });
-    expect(readPhotoPackDesignInfo({ version: 2, photoSlots: 999 })).toEqual({ photoSlots: 50 });
+    expect(readPhotoPackDesignInfo({ version: 2, photoSlots: 999 })).toEqual({ photoSlots: 60 });
   });
 
   it("sizeCm vacío/no string se trata como ausente", () => {
@@ -172,5 +172,24 @@ describe("resolvePhotoPackVariant — «¿Con imán?» (magnet, Lucy 2026-09-08)
     expect(
       resolvePhotoPackVariant(soloCon, { photoSlots: 2, sizeCm: "6×6", magnet: false })?.id,
     ).toBe("s2-con");
+  });
+
+  it("catálogo unificado (1 unidad/pack base por tamaño × imán): borrador legacy múltiplo resuelve a la base", () => {
+    const catalogoUnificado = [
+      {
+        id: "pol-base",
+        price: 2_250_000,
+        stock: 0,
+        attributes: { photoSlots: 6, sizeCm: "6×8", magnet: true },
+      },
+    ];
+    expect(
+      resolvePhotoPackVariant(catalogoUnificado, { photoSlots: 18, sizeCm: "6×8", magnet: true })
+        ?.id,
+    ).toBe("pol-base");
+    // No múltiplo (ej. 7 sobre pack de 6) → null
+    expect(
+      resolvePhotoPackVariant(catalogoUnificado, { photoSlots: 7, sizeCm: "6×8", magnet: true }),
+    ).toBeNull();
   });
 });

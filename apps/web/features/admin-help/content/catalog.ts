@@ -465,18 +465,19 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
         topics: [
           {
             id: "alcance",
-            label: "Global o por producto",
-            description: "Determina si el tramo aplica a un SKU específico o a todo el catálogo.",
+            label: "Opción específica, producto o global",
+            description:
+              "Determina si el tramo aplica a una opción/tamaño específico, a todas las opciones del producto o a todo el catálogo.",
             interpretation:
-              "Los productos vendidos por curva de packs (como Polaroid o Cuadrados) gestionan su ahorro directamente en variantes.",
+              "Precedencia estricta: opción específica > producto completo > escala global. Las opciones del producto definen solo atributos físicos (tamaño/imán) y todo descuento por cantidad vive acá.",
           },
           {
             id: "minimo",
-            label: "Cantidad mínima (2 a 100.000)",
+            label: "Cantidad mínima (2 hasta el tope del producto)",
             description:
-              "Umbral desde el cual el carrito aplica automáticamente el precio unitario.",
+              "Umbral desde el cual el carrito aplica automáticamente el precio unitario, acotado al selector de cada producto (15 unid., 6 packs, 4 calendarios, 10 sets o 100 en stock físico).",
             interpretation:
-              "A mayor cantidad mínima, el precio unitario debe ser estrictamente menor.",
+              "A mayor cantidad mínima, el precio unitario debe ser estrictamente menor. Cuando el umbral coincide con el máximo del selector (ej. 6 packs), se muestra sin el signo +.",
           },
           {
             id: "precio",
@@ -513,7 +514,7 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
       {
         question: "¿Por qué el sistema bloquea guardar o reactivar un tramo?",
         answer:
-          "Porque el precio unitario iguala o supera el precio público del producto, o rompe el orden decreciente frente a otro tramo activo del mismo alcance.",
+          "Porque la cantidad mínima supera el tope del selector de ese producto, el precio iguala o supera el precio público de referencia, o rompe el orden decreciente frente a otro tramo activo del mismo alcance.",
       },
       {
         question: "¿La escala es exclusiva para empresas?",
@@ -523,7 +524,7 @@ export const CATALOG_GUIDES: AdminModuleGuide[] = [
     ],
     related: ["productos", "costos", "cupones", "oportunidades"],
     keywords: ["volumen", "mayorista", "descuento", "cantidad", "escala", "B2B", "margen"],
-    version: 1,
+    version: 2,
   },
   {
     id: "materiales",

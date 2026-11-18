@@ -189,7 +189,12 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
           <ul className="mt-0.5 space-y-0.5">
             {order.items.map((it) => (
               <li key={it.id} className="truncate">
-                <strong>{it.qty}×</strong> {it.variant.product.name} — {it.variant.name}
+                <strong>
+                  {it.designUnits > 1
+                    ? `${it.designUnits} diseños × ${it.qty} copias (${it.designUnits * it.qty} uds.)`
+                    : `${it.qty}×`}
+                </strong>{" "}
+                {it.variant.product.name} — {it.variant.name}
               </li>
             ))}
           </ul>

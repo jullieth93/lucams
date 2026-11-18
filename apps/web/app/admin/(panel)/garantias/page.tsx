@@ -587,7 +587,10 @@ export default async function AdminGarantiasPage({ searchParams }: { searchParam
                   {/* Producto + Cobertura sellada + Evidencia de calidad del Estudio */}
                   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
                     <p className="text-brand-purple-dark text-sm font-medium">
-                      {c.qty}× {c.productName}
+                      {c.designUnits > 1
+                        ? `${c.designUnits} diseños × ${c.qty} ${c.qty === 1 ? "copia" : "copias"} (${c.designUnits * c.qty} uds.)`
+                        : `${c.qty}×`}{" "}
+                      {c.productName}
                     </p>
                     <span className="text-slate-300" aria-hidden>
                       ·

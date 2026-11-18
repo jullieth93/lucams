@@ -40,10 +40,12 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { maxCopiesForDesignUnits } from "@/features/personalization/design-units";
 import {
   PREVIEW_ZOOM_MAX,
   PREVIEW_ZOOM_MIN,
@@ -688,6 +690,10 @@ type StudioPreviewModalProps = {
    * cuando `unitCount` no viene; el modelo nuevo prefiere `unitCount`.
    */
   initialCopies?: number;
+  /** ADR-209 — copias actuales de la tanda al re-abrir desde el carrito («Editar»). */
+  initialOrderCopies?: number;
+  /** ADR-209 — piezas físicas por unidad comercial para el tope de 100 (packs de 6 → 6; resto → 1). */
+  piecesPerCommercialUnit?: number;
   isFinalizing: boolean;
   errorMessage: string | null;
   /** #3 — tipo de producto: el calendario se describe en "páginas", no "imanes".
@@ -751,6 +757,8 @@ export function StudioPreviewModal({
   unitCount,
   unitNoun,
   initialCopies,
+  initialOrderCopies,
+  piecesPerCommercialUnit = 1,
   isFinalizing,
   errorMessage,
   productKind = "magnets",
@@ -777,25 +785,26 @@ export function StudioPreviewModal({
   const [acceptedWarningsKey, setAcceptedWarningsKey] = useState<string | null>(null);
   const qualityAccepted = ackRequired && acceptedWarningsKey === qualityWarningsKey;
 
-  // Modelo multi-unidad (2026-09-09): las unidades van DENTRO del diseño → el
-  // carrito recibe qty=1. Path legacy (nombre): copias idénticas (qty 1..99).
-  const units = Math.min(99, Math.max(1, Math.trunc(unitCount ?? 1) || 1));
+  // ADR-209: el diseño contiene `units` piezas diseñadas en esta tanda (1..15 / 1..6 packs)
+  // y el comprador puede multiplicar la tanda por `confirmQty` («Copias iguales de esta tanda»)
+  // hasta alcanzar máximo 100 unidades físicas (16 packs = 96 imanes en packs de 6).
+  const units = Math.min(100, Math.max(1, Math.trunc(unitCount ?? 1) || 1));
   const isMultiUnit = units > 1;
-  const copies = Math.min(99, Math.max(1, Math.trunc(initialCopies ?? 1) || 1));
-  // Qty al confirmar: multi-unidad → 1; legacy → las copias de la PDP.
-  const confirmQty = unitCount !== undefined ? 1 : copies;
-  // Multiplicador del total mostrado: el del SERVIDOR cuando llega
-  // (priceMultiplier — la variante puede YA ser el pack, p.ej. separadores:
-  // 5 unidades a $12.500 el pack → ×1, no ×5); si no, unidades del diseño
-  // (modelo nuevo) o copias (legacy).
-  const serverMultiplier = Math.min(99, Math.max(1, Math.trunc(priceMultiplier ?? 1) || 1));
-  const totalMultiplier =
-    priceMultiplier !== undefined ? serverMultiplier : unitCount !== undefined ? units : copies;
-  // 2026-11-07 (bug owner) — descuento por volumen en el total mostrado: con
-  // volumePricingByPhysicalUnit (bola/mini libros) el servidor evalúa los
-  // niveles contra las UNIDADES FÍSICAS del diseño (= totalMultiplier acá), así
-  // que la modal muestra el MISMO precio que cobrará el carrito (antes decía
-  // $30.000 por 3 bolas y el carrito cobraba $27.000).
+  const piecesPerUnit = Math.max(1, Math.trunc(piecesPerCommercialUnit) || 1);
+  const maxCopies = maxCopiesForDesignUnits(units, piecesPerUnit);
+  const seedCopies = Math.min(
+    maxCopies,
+    Math.max(
+      1,
+      Math.trunc(initialOrderCopies ?? (unitCount === undefined ? initialCopies : 1) ?? 1) || 1,
+    ),
+  );
+  const [selectedCopies, setSelectedCopies] = useState<number>(seedCopies);
+  const confirmQty = Math.min(maxCopies, Math.max(1, selectedCopies));
+  const serverMultiplier = Math.min(100, Math.max(1, Math.trunc(priceMultiplier ?? 1) || 1));
+  const baseTandaUnits =
+    priceMultiplier !== undefined ? serverMultiplier : unitCount !== undefined ? units : 1;
+  const totalMultiplier = baseTandaUnits * confirmQty;
   const displayUnitPrice =
     unitPrice != null ? unitPriceWithVolumeTier(unitPrice, totalMultiplier, volumeTiers) : null;
   const volumeDiscountApplied =
@@ -1060,59 +1069,80 @@ export function StudioPreviewModal({
                 )}
                 {totalMultiplier > 1 && (
                   <p className="text-brand-muted text-xs tabular-nums">
-                    {formatCOP(displayUnitPrice)} c/u
+                    {formatCOP(displayUnitPrice)} {piecesPerUnit === 6 ? "c/pack" : "c/u"}
                   </p>
                 )}
               </div>
             )}
           </div>
 
-          {/* Unidades del DISEÑO (modelo multi-unidad 2026-09-09): el cliente ya
-            las diseñó una a una — la línea del carrito es UNA (qty 1) y producción
-            recibe TODAS las unidades. Path legacy (nombre): copias idénticas de la
-            PDP como dato.
-            QA owner 2026-09-25 — el carrito ya NO tiene stepper para líneas
-            personalizadas: en la rama multi-unidad se eliminó la nota "Puedes
-            ajustar la cantidad en el carrito" (falsa ahí; las unidades se cambian
-            en el editor — el CTA «Volver a editar» está justo abajo). En la rama
-            legacy la nota sigue, con texto actualizado (la cantidad se eligió en
-            la PDP). */}
-          {/* Unidades del DISEÑO (modelo multi-unidad 2026-09-09): el cliente ya
-            las diseñó una a una — la línea del carrito es UNA (qty 1) y producción
-            recibe TODAS las unidades. Path legacy (nombre): copias idénticas de la
-            PDP como dato.
-            2026-10-12 — la línea nombra la unidad CON SU SUSTANTIVO ("1 separador",
-            "3 separadores", "2 packs"…), nunca más "N unidades", y se muestra
-            TAMBIÉN con 1 unidad (singular). El sustantivo llega por prop
-            `unitNoun` (lo resuelve el editor por producto); sin prop cae a
-            "unidad/unidades" (texto histórico).
-            QA owner 2026-09-25 — el carrito ya NO tiene stepper para líneas
-            personalizadas: en la rama multi-unidad se eliminó la nota "Puedes
-            ajustar la cantidad en el carrito" (falsa ahí; las unidades se cambian
-            en el editor — el CTA «Volver a editar» está justo abajo). En la rama
-            legacy la nota sigue, con texto actualizado (la cantidad se eligió en
-            la PDP). */}
-          {unitCount !== undefined ? (
-            <div className="border-brand-purple/10 mt-3 border-t pt-3">
+          <div className="border-brand-purple/10 mt-3 space-y-2.5 border-t pt-3">
+            {unitCount !== undefined && (
               <p className="text-brand-purple-dark text-sm font-semibold">
                 {fillStudioText(texts.unidades.modalUnidades, {
                   n: units,
                   sustantivo:
                     units === 1 ? (unitNoun?.one ?? "unidad") : (unitNoun?.many ?? "unidades"),
-                  // Sin prop, el sustantivo de respaldo es "unidad" (femenino);
-                  // con prop, el flag feminine del par (undefined = masculino).
                   uno: (unitNoun ? (unitNoun.feminine ?? false) : true) ? "una" : "uno",
                 })}
               </p>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-brand-purple-dark text-xs font-bold">
+                  Copias iguales de esta tanda
+                </p>
+                <p className="text-brand-muted text-xs">
+                  {confirmQty > 1
+                    ? `${units} ${units === 1 ? (unitNoun?.one ?? "diseño") : (unitNoun?.many ?? "diseños")} × ${confirmQty} copias = ${units * confirmQty * piecesPerUnit} ${piecesPerUnit === 6 ? "imanes" : units * confirmQty === 1 ? (unitNoun?.one ?? "unidad") : (unitNoun?.many ?? "unidades")}`
+                    : "También podrás ajustar las copias luego en tu carrito."}
+                </p>
+              </div>
+              <div
+                role="group"
+                aria-label="Copias iguales de esta tanda"
+                className="ring-brand-purple/15 inline-flex items-center rounded-lg bg-white ring-1"
+              >
+                <button
+                  type="button"
+                  aria-label="Disminuir copias iguales"
+                  disabled={confirmQty <= 1 || isFinalizing}
+                  onClick={() => setSelectedCopies(Math.max(1, confirmQty - 1))}
+                  className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed"
+                >
+                  <Minus className="h-4 w-4" aria-hidden />
+                </button>
+                <span
+                  aria-live="polite"
+                  className="text-brand-purple-dark min-w-12 px-2 text-center text-sm font-bold tabular-nums"
+                >
+                  {confirmQty}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Aumentar copias iguales"
+                  disabled={confirmQty >= maxCopies || isFinalizing}
+                  onClick={() => setSelectedCopies(Math.min(maxCopies, confirmQty + 1))}
+                  className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed"
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
             </div>
-          ) : copies > 1 ? (
-            <div className="border-brand-purple/10 mt-3 border-t pt-3">
-              <p className="text-brand-purple-dark text-sm font-semibold">
-                {fillStudioText(texts.exportar.copiasIdenticas, { n: copies })}
+
+            {confirmQty >= maxCopies && (
+              <p className="text-brand-purple-dark/80 text-xs">
+                Máximo {100} unidades por tanda en compra directa. ¿Necesitas más cantidad?{" "}
+                <Link
+                  href={`/empresas-y-eventos?unidades=100&producto=${encodeURIComponent(productName)}`}
+                  className="text-brand-purple font-semibold underline underline-offset-2"
+                >
+                  Cotiza en Empresas y Eventos →
+                </Link>
               </p>
-              <p className="text-brand-muted text-xs">{texts.exportar.copiasAjusteCarrito}</p>
-            </div>
-          ) : null}
+            )}
+          </div>
         </div>
 
         {/* Paquete C (2026-10-02) — sección "Calidad de tus fotos": solo cuando el

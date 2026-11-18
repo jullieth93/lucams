@@ -81,13 +81,11 @@ export default async function ProductoDetallePage({
   const product = await getProductById(id);
   if (!product) notFound();
 
-  // Counts para los badges del sub-nav (en paralelo con resto).
-  const activeVariants = product.variants.filter((v) => !v.deletedAt);
-
-  // Indicador "Visible en tienda" del header — misma regla que el storefront
+  // Indicador "Visible en tienda" y badges del sub-nav — misma regla que el storefront
   // (storefront-visibility.ts): las opciones que cuenta la PDP son las no
   // archivadas Y activas. La razón se muestra en texto al lado del chip.
   const buyableVariants = product.variants.filter((v) => !v.deletedAt && v.isActive);
+  const activeVariants = buyableVariants;
   const visibility = getStorefrontVisibility({
     productIsActive: product.isActive,
     productPublishedOnStorefront: product.publishedOnStorefront,
@@ -146,7 +144,7 @@ export default async function ProductoDetallePage({
 
   // "Desde $X" = el precio más barato entre las opciones activas (cada opción
   // hereda basePrice si no define el suyo). Solo para mostrar en el form (edit).
-  const activeForPrice = product.variants.filter((v) => !v.deletedAt);
+  const activeForPrice = buyableVariants;
   const priceFrom =
     activeForPrice.length > 0
       ? Math.min(...activeForPrice.map((v) => v.price ?? product.basePrice))

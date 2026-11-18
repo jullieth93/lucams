@@ -65,9 +65,10 @@ describe("ProductCreateSchema — campos de personalización", () => {
     );
   });
 
-  it("rangos de foto alineados con PhotoProductConfigSchema (photoSlots 1-50, caras 1-2)", () => {
+  it("rangos de foto alineados con PhotoProductConfigSchema (photoSlots 1-60, caras 1-2)", () => {
     expect(ProductCreateSchema.safeParse({ ...VALID_BASE, photoSlots: 0 }).success).toBe(false);
-    expect(ProductCreateSchema.safeParse({ ...VALID_BASE, photoSlots: 51 }).success).toBe(false);
+    expect(ProductCreateSchema.safeParse({ ...VALID_BASE, photoSlots: 60 }).success).toBe(true);
+    expect(ProductCreateSchema.safeParse({ ...VALID_BASE, photoSlots: 61 }).success).toBe(false);
     expect(ProductCreateSchema.safeParse({ ...VALID_BASE, facesPerUnit: 3 }).success).toBe(false);
   });
 

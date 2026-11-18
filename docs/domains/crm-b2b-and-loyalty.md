@@ -81,7 +81,7 @@ El panel `/admin/metricas` (`SUPERADMIN` y `FINANCE_ANALYST`, `features/crm/inte
   - **Nuevos prometedores (`promising_new`)**: `1` compra en los últimos `90 días`.
   - **En riesgo (`at_risk`)**: entre `91` y `180 días` desde su última compra.
   - **Inactivos (`hibernating`)**: `> 180 días` desde su última compra.
-- **LTV de Margen Neto**: deduce flete, descuentos de cupón/puntos y costo unitario de catálogo (`margin_cents = Order.total - Order.shipping - SUM(OrderItem.qty * COALESCE(Product.cost, 0))`), reportando además el porcentaje de catálogo con costo configurado y la rentabilidad por canal UTM (`lucams_utm`, persistida únicamente bajo consentimiento `COOKIES_ANALYTICS`).
+- **LTV de Margen Neto (`ADR-209`)**: deduce flete, descuentos de cupón/puntos y costo unitario real por unidad comercial diseñada (`margin_cents = Order.total - Order.shipping - SUM(OrderItem.qty * OrderItem.designUnits * COALESCE(Product.cost, 0))`), reportando además el porcentaje de catálogo con costo configurado y la rentabilidad por canal UTM (`lucams_utm`, persistida únicamente bajo consentimiento `COOKIES_ANALYTICS`). Top Ventas en `/admin/metricas` consolida igualmente `SUM(OrderItem.qty * OrderItem.designUnits)`.
 - **Embudo anónimo propio (`FunnelEventDaily`)**: visualiza la conversión a través de las 11 etapas de compra y personalización sin depender de cookies ni terceros (retención de 365 días).
 
 ### Segmentación comercial, boletín Ley 1581 y exportación CSV segura (`/admin/marketing/*`)
@@ -113,7 +113,7 @@ sequenceDiagram
 
 ### Captura consultiva en `/empresas-y-eventos` (`features/opportunities/`)
 
-- Valida en cliente y servidor cantidad estimada (**`25..100 000` unidades** — mínimo unificado en todo el embudo el 2026-11-10: hero, beneficios, atajos rápidos y esquema Zod), fecha del evento, teléfono con indicativo hacia E.164, municipio DANE, y NIT empresarial mediante el algoritmo oficial DIAN **módulo 11** (`normalizeAndValidateNit` en `lib/colombia-validators.ts`).
+- Valida en cliente y servidor cantidad estimada (**`25..100 000` unidades** — mínimo consultivo unificado en todo el embudo para pedidos con logo corporativo, muestra digital previa, empaque especial, documentación tributaria empresarial o más de 100 unidades, mientras los pedidos estándar con fotos propias de hasta 100 unidades se compran en autoservicio con `/admin/mayorista`; `ADR-209`), prellena `?unidades=` y `?producto=` al llegar desde el tope de la vista previa del Estudio o `/carrito`, y valida fecha del evento, teléfono con indicativo hacia E.164, municipio DANE y NIT empresarial mediante el algoritmo oficial DIAN **módulo 11** (`normalizeAndValidateNit` en `lib/colombia-validators.ts`).
 - Protegido con Cloudflare Turnstile, doble rate-limit de 24 h (`5/día` por IP y `3/día` por correo) y aislamiento de sesión (`getStorefrontCustomerForForm`, que ignora sesiones administrativas o de terceros).
 - En una sola transacción crea o enlaza `Contact` (`source: "B2B_INQUIRY"`), `Organization` (deduplicada por NIT), `Opportunity` con consecutivo `OP-XXXXXX` y snapshot inmutable del solicitante, autorizaciones Ley 1581, atribución UTM y una **`Task` automática con SLA comercial de 24 horas** (prioridad `URGENT` si supera 100 unidades, `HIGH` en el resto). En segundo plano despacha los correos `b2b-inquiry-received` y `b2b-inquiry-admin-notification` (ver [`../integrations/resend-and-emails.md`](../integrations/resend-and-emails.md)) y alerta en la campana del panel con tipo `ORDER` y enlace a la oportunidad.
 

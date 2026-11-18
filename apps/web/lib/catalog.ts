@@ -143,6 +143,11 @@ export type CatalogProductDetail = CatalogProductSummary & {
     name: string;
     rationale: string | null;
   }>;
+  wholesaleTiers: Array<{
+    variantId: string | null;
+    minQty: number;
+    unitPrice: number;
+  }>;
 };
 
 export type OcasionData = {
@@ -463,7 +468,7 @@ export const getCatalogProductDetail = unstable_cache(
         include: {
           category: { include: { parent: true } },
           variants: {
-            where: { deletedAt: null },
+            where: { isActive: true, deletedAt: null },
             orderBy: { createdAt: "asc" },
             select: {
               id: true,
@@ -474,6 +479,15 @@ export const getCatalogProductDetail = unstable_cache(
               stock: true, // #5 — para inStock consistente en summarizeProduct
               attributes: true,
               isActive: true,
+            },
+          },
+          wholesaleTiers: {
+            where: { isActive: true, deletedAt: null },
+            orderBy: { minQty: "asc" },
+            select: {
+              variantId: true,
+              minQty: true,
+              unitPrice: true,
             },
           },
           templates: {
@@ -531,6 +545,11 @@ export const getCatalogProductDetail = unstable_cache(
           slug: t.ocasionTag.slug,
           name: t.ocasionTag.name,
           rationale: t.rationale,
+        })),
+        wholesaleTiers: product.wholesaleTiers.map((wt) => ({
+          variantId: wt.variantId,
+          minQty: wt.minQty,
+          unitPrice: wt.unitPrice,
         })),
       };
     } catch {

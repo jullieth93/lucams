@@ -23,10 +23,14 @@ export function readProductExperience(raw: unknown): ProductExperienceConfig {
     schema.spineWidthCm <= 5
       ? schema.spineWidthCm
       : DEFAULT_SPINE_WIDTH_CM;
+  const galleryTag = typeof schema.galleryTag === "string" ? schema.galleryTag : "";
+  const isBookmarkStrip = galleryTag.startsWith("separadores");
+  const freeUnitDesign = schema.freeUnitDesign === true || isBookmarkStrip;
+  const volumePricingByPhysicalUnit = schema.volumePricingByPhysicalUnit === true || freeUnitDesign;
   return {
     experience,
-    freeUnitDesign: schema.freeUnitDesign === true,
-    volumePricingByPhysicalUnit: schema.volumePricingByPhysicalUnit === true,
+    freeUnitDesign,
+    volumePricingByPhysicalUnit,
     spineWidthCm,
   };
 }
