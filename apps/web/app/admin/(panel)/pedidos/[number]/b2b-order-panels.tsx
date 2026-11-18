@@ -186,8 +186,9 @@ export function DirectPaymentVerificationPanel({
           </div>
 
           <p
-            className={`text-[11px] font-medium ${sumMatchesTotal ? "text-emerald-700" : "text-rose-700"
-              }`}
+            className={`text-[11px] font-medium ${
+              sumMatchesTotal ? "text-emerald-700" : "text-rose-700"
+            }`}
           >
             Cuadre contable: $ {(parsedCash + parsedWithholding).toLocaleString("es-CO")} / ${" "}
             {totalPesos.toLocaleString("es-CO")} COP
