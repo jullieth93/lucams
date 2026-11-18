@@ -21,7 +21,7 @@ export async function toggleWishlist(
   }
   // Solo se puede guardar un producto activo y no borrado.
   const product = await prisma.product.findFirst({
-    where: { id: productId, isActive: true, deletedAt: null },
+    where: { id: productId, isActive: true, publishedOnStorefront: true, deletedAt: null },
     select: { id: true },
   });
   if (!product) return { wishlisted: false };
@@ -47,7 +47,12 @@ export async function listWishlist(customerId: string): Promise<StorefrontProduc
   const items = await prisma.wishlistItem.findMany({
     where: {
       customerId,
-      product: { isActive: true, deletedAt: null, category: { isActive: true, deletedAt: null } },
+      product: {
+        isActive: true,
+        publishedOnStorefront: true,
+        deletedAt: null,
+        category: { isActive: true, deletedAt: null },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 100,
@@ -61,6 +66,7 @@ export async function listWishlist(customerId: string): Promise<StorefrontProduc
           basePrice: true,
           compareAtPrice: true,
           isPersonalizable: true,
+          fulfillmentMode: true,
           images: true,
           category: { select: { slug: true, name: true } },
           _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
@@ -87,11 +93,12 @@ export async function listWishlist(customerId: string): Promise<StorefrontProduc
       basePrice: p.basePrice,
       compareAtPrice: p.compareAtPrice,
       isPersonalizable: p.isPersonalizable,
+      fulfillmentMode: p.fulfillmentMode,
       images: p.images,
       category: p.category,
       variantCount: p._count.variants,
       minVariantPrice,
-      inStock: p.variants.some((v) => v.stock > 0),
+      inStock: p.fulfillmentMode === "MADE_TO_ORDER" || p.variants.some((v) => v.stock > 0),
     };
   });
 }

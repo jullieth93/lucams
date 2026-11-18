@@ -260,6 +260,7 @@ async function createOrderFromCartTx(
                 product: {
                   select: {
                     isActive: true,
+                    publishedOnStorefront: true,
                     deletedAt: true,
                     name: true,
                     warrantyMonths: true,
@@ -310,6 +311,7 @@ async function createOrderFromCartTx(
           variantIsActive: it.variant.isActive,
           variantDeletedAt: it.variant.deletedAt,
           productIsActive: it.variant.product.isActive,
+          productPublishedOnStorefront: it.variant.product.publishedOnStorefront,
           productDeletedAt: it.variant.product.deletedAt,
           categoryIsActive: it.variant.product.category.isActive,
           categoryDeletedAt: it.variant.product.category.deletedAt,

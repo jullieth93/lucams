@@ -39,6 +39,7 @@ import { getStorefrontVisibility } from "@/features/products/storefront-visibili
 import { StorefrontVisibilityChip } from "@/components/admin/storefront-visibility-chip";
 import { parsePhysicalSpecs } from "@/features/products/shipping-schemas";
 import { readPersonalizationAdminConfig } from "@/features/products/personalization-schema";
+import { parseVariantAttributes } from "@/features/products/variant-schemas";
 import { getStockEmoji, summarizeStock } from "@/features/products/stock-constants";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
@@ -89,11 +90,14 @@ export default async function ProductoDetallePage({
   const buyableVariants = product.variants.filter((v) => !v.deletedAt && v.isActive);
   const visibility = getStorefrontVisibility({
     productIsActive: product.isActive,
+    productPublishedOnStorefront: product.publishedOnStorefront,
     productDeletedAt: product.deletedAt,
     categoryIsActive: product.category.isActive,
     categoryDeletedAt: product.category.deletedAt,
     activeVariantCount: buyableVariants.length,
-    inStockAny: buyableVariants.some((v) => v.stock > 0),
+    inStockAny:
+      product.fulfillmentMode === "MADE_TO_ORDER" || buyableVariants.some((v) => v.stock > 0),
+    fulfillmentMode: product.fulfillmentMode,
   });
   const pendingReviewsCount = await prisma.review.count({
     where: {
@@ -163,8 +167,14 @@ export default async function ProductoDetallePage({
           <>
             Código: <code className="font-mono text-xs">{product.sku}</code> · URL:{" "}
             <code className="font-mono text-xs">/producto/{product.slug}</code> ·{" "}
-            <span aria-hidden>{getStockEmoji(stockSummary.worstStatus)}</span>{" "}
-            {stockSummary.totalUnits.toLocaleString("es-CO")} unidades
+            {product.fulfillmentMode === "PHYSICAL_STOCK" ? (
+              <>
+                <span aria-hidden>{getStockEmoji(stockSummary.worstStatus)}</span>{" "}
+                {stockSummary.totalUnits.toLocaleString("es-CO")} unidades físicas
+              </>
+            ) : (
+              <>Hecho a pedido · sin stock de producto terminado</>
+            )}
             <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
               <StorefrontVisibilityChip visibility={visibility} />
               {"reason" in visibility && (
@@ -249,16 +259,23 @@ export default async function ProductoDetallePage({
              * tener "lo mismo en 3 lados". Acá solo se ve + un botón para ir a
              * gestionarlo donde corresponde.
              */}
-            <ProductStockSummaryReadonly
-              productId={product.id}
-              totalUnits={stockSummary.totalUnits}
-              worstStatus={stockSummary.worstStatus}
-              options={activeForPrice.map((v) => ({
-                name: v.name === "Default" ? "Única" : v.name,
-                stock: v.stock,
-                price: v.price ?? product.basePrice,
-              }))}
-            />
+            {product.fulfillmentMode === "PHYSICAL_STOCK" ? (
+              <ProductStockSummaryReadonly
+                productId={product.id}
+                totalUnits={stockSummary.totalUnits}
+                worstStatus={stockSummary.worstStatus}
+                options={activeForPrice.map((v) => ({
+                  name: v.name === "Default" ? "Única" : v.name,
+                  stock: v.stock,
+                  price: v.price ?? product.basePrice,
+                }))}
+              />
+            ) : (
+              <AdminNotice tone="info">
+                Este producto se fabrica bajo pedido. Su disponibilidad depende de que esté activo y
+                de los insumos; no descuenta unidades de producto terminado.
+              </AdminNotice>
+            )}
 
             <ProductCouponsWidget
               productSlug={product.slug}
@@ -283,6 +300,11 @@ export default async function ProductoDetallePage({
                 isPersonalizable: product.isPersonalizable,
                 isActive: product.isActive,
                 isFeatured: product.isFeatured,
+                fulfillmentMode: product.fulfillmentMode,
+                publishedOnStorefront: product.publishedOnStorefront,
+                hasNameVariants: product.variants.some(
+                  (variant) => parseVariantAttributes(variant.attributes).variant === "name",
+                ),
                 seoTitle: product.seoTitle,
                 seoDescription: product.seoDescription,
                 richDescription: product.richDescription,
@@ -314,6 +336,7 @@ export default async function ProductoDetallePage({
           <ProductVariantsPanel
             productId={product.id}
             basePrice={product.basePrice}
+            fulfillmentMode={product.fulfillmentMode}
             productImageCount={product.images.length}
             searchParams={sp}
           />

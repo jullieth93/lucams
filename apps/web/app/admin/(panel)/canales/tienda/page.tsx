@@ -74,20 +74,40 @@ export default async function AdminCanalTiendaPage() {
     codEnabledRaw,
     productsActive,
     productsTotal,
+    madeToOrderVariants,
     healthyVariants,
     lowStockVariants,
     outOfStockVariants,
     ordersTotal,
   ] = await Promise.all([
     getSettingValue("COD_ENABLED", "false"),
-    prisma.product.count({ where: { isActive: true, deletedAt: null } }),
+    prisma.product.count({
+      where: { isActive: true, publishedOnStorefront: true, deletedAt: null },
+    }),
     prisma.product.count({ where: { deletedAt: null } }),
+    prisma.productVariant.count({
+      where: {
+        isActive: true,
+        deletedAt: null,
+        product: {
+          isActive: true,
+          publishedOnStorefront: true,
+          deletedAt: null,
+          fulfillmentMode: "MADE_TO_ORDER",
+        },
+      },
+    }),
     prisma.productVariant.count({
       where: {
         stock: { gt: 5 },
         isActive: true,
         deletedAt: null,
-        product: { isActive: true, deletedAt: null },
+        product: {
+          isActive: true,
+          publishedOnStorefront: true,
+          deletedAt: null,
+          fulfillmentMode: "PHYSICAL_STOCK",
+        },
       },
     }),
     prisma.productVariant.count({
@@ -95,7 +115,12 @@ export default async function AdminCanalTiendaPage() {
         stock: { gt: 0, lte: 5 },
         isActive: true,
         deletedAt: null,
-        product: { isActive: true, deletedAt: null },
+        product: {
+          isActive: true,
+          publishedOnStorefront: true,
+          deletedAt: null,
+          fulfillmentMode: "PHYSICAL_STOCK",
+        },
       },
     }),
     prisma.productVariant.count({
@@ -103,7 +128,12 @@ export default async function AdminCanalTiendaPage() {
         stock: { lte: 0 },
         isActive: true,
         deletedAt: null,
-        product: { isActive: true, deletedAt: null },
+        product: {
+          isActive: true,
+          publishedOnStorefront: true,
+          deletedAt: null,
+          fulfillmentMode: "PHYSICAL_STOCK",
+        },
       },
     }),
     prisma.order.count({ where: { deletedAt: null } }),
@@ -111,7 +141,7 @@ export default async function AdminCanalTiendaPage() {
   const codEnabled = codEnabledRaw === "true";
   const productsInactive = Math.max(0, productsTotal - productsActive);
   const criticalOrOutVariants = lowStockVariants + outOfStockVariants;
-  const totalActiveVariants = healthyVariants + criticalOrOutVariants;
+  const totalActiveVariants = madeToOrderVariants + healthyVariants + criticalOrOutVariants;
   const catalogCoveragePct =
     productsTotal > 0 ? Math.round((productsActive / productsTotal) * 100) : 0;
 
@@ -268,8 +298,8 @@ export default async function AdminCanalTiendaPage() {
               </p>
               <p className="text-brand-muted mt-2 text-xs">
                 {outOfStockVariants > 0
-                  ? `${outOfStockVariants} agotadas · ${lowStockVariants} con ≤5 uds.`
-                  : "variantes activas con ≤5 unidades."}{" "}
+                  ? `${outOfStockVariants} físicas agotadas · ${lowStockVariants} con ≤5 uds.`
+                  : "variantes físicas con ≤5 unidades."}{" "}
                 <Link
                   href="/admin/inventario"
                   className="text-brand-purple-dark font-semibold underline"
@@ -359,27 +389,34 @@ export default async function AdminCanalTiendaPage() {
               comprador.
             </p>
             <AdminDonutChart
-              ariaLabel="Distribución de stock en variantes activas"
+              ariaLabel="Distribución de modalidad y stock en variantes activas"
               centerValue={String(totalActiveVariants)}
               centerLabel="Variantes"
               slices={[
                 {
+                  key: "made_to_order",
+                  label: "Hechas a pedido (Estudio)",
+                  count: madeToOrderVariants,
+                  tone: "turquoise",
+                  href: "/admin/productos",
+                },
+                {
                   key: "healthy",
-                  label: "Stock saludable (> 5 uds)",
+                  label: "Stock físico saludable (> 5 uds)",
                   count: healthyVariants,
                   tone: "purple",
                   href: "/admin/inventario",
                 },
                 {
                   key: "low",
-                  label: "Stock bajo (1 a 5 uds)",
+                  label: "Stock físico bajo (1 a 5 uds)",
                   count: lowStockVariants,
                   tone: "amber",
                   href: "/admin/inventario",
                 },
                 {
                   key: "out",
-                  label: "Agotadas (0 uds)",
+                  label: "Stock físico agotado (0 uds)",
                   count: outOfStockVariants,
                   tone: "rose",
                   href: "/admin/inventario",

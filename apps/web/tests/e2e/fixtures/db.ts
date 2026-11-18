@@ -57,6 +57,7 @@ export async function getActiveProduct(opts: { personalizable?: boolean } = {}) 
   return db().product.findFirst({
     where: {
       isActive: true,
+      publishedOnStorefront: true,
       deletedAt: null,
       // Mismo gate que el storefront (STOREFRONT_PRODUCT_WHERE): sin él el picker
       // podía elegir un producto cuya categoría está inactiva/borrada → la PDP

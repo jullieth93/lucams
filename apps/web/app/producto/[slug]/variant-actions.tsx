@@ -185,14 +185,16 @@ export function CartVariantIdInput() {
  */
 export function CartSubmitButton({
   stockByVariantId,
+  trackStock = true,
   className,
 }: {
   stockByVariantId: Record<string, number>;
+  trackStock?: boolean;
   className?: string;
 }) {
   const { selectedId } = useSelectedVariant();
   const stock = selectedId ? stockByVariantId[selectedId] : undefined;
-  const soldOut = stock !== undefined && stock <= 0;
+  const soldOut = trackStock && stock !== undefined && stock <= 0;
   // UX selección guiada (2026-08-12): sin variante elegida el botón pide la
   // elección en vez de agregar un default invisible al carrito.
   const noSelection = !selectedId;

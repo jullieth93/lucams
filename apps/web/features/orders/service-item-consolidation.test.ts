@@ -117,6 +117,7 @@ function cartItem(overrides: Record<string, unknown> = {}) {
       product: {
         category: { isActive: true, deletedAt: null },
         isActive: true,
+        publishedOnStorefront: true,
         deletedAt: null,
         name: "Imán Nevera",
       },
@@ -229,6 +230,7 @@ describe("createOrderFromCart — consolidación de líneas idénticas (Paquete 
       product: {
         category: { isActive: true, deletedAt: null },
         isActive: true,
+        publishedOnStorefront: true,
         deletedAt: null,
         name: "Imán Nevera",
       },

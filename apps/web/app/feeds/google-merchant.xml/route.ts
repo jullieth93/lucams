@@ -48,12 +48,21 @@ export async function GET(): Promise<Response> {
         name: true,
         description: true,
         basePrice: true,
+        fulfillmentMode: true,
         images: true,
         // Misma regla de la PDP: solo opciones activas y no archivadas.
         variants: {
           where: { deletedAt: null, isActive: true },
           orderBy: { createdAt: "asc" },
-          select: { id: true, sku: true, name: true, price: true, stock: true, images: true },
+          select: {
+            id: true,
+            sku: true,
+            name: true,
+            price: true,
+            stock: true,
+            safetyStock: true,
+            images: true,
+          },
         },
       },
     });

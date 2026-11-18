@@ -95,6 +95,8 @@ function parsePayload(formData: FormData) {
     // el service lo deriva del kind (kind ≠ NONE).
     isActive: get("isActive") === "on",
     isFeatured: get("isFeatured") === "on",
+    fulfillmentMode: String(get("fulfillmentMode") ?? "PHYSICAL_STOCK"),
+    publishedOnStorefront: get("publishedOnStorefront") === "on",
     seoTitle: (get("seoTitle") || null) as string | null,
     seoDescription: (get("seoDescription") || null) as string | null,
     // PLAN_CATALOG_V2 — campos enriquecidos AI-ready

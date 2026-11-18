@@ -47,6 +47,7 @@ import {
   recommendProducts,
   searchCatalog,
 } from "@/lib/catalog";
+import sitemap from "@/app/sitemap";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const RUN = `gate${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
@@ -59,6 +60,9 @@ let archivedCatSlug = "";
 let okSlug = "";
 let ghostInactiveSlug = "";
 let ghostArchivedSlug = "";
+let hiddenSlug = "";
+let madeSlug = "";
+let physicalEmptySlug = "";
 let ocasionId = "";
 
 describe.skipIf(!hasDb)("storefront visibility gate — ambos stacks (F-04)", { timeout: T }, () => {
@@ -82,7 +86,15 @@ describe.skipIf(!hasDb)("storefront visibility gate — ambos stacks (F-04)", { 
     });
     ocasionId = ocasion.id;
 
-    const mk = (categoryId: string, slug: string) =>
+    const mk = (
+      categoryId: string,
+      slug: string,
+      opts: {
+        publishedOnStorefront?: boolean;
+        fulfillmentMode?: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
+        zeroStock?: boolean;
+      } = {},
+    ) =>
       prisma.product.create({
         data: {
           slug,
@@ -91,7 +103,21 @@ describe.skipIf(!hasDb)("storefront visibility gate — ambos stacks (F-04)", { 
           basePrice: 10_000,
           sku: slug.toUpperCase(),
           categoryId,
+          publishedOnStorefront: opts.publishedOnStorefront ?? true,
+          fulfillmentMode: opts.fulfillmentMode ?? "PHYSICAL_STOCK",
           ocasionTags: { create: [{ ocasionTagId: ocasionId }] },
+          ...(opts.zeroStock
+            ? {
+                variants: {
+                  create: {
+                    name: "Única",
+                    sku: `${slug}-V`.toUpperCase(),
+                    stock: 0,
+                    attributes: {},
+                  },
+                },
+              }
+            : {}),
         },
         select: { slug: true },
       });
@@ -99,6 +125,14 @@ describe.skipIf(!hasDb)("storefront visibility gate — ambos stacks (F-04)", { 
     okSlug = (await mk(activeCatId, `${RUN}-ok`)).slug;
     ghostInactiveSlug = (await mk(inactiveCat.id, `${RUN}-ghost-pausada`)).slug;
     ghostArchivedSlug = (await mk(archivedCat.id, `${RUN}-ghost-archivada`)).slug;
+    hiddenSlug = (await mk(activeCatId, `${RUN}-hidden`, { publishedOnStorefront: false })).slug;
+    madeSlug = (
+      await mk(activeCatId, `${RUN}-made`, {
+        fulfillmentMode: "MADE_TO_ORDER",
+        zeroStock: true,
+      })
+    ).slug;
+    physicalEmptySlug = (await mk(activeCatId, `${RUN}-empty`, { zeroStock: true })).slug;
   }, T);
 
   afterAll(async () => {
@@ -163,6 +197,25 @@ describe.skipIf(!hasDb)("storefront visibility gate — ambos stacks (F-04)", { 
       expect(ocasionSlugs).toContain(okSlug);
       expect(ocasionSlugs).not.toContain(childProd.slug);
     });
+
+    it("publishedOnStorefront=false desaparece de listado, PDP y búsqueda trigrama", async () => {
+      const list = await listStorefrontProducts({ limit: 200 });
+      expect(list.map((product) => product.slug)).not.toContain(hiddenSlug);
+      expect(await getStorefrontProductBySlug(hiddenSlug)).toBeNull();
+      const results = await searchStorefrontProducts(RUN, { limit: 50 });
+      expect(results.map((result) => result.slug)).not.toContain(hiddenSlug);
+      expect(results.map((result) => result.slug)).toContain(okSlug);
+    });
+
+    it("MADE_TO_ORDER no queda agotado con stock 0; PHYSICAL_STOCK sí", async () => {
+      const made = await getStorefrontProductBySlug(madeSlug);
+      const physical = await getStorefrontProductBySlug(physicalEmptySlug);
+      expect(made?.inStock).toBe(true);
+      expect(physical?.inStock).toBe(false);
+      const cards = await listStorefrontProducts({ limit: 200 });
+      expect(cards.find((product) => product.slug === madeSlug)?.inStock).toBe(true);
+      expect(cards.find((product) => product.slug === physicalEmptySlug)?.inStock).toBe(false);
+    });
   });
 
   describe("stack AI-ready (lib/catalog)", () => {
@@ -214,6 +267,25 @@ describe.skipIf(!hasDb)("storefront visibility gate — ambos stacks (F-04)", { 
       expect(await getCategoryBySlug(activeCatSlug)).not.toBeNull();
       expect(await getCategoryBySlug(inactiveCatSlug)).toBeNull();
       expect(await getCategoryBySlug(archivedCatSlug)).toBeNull();
+    });
+
+    it("publishedOnStorefront=false también queda fuera de API, búsqueda trigrama y sitemap.xml", async () => {
+      expect((await listCatalogProducts({ limit: 200 })).map((p) => p.slug)).not.toContain(
+        hiddenSlug,
+      );
+      expect(await getCatalogProductDetail(hiddenSlug)).toBeNull();
+      expect((await searchCatalog(RUN, 50)).map((result) => result.slug)).not.toContain(hiddenSlug);
+      expect(
+        (await recommendProducts({ ocasionSlugs: [`${RUN}-oc`] })).map((result) => result.slug),
+      ).not.toContain(hiddenSlug);
+      const urls = (await sitemap()).map((entry) => entry.url);
+      expect(urls.some((u) => u.endsWith(`/producto/${okSlug}`))).toBe(true);
+      expect(urls.some((u) => u.endsWith(`/producto/${hiddenSlug}`))).toBe(false);
+    });
+
+    it("el catálogo AI-ready conserva la disponibilidad por modalidad", async () => {
+      expect((await getCatalogProductDetail(madeSlug))?.inStock).toBe(true);
+      expect((await getCatalogProductDetail(physicalEmptySlug))?.inStock).toBe(false);
     });
   });
 });

@@ -27,6 +27,8 @@
  * Spec: https://support.google.com/merchants/answer/7052112 (RSS 2.0, namespace g:).
  */
 
+import { netAvailableStock } from "@/features/products/fulfillment";
+
 export type GoogleMerchantFeedVariant = {
   /** id cuid — se usa en el deep-link ?variant= de la PDP. */
   id: string;
@@ -36,6 +38,8 @@ export type GoogleMerchantFeedVariant = {
   /** Precio override en CENTAVOS COP; null = hereda product.basePrice. */
   price: number | null;
   stock: number;
+  /** Reserva de seguridad frente a canales externos y feeds (0 por defecto). */
+  safetyStock?: number;
   /** Fotos propias de la opción; [] = hereda product.images. */
   images: string[];
 };
@@ -46,6 +50,7 @@ export type GoogleMerchantFeedProduct = {
   description: string;
   /** CENTAVOS COP (Int), jamás float. */
   basePrice: number;
+  fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
   /** URLs absolutas (Supabase Storage). */
   images: string[];
   /** Solo variantes activas y no archivadas (el query del route las filtra). */
@@ -121,13 +126,17 @@ function buildItem(
   const link = `${siteUrl}/producto/${product.slug}?variant=${encodeURIComponent(variant.id)}`;
   const imageUrl = resolveImageUrl(variant.images, product.images, siteUrl);
 
+  const inStock =
+    product.fulfillmentMode === "MADE_TO_ORDER" ||
+    netAvailableStock(variant.stock, variant.safetyStock ?? 0) > 0;
+
   const lines = [
     `      <g:id>${escapeXml(variant.sku)}</g:id>`,
     `      <title>${escapeXml(title)}</title>`,
     `      <g:description>${escapeXml(plainDescription(product.description))}</g:description>`,
     `      <link>${escapeXml(link)}</link>`,
     ...(imageUrl ? [`      <g:image_link>${escapeXml(imageUrl)}</g:image_link>`] : []),
-    `      <g:availability>${variant.stock > 0 ? "in stock" : "out of stock"}</g:availability>`,
+    `      <g:availability>${inStock ? "in stock" : "out of stock"}</g:availability>`,
     `      <g:price>${priceCop} COP</g:price>`,
     `      <g:brand>Lucams Shop</g:brand>`,
     `      <g:condition>new</g:condition>`,

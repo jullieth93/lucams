@@ -53,7 +53,9 @@ export function getLifecycleContactSelect(now: Date) {
             notifiedAt: null,
             product: {
               isActive: true,
+              publishedOnStorefront: true,
               deletedAt: null,
+              fulfillmentMode: "PHYSICAL_STOCK",
               variants: { some: { isActive: true, deletedAt: null, stock: { gt: 0 } } },
             },
           },
@@ -252,7 +254,9 @@ function eligibleWhere(journey: LifecycleJourney, now: Date): Prisma.ContactWher
                   createdAt: { gte: lookback },
                   product: {
                     isActive: true,
+                    publishedOnStorefront: true,
                     deletedAt: null,
+                    fulfillmentMode: "PHYSICAL_STOCK",
                     variants: { some: { isActive: true, deletedAt: null, stock: { gt: 0 } } },
                   },
                 },
