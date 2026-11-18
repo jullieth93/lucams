@@ -130,6 +130,7 @@ export default async function ProductoDetallePage({
   // "Default" vacía) para que galería/precio coincidan con el chip resaltado por defecto.
   const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
   const selectable = selectableVariants(product.variants);
+  const trackStock = product.fulfillmentMode === "PHYSICAL_STOCK";
   // Regla 2026-09-08b — packs de fotoimanes: la PDP elige "Unidades" (pack size)
   // → la variante fija el precio EXACTO. Con la preselección 2026-09-18 siempre
   // hay variante elegida → "Desde" ya no aparece (showFromPrice queda para el
@@ -164,7 +165,8 @@ export default async function ProductoDetallePage({
   // auto-selecciona (no hay nada que elegir). El deep-link ?variant= manda
   // sobre todo.
   const selectedVariant =
-    selectable.find((v) => v.id === requestedVariantId) ?? pdpDefaultVariant(selectable);
+    selectable.find((v) => v.id === requestedVariantId) ??
+    pdpDefaultVariant(selectable, { trackStock });
   const showFromPrice = isPhotoPack && !selectedVariant;
   // Precio final: variant.price override o basePrice
   const displayPrice =
@@ -174,8 +176,6 @@ export default async function ProductoDetallePage({
   // carrito), que reaccionan al selector SIN esperar el re-render del RSC.
   const variantIds = selectable.map((v) => v.id);
   const firstVariantId = selectedVariant?.id ?? null;
-  // Fase 1 — stock por variante para el buy-box: el botón "Añadir" se bloquea
-  // ("Agotado") cuando la variante elegida no tiene stock, aunque otras sí.
   const stockByVariantId = Object.fromEntries(selectable.map((v) => [v.id, v.stock]));
 
   // D1 (Lucy 2026-06-27): la galería muestra las fotos de la OPCIÓN elegida si
@@ -591,6 +591,7 @@ export default async function ProductoDetallePage({
                       // de la familia, mismo criterio que la card del listado.
                       fallbackPrice={familyMinPrice}
                       variants={selectable}
+                      trackStock={trackStock}
                       perTile={isNamePerTile}
                       hiddenDimensions={PDP_HIDDEN_DIMENSION_KEYS[product.slug]}
                       // Regla 2026-09-08b — label "Unidades" del pack size en toda
@@ -737,6 +738,7 @@ export default async function ProductoDetallePage({
                           variante elegida no tiene stock (gate por variante, no por producto). */}
                         <CartSubmitButton
                           stockByVariantId={stockByVariantId}
+                          trackStock={trackStock}
                           className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
                         />
                       </form>
@@ -766,12 +768,24 @@ export default async function ProductoDetallePage({
                   <li className="flex items-start gap-2.5">
                     <Truck className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
                     <span>
-                      Hecho a pedido.{" "}
-                      <strong>
-                        Preparación estimada: alrededor de {product.productionDays} días hábiles
-                        antes del despacho
-                      </strong>
-                      . Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
+                      {product.fulfillmentMode === "MADE_TO_ORDER" ? (
+                        <>
+                          Hecho a pedido.{" "}
+                          <strong>
+                            Preparación estimada: alrededor de {product.productionDays} días hábiles
+                            antes del despacho
+                          </strong>
+                          .{" "}
+                        </>
+                      ) : product.inStock ? (
+                        <>
+                          <strong>En stock · Listo para despachar.</strong> Es un producto
+                          terminado; no requiere pasar por el Estudio.{" "}
+                        </>
+                      ) : (
+                        <>Agotado por ahora; no hay unidades listas para despachar. </>
+                      )}
+                      Después, las transportadoras aliadas estiman {product.shippingDaysMin}–
                       {product.shippingDaysMax} días de tránsito según tu ciudad. En Bogotá, con{" "}
                       <strong>Envío Lucams</strong> (localidades habilitadas), la ruta se estima
                       para el <strong>mismo día del despacho, sujeta a disponibilidad</strong>

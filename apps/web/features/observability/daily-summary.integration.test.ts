@@ -127,4 +127,82 @@ describe.skipIf(!hasDb)("daily-summary — integración DB", () => {
     expect(emailsSent).toHaveLength(0);
     expect(await prisma.notification.count({ where: { dedupKey: "daily_summary" } })).toBe(1);
   }, 30000);
+
+  it("lowStock cuenta solo variantes PHYSICAL_STOCK y omite MADE_TO_ORDER en 0", async () => {
+    const cat = await prisma.category.create({
+      data: { slug: `${RUN}-cat`, name: `Cat ${RUN}`, isActive: true },
+      select: { id: true },
+    });
+    try {
+      const madeProd = await prisma.product.create({
+        data: {
+          slug: `${RUN}-mto`,
+          name: `MTO ${RUN}`,
+          description: "Producto bajo pedido",
+          basePrice: 10_000,
+          sku: `${RUN}-MTO`.toUpperCase(),
+          categoryId: cat.id,
+          isActive: true,
+          fulfillmentMode: "MADE_TO_ORDER",
+          variants: {
+            create: {
+              name: "Única",
+              sku: `${RUN}-MTO-V`.toUpperCase(),
+              stock: 0,
+              isActive: true,
+              attributes: {},
+            },
+          },
+        },
+        select: { id: true },
+      });
+      const baselineWithMto = (await getDailySummary()).lowStock;
+
+      const physProd = await prisma.product.create({
+        data: {
+          slug: `${RUN}-phys`,
+          name: `Físico ${RUN}`,
+          description: "Producto físico con stock bajo",
+          basePrice: 10_000,
+          sku: `${RUN}-PHYS`.toUpperCase(),
+          categoryId: cat.id,
+          isActive: true,
+          fulfillmentMode: "PHYSICAL_STOCK",
+          variants: {
+            create: {
+              name: "Única",
+              sku: `${RUN}-PHYS-V`.toUpperCase(),
+              stock: 2,
+              isActive: true,
+              attributes: {},
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      const afterPhysical = (await getDailySummary()).lowStock;
+      expect(afterPhysical).toBeGreaterThanOrEqual(baselineWithMto + 1);
+
+      await prisma.product.update({
+        where: { id: madeProd.id },
+        data: { isActive: false },
+      });
+      const afterDisablingMto = (await getDailySummary()).lowStock;
+      expect(afterDisablingMto).toBe(afterPhysical);
+
+      await prisma.productVariant.deleteMany({
+        where: { productId: { in: [madeProd.id, physProd.id] } },
+      });
+      await prisma.product.deleteMany({
+        where: { id: { in: [madeProd.id, physProd.id] } },
+      });
+    } finally {
+      await prisma.productVariant
+        .deleteMany({ where: { product: { categoryId: cat.id } } })
+        .catch(() => {});
+      await prisma.product.deleteMany({ where: { categoryId: cat.id } }).catch(() => {});
+      await prisma.category.deleteMany({ where: { id: cat.id } }).catch(() => {});
+    }
+  }, 30000);
 });

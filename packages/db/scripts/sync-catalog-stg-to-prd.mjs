@@ -31,12 +31,12 @@
  *     restaurada, propaga deletedAt=null.
  *
  * ⚠ STOCK — LÉEME ⚠
- * ProductVariant.stock NO SE SINCRONIZA JAMÁS. El stock de PRD es OPERATIVO
- * REAL: lo descuentan órdenes pagadas (InventoryLog) y lo revierten
- * cancelaciones. Sobrescribirlo con el stock de pruebas de STG vendería
- * inventario fantasma o dejaría sin stock productos que sí hay. Las variantes
- * INSERTADAS (producto nuevo) entran con stock=0 (default del schema) y se
- * reportan en grande: Lucy carga el stock operativo a mano en /admin.
+ * ProductVariant.stock y ProductVariant.safetyStock NO SE SINCRONIZAN JAMÁS.
+ * El stock y la reserva de PRD son OPERATIVOS REALES: las ventas descuentan el
+ * stock y la reserva protege unidades no ofrecibles. Sobrescribirlos con datos
+ * de pruebas de STG vendería inventario fantasma o alteraría la disponibilidad.
+ * Las variantes INSERTADAS entran con ambos valores en 0 (defaults del schema)
+ * y Lucy los carga a mano en /admin.
  *
  * CMS — versión publicada: el storefront lee `publishedVersion.body`
  * (apps/web/lib/cms.ts), NO `CmsField.body`. Sincronizar el borrador sin la
@@ -254,6 +254,8 @@ const SELECTS = {
     cost: true,
     isPersonalizable: true,
     personalizationKind: true,
+    fulfillmentMode: true,
+    publishedOnStorefront: true,
     personalizationSchema: true,
     richDescription: true,
     whyChooseThis: true,
@@ -689,6 +691,8 @@ async function main() {
         cost: row.cost,
         isPersonalizable: row.isPersonalizable,
         personalizationKind: row.personalizationKind,
+        fulfillmentMode: row.fulfillmentMode,
+        publishedOnStorefront: row.publishedOnStorefront,
         personalizationSchema: row.personalizationSchema,
         richDescription: row.richDescription,
         whyChooseThis: row.whyChooseThis,

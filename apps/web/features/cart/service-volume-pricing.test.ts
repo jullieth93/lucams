@@ -56,6 +56,8 @@ type CartItemFixture = {
       images: string[];
       isPersonalizable: boolean;
       isActive: boolean;
+      publishedOnStorefront: boolean;
+      fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
       deletedAt: null;
       category: { isActive: boolean; deletedAt: null };
       personalizationKind: string;
@@ -69,6 +71,7 @@ const state = vi.hoisted(() => ({
     id: string;
     basePrice: number;
     name: string;
+    fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
     variants: Array<{ id: string; price: number | null; stock: number }>;
   },
   cart: null as null | {
@@ -178,6 +181,8 @@ function makeVariant(
       images: [],
       isPersonalizable: false,
       isActive: true,
+      publishedOnStorefront: true,
+      fulfillmentMode: "PHYSICAL_STOCK",
       deletedAt: null,
       category: { isActive: true, deletedAt: null },
       personalizationKind: "NONE",
@@ -200,6 +205,7 @@ function seedProduct(stock: number) {
     id: PRODUCT.id,
     basePrice: PRODUCT.basePrice,
     name: PRODUCT.name,
+    fulfillmentMode: "PHYSICAL_STOCK",
     variants: [{ id: "var_1", price: null, stock }],
   };
 }

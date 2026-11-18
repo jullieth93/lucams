@@ -41,7 +41,7 @@
 | [`CONVENTIONS.md`](CONVENTIONS.md)         | Patrones obligatorios de código: Next 16, centavos COP, `America/Bogota`, errores RFC 7807, CMS de 3 capas, migraciones duales y guardas de scripts   |
 | [`TESTING.md`](TESTING.md)                 | Pirámide de pruebas: Vitest unit/integración, suite RLS real, Playwright E2E, auditoría responsive, carga k6 y gates de CI                            |
 | [`BRANDING.md`](BRANDING.md)               | Identidad «Lucams Shop» (`ADR-138`), paleta Tailwind v4 (`@theme`), fuentes locales `.subset.woff2` / `.ttf`, reverso 3D y tono kawaii `es-CO`        |
-| [`DECISIONS.md`](DECISIONS.md)             | Registro limpio de decisiones arquitectónicas vigentes con anclas estables `ADR-001`…`ADR-206` (190 ADRs documentados)                                |
+| [`DECISIONS.md`](DECISIONS.md)             | Registro limpio de decisiones arquitectónicas vigentes con anclas estables `ADR-001`…`ADR-208` (192 ADRs documentados)                                |
 | [`PLAN_CATALOG_V2.md`](PLAN_CATALOG_V2.md) | Especificación completa de los 80 consensos de diseño del catálogo (`[1.1]`–`[8.10]`) citados en código y su vigencia actual                          |
 | [`ROADMAP.md`](ROADMAP.md)                 | Operación full-only, costos reales de infraestructura y evolución futura                                                                              |
 | [`QA_CHECKLIST.md`](QA_CHECKLIST.md)       | Recorrido manual pre-release de punta a punta (storefront, Estudio, pagos, posventa invitado, B2B y 8 roles admin)                                    |
@@ -77,7 +77,8 @@ webhooks) **más checklists paso a paso de configuración en cada panel externo*
 | [`integrations/resend-and-emails.md`](integrations/resend-and-emails.md) | Envío `mail.lucamsshop.com`, Contacts/Segments, baja RFC 8058, webhook Svix, **inventario de las 31 plantillas registradas + 2 Auth + alertas** y `/admin/email-templates` |
 | [`integrations/cloudflare.md`](integrations/cloudflare.md)               | Zona DNS, Email Routing (`hola@`, `security@`), Turnstile (**10 puntos de validación**) y backups diarios cifrados en **Cloudflare R2** + DR drill mensual                 |
 | [`integrations/google-and-ai.md`](integrations/google-and-ai.md)         | Gemini REST `v1beta` (Estudio + Copiloto de soporte cero-PII), GA4 y `lucams_utm` bajo consentimiento estricto, feed Google Merchant XML y Search Console                  |
-| [`integrations/mercadolibre.md`](integrations/mercadolibre.md)           | **Diseño no implementado (`ADR-205`)**: integración directa completa para stock, publicaciones, pedidos, envíos, posventa y finanzas; APIs oficiales, arquitectura y fases |
+| [`integrations/mercadolibre.md`](integrations/mercadolibre.md)           | **Diseño no implementado (`ADR-205`/`ADR-208`)**: stock físico multilateral, precios modulares, `ChannelPack`, `ME2`/Flex, posventa y finanzas `MCO`                       |
+| [`integrations/meta.md`](integrations/meta.md)                           | **Diseño no implementado (`ADR-207`/`ADR-208`)**: Meta Catalog con paridad de precios web, Instagram/Facebook, Pixel/CAPI, campañas y fases reales                         |
 | [`integrations/github-and-ops.md`](integrations/github-and-ops.md)       | Los **6 workflows de GitHub Actions**, secretos, ruleset `protect-ramas-criticas`, HIBP k-anonymity, WhatsApp `wa.me` y vigilancia del dominio `.co`                       |
 
 ---

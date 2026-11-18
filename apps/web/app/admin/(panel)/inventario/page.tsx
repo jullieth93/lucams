@@ -117,8 +117,8 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
     <AdminPage>
       <AdminPageHeader
         icon={<Boxes className="h-5 w-5" />}
-        title="Inventario"
-        subtitle={`${data.summary.totalVariants.toLocaleString("es-CO")} opciones activas · ${data.summary.totalUnits.toLocaleString("es-CO")} unidades en total`}
+        title="Inventario físico"
+        subtitle={`${data.summary.totalVariants.toLocaleString("es-CO")} opciones de productos terminados · ${data.summary.totalUnits.toLocaleString("es-CO")} unidades físicas`}
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Catálogo", href: "/admin/productos" },
@@ -179,7 +179,7 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
             }
           />
         ) : (
-          <AdminTable minWidth={800}>
+          <AdminTable minWidth={1050}>
             {/*
              * Hotfix P0-1: removido el wrapper AdminCard que duplicaba
              * border + rounded-xl + shadow (AdminTable ya es una card).
@@ -203,9 +203,9 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
                 />
                 <th className="px-4 py-3 text-left font-semibold">Opción</th>
                 <th className="px-4 py-3 text-left font-semibold">Código</th>
-                <th className="px-4 py-3 text-left font-semibold">Estado</th>
+                <th className="px-4 py-3 text-left font-semibold">Estado neto</th>
                 <SortableHeader
-                  label="Stock"
+                  label="Stock físico"
                   ascValue="stock-asc"
                   descValue="stock-desc"
                   currentSort={sort}
@@ -218,7 +218,15 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
                   }}
                   align="right"
                 />
-                <th className="px-4 py-3 text-right font-semibold">Ajustar</th>
+                <th className="px-4 py-3 text-right font-semibold">Reserva</th>
+                <th className="px-4 py-3 text-right font-semibold">
+                  <Hint content="Disponible externo = máx(0, stock físico − reserva) para canales externos y feeds. En lucamsshop.com se vende sobre el stock físico.">
+                    <span className="cursor-help underline decoration-dotted underline-offset-4">
+                      Disponible neto
+                    </span>
+                  </Hint>
+                </th>
+                <th className="px-4 py-3 text-right font-semibold">Ajustar stock</th>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
@@ -279,10 +287,16 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
                     {row.variantSku}
                   </td>
                   <td className="px-4 py-3 align-top">
-                    <StatusChip status={row.status} stock={row.stock} />
+                    <StatusChip status={row.status} stock={row.availableStock} />
                   </td>
                   <td className="text-brand-purple-dark px-4 py-3 text-right align-top text-sm font-bold tabular-nums">
                     {row.stock.toLocaleString("es-CO")}
+                  </td>
+                  <td className="text-brand-muted px-4 py-3 text-right align-top text-sm tabular-nums">
+                    {row.safetyStock.toLocaleString("es-CO")}
+                  </td>
+                  <td className="text-brand-purple-dark px-4 py-3 text-right align-top text-sm font-bold tabular-nums">
+                    {row.availableStock.toLocaleString("es-CO")}
                   </td>
                   <td className="px-4 py-3 align-top">
                     <InlineStockEditor
@@ -324,7 +338,7 @@ function KpiStrip({ out, low, ok }: { out: number; low: number; ok: number }) {
           value={out}
           tone={out > 0 ? "danger" : "muted"}
           href={out > 0 ? "/admin/inventario?estado=out" : undefined}
-          hint="Opciones con 0 unidades — no se pueden vender"
+          hint="0 unidades netas tras reserva — pausadas en canales externos o sin stock físico"
         />
         <KpiTile
           emoji="🟡"
@@ -332,7 +346,7 @@ function KpiStrip({ out, low, ok }: { out: number; low: number; ok: number }) {
           value={low}
           tone={low > 0 ? "warning" : "muted"}
           href={low > 0 ? "/admin/inventario?estado=low" : undefined}
-          hint="5 unidades o menos — planea reponer"
+          hint="5 unidades netas o menos tras reserva — planea reponer"
         />
         <KpiTile
           emoji="🟢"
@@ -340,7 +354,7 @@ function KpiStrip({ out, low, ok }: { out: number; low: number; ok: number }) {
           value={ok}
           tone="ok"
           href="/admin/inventario?estado=ok"
-          hint="Más de 5 unidades — todo en orden"
+          hint="Más de 5 unidades netas tras reserva — todo en orden"
         />
       </div>
       <AdminSegmentedBar

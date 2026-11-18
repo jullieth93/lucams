@@ -32,6 +32,8 @@ import {
   readProductExperience,
   supportsTwoFaceDesign,
 } from "@/features/personalization/product-experience";
+import { requiresMadeToOrder } from "./fulfillment";
+import { parseVariantAttributes } from "./variant-schemas";
 
 export type ProductListItem = {
   id: string;
@@ -44,6 +46,8 @@ export type ProductListItem = {
   isActive: boolean;
   isFeatured: boolean;
   isPersonalizable: boolean;
+  fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
+  publishedOnStorefront: boolean;
   /** null = no archivado (vivo); Date = archivado en esa fecha. */
   deletedAt: Date | null;
   category: { id: string; name: string; slug: string };
@@ -139,6 +143,8 @@ export async function listProducts(opts: {
         isActive: true,
         isFeatured: true,
         isPersonalizable: true,
+        fulfillmentMode: true,
+        publishedOnStorefront: true,
         deletedAt: true,
         images: true,
         createdAt: true,
@@ -175,6 +181,8 @@ export async function listProducts(opts: {
       isActive: p.isActive,
       isFeatured: p.isFeatured,
       isPersonalizable: p.isPersonalizable,
+      fulfillmentMode: p.fulfillmentMode,
+      publishedOnStorefront: p.publishedOnStorefront,
       deletedAt: p.deletedAt,
       // El tipo público expone solo id/name/slug; isActive/deletedAt van en
       // sus propios campos (categoryIsActive / categoryDeletedAt).
@@ -182,7 +190,7 @@ export async function listProducts(opts: {
       categoryIsActive: p.category.isActive,
       categoryDeletedAt: p.category.deletedAt,
       activeVariantCount: p.variants.length,
-      inStockAny: p.variants.some((v) => v.stock > 0),
+      inStockAny: p.fulfillmentMode === "MADE_TO_ORDER" || p.variants.some((v) => v.stock > 0),
       imagesCount: p.images.length,
       variantsCount: p._count.variants,
       createdAt: p.createdAt,
@@ -252,7 +260,15 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
     input.personalizationKind !== undefined
       ? personalizationKind !== "NONE"
       : input.isPersonalizable;
-  assertSupportedTwoFaces(buildPersonalizationSchemaFromInput(input), input.slug);
+  const personalizationSchema = buildPersonalizationSchemaFromInput(input);
+  const fulfillmentMode = requiresMadeToOrder({
+    personalizationKind,
+    isPersonalizable,
+    personalizationSchema,
+  })
+    ? "MADE_TO_ORDER"
+    : (input.fulfillmentMode ?? "PHYSICAL_STOCK");
+  assertSupportedTwoFaces(personalizationSchema, input.slug);
 
   // Crear producto + variante default en la misma transacción.
   // CartItem y OrderItem requieren variantId — sin variante el producto
@@ -273,6 +289,8 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
         isPersonalizable,
         isActive: input.isActive,
         isFeatured: input.isFeatured,
+        fulfillmentMode,
+        publishedOnStorefront: input.publishedOnStorefront ?? true,
         personalizationKind,
         seoTitle: input.seoTitle ?? null,
         seoDescription: input.seoDescription ?? null,
@@ -355,10 +373,20 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     if (conflict) throw new ProductValidationError("sku", `SKU "${rest.sku}" ya existe`);
   }
 
+  const existingProduct = await prisma.product.findUnique({
+    where: { id },
+    select: {
+      slug: true,
+      physicalSpecs: true,
+      personalizationKind: true,
+      isPersonalizable: true,
+      personalizationSchema: true,
+      fulfillmentMode: true,
+      variants: { select: { attributes: true } },
+    },
+  });
   // A11-02 — slug público actual (para el redirect automático si cambia).
-  const prevSlug = rest.slug
-    ? (await prisma.product.findUnique({ where: { id }, select: { slug: true } }))?.slug
-    : undefined;
+  const prevSlug = rest.slug ? existingProduct?.slug : undefined;
 
   // PR C — peso/dims se persisten dentro de physicalSpecs Json (mergeado
   // con specs existentes para no pisar otras keys como `material`).
@@ -419,13 +447,7 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
   const needsPersonalizationSchema = Object.values(personalizationFields).some(
     (v) => v !== undefined,
   );
-  const existingJson =
-    needsPhysicalSpecs || needsPersonalizationSchema
-      ? await prisma.product.findUnique({
-          where: { id },
-          select: { slug: true, physicalSpecs: true, personalizationSchema: true },
-        })
-      : null;
+  const existingJson = existingProduct;
 
   let physicalSpecsUpdate: Prisma.InputJsonValue | undefined;
   if (needsPhysicalSpecs) {
@@ -459,12 +481,30 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     );
   }
 
+  const nextPersonalizationKind =
+    personalizationKind ?? existingProduct?.personalizationKind ?? "NONE";
+  const nextIsPersonalizable =
+    personalizationKind !== undefined
+      ? personalizationKind !== "NONE"
+      : (rest.isPersonalizable ?? existingProduct?.isPersonalizable ?? false);
+  const nextPersonalizationSchema =
+    personalizationSchemaUpdate ?? existingProduct?.personalizationSchema ?? null;
+  const fulfillmentMode = requiresMadeToOrder({
+    personalizationKind: nextPersonalizationKind,
+    isPersonalizable: nextIsPersonalizable,
+    personalizationSchema: nextPersonalizationSchema,
+    variants: existingProduct?.variants,
+  })
+    ? "MADE_TO_ORDER"
+    : (rest.fulfillmentMode ?? existingProduct?.fulfillmentMode ?? "PHYSICAL_STOCK");
+
   // idealFor es Json — necesita tratamiento especial para tipos Prisma.
   const { idealFor, ...restWithoutJson } = restWithoutStudio;
   const updateArgs: Prisma.ProductUpdateArgs = {
     where: { id },
     data: {
       ...restWithoutJson,
+      fulfillmentMode,
       // Kind explícito (el form siempre lo manda): persiste la columna y
       // deriva isPersonalizable = kind ≠ NONE (2026-10-02 — mismo criterio
       // que los seeds; el checkbox suelto salió del form). Va DESPUÉS del
@@ -829,11 +869,18 @@ export async function createVariant(input: VariantCreateInput, createdBy: string
       price: input.price ?? null,
       compareAtPrice: input.compareAtPrice ?? null,
       stock: input.stock,
+      safetyStock: input.safetyStock,
       isActive: input.isActive,
       attributes: input.attributes,
       ...(createdBy ? { createdBy } : {}),
     },
   });
+  if (parseVariantAttributes(created.attributes).variant === "name") {
+    await prisma.product.update({
+      where: { id: input.productId },
+      data: { fulfillmentMode: "MADE_TO_ORDER" },
+    });
+  }
   await syncProductBasePrice(input.productId);
   updateTag("catalog");
   return created;
@@ -861,6 +908,12 @@ export async function updateVariant(input: VariantUpdateInput, updatedBy: string
       ...(updatedBy ? { updatedBy } : {}),
     },
   });
+  if (parseVariantAttributes(updated.attributes).variant === "name") {
+    await prisma.product.update({
+      where: { id: updated.productId },
+      data: { fulfillmentMode: "MADE_TO_ORDER" },
+    });
+  }
   await syncProductBasePrice(updated.productId);
   updateTag("catalog");
   return updated;

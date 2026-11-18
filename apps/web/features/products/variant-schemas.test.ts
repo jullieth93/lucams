@@ -404,6 +404,11 @@ describe("pdpDefaultVariant", () => {
     expect(pdpDefaultVariant(variants)?.id).toBe("a");
   });
 
+  it("sin control de stock conserva el default aunque el stock legado sea 0", () => {
+    const variants = [v("a", { sizeCm: "5×7" }, 0), v("b", { sizeCm: "7×10" }, 0)];
+    expect(pdpDefaultVariant(variants, { trackStock: false })?.id).toBe("a");
+  });
+
   it("una sola variante se auto-selecciona; lista vacía → null", () => {
     expect(pdpDefaultVariant([v("u", { sizeCm: "5×5" })])?.id).toBe("u");
     expect(pdpDefaultVariant([])).toBeNull();

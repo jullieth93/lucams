@@ -48,11 +48,13 @@ import { archiveVariantAction } from "@/app/admin/(panel)/productos/[id]/variant
 export async function ProductVariantsPanel({
   productId,
   basePrice,
+  fulfillmentMode,
   productImageCount,
   searchParams,
 }: {
   productId: string;
   basePrice: number;
+  fulfillmentMode: "MADE_TO_ORDER" | "PHYSICAL_STOCK";
   /** Fotos del producto — para explicar la herencia en VariantImages (D1). */
   productImageCount: number;
   searchParams: { [key: string]: string | string[] | undefined };
@@ -100,14 +102,19 @@ export async function ProductVariantsPanel({
 
       {!formMode && (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          {/* Aquí editas el stock de ESTE producto; en Inventario ves el de todos. */}
-          <Link
-            href="/admin/inventario"
-            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
-          >
-            <Boxes className="h-3.5 w-3.5" />
-            Ir al inventario completo →
-          </Link>
+          {fulfillmentMode === "PHYSICAL_STOCK" ? (
+            <Link
+              href="/admin/inventario"
+              className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
+            >
+              <Boxes className="h-3.5 w-3.5" />
+              Ir al inventario completo →
+            </Link>
+          ) : (
+            <span className="text-brand-muted text-xs font-medium">
+              Producto bajo pedido: no maneja stock de unidades terminadas.
+            </span>
+          )}
           <Link
             href={`/admin/productos/${productId}?section=opciones&new=1`}
             className="bg-gradient-brand inline-flex h-11 items-center gap-1.5 rounded-lg px-4 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-110"
@@ -130,7 +137,7 @@ export async function ProductVariantsPanel({
               Cancelar
             </Link>
           </div>
-          <VariantForm productId={productId} />
+          <VariantForm productId={productId} trackStock={fulfillmentMode === "PHYSICAL_STOCK"} />
         </AdminCard>
       )}
 
@@ -150,6 +157,7 @@ export async function ProductVariantsPanel({
           </div>
           <VariantForm
             productId={productId}
+            trackStock={fulfillmentMode === "PHYSICAL_STOCK"}
             variant={{
               id: editingVariant.id,
               name: editingVariant.name,
@@ -158,6 +166,7 @@ export async function ProductVariantsPanel({
               price: editingVariant.price,
               compareAtPrice: editingVariant.compareAtPrice,
               stock: editingVariant.stock,
+              safetyStock: editingVariant.safetyStock,
               isActive: editingVariant.isActive,
               attributes: parseVariantAttributes(editingVariant.attributes),
             }}
@@ -198,7 +207,11 @@ export async function ProductVariantsPanel({
                   <th className="px-4 py-3 text-left font-semibold">Características</th>
                   <th className="px-4 py-3 text-right font-semibold">Precio</th>
                   <th className="px-4 py-3 text-right font-semibold">
-                    {isPackBased ? "Stock (packs)" : "Stock"}
+                    {fulfillmentMode === "MADE_TO_ORDER"
+                      ? "Inventario"
+                      : isPackBased
+                        ? "Stock (packs)"
+                        : "Stock"}
                   </th>
                   <th className="px-4 py-3 text-center font-semibold">Estado</th>
                   <th className="px-4 py-3 text-right font-semibold">Acción</th>
@@ -239,13 +252,15 @@ export async function ProductVariantsPanel({
                         )}
                       </td>
                       <td className="px-4 py-3 align-top">
-                        {/* Editor rápido de stock — mismo que en Inventario, para
-                        que ajustar stock se sienta igual en los dos lados. */}
-                        <CompactStockEditor
-                          variantId={v.id}
-                          productId={productId}
-                          currentStock={v.stock}
-                        />
+                        {fulfillmentMode === "PHYSICAL_STOCK" ? (
+                          <CompactStockEditor
+                            variantId={v.id}
+                            productId={productId}
+                            currentStock={v.stock}
+                          />
+                        ) : (
+                          <span className="text-brand-muted text-xs">Bajo pedido</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-center align-top">
                         {v.isActive ? (

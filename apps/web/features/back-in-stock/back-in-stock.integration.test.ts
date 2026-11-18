@@ -115,4 +115,18 @@ describe("subscribeBackInStock + sendBackInStockNotifications", () => {
       reason: "in_stock",
     });
   }, 30_000);
+
+  it("MADE_TO_ORDER no genera suscripciones aunque su stock legado sea 0", async () => {
+    await prisma.product.update({
+      where: { id: productId },
+      data: { fulfillmentMode: "MADE_TO_ORDER" },
+    });
+    await prisma.productVariant.update({ where: { id: variantId }, data: { stock: 0 } });
+    const email = `made-${RUN}@lucams.test`;
+    expect(await subscribeBackInStock(productId, email, null)).toEqual({
+      ok: false,
+      reason: "in_stock",
+    });
+    expect(await prisma.backInStockSubscription.count({ where: { productId, email } })).toBe(0);
+  });
 });

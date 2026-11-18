@@ -538,11 +538,25 @@ model Category {
   @@index([isActive, parentId, order])
 }
 
+enum FulfillmentMode {
+  MADE_TO_ORDER
+  PHYSICAL_STOCK
+}
+
+enum SalesChannel {
+  STOREFRONT
+  MERCADOLIBRE
+  B2B
+  INTERNAL
+}
+
 model Product {
   id                    String                    @id @default(cuid())
   slug                  String                    @unique
   name                  String
   description           String
+  fulfillmentMode       FulfillmentMode           @default(PHYSICAL_STOCK)
+  publishedOnStorefront Boolean                   @default(true)
   basePrice             Int
   compareAtPrice        Int?
   cost                  Int?
@@ -646,6 +660,7 @@ model ProductVariant {
   // podía salir negativo en la tienda. Centavos COP. Null = sin promo.
   compareAtPrice Int?
   stock          Int            @default(0)
+  safetyStock    Int            @default(0)
   // D1 (Lucy 2026-06-27): fotos propias de la opción. Vacío = hereda
   // Product.images (espeja la herencia de `price`). El PDP cambia la galería
   // al elegir la opción; el admin las sube desde el editor de la opción.
@@ -675,14 +690,17 @@ model ProductVariant {
 }
 
 model InventoryLog {
-  id        String         @id @default(cuid())
-  variantId String
-  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  delta     Int
-  reason    String
-  orderId   String?
-  createdAt DateTime       @default(now())
-  createdBy String?
+  id             String         @id @default(cuid())
+  variantId      String
+  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  delta          Int
+  reason         String
+  orderId        String?
+  channel        SalesChannel   @default(STOREFRONT)
+  channelOrderId String?
+  idempotencyKey String?        @unique
+  createdAt      DateTime       @default(now())
+  createdBy      String?
   // NOTA: existe un UNIQUE INDEX PARCIAL que Prisma no puede expresar (índices
   // condicionales con WHERE no son soportados por @@unique). Vive en la migración
   // 20260626224910_fix_inventory_log_unique_per_variant:

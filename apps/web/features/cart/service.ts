@@ -89,8 +89,9 @@ export type CartLineItem = {
    * Stock actual de la variante (2026-09-29): la UI del carrito lo usa para el
    * badge "Solo quedan N" y para capar el stepper (no subir por encima del
    * stock disponible). No es una reserva — puede cambiar hasta el pago.
+   * null en MADE_TO_ORDER: el stock legado no alimenta badges ni topes.
    */
-  stock: number;
+  stock: number | null;
   /** Unidades físicas de inventario y logística derivadas de la línea, no solo su qty comercial. */
   inventoryUnits: number;
   imageUrl: string | null;
@@ -299,6 +300,8 @@ const cartItemsInclude = {
               images: true,
               isPersonalizable: true,
               isActive: true,
+              publishedOnStorefront: true,
+              fulfillmentMode: true,
               deletedAt: true,
               category: { select: { isActive: true, deletedAt: true } },
               // Para describir la pieza física en el checkout (nº de piezas y medida).
@@ -508,6 +511,7 @@ function toDetail(cart: RawCart): CartDetail {
         variantIsActive: i.variant.isActive,
         variantDeletedAt: i.variant.deletedAt,
         productIsActive: i.variant.product.isActive,
+        productPublishedOnStorefront: i.variant.product.publishedOnStorefront,
         productDeletedAt: i.variant.product.deletedAt,
         categoryIsActive: i.variant.product.category.isActive,
         categoryDeletedAt: i.variant.product.category.deletedAt,
@@ -534,7 +538,7 @@ function toDetail(cart: RawCart): CartDetail {
         qty: i.qty,
         unitPrice: i.unitPrice,
         lineTotal: i.qty * i.unitPrice,
-        stock: i.variant.stock,
+        stock: i.variant.product.fulfillmentMode === "MADE_TO_ORDER" ? null : i.variant.stock,
         inventoryUnits: inventoryUnitsForOrderItem({
           qty: i.qty,
           customDesign: i.design?.canvasData ?? i.customDesign,
@@ -622,6 +626,7 @@ export async function getCartItemCount(
         deletedAt: null,
         product: {
           isActive: true,
+          publishedOnStorefront: true,
           deletedAt: null,
           category: { isActive: true, deletedAt: null },
         },
@@ -652,12 +657,14 @@ export async function addProductToCart(opts: {
     where: {
       slug: opts.productSlug,
       isActive: true,
+      publishedOnStorefront: true,
       deletedAt: null,
       category: { isActive: true, deletedAt: null },
     },
     select: {
       id: true,
       basePrice: true,
+      fulfillmentMode: true,
       // name: para el copy del rechazo por stock ("Solo quedan N unidades de «X»").
       name: true,
       variants: {
@@ -677,7 +684,8 @@ export async function addProductToCart(opts: {
   // Fase 1 (stock por variante): la variante elegida agotada no es comprable.
   // El checkout ya lo validaba con STOCK_UNAVAILABLE; aquí evitamos que entre
   // al carrito en primer lugar (mismo código de error para un manejo coherente).
-  if (variant.stock <= 0) {
+  const trackStock = product.fulfillmentMode === "PHYSICAL_STOCK";
+  if (trackStock && variant.stock <= 0) {
     throw new CartError("STOCK_UNAVAILABLE", `«${product.name}» está agotado por ahora.`);
   }
 
@@ -693,19 +701,14 @@ export async function addProductToCart(opts: {
   // suma qty. CartItem no tiene unique compuesto, así que lo manejamos
   // a mano.
   const existing = cart.items.find((i) => i.variantId === variant.id && !i.designId);
-  // Tope efectivo de la línea: min(99, stock) con SEMÁNTICA DE CLAMP
-  // (2026-09-29) — sumar más allá del tope se topa al tope, igual que el clamp
-  // legacy a 99, ahora también contra el stock real de la variante. Solo se
-  // RECHAZA cuando no hay margen: stock 0 (arriba) o el carrito ya está en el
-  // tope y se intenta sumar más. Sin reservas, el checkout sigue siendo la
-  // defensa final contra concurrencia; esto cierra el oversell "en frío" por
-  // acumulación sin castigar al cliente que se pasa por un clic de más.
-  const cap = Math.min(MAX_QTY_PER_ITEM, variant.stock);
+  const cap = trackStock ? Math.min(MAX_QTY_PER_ITEM, variant.stock) : MAX_QTY_PER_ITEM;
   const inCart = existing?.qty ?? 0;
   if (inCart >= cap) {
     throw new CartError(
       "STOCK_UNAVAILABLE",
-      stockLimitMessage(product.name, variant.stock, inCart),
+      trackStock
+        ? stockLimitMessage(product.name, variant.stock, inCart)
+        : `«${product.name}» permite máximo ${MAX_QTY_PER_ITEM} unidades por línea.`,
     );
   }
   const newQty = Math.min(cap, inCart + opts.qty);
@@ -802,9 +805,11 @@ export async function addPersonalizedToCart(opts: {
         select: {
           id: true,
           basePrice: true,
+          fulfillmentMode: true,
           // name: copy del rechazo por stock ("Solo quedan N unidades de «X»").
           name: true,
           isActive: true,
+          publishedOnStorefront: true,
           deletedAt: true,
           category: { select: { isActive: true, deletedAt: true } },
           // Multi-unidad — facesPerUnit para el multiplicador (separadores: 2 caras;
@@ -822,6 +827,7 @@ export async function addPersonalizedToCart(opts: {
   if (
     !design ||
     !design.product.isActive ||
+    !design.product.publishedOnStorefront ||
     design.product.deletedAt ||
     !design.product.category.isActive ||
     design.product.category.deletedAt
@@ -856,7 +862,7 @@ export async function addPersonalizedToCart(opts: {
     letterSetUnitCount(design.metadata);
   // Fase 1 (stock por variante): misma regla que addProductToCart — la variante
   // agotada no entra al carrito (el checkout sigue como backstop de concurrencia).
-  if (variant.stock < designUnits) {
+  if (design.product.fulfillmentMode === "PHYSICAL_STOCK" && variant.stock < designUnits) {
     throw new CartError(
       "STOCK_UNAVAILABLE",
       stockLimitMessage(design.product.name, variant.stock, 0),
@@ -962,19 +968,21 @@ export async function addPersonalizedToCart(opts: {
       }
     }
 
+    const trackStock = design.product.fulfillmentMode === "PHYSICAL_STOCK";
+    const stockCap = trackStock
+      ? Math.min(MAX_QTY_PER_ITEM, Math.floor(variant.stock / designUnits))
+      : MAX_QTY_PER_ITEM;
     if (existing) {
-      // Mismo tope min(99, stock) con clamp que addProductToCart (2026-09-29):
-      // agrupar un diseño idéntico SUMA qty sobre la misma variante; se rechaza
-      // solo cuando la línea ya está en el tope (sin margen).
-      const cap = Math.min(MAX_QTY_PER_ITEM, Math.floor(variant.stock / designUnits));
       const inCart = existing.qty;
-      if (inCart >= cap) {
+      if (inCart >= stockCap) {
         throw new CartError(
           "STOCK_UNAVAILABLE",
-          stockLimitMessage(design.product.name, variant.stock, inCart),
+          trackStock
+            ? stockLimitMessage(design.product.name, variant.stock, inCart)
+            : `«${design.product.name}» permite máximo ${MAX_QTY_PER_ITEM} unidades por línea.`,
         );
       }
-      const newQty = Math.min(cap, inCart + opts.qty);
+      const newQty = Math.min(stockCap, inCart + opts.qty);
       await prisma.cartItem.update({
         where: { id: existing.id },
         // Sumar qty puede cruzar un umbral de volumen → re-priceo de la línea.
@@ -994,9 +1002,7 @@ export async function addPersonalizedToCart(opts: {
         },
       });
     } else {
-      // Alta nueva: el stock>0 ya se validó arriba, así que hay margen; la qty
-      // pedida se topa al stock disponible (clamp, no rechazo).
-      const newQty = Math.min(MAX_QTY_PER_ITEM, Math.floor(variant.stock / designUnits), opts.qty);
+      const newQty = Math.min(stockCap, opts.qty);
       await prisma.cartItem.create({
         data: {
           cartId: cart.id,
@@ -1041,13 +1047,8 @@ export async function updateCartItemQty(
       });
     }
   } else {
-    // Tope efectivo min(99, stock) con SEMÁNTICA DE CLAMP (2026-09-29): el set
-    // absoluto se topa al stock real de la variante (el stepper UI ya capa el
-    // "+", pero la action es un endpoint POST invocable directo — defensa en
-    // profundidad server-side). Si el clamp deja la qty igual a la actual,
-    // aplica igual (no-op). Solo se rechaza cuando no hay margen alguno: la
-    // variante quedó agotada con la línea en vuelo.
-    if (item.variant.stock <= 0) {
+    const trackStock = item.variant.product.fulfillmentMode === "PHYSICAL_STOCK";
+    if (trackStock && item.variant.stock <= 0) {
       throw new CartError(
         "STOCK_UNAVAILABLE",
         `«${item.variant.product.name}» está agotado por ahora.`,
@@ -1059,8 +1060,10 @@ export async function updateCartItemQty(
           parsePhotoProductConfig(item.variant.product.personalizationSchema).facesPerUnit ?? 1,
         )
       : 1;
-    const maxQtyByStock = Math.floor(item.variant.stock / designUnits);
-    if (maxQtyByStock < 1) {
+    const maxQtyByStock = trackStock
+      ? Math.floor(item.variant.stock / designUnits)
+      : MAX_QTY_PER_ITEM;
+    if (trackStock && maxQtyByStock < 1) {
       throw new CartError(
         "STOCK_UNAVAILABLE",
         stockLimitMessage(item.variant.product.name, item.variant.stock, 0),

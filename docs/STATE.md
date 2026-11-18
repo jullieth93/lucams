@@ -5,8 +5,8 @@
 ## Fotografía ejecutiva
 
 - **Tienda:** `lucamsshop.com` opera exclusivamente en modo **`full`** (`ADR-204`) con Wompi, contraentrega, Aveonline y Envío Lucams Bogotá. Las compras individuales cierran como pedidos y las negociaciones de empresas/eventos siguen como oportunidades B2B; no existe cotización individual por WhatsApp.
-- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**75 modelos Prisma**, **32 enums**, **98 migraciones Prisma** + **59 SQL Supabase**). RLS cubre el dominio y `enforce_rls_on_new_table` fija `search_path` vacío e identificadores `%I.%I`.
-- **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado, resolución en vivo y componentes separados para los 7 proveedores actuales; diferencia configuración/conexión/activación/salud y conserva los módulos operativos en sus rutas. No hay activaciones ficticias ni cambios de comportamiento.
+- **Base técnica:** monorepo `pnpm` con `apps/web` (Next.js **16.4.6**, TS strict, Tailwind v4, shadcn/ui) y `packages/db` (**75 modelos Prisma**, **32 enums**, **99 migraciones Prisma** + **59 SQL Supabase**). RLS cubre el dominio y `enforce_rls_on_new_table` fija `search_path` vacío e identificadores `%I.%I`.
+- **Integraciones (`ADR-206`):** `/admin/integraciones` usa registro tipado, resolución en vivo y componentes separados para los 7 proveedores actuales; diferencia configuración/conexión/activación/salud y conserva los módulos operativos en sus rutas. No hay orquestador persistente de activación ni toggles para nuevos proveedores; cada uno debe aportar estado, sonda, permisos y módulo propio antes de registrarse.
 - **Ramas protegidas (`ADR-105`):** `develop` (STG) y `production` (PRD) exigen PR y cinco checks: `Typecheck + Lint + Build`, `Vitest`, `RLS behavior`, `E2E + a11y + Lighthouse — Playwright` y `Gitleaks secret scan`.
 - **Legal:** paquete **Versión 3** sincronizado en `packages/db/legal-content`, fallbacks, mapa y CMS de STG/PRD; historial intacto.
 
@@ -63,7 +63,9 @@
 
 1. **Facturación electrónica DIAN:** faltan NIT/RUT de facturador, acompañamiento contador/abogado y proveedor tecnológico; `BILLING_DOCUMENT_ENABLED = false`. La vigilancia de umbrales ya opera.
 2. **SEO post-indexación:** revisar Search Console y confirmar aprobación del feed en Merchant Center.
-3. **Mercado Libre:** integración directa no implementada (`ADR-205`). El objetivo es una integración completa y progresiva —no demo— para productos terminados con stock, centralizada en un módulo admin único. La especificación con fuentes oficiales, arquitectura y fases está en [`integrations/mercadolibre.md`](integrations/mercadolibre.md); la fase actual es **0: validación externa de cuenta, permisos, User Products, logística y finanzas antes de codificar**.
+3. **Núcleo omnicanal de stock (`ADR-208`):** migración aditiva y dominio activos (`MADE_TO_ORDER` vs `PHYSICAL_STOCK`, `publishedOnStorefront`, `safetyStock` y kardex por canal); tras desplegar en STG y PRD resta normalizar a `0` el stock legado de `MADE_TO_ORDER` y retirar `MADE_TO_ORDER_STOCK` del seed.
+4. **Mercado Libre (`ADR-205`):** arquitectura aprobada en pausa en [`integrations/mercadolibre.md`](integrations/mercadolibre.md) (solo `PHYSICAL_STOCK`, `ChannelPack`/`ChannelOrder`, precios `FORMULA`/`MANUAL`, `ME2` + Flex Bogotá y retenciones `MCO`). Pendiente habilitación de creación de App en DevCenter `MCO` para retomar Fase 0.
+5. **Meta (`ADR-207`):** arquitectura aprobada en pausa en [`integrations/meta.md`](integrations/meta.md) (`Meta Catalog` exclusivo `PHYSICAL_STOCK` con paridad de precios y `sale_price`, `System User` `v25.0`, Pixel + CAPI deduplicados 1:1 con `MetaOrderAttribution` y actualización previa Ley 1581). Pendiente Fase M0 al retomar.
 
 ### Higiene técnica diferida (no bloqueante)
 
